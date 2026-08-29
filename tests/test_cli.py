@@ -11,7 +11,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ontology_poc_generator.cli import _stage_output, build_parser, main
+from ontology_poc_generator.compiler import compile_decision_pack
+from ontology_poc_generator.decision_pack import render_decision_pack_json
 from ontology_poc_generator.errors import SpecCompilationError
+from ontology_poc_generator.knowledge import load_knowledge_unit
+from ontology_poc_generator.models import ScenarioParameters
 
 
 class CliTest(unittest.TestCase):
@@ -90,6 +94,13 @@ class CliTest(unittest.TestCase):
         )
 
         self.assertEqual(args.ontology_spec_output, Path("ontology-spec.json"))
+
+    def test_parser_accepts_decision_pack_output_path(self):
+        args = build_parser().parse_args(
+            ["scenario.json", "--decision-pack-output", "decision-pack.json"]
+        )
+
+        self.assertEqual(args.decision_pack_output, Path("decision-pack.json"))
 
     def test_omitting_ontology_spec_output_preserves_fixed_proposal_bytes(self):
         cases = (
@@ -173,6 +184,42 @@ class CliTest(unittest.TestCase):
                     for issue in payload["spec"]["compilation_issues"]
                 )
             )
+
+    def test_cli_writes_canonical_decision_pack_instead_of_proposal_projection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "decision-pack.json"
+
+            result = self._run_cli(
+                "examples/supply_chain_exception.json",
+                "--knowledge-unit",
+                str(self.KNOWLEDGE_PATH),
+                "--format",
+                "json",
+                "--decision-pack-output",
+                str(output_path),
+            )
+
+            raw_scenario = json.loads(
+                (self.REPO_ROOT / "examples/supply_chain_exception.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            expected_pack = compile_decision_pack(
+                ScenarioParameters.from_dict(raw_scenario),
+                (load_knowledge_unit(self.KNOWLEDGE_PATH),),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(
+                output_path.read_text(encoding="utf-8"),
+                render_decision_pack_json(expected_pack),
+            )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["schema"], "decision_pack.v1")
+            self.assertIn("input_bindings", payload)
+            self.assertIn("source_refs", payload)
+            self.assertIn("knowledge_outcomes", payload)
+            self.assertNotIn("primary_decision", payload)
 
     def test_spec_compilation_failure_is_an_input_error_without_outputs(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -280,6 +327,62 @@ class CliTest(unittest.TestCase):
             )
             self.assertEqual(list(root.glob(".*.tmp")), [])
             self.assertEqual(list(root.glob(".*.bak")), [])
+
+    def test_cli_rejects_decision_pack_collision_with_any_other_output(self):
+        cases = (
+            ("--output", "proposal.json"),
+            ("--ontology-spec-output", "ontology-spec.json"),
+        )
+        for other_flag, other_name in cases:
+            with self.subTest(other_flag=other_flag):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    other_output = root / other_name
+                    decision_output = root / other_name.upper()
+                    original = b"original output\n"
+                    other_output.write_bytes(original)
+
+                    result = self._run_cli(
+                        "examples/supply_chain_exception.json",
+                        "--format",
+                        "json",
+                        other_flag,
+                        str(other_output),
+                        "--decision-pack-output",
+                        str(decision_output),
+                    )
+
+                    self.assertEqual(result.returncode, 3)
+                    self.assertIn("output error:", result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertEqual(other_output.read_bytes(), original)
+                    self.assertEqual(list(root.glob(".*.tmp")), [])
+                    self.assertEqual(list(root.glob(".*.bak")), [])
+
+    def test_failed_decision_pack_staging_leaves_no_other_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proposal_output = root / "proposal.json"
+            spec_output = root / "ontology-spec.json"
+
+            result = self._run_cli(
+                "examples/supply_chain_exception.json",
+                "--format",
+                "json",
+                "--output",
+                str(proposal_output),
+                "--ontology-spec-output",
+                str(spec_output),
+                "--decision-pack-output",
+                "/dev/null/decision-pack.json",
+            )
+
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("output error:", result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertFalse(proposal_output.exists())
+            self.assertFalse(spec_output.exists())
+            self.assertEqual(list(root.iterdir()), [])
 
     def test_failed_spec_staging_leaves_no_new_proposal_or_temp_file(self):
         with tempfile.TemporaryDirectory() as directory:
