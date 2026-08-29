@@ -63,8 +63,29 @@ def _write_atomic(path: Path, content: str) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
+def _validate_output_path(
+    output: Path | None,
+    input_path: Path,
+    knowledge_units: list[Path],
+) -> None:
+    if output is None:
+        return
+    output_identity = os.fspath(output.resolve()).casefold()
+    input_identities = {
+        os.fspath(path.resolve()).casefold()
+        for path in (input_path, *knowledge_units)
+    }
+    if output_identity in input_identities:
+        raise ValueError("output path collides with an input path")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    try:
+        _validate_output_path(args.output, args.input, args.knowledge_units)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"output error: {exc}", file=sys.stderr)
+        return 3
     try:
         api_base = args.api_base or os.environ.get("EIP_MODEL_API_BASE", "")
         model = args.model or os.environ.get("EIP_MODEL_NAME", "")

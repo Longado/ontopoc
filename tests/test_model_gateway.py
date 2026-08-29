@@ -84,6 +84,17 @@ class OpenAICompatibleGatewayTest(unittest.TestCase):
             gateway.complete_json(system_prompt="system", user_prompt="user")
         self.assertNotIn("secret-value", str(raised.exception))
 
+    def test_invalid_request_url_is_wrapped_as_recognition_error(self) -> None:
+        gateway = OpenAICompatibleGateway(
+            api_base="https://models.example/invalid\npath",
+            api_key="secret-value",
+            model="configured-model",
+        )
+
+        with self.assertRaisesRegex(RecognitionError, "model request failed") as raised:
+            gateway.complete_json(system_prompt="system", user_prompt="user")
+        self.assertIs(type(raised.exception), RecognitionError)
+
 
 if __name__ == "__main__":
     unittest.main()
