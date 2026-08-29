@@ -9,3 +9,11 @@ build/
 output/
 .DS_Store
 .env
+node_modules/
+landing-page/audit-*/
+landing-page/qa/
+landing-page/qa-*/
+landing-page/qa-*.png
+landing-page/qa-*.jpg
+landing-page/qa-*.jpeg
+landing-page/qa-*.webp
