@@ -75,17 +75,6 @@ class MatchStatus(str, Enum):
 
 
 @dataclass(frozen=True)
-class InputBinding:
-    binding_id: str
-    semantic_key: str
-    label: str
-
-    def __post_init__(self) -> None:
-        for field in ("binding_id", "semantic_key", "label"):
-            object.__setattr__(self, field, _text(getattr(self, field), field))
-
-
-@dataclass(frozen=True)
 class RequiredBridge:
     semantic_key: str
     source_role_key: str

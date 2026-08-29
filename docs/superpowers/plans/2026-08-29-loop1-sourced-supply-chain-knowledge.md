@@ -70,6 +70,7 @@ class MatchStatus(str, Enum):
 @dataclass(frozen=True)
 class InputBinding:
     binding_id: str
+    role_key: str
     semantic_key: str
     label: str
 
@@ -118,6 +119,8 @@ class DecisionPack:
     source_refs: tuple[SourceRef, ...]
     knowledge_outcomes: tuple[KnowledgeOutcome, ...]
 ```
+
+`InputBinding` 的权威定义位于 `decision_pack.py`；知识模块不重复定义同名类型。
 
 Constraints:
 
