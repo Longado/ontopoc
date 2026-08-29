@@ -12,6 +12,7 @@ from ontology_poc_generator.models import ScenarioParameters
 
 
 EXAMPLE_PATH = Path(__file__).parents[1] / "examples" / "supply_chain_exception.json"
+MATCHED_SOURCE = "供应链计划经理负责判断哪些订单进入人工干预队列。"
 
 
 def candidate(**overrides: object) -> dict[str, object]:
@@ -68,14 +69,14 @@ class RecognitionContractTest(unittest.TestCase):
         expected = json.loads(EXAMPLE_PATH.read_text(encoding="utf-8"))
         gateway = FakeGateway(candidate())
 
-        result = recognize_scenario("订单可能延期，请识别干预场景。", gateway)
+        result = recognize_scenario(MATCHED_SOURCE, gateway)
 
         self.assertEqual(result.prompt_version, "order_priority_intervention.v1")
         self.assertEqual(len(result.source_text_sha256), 64)
         self.assertEqual(result.provider, "openai_compatible")
         self.assertEqual(result.model, "demo-model")
         self.assertEqual(result.scenario, ScenarioParameters.from_dict(expected))
-        self.assertIn("订单可能延期", gateway.calls[0][1])
+        self.assertIn("供应链计划经理", gateway.calls[0][1])
         system_prompt = gateway.calls[0][0]
         self.assertIn("scenario_intake_candidate.v1", system_prompt)
         self.assertNotIn("additional_objects", system_prompt)
@@ -168,8 +169,8 @@ class RecognitionContractTest(unittest.TestCase):
             desired_action_keys=list(reversed(original["desired_action_keys"])),
         )
 
-        first = recognize_scenario("订单异常", FakeGateway(original))
-        second = recognize_scenario("订单异常", FakeGateway(reordered))
+        first = recognize_scenario(MATCHED_SOURCE, FakeGateway(original))
+        second = recognize_scenario(MATCHED_SOURCE, FakeGateway(reordered))
 
         self.assertEqual(first.candidate_json, second.candidate_json)
         self.assertEqual(first.scenario, second.scenario)
@@ -180,7 +181,7 @@ class RecognitionContractTest(unittest.TestCase):
 
     def test_unmentioned_data_sources_default_to_review(self) -> None:
         result = recognize_scenario(
-            "订单异常",
+            MATCHED_SOURCE,
             FakeGateway(
                 candidate(
                     data_source_statuses=[
@@ -253,6 +254,16 @@ class RecognitionContractTest(unittest.TestCase):
             ):
                 recognize_scenario("订单异常", FakeGateway(candidate(**overrides)))
 
+    def test_decision_owner_must_be_copied_from_source_text(self) -> None:
+        with self.assertRaisesRegex(
+            RecognitionError,
+            "decision_owner must be copied from source text",
+        ):
+            recognize_scenario(
+                "供应链计划经理负责判断哪些订单进入人工干预队列。",
+                FakeGateway(candidate(decision_owner="production_planner")),
+            )
+
     def test_model_response_must_be_a_json_object(self) -> None:
         class InvalidGateway:
             def complete_json(self, *, system_prompt: str, user_prompt: str) -> ModelCompletion:
@@ -262,7 +273,7 @@ class RecognitionContractTest(unittest.TestCase):
             recognize_scenario("订单异常", InvalidGateway())
 
     def test_demo_envelope_compiles_closed_candidate_without_actions_or_facts(self) -> None:
-        result = recognize_scenario("订单异常", FakeGateway(candidate()))
+        result = recognize_scenario(MATCHED_SOURCE, FakeGateway(candidate()))
 
         envelope = build_recognition_demo_envelope(result)
 

@@ -94,6 +94,7 @@ no_erp_writeback。data_source_statuses 每项只能包含 source_key 和 status
 create_order_exception_review_task、assign_procurement_or_planning_owner、
 record_verdict_and_override_reason。missing_required_fields 只能使用 decision_owner、trigger。
 
+decision_owner 必须逐字复制材料中的负责人称谓，不能输出 participant key 或自行改写。
 除 decision_owner 和 trigger 外，不要输出自由文本。不要输出对象、语义 ID、关系、
 readiness、customer data、规则、threshold、expression、score、weight、客户事实、
 队列结论、Action、发布状态或写回指令。
@@ -387,6 +388,9 @@ def recognize_scenario(
     except json.JSONDecodeError as exc:
         raise RecognitionError("model response must be a valid JSON object") from exc
     candidate = _validate_candidate(parsed)
+    decision_owner = candidate["decision_owner"]
+    if not isinstance(decision_owner, str) or decision_owner not in normalized_source:
+        raise RecognitionError("decision_owner must be copied from source text")
     scenario = _scenario_from_candidate(candidate)
     candidate_json = json.dumps(
         candidate,

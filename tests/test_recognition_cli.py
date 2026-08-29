@@ -56,7 +56,10 @@ class RecognitionCliTest(unittest.TestCase):
             root = Path(directory)
             source = root / "scenario.txt"
             output = root / "demo.json"
-            source.write_text("订单预计延期，需要识别人工干预场景。", encoding="utf-8")
+            source.write_text(
+                "供应链计划经理负责识别需要人工干预的延期订单。",
+                encoding="utf-8",
+            )
             environment = {
                 "DEMO_MODEL_KEY": "secret-value",
                 "EIP_MODEL_API_BASE": "https://models.example/v1",
@@ -100,7 +103,10 @@ class RecognitionCliTest(unittest.TestCase):
             root = Path(directory)
             source = root / "scenario.txt"
             output = root / "demo.json"
-            source.write_text("订单异常", encoding="utf-8")
+            source.write_text(
+                "供应链计划经理负责识别需要人工干预的异常订单。",
+                encoding="utf-8",
+            )
             environment = {
                 "EIP_MODEL_API_KEY": "secret-value",
                 "EIP_MODEL_API_BASE": "https://models.example/v1",
