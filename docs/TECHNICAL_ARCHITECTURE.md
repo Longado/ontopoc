@@ -38,15 +38,17 @@
 ### 2.1 当前已实现
 
 - JSON 场景输入；
-- 基础必填校验；
+- 严格必填、boolean 与数据源状态校验；
 - `Proposal` 值对象；
+- 显式关系语义：关系端点必须引用已声明对象；未提供关系时报告信息不足，不按对象顺序推断；
 - Markdown 和 JSON 输出；
 - CLI；
 - 乳品研发、供应链异常两个合成样例；
-- 7 项 unittest。
+- 25 项 unittest。
 
 ### 2.2 当前未实现
 
+- Loop 1 及以上的有来源知识建议、`DecisionPack`、`OntologySpec`、验证运行时、审查与版本能力；
 - `ProjectBlueprint`；
 - 类型化 Actor、Relation、Constraint、Evidence、Finding、Action；
 - candidate 审查与 confirmed handoff；
@@ -304,7 +306,7 @@ class RelationType:
     source_refs: tuple[str, ...]
 ```
 
-禁止沿用当前“数组相邻即存在关系”的逻辑。关系来源只能是：
+不得重新引入 Loop 0 修正前“数组相邻即存在关系”的推断。关系来源只能是：
 
 1. 用户显式输入；
 2. 行业模式库建议，状态为 `candidate`；

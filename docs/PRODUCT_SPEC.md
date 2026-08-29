@@ -68,11 +68,14 @@ POC
 选填：
 
 - `participants`：参与角色；
+- `relations`：可选显式关系列表；每项为 `{source, predicate, target}`，其中 `source` 和 `target` 必须引用 `objects` 中已有对象；
 - `constraints`：稳定规则、限制或状态；
 - `data_sources`：数据源名称、类型、状态；
 - `desired_actions`：决策后可能产生的任务或动作；
 - `customer_data_available`：是否已有客户可用数据；
 - `notes`：其他业务背景。
+
+未提供 `relations` 时，生成器不得按对象顺序或其他输入顺序推断关系，输出必须报告关系信息不足；只有显式输入或后续有来源的知识建议才能贡献候选关系。
 
 ## 5. 输出契约
 

@@ -537,4 +537,4 @@ The last condition triggers a product review: keep the repository as an internal
 
 ## 16. First execution handoff
 
-Start with Loop 0 only. Use subagent-driven development with separate ownership for tests, domain correction, and evidence review; the root agent integrates and commits. Do not begin Loop 1 until the order-invariance, strict-status, and truthful-capability tests are green and both example outputs have been inspected.
+Loop 0 已完成：当前全量 unittest 为 25 项通过；乳品研发与供应链异常双样例仅作为 CLI smoke / regression，证明输出不再由对象顺序补造关系、能保留状态与边界，不能证明跨行业有效或形成知识建议。当前知识增益仍为零。Loop 1 仅处于 `ready_to_plan`，下一步先写出 Loop 1 的详细实施计划；在该计划通过前，不实现 Loop 1，也不启动后续 Loop。

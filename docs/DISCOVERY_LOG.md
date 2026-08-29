@@ -30,7 +30,7 @@
 | F-002 | 2026-08-29 | 既有乳业方案 | LLM、规则、专业模型、Agent 和人工角色混写会造成能力过度承诺 | 输出固定增加技术职责边界 | incorporated |
 | F-003 | 2026-08-29 | 开源平台对齐 | WebProtégé/VocBench 的协作能力适合方案审查，但不是 MVP 生成内核的前置 | 放入 Stage 5 | incorporated |
 | F-004 | 2026-08-29 | 双行业样例 | 同一输入契约可覆盖乳品研发与供应链异常，无需行业分支代码 | 保持生成内核领域无关，行业知识后续进入独立场景包 | incorporated |
-| F-005 | 2026-08-29 | 首版生成结果 | 仅按对象顺序建议关系可以形成可讨论骨架，但语义仍较弱 | 明确标记“待业务确认”；Stage 3 用关系模式库增强，不在首版假装已确认 | active |
+| F-005 | 2026-08-29 | 首版生成结果 | 已被 Loop 0 推翻：对象相邻自动连边没有业务语义，且会随输入顺序变化 | Loop 0 已移除 adjacency inference；Loop 1 只允许有来源的知识建议产生 candidate 关系，缺少显式关系或来源时报告信息不足 | superseded |
 | F-006 | 2026-08-29 | CLI 环境验证 | 系统默认 `python3` 在不同 shell 中可能指向 Python 3.9，当前用户本地 Python 3.13 可稳定运行 | README 后续统一建议虚拟环境或显式解释器；企业安装放入单独阶段 | active |
 | F-007 | 2026-08-29 | EIP 能力复盘 | EIP 的 T-Box、四态规则、血缘、裁决、版本和行动可以转化为方案设计语义，不需要复制运行表和页面 | 在 PRD 中定义设计期 ProjectBlueprint，EIP 作为后续验证适配器 | incorporated |
 | F-008 | 2026-08-29 | 多交付物分析 | POC、PRD、数据清单和验收矩阵共享同一批业务事实 | 在 Web 工作台前新增 Stage 1.5，先建设统一蓝图和多 renderer | incorporated |
@@ -49,5 +49,5 @@
 |---|---|---|---|---|
 | 2026-08-29 | 生成器 unittest | 7 passed | 参数校验、确定性 Markdown/JSON、CLI 和双行业契约可运行 | 尚不能证明方案满足真实客户需求 |
 | 2026-08-29 | 乳品研发与供应链异常样例生成 | 两份方案均包含 12 个必要章节 | 同一方法论内核可覆盖两个不同场景 | 候选关系仍需业务专家确认 |
-| 2026-08-29 | Loop 0 全量 unittest | `PYTHONPATH=src python -m unittest discover -s tests -v`：24 tests，0.065s，OK | 严格 boolean / 数据源状态、显式关系、关系信息不足、未实现能力表述和双行业回归在当前仓库可运行 | 不能证明真实客户价值、跨行业有效性或任何规则 / Agent / 任务 / 版本 / 回执已经运行 |
+| 2026-08-29 | Loop 0 全量 unittest | `PYTHONPATH=src python -m unittest discover -s tests -v`：25 tests，OK | 严格 boolean / 数据源状态、显式关系、关系信息不足、未实现能力表述和双行业回归在当前仓库可运行 | 不能证明真实客户价值、跨行业有效性或任何规则 / Agent / 任务 / 版本 / 回执已经运行 |
 | 2026-08-29 | Loop 0 CLI 双样例临时输出检查 | `dairy_rnd.json` 与 `supply_chain_exception.json` 都保留 `synthetic_demo`；无显式关系时写明信息不足；供应链物流节点仍为 `unavailable` / 不可用；未发现把规则、Agent、任务、版本或回执写成已执行的表述 | 当前投影不会补造关系或弱化不可用状态 | 双样例仅是 smoke / regression，不证明跨行业有效；当前知识增益仍为零，须由 Loop 1 的有来源建议验证 |

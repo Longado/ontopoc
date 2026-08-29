@@ -49,7 +49,7 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 
 **状态：complete_as_template_baseline**
 
-当前已有 JSON 输入、严格基础校验、`Proposal`、Markdown/JSON、CLI 和 24 项 unittest。它只投影已声明的显式关系，未提供关系时返回信息不足；仍不能称为知识辅助建模或新 EIP 内核。
+当前已有 JSON 输入、严格基础校验、`Proposal`、Markdown/JSON、CLI 和 25 项 unittest。它只投影已声明的显式关系，未提供关系时返回信息不足；仍不能称为知识辅助建模或新 EIP 内核。
 
 ## 已完成 Loop
 
@@ -78,8 +78,8 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 
 **实际证据：**
 
-- 代码基线由 `0a709f1`、`2b8659f`、`0fc2538` 三个小提交建立：分别保留数据源状态、要求显式关系语义、将未实现能力标为计划项；
-- 2026-08-29 运行 `PYTHONPATH=src python -m unittest discover -s tests -v`，结果为 **24 tests, 0.065s, OK**；
+- 代码基线由 `0a709f1`、`2b8659f`、`0fc2538`、`43ec41e` 四个小提交建立：分别保留数据源状态、要求显式关系语义、将未实现能力标为计划项、使关系风险表述与显式输入一致；
+- 2026-08-29 运行 `PYTHONPATH=src python -m unittest discover -s tests -v`，结果为 **25 tests, OK**；
 - 通过 CLI 将 `examples/dairy_rnd.json` 与 `examples/supply_chain_exception.json` 生成到临时目录。两份 Markdown 都保留 `synthetic_demo` 边界；未提供显式关系时明确写出“关系信息不足”；供应链样例的“物流节点状态”仍显示 `unavailable` / “数据源不可用”；规则、Agent、任务和版本写为 POC 计划或待验证项，且未出现把回执写成已运行结果的表述。
 
 **仍未解决的限制：**
