@@ -148,7 +148,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.output is not None:
             try:
                 outputs_collide = (
-                    args.output.resolve() == args.ontology_spec_output.resolve()
+                    str(args.output.resolve()).casefold()
+                    == str(args.ontology_spec_output.resolve()).casefold()
                 )
             except (OSError, RuntimeError) as exc:
                 print(f"output error: {exc}", file=sys.stderr)

@@ -252,6 +252,35 @@ class CliTest(unittest.TestCase):
             self.assertEqual(list(root.glob(".*.tmp")), [])
             self.assertEqual(list(root.glob(".*.bak")), [])
 
+    def test_cli_rejects_case_aliased_outputs_without_changing_existing_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proposal_output = root / "Artifact.json"
+            spec_output = root / "artifact.json"
+            original = b"original output\n"
+            proposal_output.write_bytes(original)
+
+            result = self._run_cli(
+                "examples/supply_chain_exception.json",
+                "--format",
+                "json",
+                "--output",
+                str(proposal_output),
+                "--ontology-spec-output",
+                str(spec_output),
+            )
+
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("output error:", result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(proposal_output.read_bytes(), original)
+            self.assertEqual(
+                sorted(path.name for path in root.iterdir()),
+                ["Artifact.json"],
+            )
+            self.assertEqual(list(root.glob(".*.tmp")), [])
+            self.assertEqual(list(root.glob(".*.bak")), [])
+
     def test_failed_spec_staging_leaves_no_new_proposal_or_temp_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
