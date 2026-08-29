@@ -202,6 +202,56 @@ class CliTest(unittest.TestCase):
             self.assertFalse(proposal_output.exists())
             self.assertFalse(spec_output.exists())
 
+    def test_cli_rejects_identical_proposal_and_spec_output_without_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shared_output = root / "shared.json"
+
+            result = self._run_cli(
+                "examples/supply_chain_exception.json",
+                "--format",
+                "json",
+                "--output",
+                str(shared_output),
+                "--ontology-spec-output",
+                str(shared_output),
+            )
+
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("output error:", result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(list(root.iterdir()), [])
+
+    def test_cli_rejects_aliased_outputs_without_changing_existing_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            alias_parent = root / "alias-parent"
+            alias_parent.mkdir()
+            shared_output = root / "shared.json"
+            original = b"original output\n"
+            shared_output.write_bytes(original)
+
+            result = self._run_cli(
+                "examples/supply_chain_exception.json",
+                "--format",
+                "json",
+                "--output",
+                str(shared_output),
+                "--ontology-spec-output",
+                str(alias_parent / ".." / shared_output.name),
+            )
+
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("output error:", result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(shared_output.read_bytes(), original)
+            self.assertEqual(
+                sorted(path.name for path in root.iterdir()),
+                ["alias-parent", "shared.json"],
+            )
+            self.assertEqual(list(root.glob(".*.tmp")), [])
+            self.assertEqual(list(root.glob(".*.bak")), [])
+
     def test_failed_spec_staging_leaves_no_new_proposal_or_temp_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
