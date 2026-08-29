@@ -1,0 +1,97 @@
+{
+  "fixture_id": "order_priority_policy_synthetic_cases_v1",
+  "evidence_scope": "synthetic_demo",
+  "cases": [
+    {
+      "subject_id": "order.synthetic.001",
+      "inputs": {
+        "supplier_commitment_state": {
+          "availability": "available",
+          "value": "missed"
+        },
+        "qualified_alternative_state": {
+          "availability": "available",
+          "value": "none"
+        }
+      },
+      "expected": {
+        "baseline": {
+          "evaluation_status": "pass",
+          "conclusion_value": "in_queue"
+        },
+        "candidate": {
+          "evaluation_status": "pass",
+          "conclusion_value": "in_queue"
+        }
+      }
+    },
+    {
+      "subject_id": "order.synthetic.002",
+      "inputs": {
+        "supplier_commitment_state": {
+          "availability": "available",
+          "value": "at_risk"
+        },
+        "qualified_alternative_state": {
+          "availability": "available",
+          "value": "none"
+        }
+      },
+      "expected": {
+        "baseline": {
+          "evaluation_status": "fail",
+          "conclusion_value": "not_in_queue"
+        },
+        "candidate": {
+          "evaluation_status": "pass",
+          "conclusion_value": "in_queue"
+        }
+      }
+    },
+    {
+      "subject_id": "order.synthetic.003",
+      "inputs": {
+        "supplier_commitment_state": {
+          "availability": "available",
+          "value": "on_track"
+        },
+        "qualified_alternative_state": {
+          "availability": "available",
+          "value": "available"
+        }
+      },
+      "expected": {
+        "baseline": {
+          "evaluation_status": "fail",
+          "conclusion_value": "not_in_queue"
+        },
+        "candidate": {
+          "evaluation_status": "fail",
+          "conclusion_value": "not_in_queue"
+        }
+      }
+    },
+    {
+      "subject_id": "order.synthetic.004",
+      "inputs": {
+        "supplier_commitment_state": {
+          "availability": "available",
+          "value": "missed"
+        },
+        "qualified_alternative_state": {
+          "availability": "unavailable"
+        }
+      },
+      "expected": {
+        "baseline": {
+          "evaluation_status": "not_evaluable",
+          "conclusion_value": "information_insufficient"
+        },
+        "candidate": {
+          "evaluation_status": "not_evaluable",
+          "conclusion_value": "information_insufficient"
+        }
+      }
+    }
+  ]
+}

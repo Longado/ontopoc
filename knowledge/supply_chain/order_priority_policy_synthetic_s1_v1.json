@@ -1,0 +1,54 @@
+{
+  "unit_id": "supply_chain.order_priority.synthetic_policy_s1",
+  "unit_version": "1.0.0",
+  "decision_key": "order_priority_intervention",
+  "applicability": {
+    "required_role_keys": [
+      "customer_order"
+    ],
+    "required_bridges": [],
+    "readiness_requirement_keys": [],
+    "decision_mismatch_reason_code": "decision_key_mismatch",
+    "missing_required_role_reason_code": "required_role_missing",
+    "missing_required_bridge_reason_code": "required_bridge_missing"
+  },
+  "sources": [
+    {
+      "source_ref_id": "synthetic_order_priority_policy_cases_v1",
+      "source_kind": "synthetic_example",
+      "title": "Synthetic order-priority policy cases v1",
+      "locator": "tests/fixtures/policy/order_priority_policy_synthetic_cases_v1.json",
+      "revision": "ff327cbe9697e9651cd01ed2490da0ac97ed3d90",
+      "snapshot_sha256": "77a70331b2e6bcf5c7e6cae12a49717c77a176dc2194af5f4e44b4d3b0d1a487",
+      "caveat": "Synthetic test policy only; not a customer fact, industry standard, or production threshold; defines no Action or score."
+    }
+  ],
+  "suggestion_templates": [
+    {
+      "suggestion_id": "rule.order_priority.synthetic_s1",
+      "contribution_type": "decision_rule",
+      "payload_schema": "decision_rule.v1",
+      "semantic_key": "order_priority_intervention_queue_rule",
+      "payload": {
+        "rule_kind": "categorical_all_of_v1",
+        "subject_role_key": "customer_order",
+        "condition_1_semantic_key": "supplier_commitment_state",
+        "condition_1_allowed_values": "missed",
+        "condition_2_semantic_key": "qualified_alternative_state",
+        "condition_2_allowed_values": "none",
+        "output_conclusion_key": "priority_intervention_queue_membership",
+        "positive_conclusion_value": "in_queue",
+        "negative_conclusion_value": "not_in_queue",
+        "description": "Synthetic categorical queue-entry policy.",
+        "evidence_scope": "synthetic_demo"
+      },
+      "input_binding_ids": [
+        "customer_order"
+      ],
+      "source_ref_ids": [
+        "synthetic_order_priority_policy_cases_v1"
+      ],
+      "governance_status": "candidate"
+    }
+  ]
+}

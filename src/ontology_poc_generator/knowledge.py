@@ -14,8 +14,17 @@ from ontology_poc_generator.models import ReadinessStatus, ScenarioParameters
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
+_CONTROLLED_TOKEN_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 _FORBIDDEN_PAYLOAD_KEYS = frozenset(
-    {"threshold", "expression", "result", "action", "writeback"}
+    {
+        "threshold",
+        "expression",
+        "result",
+        "score",
+        "weight",
+        "action",
+        "writeback",
+    }
 )
 _PAYLOAD_PROFILES = {
     "relation_semantics.v1": (
@@ -34,6 +43,33 @@ _PAYLOAD_PROFILES = {
         "readiness_gap",
         frozenset({"requirement_key", "description"}),
     ),
+    "decision_rule.v1": (
+        "decision_rule",
+        frozenset(
+            {
+                "rule_kind",
+                "subject_role_key",
+                "condition_1_semantic_key",
+                "condition_1_allowed_values",
+                "condition_2_semantic_key",
+                "condition_2_allowed_values",
+                "output_conclusion_key",
+                "positive_conclusion_value",
+                "negative_conclusion_value",
+                "description",
+                "evidence_scope",
+            }
+        ),
+    ),
+}
+
+_DECISION_RULE_FIXED_FIELDS = {
+    "subject_role_key": "customer_order",
+    "condition_1_semantic_key": "supplier_commitment_state",
+    "condition_2_semantic_key": "qualified_alternative_state",
+    "output_conclusion_key": "priority_intervention_queue_membership",
+    "positive_conclusion_value": "in_queue",
+    "negative_conclusion_value": "not_in_queue",
 }
 
 
@@ -57,6 +93,53 @@ def _string_tuple(value: object, field: str, *, required: bool = False) -> tuple
     if required and not result:
         raise KnowledgeValidationError(f"{field} must contain at least one item")
     return result
+
+
+def _controlled_token(value: str, field: str) -> None:
+    if not _CONTROLLED_TOKEN_PATTERN.fullmatch(value):
+        raise KnowledgeValidationError(
+            f"decision_rule.v1 {field} must be a controlled token"
+        )
+
+
+def _controlled_token_list(value: str, field: str) -> None:
+    values = value.split(",")
+    if any(not item for item in values):
+        raise KnowledgeValidationError(
+            f"decision_rule.v1 {field} must contain controlled tokens"
+        )
+    for item in values:
+        _controlled_token(item, field)
+    if len(set(values)) != len(values):
+        raise KnowledgeValidationError(
+            f"decision_rule.v1 {field} must not contain duplicate values"
+        )
+    if values != sorted(values):
+        raise KnowledgeValidationError(
+            f"decision_rule.v1 {field} values must be sorted"
+        )
+
+
+def _validate_decision_rule_payload(payload: Mapping[str, str]) -> None:
+    if payload["rule_kind"] != "categorical_all_of_v1":
+        raise KnowledgeValidationError(
+            "decision_rule.v1 rule_kind must be categorical_all_of_v1"
+        )
+    if payload["evidence_scope"] != "synthetic_demo":
+        raise KnowledgeValidationError(
+            "decision_rule.v1 evidence_scope must be synthetic_demo"
+        )
+    for field, expected in _DECISION_RULE_FIXED_FIELDS.items():
+        _controlled_token(payload[field], field)
+        if payload[field] != expected:
+            raise KnowledgeValidationError(
+                f"decision_rule.v1 {field} must be {expected}"
+            )
+    for field in (
+        "condition_1_allowed_values",
+        "condition_2_allowed_values",
+    ):
+        _controlled_token_list(payload[field], field)
 
 
 class SourceKind(str, Enum):
@@ -305,6 +388,13 @@ class KnowledgeSuggestion:
                 raise KnowledgeValidationError(f"payload[{index}] must be a key/value pair")
             key = _text(item[0], f"payload[{index}].key")
             value = _text(item[1], f"payload[{index}].value")
+            if (
+                self.payload_schema == "decision_rule.v1"
+                and item[1] != value
+            ):
+                raise KnowledgeValidationError(
+                    f"decision_rule.v1 {key} must not contain outer whitespace"
+                )
             if key.casefold() in _FORBIDDEN_PAYLOAD_KEYS:
                 raise KnowledgeValidationError(f"payload key {key} is forbidden")
             normalized_payload.append((key, value))
@@ -327,6 +417,9 @@ class KnowledgeSuggestion:
                 raise KnowledgeValidationError(
                     "payload keys must exactly match payload_schema"
                 )
+            if self.payload_schema == "decision_rule.v1":
+                _controlled_token(self.semantic_key, "semantic_key")
+                _validate_decision_rule_payload(dict(normalized_payload))
         object.__setattr__(
             self,
             "input_binding_ids",
@@ -442,6 +535,16 @@ class KnowledgeUnit:
         if len(set(source_ids)) != len(source_ids):
             raise KnowledgeValidationError("duplicate source_ref_id")
         known_source_ids = set(source_ids)
+        if any(
+            template.payload_schema == "decision_rule.v1"
+            for template in self.suggestion_templates
+        ) and any(
+            source.source_kind is not SourceKind.SYNTHETIC_EXAMPLE
+            for source in self.source_refs
+        ):
+            raise KnowledgeValidationError(
+                "decision_rule.v1 sources must be synthetic_example"
+            )
         known_roles = {
             role.casefold() for role in self.applicability.required_role_keys
         }
@@ -473,6 +576,18 @@ class KnowledgeUnit:
                     "template references unknown applicability role: "
                     f"{sorted(unknown_roles)[0]}"
                 )
+            if template.payload_schema == "decision_rule.v1":
+                subject_role_key = dict(template.payload)[
+                    "subject_role_key"
+                ].casefold()
+                bound_roles = {
+                    role.casefold() for role in template.input_binding_ids
+                }
+                if subject_role_key not in bound_roles:
+                    raise KnowledgeValidationError(
+                        "decision_rule.v1 subject_role_key must be covered by "
+                        "input_binding_ids"
+                    )
             if template.payload_schema == "relation_semantics.v1":
                 payload = dict(template.payload)
                 endpoint_roles = {
