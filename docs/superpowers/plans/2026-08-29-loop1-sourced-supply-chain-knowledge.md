@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `subagent-driven-development` or `executing-plans`; implement one task at a time with TDD and review each commit before continuing.
 
-**Status:** `in_progress`; Task 1 accepted at `f49087e`, later tasks remain open.
+**Status:** `in_progress`; Task 1 accepted at `f49087e`; Task 2 accepted at `341a8bd` with 48 tests passing; Task 3 is in progress.
 
 **Goal:** When a user explicitly loads one supply-chain knowledge unit, compile the current scenario into an immutable `DecisionPack` containing input-external, source-backed `candidate` suggestions. The first unit must distinguish supplier qualification from purchase history without producing an order queue, score, or action.
 
@@ -211,15 +211,15 @@ The readable source note must record repository, path, fragment, hash, supported
 
 ### TDD steps
 
-- [ ] Add a failing loader test for the exact unit ID, version, source IDs, contribution types, and stable template order.
-- [ ] Add a failing test that repeated loads produce the same canonical content hash.
-- [ ] Add a failing test that changing package content without changing the expected source snapshot is visible through a different unit hash.
-- [ ] Write the readable source note with the two exact snapshot hashes and caveats above.
-- [ ] Write the declarative JSON package; keep industry vocabulary out of Python.
-- [ ] Implement `load_knowledge_unit(path)` and canonical JSON SHA-256 using standard library only.
-- [ ] Add a test proving the loader does not read or import the old EIP repository at runtime.
-- [ ] Run focused tests, full tests, and `git diff --check`.
-- [ ] Commit: `feat: add supplier evidence knowledge unit`.
+- [x] Add a failing loader test for the exact unit ID, version, source IDs, contribution types, and stable template order.
+- [x] Add a failing test that repeated loads produce the same canonical content hash.
+- [x] Add a failing test that changing package content without changing the expected source snapshot is visible through a different unit hash.
+- [x] Write the readable source note with the two exact snapshot hashes and caveats above.
+- [x] Write the declarative JSON package; keep industry vocabulary out of Python.
+- [x] Implement `load_knowledge_unit(path)` and canonical JSON SHA-256 using standard library only.
+- [x] Add a test proving the loader does not read or import the old EIP repository at runtime.
+- [x] Run focused tests, full tests, and `git diff --check`.
+- [x] Commit: `feat: add supplier evidence knowledge unit` (`341a8bd`; 48 tests passing).
 
 ---
 
