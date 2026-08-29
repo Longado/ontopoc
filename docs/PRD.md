@@ -1,18 +1,18 @@
-# PRD：Ontology Solution Studio
+# PRD：渐进式新 EIP
 
-**产品代号：** Ontology Solution Studio  
+**产品代号：** Ontology EIP Studio
 **仓库：** `ontology-poc-generator`  
 **版本：** v0.1  
-**状态：** Draft for validation  
+**状态：** Re-anchored product direction; detailed requirements under review
 **日期：** 2026-08-29
 
-> 技术实现边界、领域模型、版本、校验、存储和 EIP 适配契约见 [技术架构](TECHNICAL_ARCHITECTURE.md)。当前阶段不包含前端设计。
+> 当前实施顺序以 [渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md) 和 [路线图](ROADMAP.md) 为准。本文后半部原有的 Studio/EIP 适配型功能清单保留为候选需求，不再代表已承诺顺序。
 
 ## 1. 执行摘要
 
-Ontology Solution Studio 是面向工业 AI 售前、解决方案架构师和 FDE 的本体项目设计工具。用户输入业务场景、核心决策、角色、对象、约束、数据源和验收问题后，系统先生成一份统一的本体项目蓝图，再从蓝图生成 POC 方案、PRD、本体规格骨架、数据需求清单、规则测试用例、演示剧本和验收矩阵。
+Ontology EIP Studio 从当前的确定性 POC 方案 CLI 出发，逐步长成一套新的 EIP。用户围绕一个业务决策形成 `DecisionPack`，系统随后逐步提供有来源的建模建议、本体规格编译、确定性验证、人工裁决、版本发布、数据血缘和受控行动。
 
-它借鉴 EIP 已经形成的决策闭环、T-Box、规则求值、血缘、裁决、版本和受控行动语义，但不复制 EIP 的运行数据库或业务页面。Studio 负责设计期，EIP 负责后续验证期与运行期；两者通过结构化蓝图和规格接口连接。
+它借鉴旧 EIP 已经验证过的产品纪律，但重新拥有自己的领域契约和运行内核。旧 `nano-ontoprompt` 仅作为只读行为参考，不作为源码、数据库、运行依赖或产品终局。
 
 ## 2. 产品问题
 
@@ -53,31 +53,31 @@ Ontology Solution Studio 是面向工业 AI 售前、解决方案架构师和 FD
 
 ### 3.1 一句话定位
 
-把工业业务场景编译成可审查、可验证、可交付的本体项目蓝图与实施材料。
+把一个工业业务决策编译成可审查、可测试、可版本化、可运行和可修正的决策本体包。
 
 ### 3.2 产品不是什么
 
 - 不是通用文案写作工具；
 - 不是完整 OWL 编辑器；
-- 不是 EIP 运行平台的复制品；
+- 不是旧 EIP 代码和数据库的复制品；
 - 不是自动替代业务专家的“AI 顾问”；
 - 不是自动承诺工期、报价或客户效果的投标工具；
 - 不是未经审查就发布生产本体的生成器。
 
-### 3.3 与 EIP 的分工
+### 3.3 从生成器到新 EIP
 
 ```text
-Ontology Solution Studio                    EIP
-────────────────────────                    ────────────────────────
-场景澄清                                    数据连接与版本
-业务决策卡                                  本体规格与实例展开
-ProjectBlueprint                            T-Box / 规则验证
-POC / PRD / 数据清单 / 验收矩阵             血缘与证据
-设计审查                                    人工裁决与版本发布
-导出 EIP 规格                               运行时决策与受控行动
+当前 Proposal CLI
+-> 有来源的 DecisionPack
+-> 新仓自有 OntologySpec
+-> 无状态验证运行时
+-> 版本、审查与发布
+-> 数据映射与血缘
+-> 决策裁决与受控行动
+-> 服务化 EIP
 ```
 
-Studio 是设计期“编译器”，EIP 是验证期和运行期“控制平面”。MVP 不要求 EIP 在线，避免新产品被现有运行环境绑死。
+设计期和运行期仍保持领域边界，但由本仓库逐步实现同一套可追踪契约。旧 EIP 后续最多作为兼容适配目标和差异测试参考，不能替代新仓自己的验证内核。
 
 ## 4. 目标用户与核心任务
 
@@ -100,11 +100,11 @@ Studio 是设计期“编译器”，EIP 是验证期和运行期“控制平面
 ## 5. 产品原则
 
 1. **一个方案，一个主决策。** 辅助判断必须服务主决策；
-2. **蓝图先于文档。** 所有输出来自同一结构化 `ProjectBlueprint`；
+2. **DecisionPack 先于文档。** `ProjectBlueprint` 是其设计部分，所有输出来自同一结构化事实源；
 3. **建议不是确认。** 自动生成的对象、关系、规则保持 candidate 状态；
 4. **事实有来源。** 从材料抽取的内容保留 source reference；
 5. **信息不足可见。** 缺数据时标记 `not_evaluable`，不补成确定结论；
-6. **设计与运行分层。** Studio 生成方案和规格，EIP 执行验证与运营；
+6. **设计与运行分层但契约同源。** 新仓分别实现编译、验证和治理，不能用 renderer 代替运行证据；
 7. **人工审查是产品步骤。** AI 不能绕过业务确认和发布关口；
 8. **同一输入稳定输出。** 确定性内核不嵌入当前时间或随机内容；
 9. **演示边界诚实。** 无客户数据时强制使用 `synthetic_demo`；
@@ -228,9 +228,9 @@ pass | fail | not_evaluable | unsupported
 
 把经过验证的对象模式、关系模式、规则、数据需求、验收样例和适用边界沉淀成行业包。
 
-#### K. EIP Export & Validation Adapter
+#### K. 新 EIP Validation Runtime
 
-把 confirmed 蓝图导出给 EIP，在 EIP 中完成 T-Box、数据映射、规则验证、血缘、发布和运行闭环。
+把 confirmed `DecisionPack` 编译为新仓 `OntologySpec`，先在内存合成数据上完成 T-Box、规则四态和校验回执，再逐步加入版本、映射、血缘与治理。旧 EIP 适配器不是运行内核的前置条件。
 
 ## 8. MVP 范围
 

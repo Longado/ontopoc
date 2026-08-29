@@ -1,35 +1,37 @@
-# Ontology POC Generator 技术架构
+# 渐进式新 EIP 技术架构
 
 **版本：** v0.1  
-**状态：** Architecture Draft  
+**状态：** Re-anchoring Draft
 **日期：** 2026-08-29  
-**适用范围：** 核心领域、编译器、校验、版本、交付物生成、CLI/API/LLM/EIP 适配边界  
+**适用范围：** DecisionPack、知识辅助编译、本体规格、校验、版本、映射、血缘、决策与适配边界
 **明确不包含：** 前端页面、视觉、交互和组件设计
 
 ## 1. 架构目标
 
-本架构服务当前 PRD 的最小可信路径：
+> 2026-08-29 重锚说明：当前实施顺序以 [渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md) 为准。本文后续原有的“Studio 对接旧 EIP”章节属于重锚前候选设计，将在对应 Loop 进入时逐段替换，不代表当前接口承诺。
+
+本架构服务新的最小可信路径：
 
 ```text
 结构化场景输入
--> 严格校验
--> ProjectBlueprint
--> 人工治理状态
--> POC / PRD / Acceptance Matrix 投影
--> Draft Review Package
--> 后续可选 EIP 只读验证
+-> 有来源的 DecisionPack
+-> 新仓 OntologySpec
+-> synthetic facts + stateless validation
+-> immutable version + human review
+-> confirmed publication
+-> 后续数据映射、血缘、裁决与受控行动
 ```
 
 技术目标：
 
-1. 用一个类型化 `ProjectBlueprint` 作为全部项目材料的唯一事实源；
+1. 用一个类型化 `DecisionPack` 作为设计、验证与治理的共同事实源，`ProjectBlueprint` 是其设计投影；
 2. 把业务推导集中在 compiler，renderer 只负责格式化；
 3. 严格区分建议、人工确认、机器求值、版本生命周期和运行能力；
 4. 相同规范化输入产生相同内容身份和稳定输出；
 5. 无客户数据、无授权或无验证证据时，不得升级证据状态；
-6. 核心不依赖前端、LLM、EIP、Neo4j 或数据库服务；
+6. 核心不依赖前端、LLM、旧 EIP、Neo4j 或数据库服务；
 7. 保持当前 CLI 和两个示例的兼容迁移路径；
-8. 只在真实用户验证后扩展多输出、Web 和 EIP 集成范围。
+8. 先实现本仓自己的无状态 EIP 验证纵切面，再讨论旧 EIP 兼容、Web 和企业基础设施。
 
 ## 2. 当前事实与目标能力
 

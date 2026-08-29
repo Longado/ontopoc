@@ -1,168 +1,160 @@
-# Ontology POC Generator 滚动开发路线图
+# Ontology POC Generator → 新 EIP 滚动路线图
 
 最后更新：2026-08-29
 
-维护规则：每个开发批次结束后更新阶段状态、发现、决定和验证证据。新发现只追加；如果改变验收条件，必须记录原因。
+## 新定位
 
-## Stage 0 — 产品与方法论基线
+本仓库从当前可运行的 POC 方案 CLI 出发，逐步重建一套新的 EIP：
 
-**状态：complete**
+> 把一个业务决策编译为有来源、可审查、可测试、可版本化、可运行和可修正的 `DecisionPack`。
 
-目标：把“本体 POC 如何设计”固化成输入、元模型、约束和输出契约。
+POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `nano-ontoprompt` 是第一方经验库和行为参考，不是代码来源、运行依赖或必须兼容的架构底座。
 
-出口门：
+详细执行计划见 [渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md)。
 
-- [x] 产品用户和问题定义明确；
-- [x] 方法论元模型明确；
-- [x] MVP 输入输出契约明确；
-- [x] 演示、POC、生产边界明确；
-- [x] 用乳品研发与供应链异常两个行业场景审查字段是否足够。
+## 开发闭环
 
-## Stage 1 — 确定性方案生成内核
+```text
+选择一个真实决策
+-> 写出本轮可证伪假设
+-> 先写失败测试
+-> 实现最小纵向能力
+-> 跑黄金合成场景
+-> 对照旧 EIP 或一个外部机制
+-> 记录发现与差异
+-> 小步 commit / push
+-> 决定进入、重做或停止下一 Loop
+```
 
-**状态：complete（首个可运行版本）**
+维护规则：
 
-目标：不依赖 LLM，用结构化参数生成稳定、可审查的 Markdown POC 方案。
+1. 同一时间只有一个 Loop 为 `in_progress`；
+2. 每个 commit 只回答一个行为问题并保持全量测试通过；
+3. 不复制旧 EIP 的模块、ORM、迁移、路由、页面或数据库；
+4. 借鉴旧 EIP 时必须记录“问题、机制、本仓测试、不复制内容”；
+5. 每个 Loop 都要让同一个黄金场景多走一步，不能只新增孤立类型；
+6. 新发现先进入 `DISCOVERY_LOG.md`，只有影响当前出口门时才改变当前范围；
+7. 文档、fixture 或类存在不等于能力已实现；
+8. 合成演示、POC、生产运行和客户效果始终分开表达。
 
-工作包：
+## 已实现基线
 
-- 场景参数校验；
-- 方法论推导与关系建议；
-- 决策闭环生成；
-- 数据缺口和 synthetic demo 边界；
-- Markdown 渲染；
-- CLI 与示例；
-- 单元测试和输出快照。
+### Stage 0 — 产品与方法论草案
 
-出口门：乳品研发和供应链异常两个样例均可生成；相同输入输出一致；缺少主决策时拒绝生成。
+**状态：complete_with_unvalidated_product_hypotheses**
 
-验证证据（2026-08-29）：
+已有产品定义、方法论元模型、输入输出契约、乳品研发与供应链异常两个合成场景。它们证明问题和模型假设已被写出，不证明真实用户价值或跨行业有效。
 
-- 7 项 unittest 通过；
-- 两个行业样例通过同一生成内核；
-- Markdown 包含 12 个必要章节；
-- JSON 输出可解析并保留结构化主决策；
-- 无客户数据时输出 `synthetic_demo`；
-- 未确认数据源进入数据缺口；
-- 缺少主决策时拒绝生成。
+### Stage 1 — 确定性 Proposal CLI
 
-## Stage 1.5 — 统一 ProjectBlueprint 与多输出工具
+**状态：complete_as_template_baseline**
 
-**状态：planned**
+当前已有 JSON 输入、基础校验、`Proposal`、Markdown/JSON、CLI 和 7 项 unittest。它可以稳定重排输入，但当前候选关系仍由对象顺序生成，不能称为知识辅助建模或新 EIP 内核。
 
-目标：把当前 POC Proposal 提升为统一项目蓝图，并从同一蓝图生成不同交付物。
+## NOW
 
-工作包：
-
-- `ProjectBlueprint` 领域模型；
-- candidate/confirmed/rejected/insufficient 状态；
-- 蓝图结构验证；
-- POC renderer 迁移；
-- PRD renderer；
-- Acceptance Matrix renderer；
-- 修改传播与跨输出一致性测试。
-
-出口门：修改主决策或验收问题后，POC、PRD 和验收矩阵同步变化；renderer 不包含独立业务推导。
-
-产品要求详见 [PRD](PRD.md)。
-
-## Stage 2 — 交互式 Web 工作台
+### Loop 0 — 可信基线修正
 
 **状态：planned**
 
-目标：用户通过表单完成场景输入、实时查看缺口并下载方案。
+**核心问题：** 当前代码会按对象数组顺序推导关系，弱化 `unavailable` 状态，并在交付物中混入尚未实现的规则、Agent、任务和版本能力。
 
-工作包：
+**最小范围：**
 
-- 分步场景表单；
-- 决策卡实时预览；
-- 对象、关系、规则编辑；
-- Markdown/JSON 下载；
-- 本地项目历史；
-- 浏览器 E2E。
+- 严格 JSON boolean 与数据源状态；
+- 不可变数据源值对象；
+- 删除相邻对象关系推导；
+- 无显式或知识来源时输出信息不足；
+- `available / to_confirm / unavailable` 原样传播；
+- 当前能力与计划能力分开渲染。
 
-出口门：首次用户不编辑 JSON 即可生成、修改和导出一份方案。
+**出口门：**
 
-## Stage 3 — 方法论知识库与行业模板
+- 对象列表重排不改变语义关系；
+- `unavailable` 不会显示成“待确认”；
+- 无来源时不补造关系；
+- 输出不声称已经运行规则、Agent、行动、版本或回执；
+- 双样例和全量测试通过。
 
-**状态：planned**
+## NEXT
 
-目标：把通用方法论与行业知识分开，使方案可复用但不套模板套话。
+### Loop 1 — 有来源的知识辅助 DecisionPack
 
-工作包：
+**状态：entry_blocked_by_loop_0**
 
-- 通用对象/关系/规则模式库；
-- 乳业研发、乳业合规、供应链履约三个场景包；
-- 模板适用条件和版本；
-- 结构冲突与缺失输入提示；
-- 模板 diff 和修订记录。
+建立版本化 `SourceRef / KnowledgeUnit / KnowledgeSuggestion`，用确定性适用性规则贡献候选对象、关系、规则、数据需求和验收问题；自动建议始终为 candidate。第一份知识单元只覆盖一个窄场景，核心代码不得出现乳品或供应链分支。
 
-出口门：新增行业包不修改生成核心；模板建议都能追溯到方法论节点。
+出口：输出包含输入中没有的结构化建议，且每条建议都能追到来源、适用条件、输入绑定和版本；无匹配时返回信息不足。
 
-## Stage 4 — AI 辅助材料抽取与方案补全
+### Loop 2 — 可执行本体内核
 
-**状态：planned**
+**状态：entry_blocked_by_loop_1**
 
-目标：从会议纪要、需求文档和表结构中抽取候选场景参数，但所有候选都需人工确认。
+把 confirmed `DecisionPack` 编译成新仓拥有的 `OntologySpec`，建立稳定 ID、显式 domain/range、属性、规则输入绑定、引用闭包和规范化 JSON。
 
-工作包：
+出口：同一 pack 产生字节稳定 spec；改 label 不改变已有 ID；悬空引用、候选泄漏和未绑定规则响亮失败。
 
-- 文档抽取适配器；
-- 候选对象/关系/规则及证据引用；
-- 置信度与信息不足状态；
-- 人工确认关口；
-- 确定性生成器和 LLM 输出分层。
+### Loop 3 — 无状态验证运行时
 
-出口门：抽取结果能定位原文；未确认候选不能进入正式方案。
+**状态：entry_blocked_by_loop_2**
 
-## Stage 5 — 协作审查与版本历史
+在内存中加载 `synthetic_demo` facts，完成 T-Box 校验、首批确定性规则、`pass / fail / not_evaluable / unsupported` 四态和 checksum 绑定的 `ValidationReceipt`。
 
-**状态：planned**
+出口：黄金乳品场景产生可追到规则与事实的回执，且明确 `draft_created=false`、`published=false`、`actions_executed=false`、`external_write=false`。
 
-目标：支持方案作者、技术审查人和业务确认人围绕具体差异协作。
+### Loop 4 — 不可变版本、人工审查与发布门
 
-工作包：
+**状态：entry_blocked_by_loop_3**
 
-- 不可变方案版本；
-- 结构 diff；
-- 逐项评论与审查结论；
-- 责任分工与待办；
-- 发布和导出历史。
+先创建不可变 draft snapshot 与 checksum，再让 review 绑定精确版本；随后提供 stable-ID semantic diff、stale-base 拒绝、Draft Review Package 和 confirmed-only Publication Package。
 
-出口门：一份方案可从初稿、业务退回、技术修正到确认版完整追踪。
+出口：退回—修订—再审—发布可重放；旧 review 不会套用到新内容；只有 confirmed 且可验证的内容能发布。
 
-## Stage 6 — POC 项目执行包
+完成 Loop 4 后，仓库形成第一个可演示的新 EIP 产品闭环，而不是只能向旧 EIP 请求回执的 Studio。
 
-**状态：planned**
+## LATER
 
-目标：从“方案文档”进一步生成可执行的 POC 项目包。
+### Loop 5 — 数据映射与行级血缘
 
-输出包括：
+**状态：entry_blocked_by_loop_4**
 
-- 数据需求清单；
-- 访谈问题；
-- 本体规格骨架；
-- 规则测试用例；
-- 演示脚本；
-- 验收矩阵；
-- 风险和依赖清单。
+先支持本地 CSV/JSON 数据版本、显式 source table/key/property/relation mapping、确定性事实展开和 row → fact → rule result → finding 正反向血缘；不接生产数据库。
 
-出口门：实施团队可以用生成包启动 POC，而不需要重新解释方案结构。
+### Loop 6 — 决策裁决与受控行动
 
-## Stage 7 — 结果反馈与方法论学习
+**状态：entry_blocked_by_loop_5**
 
-**状态：evidence_limited**
+分离 rule result、candidate finding、human verdict 和 action task；行动必须有合同、审批、责任人、before/after、结果或失败回执。首版只生成内部任务，不写 ERP/MES/CRM。
 
-目标：把客户修正、POC 结果和未通过原因沉淀为可复用方法论资产。
+### Loop 7 — 服务化与扩展边界
 
-启动条件：至少两个实际 POC 有完整修订和结果记录。
+**状态：entry_blocked_by_loop_6**
 
-出口门：系统能区分通用方法改进、行业模板改进和单客户特例，不把客户敏感内容带入公共模板。
+把已验证 use case 提炼为 application service 和 repository port，再增加 capability-derived API。CLI 与 API 必须共享领域内核；没有测试覆盖的能力不得进入 capability manifest。
 
-## 当前执行顺序
+## 参考路线
 
-1. 人工评审两份生成样例的业务可读性与字段缺口；
-2. 建 Stage 1.5 `ProjectBlueprint`、PRD 和验收矩阵；
-3. 建 Stage 2 Web 工作台；
-4. 用实际使用反馈决定 Stage 3 模板优先级；
-5. 在确定性闭环稳定后接入 AI 抽取。
+| 参考 | 借鉴机制 | 进入点 | 不复制内容 |
+|---|---|---|---|
+| 旧 EIP / nano-ontoprompt | OntologySpec、四态规则、T-Box、lineage、verdict、version、action approval 的行为纪律 | 每轮最多一个机制 | ORM、迁移、router、数据库、页面、历史兼容层 |
+| WebProtégé | 修订、讨论和审查关口 | Loop 4 后复审 | 完整协作 UI |
+| VocBench 3 | 受管词表和角色治理 | Loop 1/4 按需 | 词表平台整体 |
+| TerminusDB | commit、diff、历史查询 | Loop 4 | 存储引擎替换 |
+| Ontop | 映射契约和源端查询思想 | Loop 5 | 当前底座迁移 |
+| Jena/RDF4J | RDF、SPARQL、SHACL 标准能力 | Loop 7 后另立计划 | 过早标准栈扩张 |
+| TypeDB | 关系角色和继承语义 | 本地模型表达不足时 | 数据底座迁移 |
+
+## 提交节奏
+
+计划重锚本身作为独立文档 commit。进入代码后，每个 Loop 通常拆为：
+
+1. `test:` 写清行为契约；
+2. `feat:` 或 `fix:` 最小实现；
+3. `test:` 黄金 fixture 与回归；
+4. `docs:` 记录验证证据、被推翻假设和下一进入门。
+
+不设行数指标，但禁止一次 commit 同时引入完整建模、验证、版本、数据库和 API。root agent 负责最终集成、测试和 commit；子 Agent 按文件或职责独立工作，不直接扩大当前 Loop。
+
+## 暂缓
+
+前端、自由式 LLM 自动建模、RAG、向量库、Neo4j、生产连接器、多租户、复杂 RBAC、后台任务、RDF/OWL/SHACL、自动外部行动和行业模板市场均不在当前授权内。只有已完成 Loop 暴露明确阻塞，并形成新的可证伪计划后才进入。
