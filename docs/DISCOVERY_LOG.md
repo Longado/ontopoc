@@ -20,6 +20,7 @@
 | D-014 | 2026-08-29 | 旧 EIP 只作为只读行为参考，不复制模块或共享运行底座 | 复制旧实现会继承历史结构、耦合和未完成接口，也失去重新验证设计的意义 | 仅在明确版本化公共协议上允许跨仓兼容测试 |
 | D-015 | 2026-08-29 | 采用七个纵向 Loop 重建，新能力必须让同一个黄金场景多走一步 | 平台模块横向铺开容易形成大提交和空壳能力；纵向骨架能持续运行、验证和 commit | 某 Loop 的最小纵切面无法独立验收时重新拆分 |
 | D-016 | 2026-08-29 | 人工 review 必须绑定不可变版本和 subject checksum | 只绑定元素 ID 会把旧确认静默套到内容已变化的新元素 | 不复审 |
+| D-017 | 2026-08-29 | 关闭 Loop 0 后才进入 Loop 1 的最小知识辅助计划 | 已验证的基线只能忠实表达输入，不能把缺少来源的关系或未实现运行能力包装为知识；下一步必须先补来源与适用性，再讨论可执行本体 | Loop 1 不能产生可追溯且输入外的 candidate 建议时，维持当前基线并重新收缩范围 |
 
 ## 新发现
 
@@ -39,6 +40,8 @@
 | F-012 | 2026-08-29 | 多 Agent 代码复核 | 当前候选关系只由 `zip(objects, objects[1:])` 产生，信息量没有超过输入且会随数组顺序变化 | Loop 0 删除顺序推导；Loop 1 用有来源知识单元产生 candidate suggestion | accepted |
 | F-013 | 2026-08-29 | 旧 EIP 契约核查 | 旧 EIP versioning 未挂公共 router，既有 Loop 5 fixture 也不满足原生 spec 的 mapping 字段 | 取消把旧 EIP HTTP 回执作为产品终局；新仓先实现自己的无状态验证内核 | accepted |
 | F-014 | 2026-08-29 | 产品方向复审 | 用户希望通过连续小 commit 从生成器逐步重建 EIP，而不是把旧 EIP 整体复制过来 | 重锚为 DecisionPack → OntologySpec → validation → review/version → mapping/lineage → decision/action 的演进路径 | accepted |
+| F-015 | 2026-08-29 | Loop 0 双样例 CLI smoke / regression | 删除对象顺序推导后，两份无显式关系的样例都会明确关系信息不足；供应链“物流节点状态”仍为 `unavailable`，并保留 `synthetic_demo` 边界与未实现能力的计划表述 | 作为 Loop 0 出口证据；双样例不证明跨行业有效 | accepted |
+| F-016 | 2026-08-29 | Loop 0 知识边界复核 | 当前生成器只投影已声明的对象、约束、数据源和显式关系；没有来源知识单元、适用性匹配或输入外建议，知识增益仍为零 | Loop 1 必须以可追溯、确定性的 candidate 建议解决该缺口；在此之前继续返回信息不足 | accepted |
 
 ## 验证证据
 
@@ -46,3 +49,5 @@
 |---|---|---|---|---|
 | 2026-08-29 | 生成器 unittest | 7 passed | 参数校验、确定性 Markdown/JSON、CLI 和双行业契约可运行 | 尚不能证明方案满足真实客户需求 |
 | 2026-08-29 | 乳品研发与供应链异常样例生成 | 两份方案均包含 12 个必要章节 | 同一方法论内核可覆盖两个不同场景 | 候选关系仍需业务专家确认 |
+| 2026-08-29 | Loop 0 全量 unittest | `PYTHONPATH=src python -m unittest discover -s tests -v`：24 tests，0.065s，OK | 严格 boolean / 数据源状态、显式关系、关系信息不足、未实现能力表述和双行业回归在当前仓库可运行 | 不能证明真实客户价值、跨行业有效性或任何规则 / Agent / 任务 / 版本 / 回执已经运行 |
+| 2026-08-29 | Loop 0 CLI 双样例临时输出检查 | `dairy_rnd.json` 与 `supply_chain_exception.json` 都保留 `synthetic_demo`；无显式关系时写明信息不足；供应链物流节点仍为 `unavailable` / 不可用；未发现把规则、Agent、任务、版本或回执写成已执行的表述 | 当前投影不会补造关系或弱化不可用状态 | 双样例仅是 smoke / regression，不证明跨行业有效；当前知识增益仍为零，须由 Loop 1 的有来源建议验证 |

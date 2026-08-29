@@ -138,14 +138,14 @@ Rules:
 **Files:**
 
 - Modify: `tests/test_generator.py`
-- Modify: `tests/test_cli.py`
-- Modify: `tests/test_examples.py`
+- Verify: `tests/test_cli.py`
+- Verify: `tests/test_examples.py`
 
-- [ ] Add a regression proving that reordering `objects` cannot create different semantic relations.
-- [ ] Add strict input tests for JSON booleans and data-source status values.
-- [ ] Add a regression proving `unavailable` is not rendered as `to_confirm`.
-- [ ] Add a projection test proving planned rules, Agents, tasks, versions, and actions are described as planned rather than implemented.
-- [ ] Run `PYTHONPATH=src python -m unittest discover -s tests -v` and confirm the new tests fail for the documented reasons.
+- [x] Add a regression proving that reordering `objects` cannot create different semantic relations.
+- [x] Add strict input tests for JSON booleans and data-source status values.
+- [x] Add a regression proving `unavailable` is not rendered as `to_confirm`.
+- [x] Add projection coverage for known over-commitment phrases and the `current` / `planned` / `candidate` projection boundary; Agent、行动和回执的逐项样例检查另记于 Task 0.3。
+- [x] Run `PYTHONPATH=src python -m unittest discover -s tests -v` and confirm the new tests fail for the documented reasons.
 
 Example order-invariance contract:
 
@@ -184,12 +184,12 @@ def test_object_order_does_not_invent_relations(self):
 - Test: `tests/test_cli.py`
 - Test: `tests/test_examples.py`
 
-- [ ] Replace mutable data-source dictionaries with a validated immutable value object.
-- [ ] Accept only explicit relations; when none exist, return an empty candidate list plus an information gap.
-- [ ] Preserve `available`, `to_confirm`, and `unavailable` without collapsing them.
-- [ ] Replace current-runtime promises with `planned` or `requires_validation` language.
-- [ ] Run focused tests, then the full suite.
-- [ ] Commit as `fix: establish truthful generator baseline`.
+- [x] Replace mutable data-source dictionaries with a validated immutable value object.
+- [x] Accept only explicit relations; when none exist, return an empty candidate list plus an information gap.
+- [x] Preserve `available`, `to_confirm`, and `unavailable` without collapsing them.
+- [x] Replace current-runtime promises with `planned` or `requires_validation` language.
+- [x] Run focused tests, then the full suite.
+- [x] 拆分为三个小提交完成：`0a709f1 fix: preserve validated data source states`、`2b8659f fix: require explicit relation semantics`、`0fc2538 fix: label unimplemented capabilities as planned`。
 
 ### Task 0.3: Close the baseline with evidence
 
@@ -198,11 +198,11 @@ def test_object_order_does_not_invent_relations(self):
 - Modify: `docs/ROADMAP.md`
 - Modify: `docs/DISCOVERY_LOG.md`
 
-- [ ] Generate both current examples into a temporary directory.
-- [ ] Inspect that neither output claims rules, Agents, actions, versions, or receipts were executed.
-- [ ] Run `git diff --check`.
-- [ ] Record the exact test result and the known zero-knowledge limitation.
-- [ ] Commit as `docs: close truthful baseline loop`.
+- [x] Generate both current examples into a temporary directory.
+- [x] 人工检查双样例，确认其未把规则、Agent、行动、版本或回执写成已执行。
+- [x] Run `git diff --check`.
+- [x] Record the exact test result and the known zero-knowledge limitation.
+- [x] Commit as `docs: close truthful baseline loop`.
 
 ## 6. Loop 1 — Knowledge-assisted DecisionPack
 

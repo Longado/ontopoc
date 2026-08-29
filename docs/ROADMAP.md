@@ -49,15 +49,15 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 
 **状态：complete_as_template_baseline**
 
-当前已有 JSON 输入、基础校验、`Proposal`、Markdown/JSON、CLI 和 7 项 unittest。它可以稳定重排输入，但当前候选关系仍由对象顺序生成，不能称为知识辅助建模或新 EIP 内核。
+当前已有 JSON 输入、严格基础校验、`Proposal`、Markdown/JSON、CLI 和 24 项 unittest。它只投影已声明的显式关系，未提供关系时返回信息不足；仍不能称为知识辅助建模或新 EIP 内核。
 
-## NOW
+## 已完成 Loop
 
 ### Loop 0 — 可信基线修正
 
-**状态：planned**
+**状态：complete**
 
-**核心问题：** 当前代码会按对象数组顺序推导关系，弱化 `unavailable` 状态，并在交付物中混入尚未实现的规则、Agent、任务和版本能力。
+**核心问题：** Loop 0 修正前的代码会按对象数组顺序推导关系，弱化 `unavailable` 状态，并在交付物中混入尚未实现的规则、Agent、任务和版本能力。
 
 **最小范围：**
 
@@ -76,15 +76,31 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 - 输出不声称已经运行规则、Agent、行动、版本或回执；
 - 双样例和全量测试通过。
 
-## NEXT
+**实际证据：**
+
+- 代码基线由 `0a709f1`、`2b8659f`、`0fc2538` 三个小提交建立：分别保留数据源状态、要求显式关系语义、将未实现能力标为计划项；
+- 2026-08-29 运行 `PYTHONPATH=src python -m unittest discover -s tests -v`，结果为 **24 tests, 0.065s, OK**；
+- 通过 CLI 将 `examples/dairy_rnd.json` 与 `examples/supply_chain_exception.json` 生成到临时目录。两份 Markdown 都保留 `synthetic_demo` 边界；未提供显式关系时明确写出“关系信息不足”；供应链样例的“物流节点状态”仍显示 `unavailable` / “数据源不可用”；规则、Agent、任务和版本写为 POC 计划或待验证项，且未出现把回执写成已运行结果的表述。
+
+**仍未解决的限制：**
+
+- 当前只重排并投影已声明输入；没有知识单元、来源匹配或输入外建议，知识增益仍为零；
+- 双样例只是 smoke / regression 证据，不能证明跨行业有效，也不能证明真实客户数据质量、业务效果或运行能力；
+- 规则求值、Agent 编排、任务创建、版本记录、回执和外部写入仍未实现。
+
+## NOW
 
 ### Loop 1 — 有来源的知识辅助 DecisionPack
 
-**状态：entry_blocked_by_loop_0**
+**状态：ready_to_plan**
+
+Loop 0 的出口门已满足；本 Loop 只授权先制定并验证其最小知识辅助纵切面，不提前实现后续本体、运行时、审查或版本能力。
 
 建立版本化 `SourceRef / KnowledgeUnit / KnowledgeSuggestion`，用确定性适用性规则贡献候选对象、关系、规则、数据需求和验收问题；自动建议始终为 candidate。第一份知识单元只覆盖一个窄场景，核心代码不得出现乳品或供应链分支。
 
 出口：输出包含输入中没有的结构化建议，且每条建议都能追到来源、适用条件、输入绑定和版本；无匹配时返回信息不足。
+
+## NEXT
 
 ### Loop 2 — 可执行本体内核
 
