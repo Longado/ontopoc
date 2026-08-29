@@ -20,12 +20,11 @@
 - 供应链知识单元的 queue policy 目前是 `readiness_gap`，不是规则；
 - Loop 1 ADR 已明确：`DecisionPack` 不引入额外的 `OntologyCandidate` 层，Loop 2 必须“编译已识别 profile，或生成结构化 issue”，不得忽略 suggestion。
 
-Loop 1 已完成 whole-loop review 并合并主分支。Loop 2 以主分支提交 `4e410c2` 为基线启动，基线全量测试为 **107 tests, OK**；当前在独立 worktree 分支 `codex/loop-2-draft-ontology-spec` 执行。Task 1 已在提交 `36a0e12` 冻结基础 spec 合同，聚焦测试 **14 passed**、全量测试 **121 passed**，规格审查和质量审查均通过；Task 2 正在隔离分支实现稳定 identity 与 canonical hash。此状态不表示编译、引用闭包或规则能力已经完成。
+Loop 1 已完成 whole-loop review 并合并主分支。Loop 2 以主分支提交 `4e410c2` 为基线启动，基线全量测试为 **107 tests, OK**；现已在集成分支 `codex/loop-2-draft-ontology-spec` 完成合同、稳定 identity/hash、输入与知识编译、引用闭包、synthetic rule declaration 和 opt-in CLI 输出。集成点 `10446d4` 的全量测试为 **198 tests, OK**；黄金场景生成 draft/candidate/`synthetic_demo` spec，引用闭合且无 blocking issue。该完成状态不表示事实验证、publication、Action 或外部写回已经实现。
 
 ```text
-in_progress
-task_1_complete
-task_2_in_progress
+complete
+tasks_1_to_8_complete
 ```
 
 执行前必须先确认：
@@ -355,9 +354,9 @@ json.dumps(
 
 ## 7. Task 1 — 冻结 spec 类型与状态边界
 
-**执行状态：in_progress**
+**执行状态：complete**
 
-当前仅开始按测试驱动方式冻结合同；本节所有验收步骤仍以实际实现、测试与独立审查结果为准。
+基础合同已由实现、测试与独立审查验证；本节保留原始实施步骤作为历史计划记录。
 
 **Files:**
 
