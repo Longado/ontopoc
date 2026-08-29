@@ -1,12 +1,17 @@
+import hashlib
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
-from ontology_poc_generator.cli import build_parser
+from ontology_poc_generator.cli import _stage_output, build_parser, main
+from ontology_poc_generator.errors import SpecCompilationError
 
 
 class CliTest(unittest.TestCase):
@@ -41,6 +46,156 @@ class CliTest(unittest.TestCase):
             args.knowledge_units,
             [Path("first.json"), Path("second.json")],
         )
+
+    def test_parser_accepts_ontology_spec_output_path(self):
+        args = build_parser().parse_args(
+            ["scenario.json", "--ontology-spec-output", "ontology-spec.json"]
+        )
+
+        self.assertEqual(args.ontology_spec_output, Path("ontology-spec.json"))
+
+    def test_omitting_ontology_spec_output_preserves_fixed_proposal_bytes(self):
+        cases = (
+            (
+                (),
+                "2c8fdbee13e3233b2d714b4c663998da7b7313014e887f8b8d1092671c49c50f",
+            ),
+            (
+                ("--format", "json"),
+                "d848ca2121501dfc943b5f81b44e72624a003d11a0e3174deed5d2c2a581b5a6",
+            ),
+        )
+        for extra_args, expected_sha256 in cases:
+            with self.subTest(extra_args=extra_args):
+                result = self._run_cli(
+                    "examples/supply_chain_exception.json",
+                    *extra_args,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr, "")
+                self.assertEqual(
+                    hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
+                    expected_sha256,
+                )
+
+    def test_cli_writes_deterministic_draft_ontology_spec_envelope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first_output = root / "first-ontology-spec.json"
+            second_output = root / "second-ontology-spec.json"
+            common = (
+                "examples/supply_chain_exception.json",
+                "--knowledge-unit",
+                str(self.KNOWLEDGE_PATH),
+                "--format",
+                "json",
+            )
+
+            first = self._run_cli(
+                *common,
+                "--ontology-spec-output",
+                str(first_output),
+            )
+            second = self._run_cli(
+                *common,
+                "--ontology-spec-output",
+                str(second_output),
+            )
+
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertEqual(first_output.read_bytes(), second_output.read_bytes())
+            payload = json.loads(first_output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                tuple(payload),
+                (
+                    "compilation_status",
+                    "reference_closure",
+                    "spec",
+                    "spec_content_hash",
+                ),
+            )
+            self.assertEqual(payload["spec"]["schema"], "ontology_spec.v1")
+            self.assertEqual(payload["spec"]["stage"], "draft")
+            self.assertEqual(payload["spec"]["evidence_scope"], "synthetic_demo")
+            self.assertEqual(payload["spec"]["governance_status"], "candidate")
+            self.assertRegex(payload["spec_content_hash"], r"^[0-9a-f]{64}$")
+            self.assertEqual(payload["compilation_status"], "complete")
+            closure = payload["reference_closure"]
+            self.assertEqual(
+                tuple(closure),
+                ("checked_reference_count", "is_closed", "issues"),
+            )
+            self.assertTrue(closure["is_closed"])
+            self.assertGreater(closure["checked_reference_count"], 0)
+            self.assertEqual(closure["issues"], [])
+            self.assertFalse(
+                any(
+                    issue["severity"] == "blocking"
+                    for issue in payload["spec"]["compilation_issues"]
+                )
+            )
+
+    def test_spec_compilation_failure_is_an_input_error_without_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proposal_output = root / "proposal.json"
+            spec_output = root / "ontology-spec.json"
+            stderr = StringIO()
+
+            with patch(
+                "ontology_poc_generator.cli.compile_ontology_spec",
+                side_effect=SpecCompilationError("fatal", "cannot compile"),
+            ), redirect_stderr(stderr):
+                result = main(
+                    [
+                        "examples/supply_chain_exception.json",
+                        "--format",
+                        "json",
+                        "--output",
+                        str(proposal_output),
+                        "--ontology-spec-output",
+                        str(spec_output),
+                    ]
+                )
+
+            self.assertEqual(result, 2)
+            self.assertIn("input error: cannot compile", stderr.getvalue())
+            self.assertFalse(proposal_output.exists())
+            self.assertFalse(spec_output.exists())
+
+    def test_failed_spec_staging_leaves_no_new_proposal_or_temp_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proposal_output = root / "proposal.json"
+
+            result = self._run_cli(
+                "examples/supply_chain_exception.json",
+                "--format",
+                "json",
+                "--output",
+                str(proposal_output),
+                "--ontology-spec-output",
+                "/dev/null/ontology-spec.json",
+            )
+
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("output error:", result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertFalse(proposal_output.exists())
+            self.assertEqual(list(root.iterdir()), [])
+
+    def test_failed_temp_write_cleans_the_new_temp_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output_path = root / "ontology-spec.json"
+
+            with patch.object(Path, "write_text", side_effect=OSError("disk full")):
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    _stage_output(output_path, "content")
+
+            self.assertEqual(list(root.iterdir()), [])
 
     def test_cli_generates_markdown_file(self):
         scenario = {
