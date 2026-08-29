@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Background, BackgroundVariant, MarkerType, ReactFlow } from "@xyflow/react";
-import { ArrowRight, Braces, GitBranch, Network, Play, ScrollText } from "lucide-react";
+import { ArrowRight, Braces, GitBranch, Network, ScrollText } from "lucide-react";
 
 import { DOCUMENT_MODELING_PRESETS, resolveDocumentModelingRequest } from "./documentModelingDemoModel.js";
 
@@ -10,14 +10,13 @@ const copy = {
     intro: "选择一段固定合成材料，检查候选实体、关系、文本证据与能力边界。",
     scenario: "01 / 选择演示场景",
     document: "02 / 文档内容",
-    generate: "生成候选模型",
+    generate: "Agent 生成候选草案",
     evidence: "选中证据",
     empty: "运行确定性解析器后，这里会显示候选图与文本证据。",
     unsupported: "当前文本不受支持",
     unsupportedBody: "文档已被编辑或不属于所选预设。请恢复原预设文本后重新生成。",
     boundary: "能力边界",
     compiledReady: "COMPILED ARTIFACT ROUTE AVAILABLE",
-    startCompiled: "Start compiled demo / 启动已编译演示",
     entity: "ENTITY TYPE",
     relation: "RELATION TYPE",
   },
@@ -26,14 +25,13 @@ const copy = {
     intro: "Choose fixed synthetic material and inspect candidate entities, relations, text evidence, and the capability boundary.",
     scenario: "01 / SELECT DEMO SCENARIO",
     document: "02 / DOCUMENT TEXT",
-    generate: "GENERATE CANDIDATE MODEL",
+    generate: "AGENT GENERATE DRAFT",
     evidence: "SELECTED EVIDENCE",
     empty: "Run the deterministic parser to see the candidate graph and text evidence.",
     unsupported: "UNSUPPORTED DOCUMENT TEXT",
     unsupportedBody: "The document was edited or does not match the selected preset. Restore the preset text and generate again.",
     boundary: "CAPABILITY BOUNDARY",
     compiledReady: "COMPILED ARTIFACT ROUTE AVAILABLE",
-    startCompiled: "Start compiled demo",
     entity: "ENTITY TYPE",
     relation: "RELATION TYPE",
   },
@@ -66,7 +64,7 @@ function projectCandidateGraph(preset) {
   };
 }
 
-export function DocumentModeler({ language, runDemo }) {
+export function DocumentModeler({ language, runAgentDemo }) {
   const t = copy[language] ?? copy.en;
   const [scenarioId, setScenarioId] = useState(DOCUMENT_MODELING_PRESETS[0].id);
   const [documentText, setDocumentText] = useState(DOCUMENT_MODELING_PRESETS[0].documentText);
@@ -87,6 +85,10 @@ export function DocumentModeler({ language, runDemo }) {
 
   const generate = () => {
     const nextResult = resolveDocumentModelingRequest(scenarioId, documentText);
+    if (nextResult.status === "resolved" && nextResult.mode === "compiled_artifact") {
+      runAgentDemo();
+      return;
+    }
     setResult(nextResult);
     setSelectedEvidence(nextResult.status === "resolved" ? { kind: "entity", id: nextResult.preset.entityTypes[0].id } : null);
   };
@@ -104,7 +106,7 @@ export function DocumentModeler({ language, runDemo }) {
     <div className="document-modeler">
       <section className="document-modeler-controls" aria-labelledby="document-modeler-title">
         <header>
-          <span>DETERMINISTIC DEMO PARSER / NO LIVE MODEL</span>
+          <span>BUSINESS MODELING AGENT / RECORDED DEMO</span>
           <h2 id="document-modeler-title">{t.title}</h2>
           <p>{t.intro}</p>
         </header>
@@ -206,9 +208,6 @@ export function DocumentModeler({ language, runDemo }) {
                 <p>{evidence?.evidenceText}</p>
                 {evidence?.kind === "relation" && <code>{evidence.source} → {evidence.target}</code>}
                 <div><small>{t.boundary}</small><p>{preset.boundary}</p></div>
-                {preset.mode === "compiled_artifact" && (
-                  <button type="button" onClick={runDemo}><Play size={15} fill="currentColor" />{t.startCompiled}</button>
-                )}
               </aside>
             </div>
           </>

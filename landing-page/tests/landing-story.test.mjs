@@ -59,14 +59,26 @@ test("Trial workspace runs one synchronous artifact load and exposes four read-o
 
 test("idle Trial mounts the document modeler and only its compiled action runs the artifact callback", () => {
   assert.match(workspace, /import \{ DocumentModeler \} from "\.\/DocumentModeler\.jsx"/);
-  assert.match(workspace, /<DocumentModeler language=\{language\} runDemo=\{runDemo\} \/>/);
+  assert.match(workspace, /<DocumentModeler language=\{language\} runAgentDemo=\{runAgentDemo\} \/>/);
   assert.match(documentModeler, /resolveDocumentModelingRequest/);
-  assert.match(documentModeler, /runDemo/);
-  assert.match(documentModeler, /Start compiled demo/);
+  assert.match(documentModeler, /runAgentDemo/);
+  assert.match(documentModeler, /BUSINESS MODELING AGENT \/ RECORDED DEMO/);
+});
+
+test("recorded Agent review binds the compiled candidate set before entering the workspace", () => {
+  assert.match(workspace, /createRecordedAgentModelingSession/);
+  assert.match(workspace, /confirmAgentModelingSession/);
+  assert.match(workspace, /setStatus\("agent_review"\)/);
+  assert.match(workspace, /function AgentReviewPanel/);
+  assert.match(workspace, /session\.candidates\.counts/);
+  assert.match(workspace, /confirmationReceipt/);
+  assert.match(workspace, /session\.boundaries/);
+  assert.match(workspace, /SESSION ONLY \/ NOT SAVED/);
+  assert.doesNotMatch(workspace, /method:\s*["']POST|localStorage|sessionStorage/);
 });
 
 test("document modeler exposes deterministic presets and a read-only candidate graph", () => {
-  assert.match(documentModeler, /DETERMINISTIC DEMO PARSER \/ NO LIVE MODEL/);
+  assert.match(documentModeler, /BUSINESS MODELING AGENT \/ RECORDED DEMO/);
   assert.match(documentModeler, /SCENARIO PREVIEW \/ NOT COMPILED/);
   assert.match(documentModeler, /synthetic_demo/);
   assert.match(documentModeler, /<textarea/);
