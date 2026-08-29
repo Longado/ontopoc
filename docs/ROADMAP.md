@@ -114,7 +114,7 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 
 **仍未解决的限制：**
 
-- 当前入队政策只是 readiness gap，不是规则；本轮不计算风险分数、不输出最终队列、不提出处置动作；
+- 客户入队政策仍是 readiness gap；当前只有 synthetic candidate rule，不计算风险分数、不输出最终队列、不提出处置动作；
 - 当前已有 draft/candidate `OntologySpec`，但尚未实现事实校验、`ValidationReceipt`、review、version、publication 或外部写入；
 - `synthetic_demo` 和跨行业 regression 不能证明客户适用性、真实数据质量或生产效果。
 
