@@ -96,27 +96,41 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 - 双样例只是 smoke / regression 证据，不能证明跨行业有效，也不能证明真实客户数据质量、业务效果或运行能力；
 - 规则求值、Agent 编排、任务创建、版本记录、回执和外部写入仍未实现。
 
-## NOW
-
 ### Loop 1 — 有来源的供应链知识辅助 DecisionPack
 
-**状态：in_progress**
+**状态：complete**
 
-详细实施计划已建立：[Loop 1：供应链证据语义知识单元](superpowers/plans/2026-08-29-loop1-sourced-supply-chain-knowledge.md)。Task 1 的来源与知识契约已由 `f49087e` 建立并通过 36 项全量测试；知识包、匹配、DecisionPack 和 CLI 投影仍未实现，因此本 Loop 不能标记完成。
+详细实施与出口证据见 [Loop 1：供应链证据语义知识单元](superpowers/plans/2026-08-29-loop1-sourced-supply-chain-knowledge.md)。代码按小提交建立来源契约、固定知识单元、通用匹配、payload profile 校验、不可变 `DecisionPack`、opt-in CLI 投影和投影加固：`f49087e`、`341a8bd`、`e670a9a`、`6ad3eb9`、`d339885`、`d40e9a2`、`2744ccb`。Task 4 与 Task 5 的 spec review 和 quality review 均为 APPROVED。
 
 建立稳定身份的 `SourceRef / KnowledgeUnit / KnowledgeSuggestion / KnowledgeOutcome` 和不可变 `DecisionPack`，用知识包内声明的确定性匹配规则贡献 candidate 建议。第一份知识单元只区分 `QUALIFIED_TO_SUPPLY` 与 `HAS_SUPPLIED` 的证据语义；核心 Python 不得出现供应链分支。
 
-出口：输出包含输入中没有的结构化建议，且每条建议都能追到固定 snapshot、适用条件、稳定语义绑定和版本；不匹配返回 `not_applicable`，缺少必要语义角色或订单—物料桥接返回 `insufficient_information`；缺少入队政策则保留为结构化 readiness gap，不压掉知识建议。本轮不计算风险分数、不输出最终队列、不提出处置动作。
+**实际证据：**
 
-## NEXT
+- 2026-08-29 运行全量 unittest，结果为 **107 tests, OK**；默认不加载知识单元的 JSON/Markdown 与 Loop 0 golden 保持一致，pack canonical hash 可重复；
+- 供应链样例显式加载知识单元后仍为 `synthetic_demo`，匹配为 `applicable`，输出 7 条 candidate 建议和 3 个 source snapshot；
+- 乳品研发样例加载同一单元后为 `not_applicable`，输出 0 条建议和 0 个来源；缺少订单—物料桥接时为 `insufficient_information` 且无建议；
+- 入队政策为 pending 时保留 7 条建议，其中包含结构化 readiness gap；政策为 ready 时输出 6 条建议且不再包含该 gap；
+- 所有建议都能追到固定 snapshot、知识单元版本/hash、适用条件和稳定语义绑定；Markdown 来源字段经过结构防注入处理。
+
+**仍未解决的限制：**
+
+- 当前入队政策只是 readiness gap，不是规则；本轮不计算风险分数、不输出最终队列、不提出处置动作；
+- 当前没有 `OntologySpec`、事实校验、`ValidationReceipt`、review、version、publication 或外部写入；
+- `synthetic_demo` 和跨行业 regression 不能证明客户适用性、真实数据质量或生产效果。
+
+## NOW
 
 ### Loop 2 — 可执行本体内核
 
-**状态：entry_blocked_by_loop_1**
+**状态：planned / entry_ready_after_loop_1_merge**
 
-把 `DecisionPack` 编译成新仓拥有的 draft `OntologySpec`，建立显式 domain/range、属性、规则输入绑定、引用闭包、规范化 JSON 和 spec 内容 hash。Loop 1 已建立的 source/suggestion identity 继续使用；candidate 状态必须保留并标记为 synthetic/draft，只有 Loop 4 审查后才能进入 confirmed publication。
+详细实施计划已建立：[Loop 2：Draft OntologySpec](superpowers/plans/2026-08-29-loop2-draft-ontology-spec.md)。待 Loop 1 完成 whole-loop review 并合并主分支后，把 `DecisionPack` 编译成新仓拥有的 draft `OntologySpec`，建立显式 domain/range、属性、规则输入绑定、引用闭包、规范化 JSON 和 spec 内容 hash。Loop 1 已建立的 source/suggestion identity 继续使用；candidate 状态必须保留并标记为 synthetic/draft，只有 Loop 4 审查后才能进入 confirmed publication。
 
 出口：同一 pack 产生字节稳定 spec；改 label 不改变已有 ID；悬空引用、状态丢失和未绑定规则响亮失败。
+
+Loop 2 的基础出口可以保留 `rule_declarations=()`，因此不自动解除 Loop 3 的进入阻塞。只有独立 synthetic `decision_rule.v1` policy slice 通过评审，才可进入规则求值运行时。
+
+## NEXT
 
 ### Loop 3 — 无状态验证运行时
 

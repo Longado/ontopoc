@@ -20,11 +20,11 @@
 - 供应链知识单元的 queue policy 目前是 `readiness_gap`，不是规则；
 - Loop 1 ADR 已明确：`DecisionPack` 不引入额外的 `OntologyCandidate` 层，Loop 2 必须“编译已识别 profile，或生成结构化 issue”，不得忽略 suggestion。
 
-当前进入证据更新到 Loop 1 Task 4 最终提交 `d339885`，全量 94 项测试通过，Task 4 的 spec review 与 quality review 均已最终接受。Loop 1 Task 5 和最终出口审查仍在进行；这里记录的是可复查进度，不代表 Loop 1 已完成。因此本计划状态为：
+当前进入证据更新到 Loop 1 投影加固提交 `2744ccb`，全量 107 项测试通过；Task 4 与 Task 5 的 spec review 和 quality review 均为 APPROVED。Loop 1 代码与文档出口已完成，仍等待 root 执行最终 whole-loop review 和主分支合并。因此本计划状态保持为：
 
 ```text
 planned
-entry_blocked_by_loop_1_exit_review
+entry_ready_after_loop_1_merge
 ```
 
 执行前必须先确认：

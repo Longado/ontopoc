@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `subagent-driven-development` or `executing-plans`; implement one task at a time with TDD and review each commit before continuing.
 
-**Status:** `in_progress`; Task 1 accepted at `f49087e`; Task 2 accepted at `341a8bd`; Task 3 accepted at `e670a9a`; payload profile hardening accepted at `6ad3eb9`; 73 tests passing; Task 4 is in progress.
+**Status:** `complete`; accepted implementation sequence: `f49087e`, `341a8bd`, `e670a9a`, `6ad3eb9`, `d339885`, `d40e9a2`, `2744ccb`; 107 tests passing. Task 4 and Task 5 spec review and quality review are APPROVED; whole-loop review and merge remain integration steps owned by the root agent.
 
 **Goal:** When a user explicitly loads one supply-chain knowledge unit, compile the current scenario into an immutable `DecisionPack` containing input-external, source-backed `candidate` suggestions. The first unit must distinguish supplier qualification from purchase history without producing an order queue, score, or action.
 
@@ -188,16 +188,16 @@ The readable source note must record repository, path, fragment, hash, supported
 
 ### TDD steps
 
-- [ ] Add a failing import test for `SourceKind`, `SourceRef`, `KnowledgeUnit`, `KnowledgeSuggestion`, and `KnowledgeValidationError`.
-- [ ] Run `PYTHONPATH=src python -m unittest tests.test_knowledge -v`; confirm failure is the missing contract.
-- [ ] Implement frozen source and knowledge value objects with non-empty field validation.
-- [ ] Add failing tests for an unknown source kind, missing version, missing caveat, invalid SHA-256, duplicate source IDs, and a template referencing an unknown source.
-- [ ] Implement the minimum validation needed for those tests.
-- [ ] Add failing tests that reject non-candidate templates and executable/result payload keys such as `threshold`, `expression`, `result`, `action`, or `writeback`.
-- [ ] Implement the explicit forbidden-key guard; do not add a general policy engine.
-- [ ] Add a test proving raw mutable dictionaries cannot mutate an accepted unit.
-- [ ] Run focused tests, then `PYTHONPATH=src python -m unittest discover -s tests -v` and `git diff --check`.
-- [ ] Commit: `feat: define sourced knowledge contracts`.
+- [x] Add a failing import test for `SourceKind`, `SourceRef`, `KnowledgeUnit`, `KnowledgeSuggestion`, and `KnowledgeValidationError`.
+- [x] Run `PYTHONPATH=src python -m unittest tests.test_knowledge -v`; confirm failure is the missing contract.
+- [x] Implement frozen source and knowledge value objects with non-empty field validation.
+- [x] Add failing tests for an unknown source kind, missing version, missing caveat, invalid SHA-256, duplicate source IDs, and a template referencing an unknown source.
+- [x] Implement the minimum validation needed for those tests.
+- [x] Add failing tests that reject non-candidate templates and executable/result payload keys such as `threshold`, `expression`, `result`, `action`, or `writeback`.
+- [x] Implement the explicit forbidden-key guard; do not add a general policy engine.
+- [x] Add a test proving raw mutable dictionaries cannot mutate an accepted unit.
+- [x] Run focused tests, then `PYTHONPATH=src python -m unittest discover -s tests -v` and `git diff --check`.
+- [x] Commit: `feat: define sourced knowledge contracts` (`f49087e`; 36 tests passing).
 
 ---
 
@@ -267,20 +267,20 @@ The readable source note must record repository, path, fragment, hash, supported
 
 ### TDD steps
 
-- [ ] Add a failing frozen-dataclass test for `InputBinding`, `KnowledgeOutcome`, and `DecisionPack`.
-- [ ] Add a failing test that the applicable golden pack contains input-external candidate suggestions with exact source/unit/hash/binding provenance.
-- [ ] Add failing tests that `not_applicable` and `insufficient_information` outcomes never contain suggestions.
-- [ ] Add a failing test that no suggestion contains a score, final queue membership, action, rule result, review, version, or publication field.
-- [ ] Add a failing deterministic-ID test across repeated compilation and object reordering.
-- [ ] Add a failing rename test proving a label change keeps binding/suggestion IDs while changing display content.
-- [ ] Add a failing canonical serialization test proving the same pack has the same content hash.
-- [ ] Implement `compile_decision_pack(params, knowledge_units=())` as a pure function.
-- [ ] Add a failing compatibility test that `generate_proposal(params)` with no unit stays byte-equivalent to the Loop 0 projection.
-- [ ] Change `generate_proposal` to project from the pack while preserving the public default call.
-- [ ] Add `knowledge_outcomes` and suggestions to the end of `Proposal` with immutable defaults; do not break positional callers.
-- [ ] Add exact no-unit Markdown and JSON golden regressions. Because the current JSON renderer uses `asdict`, explicitly omit empty knowledge-only fields in compatibility mode so the default Loop 0 JSON schema remains unchanged.
-- [ ] Run focused tests, full tests, and `git diff --check`.
-- [ ] Commit: `feat: compile sourced decision packs`.
+- [x] Add a failing frozen-dataclass test for `InputBinding`, `KnowledgeOutcome`, and `DecisionPack`.
+- [x] Add a failing test that the applicable golden pack contains input-external candidate suggestions with exact source/unit/hash/binding provenance.
+- [x] Add failing tests that `not_applicable` and `insufficient_information` outcomes never contain suggestions.
+- [x] Add a failing test that no suggestion contains a score, final queue membership, action, rule result, review, version, or publication field.
+- [x] Add a failing deterministic-ID test across repeated compilation and object reordering.
+- [x] Add a failing rename test proving a label change keeps binding/suggestion IDs while changing display content.
+- [x] Add a failing canonical serialization test proving the same pack has the same content hash.
+- [x] Implement `compile_decision_pack(params, knowledge_units=())` as a pure function.
+- [x] Add a failing compatibility test that `generate_proposal(params)` with no unit stays byte-equivalent to the Loop 0 projection.
+- [x] Change `generate_proposal` to project from the pack while preserving the public default call.
+- [x] Add `knowledge_outcomes` and suggestions to the end of `Proposal` with immutable defaults; do not break positional callers.
+- [x] Add exact no-unit Markdown and JSON golden regressions. Because the current JSON renderer uses `asdict`, explicitly omit empty knowledge-only fields in compatibility mode so the default Loop 0 JSON schema remains unchanged.
+- [x] Run focused tests, full tests, and `git diff --check`.
+- [x] Commit: `feat: compile sourced decision packs` (`d339885`; Task 4 spec review and quality review APPROVED).
 
 ---
 
@@ -297,18 +297,18 @@ The readable source note must record repository, path, fragment, hash, supported
 
 ### TDD steps
 
-- [ ] Add a failing CLI test for repeatable `--knowledge-unit PATH`; default invocation must still load none.
-- [ ] Add a failing JSON projection test that preserves structured source, match status, suggestion, and binding fields.
-- [ ] Add a failing Markdown test that labels all additions “有来源的候选建议” and displays source locator/hash caveats.
-- [ ] Add negative assertions for confirmed, evaluated, final queue, score, action created, reviewed, versioned, published, and external write claims.
-- [ ] Implement CLI loading and error handling as input validation; do not add subcommands or persistence.
-- [ ] Implement renderer formatting only; renderer must not match, infer, or change status.
-- [ ] Run focused tests and full tests.
-- [ ] Generate supply-chain JSON/Markdown with the unit and dairy JSON/Markdown with the same unit into a temporary directory.
-- [ ] Inspect: supply-chain output has source-backed candidates; dairy is `not_applicable`; the insufficiency fixture explains a missing bridge; a separate missing-policy fixture keeps the suggestions and adds a readiness gap; all remain `synthetic_demo`.
-- [ ] Run `git diff --check`.
-- [ ] Update ROADMAP/DISCOVERY only with the exact observed test count, commands, evidence, and remaining limitations.
-- [ ] Commit: `docs: close sourced knowledge loop`.
+- [x] Add a failing CLI test for repeatable `--knowledge-unit PATH`; default invocation must still load none.
+- [x] Add a failing JSON projection test that preserves structured source, match status, suggestion, and binding fields.
+- [x] Add a failing Markdown test that labels all additions “有来源的候选建议” and displays source locator/hash caveats.
+- [x] Add negative assertions for confirmed, evaluated, final queue, score, action created, reviewed, versioned, published, and external write claims.
+- [x] Implement CLI loading and error handling as input validation; do not add subcommands or persistence.
+- [x] Implement renderer formatting only; renderer must not match, infer, or change status.
+- [x] Run focused tests and full tests.
+- [x] Generate supply-chain JSON/Markdown with the unit and dairy JSON/Markdown with the same unit into a temporary directory.
+- [x] Inspect: supply-chain output has source-backed candidates; dairy is `not_applicable`; the insufficiency fixture explains a missing bridge; a separate missing-policy fixture keeps the suggestions and adds a readiness gap; all remain `synthetic_demo`.
+- [x] Run `git diff --check`.
+- [x] Update ROADMAP/DISCOVERY only with the exact observed test count, commands, evidence, and remaining limitations.
+- [x] Commit: `feat: expose sourced knowledge projections` (`d40e9a2`); harden projections at `2744ccb`; Task 5 spec review and quality review APPROVED.
 
 ---
 
@@ -335,4 +335,14 @@ git diff --check
 git status --short
 ```
 
-Loop 1 is complete only after an independent reviewer verifies the exit conditions against the generated artifacts. If the unit merely restates the input, hides why it matched, or implies a final business conclusion, stop and revise Loop 1; do not enter Loop 2.
+## 10. Final observed evidence and remaining boundary
+
+- Full suite: `PYTHONPATH=src python -m unittest discover -s tests -v` → **107 tests, OK**.
+- Supply chain + explicit unit: `synthetic_demo`, `applicable`, 7 suggestions, 3 sources.
+- Dairy + the same unit: `synthetic_demo`, `not_applicable`, 0 suggestions, 0 sources.
+- Missing required order—material bridge: `insufficient_information`, 0 suggestions.
+- Pending queue policy: 7 suggestions including the readiness gap; ready policy: 6 suggestions without that gap.
+- Repeated compilation returns the same pack content hash; the default no-unit JSON and Markdown remain byte-equivalent to the Loop 0 golden outputs.
+- Task 4 and Task 5 spec review and quality review are APPROVED. Root still owns the final whole-loop review, merge, post-merge test and branch cleanup.
+
+The unit contributes input-external modeling distinctions and keeps provenance visible, but it does not make them customer-confirmed or executable. There is still no `OntologySpec`, rule evaluation, final order queue, `ValidationReceipt`, review/version/publication, Action, persistence, or external write. Loop 2 remains `planned` until this branch completes whole-loop review and merges.

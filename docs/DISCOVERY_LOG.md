@@ -25,6 +25,7 @@
 | D-019 | 2026-08-29 | 黄金主决策收敛为“哪些订单进入优先干预队列” | 原供应链样例同时包含订单选择和处置动作两个决定，不满足一个 pack 一个主决策 | 真实共创证明两者必须不可分割验收时复审 |
 | D-020 | 2026-08-29 | Loop 4 同时输出结构 semantic diff 与业务 `DecisionDelta`，并作为产品验证闸 | 字段变化不是业务价值；FDE 需要看到新逻辑翻转了哪些订单结论以及依据 | 真实 FDE/业务负责人能纠正、批准或复用 DecisionDelta 后才开放 Loop 5–7 |
 | D-021 | 2026-08-29 | Loop 1 负责 source/suggestion 稳定身份和不可变 DecisionPack；Loop 2 负责 OntologySpec 类型与引用闭包；Loop 3 回执绑定内容 hash；Loop 4 才引入版本、审查和发布 | 防止为一个知识单元提前建设运行时和治理基础设施，也避免后续对象无稳定引用锚点 | 前一 Loop 的出口契约不能支撑下一 Loop 时修改下一 Loop 计划，不回写已完成证据 |
+| D-022 | 2026-08-29 | Loop 1 使用 schema-validated payload profiles，不增加 typed intermediate candidate 层 | `DecisionPack` 已能保留建议语义、来源和稳定身份；提前增加第二套候选对象会制造映射漂移 | Loop 2 必须对每个已识别 profile 编译为 spec element 或生成结构化 issue，不能静默丢弃 |
 
 ## 新发现
 
@@ -49,6 +50,10 @@
 | F-017 | 2026-08-29 | AI FDE 产品复审 | 本体字段 diff 不能回答业务负责人最关心的“哪些订单结论被翻转” | Loop 4 增加 published/candidate `ValidationReceipt` 比较得到的 `DecisionDelta` | accepted |
 | F-018 | 2026-08-29 | 供应链黄金场景复审 | “哪些订单优先干预”与“采取什么处置动作”是两个治理时点不同的决定 | 黄金 pack 只保留前者；后者延后到 Loop 6 | accepted |
 | F-019 | 2026-08-29 | 旧 nano-ontoprompt 供应商风险行为复核 | 合格供应商资格与历史采购事实不能共用一种关系；只从 A 买过不能推出只有 A 合格 | Loop 1 以固定 snapshot 和 caveat 建立 `QUALIFIED_TO_SUPPLY` / `HAS_SUPPLIED` 首个知识单元，不复制旧代码、不把旧测试当客户事实 | accepted |
+| F-020 | 2026-08-29 | Loop 1 DecisionPack 质量复核 | 权威 pack 不仅需要 frozen dataclass，还需要稳定 ID 唯一、引用闭包和嵌套 payload 的深度不可变 | 构造时拒绝重复/悬空引用，并把映射递归冻结为稳定 tuple；canonical hash 覆盖完整 pack 内容 | accepted |
+| F-021 | 2026-08-29 | Loop 1 Markdown 投影复核 | 来源 title、locator 和 caveat 即使来自受校验知识包，也可能包含换行或 Markdown 结构字符，破坏候选边界 | renderer 对来源字段做单行结构转义；保留原始值只在结构化 JSON 中 | accepted |
+| F-022 | 2026-08-29 | Loop 1 黄金场景验证 | pending 入队政策只形成 readiness gap；ready 只移除 gap，并不会凭空产生可执行规则 | Loop 2 基础出口允许无 rule；另设 synthetic `decision_rule.v1` policy gate 才能进入 Loop 3 | accepted |
+| F-023 | 2026-08-29 | Loop 1 opt-in CLI smoke | 同一知识单元对供应链为 applicable、对乳品为 not_applicable；缺桥接为 insufficient，证明 matcher 使用声明语义而非行业标签 | 保留乳品为跨行业 regression；不把这一结果解释为跨行业知识有效性 | accepted |
 
 ## 验证证据
 
@@ -58,3 +63,6 @@
 | 2026-08-29 | 乳品研发与供应链异常样例生成 | 两份方案均包含 12 个必要章节 | 同一方法论内核可覆盖两个不同场景 | 候选关系仍需业务专家确认 |
 | 2026-08-29 | Loop 0 全量 unittest | `PYTHONPATH=src python -m unittest discover -s tests -v`：25 tests，OK | 严格 boolean / 数据源状态、显式关系、关系信息不足、未实现能力表述和双行业回归在当前仓库可运行 | 不能证明真实客户价值、跨行业有效性或任何规则 / Agent / 任务 / 版本 / 回执已经运行 |
 | 2026-08-29 | Loop 0 CLI 双样例临时输出检查 | `dairy_rnd.json` 与 `supply_chain_exception.json` 都保留 `synthetic_demo`；无显式关系时写明信息不足；供应链物流节点仍为 `unavailable` / 不可用；未发现把规则、Agent、任务、版本或回执写成已执行的表述 | 当前投影不会补造关系或弱化不可用状态 | 双样例仅是 smoke / regression，不证明跨行业有效；当前知识增益仍为零，须由 Loop 1 的有来源建议验证 |
+| 2026-08-29 | Loop 1 全量 unittest | `PYTHONPATH=src python -m unittest discover -s tests -v`：107 tests，OK | 来源/知识契约、通用匹配、payload profile、深度不可变 DecisionPack、稳定 identity/hash、兼容投影和 CLI 防越界在当前仓库可运行 | 不证明客户适用性、规则求值、最终订单队列、Action、review、version 或 publication |
+| 2026-08-29 | Loop 1 opt-in 双样例与边界 smoke | 供应链：`synthetic_demo / applicable / 7 suggestions / 3 sources`；乳品：`synthetic_demo / not_applicable / 0 / 0`；缺桥接：`insufficient_information / 0`；pending policy：7 条含 readiness gap；ready：6 条且无 gap；重复编译 pack hash 一致 | 知识单元能贡献输入外且可追溯的 candidate 建议，并在不适用、信息不足和 readiness 状态之间保持诚实边界 | 不代表建议已确认、事实已验证或优先干预队列已计算；当前 queue policy 仍只是 gap |
+| 2026-08-29 | Loop 1 默认兼容与投影安全复核 | 不传 `--knowledge-unit` 的 JSON/Markdown 与 Loop 0 golden 字节一致；Task 4/5 spec review 与 quality review 均为 APPROVED；Markdown 来源结构注入回归通过 | 知识能力保持 opt-in，未改变默认契约；来源可读投影不会越过 Markdown 结构边界 | JSON 中的原始来源文本仍应被消费者作为数据而非指令处理 |
