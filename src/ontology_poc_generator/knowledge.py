@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import hashlib
+import json
+from pathlib import Path
 import re
 from typing import Mapping
 
@@ -43,6 +46,144 @@ class SourceKind(str, Enum):
     OBSERVED_CASE = "observed_case"
     PRACTITIONER_NOTE = "practitioner_note"
     SYNTHETIC_EXAMPLE = "synthetic_example"
+
+
+@dataclass(frozen=True)
+class RequiredBridge:
+    semantic_key: str
+    source_role_key: str
+    predicate: str
+    target_role_key: str
+
+    def __post_init__(self) -> None:
+        for field in (
+            "semantic_key",
+            "source_role_key",
+            "predicate",
+            "target_role_key",
+        ):
+            object.__setattr__(self, field, _text(getattr(self, field), field))
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object], index: int) -> "RequiredBridge":
+        if not isinstance(data, Mapping):
+            raise KnowledgeValidationError(
+                f"applicability.required_bridges[{index}] must be an object"
+            )
+        prefix = f"applicability.required_bridges[{index}]"
+        return cls(
+            semantic_key=_text(data.get("semantic_key"), f"{prefix}.semantic_key"),
+            source_role_key=_text(
+                data.get("source_role_key"), f"{prefix}.source_role_key"
+            ),
+            predicate=_text(data.get("predicate"), f"{prefix}.predicate"),
+            target_role_key=_text(
+                data.get("target_role_key"), f"{prefix}.target_role_key"
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ApplicabilitySpec:
+    required_role_keys: tuple[str, ...] = ()
+    required_bridges: tuple[RequiredBridge, ...] = ()
+    readiness_requirement_keys: tuple[str, ...] = ()
+    decision_mismatch_reason_code: str = ""
+    missing_required_role_reason_code: str = ""
+    missing_required_bridge_reason_code: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "required_role_keys",
+            _string_tuple(self.required_role_keys, "required_role_keys"),
+        )
+        if len(set(self.required_role_keys)) != len(self.required_role_keys):
+            raise KnowledgeValidationError("duplicate required_role_key")
+        if not isinstance(self.required_bridges, tuple) or any(
+            not isinstance(bridge, RequiredBridge) for bridge in self.required_bridges
+        ):
+            raise KnowledgeValidationError(
+                "required_bridges must be a tuple of RequiredBridge"
+            )
+        bridge_semantic_keys = tuple(
+            bridge.semantic_key for bridge in self.required_bridges
+        )
+        if len(set(bridge_semantic_keys)) != len(bridge_semantic_keys):
+            raise KnowledgeValidationError(
+                "duplicate required bridge semantic_key"
+            )
+        known_roles = set(self.required_role_keys)
+        for bridge in self.required_bridges:
+            if (
+                bridge.source_role_key not in known_roles
+                or bridge.target_role_key not in known_roles
+            ):
+                raise KnowledgeValidationError(
+                    f"bridge references unknown role: {bridge.semantic_key}"
+                )
+        object.__setattr__(
+            self,
+            "readiness_requirement_keys",
+            _string_tuple(
+                self.readiness_requirement_keys,
+                "readiness_requirement_keys",
+            ),
+        )
+        if len(set(self.readiness_requirement_keys)) != len(
+            self.readiness_requirement_keys
+        ):
+            raise KnowledgeValidationError("duplicate readiness_requirement_key")
+        reason_fields = (
+            "decision_mismatch_reason_code",
+            "missing_required_role_reason_code",
+            "missing_required_bridge_reason_code",
+        )
+        has_contract = bool(
+            self.required_role_keys
+            or self.required_bridges
+            or self.readiness_requirement_keys
+            or any(getattr(self, field) for field in reason_fields)
+        )
+        if has_contract:
+            for field in reason_fields:
+                object.__setattr__(self, field, _text(getattr(self, field), field))
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> "ApplicabilitySpec":
+        if not isinstance(data, Mapping):
+            raise KnowledgeValidationError("applicability must be an object")
+        raw_bridges = data.get("required_bridges", [])
+        if not isinstance(raw_bridges, list):
+            raise KnowledgeValidationError(
+                "applicability.required_bridges must be a list"
+            )
+        return cls(
+            required_role_keys=_string_tuple(
+                data.get("required_role_keys", []),
+                "applicability.required_role_keys",
+            ),
+            required_bridges=tuple(
+                RequiredBridge.from_dict(bridge, index)
+                for index, bridge in enumerate(raw_bridges)
+            ),
+            readiness_requirement_keys=_string_tuple(
+                data.get("readiness_requirement_keys", []),
+                "applicability.readiness_requirement_keys",
+            ),
+            decision_mismatch_reason_code=_text(
+                data.get("decision_mismatch_reason_code"),
+                "applicability.decision_mismatch_reason_code",
+            ),
+            missing_required_role_reason_code=_text(
+                data.get("missing_required_role_reason_code"),
+                "applicability.missing_required_role_reason_code",
+            ),
+            missing_required_bridge_reason_code=_text(
+                data.get("missing_required_bridge_reason_code"),
+                "applicability.missing_required_bridge_reason_code",
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -203,6 +344,7 @@ class KnowledgeUnit:
     unit_content_hash: str
     source_refs: tuple[SourceRef, ...]
     suggestion_templates: tuple[KnowledgeSuggestion, ...]
+    applicability: ApplicabilitySpec = ApplicabilitySpec()
 
     def __post_init__(self) -> None:
         for field in ("unit_id", "unit_version", "decision_key"):
@@ -223,6 +365,10 @@ class KnowledgeUnit:
             raise KnowledgeValidationError(
                 "suggestion_templates must be a tuple of KnowledgeSuggestion"
             )
+        if not isinstance(self.applicability, ApplicabilitySpec):
+            raise KnowledgeValidationError(
+                "applicability must be an ApplicabilitySpec"
+            )
         suggestion_ids = tuple(
             template.suggestion_id for template in self.suggestion_templates
         )
@@ -232,6 +378,10 @@ class KnowledgeUnit:
         if len(set(source_ids)) != len(source_ids):
             raise KnowledgeValidationError("duplicate source_ref_id")
         known_source_ids = set(source_ids)
+        known_roles = set(self.applicability.required_role_keys)
+        readiness_requirements = set(
+            self.applicability.readiness_requirement_keys
+        )
         for template in self.suggestion_templates:
             if template.unit_id != self.unit_id:
                 raise KnowledgeValidationError("template unit_id does not match unit")
@@ -244,6 +394,18 @@ class KnowledgeUnit:
                 raise KnowledgeValidationError(
                     f"template references unknown source_ref_id: {sorted(unknown)[0]}"
                 )
+            unknown_roles = set(template.input_binding_ids) - known_roles
+            if known_roles and unknown_roles:
+                raise KnowledgeValidationError(
+                    "template references unknown applicability role: "
+                    f"{sorted(unknown_roles)[0]}"
+                )
+            if template.contribution_type == "readiness_gap":
+                requirement_key = dict(template.payload).get("requirement_key")
+                if requirement_key not in readiness_requirements:
+                    raise KnowledgeValidationError(
+                        "readiness gap references unknown readiness requirement"
+                    )
 
     @classmethod
     def from_dict(
@@ -278,6 +440,12 @@ class KnowledgeUnit:
             )
             for index, template in enumerate(raw_templates)
         )
+        raw_applicability = data.get("applicability")
+        applicability = (
+            ApplicabilitySpec.from_dict(raw_applicability)
+            if raw_applicability is not None
+            else ApplicabilitySpec()
+        )
         return cls(
             unit_id=unit_id,
             unit_version=unit_version,
@@ -285,4 +453,19 @@ class KnowledgeUnit:
             unit_content_hash=digest,
             source_refs=sources,
             suggestion_templates=templates,
+            applicability=applicability,
         )
+
+
+def load_knowledge_unit(path: str | Path) -> KnowledgeUnit:
+    package_path = Path(path)
+    with package_path.open("r", encoding="utf-8") as stream:
+        data = json.load(stream)
+    canonical = json.dumps(
+        data,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    content_hash = hashlib.sha256(canonical).hexdigest()
+    return KnowledgeUnit.from_dict(data, unit_content_hash=content_hash)

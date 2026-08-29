@@ -1,5 +1,9 @@
+import json
+from pathlib import Path
+import tempfile
 import unittest
 from dataclasses import FrozenInstanceError
+from unittest import mock
 
 from ontology_poc_generator.errors import KnowledgeValidationError
 from ontology_poc_generator.knowledge import (
@@ -7,10 +11,63 @@ from ontology_poc_generator.knowledge import (
     KnowledgeUnit,
     SourceKind,
     SourceRef,
+    load_knowledge_unit,
 )
 
 
 VALID_HASH = "a" * 64
+UNIT_PATH = (
+    Path(__file__).parents[1]
+    / "knowledge/supply_chain/supplier_evidence_boundary_v1.json"
+)
+SOURCE_NOTE_PATH = (
+    Path(__file__).parents[1]
+    / "knowledge/supply_chain/sources/supplier_evidence_boundary_v1.md"
+)
+
+EXPECTED_SOURCE_IDS = (
+    "eip_quality_vocabulary_v11",
+    "eip_supply_chain_risk_qualification_history_tests",
+    "loop1_product_methodology_snapshot",
+)
+EXPECTED_SUGGESTION_IDS = (
+    "relation.qualified_to_supply",
+    "relation.has_supplied",
+    "constraint.history_not_qualification",
+    "data_requirement.material_qualification_snapshot",
+    "data_requirement.order_material_identity_mapping",
+    "acceptance.qualification_absence_is_insufficient",
+    "readiness.queue_entry_policy_pending",
+)
+EXPECTED_CONTRIBUTION_TYPES = (
+    "relation_semantics",
+    "relation_semantics",
+    "constraint",
+    "data_requirement",
+    "data_requirement",
+    "acceptance_question",
+    "readiness_gap",
+)
+EXPECTED_SOURCE_SNAPSHOTS = (
+    "1e8b7bf0a128f716d55ab438a0830959dadd15cebcc91e576eee67e2ffd71425",
+    "a937a6b085733766b09ff5f40468ef9e9b1182c946d1cff9a201947111d27ed8",
+    "639616ae2ede7eece52d765992ed41b41b2fae1b36fbc0af1968123d16c95ba3",
+)
+EXPECTED_TEMPLATE_SOURCES = (
+    ("eip_quality_vocabulary_v11",),
+    ("eip_quality_vocabulary_v11",),
+    (
+        "eip_quality_vocabulary_v11",
+        "eip_supply_chain_risk_qualification_history_tests",
+    ),
+    (
+        "eip_quality_vocabulary_v11",
+        "loop1_product_methodology_snapshot",
+    ),
+    ("loop1_product_methodology_snapshot",),
+    ("eip_supply_chain_risk_qualification_history_tests",),
+    ("loop1_product_methodology_snapshot",),
+)
 
 
 def valid_unit_dict() -> dict:
@@ -174,6 +231,243 @@ class KnowledgeContractTest(unittest.TestCase):
         self.assertEqual(
             unit.suggestion_templates[0].source_ref_ids, ("eip-vocabulary",)
         )
+
+
+class KnowledgeLoaderTest(unittest.TestCase):
+    def test_loads_fixed_supplier_evidence_unit_in_stable_order(self):
+        unit = load_knowledge_unit(UNIT_PATH)
+
+        self.assertEqual(
+            unit.unit_id,
+            "supply_chain.order_priority.supplier_evidence_boundary",
+        )
+        self.assertEqual(unit.unit_version, "1.0.0")
+        self.assertEqual(unit.decision_key, "order_priority_intervention")
+        self.assertEqual(
+            tuple(source.source_ref_id for source in unit.source_refs),
+            EXPECTED_SOURCE_IDS,
+        )
+        self.assertEqual(
+            tuple(source.source_kind.value for source in unit.source_refs),
+            ("implemented_artifact", "synthetic_example", "practitioner_note"),
+        )
+        self.assertEqual(
+            tuple(source.snapshot_sha256 for source in unit.source_refs),
+            EXPECTED_SOURCE_SNAPSHOTS,
+        )
+        self.assertEqual(
+            tuple(item.suggestion_id for item in unit.suggestion_templates),
+            EXPECTED_SUGGESTION_IDS,
+        )
+        self.assertEqual(
+            tuple(item.contribution_type for item in unit.suggestion_templates),
+            EXPECTED_CONTRIBUTION_TYPES,
+        )
+        self.assertEqual(
+            tuple(item.source_ref_ids for item in unit.suggestion_templates),
+            EXPECTED_TEMPLATE_SOURCES,
+        )
+        self.assertEqual(
+            unit.applicability.required_role_keys,
+            ("customer_order", "material", "supplier"),
+        )
+        self.assertEqual(
+            tuple(bridge.semantic_key for bridge in unit.applicability.required_bridges),
+            ("customer_order_requires_material",),
+        )
+        self.assertEqual(
+            unit.applicability.readiness_requirement_keys,
+            ("queue_entry_evidence_policy",),
+        )
+        self.assertEqual(
+            unit.applicability.decision_mismatch_reason_code,
+            "decision_key_mismatch",
+        )
+        self.assertEqual(
+            unit.applicability.missing_required_role_reason_code,
+            "required_role_missing",
+        )
+        self.assertEqual(
+            unit.applicability.missing_required_bridge_reason_code,
+            "order_material_bridge_missing",
+        )
+
+    def test_applicability_rejects_template_role_outside_declared_roles(self):
+        raw = json.loads(UNIT_PATH.read_text(encoding="utf-8"))
+        raw["suggestion_templates"][0]["input_binding_ids"].append("unknown_role")
+
+        with self.assertRaisesRegex(
+            KnowledgeValidationError, "unknown applicability role"
+        ):
+            KnowledgeUnit.from_dict(raw, unit_content_hash=VALID_HASH)
+
+    def test_applicability_rejects_bridge_role_outside_declared_roles(self):
+        raw = json.loads(UNIT_PATH.read_text(encoding="utf-8"))
+        raw["applicability"]["required_bridges"][0]["target_role_key"] = "unknown_role"
+
+        with self.assertRaisesRegex(
+            KnowledgeValidationError, "bridge references unknown role"
+        ):
+            KnowledgeUnit.from_dict(raw, unit_content_hash=VALID_HASH)
+
+    def test_readiness_gap_must_reference_a_declared_requirement(self):
+        raw = json.loads(UNIT_PATH.read_text(encoding="utf-8"))
+        raw["suggestion_templates"][-1]["payload"]["requirement_key"] = "unknown"
+
+        with self.assertRaisesRegex(
+            KnowledgeValidationError, "unknown readiness requirement"
+        ):
+            KnowledgeUnit.from_dict(raw, unit_content_hash=VALID_HASH)
+
+    def test_readiness_gap_is_rejected_when_no_requirements_are_declared(self):
+        raw = json.loads(UNIT_PATH.read_text(encoding="utf-8"))
+        raw["applicability"]["readiness_requirement_keys"] = []
+
+        with self.assertRaisesRegex(
+            KnowledgeValidationError, "unknown readiness requirement"
+        ):
+            KnowledgeUnit.from_dict(raw, unit_content_hash=VALID_HASH)
+
+    def test_applicability_rejects_duplicate_requirements(self):
+        mutations = (
+            (
+                "required_role_keys",
+                "customer_order",
+                "duplicate required_role_key",
+            ),
+            (
+                "readiness_requirement_keys",
+                "queue_entry_evidence_policy",
+                "duplicate readiness_requirement_key",
+            ),
+        )
+        for field, duplicate, expected_error in mutations:
+            with self.subTest(field=field):
+                raw = json.loads(UNIT_PATH.read_text(encoding="utf-8"))
+                raw["applicability"][field].append(duplicate)
+
+                with self.assertRaisesRegex(
+                    KnowledgeValidationError, expected_error
+                ):
+                    KnowledgeUnit.from_dict(raw, unit_content_hash=VALID_HASH)
+
+    def test_applicability_rejects_duplicate_bridge_semantic_keys(self):
+        raw = json.loads(UNIT_PATH.read_text(encoding="utf-8"))
+        raw["applicability"]["required_bridges"].append(
+            dict(raw["applicability"]["required_bridges"][0])
+        )
+
+        with self.assertRaisesRegex(
+            KnowledgeValidationError, "duplicate required bridge semantic_key"
+        ):
+            KnowledgeUnit.from_dict(raw, unit_content_hash=VALID_HASH)
+
+    def test_repeated_loads_have_same_canonical_content_hash(self):
+        first = load_knowledge_unit(UNIT_PATH)
+        second = load_knowledge_unit(UNIT_PATH)
+
+        self.assertEqual(first.unit_content_hash, second.unit_content_hash)
+        self.assertRegex(first.unit_content_hash, r"^[0-9a-f]{64}$")
+
+    def test_legal_content_change_changes_unit_hash_not_source_snapshots(self):
+        original = load_knowledge_unit(UNIT_PATH)
+        raw = json.loads(UNIT_PATH.read_text(encoding="utf-8"))
+        raw["suggestion_templates"][2]["payload"]["description"] += " Candidate only."
+
+        with tempfile.TemporaryDirectory() as directory:
+            changed_path = Path(directory) / "changed.json"
+            changed_path.write_text(
+                json.dumps(raw, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            changed = load_knowledge_unit(changed_path)
+
+        self.assertNotEqual(original.unit_content_hash, changed.unit_content_hash)
+        self.assertEqual(
+            tuple(source.snapshot_sha256 for source in original.source_refs),
+            tuple(source.snapshot_sha256 for source in changed.source_refs),
+        )
+
+    def test_loader_reads_only_the_supplied_package(self):
+        accessed: list[Path] = []
+        original_open = Path.open
+
+        def guarded_open(path: Path, *args, **kwargs):
+            resolved = Path(path).resolve()
+            accessed.append(resolved)
+            self.assertNotIn("nano-ontoprompt", str(resolved))
+            return original_open(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "open", guarded_open):
+            load_knowledge_unit(UNIT_PATH)
+
+        self.assertEqual(accessed, [UNIT_PATH.resolve()])
+
+    def test_source_note_records_locator_hash_caveat_and_supported_ids(self):
+        note = SOURCE_NOTE_PATH.read_text(encoding="utf-8")
+
+        for expected in (
+            "nano-ontoprompt",
+            "backend/app/eip_extensions/quality/vocabulary.yaml",
+            "lines 19-32",
+            "1e8b7bf0a128f716d55ab438a0830959dadd15cebcc91e576eee67e2ffd71425",
+            "backend/tests/test_eip_supply_chain_risk.py",
+            "qualification/history cases",
+            "a937a6b085733766b09ff5f40468ef9e9b1182c946d1cff9a201947111d27ed8",
+            "310c4d07bcc975fa955dea7a29f5dc7cc12172e4",
+            "639616ae2ede7eece52d765992ed41b41b2fae1b36fbc0af1968123d16c95ba3",
+            "product methodology assumption, not a customer or industry fact",
+        ) + EXPECTED_SUGGESTION_IDS:
+            with self.subTest(expected=expected):
+                self.assertIn(expected, note)
+
+    def test_templates_remain_candidate_and_do_not_claim_execution_or_results(self):
+        unit = load_knowledge_unit(UNIT_PATH)
+        forbidden_keys = {"threshold", "expression", "result", "action", "writeback"}
+        forbidden_claims = (
+            "final queue",
+            "final order",
+            "risk score",
+            "order conclusion",
+            "最终队列",
+            "最终订单结论",
+            "处置动作",
+        )
+
+        self.assertEqual(len(unit.suggestion_templates), 7)
+        for template in unit.suggestion_templates:
+            with self.subTest(suggestion_id=template.suggestion_id):
+                payload = dict(template.payload)
+                self.assertEqual(template.governance_status, "candidate")
+                self.assertTrue(all(isinstance(value, str) for value in payload.values()))
+                self.assertTrue(forbidden_keys.isdisjoint(key.casefold() for key in payload))
+                rendered = json.dumps(payload, ensure_ascii=False).casefold()
+                for claim in forbidden_claims:
+                    self.assertNotIn(claim.casefold(), rendered)
+
+        predicates = tuple(
+            dict(template.payload).get("predicate")
+            for template in unit.suggestion_templates
+            if template.contribution_type == "relation_semantics"
+        )
+        self.assertEqual(predicates, ("QUALIFIED_TO_SUPPLY", "HAS_SUPPLIED"))
+        self.assertNotIn("SUPPLIES", predicates)
+
+        qualification_snapshot = next(
+            template
+            for template in unit.suggestion_templates
+            if template.suggestion_id
+            == "data_requirement.material_qualification_snapshot"
+        )
+        description = dict(qualification_snapshot.payload)["description"]
+        for required_detail in (
+            "qualification status",
+            "validity",
+            "scope",
+            "snapshot completeness",
+        ):
+            with self.subTest(required_detail=required_detail):
+                self.assertIn(required_detail, description)
 
 
 if __name__ == "__main__":
