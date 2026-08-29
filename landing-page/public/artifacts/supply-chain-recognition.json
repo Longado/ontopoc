@@ -1,0 +1,682 @@
+{
+  "decision_pack": {
+    "content_hash": "dfb6431c60487f71b34e05d7878cea419bdce8332c8b545364cc00d920bb32ff",
+    "pack": {
+      "input_bindings": [
+        {
+          "binding_id": "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+          "label": "供应商",
+          "role_key": "supplier",
+          "semantic_key": "supplier.candidate"
+        },
+        {
+          "binding_id": "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+          "label": "物料",
+          "role_key": "material",
+          "semantic_key": "material.required"
+        },
+        {
+          "binding_id": "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+          "label": "客户订单",
+          "role_key": "customer_order",
+          "semantic_key": "order.primary"
+        }
+      ],
+      "knowledge_outcomes": [
+        {
+          "input_binding_ids": [
+            "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+            "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+            "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+          ],
+          "match_status": "applicable",
+          "reason_code": "applicable",
+          "suggestions": [
+            {
+              "contribution_type": "relation_semantics",
+              "governance_status": "candidate",
+              "input_binding_ids": [
+                "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+              ],
+              "payload": {
+                "description": "Purchase or receipt history records past supply evidence.",
+                "predicate": "HAS_SUPPLIED",
+                "source_role_key": "supplier",
+                "target_role_key": "material"
+              },
+              "payload_schema": "relation_semantics.v1",
+              "semantic_key": "supplier_has_supplied_material",
+              "source_ref_ids": [
+                "eip_quality_vocabulary_v11"
+              ],
+              "suggestion_id": "suggestion_014142e2dae72b5fefd73e4e506eabcd3a81c2d3ba7aaa476b84b49a91691a58",
+              "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+              "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+              "unit_version": "1.0.0"
+            },
+            {
+              "contribution_type": "acceptance_question",
+              "governance_status": "candidate",
+              "input_binding_ids": [
+                "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+              ],
+              "payload": {
+                "question": "When qualification data is absent, does the assessment remain information-insufficient rather than reporting zero qualified alternatives?"
+              },
+              "payload_schema": "acceptance_question.v1",
+              "semantic_key": "qualification_absence_information_insufficient",
+              "source_ref_ids": [
+                "eip_supply_chain_risk_qualification_history_tests"
+              ],
+              "suggestion_id": "suggestion_0167df5992b1a7b4d80795abdbb2aed8a61c5942488991a55768c45cb998122c",
+              "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+              "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+              "unit_version": "1.0.0"
+            },
+            {
+              "contribution_type": "readiness_gap",
+              "governance_status": "candidate",
+              "input_binding_ids": [
+                "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+              ],
+              "payload": {
+                "description": "Queue-entry evidence policy requires business confirmation before evaluation.",
+                "requirement_key": "queue_entry_evidence_policy"
+              },
+              "payload_schema": "readiness_gap.v1",
+              "semantic_key": "queue_entry_evidence_policy_pending",
+              "source_ref_ids": [
+                "loop1_product_methodology_snapshot"
+              ],
+              "suggestion_id": "suggestion_093dca2a7acfa617028634a1e237c88279ab043818b714b883c35e1b83bc1267",
+              "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+              "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+              "unit_version": "1.0.0"
+            },
+            {
+              "contribution_type": "constraint",
+              "governance_status": "candidate",
+              "input_binding_ids": [
+                "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+              ],
+              "payload": {
+                "description": "HAS_SUPPLIED evidence cannot establish QUALIFIED_TO_SUPPLY qualification."
+              },
+              "payload_schema": "constraint.narrative.v1",
+              "semantic_key": "purchase_history_not_qualification",
+              "source_ref_ids": [
+                "eip_quality_vocabulary_v11",
+                "eip_supply_chain_risk_qualification_history_tests"
+              ],
+              "suggestion_id": "suggestion_2ce99e1c2320fb924699d5ef07d992ad9b991a69564eedd04735dc707ec30579",
+              "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+              "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+              "unit_version": "1.0.0"
+            },
+            {
+              "contribution_type": "data_requirement",
+              "governance_status": "candidate",
+              "input_binding_ids": [
+                "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+                "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+              ],
+              "payload": {
+                "description": "Require order-to-material dependency and cross-source identity mapping."
+              },
+              "payload_schema": "data_requirement.narrative.v1",
+              "semantic_key": "order_material_dependency_mapping",
+              "source_ref_ids": [
+                "loop1_product_methodology_snapshot"
+              ],
+              "suggestion_id": "suggestion_4188bf626fb7f339d2655d652fe76ad0bfb7c1e2ff0796e8f956e22f0fcb638c",
+              "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+              "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+              "unit_version": "1.0.0"
+            },
+            {
+              "contribution_type": "relation_semantics",
+              "governance_status": "candidate",
+              "input_binding_ids": [
+                "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+              ],
+              "payload": {
+                "description": "Material-level qualification and purchase history are distinct evidence semantics.",
+                "predicate": "QUALIFIED_TO_SUPPLY",
+                "source_role_key": "supplier",
+                "target_role_key": "material"
+              },
+              "payload_schema": "relation_semantics.v1",
+              "semantic_key": "supplier_qualified_to_supply_material",
+              "source_ref_ids": [
+                "eip_quality_vocabulary_v11"
+              ],
+              "suggestion_id": "suggestion_7c1547a8c4215306c1886c07f42f34ed7bd8b21fca79e6b39af398e75324f278",
+              "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+              "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+              "unit_version": "1.0.0"
+            },
+            {
+              "contribution_type": "data_requirement",
+              "governance_status": "candidate",
+              "input_binding_ids": [
+                "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+              ],
+              "payload": {
+                "description": "Require material-level qualification status, validity, scope, and snapshot completeness from an approved-supplier list or supplier master data."
+              },
+              "payload_schema": "data_requirement.narrative.v1",
+              "semantic_key": "material_qualification_snapshot",
+              "source_ref_ids": [
+                "eip_quality_vocabulary_v11",
+                "loop1_product_methodology_snapshot"
+              ],
+              "suggestion_id": "suggestion_b7dd10f2678ffd4ff2a44244c103ac7d511254d95ac8fcb22c4e09ee74d71881",
+              "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+              "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+              "unit_version": "1.0.0"
+            }
+          ],
+          "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+          "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+          "unit_version": "1.0.0"
+        },
+        {
+          "input_binding_ids": [
+            "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+          ],
+          "match_status": "applicable",
+          "reason_code": "applicable",
+          "suggestions": [
+            {
+              "contribution_type": "decision_rule",
+              "governance_status": "candidate",
+              "input_binding_ids": [
+                "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+              ],
+              "payload": {
+                "condition_1_allowed_values": "missed",
+                "condition_1_semantic_key": "supplier_commitment_state",
+                "condition_2_allowed_values": "none",
+                "condition_2_semantic_key": "qualified_alternative_state",
+                "description": "Synthetic categorical queue-entry policy.",
+                "evidence_scope": "synthetic_demo",
+                "negative_conclusion_value": "not_in_queue",
+                "output_conclusion_key": "priority_intervention_queue_membership",
+                "positive_conclusion_value": "in_queue",
+                "rule_kind": "categorical_all_of_v1",
+                "subject_role_key": "customer_order"
+              },
+              "payload_schema": "decision_rule.v1",
+              "semantic_key": "order_priority_intervention_queue_rule",
+              "source_ref_ids": [
+                "synthetic_order_priority_policy_cases_v1"
+              ],
+              "suggestion_id": "suggestion_379e733a4042276d5f1972a46ad8a71178eb12faaacfa2a94640247b2a8bd4db",
+              "unit_content_hash": "e47077c26cc0aba5c05952937e4e313fdbe5a93317a0c0d0662c008f0d244396",
+              "unit_id": "supply_chain.order_priority.synthetic_policy_s1",
+              "unit_version": "1.0.0"
+            }
+          ],
+          "unit_content_hash": "e47077c26cc0aba5c05952937e4e313fdbe5a93317a0c0d0662c008f0d244396",
+          "unit_id": "supply_chain.order_priority.synthetic_policy_s1",
+          "unit_version": "1.0.0"
+        }
+      ],
+      "scenario": {
+        "acceptance_questions": [
+          "业务人员修改一条约束后，风险排序和待办对象是否同步变化？",
+          "无法获得物流状态时，系统是否明确显示信息不足而不是给出确定结论？",
+          "系统能否解释订单风险由哪些物料、供应商承诺和生产节点共同造成？"
+        ],
+        "business_decision": "哪些订单进入优先干预队列",
+        "constraints": [
+          "ERP 仍是交易事实权威",
+          "缺少供应商承诺时不得推断为已确认交期",
+          "高风险处置必须由指定责任人确认"
+        ],
+        "customer_data_available": false,
+        "data_sources": [
+          {
+            "name": "ERP 订单与物料数据",
+            "status": "to_confirm",
+            "type": "database"
+          },
+          {
+            "name": "供应商交期反馈",
+            "status": "to_confirm",
+            "type": "spreadsheet"
+          },
+          {
+            "name": "物流节点状态",
+            "status": "unavailable",
+            "type": "api"
+          }
+        ],
+        "decision_key": "order_priority_intervention",
+        "decision_owner": "供应链计划经理",
+        "declared_bridges": [
+          {
+            "predicate": "REQUIRES",
+            "semantic_key": "customer_order_requires_material",
+            "source_role_key": "customer_order",
+            "target_role_key": "material"
+          }
+        ],
+        "desired_actions": [
+          "创建订单异常核查任务",
+          "指定采购或计划责任人",
+          "记录接受、拒绝和人工覆盖理由"
+        ],
+        "industry": "制造业供应链",
+        "notes": "POC 从只读分析和内部任务开始，不直接回写 ERP。",
+        "object_role_bindings": [
+          {
+            "object_label": "供应商",
+            "role_key": "supplier",
+            "semantic_key": "supplier.candidate"
+          },
+          {
+            "object_label": "客户订单",
+            "role_key": "customer_order",
+            "semantic_key": "order.primary"
+          },
+          {
+            "object_label": "物料",
+            "role_key": "material",
+            "semantic_key": "material.required"
+          }
+        ],
+        "objects": [
+          "供应商",
+          "处置任务",
+          "客户订单",
+          "履约风险",
+          "物料",
+          "物流节点",
+          "生产任务",
+          "订单行",
+          "采购承诺"
+        ],
+        "participants": [
+          "物流负责人",
+          "生产计划员",
+          "订单经理",
+          "采购负责人"
+        ],
+        "readiness_declarations": [
+          {
+            "requirement_key": "queue_entry_evidence_policy",
+            "status": "to_confirm"
+          }
+        ],
+        "relations": [],
+        "scene_name": "外贸订单履约风险识别与异常处置",
+        "trigger": "订单预计交期、物料齐套或供应商承诺发生异常时"
+      },
+      "schema": "decision_pack.v1",
+      "source_refs": [
+        {
+          "caveat": "First-party implementation snapshot, not a customer fact or industry standard.",
+          "locator": "nano-ontoprompt/backend/app/eip_extensions/quality/vocabulary.yaml, lines 19-32",
+          "revision": "version: 11",
+          "snapshot_sha256": "1e8b7bf0a128f716d55ab438a0830959dadd15cebcc91e576eee67e2ffd71425",
+          "source_kind": "implemented_artifact",
+          "source_ref_id": "eip_quality_vocabulary_v11",
+          "title": "EIP quality vocabulary v11"
+        },
+        {
+          "caveat": "Synthetic test behavior, not a production outcome.",
+          "locator": "nano-ontoprompt/backend/tests/test_eip_supply_chain_risk.py, qualification/history cases",
+          "revision": "qualification/history cases",
+          "snapshot_sha256": "a937a6b085733766b09ff5f40468ef9e9b1182c946d1cff9a201947111d27ed8",
+          "source_kind": "synthetic_example",
+          "source_ref_id": "eip_supply_chain_risk_qualification_history_tests",
+          "title": "EIP supply-chain qualification and purchase-history tests"
+        },
+        {
+          "caveat": "A product methodology assumption, not a customer or industry fact.",
+          "locator": "ontology-poc-generator/docs/superpowers/plans/2026-08-29-loop1-sourced-supply-chain-knowledge.md, lines 149-165",
+          "revision": "310c4d07bcc975fa955dea7a29f5dc7cc12172e4",
+          "snapshot_sha256": "639616ae2ede7eece52d765992ed41b41b2fae1b36fbc0af1968123d16c95ba3",
+          "source_kind": "practitioner_note",
+          "source_ref_id": "loop1_product_methodology_snapshot",
+          "title": "Loop 1 product methodology snapshot"
+        },
+        {
+          "caveat": "Synthetic test policy only; not a customer fact, industry standard, or production threshold; defines no Action or score.",
+          "locator": "tests/fixtures/policy/order_priority_policy_synthetic_cases_v1.json",
+          "revision": "ff327cbe9697e9651cd01ed2490da0ac97ed3d90",
+          "snapshot_sha256": "77a70331b2e6bcf5c7e6cae12a49717c77a176dc2194af5f4e44b4d3b0d1a487",
+          "source_kind": "synthetic_example",
+          "source_ref_id": "synthetic_order_priority_policy_cases_v1",
+          "title": "Synthetic order-priority policy cases v1"
+        }
+      ]
+    }
+  },
+  "ontology_spec": {
+    "compilation_status": "complete",
+    "content_hash": "31b00f3432281459d71615fa7ba4733a522332987d26632aeeb50737a7ecfed3",
+    "reference_closure": {
+      "checked_reference_count": 36,
+      "is_closed": true,
+      "issues": []
+    },
+    "spec": {
+      "compilation_issues": [
+        {
+          "code": "data_requirement_not_executable",
+          "issue_id": "compilation_issue_47c53647cf7d17c52ec637542c9a353de27e8ce5fea7b4b0ce1e096b1981c818",
+          "message": "Data requirement requires an explicit executable mapping.",
+          "payload_schema": "data_requirement.narrative.v1",
+          "severity": "requires_review",
+          "suggestion_id": "suggestion_4188bf626fb7f339d2655d652fe76ad0bfb7c1e2ff0796e8f956e22f0fcb638c"
+        },
+        {
+          "code": "acceptance_question_not_executable",
+          "issue_id": "compilation_issue_87363719fa94b0c0d47d750ad1cb25293db83badf614e0d958bcd2e9b2dcd0b6",
+          "message": "Acceptance question remains review input and is not executable.",
+          "payload_schema": "acceptance_question.v1",
+          "severity": "requires_review",
+          "suggestion_id": "suggestion_0167df5992b1a7b4d80795abdbb2aed8a61c5942488991a55768c45cb998122c"
+        },
+        {
+          "code": "data_requirement_not_executable",
+          "issue_id": "compilation_issue_97d7966fdea6984d66ec75480d33210fe8044248d6cc43e7639d9116663f5f04",
+          "message": "Data requirement requires an explicit executable mapping.",
+          "payload_schema": "data_requirement.narrative.v1",
+          "severity": "requires_review",
+          "suggestion_id": "suggestion_b7dd10f2678ffd4ff2a44244c103ac7d511254d95ac8fcb22c4e09ee74d71881"
+        },
+        {
+          "code": "readiness_gap_blocks_rule_compilation",
+          "issue_id": "compilation_issue_b95ba465be34bfdf3283554f8b3738d73c0f9de527e9d68999b2ef97b15ea007",
+          "message": "Readiness gap requires review before rule compilation.",
+          "payload_schema": "readiness_gap.v1",
+          "severity": "requires_review",
+          "suggestion_id": "suggestion_093dca2a7acfa617028634a1e237c88279ab043818b714b883c35e1b83bc1267"
+        },
+        {
+          "code": "narrative_constraint_requires_formalization",
+          "issue_id": "compilation_issue_d21616f47be26633b0300ed867fdd941c1226c5e21236d5446104f4dc89df5eb",
+          "message": "Narrative constraint requires formalization before execution.",
+          "payload_schema": "constraint.narrative.v1",
+          "severity": "requires_review",
+          "suggestion_id": "suggestion_2ce99e1c2320fb924699d5ef07d992ad9b991a69564eedd04735dc707ec30579"
+        }
+      ],
+      "decision_key": "order_priority_intervention",
+      "entity_types": [
+        {
+          "governance_status": "candidate",
+          "label": "供应商",
+          "origin_kind": "provided_input",
+          "origin_ref_id": "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+          "role_key": "supplier",
+          "semantic_key": "supplier.candidate",
+          "type_id": "entity_type_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80"
+        },
+        {
+          "governance_status": "candidate",
+          "label": "物料",
+          "origin_kind": "provided_input",
+          "origin_ref_id": "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+          "role_key": "material",
+          "semantic_key": "material.required",
+          "type_id": "entity_type_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+        },
+        {
+          "governance_status": "candidate",
+          "label": "客户订单",
+          "origin_kind": "provided_input",
+          "origin_ref_id": "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+          "role_key": "customer_order",
+          "semantic_key": "order.primary",
+          "type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+        }
+      ],
+      "evidence_scope": "synthetic_demo",
+      "governance_status": "candidate",
+      "input_binding_ids": [
+        "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+        "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+        "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+      ],
+      "pack_content_hash": "dfb6431c60487f71b34e05d7878cea419bdce8332c8b545364cc00d920bb32ff",
+      "property_types": [
+        {
+          "domain_type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+          "governance_status": "candidate",
+          "origin_kind": "knowledge_suggestion",
+          "origin_ref_id": "suggestion_379e733a4042276d5f1972a46ad8a71178eb12faaacfa2a94640247b2a8bd4db",
+          "property_type_id": "property_type_3afb3f312a0cc2020c405c6da4b99a8bb226091d3624f041daf320c46b0bd9e7",
+          "semantic_key": "qualified_alternative_state",
+          "value_type": "symbolic_state"
+        },
+        {
+          "domain_type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+          "governance_status": "candidate",
+          "origin_kind": "knowledge_suggestion",
+          "origin_ref_id": "suggestion_379e733a4042276d5f1972a46ad8a71178eb12faaacfa2a94640247b2a8bd4db",
+          "property_type_id": "property_type_4d36ec2be87b10e7fce131579892a1c494cdf531fa73cee7996182183bef30fb",
+          "semantic_key": "supplier_commitment_state",
+          "value_type": "symbolic_state"
+        }
+      ],
+      "relation_types": [
+        {
+          "description": "Material-level qualification and purchase history are distinct evidence semantics.",
+          "domain_type_id": "entity_type_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+          "governance_status": "candidate",
+          "origin_kind": "knowledge_suggestion",
+          "origin_ref_id": "suggestion_7c1547a8c4215306c1886c07f42f34ed7bd8b21fca79e6b39af398e75324f278",
+          "predicate": "QUALIFIED_TO_SUPPLY",
+          "range_type_id": "entity_type_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+          "relation_type_id": "relation_type_2a815819ffbd931bd40c86db3ef3d618448585d62b37fdb134e4082780d0d5cc",
+          "semantic_key": "supplier_qualified_to_supply_material"
+        },
+        {
+          "description": "Purchase or receipt history records past supply evidence.",
+          "domain_type_id": "entity_type_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+          "governance_status": "candidate",
+          "origin_kind": "knowledge_suggestion",
+          "origin_ref_id": "suggestion_014142e2dae72b5fefd73e4e506eabcd3a81c2d3ba7aaa476b84b49a91691a58",
+          "predicate": "HAS_SUPPLIED",
+          "range_type_id": "entity_type_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+          "relation_type_id": "relation_type_43cd3bb326bf6a1677439b655945c7441f510a6363a725ac2d15ae1a46c9fdc9",
+          "semantic_key": "supplier_has_supplied_material"
+        },
+        {
+          "description": "customer_order REQUIRES material",
+          "domain_type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+          "governance_status": "candidate",
+          "origin_kind": "provided_input",
+          "origin_ref_id": "customer_order_requires_material",
+          "predicate": "REQUIRES",
+          "range_type_id": "entity_type_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+          "relation_type_id": "relation_type_fef93e626ec19a1c314b0c39f9a69b3bc7b987e8573b7d38c87fb3584d6cb160",
+          "semantic_key": "customer_order_requires_material"
+        }
+      ],
+      "rule_declarations": [
+        {
+          "conditions": [
+            {
+              "allowed_values": [
+                "none"
+              ],
+              "operator": "in",
+              "property_type_id": "property_type_3afb3f312a0cc2020c405c6da4b99a8bb226091d3624f041daf320c46b0bd9e7"
+            },
+            {
+              "allowed_values": [
+                "missed"
+              ],
+              "operator": "in",
+              "property_type_id": "property_type_4d36ec2be87b10e7fce131579892a1c494cdf531fa73cee7996182183bef30fb"
+            }
+          ],
+          "description": "Synthetic categorical queue-entry policy.",
+          "governance_status": "candidate",
+          "negative_conclusion_value": "not_in_queue",
+          "origin_suggestion_id": "suggestion_379e733a4042276d5f1972a46ad8a71178eb12faaacfa2a94640247b2a8bd4db",
+          "output_conclusion_key": "priority_intervention_queue_membership",
+          "positive_conclusion_value": "in_queue",
+          "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+          "rule_kind": "categorical_all_of_v1",
+          "semantic_key": "order_priority_intervention_queue_rule",
+          "subject_type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+        }
+      ],
+      "schema": "ontology_spec.v1",
+      "stage": "draft"
+    }
+  },
+  "recognition": {
+    "candidate": {
+      "constraint_keys": [
+        "erp_transaction_authority",
+        "supplier_commitment_requires_evidence",
+        "high_risk_requires_human_confirmation",
+        "no_erp_writeback"
+      ],
+      "data_source_statuses": [
+        {
+          "source_key": "erp_order_material",
+          "status": "to_confirm"
+        },
+        {
+          "source_key": "supplier_commitment_feedback",
+          "status": "to_confirm"
+        },
+        {
+          "source_key": "logistics_node_status",
+          "status": "unavailable"
+        }
+      ],
+      "decision_owner": "供应链计划经理",
+      "desired_action_keys": [
+        "create_order_exception_review_task",
+        "assign_procurement_or_planning_owner",
+        "record_verdict_and_override_reason"
+      ],
+      "match_status": "matched",
+      "missing_required_fields": [],
+      "participant_keys": [
+        "order_manager",
+        "procurement_owner",
+        "production_planner",
+        "logistics_owner"
+      ],
+      "profile_key": "order_priority_intervention",
+      "schema": "scenario_intake_candidate.v1",
+      "trigger": "订单预计交期、物料齐套或供应商承诺发生异常时"
+    },
+    "model": "deterministic_demo_candidate_v1",
+    "prompt_version": "order_priority_intervention.v1",
+    "provider": "recorded_demo_gateway",
+    "source_text_sha256": "65bc534489644d4d0eabb4a9692b42100b2c53ed01b96adb2909f0d7f98fdc3c"
+  },
+  "recording": {
+    "mode": "recorded_deterministic_demo",
+    "realtime_model_call": false,
+    "source_text": "synthetic_demo：供应链计划经理负责判断哪些订单进入优先干预队列；当订单预计交期、物料齐套或供应商承诺发生异常时，检查客户订单、物料与供应商关系。本材料为固定演示输入，不含客户事实，不触发发布、Action 或 ERP 写回。"
+  },
+  "scenario": {
+    "acceptance_questions": [
+      "业务人员修改一条约束后，风险排序和待办对象是否同步变化？",
+      "无法获得物流状态时，系统是否明确显示信息不足而不是给出确定结论？",
+      "系统能否解释订单风险由哪些物料、供应商承诺和生产节点共同造成？"
+    ],
+    "business_decision": "哪些订单进入优先干预队列",
+    "constraints": [
+      "ERP 仍是交易事实权威",
+      "缺少供应商承诺时不得推断为已确认交期",
+      "高风险处置必须由指定责任人确认"
+    ],
+    "customer_data_available": false,
+    "data_sources": [
+      {
+        "name": "ERP 订单与物料数据",
+        "status": "to_confirm",
+        "type": "database"
+      },
+      {
+        "name": "供应商交期反馈",
+        "status": "to_confirm",
+        "type": "spreadsheet"
+      },
+      {
+        "name": "物流节点状态",
+        "status": "unavailable",
+        "type": "api"
+      }
+    ],
+    "decision_key": "order_priority_intervention",
+    "decision_owner": "供应链计划经理",
+    "declared_bridges": [
+      {
+        "predicate": "REQUIRES",
+        "semantic_key": "customer_order_requires_material",
+        "source_role_key": "customer_order",
+        "target_role_key": "material"
+      }
+    ],
+    "desired_actions": [
+      "创建订单异常核查任务",
+      "指定采购或计划责任人",
+      "记录接受、拒绝和人工覆盖理由"
+    ],
+    "industry": "制造业供应链",
+    "notes": "POC 从只读分析和内部任务开始，不直接回写 ERP。",
+    "object_role_bindings": [
+      {
+        "object_label": "供应商",
+        "role_key": "supplier",
+        "semantic_key": "supplier.candidate"
+      },
+      {
+        "object_label": "客户订单",
+        "role_key": "customer_order",
+        "semantic_key": "order.primary"
+      },
+      {
+        "object_label": "物料",
+        "role_key": "material",
+        "semantic_key": "material.required"
+      }
+    ],
+    "objects": [
+      "供应商",
+      "处置任务",
+      "客户订单",
+      "履约风险",
+      "物料",
+      "物流节点",
+      "生产任务",
+      "订单行",
+      "采购承诺"
+    ],
+    "participants": [
+      "物流负责人",
+      "生产计划员",
+      "订单经理",
+      "采购负责人"
+    ],
+    "readiness_declarations": [
+      {
+        "requirement_key": "queue_entry_evidence_policy",
+        "status": "to_confirm"
+      }
+    ],
+    "relations": [],
+    "scene_name": "外贸订单履约风险识别与异常处置",
+    "trigger": "订单预计交期、物料齐套或供应商承诺发生异常时"
+  },
+  "schema": "model_recognition_demo.v1"
+}
