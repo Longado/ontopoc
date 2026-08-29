@@ -156,6 +156,8 @@ class GeneratorTest(unittest.TestCase):
 
         self.assertEqual(params.participants, ("业务专家",))
         self.assertEqual(params.relations, ())
+        self.assertEqual(params.decision_key, "")
+        self.assertEqual(params.object_role_bindings, ())
 
     def test_markdown_explains_when_explicit_relation_information_is_missing(self):
         params = ScenarioParameters.from_dict({

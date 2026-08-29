@@ -9,6 +9,8 @@ import re
 from typing import Mapping
 
 from ontology_poc_generator.errors import KnowledgeValidationError
+from ontology_poc_generator.identity import stable_binding_id, stable_suggestion_id
+from ontology_poc_generator.models import ReadinessStatus, ScenarioParameters
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -46,6 +48,23 @@ class SourceKind(str, Enum):
     OBSERVED_CASE = "observed_case"
     PRACTITIONER_NOTE = "practitioner_note"
     SYNTHETIC_EXAMPLE = "synthetic_example"
+
+
+class MatchStatus(str, Enum):
+    APPLICABLE = "applicable"
+    NOT_APPLICABLE = "not_applicable"
+    INSUFFICIENT_INFORMATION = "insufficient_information"
+
+
+@dataclass(frozen=True)
+class InputBinding:
+    binding_id: str
+    semantic_key: str
+    label: str
+
+    def __post_init__(self) -> None:
+        for field in ("binding_id", "semantic_key", "label"):
+            object.__setattr__(self, field, _text(getattr(self, field), field))
 
 
 @dataclass(frozen=True)
@@ -98,7 +117,10 @@ class ApplicabilitySpec:
             "required_role_keys",
             _string_tuple(self.required_role_keys, "required_role_keys"),
         )
-        if len(set(self.required_role_keys)) != len(self.required_role_keys):
+        normalized_role_keys = tuple(
+            item.casefold() for item in self.required_role_keys
+        )
+        if len(set(normalized_role_keys)) != len(normalized_role_keys):
             raise KnowledgeValidationError("duplicate required_role_key")
         if not isinstance(self.required_bridges, tuple) or any(
             not isinstance(bridge, RequiredBridge) for bridge in self.required_bridges
@@ -107,17 +129,17 @@ class ApplicabilitySpec:
                 "required_bridges must be a tuple of RequiredBridge"
             )
         bridge_semantic_keys = tuple(
-            bridge.semantic_key for bridge in self.required_bridges
+            bridge.semantic_key.casefold() for bridge in self.required_bridges
         )
         if len(set(bridge_semantic_keys)) != len(bridge_semantic_keys):
             raise KnowledgeValidationError(
                 "duplicate required bridge semantic_key"
             )
-        known_roles = set(self.required_role_keys)
+        known_roles = set(normalized_role_keys)
         for bridge in self.required_bridges:
             if (
-                bridge.source_role_key not in known_roles
-                or bridge.target_role_key not in known_roles
+                bridge.source_role_key.casefold() not in known_roles
+                or bridge.target_role_key.casefold() not in known_roles
             ):
                 raise KnowledgeValidationError(
                     f"bridge references unknown role: {bridge.semantic_key}"
@@ -130,9 +152,10 @@ class ApplicabilitySpec:
                 "readiness_requirement_keys",
             ),
         )
-        if len(set(self.readiness_requirement_keys)) != len(
-            self.readiness_requirement_keys
-        ):
+        normalized_readiness_keys = tuple(
+            item.casefold() for item in self.readiness_requirement_keys
+        )
+        if len(set(normalized_readiness_keys)) != len(normalized_readiness_keys):
             raise KnowledgeValidationError("duplicate readiness_requirement_key")
         reason_fields = (
             "decision_mismatch_reason_code",
@@ -374,13 +397,25 @@ class KnowledgeUnit:
         )
         if len(set(suggestion_ids)) != len(suggestion_ids):
             raise KnowledgeValidationError("duplicate suggestion_id")
+        suggestion_identity_seeds = tuple(
+            (
+                template.semantic_key.casefold(),
+                tuple(role.casefold() for role in template.input_binding_ids),
+            )
+            for template in self.suggestion_templates
+        )
+        if len(set(suggestion_identity_seeds)) != len(suggestion_identity_seeds):
+            raise KnowledgeValidationError("duplicate suggestion identity seed")
         source_ids = tuple(source.source_ref_id for source in self.source_refs)
         if len(set(source_ids)) != len(source_ids):
             raise KnowledgeValidationError("duplicate source_ref_id")
         known_source_ids = set(source_ids)
-        known_roles = set(self.applicability.required_role_keys)
+        known_roles = {
+            role.casefold() for role in self.applicability.required_role_keys
+        }
         readiness_requirements = set(
-            self.applicability.readiness_requirement_keys
+            key.casefold()
+            for key in self.applicability.readiness_requirement_keys
         )
         for template in self.suggestion_templates:
             if template.unit_id != self.unit_id:
@@ -394,15 +429,20 @@ class KnowledgeUnit:
                 raise KnowledgeValidationError(
                     f"template references unknown source_ref_id: {sorted(unknown)[0]}"
                 )
-            unknown_roles = set(template.input_binding_ids) - known_roles
-            if known_roles and unknown_roles:
+            unknown_roles = {
+                role.casefold() for role in template.input_binding_ids
+            } - known_roles
+            if unknown_roles:
                 raise KnowledgeValidationError(
                     "template references unknown applicability role: "
                     f"{sorted(unknown_roles)[0]}"
                 )
             if template.contribution_type == "readiness_gap":
                 requirement_key = dict(template.payload).get("requirement_key")
-                if requirement_key not in readiness_requirements:
+                if (
+                    not isinstance(requirement_key, str)
+                    or requirement_key.casefold() not in readiness_requirements
+                ):
                     raise KnowledgeValidationError(
                         "readiness gap references unknown readiness requirement"
                     )
@@ -469,3 +509,190 @@ def load_knowledge_unit(path: str | Path) -> KnowledgeUnit:
     ).encode("utf-8")
     content_hash = hashlib.sha256(canonical).hexdigest()
     return KnowledgeUnit.from_dict(data, unit_content_hash=content_hash)
+
+
+@dataclass(frozen=True)
+class KnowledgeOutcome:
+    unit_id: str
+    unit_version: str
+    unit_content_hash: str
+    match_status: MatchStatus
+    reason_code: str
+    input_binding_ids: tuple[str, ...]
+    suggestions: tuple[KnowledgeSuggestion, ...]
+
+    def __post_init__(self) -> None:
+        for field in ("unit_id", "unit_version", "reason_code"):
+            object.__setattr__(self, field, _text(getattr(self, field), field))
+        object.__setattr__(
+            self,
+            "unit_content_hash",
+            _sha256(self.unit_content_hash, "unit_content_hash"),
+        )
+        if not isinstance(self.match_status, MatchStatus):
+            raise KnowledgeValidationError("match_status must be a MatchStatus")
+        object.__setattr__(
+            self,
+            "input_binding_ids",
+            _string_tuple(self.input_binding_ids, "input_binding_ids"),
+        )
+        if not isinstance(self.suggestions, tuple) or any(
+            not isinstance(item, KnowledgeSuggestion) for item in self.suggestions
+        ):
+            raise KnowledgeValidationError(
+                "suggestions must be a tuple of KnowledgeSuggestion"
+            )
+        if self.match_status is not MatchStatus.APPLICABLE and self.suggestions:
+            raise KnowledgeValidationError(
+                "non-applicable outcome cannot carry suggestions"
+            )
+        if self.match_status is MatchStatus.APPLICABLE:
+            suggestion_ids = tuple(
+                item.suggestion_id for item in self.suggestions
+            )
+            if len(set(suggestion_ids)) != len(suggestion_ids):
+                raise KnowledgeValidationError("suggestion_id must be unique")
+            expected_provenance = (
+                self.unit_id,
+                self.unit_version,
+                self.unit_content_hash,
+            )
+            for suggestion in self.suggestions:
+                actual_provenance = (
+                    suggestion.unit_id,
+                    suggestion.unit_version,
+                    suggestion.unit_content_hash,
+                )
+                if actual_provenance != expected_provenance:
+                    raise KnowledgeValidationError(
+                        "suggestion provenance must match outcome"
+                    )
+
+
+def _normalized(value: str) -> str:
+    return value.strip().casefold()
+
+
+def _empty_outcome(
+    unit: KnowledgeUnit,
+    status: MatchStatus,
+    reason_code: str,
+) -> KnowledgeOutcome:
+    return KnowledgeOutcome(
+        unit_id=unit.unit_id,
+        unit_version=unit.unit_version,
+        unit_content_hash=unit.unit_content_hash,
+        match_status=status,
+        reason_code=reason_code,
+        input_binding_ids=(),
+        suggestions=(),
+    )
+
+
+def match_knowledge_unit(
+    scenario: ScenarioParameters,
+    unit: KnowledgeUnit,
+) -> KnowledgeOutcome:
+    """Match a declarative unit using only controlled semantic input fields."""
+    applicability = unit.applicability
+    if _normalized(scenario.decision_key) != _normalized(unit.decision_key):
+        return _empty_outcome(
+            unit,
+            MatchStatus.NOT_APPLICABLE,
+            applicability.decision_mismatch_reason_code or "decision_key_mismatch",
+        )
+
+    roles_by_key = {
+        _normalized(binding.role_key): binding
+        for binding in scenario.object_role_bindings
+    }
+    required_roles = tuple(
+        _normalized(role_key) for role_key in applicability.required_role_keys
+    )
+    if any(role_key not in roles_by_key for role_key in required_roles):
+        return _empty_outcome(
+            unit,
+            MatchStatus.INSUFFICIENT_INFORMATION,
+            applicability.missing_required_role_reason_code or "required_role_missing",
+        )
+
+    declared_bridges = {
+        (
+            _normalized(bridge.semantic_key),
+            _normalized(bridge.source_role_key),
+            _normalized(bridge.predicate),
+            _normalized(bridge.target_role_key),
+        )
+        for bridge in scenario.declared_bridges
+    }
+    for bridge in applicability.required_bridges:
+        required_bridge = (
+            _normalized(bridge.semantic_key),
+            _normalized(bridge.source_role_key),
+            _normalized(bridge.predicate),
+            _normalized(bridge.target_role_key),
+        )
+        if required_bridge not in declared_bridges:
+            return _empty_outcome(
+                unit,
+                MatchStatus.INSUFFICIENT_INFORMATION,
+                applicability.missing_required_bridge_reason_code
+                or "required_bridge_missing",
+            )
+
+    binding_ids_by_role = {
+        role_key: stable_binding_id(
+            scenario.decision_key,
+            binding.role_key,
+            binding.semantic_key,
+        )
+        for role_key, binding in roles_by_key.items()
+    }
+    relevant_binding_ids = tuple(
+        binding_ids_by_role[role_key] for role_key in required_roles
+    )
+    readiness_by_key = {
+        _normalized(item.requirement_key): item.status
+        for item in scenario.readiness_declarations
+    }
+
+    suggestions: list[KnowledgeSuggestion] = []
+    for template in unit.suggestion_templates:
+        payload = dict(template.payload)
+        if template.contribution_type == "readiness_gap":
+            requirement_key = _normalized(payload["requirement_key"])
+            if readiness_by_key.get(requirement_key) is ReadinessStatus.READY:
+                continue
+        instantiated_binding_ids = tuple(
+            binding_ids_by_role[_normalized(role_key)]
+            for role_key in template.input_binding_ids
+        )
+        suggestions.append(
+            KnowledgeSuggestion(
+                suggestion_id=stable_suggestion_id(
+                    unit.unit_id,
+                    unit.unit_version,
+                    _normalized(template.semantic_key),
+                    instantiated_binding_ids,
+                ),
+                unit_id=unit.unit_id,
+                unit_version=unit.unit_version,
+                unit_content_hash=unit.unit_content_hash,
+                contribution_type=template.contribution_type,
+                semantic_key=template.semantic_key,
+                payload=template.payload,
+                input_binding_ids=instantiated_binding_ids,
+                source_ref_ids=template.source_ref_ids,
+                governance_status="candidate",
+            )
+        )
+
+    return KnowledgeOutcome(
+        unit_id=unit.unit_id,
+        unit_version=unit.unit_version,
+        unit_content_hash=unit.unit_content_hash,
+        match_status=MatchStatus.APPLICABLE,
+        reason_code="applicable",
+        input_binding_ids=relevant_binding_ids,
+        suggestions=tuple(suggestions),
+    )

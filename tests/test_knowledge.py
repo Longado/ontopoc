@@ -7,6 +7,7 @@ from unittest import mock
 
 from ontology_poc_generator.errors import KnowledgeValidationError
 from ontology_poc_generator.knowledge import (
+    ApplicabilitySpec,
     KnowledgeSuggestion,
     KnowledgeUnit,
     SourceKind,
@@ -75,6 +76,14 @@ def valid_unit_dict() -> dict:
         "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
         "unit_version": "1.0.0",
         "decision_key": "order_priority_intervention",
+        "applicability": {
+            "required_role_keys": ["supplier", "material"],
+            "required_bridges": [],
+            "readiness_requirement_keys": [],
+            "decision_mismatch_reason_code": "decision_key_mismatch",
+            "missing_required_role_reason_code": "required_role_missing",
+            "missing_required_bridge_reason_code": "required_bridge_missing",
+        },
         "sources": [
             {
                 "source_ref_id": "eip-vocabulary",
@@ -132,6 +141,12 @@ class KnowledgeContractTest(unittest.TestCase):
             unit_content_hash=VALID_HASH,
             source_refs=(source,),
             suggestion_templates=(suggestion,),
+            applicability=ApplicabilitySpec(
+                required_role_keys=("supplier",),
+                decision_mismatch_reason_code="decision_key_mismatch",
+                missing_required_role_reason_code="required_role_missing",
+                missing_required_bridge_reason_code="required_bridge_missing",
+            ),
         )
 
         for value in (source, suggestion, unit):
@@ -190,6 +205,58 @@ class KnowledgeContractTest(unittest.TestCase):
 
         with self.assertRaisesRegex(KnowledgeValidationError, "duplicate suggestion_id"):
             KnowledgeUnit.from_dict(data, unit_content_hash=VALID_HASH)
+
+    def test_rejects_duplicate_runtime_suggestion_identity_seed(self):
+        data = valid_unit_dict()
+        duplicate = dict(data["suggestion_templates"][0])
+        duplicate["suggestion_id"] = "different-declaration-id"
+        data["suggestion_templates"].append(duplicate)
+
+        with self.assertRaisesRegex(
+            KnowledgeValidationError, "duplicate suggestion identity seed"
+        ):
+            KnowledgeUnit.from_dict(data, unit_content_hash=VALID_HASH)
+
+    def test_applicability_rejects_casefold_key_collisions(self):
+        mutations = (
+            lambda data: data["applicability"]["required_role_keys"].append(
+                "Supplier"
+            ),
+            lambda data: data["applicability"].update(
+                {
+                    "required_bridges": [
+                        {
+                            "semantic_key": "order_material",
+                            "source_role_key": "supplier",
+                            "predicate": "LINKS",
+                            "target_role_key": "material",
+                        },
+                        {
+                            "semantic_key": "ORDER_MATERIAL",
+                            "source_role_key": "supplier",
+                            "predicate": "LINKS",
+                            "target_role_key": "material",
+                        },
+                    ]
+                }
+            ),
+            lambda data: data["applicability"].update(
+                {
+                    "readiness_requirement_keys": [
+                        "queue_policy",
+                        "QUEUE_POLICY",
+                    ]
+                }
+            ),
+        )
+
+        for mutate in mutations:
+            data = valid_unit_dict()
+            mutate(data)
+            with self.subTest(data=data), self.assertRaisesRegex(
+                KnowledgeValidationError, "duplicate"
+            ):
+                KnowledgeUnit.from_dict(data, unit_content_hash=VALID_HASH)
 
     def test_rejects_non_candidate_template(self):
         data = valid_unit_dict()

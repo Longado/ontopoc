@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
+import re
 
 from ontology_poc_generator.errors import ScenarioValidationError
 
@@ -38,6 +40,154 @@ def _string_tuple(data: dict, field: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
         raise ScenarioValidationError(f"{field} must be a list of strings")
     return tuple(item.strip() for item in value if item.strip())
+
+
+_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+_SEMANTIC_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]*$")
+_PREDICATE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+def _validated_key(value: object, field: str, *, optional: bool = False) -> str:
+    if optional and (value is None or value == ""):
+        return ""
+    key = _validated_text(value, field)
+    if not _KEY_PATTERN.fullmatch(key):
+        raise ScenarioValidationError(
+            f"{field} must be a lowercase semantic key"
+        )
+    return key
+
+
+def _validated_semantic_key(value: object, field: str) -> str:
+    key = _validated_text(value, field)
+    if not _SEMANTIC_KEY_PATTERN.fullmatch(key):
+        raise ScenarioValidationError(f"{field} must be a semantic key")
+    return key
+
+
+def _validated_predicate(value: object, field: str) -> str:
+    predicate = _validated_text(value, field)
+    if not _PREDICATE_PATTERN.fullmatch(predicate):
+        raise ScenarioValidationError(f"{field} must be a predicate key")
+    return predicate.upper()
+
+
+class ReadinessStatus(str, Enum):
+    READY = "ready"
+    TO_CONFIRM = "to_confirm"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class ObjectRoleBinding:
+    role_key: str
+    semantic_key: str
+    object_label: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "role_key", _validated_key(self.role_key, "role_key"))
+        object.__setattr__(
+            self,
+            "semantic_key",
+            _validated_semantic_key(self.semantic_key, "semantic_key"),
+        )
+        object.__setattr__(
+            self,
+            "object_label",
+            _validated_text(self.object_label, "object_label"),
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict, index: int) -> "ObjectRoleBinding":
+        prefix = f"object_role_bindings[{index}]"
+        return cls(
+            role_key=_validated_key(data.get("role_key"), f"{prefix}.role_key"),
+            semantic_key=_validated_semantic_key(
+                data.get("semantic_key"), f"{prefix}.semantic_key"
+            ),
+            object_label=_required_text(data, "object_label", f"{prefix}.object_label"),
+        )
+
+
+@dataclass(frozen=True)
+class DeclaredBridge:
+    semantic_key: str
+    source_role_key: str
+    predicate: str
+    target_role_key: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "semantic_key",
+            _validated_key(self.semantic_key, "semantic_key"),
+        )
+        object.__setattr__(
+            self,
+            "source_role_key",
+            _validated_key(self.source_role_key, "source_role_key"),
+        )
+        object.__setattr__(
+            self,
+            "predicate",
+            _validated_predicate(self.predicate, "predicate"),
+        )
+        object.__setattr__(
+            self,
+            "target_role_key",
+            _validated_key(self.target_role_key, "target_role_key"),
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict, index: int) -> "DeclaredBridge":
+        prefix = f"declared_bridges[{index}]"
+        return cls(
+            semantic_key=_validated_key(
+                data.get("semantic_key"), f"{prefix}.semantic_key"
+            ),
+            source_role_key=_validated_key(
+                data.get("source_role_key"), f"{prefix}.source_role_key"
+            ),
+            predicate=_validated_predicate(
+                data.get("predicate"), f"{prefix}.predicate"
+            ),
+            target_role_key=_validated_key(
+                data.get("target_role_key"), f"{prefix}.target_role_key"
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ReadinessDeclaration:
+    requirement_key: str
+    status: ReadinessStatus
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "requirement_key",
+            _validated_key(self.requirement_key, "requirement_key"),
+        )
+        if not isinstance(self.status, ReadinessStatus):
+            raise ScenarioValidationError(
+                "status must be ready, to_confirm, or unavailable"
+            )
+
+    @classmethod
+    def from_dict(cls, data: dict, index: int) -> "ReadinessDeclaration":
+        prefix = f"readiness_declarations[{index}]"
+        try:
+            status = ReadinessStatus(data.get("status"))
+        except (TypeError, ValueError) as error:
+            raise ScenarioValidationError(
+                f"{prefix}.status must be ready, to_confirm, or unavailable"
+            ) from error
+        return cls(
+            requirement_key=_validated_key(
+                data.get("requirement_key"), f"{prefix}.requirement_key"
+            ),
+            status=status,
+        )
 
 
 @dataclass(frozen=True)
@@ -108,6 +258,40 @@ def _validated_relations(value: object) -> tuple[Relation, ...]:
     return value
 
 
+def _validated_object_role_bindings(
+    value: object,
+) -> tuple[ObjectRoleBinding, ...]:
+    if not isinstance(value, tuple):
+        raise ScenarioValidationError("object_role_bindings must be a tuple")
+    if any(not isinstance(item, ObjectRoleBinding) for item in value):
+        raise ScenarioValidationError(
+            "object_role_bindings must be a tuple of ObjectRoleBinding"
+        )
+    return value
+
+
+def _validated_declared_bridges(value: object) -> tuple[DeclaredBridge, ...]:
+    if not isinstance(value, tuple):
+        raise ScenarioValidationError("declared_bridges must be a tuple")
+    if any(not isinstance(item, DeclaredBridge) for item in value):
+        raise ScenarioValidationError(
+            "declared_bridges must be a tuple of DeclaredBridge"
+        )
+    return value
+
+
+def _validated_readiness_declarations(
+    value: object,
+) -> tuple[ReadinessDeclaration, ...]:
+    if not isinstance(value, tuple):
+        raise ScenarioValidationError("readiness_declarations must be a tuple")
+    if any(not isinstance(item, ReadinessDeclaration) for item in value):
+        raise ScenarioValidationError(
+            "readiness_declarations must be a tuple of ReadinessDeclaration"
+        )
+    return value
+
+
 _DEFAULT_PLANNED_CAPABILITIES = (
     "POC 计划（待验证，尚未生成）：规则求值、影响分析和可运行演示",
     "POC 计划（待验证，尚未生成）：Agent 编排、任务创建、版本与决策轨迹、验收矩阵和修正记录",
@@ -149,14 +333,38 @@ class ScenarioParameters:
     customer_data_available: bool = False
     notes: str = ""
     relations: tuple[Relation, ...] = ()
+    decision_key: str = ""
+    object_role_bindings: tuple[ObjectRoleBinding, ...] = ()
+    declared_bridges: tuple[DeclaredBridge, ...] = ()
+    readiness_declarations: tuple[ReadinessDeclaration, ...] = ()
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "decision_key",
+            _validated_key(self.decision_key, "decision_key", optional=True),
+        )
         object.__setattr__(
             self,
             "data_sources",
             _validated_data_sources(self.data_sources),
         )
         object.__setattr__(self, "relations", _validated_relations(self.relations))
+        object.__setattr__(
+            self,
+            "object_role_bindings",
+            _validated_object_role_bindings(self.object_role_bindings),
+        )
+        object.__setattr__(
+            self,
+            "declared_bridges",
+            _validated_declared_bridges(self.declared_bridges),
+        )
+        object.__setattr__(
+            self,
+            "readiness_declarations",
+            _validated_readiness_declarations(self.readiness_declarations),
+        )
         for index, relation in enumerate(self.relations):
             if relation.source not in self.objects:
                 raise ScenarioValidationError(
@@ -166,6 +374,31 @@ class ScenarioParameters:
                 raise ScenarioValidationError(
                     f"relations[{index}].target must reference an object"
                 )
+        role_keys = tuple(item.role_key for item in self.object_role_bindings)
+        if len(set(role_keys)) != len(role_keys):
+            raise ScenarioValidationError("duplicate object role")
+        for index, binding in enumerate(self.object_role_bindings):
+            if binding.object_label not in self.objects:
+                raise ScenarioValidationError(
+                    f"object_role_bindings[{index}].object_label must reference an object"
+                )
+        known_roles = set(role_keys)
+        bridge_keys = tuple(item.semantic_key for item in self.declared_bridges)
+        if len(set(bridge_keys)) != len(bridge_keys):
+            raise ScenarioValidationError("duplicate declared bridge")
+        for index, bridge in enumerate(self.declared_bridges):
+            if (
+                bridge.source_role_key not in known_roles
+                or bridge.target_role_key not in known_roles
+            ):
+                raise ScenarioValidationError(
+                    f"declared_bridges[{index}] references unknown role"
+                )
+        readiness_keys = tuple(
+            item.requirement_key for item in self.readiness_declarations
+        )
+        if len(set(readiness_keys)) != len(readiness_keys):
+            raise ScenarioValidationError("duplicate readiness declaration")
         object.__setattr__(
             self,
             "customer_data_available",
@@ -193,6 +426,15 @@ class ScenarioParameters:
             not isinstance(item, dict) for item in raw_relations
         ):
             raise ScenarioValidationError("relations must be a list of objects")
+        structured_fields = (
+            ("object_role_bindings", ObjectRoleBinding),
+            ("declared_bridges", DeclaredBridge),
+            ("readiness_declarations", ReadinessDeclaration),
+        )
+        for field, _ in structured_fields:
+            raw = data.get(field, [])
+            if not isinstance(raw, list) or any(not isinstance(item, dict) for item in raw):
+                raise ScenarioValidationError(f"{field} must be a list of objects")
         return cls(
             industry=_required_text(data, "industry"),
             scene_name=_required_text(data, "scene_name"),
@@ -214,6 +456,21 @@ class ScenarioParameters:
             desired_actions=_string_tuple(data, "desired_actions"),
             customer_data_available=data.get("customer_data_available", False),
             notes=str(data.get("notes", "")).strip(),
+            decision_key=_validated_key(
+                data.get("decision_key", ""), "decision_key", optional=True
+            ),
+            object_role_bindings=tuple(
+                ObjectRoleBinding.from_dict(item, index)
+                for index, item in enumerate(data.get("object_role_bindings", []))
+            ),
+            declared_bridges=tuple(
+                DeclaredBridge.from_dict(item, index)
+                for index, item in enumerate(data.get("declared_bridges", []))
+            ),
+            readiness_declarations=tuple(
+                ReadinessDeclaration.from_dict(item, index)
+                for index, item in enumerate(data.get("readiness_declarations", []))
+            ),
         )
 
 

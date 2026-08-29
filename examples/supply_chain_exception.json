@@ -1,11 +1,23 @@
 {
   "industry": "制造业供应链",
   "scene_name": "外贸订单履约风险识别与异常处置",
-  "business_decision": "决定哪些高风险订单需要优先干预以及采取哪种内部处置动作",
+  "business_decision": "哪些订单进入优先干预队列",
+  "decision_key": "order_priority_intervention",
   "decision_owner": "供应链计划经理",
   "trigger": "订单预计交期、物料齐套或供应商承诺发生异常时",
   "participants": ["订单经理", "采购负责人", "生产计划员", "物流负责人"],
   "objects": ["客户订单", "订单行", "物料", "供应商", "采购承诺", "生产任务", "物流节点", "履约风险", "处置任务"],
+  "object_role_bindings": [
+    {"role_key": "customer_order", "semantic_key": "order.primary", "object_label": "客户订单"},
+    {"role_key": "material", "semantic_key": "material.required", "object_label": "物料"},
+    {"role_key": "supplier", "semantic_key": "supplier.candidate", "object_label": "供应商"}
+  ],
+  "declared_bridges": [
+    {"semantic_key": "customer_order_requires_material", "source_role_key": "customer_order", "predicate": "REQUIRES", "target_role_key": "material"}
+  ],
+  "readiness_declarations": [
+    {"requirement_key": "queue_entry_evidence_policy", "status": "to_confirm"}
+  ],
   "constraints": ["ERP 仍是交易事实权威", "缺少供应商承诺时不得推断为已确认交期", "高风险处置必须由指定责任人确认"],
   "data_sources": [
     {"name": "ERP 订单与物料数据", "type": "database", "status": "to_confirm"},
