@@ -125,10 +125,7 @@ def _controlled_token_list(value: str, field: str) -> None:
 
 
 def _validate_decision_rule_payload(payload: Mapping[str, str]) -> None:
-    if payload["rule_kind"] != "categorical_all_of_v1":
-        raise KnowledgeValidationError(
-            "decision_rule.v1 rule_kind must be categorical_all_of_v1"
-        )
+    _controlled_token(payload["rule_kind"], "rule_kind")
     if payload["evidence_scope"] != "synthetic_demo":
         raise KnowledgeValidationError(
             "decision_rule.v1 evidence_scope must be synthetic_demo"
