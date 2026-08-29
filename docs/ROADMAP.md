@@ -124,7 +124,7 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 
 **状态：in_progress**
 
-详细实施计划见 [Loop 2：Draft OntologySpec](superpowers/plans/2026-08-29-loop2-draft-ontology-spec.md)。本轮已从主分支基线 `4e410c2`（**107 tests, OK**）在独立 worktree 分支 `codex/loop-2-draft-ontology-spec` 启动，Task 1 正在冻结 spec 类型与状态边界；这只表示实现已开始，不表示任何 `OntologySpec` 能力已经完成。后续将把 `DecisionPack` 编译成新仓拥有的 draft `OntologySpec`，建立显式 domain/range、属性、规则输入绑定、引用闭包、规范化 JSON 和 spec 内容 hash。Loop 1 已建立的 source/suggestion identity 继续使用；candidate 状态必须保留并标记为 synthetic/draft，只有 Loop 4 审查后才能进入 confirmed publication。
+详细实施计划见 [Loop 2：Draft OntologySpec](superpowers/plans/2026-08-29-loop2-draft-ontology-spec.md)。本轮已从主分支基线 `4e410c2`（**107 tests, OK**）在独立 worktree 分支 `codex/loop-2-draft-ontology-spec` 启动。Task 1 已由提交 `36a0e12` 冻结 spec 类型与状态边界，聚焦测试 **14 passed**、全量测试 **121 passed**，两轮独立审查通过；Task 2 正在隔离分支实现稳定 identity 与 canonical hash。后续输入编译、知识 profile 编译和引用闭包将分支并行，在 Loop 分支统一集成后才进入主分支。这些进展仍不表示完整编译、引用闭包或规则能力已经完成。最终将把 `DecisionPack` 编译成新仓拥有的 draft `OntologySpec`，建立显式 domain/range、属性、规则输入绑定、引用闭包、规范化 JSON 和 spec 内容 hash。Loop 1 已建立的 source/suggestion identity 继续使用；candidate 状态必须保留并标记为 synthetic/draft，只有 Loop 4 审查后才能进入 confirmed publication。
 
 出口：同一 pack 产生字节稳定 spec；改 label 不改变已有 ID；悬空引用、状态丢失和未绑定规则响亮失败。
 

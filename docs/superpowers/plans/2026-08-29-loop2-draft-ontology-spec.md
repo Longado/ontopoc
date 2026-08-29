@@ -20,11 +20,12 @@
 - 供应链知识单元的 queue policy 目前是 `readiness_gap`，不是规则；
 - Loop 1 ADR 已明确：`DecisionPack` 不引入额外的 `OntologyCandidate` 层，Loop 2 必须“编译已识别 profile，或生成结构化 issue”，不得忽略 suggestion。
 
-Loop 1 已完成 whole-loop review 并合并主分支。Loop 2 以主分支提交 `4e410c2` 为基线启动，基线全量测试为 **107 tests, OK**；当前在独立 worktree 分支 `codex/loop-2-draft-ontology-spec` 执行，Task 1 正在进行。此状态只表明实现工作已开始，不表示 `OntologySpec`、编译、引用闭包或 spec hash 能力已经完成。
+Loop 1 已完成 whole-loop review 并合并主分支。Loop 2 以主分支提交 `4e410c2` 为基线启动，基线全量测试为 **107 tests, OK**；当前在独立 worktree 分支 `codex/loop-2-draft-ontology-spec` 执行。Task 1 已在提交 `36a0e12` 冻结基础 spec 合同，聚焦测试 **14 passed**、全量测试 **121 passed**，规格审查和质量审查均通过；Task 2 正在隔离分支实现稳定 identity 与 canonical hash。此状态不表示编译、引用闭包或规则能力已经完成。
 
 ```text
 in_progress
-task_1_in_progress
+task_1_complete
+task_2_in_progress
 ```
 
 执行前必须先确认：
@@ -36,6 +37,36 @@ git status --short
 ```
 
 预期：Loop 1 已被独立审查标为完成；全量测试通过；除明确保留的用户文件外，工作树无未知改动。若最终 `DecisionPack` 字段名与本计划不一致，先只修订本计划的接口，不在实现里加兼容猜测。
+
+### 1.1 加速执行与最小集成门
+
+Loop 2 后续采用隔离分支并行、Loop 分支集成、主分支统一合并：
+
+```text
+Task 2 identity/hash
+  -> Wave A: provided-input compiler
+  -> Wave B: knowledge profile compiler
+  -> Wave C: reference closure/result invariants
+  -> Loop branch integration + one end-to-end review
+  -> main
+```
+
+每个任务分支只保留四项必需门槛：
+
+1. 与该任务行为直接对应的聚焦测试；
+2. 一次全量 `unittest` 回归；
+3. `git diff --check`；
+4. 文件范围和工作树状态检查。
+
+以下检查不再作为每个小提交的重复门槛：
+
+- 同一提交重复运行 `pytest` 与 `unittest`；
+- 每个 Task 都做规格审查和质量审查两轮；
+- 每个 Task 都更新 ROADMAP、DISCOVERY 和完成证据；
+- 为远期数据库、API、前端或客户数据路径提前做验收；
+- 对当前严格 loader 不可能产生的未知 profile 重复设防。
+
+每个并行实现提交只做一次独立代码审查；只有出现 P1/P2 或跨分支合同冲突时才追加复审。ROADMAP 与发现记录在 Loop 分支整合后统一更新。Task 8 的 synthetic policy 是 Loop 3 的进入门，不阻塞 Loop 2 基础编译出口，可在基础出口稳定后独立并行。
 
 ## 2. 产品问题与出口
 
