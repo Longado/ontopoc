@@ -100,9 +100,9 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 
 ### Loop 1 — 有来源的供应链知识辅助 DecisionPack
 
-**状态：planned**
+**状态：in_progress**
 
-详细实施计划已建立：[Loop 1：供应链证据语义知识单元](superpowers/plans/2026-08-29-loop1-sourced-supply-chain-knowledge.md)。计划已经可执行，但代码尚未开始，因此不能标记为 `in_progress` 或完成。
+详细实施计划已建立：[Loop 1：供应链证据语义知识单元](superpowers/plans/2026-08-29-loop1-sourced-supply-chain-knowledge.md)。Task 1 的来源与知识契约已由 `f49087e` 建立并通过 36 项全量测试；知识包、匹配、DecisionPack 和 CLI 投影仍未实现，因此本 Loop 不能标记完成。
 
 建立稳定身份的 `SourceRef / KnowledgeUnit / KnowledgeSuggestion / KnowledgeOutcome` 和不可变 `DecisionPack`，用知识包内声明的确定性匹配规则贡献 candidate 建议。第一份知识单元只区分 `QUALIFIED_TO_SUPPLY` 与 `HAS_SUPPLIED` 的证据语义；核心 Python 不得出现供应链分支。
 

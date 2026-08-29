@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `subagent-driven-development` or `executing-plans`; implement one task at a time with TDD and review each commit before continuing.
 
-**Status:** `planned`; implementation has not started.
+**Status:** `in_progress`; Task 1 accepted at `f49087e`, later tasks remain open.
 
 **Goal:** When a user explicitly loads one supply-chain knowledge unit, compile the current scenario into an immutable `DecisionPack` containing input-external, source-backed `candidate` suggestions. The first unit must distinguish supplier qualification from purchase history without producing an order queue, score, or action.
 
