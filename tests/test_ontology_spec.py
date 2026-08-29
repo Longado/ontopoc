@@ -1,4 +1,6 @@
 from dataclasses import FrozenInstanceError
+import hashlib
+import json
 import unittest
 
 from ontology_poc_generator.errors import (
@@ -19,6 +21,9 @@ from ontology_poc_generator.ontology_spec import (
     SpecGovernanceStatus,
     SpecOriginKind,
     SpecStage,
+    canonical_ontology_spec_json,
+    ontology_spec_content_hash,
+    ontology_spec_to_dict,
 )
 
 
@@ -305,6 +310,51 @@ class OntologySpecContractTest(unittest.TestCase):
             ):
                 spec_fixture(**{field: values})
 
+    def test_rejects_casefold_duplicate_ids(self):
+        duplicate_cases = (
+            ("input_binding_ids", ("binding_same", "BINDING_SAME")),
+            (
+                "entity_types",
+                (
+                    entity_fixture(type_id="type_same", role_key="first"),
+                    entity_fixture(type_id="TYPE_SAME", role_key="second"),
+                ),
+            ),
+            (
+                "relation_types",
+                (
+                    relation_fixture(relation_type_id="relation_same"),
+                    relation_fixture(relation_type_id="RELATION_SAME"),
+                ),
+            ),
+            (
+                "property_types",
+                (
+                    property_fixture(property_type_id="property_same"),
+                    property_fixture(property_type_id="PROPERTY_SAME"),
+                ),
+            ),
+            (
+                "rule_declarations",
+                (
+                    rule_fixture(rule_id="rule_same"),
+                    rule_fixture(rule_id="RULE_SAME"),
+                ),
+            ),
+            (
+                "compilation_issues",
+                (
+                    issue_fixture(issue_id="issue_same"),
+                    issue_fixture(issue_id="ISSUE_SAME"),
+                ),
+            ),
+        )
+        for field, values in duplicate_cases:
+            with self.subTest(field=field), self.assertRaisesRegex(
+                OntologySpecValidationError, "duplicate"
+            ):
+                spec_fixture(**{field: values})
+
     def test_collections_are_sorted_by_stable_id(self):
         spec = spec_fixture(
             input_binding_ids=("binding_z", "binding_a"),
@@ -390,6 +440,119 @@ class OntologySpecContractTest(unittest.TestCase):
                 operator="in",
                 allowed_values=(1,),
             )
+
+    def test_rejects_normalized_duplicate_allowed_values_and_conditions(self):
+        with self.assertRaisesRegex(
+            OntologySpecValidationError, "duplicate allowed_value"
+        ):
+            RuleConditionSpec(
+                property_type_id="property_order_state",
+                operator="in",
+                allowed_values=(" at_risk ", "AT_RISK"),
+            )
+
+        first = RuleConditionSpec(
+            property_type_id="property_order_state",
+            operator="in",
+            allowed_values=("at_risk", "missed"),
+        )
+        duplicate = RuleConditionSpec(
+            property_type_id="PROPERTY_ORDER_STATE",
+            operator="IN",
+            allowed_values=("MISSED", "AT_RISK"),
+        )
+        with self.assertRaisesRegex(
+            OntologySpecValidationError, "duplicate condition"
+        ):
+            RuleDeclarationSpec(
+                **{
+                    **rule_fixture().__dict__,
+                    "conditions": (first, duplicate),
+                }
+            )
+
+    def test_canonical_hash_is_repeatable_and_order_independent(self):
+        first = spec_fixture(
+            input_binding_ids=("binding_z", "binding_a"),
+            entity_types=(
+                entity_fixture(type_id="type_z", role_key="z"),
+                entity_fixture(type_id="type_a", role_key="a"),
+            ),
+            relation_types=(
+                relation_fixture(relation_type_id="relation_z"),
+                relation_fixture(relation_type_id="relation_a"),
+            ),
+            property_types=(
+                property_fixture(property_type_id="property_z"),
+                property_fixture(property_type_id="property_a"),
+            ),
+            rule_declarations=(
+                rule_fixture(rule_id="rule_z"),
+                rule_fixture(rule_id="rule_a"),
+            ),
+            compilation_issues=(
+                issue_fixture(issue_id="issue_z"),
+                issue_fixture(issue_id="issue_a"),
+            ),
+        )
+        second = spec_fixture(
+            input_binding_ids=tuple(reversed(first.input_binding_ids)),
+            entity_types=tuple(reversed(first.entity_types)),
+            relation_types=tuple(reversed(first.relation_types)),
+            property_types=tuple(reversed(first.property_types)),
+            rule_declarations=tuple(reversed(first.rule_declarations)),
+            compilation_issues=tuple(reversed(first.compilation_issues)),
+        )
+
+        first_json = canonical_ontology_spec_json(first)
+        self.assertEqual(first_json, canonical_ontology_spec_json(second))
+        self.assertEqual(
+            ontology_spec_content_hash(first),
+            ontology_spec_content_hash(second),
+        )
+        self.assertEqual(json.loads(first_json), ontology_spec_to_dict(first))
+        self.assertEqual(
+            ontology_spec_content_hash(first),
+            hashlib.sha256(first_json.encode("utf-8")).hexdigest(),
+        )
+        self.assertIn("客户订单", first_json)
+
+    def test_canonical_projection_is_explicit_and_has_no_envelope_fields(self):
+        payload = ontology_spec_to_dict(
+            spec_fixture(entity_types=(entity_fixture(),))
+        )
+
+        self.assertEqual(
+            tuple(payload),
+            (
+                "schema",
+                "decision_key",
+                "pack_content_hash",
+                "stage",
+                "evidence_scope",
+                "governance_status",
+                "input_binding_ids",
+                "entity_types",
+                "relation_types",
+                "property_types",
+                "rule_declarations",
+                "compilation_issues",
+            ),
+        )
+        forbidden = {
+            "spec_content_hash",
+            "version",
+            "base",
+            "review",
+            "publication",
+            "created_at",
+            "updated_at",
+        }
+        self.assertTrue(forbidden.isdisjoint(payload))
+        self.assertEqual(payload["stage"], "draft")
+        self.assertEqual(
+            payload["entity_types"][0]["origin_kind"], "provided_input"
+        )
 
     def test_tuple_contract_prevents_raw_list_alias_mutation(self):
         raw_entities = [entity_fixture()]

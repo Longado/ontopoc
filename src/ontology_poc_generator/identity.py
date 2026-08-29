@@ -30,3 +30,53 @@ def stable_suggestion_id(
         "suggestion",
         (unit_id, unit_version, semantic_key, *input_binding_ids),
     )
+
+
+def stable_entity_type_id(
+    decision_key: str,
+    role_key: str,
+    semantic_key: str,
+) -> str:
+    return _stable_id("entity_type", (decision_key, role_key, semantic_key))
+
+
+def stable_relation_type_id(
+    semantic_key: str,
+    domain_type_id: str,
+    predicate: str,
+    range_type_id: str,
+) -> str:
+    return _stable_id(
+        "relation_type",
+        (semantic_key, domain_type_id, predicate, range_type_id),
+    )
+
+
+def stable_property_type_id(
+    semantic_key: str,
+    domain_type_id: str,
+) -> str:
+    return _stable_id("property_type", (semantic_key, domain_type_id))
+
+
+def stable_rule_id(
+    semantic_key: str,
+    rule_kind: str,
+    subject_type_id: str,
+    output_conclusion_key: str,
+) -> str:
+    return _stable_id(
+        "rule",
+        (semantic_key, rule_kind, subject_type_id, output_conclusion_key),
+    )
+
+
+def stable_compilation_issue_id(
+    suggestion_id: str,
+    code: str,
+    payload_schema: str,
+) -> str:
+    return _stable_id(
+        "compilation_issue",
+        (suggestion_id, code, payload_schema),
+    )
