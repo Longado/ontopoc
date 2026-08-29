@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `subagent-driven-development` or `executing-plans`; implement one task at a time with TDD and review each commit before continuing.
 
-**Status:** `in_progress`; Task 1 accepted at `f49087e`; Task 2 accepted at `341a8bd` with 48 tests passing; Task 3 is in progress.
+**Status:** `in_progress`; Task 1 accepted at `f49087e`; Task 2 accepted at `341a8bd`; Task 3 accepted at `e670a9a`; payload profile hardening accepted at `6ad3eb9`; 73 tests passing; Task 4 is in progress.
 
 **Goal:** When a user explicitly loads one supply-chain knowledge unit, compile the current scenario into an immutable `DecisionPack` containing input-external, source-backed `candidate` suggestions. The first unit must distinguish supplier qualification from purchase history without producing an order queue, score, or action.
 
@@ -126,6 +126,7 @@ Constraints:
 - The loader computes `unit_content_hash` from canonical JSON; the JSON does not contain a self-referential hash.
 - Loop 1 provides canonical `DecisionPack` serialization and a pack content hash function. The hash is returned beside the pack rather than stored inside self-referential content. Loop 4 later adds version/base lifecycle identity.
 - `payload` is immutable and deterministically ordered. It may carry relation semantics, natural-language constraints, data requirements, and acceptance questions, but never executable rules or results.
+- ADR boundary: `DecisionPack` retains schema-validated `KnowledgeSuggestion` values and does not introduce a typed `OntologyCandidate`; Loop 2 must either compile a recognized payload profile or emit a structured compilation issue, never silently discard it.
 - Source references prove provenance only. They do not prove customer applicability, business truth, or production effectiveness.
 - The compiler never upgrades `candidate` to `confirmed`.
 
@@ -237,19 +238,19 @@ The readable source note must record repository, path, fragment, hash, supported
 
 ### TDD steps
 
-- [ ] Narrow the golden sample's main decision to “哪些订单进入优先干预队列”; keep desired actions only as legacy planned context.
-- [ ] Add optional controlled semantic input required by the matcher: `decision_key`, object-role bindings, declared bridges, and queue-policy status. Each role receives a stable semantic key and binding ID independent of label. Preserve legacy positional construction and default CLI behavior.
-- [ ] Add failing identity tests proving the same semantic key keeps its ID across label changes and object reordering; implement the smallest deterministic identity helper.
-- [ ] Add failing validation tests for malformed semantic bindings and unknown referenced object labels.
-- [ ] Implement the minimum immutable intake fields and validation.
-- [ ] Add a failing test: matching decision + all roles + bridge returns `applicable` with deterministic bindings; a missing/unconfirmed queue policy appears as a structured readiness-gap suggestion.
-- [ ] Add a failing test: dairy or a different decision returns `not_applicable`, with no suggestions.
-- [ ] Add failing tests: matching decision missing a required role or bridge returns `insufficient_information`, not `not_applicable`.
-- [ ] Add a failing order-invariance test for objects and bindings.
-- [ ] Add a temporary declarative unit in the test with different aliases and prove the same matcher handles it, demonstrating no supply-chain branch in Python.
-- [ ] Implement generic exact/normalized matching from package-declared conditions only.
-- [ ] Run focused tests, full tests, both legacy CLI smoke commands, and `git diff --check`.
-- [ ] Commit: `feat: match knowledge units deterministically`.
+- [x] Narrow the golden sample's main decision to “哪些订单进入优先干预队列”; keep desired actions only as legacy planned context.
+- [x] Add optional controlled semantic input required by the matcher: `decision_key`, object-role bindings, declared bridges, and queue-policy status. Each role receives a stable semantic key and binding ID independent of label. Preserve legacy positional construction and default CLI behavior.
+- [x] Add failing identity tests proving the same semantic key keeps its ID across label changes and object reordering; implement the smallest deterministic identity helper.
+- [x] Add failing validation tests for malformed semantic bindings and unknown referenced object labels.
+- [x] Implement the minimum immutable intake fields and validation.
+- [x] Add a failing test: matching decision + all roles + bridge returns `applicable` with deterministic bindings; a missing/unconfirmed queue policy appears as a structured readiness-gap suggestion.
+- [x] Add a failing test: dairy or a different decision returns `not_applicable`, with no suggestions.
+- [x] Add failing tests: matching decision missing a required role or bridge returns `insufficient_information`, not `not_applicable`.
+- [x] Add a failing order-invariance test for objects and bindings.
+- [x] Add a temporary declarative unit in the test with different aliases and prove the same matcher handles it, demonstrating no supply-chain branch in Python.
+- [x] Implement generic exact/normalized matching from package-declared conditions only.
+- [x] Run focused tests, full tests, both legacy CLI smoke commands, and `git diff --check`.
+- [x] Commit: `feat: match knowledge units deterministically` (`e670a9a`); payload profile hardening accepted at `6ad3eb9`; 73 tests passing.
 
 ---
 
