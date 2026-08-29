@@ -73,6 +73,21 @@ test("bounds complete to compilation and reports synthetic draft candidate spec"
   assert.ok(ontologySpec.data.reviewIssues.every(({ severity }) => severity === "requires_review"));
 });
 
+test("attaches the deterministic ontology workspace without adding a compiler stage", () => {
+  const workspace = adaptTrialArtifact(artifact);
+  const ontologySpec = workspace.stages[2];
+
+  assert.equal(workspace.stages.length, 4);
+  assert.equal(ontologySpec.id, "ontology-spec");
+  assert.equal(ontologySpec.data.ontologyWorkspace.entityNodes.length, 3);
+  assert.equal(ontologySpec.data.ontologyWorkspace.relationEdges.length, 3);
+  assert.equal(ontologySpec.data.ontologyWorkspace.ruleNodes.length, 1);
+  assert.equal(
+    ontologySpec.data.ontologyWorkspace.specHash,
+    ontologySpec.data.contentHash,
+  );
+});
+
 test("keeps Validation contract-only with no receipt or delivery claims", () => {
   const validation = adaptTrialArtifact(artifact).stages[3];
 

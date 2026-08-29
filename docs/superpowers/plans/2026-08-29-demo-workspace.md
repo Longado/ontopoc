@@ -46,3 +46,25 @@
 - [x] Verify desktop and 390 px mobile interaction in a browser with no console errors.
 - [x] Commit with `feat: connect ontopoc demo workspace` and push the branch.
 - [ ] Request one independent P1/P2 review and open a PR to `main` (outside this implementation handoff).
+
+### Task 3: Add the ontology graph and grounded demo chat
+
+**Files:**
+- Create: `landing-page/src/ontologyWorkspaceModel.js`
+- Create: `landing-page/src/ontologyWorkspaceModel.test.js`
+- Create: `landing-page/src/OntologyWorkspace.jsx`
+- Modify: `landing-page/src/trialWorkspaceModel.js`
+- Modify: `landing-page/src/trialWorkspaceModel.test.js`
+- Modify: `landing-page/src/TrialWorkspace.jsx`
+- Modify: `landing-page/src/styles.css`
+- Modify: `landing-page/tests/landing-story.test.mjs`
+- Modify: `docs/FRONTEND_BACKEND_CAPABILITY_MAP.md`
+
+- [x] Write failing Node tests for deterministic graph projection, grounded answers, evidence references, and unsupported-question refusal.
+- [x] Project entity types, declared domain/range relations, and the candidate rule from the existing `OntologySpec`; do not add customer instances, Action nodes, or invented facts.
+- [x] Add a PC-first `Graph / Details` view inside the existing `OntologySpec` stage using the existing React Flow dependency, with a selectable canvas and a persistent evidence inspector; keep the four compiler stages unchanged.
+- [x] Match the supplied desktop reference's operational hierarchy while preserving the current warm-paper, ink, cobalt, thin-rule design system.
+- [x] Add a chatbot-style drawer that answers only from the loaded artifact, attaches graph evidence, and refuses instance/runtime questions the artifact cannot answer. Label it as deterministic demo Q&A, not a live model call.
+- [x] Keep the current Validation boundary unchanged: evaluator not run, receipt null, and delivery flags false.
+- [x] Run focused model tests, all frontend tests, production build, Sites tests, backend full unittest, `git diff --check`, browser desktop/390 px checks, and design QA against the supplied reference.
+- [x] Commit with `feat: add ontology graph demo`, push, request one independent P1/P2 review, and update the PR.

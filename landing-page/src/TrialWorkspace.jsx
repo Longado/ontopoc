@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertCircle, ArrowRight, CheckCircle2, Play, RefreshCw } from "lucide-react";
 
+import { OntologyWorkspace } from "./OntologyWorkspace.jsx";
 import { adaptTrialArtifact, moveTrialStage } from "./trialWorkspaceModel.js";
 
 const copy = {
@@ -107,7 +108,7 @@ export function TrialWorkspace({ language }) {
   const panels = [RecognitionPanel, DecisionPackPanel, OntologySpecPanel, ValidationPanel];
   const ActivePanel = panels[activeStage];
 
-  return <div className="artifact-workspace"><div className="workspace-stage-tabs" role="tablist" aria-label="Demo compiler stages">{workspace.stages.map((item, index) => <button id={`workspace-tab-${index}`} key={item.id} type="button" role="tab" aria-selected={activeStage === index} aria-controls={`workspace-panel-${index}`} tabIndex={activeStage === index ? 0 : -1} className={activeStage === index ? "is-active" : ""} onClick={() => setActiveStage(index)} onKeyDown={(event) => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const next = moveTrialStage(index, event.key, workspace.stages.length); setActiveStage(next); event.currentTarget.parentElement?.querySelector(`#workspace-tab-${next}`)?.focus(); }}><span>0{index + 1}</span><strong>{item.label}</strong><small>{item.status}</small></button>)}</div><section className="workspace-stage-panel" id={`workspace-panel-${activeStage}`} role="tabpanel" aria-labelledby={`workspace-tab-${activeStage}`}><div className="workspace-stage-heading"><div><span>{t.fixed}</span><h2>{stage.label}</h2></div><Status value={stage.status} /></div><ActivePanel data={stage.data} t={t} /></section></div>;
+  return <div className="artifact-workspace"><div className="workspace-stage-tabs" role="tablist" aria-label="Demo compiler stages">{workspace.stages.map((item, index) => <button id={`workspace-tab-${index}`} key={item.id} type="button" role="tab" aria-selected={activeStage === index} aria-controls={`workspace-panel-${index}`} tabIndex={activeStage === index ? 0 : -1} className={activeStage === index ? "is-active" : ""} onClick={() => setActiveStage(index)} onKeyDown={(event) => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const next = moveTrialStage(index, event.key, workspace.stages.length); setActiveStage(next); event.currentTarget.parentElement?.querySelector(`#workspace-tab-${next}`)?.focus(); }}><span>0{index + 1}</span><strong>{item.label}</strong><small>{item.status}</small></button>)}</div><section className="workspace-stage-panel" id={`workspace-panel-${activeStage}`} role="tabpanel" aria-labelledby={`workspace-tab-${activeStage}`}><div className="workspace-stage-heading"><div><span>{t.fixed}</span><h2>{stage.label}</h2></div><Status value={stage.status} /></div><ActivePanel data={stage.data} t={t} language={language} /></section></div>;
 }
 
 function Status({ value }) {
@@ -135,9 +136,8 @@ function ListBlock({ title, rows }) {
   return <div className="workspace-list"><span>{title}</span>{rows.map(([meta, value]) => <div key={`${meta}-${value}`}><small>{meta}</small><strong>{value}</strong></div>)}</div>;
 }
 
-function OntologySpecPanel({ data, t }) {
-  const countValues = Object.values(data.counts);
-  return <div className="workspace-detail-layout"><div className="workspace-detail-main"><div className="workspace-boundary-note"><CheckCircle2 size={18} /><div><strong>{t.compilation}</strong><span>{t.closure}: closed · {t.checked}: {data.referenceClosure.checkedReferenceCount}</span></div></div><div className="workspace-counts">{countValues.map((value, index) => <div key={t.counts[index]}><strong>{value}</strong><span>{t.counts[index]}</span></div>)}</div><div className="workspace-issues"><span>{t.issues} · {data.reviewIssues.length}</span>{data.reviewIssues.map((issue) => <div key={issue.issue_id}><code>{issue.payload_schema}</code><p>{issue.message}</p><small>{issue.severity}</small></div>)}</div></div><aside className="workspace-detail-aside"><Hash label={t.hash} value={data.contentHash} /><Hash label={t.packHash} value={data.packContentHash} /><Meta label="evidence_scope" mono>{data.evidenceScope}</Meta><Meta label="stage" mono>{data.stage}</Meta><Meta label={t.governance} mono>{data.governanceStatus}</Meta></aside></div>;
+function OntologySpecPanel({ data, t, language }) {
+  return <OntologyWorkspace data={data} t={t} language={language} />;
 }
 
 function ValidationPanel({ data, t }) {

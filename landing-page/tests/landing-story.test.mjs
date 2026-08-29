@@ -4,6 +4,7 @@ import test from "node:test";
 
 const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
 const workspace = await readFile(new URL("../src/TrialWorkspace.jsx", import.meta.url), "utf8").catch(() => "");
+const ontologyWorkspace = await readFile(new URL("../src/OntologyWorkspace.jsx", import.meta.url), "utf8").catch(() => "");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 
 test("landing story has one full operational surface and the accepted section order", () => {
@@ -47,6 +48,48 @@ test("desktop Trial keeps artifact content and evidence in a PC-first split layo
   assert.match(workspace, /className="workspace-detail-aside"/);
   assert.match(styles, /\.workspace-detail-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 300px/s);
   assert.match(styles, /\.workspace-detail-aside\s*\{[^}]*position:\s*sticky/s);
+});
+
+test("OntologySpec owns a read-only Graph and Details view without creating a fifth stage", () => {
+  assert.match(workspace, /import \{ OntologyWorkspace \} from "\.\/OntologyWorkspace\.jsx"/);
+  assert.match(workspace, /<OntologyWorkspace data=\{data\} t=\{t\} language=\{language\} \/>/);
+  assert.match(ontologyWorkspace, /from "@xyflow\/react"/);
+  assert.match(ontologyWorkspace, /nodesDraggable=\{false\}/);
+  assert.match(ontologyWorkspace, /nodesConnectable=\{false\}/);
+  assert.match(ontologyWorkspace, /edgesReconnectable=\{false\}/);
+  assert.match(ontologyWorkspace, /className="ontology-node-copy"/);
+  assert.match(ontologyWorkspace, /role="tablist" aria-label=\{copy\.viewLabel\}/);
+  assert.match(ontologyWorkspace, /Graph/);
+  assert.match(ontologyWorkspace, /Details/);
+  assert.match(ontologyWorkspace, /ArrowLeft/);
+  assert.match(ontologyWorkspace, /ArrowRight/);
+  assert.match(ontologyWorkspace, /onSelectionChange=/);
+  assert.match(ontologyWorkspace, /selection\.nodes/);
+  assert.match(ontologyWorkspace, /selection\.edges/);
+});
+
+test("ontology graph keeps a 300px inspector and exposes deterministic fit and reset controls", () => {
+  assert.match(ontologyWorkspace, /className="ontology-graph-layout"/);
+  assert.match(ontologyWorkspace, /className="ontology-inspector-shell"/);
+  assert.match(ontologyWorkspace, /fitView/);
+  assert.match(ontologyWorkspace, /setViewport/);
+  assert.match(styles, /\.ontology-graph-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 300px/s);
+  assert.match(styles, /\.ontology-graph-canvas\s*\{[^}]*background-color:\s*#f8f7f1/s);
+});
+
+test("artifact chat is a same-width deterministic drawer with refusal boundaries and no API write", () => {
+  assert.match(ontologyWorkspace, /answerArtifactQuestion/);
+  assert.match(ontologyWorkspace, /className="ontology-chat-drawer"/);
+  assert.match(ontologyWorkspace, /确定性 artifact 查询/);
+  assert.match(ontologyWorkspace, /非实时模型调用/);
+  assert.match(ontologyWorkspace, /missing_runtime_facts/);
+  assert.match(ontologyWorkspace, /event\.key === "Enter"/);
+  assert.match(ontologyWorkspace, /event\.key === "Escape"/);
+  assert.match(ontologyWorkspace, /chatWasOpenRef\.current/);
+  assert.match(ontologyWorkspace, /chatTriggerRef\.current\?\.focus/);
+  assert.doesNotMatch(ontologyWorkspace, /fetch\(|axios|\.post\(|\/api\/|token/i);
+  assert.match(styles, /\.ontology-chat-drawer\s*\{[^}]*position:\s*absolute/s);
+  assert.match(styles, /\.ontology-chat-drawer\s*\{[^}]*inset:\s*0/s);
 });
 
 test("workbench and gate tabs expose controlled panels and roving focus", () => {

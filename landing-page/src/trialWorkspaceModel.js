@@ -1,3 +1,5 @@
+import { projectOntologyWorkspace } from "./ontologyWorkspaceModel.js";
+
 const SHA256 = /^[0-9a-f]{64}$/;
 
 function requireRecord(value, label) {
@@ -85,6 +87,7 @@ export function adaptTrialArtifact(input) {
   if (specPackHash !== packHash) throw new Error("OntologySpec pack hash must match the backend DecisionPack hash");
   const compilationIssues = requireArray(spec.compilation_issues, "OntologySpec compilation issues");
   const reviewIssues = compilationIssues.filter((issue) => issue.severity === "requires_review");
+  const ontologyWorkspace = projectOntologyWorkspace(artifact);
 
   return {
     schema: artifact.schema,
@@ -138,6 +141,7 @@ export function adaptTrialArtifact(input) {
             rules: requireArray(spec.rule_declarations, "OntologySpec rules").length,
           },
           reviewIssues,
+          ontologyWorkspace,
         },
       },
       {
