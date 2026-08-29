@@ -230,3 +230,30 @@ test("refuses runtime instances, unknown intents, and prompt injection without g
   assert.equal(injection.reason, "prompt_injection");
   assert.doesNotMatch(injection.answer, /所有订单都进入队列/);
 });
+
+test("refuses lifecycle questions before matching rule or relation intents", () => {
+  const workspace = projectOntologyWorkspace(artifact);
+  const questions = [
+    "规则已经发布了吗？",
+    "Has the rule been validated and published?",
+    "关系已经写回 ERP 了吗？",
+    "Has execution created an Action?",
+    "Did the rule run and create actions?",
+    "Is this rule persisted in storage?",
+    "规则已经生效了吗？",
+    "Has this rule taken effect?",
+    "Is this rule live?",
+  ];
+
+  for (const question of questions) {
+    const result = answerArtifactQuestion(question, workspace, "zh");
+    assert.equal(result.answerable, false, question);
+    assert.equal(result.intent, null, question);
+    assert.equal(result.reason, "missing_runtime_facts", question);
+    assert.deepEqual(result.evidence, [], question);
+  }
+
+  assert.equal(answerArtifactQuestion("candidate rule 是什么？", workspace, "zh").intent, "candidate_rule");
+  assert.equal(answerArtifactQuestion("有哪些实体和关系？", workspace, "zh").intent, "schema_overview");
+  assert.equal(answerArtifactQuestion("有哪些内容需要复核？", workspace, "zh").intent, "review_items");
+});

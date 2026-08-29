@@ -447,6 +447,12 @@ export function answerArtifactQuestion(question, workspace, language = "zh") {
   if (/忽略|系统提示|提示词|越过|jailbreak|ignore\s+(all|previous)|system\s+prompt|reveal\s+prompt/.test(normalized)) {
     return refusal("prompt_injection", workspace, language);
   }
+  if (/执行|运行|校验|验证|发布|上线|部署|生效|持久化|存储|保存|落库|动作|写回|回写|\berp\b|\bactions?\b|\b(?:run|ran)\b|\bexecut(?:e|ed|es|ing|ion)\b|\bvalidat(?:e|ed|es|ing|ion)\b|\bpublish(?:ed|es|ing)?\b|\bpublication\b|\breleas(?:e|ed|es|ing)\b|\bdeploy(?:ed|ment|ing)?\b|\bpersist(?:ed|ence|ent|ing)?\b|\bstor(?:e|ed|age|ing)\b|\bsav(?:e|ed|ing)\b|\btak(?:e|en|ing)\s+effect\b|write[ -]?back/.test(normalized)) {
+    return refusal("missing_runtime_facts", workspace, language);
+  }
+  if (/\b(?:rule|relation|schema)\b.{0,32}\blive\b|\blive\b.{0,32}\b(?:rule|relation|schema)\b/.test(normalized)) {
+    return refusal("missing_runtime_facts", workspace, language);
+  }
   if (/哪些.*订单|订单.*队列|供应商\s*[a-z0-9]+.*合格|实例|运行时|实时|实际|which\s+orders|supplier\s+[a-z0-9]+.*qualified|runtime|instance/.test(normalized)) {
     return refusal("missing_runtime_facts", workspace, language);
   }

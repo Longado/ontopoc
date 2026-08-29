@@ -19,6 +19,20 @@ test("landing story has one full operational surface and the accepted section or
   assert.ok(review < how && how < model && model < build);
 });
 
+test("landing copy labels runtime and persistence behavior as synthetic or proposed", () => {
+  assert.match(app, /合成场景预览/);
+  assert.match(app, /当前已验证能力仅生成并检查 synthetic_demo/);
+  assert.match(app, /Synthetic scenario preview/);
+  assert.match(app, /The verified capability is limited to generating and inspecting synthetic_demo/);
+  assert.match(app, /不执行运行时重算或生成真实待办/);
+  assert.match(app, /does not execute runtime recalculation or create a real work queue/);
+
+  assert.doesNotMatch(app, /规则一变，立即找出受影响订单；业务确认后生效。/);
+  assert.doesNotMatch(app, /OntoPoc propagates the change through supplier–material–order relationships, recalculates the judgment/);
+  assert.doesNotMatch(app, /规则版本、业务证据、影响路径和确认人进入同一份可回溯记录。/);
+  assert.doesNotMatch(app, /The rule version, business evidence, impact path, and confirming owner stay in one recoverable record/);
+});
+
 test("mounted Trial path uses the artifact workspace without approval controls", () => {
   assert.equal(app.includes("replayState"), false);
   assert.match(app, /function ApproveScene\(\{ copy \}\)/);
