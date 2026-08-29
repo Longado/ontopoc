@@ -152,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         staged_outputs: list[tuple[Path, Path]] = []
         backups: list[tuple[Path, Path | None]] = []
         installed_indexes: list[int] = []
+        retained_backups: set[Path] = set()
         try:
             for path, staged_content in requested_outputs:
                 staged_outputs.append((path, _stage_output(path, staged_content)))
@@ -171,18 +172,25 @@ def main(argv: list[str] | None = None) -> int:
                         os.replace(backup_path, path)
                 except (OSError, UnicodeError) as rollback_exc:
                     rollback_errors.append(str(rollback_exc))
+                    if backup_path is not None:
+                        retained_backups.add(backup_path)
             print(f"output error: {exc}", file=sys.stderr)
             if rollback_errors:
                 print(
                     f"rollback error: {'; '.join(rollback_errors)}",
                     file=sys.stderr,
                 )
+                for backup_path in sorted(retained_backups):
+                    print(
+                        f"recovery backup retained: {backup_path}",
+                        file=sys.stderr,
+                    )
             return 3
         finally:
             for _, temporary_path in staged_outputs:
                 temporary_path.unlink(missing_ok=True)
             for _, backup_path in backups:
-                if backup_path is not None:
+                if backup_path is not None and backup_path not in retained_backups:
                     backup_path.unlink(missing_ok=True)
         if args.output is None:
             print(content, end="")

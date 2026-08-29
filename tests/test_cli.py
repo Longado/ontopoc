@@ -35,6 +35,8 @@ class CliTest(unittest.TestCase):
         self,
         proposal_output: Path,
         spec_output: Path,
+        *,
+        fail_rollback: bool = False,
     ) -> tuple[int, str]:
         original_replace = os.replace
         replace_count = 0
@@ -44,6 +46,8 @@ class CliTest(unittest.TestCase):
             replace_count += 1
             if replace_count == 2:
                 raise OSError("second finalization failed")
+            if fail_rollback and replace_count == 3:
+                raise OSError("rollback restore failed")
             original_replace(source, target)
 
         stderr = StringIO()
@@ -270,6 +274,32 @@ class CliTest(unittest.TestCase):
                 sorted(path.name for path in root.iterdir()),
                 ["ontology-spec.json", "proposal.json"],
             )
+
+    def test_failed_restore_retains_recoverable_backup_of_original_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proposal_output = root / "proposal.json"
+            spec_output = root / "ontology-spec.json"
+            original_proposal = b"original proposal\n"
+            original_spec = b'{"original":true}\n'
+            proposal_output.write_bytes(original_proposal)
+            spec_output.write_bytes(original_spec)
+
+            result, stderr = self._run_main_with_second_replace_failure(
+                proposal_output,
+                spec_output,
+                fail_rollback=True,
+            )
+
+            self.assertEqual(result, 3)
+            self.assertIn("output error: second finalization failed", stderr)
+            self.assertIn("rollback error: rollback restore failed", stderr)
+            self.assertEqual(spec_output.read_bytes(), original_spec)
+            backups = list(root.glob(".proposal.json.*.bak"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_bytes(), original_proposal)
+            self.assertEqual(list(root.glob("*.tmp")), [])
+            self.assertEqual(list(root.glob(".ontology-spec.json.*.bak")), [])
 
     def test_cli_generates_markdown_file(self):
         scenario = {
