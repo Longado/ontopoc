@@ -31,6 +31,39 @@ class CliTest(unittest.TestCase):
             check=False,
         )
 
+    def _run_main_with_second_replace_failure(
+        self,
+        proposal_output: Path,
+        spec_output: Path,
+    ) -> tuple[int, str]:
+        original_replace = os.replace
+        replace_count = 0
+
+        def fail_second_replace(source: Path, target: Path) -> None:
+            nonlocal replace_count
+            replace_count += 1
+            if replace_count == 2:
+                raise OSError("second finalization failed")
+            original_replace(source, target)
+
+        stderr = StringIO()
+        with patch(
+            "ontology_poc_generator.cli.os.replace",
+            side_effect=fail_second_replace,
+        ), redirect_stderr(stderr):
+            result = main(
+                [
+                    str(self.REPO_ROOT / "examples/supply_chain_exception.json"),
+                    "--format",
+                    "json",
+                    "--output",
+                    str(proposal_output),
+                    "--ontology-spec-output",
+                    str(spec_output),
+                ]
+            )
+        return result, stderr.getvalue()
+
     def test_parser_accepts_repeatable_knowledge_units_in_argument_order(self):
         args = build_parser().parse_args(
             [
@@ -196,6 +229,47 @@ class CliTest(unittest.TestCase):
                     _stage_output(output_path, "content")
 
             self.assertEqual(list(root.iterdir()), [])
+
+    def test_second_finalization_failure_removes_newly_installed_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proposal_output = root / "proposal.json"
+            spec_output = root / "ontology-spec.json"
+
+            result, stderr = self._run_main_with_second_replace_failure(
+                proposal_output,
+                spec_output,
+            )
+
+            self.assertEqual(result, 3)
+            self.assertIn("output error: second finalization failed", stderr)
+            self.assertFalse(proposal_output.exists())
+            self.assertFalse(spec_output.exists())
+            self.assertEqual(list(root.iterdir()), [])
+
+    def test_second_finalization_failure_restores_preexisting_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proposal_output = root / "proposal.json"
+            spec_output = root / "ontology-spec.json"
+            original_proposal = b"original proposal\n"
+            original_spec = b'{"original":true}\n'
+            proposal_output.write_bytes(original_proposal)
+            spec_output.write_bytes(original_spec)
+
+            result, stderr = self._run_main_with_second_replace_failure(
+                proposal_output,
+                spec_output,
+            )
+
+            self.assertEqual(result, 3)
+            self.assertIn("output error: second finalization failed", stderr)
+            self.assertEqual(proposal_output.read_bytes(), original_proposal)
+            self.assertEqual(spec_output.read_bytes(), original_spec)
+            self.assertEqual(
+                sorted(path.name for path in root.iterdir()),
+                ["ontology-spec.json", "proposal.json"],
+            )
 
     def test_cli_generates_markdown_file(self):
         scenario = {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -73,6 +74,24 @@ def _closure_issue_to_dict(issue: ClosureIssue) -> dict[str, object]:
     }
 
 
+def _backup_output(path: Path) -> Path | None:
+    if not path.exists():
+        return None
+    descriptor, backup_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".bak",
+    )
+    os.close(descriptor)
+    backup_path = Path(backup_name)
+    try:
+        shutil.copy2(path, backup_path)
+    except (OSError, UnicodeError):
+        backup_path.unlink(missing_ok=True)
+        raise
+    return backup_path
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -131,20 +150,40 @@ def main(argv: list[str] | None = None) -> int:
             requested_outputs.append((args.output, content))
         requested_outputs.append((args.ontology_spec_output, ontology_spec_content))
         staged_outputs: list[tuple[Path, Path]] = []
+        backups: list[tuple[Path, Path | None]] = []
+        installed_indexes: list[int] = []
         try:
             for path, staged_content in requested_outputs:
                 staged_outputs.append((path, _stage_output(path, staged_content)))
-            for path, temporary_path in staged_outputs:
+            for path, _ in staged_outputs:
+                backups.append((path, _backup_output(path)))
+            for index, (path, temporary_path) in enumerate(staged_outputs):
                 os.replace(temporary_path, path)
+                installed_indexes.append(index)
         except (OSError, UnicodeError) as exc:
+            rollback_errors = []
+            for index in reversed(installed_indexes):
+                path, backup_path = backups[index]
+                try:
+                    if backup_path is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        os.replace(backup_path, path)
+                except (OSError, UnicodeError) as rollback_exc:
+                    rollback_errors.append(str(rollback_exc))
             print(f"output error: {exc}", file=sys.stderr)
+            if rollback_errors:
+                print(
+                    f"rollback error: {'; '.join(rollback_errors)}",
+                    file=sys.stderr,
+                )
             return 3
         finally:
             for _, temporary_path in staged_outputs:
-                try:
-                    temporary_path.unlink()
-                except FileNotFoundError:
-                    pass
+                temporary_path.unlink(missing_ok=True)
+            for _, backup_path in backups:
+                if backup_path is not None:
+                    backup_path.unlink(missing_ok=True)
         if args.output is None:
             print(content, end="")
         return 0
