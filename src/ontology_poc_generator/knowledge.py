@@ -71,6 +71,10 @@ _DECISION_RULE_FIXED_FIELDS = {
     "positive_conclusion_value": "in_queue",
     "negative_conclusion_value": "not_in_queue",
 }
+_DECISION_RULE_ALLOWED_VALUES = {
+    "condition_1_allowed_values": frozenset({"missed", "at_risk,missed"}),
+    "condition_2_allowed_values": frozenset({"none"}),
+}
 
 
 def _text(value: object, field: str) -> str:
@@ -135,11 +139,12 @@ def _validate_decision_rule_payload(payload: Mapping[str, str]) -> None:
             raise KnowledgeValidationError(
                 f"decision_rule.v1 {field} must be {expected}"
             )
-    for field in (
-        "condition_1_allowed_values",
-        "condition_2_allowed_values",
-    ):
+    for field, allowed_values in _DECISION_RULE_ALLOWED_VALUES.items():
         _controlled_token_list(payload[field], field)
+        if payload[field] not in allowed_values:
+            raise KnowledgeValidationError(
+                f"decision_rule.v1 {field} is outside the S-1 contract"
+            )
 
 
 class SourceKind(str, Enum):
