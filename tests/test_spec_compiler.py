@@ -55,6 +55,27 @@ def policy_pack(path: Path = POLICY_BASELINE_PATH) -> DecisionPack:
     )
 
 
+def two_policy_pack() -> DecisionPack:
+    baseline = load_knowledge_unit(POLICY_BASELINE_PATH)
+    data = json.loads(POLICY_BASELINE_PATH.read_text(encoding="utf-8"))
+    data["unit_id"] = "supply_chain.order_priority.synthetic_policy_s1_second"
+    data["sources"][0]["source_ref_id"] = (
+        "synthetic_order_priority_policy_cases_v1_second"
+    )
+    suggestion = data["suggestion_templates"][0]
+    suggestion["suggestion_id"] = "rule.order_priority.synthetic_s1_second"
+    suggestion["semantic_key"] = "order_priority_intervention_queue_rule_second"
+    suggestion["source_ref_ids"] = [
+        "synthetic_order_priority_policy_cases_v1_second"
+    ]
+    suggestion["payload"]["condition_1_allowed_values"] = "at_risk,missed"
+    suggestion["payload"]["description"] = (
+        "Second synthetic categorical queue-entry policy."
+    )
+    second = KnowledgeUnit.from_dict(data, unit_content_hash="c" * 64)
+    return compile_decision_pack(minimal_scenario(), (baseline, second))
+
+
 def unsupported_policy_pack() -> DecisionPack:
     data = json.loads(POLICY_BASELINE_PATH.read_text(encoding="utf-8"))
     data["suggestion_templates"][0]["payload"]["rule_kind"] = (
@@ -65,6 +86,59 @@ def unsupported_policy_pack() -> DecisionPack:
 
 
 class SpecCompilerTest(unittest.TestCase):
+    def test_two_rules_reuse_shared_global_property_declarations(self):
+        pack = two_policy_pack()
+
+        result = compile_ontology_spec(pack)
+
+        suggestion_ids = {
+            suggestion.suggestion_id
+            for outcome in pack.knowledge_outcomes
+            for suggestion in outcome.suggestions
+        }
+        self.assertTrue(result.closure_report.is_closed)
+        self.assertIs(result.compilation_status, CompilationStatus.COMPLETE)
+        self.assertEqual(len(result.spec.property_types), 2)
+        self.assertEqual(len(result.spec.rule_declarations), 2)
+        self.assertEqual(
+            {rule.origin_suggestion_id for rule in result.spec.rule_declarations},
+            suggestion_ids,
+        )
+        self.assertEqual(
+            {
+                property_type.origin_ref_id
+                for property_type in result.spec.property_types
+            },
+            {min(suggestion_ids, key=lambda value: (value.casefold(), value))},
+        )
+        declared_property_ids = {
+            property_type.property_type_id
+            for property_type in result.spec.property_types
+        }
+        self.assertTrue(
+            all(
+                {
+                    condition.property_type_id
+                    for condition in rule.conditions
+                }
+                == declared_property_ids
+                for rule in result.spec.rule_declarations
+            )
+        )
+
+    def test_conflicting_property_contract_for_one_stable_id_fails_loudly(self):
+        with patch(
+            "ontology_poc_generator.knowledge_compiler.stable_property_type_id",
+            return_value="property_type_forced_collision",
+        ):
+            with self.assertRaises(SpecCompilationError) as caught:
+                compile_ontology_spec(policy_pack())
+
+        self.assertEqual(
+            caught.exception.code,
+            "conflicting_property_type_identity",
+        )
+
     def test_synthetic_policy_compiles_stable_declarations_and_changed_hash(self):
         baseline = compile_ontology_spec(policy_pack())
         candidate = compile_ontology_spec(policy_pack(POLICY_CANDIDATE_PATH))
