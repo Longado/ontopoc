@@ -6,8 +6,42 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from ontology_poc_generator.cli import build_parser
+
 
 class CliTest(unittest.TestCase):
+    REPO_ROOT = Path(__file__).parents[1]
+    KNOWLEDGE_PATH = (
+        REPO_ROOT
+        / "knowledge/supply_chain/supplier_evidence_boundary_v1.json"
+    )
+
+    def _run_cli(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", "ontology_poc_generator.cli", *args],
+            cwd=self.REPO_ROOT,
+            env={**os.environ, "PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def test_parser_accepts_repeatable_knowledge_units_in_argument_order(self):
+        args = build_parser().parse_args(
+            [
+                "scenario.json",
+                "--knowledge-unit",
+                "first.json",
+                "--knowledge-unit",
+                "second.json",
+            ]
+        )
+
+        self.assertEqual(
+            args.knowledge_units,
+            [Path("first.json"), Path("second.json")],
+        )
+
     def test_cli_generates_markdown_file(self):
         scenario = {
             "industry": "供应链",
@@ -43,6 +77,123 @@ class CliTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("订单履约风险处置", output_path.read_text(encoding="utf-8"))
+
+    def test_cli_does_not_load_knowledge_by_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "proposal.json"
+            result = self._run_cli(
+                "examples/supply_chain_exception.json",
+                "--format",
+                "json",
+                "--output",
+                str(output_path),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            rendered = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertNotIn("input_bindings", rendered)
+            self.assertNotIn("knowledge_source_refs", rendered)
+            self.assertNotIn("knowledge_outcomes", rendered)
+
+    def test_cli_projects_applicable_knowledge_to_json_and_markdown(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            json_output = root / "proposal.json"
+            markdown_output = root / "proposal.md"
+            common = (
+                "examples/supply_chain_exception.json",
+                "--knowledge-unit",
+                str(self.KNOWLEDGE_PATH),
+            )
+
+            json_result = self._run_cli(
+                *common,
+                "--format",
+                "json",
+                "--output",
+                str(json_output),
+            )
+            markdown_result = self._run_cli(
+                *common,
+                "--output",
+                str(markdown_output),
+            )
+
+            self.assertEqual(json_result.returncode, 0, json_result.stderr)
+            self.assertEqual(markdown_result.returncode, 0, markdown_result.stderr)
+            rendered = json.loads(json_output.read_text(encoding="utf-8"))
+            outcome = rendered["knowledge_outcomes"][0]
+            self.assertEqual(outcome["match_status"], "applicable")
+            self.assertEqual(len(outcome["suggestions"]), 7)
+            self.assertEqual(
+                outcome["suggestions"][0]["governance_status"],
+                "candidate",
+            )
+            markdown = markdown_output.read_text(encoding="utf-8")
+            self.assertIn("## 有来源的候选建议", markdown)
+            self.assertIn("匹配状态：`applicable`", markdown)
+            self.assertIn("synthetic_demo", markdown)
+
+    def test_cli_input_failures_return_two_without_creating_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            invalid_json = root / "invalid.json"
+            invalid_json.write_text("{", encoding="utf-8")
+            invalid_contract = root / "invalid-contract.json"
+            invalid_contract.write_text("{}", encoding="utf-8")
+            invalid_encoding = root / "invalid-encoding.json"
+            invalid_encoding.write_bytes(b"\xff\xfe")
+
+            cases = (
+                ("missing", root / "missing.json"),
+                ("invalid", invalid_json),
+                ("contract", invalid_contract),
+                ("encoding", invalid_encoding),
+            )
+            for name, knowledge_path in cases:
+                with self.subTest(name=name):
+                    output_path = root / name / "proposal.json"
+                    result = self._run_cli(
+                        "examples/supply_chain_exception.json",
+                        "--knowledge-unit",
+                        str(knowledge_path),
+                        "--format",
+                        "json",
+                        "--output",
+                        str(output_path),
+                    )
+
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("input error:", result.stderr)
+                    self.assertFalse(output_path.exists())
+                    self.assertFalse(output_path.parent.exists())
+
+    def test_cli_rejects_non_object_or_non_utf8_scenario_without_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            array_input = root / "array.json"
+            array_input.write_text("[]", encoding="utf-8")
+            invalid_encoding = root / "invalid-encoding.json"
+            invalid_encoding.write_bytes(b"\xff\xfe")
+
+            for name, input_path in (
+                ("array", array_input),
+                ("encoding", invalid_encoding),
+            ):
+                with self.subTest(name=name):
+                    output_path = root / name / "proposal.json"
+                    result = self._run_cli(
+                        str(input_path),
+                        "--format",
+                        "json",
+                        "--output",
+                        str(output_path),
+                    )
+
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("input error:", result.stderr)
+                    self.assertFalse(output_path.exists())
+                    self.assertFalse(output_path.parent.exists())
 
 
 if __name__ == "__main__":

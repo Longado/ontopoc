@@ -3,12 +3,142 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 
+from ontology_poc_generator.knowledge import (
+    KnowledgeOutcome,
+    KnowledgeSuggestion,
+    SourceRef,
+)
 from ontology_poc_generator.models import Proposal
 
 
 def _bullets(items: tuple[str, ...], empty: str) -> str:
     values = items or (empty,)
     return "\n".join(f"- {item}" for item in values)
+
+
+def _knowledge_suggestion_dict(
+    suggestion: KnowledgeSuggestion,
+) -> dict[str, object]:
+    return {
+        "suggestion_id": suggestion.suggestion_id,
+        "unit_id": suggestion.unit_id,
+        "unit_version": suggestion.unit_version,
+        "unit_content_hash": suggestion.unit_content_hash,
+        "contribution_type": suggestion.contribution_type,
+        "semantic_key": suggestion.semantic_key,
+        "payload_schema": suggestion.payload_schema,
+        "payload": dict(suggestion.payload),
+        "input_binding_ids": list(suggestion.input_binding_ids),
+        "source_ref_ids": list(suggestion.source_ref_ids),
+        "governance_status": suggestion.governance_status,
+    }
+
+
+def _knowledge_source_dict(source: SourceRef) -> dict[str, object]:
+    return {
+        "source_ref_id": source.source_ref_id,
+        "source_kind": source.source_kind.value,
+        "title": source.title,
+        "locator": source.locator,
+        "revision": source.revision,
+        "snapshot_sha256": source.snapshot_sha256,
+        "caveat": source.caveat,
+    }
+
+
+def _knowledge_outcome_dict(outcome: KnowledgeOutcome) -> dict[str, object]:
+    return {
+        "unit_id": outcome.unit_id,
+        "unit_version": outcome.unit_version,
+        "unit_content_hash": outcome.unit_content_hash,
+        "match_status": outcome.match_status.value,
+        "reason_code": outcome.reason_code,
+        "input_binding_ids": list(outcome.input_binding_ids),
+        "suggestions": [
+            _knowledge_suggestion_dict(suggestion)
+            for suggestion in outcome.suggestions
+        ],
+    }
+
+
+def _render_knowledge_appendix(proposal: Proposal) -> str:
+    if not proposal.knowledge_outcomes:
+        return ""
+
+    bindings = {item.binding_id: item for item in proposal.input_bindings}
+    sources = {
+        item.source_ref_id: item for item in proposal.knowledge_source_refs
+    }
+    lines = ["", "## 有来源的候选建议", ""]
+    for outcome in proposal.knowledge_outcomes:
+        lines.extend(
+            (
+                f"### 知识单元 `{outcome.unit_id}`",
+                "",
+                f"- 单元版本：`{outcome.unit_version}`",
+                f"- 内容哈希：`{outcome.unit_content_hash}`",
+                f"- 匹配状态：`{outcome.match_status.value}`",
+                f"- 匹配原因：`{outcome.reason_code}`",
+                "",
+            )
+        )
+        if not outcome.suggestions:
+            lines.extend(
+                (
+                    "本知识单元未产生候选建议；该匹配状态不会推断或展示来源。",
+                    "",
+                )
+            )
+            continue
+
+        lines.extend(("#### 相关稳定绑定", ""))
+        for binding_id in outcome.input_binding_ids:
+            binding = bindings[binding_id]
+            lines.append(
+                f"- {binding.label}：semantic `{binding.semantic_key}`；"
+                f"binding `{binding.binding_id}`"
+            )
+        lines.append("")
+
+        cited_source_ids: set[str] = set()
+        for suggestion in outcome.suggestions:
+            cited_source_ids.update(suggestion.source_ref_ids)
+            payload = json.dumps(
+                dict(suggestion.payload),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            lines.extend(
+                (
+                    f"#### 候选建议 `{suggestion.suggestion_id}`",
+                    "",
+                    f"- 治理状态：`{suggestion.governance_status}`",
+                    f"- 贡献类型：`{suggestion.contribution_type}`",
+                    f"- Payload schema：`{suggestion.payload_schema}`",
+                    f"- Semantic key：`{suggestion.semantic_key}`",
+                    f"- Payload：`{payload}`",
+                    "- 绑定 ID："
+                    + ", ".join(f"`{item}`" for item in suggestion.input_binding_ids),
+                    "- 来源 ID："
+                    + ", ".join(f"`{item}`" for item in suggestion.source_ref_ids),
+                    "",
+                )
+            )
+
+        lines.extend(("#### 实际引用来源", ""))
+        for source_id in sorted(cited_source_ids):
+            source = sources[source_id]
+            lines.extend(
+                (
+                    f"- `{source.source_ref_id}` · `{source.source_kind.value}` · {source.title}",
+                    f"  - Locator：{source.locator}",
+                    f"  - Revision：{source.revision}",
+                    f"  - Snapshot SHA-256：`{source.snapshot_sha256}`",
+                    f"  - Caveat：{source.caveat}",
+                )
+            )
+        lines.append("")
+    return "\n".join(lines)
 
 
 def render_markdown(proposal: Proposal) -> str:
@@ -52,7 +182,7 @@ def render_markdown(proposal: Proposal) -> str:
     if proposal.notes:
         risks.append(proposal.notes)
 
-    return f"""# {proposal.scene_name} — 本体建设 POC 方案
+    baseline = f"""# {proposal.scene_name} — 本体建设 POC 方案
 
 ## POC 摘要
 
@@ -127,6 +257,7 @@ POC 计划（待验证）中的规则求值结果需区分 `pass`、`fail`、`no
 
 {_bullets(tuple(risks), "当前没有已登记风险")}
 """
+    return baseline + _render_knowledge_appendix(proposal)
 
 
 def render_json(proposal: Proposal) -> str:
@@ -138,4 +269,12 @@ def render_json(proposal: Proposal) -> str:
             "knowledge_outcomes",
         ):
             data.pop(field)
+    else:
+        data["input_bindings"] = [asdict(item) for item in proposal.input_bindings]
+        data["knowledge_source_refs"] = [
+            _knowledge_source_dict(item) for item in proposal.knowledge_source_refs
+        ]
+        data["knowledge_outcomes"] = [
+            _knowledge_outcome_dict(item) for item in proposal.knowledge_outcomes
+        ]
     return json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2)

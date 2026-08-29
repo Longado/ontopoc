@@ -1,14 +1,35 @@
 import json
 import unittest
 from dataclasses import fields
+from pathlib import Path
 
 from ontology_poc_generator.errors import ScenarioValidationError
 from ontology_poc_generator.generator import generate_proposal
+from ontology_poc_generator.knowledge import load_knowledge_unit
 from ontology_poc_generator.models import DataSource, Proposal, ScenarioParameters
 from ontology_poc_generator.renderers import render_json, render_markdown
 
 
 class GeneratorTest(unittest.TestCase):
+    REPO_ROOT = Path(__file__).parents[1]
+    KNOWLEDGE_PATH = (
+        REPO_ROOT
+        / "knowledge/supply_chain/supplier_evidence_boundary_v1.json"
+    )
+
+    def _supply_chain_raw(self):
+        return json.loads(
+            (self.REPO_ROOT / "examples/supply_chain_exception.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def _knowledge_proposal(self, raw=None):
+        return generate_proposal(
+            ScenarioParameters.from_dict(raw or self._supply_chain_raw()),
+            (load_knowledge_unit(self.KNOWLEDGE_PATH),),
+        )
+
     def test_direct_scenario_rejects_mutable_or_invalid_collection_fields(self):
         base = dict(
             industry="供应链",
@@ -596,6 +617,131 @@ class GeneratorTest(unittest.TestCase):
         self.assertNotIn("当前没有已登记风险", markdown)
         self.assertNotIn("自动建议", markdown)
         self.assertNotIn("显式候选关系待业务确认", markdown)
+
+    def test_json_projection_preserves_complete_candidate_knowledge_contract(self):
+        rendered = json.loads(render_json(self._knowledge_proposal()))
+
+        self.assertEqual(len(rendered["input_bindings"]), 3)
+        self.assertEqual(len(rendered["knowledge_source_refs"]), 3)
+        outcome = rendered["knowledge_outcomes"][0]
+        self.assertEqual(
+            set(outcome),
+            {
+                "unit_id", "unit_version", "unit_content_hash", "match_status",
+                "reason_code", "input_binding_ids", "suggestions",
+            },
+        )
+        self.assertEqual(outcome["match_status"], "applicable")
+        self.assertEqual(outcome["reason_code"], "applicable")
+        self.assertEqual(len(outcome["suggestions"]), 7)
+        for suggestion in outcome["suggestions"]:
+            self.assertEqual(
+                set(suggestion),
+                {
+                    "suggestion_id", "unit_id", "unit_version",
+                    "unit_content_hash", "contribution_type", "semantic_key",
+                    "payload_schema", "payload", "input_binding_ids",
+                    "source_ref_ids", "governance_status",
+                },
+            )
+            self.assertEqual(suggestion["governance_status"], "candidate")
+            self.assertIsInstance(suggestion["payload"], dict)
+        for source in rendered["knowledge_source_refs"]:
+            self.assertEqual(
+                set(source),
+                {
+                    "source_ref_id", "source_kind", "title", "locator",
+                    "revision", "snapshot_sha256", "caveat",
+                },
+            )
+            self.assertEqual(len(source["snapshot_sha256"]), 64)
+
+    def test_markdown_appends_source_backed_candidates_with_bindings_and_sources(
+        self,
+    ):
+        default_markdown = render_markdown(
+            generate_proposal(ScenarioParameters.from_dict(self._supply_chain_raw()))
+        )
+        markdown = render_markdown(self._knowledge_proposal())
+
+        self.assertNotIn("## 有来源的候选建议", default_markdown)
+        self.assertIn("## 有来源的候选建议", markdown)
+        for value in (
+            "supply_chain.order_priority.supplier_evidence_boundary",
+            "`applicable`", "`candidate`", "relation_semantics.v1",
+            "supplier_qualified_to_supply_material", "QUALIFIED_TO_SUPPLY",
+            "eip_quality_vocabulary_v11", "version: 11",
+            "1e8b7bf0a128f716d55ab438a0830959dadd15cebcc91e576eee67e2ffd71425",
+            "First-party implementation snapshot, not a customer fact or industry standard.",
+            "order.primary", "binding_",
+        ):
+            self.assertIn(value, markdown)
+
+    def test_non_applicable_and_insufficient_outcomes_expose_no_candidates_or_sources(
+        self,
+    ):
+        dairy_raw = json.loads(
+            (self.REPO_ROOT / "examples/dairy_rnd.json").read_text(encoding="utf-8")
+        )
+        insufficient_raw = self._supply_chain_raw()
+        insufficient_raw["declared_bridges"] = []
+
+        for raw, expected_status, expected_reason in (
+            (dairy_raw, "not_applicable", "decision_key_mismatch"),
+            (
+                insufficient_raw,
+                "insufficient_information",
+                "order_material_bridge_missing",
+            ),
+        ):
+            with self.subTest(status=expected_status):
+                proposal = self._knowledge_proposal(raw)
+                rendered = json.loads(render_json(proposal))
+                outcome = rendered["knowledge_outcomes"][0]
+                markdown = render_markdown(proposal)
+
+                self.assertEqual(outcome["match_status"], expected_status)
+                self.assertEqual(outcome["reason_code"], expected_reason)
+                self.assertEqual(outcome["suggestions"], [])
+                self.assertEqual(rendered["knowledge_source_refs"], [])
+                self.assertIn("本知识单元未产生候选建议", markdown)
+                self.assertNotIn("eip_quality_vocabulary_v11", markdown)
+                self.assertNotIn("nano-ontoprompt", markdown)
+
+    def test_ready_filters_only_the_readiness_gap_while_to_confirm_retains_it(
+        self,
+    ):
+        pending_raw = self._supply_chain_raw()
+        ready_raw = self._supply_chain_raw()
+        ready_raw["readiness_declarations"] = [
+            {"requirement_key": "queue_entry_evidence_policy", "status": "ready"}
+        ]
+
+        pending = json.loads(render_json(self._knowledge_proposal(pending_raw)))
+        ready = json.loads(render_json(self._knowledge_proposal(ready_raw)))
+        pending_types = {
+            item["contribution_type"]
+            for item in pending["knowledge_outcomes"][0]["suggestions"]
+        }
+        ready_types = {
+            item["contribution_type"]
+            for item in ready["knowledge_outcomes"][0]["suggestions"]
+        }
+
+        self.assertIn("readiness_gap", pending_types)
+        self.assertNotIn("readiness_gap", ready_types)
+        self.assertEqual(len(pending["knowledge_outcomes"][0]["suggestions"]), 7)
+        self.assertEqual(len(ready["knowledge_outcomes"][0]["suggestions"]), 6)
+
+    def test_knowledge_projection_does_not_claim_final_decision_or_external_write(self):
+        text = render_json(self._knowledge_proposal()) + render_markdown(
+            self._knowledge_proposal()
+        )
+        for completed_claim in (
+            "confirmed queue membership", "final queue score", "action created",
+            "reviewed and published", "external write completed",
+        ):
+            self.assertNotIn(completed_claim, text.casefold())
 
 
 if __name__ == "__main__":
