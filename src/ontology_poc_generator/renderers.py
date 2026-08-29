@@ -78,7 +78,7 @@ def render_markdown(proposal: Proposal) -> str:
 
 ### 候选关系
 
-{_bullets(proposal.relation_candidates, "尚未生成候选关系")}
+{_bullets(proposal.relation_candidates, "未提供有来源的候选关系，需要业务确认或后续知识包补充")}
 
 ## 规则、约束与状态
 

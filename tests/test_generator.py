@@ -59,6 +59,121 @@ class GeneratorTest(unittest.TestCase):
 
         self.assertEqual(proposal.data_gaps, ("ERP 订单表：数据状态待确认",))
 
+    def test_object_order_does_not_create_relation_candidates_without_relations(self):
+        base = {
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+        }
+        first = generate_proposal(ScenarioParameters.from_dict({
+            **base,
+            "objects": ["订单", "物料", "供应商"],
+        }))
+        reordered = generate_proposal(ScenarioParameters.from_dict({
+            **base,
+            "objects": ["供应商", "订单", "物料"],
+        }))
+
+        self.assertEqual(first.relation_candidates, ())
+        self.assertEqual(reordered.relation_candidates, ())
+
+    def test_explicit_relations_keep_their_semantics_when_objects_are_reordered(self):
+        base = {
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "relations": [
+                {"source": "订单", "predicate": "使用", "target": "物料"}
+            ],
+            "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+        }
+        first = generate_proposal(ScenarioParameters.from_dict({
+            **base,
+            "objects": ["订单", "物料", "供应商"],
+        }))
+        reordered = generate_proposal(ScenarioParameters.from_dict({
+            **base,
+            "objects": ["供应商", "订单", "物料"],
+        }))
+
+        expected = ("订单 -> 使用（待业务确认） -> 物料",)
+        self.assertEqual(first.relation_candidates, expected)
+        self.assertEqual(reordered.relation_candidates, expected)
+
+    def test_rejects_relation_with_unknown_endpoint(self):
+        with self.assertRaisesRegex(
+            ScenarioValidationError,
+            "relations\\[0\\]\\.target must reference an object",
+        ):
+            ScenarioParameters.from_dict({
+                "industry": "供应链",
+                "scene_name": "履约风险处置",
+                "business_decision": "选择需要优先处置的订单",
+                "decision_owner": "计划经理",
+                "trigger": "订单交付风险上升时",
+                "objects": ["订单", "物料"],
+                "relations": [
+                    {"source": "订单", "predicate": "使用", "target": "供应商"}
+                ],
+                "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+            })
+
+    def test_rejects_relation_with_empty_predicate(self):
+        with self.assertRaisesRegex(
+            ScenarioValidationError,
+            "relations\\[0\\]\\.predicate is required",
+        ):
+            ScenarioParameters.from_dict({
+                "industry": "供应链",
+                "scene_name": "履约风险处置",
+                "business_decision": "选择需要优先处置的订单",
+                "decision_owner": "计划经理",
+                "trigger": "订单交付风险上升时",
+                "objects": ["订单", "物料"],
+                "relations": [
+                    {"source": "订单", "predicate": " ", "target": "物料"}
+                ],
+                "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+            })
+
+    def test_positional_participants_argument_remains_compatible(self):
+        params = ScenarioParameters(
+            "供应链",
+            "履约风险处置",
+            "选择需要优先处置的订单",
+            "计划经理",
+            "订单交付风险上升时",
+            ("订单", "物料"),
+            ("能否解释订单为什么被优先处置？",),
+            ("业务专家",),
+        )
+
+        self.assertEqual(params.participants, ("业务专家",))
+        self.assertEqual(params.relations, ())
+
+    def test_markdown_explains_when_explicit_relation_information_is_missing(self):
+        params = ScenarioParameters.from_dict({
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "objects": ["订单", "物料"],
+            "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+        })
+
+        markdown = render_markdown(generate_proposal(params))
+
+        self.assertIn(
+            "未提供有来源的候选关系，需要业务确认或后续知识包补充",
+            markdown,
+        )
+
     def test_rejects_string_customer_data_available(self):
         with self.assertRaisesRegex(
             ScenarioValidationError,

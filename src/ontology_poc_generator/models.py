@@ -65,12 +65,46 @@ class DataSource:
         )
 
 
+@dataclass(frozen=True)
+class Relation:
+    source: str
+    predicate: str
+    target: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source", _validated_text(self.source, "source"))
+        object.__setattr__(
+            self,
+            "predicate",
+            _validated_text(self.predicate, "predicate"),
+        )
+        object.__setattr__(self, "target", _validated_text(self.target, "target"))
+
+    @classmethod
+    def from_dict(cls, data: dict, index: int) -> "Relation":
+        prefix = f"relations[{index}]"
+        return cls(
+            source=_required_text(data, "source", f"{prefix}.source"),
+            predicate=_required_text(data, "predicate", f"{prefix}.predicate"),
+            target=_required_text(data, "target", f"{prefix}.target"),
+        )
+
+
 def _validated_data_sources(value: object) -> tuple[DataSource, ...]:
     if not isinstance(value, tuple):
         raise ScenarioValidationError("data_sources must be a tuple of DataSource")
     for index, source in enumerate(value):
         if not isinstance(source, DataSource):
             raise ScenarioValidationError(f"data_sources[{index}] must be a DataSource")
+    return value
+
+
+def _validated_relations(value: object) -> tuple[Relation, ...]:
+    if not isinstance(value, tuple):
+        raise ScenarioValidationError("relations must be a tuple of Relation")
+    for index, relation in enumerate(value):
+        if not isinstance(relation, Relation):
+            raise ScenarioValidationError(f"relations[{index}] must be a Relation")
     return value
 
 
@@ -89,6 +123,7 @@ class ScenarioParameters:
     desired_actions: tuple[str, ...] = ()
     customer_data_available: bool = False
     notes: str = ""
+    relations: tuple[Relation, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -96,6 +131,16 @@ class ScenarioParameters:
             "data_sources",
             _validated_data_sources(self.data_sources),
         )
+        object.__setattr__(self, "relations", _validated_relations(self.relations))
+        for index, relation in enumerate(self.relations):
+            if relation.source not in self.objects:
+                raise ScenarioValidationError(
+                    f"relations[{index}].source must reference an object"
+                )
+            if relation.target not in self.objects:
+                raise ScenarioValidationError(
+                    f"relations[{index}].target must reference an object"
+                )
         object.__setattr__(
             self,
             "customer_data_available",
@@ -118,6 +163,11 @@ class ScenarioParameters:
             not isinstance(item, dict) for item in raw_sources
         ):
             raise ScenarioValidationError("data_sources must be a list of objects")
+        raw_relations = data.get("relations", [])
+        if not isinstance(raw_relations, list) or any(
+            not isinstance(item, dict) for item in raw_relations
+        ):
+            raise ScenarioValidationError("relations must be a list of objects")
         return cls(
             industry=_required_text(data, "industry"),
             scene_name=_required_text(data, "scene_name"),
@@ -126,6 +176,10 @@ class ScenarioParameters:
             trigger=_required_text(data, "trigger"),
             objects=objects,
             acceptance_questions=questions,
+            relations=tuple(
+                Relation.from_dict(item, index)
+                for index, item in enumerate(raw_relations)
+            ),
             participants=_string_tuple(data, "participants"),
             constraints=_string_tuple(data, "constraints"),
             data_sources=tuple(

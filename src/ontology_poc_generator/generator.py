@@ -3,8 +3,8 @@ from ontology_poc_generator.models import Proposal, ScenarioParameters
 
 def generate_proposal(params: ScenarioParameters) -> Proposal:
     relations = tuple(
-        f"{source} -> 关联/约束（待业务确认） -> {target}"
-        for source, target in zip(params.objects, params.objects[1:])
+        f"{relation.source} -> {relation.predicate}（待业务确认） -> {relation.target}"
+        for relation in params.relations
     )
     evidence_mode = (
         "customer_data" if params.customer_data_available else "synthetic_demo"
