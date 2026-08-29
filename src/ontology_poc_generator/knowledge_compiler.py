@@ -97,7 +97,7 @@ def compile_knowledge_profiles(
         relation.relation_type_id.casefold() for relation in existing_relation_types
     }
     relation_types: list[RelationTypeSpec] = []
-    property_types: list[PropertyTypeSpec] = []
+    property_types_by_id: dict[str, PropertyTypeSpec] = {}
     rule_declarations: list[RuleDeclarationSpec] = []
     compilation_issues: list[CompilationIssue] = []
 
@@ -132,12 +132,46 @@ def compile_knowledge_profiles(
                     bindings_by_role=bindings_by_role,
                     entity_types_by_binding=entity_types_by_binding,
                 )
-                property_types.extend(compiled_properties)
+                for property_type in compiled_properties:
+                    property_identity = property_type.property_type_id.casefold()
+                    existing_property = property_types_by_id.get(
+                        property_identity
+                    )
+                    if existing_property is None:
+                        property_types_by_id[property_identity] = property_type
+                        continue
+                    property_contract = (
+                        property_type.semantic_key,
+                        property_type.domain_type_id,
+                        property_type.value_type,
+                        property_type.governance_status,
+                        property_type.origin_kind,
+                    )
+                    existing_contract = (
+                        existing_property.semantic_key,
+                        existing_property.domain_type_id,
+                        existing_property.value_type,
+                        existing_property.governance_status,
+                        existing_property.origin_kind,
+                    )
+                    if property_contract != existing_contract:
+                        raise SpecCompilationError(
+                            "conflicting_property_type_identity",
+                            "Property type identity has conflicting declarations.",
+                        )
+                    if (
+                        property_type.origin_ref_id.casefold(),
+                        property_type.origin_ref_id,
+                    ) < (
+                        existing_property.origin_ref_id.casefold(),
+                        existing_property.origin_ref_id,
+                    ):
+                        property_types_by_id[property_identity] = property_type
                 rule_declarations.append(compiled_rule)
 
     return KnowledgeCompilation(
         relation_types=tuple(relation_types),
-        property_types=tuple(property_types),
+        property_types=tuple(property_types_by_id.values()),
         rule_declarations=tuple(rule_declarations),
         compilation_issues=tuple(compilation_issues),
     )
