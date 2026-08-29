@@ -110,17 +110,18 @@ class SyntheticDecisionPolicyProfileTest(unittest.TestCase):
         ):
             self.load(data)
 
-    def test_rejects_unsupported_rule_kind(self):
+    def test_accepts_controlled_unsupported_rule_kind_for_compiler_disposition(self):
         data = accepted_policy_unit_dict()
         data["suggestion_templates"][0]["payload"]["rule_kind"] = (
             "rolling_probability_v1"
         )
 
-        with self.assertRaisesRegex(
-            KnowledgeValidationError,
-            "decision_rule.v1 rule_kind must be categorical_all_of_v1",
-        ):
-            self.load(data)
+        unit = self.load(data)
+
+        self.assertEqual(
+            dict(unit.suggestion_templates[0].payload)["rule_kind"],
+            "rolling_probability_v1",
+        )
 
     def test_rejects_forbidden_executable_fields(self):
         for field in ("threshold", "expression", "score", "weight", "action"):
@@ -142,6 +143,7 @@ class SyntheticDecisionPolicyProfileTest(unittest.TestCase):
 
     def test_rejects_empty_or_non_token_controlled_keys(self):
         fields = (
+            "rule_kind",
             "subject_role_key",
             "condition_1_semantic_key",
             "condition_2_semantic_key",

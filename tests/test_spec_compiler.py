@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -5,9 +6,15 @@ from unittest.mock import patch
 from ontology_poc_generator.compiler import compile_decision_pack
 from ontology_poc_generator.decision_pack import DecisionPack
 from ontology_poc_generator.errors import SpecCompilationError
-from ontology_poc_generator.knowledge import KnowledgeOutcome, load_knowledge_unit
+from ontology_poc_generator.identity import stable_compilation_issue_id
+from ontology_poc_generator.knowledge import (
+    KnowledgeOutcome,
+    KnowledgeUnit,
+    load_knowledge_unit,
+)
 from ontology_poc_generator.ontology_spec import (
     ClosureIssue,
+    CompilationIssueSeverity,
     CompilationStatus,
     EvidenceScope,
     ReferenceClosureReport,
@@ -22,6 +29,12 @@ from tests.test_decision_pack import minimal_scenario
 
 ROOT = Path(__file__).parents[1]
 UNIT_PATH = ROOT / "knowledge/supply_chain/supplier_evidence_boundary_v1.json"
+POLICY_BASELINE_PATH = (
+    ROOT / "knowledge/supply_chain/order_priority_policy_synthetic_s1_v1.json"
+)
+POLICY_CANDIDATE_PATH = (
+    ROOT / "tests/fixtures/knowledge/order_priority_policy_synthetic_candidate_v2.json"
+)
 
 
 def provided_pack() -> DecisionPack:
@@ -35,7 +48,153 @@ def golden_pack(**scenario_overrides: object) -> DecisionPack:
     )
 
 
+def policy_pack(path: Path = POLICY_BASELINE_PATH) -> DecisionPack:
+    return compile_decision_pack(
+        minimal_scenario(),
+        (load_knowledge_unit(path),),
+    )
+
+
+def unsupported_policy_pack() -> DecisionPack:
+    data = json.loads(POLICY_BASELINE_PATH.read_text(encoding="utf-8"))
+    data["suggestion_templates"][0]["payload"]["rule_kind"] = (
+        "rolling_probability_v1"
+    )
+    unit = KnowledgeUnit.from_dict(data, unit_content_hash="b" * 64)
+    return compile_decision_pack(minimal_scenario(), (unit,))
+
+
 class SpecCompilerTest(unittest.TestCase):
+    def test_synthetic_policy_compiles_stable_declarations_and_changed_hash(self):
+        baseline = compile_ontology_spec(policy_pack())
+        candidate = compile_ontology_spec(policy_pack(POLICY_CANDIDATE_PATH))
+
+        self.assertTrue(baseline.closure_report.is_closed)
+        self.assertTrue(candidate.closure_report.is_closed)
+        self.assertIs(baseline.compilation_status, CompilationStatus.COMPLETE)
+        self.assertIs(candidate.compilation_status, CompilationStatus.COMPLETE)
+        self.assertEqual(len(baseline.spec.property_types), 2)
+        self.assertEqual(len(candidate.spec.property_types), 2)
+        self.assertEqual(len(baseline.spec.rule_declarations), 1)
+        self.assertEqual(len(candidate.spec.rule_declarations), 1)
+        self.assertEqual(baseline.spec.compilation_issues, ())
+        self.assertEqual(candidate.spec.compilation_issues, ())
+
+        baseline_properties = {
+            item.semantic_key: item for item in baseline.spec.property_types
+        }
+        candidate_properties = {
+            item.semantic_key: item for item in candidate.spec.property_types
+        }
+        self.assertEqual(
+            set(baseline_properties),
+            {"supplier_commitment_state", "qualified_alternative_state"},
+        )
+        self.assertEqual(
+            {
+                key: item.property_type_id
+                for key, item in baseline_properties.items()
+            },
+            {
+                key: item.property_type_id
+                for key, item in candidate_properties.items()
+            },
+        )
+        self.assertEqual(
+            {item.value_type for item in baseline.spec.property_types},
+            {"symbolic_state"},
+        )
+
+        baseline_rule = baseline.spec.rule_declarations[0]
+        candidate_rule = candidate.spec.rule_declarations[0]
+        self.assertEqual(baseline_rule.rule_id, candidate_rule.rule_id)
+        self.assertIs(
+            baseline_rule.governance_status,
+            SpecGovernanceStatus.CANDIDATE,
+        )
+
+        def conditions_by_semantic_key(result):
+            properties_by_id = {
+                item.property_type_id: item for item in result.spec.property_types
+            }
+            return {
+                properties_by_id[condition.property_type_id].semantic_key: (
+                    condition.operator,
+                    condition.allowed_values,
+                )
+                for condition in result.spec.rule_declarations[0].conditions
+            }
+
+        self.assertEqual(
+            conditions_by_semantic_key(baseline),
+            {
+                "supplier_commitment_state": ("in", ("missed",)),
+                "qualified_alternative_state": ("in", ("none",)),
+            },
+        )
+        self.assertEqual(
+            conditions_by_semantic_key(candidate),
+            {
+                "supplier_commitment_state": (
+                    "in",
+                    ("at_risk", "missed"),
+                ),
+                "qualified_alternative_state": ("in", ("none",)),
+            },
+        )
+        self.assertNotEqual(
+            baseline.spec_content_hash,
+            candidate.spec_content_hash,
+        )
+
+    def test_unsupported_rule_kind_is_one_blocking_compiler_disposition(self):
+        pack = unsupported_policy_pack()
+
+        result = compile_ontology_spec(pack)
+
+        self.assertTrue(result.closure_report.is_closed)
+        self.assertIs(result.compilation_status, CompilationStatus.BLOCKED)
+        self.assertEqual(result.spec.property_types, ())
+        self.assertEqual(result.spec.rule_declarations, ())
+        self.assertEqual(len(result.spec.compilation_issues), 1)
+        issue = result.spec.compilation_issues[0]
+        suggestion = pack.knowledge_outcomes[0].suggestions[0]
+        self.assertEqual(issue.code, "unsupported_rule_kind")
+        self.assertIs(issue.severity, CompilationIssueSeverity.BLOCKING)
+        self.assertEqual(
+            issue.issue_id,
+            stable_compilation_issue_id(
+                suggestion.suggestion_id,
+                "unsupported_rule_kind",
+                "decision_rule.v1",
+            ),
+        )
+
+    def test_readiness_gap_stays_review_only_alongside_compiled_rule(self):
+        pack = compile_decision_pack(
+            minimal_scenario(),
+            (
+                load_knowledge_unit(UNIT_PATH),
+                load_knowledge_unit(POLICY_BASELINE_PATH),
+            ),
+        )
+
+        result = compile_ontology_spec(pack)
+
+        readiness_issue = next(
+            issue
+            for issue in result.spec.compilation_issues
+            if issue.code == "readiness_gap_blocks_rule_compilation"
+        )
+        self.assertIs(
+            readiness_issue.severity,
+            CompilationIssueSeverity.REQUIRES_REVIEW,
+        )
+        self.assertTrue(result.closure_report.is_closed)
+        self.assertIs(result.compilation_status, CompilationStatus.COMPLETE)
+        self.assertEqual(len(result.spec.property_types), 2)
+        self.assertEqual(len(result.spec.rule_declarations), 1)
+
     def test_provided_only_pack_compiles_to_closed_complete_result(self):
         result = compile_ontology_spec(provided_pack())
 

@@ -6,7 +6,9 @@ from ontology_poc_generator.decision_pack import DecisionPack, InputBinding
 from ontology_poc_generator.errors import SpecCompilationError
 from ontology_poc_generator.identity import (
     stable_compilation_issue_id,
+    stable_property_type_id,
     stable_relation_type_id,
+    stable_rule_id,
 )
 from ontology_poc_generator.knowledge import (
     KnowledgeSuggestion,
@@ -18,6 +20,7 @@ from ontology_poc_generator.ontology_spec import (
     EntityTypeSpec,
     PropertyTypeSpec,
     RelationTypeSpec,
+    RuleConditionSpec,
     RuleDeclarationSpec,
     SpecGovernanceStatus,
     SpecOriginKind,
@@ -42,6 +45,8 @@ _NON_EXECUTABLE_PROFILES = {
         "Readiness gap requires review before rule compilation.",
     ),
 }
+
+_SUPPORTED_RULE_KIND = "categorical_all_of_v1"
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,8 @@ def compile_knowledge_profiles(
         relation.relation_type_id.casefold() for relation in existing_relation_types
     }
     relation_types: list[RelationTypeSpec] = []
+    property_types: list[PropertyTypeSpec] = []
+    rule_declarations: list[RuleDeclarationSpec] = []
     compilation_issues: list[CompilationIssue] = []
 
     for outcome in pack.knowledge_outcomes:
@@ -114,9 +121,24 @@ def compile_knowledge_profiles(
                 relation_types.append(relation)
             elif suggestion.payload_schema in _NON_EXECUTABLE_PROFILES:
                 compilation_issues.append(_compile_issue(suggestion))
+            elif suggestion.payload_schema == "decision_rule.v1":
+                if dict(suggestion.payload)["rule_kind"] != _SUPPORTED_RULE_KIND:
+                    compilation_issues.append(
+                        _compile_unsupported_rule_issue(suggestion)
+                    )
+                    continue
+                compiled_properties, compiled_rule = _compile_rule(
+                    suggestion,
+                    bindings_by_role=bindings_by_role,
+                    entity_types_by_binding=entity_types_by_binding,
+                )
+                property_types.extend(compiled_properties)
+                rule_declarations.append(compiled_rule)
 
     return KnowledgeCompilation(
         relation_types=tuple(relation_types),
+        property_types=tuple(property_types),
+        rule_declarations=tuple(rule_declarations),
         compilation_issues=tuple(compilation_issues),
     )
 
@@ -183,3 +205,98 @@ def _compile_issue(suggestion: KnowledgeSuggestion) -> CompilationIssue:
         payload_schema=suggestion.payload_schema,
         message=message,
     )
+
+
+def _compile_unsupported_rule_issue(
+    suggestion: KnowledgeSuggestion,
+) -> CompilationIssue:
+    code = "unsupported_rule_kind"
+    return CompilationIssue(
+        issue_id=stable_compilation_issue_id(
+            suggestion.suggestion_id,
+            code,
+            suggestion.payload_schema,
+        ),
+        code=code,
+        severity=CompilationIssueSeverity.BLOCKING,
+        suggestion_id=suggestion.suggestion_id,
+        payload_schema=suggestion.payload_schema,
+        message="Decision rule kind is not supported by the declaration compiler.",
+    )
+
+
+def _compile_rule(
+    suggestion: KnowledgeSuggestion,
+    *,
+    bindings_by_role: dict[str, InputBinding],
+    entity_types_by_binding: dict[str, EntityTypeSpec],
+) -> tuple[tuple[PropertyTypeSpec, ...], RuleDeclarationSpec]:
+    payload = dict(suggestion.payload)
+    subject_binding = bindings_by_role.get(payload["subject_role_key"].casefold())
+    if subject_binding is None:
+        raise SpecCompilationError(
+            "missing_rule_subject_binding",
+            "Rule subject role cannot be resolved to an input binding.",
+        )
+    if subject_binding.binding_id not in suggestion.input_binding_ids:
+        raise SpecCompilationError(
+            "rule_subject_binding_mismatch",
+            "Rule subject is outside suggestion input provenance.",
+        )
+    subject_entity = entity_types_by_binding.get(subject_binding.binding_id)
+    if subject_entity is None:
+        raise SpecCompilationError(
+            "missing_rule_subject_binding",
+            "Rule subject binding cannot be resolved to an entity type.",
+        )
+
+    property_types = tuple(
+        PropertyTypeSpec(
+            property_type_id=stable_property_type_id(
+                payload[f"condition_{index}_semantic_key"],
+                subject_entity.type_id,
+            ),
+            semantic_key=payload[f"condition_{index}_semantic_key"],
+            domain_type_id=subject_entity.type_id,
+            value_type="symbolic_state",
+            governance_status=SpecGovernanceStatus.CANDIDATE,
+            origin_kind=SpecOriginKind.KNOWLEDGE_SUGGESTION,
+            origin_ref_id=suggestion.suggestion_id,
+        )
+        for index in (1, 2)
+    )
+    properties_by_semantic_key = {
+        property_type.semantic_key: property_type
+        for property_type in property_types
+    }
+    conditions = tuple(
+        RuleConditionSpec(
+            property_type_id=properties_by_semantic_key[
+                payload[f"condition_{index}_semantic_key"]
+            ].property_type_id,
+            operator="in",
+            allowed_values=tuple(
+                payload[f"condition_{index}_allowed_values"].split(",")
+            ),
+        )
+        for index in (1, 2)
+    )
+    rule = RuleDeclarationSpec(
+        rule_id=stable_rule_id(
+            suggestion.semantic_key,
+            payload["rule_kind"],
+            subject_entity.type_id,
+            payload["output_conclusion_key"],
+        ),
+        semantic_key=suggestion.semantic_key,
+        rule_kind=payload["rule_kind"],
+        subject_type_id=subject_entity.type_id,
+        conditions=conditions,
+        output_conclusion_key=payload["output_conclusion_key"],
+        positive_conclusion_value=payload["positive_conclusion_value"],
+        negative_conclusion_value=payload["negative_conclusion_value"],
+        description=payload["description"],
+        governance_status=SpecGovernanceStatus.CANDIDATE,
+        origin_suggestion_id=suggestion.suggestion_id,
+    )
+    return property_types, rule
