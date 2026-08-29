@@ -145,6 +145,21 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.ontology_spec_output is not None:
+        if args.output is not None:
+            try:
+                outputs_collide = (
+                    args.output.resolve() == args.ontology_spec_output.resolve()
+                )
+            except (OSError, RuntimeError) as exc:
+                print(f"output error: {exc}", file=sys.stderr)
+                return 3
+            if outputs_collide:
+                print(
+                    "output error: --output and --ontology-spec-output "
+                    "must resolve to different files",
+                    file=sys.stderr,
+                )
+                return 3
         requested_outputs = []
         if args.output is not None:
             requested_outputs.append((args.output, content))
