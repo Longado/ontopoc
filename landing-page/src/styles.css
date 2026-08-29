@@ -29,7 +29,7 @@ a { color: inherit; text-decoration: none; }
 section[id] { scroll-margin-top: 78px; }
 
 .standalone-demo {
-  min-width: 1024px;
+  min-width: 0;
   height: 100vh;
   min-height: 680px;
   display: flex;
@@ -1385,6 +1385,23 @@ footer p:last-child { color: var(--muted); }
 }
 
 @media (max-width: 640px) {
+  .standalone-demo { width: 100%; height: auto; min-height: 100dvh; overflow: visible; }
+  .standalone-demo-header { min-height: 64px; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 0 14px; }
+  .standalone-demo-brand { width: 128px; }
+  .standalone-demo-title,
+  .standalone-demo-actions > a { display: none; }
+  .standalone-demo-workspace { min-height: calc(100dvh - 64px); display: block; overflow: visible; }
+  .standalone-demo-workspace > * { min-height: calc(100dvh - 64px); }
+  .agent-review { overflow: visible; }
+  .agent-review-header { min-height: 108px; padding: 20px 14px; }
+  .agent-review-header h2 { font-size: 28px; }
+  .agent-review-layout { grid-template-columns: 1fr; overflow: visible; }
+  .agent-review-main { overflow: visible; padding: 16px 14px 24px; }
+  .agent-stage-list { grid-template-columns: 1fr 1fr; }
+  .agent-stage-list > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--ink); }
+  .agent-stage-list > div:nth-child(4) { border-top: 1px solid var(--ink); }
+  .agent-candidate-groups { grid-template-columns: 1fr; }
+  .agent-review-aside { overflow: visible; border-top: 1px solid var(--ink); border-left: 0; }
   .site-header { height: 66px; padding: 0 18px; }
   .brand { width: 126px; }
   .header-actions { gap: 6px; }

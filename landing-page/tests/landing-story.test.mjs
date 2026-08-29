@@ -98,8 +98,11 @@ test("document modeling stays frontend-only and exposes no API POST or credentia
 });
 
 test("idle document modeler is PC-first and collapses without horizontal overflow", () => {
+  assert.match(styles, /\.standalone-demo\s*\{[^}]*min-width:\s*0/s);
+  assert.doesNotMatch(styles, /\.standalone-demo\s*\{[^}]*min-width:\s*1024px/s);
   assert.match(styles, /\.document-modeler\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1\.1fr\)/s);
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.document-modeler\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.standalone-demo-workspace\s*\{[^}]*overflow:\s*visible/s);
   assert.match(styles, /\.document-modeler\s*\{[^}]*min-width:\s*0/s);
 });
 
