@@ -47,7 +47,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 - [技术架构](docs/TECHNICAL_ARCHITECTURE.md)
 - [滚动阶段路线图](docs/ROADMAP.md)
 - [发现与决策记录](docs/DISCOVERY_LOG.md)
-- [原型与技术架构图](docs/design/README.md)
+- [技术架构图](docs/design/README.md)
 - [MVP 实施计划](docs/superpowers/plans/2026-08-29-ontology-poc-generator-mvp.md)
 
 ## 当前边界
