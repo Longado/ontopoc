@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import hashlib
+import json
 import re
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from ontology_poc_generator.errors import OntologySpecValidationError
 
@@ -44,9 +46,12 @@ def _sorted_unique_elements(
 ) -> tuple[object, ...]:
     items = _tuple(value, field, item_type)
     identifiers = tuple(getattr(item, id_field) for item in items)
-    if len(set(identifiers)) != len(identifiers):
+    normalized_identifiers = tuple(identifier.casefold() for identifier in identifiers)
+    if len(set(normalized_identifiers)) != len(normalized_identifiers):
         raise OntologySpecValidationError(f"duplicate {id_field}")
-    return tuple(sorted(items, key=lambda item: getattr(item, id_field)))
+    return tuple(
+        sorted(items, key=lambda item: getattr(item, id_field).casefold())
+    )
 
 
 class SpecStage(str, Enum):
@@ -159,7 +164,14 @@ class RuleConditionSpec:
             _text(value, f"allowed_values[{index}]")
             for index, value in enumerate(values)
         )
-        object.__setattr__(self, "allowed_values", tuple(sorted(normalized_values)))
+        normalized_keys = tuple(value.casefold() for value in normalized_values)
+        if len(set(normalized_keys)) != len(normalized_keys):
+            raise OntologySpecValidationError("duplicate allowed_value")
+        object.__setattr__(
+            self,
+            "allowed_values",
+            tuple(sorted(normalized_values, key=str.casefold)),
+        )
 
 
 @dataclass(frozen=True)
@@ -190,6 +202,16 @@ class RuleDeclarationSpec:
         ):
             object.__setattr__(self, field, _text(getattr(self, field), field))
         conditions = _tuple(self.conditions, "conditions", RuleConditionSpec)
+        condition_keys = tuple(
+            (
+                item.property_type_id.casefold(),
+                item.operator.casefold(),
+                tuple(value.casefold() for value in item.allowed_values),
+            )
+            for item in conditions
+        )
+        if len(set(condition_keys)) != len(condition_keys):
+            raise OntologySpecValidationError("duplicate condition")
         object.__setattr__(
             self,
             "conditions",
@@ -197,9 +219,9 @@ class RuleDeclarationSpec:
                 sorted(
                     conditions,
                     key=lambda item: (
-                        item.property_type_id,
-                        item.operator,
-                        item.allowed_values,
+                        item.property_type_id.casefold(),
+                        item.operator.casefold(),
+                        tuple(value.casefold() for value in item.allowed_values),
                     ),
                 )
             ),
@@ -268,10 +290,15 @@ class OntologySpec:
             _text(binding_id, f"input_binding_ids[{index}]")
             for index, binding_id in enumerate(input_binding_ids)
         )
-        if len(set(normalized_binding_ids)) != len(normalized_binding_ids):
+        normalized_binding_keys = tuple(
+            binding_id.casefold() for binding_id in normalized_binding_ids
+        )
+        if len(set(normalized_binding_keys)) != len(normalized_binding_keys):
             raise OntologySpecValidationError("duplicate input_binding_id")
         object.__setattr__(
-            self, "input_binding_ids", tuple(sorted(normalized_binding_ids))
+            self,
+            "input_binding_ids",
+            tuple(sorted(normalized_binding_ids, key=str.casefold)),
         )
         object.__setattr__(
             self,
@@ -320,3 +347,118 @@ class OntologySpec:
                 "issue_id",
             ),
         )
+
+
+def _entity_type_to_dict(entity_type: EntityTypeSpec) -> dict[str, Any]:
+    return {
+        "type_id": entity_type.type_id,
+        "role_key": entity_type.role_key,
+        "semantic_key": entity_type.semantic_key,
+        "label": entity_type.label,
+        "governance_status": entity_type.governance_status.value,
+        "origin_kind": entity_type.origin_kind.value,
+        "origin_ref_id": entity_type.origin_ref_id,
+    }
+
+
+def _relation_type_to_dict(relation_type: RelationTypeSpec) -> dict[str, Any]:
+    return {
+        "relation_type_id": relation_type.relation_type_id,
+        "semantic_key": relation_type.semantic_key,
+        "predicate": relation_type.predicate,
+        "domain_type_id": relation_type.domain_type_id,
+        "range_type_id": relation_type.range_type_id,
+        "description": relation_type.description,
+        "governance_status": relation_type.governance_status.value,
+        "origin_kind": relation_type.origin_kind.value,
+        "origin_ref_id": relation_type.origin_ref_id,
+    }
+
+
+def _property_type_to_dict(property_type: PropertyTypeSpec) -> dict[str, Any]:
+    return {
+        "property_type_id": property_type.property_type_id,
+        "semantic_key": property_type.semantic_key,
+        "domain_type_id": property_type.domain_type_id,
+        "value_type": property_type.value_type,
+        "governance_status": property_type.governance_status.value,
+        "origin_kind": property_type.origin_kind.value,
+        "origin_ref_id": property_type.origin_ref_id,
+    }
+
+
+def _rule_condition_to_dict(condition: RuleConditionSpec) -> dict[str, Any]:
+    return {
+        "property_type_id": condition.property_type_id,
+        "operator": condition.operator,
+        "allowed_values": list(condition.allowed_values),
+    }
+
+
+def _rule_declaration_to_dict(rule: RuleDeclarationSpec) -> dict[str, Any]:
+    return {
+        "rule_id": rule.rule_id,
+        "semantic_key": rule.semantic_key,
+        "rule_kind": rule.rule_kind,
+        "subject_type_id": rule.subject_type_id,
+        "conditions": [
+            _rule_condition_to_dict(condition) for condition in rule.conditions
+        ],
+        "output_conclusion_key": rule.output_conclusion_key,
+        "positive_conclusion_value": rule.positive_conclusion_value,
+        "negative_conclusion_value": rule.negative_conclusion_value,
+        "description": rule.description,
+        "governance_status": rule.governance_status.value,
+        "origin_suggestion_id": rule.origin_suggestion_id,
+    }
+
+
+def _compilation_issue_to_dict(issue: CompilationIssue) -> dict[str, Any]:
+    return {
+        "issue_id": issue.issue_id,
+        "code": issue.code,
+        "severity": issue.severity.value,
+        "suggestion_id": issue.suggestion_id,
+        "payload_schema": issue.payload_schema,
+        "message": issue.message,
+    }
+
+
+def ontology_spec_to_dict(spec: OntologySpec) -> dict[str, Any]:
+    """Return the explicit canonical content projection of an ontology spec."""
+    return {
+        "schema": spec.schema,
+        "decision_key": spec.decision_key,
+        "pack_content_hash": spec.pack_content_hash,
+        "stage": spec.stage.value,
+        "evidence_scope": spec.evidence_scope.value,
+        "governance_status": spec.governance_status.value,
+        "input_binding_ids": list(spec.input_binding_ids),
+        "entity_types": [_entity_type_to_dict(item) for item in spec.entity_types],
+        "relation_types": [
+            _relation_type_to_dict(item) for item in spec.relation_types
+        ],
+        "property_types": [
+            _property_type_to_dict(item) for item in spec.property_types
+        ],
+        "rule_declarations": [
+            _rule_declaration_to_dict(item) for item in spec.rule_declarations
+        ],
+        "compilation_issues": [
+            _compilation_issue_to_dict(item) for item in spec.compilation_issues
+        ],
+    }
+
+
+def canonical_ontology_spec_json(spec: OntologySpec) -> str:
+    return json.dumps(
+        ontology_spec_to_dict(spec),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def ontology_spec_content_hash(spec: OntologySpec) -> str:
+    canonical = canonical_ontology_spec_json(spec).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
