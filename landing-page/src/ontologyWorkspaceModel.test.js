@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   answerArtifactQuestion,
+  keepOntologySelection,
   projectOntologyWorkspace,
 } from "./ontologyWorkspaceModel.js";
 
@@ -50,6 +51,16 @@ function resolveJsonPointer(value, pointer) {
     .map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"))
     .reduce((current, part) => current?.[part], value);
 }
+
+test("keeps the same selection reference to avoid a controlled graph update loop", () => {
+  const current = { kind: "node", id: "entity-1" };
+
+  assert.equal(keepOntologySelection(current, { kind: "node", id: "entity-1" }), current);
+  assert.deepEqual(
+    keepOntologySelection(current, { kind: "edge", id: "relation-1" }),
+    { kind: "edge", id: "relation-1" },
+  );
+});
 
 test("projects three entity nodes, three directed relation edges, and one distinct rule", () => {
   const workspace = projectOntologyWorkspace(artifact);

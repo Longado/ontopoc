@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 
-import { answerArtifactQuestion } from "./ontologyWorkspaceModel.js";
+import { answerArtifactQuestion, keepOntologySelection } from "./ontologyWorkspaceModel.js";
 
 const localCopy = {
   zh: {
@@ -374,6 +374,9 @@ export function OntologyWorkspace({ data, t, language }) {
   const chatTriggerRef = useRef(null);
   const drawerRef = useRef(null);
   const chatWasOpenRef = useRef(false);
+  const selectItem = useCallback((next) => {
+    setSelected((current) => keepOntologySelection(current, next));
+  }, []);
 
   const selectedItem = selected.kind === "node"
     ? workspace.nodes.find(({ id }) => id === selected.id)
@@ -449,7 +452,7 @@ export function OntologyWorkspace({ data, t, language }) {
       {view === "graph" ? (
         <div id="ontology-panel-graph" role="tabpanel" aria-labelledby="ontology-view-graph" className="ontology-graph-layout">
           <ReactFlowProvider>
-            <GraphCanvas workspace={workspace} selected={selected} onSelect={setSelected} copy={copy} />
+            <GraphCanvas workspace={workspace} selected={selected} onSelect={selectItem} copy={copy} />
           </ReactFlowProvider>
           <div className="ontology-inspector-shell">
             <EvidenceInspector item={selectedItem} copy={copy} onOpenChat={() => setChatOpen(true)} chatTriggerRef={chatTriggerRef} />

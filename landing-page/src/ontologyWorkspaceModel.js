@@ -439,6 +439,10 @@ export function projectOntologyWorkspace(input) {
   };
 }
 
+export function keepOntologySelection(current, next) {
+  return current.kind === next.kind && current.id === next.id ? current : next;
+}
+
 export function answerArtifactQuestion(question, workspace, language = "zh") {
   requireRecord(workspace, "ontology workspace");
   const text = typeof question === "string" ? question.trim() : "";
