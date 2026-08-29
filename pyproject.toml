@@ -11,6 +11,7 @@ dependencies = []
 
 [project.scripts]
 ontology-poc = "ontology_poc_generator.cli:main"
+ontology-poc-recognize = "ontology_poc_generator.recognition_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
