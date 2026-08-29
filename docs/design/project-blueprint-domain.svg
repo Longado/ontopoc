@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">ProjectBlueprint 领域模型</title><desc id="desc">展示业务场景、决策、角色、对象、关系、约束、数据、证据、发现、人工裁决、行动、回执和验收案例之间的关系。</desc>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6b768c"/></marker><style>.t{font-family:Inter,PingFang SC,Microsoft YaHei,sans-serif;fill:#172033}.h{font-size:28px;font-weight:750}.b{font-size:15px;font-weight:700}.s{font-size:12px;fill:#667085}.node{fill:#fff;stroke:#d7dee8;stroke-width:2}.core{fill:#edf2ff;stroke:#315efb;stroke-width:2.5}.human{fill:#fff4df;stroke:#c47a1b;stroke-width:2}.evidence{fill:#e9f8f4;stroke:#0f9f82;stroke-width:2}.line{fill:none;stroke:#6b768c;stroke-width:2;marker-end:url(#a)}.label{font-size:10px;fill:#6b768c}</style></defs>
+  <rect width="1600" height="1000" fill="#f5f7fa"/><text class="t h" x="70" y="64">ProjectBlueprint · 最小可校验领域模型</text><text class="t s" x="70" y="92">稳定 ID 和显式引用优先；Proposal、PRD 与验收矩阵只是投影</text>
+  <g transform="translate(65 140)">
+    <rect class="core" x="0" y="0" width="240" height="92" rx="14"/><text class="t b" x="24" y="34">BusinessScene</text><text class="t s" x="24" y="60">scene_id · scope · evidence_mode</text><text class="t s" x="24" y="78">synthetic / provided / authorized</text>
+    <path class="line" d="M240 46H330"/><text class="t label" x="258" y="36">SUPPORTS</text>
+    <rect class="core" x="330" y="0" width="270" height="92" rx="14"/><text class="t b" x="354" y="34">Decision</text><text class="t s" x="354" y="60">trigger · subject · owner_id</text><text class="t s" x="354" y="78">allowed_outcomes · next_action</text>
+
+    <path class="line" d="M465 92V160H160"/><text class="t label" x="318" y="148">OWNED_BY</text>
+    <rect class="human" x="20" y="160" width="280" height="92" rx="14"/><text class="t b" x="44" y="194">Actor</text><text class="t s" x="44" y="220">role · responsibility · permission</text><text class="t s" x="44" y="238">business / data / technical owner</text>
+
+    <path class="line" d="M465 92V160H465"/><text class="t label" x="478" y="142">USES</text>
+    <rect class="node" x="340" y="160" width="250" height="92" rx="14"/><text class="t b" x="364" y="194">ObjectType</text><text class="t s" x="364" y="220">object_id · semantic_key</text><text class="t s" x="364" y="238">identifier · governance_status</text>
+    <path class="line" d="M590 206H675"/><text class="t label" x="608" y="195">CONNECTED_BY</text>
+    <rect class="node" x="675" y="160" width="285" height="92" rx="14"/><text class="t b" x="699" y="194">RelationType</text><text class="t s" x="699" y="220">predicate · domain_id · range_id</text><text class="t s" x="699" y="238">cardinality · status · source_refs</text>
+
+    <path class="line" d="M600 46H1080V160"/><text class="t label" x="835" y="36">CONSTRAINED_BY</text>
+    <rect class="core" x="990" y="160" width="280" height="92" rx="14"/><text class="t b" x="1014" y="194">Constraint</text><text class="t s" x="1014" y="220">rule_id · expression · severity</text><text class="t s" x="1014" y="238">required_input_ids</text>
+
+    <path class="line" d="M1130 252V330"/><text class="t label" x="1142" y="294">REQUIRES</text>
+    <rect class="evidence" x="955" y="330" width="350" height="106" rx="14"/><text class="t b" x="979" y="364">DataRequirement + DataSource</text><text class="t s" x="979" y="390">source_id · field / business meaning</text><text class="t s" x="979" y="408">status · authorization · snapshot</text><text class="t s" x="979" y="426">available / to_confirm / unavailable</text>
+
+    <path class="line" d="M955 383H850"/><text class="t label" x="866" y="372">PRODUCES</text>
+    <rect class="evidence" x="595" y="330" width="255" height="106" rx="14"/><text class="t b" x="619" y="364">Evidence</text><text class="t s" x="619" y="390">evidence_id · source_ref</text><text class="t s" x="619" y="408">content_hash · strength</text><text class="t s" x="619" y="426">supports / contradicts</text>
+    <path class="line" d="M595 383H490"/><text class="t label" x="508" y="372">SUPPORTS</text>
+    <rect class="core" x="235" y="330" width="255" height="106" rx="14"/><text class="t b" x="259" y="364">Finding</text><text class="t s" x="259" y="390">finding_id · rule_id</text><text class="t s" x="259" y="408">evaluation_status</text><text class="t s" x="259" y="426">pass / fail / not_evaluable</text>
+    <path class="line" d="M362 436V520"/><text class="t label" x="374" y="482">REVIEWED_AS</text>
+    <rect class="human" x="210" y="520" width="305" height="106" rx="14"/><text class="t b" x="234" y="554">HumanVerdict</text><text class="t s" x="234" y="580">verdict_id · actor_id · reason</text><text class="t s" x="234" y="598">confirmed / rejected / insufficient</text><text class="t s" x="234" y="616">append-only review record</text>
+
+    <path class="line" d="M515 573H630"/><text class="t label" x="536" y="562">AUTHORIZES</text>
+    <rect class="core" x="630" y="520" width="310" height="106" rx="14"/><text class="t b" x="654" y="554">Action</text><text class="t s" x="654" y="580">owner · approver · parameters</text><text class="t s" x="654" y="598">system_boundary · pre/post-condition</text><text class="t s" x="654" y="616">rollback · status</text>
+    <path class="line" d="M940 573H1035"/><text class="t label" x="957" y="562">RETURNS</text>
+    <rect class="evidence" x="1035" y="520" width="270" height="106" rx="14"/><text class="t b" x="1059" y="554">Receipt / Result</text><text class="t s" x="1059" y="580">before · after · executed_by</text><text class="t s" x="1059" y="598">outcome · error · timestamp</text><text class="t s" x="1059" y="616">feedback to decision</text>
+
+    <path class="line" d="M1170 626V700H785"/><text class="t label" x="954" y="688">VERIFIES</text>
+    <rect class="core" x="610" y="700" width="350" height="116" rx="14"/><text class="t b" x="634" y="734">AcceptanceCase</text><text class="t s" x="634" y="760">preconditions · steps · expected_result</text><text class="t s" x="634" y="778">failure_condition · evidence_artifact</text><text class="t s" x="634" y="796">owner · verdict · readiness</text>
+  </g>
+</svg>

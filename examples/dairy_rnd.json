@@ -1,0 +1,21 @@
+{
+  "industry": "乳制品研发",
+  "scene_name": "功能型调制乳候选实验方向设计",
+  "business_decision": "在进入下一轮实验前，选择最值得验证的候选配方与工艺方向",
+  "decision_owner": "研发项目负责人",
+  "trigger": "收到新品需求并完成首轮需求澄清后",
+  "participants": ["市场需求负责人", "配方工程师", "工艺工程师", "感官评价人员"],
+  "objects": ["市场需求", "研发目标", "候选配方", "原料", "工艺参数", "实验", "感官结果", "稳定性结果"],
+  "constraints": ["原料必须满足法规和企业内控", "候选方向必须有可执行实验验证", "缺少稳定性数据时不得给出生产结论"],
+  "data_sources": [
+    {"name": "需求访谈纪要", "type": "document", "status": "available"},
+    {"name": "历史配方与实验记录", "type": "table", "status": "to_confirm"}
+  ],
+  "desired_actions": ["生成候选实验任务", "指定实验责任人", "记录选择和淘汰理由"],
+  "acceptance_questions": [
+    "系统能否说明每个候选方向对应的需求、原料、工艺和证据？",
+    "业务人员修正规则后，候选排序和实验任务是否同步变化？"
+  ],
+  "customer_data_available": false,
+  "notes": "第一版只生成候选实验方向，不生成真实物料编码、用量或生产配方。"
+}

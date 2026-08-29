@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="720" viewBox="0 0 1600 720" role="img" aria-labelledby="title desc">
+  <title id="title">Ontology POC Generator 最小用户流程</title>
+  <desc id="desc">从创建草稿、收敛主决策、补全蓝图、人工审查、影响预览到两种交接包的流程。未来 EIP 验证使用虚线表示。</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#62708a"/></marker><style>.t{font-family:Inter,PingFang SC,Microsoft YaHei,sans-serif;fill:#172033}.h{font-size:28px;font-weight:750}.s{font-size:15px}.xs{font-size:12px;fill:#667085}.box{fill:#fff;stroke:#d7dee8;stroke-width:2}.next{fill:#edf2ff;stroke:#315efb;stroke-width:2}.warn{fill:#fff4df;stroke:#c47a1b;stroke-width:2}.future{fill:#f7f8fa;stroke:#8792a6;stroke-width:2;stroke-dasharray:8 7}.line{fill:none;stroke:#62708a;stroke-width:2.5;marker-end:url(#arrow)}.dash{stroke-dasharray:8 7}</style></defs>
+  <rect width="1600" height="720" fill="#f5f7fa"/>
+  <text x="70" y="70" class="t h">最小端到端用户流程</text>
+  <text x="70" y="100" class="t s">先形成可信交接，再扩展 Web、AI 与 EIP 集成</text>
+  <g transform="translate(70 155)">
+    <rect class="box" x="0" y="0" rx="16" width="220" height="120"/><text class="t s" x="24" y="34" font-weight="700">1 · 创建草稿</text><text class="t xs" x="24" y="62">空白场景 / 行业样例</text><text class="t xs" x="24" y="84">复制假设必须重新确认</text><text class="t xs" x="24" y="104">状态：draft</text>
+    <path class="line" d="M220 60H270"/>
+    <rect class="next" x="270" y="0" rx="16" width="220" height="120"/><text class="t s" x="294" y="34" font-weight="700">2 · 收敛主决策</text><text class="t xs" x="294" y="62">Trigger · Object · Owner</text><text class="t xs" x="294" y="84">Outcome · Action · 验收问题</text><text class="t xs" x="294" y="104">复合决策先拆分</text>
+    <path class="line" d="M490 60H540"/>
+    <rect class="next" x="540" y="0" rx="16" width="220" height="120"/><text class="t s" x="564" y="34" font-weight="700">3 · 编译蓝图</text><text class="t xs" x="564" y="62">稳定 ID · 引用闭包</text><text class="t xs" x="564" y="84">blocker · candidate</text><text class="t xs" x="564" y="104">not_evaluable</text>
+    <path class="line" d="M760 60H810"/>
+    <rect class="warn" x="810" y="0" rx="16" width="220" height="120"/><text class="t s" x="834" y="34" font-weight="700">4 · 最小人工审查</text><text class="t xs" x="834" y="62">业务 · 数据 · 技术责任人</text><text class="t xs" x="834" y="84">confirm / reject / insufficient</text><text class="t xs" x="834" y="104">理由追加保存</text>
+    <path class="line" d="M1030 60H1080"/>
+    <rect class="next" x="1080" y="0" rx="16" width="220" height="120"/><text class="t s" x="1104" y="34" font-weight="700">5 · 影响预览</text><text class="t xs" x="1104" y="62">POC · PRD · 数据</text><text class="t xs" x="1104" y="84">验收矩阵同步变化</text><text class="t xs" x="1104" y="104">回链蓝图元素</text>
+  </g>
+  <path class="line" d="M1370 215V345H1010"/>
+  <g transform="translate(520 345)">
+    <rect class="warn" x="0" y="0" rx="16" width="300" height="130"/><text class="t s" x="26" y="38" font-weight="700">Draft Review Package</text><text class="t xs" x="26" y="68">包含 candidate / insufficient / blocker</text><text class="t xs" x="26" y="92">用于业务与技术评审</text><text class="t xs" x="26" y="114">不代表已确认交接</text>
+    <text class="t s" x="340" y="66" font-weight="700">或</text>
+    <rect class="next" x="390" y="0" rx="16" width="300" height="130"/><text class="t s" x="416" y="38" font-weight="700">Confirmed Handoff Package</text><text class="t xs" x="416" y="68">manifest · blueprint version · checksum</text><text class="t xs" x="416" y="92">未决项清单 · 输出文件列表</text><text class="t xs" x="416" y="114">满足最小责任矩阵后才生成</text>
+    <path class="line dash" d="M690 65H780"/>
+    <rect class="future" x="780" y="0" rx="16" width="260" height="130"/><text class="t s" x="806" y="38" font-weight="700">EIP 只读验证</text><text class="t xs" x="806" y="68">EipSpecEnvelope v1</text><text class="t xs" x="806" y="92">T-Box / 规则验证回执</text><text class="t xs" x="806" y="114">条件：接口与映射已稳定</text>
+  </g>
+  <g transform="translate(70 620)"><line x1="0" x2="42" y1="0" y2="0" stroke="#0f9f82" stroke-width="4"/><text class="t xs" x="53" y="5">CURRENT 当前已有</text><line x1="245" x2="287" y1="0" y2="0" stroke="#315efb" stroke-width="4"/><text class="t xs" x="298" y="5">NEXT 下一增量</text><line x1="470" x2="512" y1="0" y2="0" stroke="#8792a6" stroke-width="3" stroke-dasharray="7 6"/><text class="t xs" x="523" y="5">FUTURE / CONDITIONAL</text></g>
+</svg>

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ontology POC Generator — Workbench Prototype</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">O</span>
+      <div><strong>Ontology POC Generator</strong><small>Project Blueprint Workbench</small></div>
+    </div>
+    <div class="top-actions">
+      <span class="badge badge-warning">SYNTHETIC DEMO</span>
+      <button class="ghost">保存草稿</button>
+      <button class="primary" data-action="export">导出 Draft Review Package</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="project-summary">
+        <span class="eyebrow">当前项目</span>
+        <h2>功能型调制乳<br>候选实验方向</h2>
+        <div class="status-line"><span class="dot blue"></span>蓝图草稿 · v0.2</div>
+      </div>
+
+      <nav class="steps" aria-label="项目步骤">
+        <button class="step done" data-panel="decision"><b>1</b><span>决策卡<small>完整</small></span></button>
+        <button class="step active" data-panel="blueprint"><b>2</b><span>对象与关系<small>4 项待确认</small></span></button>
+        <button class="step" data-panel="data"><b>3</b><span>规则与数据<small>2 个阻断项</small></span></button>
+        <button class="step" data-panel="acceptance"><b>4</b><span>验收矩阵<small>1 项未就绪</small></span></button>
+        <button class="step" data-panel="outputs"><b>5</b><span>输出与交接<small>草稿包</small></span></button>
+      </nav>
+
+      <div class="legend-card">
+        <strong>能力状态</strong>
+        <div><span class="line current"></span> 当前已有</div>
+        <div><span class="line next"></span> 下一增量</div>
+        <div><span class="line future"></span> 条件能力</div>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <section class="workspace-head">
+        <div>
+          <span class="eyebrow">主决策</span>
+          <h1>选择最值得进入下一轮验证的候选配方与工艺方向</h1>
+        </div>
+        <div class="readiness"><strong>62%</strong><span>蓝图就绪度</span></div>
+      </section>
+
+      <section id="decision" class="panel-view hidden">
+        <div class="decision-grid">
+          <article class="card"><span class="eyebrow">触发条件</span><h3>完成新品需求澄清后</h3><p>需求目标和第一轮约束已由市场与研发确认。</p></article>
+          <article class="card"><span class="eyebrow">决策对象</span><h3>候选配方方向</h3><p>不生成生产配方，仅选择下一轮实验方向。</p></article>
+          <article class="card"><span class="eyebrow">最终决策者</span><h3>研发项目负责人</h3><p>业务规则和实验选择需要其确认。</p></article>
+          <article class="card"><span class="eyebrow">决策后动作</span><h3>创建候选实验任务</h3><p class="muted">NEXT · 尚未实现任务执行</p></article>
+        </div>
+      </section>
+
+      <section id="blueprint" class="panel-view">
+        <div class="canvas-toolbar">
+          <div class="tabs"><button class="selected">关系图</button><button>列表</button><button>缺口</button></div>
+          <div><button class="ghost small">＋ 添加对象</button><button class="ghost small">＋ 添加关系</button></div>
+        </div>
+
+        <div class="blueprint-grid">
+          <div class="graph-card">
+            <div class="graph-title"><strong>决策蓝图</strong><span>8 对象 · 7 候选关系 · 3 约束</span></div>
+            <div class="graph">
+              <div class="node confirmed n1"><small>CONFIRMED</small>市场需求</div>
+              <div class="arrow a1">转译为 →</div>
+              <div class="node confirmed n2"><small>CONFIRMED</small>研发目标</div>
+              <div class="arrow a2">约束 →</div>
+              <div class="node candidate n3"><small>CANDIDATE</small>候选配方</div>
+              <div class="arrow a3">使用？ →</div>
+              <div class="node candidate n4"><small>CANDIDATE</small>原料</div>
+              <div class="arrow a4">采用？ →</div>
+              <div class="node candidate n5"><small>CANDIDATE</small>工艺参数</div>
+              <div class="arrow a5">进入 →</div>
+              <div class="node confirmed n6"><small>CONFIRMED</small>实验</div>
+              <div class="arrow a6">产生 →</div>
+              <div class="node candidate n7"><small>CANDIDATE</small>感官结果</div>
+              <div class="node blocker n8"><small>INSUFFICIENT</small>稳定性结果</div>
+            </div>
+            <div class="graph-note"><b>审核提示</b> 对象顺序不能自动证明关系语义。当前 4 条关系仍需业务 owner 确认。</div>
+          </div>
+
+          <aside class="review-card">
+            <div class="review-head"><span class="badge badge-candidate">CANDIDATE</span><button aria-label="关闭">×</button></div>
+            <span class="eyebrow">关系候选</span>
+            <h3>候选配方 — 使用？ → 原料</h3>
+            <dl>
+              <div><dt>Domain</dt><dd>候选配方</dd></div>
+              <div><dt>Range</dt><dd>原料</dd></div>
+              <div><dt>基数</dt><dd>1..* → 0..*</dd></div>
+              <div><dt>来源</dt><dd>顾问场景输入</dd></div>
+              <div><dt>责任人</dt><dd>配方工程师</dd></div>
+            </dl>
+            <label>审查理由<textarea placeholder="确认、拒绝或信息不足时记录理由…"></textarea></label>
+            <div class="review-actions">
+              <button class="danger">拒绝</button>
+              <button class="warning">信息不足</button>
+              <button class="primary" data-action="confirm">确认关系</button>
+            </div>
+            <p class="audit-note">NEXT · 最小审查记录：element_id、verdict、reviewed_by、reason。</p>
+          </aside>
+        </div>
+      </section>
+
+      <section id="data" class="panel-view hidden">
+        <div class="section-head"><div><span class="eyebrow">规则与数据</span><h2>先证明能不能算，再讨论结果</h2></div><span class="badge badge-warning">2 BLOCKERS</span></div>
+        <div class="table-card">
+          <table><thead><tr><th>约束</th><th>所需数据</th><th>状态</th><th>求值能力</th><th>责任人</th></tr></thead>
+          <tbody>
+            <tr><td>原料满足法规与企业内控</td><td>原料标准、限量值</td><td><span class="badge badge-ok">AVAILABLE</span></td><td>可设计测试</td><td>法规负责人</td></tr>
+            <tr><td>候选方向有可执行实验</td><td>历史实验记录</td><td><span class="badge badge-warning">TO CONFIRM</span></td><td>not_evaluable</td><td>研发数据负责人</td></tr>
+            <tr><td>稳定性不足不下生产结论</td><td>稳定性结果</td><td><span class="badge badge-danger">UNAVAILABLE</span></td><td>not_evaluable</td><td>研发项目负责人</td></tr>
+          </tbody></table>
+        </div>
+      </section>
+
+      <section id="acceptance" class="panel-view hidden">
+        <div class="section-head"><div><span class="eyebrow">验收矩阵</span><h2>演示完成不等于 POC 通过</h2></div><button class="ghost">＋ 添加验收案例</button></div>
+        <div class="acceptance-card">
+          <div class="acceptance-num">AC-01</div>
+          <div><strong>解释每个候选方向的需求、原料、工艺和证据</strong><p>前置：合成需求与实验记录 · 操作：选择候选方向 · 预期：展示关系和证据链</p></div>
+          <span class="badge badge-candidate">NOT READY</span>
+        </div>
+        <div class="acceptance-card">
+          <div class="acceptance-num">AC-02</div>
+          <div><strong>业务修正规则后，候选与任务同步变化</strong><p>前置：规则可求值 · 操作：修改约束 · 预期：影响预览，不改变已确认版本</p></div>
+          <span class="badge badge-warning">REQUIRES VALIDATION</span>
+        </div>
+      </section>
+
+      <section id="outputs" class="panel-view hidden">
+        <div class="section-head"><div><span class="eyebrow">输出与交接</span><h2>只导出当前真实存在的工件</h2></div></div>
+        <div class="output-grid">
+          <article class="output-card available"><span>CURRENT</span><h3>POC 方案</h3><p>Markdown / JSON</p><button class="ghost">预览</button></article>
+          <article class="output-card next"><span>NEXT</span><h3>验收矩阵</h3><p>结构化 acceptance cases</p><button class="ghost">查看缺口</button></article>
+          <article class="output-card next"><span>NEXT</span><h3>PRD</h3><p>读取同一 ProjectBlueprint</p><button class="ghost">查看结构</button></article>
+          <article class="output-card future"><span>CONDITIONAL</span><h3>EIP 验证包</h3><p>confirmed 后才允许</p><button class="ghost" disabled>尚不可用</button></article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" role="status">已记录原型交互</div>
+  <script src="app.js"></script>
+</body>
+</html>

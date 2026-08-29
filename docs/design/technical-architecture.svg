@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="980" viewBox="0 0 1680 980" role="img" aria-labelledby="title desc">
+  <title id="title">Ontology POC Generator 目标技术架构</title><desc id="desc">分层展示输入适配器、蓝图编译器、ProjectBlueprint、验证、渲染器、交接包和条件 EIP 只读验证适配器，并标注当前、下一步与未来能力。</desc>
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#657189"/></marker><style>.t{font-family:Inter,PingFang SC,Microsoft YaHei,sans-serif;fill:#172033}.h{font-size:28px;font-weight:750}.b{font-size:15px;font-weight:700}.s{font-size:12px;fill:#667085}.layer{fill:#fff;stroke:#d7dee8;stroke-width:2}.current{fill:#e9f8f4;stroke:#0f9f82;stroke-width:2}.next{fill:#edf2ff;stroke:#315efb;stroke-width:2}.future{fill:#f7f8fa;stroke:#8792a6;stroke-width:2;stroke-dasharray:9 7}.warn{fill:#fff4df;stroke:#c47a1b;stroke-width:2}.line{fill:none;stroke:#657189;stroke-width:2;marker-end:url(#ar)}.dash{stroke-dasharray:8 7}.tag{font-size:9px;font-weight:800;letter-spacing:.1em}</style></defs>
+  <rect width="1680" height="980" fill="#f5f7fa"/><text class="t h" x="64" y="62">目标技术架构 · 蓝图先于文档</text><text class="t s" x="64" y="90">核心保持本地、确定、可测试；AI 与 EIP 通过条件适配器接入</text>
+  <g transform="translate(65 130)">
+    <text class="t b" x="0" y="20">输入层</text>
+    <rect class="current" x="140" y="0" width="210" height="74" rx="13"/><text class="t tag" x="160" y="22" fill="#0f9f82">CURRENT</text><text class="t b" x="160" y="48">JSON / CLI</text><text class="t s" x="160" y="65">ScenarioParameters</text>
+    <rect class="next" x="380" y="0" width="210" height="74" rx="13"/><text class="t tag" x="400" y="22" fill="#315efb">NEXT</text><text class="t b" x="400" y="48">Web Intake</text><text class="t s" x="400" y="65">渐进表单与草稿</text>
+    <rect class="future" x="620" y="0" width="240" height="74" rx="13"/><text class="t tag" x="640" y="22" fill="#7b8494">CONDITIONAL</text><text class="t b" x="640" y="48">Document Extractor</text><text class="t s" x="640" y="65">LLM 输出默认 candidate</text>
+    <rect class="future" x="890" y="0" width="250" height="74" rx="13"/><text class="t tag" x="910" y="22" fill="#7b8494">CONDITIONAL</text><text class="t b" x="910" y="48">Industry Pack</text><text class="t s" x="910" y="65">版本化建议与适用条件</text>
+
+    <path class="line" d="M620 74V112H460"/><path class="line" d="M250 74V112H460"/><path class="line" d="M485 74V112"/><path class="line dash" d="M1015 74V112H680"/>
+    <rect class="next" x="300" y="112" width="540" height="104" rx="15"/><text class="t tag" x="326" y="137" fill="#315efb">NEXT · BLUEPRINT COMPILER</text><text class="t b" x="326" y="167">validate → normalize → infer candidates → calculate blockers</text><text class="t s" x="326" y="193">不在 renderer 中做业务推导；不把 LLM 输出升级成 confirmed</text>
+
+    <path class="line" d="M570 216V260"/>
+    <rect class="next" x="215" y="260" width="710" height="130" rx="16"/><text class="t tag" x="243" y="286" fill="#315efb">NEXT · PROJECTBLUEPRINT</text><text class="t b" x="243" y="318">Decision · Actor · Object · Relation · Constraint · Data · Evidence</text><text class="t b" x="243" y="345">Finding · Verdict · Action · Receipt · AcceptanceCase</text><text class="t s" x="243" y="372">stable IDs · explicit references · governance status · blueprint version · checksum</text>
+    <rect class="warn" x="965" y="260" width="330" height="130" rx="16"/><text class="t tag" x="991" y="286" fill="#b66a12">MINIMUM GOVERNANCE GATE</text><text class="t b" x="991" y="318">candidate review</text><text class="t s" x="991" y="344">actor · verdict · reason</text><text class="t s" x="991" y="366">draft / confirmed handoff</text>
+    <path class="line" d="M925 325H965"/>
+
+    <path class="line" d="M570 390V445"/>
+    <text class="t b" x="0" y="474">验证与投影层</text>
+    <rect class="next" x="140" y="445" width="250" height="92" rx="14"/><text class="t b" x="164" y="478">Blueprint Validators</text><text class="t s" x="164" y="505">引用闭包 · 状态 · 数据就绪</text><text class="t s" x="164" y="524">决策完整性 · 安全边界</text>
+    <rect class="current" x="420" y="445" width="235" height="92" rx="14"/><text class="t tag" x="444" y="470" fill="#0f9f82">CURRENT</text><text class="t b" x="444" y="495">POC Renderer</text><text class="t s" x="444" y="519">Markdown / JSON</text>
+    <rect class="next" x="685" y="445" width="235" height="92" rx="14"/><text class="t b" x="709" y="478">Acceptance Renderer</text><text class="t s" x="709" y="505">cases · blockers · evidence</text>
+    <rect class="next" x="950" y="445" width="235" height="92" rx="14"/><text class="t b" x="974" y="478">PRD Renderer</text><text class="t s" x="974" y="505">scope · stories · requirements</text>
+    <rect class="future" x="1215" y="445" width="260" height="92" rx="14"/><text class="t b" x="1239" y="478">Data / Rule / Demo Pack</text><text class="t s" x="1239" y="505">需要真实用户证据后启动</text>
+    <path class="line" d="M570 390V420H265V445"/><path class="line" d="M570 390V445"/><path class="line" d="M570 420H802V445"/><path class="line" d="M570 420H1067V445"/><path class="line dash" d="M570 420H1345V445"/>
+
+    <path class="line" d="M265 537V590H520"/><path class="line" d="M537 537V590H520"/><path class="line" d="M802 537V590H800"/><path class="line" d="M1067 537V590H800"/>
+    <text class="t b" x="0" y="619">交接层</text>
+    <rect class="current" x="140" y="590" width="250" height="98" rx="14"/><text class="t tag" x="164" y="615" fill="#0f9f82">CURRENT</text><text class="t b" x="164" y="640">POC Markdown / JSON</text><text class="t s" x="164" y="665">当前真实生成工件</text>
+    <rect class="next" x="420" y="590" width="300" height="98" rx="14"/><text class="t b" x="444" y="625">Draft Review Package</text><text class="t s" x="444" y="650">manifest · candidates · blockers</text><text class="t s" x="444" y="670">用于评审，不代表确认交接</text>
+    <rect class="next" x="750" y="590" width="330" height="98" rx="14"/><text class="t b" x="774" y="625">Confirmed Handoff Package</text><text class="t s" x="774" y="650">version · checksum · review summary</text><text class="t s" x="774" y="670">通过最小治理门后生成</text>
+
+    <path class="line dash" d="M1080 639H1170"/>
+    <rect class="future" x="1170" y="570" width="365" height="138" rx="16"/><text class="t tag" x="1196" y="596" fill="#7b8494">FUTURE · OPTIONAL EIP ADAPTER</text><text class="t b" x="1196" y="626">EipSpecEnvelope v1</text><text class="t s" x="1196" y="650">首版固定 pipeline_mapping</text><text class="t s" x="1196" y="672">只读 T-Box / rule validation</text><text class="t s" x="1196" y="694">immutable validation receipt</text>
+
+    <rect class="layer" x="140" y="760" width="1395" height="88" rx="14"/><text class="t b" x="166" y="792">横切能力</text><text class="t s" x="300" y="792">严格类型校验</text><text class="t s" x="470" y="792">canonical checksum</text><text class="t s" x="670" y="792">Markdown 转义</text><text class="t s" x="850" y="792">项目隔离与日志脱敏</text><text class="t s" x="1100" y="792">安全导出</text><text class="t s" x="1240" y="792">测试与版本证据</text><text class="t s" x="166" y="823">原则：本地模式不上传客户材料；LLM 默认禁用；未经人工确认的候选不能进入 confirmed/EIP 导出。</text>
+  </g>
+</svg>
