@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from ontology_poc_generator.compiler import compile_decision_pack
+from ontology_poc_generator.decision_pack import render_decision_pack_json
 from ontology_poc_generator.errors import (
     KnowledgeValidationError,
     OntologySpecValidationError,
@@ -34,6 +35,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--ontology-spec-output",
         type=Path,
         help="Write the compiled ontology spec envelope to this file",
+    )
+    parser.add_argument(
+        "--decision-pack-output",
+        type=Path,
+        help="Write the canonical decision pack to this file",
     )
     parser.add_argument(
         "--knowledge-unit",
@@ -109,8 +115,15 @@ def main(argv: list[str] | None = None) -> int:
             else render_json(proposal)
         )
         ontology_spec_content = None
-        if args.ontology_spec_output is not None:
+        decision_pack_content = None
+        if (
+            args.ontology_spec_output is not None
+            or args.decision_pack_output is not None
+        ):
             pack = compile_decision_pack(params, knowledge_units)
+            if args.decision_pack_output is not None:
+                decision_pack_content = render_decision_pack_json(pack)
+        if args.ontology_spec_output is not None:
             compilation = compile_ontology_spec(pack)
             ontology_spec_content = json.dumps(
                 {
@@ -144,27 +157,34 @@ def main(argv: list[str] | None = None) -> int:
         print(f"input error: {exc}", file=sys.stderr)
         return 2
 
-    if args.ontology_spec_output is not None:
-        if args.output is not None:
-            try:
-                outputs_collide = (
-                    str(args.output.resolve()).casefold()
-                    == str(args.ontology_spec_output.resolve()).casefold()
-                )
-            except (OSError, RuntimeError) as exc:
-                print(f"output error: {exc}", file=sys.stderr)
-                return 3
-            if outputs_collide:
-                print(
-                    "output error: --output and --ontology-spec-output "
-                    "must resolve to different files",
-                    file=sys.stderr,
-                )
-                return 3
+    if (
+        args.ontology_spec_output is not None
+        or args.decision_pack_output is not None
+    ):
         requested_outputs = []
         if args.output is not None:
             requested_outputs.append((args.output, content))
-        requested_outputs.append((args.ontology_spec_output, ontology_spec_content))
+        if args.ontology_spec_output is not None:
+            requested_outputs.append(
+                (args.ontology_spec_output, ontology_spec_content)
+            )
+        if args.decision_pack_output is not None:
+            requested_outputs.append(
+                (args.decision_pack_output, decision_pack_content)
+            )
+        try:
+            resolved_outputs = [
+                str(path.resolve()).casefold() for path, _ in requested_outputs
+            ]
+        except (OSError, RuntimeError) as exc:
+            print(f"output error: {exc}", file=sys.stderr)
+            return 3
+        if len(set(resolved_outputs)) != len(resolved_outputs):
+            print(
+                "output error: output paths must resolve to different files",
+                file=sys.stderr,
+            )
+            return 3
         staged_outputs: list[tuple[Path, Path]] = []
         backups: list[tuple[Path, Path | None]] = []
         installed_indexes: list[int] = []
