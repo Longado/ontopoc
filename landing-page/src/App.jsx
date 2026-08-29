@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { ImpactTrace } from "./ImpactTrace.jsx";
+import { TrialWorkspace } from "./TrialWorkspace.jsx";
 import { moveStage, primaryNavTargets } from "./storylineModel.js";
 
 const content = {
@@ -185,14 +186,10 @@ const experienceCopy = {
 
 export function App() {
   const [language, setLanguage] = useState("zh");
-  const [activeScenarioId, setActiveScenarioId] = useState(scenarios[0].id);
-  const [reviewState, setReviewState] = useState("needs_review");
   const [trialOpen, setTrialOpen] = useState(false);
   const [activeGate, setActiveGate] = useState(0);
   const [activeModelStage, setActiveModelStage] = useState(0);
   const t = content[language];
-  const activeScenario = scenarios.find((item) => item.id === activeScenarioId);
-  const localizedScenario = activeScenario[language];
   const experience = experienceCopy[language];
 
   useEffect(() => { document.documentElement.lang = language === "zh" ? "zh-CN" : "en"; }, [language]);
@@ -204,7 +201,6 @@ export function App() {
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKeyDown); };
   }, [trialOpen]);
 
-  const selectScenario = (id) => { setActiveScenarioId(id); setReviewState("needs_review"); };
   const setLang = (next) => setLanguage(next);
 
   return <main>
@@ -227,7 +223,7 @@ export function App() {
     <section className="build-section" id="build"><img className="build-field" src="/assets/decision-field.png" alt="" aria-hidden="true" /><div className="vertical-label">START WITH ONE DECISION</div><div className="build-content"><p className="eyebrow">{t.buildEyebrow}</p><h2>{t.buildTitle[0]}<br />{t.buildTitle[1]}</h2><p className="build-lead">{t.buildLead}</p><div className="build-actions"><button className="build-primary" type="button" onClick={() => setTrialOpen(true)}>{t.buildPrimary} <ArrowRight size={20} /></button><button className="build-secondary" type="button" onClick={() => document.querySelector("#proof")?.scrollIntoView({ behavior: "smooth" })}>{t.buildSecondary}</button></div></div></section>
 
     <footer><img src="/assets/ontopoc-logo.png" alt="OntoPoc" /><p>AI FDE DECISION COMPILER</p><p>© 2026 OntoPoc</p></footer>
-    {trialOpen && <TrialModal t={t} language={language} scenario={activeScenario} localized={localizedScenario} reviewState={reviewState} setReviewState={setReviewState} selectScenario={selectScenario} onClose={() => setTrialOpen(false)} />}
+    {trialOpen && <TrialModal t={t} language={language} onClose={() => setTrialOpen(false)} />}
   </main>;
 }
 
@@ -427,7 +423,7 @@ function DecisionConsole({ t, language, scenario, localized, reviewState, setRev
   return <div className={`review-console ${reviewState}`} aria-label={t.deltaAria}><div className="console-header"><div><span className="orange-dot" /> {stateCopy[language][reviewState]}<span className="demo-badge">{t.demoLabel}</span></div><span>{scenario.changeId}</span></div><div className="console-title" key={`${scenario.id}-title`}><div><span>{t.domain}</span><h3>{localized.title}</h3><p>{localized.summary}</p></div><span className="version">{scenario.version}</span></div><div className="delta-head"><span>{t.decision}</span><span>{t.current}</span><span>{t.candidate}</span></div><div className="delta-body" key={scenario.id}>{localized.deltas.map(([name, current, candidate], index) => <div className="delta-row" style={{ "--row-index": index }} key={name}><strong>{name}</strong><span>{current}</span><span className="candidate">{candidate}</span></div>)}</div><div className="evidence-row" key={`${scenario.id}-evidence`}><div><FileCheck2 size={18} /> {localized.evidence[0]}</div><div><ScanSearch size={18} /> {localized.evidence[1]}</div><div><ShieldCheck size={18} /> {localized.evidence[2]}</div></div><div className="console-actions"><button type="button" aria-pressed={reviewState === "insufficient"} onClick={() => setReviewState("insufficient")}>{t.actions.request}</button><button type="button" aria-pressed={reviewState === "held"} onClick={() => setReviewState("held")}>{t.actions.hold}</button><button type="button" aria-pressed={reviewState === "approved"} className="approve" onClick={() => setReviewState("approved")}><Check size={18} /> {t.actions.approve}</button></div></div>;
 }
 
-function TrialModal({ t, language, scenario, localized, reviewState, setReviewState, selectScenario, onClose }) {
+function TrialModal({ t, language, onClose }) {
   const dialogRef = useRef(null);
   const closeButtonRef = useRef(null);
   const previousFocusRef = useRef(null);
@@ -451,5 +447,5 @@ function TrialModal({ t, language, scenario, localized, reviewState, setReviewSt
     if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   };
 
-  return <div className="trial-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={dialogRef} className="trial-window" role="dialog" aria-modal="true" aria-label={t.preview} onKeyDown={trapFocus}><aside className="trial-rail"><img src="/assets/ontopoc-logo.png" alt="OntoPoc" /><div><Layers3 size={18} /><ScanSearch size={18} /><ShieldCheck size={18} /></div><span>OP</span></aside><div className="trial-queue"><div className="trial-window-label"><span>{t.queue}</span><small>{t.queueHint}</small></div>{scenarios.map((item) => <button key={item.id} type="button" className={scenario.id === item.id ? "is-selected" : ""} onClick={() => selectScenario(item.id)}><span>{item[language].tab}</span><small>{item[language].change}</small></button>)}</div><div className="trial-workspace"><div className="trial-topbar"><div><span>{t.preview}</span><small>{t.demoLabel}</small></div><button ref={closeButtonRef} type="button" onClick={onClose} aria-label={t.close}><X size={20} /></button></div><div className="trial-context"><span>{t.inspect}</span><strong>{scenario.changeId}</strong></div><DecisionConsole t={t} language={language} scenario={scenario} localized={localized} reviewState={reviewState} setReviewState={setReviewState} /></div></section></div>;
+  return <div className="trial-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={dialogRef} className="trial-window" role="dialog" aria-modal="true" aria-label={t.preview} onKeyDown={trapFocus}><aside className="trial-rail"><img src="/assets/ontopoc-logo.png" alt="OntoPoc" /><div><Layers3 size={18} /><ScanSearch size={18} /><ShieldCheck size={18} /></div><span>OP</span></aside><div className="trial-workspace"><div className="trial-topbar"><div><span>{t.preview}</span><small>synthetic_demo · READ ONLY</small></div><button ref={closeButtonRef} type="button" onClick={onClose} aria-label={t.close}><X size={20} /></button></div><TrialWorkspace language={language} /></div></section></div>;
 }

@@ -16,10 +16,10 @@
 - Add: `landing-page/` runtime source, assets, package lock, build scripts, and tests
 - Modify: `.gitignore`
 
-- [ ] Copy only the existing runtime allowlist; exclude `node_modules`, `dist`, audit images, QA images, the dirty root README, and the stale handoff document.
-- [ ] Run `npm ci`, `npm run test:unit`, `npm run build`, and `npm run test:sites`.
-- [ ] Confirm `git status --short --ignored` contains no generated or audit material.
-- [ ] Commit with `chore: add ontopoc demo foundation` and push the branch.
+- [x] Copy only the existing runtime allowlist; exclude `node_modules`, `dist`, audit images, QA images, the dirty root README, and the stale handoff document.
+- [x] Run `npm ci`, `npm run test:unit`, `npm run build`, and `npm run test:sites`.
+- [x] Confirm `git status --short --ignored` contains no generated or audit material.
+- [x] Commit with `chore: add ontopoc demo foundation` and push the branch.
 
 ### Task 2: Add the real compiler-artifact workspace
 
@@ -35,13 +35,14 @@
 - Modify: `landing-page/tests/landing-story.test.mjs`
 - Create: `docs/FRONTEND_BACKEND_CAPABILITY_MAP.md`
 
-- [ ] Write failing Node tests for artifact schema, `synthetic_demo` scope, backend-owned hashes, candidate governance, and the Validation `not_implemented` boundary.
-- [ ] Run `npm run test:unit` and confirm the new tests fail because the adapter does not exist.
-- [ ] Implement the smallest artifact adapter that returns four read-only stages: Recognition, DecisionPack, OntologySpec, and Validation.
-- [ ] Generate the fixture with `recognize_scenario`, `compile_decision_pack`, and `compile_ontology_spec`; use a deterministic gateway and the existing synthetic knowledge units.
-- [ ] Replace only the Trial modal body with the new workspace while preserving modal focus management, language switching, Esc/overlay close, and the existing design system.
-- [ ] Show `complete` only as compilation status and `is_closed` only as reference-closure evidence. Show Validation as contract-only with no receipt.
-- [ ] Remove Trial approval, publish, Action, and writeback controls from the mounted Demo path.
-- [ ] Run focused tests, all frontend tests, production build, Sites tests, backend full unittest, `git diff --check`, and scope/status checks.
-- [ ] Verify desktop and 390 px mobile interaction in a browser with no console errors.
-- [ ] Commit with `feat: connect ontopoc demo workspace`, push, request one independent P1/P2 review, and open a PR to `main`.
+- [x] Write failing Node tests for artifact schema, `synthetic_demo` scope, backend-owned hashes, candidate governance, and the Validation `not_implemented` boundary.
+- [x] Run `npm run test:unit` and confirm the new tests fail because the adapter does not exist.
+- [x] Implement the smallest artifact adapter that returns four read-only stages: Recognition, DecisionPack, OntologySpec, and Validation.
+- [x] Generate the fixture with `recognize_scenario`, `compile_decision_pack`, and `compile_ontology_spec`; use a deterministic gateway and the existing synthetic knowledge units.
+- [x] Replace only the Trial modal body with the new workspace while preserving modal focus management, language switching, Esc/overlay close, and the existing design system.
+- [x] Show `complete` only as compilation status and `is_closed` only as reference-closure evidence. Show Validation as contract-only with no receipt.
+- [x] Remove Trial approval, publish, Action, and writeback controls from the mounted Demo path.
+- [x] Run focused tests, all frontend tests, production build, Sites tests, backend full unittest, `git diff --check`, and scope/status checks.
+- [x] Verify desktop and 390 px mobile interaction in a browser with no console errors.
+- [x] Commit with `feat: connect ontopoc demo workspace` and push the branch.
+- [ ] Request one independent P1/P2 review and open a PR to `main` (outside this implementation handoff).
