@@ -241,6 +241,30 @@ class SyntheticDecisionPolicyProfileTest(unittest.TestCase):
                         ):
                             self.load(data)
 
+    def test_rejects_condition_1_value_outside_the_frozen_s1_contract(self):
+        data = accepted_policy_unit_dict()
+        data["suggestion_templates"][0]["payload"][
+            "condition_1_allowed_values"
+        ] = "cancelled"
+
+        with self.assertRaisesRegex(
+            KnowledgeValidationError,
+            "decision_rule.v1 condition_1_allowed_values",
+        ):
+            self.load(data)
+
+    def test_rejects_condition_2_value_outside_the_frozen_s1_contract(self):
+        data = accepted_policy_unit_dict()
+        data["suggestion_templates"][0]["payload"][
+            "condition_2_allowed_values"
+        ] = "available"
+
+        with self.assertRaisesRegex(
+            KnowledgeValidationError,
+            "decision_rule.v1 condition_2_allowed_values",
+        ):
+            self.load(data)
+
     def test_policy_sources_must_all_be_synthetic_examples(self):
         for source_kind in (
             "provided_input",
