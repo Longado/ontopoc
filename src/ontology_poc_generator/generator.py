@@ -3,9 +3,16 @@ from ontology_poc_generator.models import (
     ScenarioParameters,
     _current_draft_contents,
 )
+from ontology_poc_generator.compiler import compile_decision_pack
+from ontology_poc_generator.knowledge import KnowledgeUnit
 
 
-def generate_proposal(params: ScenarioParameters) -> Proposal:
+def generate_proposal(
+    params: ScenarioParameters,
+    knowledge_units: tuple[KnowledgeUnit, ...] = (),
+) -> Proposal:
+    pack = compile_decision_pack(params, knowledge_units)
+    params = pack.scenario
     relations = tuple(
         f"{relation.source} -> {relation.predicate}（待业务确认） -> {relation.target}"
         for relation in params.relations
@@ -48,4 +55,7 @@ def generate_proposal(params: ScenarioParameters) -> Proposal:
         ),
         evidence_mode=evidence_mode,
         notes=params.notes,
+        input_bindings=pack.input_bindings,
+        knowledge_source_refs=pack.source_refs,
+        knowledge_outcomes=pack.knowledge_outcomes,
     )

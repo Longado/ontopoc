@@ -9,6 +9,60 @@ from ontology_poc_generator.renderers import render_json, render_markdown
 
 
 class GeneratorTest(unittest.TestCase):
+    def test_direct_scenario_rejects_mutable_or_invalid_collection_fields(self):
+        base = dict(
+            industry="供应链",
+            scene_name="履约风险处置",
+            business_decision="选择需要优先处置的订单",
+            decision_owner="计划经理",
+            trigger="订单交付风险上升时",
+            objects=("订单", "物料"),
+            acceptance_questions=("能否解释？",),
+        )
+
+        for field, value in (
+            ("objects", ["订单", "物料"]),
+            ("acceptance_questions", ["能否解释？"]),
+            ("participants", ["计划员"]),
+            ("constraints", ["人工确认"]),
+            ("desired_actions", ["核查"]),
+            ("objects", ("订单", 1)),
+            ("acceptance_questions", (" ",)),
+        ):
+            with self.subTest(field=field, value=value), self.assertRaises(ScenarioValidationError):
+                ScenarioParameters(**{**base, field: value})
+
+    def test_scenario_does_not_share_caller_mutable_collections(self):
+        objects = ["订单", "物料"]
+        raw = {
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "objects": objects,
+            "acceptance_questions": ["能否解释？"],
+        }
+        params = ScenarioParameters.from_dict(raw)
+        objects[0] = "已修改订单"
+
+        self.assertEqual(params.objects, ("订单", "物料"))
+
+    def test_proposal_rejects_wrong_knowledge_tuple_elements(self):
+        base = dict(
+            industry="供应链", scene_name="履约风险处置",
+            primary_decision="选择订单", decision_owner="计划经理",
+            trigger="风险上升", object_types=("订单", "物料"),
+            relation_candidates=(), constraints=(), data_sources=(), data_gaps=(),
+            desired_actions=(), acceptance_questions=("能否解释？",),
+            decision_loop=(), responsibility_boundaries=(),
+            evidence_mode="synthetic_demo", notes="",
+        )
+
+        for field in ("input_bindings", "knowledge_source_refs", "knowledge_outcomes"):
+            with self.subTest(field=field), self.assertRaises(ScenarioValidationError):
+                Proposal(**{**base, field: (object(),)})
+
     def test_generates_one_decision_centered_proposal(self):
         params = ScenarioParameters.from_dict({
             "industry": "乳制品研发",
@@ -475,9 +529,12 @@ class GeneratorTest(unittest.TestCase):
         )
         legacy_markdown = render_markdown(legacy_proposal)
 
-        self.assertEqual(set(rendered_json), {field.name for field in fields(Proposal)})
         self.assertEqual(
-            [field.name for field in fields(Proposal)][-4:],
+            set(rendered_json),
+            {field.name for field in fields(Proposal) if not field.name.startswith("knowledge_") and field.name != "input_bindings"},
+        )
+        self.assertEqual(
+            [field.name for field in fields(Proposal)][-7:-3],
             [
                 "current_capabilities",
                 "planned_capabilities",

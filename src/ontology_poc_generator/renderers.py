@@ -130,4 +130,12 @@ POC 计划（待验证）中的规则求值结果需区分 `pass`、`fail`、`no
 
 
 def render_json(proposal: Proposal) -> str:
-    return json.dumps(asdict(proposal), ensure_ascii=False, sort_keys=True, indent=2)
+    data = asdict(proposal)
+    if not proposal.knowledge_outcomes:
+        for field in (
+            "input_bindings",
+            "knowledge_source_refs",
+            "knowledge_outcomes",
+        ):
+            data.pop(field)
+    return json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2)

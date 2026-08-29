@@ -3,8 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import re
+from typing import TYPE_CHECKING
 
 from ontology_poc_generator.errors import ScenarioValidationError
+
+if TYPE_CHECKING:
+    from ontology_poc_generator.decision_pack import InputBinding
+    from ontology_poc_generator.knowledge import KnowledgeOutcome, SourceRef
 
 
 def _validated_text(value: object, field: str) -> str:
@@ -40,6 +45,28 @@ def _string_tuple(data: dict, field: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
         raise ScenarioValidationError(f"{field} must be a list of strings")
     return tuple(item.strip() for item in value if item.strip())
+
+
+def _validated_string_tuple(
+    value: object,
+    field: str,
+    *,
+    minimum_items: int = 0,
+) -> tuple[str, ...]:
+    if not isinstance(value, tuple):
+        raise ScenarioValidationError(f"{field} must be a tuple of strings")
+    normalized: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            raise ScenarioValidationError(f"{field}[{index}] must be a non-empty string")
+        normalized.append(item.strip())
+    if len(normalized) < minimum_items:
+        if field == "objects":
+            raise ScenarioValidationError("objects must contain at least two items")
+        raise ScenarioValidationError(
+            f"{field} must contain at least {minimum_items} item"
+        )
+    return tuple(normalized)
 
 
 _KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -339,6 +366,20 @@ class ScenarioParameters:
     readiness_declarations: tuple[ReadinessDeclaration, ...] = ()
 
     def __post_init__(self) -> None:
+        for field, minimum_items in (
+            ("objects", 2),
+            ("acceptance_questions", 1),
+            ("participants", 0),
+            ("constraints", 0),
+            ("desired_actions", 0),
+        ):
+            object.__setattr__(
+                self,
+                field,
+                _validated_string_tuple(
+                    getattr(self, field), field, minimum_items=minimum_items
+                ),
+            )
         object.__setattr__(
             self,
             "decision_key",
@@ -496,8 +537,26 @@ class Proposal:
     planned_capabilities: tuple[str, ...] = ()
     acceptance_questions_status: str = ""
     readiness_gap: str = ""
+    input_bindings: tuple[InputBinding, ...] = ()
+    knowledge_source_refs: tuple[SourceRef, ...] = ()
+    knowledge_outcomes: tuple[KnowledgeOutcome, ...] = ()
 
     def __post_init__(self) -> None:
+        from ontology_poc_generator.decision_pack import InputBinding
+        from ontology_poc_generator.knowledge import KnowledgeOutcome, SourceRef
+
+        for field, item_type in (
+            ("input_bindings", InputBinding),
+            ("knowledge_source_refs", SourceRef),
+            ("knowledge_outcomes", KnowledgeOutcome),
+        ):
+            value = getattr(self, field)
+            if not isinstance(value, tuple) or any(
+                not isinstance(item, item_type) for item in value
+            ):
+                raise ScenarioValidationError(
+                    f"{field} must be a tuple of {item_type.__name__}"
+                )
         if not self.current_capabilities:
             object.__setattr__(
                 self,
