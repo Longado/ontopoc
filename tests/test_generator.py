@@ -1,9 +1,10 @@
 import json
 import unittest
+from dataclasses import fields
 
 from ontology_poc_generator.errors import ScenarioValidationError
 from ontology_poc_generator.generator import generate_proposal
-from ontology_poc_generator.models import DataSource, ScenarioParameters
+from ontology_poc_generator.models import DataSource, Proposal, ScenarioParameters
 from ontology_poc_generator.renderers import render_json, render_markdown
 
 
@@ -363,6 +364,154 @@ class GeneratorTest(unittest.TestCase):
             json.loads(rendered)["primary_decision"],
             "选择需要优先处置的订单",
         )
+
+    def test_renderers_label_unimplemented_capabilities_as_planned(self):
+        params = ScenarioParameters.from_dict({
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "objects": ["订单", "物料"],
+            "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+        })
+
+        proposal = generate_proposal(params)
+        markdown = render_markdown(proposal)
+        rendered_json = json.loads(render_json(proposal))
+        rendered_json_text = json.dumps(rendered_json, ensure_ascii=False)
+
+        for unimplemented_claim in (
+            "确定性规则计算可验证结论",
+            "修改一项业务规则或对象关系并预览影响",
+            "生成后续任务，保留版本与决策轨迹",
+            "可运行的合成或客户数据演示",
+            "验收矩阵、修正记录和下一阶段建议",
+        ):
+            self.assertNotIn(unimplemented_claim, markdown)
+            self.assertNotIn(unimplemented_claim, rendered_json_text)
+
+        self.assertIn("当前已生成", markdown)
+        self.assertIn("POC 计划", markdown)
+        self.assertIn("候选验收问题", markdown)
+        self.assertIn("尚未形成完整通过条件", markdown)
+        self.assertIn("current_capabilities", rendered_json)
+        self.assertIn("planned_capabilities", rendered_json)
+        self.assertIn("当前已生成", rendered_json["current_capabilities"][0])
+        self.assertIn("POC 计划", rendered_json["planned_capabilities"][0])
+
+    def test_generated_artifacts_match_the_renderer_and_explicit_relations(self):
+        base = {
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "objects": ["订单", "物料"],
+            "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+        }
+        without_relations = generate_proposal(ScenarioParameters.from_dict(base))
+        with_relations = generate_proposal(ScenarioParameters.from_dict({
+            **base,
+            "relations": [{"source": "订单", "predicate": "使用", "target": "物料"}],
+        }))
+
+        markdown_without_relations = render_markdown(without_relations)
+        markdown_with_relations = render_markdown(with_relations)
+        json_without_relations = json.loads(render_json(without_relations))
+        json_with_relations = json.loads(render_json(with_relations))
+        json_without_relations_text = json.dumps(
+            json_without_relations,
+            ensure_ascii=False,
+        )
+
+        self.assertIn("当前已生成：Proposal 的 Markdown 文档", markdown_without_relations)
+        self.assertNotIn("当前已生成：Proposal 的结构化 JSON", markdown_without_relations)
+        self.assertNotIn("Markdown", json_without_relations_text)
+        self.assertNotIn("Proposal 的结构化 JSON", json_without_relations_text)
+        self.assertIn("当前已生成：业务决策卡、对象、约束和数据缺口草案", markdown_without_relations)
+        self.assertNotIn("当前已生成：业务决策卡、对象、显式关系、约束和数据缺口草案", markdown_without_relations)
+        self.assertNotRegex(
+            markdown_without_relations,
+            r"当前(?:已生成|仅生成)[^\n]*(显式关系|、关系、|关系草案)",
+        )
+        self.assertNotRegex(
+            json_without_relations_text,
+            r"当前(?:已生成|仅生成)[^\"]*(显式关系|、关系、|关系草案)",
+        )
+        self.assertIn("关系信息不足", markdown_without_relations)
+        self.assertIn("关系信息不足", json_without_relations_text)
+        self.assertIn("显式关系", markdown_with_relations)
+        self.assertIn("显式关系", " ".join(json_with_relations["current_capabilities"]))
+        self.assertRegex(markdown_with_relations, r"当前已生成[^\n]*显式关系")
+        self.assertRegex(
+            json.dumps(json_with_relations, ensure_ascii=False),
+            r"当前已生成[^\"]*显式关系",
+        )
+
+    def test_proposal_owns_shared_capability_and_candidate_statuses(self):
+        params = ScenarioParameters.from_dict({
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "objects": ["订单", "物料"],
+            "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+        })
+
+        proposal = generate_proposal(params)
+        markdown = render_markdown(proposal)
+        rendered_json = json.loads(render_json(proposal))
+        legacy_proposal = Proposal(
+            "供应链", "履约风险处置", "选择需要优先处置的订单", "计划经理",
+            "订单交付风险上升时", ("订单", "物料"), (), (), (), (), (),
+            ("能否解释订单为什么被优先处置？",), (), (), "synthetic_demo", "",
+        )
+        legacy_markdown = render_markdown(legacy_proposal)
+
+        self.assertEqual(set(rendered_json), {field.name for field in fields(Proposal)})
+        self.assertEqual(
+            [field.name for field in fields(Proposal)][-4:],
+            [
+                "current_capabilities",
+                "planned_capabilities",
+                "acceptance_questions_status",
+                "readiness_gap",
+            ],
+        )
+        self.assertEqual(
+            tuple(rendered_json["current_capabilities"]),
+            proposal.current_capabilities,
+        )
+        self.assertEqual(
+            tuple(rendered_json["planned_capabilities"]),
+            proposal.planned_capabilities,
+        )
+        self.assertEqual(
+            rendered_json["acceptance_questions_status"],
+            proposal.acceptance_questions_status,
+        )
+        self.assertEqual(rendered_json["readiness_gap"], proposal.readiness_gap)
+        self.assertEqual(
+            tuple(rendered_json["acceptance_questions"]),
+            proposal.acceptance_questions,
+        )
+        for item in proposal.current_capabilities + proposal.planned_capabilities:
+            self.assertIn(item, markdown)
+        for question in proposal.acceptance_questions:
+            self.assertIn(
+                f"{proposal.acceptance_questions_status}：{question}",
+                markdown,
+            )
+        self.assertIn(proposal.readiness_gap, markdown)
+        self.assertTrue(legacy_proposal.current_capabilities)
+        self.assertTrue(legacy_proposal.planned_capabilities)
+        self.assertIn("候选验收问题：能否解释订单为什么被优先处置？", legacy_markdown)
+        self.assertIn("尚未形成完整通过条件", legacy_markdown)
+        for item in legacy_proposal.current_capabilities + legacy_proposal.planned_capabilities:
+            self.assertIn(item, legacy_markdown)
+        self.assertNotIn("显式关系", legacy_markdown)
 
 
 if __name__ == "__main__":

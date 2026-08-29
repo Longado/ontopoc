@@ -21,25 +21,27 @@ def render_markdown(proposal: Proposal) -> str:
         if proposal.evidence_mode == "customer_data"
         else "当前无已确认客户数据，方案按 synthetic_demo 设计，只验证方法和结构，不代表客户业务事实。"
     )
+    current_demo_scope = (
+        "对象、显式关系、约束和数据缺口草案"
+        if proposal.relation_candidates
+        else "对象、约束和数据缺口草案；关系信息不足"
+    )
     demo_steps = (
-        f"1. 以“{proposal.trigger}”触发场景。",
-        "2. 展示与主决策相关的对象、关系、约束和证据。",
-        "3. 修改一项业务规则或对象关系并预览影响。",
-        f"4. 由{proposal.decision_owner}确认选择、拒绝或信息不足，并记录理由。",
-        "5. 生成后续任务，保留版本与决策轨迹。",
+        f"1. 当前已生成：展示以“{proposal.trigger}”为触发条件的决策卡草案。",
+        f"2. 当前已生成：展示与主决策相关的{current_demo_scope}。",
+        "3. POC 计划（待验证）：在具备规则输入后，验证规则变更的影响分析。",
+        f"4. POC 计划（待验证）：由{proposal.decision_owner}审阅并确认选择、拒绝或信息不足。",
+        "5. POC 计划（待验证）：验证任务创建以及版本和决策轨迹记录。",
     )
     stages = (
-        "阶段一：确认主决策、业务对象、数据边界和验收问题。",
-        "阶段二：建立最小本体、映射和可确定求值的规则。",
-        "阶段三：走通演示决策闭环，记录业务修正。",
-        "阶段四：复盘验收结果，决定是否扩大数据和系统范围。",
+        "阶段一（POC 计划）：确认主决策、业务对象、数据边界和候选验收问题。",
+        "阶段二（POC 计划）：建立最小本体、映射和待验证的规则求值。",
+        "阶段三（POC 计划）：验证演示决策闭环和业务修正记录。",
+        "阶段四（POC 计划）：复盘候选验收问题，决定是否扩大数据和系统范围。",
     )
     deliverables = (
-        "业务决策卡和场景边界",
-        "对象、关系、规则及数据映射草案",
-        "可运行的合成或客户数据演示",
-        "验收矩阵、修正记录和下一阶段建议",
-    )
+        "当前已生成：Proposal 的 Markdown 文档",
+    ) + proposal.current_capabilities + proposal.planned_capabilities
     risks = list(proposal.data_gaps)
     if proposal.evidence_mode == "synthetic_demo":
         risks.append("缺少已确认客户数据，不能验证实际数据质量或业务效果")
@@ -64,7 +66,7 @@ def render_markdown(proposal: Proposal) -> str:
 | 触发条件 | {proposal.trigger} |
 | 核心决策 | {proposal.primary_decision} |
 | 最终决策者 | {proposal.decision_owner} |
-| 决策输出 | 选择、拒绝或信息不足，并记录依据与后续任务 |
+| 决策输出 | 当前生成的决策卡草案：选择、拒绝或信息不足；任务创建为 POC 待验证项 |
 
 ## 决策闭环
 
@@ -84,7 +86,7 @@ def render_markdown(proposal: Proposal) -> str:
 
 {_bullets(proposal.constraints, "首轮访谈需确认稳定规则、限制条件和状态定义")}
 
-规则结果必须区分 `pass`、`fail`、`not_evaluable` 和 `unsupported`。
+POC 计划（待验证）中的规则求值结果需区分 `pass`、`fail`、`not_evaluable` 和 `unsupported`。
 
 ## 数据映射与缺口
 
@@ -110,7 +112,9 @@ def render_markdown(proposal: Proposal) -> str:
 
 ## 验收问题与通过条件
 
-{_bullets(tuple(f"{item} 通过条件：演示结果可直接回答，并能追溯对象、规则和证据。" for item in proposal.acceptance_questions), "尚未定义验收问题")}
+{_bullets(tuple(f"{proposal.acceptance_questions_status}：{item}" for item in proposal.acceptance_questions), "尚未定义验收问题")}
+
+{proposal.readiness_gap}
 
 ## 交付物
 

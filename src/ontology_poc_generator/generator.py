@@ -1,4 +1,8 @@
-from ontology_poc_generator.models import Proposal, ScenarioParameters
+from ontology_poc_generator.models import (
+    Proposal,
+    ScenarioParameters,
+    _current_draft_contents,
+)
 
 
 def generate_proposal(params: ScenarioParameters) -> Proposal:
@@ -15,6 +19,7 @@ def generate_proposal(params: ScenarioParameters) -> Proposal:
         for source in params.data_sources
         if source.status != "available"
     )
+    current_draft_contents = _current_draft_contents(relations)
     return Proposal(
         industry=params.industry,
         scene_name=params.scene_name,
@@ -30,15 +35,15 @@ def generate_proposal(params: ScenarioParameters) -> Proposal:
         acceptance_questions=params.acceptance_questions,
         decision_loop=(
             f"触发：{params.trigger}",
-            "汇集与该决策有关的对象、关系、约束和证据",
-            "确定性规则计算可验证结论，并显式保留信息不足状态",
-            f"{params.decision_owner}进行人工确认，记录选择、拒绝与理由",
+            f"当前已生成：汇集该决策相关{current_draft_contents}",
+            "POC 计划（待验证）：基于确认后的规则输入进行求值，并保留信息不足状态",
+            f"POC 计划（待验证）：由{params.decision_owner}进行人工确认，审阅草案并选择、拒绝或标记信息不足",
         ),
         responsibility_boundaries=(
-            "LLM：从需求材料抽取候选参数，不直接发布本体或业务结论",
-            "本体与规则：维护对象、关系、约束、版本和可复现事实",
-            "专业模型：只提供经过独立验证的预测结果",
-            "Agent：编排查询、验证、送审和任务创建",
+            "LLM（POC 建议职责，尚未接入）：从需求材料抽取候选参数，不直接发布本体或业务结论",
+            f"本体与规则：当前仅生成{current_draft_contents}；规则求值与版本记录为 POC 待验证能力",
+            "专业模型（POC 建议职责，尚未接入）：只提供经过独立验证的预测结果",
+            "Agent（POC 建议职责，尚未实现）：编排查询、验证、送审和任务创建",
             f"人工：由{params.decision_owner}作出最终决策",
         ),
         evidence_mode=evidence_mode,

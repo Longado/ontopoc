@@ -108,6 +108,31 @@ def _validated_relations(value: object) -> tuple[Relation, ...]:
     return value
 
 
+_DEFAULT_PLANNED_CAPABILITIES = (
+    "POC 计划（待验证，尚未生成）：规则求值、影响分析和可运行演示",
+    "POC 计划（待验证，尚未生成）：Agent 编排、任务创建、版本与决策轨迹、验收矩阵和修正记录",
+)
+_DEFAULT_ACCEPTANCE_QUESTIONS_STATUS = "候选验收问题"
+_DEFAULT_READINESS_GAP = (
+    "尚未形成完整通过条件：当前缺少输入、步骤、预期结果、证据和责任人；"
+    "需在 POC 计划中补齐并验证。"
+)
+
+
+def _current_draft_contents(relation_candidates: tuple[str, ...]) -> str:
+    return (
+        "对象、显式关系、约束和数据缺口草案"
+        if relation_candidates
+        else "对象、约束和数据缺口草案；关系信息不足"
+    )
+
+
+def _default_current_capabilities(
+    relation_candidates: tuple[str, ...],
+) -> tuple[str, ...]:
+    return (f"当前已生成：业务决策卡、{_current_draft_contents(relation_candidates)}",)
+
+
 @dataclass(frozen=True)
 class ScenarioParameters:
     industry: str
@@ -210,3 +235,25 @@ class Proposal:
     responsibility_boundaries: tuple[str, ...]
     evidence_mode: str
     notes: str
+    current_capabilities: tuple[str, ...] = ()
+    planned_capabilities: tuple[str, ...] = ()
+    acceptance_questions_status: str = ""
+    readiness_gap: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.current_capabilities:
+            object.__setattr__(
+                self,
+                "current_capabilities",
+                _default_current_capabilities(self.relation_candidates),
+            )
+        if not self.planned_capabilities:
+            object.__setattr__(self, "planned_capabilities", _DEFAULT_PLANNED_CAPABILITIES)
+        if not self.acceptance_questions_status:
+            object.__setattr__(
+                self,
+                "acceptance_questions_status",
+                _DEFAULT_ACCEPTANCE_QUESTIONS_STATUS,
+            )
+        if not self.readiness_gap:
+            object.__setattr__(self, "readiness_gap", _DEFAULT_READINESS_GAP)
