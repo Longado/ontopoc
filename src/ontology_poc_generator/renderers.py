@@ -13,8 +13,7 @@ def _bullets(items: tuple[str, ...], empty: str) -> str:
 
 def render_markdown(proposal: Proposal) -> str:
     data_sources = tuple(
-        f"{row.get('name', '未命名数据源')}（{row.get('type', 'unknown')}；"
-        f"{row.get('status', 'to_confirm')}）"
+        f"{row.name}（{row.type}；{row.status}）"
         for row in proposal.data_sources
     )
     mode_note = (

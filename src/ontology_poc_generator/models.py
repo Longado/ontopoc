@@ -5,11 +5,32 @@ from dataclasses import dataclass
 from ontology_poc_generator.errors import ScenarioValidationError
 
 
-def _required_text(data: dict, field: str) -> str:
-    value = data.get(field)
+def _validated_text(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ScenarioValidationError(f"{field} is required")
     return value.strip()
+
+
+def _required_text(data: dict, field: str, error_field: str | None = None) -> str:
+    return _validated_text(data.get(field), error_field or field)
+
+
+def _validated_data_source_status(value: object, field: str) -> str:
+    if not isinstance(value, str) or value not in {
+        "available",
+        "to_confirm",
+        "unavailable",
+    }:
+        raise ScenarioValidationError(
+            f"{field} must be available, to_confirm, or unavailable"
+        )
+    return value
+
+
+def _validated_boolean(value: object, field: str) -> bool:
+    if type(value) is not bool:
+        raise ScenarioValidationError(f"{field} must be a boolean")
+    return value
 
 
 def _string_tuple(data: dict, field: str) -> tuple[str, ...]:
@@ -17,6 +38,40 @@ def _string_tuple(data: dict, field: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
         raise ScenarioValidationError(f"{field} must be a list of strings")
     return tuple(item.strip() for item in value if item.strip())
+
+
+@dataclass(frozen=True)
+class DataSource:
+    name: str
+    type: str
+    status: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "name", _validated_text(self.name, "name"))
+        object.__setattr__(self, "type", _validated_text(self.type, "type"))
+        object.__setattr__(
+            self,
+            "status",
+            _validated_data_source_status(self.status, "status"),
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict, index: int) -> "DataSource":
+        prefix = f"data_sources[{index}]"
+        return cls(
+            name=_required_text(data, "name", f"{prefix}.name"),
+            type=_required_text(data, "type", f"{prefix}.type"),
+            status=_validated_data_source_status(data.get("status"), f"{prefix}.status"),
+        )
+
+
+def _validated_data_sources(value: object) -> tuple[DataSource, ...]:
+    if not isinstance(value, tuple):
+        raise ScenarioValidationError("data_sources must be a tuple of DataSource")
+    for index, source in enumerate(value):
+        if not isinstance(source, DataSource):
+            raise ScenarioValidationError(f"data_sources[{index}] must be a DataSource")
+    return value
 
 
 @dataclass(frozen=True)
@@ -30,10 +85,25 @@ class ScenarioParameters:
     acceptance_questions: tuple[str, ...]
     participants: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
-    data_sources: tuple[dict, ...] = ()
+    data_sources: tuple[DataSource, ...] = ()
     desired_actions: tuple[str, ...] = ()
     customer_data_available: bool = False
     notes: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "data_sources",
+            _validated_data_sources(self.data_sources),
+        )
+        object.__setattr__(
+            self,
+            "customer_data_available",
+            _validated_boolean(
+                self.customer_data_available,
+                "customer_data_available",
+            ),
+        )
 
     @classmethod
     def from_dict(cls, data: dict) -> "ScenarioParameters":
@@ -58,9 +128,12 @@ class ScenarioParameters:
             acceptance_questions=questions,
             participants=_string_tuple(data, "participants"),
             constraints=_string_tuple(data, "constraints"),
-            data_sources=tuple(dict(item) for item in raw_sources),
+            data_sources=tuple(
+                DataSource.from_dict(item, index)
+                for index, item in enumerate(raw_sources)
+            ),
             desired_actions=_string_tuple(data, "desired_actions"),
-            customer_data_available=bool(data.get("customer_data_available", False)),
+            customer_data_available=data.get("customer_data_available", False),
             notes=str(data.get("notes", "")).strip(),
         )
 
@@ -75,7 +148,7 @@ class Proposal:
     object_types: tuple[str, ...]
     relation_candidates: tuple[str, ...]
     constraints: tuple[str, ...]
-    data_sources: tuple[dict, ...]
+    data_sources: tuple[DataSource, ...]
     data_gaps: tuple[str, ...]
     desired_actions: tuple[str, ...]
     acceptance_questions: tuple[str, ...]

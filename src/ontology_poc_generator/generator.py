@@ -10,9 +10,10 @@ def generate_proposal(params: ScenarioParameters) -> Proposal:
         "customer_data" if params.customer_data_available else "synthetic_demo"
     )
     data_gaps = tuple(
-        f"{source.get('name', '未命名数据源')}：数据状态待确认"
+        f"{source.name}："
+        f"{'数据状态待确认' if source.status == 'to_confirm' else '数据源不可用'}"
         for source in params.data_sources
-        if source.get("status") != "available"
+        if source.status != "available"
     )
     return Proposal(
         industry=params.industry,

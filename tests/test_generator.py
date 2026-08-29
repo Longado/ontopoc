@@ -3,7 +3,7 @@ import unittest
 
 from ontology_poc_generator.errors import ScenarioValidationError
 from ontology_poc_generator.generator import generate_proposal
-from ontology_poc_generator.models import ScenarioParameters
+from ontology_poc_generator.models import DataSource, ScenarioParameters
 from ontology_poc_generator.renderers import render_json, render_markdown
 
 
@@ -58,6 +58,154 @@ class GeneratorTest(unittest.TestCase):
         proposal = generate_proposal(params)
 
         self.assertEqual(proposal.data_gaps, ("ERP 订单表：数据状态待确认",))
+
+    def test_rejects_string_customer_data_available(self):
+        with self.assertRaisesRegex(
+            ScenarioValidationError,
+            "customer_data_available must be a boolean",
+        ):
+            ScenarioParameters.from_dict({
+                "industry": "供应链",
+                "scene_name": "履约风险处置",
+                "business_decision": "选择需要优先处置的订单",
+                "decision_owner": "计划经理",
+                "trigger": "订单交付风险上升时",
+                "objects": ["订单", "物料"],
+                "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+                "customer_data_available": "false",
+            })
+
+    def test_rejects_unknown_data_source_status(self):
+        for status in ("pending", ["available"]):
+            with self.subTest(status=status), self.assertRaisesRegex(
+                ScenarioValidationError,
+                "data_sources\\[0\\]\\.status must be available, to_confirm, or unavailable",
+            ):
+                ScenarioParameters.from_dict({
+                    "industry": "供应链",
+                    "scene_name": "履约风险处置",
+                    "business_decision": "选择需要优先处置的订单",
+                    "decision_owner": "计划经理",
+                    "trigger": "订单交付风险上升时",
+                    "objects": ["订单", "物料"],
+                    "data_sources": [
+                        {"name": "ERP 订单表", "type": "table", "status": status}
+                    ],
+                    "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+                })
+
+    def test_rejects_direct_construction_with_unknown_data_source_status(self):
+        with self.assertRaisesRegex(
+            ScenarioValidationError,
+            "status must be available, to_confirm, or unavailable",
+        ):
+            DataSource(name="ERP 订单表", type="table", status="pending")
+
+    def test_rejects_direct_construction_with_string_customer_data_available(self):
+        with self.assertRaisesRegex(
+            ScenarioValidationError,
+            "customer_data_available must be a boolean",
+        ):
+            ScenarioParameters(
+                industry="供应链",
+                scene_name="履约风险处置",
+                business_decision="选择需要优先处置的订单",
+                decision_owner="计划经理",
+                trigger="订单交付风险上升时",
+                objects=("订单", "物料"),
+                acceptance_questions=("能否解释订单为什么被优先处置？",),
+                customer_data_available="false",
+            )
+
+    def test_rejects_direct_construction_with_dict_data_source(self):
+        with self.assertRaisesRegex(
+            ScenarioValidationError,
+            "data_sources\\[0\\] must be a DataSource",
+        ):
+            ScenarioParameters(
+                industry="供应链",
+                scene_name="履约风险处置",
+                business_decision="选择需要优先处置的订单",
+                decision_owner="计划经理",
+                trigger="订单交付风险上升时",
+                objects=("订单", "物料"),
+                acceptance_questions=("能否解释订单为什么被优先处置？",),
+                data_sources=({"name": "ERP 订单表", "type": "table", "status": "available"},),
+            )
+
+    def test_data_source_missing_text_errors_include_source_index(self):
+        for source, error in (
+            (
+                {"type": "api", "status": "available"},
+                "data_sources\\[1\\]\\.name is required",
+            ),
+            (
+                {"name": "物流节点状态", "status": "available"},
+                "data_sources\\[1\\]\\.type is required",
+            ),
+        ):
+            with self.subTest(source=source), self.assertRaisesRegex(
+                ScenarioValidationError,
+                error,
+            ):
+                ScenarioParameters.from_dict({
+                    "industry": "供应链",
+                    "scene_name": "履约风险处置",
+                    "business_decision": "选择需要优先处置的订单",
+                    "decision_owner": "计划经理",
+                    "trigger": "订单交付风险上升时",
+                    "objects": ["订单", "物料"],
+                    "data_sources": [
+                        {"name": "ERP 订单表", "type": "table", "status": "available"},
+                        source,
+                    ],
+                    "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+                })
+
+    def test_unavailable_source_remains_unavailable_in_projections(self):
+        params = ScenarioParameters.from_dict({
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "objects": ["订单", "物料"],
+            "data_sources": [
+                {"name": "物流节点状态", "type": "api", "status": "unavailable"}
+            ],
+            "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+        })
+
+        proposal = generate_proposal(params)
+
+        self.assertEqual(proposal.data_sources[0].status, "unavailable")
+        self.assertEqual(proposal.data_gaps, ("物流节点状态：数据源不可用",))
+        self.assertEqual(
+            json.loads(render_json(proposal))["data_sources"][0]["status"],
+            "unavailable",
+        )
+        self.assertIn("物流节点状态（api；unavailable）", render_markdown(proposal))
+        self.assertIn("物流节点状态：数据源不可用", render_markdown(proposal))
+
+    def test_proposal_is_not_changed_when_raw_data_source_dict_is_mutated(self):
+        source = {"name": "ERP 订单表", "type": "table", "status": "to_confirm"}
+        params = ScenarioParameters.from_dict({
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "objects": ["订单", "物料"],
+            "data_sources": [source],
+            "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+        })
+        proposal = generate_proposal(params)
+
+        source["name"] = "已修改的来源"
+        source["status"] = "available"
+
+        self.assertEqual(proposal.data_sources[0].name, "ERP 订单表")
+        self.assertEqual(proposal.data_sources[0].status, "to_confirm")
 
     def test_markdown_contains_required_sections_and_is_deterministic(self):
         params = ScenarioParameters.from_dict({
