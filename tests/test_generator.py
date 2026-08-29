@@ -441,7 +441,10 @@ class GeneratorTest(unittest.TestCase):
         )
         self.assertIn("关系信息不足", markdown_without_relations)
         self.assertIn("关系信息不足", json_without_relations_text)
+        self.assertNotIn("自动建议", markdown_without_relations)
+        self.assertNotIn("候选关系需要业务人员确认", markdown_without_relations)
         self.assertIn("显式关系", markdown_with_relations)
+        self.assertIn("显式候选关系待业务确认", markdown_with_relations)
         self.assertIn("显式关系", " ".join(json_with_relations["current_capabilities"]))
         self.assertRegex(markdown_with_relations, r"当前已生成[^\n]*显式关系")
         self.assertRegex(
@@ -512,6 +515,28 @@ class GeneratorTest(unittest.TestCase):
         for item in legacy_proposal.current_capabilities + legacy_proposal.planned_capabilities:
             self.assertIn(item, legacy_markdown)
         self.assertNotIn("显式关系", legacy_markdown)
+
+    def test_no_relation_risk_is_recorded_when_other_risks_are_absent(self):
+        params = ScenarioParameters.from_dict({
+            "industry": "供应链",
+            "scene_name": "履约风险处置",
+            "business_decision": "选择需要优先处置的订单",
+            "decision_owner": "计划经理",
+            "trigger": "订单交付风险上升时",
+            "objects": ["订单", "物料"],
+            "data_sources": [
+                {"name": "ERP 订单表", "type": "table", "status": "available"}
+            ],
+            "acceptance_questions": ["能否解释订单为什么被优先处置？"],
+            "customer_data_available": True,
+        })
+
+        markdown = render_markdown(generate_proposal(params))
+
+        self.assertIn("关系信息不足，需补充来源", markdown)
+        self.assertNotIn("当前没有已登记风险", markdown)
+        self.assertNotIn("自动建议", markdown)
+        self.assertNotIn("显式候选关系待业务确认", markdown)
 
 
 if __name__ == "__main__":

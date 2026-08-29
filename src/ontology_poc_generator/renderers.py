@@ -45,7 +45,10 @@ def render_markdown(proposal: Proposal) -> str:
     risks = list(proposal.data_gaps)
     if proposal.evidence_mode == "synthetic_demo":
         risks.append("缺少已确认客户数据，不能验证实际数据质量或业务效果")
-    risks.append("候选关系需要业务人员确认，不能把自动建议直接视为正式本体")
+    if proposal.relation_candidates:
+        risks.append("显式候选关系待业务确认，不能直接视为正式本体")
+    else:
+        risks.append("关系信息不足，需补充来源后再形成显式候选关系")
     if proposal.notes:
         risks.append(proposal.notes)
 
