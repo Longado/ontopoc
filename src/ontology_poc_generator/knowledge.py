@@ -17,6 +17,24 @@ _SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
 _FORBIDDEN_PAYLOAD_KEYS = frozenset(
     {"threshold", "expression", "result", "action", "writeback"}
 )
+_PAYLOAD_PROFILES = {
+    "relation_semantics.v1": (
+        "relation_semantics",
+        frozenset(
+            {"source_role_key", "predicate", "target_role_key", "description"}
+        ),
+    ),
+    "constraint.narrative.v1": ("constraint", frozenset({"description"})),
+    "data_requirement.narrative.v1": (
+        "data_requirement",
+        frozenset({"description"}),
+    ),
+    "acceptance_question.v1": ("acceptance_question", frozenset({"question"})),
+    "readiness_gap.v1": (
+        "readiness_gap",
+        frozenset({"requirement_key", "description"}),
+    ),
+}
 
 
 def _text(value: object, field: str) -> str:
@@ -268,6 +286,7 @@ class KnowledgeSuggestion:
     input_binding_ids: tuple[str, ...]
     source_ref_ids: tuple[str, ...]
     governance_status: str = "candidate"
+    payload_schema: str = ""
 
     def __post_init__(self) -> None:
         for field in (
@@ -285,6 +304,10 @@ class KnowledgeSuggestion:
         )
         if self.governance_status != "candidate":
             raise KnowledgeValidationError("governance_status must be candidate")
+        if self.payload_schema:
+            object.__setattr__(
+                self, "payload_schema", _text(self.payload_schema, "payload_schema")
+            )
         if not isinstance(self.payload, tuple):
             raise KnowledgeValidationError("payload must be an immutable tuple")
         normalized_payload: list[tuple[str, str]] = []
@@ -299,6 +322,22 @@ class KnowledgeSuggestion:
         if len({key for key, _ in normalized_payload}) != len(normalized_payload):
             raise KnowledgeValidationError("payload keys must be unique")
         object.__setattr__(self, "payload", tuple(sorted(normalized_payload)))
+        if self.payload_schema:
+            profile = _PAYLOAD_PROFILES.get(self.payload_schema)
+            if profile is None:
+                raise KnowledgeValidationError(
+                    f"unknown payload_schema: {self.payload_schema}"
+                )
+            expected_type, expected_keys = profile
+            if self.contribution_type != expected_type:
+                raise KnowledgeValidationError(
+                    "payload_schema does not match contribution_type"
+                )
+            actual_keys = frozenset(key for key, _ in normalized_payload)
+            if actual_keys != expected_keys:
+                raise KnowledgeValidationError(
+                    "payload keys must exactly match payload_schema"
+                )
         object.__setattr__(
             self,
             "input_binding_ids",
@@ -356,6 +395,10 @@ class KnowledgeSuggestion:
                 required=True,
             ),
             governance_status=data.get("governance_status", "candidate"),
+            payload_schema=_text(
+                data.get("payload_schema"),
+                f"suggestion_templates[{index}].payload_schema",
+            ),
         )
 
 
@@ -418,6 +461,10 @@ class KnowledgeUnit:
             for key in self.applicability.readiness_requirement_keys
         )
         for template in self.suggestion_templates:
+            if not template.payload_schema:
+                raise KnowledgeValidationError(
+                    "template payload_schema is required"
+                )
             if template.unit_id != self.unit_id:
                 raise KnowledgeValidationError("template unit_id does not match unit")
             if template.unit_version != self.unit_version:
@@ -437,6 +484,25 @@ class KnowledgeUnit:
                     "template references unknown applicability role: "
                     f"{sorted(unknown_roles)[0]}"
                 )
+            if template.payload_schema == "relation_semantics.v1":
+                payload = dict(template.payload)
+                endpoint_roles = {
+                    payload["source_role_key"].casefold(),
+                    payload["target_role_key"].casefold(),
+                }
+                unknown_endpoint_roles = endpoint_roles - known_roles
+                if unknown_endpoint_roles:
+                    raise KnowledgeValidationError(
+                        "relation payload references unknown applicability role: "
+                        f"{sorted(unknown_endpoint_roles)[0]}"
+                    )
+                bound_roles = {
+                    role.casefold() for role in template.input_binding_ids
+                }
+                if not endpoint_roles.issubset(bound_roles):
+                    raise KnowledgeValidationError(
+                        "relation endpoints must be covered by input_binding_ids"
+                    )
             if template.contribution_type == "readiness_gap":
                 requirement_key = dict(template.payload).get("requirement_key")
                 if (
@@ -557,6 +623,7 @@ class KnowledgeOutcome:
                 self.unit_version,
                 self.unit_content_hash,
             )
+            known_binding_ids = set(self.input_binding_ids)
             for suggestion in self.suggestions:
                 actual_provenance = (
                     suggestion.unit_id,
@@ -566,6 +633,16 @@ class KnowledgeOutcome:
                 if actual_provenance != expected_provenance:
                     raise KnowledgeValidationError(
                         "suggestion provenance must match outcome"
+                    )
+                if not suggestion.payload_schema:
+                    raise KnowledgeValidationError(
+                        "applicable suggestion payload_schema is required"
+                    )
+                if not set(suggestion.input_binding_ids).issubset(
+                    known_binding_ids
+                ):
+                    raise KnowledgeValidationError(
+                        "suggestion references binding outside outcome"
                     )
 
 
@@ -684,6 +761,7 @@ def match_knowledge_unit(
                 input_binding_ids=instantiated_binding_ids,
                 source_ref_ids=template.source_ref_ids,
                 governance_status="candidate",
+                payload_schema=template.payload_schema,
             )
         )
 

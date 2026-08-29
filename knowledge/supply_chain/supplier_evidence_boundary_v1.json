@@ -56,6 +56,7 @@
     {
       "suggestion_id": "relation.qualified_to_supply",
       "contribution_type": "relation_semantics",
+      "payload_schema": "relation_semantics.v1",
       "semantic_key": "supplier_qualified_to_supply_material",
       "payload": {
         "source_role_key": "supplier",
@@ -75,6 +76,7 @@
     {
       "suggestion_id": "relation.has_supplied",
       "contribution_type": "relation_semantics",
+      "payload_schema": "relation_semantics.v1",
       "semantic_key": "supplier_has_supplied_material",
       "payload": {
         "source_role_key": "supplier",
@@ -94,6 +96,7 @@
     {
       "suggestion_id": "constraint.history_not_qualification",
       "contribution_type": "constraint",
+      "payload_schema": "constraint.narrative.v1",
       "semantic_key": "purchase_history_not_qualification",
       "payload": {
         "description": "HAS_SUPPLIED evidence cannot establish QUALIFIED_TO_SUPPLY qualification."
@@ -111,6 +114,7 @@
     {
       "suggestion_id": "data_requirement.material_qualification_snapshot",
       "contribution_type": "data_requirement",
+      "payload_schema": "data_requirement.narrative.v1",
       "semantic_key": "material_qualification_snapshot",
       "payload": {
         "description": "Require material-level qualification status, validity, scope, and snapshot completeness from an approved-supplier list or supplier master data."
@@ -128,6 +132,7 @@
     {
       "suggestion_id": "data_requirement.order_material_identity_mapping",
       "contribution_type": "data_requirement",
+      "payload_schema": "data_requirement.narrative.v1",
       "semantic_key": "order_material_dependency_mapping",
       "payload": {
         "description": "Require order-to-material dependency and cross-source identity mapping."
@@ -144,6 +149,7 @@
     {
       "suggestion_id": "acceptance.qualification_absence_is_insufficient",
       "contribution_type": "acceptance_question",
+      "payload_schema": "acceptance_question.v1",
       "semantic_key": "qualification_absence_information_insufficient",
       "payload": {
         "question": "When qualification data is absent, does the assessment remain information-insufficient rather than reporting zero qualified alternatives?"
@@ -160,6 +166,7 @@
     {
       "suggestion_id": "readiness.queue_entry_policy_pending",
       "contribution_type": "readiness_gap",
+      "payload_schema": "readiness_gap.v1",
       "semantic_key": "queue_entry_evidence_policy_pending",
       "payload": {
         "requirement_key": "queue_entry_evidence_policy",

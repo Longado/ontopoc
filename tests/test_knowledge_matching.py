@@ -233,6 +233,7 @@ class KnowledgeMatchingTest(unittest.TestCase):
             payload=first.payload,
             input_binding_ids=first.input_binding_ids,
             source_ref_ids=first.source_ref_ids,
+            payload_schema=first.payload_schema,
         )
         for suggestions, message in (
             ((mismatch,), "suggestion provenance must match outcome"),
@@ -247,8 +248,59 @@ class KnowledgeMatchingTest(unittest.TestCase):
                     unit_content_hash=self.unit.unit_content_hash,
                     match_status=MatchStatus.APPLICABLE,
                     reason_code="applicable",
-                    input_binding_ids=(),
+                    input_binding_ids=first.input_binding_ids,
                     suggestions=suggestions,
+                )
+
+    def test_applicable_outcome_rejects_schema_less_or_foreign_binding_suggestion(self):
+        first = self.unit.suggestion_templates[2]
+        schema_less = KnowledgeSuggestion(
+            suggestion_id="schema-less",
+            unit_id=first.unit_id,
+            unit_version=first.unit_version,
+            unit_content_hash=first.unit_content_hash,
+            contribution_type=first.contribution_type,
+            semantic_key="schema_less",
+            payload=first.payload,
+            input_binding_ids=first.input_binding_ids,
+            source_ref_ids=first.source_ref_ids,
+        )
+        foreign_binding = KnowledgeSuggestion(
+            suggestion_id="foreign-binding",
+            unit_id=first.unit_id,
+            unit_version=first.unit_version,
+            unit_content_hash=first.unit_content_hash,
+            contribution_type=first.contribution_type,
+            semantic_key="foreign_binding",
+            payload=first.payload,
+            input_binding_ids=("binding_foreign",),
+            source_ref_ids=first.source_ref_ids,
+            payload_schema=first.payload_schema,
+        )
+
+        for suggestion, input_binding_ids, message in (
+            (
+                schema_less,
+                schema_less.input_binding_ids,
+                "applicable suggestion payload_schema is required",
+            ),
+            (
+                foreign_binding,
+                ("binding_known",),
+                "suggestion references binding outside outcome",
+            ),
+        ):
+            with self.subTest(message=message), self.assertRaisesRegex(
+                KnowledgeValidationError, message
+            ):
+                KnowledgeOutcome(
+                    unit_id=first.unit_id,
+                    unit_version=first.unit_version,
+                    unit_content_hash=first.unit_content_hash,
+                    match_status=MatchStatus.APPLICABLE,
+                    reason_code="applicable",
+                    input_binding_ids=input_binding_ids,
+                    suggestions=(suggestion,),
                 )
 
     def test_matching_semantics_are_applicable_and_bind_templates(self):
@@ -272,6 +324,7 @@ class KnowledgeMatchingTest(unittest.TestCase):
             (role_bindings["supplier"], role_bindings["material"]),
         )
         self.assertNotEqual(qualified.suggestion_id, "relation.qualified_to_supply")
+        self.assertEqual(qualified.payload_schema, "relation_semantics.v1")
         self.assertEqual(
             tuple(item.contribution_type for item in outcome.suggestions)[-1],
             "readiness_gap",
@@ -389,6 +442,7 @@ class KnowledgeMatchingTest(unittest.TestCase):
             (("description", "Generic constraint."),),
             ("alpha", "beta"),
             ("generic-source",),
+            payload_schema="constraint.narrative.v1",
         )
         unit = KnowledgeUnit(
             "generic.unit",

@@ -49,6 +49,15 @@ EXPECTED_CONTRIBUTION_TYPES = (
     "acceptance_question",
     "readiness_gap",
 )
+EXPECTED_PAYLOAD_SCHEMAS = (
+    "relation_semantics.v1",
+    "relation_semantics.v1",
+    "constraint.narrative.v1",
+    "data_requirement.narrative.v1",
+    "data_requirement.narrative.v1",
+    "acceptance_question.v1",
+    "readiness_gap.v1",
+)
 EXPECTED_SOURCE_SNAPSHOTS = (
     "1e8b7bf0a128f716d55ab438a0830959dadd15cebcc91e576eee67e2ffd71425",
     "a937a6b085733766b09ff5f40468ef9e9b1182c946d1cff9a201947111d27ed8",
@@ -99,9 +108,12 @@ def valid_unit_dict() -> dict:
             {
                 "suggestion_id": "qualified-to-supply",
                 "contribution_type": "relation_semantics",
+                "payload_schema": "relation_semantics.v1",
                 "semantic_key": "supplier.qualified_to_supply.material",
                 "payload": {
+                    "source_role_key": "supplier",
                     "predicate": "QUALIFIED_TO_SUPPLY",
+                    "target_role_key": "material",
                     "description": "Qualification and purchase history are distinct.",
                 },
                 "input_binding_ids": ["supplier", "material"],
@@ -133,6 +145,7 @@ class KnowledgeContractTest(unittest.TestCase):
             payload=(("description", "History is not qualification."),),
             input_binding_ids=("supplier",),
             source_ref_ids=("source-1",),
+            payload_schema="constraint.narrative.v1",
         )
         unit = KnowledgeUnit(
             unit_id="unit-1",
@@ -282,6 +295,93 @@ class KnowledgeContractTest(unittest.TestCase):
                 ):
                     KnowledgeUnit.from_dict(data, unit_content_hash=VALID_HASH)
 
+    def test_direct_suggestion_keeps_legacy_default_until_added_to_a_unit(self):
+        suggestion = KnowledgeSuggestion(
+            "legacy", "unit", "1", VALID_HASH, "constraint", "key",
+            (("description", "Candidate."),), ("supplier",), ("source",),
+        )
+
+        self.assertEqual(suggestion.payload_schema, "")
+        with self.assertRaisesRegex(
+            KnowledgeValidationError, "template payload_schema is required"
+        ):
+            KnowledgeUnit(
+                "unit", "1", "decision", VALID_HASH,
+                (
+                    SourceRef(
+                        "source", SourceKind.PRACTITIONER_NOTE, "Source", "local",
+                        "1", VALID_HASH, "Not a customer fact.",
+                    ),
+                ),
+                (suggestion,),
+                ApplicabilitySpec(
+                    required_role_keys=("supplier",),
+                    decision_mismatch_reason_code="decision_mismatch",
+                    missing_required_role_reason_code="role_missing",
+                    missing_required_bridge_reason_code="bridge_missing",
+                ),
+            )
+
+    def test_rejects_unknown_or_mismatched_payload_schema(self):
+        cases = (
+            ("unknown.v1", "relation_semantics", "unknown payload_schema"),
+            (
+                "constraint.narrative.v1",
+                "relation_semantics",
+                "payload_schema does not match contribution_type",
+            ),
+        )
+        for payload_schema, contribution_type, message in cases:
+            data = valid_unit_dict()
+            data["suggestion_templates"][0]["payload_schema"] = payload_schema
+            data["suggestion_templates"][0]["contribution_type"] = contribution_type
+            with self.subTest(payload_schema=payload_schema), self.assertRaisesRegex(
+                KnowledgeValidationError, message
+            ):
+                KnowledgeUnit.from_dict(data, unit_content_hash=VALID_HASH)
+
+    def test_loader_rejects_missing_payload_schema(self):
+        data = valid_unit_dict()
+        data["suggestion_templates"][0].pop("payload_schema")
+
+        with self.assertRaisesRegex(
+            KnowledgeValidationError, "payload_schema is required"
+        ):
+            KnowledgeUnit.from_dict(data, unit_content_hash=VALID_HASH)
+
+    def test_rejects_missing_extra_or_empty_profile_payload_fields(self):
+        mutations = (
+            lambda payload: payload.pop("target_role_key"),
+            lambda payload: payload.update({"extra": "not allowed"}),
+            lambda payload: payload.update({"description": " "}),
+        )
+        for mutate in mutations:
+            data = valid_unit_dict()
+            mutate(data["suggestion_templates"][0]["payload"])
+            with self.subTest(payload=data["suggestion_templates"][0]["payload"]), \
+                    self.assertRaises(KnowledgeValidationError):
+                KnowledgeUnit.from_dict(data, unit_content_hash=VALID_HASH)
+
+    def test_relation_profile_endpoints_must_be_declared_and_bound(self):
+        cases = (
+            ("source_role_key", "unknown", "unknown applicability role"),
+            ("target_role_key", "unknown", "unknown applicability role"),
+        )
+        for field, value, message in cases:
+            data = valid_unit_dict()
+            data["suggestion_templates"][0]["payload"][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(
+                KnowledgeValidationError, message
+            ):
+                KnowledgeUnit.from_dict(data, unit_content_hash=VALID_HASH)
+
+        data = valid_unit_dict()
+        data["suggestion_templates"][0]["input_binding_ids"] = ["supplier"]
+        with self.assertRaisesRegex(
+            KnowledgeValidationError, "relation endpoints must be covered"
+        ):
+            KnowledgeUnit.from_dict(data, unit_content_hash=VALID_HASH)
+
     def test_accepted_unit_does_not_share_raw_mutable_data(self):
         data = valid_unit_dict()
 
@@ -329,6 +429,10 @@ class KnowledgeLoaderTest(unittest.TestCase):
         self.assertEqual(
             tuple(item.contribution_type for item in unit.suggestion_templates),
             EXPECTED_CONTRIBUTION_TYPES,
+        )
+        self.assertEqual(
+            tuple(item.payload_schema for item in unit.suggestion_templates),
+            EXPECTED_PAYLOAD_SCHEMAS,
         )
         self.assertEqual(
             tuple(item.source_ref_ids for item in unit.suggestion_templates),
