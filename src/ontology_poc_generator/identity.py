@@ -80,3 +80,15 @@ def stable_compilation_issue_id(
         "compilation_issue",
         (suggestion_id, code, payload_schema),
     )
+
+
+def stable_closure_issue_id(
+    code: str,
+    owner_id: str,
+    field: str,
+    referenced_id: str,
+) -> str:
+    return _stable_id(
+        "closure_issue",
+        (code, owner_id, field, referenced_id),
+    )
