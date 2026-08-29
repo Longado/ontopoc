@@ -12,20 +12,16 @@ from ontology_poc_generator.recognition_cli import build_parser, main
 def candidate_content() -> str:
     return json.dumps(
         {
-            "schema": "scenario_recognition_candidate.v1",
-            "profile": "order_priority_intervention",
-            "industry": "制造业供应链",
-            "scene_name": "订单履约异常识别",
-            "business_decision": "哪些订单进入优先干预队列",
+            "schema": "scenario_intake_candidate.v1",
+            "match_status": "matched",
+            "profile_key": "order_priority_intervention",
             "decision_owner": "供应链计划经理",
             "trigger": "交期或物料齐套异常时",
-            "participants": ["订单经理"],
-            "additional_objects": ["订单行"],
-            "constraints": ["ERP 是交易事实权威"],
-            "data_sources": [],
-            "desired_actions": ["创建人工核查任务"],
-            "acceptance_questions": ["能否解释候选队列依据？"],
-            "notes": "只读演示",
+            "participant_keys": ["order_manager"],
+            "constraint_keys": ["erp_transaction_authority", "no_erp_writeback"],
+            "data_source_statuses": [],
+            "desired_action_keys": ["create_order_exception_review_task"],
+            "missing_required_fields": [],
         },
         ensure_ascii=False,
     )
