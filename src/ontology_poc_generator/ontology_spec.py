@@ -7,7 +7,10 @@ import json
 import re
 from typing import Any, TypeVar
 
-from ontology_poc_generator.errors import OntologySpecValidationError
+from ontology_poc_generator.errors import (
+    OntologySpecValidationError,
+    SpecCompilationError,
+)
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -462,3 +465,78 @@ def canonical_ontology_spec_json(spec: OntologySpec) -> str:
 def ontology_spec_content_hash(spec: OntologySpec) -> str:
     canonical = canonical_ontology_spec_json(spec).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
+
+
+@dataclass(frozen=True)
+class ClosureIssue:
+    issue_id: str
+    code: str
+    owner_id: str
+    field: str
+    referenced_id: str
+
+    def __post_init__(self) -> None:
+        for field in ("issue_id", "code", "owner_id", "field", "referenced_id"):
+            object.__setattr__(self, field, _text(getattr(self, field), field))
+
+
+@dataclass(frozen=True)
+class ReferenceClosureReport:
+    checked_reference_count: int
+    issues: tuple[ClosureIssue, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.checked_reference_count, bool)
+            or not isinstance(self.checked_reference_count, int)
+            or self.checked_reference_count < 0
+        ):
+            raise OntologySpecValidationError(
+                "checked_reference_count must be a non-negative integer"
+            )
+        object.__setattr__(
+            self,
+            "issues",
+            _sorted_unique_elements(
+                self.issues,
+                "issues",
+                ClosureIssue,
+                "issue_id",
+            ),
+        )
+
+    @property
+    def is_closed(self) -> bool:
+        return not self.issues
+
+
+@dataclass(frozen=True)
+class SpecCompilationResult:
+    spec: OntologySpec
+    closure_report: ReferenceClosureReport
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.spec, OntologySpec):
+            raise OntologySpecValidationError("spec must be an OntologySpec")
+        if not isinstance(self.closure_report, ReferenceClosureReport):
+            raise OntologySpecValidationError(
+                "closure_report must be a ReferenceClosureReport"
+            )
+        if not self.closure_report.is_closed:
+            raise SpecCompilationError(
+                "compiled_spec_not_reference_closed",
+                "compiled ontology spec is not reference-closed",
+            )
+
+    @property
+    def spec_content_hash(self) -> str:
+        return ontology_spec_content_hash(self.spec)
+
+    @property
+    def compilation_status(self) -> CompilationStatus:
+        if any(
+            issue.severity is CompilationIssueSeverity.BLOCKING
+            for issue in self.spec.compilation_issues
+        ):
+            return CompilationStatus.BLOCKED
+        return CompilationStatus.COMPLETE
