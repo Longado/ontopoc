@@ -1,4 +1,4 @@
-# 渐进式新 EIP 技术架构
+# Persistent AI FDE Decision Compiler 技术架构
 
 **版本：** v0.1  
 **状态：** Re-anchoring Draft
@@ -10,15 +10,18 @@
 
 > 2026-08-29 重锚说明：当前实施顺序以 [渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md) 为准。本文后续原有的“Studio 对接旧 EIP”章节属于重锚前候选设计，将在对应 Loop 进入时逐段替换，不代表当前接口承诺。
 
-本架构服务新的最小可信路径：
+本架构服务新的最小可信路径。愿景是 **Persistent AI FDE**，核心资产是不可变 `DecisionPack`；首个黄金主决策是“哪些订单进入优先干预队列”，处置动作延后到 Loop 6：
 
 ```text
 结构化场景输入
 -> 有来源的 DecisionPack
 -> 新仓 OntologySpec
 -> synthetic facts + stateless validation
--> immutable version + human review
--> confirmed publication
+-> hash-bound ValidationReceipt
+-> review / confirm / publish baseline
+-> revised candidate pack / spec / receipt
+-> DecisionDelta + immutable version + human review
+-> confirm / publish next version
 -> 后续数据映射、血缘、裁决与受控行动
 ```
 
@@ -31,7 +34,8 @@
 5. 无客户数据、无授权或无验证证据时，不得升级证据状态；
 6. 核心不依赖前端、LLM、旧 EIP、Neo4j 或数据库服务；
 7. 保持当前 CLI 和两个示例的兼容迁移路径；
-8. 先实现本仓自己的无状态 EIP 验证纵切面，再讨论旧 EIP 兼容、Web 和企业基础设施。
+8. 先实现本仓自己的无状态 EIP 验证纵切面，再讨论旧 EIP 兼容、Web 和企业基础设施；
+9. Loop 4 同时保留结构 semantic diff 和业务 DecisionDelta；没有真实用户纠正或复用 DecisionDelta 的证据，不进入 Loop 5–7。
 
 ## 2. 当前事实与目标能力
 
@@ -71,6 +75,19 @@ requires_data     缺少数据或授权
 requires_runtime  需要 EIP 或其他运行环境验证
 verified          已有对应验证回执
 ```
+
+### 2.4 Loop 契约所有权
+
+| Loop | 本轮拥有 | 明确不提前拥有 |
+|---|---|---|
+| 1 | source/binding/suggestion 稳定身份、`SourceRef / KnowledgeUnit / KnowledgeSuggestion / KnowledgeOutcome`、不可变 `DecisionPack`、canonical pack content hash | Action、规则执行、事实结果、review、version、publication |
+| 2 | `OntologySpec` 稳定类型、domain/range、规则输入绑定、引用闭包、canonical spec content hash；保留 candidate/draft 状态 | 事实运行和版本治理 |
+| 3 | synthetic facts、四态结果、绑定 pack/spec/facts 内容 hash 的 `ValidationReceipt` | 发布和外部副作用 |
+| 4 | pack 版本/base、review、publication、结构 semantic diff、published/candidate receipt 的 `DecisionDelta` | 生产数据连接、Action、API |
+
+Loop 1 的默认 CLI 不加载知识包，保持 Loop 0 输出。只有显式 `--knowledge-unit` 才增加 candidate 建议。知识包声明匹配规则，核心 Python 不出现行业名称特判。
+
+> 第 3–24 节保存重锚前的参考架构候选。其中出现的“当前”“MVP”“本阶段”以及 blueprint repository、完整 CLI、API、LLM/EIP adapter 等措辞不构成当前承诺；只有 ROADMAP 与已批准的 dated Loop plan 能授权实现。当前只执行第 25 节所列 Loop 1 技术门。
 
 ## 3. 架构风格
 
@@ -1279,7 +1296,7 @@ Decision
 
 前置条件：EIP 接口、目标模式、capability matrix 和合成契约测试明确。
 
-出口：一份 confirmed 乳品合成蓝图完成 EIP draft validation，并返回可校验 receipt；不发布、不执行行动。
+出口：一份明确标记 candidate/draft 的供应链合成 DecisionPack 完成本仓无状态 validation，并返回绑定 pack/spec/facts 内容 hash 的可校验 receipt；不确认、不发布、不执行行动。旧 EIP 只可作为独立契约参考，不是此前置条件。
 
 ## 23. 架构决策记录
 
@@ -1332,9 +1349,8 @@ Decision
 
 不进入前端设计。下一步只执行：
 
-1. Slice 0：修复当前证据和输入边界；
-2. 用真实任务评审确认是否进入 Slice 1；
-3. 如果进入，先写最小 `ProjectBlueprint` 的失败测试和 schema；
-4. 保持当前 CLI 为首个 adapter；
-5. PRD/Acceptance 只选一个作为下一个 renderer；
-6. EIP 保持只读契约研究，不进入当前实现范围。
+1. 按 [Loop 1 详细计划](superpowers/plans/2026-08-29-loop1-sourced-supply-chain-knowledge.md) 实现首个有来源的供应商—物料证据语义知识单元；
+2. 保持当前 CLI 为首个 adapter，默认不加载知识包；
+3. 用供应链黄金场景证明 knowledge outcome 的 `applicable / not_applicable / insufficient_information` 边界；
+4. 通过 Loop 1 出口后再冻结 Loop 2 的 `OntologySpec` 契约；
+5. 不进入前端、PRD renderer、数据映射、Action 或 API。

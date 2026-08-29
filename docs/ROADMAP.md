@@ -1,12 +1,20 @@
-# Ontology POC Generator → 新 EIP 滚动路线图
+# Persistent AI FDE / Decision Compiler 滚动路线图
 
 最后更新：2026-08-29
 
-## 新定位
+## 产品锚点
 
-本仓库从当前可运行的 POC 方案 CLI 出发，逐步重建一套新的 EIP：
+本仓库从当前可运行的 POC 方案 CLI 出发，逐步构建一条 **Persistent AI FDE** 生产线：
 
-> 把一个业务决策编译为有来源、可审查、可测试、可版本化、可运行和可修正的 `DecisionPack`。
+> 把客户的一个业务决策，编译成有来源、可验证、可审查、可发布并能持续修正的决策资产。
+
+产品机制是 **AI FDE Decision Compiler**，核心资产是不可变 `DecisionPack`，首个垂直场景是供应链订单决策变更，首个必须验证的产品瞬间是 **DecisionDelta**。
+
+黄金主决策严格收敛为：
+
+> 哪些订单进入优先干预队列？
+
+“采取哪种处置动作”不是该 `DecisionPack` 的主决策；它属于 Loop 6 的受控行动范围。乳品研发样例只保留为跨行业 regression，用来防止核心出现行业特判，不证明跨行业知识有效。
 
 POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `nano-ontoprompt` 是第一方经验库和行为参考，不是代码来源、运行依赖或必须兼容的架构底座。
 
@@ -90,15 +98,15 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 
 ## NOW
 
-### Loop 1 — 有来源的知识辅助 DecisionPack
+### Loop 1 — 有来源的供应链知识辅助 DecisionPack
 
-**状态：ready_to_plan**
+**状态：planned**
 
-Loop 0 的出口门已满足；本 Loop 只授权先制定并验证其最小知识辅助纵切面，不提前实现后续本体、运行时、审查或版本能力。
+详细实施计划已建立：[Loop 1：供应链证据语义知识单元](superpowers/plans/2026-08-29-loop1-sourced-supply-chain-knowledge.md)。计划已经可执行，但代码尚未开始，因此不能标记为 `in_progress` 或完成。
 
-建立版本化 `SourceRef / KnowledgeUnit / KnowledgeSuggestion`，用确定性适用性规则贡献候选对象、关系、规则、数据需求和验收问题；自动建议始终为 candidate。第一份知识单元只覆盖一个窄场景，核心代码不得出现乳品或供应链分支。
+建立稳定身份的 `SourceRef / KnowledgeUnit / KnowledgeSuggestion / KnowledgeOutcome` 和不可变 `DecisionPack`，用知识包内声明的确定性匹配规则贡献 candidate 建议。第一份知识单元只区分 `QUALIFIED_TO_SUPPLY` 与 `HAS_SUPPLIED` 的证据语义；核心 Python 不得出现供应链分支。
 
-出口：输出包含输入中没有的结构化建议，且每条建议都能追到来源、适用条件、输入绑定和版本；无匹配时返回信息不足。
+出口：输出包含输入中没有的结构化建议，且每条建议都能追到固定 snapshot、适用条件、稳定语义绑定和版本；不匹配返回 `not_applicable`，缺少必要语义角色或订单—物料桥接返回 `insufficient_information`；缺少入队政策则保留为结构化 readiness gap，不压掉知识建议。本轮不计算风险分数、不输出最终队列、不提出处置动作。
 
 ## NEXT
 
@@ -106,9 +114,9 @@ Loop 0 的出口门已满足；本 Loop 只授权先制定并验证其最小知�
 
 **状态：entry_blocked_by_loop_1**
 
-把 confirmed `DecisionPack` 编译成新仓拥有的 `OntologySpec`，建立稳定 ID、显式 domain/range、属性、规则输入绑定、引用闭包和规范化 JSON。
+把 `DecisionPack` 编译成新仓拥有的 draft `OntologySpec`，建立显式 domain/range、属性、规则输入绑定、引用闭包、规范化 JSON 和 spec 内容 hash。Loop 1 已建立的 source/suggestion identity 继续使用；candidate 状态必须保留并标记为 synthetic/draft，只有 Loop 4 审查后才能进入 confirmed publication。
 
-出口：同一 pack 产生字节稳定 spec；改 label 不改变已有 ID；悬空引用、候选泄漏和未绑定规则响亮失败。
+出口：同一 pack 产生字节稳定 spec；改 label 不改变已有 ID；悬空引用、状态丢失和未绑定规则响亮失败。
 
 ### Loop 3 — 无状态验证运行时
 
@@ -116,35 +124,37 @@ Loop 0 的出口门已满足；本 Loop 只授权先制定并验证其最小知�
 
 在内存中加载 `synthetic_demo` facts，完成 T-Box 校验、首批确定性规则、`pass / fail / not_evaluable / unsupported` 四态和 checksum 绑定的 `ValidationReceipt`。
 
-出口：黄金乳品场景产生可追到规则与事实的回执，且明确 `draft_created=false`、`published=false`、`actions_executed=false`、`external_write=false`。
+出口：供应链黄金场景产生绑定 pack/spec/facts 内容 hash、可追到规则与事实的 `ValidationReceipt`，且明确 `draft_created=false`、`published=false`、`actions_executed=false`、`external_write=false`。
 
 ### Loop 4 — 不可变版本、人工审查与发布门
 
 **状态：entry_blocked_by_loop_3**
 
-先创建不可变 draft snapshot 与 checksum，再让 review 绑定精确版本；随后提供 stable-ID semantic diff、stale-base 拒绝、Draft Review Package 和 confirmed-only Publication Package。
+先把首份 candidate/draft receipt 审查、确认并发布为 baseline；再对 revised candidate pack/spec/receipt 建立不可变 version/base，让 review 绑定精确内容 hash，并同时提供结构 `semantic diff` 和业务 `DecisionDelta`。`DecisionDelta` 比较 published baseline 与 candidate receipt，报告订单进入优先队列、退出优先队列、仍在优先队列或变为信息不足，并逐项附上规则与证据依据。
 
-出口：退回—修订—再审—发布可重放；旧 review 不会套用到新内容；只有 confirmed 且可验证的内容能发布。
+出口：退回—修订—再审—发布可重放；旧 review 不会套用到新内容；只有 confirmed 且可验证的内容能发布；一名真实 FDE 和一名供应链业务验证参与者共同理解并纠正、批准或复用至少一份 `DecisionDelta`。
 
-完成 Loop 4 后，仓库形成第一个可演示的新 EIP 产品闭环，而不是只能向旧 EIP 请求回执的 Studio。
+Loop 4 是产品验证闸，不是自动通往平台建设的里程碑。若真实 FDE 和供应链业务验证参与者不能共同纠正、批准或复用 `DecisionDelta`，停止扩张并重新锚定，不得进入 Loop 5–7。
+
+进入门必须由可检查的产品验证记录证明：保存被评估的 delta/receipt hash、参与者角色、实际纠正/批准/复用证据、`go / no_go`、理由和时间；只有一名真实 FDE 与一名供应链业务验证参与者共同形成 `go`，才解除 Loop 5–7 的阻塞。
 
 ## LATER
 
 ### Loop 5 — 数据映射与行级血缘
 
-**状态：entry_blocked_by_loop_4**
+**状态：entry_blocked_by_loop_4_user_validation**
 
 先支持本地 CSV/JSON 数据版本、显式 source table/key/property/relation mapping、确定性事实展开和 row → fact → rule result → finding 正反向血缘；不接生产数据库。
 
 ### Loop 6 — 决策裁决与受控行动
 
-**状态：entry_blocked_by_loop_5**
+**状态：entry_blocked_by_loop_4_user_validation_and_loop_5**
 
-分离 rule result、candidate finding、human verdict 和 action task；行动必须有合同、审批、责任人、before/after、结果或失败回执。首版只生成内部任务，不写 ERP/MES/CRM。
+分离 rule result、candidate finding、human verdict 和 action task；此时才处理“采取哪种内部处置动作”。行动必须有合同、审批、责任人、before/after、结果或失败回执。首版只生成内部任务，不写 ERP/MES/CRM。
 
 ### Loop 7 — 服务化与扩展边界
 
-**状态：entry_blocked_by_loop_6**
+**状态：entry_blocked_by_loop_4_user_validation_and_loop_6**
 
 把已验证 use case 提炼为 application service 和 repository port，再增加 capability-derived API。CLI 与 API 必须共享领域内核；没有测试覆盖的能力不得进入 capability manifest。
 

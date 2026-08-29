@@ -12,9 +12,9 @@
 
 ## 1. Product anchor
 
-The repository keeps its current name during reconstruction, but the product target changes:
+The repository keeps its current name during reconstruction. Its vision is **Persistent AI FDE**, its product mechanism is **AI FDE Decision Compiler**, and its durable asset is the immutable `DecisionPack`:
 
-> Compile one real business decision into a `DecisionPack` whose ontology, rules, evidence, human decisions, versions, and follow-up actions can be inspected and replayed.
+> 把客户的一个业务决策，编译成有来源、可验证、可审查、可发布并能持续修正的决策资产。
 
 The current proposal document becomes one projection of the pack. It is no longer the product's authoritative object.
 
@@ -23,16 +23,20 @@ The north-star path is:
 ```text
 raw scenario
 -> sourced modeling suggestions
--> reviewed DecisionPack
--> executable OntologySpec
--> synthetic facts and deterministic validation
--> findings and human verdict
--> versioned publication
+-> candidate DecisionPack
+-> draft OntologySpec
+-> candidate/draft ValidationReceipt on synthetic facts
+-> review, confirm, and publish the baseline
+-> revised candidate pack/spec/receipt
+-> DecisionDelta against the published baseline
+-> review and publish the next version
 -> controlled action task and result receipt
 -> correction returned to the pack and knowledge source
 ```
 
-The first complete path uses a clearly marked `synthetic_demo` dairy R&D decision: after consumer testing, the R&D owner decides whether to retain, supplement, or return a candidate experiment direction and assigns the next task. The supply-chain exception example remains a regression input to detect industry hard-coding; it is not proof that the method is cross-industry.
+The first complete path uses a clearly marked `synthetic_demo` supply-chain decision: **which orders enter the priority intervention queue** after supplier promise, material relation, or queue policy changes. Selecting an intervention action is a separate decision and remains out of the golden pack until Loop 6. The dairy R&D example becomes a cross-industry regression input to detect hard-coding; it is not proof that the method is cross-industry.
+
+The product moment is `DecisionDelta`: it compares published and candidate `ValidationReceipt` objects and explains which orders entered or left the queue, remained in the queue, or became information-insufficient, with the rule and evidence basis for each change.
 
 ## 2. Reconstruction rules
 
@@ -76,15 +80,15 @@ After Loop 2, every loop must preserve one runnable vertical path. A loop is not
 | Loop | Product question | Minimum deliverable | Exit evidence |
 |---|---|---|---|
 | 0 — Truthful baseline | Can the product stop inventing knowledge from input order? | strict input/status model, removal of adjacent-object inference, explicit limitations | object reordering does not change relations; unavailable remains unavailable; no false runtime claims |
-| 1 — Knowledge-assisted DecisionPack | Can it contribute useful modeling knowledge beyond the input? | versioned knowledge units, sourced candidate suggestions, immutable `DecisionPack` | every suggestion has source, applicability, input binding, and candidate status; no match yields information insufficiency |
-| 2 — Executable ontology kernel | Can a confirmed pack become a machine-checkable ontology specification? | stable IDs, explicit object/relation/rule references, reference closure, deterministic compiler | same pack produces byte-stable spec; dangling references and candidate leakage fail loudly |
-| 3 — Stateless validation runtime | Can the new EIP evaluate a synthetic case without persistence or side effects? | inline facts, T-Box checks, initial rule kinds, four-state results, checksum-bound receipt | one dairy case produces traceable results and zero writes/actions |
-| 4 — Review, version, publish | Can people correct the model and understand what changed? | append-only review, confirmed projection, canonical checksum, semantic diff, local publish gate | review can be replayed; stale base fails; only confirmed content is published |
+| 1 — Knowledge-assisted DecisionPack | Can it contribute useful modeling knowledge beyond the input? | stable source/suggestion identity, sourced candidate suggestions, immutable `DecisionPack` | every suggestion has fixed source snapshot, applicability, input binding, and candidate status; not-applicable and insufficient-information remain distinct |
+| 2 — Executable ontology kernel | Can a pack become a machine-checkable draft ontology specification? | explicit object/relation/rule references, reference closure, deterministic compiler | same pack produces byte-stable spec; dangling references and governance-status loss fail loudly |
+| 3 — Stateless validation runtime | Can the new EIP evaluate a synthetic case without persistence or side effects? | inline facts, T-Box checks, initial rule kinds, four-state results, content-hash-bound receipt | one supply-chain case produces traceable results and zero writes/actions |
+| 4 — Decision change, review, publish | Can people correct the model and understand what business conclusions changed? | append-only review, confirmed projection, semantic diff, `DecisionDelta`, local publish gate | receipt delta explains changed order conclusions; review can be replayed; stale base fails; only confirmed content is published |
 | 5 — Data mapping and lineage | Can the ontology explain which source rows support each fact and result? | CSV/JSON dataset version, explicit mapping, row lineage, reproducible expansion | same dataset+mapping reproduces facts; missing keys fail; finding traces to source rows |
 | 6 — Decision and controlled action | Can validation support a governed business decision instead of ending at a rule result? | finding, verdict, action contract, approval, internal task, result receipt, feedback | no action before approval; before/after and failure are retained; no external writeback |
 | 7 — Service and extensibility | Can the verified core be exposed without weakening its contracts? | capability manifest, stateless API, repository port, optional adapters | API and CLI share the same application service; capability claims derive from tested behavior |
 
-Loops 0–4 form the first demonstrable new EIP product. Loops 5–7 expand it toward an enterprise platform only after the earlier gates pass.
+Loops 0–4 form the first demonstrable AI FDE MVP. Loop 4 is a product-validation gate: Loops 5–7 remain blocked unless one real FDE and one supply-chain business validation participant jointly record a `go` after correcting, approving, or reusing a `DecisionDelta`.
 
 This file owns the program sequence, cross-loop contracts, and stop rules. Before a loop enters `in_progress`, create a dated loop-specific implementation plan with the exact API produced by the preceding loop, 2–5 minute TDD steps, focused commands, and commit boundaries. Do not freeze detailed code for later loops before their input contract exists; new findings amend this master plan and the next loop plan, never silently rewrite completed-loop evidence.
 
@@ -97,19 +101,20 @@ src/ontology_poc_generator/
 ├── models.py                 existing intake and Proposal compatibility
 ├── generator.py              temporary compatibility facade
 ├── renderers.py              projections only
-├── identity.py               Loop 1 stable content and element identity
+├── identity.py               Loop 1 stable source, binding, suggestion, and pack content identity
 ├── knowledge.py              Loop 1 knowledge source/unit/suggestion contracts
 ├── decision_pack.py          Loop 1 authoritative aggregate
 ├── compiler.py               Loop 1 intake + knowledge -> DecisionPack
 ├── ontology_spec.py          Loop 2 executable T-Box/rule specification
-├── spec_compiler.py          Loop 2 confirmed DecisionPack -> OntologySpec
+├── spec_compiler.py          Loop 2 DecisionPack -> status-preserving draft OntologySpec
 ├── validation.py             Loop 2 structural and reference validation
 ├── facts.py                  Loop 3 typed inline facts
 ├── tbox.py                   Loop 3 class/relation conformance
 ├── rule_eval.py              Loop 3 deterministic four-state evaluation
 ├── receipts.py               Loop 3 validation receipt
 ├── review.py                 Loop 4 append-only human decisions
-├── versioning.py             Loop 4 canonical checksum and semantic diff
+├── versioning.py             Loop 4 version/base lifecycle and semantic diff
+├── decision_delta.py         Loop 4 receipt-to-business-change comparison
 ├── publication.py            Loop 4 confirmed-only local publication
 ├── datasets.py               Loop 5 dataset identity and version
 ├── mappings.py               Loop 5 source-to-ontology mapping
@@ -204,287 +209,77 @@ def test_object_order_does_not_invent_relations(self):
 - [x] Record the exact test result and the known zero-knowledge limitation.
 - [x] Commit as `docs: close truthful baseline loop`.
 
-## 6. Loop 1 — Knowledge-assisted DecisionPack
+## 6. Loop 1 — Sourced supply-chain knowledge and DecisionPack
 
-### Task 1.1: Define the knowledge contract
+**Status:** `planned`; implementation has not started.
 
-**Files:**
+The authoritative step-by-step plan is [2026-08-29-loop1-sourced-supply-chain-knowledge.md](2026-08-29-loop1-sourced-supply-chain-knowledge.md). Loop 1 owns stable `SourceRef` and suggestion identity, declarative applicability, `KnowledgeOutcome`, and the immutable `DecisionPack`. It does not own Action, rule execution, fact results, review, version, or publication.
 
-- Create: `src/ontology_poc_generator/knowledge.py`
-- Create: `tests/test_knowledge.py`
-- Create: `knowledge/dairy_rnd/post_consumer_direction_v1.json`
+Its only knowledge unit separates material-level supplier qualification evidence (`QUALIFIED_TO_SUPPLY`, supported only by ASL/qualification records) from purchase history (`HAS_SUPPLIED`, supported only by PO/receipt/invoice history). “Only bought from A” must never imply “only A is qualified.” The unit may suggest evidence requirements, relation semantics, and acceptance questions, but it does not produce a final queue, risk score, or intervention action.
 
-- [ ] Define immutable `SourceRef`, `KnowledgeUnit`, and `KnowledgeSuggestion` records.
-- [ ] Restrict source kinds to authoritative reference, implemented artifact, observed case, practitioner note, and synthetic example.
-- [ ] Validate that every unit has a version/hash, applicability condition, structured payload, source, and caveat policy.
-- [ ] Reject practitioner notes that emit confirmed facts, customer results, numeric thresholds, or executable rules.
-- [ ] Prove the same input and knowledge-pack version produce byte-stable suggestions.
-- [ ] Commit as `feat: define versioned knowledge units`.
-
-Minimum record shape:
-
-```python
-@dataclass(frozen=True)
-class KnowledgeSuggestion:
-    suggestion_id: str
-    unit_id: str
-    unit_version: str
-    applicability: str
-    contribution_type: str
-    semantic_key: str
-    payload: Mapping[str, object]
-    input_bindings: tuple[str, ...]
-    source_refs: tuple[str, ...]
-    governance_status: str = "candidate"
-```
-
-### Task 1.2: Add deterministic applicability matching
-
-**Files:**
-
-- Modify: `src/ontology_poc_generator/knowledge.py`
-- Create: `tests/test_knowledge_matching.py`
-
-- [ ] Match only controlled normalized fields; do not use embeddings or an LLM.
-- [ ] Return `applicable`, `not_applicable`, or `insufficient_information`.
-- [ ] Add a dairy R&D unit that distinguishes a consumer-test observation, a candidate experiment direction, and the R&D owner's retain/supplement/return decision.
-- [ ] Suggest only candidate relations, minimum evidence requirements, and acceptance questions; never suggest a real formula, BOM, material quantity, production conclusion, or customer result.
-- [ ] Prove the supply-chain regression input does not match the dairy unit.
-- [ ] Commit as `feat: match sourced modeling suggestions`.
-
-### Task 1.3: Build the authoritative DecisionPack
-
-**Files:**
-
-- Create: `src/ontology_poc_generator/identity.py`
-- Create: `src/ontology_poc_generator/decision_pack.py`
-- Create: `src/ontology_poc_generator/compiler.py`
-- Create: `tests/test_decision_pack.py`
-- Create: `tests/test_compiler.py`
-- Modify: `src/ontology_poc_generator/generator.py`
-- Modify: `src/ontology_poc_generator/renderers.py`
-
-- [ ] Define the pack's scene, decision, actor, object, relation, rule, data requirement, acceptance case, and action-contract elements.
-- [ ] Give each element a stable ID, semantic key, source references, and governance status.
-- [ ] Compile customer input and knowledge suggestions without converting suggestions to confirmed facts.
-- [ ] Project the existing Proposal and Markdown from the pack without renderer inference.
-- [ ] Prove that label changes do not break references and that unknown references fail.
-- [ ] Commit as `feat: compile sourced decision packs`.
+The matcher is generic: match aliases and role requirements are declared in the knowledge package, never as supply-chain branches in Python. A domain mismatch returns `not_applicable`; missing required semantic roles or an order-to-material bridge returns `insufficient_information`. A missing queue policy remains a structured readiness gap so that the unit can still suggest why that policy is needed. The default CLI loads no unit and preserves Loop 0 behavior; `--knowledge-unit` is explicit opt-in.
 
 ## 7. Loop 2 — Executable ontology kernel
 
-### Task 2.1: Define the local OntologySpec
+**Status:** blocked by Loop 1. Create a dated TDD plan only after the accepted Loop 1 `DecisionPack` contract exists.
 
-**Files:**
+**Question:** Can a pack become a machine-checkable local `OntologySpec` without losing stable identity or governance status?
 
-- Create: `src/ontology_poc_generator/ontology_spec.py`
-- Create: `tests/test_ontology_spec.py`
+**Owned contract:** entity/relation/property types, explicit domain/range, rule declarations and input bindings, reference closure, structured validation issues, canonical spec serialization and spec content hash. Action is not part of this loop.
 
-- [ ] Define entity types, relation types, property types, rule declarations, and non-executing action contracts.
-- [ ] Require explicit domain, range, identifiers, and rule input bindings.
-- [ ] Reject dangling references, duplicate semantic keys, invalid self-relations, and unbound rule inputs.
-- [ ] Keep the schema local; do not copy the old EIP `OntologySpec` field layout.
-- [ ] Commit as `feat: define executable ontology specification`.
+Candidate elements may compile only into a clearly marked draft/synthetic spec and must retain candidate status. They cannot be represented as confirmed or published. The later Loop 4 review and publication gate owns the transition to a confirmed publication.
 
-### Task 2.2: Compile confirmed content only
-
-**Files:**
-
-- Create: `src/ontology_poc_generator/spec_compiler.py`
-- Create: `src/ontology_poc_generator/validation.py`
-- Create: `tests/test_spec_compiler.py`
-- Create: `tests/test_validation.py`
-
-- [ ] Reject compilation when required elements remain candidate, rejected, or information-insufficient.
-- [ ] Compile stable DecisionPack IDs into stable OntologySpec keys.
-- [ ] Produce structured validation issues with path, code, message, and severity.
-- [ ] Prove the same confirmed pack produces byte-identical canonical JSON.
-- [ ] Commit as `feat: compile confirmed packs into ontology specs`.
+**Exit:** the same pack produces byte-stable draft spec content; label changes do not change semantic IDs; dangling references and status loss fail loudly.
 
 ## 8. Loop 3 — Stateless validation runtime
 
-### Task 3.1: Add typed synthetic facts and conformance
+**Status:** blocked by Loop 2. Create a dated TDD plan only after the accepted `OntologySpec` contract exists.
 
-**Files:**
+**Question:** Can the new EIP evaluate the golden synthetic supply-chain case with no persistence or side effects?
 
-- Create: `src/ontology_poc_generator/facts.py`
-- Create: `src/ontology_poc_generator/tbox.py`
-- Create: `tests/test_facts.py`
-- Create: `tests/test_tbox.py`
-- Create: `tests/fixtures/dairy_rnd/ontology_spec.json`
-- Create: `tests/fixtures/dairy_rnd/facts.json`
+**Owned contract:** canonical synthetic facts and facts content hash, T-Box conformance, the minimum deterministic rule kinds, exact `pass / fail / not_evaluable / unsupported` states, and an immutable `ValidationReceipt` bound to pack/spec/facts content hashes.
 
-- [ ] Load inline facts marked `synthetic_demo`.
-- [ ] Validate entity type, identifier, property type, relation domain/range, and referenced endpoints.
-- [ ] Return all issues without modifying the fact set.
-- [ ] Prove invalid facts cannot reach rule evaluation.
-- [ ] Commit as `feat: validate typed synthetic facts`.
+Each decision conclusion needed by the later delta must include stable `decision_scope`, `decision_key`, subject/order ID, conclusion key/value, rule IDs, input fact IDs, missing inputs, and reason. Candidate/draft validation is allowed only when the receipt keeps that status visible.
 
-### Task 3.2: Implement the first rule kinds and four states
-
-**Files:**
-
-- Create: `src/ontology_poc_generator/rule_eval.py`
-- Create: `tests/test_rule_eval.py`
-
-- [ ] Implement only the rule kinds required by the golden dairy slice.
-- [ ] Return exactly `pass`, `fail`, `not_evaluable`, or `unsupported`.
-- [ ] Bind each result to rule ID, input fact IDs, missing inputs, and reason.
-- [ ] Prove unsupported is not converted into not-evaluable or a data gap.
-- [ ] Commit as `feat: evaluate deterministic ontology rules`.
-
-### Task 3.3: Produce an immutable ValidationReceipt
-
-**Files:**
-
-- Create: `src/ontology_poc_generator/receipts.py`
-- Create: `tests/test_receipts.py`
-- Modify: `src/ontology_poc_generator/cli.py`
-
-- [ ] Bind the receipt to pack, spec, and fact checksums.
-- [ ] Include T-Box issues, rule results, and explicit side-effect flags.
-- [ ] Add a CLI command that validates local fixtures in memory.
-- [ ] Assert `draft_created=false`, `published=false`, `actions_executed=false`, and `external_write=false`.
-- [ ] Commit as `feat: add stateless validation receipts`.
+**Exit:** three synthetic orders produce traceable “in queue / not in queue / information insufficient” conclusions; invalid facts cannot reach evaluation; the receipt declares zero publication, action, and external writes.
 
 ## 9. Loop 4 — Review, version, and publish
 
-### Task 4.1: Add immutable draft versions and semantic diff
+**Status:** blocked by Loop 3. Create a dated TDD plan only after the accepted receipt contract exists.
 
-**Files:**
+**Question:** Can an FDE understand and correct how a model change affects the queue decision, then publish only reviewed content?
 
-- Create: `src/ontology_poc_generator/versioning.py`
-- Create: `tests/test_versioning.py`
+**Owned contract:** immutable pack version/base, version-bound append-only review, stable-ID structural semantic diff, stale-base rejection, confirmed-only publication, and `DecisionDelta` comparing published/candidate receipts for the same decision scope. Pack/spec/facts content hashes already come from their producing loops; Loop 4 adds lifecycle identity, not first-time content hashing.
 
-- [ ] Canonicalize pack JSON and calculate SHA-256 checksums.
-- [ ] Diff by stable element ID, not array order or JSON line.
-- [ ] Include knowledge-pack version, source, status, and review changes.
-- [ ] Reject stale-base revisions.
-- [ ] Commit as `feat: version and diff decision packs`.
+`DecisionDelta` reports orders entering the queue, leaving the queue, remaining in the queue, or becoming information-insufficient, with old/new conclusion, rule and evidence basis. “High risk” is not a second output unless a later accepted contract defines it.
 
-### Task 4.2: Add version-bound append-only human review
+**Exit:** return—revise—review—publish is replayable; old review cannot apply to changed content; only confirmed and successfully validated content publishes.
 
-**Files:**
-
-- Create: `src/ontology_poc_generator/review.py`
-- Create: `tests/test_review.py`
-
-- [ ] Record exact pack version/checksum, subject ID and subject checksum, reviewer role, prior status, verdict, reason, and caller-supplied timestamp.
-- [ ] Replay records deterministically against only the version they reviewed.
-- [ ] Reject unauthorized transitions, unknown bases, and attempts to apply an old review to changed subject content.
-- [ ] Prove changing a label retains the element ID but invalidates review only when the reviewed subject checksum changes.
-- [ ] Commit as `feat: record version-bound ontology review`.
-
-### Task 4.3: Add a confirmed-only local publication gate
-
-**Files:**
-
-- Create: `src/ontology_poc_generator/publication.py`
-- Create: `tests/test_publication.py`
-- Modify: `src/ontology_poc_generator/cli.py`
-
-- [ ] Export a draft review package and a confirmed publication package as separate types.
-- [ ] Block publication when required content is candidate, rejected, insufficient, unsupported, or not evaluable.
-- [ ] Include manifest, checksums, open issues, generator version, and produced files.
-- [ ] Demonstrate one review-return-revise-confirm-publish journey.
-- [ ] Commit as `feat: publish confirmed decision packs`.
+**Product-validation artifact:** record `delta_id`, delta/receipt hashes, the real-FDE role, the supply-chain business-validation role, correction/approval/reuse evidence, explicit `go` or `no_go`, reason, and timestamp. Only their jointly recorded `go` unlocks Loop 5–7; otherwise stop and re-anchor.
 
 ## 10. Loop 5 — Data mapping and lineage
 
-### Task 5.1: Version one local dataset
+**Status:** blocked by a recorded Loop 4 product-validation `go`.
 
-**Files:**
+**Question:** Can the accepted supply-chain decision explain which local source rows support each fact and conclusion?
 
-- Create: `src/ontology_poc_generator/datasets.py`
-- Create: `tests/test_datasets.py`
-- Create: `tests/fixtures/dairy_rnd/data/`
-
-- [ ] Support local CSV and JSON only.
-- [ ] Record content checksum, schema summary, row count, and source classification.
-- [ ] Reject mutable overwrite of an existing dataset version.
-- [ ] Commit as `feat: version local ontology datasets`.
-
-### Task 5.2: Map rows to ontology facts
-
-**Files:**
-
-- Create: `src/ontology_poc_generator/mappings.py`
-- Create: `tests/test_mappings.py`
-
-- [ ] Define explicit source table, key column, label column, property bindings, and relation bindings.
-- [ ] Expand facts without database writes.
-- [ ] Fail on missing keys, duplicate identities, invalid coercion, and unknown ontology targets.
-- [ ] Commit as `feat: expand mapped ontology facts`.
-
-### Task 5.3: Preserve row-level lineage
-
-**Files:**
-
-- Create: `src/ontology_poc_generator/lineage.py`
-- Create: `tests/test_lineage.py`
-- Modify: `src/ontology_poc_generator/receipts.py`
-
-- [ ] Connect source row, mapped fact, rule result, and finding IDs.
-- [ ] Make coverage claims reproducible from returned lineage records.
-- [ ] Prove that a finding cannot claim evidence from an unmapped row.
-- [ ] Commit as `feat: trace findings to source rows`.
+**Candidate scope:** local CSV/JSON dataset identity, explicit mapping, deterministic fact expansion, and row-to-fact-to-result lineage. Use the supply-chain golden fixture; dairy remains only a no-hard-coding regression. A dated plan is required before implementation.
 
 ## 11. Loop 6 — Decision and controlled action
 
-### Task 6.1: Separate rule results, findings, and verdicts
+**Status:** blocked by a recorded Loop 4 product-validation `go` and Loop 5.
 
-**Files:**
+**Question:** Can a validated queue conclusion become a governed human verdict and controlled internal task?
 
-- Create: `src/ontology_poc_generator/decisions.py`
-- Create: `tests/test_decisions.py`
-
-- [ ] Produce candidate findings from rule results without treating them as human decisions.
-- [ ] Record verdict, reviewer, evidence references, and reasoning.
-- [ ] Keep rejected findings and their reasons in history.
-- [ ] Commit as `feat: govern ontology findings and verdicts`.
-
-### Task 6.2: Add controlled internal action tasks
-
-**Files:**
-
-- Create: `src/ontology_poc_generator/actions.py`
-- Create: `tests/test_actions.py`
-
-- [ ] Define action contract, proposed parameters, approver, internal assignee, before snapshot, status, result, and failure reason.
-- [ ] Prove no action is created before an approved verdict and no action runs before explicit approval.
-- [ ] Record result receipt and feed a correction event back to the DecisionPack history.
-- [ ] Keep ERP/MES/CRM writeback outside this loop.
-- [ ] Commit as `feat: add approved internal action loop`.
+This is the first loop that may model “which intervention action to take.” It separates rule results, findings, verdicts, approvals, action contracts, internal tasks, result/failure receipts, and feedback. External ERP/MES/CRM writeback remains out of scope. A dated plan is required before implementation.
 
 ## 12. Loop 7 — Service and extensibility
 
-### Task 7.1: Extract shared application services
+**Status:** blocked by a recorded Loop 4 product-validation `go` and Loop 6.
 
-**Files:**
+**Question:** Can verified use cases be exposed without weakening their contracts?
 
-- Create: `src/ontology_poc_generator/application.py`
-- Create: `src/ontology_poc_generator/repositories.py`
-- Modify: `src/ontology_poc_generator/cli.py`
-- Create: `tests/test_application.py`
-
-- [ ] Define use cases for compile, validate, review, version, publish, map, decide, and approve.
-- [ ] Keep repository and clock interfaces explicit.
-- [ ] Prove CLI behavior uses the same services as programmatic callers.
-- [ ] Commit as `refactor: expose verified eip application services`.
-
-### Task 7.2: Add a minimal capability-derived API
-
-**Files:**
-
-- Create: `src/ontology_poc_generator/api.py`
-- Create: `tests/test_api.py`
-- Modify: `pyproject.toml` only if FastAPI is selected at this gate.
-
-- [ ] Add endpoints only for already verified application use cases.
-- [ ] Generate a capability manifest from registered, tested behaviors rather than a handwritten promise list.
-- [ ] Prove API and CLI return the same checksums and domain result for the golden fixture.
-- [ ] Keep authentication, multi-tenancy, queues, Web UI, and production database in later plans.
-- [ ] Commit as `feat: expose verified eip capabilities`.
+**Candidate scope:** shared application services, repository ports, capability-derived API, and CLI/API parity. Web UI, authentication, multi-tenancy, queues, and production database require separate evidence and plans.
 
 ## 13. Deferred until a new approved plan
 
@@ -513,8 +308,8 @@ git status --short
 
 At every loop boundary also:
 
-- generate the dairy golden artifact and inspect status, source, and capability language;
-- run the supply-chain regression and search production code for industry-name branches;
+- generate the supply-chain golden artifact and inspect status, source, and capability language;
+- run the dairy regression and search production code for industry-name branches;
 - record exact tests, artifacts, invalidated assumptions, and next-loop gate in `docs/ROADMAP.md`;
 - record the EIP or external mechanism reviewed in `docs/DISCOVERY_LOG.md`;
 - ensure every changed file directly supports the loop;
@@ -528,7 +323,7 @@ Stop the active loop when:
 - a customer-facing claim has no source or explicit unknown state;
 - a renderer invents a fact absent from the DecisionPack;
 - an ontology result cannot be tied to spec and data checksums;
-- candidate content reaches an executable or published projection;
+- candidate content is represented as confirmed, reaches publication, or is validated without an explicit draft/candidate marker;
 - `unsupported` is represented as missing data;
 - a new EIP capability requires copying an old subsystem to make progress;
 - three real design sessions fail to produce a reusable, accepted correction pattern.
@@ -537,4 +332,4 @@ The last condition triggers a product review: keep the repository as an internal
 
 ## 16. First execution handoff
 
-Loop 0 已完成：当前全量 unittest 为 25 项通过；乳品研发与供应链异常双样例仅作为 CLI smoke / regression，证明输出不再由对象顺序补造关系、能保留状态与边界，不能证明跨行业有效或形成知识建议。当前知识增益仍为零。Loop 1 仅处于 `ready_to_plan`，下一步先写出 Loop 1 的详细实施计划；在该计划通过前，不实现 Loop 1，也不启动后续 Loop。
+Loop 0 已完成：当前全量 unittest 为 25 项通过；双样例仅作为 CLI smoke / regression，不能证明跨行业有效或形成知识建议。当前知识增益仍为零。Loop 1 的详细实施计划已经建立，状态为 `planned`，尚未开始实现。下一步按该计划从失败测试和固定 source snapshot 开始；不得把计划存在写成 Loop 1 已完成，也不得提前进入 Loop 2。

@@ -1,16 +1,18 @@
-# PRD：渐进式新 EIP
+# PRD：Persistent AI FDE Decision Compiler
 
-**产品代号：** Ontology EIP Studio
-**仓库：** `ontology-poc-generator`  
-**版本：** v0.1  
+**愿景概念：** Persistent AI FDE
+**产品机制：** AI FDE Decision Compiler
+**核心资产：** `DecisionPack`
+**仓库：** `ontology-poc-generator`
+**版本：** v0.1
 **状态：** Re-anchored product direction; detailed requirements under review
 **日期：** 2026-08-29
 
-> 当前实施顺序以 [渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md) 和 [路线图](ROADMAP.md) 为准。本文后半部原有的 Studio/EIP 适配型功能清单保留为候选需求，不再代表已承诺顺序。
+> 当前实施顺序以 [渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md)、[Loop 1 详细计划](superpowers/plans/2026-08-29-loop1-sourced-supply-chain-knowledge.md) 和 [路线图](ROADMAP.md) 为准。本文保留的 Studio、Web 和多 renderer 功能仅是候选需求，不属于当前 MVP 承诺。
 
 ## 1. 执行摘要
 
-Ontology EIP Studio 从当前的确定性 POC 方案 CLI 出发，逐步长成一套新的 EIP。用户围绕一个业务决策形成 `DecisionPack`，系统随后逐步提供有来源的建模建议、本体规格编译、确定性验证、人工裁决、版本发布、数据血缘和受控行动。
+AI FDE Decision Compiler 从当前的确定性 POC 方案 CLI 出发，把客户的一个业务决策编译成有来源、可验证、可审查、可发布并能持续修正的决策资产。首个垂直场景是供应链决策变更，黄金主决策严格收敛为“哪些订单进入优先干预队列”。采取哪种处置动作属于 Loop 6，不与当前主决策混写；乳品研发样例只做跨行业 regression，不证明跨行业知识有效。
 
 它借鉴旧 EIP 已经验证过的产品纪律，但重新拥有自己的领域契约和运行内核。旧 `nano-ontoprompt` 仅作为只读行为参考，不作为源码、数据库、运行依赖或产品终局。
 
@@ -53,7 +55,7 @@ Ontology EIP Studio 从当前的确定性 POC 方案 CLI 出发，逐步长成�
 
 ### 3.1 一句话定位
 
-把一个工业业务决策编译成可审查、可测试、可版本化、可运行和可修正的决策本体包。
+把客户的一个业务决策，编译成有来源、可验证、可审查、可发布并能持续修正的决策资产。
 
 ### 3.2 产品不是什么
 
@@ -71,7 +73,8 @@ Ontology EIP Studio 从当前的确定性 POC 方案 CLI 出发，逐步长成�
 -> 有来源的 DecisionPack
 -> 新仓自有 OntologySpec
 -> 无状态验证运行时
--> 版本、审查与发布
+-> ValidationReceipt
+-> DecisionDelta + 人工审查与发布
 -> 数据映射与血缘
 -> 决策裁决与受控行动
 -> 服务化 EIP
@@ -83,15 +86,19 @@ Ontology EIP Studio 从当前的确定性 POC 方案 CLI 出发，逐步长成�
 
 ### 4.1 主要用户
 
-| 用户 | 当前任务 | 主要痛点 | Studio 提供的价值 |
+MVP 唯一主要用户是 FDE：把客户的供应链业务理解编译成可验证的 `DecisionPack`，并根据 `DecisionDelta` 修正对象、关系、规则和信息缺口。供应链业务负责人是产品验证参与者，负责判断变化是否可理解、可纠正和可复用；下表其余角色只保留为远期候选，不形成当前独立流程。
+
+| 用户 | 当前任务 | 主要痛点 | 候选价值 |
 |---|---|---|---|
 | 售前/解决方案顾问 | 快速形成客户化 POC 方案 | 方案依赖个人经验，容易大而全 | 用决策闭环约束范围，分钟级形成初稿 |
-| FDE/架构师 | 把方案转成可实施结构 | PRD、数据、本体和验收口径不一致 | 从同一蓝图生成全部项目材料 |
+| FDE | 编译并修正订单优先干预决策 | 建模建议缺来源，逻辑变化难映射到订单结论 | 从同一 DecisionPack 验证并解释 DecisionDelta |
 | 业务专家 | 纠正对象、规则和决策逻辑 | 技术文档难审，修改无法定位影响 | 按决策卡和差异项逐条确认 |
 | 数据负责人 | 判断数据是否支持 POC | 数据需求描述抽象、缺口暴露晚 | 得到对象—字段—规则—验收问题映射 |
 | 产品/项目经理 | 控制范围和验收 | POC 完成标准模糊 | 得到有来源的 PRD、范围和验收矩阵 |
 
 ### 4.2 Jobs to Be Done
+
+当同一供应链决策的事实、关系或规则发生变化时，作为 FDE，我希望看到可追到规则与证据的订单入队结论变化，并能修正其中的建模理解，从而安全地产生下一版 DecisionPack。
 
 当我收到一个工业客户场景时，我希望快速把模糊需求收敛成一个可验证的决策闭环，从而在和客户讨论前得到一份结构一致、边界诚实、可以被逐项修正的 POC 与实施方案。
 
@@ -103,7 +110,7 @@ Ontology EIP Studio 从当前的确定性 POC 方案 CLI 出发，逐步长成�
 2. **DecisionPack 先于文档。** `ProjectBlueprint` 是其设计部分，所有输出来自同一结构化事实源；
 3. **建议不是确认。** 自动生成的对象、关系、规则保持 candidate 状态；
 4. **事实有来源。** 从材料抽取的内容保留 source reference；
-5. **信息不足可见。** 缺数据时标记 `not_evaluable`，不补成确定结论；
+5. **信息不足可见。** 知识匹配阶段缺语义角色时标记 `insufficient_information`，运行阶段缺事实时才标记 `not_evaluable`；
 6. **设计与运行分层但契约同源。** 新仓分别实现编译、验证和治理，不能用 renderer 代替运行证据；
 7. **人工审查是产品步骤。** AI 不能绕过业务确认和发布关口；
 8. **同一输入稳定输出。** 确定性内核不嵌入当前时间或随机内容；
@@ -182,6 +189,8 @@ pass | fail | not_evaluable | unsupported
 
 ## 7. 工具组合
 
+> 本节是重锚前的工具候选目录。除当前已实现的 Proposal CLI 外，PRD renderer、验收矩阵、Web、行业包、AI 抽取和旧 EIP 适配均不是当前 MVP 承诺；权威顺序仅以第 8–10 节、ROADMAP 和各 Loop 计划为准。
+
 ### 7.1 P0：当前产品主线
 
 #### A. Scene Intake / 决策场景定义器
@@ -230,7 +239,7 @@ pass | fail | not_evaluable | unsupported
 
 #### K. 新 EIP Validation Runtime
 
-把 confirmed `DecisionPack` 编译为新仓 `OntologySpec`，先在内存合成数据上完成 T-Box、规则四态和校验回执，再逐步加入版本、映射、血缘与治理。旧 EIP 适配器不是运行内核的前置条件。
+把 `DecisionPack` 编译为保留 candidate 状态的 draft `OntologySpec`，先在内存合成数据上完成 T-Box、规则四态和校验回执；Loop 4 审查后才允许 confirmed publication。旧 EIP 适配器不是运行内核的前置条件。
 
 ## 8. MVP 范围
 
@@ -246,14 +255,14 @@ pass | fail | not_evaluable | unsupported
 - CLI；
 - 25 项自动化测试。
 
-### 8.2 下一 MVP 增量
+### 8.2 下一 MVP 增量（Loops 1–4）
 
-1. 引入独立 `ProjectBlueprint`，把当前 Proposal 从核心模型降为输出投影；
-2. 增加 PRD renderer；
-3. 增加验收矩阵 renderer；
-4. 增加结构一致性检查；
-5. 增加 Web 表单和蓝图预览；
-6. 保持 CLI 和已有 JSON 输入兼容。
+1. Loop 1：增加有固定 snapshot 来源的知识建议和不可变 `DecisionPack`；
+2. Loop 2：把 pack 编译为引用闭合、字节稳定且保留治理状态的 draft `OntologySpec`；
+3. Loop 3：在合成事实上产生绑定 pack/spec/facts hash 的 `ValidationReceipt`；
+4. Loop 4：比较 published/candidate 两份回执形成 `DecisionDelta`，同时保留结构 semantic diff；
+5. 由一名真实 FDE 和一名供应链业务验证参与者共同评估一次 `DecisionDelta`，记录 delta/receipt hash、纠正/批准/复用证据、理由、时间和 `go / no_go`；只有共同 `go` 才进入 Loop 5–7；
+6. 全程保持默认 CLI 和已有 JSON 输入兼容。
 
 ### 8.3 MVP 明确不包含
 
@@ -264,25 +273,30 @@ pass | fail | not_evaluable | unsupported
 - 外部系统连接和写回；
 - 通用 OWL/RDF 编辑；
 - 商业报价与项目工期自动估算。
+- Loop 1 的最终订单队列、风险分数和处置动作；
+- Loop 4 用户验证前的数据连接、Action 和 API。
 
 ## 9. 用户流程
 
 ```text
-新建项目
--> 选择从空白场景或行业样例开始
--> 填写一个主决策及触发条件
--> 补充角色、对象、约束、数据源和验收问题
--> 系统生成 ProjectBlueprint
--> 查看缺失项、冲突和 candidate 建议
--> 人工确认或退回具体元素
--> 预览 POC / PRD / 数据 / 验收等输出
--> 导出 Markdown / JSON
--> 后续可导出 EIP spec 进入验证
+描述“哪些订单进入优先干预队列”及现有对象、关系和数据
+-> 显式选择供应链知识单元
+-> 查看带来源的 candidate 建模建议或 insufficient_information
+-> 形成保留 candidate 状态的 draft DecisionPack
+-> 编译 draft OntologySpec 并运行 synthetic validation
+-> 得到明确标记 candidate/draft 的 ValidationReceipt
+-> 在 Loop 4 审查、确认并发布第一份 baseline
+-> 修改供应商承诺、关系或政策，重新产生 candidate pack/spec/receipt
+-> 对比 published baseline 得到 DecisionDelta
+-> 查看进入队列、退出队列、仍在队列和信息不足的订单
+-> FDE 修正模型，供应链业务验证参与者确认业务含义，再审查并发布下一版
 ```
 
 ## 10. 功能需求
 
 ### 10.1 P0 需求
+
+> FR-001–FR-010 是重锚前候选/兼容基线清单，不构成当前实施授权；其中已实现边界仅以 Loop 0 的 25 项测试和 ROADMAP 为准。当前 Loops 1–4 的权威新增需求是 FR-011–FR-015，正式确认与发布只在 Loop 4 发生。
 
 | ID | 需求 | 验收标准 |
 |---|---|---|
@@ -296,6 +310,11 @@ pass | fail | not_evaluable | unsupported
 | FR-008 | 生成验收矩阵 | 每个验收问题关联输入、步骤、预期、证据和责任人 |
 | FR-009 | 导出 Markdown/JSON | 输出可重复、可 diff，不嵌入随机值或当前时间 |
 | FR-010 | 保持现有 CLI 兼容 | 当前两个示例命令继续成功 |
+| FR-011 | 显式启用知识单元 | 默认 CLI 保持 Loop 0；只有 `--knowledge-unit` 才增加候选建议 |
+| FR-012 | 来源与身份 | 每条 suggestion 有稳定 ID、固定 snapshot hash、caveat、适用性和输入绑定 |
+| FR-013 | 知识结果三态 | 匹配返回 applicable；领域不匹配返回 not_applicable；缺关键语义角色或桥接返回 insufficient_information |
+| FR-014 | 生成验证回执 | receipt 绑定 pack/spec/facts 内容 hash，并保留四态结果与零副作用标志 |
+| FR-015 | 生成 DecisionDelta | 比较两份 receipt，报告订单结论变化及其规则/证据依据，同时提供结构 semantic diff |
 
 ### 10.2 P1 需求
 
@@ -317,6 +336,8 @@ pass | fail | not_evaluable | unsupported
 | FR-204 | EIP 验证回执 | 可关联 EIP 版本、validation report 和发布状态 |
 
 ## 11. 用户故事
+
+> 第 11–18 节保留重锚前的候选需求、页面、架构映射和里程碑，供后续发现使用，不是当前执行清单或验收合同。任何条目只有进入对应 Loop 的 dated plan 后才获得实施授权。
 
 ### US-001：快速形成可讨论 POC
 
@@ -482,6 +503,8 @@ MVP 使用可直接验证的产品指标，不设未经用户研究支持的商�
 
 ## 18. 交付阶段
 
+> 以下 Milestone 1–6 已被 Loops 1–4 的 AI FDE MVP 顺序取代，状态为 `superseded_candidate_plan`。不得按此顺序启动 Web、多 renderer、行业包、AI 抽取或旧 EIP 适配。
+
 ### Milestone 1：ProjectBlueprint
 
 - 把当前 Proposal 重构为统一蓝图投影；
@@ -539,19 +562,18 @@ MVP 使用可直接验证的产品指标，不设未经用户研究支持的商�
 
 ## 19. 当前产品决定
 
-当前推荐顺序是：
+当前 MVP 的权威顺序是：
 
 ```text
 现有 POC Generator
--> ProjectBlueprint
--> PRD + Acceptance Matrix
--> Web Workbench
--> Domain Packs
--> AI Extraction
--> EIP Validation Adapter
+-> sourced supply-chain DecisionPack
+-> OntologySpec
+-> ValidationReceipt
+-> DecisionDelta + human review
+-> real FDE/business validation gate
 ```
 
-原因：先解决“多种方案材料共用一份结构化事实源”，再建设界面和 AI。若先做 Web 或 LLM，每种输出很容易形成独立逻辑，重现当前项目材料口径漂移的问题。
+原因：先证明 AI FDE 能贡献有来源的理解，并把逻辑变化翻译成可被业务纠正的订单结论变化。Web、多 renderer、数据接入、行动和 API 都不能替代这个产品验证。
 
 ## 20. 产品发现问题
 
