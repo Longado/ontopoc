@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import unittest
 
 from ontology_poc_generator.recognition import (
@@ -7,26 +8,42 @@ from ontology_poc_generator.recognition import (
     build_recognition_demo_envelope,
     recognize_scenario,
 )
+from ontology_poc_generator.models import ScenarioParameters
+
+
+EXAMPLE_PATH = Path(__file__).parents[1] / "examples" / "supply_chain_exception.json"
 
 
 def candidate(**overrides: object) -> dict[str, object]:
     value: dict[str, object] = {
-        "schema": "scenario_recognition_candidate.v1",
-        "profile": "order_priority_intervention",
-        "industry": "制造业供应链",
-        "scene_name": "订单履约异常识别",
-        "business_decision": "哪些订单进入优先干预队列",
+        "schema": "scenario_intake_candidate.v1",
+        "match_status": "matched",
+        "profile_key": "order_priority_intervention",
         "decision_owner": "供应链计划经理",
-        "trigger": "订单交期或物料齐套状态异常时",
-        "participants": ["订单经理", "采购负责人"],
-        "additional_objects": ["订单行", "采购承诺"],
-        "constraints": ["ERP 仍是交易事实权威"],
-        "data_sources": [
-            {"name": "ERP 订单数据", "type": "database", "status": "to_confirm"}
+        "trigger": "订单预计交期、物料齐套或供应商承诺发生异常时",
+        "participant_keys": [
+            "order_manager",
+            "procurement_owner",
+            "production_planner",
+            "logistics_owner",
         ],
-        "desired_actions": ["创建人工核查任务"],
-        "acceptance_questions": ["能否解释候选队列依据？"],
-        "notes": "只读演示，不回写 ERP。",
+        "constraint_keys": [
+            "erp_transaction_authority",
+            "supplier_commitment_requires_evidence",
+            "high_risk_requires_human_confirmation",
+            "no_erp_writeback",
+        ],
+        "data_source_statuses": [
+            {"source_key": "erp_order_material", "status": "to_confirm"},
+            {"source_key": "supplier_commitment_feedback", "status": "to_confirm"},
+            {"source_key": "logistics_node_status", "status": "unavailable"},
+        ],
+        "desired_action_keys": [
+            "create_order_exception_review_task",
+            "assign_procurement_or_planning_owner",
+            "record_verdict_and_override_reason",
+        ],
+        "missing_required_fields": [],
     }
     value.update(overrides)
     return value
@@ -47,7 +64,8 @@ class FakeGateway:
 
 
 class RecognitionContractTest(unittest.TestCase):
-    def test_recognized_profile_uses_fixed_semantic_identity_and_safe_boundary(self) -> None:
+    def test_matched_candidate_reconstructs_frozen_profile(self) -> None:
+        expected = json.loads(EXAMPLE_PATH.read_text(encoding="utf-8"))
         gateway = FakeGateway(candidate())
 
         result = recognize_scenario("订单可能延期，请识别干预场景。", gateway)
@@ -56,33 +74,184 @@ class RecognitionContractTest(unittest.TestCase):
         self.assertEqual(len(result.source_text_sha256), 64)
         self.assertEqual(result.provider, "openai_compatible")
         self.assertEqual(result.model, "demo-model")
-        self.assertEqual(result.scenario.decision_key, "order_priority_intervention")
-        self.assertFalse(result.scenario.customer_data_available)
-        self.assertEqual(
-            [(item.role_key, item.semantic_key, item.object_label) for item in result.scenario.object_role_bindings],
-            [
-                ("customer_order", "order.primary", "客户订单"),
-                ("material", "material.required", "物料"),
-                ("supplier", "supplier.candidate", "供应商"),
-            ],
-        )
-        self.assertEqual(len(result.scenario.declared_bridges), 1)
-        self.assertEqual(result.scenario.declared_bridges[0].predicate, "REQUIRES")
-        self.assertEqual(result.scenario.readiness_declarations[0].status.value, "to_confirm")
+        self.assertEqual(result.scenario, ScenarioParameters.from_dict(expected))
         self.assertIn("订单可能延期", gateway.calls[0][1])
+        system_prompt = gateway.calls[0][0]
+        self.assertIn("scenario_intake_candidate.v1", system_prompt)
+        self.assertNotIn("additional_objects", system_prompt)
+        self.assertNotIn("acceptance_questions", result.candidate)
 
-    def test_candidate_must_match_exact_non_executable_contract(self) -> None:
-        invalid = candidate(score=0.9)
+    def test_candidate_rejects_extra_ontology_or_execution_fields(self) -> None:
+        for field in (
+            "objects",
+            "participants",
+            "constraints",
+            "data_sources",
+            "desired_actions",
+            "semantic_key",
+            "readiness_declarations",
+            "customer_data_available",
+            "rule",
+            "score",
+            "facts",
+            "action",
+        ):
+            with self.subTest(field=field), self.assertRaisesRegex(
+                RecognitionError, f"unexpected fields: {field}"
+            ):
+                recognize_scenario("订单异常", FakeGateway(candidate(**{field: []})))
 
-        with self.assertRaisesRegex(RecognitionError, "unexpected fields: score"):
-            recognize_scenario("订单异常", FakeGateway(invalid))
+    def test_controlled_keys_reject_unknown_and_duplicate_values(self) -> None:
+        cases = (
+            ("participant_keys", ["unknown_participant"], "unknown participant_keys"),
+            (
+                "constraint_keys",
+                ["erp_transaction_authority", "erp_transaction_authority"],
+                "duplicate constraint_keys",
+            ),
+            ("desired_action_keys", ["publish_queue"], "unknown desired_action_keys"),
+            (
+                "missing_required_fields",
+                ["business_decision"],
+                "unknown missing_required_fields",
+            ),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field), self.assertRaisesRegex(
+                RecognitionError, message
+            ):
+                recognize_scenario("订单异常", FakeGateway(candidate(**{field: value})))
 
-    def test_unsupported_profile_fails_loudly(self) -> None:
-        with self.assertRaisesRegex(RecognitionError, "unsupported profile"):
+    def test_data_source_statuses_are_strict_and_unique(self) -> None:
+        cases = (
+            (
+                [{"source_key": "unknown_source", "status": "to_confirm"}],
+                "unknown data source key",
+            ),
+            (
+                [{"source_key": "erp_order_material", "status": "confirmed"}],
+                "unsupported data source status",
+            ),
+            (
+                [
+                    {"source_key": "erp_order_material", "status": "available"},
+                    {"source_key": "erp_order_material", "status": "to_confirm"},
+                ],
+                "duplicate data source key",
+            ),
+            (
+                [
+                    {
+                        "source_key": "erp_order_material",
+                        "status": "to_confirm",
+                        "name": "模型自定义 ERP",
+                    }
+                ],
+                "must contain only source_key and status",
+            ),
+        )
+        for statuses, message in cases:
+            with self.subTest(message=message), self.assertRaisesRegex(
+                RecognitionError, message
+            ):
+                recognize_scenario(
+                    "订单异常",
+                    FakeGateway(candidate(data_source_statuses=statuses)),
+                )
+
+    def test_array_reordering_produces_stable_candidate_and_scenario(self) -> None:
+        original = candidate()
+        reordered = candidate(
+            participant_keys=list(reversed(original["participant_keys"])),
+            constraint_keys=list(reversed(original["constraint_keys"])),
+            data_source_statuses=list(reversed(original["data_source_statuses"])),
+            desired_action_keys=list(reversed(original["desired_action_keys"])),
+        )
+
+        first = recognize_scenario("订单异常", FakeGateway(original))
+        second = recognize_scenario("订单异常", FakeGateway(reordered))
+
+        self.assertEqual(first.candidate_json, second.candidate_json)
+        self.assertEqual(first.scenario, second.scenario)
+        self.assertEqual(
+            build_recognition_demo_envelope(first),
+            build_recognition_demo_envelope(second),
+        )
+
+    def test_unmentioned_data_sources_default_to_review(self) -> None:
+        result = recognize_scenario(
+            "订单异常",
+            FakeGateway(
+                candidate(
+                    data_source_statuses=[
+                        {"source_key": "logistics_node_status", "status": "unavailable"}
+                    ]
+                )
+            ),
+        )
+
+        self.assertEqual(
+            [source.status for source in result.scenario.data_sources],
+            ["to_confirm", "to_confirm", "unavailable"],
+        )
+
+    def test_insufficient_information_fails_without_profile_fallback(self) -> None:
+        with self.assertRaisesRegex(RecognitionError, "insufficient information"):
+            recognize_scenario(
+                "订单异常",
+                FakeGateway(
+                    candidate(
+                        match_status="insufficient_information",
+                        decision_owner=None,
+                        missing_required_fields=["decision_owner"],
+                    )
+                ),
+            )
+
+    def test_unsupported_fails_without_closest_profile_fallback(self) -> None:
+        with self.assertRaisesRegex(RecognitionError, "unsupported scenario"):
             recognize_scenario(
                 "请选择供应商",
-                FakeGateway(candidate(profile="supplier_selection")),
+                FakeGateway(
+                    candidate(
+                        match_status="unsupported",
+                        profile_key=None,
+                        decision_owner=None,
+                        trigger=None,
+                        participant_keys=[],
+                        constraint_keys=[],
+                        data_source_statuses=[],
+                        desired_action_keys=[],
+                    )
+                ),
             )
+
+    def test_matched_requires_complete_owner_trigger_and_no_missing_fields(self) -> None:
+        cases = (
+            ({"decision_owner": None}, "decision_owner is required"),
+            ({"trigger": None}, "trigger is required"),
+            (
+                {"missing_required_fields": ["trigger"]},
+                "matched candidate cannot have missing required fields",
+            ),
+            ({"profile_key": None}, "matched profile_key"),
+        )
+        for overrides, message in cases:
+            with self.subTest(overrides=overrides), self.assertRaisesRegex(
+                RecognitionError, message
+            ):
+                recognize_scenario("订单异常", FakeGateway(candidate(**overrides)))
+
+    def test_owner_and_trigger_are_bounded_extracted_text(self) -> None:
+        cases = (
+            ({"decision_owner": "责" * 81}, "decision_owner exceeds 80 characters"),
+            ({"trigger": "异" * 301}, "trigger exceeds 300 characters"),
+        )
+        for overrides, message in cases:
+            with self.subTest(overrides=overrides), self.assertRaisesRegex(
+                RecognitionError, message
+            ):
+                recognize_scenario("订单异常", FakeGateway(candidate(**overrides)))
 
     def test_model_response_must_be_a_json_object(self) -> None:
         class InvalidGateway:
