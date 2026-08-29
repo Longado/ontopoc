@@ -20,11 +20,11 @@
 - 供应链知识单元的 queue policy 目前是 `readiness_gap`，不是规则；
 - Loop 1 ADR 已明确：`DecisionPack` 不引入额外的 `OntologyCandidate` 层，Loop 2 必须“编译已识别 profile，或生成结构化 issue”，不得忽略 suggestion。
 
-当前进入证据更新到 Loop 1 投影加固提交 `2744ccb`，全量 107 项测试通过；Task 4 与 Task 5 的 spec review 和 quality review 均为 APPROVED。Loop 1 代码与文档出口已完成，仍等待 root 执行最终 whole-loop review 和主分支合并。因此本计划状态保持为：
+Loop 1 已完成 whole-loop review 并合并主分支。Loop 2 以主分支提交 `4e410c2` 为基线启动，基线全量测试为 **107 tests, OK**；当前在独立 worktree 分支 `codex/loop-2-draft-ontology-spec` 执行，Task 1 正在进行。此状态只表明实现工作已开始，不表示 `OntologySpec`、编译、引用闭包或 spec hash 能力已经完成。
 
 ```text
-planned
-entry_ready_after_loop_1_merge
+in_progress
+task_1_in_progress
 ```
 
 执行前必须先确认：
@@ -323,6 +323,10 @@ json.dumps(
 所有能进入 `DecisionPack` 的 profile 先由 Loop 1 严格 loader 校验，未知 `payload_schema` 在 pack 构造前即被拒绝，因此 Loop 2 不保留不可达的 unknown-profile 分支。所有可达 issue 都绑定原始 `suggestion_id` 和 `payload_schema`；issue message 只做可读说明，不承载机器分支，机器判断使用 `code` 和 `severity`。
 
 ## 7. Task 1 — 冻结 spec 类型与状态边界
+
+**执行状态：in_progress**
+
+当前仅开始按测试驱动方式冻结合同；本节所有验收步骤仍以实际实现、测试与独立审查结果为准。
 
 **Files:**
 
