@@ -61,8 +61,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(content, encoding="utf-8")
+        try:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(content, encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            print(f"output error: {exc}", file=sys.stderr)
+            return 3
     else:
         print(content, end="")
     return 0

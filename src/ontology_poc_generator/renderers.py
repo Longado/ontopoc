@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict
 
 from ontology_poc_generator.knowledge import (
@@ -14,6 +15,19 @@ from ontology_poc_generator.models import Proposal
 def _bullets(items: tuple[str, ...], empty: str) -> str:
     values = items or (empty,)
     return "\n".join(f"- {item}" for item in values)
+
+
+def _markdown_code(value: object) -> str:
+    """Render one untrusted knowledge value as a single safe code span."""
+    normalized = " ".join(str(value).splitlines())
+    longest_run = max(
+        (len(match.group(0)) for match in re.finditer(r"`+", normalized)),
+        default=0,
+    )
+    delimiter = "`" * (longest_run + 1)
+    if normalized.startswith(("`", " ")) or normalized.endswith(("`", " ")):
+        normalized = f" {normalized} "
+    return f"{delimiter}{normalized}{delimiter}"
 
 
 def _knowledge_suggestion_dict(
@@ -73,12 +87,12 @@ def _render_knowledge_appendix(proposal: Proposal) -> str:
     for outcome in proposal.knowledge_outcomes:
         lines.extend(
             (
-                f"### 知识单元 `{outcome.unit_id}`",
+                f"### 知识单元 {_markdown_code(outcome.unit_id)}",
                 "",
-                f"- 单元版本：`{outcome.unit_version}`",
-                f"- 内容哈希：`{outcome.unit_content_hash}`",
-                f"- 匹配状态：`{outcome.match_status.value}`",
-                f"- 匹配原因：`{outcome.reason_code}`",
+                f"- 单元版本：{_markdown_code(outcome.unit_version)}",
+                f"- 内容哈希：{_markdown_code(outcome.unit_content_hash)}",
+                f"- 匹配状态：{_markdown_code(outcome.match_status.value)}",
+                f"- 匹配原因：{_markdown_code(outcome.reason_code)}",
                 "",
             )
         )
@@ -95,8 +109,9 @@ def _render_knowledge_appendix(proposal: Proposal) -> str:
         for binding_id in outcome.input_binding_ids:
             binding = bindings[binding_id]
             lines.append(
-                f"- {binding.label}：semantic `{binding.semantic_key}`；"
-                f"binding `{binding.binding_id}`"
+                f"- {_markdown_code(binding.label)}：semantic "
+                f"{_markdown_code(binding.semantic_key)}；binding "
+                f"{_markdown_code(binding.binding_id)}"
             )
         lines.append("")
 
@@ -110,17 +125,23 @@ def _render_knowledge_appendix(proposal: Proposal) -> str:
             )
             lines.extend(
                 (
-                    f"#### 候选建议 `{suggestion.suggestion_id}`",
+                    f"#### 候选建议 {_markdown_code(suggestion.suggestion_id)}",
                     "",
-                    f"- 治理状态：`{suggestion.governance_status}`",
-                    f"- 贡献类型：`{suggestion.contribution_type}`",
-                    f"- Payload schema：`{suggestion.payload_schema}`",
-                    f"- Semantic key：`{suggestion.semantic_key}`",
-                    f"- Payload：`{payload}`",
+                    f"- 治理状态：{_markdown_code(suggestion.governance_status)}",
+                    f"- 贡献类型：{_markdown_code(suggestion.contribution_type)}",
+                    f"- Payload schema：{_markdown_code(suggestion.payload_schema)}",
+                    f"- Semantic key：{_markdown_code(suggestion.semantic_key)}",
+                    f"- Payload：{_markdown_code(payload)}",
                     "- 绑定 ID："
-                    + ", ".join(f"`{item}`" for item in suggestion.input_binding_ids),
+                    + ", ".join(
+                        _markdown_code(item)
+                        for item in suggestion.input_binding_ids
+                    ),
                     "- 来源 ID："
-                    + ", ".join(f"`{item}`" for item in suggestion.source_ref_ids),
+                    + ", ".join(
+                        _markdown_code(item)
+                        for item in suggestion.source_ref_ids
+                    ),
                     "",
                 )
             )
@@ -130,11 +151,14 @@ def _render_knowledge_appendix(proposal: Proposal) -> str:
             source = sources[source_id]
             lines.extend(
                 (
-                    f"- `{source.source_ref_id}` · `{source.source_kind.value}` · {source.title}",
-                    f"  - Locator：{source.locator}",
-                    f"  - Revision：{source.revision}",
-                    f"  - Snapshot SHA-256：`{source.snapshot_sha256}`",
-                    f"  - Caveat：{source.caveat}",
+                    f"- {_markdown_code(source.source_ref_id)} · "
+                    f"{_markdown_code(source.source_kind.value)} · "
+                    f"{_markdown_code(source.title)}",
+                    f"  - Locator：{_markdown_code(source.locator)}",
+                    f"  - Revision：{_markdown_code(source.revision)}",
+                    "  - Snapshot SHA-256："
+                    + _markdown_code(source.snapshot_sha256),
+                    f"  - Caveat：{_markdown_code(source.caveat)}",
                 )
             )
         lines.append("")

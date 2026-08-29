@@ -3,9 +3,17 @@ import unittest
 from dataclasses import fields
 from pathlib import Path
 
+from ontology_poc_generator.decision_pack import InputBinding
 from ontology_poc_generator.errors import ScenarioValidationError
 from ontology_poc_generator.generator import generate_proposal
-from ontology_poc_generator.knowledge import load_knowledge_unit
+from ontology_poc_generator.knowledge import (
+    KnowledgeOutcome,
+    KnowledgeSuggestion,
+    MatchStatus,
+    SourceKind,
+    SourceRef,
+    load_knowledge_unit,
+)
 from ontology_poc_generator.models import DataSource, Proposal, ScenarioParameters
 from ontology_poc_generator.renderers import render_json, render_markdown
 
@@ -29,6 +37,28 @@ class GeneratorTest(unittest.TestCase):
             ScenarioParameters.from_dict(raw or self._supply_chain_raw()),
             (load_knowledge_unit(self.KNOWLEDGE_PATH),),
         )
+
+    def _direct_proposal(self, **overrides):
+        values = {
+            "industry": "供应链",
+            "scene_name": "订单干预",
+            "primary_decision": "哪些订单进入队列",
+            "decision_owner": "计划经理",
+            "trigger": "承诺变化",
+            "object_types": ("订单", "物料"),
+            "relation_candidates": (),
+            "constraints": (),
+            "data_sources": (),
+            "data_gaps": (),
+            "desired_actions": (),
+            "acceptance_questions": ("可解释吗？",),
+            "decision_loop": (),
+            "responsibility_boundaries": (),
+            "evidence_mode": "synthetic_demo",
+            "notes": "",
+        }
+        values.update(overrides)
+        return Proposal(**values)
 
     def test_direct_scenario_rejects_mutable_or_invalid_collection_fields(self):
         base = dict(
@@ -742,6 +772,121 @@ class GeneratorTest(unittest.TestCase):
             "reviewed and published", "external write completed",
         ):
             self.assertNotIn(completed_claim, text.casefold())
+
+    def test_markdown_neutralizes_knowledge_derived_structure_injection(self):
+        injected = "unsafe`id\\path\n\n## 已发布"
+        binding = InputBinding(injected, "customer_order", injected, injected)
+        source = SourceRef(
+            injected,
+            SourceKind.PRACTITIONER_NOTE,
+            injected,
+            injected,
+            injected,
+            "a" * 64,
+            injected,
+        )
+        suggestion = KnowledgeSuggestion(
+            injected,
+            injected,
+            injected,
+            "b" * 64,
+            "constraint",
+            injected,
+            (("description", injected),),
+            (injected,),
+            (injected,),
+            payload_schema="constraint.narrative.v1",
+        )
+        outcome = KnowledgeOutcome(
+            injected,
+            injected,
+            "b" * 64,
+            MatchStatus.APPLICABLE,
+            injected,
+            (injected,),
+            (suggestion,),
+        )
+        markdown = render_markdown(
+            self._direct_proposal(
+                input_bindings=(binding,),
+                knowledge_source_refs=(source,),
+                knowledge_outcomes=(outcome,),
+            )
+        )
+
+        self.assertNotIn("\n\n## 已发布", markdown)
+        self.assertFalse(
+            any(line.startswith("## 已发布") for line in markdown.splitlines())
+        )
+        self.assertIn("已发布", markdown)
+        self.assertEqual(markdown.count("## 有来源的候选建议"), 1)
+
+    def test_proposal_rejects_broken_knowledge_reference_closure(self):
+        binding = InputBinding("binding", "customer_order", "order.primary", "订单")
+        source = SourceRef(
+            "source",
+            SourceKind.PRACTITIONER_NOTE,
+            "Title",
+            "local",
+            "1",
+            "a" * 64,
+            "Candidate only.",
+        )
+        foreign_binding_outcome = KnowledgeOutcome(
+            "unit.binding",
+            "1",
+            "b" * 64,
+            MatchStatus.APPLICABLE,
+            "applicable",
+            ("foreign",),
+            (),
+        )
+        foreign_source_suggestion = KnowledgeSuggestion(
+            "suggestion",
+            "unit.source",
+            "1",
+            "c" * 64,
+            "constraint",
+            "candidate_constraint",
+            (("description", "Candidate only."),),
+            (),
+            ("foreign",),
+            payload_schema="constraint.narrative.v1",
+        )
+        foreign_source_outcome = KnowledgeOutcome(
+            "unit.source",
+            "1",
+            "c" * 64,
+            MatchStatus.APPLICABLE,
+            "applicable",
+            (),
+            (foreign_source_suggestion,),
+        )
+
+        cases = (
+            (
+                "duplicate binding_id",
+                {"input_bindings": (binding, binding)},
+            ),
+            (
+                "duplicate source_ref_id",
+                {"knowledge_source_refs": (source, source)},
+            ),
+            (
+                "outcome references binding outside proposal",
+                {"knowledge_outcomes": (foreign_binding_outcome,)},
+            ),
+            (
+                "suggestion references source outside proposal",
+                {"knowledge_outcomes": (foreign_source_outcome,)},
+            ),
+        )
+        for expected, overrides in cases:
+            with self.subTest(expected=expected), self.assertRaisesRegex(
+                ScenarioValidationError,
+                expected,
+            ):
+                self._direct_proposal(**overrides)
 
 
 if __name__ == "__main__":

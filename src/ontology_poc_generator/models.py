@@ -557,6 +557,28 @@ class Proposal:
                 raise ScenarioValidationError(
                     f"{field} must be a tuple of {item_type.__name__}"
                 )
+        binding_ids = tuple(item.binding_id for item in self.input_bindings)
+        if len(set(binding_ids)) != len(binding_ids):
+            raise ScenarioValidationError("duplicate binding_id")
+        source_ids = tuple(
+            item.source_ref_id for item in self.knowledge_source_refs
+        )
+        if len(set(source_ids)) != len(source_ids):
+            raise ScenarioValidationError("duplicate source_ref_id")
+        known_binding_ids = set(binding_ids)
+        known_source_ids = set(source_ids)
+        for outcome in self.knowledge_outcomes:
+            if not set(outcome.input_binding_ids).issubset(known_binding_ids):
+                raise ScenarioValidationError(
+                    "outcome references binding outside proposal"
+                )
+            for suggestion in outcome.suggestions:
+                if not set(suggestion.source_ref_ids).issubset(
+                    known_source_ids
+                ):
+                    raise ScenarioValidationError(
+                        "suggestion references source outside proposal"
+                    )
         if not self.current_capabilities:
             object.__setattr__(
                 self,

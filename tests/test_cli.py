@@ -195,6 +195,19 @@ class CliTest(unittest.TestCase):
                     self.assertFalse(output_path.exists())
                     self.assertFalse(output_path.parent.exists())
 
+    def test_cli_reports_output_error_separately(self):
+        output_path = Path("/dev/null/proposal.md")
+
+        result = self._run_cli(
+            "examples/supply_chain_exception.json",
+            "--output",
+            str(output_path),
+        )
+
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("output error:", result.stderr)
+        self.assertNotIn("input error:", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
