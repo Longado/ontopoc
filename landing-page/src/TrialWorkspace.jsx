@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { AlertCircle, ArrowRight, CheckCircle2, Play, RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 
+import { DocumentModeler } from "./DocumentModeler.jsx";
 import { OntologyWorkspace } from "./OntologyWorkspace.jsx";
 import { adaptTrialArtifact, moveTrialStage } from "./trialWorkspaceModel.js";
 
@@ -93,7 +94,7 @@ export function TrialWorkspace({ language }) {
   };
 
   if (status === "idle") {
-    return <div className="workspace-launch"><span>{t.eyebrow}</span><h2>{t.title}</h2><p>{t.intro}</p><button type="button" onClick={runDemo}><Play size={17} fill="currentColor" />{t.run}<ArrowRight size={18} /></button><small>model_recognition_demo.v1 · synthetic_demo</small></div>;
+    return <DocumentModeler language={language} runDemo={runDemo} />;
   }
 
   if (status === "loading") {

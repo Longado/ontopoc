@@ -5,6 +5,7 @@ import test from "node:test";
 const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
 const workspace = await readFile(new URL("../src/TrialWorkspace.jsx", import.meta.url), "utf8").catch(() => "");
 const ontologyWorkspace = await readFile(new URL("../src/OntologyWorkspace.jsx", import.meta.url), "utf8").catch(() => "");
+const documentModeler = await readFile(new URL("../src/DocumentModeler.jsx", import.meta.url), "utf8").catch(() => "");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 
 test("landing story has one full operational surface and the accepted section order", () => {
@@ -40,6 +41,40 @@ test("Trial workspace runs one synchronous artifact load and exposes four read-o
   assert.match(workspace, /DecisionPackPanel/);
   assert.match(workspace, /OntologySpecPanel/);
   assert.match(workspace, /ValidationPanel/);
+});
+
+test("idle Trial mounts the document modeler and only its compiled action runs the artifact callback", () => {
+  assert.match(workspace, /import \{ DocumentModeler \} from "\.\/DocumentModeler\.jsx"/);
+  assert.match(workspace, /<DocumentModeler language=\{language\} runDemo=\{runDemo\} \/>/);
+  assert.match(documentModeler, /resolveDocumentModelingRequest/);
+  assert.match(documentModeler, /runDemo/);
+  assert.match(documentModeler, /Start compiled demo/);
+});
+
+test("document modeler exposes deterministic presets and a read-only candidate graph", () => {
+  assert.match(documentModeler, /DETERMINISTIC DEMO PARSER \/ NO LIVE MODEL/);
+  assert.match(documentModeler, /SCENARIO PREVIEW \/ NOT COMPILED/);
+  assert.match(documentModeler, /synthetic_demo/);
+  assert.match(documentModeler, /<textarea/);
+  assert.match(documentModeler, /type="button"/);
+  assert.match(documentModeler, /from "@xyflow\/react"/);
+  assert.match(documentModeler, /nodesDraggable=\{false\}/);
+  assert.match(documentModeler, /nodesConnectable=\{false\}/);
+  assert.match(documentModeler, /edgesReconnectable=\{false\}/);
+  assert.match(documentModeler, /onNodeClick=/);
+  assert.match(documentModeler, /className=\{`document-evidence-item/);
+});
+
+test("document modeling stays frontend-only and exposes no API POST or credential surface", () => {
+  assert.doesNotMatch(documentModeler, /fetch\(|axios|\.post\(|method:\s*["']POST|\/api\/|token|credential/i);
+  assert.doesNotMatch(documentModeler, /file|upload|persist|publish|writeback|approval/i);
+  assert.doesNotMatch(documentModeler, /ValidationReceipt|Action/);
+});
+
+test("idle document modeler is PC-first and collapses without horizontal overflow", () => {
+  assert.match(styles, /\.document-modeler\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1\.1fr\)/s);
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.document-modeler\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  assert.match(styles, /\.document-modeler\s*\{[^}]*min-width:\s*0/s);
 });
 
 test("desktop Trial keeps artifact content and evidence in a PC-first split layout", () => {

@@ -8,7 +8,9 @@
 | DecisionPack compilation | LIVE | Recognition 生成的 Scenario，加两份显式加载的 knowledge unit | Canonical `decision_pack.v1`、bindings、sources、outcomes、后端 SHA-256 | 只生成候选知识；不得称为已批准规则、业务结论或生产决策 |
 | OntologySpec compilation | LIVE | DecisionPack | `ontology_spec.v1` draft、closed reference report、编译问题、后端 SHA-256 | `complete` 仅表示编译结束；`closed` 仅表示引用闭合；不得称为验证通过、发布完成或生产可用 |
 | Browser artifact adapter | LIVE | Committed `model_recognition_demo.v1` JSON | 四个只读阶段：Recognition、DecisionPack、OntologySpec、Validation | 校验既有 hash 格式与绑定关系，不在浏览器重算 hash；不得称为浏览器重新编译 |
-| Trial workspace interaction | LIVE | 用户点击“运行演示” | 一次完整 artifact 加载，以及成功后的点击/左右键阶段切换 | 同步整包语义；无定时器逐阶段伪造；无批准、发布、Action 或写回控件 |
+| Deterministic document preset parser | LIVE (`synthetic_demo`) | 三段固定合成文本及其明确的 scenario ID | 一个 `compiled_artifact` route、两个 `scenario_preview` route；文本被编辑或 ID 未知时返回 `unsupported` | 只做去除首尾空白后的精确匹配；无模糊匹配、最近场景选择或实时模型调用 |
+| Candidate document modeling preview | LIVE (`synthetic_demo`) | 未编辑的固定预设文本 | 三组只读候选 entity type、relation type、文本证据与能力边界 | 供应商资格变更和乳品研发回退仅为前端场景预览，不生成 hash、Validation receipt、Action 或业务变更 |
+| Trial workspace interaction | LIVE | 用户选择预设、检查文本并点击“生成候选模型”；供应链预览可继续点击“Start compiled demo” | 候选图、证据选择和边界说明；只有供应链固定文本可加载一次完整 artifact，并在成功后点击/左右键切换四阶段 | 同步整包语义；无定时器逐阶段伪造；无上传、批准、发布、Action 或写回控件 |
 | OntologySpec graph | LIVE (`synthetic_demo`) | Committed artifact 中的 `ontology_spec.spec` | 3 个 entity type、3 个有向 relation type、1 条独立展示的 candidate rule，以及只读证据检查器 | 固定布局且不可拖改、连线或写回；属性只在节点检查器展示；不包含客户实例或运行事实 |
 | Deterministic artifact Q&A | LIVE (`synthetic_demo`) | 当前 committed pack/spec 与三个受支持的问题意图 | 带 pack/spec hash、canonical JSON pointer、stable ID 或 triple 的确定性回答；越界问题返回拒答原因 | 非实时模型调用；不使用 Validation flags 推断事实；不回答订单队列、供应商资格等实例问题 |
 | ValidationReceipt schema | CONTRACT ONLY | 预期为 spec、rule、reference 与结果绑定 | `validation_receipt.v1` contract | 本演示 receipt 为 `null`；不得称为已生成验证回执 |

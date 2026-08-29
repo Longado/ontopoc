@@ -68,3 +68,29 @@
 - [x] Keep the current Validation boundary unchanged: evaluator not run, receipt null, and delivery flags false.
 - [x] Run focused model tests, all frontend tests, production build, Sites tests, backend full unittest, `git diff --check`, browser desktop/390 px checks, and design QA against the supplied reference.
 - [x] Commit with `feat: add ontology graph demo`, push, request one independent P1/P2 review, and update the PR.
+
+### Task 4: Add document-to-modeling demo scenarios
+
+**Files:**
+- Create: `landing-page/src/documentModelingDemoModel.js`
+- Create: `landing-page/src/documentModelingDemoModel.test.js`
+- Create: `landing-page/src/DocumentModeler.jsx`
+- Modify: `landing-page/src/TrialWorkspace.jsx`
+- Modify: `landing-page/src/styles.css`
+- Modify: `landing-page/tests/landing-story.test.mjs`
+- Modify: `docs/FRONTEND_BACKEND_CAPABILITY_MAP.md`
+
+- [x] Write failing Node tests for exactly three synthetic document presets, deterministic request resolution, the single compiled-artifact route, two preview-only routes, and unsupported edited input.
+- [x] Define three small presets: supply-chain order intervention (`compiled_artifact`), supplier qualification change (`scenario_preview`), and dairy R&D fallback (`scenario_preview`). Each preset contains only synthetic document text, candidate entity types, candidate relation types, and its explicit capability boundary.
+- [x] Resolve only an unchanged preset document. The supply-chain preset may call the existing committed artifact path; both other presets must remain frontend-only candidate previews. Edited or unknown text returns `unsupported` and must not silently map to a nearby scenario.
+- [x] Replace the idle launch body with a PC-first two-column document modeler: scenario/document controls stay on the left; read-only candidate graph or boundary explanation stays on the right. Reuse the current warm-paper, ink, cobalt, thin-rule design and the existing React Flow dependency.
+- [x] Make scenario selection, document text, Generate action, preview graph selection, and Start compiled demo work with mouse and keyboard. Keep the existing four-stage compiler workspace unchanged after the real supply-chain artifact starts.
+- [x] Label every preset `synthetic_demo`; label the two non-compiled results `SCENARIO PREVIEW / NOT COMPILED`; label the parser `DETERMINISTIC DEMO PARSER / NO LIVE MODEL`. Do not add API, file upload, persistence, customer facts, validation receipt, Action, publish, or writeback behavior.
+- [x] Run focused model/story tests, all frontend tests, production build, Sites tests, backend full unittest, `git diff --check`, scope/status checks, and 1440×900 plus 390×900 browser checks with no console errors.
+- [x] Self-review the assigned diff, fix any findings, commit with `feat: add document modeling demos`, and push the branch.
+
+### Task 5: Integrate the demo branch
+
+- [ ] Run one fresh final frontend/backend/build/Sites verification and `git diff --check` on the complete branch.
+- [ ] Confirm the original checkout's untracked `landing-page/`, dirty `README.md`, and handoff document were not modified, added, deleted, or committed.
+- [ ] Create or update one GitHub pull request from `codex/demo-workspace` to `main`, wait for required checks, merge the pull request, and verify `origin/main` contains the merge.
