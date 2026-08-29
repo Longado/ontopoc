@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from http.client import HTTPException
 from typing import Callable
 from urllib.request import Request, urlopen
 
@@ -51,16 +52,16 @@ class OpenAICompatibleGateway:
             },
             ensure_ascii=False,
         ).encode("utf-8")
-        request = Request(
-            f"{self._api_base}/chat/completions",
-            data=body,
-            headers={
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
         try:
+            request = Request(
+                f"{self._api_base}/chat/completions",
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
             with self._opener(request, timeout=self._timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
             content = payload["choices"][0]["message"]["content"]
@@ -69,7 +70,13 @@ class OpenAICompatibleGateway:
                 raise TypeError("content")
             if not isinstance(served_model, str) or not served_model.strip():
                 served_model = self._model
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        except (
+            OSError,
+            UnicodeError,
+            ValueError,
+            HTTPException,
+            json.JSONDecodeError,
+        ) as exc:
             raise RecognitionError(f"model request failed: {exc}") from exc
         except (KeyError, IndexError, TypeError, AttributeError) as exc:
             raise RecognitionError("invalid model response") from exc
