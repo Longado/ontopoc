@@ -54,6 +54,7 @@
 | F-021 | 2026-08-29 | Loop 1 Markdown 投影复核 | 来源 title、locator 和 caveat 即使来自受校验知识包，也可能包含换行或 Markdown 结构字符，破坏候选边界 | renderer 对来源字段做单行结构转义；保留原始值只在结构化 JSON 中 | accepted |
 | F-022 | 2026-08-29 | Loop 1 黄金场景验证 | pending 入队政策只形成 readiness gap；ready 只移除 gap，并不会凭空产生可执行规则 | Loop 2 基础出口允许无 rule；另设 synthetic `decision_rule.v1` policy gate 才能进入 Loop 3 | accepted |
 | F-023 | 2026-08-29 | Loop 1 opt-in CLI smoke | 同一知识单元对供应链为 applicable、对乳品为 not_applicable；缺桥接为 insufficient，证明 matcher 使用声明语义而非行业标签 | 保留乳品为跨行业 regression；不把这一结果解释为跨行业知识有效性 | accepted |
+| F-024 | 2026-08-29 | Loop 2 黄金 CLI 与集成验证 | 供应链 source unit 和 synthetic policy 可编译为 canonical draft/candidate `OntologySpec`，引用闭包完成且 candidate 建议边界未丢失 | 关闭 Loop 2；Loop 3 另行实现 `ValidationReceipt`，不把 spec 生成解释为 publication 或 production | accepted |
 
 ## 验证证据
 
@@ -66,3 +67,4 @@
 | 2026-08-29 | Loop 1 全量 unittest | `PYTHONPATH=src python -m unittest discover -s tests -v`：107 tests，OK | 来源/知识契约、通用匹配、payload profile、深度不可变 DecisionPack、稳定 identity/hash、兼容投影和 CLI 防越界在当前仓库可运行 | 不证明客户适用性、规则求值、最终订单队列、Action、review、version 或 publication |
 | 2026-08-29 | Loop 1 opt-in 双样例与边界 smoke | 供应链：`synthetic_demo / applicable / 7 suggestions / 3 sources`；乳品：`synthetic_demo / not_applicable / 0 / 0`；缺桥接：`insufficient_information / 0`；pending policy：7 条含 readiness gap；ready：6 条且无 gap；重复编译 pack hash 一致 | 知识单元能贡献输入外且可追溯的 candidate 建议，并在不适用、信息不足和 readiness 状态之间保持诚实边界 | 不代表建议已确认、事实已验证或优先干预队列已计算；当前 queue policy 仍只是 gap |
 | 2026-08-29 | Loop 1 默认兼容与投影安全复核 | 不传 `--knowledge-unit` 的 JSON/Markdown 与 Loop 0 golden 字节一致；Task 4/5 spec review 与 quality review 均为 APPROVED；Markdown 来源结构注入回归通过 | 知识能力保持 opt-in，未改变默认契约；来源可读投影不会越过 Markdown 结构边界 | JSON 中的原始来源文本仍应被消费者作为数据而非指令处理 |
+| 2026-08-29 | Loop 2 全量 unittest 与黄金 CLI | 集成点 `fbc0f33` 全量测试 **198/198** 通过；canonical spec hash `31b00f3432281459d71615fa7ba4733a522332987d26632aeeb50737a7ecfed3`；`is_closed=true` / 36 checked refs；3 entities、3 relations（2 knowledge suggestions）、2 symbolic properties、1 `categorical_all_of_v1` candidate rule、5 `requires_review` suggestion-bound issues、0 blocking issues | `DecisionPack` 可确定性编译为保持 draft/candidate/`synthetic_demo` 边界且引用闭合的 `OntologySpec` | `ValidationReceipt`、version、review、publication、action 和 writeback 尚未实现；Loop 2 完成不代表 publication 或 production |

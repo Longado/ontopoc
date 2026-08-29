@@ -115,28 +115,28 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 **仍未解决的限制：**
 
 - 当前入队政策只是 readiness gap，不是规则；本轮不计算风险分数、不输出最终队列、不提出处置动作；
-- 当前没有 `OntologySpec`、事实校验、`ValidationReceipt`、review、version、publication 或外部写入；
+- 当前已有 draft/candidate `OntologySpec`，但尚未实现事实校验、`ValidationReceipt`、review、version、publication 或外部写入；
 - `synthetic_demo` 和跨行业 regression 不能证明客户适用性、真实数据质量或生产效果。
 
 ## NOW
 
 ### Loop 2 — 可执行本体内核
 
-**状态：in_progress**
+**状态：complete**
 
-详细实施计划见 [Loop 2：Draft OntologySpec](superpowers/plans/2026-08-29-loop2-draft-ontology-spec.md)。本轮已从主分支基线 `4e410c2`（**107 tests, OK**）在独立 worktree 分支 `codex/loop-2-draft-ontology-spec` 启动。Task 1 已由提交 `36a0e12` 冻结 spec 类型与状态边界，聚焦测试 **14 passed**、全量测试 **121 passed**，两轮独立审查通过；Task 2 正在隔离分支实现稳定 identity 与 canonical hash。后续输入编译、知识 profile 编译和引用闭包将分支并行，在 Loop 分支统一集成后才进入主分支。这些进展仍不表示完整编译、引用闭包或规则能力已经完成。最终将把 `DecisionPack` 编译成新仓拥有的 draft `OntologySpec`，建立显式 domain/range、属性、规则输入绑定、引用闭包、规范化 JSON 和 spec 内容 hash。Loop 1 已建立的 source/suggestion identity 继续使用；candidate 状态必须保留并标记为 synthetic/draft，只有 Loop 4 审查后才能进入 confirmed publication。
+详细实施计划见 [Loop 2：Draft OntologySpec](superpowers/plans/2026-08-29-loop2-draft-ontology-spec.md)。集成点 `fbc0f33` 的全量测试 **198/198** 通过；黄金 CLI 以供应链 source unit 和 synthetic policy 写出 canonical spec，hash 为 `31b00f3432281459d71615fa7ba4733a522332987d26632aeeb50737a7ecfed3`。输出包含 3 个 entity、3 个 relation（其中 2 个来自 knowledge suggestion）、2 个 symbolic property 和 1 条 `categorical_all_of_v1` candidate rule；引用闭包为 `is_closed=true`，检查 36 个引用，产生 5 个 `requires_review` suggestion-bound issue 和 0 个 blocking issue。
 
-出口：同一 pack 产生字节稳定 spec；改 label 不改变已有 ID；悬空引用、状态丢失和未绑定规则响亮失败。
+出口已满足：同一 pack 产生 canonical draft/candidate `OntologySpec`，并保留 `synthetic_demo` 边界；稳定 identity、引用闭包、状态保留和规则输入绑定均由测试覆盖。
 
-Loop 2 的基础出口可以保留 `rule_declarations=()`，因此不自动解除 Loop 3 的进入阻塞。只有独立 synthetic `decision_rule.v1` policy slice 通过评审，才可进入规则求值运行时。
+Loop 2 完成不等于 publication 或 production；当前没有 receipt、version、review、publication、action 或 writeback。
 
 ## NEXT
 
 ### Loop 3 — 无状态验证运行时
 
-**状态：entry_blocked_by_loop_2**
+**状态：not_started**
 
-在内存中加载 `synthetic_demo` facts，完成 T-Box 校验、首批确定性规则、`pass / fail / not_evaluable / unsupported` 四态和 checksum 绑定的 `ValidationReceipt`。
+`ValidationReceipt` 尚未实现。下一轮将在内存中加载 `synthetic_demo` facts，完成 T-Box 校验、首批确定性规则、`pass / fail / not_evaluable / unsupported` 四态和 checksum 绑定的 `ValidationReceipt`。
 
 出口：供应链黄金场景产生绑定 pack/spec/facts 内容 hash、可追到规则与事实的 `ValidationReceipt`，且明确 `draft_created=false`、`published=false`、`actions_executed=false`、`external_write=false`。
 
