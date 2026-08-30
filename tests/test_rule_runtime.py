@@ -214,6 +214,47 @@ class RuleRuntimeTest(unittest.TestCase):
                 facts=(fact,),
             )
 
+        with self.assertRaisesRegex(runtime.RuleEvaluationError, "evidence_refs"):
+            dataclasses.replace(
+                fact,
+                evidence_refs=("Evidence-1", "evidence-1"),
+            )
+
+    def test_missing_required_fact_returns_not_evaluable_with_stable_reference(self):
+        runtime = runtime_module()
+        pack, compilation = compiled_policy(BASELINE_POLICY)
+        complete_facts = synthetic_facts(compilation, self.cases[0])
+        incomplete_facts = dataclasses.replace(
+            complete_facts,
+            facts=(complete_facts.facts[0],),
+        )
+        rule = compilation.spec.rule_declarations[0]
+        missing_property_id = next(
+            condition.property_type_id
+            for condition in rule.conditions
+            if condition.property_type_id != incomplete_facts.facts[0].property_type_id
+        )
+
+        receipt = runtime.evaluate_synthetic_rule(
+            pack,
+            compilation,
+            incomplete_facts,
+            rule.rule_id,
+        )
+
+        self.assertIs(
+            receipt.evaluation_status,
+            EvaluationStatus.NOT_EVALUABLE,
+        )
+        self.assertIs(
+            receipt.decision_result,
+            DecisionResult.INFORMATION_INSUFFICIENT,
+        )
+        self.assertIn(
+            f"missing:{incomplete_facts.subject_id}:{missing_property_id}",
+            receipt.fact_refs,
+        )
+
     def test_pack_and_spec_hash_mismatch_is_rejected(self):
         runtime = runtime_module()
         baseline_pack, _ = compiled_policy(BASELINE_POLICY)

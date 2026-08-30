@@ -39,9 +39,10 @@ def _references(value: object, field: str) -> tuple[str, ...]:
         _text(item, f"{field}[{index}]")
         for index, item in enumerate(value)
     )
-    if len(set(normalized)) != len(normalized):
+    normalized_keys = tuple(item.casefold() for item in normalized)
+    if len(set(normalized_keys)) != len(normalized_keys):
         raise RuleEvaluationError(f"{field} must not contain duplicates")
-    return tuple(sorted(normalized, key=str.casefold))
+    return tuple(sorted(normalized, key=lambda item: (item.casefold(), item)))
 
 
 @dataclass(frozen=True)
@@ -178,13 +179,9 @@ def evaluate_synthetic_rule(
     rule = rules[0]
 
     facts_by_property = {item.property_type_id: item for item in facts.facts}
-    condition_facts = []
+    condition_facts: list[SyntheticFact | None] = []
     for condition in rule.conditions:
         fact = facts_by_property.get(condition.property_type_id)
-        if fact is None:
-            raise RuleEvaluationError(
-                f"missing fact for property_type_id {condition.property_type_id}"
-            )
         condition_facts.append(fact)
 
     source_refs = _rule_source_refs(pack, rule.origin_suggestion_id)
@@ -195,6 +192,7 @@ def evaluate_synthetic_rule(
                 *(
                     evidence_ref
                     for fact in condition_facts
+                    if fact is not None
                     for evidence_ref in fact.evidence_refs
                 ),
             },
@@ -208,13 +206,13 @@ def evaluate_synthetic_rule(
         status = EvaluationStatus.UNSUPPORTED
         result = DecisionResult.UNSUPPORTED
     elif any(
-        fact.availability is FactAvailability.UNAVAILABLE
+        fact is None or fact.availability is FactAvailability.UNAVAILABLE
         for fact in condition_facts
     ):
         status = EvaluationStatus.NOT_EVALUABLE
         result = DecisionResult.INFORMATION_INSUFFICIENT
     elif all(
-        fact.value in condition.allowed_values
+        fact is not None and fact.value in condition.allowed_values
         for condition, fact in zip(rule.conditions, condition_facts, strict=True)
     ):
         status = EvaluationStatus.PASS
@@ -231,7 +229,16 @@ def evaluate_synthetic_rule(
         rule_id=rule.rule_id,
         evaluation_status=status,
         decision_result=result,
-        fact_refs=tuple(item.fact_ref for item in condition_facts),
+        fact_refs=tuple(
+            fact.fact_ref
+            if fact is not None
+            else f"missing:{facts.subject_id}:{condition.property_type_id}"
+            for condition, fact in zip(
+                rule.conditions,
+                condition_facts,
+                strict=True,
+            )
+        ),
         evidence_refs=evidence_refs,
         draft_created=False,
         published=False,
