@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import stat
 import sys
 import tempfile
 
@@ -271,6 +272,7 @@ def canonical_artifact_bytes(artifact: dict[str, object]) -> bytes:
 
 def write_artifact(output: Path, content: bytes) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
+    output_mode = stat.S_IMODE(output.stat().st_mode) if output.exists() else 0o644
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -281,6 +283,7 @@ def write_artifact(output: Path, content: bytes) -> None:
             delete=False,
         ) as temporary:
             temporary_path = Path(temporary.name)
+            os.fchmod(temporary.fileno(), output_mode)
             temporary.write(content)
             temporary.flush()
             os.fsync(temporary.fileno())

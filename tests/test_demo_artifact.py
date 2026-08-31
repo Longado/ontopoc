@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import os
+import stat
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -260,11 +261,24 @@ class DemoArtifactTest(unittest.TestCase):
             self.assertEqual(temporary.parent, output.parent)
             self.assertEqual(destination, output)
             self.assertFalse(temporary.exists())
+            self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o644)
+
+    def test_replace_preserves_existing_public_artifact_permissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "artifact.json"
+            output.write_bytes(b"previous artifact\n")
+            output.chmod(0o644)
+
+            generate_demo_artifact.write_artifact(output, b"new artifact\n")
+
+            self.assertEqual(output.read_bytes(), b"new artifact\n")
+            self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o644)
 
     def test_replace_failure_preserves_existing_artifact_and_cleans_temp_file(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "artifact.json"
             output.write_bytes(b"previous artifact\n")
+            output.chmod(0o644)
 
             with mock.patch.object(
                 generate_demo_artifact.os,
@@ -274,6 +288,7 @@ class DemoArtifactTest(unittest.TestCase):
                 generate_demo_artifact.write_artifact(output, b"new artifact\n")
 
             self.assertEqual(output.read_bytes(), b"previous artifact\n")
+            self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o644)
             self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
 
 
