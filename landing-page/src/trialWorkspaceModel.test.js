@@ -326,6 +326,79 @@ test("rejects candidate OntologySpec references outside the candidate closure", 
   }
 });
 
+test("rejects a rule condition whose property belongs to another valid entity domain", () => {
+  const changed = structuredClone(artifact);
+  const candidateSpec = changed.validation_run.authority.candidate.ontology_spec.spec;
+  candidateSpec.property_types[0].domain_type_id = candidateSpec.entity_types[0].type_id;
+
+  assert.throws(
+    () => adaptTrialArtifact(changed),
+    /candidate OntologySpec rule condition property domain/,
+  );
+});
+
+test("rejects candidate ontology element origins outside the pack closure", () => {
+  for (const [mutate, message] of [
+    [
+      (value) => {
+        value.validation_run.authority.candidate.ontology_spec.spec.entity_types[0].origin_ref_id =
+          "binding_foreign";
+      },
+      /candidate OntologySpec entity origin binding/,
+    ],
+    [
+      (value) => {
+        const candidate = value.validation_run.authority.candidate;
+        candidate.ontology_spec.spec.entity_types[0].origin_kind = "knowledge_suggestion";
+        candidate.ontology_spec.spec.entity_types[0].origin_ref_id =
+          candidate.decision_pack.pack.knowledge_outcomes[0].suggestions[0].suggestion_id;
+      },
+      /candidate OntologySpec entity origin kind/,
+    ],
+    [
+      (value) => {
+        const relation = value.validation_run.authority.candidate.ontology_spec.spec.relation_types[0];
+        relation.origin_ref_id = "suggestion_foreign";
+      },
+      /candidate OntologySpec relation origin suggestion/,
+    ],
+    [
+      (value) => {
+        const relation = value.validation_run.authority.candidate.ontology_spec.spec.relation_types[2];
+        relation.origin_ref_id = "bridge_foreign";
+      },
+      /candidate OntologySpec relation origin bridge/,
+    ],
+    [
+      (value) => {
+        const property = value.validation_run.authority.candidate.ontology_spec.spec.property_types[0];
+        property.origin_ref_id = "suggestion_foreign";
+      },
+      /candidate OntologySpec property origin suggestion/,
+    ],
+    [
+      (value) => {
+        const candidate = value.validation_run.authority.candidate;
+        const property = candidate.ontology_spec.spec.property_types[0];
+        property.origin_kind = "provided_input";
+        property.origin_ref_id = candidate.decision_pack.pack.input_bindings[0].binding_id;
+      },
+      /candidate OntologySpec property origin kind/,
+    ],
+    [
+      (value) => {
+        value.validation_run.authority.candidate.ontology_spec.spec.relation_types[0].origin_kind =
+          "external";
+      },
+      /candidate OntologySpec relation origin kind/,
+    ],
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
 test("rejects candidate DecisionPack suggestion references outside the pack closure", () => {
   for (const [mutate, message] of [
     [

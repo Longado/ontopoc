@@ -106,7 +106,7 @@ function indexUniqueRecords(value, idField, label) {
   return { records, ids: new Set(ids) };
 }
 
-function validateCandidateReferenceClosure(candidateSpec, suggestions, sourceRefs) {
+function validateCandidateReferenceClosure(candidatePack, candidateSpec, suggestions, sourceRefs) {
   const suggestionIds = suggestions.map((suggestion, index) => requireNonEmptyString(
     suggestion.suggestion_id,
     `candidate DecisionPack suggestion ${index + 1} ID`,
@@ -124,6 +124,17 @@ function validateCandidateReferenceClosure(candidateSpec, suggestions, sourceRef
       throw new Error("candidate DecisionPack suggestion source refs must resolve in the pack");
     }
   });
+  const bindings = indexUniqueRecords(
+    candidatePack.input_bindings,
+    "binding_id",
+    "candidate DecisionPack input binding",
+  );
+  const scenario = requireRecord(candidatePack.scenario, "candidate DecisionPack scenario");
+  const bridges = indexUniqueRecords(
+    scenario.declared_bridges,
+    "semantic_key",
+    "candidate DecisionPack declared bridge",
+  );
 
   const entities = indexUniqueRecords(
     candidateSpec.entity_types,
@@ -145,6 +156,24 @@ function validateCandidateReferenceClosure(candidateSpec, suggestions, sourceRef
     "rule_id",
     "candidate OntologySpec rule",
   );
+  const suggestionIdSet = new Set(suggestionIds);
+
+  entities.records.forEach((entity, index) => {
+    const originKind = requireNonEmptyString(
+      entity.origin_kind,
+      `candidate OntologySpec entity ${index + 1} origin kind`,
+    );
+    const originRefId = requireNonEmptyString(
+      entity.origin_ref_id,
+      `candidate OntologySpec entity ${index + 1} origin ref`,
+    );
+    if (originKind !== "provided_input") {
+      throw new Error("candidate OntologySpec entity origin kind is unsupported");
+    }
+    if (!bindings.ids.has(originRefId)) {
+      throw new Error("candidate OntologySpec entity origin binding must resolve in the pack");
+    }
+  });
 
   relations.records.forEach((relation, index) => {
     const domainId = requireNonEmptyString(
@@ -161,6 +190,25 @@ function validateCandidateReferenceClosure(candidateSpec, suggestions, sourceRef
     if (!entities.ids.has(rangeId)) {
       throw new Error("candidate OntologySpec relation range must resolve to an entity");
     }
+    const originKind = requireNonEmptyString(
+      relation.origin_kind,
+      `candidate OntologySpec relation ${index + 1} origin kind`,
+    );
+    const originRefId = requireNonEmptyString(
+      relation.origin_ref_id,
+      `candidate OntologySpec relation ${index + 1} origin ref`,
+    );
+    if (originKind === "knowledge_suggestion") {
+      if (!suggestionIdSet.has(originRefId)) {
+        throw new Error("candidate OntologySpec relation origin suggestion must resolve in the pack");
+      }
+    } else if (originKind === "provided_input") {
+      if (!bridges.ids.has(originRefId)) {
+        throw new Error("candidate OntologySpec relation origin bridge must resolve in the pack");
+      }
+    } else {
+      throw new Error("candidate OntologySpec relation origin kind is unsupported");
+    }
   });
 
   properties.records.forEach((property, index) => {
@@ -171,9 +219,25 @@ function validateCandidateReferenceClosure(candidateSpec, suggestions, sourceRef
     if (!entities.ids.has(domainId)) {
       throw new Error("candidate OntologySpec property domain must resolve to an entity");
     }
+    const originKind = requireNonEmptyString(
+      property.origin_kind,
+      `candidate OntologySpec property ${index + 1} origin kind`,
+    );
+    const originRefId = requireNonEmptyString(
+      property.origin_ref_id,
+      `candidate OntologySpec property ${index + 1} origin ref`,
+    );
+    if (originKind !== "knowledge_suggestion") {
+      throw new Error("candidate OntologySpec property origin kind is unsupported");
+    }
+    if (!suggestionIdSet.has(originRefId)) {
+      throw new Error("candidate OntologySpec property origin suggestion must resolve in the pack");
+    }
   });
 
-  const suggestionIdSet = new Set(suggestionIds);
+  const propertiesById = new Map(
+    properties.records.map((property) => [property.property_type_id, property]),
+  );
   rules.records.forEach((rule, ruleIndex) => {
     const subjectId = requireNonEmptyString(
       rule.subject_type_id,
@@ -196,6 +260,9 @@ function validateCandidateReferenceClosure(candidateSpec, suggestions, sourceRef
       );
       if (!properties.ids.has(propertyTypeId)) {
         throw new Error("candidate OntologySpec rule condition property must resolve");
+      }
+      if (propertiesById.get(propertyTypeId).domain_type_id !== subjectId) {
+        throw new Error("candidate OntologySpec rule condition property domain must match the subject");
       }
     });
     const originSuggestionId = requireNonEmptyString(
@@ -495,6 +562,7 @@ export function adaptTrialArtifact(input) {
     throw new Error("candidate OntologySpec pack hash must match the candidate DecisionPack hash");
   }
   const candidateRules = validateCandidateReferenceClosure(
+    candidatePack,
     candidateSpec,
     candidateSuggestions,
     candidateSourceRefs,
