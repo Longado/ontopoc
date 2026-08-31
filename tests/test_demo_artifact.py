@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -25,6 +25,15 @@ def content_hash(value):
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
+
+
+def resolve_artifact_ref(artifact, reference):
+    if not reference.startswith("#/"):
+        raise AssertionError(f"unsupported artifact reference: {reference}")
+    value = artifact
+    for key in reference[2:].split("/"):
+        value = value[key]
+    return value
 
 
 class DemoArtifactTest(unittest.TestCase):
@@ -71,15 +80,19 @@ class DemoArtifactTest(unittest.TestCase):
         actual_cases = validation_run["cases"]
 
         self.assertEqual(len(actual_cases), 4)
+        baseline = authority["baseline"]
         self.assertEqual(
-            authority["baseline"]["decision_pack"],
-            artifact["decision_pack"],
+            baseline["decision_pack"],
+            {
+                "artifact_ref": "#/decision_pack",
+                "content_hash": artifact["decision_pack"]["content_hash"],
+            },
         )
         self.assertEqual(
-            authority["baseline"]["ontology_spec"],
+            baseline["ontology_spec"],
             {
+                "artifact_ref": "#/ontology_spec",
                 "content_hash": artifact["ontology_spec"]["content_hash"],
-                "spec": artifact["ontology_spec"]["spec"],
             },
         )
 
@@ -126,13 +139,27 @@ class DemoArtifactTest(unittest.TestCase):
                         receipt["facts_content_hash"],
                         facts["content_hash"],
                     )
+                    decision_pack = variant["decision_pack"]
+                    ontology_spec = variant["ontology_spec"]
+                    if "artifact_ref" in decision_pack:
+                        resolved_pack = resolve_artifact_ref(
+                            artifact,
+                            decision_pack["artifact_ref"],
+                        )["pack"]
+                        resolved_spec = resolve_artifact_ref(
+                            artifact,
+                            ontology_spec["artifact_ref"],
+                        )["spec"]
+                    else:
+                        resolved_pack = decision_pack["pack"]
+                        resolved_spec = ontology_spec["spec"]
                     self.assertEqual(
-                        variant["decision_pack"]["content_hash"],
-                        content_hash(variant["decision_pack"]["pack"]),
+                        decision_pack["content_hash"],
+                        content_hash(resolved_pack),
                     )
                     self.assertEqual(
-                        variant["ontology_spec"]["content_hash"],
-                        content_hash(variant["ontology_spec"]["spec"]),
+                        ontology_spec["content_hash"],
+                        content_hash(resolved_spec),
                     )
                     for field in (
                         "draft_created",
@@ -179,19 +206,39 @@ class DemoArtifactTest(unittest.TestCase):
             output = Path(directory) / "artifact.json"
             output.write_bytes(expected)
 
-            self.assertEqual(generate_demo_artifact.main(["--check"], output=output), 0)
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = generate_demo_artifact.main(["--check"], output=output)
+            self.assertEqual(result, 0)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertEqual(stderr.getvalue(), "")
             self.assertEqual(output.read_bytes(), expected)
 
             output.write_bytes(b"stale artifact\n")
-            with redirect_stderr(io.StringIO()):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
                 result = generate_demo_artifact.main(["--check"], output=output)
             self.assertEqual(result, 1)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertEqual(
+                stderr.getvalue(),
+                f"artifact is missing or stale: {output}\n",
+            )
             self.assertEqual(output.read_bytes(), b"stale artifact\n")
 
             output.unlink()
-            with redirect_stderr(io.StringIO()):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
                 result = generate_demo_artifact.main(["--check"], output=output)
             self.assertEqual(result, 1)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertEqual(
+                stderr.getvalue(),
+                f"artifact is missing or stale: {output}\n",
+            )
             self.assertFalse(output.exists())
 
     def test_default_write_uses_same_directory_replace(self):
@@ -213,6 +260,21 @@ class DemoArtifactTest(unittest.TestCase):
             self.assertEqual(temporary.parent, output.parent)
             self.assertEqual(destination, output)
             self.assertFalse(temporary.exists())
+
+    def test_replace_failure_preserves_existing_artifact_and_cleans_temp_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "artifact.json"
+            output.write_bytes(b"previous artifact\n")
+
+            with mock.patch.object(
+                generate_demo_artifact.os,
+                "replace",
+                side_effect=OSError("replace failed"),
+            ), self.assertRaisesRegex(OSError, "replace failed"):
+                generate_demo_artifact.write_artifact(output, b"new artifact\n")
+
+            self.assertEqual(output.read_bytes(), b"previous artifact\n")
+            self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
 
 
 if __name__ == "__main__":

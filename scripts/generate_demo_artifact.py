@@ -228,11 +228,17 @@ def build_artifact() -> dict[str, object]:
         "authority": {
             "evidence_scope": "synthetic_demo",
             "facts_fixture": CASES_FIXTURE.as_posix(),
-            "baseline": _variant_authority(
-                BASELINE_POLICY,
-                baseline_pack,
-                baseline_compilation,
-            ),
+            "baseline": {
+                "knowledge_unit": BASELINE_POLICY.as_posix(),
+                "decision_pack": {
+                    "artifact_ref": "#/decision_pack",
+                    "content_hash": decision_pack_content_hash(baseline_pack),
+                },
+                "ontology_spec": {
+                    "artifact_ref": "#/ontology_spec",
+                    "content_hash": baseline_compilation.spec_content_hash,
+                },
+            },
             "candidate": _variant_authority(
                 CANDIDATE_POLICY,
                 candidate_pack,
