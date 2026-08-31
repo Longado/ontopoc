@@ -57,6 +57,24 @@ test("Trial workspace runs one synchronous artifact load and exposes four read-o
   assert.match(workspace, /ValidationPanel/);
 });
 
+test("Validation projects recorded receipts, evidence hashes, and delivery boundaries", () => {
+  assert.match(workspace, /后端已记录的回执 · 无实时执行 · 无外部写入/);
+  assert.match(workspace, /BACKEND-RECORDED RECEIPTS · NO LIVE EXECUTION · NO EXTERNAL WRITE/);
+  assert.match(workspace, /data\.cases\.map/);
+  assert.match(workspace, /className={`validation-case-row/);
+  assert.match(workspace, /atRiskChange/);
+  assert.match(workspace, /唯一变化 · at_risk/);
+  assert.match(workspace, /<details/);
+  assert.match(workspace, /decisionPackContentHash/);
+  assert.match(workspace, /ontologySpecContentHash/);
+  assert.match(workspace, /factsContentHash/);
+  assert.match(workspace, /receipt\.contentHash/);
+  assert.match(workspace, /receipt\.factRefs/);
+  assert.match(workspace, /receipt\.evidenceRefs/);
+  assert.match(workspace, /className="validation-boundaries"/);
+  assert.doesNotMatch(workspace, /receipt = null|CONTRACT ONLY \/ NOT IMPLEMENTED/);
+});
+
 test("idle Trial mounts the document modeler and only its compiled action runs the artifact callback", () => {
   assert.match(workspace, /import \{ DocumentModeler \} from "\.\/DocumentModeler\.jsx"/);
   assert.match(workspace, /<DocumentModeler language=\{language\} runAgentDemo=\{runAgentDemo\} \/>/);

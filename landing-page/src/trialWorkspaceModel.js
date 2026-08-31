@@ -21,8 +21,85 @@ function requireHash(value, label) {
   return value;
 }
 
+function requireNonEmptyString(value, label) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  return value;
+}
+
+function requireNonEmptyStrings(value, label) {
+  const items = requireArray(value, label);
+  if (!items.length || items.some((item) => typeof item !== "string" || !item.trim())) {
+    throw new Error(`${label} must contain backend references`);
+  }
+  return items;
+}
+
 function requireValue(actual, expected, label) {
   if (actual !== expected) throw new Error(`${label} must be ${expected}`);
+}
+
+function adaptValidationReceipt(envelopeValue, authority, factsHash, label) {
+  const envelope = requireRecord(envelopeValue, `${label} receipt envelope`);
+  const contentHash = requireHash(envelope.content_hash, `${label} receipt content hash`);
+  const receipt = requireRecord(envelope.receipt, `${label} receipt`);
+  requireValue(receipt.schema, "validation_receipt.v1", `${label} receipt schema`);
+
+  const decisionPackContentHash = requireHash(
+    receipt.decision_pack_content_hash,
+    `${label} receipt DecisionPack hash`,
+  );
+  const ontologySpecContentHash = requireHash(
+    receipt.ontology_spec_content_hash,
+    `${label} receipt OntologySpec hash`,
+  );
+  const receiptFactsHash = requireHash(receipt.facts_content_hash, `${label} receipt facts hash`);
+  if (decisionPackContentHash !== authority.decisionPackHash) {
+    throw new Error(`${label} receipt DecisionPack hash must match validation authority`);
+  }
+  if (ontologySpecContentHash !== authority.ontologySpecHash) {
+    throw new Error(`${label} receipt OntologySpec hash must match validation authority`);
+  }
+  if (receiptFactsHash !== factsHash) {
+    throw new Error(`${label} receipt facts hash must match the case facts hash`);
+  }
+
+  const evaluationPairs = {
+    pass: "in_queue",
+    fail: "not_in_queue",
+    not_evaluable: "information_insufficient",
+    unsupported: "unsupported",
+  };
+  if (evaluationPairs[receipt.evaluation_status] !== receipt.decision_result) {
+    throw new Error(`${label} receipt evaluation pair is invalid`);
+  }
+
+  const factRefs = requireNonEmptyStrings(receipt.fact_refs, `${label} receipt fact refs`);
+  const evidenceRefs = requireNonEmptyStrings(receipt.evidence_refs, `${label} receipt evidence refs`);
+  requireValue(receipt.draft_created, false, `${label} receipt draft created`);
+  requireValue(receipt.published, false, `${label} receipt published`);
+  requireValue(receipt.actions_executed, false, `${label} receipt actions executed`);
+  requireValue(receipt.external_write, false, `${label} receipt external write`);
+
+  return {
+    schema: receipt.schema,
+    contentHash,
+    evaluationStatus: receipt.evaluation_status,
+    decisionResult: receipt.decision_result,
+    ruleId: requireNonEmptyString(receipt.rule_id, `${label} receipt rule ID`),
+    factRefs,
+    evidenceRefs,
+    decisionPackContentHash,
+    ontologySpecContentHash,
+    factsContentHash: receiptFactsHash,
+    boundaries: {
+      draftCreated: receipt.draft_created,
+      published: receipt.published,
+      actionsExecuted: receipt.actions_executed,
+      externalWrite: receipt.external_write,
+    },
+  };
 }
 
 export function moveTrialStage(current, key, stageCount) {
@@ -89,6 +166,130 @@ export function adaptTrialArtifact(input) {
   const reviewIssues = compilationIssues.filter((issue) => issue.severity === "requires_review");
   const ontologyWorkspace = projectOntologyWorkspace(artifact);
 
+  const validationRun = requireRecord(artifact.validation_run, "validation run");
+  requireValue(validationRun.schema, "validation_run.v1", "validation run schema");
+  const runtime = requireRecord(validationRun.runtime, "validation runtime");
+  requireValue(runtime.mode, "recorded_deterministic", "validation runtime mode");
+  requireValue(runtime.network_access, false, "validation runtime network access");
+  requireValue(runtime.external_writes, false, "validation runtime external writes");
+  const evaluator = requireNonEmptyString(runtime.evaluator, "validation runtime evaluator");
+
+  const runStatus = requireRecord(validationRun.run_status, "validation run status");
+  requireValue(runStatus.validation, "completed", "validation run status");
+  requireValue(runStatus.review, "not_started", "validation review status");
+  requireValue(runStatus.publication, "not_started", "validation publication status");
+  requireValue(runStatus.action, "not_started", "validation action status");
+  requireValue(runStatus.external_write, false, "validation run external write");
+
+  const validationAuthority = requireRecord(validationRun.authority, "validation authority");
+  const baselineAuthority = requireRecord(validationAuthority.baseline, "baseline authority");
+  const baselinePackAuthority = requireRecord(
+    baselineAuthority.decision_pack,
+    "baseline DecisionPack authority",
+  );
+  const baselineSpecAuthority = requireRecord(
+    baselineAuthority.ontology_spec,
+    "baseline OntologySpec authority",
+  );
+  requireValue(baselinePackAuthority.artifact_ref, "#/decision_pack", "baseline DecisionPack ref");
+  requireValue(baselineSpecAuthority.artifact_ref, "#/ontology_spec", "baseline OntologySpec ref");
+  const baselinePackHash = requireHash(
+    baselinePackAuthority.content_hash,
+    "baseline DecisionPack hash",
+  );
+  const baselineSpecHash = requireHash(
+    baselineSpecAuthority.content_hash,
+    "baseline OntologySpec hash",
+  );
+  if (baselinePackHash !== packHash) {
+    throw new Error("baseline DecisionPack hash must match the top-level DecisionPack hash");
+  }
+  if (baselineSpecHash !== specHash) {
+    throw new Error("baseline OntologySpec hash must match the top-level OntologySpec hash");
+  }
+
+  const candidateAuthority = requireRecord(validationAuthority.candidate, "candidate authority");
+  const candidatePackAuthority = requireRecord(
+    candidateAuthority.decision_pack,
+    "candidate DecisionPack authority",
+  );
+  const candidatePackHash = requireHash(
+    candidatePackAuthority.content_hash,
+    "candidate DecisionPack hash",
+  );
+  const candidatePack = requireRecord(candidatePackAuthority.pack, "candidate DecisionPack");
+  requireValue(candidatePack.schema, "decision_pack.v1", "candidate DecisionPack schema");
+  const candidateSpecAuthority = requireRecord(
+    candidateAuthority.ontology_spec,
+    "candidate OntologySpec authority",
+  );
+  const candidateSpecHash = requireHash(
+    candidateSpecAuthority.content_hash,
+    "candidate OntologySpec hash",
+  );
+  const candidateSpec = requireRecord(candidateSpecAuthority.spec, "candidate OntologySpec");
+  requireValue(candidateSpec.schema, "ontology_spec.v1", "candidate OntologySpec schema");
+  const candidateSpecPackHash = requireHash(
+    candidateSpec.pack_content_hash,
+    "candidate OntologySpec pack hash",
+  );
+  if (candidateSpecPackHash !== candidatePackHash) {
+    throw new Error("candidate OntologySpec pack hash must match the candidate DecisionPack hash");
+  }
+
+  const cases = requireArray(validationRun.cases, "validation cases");
+  if (cases.length !== 4) throw new Error("validation cases must contain exactly four cases");
+  const validationCases = cases.map((caseValue, index) => {
+    const validationCase = requireRecord(caseValue, `validation case ${index + 1}`);
+    const subjectId = requireNonEmptyString(
+      validationCase.subject_id,
+      `validation case ${index + 1} subject`,
+    );
+    const factsEnvelope = requireRecord(validationCase.facts, `validation case ${index + 1} facts`);
+    const factsHash = requireHash(
+      factsEnvelope.content_hash,
+      `validation case ${index + 1} facts hash`,
+    );
+    const factSet = requireRecord(factsEnvelope.fact_set, `validation case ${index + 1} fact set`);
+    requireValue(factSet.schema, "synthetic_fact_set.v1", `validation case ${index + 1} facts schema`);
+    requireValue(
+      factSet.evidence_scope,
+      "synthetic_demo",
+      `validation case ${index + 1} facts evidence scope`,
+    );
+    requireValue(factSet.subject_id, subjectId, `validation case ${index + 1} facts subject`);
+    const facts = requireArray(factSet.facts, `validation case ${index + 1} facts`);
+    const baseline = adaptValidationReceipt(
+      validationCase.baseline,
+      { decisionPackHash: baselinePackHash, ontologySpecHash: baselineSpecHash },
+      factsHash,
+      "baseline",
+    );
+    const candidate = adaptValidationReceipt(
+      validationCase.candidate,
+      { decisionPackHash: candidatePackHash, ontologySpecHash: candidateSpecHash },
+      factsHash,
+      "candidate",
+    );
+    const resultChanged =
+      baseline.evaluationStatus !== candidate.evaluationStatus
+      || baseline.decisionResult !== candidate.decisionResult;
+    const hasAtRiskFact = facts.some((fact) => fact?.value === "at_risk");
+
+    return {
+      subjectId,
+      facts: {
+        schema: factSet.schema,
+        evidenceScope: factSet.evidence_scope,
+        contentHash: factsHash,
+        items: facts,
+      },
+      baseline,
+      candidate,
+      atRiskChange: resultChanged && hasAtRiskFact,
+    };
+  });
+
   return {
     schema: artifact.schema,
     stages: [
@@ -147,16 +348,30 @@ export function adaptTrialArtifact(input) {
       {
         id: "validation",
         label: "Validation",
-        status: "not_implemented",
+        status: "receipt_recorded",
         data: {
-          contractDefined: true,
-          evaluatorExecuted: false,
-          receipt: null,
+          runtimeAuthority: {
+            evaluator,
+            mode: runtime.mode,
+            networkAccess: runtime.network_access,
+            externalWrites: runtime.external_writes,
+          },
+          authority: {
+            baseline: {
+              decisionPackHash: baselinePackHash,
+              ontologySpecHash: baselineSpecHash,
+            },
+            candidate: {
+              decisionPackHash: candidatePackHash,
+              ontologySpecHash: candidateSpecHash,
+            },
+          },
+          cases: validationCases,
           boundaries: {
-            draftCreated: false,
-            published: false,
-            actionsExecuted: false,
-            externalWrite: false,
+            review: runStatus.review,
+            publication: runStatus.publication,
+            action: runStatus.action,
+            externalWrite: runStatus.external_write,
           },
         },
       },
