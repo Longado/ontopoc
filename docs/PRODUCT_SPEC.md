@@ -22,7 +22,7 @@
 - 不同行业方案重复从空白文档开始，修正经验无法复用；
 - 演示、POC、生产和已验证效果被混写。
 
-本产品把 AI FDE 对业务问题的理解编译成 `DecisionPack`，再逐步形成可执行规格、验证回执和业务变化说明。当前 POC Markdown/JSON 是 `DecisionPack` 的兼容投影，固定 Demo 还会编译 draft/candidate `OntologySpec`，并记录 baseline/candidate 的合成验证回执；这些都不等于人工确认或发布。
+本产品把 AI FDE 对业务问题的理解编译成 `DecisionPack`，再逐步形成可执行规格、验证回执和业务变化说明。当前默认 CLI 的 Markdown/JSON 是 `Proposal` 渲染；只有显式传入 `--decision-pack-output` 才写出 canonical `DecisionPack`。固定 Demo 还会编译 draft/candidate `OntologySpec`，并记录 baseline/candidate 的合成验证回执；这些都不等于人工确认或发布。
 
 ## 2. 核心用户
 
@@ -115,7 +115,7 @@ POC
 - 候选版与已发布版回执可比较为 `DecisionDelta`，显示订单进入优先队列、退出优先队列、仍在优先队列或变为信息不足，并能追到规则与证据；
 - 一名真实 FDE 和一名供应链业务验证参与者共同形成可记录的 `go`：保存 delta/receipt hash、纠正/批准/复用证据、理由和时间；否则 MVP 验证失败，不进入数据接入、行动和 API。
 
-当前本地分支已完成知识建议、`DecisionPack → OntologySpec` 和固定合成验证：`validation_run.v1` 含 4 个 case、8 个带 canonical receipt hash 并绑定 pack/spec/facts hash 的 `ValidationReceipt.v1`，前端只读投影为 `receipt_recorded`。规则 `pass` 只代表合成规则匹配，review、version、publication、`DecisionDelta`、action、真实客户数据和外部写回仍未实现。
+当前本地分支已完成知识建议、`DecisionPack → OntologySpec` 和固定合成验证：`validation_run.v1` 含 4 个 case、8 个带 canonical receipt hash 并绑定 pack/spec/facts hash 的 `validation_receipt.v1`，前端只读投影为 `receipt_recorded`。规则 `pass` 只代表合成规则匹配，review、version、publication、`DecisionDelta`、action、真实客户数据和外部写回仍未实现。
 
 这次 validation 完成没有改变核心产品风险：输出结构仍大部分模板化，J1 / J2 / J3 与 Step A / C 仍是优先验证项；在真实 FDE 与业务验证参与者形成可记录的判断前，不得把页面、回执或测试快照写成产品价值已经通过。
 

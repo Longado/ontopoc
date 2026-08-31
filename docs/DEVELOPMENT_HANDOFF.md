@@ -10,7 +10,7 @@
 
 ## 0. 接手第一步:对账
 
-本文档以远端已合并基线 `9b251d0` 加当前本地分支 6 个 validation 实现提交(`df89bb6..beacec1`)为依据。这 6 个实现提交和当前文档收口均尚未 merge / push,不要把本文状态当成远端或已交付状态。接手时先对当前 checkout 对账:
+本文档以远端已合并基线 `9b251d0` 加当前本地分支 6 个 validation 实现提交(`df89bb6^..beacec1`)为依据。这 6 个实现提交和当前文档收口均尚未 merge / push,不要把本文状态当成远端或已交付状态。接手时先对当前 checkout 对账:
 
 ```bash
 cd /Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo
@@ -83,7 +83,7 @@ PRD FR-003"展示候选决策、对象、关系、规则及对应证据片段"�
 ### 3.4 从未对真模型验证
 
 - Demo 里的 candidate 是 `scripts/generate_demo_artifact.py` 用 `DeterministicDemoGateway` 造的,artifact 里 `provider="recorded_demo_gateway"`、`realtime_model_call:false`。
-- 21 个测试文件里没有一个碰真模型或真网络(`test_model_gateway.py` 用内存 `FakeResponse`,`test_recognition_cli*.py` mock 掉 gateway)。
+- 22 个 `test*.py` 文件里没有一个碰真模型或真网络(`test_model_gateway.py` 用内存 `FakeResponse`,`test_recognition_cli*.py` mock 掉 gateway)。
 - 没有 golden set。`PROMPT_VERSION = "order_priority_intervention.v1"` 从未被任何真实输出检验过。
 
 ### 3.5 其他已知债务
@@ -147,7 +147,7 @@ PRD FR-003"展示候选决策、对象、关系、规则及对应证据片段"�
 
 ## 5. 已实现 / 未实现(修正版)
 
-已实现:第 3.1 节 + 后端固定 `validation_run.v1` 与前端只读回执投影。后端以固定 4 个 case 分别求值 baseline/candidate,生成 8 个真实 `ValidationReceipt.v1`;每个回执带 canonical receipt hash,并绑定 pack/spec/facts hash、rule、fact refs 和 evidence refs,四个副作用字段固定为 `false`。artifact 默认写入采用同目录 temp + fsync + 单次 `os.replace`;`--check` 只读比较 canonical bytes,相同返回 0,missing/stale 返回 1 且不写。
+已实现:第 3.1 节 + 后端固定 `validation_run.v1` 与前端只读回执投影。后端以固定 4 个 case 分别求值 baseline/candidate,生成 8 个真实 `validation_receipt.v1`;每个回执带 canonical receipt hash,并绑定 pack/spec/facts hash、rule、fact refs 和 evidence refs,四个副作用字段固定为 `false`。artifact 默认写入采用同目录 temp + fsync + 单次 `os.replace`;`--check` 只读比较 canonical bytes,相同返回 0,missing/stale 返回 1 且不写。
 
 未实现,不能写成已完成:
 
@@ -251,7 +251,7 @@ CQ 清单与知识单元同 PR:`tests/golden/competency_questions.md`,每条对�
 
 ### Step E:顺手活(各自独立 PR,随时可做)
 
-1. **v1 Task 1–2:已在当前本地分支实现,尚未 merge / push。** Python 内核已为四笔合成事实生成真实 baseline/candidate `ValidationReceipt` 写入 artifact;前端 Validation 页展示 status / decision result / rule ID / fact & evidence refs / pack/spec/facts/receipt hash 与 lifecycle 边界,并在投影前严格校验四个 receipt 副作用字段为 `false`,且没有在前端重写 evaluator。对应实现提交为 `df89bb6..beacec1`。
+1. **v1 Task 1–2:已在当前本地分支实现,尚未 merge / push。** Python 内核已为四笔合成事实生成真实 baseline/candidate `ValidationReceipt` 写入 artifact;前端 Validation 页展示 status / decision result / rule ID / fact & evidence refs / pack/spec/facts/receipt hash 与 lifecycle 边界,并在投影前严格校验四个 receipt 副作用字段为 `false`,且没有在前端重写 evaluator。对应实现提交为 `df89bb6^..beacec1`。
 2. **Golden set + eval**:`tests/golden/recognition_cases.jsonl` 15–20 条(matched / insufficient / unsupported 各 5+);CI 默认用 `FakeGateway` 跑 Layer A(< 10 s,阻断);真模型 judge 只在有 API key 时跑,结果落 `docs/experiments/`,不阻断合并。识别结果信封已带 provider / model / prompt_version,够用;`--model` 改为必填并在实验记录里钉死版本。
 3. **卫生 PR**:CI 加前端 job;`App.jsx` 等过 prettier;删 14 条已合并本地分支。
 4. **文档收口**:当前已先修正 validation 生命周期事实;A–D 的产品方向变化仍应在各自完成后单独更新。
@@ -329,7 +329,7 @@ npm run dev -- --host 127.0.0.1 --port 5174
 |---|---|---|
 | artifact missing / stale | 用脚本内同一组固定输入运行 `PYTHONPATH=src python scripts/generate_demo_artifact.py`,再用 `--check` 核对 canonical bytes | 不手改 committed JSON,不把 stale 当可继续投影 |
 | hash / binding mismatch | 前端 fail closed;回到后端 authority 和固定输入重新生成,定位 pack/spec/facts/receipt 或引用闭包的差异 | 不在前端放宽校验,不重算另一套结果 |
-| `not_evaluable` | 补齐规则要求的事实与证据后重新生成 | 不对同一份缺失事实盲重试 |
+| `not_evaluable` | 固定黄金第四 case 的 `not_evaluable` 是合法验收结果,应保留并核对 missing/unavailable fact 与 evidence refs；只有某个受测输入按预期本应可求值时,才通过受测 fixture / 输入变更补齐后重新生成 | 不把合法信息不足当故障,不常规重写固定 artifact,不对同一份缺失事实盲重试 |
 | `unsupported` | 记录为 evaluator / rule contract 的能力缺口,另行设计并测试支持范围 | 不把它降级成 `fail` 或 `pass` |
 | 写入中断 / `os.replace` 失败 | 旧 artifact 仍保留;排除文件系统问题后用同一固定输入重跑 | 不把临时文件或部分内容当新权威 |
 
@@ -351,12 +351,15 @@ npm run dev -- --host 127.0.0.1 --port 5174
 
 ### 8.2 开发目录
 
-`/Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo`。开新能力:
+`/Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo`。当前 validation 链必须先继续这个 worktree 的 `rico/handoff-v2` 精确 HEAD:
 
 ```bash
-git fetch origin && git status --short && git worktree list
-git switch -c <owner>/<small-capability> origin/main
+git switch rico/handoff-v2
+git status --short --branch
+git rev-parse HEAD
 ```
+
+当前 `origin/main` 尚不含 `df89bb6^..beacec1` 及后续文档收口,不得从它开分支继续 validation 链。只有这些提交落地且更新后的 `origin/main` 已包含它们后,才执行 `git switch -c <owner>/<small-capability> origin/main`。
 
 每个小能力:focused test → 一次 full test → `git diff --check` → scope/status 检查 → commit → push → 独立 review → PR → CI → merge。
 
@@ -392,13 +395,17 @@ git switch -c <owner>/<small-capability> origin/main
 
 先读 docs/DEVELOPMENT_HANDOFF.md 第 0 节做对账,确认当前 checkout 和本地新增提交,再读第 3 节诊断。当前本地快照是后端 256、前端 unit 79、Sites 4、build 1973 modules;这些数字不代表 CI 或远端已经同步。
 
-严禁修改主目录里的 README.md、docs/HANDOFF_FRONTEND_BACKEND_ALIGNMENT.md 和未跟踪的 landing-page/。只在 .worktrees 下从 origin/main 开的干净分支工作。
+严禁修改主目录里的 README.md、docs/HANDOFF_FRONTEND_BACKEND_ALIGNMENT.md 和未跟踪的 landing-page/。先在现有 `.worktrees/pc-agent-modeling-demo` 中继续 `rico/handoff-v2` 的精确 HEAD;当前 `origin/main` 尚缺 validation 与文档收口提交,不得从它开新分支。只有这些提交落地且更新后的 `origin/main` 已包含它们后,才从该远端基线开新分支。
 
 现状:内核、hash、四态、零副作用边界已实现;固定 validation_run.v1 含 4 cases / 8 receipts,前端只读投影为 receipt_recorded,不重算 SHA、不实现 evaluator。但 LLM 只填闭集表单(recognition.py 禁止输出对象和关系),知识单元只有一个真单元,规则只有 categorical_all_of_v1,任何 matched 的材料都产出同一份本体。
 
 按第 6 节顺序做:A 用真模型跑一次脱敏真实材料并记录;B 让模型提取带 evidence_span 的候选对象/关系,代码校验 span 是原文子串;C 按 supplier_evidence_boundary_v1 格式写 3–5 个供应链顾问判断知识单元;D 加 threshold_v1 规则。ValidationReceipt 接入已在当前本地分支完成;CI 加前端、清分支仍未做。
 
-判据:两段不同真实材料 → 本体不同,且至少一处是工具追问出来的。达成前不做 DecisionDelta、review、部署。
+四个门槛必须分别验收:
+J1 材料口:真实抽取的 role binding 兜底占比 < 50%,且两段材料的 binding 数量或规则命中路径不同(label 字符串不同不算)。
+J2 知识口:显式 CQ 断言中命中 ≥ 3 条、误触 0。
+J3 值不值:同一材料与 Eddie 手写 5 条 bullet 对照,管道覆盖不低于手写且耗时不超过 3 倍;J1/J2 通过但 J3 不过就退回 Markdown 清单 + 知识单元 JSON,不做产品。
+稳定重跑:同一材料跑 5 次,binding 集合一致率必须 ≥ 80%;低于门槛先收紧 prompt 或词表。上述门槛达成前不做 DecisionDelta、review、部署。
 
 每个小能力:focused test、full test、git diff --check、commit、push、PR、CI、merge。报告真实测试数、commit、PR 和尚未实现的边界。
 ```

@@ -13,7 +13,7 @@
 -> 人工审查与修订
 ```
 
-当前本地分支已在确定性 Proposal CLI 之上完成首个 opt-in 的有来源知识辅助 Loop、`DecisionPack → OntologySpec` 编译和无状态合成验证。固定 Demo artifact 记录 `validation_run.v1`：4 个合成 case 分别对 baseline/candidate 求值，生成 8 个真实、带 canonical receipt hash 并绑定 pack/spec/facts hash 的 `ValidationReceipt.v1`；PC Validation 页面只投影这些后端回执。POC Markdown/JSON、`OntologySpec` 和回执仍是 `synthetic_demo` 资产；人工审查、版本、发布、真实数据接入与受控行动尚未实现。旧 EIP 只作为行为参考，不复制其模块或数据库。
+当前本地分支已在确定性 Proposal CLI 之上完成首个 opt-in 的有来源知识辅助 Loop、`DecisionPack → OntologySpec` 编译和无状态合成验证。固定 Demo artifact 记录 `validation_run.v1`：4 个合成 case 分别对 baseline/candidate 求值，生成 8 个真实、带 canonical receipt hash 并绑定 pack/spec/facts hash 的 `validation_receipt.v1`；PC Validation 页面只投影这些后端回执。POC Markdown/JSON、`OntologySpec` 和回执仍是 `synthetic_demo` 资产；人工审查、版本、发布、真实数据接入与受控行动尚未实现。旧 EIP 只作为行为参考，不复制其模块或数据库。
 
 ## MVP 输入
 

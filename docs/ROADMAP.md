@@ -16,7 +16,7 @@
 
 “采取哪种处置动作”不是该 `DecisionPack` 的主决策；它属于 Loop 6 的受控行动范围。乳品研发样例只保留为跨行业 regression，用来防止核心出现行业特判，不证明跨行业知识有效。
 
-POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `nano-ontoprompt` 是第一方经验库和行为参考，不是代码来源、运行依赖或必须兼容的架构底座。
+当前默认 CLI 的 Markdown/JSON 是 `Proposal` 渲染；只有显式传入 `--decision-pack-output` 才写出 canonical `DecisionPack`。两者都不是产品终点。旧 `nano-ontoprompt` 是第一方经验库和行为参考，不是代码来源、运行依赖或必须兼容的架构底座。
 
 详细执行计划见 [渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md)。
 
@@ -136,7 +136,7 @@ Loop 2 完成不等于 publication 或 production；Loop 2 出口当时没有 re
 
 **状态：complete_on_current_local_branch（尚未 merge / push）**
 
-当前本地分支已实现 `categorical_all_of_v1` 的 `pass / fail / not_evaluable / unsupported` 四态运行时，并将固定 4 个 `synthetic_demo` case 分别对 baseline/candidate 求值，记录为 `validation_run.v1` 中 8 个真实 `ValidationReceipt.v1`。每个回执带 canonical receipt hash，并绑定 pack/spec/facts 内容 hash、rule、fact refs 和 evidence refs；四个副作用字段均固定为 `false`。
+当前本地分支已实现 `categorical_all_of_v1` 的 `pass / fail / not_evaluable / unsupported` 四态运行时，并将固定 4 个 `synthetic_demo` case 分别对 baseline/candidate 求值，记录为 `validation_run.v1` 中 8 个真实 `validation_receipt.v1`。每个回执带 canonical receipt hash，并绑定 pack/spec/facts 内容 hash、rule、fact refs 和 evidence refs；四个副作用字段均固定为 `false`。
 
 固定 artifact 以顶层 baseline pack/spec 为唯一权威，validation authority 只保存 JSON refs + hash；candidate 具有独立 pack/spec。PC Validation 页面以 `receipt_recorded` 投影 4 cases / 8 receipts、证据、hash 与边界，不重算 SHA、不实现 evaluator；结构、引用或绑定不一致时 fail closed。
 
