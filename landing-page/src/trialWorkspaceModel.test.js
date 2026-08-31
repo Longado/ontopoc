@@ -188,6 +188,35 @@ test("rejects an illegal validation status and result pairing", () => {
   assert.throws(() => adaptTrialArtifact(changed), /baseline receipt evaluation pair/);
 });
 
+test("rejects validation receipts with missing evaluation fields", () => {
+  for (const removeFields of [
+    ["evaluation_status"],
+    ["decision_result"],
+    ["evaluation_status", "decision_result"],
+  ]) {
+    const changed = structuredClone(artifact);
+    for (const field of removeFields) {
+      delete changed.validation_run.cases[0].baseline.receipt[field];
+    }
+    assert.throws(() => adaptTrialArtifact(changed), /baseline receipt evaluation/);
+  }
+});
+
+test("rejects validation receipts with unknown evaluation fields", () => {
+  for (const mutate of [
+    (receipt) => { receipt.evaluation_status = "unknown"; },
+    (receipt) => { receipt.decision_result = "unknown"; },
+    (receipt) => {
+      receipt.evaluation_status = "unknown";
+      delete receipt.decision_result;
+    },
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed.validation_run.cases[0].candidate.receipt);
+    assert.throws(() => adaptTrialArtifact(changed), /candidate receipt evaluation/);
+  }
+});
+
 test("rejects a receipt that claims publication", () => {
   const changed = structuredClone(artifact);
   changed.validation_run.cases[0].candidate.receipt.published = true;

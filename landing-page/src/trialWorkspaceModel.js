@@ -65,13 +65,16 @@ function adaptValidationReceipt(envelopeValue, authority, factsHash, label) {
     throw new Error(`${label} receipt facts hash must match the case facts hash`);
   }
 
-  const evaluationPairs = {
-    pass: "in_queue",
-    fail: "not_in_queue",
-    not_evaluable: "information_insufficient",
-    unsupported: "unsupported",
-  };
-  if (evaluationPairs[receipt.evaluation_status] !== receipt.decision_result) {
+  const evaluationPairs = new Map([
+    ["pass", "in_queue"],
+    ["fail", "not_in_queue"],
+    ["not_evaluable", "information_insufficient"],
+    ["unsupported", "unsupported"],
+  ]);
+  if (!evaluationPairs.has(receipt.evaluation_status)) {
+    throw new Error(`${label} receipt evaluation status is invalid`);
+  }
+  if (evaluationPairs.get(receipt.evaluation_status) !== receipt.decision_result) {
     throw new Error(`${label} receipt evaluation pair is invalid`);
   }
 
