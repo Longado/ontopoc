@@ -94,6 +94,122 @@ function collectPackSourceRefs(pack, label) {
   return sourceRefs;
 }
 
+function indexUniqueRecords(value, idField, label) {
+  const records = requireArray(value, `${label}s`);
+  const ids = records.map((record, index) => {
+    const item = requireRecord(record, `${label} ${index + 1}`);
+    return requireNonEmptyString(item[idField], `${label} ${index + 1} ID`);
+  });
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(`${label} IDs must be unique`);
+  }
+  return { records, ids: new Set(ids) };
+}
+
+function validateCandidateReferenceClosure(candidateSpec, suggestions, sourceRefs) {
+  const suggestionIds = suggestions.map((suggestion, index) => requireNonEmptyString(
+    suggestion.suggestion_id,
+    `candidate DecisionPack suggestion ${index + 1} ID`,
+  ));
+  if (new Set(suggestionIds).size !== suggestionIds.length) {
+    throw new Error("candidate DecisionPack suggestion IDs must be unique");
+  }
+  const sourceRefSet = new Set(sourceRefs);
+  suggestions.forEach((suggestion, index) => {
+    const suggestionSourceRefs = requireUniqueNonEmptyStrings(
+      suggestion.source_ref_ids,
+      `candidate DecisionPack suggestion ${index + 1} source refs`,
+    );
+    if (suggestionSourceRefs.some((sourceRef) => !sourceRefSet.has(sourceRef))) {
+      throw new Error("candidate DecisionPack suggestion source refs must resolve in the pack");
+    }
+  });
+
+  const entities = indexUniqueRecords(
+    candidateSpec.entity_types,
+    "type_id",
+    "candidate OntologySpec entity",
+  );
+  const relations = indexUniqueRecords(
+    candidateSpec.relation_types,
+    "relation_type_id",
+    "candidate OntologySpec relation",
+  );
+  const properties = indexUniqueRecords(
+    candidateSpec.property_types,
+    "property_type_id",
+    "candidate OntologySpec property",
+  );
+  const rules = indexUniqueRecords(
+    candidateSpec.rule_declarations,
+    "rule_id",
+    "candidate OntologySpec rule",
+  );
+
+  relations.records.forEach((relation, index) => {
+    const domainId = requireNonEmptyString(
+      relation.domain_type_id,
+      `candidate OntologySpec relation ${index + 1} domain`,
+    );
+    const rangeId = requireNonEmptyString(
+      relation.range_type_id,
+      `candidate OntologySpec relation ${index + 1} range`,
+    );
+    if (!entities.ids.has(domainId)) {
+      throw new Error("candidate OntologySpec relation domain must resolve to an entity");
+    }
+    if (!entities.ids.has(rangeId)) {
+      throw new Error("candidate OntologySpec relation range must resolve to an entity");
+    }
+  });
+
+  properties.records.forEach((property, index) => {
+    const domainId = requireNonEmptyString(
+      property.domain_type_id,
+      `candidate OntologySpec property ${index + 1} domain`,
+    );
+    if (!entities.ids.has(domainId)) {
+      throw new Error("candidate OntologySpec property domain must resolve to an entity");
+    }
+  });
+
+  const suggestionIdSet = new Set(suggestionIds);
+  rules.records.forEach((rule, ruleIndex) => {
+    const subjectId = requireNonEmptyString(
+      rule.subject_type_id,
+      `candidate OntologySpec rule ${ruleIndex + 1} subject`,
+    );
+    if (!entities.ids.has(subjectId)) {
+      throw new Error("candidate OntologySpec rule subject must resolve to an entity");
+    }
+    requireArray(
+      rule.conditions,
+      `candidate OntologySpec rule ${ruleIndex + 1} conditions`,
+    ).forEach((condition, conditionIndex) => {
+      const conditionRecord = requireRecord(
+        condition,
+        `candidate OntologySpec rule ${ruleIndex + 1} condition ${conditionIndex + 1}`,
+      );
+      const propertyTypeId = requireNonEmptyString(
+        conditionRecord.property_type_id,
+        `candidate OntologySpec rule ${ruleIndex + 1} condition ${conditionIndex + 1} property`,
+      );
+      if (!properties.ids.has(propertyTypeId)) {
+        throw new Error("candidate OntologySpec rule condition property must resolve");
+      }
+    });
+    const originSuggestionId = requireNonEmptyString(
+      rule.origin_suggestion_id,
+      `candidate OntologySpec rule ${ruleIndex + 1} origin suggestion`,
+    );
+    if (!suggestionIdSet.has(originSuggestionId)) {
+      throw new Error("candidate OntologySpec rule origin suggestion must resolve in the pack");
+    }
+  });
+
+  return rules.records;
+}
+
 function adaptValidationReceipt(envelopeValue, authority, factsHash, facts, label) {
   const envelope = requireRecord(envelopeValue, `${label} receipt envelope`);
   const contentHash = requireHash(envelope.content_hash, `${label} receipt content hash`);
@@ -334,6 +450,9 @@ export function adaptTrialArtifact(input) {
     candidatePackAuthority.content_hash,
     "candidate DecisionPack hash",
   );
+  if (candidatePackHash === baselinePackHash) {
+    throw new Error("candidate DecisionPack hash must differ from the baseline hash");
+  }
   const candidatePack = requireRecord(candidatePackAuthority.pack, "candidate DecisionPack");
   requireValue(candidatePack.schema, "decision_pack.v1", "candidate DecisionPack schema");
   const candidateSuggestions = collectPackSuggestions(candidatePack, "candidate DecisionPack");
@@ -352,6 +471,9 @@ export function adaptTrialArtifact(input) {
     candidateSpecAuthority.content_hash,
     "candidate OntologySpec hash",
   );
+  if (candidateSpecHash === baselineSpecHash) {
+    throw new Error("candidate OntologySpec hash must differ from the baseline hash");
+  }
   const candidateSpec = requireRecord(candidateSpecAuthority.spec, "candidate OntologySpec");
   requireValue(candidateSpec.schema, "ontology_spec.v1", "candidate OntologySpec schema");
   requireValue(
@@ -365,7 +487,6 @@ export function adaptTrialArtifact(input) {
     "candidate",
     "candidate OntologySpec governance",
   );
-  const candidateRules = requireArray(candidateSpec.rule_declarations, "candidate OntologySpec rules");
   const candidateSpecPackHash = requireHash(
     candidateSpec.pack_content_hash,
     "candidate OntologySpec pack hash",
@@ -373,6 +494,11 @@ export function adaptTrialArtifact(input) {
   if (candidateSpecPackHash !== candidatePackHash) {
     throw new Error("candidate OntologySpec pack hash must match the candidate DecisionPack hash");
   }
+  const candidateRules = validateCandidateReferenceClosure(
+    candidateSpec,
+    candidateSuggestions,
+    candidateSourceRefs,
+  );
 
   const cases = requireArray(validationRun.cases, "validation cases");
   if (cases.length !== 4) throw new Error("validation cases must contain exactly four cases");

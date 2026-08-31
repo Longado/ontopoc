@@ -244,6 +244,111 @@ test("rejects invalid validation authority refs, hashes, and candidate binding",
   }
 });
 
+test("rejects a candidate authority rebound to the baseline identities", () => {
+  for (const [mutate, message] of [
+    [
+      (value) => {
+        const baselinePackHash = value.decision_pack.content_hash;
+        value.validation_run.authority.candidate.decision_pack.content_hash = baselinePackHash;
+        value.validation_run.authority.candidate.ontology_spec.spec.pack_content_hash =
+          baselinePackHash;
+        for (const validationCase of value.validation_run.cases) {
+          validationCase.candidate.receipt.decision_pack_content_hash = baselinePackHash;
+        }
+      },
+      /candidate DecisionPack hash must differ/,
+    ],
+    [
+      (value) => {
+        const baselineSpecHash = value.ontology_spec.content_hash;
+        value.validation_run.authority.candidate.ontology_spec.content_hash = baselineSpecHash;
+        for (const validationCase of value.validation_run.cases) {
+          validationCase.candidate.receipt.ontology_spec_content_hash = baselineSpecHash;
+        }
+      },
+      /candidate OntologySpec hash must differ/,
+    ],
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
+test("rejects candidate OntologySpec references outside the candidate closure", () => {
+  for (const [mutate, message] of [
+    [
+      (value) => {
+        value.validation_run.authority.candidate.ontology_spec.spec.entity_types[1].type_id =
+          value.validation_run.authority.candidate.ontology_spec.spec.entity_types[0].type_id;
+      },
+      /candidate OntologySpec entity IDs/,
+    ],
+    [
+      (value) => {
+        value.validation_run.authority.candidate.ontology_spec.spec.relation_types[0].domain_type_id =
+          "entity_type_foreign";
+      },
+      /candidate OntologySpec relation domain/,
+    ],
+    [
+      (value) => {
+        value.validation_run.authority.candidate.ontology_spec.spec.property_types[0].domain_type_id =
+          "entity_type_foreign";
+      },
+      /candidate OntologySpec property domain/,
+    ],
+    [
+      (value) => {
+        value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0].subject_type_id =
+          "entity_type_foreign";
+      },
+      /candidate OntologySpec rule subject/,
+    ],
+    [
+      (value) => {
+        value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0]
+          .conditions[0].property_type_id = "property_type_foreign";
+      },
+      /candidate OntologySpec rule condition property/,
+    ],
+    [
+      (value) => {
+        value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0]
+          .origin_suggestion_id = "suggestion_foreign";
+      },
+      /candidate OntologySpec rule origin suggestion/,
+    ],
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
+test("rejects candidate DecisionPack suggestion references outside the pack closure", () => {
+  for (const [mutate, message] of [
+    [
+      (value) => {
+        const outcomes = value.validation_run.authority.candidate.decision_pack.pack.knowledge_outcomes;
+        outcomes[0].suggestions[1].suggestion_id = outcomes[0].suggestions[0].suggestion_id;
+      },
+      /candidate DecisionPack suggestion IDs/,
+    ],
+    [
+      (value) => {
+        value.validation_run.authority.candidate.decision_pack.pack.knowledge_outcomes[0]
+          .suggestions[0].source_ref_ids = ["source_foreign"];
+      },
+      /candidate DecisionPack suggestion source refs/,
+    ],
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
 test("rejects validation authorities that cross synthetic draft candidate governance", () => {
   for (const [mutate, message] of [
     [(value) => { value.validation_run.authority.evidence_scope = "customer"; }, /validation authority evidence scope/],
@@ -380,12 +485,12 @@ test("rejects duplicate validation case subjects", () => {
 test("rejects receipts outside their rule, fact, and evidence reference closure", () => {
   for (const [mutate, message] of [
     [(value) => { value.validation_run.cases[0].baseline.receipt.rule_id = "rule_foreign"; }, /order\.synthetic\.001 baseline receipt rule ID/],
-    [(value) => { value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations.push(structuredClone(value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0])); }, /order\.synthetic\.001 candidate receipt rule ID/],
+    [(value) => { value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations.push(structuredClone(value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0])); }, /candidate OntologySpec rule IDs/],
     [(value) => { value.validation_run.cases[0].candidate.receipt.fact_refs[0] = "fact_foreign"; }, /order\.synthetic\.001 candidate receipt fact refs/],
     [(value) => { value.validation_run.cases[0].baseline.receipt.fact_refs.push(value.validation_run.cases[0].baseline.receipt.fact_refs[0]); }, /order\.synthetic\.001 baseline receipt fact refs/],
     [(value) => { value.validation_run.cases[0].candidate.receipt.evidence_refs.push(value.validation_run.cases[0].candidate.receipt.evidence_refs[0]); }, /order\.synthetic\.001 candidate receipt evidence refs/],
     [(value) => { value.validation_run.cases[0].baseline.receipt.evidence_refs[0] = "evidence:foreign"; }, /order\.synthetic\.001 baseline receipt evidence refs/],
-    [(value) => { value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0].origin_suggestion_id = "suggestion_foreign"; }, /order\.synthetic\.001 candidate receipt origin suggestion/],
+    [(value) => { value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0].origin_suggestion_id = "suggestion_foreign"; }, /candidate OntologySpec rule origin suggestion/],
   ]) {
     const changed = structuredClone(artifact);
     mutate(changed);
