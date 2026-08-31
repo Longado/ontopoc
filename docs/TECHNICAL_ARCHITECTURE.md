@@ -1,41 +1,40 @@
-# Persistent AI FDE Decision Compiler 技术架构
+# OntoPoc Evidence-bound Decision Compiler 技术架构
 
-**版本：** v0.1  
-**状态：** Re-anchoring Draft
-**日期：** 2026-08-29  
+**版本：** v0.2
+**状态：** Current Core + Frozen Target Reference
+**日期：** 2026-08-31
 **适用范围：** DecisionPack、知识辅助编译、本体规格、校验、版本、映射、血缘、决策与适配边界
 **明确不包含：** 前端页面、视觉、交互和组件设计
 
 ## 1. 架构目标
 
-> 2026-08-29 重锚说明：当前实施顺序以 [渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md) 为准。本文后续原有的“Studio 对接旧 EIP”章节属于重锚前候选设计，将在对应 Loop 进入时逐段替换，不代表当前接口承诺。
+> 2026-08-31 收枝说明：当前实施顺序只以 [ROADMAP](ROADMAP.md) 的 Gate 1–3 和 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md) 第 6 节为准。本文后续的 Studio、治理、版本、EIP、API 和 Repository 内容均为历史目标候选，不代表当前接口或建设承诺。
 
-本架构服务新的最小可信路径。愿景是 **Persistent AI FDE**，核心资产是不可变 `DecisionPack`；首个黄金主决策是“哪些订单进入优先干预队列”，处置动作延后到 Loop 6：
+本架构记录 OntoPoc 当前已经存在的最小可信路径。长期愿景仍可描述为 **Persistent AI FDE**，但当前产品只应称为 **Evidence-bound Decision Compiler（recorded artifact edition）**。核心资产是不可变 `DecisionPack`；首个黄金主决策是“哪些订单进入优先干预队列”。
 
 ```text
-结构化场景输入
+业务材料 / 结构化场景输入
 -> 有来源的 DecisionPack
 -> 新仓 OntologySpec
 -> synthetic facts + stateless validation
 -> hash-bound ValidationReceipt
--> review / confirm / publish baseline
--> revised candidate pack / spec / receipt
--> DecisionDelta + immutable version + human review
--> confirm / publish next version
--> 后续数据映射、血缘、裁决与受控行动
+-> committed static artifact
+-> browser read-only projection
+
+当前到此为止。review、version、DecisionDelta、publication、数据映射和受控行动均未进入实现。
 ```
 
 技术目标：
 
-1. 用一个类型化 `DecisionPack` 作为设计、验证与治理的共同事实源，`ProjectBlueprint` 是其设计投影；
+1. 用一个类型化 `DecisionPack` 作为编译与验证的共同事实源；
 2. 把业务推导集中在 compiler，renderer 只负责格式化；
 3. 严格区分建议、人工确认、机器求值、版本生命周期和运行能力；
 4. 相同规范化输入产生相同内容身份和稳定输出；
 5. 无客户数据、无授权或无验证证据时，不得升级证据状态；
 6. 核心不依赖前端、LLM、旧 EIP、Neo4j 或数据库服务；
 7. 保持当前 CLI 和两个示例的兼容迁移路径；
-8. 先实现本仓自己的无状态 EIP 验证纵切面，再讨论旧 EIP 兼容、Web 和企业基础设施；
-9. Loop 4 同时保留结构 semantic diff 和业务 DecisionDelta；没有真实用户纠正或复用 DecisionDelta 的证据，不进入 Loop 5–7。
+8. 在 J1 / J2 / J3 证明真实材料贡献、知识命中和人工价值之前，不增加治理栈、API 或企业基础设施；
+9. 任何后续机制都必须由真实实验暴露的阻塞触发，不能从长期目标反推当前建设。
 
 ## 2. 当前事实与目标能力
 
@@ -44,15 +43,23 @@
 - JSON 场景输入；
 - 严格必填、boolean 与数据源状态校验；
 - `Proposal` 值对象；
+- 有来源知识单元、稳定 binding/source/suggestion 身份与 canonical `DecisionPack`；
+- draft/candidate `OntologySpec`、pack hash 绑定与引用闭包；
+- `categorical_all_of_v1` 合成规则的 `pass / fail / not_evaluable / unsupported` 四态求值；
+- 绑定 pack/spec/facts hash 的 `ValidationReceipt`，四个副作用字段固定为 `false`；
+- 固定 4 case / 8 receipt 的 `validation_run.v1` recorded artifact；
+- 浏览器四阶段只读投影、结构 fail-closed 校验与 `receipt_recorded` 展示；
 - 显式关系语义：关系端点必须引用已声明对象；未提供关系时报告信息不足，不按对象顺序推断；
 - Markdown 和 JSON 输出；
 - CLI；
-- 乳品研发、供应链异常两个合成样例；
-- 25 项 unittest。
+- 乳品研发、供应链异常两个合成样例。
 
 ### 2.2 当前未实现
 
-- Loop 1 及以上的有来源知识建议、`DecisionPack`、`OntologySpec`、验证运行时、审查与版本能力；
+- 从真实材料抽取对象、关系和 evidence span；
+- 经过真模型与脱敏真实材料验证的 recognition；
+- 足以覆盖真实顾问追问的知识单元集合；
+- 阈值等第二种规则形态；
 - `ProjectBlueprint`；
 - 类型化 Actor、Relation、Constraint、Evidence、Finding、Action；
 - candidate 审查与 confirmed handoff；
@@ -60,7 +67,8 @@
 - Acceptance Matrix renderer；
 - 版本与 diff；
 - EIP 适配器；
-- 规则运行、Agent 编排、任务执行和回执；
+- 持久化 review、version、publication、`DecisionDelta`、Agent 编排和任务执行；
+- 数据库、生产 API、EIP 对接与外部写回；
 - 客户数据授权与验证。
 
 ### 2.3 架构原则
@@ -87,56 +95,45 @@ verified          已有对应验证回执
 
 Loop 1 的默认 CLI 不加载知识包，保持 Loop 0 输出。只有显式 `--knowledge-unit` 才增加 candidate 建议。知识包声明匹配规则，核心 Python 不出现行业名称特判。
 
-> 第 3–24 节保存重锚前的参考架构候选。其中出现的“当前”“MVP”“本阶段”以及 blueprint repository、完整 CLI、API、LLM/EIP adapter 等措辞不构成当前承诺；只有 ROADMAP 与已批准的 dated Loop plan 能授权实现。当前只执行第 25 节所列 Loop 1 技术门。
+> 第 4 节起仍保存重锚前的参考架构候选。其中出现的“当前”“MVP”“本阶段”以及 blueprint repository、完整 CLI、API、LLM/EIP adapter 等措辞不构成当前承诺；只有 ROADMAP Gate 1–3 能授权下一步。
 
 ## 3. 架构风格
 
-采用领域核心优先的六边形架构：
+当前实现是 **函数式核心 + 命令式外壳**，不是已经完成的六边形应用：
 
 ```mermaid
 flowchart LR
-    CLI[CLI Adapter]
-    API[Backend API Adapter]
-    DOC[Document/LLM Adapter]
-    EIP[EIP Validation Adapter]
-    FILE[File Repository]
-    DB[(Future Database Repository)]
+    INPUT[JSON / recorded text / KnowledgeUnit]
+    SHELL[CLI / recognition envelope / demo script]
+    PACK[DecisionPack + hash]
+    SPEC[OntologySpec + hash + closure]
+    FACTS[SyntheticFactSet + hash]
+    RECEIPT[ValidationReceipt + hash]
+    ARTIFACT[Static artifact]
+    WEB[Browser read-only projection]
 
-    APP[Application Services]
-    CORE[Domain + Blueprint Compiler]
-    VAL[Validators]
-    RENDER[Artifact Renderers]
-
-    CLI --> APP
-    API --> APP
-    DOC --> APP
-    APP --> CORE
-    CORE --> VAL
-    APP --> RENDER
-    APP --> FILE
-    APP -.future.-> DB
-    APP --> EIP
-
-    CORE -.no dependency.-> CLI
-    CORE -.no dependency.-> API
-    CORE -.no dependency.-> DOC
-    CORE -.no dependency.-> EIP
+    INPUT --> SHELL --> PACK --> SPEC --> FACTS --> RECEIPT
+    PACK --> ARTIFACT
+    SPEC --> ARTIFACT
+    RECEIPT --> ARTIFACT --> WEB
 ```
 
-依赖规则：
+当前依赖规则：
 
 ```text
-adapters -> application -> domain
-renderers -> domain read models
-infrastructure -> application ports
+CLI / scripts / recognition gateway -> deterministic domain functions
+renderers -> domain value objects
+static artifact -> browser projection
 domain -> Python standard library only
 ```
+
+Application Service、Repository Port、Backend API 和 EIP Adapter 仍是候选机制。只有 J1 / J2 / J3 通过后，且真实运行暴露出对应阻塞时，才为它们立项。
 
 禁止反向依赖：
 
 - domain 不导入 CLI、FastAPI、数据库或 EIP 客户端；
 - renderer 不做关系建议、验收推导或状态升级；
-- adapter 不复制领域校验；
+- browser adapter 可以 fail closed 地校验 artifact 结构与绑定，但不重算内容 hash、不实现第二套 evaluator 或权威状态；
 - LLM 不直接创建 `confirmed` 元素；
 - EIP 回执不自动覆盖 Studio 的人工确认状态。
 

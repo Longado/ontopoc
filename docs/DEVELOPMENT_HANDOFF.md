@@ -32,7 +32,7 @@ npm run build 2>&1 | grep "modules transformed"                         # 1973 m
 
 ## 1. 一句话接力
 
-内核、validation artifact 和前端只读回执投影已经接通,但**产品还没有随输入变化的输出**:LLM 只能填一张闭集表单,本体和规则来自常量模板,prompt 从未对真模型跑过。下一步不是再加一层可信度,是先做一次能证伪它的实验,再把"材料口"和"知识口"打开。validation 完成不代表产品价值通过,J1 / J2 / J3 和 Step A / C 仍是主线。
+内核、validation artifact 和前端只读回执投影已经接通,但**产品还没有随输入变化的输出**:LLM 只能填一张闭集表单,本体和规则来自常量模板,prompt 从未对真模型跑过。现有内核和演示全部冻结;下一步只按 Gate 1–3 验证材料贡献、知识命中和相对人工的价值。任一 Gate 失败即停止扩张。
 
 ## 2. 项目是什么
 
@@ -92,7 +92,7 @@ PRD FR-003"展示候选决策、对象、关系、规则及对应证据片段"�
 - `landing-page/src/App.jsx` 有 50 行超过 300 字符(整段 JSX 和双语文案压成一行),`TrialWorkspace.jsx` 5 行、`styles.css` 5 行同样。可维护性差,过一遍 prettier 即可。
 - 前端问答(`ontologyWorkspaceModel.js:446-536`)是一段手写正则意图分类器(含 prompt-injection 关键字表),只对这一个固定 artifact 有效。它是演示道具,不是能力,不要在此基础上扩展。
 - 前端适配器(`trialWorkspaceModel.js`)校验 hash 格式、baseline/candidate identity coherence、candidate entity/relation/property/rule/suggestion/source 引用闭包、receipt rule/fact/evidence 引用闭包和四个副作用字段,但不重算 SHA。任何缺字段或绑定不一致都会抛错并落到通用 error 页,即 fail closed;前端不维护第二套 evaluator 或 authority。
-- **决策问题只有一个**:写死的 `order_priority_intervention` 是否对应现役客户的真实诉求,仓库里没有任何证据(没有客户材料、没有实验记录)。见 §6 Step A。
+- **决策问题只有一个**:写死的 `order_priority_intervention` 是否对应现役客户的真实诉求,仓库里没有任何证据(没有客户材料、没有实验记录)。见 §6 Gate 1。
 - 本地有 14 条已合并的 `codex/*` 分支未删。
 - `knowledge.py` 的 `applicability.readiness_requirement_keys` 只做结构校验,`match_knowledge_unit` 里没有用它做门控;真正起作用的是 `readiness_gap` 模板级过滤(`knowledge.py:845`)。
 
@@ -163,106 +163,55 @@ PRD FR-003"展示候选决策、对象、关系、规则及对应证据片段"�
 
 生命周期必须分开读:`validation=completed` 表示后端固定合成求值已完成,前端 `receipt_recorded` 表示这些回执已被投影;单条 `pass` 只表示输入满足规则。三者都不等于人工 review、publication、action、客户确认或生产运行。
 
-## 6. 下一步执行顺序(v2.2,经三镜片评审后重排)
+## 6. 下一步执行顺序(v3,收枝版)
 
-> **8-30 三方辩论收敛(产品 / 架构 / 砍手三视角,两轮):** 唯一共识是问题 1(输出等于模板)第一;"先建人工审查"(架构)被否——材料口和知识口都锁在同一份 S-1 数据上,审查建了也没变量可审,设计可以先定、代码等 J1 出信号;"先改开发节奏"(砍手)升为并列根因,落地闸只有一条:每个 PR 描述注明服务 J1 / J2 / J3 哪条或标"非主线"。**第一步三方一致:Step A + Step C 合并做,零新代码**——真模型 + 真材料跑现有 CLI,挂上已验证的知识单元,产出 FDE 能直接读的 markdown(`generator.py` / `renderers.py` 早已把知识建议渲染进方案,导出通道现成),记入 `docs/experiments/`。顺手项:把 S-1 在 `recognition.py` 与 `knowledge.py` 的两份手抄常量合并成一个共享模块(几行,不是新抽象)。
+### 6.1 决策原则
 
-> v2 只有一条判据("两段材料 → 本体不同 + 一处追问")。评审发现它可以被知识口单边撑过——材料口什么都没干,只要有一个宽适用的知识单元,判据照样过。所以拆成三条,各自独立可证伪。
+当前问题不是可信度层不够,而是系统尚未证明能从真实材料产生模板外信息。现有内核、固定 validation artifact、前端影子校验、Agent confirmation session 和正则问答全部冻结,不删除也不扩展。后续工作最多只有三个 Gate,每个 Gate 都有停止条件;通过一个 Gate 不会自动授权下一个平台能力。
 
-### 判据(三条独立)
-
-| 编号 | 测什么 | 怎么量 | 过线 |
+| Gate | 测什么 | 过线 | 失败后 |
 |---|---|---|---|
-| J1 材料口 | 输出是否真的来自材料 | 一次识别里,来自真实抽取(非写死兜底)的 role binding 数 / 总数;两段材料的 **binding 数量或规则命中路径**不同(label 字符串不同不算) | 兜底占比 < 50%,结构层可区分 |
-| J2 知识口 | 顾问追问是否命中 | 先把 CQ(competency question)写成显式清单,每条知识单元对应一个"这份材料该不该触发"的断言;跑真实材料看命中/误触 | 命中 ≥ 3 条,误触 0 |
-| J3 值不值 | 管道 vs Eddie 手写 | 同一份材料:Eddie 手写 5 条 bullet 的耗时与覆盖 vs 管道产出的耗时与覆盖 | 管道覆盖 ≥ 手写且没慢 3 倍以上 |
+| J1 材料贡献 | 输出是否真的来自材料 | 硬编码兜底占比 < 50%;两份材料 binding 结构可区分;同材料 5 次 binding 一致率 ≥ 80% | 停止转换代码,退回人工 Markdown |
+| J2 知识命中 | 现有知识是否产生准确追问 | CQ 命中 ≥ 3 条,误触 0 | 不批量增加知识单元,先修适用性问题或停止 |
+| J3 相对价值 | 管道是否比用户手写值得 | 覆盖不低于手写且耗时不超过 3 倍;真实 FDE 与业务参与者共同 `go` | 退回 Markdown 清单 + KnowledgeUnit JSON,不做产品平台 |
 
-J3 是 11-29 结算线的直接证据。J1、J2 全过但 J3 不过,退回 Markdown 清单 + 知识单元 JSON,不做产品。
+### 6.2 Gate 1:零代码材料信号
 
-另外一条贯穿 B 的硬约束:**识别边界的重跑稳定率**。现有架构已把 LLM 隔在 `recognize_scenario` 外、候选 JSON 落定后下游全确定(hash 不受影响),但打开材料口后同一材料重跑 5 次的 binding 集合一致率要记录,< 80% 就说明 prompt 或词表要收紧。
+**状态:`blocked_by_user_selected_redacted_material`。**
 
-### Step A:半天,不写代码——先看开放抽取在真材料上有没有信号
+1. 材料由用户指定:一份现役决策正例、一份明确负例和当前合成对照。正例必须先确认真实诉求就是“哪些订单进入优先干预队列”。
+2. 使用开放式 prompt 独立运行,不接现有 candidate schema、转换代码或 CLI;检查是否出现材料中存在、模板中不存在且可定位原文的对象或关系。
+3. 用户对正例先手写 5 条判断并记录耗时,作为 J3 基线。
+4. 客户原文、开放 prompt 原始输出和人工基线只保存到 workspace `.local-sensitive/ontology-poc-generator/experiments/`;仓库最多保存经用户确认可公开的脱敏指标、输入 hash、模型和 prompt 版本。
 
-v2 的 Step A 打算用真模型跑现有 CLI。评审指出那是在验证一个代码里已写死的事实(prompt 禁止输出对象,结果必然是模板),没有信息量。改为:
+通过:正例决策匹配;出现模板外结构;负例为 `unsupported`;初步覆盖不低于人工。任一不满足即停止,不进入 Gate 2。
 
-1. 手写一版开放式抽取 prompt(就是 Step B 要用的那份初稿,带 reasoning、evidence_span、闭集 role 词表),**不接任何校验和转换代码**,直接对真材料跑,肉眼看输出;
-2. 材料选择由 Eddie 指定(哪个客户、哪份材料,本文档不预设——评审时曾误引一份 2026 年上半年的温州客户笔记,那批客户已不在现役,已删)。跑三份:
-   - 一份正例:目标客户的脱敏材料,且**先确认它的真实诉求确实是"订单优先干预队列"**——不是的话先决定加第二个 profile 还是换材料,否则真实材料永远只能当负例;
-   - 一份负例:明显不属于这个决策的材料,应判 `unsupported`;判成 `matched` 说明识别边界有洞;
-   - 一份对照:现有 `examples/supply_chain_exception.json` 对应的叙述。
-3. 把输入 sha256、模型名、prompt 版本、原始输出存 `docs/experiments/2026-MM-DD-open-extraction.md`。不存密钥,不存客户原文。
+### 6.3 Gate 2:单纵切材料口
 
-出口:输出里有没有足够多"材料里有、模板里没有"的对象和关系,值不值得写 B 的转换代码。
+**状态:`blocked_by_gate_1`。**
 
-### Step B:打开材料口(1–2 天,A 有信号才做)
+只实现 `extracted_object + evidence_span + closed role vocabulary + code-generated stable ID`。代码范围默认限制为 `recognition.py` 和 Recognition tests;不改前端,不做关系抽取、predicate 聚合、去噪框架、`threshold_v1`、批量知识单元或通用 schema 框架。
 
-候选 schema(reasoning 在前,逐项 evidence_span,显式 unknown 出口):
+代码护栏:
 
-```json
-{
-  "reasoning": "2-4 句:材料里出现了哪些候选对象/关系,为什么判成这个 role",
-  "extracted_objects": [
-    {"raw_label": "供应商交期承诺", "evidence_span": "供应商承诺的交期发生变化时",
-     "candidate_role_key": "supplier", "confidence": "medium"}
-  ],
-  "extracted_relations": [
-    {"source_raw_label": "客户订单", "predicate_key": "REQUIRES", "target_raw_label": "物料",
-     "evidence_span": "..."}
-  ],
-  "unmatched_objects": [{"raw_label": "...", "reason": "no_closed_role_fits"}]
-}
-```
+1. `candidate_role_key` 只能来自已发布闭集;
+2. `evidence_span` 必须是原文子串,否则整条拒绝;
+3. stable ID 由代码生成,模型不编 ID;
+4. 负例继续走 `unsupported`,未知对象显式保留 unknown,不做最近匹配。
 
-四条护栏,全在代码层:
+验证:J1 与 J2 分开计量,知识口不得替材料口撑过判据。最多允许一次 prompt 或词表修正;仍不过线即停止。
 
-1. **role 闭集**:`candidate_role_key` 只能从已发布角色词表选(= 全部知识单元 `applicability.required_role_keys` 的并集,现为 customer_order / material / supplier);不在词表 → 整条 reject,不做模糊匹配。`raw_label` 只作证据展示,不参与门控。这样 `knowledge.py:788-800` 的匹配逻辑一行不用改。
-2. **predicate 闭集**:来自知识单元 `relation_semantics` 的谓词表,模型不得自造谓词。evidence_span 只证明"这句话在原文里",不证明"这条关系是对的"——它是必要不充分条件,不能当唯一护栏。
-3. **span 子串校验**:推广 `recognition.py:392` 那一招到每个 span;非子串整条丢弃。
-4. **`semantic_key` 由代码 `stable_binding_id` 生成**,模型不编 ID。
+### 6.4 Gate 3:真实使用价值
 
-其他:prompt 抽到 `src/ontology_poc_generator/prompts/recognition_v2.py`,`PROMPT_VERSION` 升 v2;写死的 3+1 保留为兜底但**计入 J1 的兜底占比**;材料进 prompt 前做一次去噪预筛(无关文档混入会带歪抽取,见闻歌方案写作的"数据污染陷阱");`FakeGateway` 测试覆盖:伪造 span 被拒、词表外 role 被拒、两段材料产出不同 binding。
+**状态:`blocked_by_gate_2`。**
 
-建议提交:`feat: extract evidence-bound candidates with closed role vocabulary`
+使用现有 Markdown 输出与用户手写 5 条判断对照,不先建设 review/version 系统。记录两边耗时、覆盖、错误、遗漏和实际有用的知识追问;由一名真实 FDE 与一名供应链业务参与者判断是否能理解、纠正或复用。
 
-### Step C:知识口内容(1 天,可与 A 并行,不依赖 B)
+只有 J3 通过且两名参与者共同形成 `go`,才根据真实阻塞另立一个最小计划。数值政策确实阻塞时才评估 `threshold_v1`;反复比较修订影响时才评估 `DecisionDelta`;重复运行出现保存与恢复问题时才评估 Application Service/Repository。
 
-机制已在(`knowledge.py` 六种贡献类型),**格式已验证**:8-30 按 `supplier_evidence_boundary_v1` 格式写了 `decoupling_point_v1.json`(解耦点未声明 → readiness_gap + acceptance_question,来源 Olhager 2003 IJPE 85(3) + Hopp & Spearman《Factory Physics》),`load_knowledge_unit` 一次通过,对 `examples/supply_chain_exception.json` 跑出 `applicable`、两条追问浮出。它应作为 Step C 的第一个 PR 进仓库。
+### 6.5 明确不做(Gate 1–3 达成前)
 
-再写 4 个,取材原则是"材料里通常不会写、资深计划员一定会问",且来源须可引用(非 synthetic):
-
-| 触发(材料缺什么) | 类型 | 内容 |
-|---|---|---|
-| 只有需求预测、没有交期方差 | `data_requirement` | 安全库存里交期方差压倒需求方差,须提供供应商交期分布 |
-| 多物料齐套 | `acceptance_question` | 100 个物料各 99% 到货,齐套率 37%;风险是否按齐套而非单件评估 |
-| 利用率已在 85–90% 以上 | `constraint` | VUT 的 u/(1-u):任何排序算法都压不回交期;"提利用率 + 缩交期"须先让客户取舍 |
-| 部门 KPI 未声明 | `readiness_gap` | 销售 / 工厂利用率 / 采购单价 / 期末库存四项 KPI 是否声明及是否对立;未声明则优先队列会被隐性冲突吸收 |
-
-可选第 6 个:牛鞭四成因 → `acceptance_question`。便宜的加项:模板加一个 `confidence` 字段(逐事实不确定度的第一层)。已知风险:多个单元命中同一决策时,`knowledge_compiler.py` 只做同 ID 去重报 `duplicate_*_identity`,没有证据合并逻辑——单元超过 5 个前不用管。
-
-CQ 清单与知识单元同 PR:`tests/golden/competency_questions.md`,每条对应一个断言测试。
-
-建议提交:`feat: add decoupling point knowledge unit` → `feat: add supply chain planning knowledge units`
-
-### Step D:规则口加 `threshold_v1`(1 天)
-
-第一刀先拆 `knowledge.py:66-77` 的 `_DECISION_RULE_FIXED_FIELDS` / `_ALLOWED_VALUES`——不拆,任何新规则单元都进不来。现状:`ontology_spec.py:154-177` `RuleConditionSpec.allowed_values` 只支持 in 集合;`rule_runtime.py:203` `operator != "in"` 直接 `unsupported`;`knowledge_compiler.py:310` 硬编码 `operator="in"`;`knowledge.py:66-77` 锁死 S-1 规则的字段。改动约 90–120 行:knowledge.py 加 threshold_v1 payload profile(~40)、knowledge_compiler.py 加 `_compile_threshold_rule`(~30,阈值放单元素 allowed_values,`RuleConditionSpec` 不动)、rule_runtime.py 加数值比较分支(~15)。不动 `models.py`。单条件、`> >= < <=`,`not_evaluable` 语义同现有。不做通用表达式引擎。
-
-建议提交:`feat: evaluate threshold rules`
-
-### Step E:顺手活(各自独立 PR,随时可做)
-
-1. **v1 Task 1–2:已在当前本地分支实现,尚未 merge / push。** Python 内核已为四笔合成事实生成真实 baseline/candidate `ValidationReceipt` 写入 artifact;前端 Validation 页展示 status / decision result / rule ID / fact & evidence refs / pack/spec/facts/receipt hash 与 lifecycle 边界,并在投影前严格校验 candidate identity/reference closure 和四个 receipt 副作用字段为 `false`,且没有在前端重写 evaluator。对应实现提交为 `df89bb6^..3848af3`。
-2. **Golden set + eval**:`tests/golden/recognition_cases.jsonl` 15–20 条(matched / insufficient / unsupported 各 5+);CI 默认用 `FakeGateway` 跑 Layer A(< 10 s,阻断);真模型 judge 只在有 API key 时跑,结果落 `docs/experiments/`,不阻断合并。识别结果信封已带 provider / model / prompt_version,够用;`--model` 改为必填并在实验记录里钉死版本。
-3. **卫生 PR**:CI 加前端 job;`App.jsx` 等过 prettier;删 14 条已合并本地分支。
-4. **文档收口**:当前已先修正 validation 生命周期事实;A–D 的产品方向变化仍应在各自完成后单独更新。
-
-### 明确不做(J1–J3 达成前)
-
-DecisionDelta、review / version / publication、数据库、账号、公网部署、通用 Agent 框架、RAG、向量库、图数据库、手机端、跨提及实体解析(那是 Altana 砸 3 亿美元的地方,不是 POC 的活)。
-
-### 未纳入计划但必须记一笔:EIP 对接
-
-原构想的 Loop 5(把 OntologySpec 送进 EIP 拿回执)不在 v2 计划里。原因是双向都没打通:EIP 侧 versioning 模块建了表但没挂 router;OntoPoc 侧也没有 EIP 期望输入的契约。这仍是全部构想里最值钱的一针,J1–J3 达成后第一件要重新评估的事。
+批量知识单元、`threshold_v1`、前端问答扩展、Agent session/confirmation 扩展、前端 receipt/schema 框架、DecisionDelta、review/version/publication、Application Service 抽象、数据库、账号、公网部署、API/EIP、通用 Agent 框架、RAG、向量库、图数据库、手机端和外部行动。
 
 ## 7. 本地运行与验证
 
@@ -374,7 +323,7 @@ git rev-parse HEAD
 - `pass` 只表示合成规则匹配,不表示客户批准;
 - 前端只投影后端状态,不维护第二套真相,不冒充执行结果;
 - 不自动 review、publish、创建任务或写回;
-- Step B 打开材料口后,新增的硬规则:**没有原文 span 的候选不得进入 ScenarioParameters**。
+- Gate 2 打开材料口后,新增的硬规则:**没有原文 span 的候选不得进入 ScenarioParameters**。
 
 ## 10. 已合并提交
 
@@ -399,13 +348,11 @@ git rev-parse HEAD
 
 现状:内核、hash、四态、零副作用边界已实现;固定 validation_run.v1 含 4 cases / 8 receipts,前端只读投影为 receipt_recorded,不重算 SHA、不实现 evaluator。但 LLM 只填闭集表单(recognition.py 禁止输出对象和关系),知识单元只有一个真单元,规则只有 categorical_all_of_v1,任何 matched 的材料都产出同一份本体。
 
-按第 6 节顺序做:A 用真模型跑一次脱敏真实材料并记录;B 让模型提取带 evidence_span 的候选对象/关系,代码校验 span 是原文子串;C 按 supplier_evidence_boundary_v1 格式写 3–5 个供应链顾问判断知识单元;D 加 threshold_v1 规则。ValidationReceipt 接入已在当前本地分支完成;CI 加前端、清分支仍未做。
+按第 6 节 Gate 1–3 顺序执行。当前先等待用户指定一份现役、可脱敏的正例材料;同时准备明确负例和现有合成对照。Gate 1 只运行开放式 prompt 并建立人工 5 条判断基线,不改代码;客户原文和原始输出只进 workspace `.local-sensitive/`。
 
-四个门槛必须分别验收:
-J1 材料口:真实抽取的 role binding 兜底占比 < 50%,且两段材料的 binding 数量或规则命中路径不同(label 字符串不同不算)。
-J2 知识口:显式 CQ 断言中命中 ≥ 3 条、误触 0。
-J3 值不值:同一材料与 Eddie 手写 5 条 bullet 对照,管道覆盖不低于手写且耗时不超过 3 倍;J1/J2 通过但 J3 不过就退回 Markdown 清单 + 知识单元 JSON,不做产品。
-稳定重跑:同一材料跑 5 次,binding 集合一致率必须 ≥ 80%;低于门槛先收紧 prompt 或词表。上述门槛达成前不做 DecisionDelta、review、部署。
+Gate 1 有信号后,Gate 2 只实现 `extracted_object + evidence_span + closed role + code-generated stable ID`,默认只改 recognition 与对应测试,不改前端。J1 要求真实抽取兜底占比 < 50%、两份材料 binding 结构不同、同材料 5 次一致率 ≥ 80%;J2 要求现有 CQ 命中 ≥ 3 条、误触 0。最多允许一次 prompt/词表修正。
+
+Gate 3 用同一材料比较管道 Markdown 与用户手写 5 条判断:J3 要求覆盖不低于手写且耗时不超过 3 倍,并由真实 FDE 与业务参与者共同 `go`。任一 Gate 失败即停止;Gate 1–3 前不做批量知识、threshold、DecisionDelta、review、部署或平台抽象。
 
 每个小能力:focused test、full test、git diff --check、commit、push、PR、CI、merge。报告真实测试数、commit、PR 和尚未实现的边界。
 ```

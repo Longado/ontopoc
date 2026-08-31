@@ -1,6 +1,6 @@
 # Ontology POC Generator
 
-从本体建设 POC 方案生成器出发，渐进重建一套新的 EIP：把一个工业业务决策编译成有来源、可审查、可测试、可版本化和可修正的 `DecisionPack`。
+把一个工业业务决策编译成有来源、可测试、可追溯的 `DecisionPack`。当前项目是 Evidence-bound Decision Compiler 的 recorded artifact 版本，不是已经成形的新 EIP。
 
 ## 产品闭环
 
@@ -10,10 +10,12 @@
 -> 对象/关系/规则/数据草案
 -> DecisionPack / OntologySpec
 -> 合成事实确定性验证与 ValidationReceipt
--> 人工审查与修订
+-> 静态 artifact 与浏览器只读投影
 ```
 
 当前本地分支已在确定性 Proposal CLI 之上完成首个 opt-in 的有来源知识辅助 Loop、`DecisionPack → OntologySpec` 编译和无状态合成验证。固定 Demo artifact 记录 `validation_run.v1`：4 个合成 case 分别对 baseline/candidate 求值，生成 8 个真实、带 canonical receipt hash 并绑定 pack/spec/facts hash 的 `validation_receipt.v1`；PC Validation 页面只投影这些后端回执。POC Markdown/JSON、`OntologySpec` 和回执仍是 `synthetic_demo` 资产；人工审查、版本、发布、真实数据接入与受控行动尚未实现。旧 EIP 只作为行为参考，不复制其模块或数据库。
+
+当前唯一开发主线是 `ROADMAP.md` 的 Gate 1–3：先验证真实材料能否贡献模板外结构，再验证知识命中，最后比较管道与人工判断的真实价值。任一 Gate 失败即停止扩张。
 
 ## MVP 输入
 
@@ -60,7 +62,7 @@ PYTHONPATH=src python -m ontology_poc_generator.cli \
 - [滚动阶段路线图](docs/ROADMAP.md)
 - [发现与决策记录](docs/DISCOVERY_LOG.md)
 - [技术架构图](docs/design/README.md)
-- [渐进式 EIP 重建总计划](docs/superpowers/plans/2026-08-29-incremental-eip-reconstruction.md)
+- [历史参考：渐进式 EIP 重建总计划](docs/superpowers/plans/2026-08-29-incremental-eip-reconstruction.md)
 - [首版 MVP 实施记录](docs/superpowers/plans/2026-08-29-ontology-poc-generator-mvp.md)
 
 ## 当前边界

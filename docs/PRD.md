@@ -2,12 +2,14 @@
 
 **版本：** v0.2
 
-**状态：** Draft
+**状态：** Frozen Target Draft — Gate 1–3 产品验证前不扩展
 
 **日期：** 2026-08-31
 
 **首发形态：** PC Web Demo
 **首个场景：** 供应链订单优先干预
+
+> 执行边界：本 PRD 保存目标产品候选，不是当前开发清单。当前只执行 `ROADMAP.md` 的 Gate 1–3；材料贡献、知识命中和相对人工价值未通过前，任何新前端能力、模型服务接入、review/version、`DecisionDelta` 与部署均不授权。
 
 ## 1. 产品目标
 
@@ -196,7 +198,7 @@ V1 成功不以页面数量或本体节点数量衡量。满足以下条件才�
 
 **出口：** 四态、hash 与证据引用全部可重放，且零副作用标志为 false。
 
-### Phase 3：接通模型辅助识别
+### Phase 3：接通模型辅助识别（blocked by Gate 1–3）
 
 - 增加最小服务端模型适配；
 - 将文本识别候选接入 PC 工作台；
@@ -204,7 +206,7 @@ V1 成功不以页面数量或本体节点数量衡量。满足以下条件才�
 
 **出口：** 模型成功和失败路径均可演示，模型无法直接生成已确认或可执行资产。
 
-### Phase 4：审查、版本与 DecisionDelta
+### Phase 4：审查、版本与 DecisionDelta（blocked by Gate 1–3 and observed revision pain）
 
 - 建立不可变版本和人工审查记录；
 - 比较 baseline 与 candidate；

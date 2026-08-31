@@ -8,7 +8,7 @@
 
 > 把客户的一个业务决策，编译成有来源、可验证、可审查、可发布并能持续修正的决策资产。
 
-产品机制是 **AI FDE Decision Compiler**，核心资产是不可变 `DecisionPack`，首个垂直场景是供应链订单决策变更，首个必须验证的产品瞬间是 **DecisionDelta**。
+产品机制是 **AI FDE Decision Compiler**，核心资产是不可变 `DecisionPack`，首个垂直场景是供应链订单优先干预。首个必须验证的产品瞬间不是 `DecisionDelta`，而是“真实材料产生模板外、可追溯且比人工值得的判断与追问”。
 
 黄金主决策严格收敛为：
 
@@ -18,7 +18,7 @@
 
 当前默认 CLI 的 Markdown/JSON 是 `Proposal` 渲染；只有显式传入 `--decision-pack-output` 才写出 canonical `DecisionPack`。两者都不是产品终点。旧 `nano-ontoprompt` 是第一方经验库和行为参考，不是代码来源、运行依赖或必须兼容的架构底座。
 
-详细执行计划见 [渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md)。
+当前执行顺序以本文 Gate 1–3 为唯一权威。[渐进式 EIP 重建总计划](superpowers/plans/2026-08-29-incremental-eip-reconstruction.md)只保留为历史参考，不再授权实现。
 
 ## 开发闭环
 
@@ -57,7 +57,7 @@
 
 **状态：complete_as_template_baseline**
 
-当前已有 JSON 输入、严格基础校验、`Proposal`、Markdown/JSON、CLI 和 25 项 unittest。它只投影已声明的显式关系，未提供关系时返回信息不足；仍不能称为知识辅助建模或新 EIP 内核。
+当前已有 JSON 输入、严格基础校验、`Proposal`、Markdown/JSON、CLI 和对应回归测试。它只投影已声明的显式关系，未提供关系时返回信息不足；仍不能称为知识辅助建模或新 EIP 内核。
 
 ## 已完成 Loop
 
@@ -118,7 +118,7 @@
 - 在 Loop 1 出口时，尚未实现事实校验、`ValidationReceipt`、review、version、publication 或外部写入；当前本地分支已补齐前两项的固定 `synthetic_demo` 路径，后五项仍未实现；
 - `synthetic_demo` 和跨行业 regression 不能证明客户适用性、真实数据质量或生产效果。
 
-## NOW
+## 已实现技术基线
 
 ### Loop 2 — 可执行本体内核
 
@@ -142,17 +142,45 @@ Loop 2 完成不等于 publication 或 production；Loop 2 出口当时没有 re
 
 这里的 `validation=completed` / `receipt_recorded` 只表示固定合成验证已经求值并记录；单条规则 `pass` 只表示输入满足候选规则。人工 review、version、publication、action 和外部 writeback 仍为 `not_started`，所有 write/action 标志仍为 `false`。本地提交不代表已经合并、交付或具备生产能力。
 
-## NEXT
+## NOW — 唯一产品验证主线
+
+现有内核、receipt、前端只读投影和演示交互全部冻结，不再增加状态、case、问答意图或治理 UI。当前只回答三个问题：材料能否贡献模板外结构、知识能否准确命中、管道是否比人工值得。
+
+### Gate 1 — 零代码材料信号
+
+**状态：blocked_by_user_selected_redacted_material**
+
+用开放式 prompt 分别检查一份现役正例、一份明确负例和当前合成对照；由用户对正例先手写 5 条判断并记录耗时。真实材料与原始模型输出只能保存到 workspace `.local-sensitive/`，仓库最多记录脱敏指标、输入 hash、模型和 prompt 版本。
+
+通过条件：正例确属黄金决策；出现可定位原文的模板外对象或关系；负例为 `unsupported`；初步覆盖不低于人工。任一不满足，停止后续转换代码，不进入 Gate 2。
+
+### Gate 2 — 单纵切材料口
+
+**状态：blocked_by_gate_1**
+
+只接入 `extracted_object + evidence_span + closed role vocabulary + code-generated stable ID`。暂不实现关系抽取、`threshold_v1`、批量知识单元或任何前端变化。
+
+出口：span 原文命中率 100%；硬编码兜底占比小于 50%；两份材料 binding 结构可区分；同材料运行 5 次 binding 集合一致率至少 80%；现有知识 CQ 命中至少 3 条且误触为 0。最多允许一次 prompt 或词表修正，仍不过线则退回 Markdown 清单 + KnowledgeUnit JSON。
+
+### Gate 3 — 真实使用价值
+
+**状态：blocked_by_gate_2**
+
+同一材料比较用户手写 5 条判断与管道 Markdown，不先建设 review 系统。记录耗时、覆盖、错误、遗漏和知识追问；由一名真实 FDE 与一名供应链业务参与者判断是否能理解、纠正或复用。
+
+出口：管道覆盖不低于手写且耗时不超过 3 倍；两名参与者共同形成 `go`。否则停止产品扩张，不进入下面任何 Loop。
+
+## BLOCKED — 产品验证通过后才重新评估
 
 ### Loop 4 — 不可变版本、人工审查与发布门
 
-**状态：not_started**
+**状态：entry_blocked_by_j1_j2_j3**
 
 先把首份 candidate/draft receipt 审查、确认并发布为 baseline；再对 revised candidate pack/spec/receipt 建立不可变 version/base，让 review 绑定精确内容 hash，并同时提供结构 `semantic diff` 和业务 `DecisionDelta`。`DecisionDelta` 比较 published baseline 与 candidate receipt，报告订单进入优先队列、退出优先队列、仍在优先队列或变为信息不足，并逐项附上规则与证据依据。
 
 出口：退回—修订—再审—发布可重放；旧 review 不会套用到新内容；只有 confirmed 且可验证的内容能发布；一名真实 FDE 和一名供应链业务验证参与者共同理解并纠正、批准或复用至少一份 `DecisionDelta`。
 
-Loop 4 是产品验证闸，不是自动通往平台建设的里程碑。当前虽已完成窄范围合成 validation，但输出结构仍大部分模板化；J1 / J2 / J3 与 Step A / C 仍优先于 review/publication 扩张。若真实 FDE 和供应链业务验证参与者不能共同纠正、批准或复用 `DecisionDelta`，停止扩张并重新锚定，不得进入 Loop 5–7。
+Loop 4 不再作为当前 NEXT。只有 Gate 1–3 已通过，且真实修订过程证明需要绑定 review、version 与 diff 时，才重新评估其最小范围；不得因为已有 receipt 或页面而自动进入。
 
 进入门必须由可检查的产品验证记录证明：保存被评估的 delta/receipt hash、参与者角色、实际纠正/批准/复用证据、`go / no_go`、理由和时间；只有一名真实 FDE 与一名供应链业务验证参与者共同形成 `go`，才解除 Loop 5–7 的阻塞。
 
@@ -201,4 +229,4 @@ Loop 4 是产品验证闸，不是自动通往平台建设的里程碑。当前�
 
 ## 暂缓
 
-除当前只读 PC Demo 外的前端扩展、自由式 LLM 自动建模、RAG、向量库、Neo4j、生产连接器、多租户、复杂 RBAC、后台任务、RDF/OWL/SHACL、自动外部行动和行业模板市场均不在当前授权内。只有已完成 Loop 暴露明确阻塞，并形成新的可证伪计划后才进入。
+除当前只读 PC Demo 外的前端扩展、正则问答扩展、Agent confirmation/session 扩展、`threshold_v1`、批量知识单元、Application Service 抽象、自由式 LLM 自动建模、RAG、向量库、Neo4j、生产连接器、多租户、复杂 RBAC、后台任务、RDF/OWL/SHACL、自动外部行动和行业模板市场均不在当前授权内。只有 Gate 1–3 暴露明确阻塞，并形成新的可证伪计划后才进入。
