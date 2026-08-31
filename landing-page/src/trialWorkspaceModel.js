@@ -36,11 +36,53 @@ function requireNonEmptyStrings(value, label) {
   return items;
 }
 
+function requireUniqueNonEmptyStrings(value, label) {
+  const items = requireNonEmptyStrings(value, label);
+  if (new Set(items).size !== items.length) {
+    throw new Error(`${label} must contain unique backend references`);
+  }
+  return items;
+}
+
 function requireValue(actual, expected, label) {
   if (actual !== expected) throw new Error(`${label} must be ${expected}`);
 }
 
-function adaptValidationReceipt(envelopeValue, authority, factsHash, label) {
+function requireExactReferences(actual, expected, label) {
+  const actualRefs = requireUniqueNonEmptyStrings(actual, label);
+  const expectedRefs = [...new Set(expected)];
+  if (
+    actualRefs.length !== expectedRefs.length
+    || actualRefs.some((reference) => !expectedRefs.includes(reference))
+  ) {
+    throw new Error(`${label} must match the rule reference closure`);
+  }
+  return actualRefs;
+}
+
+function collectPackSuggestions(pack, label) {
+  return requireArray(pack.knowledge_outcomes, `${label} outcomes`).flatMap((outcome, outcomeIndex) => {
+    const outcomeRecord = requireRecord(outcome, `${label} outcome ${outcomeIndex + 1}`);
+    return requireArray(outcomeRecord.suggestions, `${label} outcome ${outcomeIndex + 1} suggestions`)
+      .map((suggestion, suggestionIndex) => requireRecord(
+        suggestion,
+        `${label} outcome ${outcomeIndex + 1} suggestion ${suggestionIndex + 1}`,
+      ));
+  });
+}
+
+function collectPackSourceRefs(pack, label) {
+  const sourceRefs = requireArray(pack.source_refs, `${label} sources`).map((source, index) => {
+    const sourceRecord = requireRecord(source, `${label} source ${index + 1}`);
+    return requireNonEmptyString(sourceRecord.source_ref_id, `${label} source ${index + 1} ID`);
+  });
+  if (new Set(sourceRefs).size !== sourceRefs.length) {
+    throw new Error(`${label} source IDs must be unique`);
+  }
+  return sourceRefs;
+}
+
+function adaptValidationReceipt(envelopeValue, authority, factsHash, facts, label) {
   const envelope = requireRecord(envelopeValue, `${label} receipt envelope`);
   const contentHash = requireHash(envelope.content_hash, `${label} receipt content hash`);
   const receipt = requireRecord(envelope.receipt, `${label} receipt`);
@@ -78,8 +120,66 @@ function adaptValidationReceipt(envelopeValue, authority, factsHash, label) {
     throw new Error(`${label} receipt evaluation pair is invalid`);
   }
 
-  const factRefs = requireNonEmptyStrings(receipt.fact_refs, `${label} receipt fact refs`);
-  const evidenceRefs = requireNonEmptyStrings(receipt.evidence_refs, `${label} receipt evidence refs`);
+  const ruleId = requireNonEmptyString(receipt.rule_id, `${label} receipt rule ID`);
+  const matchingRules = authority.rules.filter((rule, index) => {
+    const ruleRecord = requireRecord(rule, `${label} authority rule ${index + 1}`);
+    return requireNonEmptyString(ruleRecord.rule_id, `${label} authority rule ${index + 1} ID`) === ruleId;
+  });
+  if (matchingRules.length !== 1) {
+    throw new Error(`${label} receipt rule ID must resolve exactly once`);
+  }
+  const rule = matchingRules[0];
+  const conditionPropertyIds = requireArray(rule.conditions, `${label} receipt rule conditions`)
+    .map((condition, index) => {
+      const conditionRecord = requireRecord(condition, `${label} receipt rule condition ${index + 1}`);
+      return requireNonEmptyString(
+        conditionRecord.property_type_id,
+        `${label} receipt rule condition ${index + 1} property type ID`,
+      );
+    });
+  if (!conditionPropertyIds.length || new Set(conditionPropertyIds).size !== conditionPropertyIds.length) {
+    throw new Error(`${label} receipt rule condition property type IDs must be unique`);
+  }
+  const conditionFacts = conditionPropertyIds.map((propertyTypeId) => {
+    const matches = facts.filter((fact) => fact.propertyTypeId === propertyTypeId);
+    if (matches.length !== 1) {
+      throw new Error(`${label} receipt fact refs must close over the rule conditions`);
+    }
+    return matches[0];
+  });
+  const factRefs = requireExactReferences(
+    receipt.fact_refs,
+    conditionFacts.map((fact) => fact.factRef),
+    `${label} receipt fact refs`,
+  );
+
+  const originSuggestionId = requireNonEmptyString(
+    rule.origin_suggestion_id,
+    `${label} receipt origin suggestion ID`,
+  );
+  const originSuggestions = authority.suggestions.filter((suggestion) => (
+    requireNonEmptyString(suggestion.suggestion_id, `${label} authority suggestion ID`)
+    === originSuggestionId
+  ));
+  if (originSuggestions.length !== 1) {
+    throw new Error(`${label} receipt origin suggestion must resolve exactly once`);
+  }
+  const suggestionSourceRefs = requireUniqueNonEmptyStrings(
+    originSuggestions[0].source_ref_ids,
+    `${label} receipt origin suggestion source refs`,
+  );
+  if (suggestionSourceRefs.some((sourceRef) => !authority.sourceRefs.includes(sourceRef))) {
+    throw new Error(`${label} receipt origin suggestion source refs must resolve in the DecisionPack`);
+  }
+  const expectedEvidenceRefs = [
+    ...conditionFacts.flatMap((fact) => fact.evidenceRefs),
+    ...suggestionSourceRefs,
+  ];
+  const evidenceRefs = requireExactReferences(
+    receipt.evidence_refs,
+    expectedEvidenceRefs,
+    `${label} receipt evidence refs`,
+  );
   requireValue(receipt.draft_created, false, `${label} receipt draft created`);
   requireValue(receipt.published, false, `${label} receipt published`);
   requireValue(receipt.actions_executed, false, `${label} receipt actions executed`);
@@ -90,7 +190,7 @@ function adaptValidationReceipt(envelopeValue, authority, factsHash, label) {
     contentHash,
     evaluationStatus: receipt.evaluation_status,
     decisionResult: receipt.decision_result,
-    ruleId: requireNonEmptyString(receipt.rule_id, `${label} receipt rule ID`),
+    ruleId,
     factRefs,
     evidenceRefs,
     decisionPackContentHash,
@@ -137,14 +237,10 @@ export function adaptTrialArtifact(input) {
   const inputBindings = requireArray(pack.input_bindings, "DecisionPack input bindings");
   const sources = requireArray(pack.source_refs, "DecisionPack sources");
   const outcomes = requireArray(pack.knowledge_outcomes, "DecisionPack outcomes");
+  const baselineSuggestions = collectPackSuggestions(pack, "DecisionPack");
+  const baselineSourceRefs = collectPackSourceRefs(pack, "DecisionPack");
   const governanceStatuses = [
-    ...new Set(
-      outcomes.flatMap((outcome) =>
-        requireArray(outcome.suggestions, "DecisionPack suggestions").map(
-          (suggestion) => suggestion.governance_status,
-        ),
-      ),
-    ),
+    ...new Set(baselineSuggestions.map((suggestion) => suggestion.governance_status)),
   ].sort();
   if (!governanceStatuses.length || governanceStatuses.some((status) => status !== "candidate")) {
     throw new Error("DecisionPack knowledge must keep candidate governance");
@@ -167,6 +263,7 @@ export function adaptTrialArtifact(input) {
   if (specPackHash !== packHash) throw new Error("OntologySpec pack hash must match the backend DecisionPack hash");
   const compilationIssues = requireArray(spec.compilation_issues, "OntologySpec compilation issues");
   const reviewIssues = compilationIssues.filter((issue) => issue.severity === "requires_review");
+  const baselineRules = requireArray(spec.rule_declarations, "OntologySpec rules");
   const ontologyWorkspace = projectOntologyWorkspace(artifact);
 
   const validationRun = requireRecord(artifact.validation_run, "validation run");
@@ -185,6 +282,11 @@ export function adaptTrialArtifact(input) {
   requireValue(runStatus.external_write, false, "validation run external write");
 
   const validationAuthority = requireRecord(validationRun.authority, "validation authority");
+  requireValue(
+    validationAuthority.evidence_scope,
+    "synthetic_demo",
+    "validation authority evidence scope",
+  );
   const baselineAuthority = requireRecord(validationAuthority.baseline, "baseline authority");
   const baselinePackAuthority = requireRecord(
     baselineAuthority.decision_pack,
@@ -222,6 +324,14 @@ export function adaptTrialArtifact(input) {
   );
   const candidatePack = requireRecord(candidatePackAuthority.pack, "candidate DecisionPack");
   requireValue(candidatePack.schema, "decision_pack.v1", "candidate DecisionPack schema");
+  const candidateSuggestions = collectPackSuggestions(candidatePack, "candidate DecisionPack");
+  if (
+    !candidateSuggestions.length
+    || candidateSuggestions.some((suggestion) => suggestion.governance_status !== "candidate")
+  ) {
+    throw new Error("candidate DecisionPack knowledge must keep candidate governance");
+  }
+  const candidateSourceRefs = collectPackSourceRefs(candidatePack, "candidate DecisionPack");
   const candidateSpecAuthority = requireRecord(
     candidateAuthority.ontology_spec,
     "candidate OntologySpec authority",
@@ -232,6 +342,18 @@ export function adaptTrialArtifact(input) {
   );
   const candidateSpec = requireRecord(candidateSpecAuthority.spec, "candidate OntologySpec");
   requireValue(candidateSpec.schema, "ontology_spec.v1", "candidate OntologySpec schema");
+  requireValue(
+    candidateSpec.evidence_scope,
+    "synthetic_demo",
+    "candidate OntologySpec evidence scope",
+  );
+  requireValue(candidateSpec.stage, "draft", "candidate OntologySpec stage");
+  requireValue(
+    candidateSpec.governance_status,
+    "candidate",
+    "candidate OntologySpec governance",
+  );
+  const candidateRules = requireArray(candidateSpec.rule_declarations, "candidate OntologySpec rules");
   const candidateSpecPackHash = requireHash(
     candidateSpec.pack_content_hash,
     "candidate OntologySpec pack hash",
@@ -262,22 +384,63 @@ export function adaptTrialArtifact(input) {
     );
     requireValue(factSet.subject_id, subjectId, `validation case ${index + 1} facts subject`);
     const facts = requireArray(factSet.facts, `validation case ${index + 1} facts`);
+    const validatedFacts = facts.map((fact, factIndex) => {
+      const factRecord = requireRecord(fact, `${subjectId} fact ${factIndex + 1}`);
+      return {
+        factRef: requireNonEmptyString(factRecord.fact_ref, `${subjectId} fact ${factIndex + 1} ref`),
+        propertyTypeId: requireNonEmptyString(
+          factRecord.property_type_id,
+          `${subjectId} fact ${factIndex + 1} property type ID`,
+        ),
+        evidenceRefs: requireUniqueNonEmptyStrings(
+          factRecord.evidence_refs,
+          `${subjectId} fact ${factIndex + 1} evidence refs`,
+        ),
+        value: factRecord.value,
+      };
+    });
+    const factRefs = validatedFacts.map((fact) => fact.factRef);
+    if (new Set(factRefs).size !== factRefs.length) {
+      throw new Error(`${subjectId} fact refs must be unique`);
+    }
+    const propertyTypeIds = validatedFacts.map((fact) => fact.propertyTypeId);
+    if (new Set(propertyTypeIds).size !== propertyTypeIds.length) {
+      throw new Error(`${subjectId} property type IDs must be unique`);
+    }
+    const factEvidenceRefs = validatedFacts.flatMap((fact) => fact.evidenceRefs);
+    if (new Set(factEvidenceRefs).size !== factEvidenceRefs.length) {
+      throw new Error(`${subjectId} fact evidence refs must be unique`);
+    }
     const baseline = adaptValidationReceipt(
       validationCase.baseline,
-      { decisionPackHash: baselinePackHash, ontologySpecHash: baselineSpecHash },
+      {
+        decisionPackHash: baselinePackHash,
+        ontologySpecHash: baselineSpecHash,
+        rules: baselineRules,
+        suggestions: baselineSuggestions,
+        sourceRefs: baselineSourceRefs,
+      },
       factsHash,
-      "baseline",
+      validatedFacts,
+      `${subjectId} baseline`,
     );
     const candidate = adaptValidationReceipt(
       validationCase.candidate,
-      { decisionPackHash: candidatePackHash, ontologySpecHash: candidateSpecHash },
+      {
+        decisionPackHash: candidatePackHash,
+        ontologySpecHash: candidateSpecHash,
+        rules: candidateRules,
+        suggestions: candidateSuggestions,
+        sourceRefs: candidateSourceRefs,
+      },
       factsHash,
-      "candidate",
+      validatedFacts,
+      `${subjectId} candidate`,
     );
     const resultChanged =
       baseline.evaluationStatus !== candidate.evaluationStatus
       || baseline.decisionResult !== candidate.decisionResult;
-    const hasAtRiskFact = facts.some((fact) => fact?.value === "at_risk");
+    const hasAtRiskFact = validatedFacts.some((fact) => fact.value === "at_risk");
 
     return {
       subjectId,
@@ -292,6 +455,21 @@ export function adaptTrialArtifact(input) {
       atRiskChange: resultChanged && hasAtRiskFact,
     };
   });
+  const changedCases = validationCases.filter((validationCase) => (
+    validationCase.baseline.evaluationStatus !== validationCase.candidate.evaluationStatus
+    || validationCase.baseline.decisionResult !== validationCase.candidate.decisionResult
+  ));
+  const fixedDelta = changedCases[0];
+  if (
+    changedCases.length !== 1
+    || !fixedDelta.atRiskChange
+    || fixedDelta.baseline.evaluationStatus !== "fail"
+    || fixedDelta.baseline.decisionResult !== "not_in_queue"
+    || fixedDelta.candidate.evaluationStatus !== "pass"
+    || fixedDelta.candidate.decisionResult !== "in_queue"
+  ) {
+    throw new Error("validation delta must be the unique at_risk fail-to-pass transition");
+  }
 
   return {
     schema: artifact.schema,

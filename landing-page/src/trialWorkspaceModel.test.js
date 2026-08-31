@@ -244,6 +244,20 @@ test("rejects invalid validation authority refs, hashes, and candidate binding",
   }
 });
 
+test("rejects validation authorities that cross synthetic draft candidate governance", () => {
+  for (const [mutate, message] of [
+    [(value) => { value.validation_run.authority.evidence_scope = "customer"; }, /validation authority evidence scope/],
+    [(value) => { value.validation_run.authority.candidate.ontology_spec.spec.evidence_scope = "customer"; }, /candidate OntologySpec evidence scope/],
+    [(value) => { value.validation_run.authority.candidate.ontology_spec.spec.stage = "published"; }, /candidate OntologySpec stage/],
+    [(value) => { value.validation_run.authority.candidate.ontology_spec.spec.governance_status = "published"; }, /candidate OntologySpec governance/],
+    [(value) => { value.validation_run.authority.candidate.decision_pack.pack.knowledge_outcomes[0].suggestions[0].governance_status = "approved"; }, /candidate DecisionPack knowledge/],
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
 test("rejects invalid validation runtime and lifecycle statuses", () => {
   for (const [mutate, message] of [
     [(value) => { value.validation_run.schema = "validation_run.v2"; }, /validation run schema/],
@@ -274,6 +288,60 @@ test("rejects invalid validation case and receipt contracts", () => {
     const changed = structuredClone(artifact);
     mutate(changed);
     assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
+test("rejects malformed or duplicate fact-set references", () => {
+  for (const [mutate, message] of [
+    [(value) => { value.validation_run.cases[0].facts.fact_set.facts[0] = null; }, /order\.synthetic\.001 fact 1/],
+    [(value) => { value.validation_run.cases[0].facts.fact_set.facts[1].fact_ref = value.validation_run.cases[0].facts.fact_set.facts[0].fact_ref; }, /order\.synthetic\.001 fact refs/],
+    [(value) => { value.validation_run.cases[0].facts.fact_set.facts[1].property_type_id = value.validation_run.cases[0].facts.fact_set.facts[0].property_type_id; }, /order\.synthetic\.001 property type IDs/],
+    [(value) => { value.validation_run.cases[0].facts.fact_set.facts[0].evidence_refs = []; }, /order\.synthetic\.001 fact 1 evidence refs/],
+    [(value) => { value.validation_run.cases[0].facts.fact_set.facts[0].evidence_refs.push(value.validation_run.cases[0].facts.fact_set.facts[0].evidence_refs[0]); }, /order\.synthetic\.001 fact 1 evidence refs/],
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
+test("rejects receipts outside their rule, fact, and evidence reference closure", () => {
+  for (const [mutate, message] of [
+    [(value) => { value.validation_run.cases[0].baseline.receipt.rule_id = "rule_foreign"; }, /order\.synthetic\.001 baseline receipt rule ID/],
+    [(value) => { value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations.push(structuredClone(value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0])); }, /order\.synthetic\.001 candidate receipt rule ID/],
+    [(value) => { value.validation_run.cases[0].candidate.receipt.fact_refs[0] = "fact_foreign"; }, /order\.synthetic\.001 candidate receipt fact refs/],
+    [(value) => { value.validation_run.cases[0].baseline.receipt.fact_refs.push(value.validation_run.cases[0].baseline.receipt.fact_refs[0]); }, /order\.synthetic\.001 baseline receipt fact refs/],
+    [(value) => { value.validation_run.cases[0].candidate.receipt.evidence_refs.push(value.validation_run.cases[0].candidate.receipt.evidence_refs[0]); }, /order\.synthetic\.001 candidate receipt evidence refs/],
+    [(value) => { value.validation_run.cases[0].baseline.receipt.evidence_refs[0] = "evidence:foreign"; }, /order\.synthetic\.001 baseline receipt evidence refs/],
+    [(value) => { value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0].origin_suggestion_id = "suggestion_foreign"; }, /order\.synthetic\.001 candidate receipt origin suggestion/],
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
+test("rejects validation runs with more than one result delta", () => {
+  const changed = structuredClone(artifact);
+  changed.validation_run.cases[2].candidate.receipt.evaluation_status = "pass";
+  changed.validation_run.cases[2].candidate.receipt.decision_result = "in_queue";
+
+  assert.throws(() => adaptTrialArtifact(changed), /validation delta/);
+});
+
+test("rejects validation runs whose only delta is not the fixed at-risk transition", () => {
+  for (const mutate of [
+    (value) => {
+      value.validation_run.cases[1].baseline.receipt.evaluation_status = "pass";
+      value.validation_run.cases[1].baseline.receipt.decision_result = "in_queue";
+      value.validation_run.cases[1].candidate.receipt.evaluation_status = "fail";
+      value.validation_run.cases[1].candidate.receipt.decision_result = "not_in_queue";
+    },
+    (value) => { value.validation_run.cases[1].facts.fact_set.facts[1].value = "missed"; },
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    assert.throws(() => adaptTrialArtifact(changed), /validation delta/);
   }
 });
 
