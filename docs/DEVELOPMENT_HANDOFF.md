@@ -10,7 +10,7 @@
 
 ## 0. 接手第一步:对账
 
-本文档以远端已合并基线 `9b251d0` 加当前本地分支 6 个 validation 实现提交(`df89bb6^..beacec1`)为依据。这 6 个实现提交和当前文档收口均尚未 merge / push,不要把本文状态当成远端或已交付状态。接手时先对当前 checkout 对账:
+本文档以远端已合并基线 `9b251d0` 加当前本地分支 8 个 validation 实现提交(`df89bb6^..51ad39e`)为依据。这 8 个实现提交和当前文档收口均尚未 merge / push,不要把本文状态当成远端或已交付状态。接手时先对当前 checkout 对账:
 
 ```bash
 cd /Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo
@@ -23,9 +23,9 @@ git log --oneline 9b251d0..HEAD
 当前本地快照的快速核验命令:
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests 2>&1 | tail -3       # Ran 256 tests ... OK
+PYTHONPATH=src python -m unittest discover -s tests 2>&1 | tail -3       # Ran 257 tests ... OK
 PYTHONPATH=src python scripts/generate_demo_artifact.py --check          # exit 0,不写文件
-cd landing-page && npm run test:unit 2>&1 | grep -E "^ℹ (tests|fail)"   # tests 79 / fail 0
+cd landing-page && npm run test:unit 2>&1 | grep -E "^ℹ (tests|fail)"   # tests 82 / fail 0
 npm run test:sites 2>&1 | grep -E "^ℹ (tests|fail)"                     # tests 4 / fail 0
 npm run build 2>&1 | grep "modules transformed"                         # 1973 modules transformed
 ```
@@ -60,7 +60,7 @@ OntoPoc 帮 FDE 把一段业务材料收敛成可审查的决策资产。首个�
 
 - 边界在代码里不在 prompt 里:`rule_runtime.py:243-246` 把四个零副作用字段写死 `False`;`recognition.py:203` 起的 `_validate_candidate` 拒绝一切额外字段;`decision_owner` 必须是原文子串(`recognition.py:392`)。
 - 一切可 hash、可重放:同一输入两次运行 DecisionPack / OntologySpec 文件 md5 完全一致(8-30 实测)。
-- 当前本地快照为后端 256 个测试、前端 unit 79 个测试、Sites 4 个测试和 Vite build 1973 modules;不支持的 `rule_kind` 在编译期(`knowledge_compiler.py:125`,blocking issue)和求值期(`rule_runtime.py:203`,`unsupported`)两道都拦。
+- 当前本地快照为后端 257 个测试、前端 unit 82 个测试、Sites 4 个测试和 Vite build 1973 modules;不支持的 `rule_kind` 在编译期(`knowledge_compiler.py:125`,blocking issue)和求值期(`rule_runtime.py:203`,`unsupported`)两道都拦。
 
 ### 3.2 三个信息入口,现在各开多大
 
@@ -88,10 +88,10 @@ PRD FR-003"展示候选决策、对象、关系、规则及对应证据片段"�
 
 ### 3.5 其他已知债务
 
-- CI(`.github/workflows/tests.yml`)只跑后端 unittest,前端 79/4/build 不在 CI 里。
+- CI(`.github/workflows/tests.yml`)只跑后端 unittest,前端 82/4/build 不在 CI 里。
 - `landing-page/src/App.jsx` 有 50 行超过 300 字符(整段 JSX 和双语文案压成一行),`TrialWorkspace.jsx` 5 行、`styles.css` 5 行同样。可维护性差,过一遍 prettier 即可。
 - 前端问答(`ontologyWorkspaceModel.js:446-536`)是一段手写正则意图分类器(含 prompt-injection 关键字表),只对这一个固定 artifact 有效。它是演示道具,不是能力,不要在此基础上扩展。
-- 前端适配器(`trialWorkspaceModel.js`)校验 hash 格式、authority 绑定、rule/fact/evidence 引用闭包和四个副作用字段,但不重算 SHA。任何缺字段或绑定不一致都会抛错并落到通用 error 页,即 fail closed;前端不维护第二套 evaluator 或 authority。
+- 前端适配器(`trialWorkspaceModel.js`)校验 hash 格式、baseline/candidate identity coherence、candidate entity/relation/property/rule/suggestion/source 引用闭包、receipt rule/fact/evidence 引用闭包和四个副作用字段,但不重算 SHA。任何缺字段或绑定不一致都会抛错并落到通用 error 页,即 fail closed;前端不维护第二套 evaluator 或 authority。
 - **决策问题只有一个**:写死的 `order_priority_intervention` 是否对应现役客户的真实诉求,仓库里没有任何证据(没有客户材料、没有实验记录)。见 §6 Step A。
 - 本地有 14 条已合并的 `codex/*` 分支未删。
 - `knowledge.py` 的 `applicability.readiness_requirement_keys` 只做结构校验,`match_knowledge_unit` 里没有用它做门控;真正起作用的是 `readiness_gap` 模板级过滤(`knowledge.py:845`)。
@@ -137,7 +137,7 @@ PRD FR-003"展示候选决策、对象、关系、规则及对应证据片段"�
 | `App.jsx` | 451 | 营销页,双语文案内联 |
 | `StandaloneDemo.jsx` | 47 | `/` 与 `/demo` 的壳 |
 | `TrialWorkspace.jsx` | 282 | 四阶段工作台;读取 artifact 并展示 4 cases / 8 receipts、证据、hash 与边界 |
-| `trialWorkspaceModel.js` | 588 | `adaptTrialArtifact`:严格校验 schema、authority、引用闭包和回执绑定;Validation stage=`receipt_recorded` |
+| `trialWorkspaceModel.js` | 714 | `adaptTrialArtifact`:严格校验 schema、baseline/candidate identity coherence、candidate/reference closure 和回执绑定;Validation stage=`receipt_recorded` |
 | `OntologyWorkspace.jsx` / `ontologyWorkspaceModel.js` | 469 / 536 | React Flow 图、节点详情、正则问答 |
 | `DocumentModeler.jsx` / `documentModelingDemoModel.js` | 218 / 67 | 三个写死的场景;只有第一个走真 artifact,另两个是纯前端静态图 |
 | `agentModelingSession.js` | 161 | "确认"步骤的会话内 hash 交叉检查,不持久化 |
@@ -147,7 +147,7 @@ PRD FR-003"展示候选决策、对象、关系、规则及对应证据片段"�
 
 ## 5. 已实现 / 未实现(修正版)
 
-已实现:第 3.1 节 + 后端固定 `validation_run.v1` 与前端只读回执投影。后端以固定 4 个 case 分别求值 baseline/candidate,生成 8 个真实 `validation_receipt.v1`;每个回执带 canonical receipt hash,并绑定 pack/spec/facts hash、rule、fact refs 和 evidence refs,四个副作用字段固定为 `false`。artifact 默认写入采用同目录 temp + fsync + 单次 `os.replace`;`--check` 只读比较 canonical bytes,相同返回 0,missing/stale 返回 1 且不写。
+已实现:第 3.1 节 + 后端固定 `validation_run.v1` 与前端只读回执投影。后端以固定 4 个 case 分别求值 baseline/candidate,生成 8 个真实 `validation_receipt.v1`;每个回执带 canonical receipt hash,并绑定 pack/spec/facts hash、rule、fact refs 和 evidence refs,四个副作用字段固定为 `false`。artifact 默认写入采用同目录 temp + fsync + 单次 `os.replace`,保留 existing artifact 的 permission bits,新文件固定为 `0644`;`--check` 只读比较 canonical bytes,相同返回 0,missing/stale 返回 1 且不写。
 
 未实现,不能写成已完成:
 
@@ -251,7 +251,7 @@ CQ 清单与知识单元同 PR:`tests/golden/competency_questions.md`,每条对�
 
 ### Step E:顺手活(各自独立 PR,随时可做)
 
-1. **v1 Task 1–2:已在当前本地分支实现,尚未 merge / push。** Python 内核已为四笔合成事实生成真实 baseline/candidate `ValidationReceipt` 写入 artifact;前端 Validation 页展示 status / decision result / rule ID / fact & evidence refs / pack/spec/facts/receipt hash 与 lifecycle 边界,并在投影前严格校验四个 receipt 副作用字段为 `false`,且没有在前端重写 evaluator。对应实现提交为 `df89bb6^..beacec1`。
+1. **v1 Task 1–2:已在当前本地分支实现,尚未 merge / push。** Python 内核已为四笔合成事实生成真实 baseline/candidate `ValidationReceipt` 写入 artifact;前端 Validation 页展示 status / decision result / rule ID / fact & evidence refs / pack/spec/facts/receipt hash 与 lifecycle 边界,并在投影前严格校验 candidate identity/reference closure 和四个 receipt 副作用字段为 `false`,且没有在前端重写 evaluator。对应实现提交为 `df89bb6^..51ad39e`。
 2. **Golden set + eval**:`tests/golden/recognition_cases.jsonl` 15–20 条(matched / insufficient / unsupported 各 5+);CI 默认用 `FakeGateway` 跑 Layer A(< 10 s,阻断);真模型 judge 只在有 API key 时跑,结果落 `docs/experiments/`,不阻断合并。识别结果信封已带 provider / model / prompt_version,够用;`--model` 改为必填并在实验记录里钉死版本。
 3. **卫生 PR**:CI 加前端 job;`App.jsx` 等过 prettier;删 14 条已合并本地分支。
 4. **文档收口**:当前已先修正 validation 生命周期事实;A–D 的产品方向变化仍应在各自完成后单独更新。
@@ -270,7 +270,7 @@ DecisionDelta、review / version / publication、数据库、账号、公网部�
 
 ```bash
 cd /Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo
-PYTHONPATH=src python -m unittest discover -s tests -v        # 当前本地快照:256 OK
+PYTHONPATH=src python -m unittest discover -s tests -v        # 当前本地快照:257 OK
 PYTHONPATH=src python -m unittest tests.test_rule_runtime -v  # 6 OK
 PYTHONPATH=src python scripts/generate_demo_artifact.py --check # canonical artifact 相同则 0,只读
 ```
@@ -304,7 +304,7 @@ PYTHONPATH=src python -m ontology_poc_generator.recognition_cli \
 ```bash
 cd landing-page
 npm ci
-npm run test:unit    # 当前本地快照:79
+npm run test:unit    # 当前本地快照:82
 npm run test:sites   # 4
 npm run build        # 1973 modules transformed
 npm run dev -- --host 127.0.0.1 --port 5174
@@ -331,7 +331,7 @@ npm run dev -- --host 127.0.0.1 --port 5174
 | hash / binding mismatch | 前端 fail closed;回到后端 authority 和固定输入重新生成,定位 pack/spec/facts/receipt 或引用闭包的差异 | 不在前端放宽校验,不重算另一套结果 |
 | `not_evaluable` | 固定黄金第四 case 的 `not_evaluable` 是合法验收结果,应保留并核对 missing/unavailable fact 与 evidence refs；只有某个受测输入按预期本应可求值时,才通过受测 fixture / 输入变更补齐后重新生成 | 不把合法信息不足当故障,不常规重写固定 artifact,不对同一份缺失事实盲重试 |
 | `unsupported` | 记录为 evaluator / rule contract 的能力缺口,另行设计并测试支持范围 | 不把它降级成 `fail` 或 `pass` |
-| 写入中断 / `os.replace` 失败 | 旧 artifact 仍保留;排除文件系统问题后用同一固定输入重跑 | 不把临时文件或部分内容当新权威 |
+| 写入中断 / `os.replace` 失败 | 旧 artifact 及其 permission bits 仍保留;排除文件系统问题后用同一固定输入重跑。成功替换保留 existing mode,新文件为 `0644` | 不把临时文件或部分内容当新权威 |
 
 这张表只处理单文件本地 artifact 的确定性再生成和 fail-closed 展示,不是 Saga,也不提供外部系统补偿。当前没有数据库事务、账号状态、Action、publication 或外部 writeback 可补偿。
 
@@ -359,7 +359,7 @@ git status --short --branch
 git rev-parse HEAD
 ```
 
-当前 `origin/main` 尚不含 `df89bb6^..beacec1` 及后续文档收口,不得从它开分支继续 validation 链。只有这些提交落地且更新后的 `origin/main` 已包含它们后,才执行 `git switch -c <owner>/<small-capability> origin/main`。
+当前 `origin/main` 尚不含 `df89bb6^..51ad39e` 及后续文档收口,不得从它开分支继续 validation 链。只有这些提交落地且更新后的 `origin/main` 已包含它们后,才执行 `git switch -c <owner>/<small-capability> origin/main`。
 
 每个小能力:focused test → 一次 full test → `git diff --check` → scope/status 检查 → commit → push → 独立 review → PR → CI → merge。
 
@@ -386,14 +386,14 @@ git rev-parse HEAD
 | Loop 3 synthetic rule runtime | #10 | `e632590` |
 | 开发接力文档 v1 | #11 | `9b251d0` |
 
-当前本地分支另有 6 个尚未 merge / push 的 validation artifact / 前端投影提交:`df89bb6`、`9cd4cc6`、`4d42f74`、`1c3babe`、`dd48f1a`、`beacec1`。它们是本地实现证据,不是远端合并或交付证明。
+当前本地分支另有 8 个尚未 merge / push 的 validation artifact / 前端投影提交:`df89bb6`、`9cd4cc6`、`4d42f74`、`1c3babe`、`dd48f1a`、`beacec1`、`d77ed4f`、`51ad39e`。它们是本地实现证据,不是远端合并或交付证明。
 
 ## 11. 可直接复制给下一位开发者的 Prompt
 
 ```text
 接手开发 /Users/eddie/Desktop/Workspace/ontology-poc-generator。
 
-先读 docs/DEVELOPMENT_HANDOFF.md 第 0 节做对账,确认当前 checkout 和本地新增提交,再读第 3 节诊断。当前本地快照是后端 256、前端 unit 79、Sites 4、build 1973 modules;这些数字不代表 CI 或远端已经同步。
+先读 docs/DEVELOPMENT_HANDOFF.md 第 0 节做对账,确认当前 checkout 和本地新增提交,再读第 3 节诊断。当前本地快照是后端 257、前端 unit 82、Sites 4、build 1973 modules;这些数字不代表 CI 或远端已经同步。
 
 严禁修改主目录里的 README.md、docs/HANDOFF_FRONTEND_BACKEND_ALIGNMENT.md 和未跟踪的 landing-page/。先在现有 `.worktrees/pc-agent-modeling-demo` 中继续 `rico/handoff-v2` 的精确 HEAD;当前 `origin/main` 尚缺 validation 与文档收口提交,不得从它开新分支。只有这些提交落地且更新后的 `origin/main` 已包含它们后,才从该远端基线开新分支。
 
