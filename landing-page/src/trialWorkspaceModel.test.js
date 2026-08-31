@@ -305,6 +305,78 @@ test("rejects malformed or duplicate fact-set references", () => {
   }
 });
 
+test("rejects fact availability and value combinations outside the backend contract", () => {
+  for (const [mutate, message] of [
+    [(fact) => { fact.availability = "unknown"; }, /order\.synthetic\.001 fact 1 availability/],
+    [(fact) => { fact.availability = "unavailable"; fact.value = "unknown"; }, /order\.synthetic\.001 fact 1 value/],
+    [(fact) => { fact.availability = "available"; fact.value = ""; }, /order\.synthetic\.001 fact 1 value/],
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed.validation_run.cases[0].facts.fact_set.facts[0]);
+    assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
+test("rejects case-insensitive duplicate fact references", () => {
+  for (const [mutate, message] of [
+    [
+      (value) => {
+        const duplicate = value.validation_run.cases[0].facts.fact_set.facts[0].fact_ref.toUpperCase();
+        value.validation_run.cases[0].facts.fact_set.facts[1].fact_ref = duplicate;
+        value.validation_run.cases[0].baseline.receipt.fact_refs[1] = duplicate;
+        value.validation_run.cases[0].candidate.receipt.fact_refs[1] = duplicate;
+      },
+      /order\.synthetic\.001 fact refs/,
+    ],
+    [
+      (value) => {
+        const duplicate = value.validation_run.cases[0].facts.fact_set.facts[0].property_type_id.toUpperCase();
+        value.validation_run.cases[0].facts.fact_set.facts[1].property_type_id = duplicate;
+        value.ontology_spec.spec.property_types[1].property_type_id = duplicate;
+        value.ontology_spec.spec.rule_declarations[0].conditions[1].property_type_id = duplicate;
+        value.validation_run.authority.candidate.ontology_spec.spec.property_types[1].property_type_id = duplicate;
+        value.validation_run.authority.candidate.ontology_spec.spec.rule_declarations[0].conditions[1].property_type_id = duplicate;
+      },
+      /order\.synthetic\.001 property type IDs/,
+    ],
+    [
+      (value) => {
+        const fact = value.validation_run.cases[0].facts.fact_set.facts[0];
+        const duplicate = fact.evidence_refs[0].toUpperCase();
+        fact.evidence_refs.push(duplicate);
+        value.validation_run.cases[0].baseline.receipt.evidence_refs.push(duplicate);
+        value.validation_run.cases[0].candidate.receipt.evidence_refs.push(duplicate);
+      },
+      /order\.synthetic\.001 fact 1 evidence refs/,
+    ],
+  ]) {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    assert.throws(() => adaptTrialArtifact(changed), message);
+  }
+});
+
+test("allows different facts to share one evidence reference when receipt closure is exact", () => {
+  const changed = structuredClone(artifact);
+  const validationCase = changed.validation_run.cases[0];
+  const sharedEvidence = validationCase.facts.fact_set.facts[0].evidence_refs[0];
+  const policySource = validationCase.baseline.receipt.evidence_refs.at(-1);
+  validationCase.facts.fact_set.facts[1].evidence_refs = [sharedEvidence];
+  validationCase.baseline.receipt.evidence_refs = [sharedEvidence, policySource];
+  validationCase.candidate.receipt.evidence_refs = [sharedEvidence, policySource];
+
+  assert.doesNotThrow(() => adaptTrialArtifact(changed));
+});
+
+test("rejects duplicate validation case subjects", () => {
+  const changed = structuredClone(artifact);
+  const duplicateSubject = changed.validation_run.cases[0].subject_id;
+  changed.validation_run.cases[1].subject_id = duplicateSubject;
+  changed.validation_run.cases[1].facts.fact_set.subject_id = duplicateSubject;
+
+  assert.throws(() => adaptTrialArtifact(changed), /validation case subjects/);
+});
+
 test("rejects receipts outside their rule, fact, and evidence reference closure", () => {
   for (const [mutate, message] of [
     [(value) => { value.validation_run.cases[0].baseline.receipt.rule_id = "rule_foreign"; }, /order\.synthetic\.001 baseline receipt rule ID/],

@@ -44,6 +44,18 @@ function requireUniqueNonEmptyStrings(value, label) {
   return items;
 }
 
+function caseInsensitiveKey(value) {
+  return value.toLowerCase();
+}
+
+function requireCaseInsensitiveUniqueNonEmptyStrings(value, label) {
+  const items = requireNonEmptyStrings(value, label);
+  if (new Set(items.map(caseInsensitiveKey)).size !== items.length) {
+    throw new Error(`${label} must contain case-insensitively unique backend references`);
+  }
+  return items;
+}
+
 function requireValue(actual, expected, label) {
   if (actual !== expected) throw new Error(`${label} must be ${expected}`);
 }
@@ -364,12 +376,18 @@ export function adaptTrialArtifact(input) {
 
   const cases = requireArray(validationRun.cases, "validation cases");
   if (cases.length !== 4) throw new Error("validation cases must contain exactly four cases");
+  const subjectKeys = new Set();
   const validationCases = cases.map((caseValue, index) => {
     const validationCase = requireRecord(caseValue, `validation case ${index + 1}`);
     const subjectId = requireNonEmptyString(
       validationCase.subject_id,
       `validation case ${index + 1} subject`,
     );
+    const subjectKey = caseInsensitiveKey(subjectId);
+    if (subjectKeys.has(subjectKey)) {
+      throw new Error("validation case subjects must be unique");
+    }
+    subjectKeys.add(subjectKey);
     const factsEnvelope = requireRecord(validationCase.facts, `validation case ${index + 1} facts`);
     const factsHash = requireHash(
       factsEnvelope.content_hash,
@@ -386,30 +404,39 @@ export function adaptTrialArtifact(input) {
     const facts = requireArray(factSet.facts, `validation case ${index + 1} facts`);
     const validatedFacts = facts.map((fact, factIndex) => {
       const factRecord = requireRecord(fact, `${subjectId} fact ${factIndex + 1}`);
+      const availability = requireNonEmptyString(
+        factRecord.availability,
+        `${subjectId} fact ${factIndex + 1} availability`,
+      );
+      if (!["available", "unavailable"].includes(availability)) {
+        throw new Error(`${subjectId} fact ${factIndex + 1} availability is invalid`);
+      }
+      if (availability === "available") {
+        requireNonEmptyString(factRecord.value, `${subjectId} fact ${factIndex + 1} value`);
+      } else {
+        requireValue(factRecord.value, null, `${subjectId} fact ${factIndex + 1} value`);
+      }
       return {
         factRef: requireNonEmptyString(factRecord.fact_ref, `${subjectId} fact ${factIndex + 1} ref`),
         propertyTypeId: requireNonEmptyString(
           factRecord.property_type_id,
           `${subjectId} fact ${factIndex + 1} property type ID`,
         ),
-        evidenceRefs: requireUniqueNonEmptyStrings(
+        evidenceRefs: requireCaseInsensitiveUniqueNonEmptyStrings(
           factRecord.evidence_refs,
           `${subjectId} fact ${factIndex + 1} evidence refs`,
         ),
+        availability,
         value: factRecord.value,
       };
     });
     const factRefs = validatedFacts.map((fact) => fact.factRef);
-    if (new Set(factRefs).size !== factRefs.length) {
+    if (new Set(factRefs.map(caseInsensitiveKey)).size !== factRefs.length) {
       throw new Error(`${subjectId} fact refs must be unique`);
     }
     const propertyTypeIds = validatedFacts.map((fact) => fact.propertyTypeId);
-    if (new Set(propertyTypeIds).size !== propertyTypeIds.length) {
+    if (new Set(propertyTypeIds.map(caseInsensitiveKey)).size !== propertyTypeIds.length) {
       throw new Error(`${subjectId} property type IDs must be unique`);
-    }
-    const factEvidenceRefs = validatedFacts.flatMap((fact) => fact.evidenceRefs);
-    if (new Set(factEvidenceRefs).size !== factEvidenceRefs.length) {
-      throw new Error(`${subjectId} fact evidence refs must be unique`);
     }
     const baseline = adaptValidationReceipt(
       validationCase.baseline,
