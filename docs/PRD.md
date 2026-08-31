@@ -4,7 +4,7 @@
 
 **状态：** Draft
 
-**日期：** 2026-08-30
+**日期：** 2026-08-31
 
 **首发形态：** PC Web Demo
 **首个场景：** 供应链订单优先干预
@@ -58,16 +58,18 @@ OntoPoc 帮助 FDE 把一段业务材料收敛为可审查的决策资产：识�
 - entity、relation、property、rule 的稳定身份；
 - schema 与引用闭包校验；
 - OpenAI-compatible 模型识别入口和受控候选契约；
-- `ValidationReceipt` 的不可变数据契约；
-- PC 端录制式 Demo：文档候选、候选审查、本体图和问答解释。
+- `categorical_all_of_v1` 的四态运行时与 `ValidationReceipt` 不可变数据契约；
+- 固定 `validation_run.v1`：4 个合成 case × baseline/candidate，共 8 个带 canonical receipt hash，并绑定 pack/spec/facts hash、rule、fact refs 和 evidence refs 的真实回执；
+- PC 端录制式 Demo：文档候选、候选审查、本体图、问答解释和只读 Validation 回执投影。Validation 页不重算 SHA、不实现 evaluator，绑定不一致时 fail closed。
 
 当前还没有完成：
 
-- 规则求值运行时和四笔事实验证；
 - 前端与 Python 领域内核的正式服务连接；
 - 人工审查版本、发布门和 `DecisionDelta`；
 - 持久化、账号、多人协作和生产部署；
 - 真实客户文档、真实业务数据和外部系统写回。
+
+当前 `validation=completed` / 前端 `receipt_recorded` 只表示固定合成验证已求值并记录；规则 `pass` 只表示该合成输入满足规则。review、publication 和 action 仍为 `not_started`，不能据此声称人工批准、客户结果或生产能力。
 
 ## 5. V1 用户流程
 
@@ -186,7 +188,7 @@ V1 成功不以页面数量或本体节点数量衡量。满足以下条件才�
 
 **出口：** 固定场景从文档候选走到闭合 `OntologySpec`，页面无空白或手机布局回退。
 
-### Phase 2：完成最小验证运行时
+### Phase 2：完成最小验证运行时（当前本地分支已实现，尚未 merge / push）
 
 - 实现 `categorical_all_of_v1`；
 - 运行四笔合成事实；

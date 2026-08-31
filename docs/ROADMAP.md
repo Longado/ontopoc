@@ -1,6 +1,6 @@
 # Persistent AI FDE / Decision Compiler 滚动路线图
 
-最后更新：2026-08-29
+最后更新：2026-08-31
 
 ## 产品锚点
 
@@ -94,7 +94,7 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 
 - 当前只重排并投影已声明输入；没有知识单元、来源匹配或输入外建议，知识增益仍为零；
 - 双样例只是 smoke / regression 证据，不能证明跨行业有效，也不能证明真实客户数据质量、业务效果或运行能力；
-- 规则求值、Agent 编排、任务创建、版本记录、回执和外部写入仍未实现。
+- 在 Loop 0 出口时，规则求值、Agent 编排、任务创建、版本记录、回执和外部写入均未实现；后续 Loop 3 已在当前本地分支补齐窄范围合成验证与回执，其他项仍未实现。
 
 ### Loop 1 — 有来源的供应链知识辅助 DecisionPack
 
@@ -115,7 +115,7 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 **仍未解决的限制：**
 
 - 客户入队政策仍是 readiness gap；当前只有 synthetic candidate rule，不计算风险分数、不输出最终队列、不提出处置动作；
-- 当前已有 draft/candidate `OntologySpec`，但尚未实现事实校验、`ValidationReceipt`、review、version、publication 或外部写入；
+- 在 Loop 1 出口时，尚未实现事实校验、`ValidationReceipt`、review、version、publication 或外部写入；当前本地分支已补齐前两项的固定 `synthetic_demo` 路径，后五项仍未实现；
 - `synthetic_demo` 和跨行业 regression 不能证明客户适用性、真实数据质量或生产效果。
 
 ## NOW
@@ -128,27 +128,31 @@ POC Markdown 是 `DecisionPack` 的一个投影，不再是产品终点。旧 `n
 
 出口已满足：同一 pack 产生 canonical draft/candidate `OntologySpec`，并保留 `synthetic_demo` 边界；稳定 identity、引用闭包、状态保留和规则输入绑定均由测试覆盖。
 
-Loop 2 完成不等于 publication 或 production；当前没有 receipt、version、review、publication、action 或 writeback。
+Loop 2 完成不等于 publication 或 production；Loop 2 出口当时没有 receipt、version、review、publication、action 或 writeback。当前本地分支只补齐了固定合成 receipt，其他边界未变。
 
-## NEXT
+## 当前本地验证状态
 
 ### Loop 3 — 无状态验证运行时
 
-**状态：not_started**
+**状态：complete_on_current_local_branch（尚未 merge / push）**
 
-`ValidationReceipt` 尚未实现。下一轮将在内存中加载 `synthetic_demo` facts，完成 T-Box 校验、首批确定性规则、`pass / fail / not_evaluable / unsupported` 四态和 checksum 绑定的 `ValidationReceipt`。
+当前本地分支已实现 `categorical_all_of_v1` 的 `pass / fail / not_evaluable / unsupported` 四态运行时，并将固定 4 个 `synthetic_demo` case 分别对 baseline/candidate 求值，记录为 `validation_run.v1` 中 8 个真实 `ValidationReceipt.v1`。每个回执带 canonical receipt hash，并绑定 pack/spec/facts 内容 hash、rule、fact refs 和 evidence refs；四个副作用字段均固定为 `false`。
 
-出口：供应链黄金场景产生绑定 pack/spec/facts 内容 hash、可追到规则与事实的 `ValidationReceipt`，且明确 `draft_created=false`、`published=false`、`actions_executed=false`、`external_write=false`。
+固定 artifact 以顶层 baseline pack/spec 为唯一权威，validation authority 只保存 JSON refs + hash；candidate 具有独立 pack/spec。PC Validation 页面以 `receipt_recorded` 投影 4 cases / 8 receipts、证据、hash 与边界，不重算 SHA、不实现 evaluator；结构、引用或绑定不一致时 fail closed。
+
+这里的 `validation=completed` / `receipt_recorded` 只表示固定合成验证已经求值并记录；单条规则 `pass` 只表示输入满足候选规则。人工 review、version、publication、action 和外部 writeback 仍为 `not_started`，所有 write/action 标志仍为 `false`。本地提交不代表已经合并、交付或具备生产能力。
+
+## NEXT
 
 ### Loop 4 — 不可变版本、人工审查与发布门
 
-**状态：entry_blocked_by_loop_3**
+**状态：not_started**
 
 先把首份 candidate/draft receipt 审查、确认并发布为 baseline；再对 revised candidate pack/spec/receipt 建立不可变 version/base，让 review 绑定精确内容 hash，并同时提供结构 `semantic diff` 和业务 `DecisionDelta`。`DecisionDelta` 比较 published baseline 与 candidate receipt，报告订单进入优先队列、退出优先队列、仍在优先队列或变为信息不足，并逐项附上规则与证据依据。
 
 出口：退回—修订—再审—发布可重放；旧 review 不会套用到新内容；只有 confirmed 且可验证的内容能发布；一名真实 FDE 和一名供应链业务验证参与者共同理解并纠正、批准或复用至少一份 `DecisionDelta`。
 
-Loop 4 是产品验证闸，不是自动通往平台建设的里程碑。若真实 FDE 和供应链业务验证参与者不能共同纠正、批准或复用 `DecisionDelta`，停止扩张并重新锚定，不得进入 Loop 5–7。
+Loop 4 是产品验证闸，不是自动通往平台建设的里程碑。当前虽已完成窄范围合成 validation，但输出结构仍大部分模板化；J1 / J2 / J3 与 Step A / C 仍优先于 review/publication 扩张。若真实 FDE 和供应链业务验证参与者不能共同纠正、批准或复用 `DecisionDelta`，停止扩张并重新锚定，不得进入 Loop 5–7。
 
 进入门必须由可检查的产品验证记录证明：保存被评估的 delta/receipt hash、参与者角色、实际纠正/批准/复用证据、`go / no_go`、理由和时间；只有一名真实 FDE 与一名供应链业务验证参与者共同形成 `go`，才解除 Loop 5–7 的阻塞。
 
@@ -197,4 +201,4 @@ Loop 4 是产品验证闸，不是自动通往平台建设的里程碑。若真�
 
 ## 暂缓
 
-前端、自由式 LLM 自动建模、RAG、向量库、Neo4j、生产连接器、多租户、复杂 RBAC、后台任务、RDF/OWL/SHACL、自动外部行动和行业模板市场均不在当前授权内。只有已完成 Loop 暴露明确阻塞，并形成新的可证伪计划后才进入。
+除当前只读 PC Demo 外的前端扩展、自由式 LLM 自动建模、RAG、向量库、Neo4j、生产连接器、多租户、复杂 RBAC、后台任务、RDF/OWL/SHACL、自动外部行动和行业模板市场均不在当前授权内。只有已完成 Loop 暴露明确阻塞，并形成新的可证伪计划后才进入。

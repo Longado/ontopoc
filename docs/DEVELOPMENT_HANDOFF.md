@@ -1,6 +1,6 @@
 # OntoPoc 开发接力文档
 
-最后更新:2026-08-30(v2.1,第 6 节经反调 / 跨项目 / 工程三镜片评审重排;基于对代码的逐项核对重写;v1 md5 `20c65997`)
+最后更新:2026-08-31(v2.2,按当前本地 validation artifact 与前端投影实现收口)
 
 远端仓库:`https://github.com/Longado/ontopoc`(私有)
 
@@ -10,28 +10,29 @@
 
 ## 0. 接手第一步:对账
 
-本文档写于 `9b251d0`。任何判断都以这个提交为准,先 diff 再信:
+本文档以远端已合并基线 `9b251d0` 加当前本地分支 6 个 validation 实现提交(`df89bb6..beacec1`)为依据。这 6 个实现提交和当前文档收口均尚未 merge / push,不要把本文状态当成远端或已交付状态。接手时先对当前 checkout 对账:
 
 ```bash
 cd /Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo
-git fetch origin && git log --oneline 9b251d0..origin/main
+git status --short --branch
+git log --oneline 9b251d0..HEAD
 ```
 
-输出为空 → 本文档是最新的。输出不为空 → 先读那些提交,再决定本文档哪些段落已经过时。
+先确认工作树状态,再读新增提交；本文只描述当前本地 checkout,不证明远端已同步。
 
-然后跑一遍基线,四个数字必须对上:
+当前本地快照的快速核验命令:
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests 2>&1 | tail -3      # Ran 249 tests ... OK
-PYTHONPATH=src python -m unittest tests.test_rule_runtime 2>&1 | tail -3 # Ran 6 tests ... OK
-cd landing-page && npm run test:unit 2>&1 | grep -E "^ℹ (tests|fail)"    # tests 58 / fail 0
-npm run test:sites 2>&1 | grep -E "^ℹ (tests|fail)"                      # tests 4 / fail 0
-npm run build 2>&1 | grep "modules transformed"                          # 1973 modules transformed
+PYTHONPATH=src python -m unittest discover -s tests 2>&1 | tail -3       # Ran 256 tests ... OK
+PYTHONPATH=src python scripts/generate_demo_artifact.py --check          # exit 0,不写文件
+cd landing-page && npm run test:unit 2>&1 | grep -E "^ℹ (tests|fail)"   # tests 79 / fail 0
+npm run test:sites 2>&1 | grep -E "^ℹ (tests|fail)"                     # tests 4 / fail 0
+npm run build 2>&1 | grep "modules transformed"                         # 1973 modules transformed
 ```
 
 ## 1. 一句话接力
 
-内核和边界做得很扎实,但**产品还没有随输入变化的输出**:LLM 只能填一张闭集表单,本体和规则来自常量模板,prompt 从未对真模型跑过。下一步不是再加一层可信度,是先做一次能证伪它的实验,再把"材料口"和"知识口"打开。原 v1 的 Task 1–2(把 `ValidationReceipt` 接进前端)仍然要做,但降为顺手活,不是主线。
+内核、validation artifact 和前端只读回执投影已经接通,但**产品还没有随输入变化的输出**:LLM 只能填一张闭集表单,本体和规则来自常量模板,prompt 从未对真模型跑过。下一步不是再加一层可信度,是先做一次能证伪它的实验,再把"材料口"和"知识口"打开。validation 完成不代表产品价值通过,J1 / J2 / J3 和 Step A / C 仍是主线。
 
 ## 2. 项目是什么
 
@@ -51,7 +52,7 @@ OntoPoc 帮 FDE 把一段业务材料收敛成可审查的决策资产。首个�
 → 人工审查(未做)
 ```
 
-前端是一个只读工作台,把后端事先生成的 artifact JSON 投影成四个阶段页面。前端不调用 Python,不做规则求值。
+前端是一个只读工作台,把后端事先生成的 artifact JSON 投影成四个阶段页面。Validation 阶段为 `receipt_recorded`;前端不调用 Python,不做规则求值,也不重算 SHA。
 
 ## 3. 真实状态诊断(v2 新增,接手人最该读的一节)
 
@@ -59,7 +60,7 @@ OntoPoc 帮 FDE 把一段业务材料收敛成可审查的决策资产。首个�
 
 - 边界在代码里不在 prompt 里:`rule_runtime.py:243-246` 把四个零副作用字段写死 `False`;`recognition.py:203` 起的 `_validate_candidate` 拒绝一切额外字段;`decision_owner` 必须是原文子串(`recognition.py:392`)。
 - 一切可 hash、可重放:同一输入两次运行 DecisionPack / OntologySpec 文件 md5 完全一致(8-30 实测)。
-- 249 个后端测试对 5084 行 src,前端 62 个测试;不支持的 `rule_kind` 在编译期(`knowledge_compiler.py:125`,blocking issue)和求值期(`rule_runtime.py:203`,`unsupported`)两道都拦。
+- 当前本地快照为后端 256 个测试、前端 unit 79 个测试、Sites 4 个测试和 Vite build 1973 modules;不支持的 `rule_kind` 在编译期(`knowledge_compiler.py:125`,blocking issue)和求值期(`rule_runtime.py:203`,`unsupported`)两道都拦。
 
 ### 3.2 三个信息入口,现在各开多大
 
@@ -87,10 +88,10 @@ PRD FR-003"展示候选决策、对象、关系、规则及对应证据片段"�
 
 ### 3.5 其他已知债务
 
-- CI(`.github/workflows/tests.yml`)只跑后端 unittest,前端 58/4/build 不在 CI 里。
+- CI(`.github/workflows/tests.yml`)只跑后端 unittest,前端 79/4/build 不在 CI 里。
 - `landing-page/src/App.jsx` 有 50 行超过 300 字符(整段 JSX 和双语文案压成一行),`TrialWorkspace.jsx` 5 行、`styles.css` 5 行同样。可维护性差,过一遍 prettier 即可。
 - 前端问答(`ontologyWorkspaceModel.js:446-536`)是一段手写正则意图分类器(含 prompt-injection 关键字表),只对这一个固定 artifact 有效。它是演示道具,不是能力,不要在此基础上扩展。
-- 前端的"hash 校验"(`trialWorkspaceModel.js:86`、`agentModelingSession.js:83`)只查格式(64 位 hex)和字段间相等,不重算 sha256。失配统一落到通用 error 页,没有单独状态。
+- 前端适配器(`trialWorkspaceModel.js`)校验 hash 格式、authority 绑定、rule/fact/evidence 引用闭包和四个副作用字段,但不重算 SHA。任何缺字段或绑定不一致都会抛错并落到通用 error 页,即 fail closed;前端不维护第二套 evaluator 或 authority。
 - **决策问题只有一个**:写死的 `order_priority_intervention` 是否对应现役客户的真实诉求,仓库里没有任何证据(没有客户材料、没有实验记录)。见 §6 Step A。
 - 本地有 14 条已合并的 `codex/*` 分支未删。
 - `knowledge.py` 的 `applicability.readiness_requirement_keys` 只做结构校验,`match_knowledge_unit` 里没有用它做门控;真正起作用的是 `readiness_gap` 模板级过滤(`knowledge.py:845`)。
@@ -135,35 +136,34 @@ PRD FR-003"展示候选决策、对象、关系、规则及对应证据片段"�
 | `main.jsx` / `appSurfaceModel.js` | 14 / 4 | `/landing` → `App`,其余一切路径 → `StandaloneDemo` |
 | `App.jsx` | 451 | 营销页,双语文案内联 |
 | `StandaloneDemo.jsx` | 47 | `/` 与 `/demo` 的壳 |
-| `TrialWorkspace.jsx` | 208 | 四阶段工作台;`:103` fetch artifact |
-| `trialWorkspaceModel.js` | 165 | `adaptTrialArtifact`:校验 schema 名与 hash 格式,拆四阶段;`:154` `receipt: null` |
+| `TrialWorkspace.jsx` | 282 | 四阶段工作台;读取 artifact 并展示 4 cases / 8 receipts、证据、hash 与边界 |
+| `trialWorkspaceModel.js` | 588 | `adaptTrialArtifact`:严格校验 schema、authority、引用闭包和回执绑定;Validation stage=`receipt_recorded` |
 | `OntologyWorkspace.jsx` / `ontologyWorkspaceModel.js` | 469 / 536 | React Flow 图、节点详情、正则问答 |
 | `DocumentModeler.jsx` / `documentModelingDemoModel.js` | 218 / 67 | 三个写死的场景;只有第一个走真 artifact,另两个是纯前端静态图 |
 | `agentModelingSession.js` | 161 | "确认"步骤的会话内 hash 交叉检查,不持久化 |
 | `worker/index.js` + `.openai/hosting.json` | — | SPA 回退 worker;宿主是 OpenAI Sites(`d1`/`r2` 声明为 null 未用) |
 
-数据流:`public/artifacts/supply-chain-recognition.json`(后端 `scripts/generate_demo_artifact.py` 生成)→ `adaptTrialArtifact` → `projectOntologyWorkspace` → 页面。前端不做规则求值。
+数据流:`public/artifacts/supply-chain-recognition.json`(后端 `scripts/generate_demo_artifact.py` 生成)→ `adaptTrialArtifact` → `projectOntologyWorkspace` / Validation 投影 → 页面。baseline 顶层 pack/spec 是唯一权威,validation authority 只存 JSON refs + hash;candidate 独立携带 pack/spec。前端不做规则求值或 SHA 重算。
 
 ## 5. 已实现 / 未实现(修正版)
 
-已实现:第 3.1 节 + v1 文档 §3 全部属实(8-30 逐项核过),不重复。
+已实现:第 3.1 节 + 后端固定 `validation_run.v1` 与前端只读回执投影。后端以固定 4 个 case 分别求值 baseline/candidate,生成 8 个真实 `ValidationReceipt.v1`;每个回执带 canonical receipt hash,并绑定 pack/spec/facts hash、rule、fact refs 和 evidence refs,四个副作用字段固定为 `false`。artifact 默认写入采用同目录 temp + fsync + 单次 `os.replace`;`--check` 只读比较 canonical bytes,相同返回 0,missing/stale 返回 1 且不写。
 
 未实现,不能写成已完成:
 
-1. Validation 页仍 `receipt = null`,后端真实回执未写入 artifact;
-2. 前端不调用 Python 内核,模型识别 CLI 未连浏览器;
-3. **模型从未提取过对象或关系**(3.2);
-4. **知识单元只有一个真单元**(3.2);
-5. **只有一种规则形态**(3.2);
-6. prompt 从未对真模型验证,无 golden set(3.4);
-7. 没有 review / version / publication / `DecisionDelta`;
-8. 没有数据库、账号、持久化、生产 API;
-9. 没有真实客户事实和业务效果证据;
-10. 没有正式公网地址。
+1. 前端不调用 Python 内核,模型识别 CLI 未连浏览器;
+2. **模型从未提取过对象或关系**(3.2);
+3. **知识单元只有一个真单元**(3.2);
+4. **只有一种规则形态**(3.2);
+5. prompt 从未对真模型验证,无 golden set(3.4);
+6. review / version / publication / `DecisionDelta` / action 都是 `not_started`;
+7. 没有数据库、账号、持久化、生产 API;
+8. 没有真实客户事实和业务效果证据;
+9. 没有正式公网地址。
 
-`README.md` 和 `docs/ROADMAP.md`(Loop 3 仍标 `not_started`,`:137`)落后于代码,等第 6 节 Step E 一起改。
+生命周期必须分开读:`validation=completed` 表示后端固定合成求值已完成,前端 `receipt_recorded` 表示这些回执已被投影;单条 `pass` 只表示输入满足规则。三者都不等于人工 review、publication、action、客户确认或生产运行。
 
-## 6. 下一步执行顺序(v2.1,经三镜片评审后重排)
+## 6. 下一步执行顺序(v2.2,经三镜片评审后重排)
 
 > **8-30 三方辩论收敛(产品 / 架构 / 砍手三视角,两轮):** 唯一共识是问题 1(输出等于模板)第一;"先建人工审查"(架构)被否——材料口和知识口都锁在同一份 S-1 数据上,审查建了也没变量可审,设计可以先定、代码等 J1 出信号;"先改开发节奏"(砍手)升为并列根因,落地闸只有一条:每个 PR 描述注明服务 J1 / J2 / J3 哪条或标"非主线"。**第一步三方一致:Step A + Step C 合并做,零新代码**——真模型 + 真材料跑现有 CLI,挂上已验证的知识单元,产出 FDE 能直接读的 markdown(`generator.py` / `renderers.py` 早已把知识建议渲染进方案,导出通道现成),记入 `docs/experiments/`。顺手项:把 S-1 在 `recognition.py` 与 `knowledge.py` 的两份手抄常量合并成一个共享模块(几行,不是新抽象)。
 
@@ -251,10 +251,10 @@ CQ 清单与知识单元同 PR:`tests/golden/competency_questions.md`,每条对�
 
 ### Step E:顺手活(各自独立 PR,随时可做)
 
-1. **v1 Task 1–2**:Python 内核为四笔合成事实生成真实 baseline/candidate `ValidationReceipt` 写入 artifact;前端 Validation 页展示 status / decision result / rule ID / fact & evidence refs / 三个 hash / 四个零副作用字段;不在前端重写 evaluator。
+1. **v1 Task 1–2:已在当前本地分支实现,尚未 merge / push。** Python 内核已为四笔合成事实生成真实 baseline/candidate `ValidationReceipt` 写入 artifact;前端 Validation 页展示 status / decision result / rule ID / fact & evidence refs / pack/spec/facts/receipt hash 与 lifecycle 边界,并在投影前严格校验四个 receipt 副作用字段为 `false`,且没有在前端重写 evaluator。对应实现提交为 `df89bb6..beacec1`。
 2. **Golden set + eval**:`tests/golden/recognition_cases.jsonl` 15–20 条(matched / insufficient / unsupported 各 5+);CI 默认用 `FakeGateway` 跑 Layer A(< 10 s,阻断);真模型 judge 只在有 API key 时跑,结果落 `docs/experiments/`,不阻断合并。识别结果信封已带 provider / model / prompt_version,够用;`--model` 改为必填并在实验记录里钉死版本。
 3. **卫生 PR**:CI 加前端 job;`App.jsx` 等过 prettier;删 14 条已合并本地分支。
-4. **文档收口**:A–D 完成后再改 README / ROADMAP / PRD。
+4. **文档收口**:当前已先修正 validation 生命周期事实;A–D 的产品方向变化仍应在各自完成后单独更新。
 
 ### 明确不做(J1–J3 达成前)
 
@@ -270,8 +270,9 @@ DecisionDelta、review / version / publication、数据库、账号、公网部�
 
 ```bash
 cd /Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo
-PYTHONPATH=src python -m unittest discover -s tests -v        # 249 OK
+PYTHONPATH=src python -m unittest discover -s tests -v        # 当前本地快照:256 OK
 PYTHONPATH=src python -m unittest tests.test_rule_runtime -v  # 6 OK
+PYTHONPATH=src python scripts/generate_demo_artifact.py --check # canonical artifact 相同则 0,只读
 ```
 
 生成 DecisionPack / OntologySpec(输出放临时目录,不进仓库;两次运行 md5 应一致):
@@ -303,7 +304,7 @@ PYTHONPATH=src python -m ontology_poc_generator.recognition_cli \
 ```bash
 cd landing-page
 npm ci
-npm run test:unit    # 58
+npm run test:unit    # 当前本地快照:79
 npm run test:sites   # 4
 npm run build        # 1973 modules transformed
 npm run dev -- --host 127.0.0.1 --port 5174
@@ -321,6 +322,18 @@ npm run dev -- --host 127.0.0.1 --port 5174
 | `missed + qualification unavailable` | `not_evaluable / information_insufficient` | 同左 |
 
 输入:`knowledge/supply_chain/order_priority_policy_synthetic_s1_v1.json`、`tests/fixtures/knowledge/order_priority_policy_synthetic_candidate_v2.json`、`tests/fixtures/policy/order_priority_policy_synthetic_cases_v1.json`。
+
+### 7.4 Artifact 恢复决策
+
+| 观察到的状态 | 最小处置 | 不应做什么 |
+|---|---|---|
+| artifact missing / stale | 用脚本内同一组固定输入运行 `PYTHONPATH=src python scripts/generate_demo_artifact.py`,再用 `--check` 核对 canonical bytes | 不手改 committed JSON,不把 stale 当可继续投影 |
+| hash / binding mismatch | 前端 fail closed;回到后端 authority 和固定输入重新生成,定位 pack/spec/facts/receipt 或引用闭包的差异 | 不在前端放宽校验,不重算另一套结果 |
+| `not_evaluable` | 补齐规则要求的事实与证据后重新生成 | 不对同一份缺失事实盲重试 |
+| `unsupported` | 记录为 evaluator / rule contract 的能力缺口,另行设计并测试支持范围 | 不把它降级成 `fail` 或 `pass` |
+| 写入中断 / `os.replace` 失败 | 旧 artifact 仍保留;排除文件系统问题后用同一固定输入重跑 | 不把临时文件或部分内容当新权威 |
+
+这张表只处理单文件本地 artifact 的确定性再生成和 fail-closed 展示,不是 Saga,也不提供外部系统补偿。当前没有数据库事务、账号状态、Action、publication 或外部 writeback 可补偿。
 
 ## 8. Git 与本地目录
 
@@ -354,6 +367,7 @@ git switch -c <owner>/<small-capability> origin/main
 ## 9. 开发边界(不变)
 
 - `candidate` 不自动变 `confirmed`;`suggestion` 不自动变业务事实;
+- `validation=completed` 只表示固定合成求值完成;`receipt_recorded` 只表示前端记录式投影可见;
 - `pass` 只表示合成规则匹配,不表示客户批准;
 - 前端只投影后端状态,不维护第二套真相,不冒充执行结果;
 - 不自动 review、publish、创建任务或写回;
@@ -369,18 +383,20 @@ git switch -c <owner>/<small-capability> origin/main
 | Loop 3 synthetic rule runtime | #10 | `e632590` |
 | 开发接力文档 v1 | #11 | `9b251d0` |
 
+当前本地分支另有 6 个尚未 merge / push 的 validation artifact / 前端投影提交:`df89bb6`、`9cd4cc6`、`4d42f74`、`1c3babe`、`dd48f1a`、`beacec1`。它们是本地实现证据,不是远端合并或交付证明。
+
 ## 11. 可直接复制给下一位开发者的 Prompt
 
 ```text
 接手开发 /Users/eddie/Desktop/Workspace/ontology-poc-generator。
 
-先读 docs/DEVELOPMENT_HANDOFF.md 第 0 节做对账(git log 9b251d0..origin/main 为空、四个测试数字对上),再读第 3 节诊断。
+先读 docs/DEVELOPMENT_HANDOFF.md 第 0 节做对账,确认当前 checkout 和本地新增提交,再读第 3 节诊断。当前本地快照是后端 256、前端 unit 79、Sites 4、build 1973 modules;这些数字不代表 CI 或远端已经同步。
 
 严禁修改主目录里的 README.md、docs/HANDOFF_FRONTEND_BACKEND_ALIGNMENT.md 和未跟踪的 landing-page/。只在 .worktrees 下从 origin/main 开的干净分支工作。
 
-现状:内核、hash、四态、零副作用边界都已实现且 249 tests 通过;但 LLM 只填闭集表单(recognition.py 禁止输出对象和关系),知识单元只有一个真单元,规则只有 categorical_all_of_v1,任何 matched 的材料都产出同一份本体。
+现状:内核、hash、四态、零副作用边界已实现;固定 validation_run.v1 含 4 cases / 8 receipts,前端只读投影为 receipt_recorded,不重算 SHA、不实现 evaluator。但 LLM 只填闭集表单(recognition.py 禁止输出对象和关系),知识单元只有一个真单元,规则只有 categorical_all_of_v1,任何 matched 的材料都产出同一份本体。
 
-按第 6 节顺序做:A 用真模型跑一次脱敏真实材料并记录;B 让模型提取带 evidence_span 的候选对象/关系,代码校验 span 是原文子串;C 按 supplier_evidence_boundary_v1 格式写 3–5 个供应链顾问判断知识单元;D 加 threshold_v1 规则;E 顺手把真实 ValidationReceipt 接进前端、CI 加前端、清分支。
+按第 6 节顺序做:A 用真模型跑一次脱敏真实材料并记录;B 让模型提取带 evidence_span 的候选对象/关系,代码校验 span 是原文子串;C 按 supplier_evidence_boundary_v1 格式写 3–5 个供应链顾问判断知识单元;D 加 threshold_v1 规则。ValidationReceipt 接入已在当前本地分支完成;CI 加前端、清分支仍未做。
 
 判据:两段不同真实材料 → 本体不同,且至少一处是工具追问出来的。达成前不做 DecisionDelta、review、部署。
 

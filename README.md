@@ -8,12 +8,12 @@
 场景参数
 -> 业务决策卡
 -> 对象/关系/规则/数据草案
--> 决策闭环与演示剧本
--> 验收问题、交付物和风险边界
+-> DecisionPack / OntologySpec
+-> 合成事实确定性验证与 ValidationReceipt
 -> 人工审查与修订
 ```
 
-当前版本是确定性 Proposal CLI，并已完成首个 opt-in 的有来源知识辅助 Loop：显式加载供应链知识单元后，CLI 会编译不可变 `DecisionPack`，输出带来源、适用性、稳定绑定和 `candidate` 边界的建议。POC Markdown/JSON 仍只是 `DecisionPack` 的投影；后续 Loop 才逐步加入本体规格、无状态验证、人工审查、版本、数据血缘和受控行动。旧 EIP 只作为行为参考，不复制其模块或数据库。
+当前本地分支已在确定性 Proposal CLI 之上完成首个 opt-in 的有来源知识辅助 Loop、`DecisionPack → OntologySpec` 编译和无状态合成验证。固定 Demo artifact 记录 `validation_run.v1`：4 个合成 case 分别对 baseline/candidate 求值，生成 8 个真实、带 canonical receipt hash 并绑定 pack/spec/facts hash 的 `ValidationReceipt.v1`；PC Validation 页面只投影这些后端回执。POC Markdown/JSON、`OntologySpec` 和回执仍是 `synthetic_demo` 资产；人工审查、版本、发布、真实数据接入与受控行动尚未实现。旧 EIP 只作为行为参考，不复制其模块或数据库。
 
 ## MVP 输入
 
@@ -70,4 +70,4 @@ PYTHONPATH=src python -m ontology_poc_generator.cli \
 - 第一版不自动连接 ERP/MES，不执行外部写回；
 - 第一版不以“对象数量”作为 POC 成功指标，成功标准是一个业务决策闭环可被客户纠正和验收。
 - 当前生成器尚不等于新 EIP；只有完成对应 Loop 的测试和黄金场景证据后，能力才可标记为已实现；
-- 当前尚无 `OntologySpec`、T-Box、规则求值、四态 `ValidationReceipt`、最终优先干预队列或 Action；candidate 建议也不代表客户确认、业务事实或生产结论。
+- 当前已有 draft/candidate `OntologySpec`、`categorical_all_of_v1` 四态运行时和录制式 `ValidationReceipt` 展示，但 `validation=completed` / `receipt_recorded` 只表示固定合成验证已记录，规则 `pass` 只表示规则匹配；两者都不等于人工 review、publication、Action、客户确认、业务事实或生产结论。
