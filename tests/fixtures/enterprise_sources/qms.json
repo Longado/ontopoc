@@ -1,0 +1,7 @@
+{
+  "records": [
+    {"source_record_id": "quality-event-017", "observed_at": "2026-08-04T09:10:00+08:00", "subject_id": "quality-event-017", "predicate": "IDENTIFIES", "object_id": "unit-abnormal-017-a", "availability": "available", "evidence_ref": "qms:quality-event-017"},
+    {"source_record_id": "inspection-abnormal-017", "observed_at": "2026-08-04T09:08:00+08:00", "subject_id": "unit-abnormal-017-a", "predicate": "HAS_INSPECTION_OUTCOME", "object_id": "abnormal", "availability": "available", "evidence_ref": "qms:inspection-abnormal-017"},
+    {"source_record_id": "inspection-normal-021", "observed_at": "2026-08-04T09:06:00+08:00", "subject_id": "unit-normal-021-b", "predicate": "HAS_INSPECTION_OUTCOME", "object_id": "normal", "availability": "available", "evidence_ref": "qms:inspection-normal-021"}
+  ]
+}

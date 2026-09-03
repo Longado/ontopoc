@@ -1,0 +1,122 @@
+{
+  "control_scope_objects": [
+    {
+      "evidence_refs": [
+        "mes:material-use-abnormal-017",
+        "qms:inspection-abnormal-017",
+        "qms:quality-event-017",
+        "wms:inventory-batch-017"
+      ],
+      "object_id": "inventory-lot-017",
+      "object_type": "inventory",
+      "reason": "对象与质量异常件使用同一物料批次，进入临时控制候选。",
+      "status": "confirmed_impact"
+    },
+    {
+      "evidence_refs": [
+        "mes:material-use-abnormal-017",
+        "mes:wip-batch-204",
+        "qms:inspection-abnormal-017",
+        "qms:quality-event-017"
+      ],
+      "object_id": "work-order-wip-204",
+      "object_type": "work_in_process",
+      "reason": "对象与质量异常件使用同一物料批次，进入临时控制候选。",
+      "status": "confirmed_impact"
+    },
+    {
+      "evidence_refs": [
+        "mes:process-version-abnormal-017",
+        "qms:inspection-abnormal-017",
+        "qms:quality-event-017",
+        "wms:pending-shipment-031"
+      ],
+      "object_id": "pending-shipment-031",
+      "object_type": "pending_shipment",
+      "reason": "对象与异常件使用同一版本，但缺少物料批次级直接绑定。",
+      "status": "possible_impact"
+    },
+    {
+      "evidence_refs": [
+        "mes:material-use-normal-021",
+        "qms:inspection-abnormal-017",
+        "qms:inspection-normal-021",
+        "qms:quality-event-017",
+        "wms:in-transit-044"
+      ],
+      "object_id": "in-transit-shipment-044",
+      "object_type": "in_transit",
+      "reason": "对象使用另一物料批次，且该批次关联的对照件检验正常。",
+      "status": "excluded"
+    },
+    {
+      "evidence_refs": [
+        "plm:missing-project-product-map-017",
+        "qms:inspection-abnormal-017",
+        "qms:quality-event-017"
+      ],
+      "object_id": "customer-unit-group-017",
+      "object_type": "customer_side",
+      "reason": "缺少把该对象闭合到异常件的必要关系，当前无法评估。",
+      "status": "not_evaluable"
+    }
+  ],
+  "evidence_scope": "synthetic_demo",
+  "factors": [
+    {
+      "abnormal_subject_ids": [
+        "unit-abnormal-017-a"
+      ],
+      "counterevidence_refs": [],
+      "evidence_refs": [
+        "mes:equipment-use-abnormal-017"
+      ],
+      "factor_id": "equipment-e07",
+      "normal_subject_ids": [],
+      "predicate": "EXECUTED_ON",
+      "status": "priority"
+    },
+    {
+      "abnormal_subject_ids": [
+        "unit-abnormal-017-a"
+      ],
+      "counterevidence_refs": [],
+      "evidence_refs": [
+        "mes:material-use-abnormal-017"
+      ],
+      "factor_id": "component-batch-017",
+      "normal_subject_ids": [],
+      "predicate": "USES_BATCH",
+      "status": "priority"
+    },
+    {
+      "abnormal_subject_ids": [
+        "unit-abnormal-017-a"
+      ],
+      "counterevidence_refs": [
+        "mes:process-version-normal-021"
+      ],
+      "evidence_refs": [
+        "mes:process-version-abnormal-017"
+      ],
+      "factor_id": "process-version-v3",
+      "normal_subject_ids": [
+        "unit-normal-021-b"
+      ],
+      "predicate": "BUILT_UNDER_VERSION",
+      "status": "weakened"
+    }
+  ],
+  "gaps": [
+    {
+      "evidence_ref": "plm:missing-project-product-map-017",
+      "predicate": "MAPPED_TO_PROJECT",
+      "source_system": "PLM_SYNTHETIC",
+      "subject_id": "unit-abnormal-017-a"
+    }
+  ],
+  "quality_signal_id": "quality-event-017",
+  "root_cause_confirmed": false,
+  "schema": "investigation_scope.v1",
+  "source_snapshot_ref": "tests/fixtures/quality/quality_investigation_source_snapshot_v1.json"
+}

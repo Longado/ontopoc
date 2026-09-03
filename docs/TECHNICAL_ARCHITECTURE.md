@@ -1,27 +1,27 @@
 # OntoPoc Evidence-bound Decision Compiler 技术架构
 
-**版本：** v0.2
-**状态：** Current Core + Frozen Target Reference
-**日期：** 2026-08-31
+**版本：** v0.3
+**状态：** Current Connected Synthetic Slice + Target Reference
+**日期：** 2026-09-02
 **适用范围：** DecisionPack、知识辅助编译、本体规格、校验、版本、映射、血缘、决策与适配边界
 **明确不包含：** 前端页面、视觉、交互和组件设计
 
 ## 1. 架构目标
 
-> 2026-08-31 收枝说明：当前实施顺序只以 [ROADMAP](ROADMAP.md) 的 Gate 1–3 和 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md) 第 6 节为准。本文后续的 Studio、治理、版本、EIP、API 和 Repository 内容均为历史目标候选，不代表当前接口或建设承诺。
+> 2026-09-02 收枝说明：当前只实现质量临时控制范围这一条产品切片。五系统接入是统一只读 JSON/HTTPS 契约与合成联调，不代表 SAP 或任一客户生产接口已经验收。本文后续的 Studio、治理、版本、EIP、API 和 Repository 内容均为历史目标候选，不代表当前接口或建设承诺。
 
 本架构记录 OntoPoc 当前已经存在的最小可信路径。长期愿景仍可描述为 **Persistent AI FDE**，但当前产品只应称为 **Evidence-bound Decision Compiler（recorded artifact edition）**。核心资产是不可变 `DecisionPack`；首个黄金主决策是“哪些订单进入优先干预队列”。
 
 ```text
-业务材料 / 结构化场景输入
--> 有来源的 DecisionPack
--> 新仓 OntologySpec
--> synthetic facts + stateless validation
--> hash-bound ValidationReceipt
--> committed static artifact
--> browser read-only projection
+ERP / MES / QMS / WMS / PLM 只读事实
+-> canonical source snapshot + hash
+-> deterministic control scope (四态)
+-> evidence-bound multi-Agent modeling
+-> DecisionPack + OntologySpec
+-> decision advisory candidate
+-> human confirmation boundary
 
-当前到此为止。review、version、DecisionDelta、publication、数据映射和受控行动均未进入实现。
+当前到此为止。客户厂商接口验收、持久化 review、version、publication 和受控行动均未进入实现。
 ```
 
 技术目标：
@@ -53,10 +53,15 @@
 - Markdown 和 JSON 输出；
 - CLI；
 - 乳品研发、供应链异常两个合成样例。
+- ERP、MES、QMS、WMS、PLM 各一个来源的只读 manifest，支持本地 JSON 与 HTTPS GET；
+- 规范化 `quality_source_snapshot.v1`、逐来源与整包 canonical hash；
+- 基于批次、版本、正常对照与缺失关系的临时控制四态计算；
+- 决策分析、本体建模、证据审查、决策建议四个 Agent 角色；
+- Agent 建议的对象覆盖、状态映射和 evidence refs 由 Python fail closed 校验。
 
 ### 2.2 当前未实现
 
-- 从真实材料抽取对象、关系和 evidence span；
+- 经客户授权并验收的真实厂商接口与字段映射；
 - 经过真模型与脱敏真实材料验证的 recognition；
 - 足以覆盖真实顾问追问的知识单元集合；
 - 阈值等第二种规则形态；
@@ -67,7 +72,7 @@
 - Acceptance Matrix renderer；
 - 版本与 diff；
 - EIP 适配器；
-- 持久化 review、version、publication、`DecisionDelta`、Agent 编排和任务执行；
+- 持久化 review、version、publication、`DecisionDelta` 和任务执行；
 - 数据库、生产 API、EIP 对接与外部写回；
 - 客户数据授权与验证。
 

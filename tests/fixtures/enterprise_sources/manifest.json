@@ -1,0 +1,13 @@
+{
+  "schema": "enterprise_source_manifest.v1",
+  "evidence_scope": "synthetic_demo",
+  "quality_signal_id": "quality-event-017",
+  "context_text": "制造业质量经理负责在质量异常发生后决定哪些库存、在制、待发运、在途或客户侧对象进入临时控制或复检队列。ERP、MES、QMS、WMS、PLM 均提供只读数据。最终范围必须由质量经理人工确认，系统不得自动冻结库存、停产或拦截发运。验收时需要说明每个对象的证据或数据缺口。",
+  "sources": [
+    {"system": "ERP", "transport": "json_file", "location": "erp.json"},
+    {"system": "MES", "transport": "json_file", "location": "mes.json"},
+    {"system": "QMS", "transport": "json_file", "location": "qms.json"},
+    {"system": "WMS", "transport": "json_file", "location": "wms.json"},
+    {"system": "PLM", "transport": "json_file", "location": "plm.json"}
+  ]
+}

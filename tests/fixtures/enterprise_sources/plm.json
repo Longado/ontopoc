@@ -1,0 +1,6 @@
+{
+  "records": [
+    {"source_record_id": "process-version-v3-bom", "observed_at": "2026-08-04T09:12:00+08:00", "subject_id": "process-version-v3", "predicate": "USES_BOM", "object_id": "bom-v3", "availability": "available", "evidence_ref": "plm:process-bom-v3"},
+    {"source_record_id": "customer-project-map-017", "observed_at": "2026-08-04T09:12:00+08:00", "subject_id": "customer-unit-group-017", "predicate": "MAPPED_TO_PROJECT", "object_id": null, "availability": "missing", "evidence_ref": "plm:missing-project-product-map-017"}
+  ]
+}

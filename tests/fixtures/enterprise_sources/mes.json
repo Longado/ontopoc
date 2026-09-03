@@ -1,0 +1,9 @@
+{
+  "records": [
+    {"source_record_id": "material-use-abnormal-017", "observed_at": "2026-08-04T08:42:00+08:00", "subject_id": "unit-abnormal-017-a", "predicate": "USES_BATCH", "object_id": "component-batch-017", "availability": "available", "evidence_ref": "mes:material-use-abnormal-017"},
+    {"source_record_id": "process-version-abnormal-017", "observed_at": "2026-08-04T08:30:00+08:00", "subject_id": "unit-abnormal-017-a", "predicate": "BUILT_UNDER_VERSION", "object_id": "process-version-v3", "availability": "available", "evidence_ref": "mes:process-version-abnormal-017"},
+    {"source_record_id": "material-use-normal-021", "observed_at": "2026-08-04T08:38:00+08:00", "subject_id": "unit-normal-021-b", "predicate": "USES_BATCH", "object_id": "component-batch-018", "availability": "available", "evidence_ref": "mes:material-use-normal-021"},
+    {"source_record_id": "work-order-wip-204-type", "observed_at": "2026-08-04T09:15:00+08:00", "subject_id": "work-order-wip-204", "predicate": "HAS_OBJECT_TYPE", "object_id": "work_in_process", "availability": "available", "evidence_ref": "mes:wip-type-204"},
+    {"source_record_id": "wip-batch-204", "observed_at": "2026-08-04T09:15:00+08:00", "subject_id": "work-order-wip-204", "predicate": "USES_BATCH", "object_id": "component-batch-017", "availability": "available", "evidence_ref": "mes:wip-batch-204"}
+  ]
+}

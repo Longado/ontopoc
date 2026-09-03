@@ -13,18 +13,101 @@ function requireModel() {
   return model;
 }
 
-test("defines exactly three synthetic presets with one compiled route and two previews", () => {
+test("opens the quality temporary-control Phase 1 scenario by default without removing existing presets", () => {
   const { DOCUMENT_MODELING_PRESETS } = requireModel();
 
-  assert.equal(DOCUMENT_MODELING_PRESETS.length, 3);
+  assert.equal(DOCUMENT_MODELING_PRESETS.length, 4);
   assert.deepEqual(
     DOCUMENT_MODELING_PRESETS.map(({ id }) => id),
-    ["supply-chain-order-intervention", "supplier-qualification-change", "dairy-rd-fallback"],
+    ["quality-temporary-control", "supply-chain-order-intervention", "supplier-qualification-change", "dairy-rd-fallback"],
   );
+  assert.equal(DOCUMENT_MODELING_PRESETS[0].productMode, "phase1_decision_modeling");
+  assert.equal(DOCUMENT_MODELING_PRESETS[0].decisionOwner, "质量负责人");
+  assert.match(DOCUMENT_MODELING_PRESETS[0].decision, /临时控制或复检队列/);
   assert.ok(DOCUMENT_MODELING_PRESETS.every(({ evidenceScope }) => evidenceScope === "synthetic_demo"));
   assert.deepEqual(
     DOCUMENT_MODELING_PRESETS.map(({ mode }) => mode),
-    ["compiled_artifact", "scenario_preview", "scenario_preview"],
+    ["scenario_preview", "compiled_artifact", "scenario_preview", "scenario_preview"],
+  );
+});
+
+test("starts the quality scenario from one event and keeps cross-source records and gaps explicit", () => {
+  const { DOCUMENT_MODELING_PRESETS } = requireModel();
+  const preset = DOCUMENT_MODELING_PRESETS[0];
+
+  assert.deepEqual(preset.event, {
+    id: "QI-DEMO-017",
+    signal: "终检发现泄漏率异常",
+    status: "待调查",
+    detectedAt: "2026-08-04 09:10",
+  });
+  assert.equal(preset.investigationQuestion, "该异常与哪些批次、在制品和待发运件有关，哪条关键链路仍然缺失？");
+  assert.deepEqual(
+    preset.sourceRecords.map(({ sourceSystem, status }) => [sourceSystem, status]),
+    [
+      ["QMS_SYNTHETIC", "available"],
+      ["MES_SYNTHETIC", "available"],
+      ["WMS_SYNTHETIC", "available"],
+      ["PLM_SYNTHETIC", "missing"],
+    ],
+  );
+
+  const availableRecordIds = new Set(
+    preset.sourceRecords
+      .filter(({ status }) => status === "available")
+      .map(({ id }) => id),
+  );
+  for (const candidate of [...preset.entityTypes, ...preset.relationTypes]) {
+    assert.ok(availableRecordIds.has(candidate.evidenceRef), `${candidate.id} must bind to an available source record`);
+  }
+
+  const gaps = preset.sourceRecords.filter(({ status }) => status === "missing");
+  assert.equal(gaps.length, 1);
+  assert.equal(gaps[0].label, "项目与产品映射");
+  assert.doesNotMatch(JSON.stringify(preset.sourceRecords), /confirmed|possible|excluded|not_evaluable/);
+});
+
+test("builds a source-grounded Phase 1 candidate DecisionPack from FDE selections", () => {
+  const { DOCUMENT_MODELING_PRESETS, buildPhase1DecisionPack } = requireModel();
+  const preset = DOCUMENT_MODELING_PRESETS[0];
+
+  const pack = buildPhase1DecisionPack(preset, {
+    selectedEntityIds: preset.entityTypes.map(({ id }) => id),
+    selectedRelationIds: preset.relationTypes.map(({ id }) => id),
+    reviewNote: "保留在制品与待发运件，客户侧对象等待项目映射。",
+  });
+
+  assert.equal(pack.schema, "decision_pack.phase1_candidate.v1");
+  assert.equal(pack.status, "candidate");
+  assert.equal(pack.evidence_scope, "synthetic_demo");
+  assert.deepEqual(pack.decision, {
+    question: preset.decision,
+    owner: preset.decisionOwner,
+    trigger: preset.trigger,
+  });
+  assert.equal(pack.objects.length, 4);
+  assert.equal(pack.relations.length, 3);
+  assert.ok(pack.objects.every(({ evidence_span }) => preset.documentText.includes(evidence_span)));
+  assert.ok(pack.relations.every(({ evidence_span }) => preset.documentText.includes(evidence_span)));
+  assert.equal(pack.fde_review.note, "保留在制品与待发运件，客户侧对象等待项目映射。");
+  assert.deepEqual(pack.delivery_boundary, {
+    session_only: true,
+    published: false,
+    external_action_created: false,
+  });
+});
+
+test("rejects a selected relation when its endpoint is excluded", () => {
+  const { DOCUMENT_MODELING_PRESETS, buildPhase1DecisionPack } = requireModel();
+  const preset = DOCUMENT_MODELING_PRESETS[0];
+
+  assert.throws(
+    () => buildPhase1DecisionPack(preset, {
+      selectedEntityIds: preset.entityTypes.slice(1).map(({ id }) => id),
+      selectedRelationIds: [preset.relationTypes[0].id],
+      reviewNote: "",
+    }),
+    /selected relation endpoints/,
   );
 });
 
@@ -56,7 +139,7 @@ test("resolves each unchanged preset to its explicit route", () => {
 
 test("normalizes outer whitespace without changing the preset match", () => {
   const { DOCUMENT_MODELING_PRESETS, resolveDocumentModelingRequest } = requireModel();
-  const preset = DOCUMENT_MODELING_PRESETS[1];
+  const preset = DOCUMENT_MODELING_PRESETS[0];
 
   const result = resolveDocumentModelingRequest(preset.id, `\n  ${preset.documentText}  \n`);
 

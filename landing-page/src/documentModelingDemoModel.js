@@ -1,5 +1,69 @@
 export const DOCUMENT_MODELING_PRESETS = [
   {
+    id: "quality-temporary-control",
+    title: { zh: "质量临时控制", en: "Quality temporary control" },
+    evidenceScope: "synthetic_demo",
+    mode: "scenario_preview",
+    productMode: "phase1_decision_modeling",
+    event: {
+      id: "QI-DEMO-017",
+      signal: "终检发现泄漏率异常",
+      status: "待调查",
+      detectedAt: "2026-08-04 09:10",
+    },
+    investigationQuestion: "该异常与哪些批次、在制品和待发运件有关，哪条关键链路仍然缺失？",
+    decision: "哪些在制品和待发运件进入临时控制或复检队列？",
+    decisionOwner: "质量负责人",
+    trigger: "终检发现泄漏率异常且原因尚未确认",
+    documentText: "synthetic_demo\n终检发现质量事件 QI-DEMO-017：批次 B-17 的组件出现泄漏率异常，原因尚未确认。质量负责人需要判断在制品 WIP-B17 与待发运件 SHIP-B17 是否进入临时控制或复检队列。WIP-B17 使用批次 B-17；SHIP-B17 由 WIP-B17 形成，项目映射尚缺失。",
+    sourceRecords: [
+      {
+        id: "qms:quality-event-017",
+        sourceSystem: "QMS_SYNTHETIC",
+        status: "available",
+        label: "终检异常记录",
+        observedAt: "2026-08-04 09:10",
+        detail: "记录质量事件、异常指标与关联组件批次。",
+      },
+      {
+        id: "mes:material-use-017",
+        sourceSystem: "MES_SYNTHETIC",
+        status: "available",
+        label: "实际投料记录",
+        observedAt: "2026-08-04 08:42",
+        detail: "记录在制品 WIP-B17 实际使用批次 B-17。",
+      },
+      {
+        id: "wms:shipment-formation-017",
+        sourceSystem: "WMS_SYNTHETIC",
+        status: "available",
+        label: "待发运形成记录",
+        observedAt: "2026-08-04 10:05",
+        detail: "记录待发运件 SHIP-B17 由 WIP-B17 形成。",
+      },
+      {
+        id: "plm:project-product-map-017",
+        sourceSystem: "PLM_SYNTHETIC",
+        status: "missing",
+        label: "项目与产品映射",
+        observedAt: null,
+        detail: "尚未取得项目映射，当前不能继续判断对应项目范围。",
+      },
+    ],
+    entityTypes: [
+      { id: "quality-event", label: "质量事件 QI-DEMO-017", evidenceText: "质量事件 QI-DEMO-017", evidenceRef: "qms:quality-event-017" },
+      { id: "material-batch", label: "批次 B-17", evidenceText: "批次 B-17", evidenceRef: "qms:quality-event-017" },
+      { id: "work-in-progress", label: "在制品 WIP-B17", evidenceText: "在制品 WIP-B17", evidenceRef: "mes:material-use-017" },
+      { id: "pending-shipment", label: "待发运件 SHIP-B17", evidenceText: "待发运件 SHIP-B17", evidenceRef: "wms:shipment-formation-017" },
+    ],
+    relationTypes: [
+      { id: "event-involves-batch", label: "INVOLVES", source: "quality-event", target: "material-batch", evidenceText: "质量事件 QI-DEMO-017：批次 B-17 的组件出现泄漏率异常", evidenceRef: "qms:quality-event-017" },
+      { id: "wip-uses-batch", label: "USES_BATCH", source: "work-in-progress", target: "material-batch", evidenceText: "WIP-B17 使用批次 B-17", evidenceRef: "mes:material-use-017" },
+      { id: "wip-forms-shipment", label: "FORMS_SHIPMENT", source: "work-in-progress", target: "pending-shipment", evidenceText: "SHIP-B17 由 WIP-B17 形成", evidenceRef: "wms:shipment-formation-017" },
+    ],
+    boundary: "候选只在当前浏览器会话中供 FDE 选择和修正；不会发布、创建外部任务或写回业务系统。",
+  },
+  {
     id: "supply-chain-order-intervention",
     title: { zh: "供应链订单干预", en: "Supply-chain order intervention" },
     evidenceScope: "synthetic_demo",
@@ -64,4 +128,81 @@ export function resolveDocumentModelingRequest(scenarioId, documentText) {
   }
 
   return { status: "resolved", mode: preset.mode, preset };
+}
+
+export function buildPhase1DecisionPack(preset, review) {
+  if (!preset || preset.productMode !== "phase1_decision_modeling") {
+    throw new Error("Phase 1 decision-modeling preset is required");
+  }
+  if (!review || !Array.isArray(review.selectedEntityIds) || !Array.isArray(review.selectedRelationIds)) {
+    throw new Error("FDE candidate selections are required");
+  }
+
+  const entityIds = new Set(preset.entityTypes.map(({ id }) => id));
+  const relationIds = new Set(preset.relationTypes.map(({ id }) => id));
+  const selectedEntityIds = new Set(review.selectedEntityIds);
+  const selectedRelationIds = new Set(review.selectedRelationIds);
+  if (selectedEntityIds.size !== review.selectedEntityIds.length || selectedRelationIds.size !== review.selectedRelationIds.length) {
+    throw new Error("FDE candidate selections must be unique");
+  }
+  if ([...selectedEntityIds].some((id) => !entityIds.has(id))) {
+    throw new Error("unknown selected entity");
+  }
+  if ([...selectedRelationIds].some((id) => !relationIds.has(id))) {
+    throw new Error("unknown selected relation");
+  }
+
+  const objects = preset.entityTypes
+    .filter(({ id }) => selectedEntityIds.has(id))
+    .map(({ id, label, evidenceText }) => ({
+      object_id: id,
+      label,
+      evidence_span: evidenceText,
+    }));
+  if (objects.length < 2) throw new Error("at least two selected objects are required");
+
+  const relations = preset.relationTypes
+    .filter(({ id }) => selectedRelationIds.has(id))
+    .map(({ id, label, source, target, evidenceText }) => {
+      if (!selectedEntityIds.has(source) || !selectedEntityIds.has(target)) {
+        throw new Error("selected relation endpoints must remain selected");
+      }
+      return {
+        relation_id: id,
+        predicate: label,
+        source_object_id: source,
+        target_object_id: target,
+        evidence_span: evidenceText,
+      };
+    });
+
+  for (const candidate of [...objects, ...relations]) {
+    if (!preset.documentText.includes(candidate.evidence_span)) {
+      throw new Error("candidate evidence must be an exact source substring");
+    }
+  }
+
+  return {
+    schema: "decision_pack.phase1_candidate.v1",
+    status: "candidate",
+    evidence_scope: preset.evidenceScope,
+    scenario_id: preset.id,
+    decision: {
+      question: preset.decision,
+      owner: preset.decisionOwner,
+      trigger: preset.trigger,
+    },
+    objects,
+    relations,
+    fde_review: {
+      note: typeof review.reviewNote === "string" ? review.reviewNote.trim() : "",
+      selected_object_ids: objects.map(({ object_id }) => object_id),
+      selected_relation_ids: relations.map(({ relation_id }) => relation_id),
+    },
+    delivery_boundary: {
+      session_only: true,
+      published: false,
+      external_action_created: false,
+    },
+  };
 }

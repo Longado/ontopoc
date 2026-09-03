@@ -1,0 +1,207 @@
+{
+  "schema": "quality_source_snapshot.v1",
+  "evidence_scope": "synthetic_demo",
+  "quality_signal_id": "quality-event-017",
+  "records": [
+    {
+      "source_system": "QMS_SYNTHETIC",
+      "source_record_id": "quality-event-017",
+      "observed_at": "2026-08-04T09:10:00+08:00",
+      "subject_id": "quality-event-017",
+      "predicate": "IDENTIFIES",
+      "object_id": "unit-abnormal-017-a",
+      "availability": "available",
+      "evidence_ref": "qms:quality-event-017"
+    },
+    {
+      "source_system": "QMS_SYNTHETIC",
+      "source_record_id": "inspection-abnormal-017",
+      "observed_at": "2026-08-04T09:08:00+08:00",
+      "subject_id": "unit-abnormal-017-a",
+      "predicate": "HAS_INSPECTION_OUTCOME",
+      "object_id": "abnormal",
+      "availability": "available",
+      "evidence_ref": "qms:inspection-abnormal-017"
+    },
+    {
+      "source_system": "MES_SYNTHETIC",
+      "source_record_id": "material-use-abnormal-017",
+      "observed_at": "2026-08-04T08:42:00+08:00",
+      "subject_id": "unit-abnormal-017-a",
+      "predicate": "USES_BATCH",
+      "object_id": "component-batch-017",
+      "availability": "available",
+      "evidence_ref": "mes:material-use-abnormal-017"
+    },
+    {
+      "source_system": "MES_SYNTHETIC",
+      "source_record_id": "process-version-abnormal-017",
+      "observed_at": "2026-08-04T08:30:00+08:00",
+      "subject_id": "unit-abnormal-017-a",
+      "predicate": "BUILT_UNDER_VERSION",
+      "object_id": "process-version-v3",
+      "availability": "available",
+      "evidence_ref": "mes:process-version-abnormal-017"
+    },
+    {
+      "source_system": "MES_SYNTHETIC",
+      "source_record_id": "equipment-use-abnormal-017",
+      "observed_at": "2026-08-04T08:31:00+08:00",
+      "subject_id": "unit-abnormal-017-a",
+      "predicate": "EXECUTED_ON",
+      "object_id": "equipment-e07",
+      "availability": "available",
+      "evidence_ref": "mes:equipment-use-abnormal-017"
+    },
+    {
+      "source_system": "QMS_SYNTHETIC",
+      "source_record_id": "inspection-normal-021",
+      "observed_at": "2026-08-04T09:06:00+08:00",
+      "subject_id": "unit-normal-021-b",
+      "predicate": "HAS_INSPECTION_OUTCOME",
+      "object_id": "normal",
+      "availability": "available",
+      "evidence_ref": "qms:inspection-normal-021"
+    },
+    {
+      "source_system": "MES_SYNTHETIC",
+      "source_record_id": "material-use-normal-021",
+      "observed_at": "2026-08-04T08:38:00+08:00",
+      "subject_id": "unit-normal-021-b",
+      "predicate": "USES_BATCH",
+      "object_id": "component-batch-018",
+      "availability": "available",
+      "evidence_ref": "mes:material-use-normal-021"
+    },
+    {
+      "source_system": "MES_SYNTHETIC",
+      "source_record_id": "process-version-normal-021",
+      "observed_at": "2026-08-04T08:25:00+08:00",
+      "subject_id": "unit-normal-021-b",
+      "predicate": "BUILT_UNDER_VERSION",
+      "object_id": "process-version-v3",
+      "availability": "available",
+      "evidence_ref": "mes:process-version-normal-021"
+    },
+    {
+      "source_system": "MES_SYNTHETIC",
+      "source_record_id": "equipment-use-normal-021",
+      "observed_at": "2026-08-04T08:26:00+08:00",
+      "subject_id": "unit-normal-021-b",
+      "predicate": "EXECUTED_ON",
+      "object_id": "equipment-e08",
+      "availability": "available",
+      "evidence_ref": "mes:equipment-use-normal-021"
+    },
+    {
+      "source_system": "WMS_SYNTHETIC",
+      "source_record_id": "inventory-lot-017-type",
+      "observed_at": "2026-08-04T09:14:00+08:00",
+      "subject_id": "inventory-lot-017",
+      "predicate": "HAS_OBJECT_TYPE",
+      "object_id": "inventory",
+      "availability": "available",
+      "evidence_ref": "wms:inventory-type-017"
+    },
+    {
+      "source_system": "WMS_SYNTHETIC",
+      "source_record_id": "inventory-batch-017",
+      "observed_at": "2026-08-04T09:14:00+08:00",
+      "subject_id": "component-batch-017",
+      "predicate": "STOCKED_AS",
+      "object_id": "inventory-lot-017",
+      "availability": "available",
+      "evidence_ref": "wms:inventory-batch-017"
+    },
+    {
+      "source_system": "MES_SYNTHETIC",
+      "source_record_id": "work-order-wip-204-type",
+      "observed_at": "2026-08-04T09:15:00+08:00",
+      "subject_id": "work-order-wip-204",
+      "predicate": "HAS_OBJECT_TYPE",
+      "object_id": "work_in_process",
+      "availability": "available",
+      "evidence_ref": "mes:wip-type-204"
+    },
+    {
+      "source_system": "MES_SYNTHETIC",
+      "source_record_id": "wip-batch-204",
+      "observed_at": "2026-08-04T09:15:00+08:00",
+      "subject_id": "work-order-wip-204",
+      "predicate": "USES_BATCH",
+      "object_id": "component-batch-017",
+      "availability": "available",
+      "evidence_ref": "mes:wip-batch-204"
+    },
+    {
+      "source_system": "WMS_SYNTHETIC",
+      "source_record_id": "pending-shipment-031-type",
+      "observed_at": "2026-08-04T09:16:00+08:00",
+      "subject_id": "pending-shipment-031",
+      "predicate": "HAS_OBJECT_TYPE",
+      "object_id": "pending_shipment",
+      "availability": "available",
+      "evidence_ref": "wms:pending-type-031"
+    },
+    {
+      "source_system": "WMS_SYNTHETIC",
+      "source_record_id": "pending-shipment-031",
+      "observed_at": "2026-08-04T09:16:00+08:00",
+      "subject_id": "pending-shipment-031",
+      "predicate": "BUILT_UNDER_VERSION",
+      "object_id": "process-version-v3",
+      "availability": "available",
+      "evidence_ref": "wms:pending-shipment-031"
+    },
+    {
+      "source_system": "WMS_SYNTHETIC",
+      "source_record_id": "in-transit-044-type",
+      "observed_at": "2026-08-04T09:17:00+08:00",
+      "subject_id": "in-transit-shipment-044",
+      "predicate": "HAS_OBJECT_TYPE",
+      "object_id": "in_transit",
+      "availability": "available",
+      "evidence_ref": "wms:in-transit-type-044"
+    },
+    {
+      "source_system": "WMS_SYNTHETIC",
+      "source_record_id": "in-transit-044-batch",
+      "observed_at": "2026-08-04T09:17:00+08:00",
+      "subject_id": "in-transit-shipment-044",
+      "predicate": "USES_BATCH",
+      "object_id": "component-batch-018",
+      "availability": "available",
+      "evidence_ref": "wms:in-transit-044"
+    },
+    {
+      "source_system": "ERP_SYNTHETIC",
+      "source_record_id": "customer-unit-group-017-type",
+      "observed_at": "2026-08-04T09:18:00+08:00",
+      "subject_id": "customer-unit-group-017",
+      "predicate": "HAS_OBJECT_TYPE",
+      "object_id": "customer_side",
+      "availability": "available",
+      "evidence_ref": "erp:customer-unit-type-017"
+    },
+    {
+      "source_system": "PLM_SYNTHETIC",
+      "source_record_id": "project-product-map-017",
+      "observed_at": "2026-08-04T09:12:00+08:00",
+      "subject_id": "unit-abnormal-017-a",
+      "predicate": "MAPPED_TO_PROJECT",
+      "object_id": null,
+      "availability": "missing",
+      "evidence_ref": "plm:missing-project-product-map-017"
+    },
+    {
+      "source_system": "PLM_SYNTHETIC",
+      "source_record_id": "customer-project-map-scope-017",
+      "observed_at": "2026-08-04T09:12:00+08:00",
+      "subject_id": "customer-unit-group-017",
+      "predicate": "MAPPED_TO_PROJECT",
+      "object_id": null,
+      "availability": "missing",
+      "evidence_ref": "plm:missing-project-product-map-017"
+    }
+  ]
+}

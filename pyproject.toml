@@ -11,6 +11,8 @@ dependencies = []
 
 [project.scripts]
 ontopoc = "ontology_poc_generator.cli:main"
+ontopoc-agent-model = "ontology_poc_generator.agent_modeling_cli:main"
+ontopoc-connected-assess = "ontology_poc_generator.connected_assessment_cli:main"
 ontopoc-recognize = "ontology_poc_generator.recognition_cli:main"
 ontology-poc = "ontology_poc_generator.cli:main"
 ontology-poc-recognize = "ontology_poc_generator.recognition_cli:main"

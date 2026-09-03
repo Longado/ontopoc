@@ -4,13 +4,13 @@ import { TrialWorkspace } from "./TrialWorkspace.jsx";
 
 const copy = {
   zh: {
-    title: "本体建模工作台",
-    boundary: "synthetic_demo · READ ONLY",
+    title: "FDE 决策建模工作台",
+    boundary: "synthetic_demo · SESSION ONLY",
     landing: "产品首页",
   },
   en: {
-    title: "ONTOLOGY MODELING WORKBENCH",
-    boundary: "synthetic_demo · READ ONLY",
+    title: "FDE DECISION MODELING WORKBENCH",
+    boundary: "synthetic_demo · SESSION ONLY",
     landing: "PRODUCT HOME",
   },
 };

@@ -1,6 +1,17 @@
 # Persistent AI FDE / Decision Compiler 滚动路线图
 
-最后更新：2026-08-31
+最后更新：2026-09-02
+
+## 当前覆盖说明
+
+本地工作树已经形成新的质量场景纵向切片：五系统只读 manifest → 规范化事实快照 → 四态影响范围 → 四角色 Agent 建模/审查/建议 → 人工确认边界。该切片只在合成数据和通用 JSON/HTTPS GET 契约上验证，不能写成客户 ERP、MES、QMS、WMS、PLM 已完成生产连接。
+
+后续只剩两个产品门：
+
+1. 用客户授权的脱敏字段样例完成五份 source mapping，并让业务人员核对四态对象和证据；
+2. 同一案例对比人工追查的耗时、漏控、误控和待补证质量，业务负责人明确 `go` 后才建设持久化或受控写回。
+
+旧 Gate/Loop 章节保留为历史轨迹；与本节冲突时，以本节为当前执行入口。
 
 ## 产品锚点
 
@@ -208,11 +219,15 @@ Loop 4 不再作为当前 NEXT。只有 Gate 1–3 已通过，且真实修订�
 
 | 参考 | 借鉴机制 | 进入点 | 不复制内容 |
 |---|---|---|---|
+| [Eclipse Tractus-X Trace-X](https://github.com/eclipse-tractusx/traceability-foss) | 批次/序列件、AsBuilt/AsPlanned BOM、零件树与质量调查语义 | 当前关系词表和留出案例 | Catena-X 数据空间、部署栈和整套 UI |
+| [LinkML](https://linkml.io/linkml/generators/) | 从一个模型投影 JSON Schema、文档等派生物 | `OntologySpec` 稳定且出现第二个外部消费者后 | 第二个可编辑权威源 |
+| [pySHACL](https://github.com/RDFLib/pySHACL) | 对 RDF 投影做独立 SHACL 一致性检查 | 客户要求 RDF/SHACL 交付时 | 替换原生业务规则与引用闭包 |
 | 旧 EIP / nano-ontoprompt | OntologySpec、四态规则、T-Box、lineage、verdict、version、action approval 的行为纪律 | 每轮最多一个机制 | ORM、迁移、router、数据库、页面、历史兼容层 |
 | WebProtégé | 修订、讨论和审查关口 | Loop 4 后复审 | 完整协作 UI |
 | VocBench 3 | 受管词表和角色治理 | Loop 1/4 按需 | 词表平台整体 |
 | TerminusDB | commit、diff、历史查询 | Loop 4 | 存储引擎替换 |
-| Ontop | 映射契约和源端查询思想 | Loop 5 | 当前底座迁移 |
+| [Ontop](https://github.com/ontop/ontop) | 关系库留在源端、通过映射暴露虚拟知识图谱 | 客户提供只读数据库且 SQL/R2RML 映射成为真实阻塞时 | 当前合成接入底座迁移 |
+| [Eclipse BaSyx](https://github.com/eclipse-basyx) | AAS 设备/产品数字孪生与现有资产接入 | 后续设备和过程实时对象场景 | 当前质量决策切片部署整套 AAS 平台 |
 | Jena/RDF4J | RDF、SPARQL、SHACL 标准能力 | Loop 7 后另立计划 | 过早标准栈扩张 |
 | TypeDB | 关系角色和继承语义 | 本地模型表达不足时 | 数据底座迁移 |
 
@@ -229,4 +244,4 @@ Loop 4 不再作为当前 NEXT。只有 Gate 1–3 已通过，且真实修订�
 
 ## 暂缓
 
-除当前只读 PC Demo 外的前端扩展、正则问答扩展、Agent confirmation/session 扩展、`threshold_v1`、批量知识单元、Application Service 抽象、自由式 LLM 自动建模、RAG、向量库、Neo4j、生产连接器、多租户、复杂 RBAC、后台任务、RDF/OWL/SHACL、自动外部行动和行业模板市场均不在当前授权内。只有 Gate 1–3 暴露明确阻塞，并形成新的可证伪计划后才进入。
+除当前只读质量切片外的前端扩展、正则问答扩展、Agent confirmation/session 扩展、`threshold_v1`、批量知识单元、Application Service 抽象、RAG、向量库、Neo4j、厂商专用生产连接器、多租户、复杂 RBAC、后台任务、RDF/OWL/SHACL、自动外部行动和行业模板市场均不在当前实现范围。只有真实字段映射与业务走查暴露明确阻塞，并形成新的可证伪计划后才进入。
