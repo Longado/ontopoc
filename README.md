@@ -56,6 +56,18 @@ PYTHONPATH=src python -m ontology_poc_generator.cli \
 
 知识加载是 opt-in：不传 `--knowledge-unit` 时，JSON 和 Markdown 保持 Loop 0 的默认投影。当前知识单元只提出供应商资格、历史供货、数据需求、验收问题和入队政策缺口等有来源候选建议；它不会给出最终订单队列或处置动作。
 
+需要检查模型元素是否真正进入运行逻辑时，可额外输出只读实现映射：
+
+```bash
+PYTHONPATH=src python -m ontology_poc_generator.cli \
+  examples/supply_chain_exception.json \
+  --knowledge-unit knowledge/supply_chain/order_priority_policy_synthetic_s1_v1.json \
+  --ontology-spec-output output/ontology-spec.json \
+  --implementation-map-output output/implementation-map.json
+```
+
+`implementation_map.v1` 从当前 `DecisionPack` 和 `OntologySpec` 派生，不是新的可编辑权威源。它逐项列出对象、关系、属性和规则的来源引用、当前 Python 消费者，以及 `declared_only / runtime_input / runtime_executable` 状态；其中 `declared_only` 明确表示元素目前只参加契约与引用闭包检查，不能宣称已有业务运行行为。
+
 ## 多 Agent 自动建模
 
 `ontopoc-agent-model` 已接入现有编译链，不再只输出对象提及：

@@ -24,6 +24,10 @@ class CliTest(unittest.TestCase):
         REPO_ROOT
         / "knowledge/supply_chain/supplier_evidence_boundary_v1.json"
     )
+    POLICY_PATH = (
+        REPO_ROOT
+        / "knowledge/supply_chain/order_priority_policy_synthetic_s1_v1.json"
+    )
 
     def _run_cli(self, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -101,6 +105,43 @@ class CliTest(unittest.TestCase):
         )
 
         self.assertEqual(args.decision_pack_output, Path("decision-pack.json"))
+
+    def test_cli_writes_read_only_implementation_map_without_changing_spec(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spec_output = root / "ontology-spec.json"
+            map_output = root / "implementation-map.json"
+
+            result = self._run_cli(
+                "examples/supply_chain_exception.json",
+                "--knowledge-unit",
+                str(self.POLICY_PATH),
+                "--ontology-spec-output",
+                str(spec_output),
+                "--implementation-map-output",
+                str(map_output),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            spec_payload = json.loads(spec_output.read_text(encoding="utf-8"))
+            map_payload = json.loads(map_output.read_text(encoding="utf-8"))
+            self.assertNotIn("implementation_map", spec_payload)
+            self.assertEqual(map_payload["schema"], "implementation_map.v1")
+            self.assertIs(map_payload["editable"], False)
+            self.assertEqual(
+                map_payload["ontology_spec_content_hash"],
+                spec_payload["spec_content_hash"],
+            )
+            rule = next(
+                item
+                for item in map_payload["entries"]
+                if item["element_kind"] == "rule_declaration"
+            )
+            self.assertEqual(rule["execution_state"], "runtime_executable")
+            self.assertEqual(
+                rule["source_ref_ids"],
+                ["synthetic_order_priority_policy_cases_v1"],
+            )
 
     def test_omitting_ontology_spec_output_preserves_fixed_proposal_bytes(self):
         cases = (

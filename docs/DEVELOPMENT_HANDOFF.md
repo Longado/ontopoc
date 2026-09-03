@@ -160,7 +160,26 @@ Python 仍是契约和状态权威：
 
 它们都不等于人工已同意、本体已发布、客户已验收或外部动作已完成。
 
+在冻结之后经明确授权增加了一项窄范围 Adapt：`implementation_map.v1`。它只从同一组 `DecisionPack / OntologySpec` 派生，不改变两者内容，也不是第二套模型权威。映射逐项记录：
+
+- 对象、关系、属性或规则的稳定 ID 与 semantic key；
+- 编译来源及可解析的 `source_ref_ids`；
+- 当前真实存在的 Python 实现入口；
+- `declared_only / runtime_input / runtime_executable` 三种实现状态。
+
+生成时会校验 OntologySpec 的 pack hash，拿错 DecisionPack 与 OntologySpec 会直接拒绝。对象和关系当前标为 `declared_only`，这是对运行能力缺口的如实暴露，不代表系统已经根据这些声明自动生成数据库、接口或页面。
+
 ### 3.5 CLI
+
+实现映射入口：
+
+```bash
+PYTHONPATH=src python -m ontology_poc_generator.cli \
+  examples/supply_chain_exception.json \
+  --knowledge-unit knowledge/supply_chain/order_priority_policy_synthetic_s1_v1.json \
+  --ontology-spec-output /tmp/ontology-spec.json \
+  --implementation-map-output /tmp/implementation-map.json
+```
 
 五系统联合评估入口：
 
@@ -251,6 +270,13 @@ export EIP_MODEL_API_KEY=<secret>
 - `git diff --check`：通过；
 - 独立对抗复审：未发现 P1/P2；
 - PR #12 GitHub Actions `unittest`：通过。
+
+2026-09-03 的窄范围 `implementation_map.v1` Adapt 验证：
+
+- 后端：299 tests，全部通过；
+- 两个 committed artifact `--check`：通过；
+- `compileall` 与 `git diff --check`：通过；
+- CLI 实际生成 7 个映射元素：4 个 `declared_only`、2 个 `runtime_input`、1 个 `runtime_executable`。
 
 本地复核命令：
 
