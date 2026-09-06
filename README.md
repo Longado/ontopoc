@@ -1,5 +1,7 @@
 # Ontology POC Generator
 
+**English summary.** OntoPoc compiles one industrial business decision into an evidence-bound, testable, traceable `DecisionPack`. The current scenario: after a manufacturing quality incident, which inventory, work-in-progress, shipping, in-transit or customer-side objects should enter temporary control or re-inspection. Synthetic read-only facts from ERP, MES, QMS, WMS and PLM are snapshotted and hashed, Python deterministically computes four states (confirmed impact, possible impact, excluded, not evaluable, failing closed on missing evidence), four prompt-role agents propose and audit candidates under that contract, and a human quality owner makes the final call. Nothing is written back to any system. Real customer interfaces, live model runs and persistence are not implemented; see `docs/DEVELOPMENT_HANDOFF.md` for the frozen state. Documentation below is in Chinese.
+
 把一个工业业务决策编译成有来源、可测试、可追溯的 `DecisionPack`。当前项目是 Evidence-bound Decision Compiler 的 recorded artifact 版本，不是已经成形的新 EIP。
 
 > 开发前先读[最小产品开发护栏](docs/DEVELOPMENT_GUARDRAILS.md)。它先判断本轮是否直接推进用户决策，再决定是否需要实现；长期架构不自动授权当前建设。
