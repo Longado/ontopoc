@@ -26,6 +26,8 @@ test("standalone surface mounts the existing workspace with a local language con
   assert.match(source, /className="standalone-demo"/);
   assert.match(source, /setLanguage/);
   assert.match(source, /href="\/landing"/);
+  assert.match(source, /synthetic_demo · SESSION ONLY/);
+  assert.doesNotMatch(source, /synthetic_demo · READ ONLY/);
 });
 
 test("main selects the landing page only for the landing surface", async () => {

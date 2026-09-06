@@ -10,7 +10,7 @@ const copy = {
   zh: {
     eyebrow: "RECORDED / DETERMINISTIC DEMO",
     title: "把一段合成业务材料编译成可检查的本体草案。",
-    intro: "运行已录制的确定性产物，查看 Recognition、DecisionPack、OntologySpec 与尚未执行的 Validation 边界。",
+    intro: "运行已录制的确定性产物，查看 Recognition、DecisionPack、OntologySpec 与后端已记录的 Validation 回执。",
     run: "运行演示",
     loading: "正在加载完整编译产物…",
     error: "演示产物加载失败",
@@ -33,10 +33,28 @@ const copy = {
     checked: "已检查引用",
     counts: ["实体", "关系", "属性", "规则"],
     issues: "需业务复核的编译项",
-    validationTitle: "Validation contract 已定义，evaluator 未执行。",
-    noReceipt: "无 Validation receipt",
+    validationEyebrow: "后端已记录的回执 · 无实时执行 · 无外部写入",
+    validationTitle: "规则已求值，Validation 回执已记录。",
+    validationIntro: "pass 仅表示规则匹配；not_evaluable 表示信息不足。回执不代表审核、发布或动作完成。",
+    baseline: "基线规则",
+    candidate: "候选规则",
+    onlyChange: "唯一变化 · at_risk",
+    inspectEvidence: "查看规则、引用与哈希绑定",
+    facts: "合成事实",
+    factsHash: "FACTS HASH",
+    receiptHash: "RECEIPT HASH",
+    ruleId: "RULE ID",
+    factRefs: "FACT REFS",
+    evidenceRefs: "EVIDENCE REFS",
+    runtime: "RUNTIME AUTHORITY",
+    evaluationLabels: {
+      pass: "规则匹配",
+      fail: "规则未匹配",
+      not_evaluable: "信息不足",
+      unsupported: "不支持",
+    },
     boundary: "交付边界",
-    contractOnly: "CONTRACT ONLY / NOT IMPLEMENTED",
+    boundaryIntro: "review / publication / action 均未开始",
     agentTitle: "Agent 已生成可审阅的本体候选草案",
     agentIntro: "已知模板识别与候选编译来自已录制产物；确认只在本次浏览器会话内有效。",
     agentSteps: ["接收合成文档", "识别已知模板", "编译候选模型", "等待人工确认"],
@@ -49,7 +67,7 @@ const copy = {
   en: {
     eyebrow: "RECORDED / DETERMINISTIC DEMO",
     title: "Compile synthetic business material into an inspectable ontology draft.",
-    intro: "Load one recorded deterministic artifact and inspect Recognition, DecisionPack, OntologySpec, and the unexecuted Validation boundary.",
+    intro: "Load one recorded deterministic artifact and inspect Recognition, DecisionPack, OntologySpec, and backend-recorded Validation receipts.",
     run: "RUN DEMO",
     loading: "Loading the complete compiler artifact…",
     error: "The demo artifact could not be loaded",
@@ -72,10 +90,28 @@ const copy = {
     checked: "CHECKED REFERENCES",
     counts: ["ENTITIES", "RELATIONS", "PROPERTIES", "RULES"],
     issues: "COMPILATION ITEMS REQUIRING REVIEW",
-    validationTitle: "The Validation contract is defined; its evaluator did not run.",
-    noReceipt: "NO VALIDATION RECEIPT",
+    validationEyebrow: "BACKEND-RECORDED RECEIPTS · NO LIVE EXECUTION · NO EXTERNAL WRITE",
+    validationTitle: "Rules evaluated; Validation receipts recorded.",
+    validationIntro: "pass means rule matched only; not_evaluable means information insufficient. Receipts do not mean review, publication, or action completed.",
+    baseline: "BASELINE RULE",
+    candidate: "CANDIDATE RULE",
+    onlyChange: "ONLY CHANGE · at_risk",
+    inspectEvidence: "INSPECT RULE, REFERENCES, AND HASH BINDINGS",
+    facts: "SYNTHETIC FACTS",
+    factsHash: "FACTS HASH",
+    receiptHash: "RECEIPT HASH",
+    ruleId: "RULE ID",
+    factRefs: "FACT REFS",
+    evidenceRefs: "EVIDENCE REFS",
+    runtime: "RUNTIME AUTHORITY",
+    evaluationLabels: {
+      pass: "RULE MATCHED",
+      fail: "RULE DID NOT MATCH",
+      not_evaluable: "INFORMATION INSUFFICIENT",
+      unsupported: "UNSUPPORTED",
+    },
     boundary: "DELIVERY BOUNDARY",
-    contractOnly: "CONTRACT ONLY / NOT IMPLEMENTED",
+    boundaryIntro: "review / publication / action are not started",
     agentTitle: "The Agent produced an inspectable ontology draft",
     agentIntro: "Known-template recognition and candidate compilation use a recorded artifact. Confirmation lasts for this browser session only.",
     agentSteps: ["Receive synthetic document", "Recognize known template", "Compile candidates", "Await human confirmation"],
@@ -204,5 +240,43 @@ function OntologySpecPanel({ data, t, language }) {
 }
 
 function ValidationPanel({ data, t }) {
-  return <div className="workspace-validation"><div className="validation-empty"><span>{t.contractOnly}</span><h3>{t.validationTitle}</h3><p>{t.noReceipt} · receipt = null</p></div><div className="validation-boundaries"><span>{t.boundary}</span>{Object.entries(data.boundaries).map(([key, value]) => <div key={key}><code>{key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}</code><strong>{String(value)}</strong></div>)}<div><code>evaluator_executed</code><strong>{String(data.evaluatorExecuted)}</strong></div></div></div>;
+  return <div className="workspace-validation">
+    <header className="validation-runtime">
+      <div><span>{t.validationEyebrow}</span><h3>{t.validationTitle}</h3><p>{t.validationIntro}</p></div>
+      <div className="validation-runtime-authority"><span>{t.runtime}</span><code>{data.runtimeAuthority.mode}</code><code>{data.runtimeAuthority.evaluator}</code></div>
+    </header>
+    <div className="validation-case-list">
+      {data.cases.map((validationCase) => <article key={validationCase.subjectId} className={`validation-case-row ${validationCase.atRiskChange ? "is-at-risk-change" : ""}`}>
+        <div className="validation-case-summary">
+          <header><span>SUBJECT</span><strong>{validationCase.subjectId}</strong>{validationCase.atRiskChange && <em>{t.onlyChange}</em>}</header>
+          <div className="validation-case-outcomes">
+            <ValidationResult label={t.baseline} receipt={validationCase.baseline} t={t} />
+            <ValidationResult label={t.candidate} receipt={validationCase.candidate} t={t} />
+          </div>
+        </div>
+        <details><summary>{t.inspectEvidence}</summary><div className="validation-evidence-grid">
+          <section className="validation-receipt-evidence"><h4>{t.facts}</h4><TraceHash label={t.factsHash} value={validationCase.facts.contentHash} /><Meta label="EVIDENCE SCOPE" mono>{validationCase.facts.evidenceScope}</Meta></section>
+          <ReceiptEvidence label={t.baseline} receipt={validationCase.baseline} t={t} />
+          <ReceiptEvidence label={t.candidate} receipt={validationCase.candidate} t={t} />
+        </div></details>
+      </article>)}
+    </div>
+    <aside className="validation-boundaries"><div><span>{t.boundary}</span><small>{t.boundaryIntro}</small></div>{Object.entries(data.boundaries).map(([key, value]) => <div key={key}><code>{key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}</code><strong>{String(value)}</strong></div>)}</aside>
+  </div>;
+}
+
+function ValidationResult({ label, receipt, t }) {
+  return <div className="validation-result"><span>{label}</span><strong>{t.evaluationLabels[receipt.evaluationStatus]}</strong><code>{receipt.evaluationStatus} / {receipt.decisionResult}</code></div>;
+}
+
+function ReceiptEvidence({ label, receipt, t }) {
+  return <section className="validation-receipt-evidence"><h4>{label}</h4><TraceHash label={t.receiptHash} value={receipt.contentHash} /><TraceHash label="DECISIONPACK HASH" value={receipt.decisionPackContentHash} /><TraceHash label="ONTOLOGY SPEC HASH" value={receipt.ontologySpecContentHash} /><TraceHash label={t.factsHash} value={receipt.factsContentHash} /><TraceRefs label={t.ruleId} values={[receipt.ruleId]} /><TraceRefs label={t.factRefs} values={receipt.factRefs} /><TraceRefs label={t.evidenceRefs} values={receipt.evidenceRefs} /></section>;
+}
+
+function TraceHash({ label, value }) {
+  return <div className="validation-trace-hash"><span>{label}</span><code>{value}</code></div>;
+}
+
+function TraceRefs({ label, values }) {
+  return <div className="validation-trace-refs"><span>{label}</span>{values.map((value) => <code key={value}>{value}</code>)}</div>;
 }

@@ -1,0 +1,6 @@
+{
+  "records": [
+    {"source_record_id": "customer-unit-group-017-type", "observed_at": "2026-08-04T09:18:00+08:00", "subject_id": "customer-unit-group-017", "predicate": "HAS_OBJECT_TYPE", "object_id": "customer_side", "availability": "available", "evidence_ref": "erp:customer-unit-type-017"},
+    {"source_record_id": "customer-unit-group-017-order", "observed_at": "2026-08-04T09:18:00+08:00", "subject_id": "customer-unit-group-017", "predicate": "FULFILLS_ORDER", "object_id": "sales-order-017", "availability": "available", "evidence_ref": "erp:customer-order-017"}
+  ]
+}

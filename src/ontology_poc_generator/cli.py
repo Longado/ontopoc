@@ -17,6 +17,7 @@ from ontology_poc_generator.errors import (
     SpecCompilationError,
 )
 from ontology_poc_generator.generator import generate_proposal
+from ontology_poc_generator.implementation_map import build_implementation_map
 from ontology_poc_generator.knowledge import load_knowledge_unit
 from ontology_poc_generator.models import ScenarioParameters
 from ontology_poc_generator.ontology_spec import ClosureIssue, ontology_spec_to_dict
@@ -40,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--decision-pack-output",
         type=Path,
         help="Write the canonical decision pack to this file",
+    )
+    parser.add_argument(
+        "--implementation-map-output",
+        type=Path,
+        help="Write the read-only model-to-implementation map to this file",
     )
     parser.add_argument(
         "--knowledge-unit",
@@ -116,15 +122,21 @@ def main(argv: list[str] | None = None) -> int:
         )
         ontology_spec_content = None
         decision_pack_content = None
+        implementation_map_content = None
         if (
             args.ontology_spec_output is not None
             or args.decision_pack_output is not None
+            or args.implementation_map_output is not None
         ):
             pack = compile_decision_pack(params, knowledge_units)
             if args.decision_pack_output is not None:
                 decision_pack_content = render_decision_pack_json(pack)
-        if args.ontology_spec_output is not None:
+        if (
+            args.ontology_spec_output is not None
+            or args.implementation_map_output is not None
+        ):
             compilation = compile_ontology_spec(pack)
+        if args.ontology_spec_output is not None:
             ontology_spec_content = json.dumps(
                 {
                     "spec": ontology_spec_to_dict(compilation.spec),
@@ -145,6 +157,13 @@ def main(argv: list[str] | None = None) -> int:
                 sort_keys=True,
                 indent=2,
             )
+        if args.implementation_map_output is not None:
+            implementation_map_content = json.dumps(
+                build_implementation_map(pack, compilation),
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            )
     except (
         OSError,
         UnicodeError,
@@ -160,6 +179,7 @@ def main(argv: list[str] | None = None) -> int:
     if (
         args.ontology_spec_output is not None
         or args.decision_pack_output is not None
+        or args.implementation_map_output is not None
     ):
         requested_outputs = []
         if args.output is not None:
@@ -171,6 +191,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.decision_pack_output is not None:
             requested_outputs.append(
                 (args.decision_pack_output, decision_pack_content)
+            )
+        if args.implementation_map_output is not None:
+            requested_outputs.append(
+                (args.implementation_map_output, implementation_map_content)
             )
         try:
             resolved_outputs = [

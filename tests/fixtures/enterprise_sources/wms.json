@@ -1,0 +1,10 @@
+{
+  "records": [
+    {"source_record_id": "inventory-lot-017-type", "observed_at": "2026-08-04T09:14:00+08:00", "subject_id": "inventory-lot-017", "predicate": "HAS_OBJECT_TYPE", "object_id": "inventory", "availability": "available", "evidence_ref": "wms:inventory-type-017"},
+    {"source_record_id": "inventory-batch-017", "observed_at": "2026-08-04T09:14:00+08:00", "subject_id": "component-batch-017", "predicate": "STOCKED_AS", "object_id": "inventory-lot-017", "availability": "available", "evidence_ref": "wms:inventory-batch-017"},
+    {"source_record_id": "pending-shipment-031-type", "observed_at": "2026-08-04T09:16:00+08:00", "subject_id": "pending-shipment-031", "predicate": "HAS_OBJECT_TYPE", "object_id": "pending_shipment", "availability": "available", "evidence_ref": "wms:pending-type-031"},
+    {"source_record_id": "pending-shipment-031-version", "observed_at": "2026-08-04T09:16:00+08:00", "subject_id": "pending-shipment-031", "predicate": "BUILT_UNDER_VERSION", "object_id": "process-version-v3", "availability": "available", "evidence_ref": "wms:pending-shipment-031"},
+    {"source_record_id": "in-transit-044-type", "observed_at": "2026-08-04T09:17:00+08:00", "subject_id": "in-transit-shipment-044", "predicate": "HAS_OBJECT_TYPE", "object_id": "in_transit", "availability": "available", "evidence_ref": "wms:in-transit-type-044"},
+    {"source_record_id": "in-transit-044-batch", "observed_at": "2026-08-04T09:17:00+08:00", "subject_id": "in-transit-shipment-044", "predicate": "USES_BATCH", "object_id": "component-batch-018", "availability": "available", "evidence_ref": "wms:in-transit-044"}
+  ]
+}

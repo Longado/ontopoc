@@ -57,12 +57,30 @@ test("Trial workspace runs one synchronous artifact load and exposes four read-o
   assert.match(workspace, /ValidationPanel/);
 });
 
+test("Validation projects recorded receipts, evidence hashes, and delivery boundaries", () => {
+  assert.match(workspace, /后端已记录的回执 · 无实时执行 · 无外部写入/);
+  assert.match(workspace, /BACKEND-RECORDED RECEIPTS · NO LIVE EXECUTION · NO EXTERNAL WRITE/);
+  assert.match(workspace, /data\.cases\.map/);
+  assert.match(workspace, /className={`validation-case-row/);
+  assert.match(workspace, /atRiskChange/);
+  assert.match(workspace, /唯一变化 · at_risk/);
+  assert.match(workspace, /<details/);
+  assert.match(workspace, /decisionPackContentHash/);
+  assert.match(workspace, /ontologySpecContentHash/);
+  assert.match(workspace, /factsContentHash/);
+  assert.match(workspace, /receipt\.contentHash/);
+  assert.match(workspace, /receipt\.factRefs/);
+  assert.match(workspace, /receipt\.evidenceRefs/);
+  assert.match(workspace, /className="validation-boundaries"/);
+  assert.doesNotMatch(workspace, /receipt = null|CONTRACT ONLY \/ NOT IMPLEMENTED/);
+});
+
 test("idle Trial mounts the document modeler and only its compiled action runs the artifact callback", () => {
   assert.match(workspace, /import \{ DocumentModeler \} from "\.\/DocumentModeler\.jsx"/);
   assert.match(workspace, /<DocumentModeler language=\{language\} runAgentDemo=\{runAgentDemo\} \/>/);
   assert.match(documentModeler, /resolveDocumentModelingRequest/);
   assert.match(documentModeler, /runAgentDemo/);
-  assert.match(documentModeler, /BUSINESS MODELING AGENT \/ RECORDED DEMO/);
+  assert.match(documentModeler, /QUALITY EVENT TRACE \/ PHASE 1/);
 });
 
 test("recorded Agent review binds the compiled candidate set before entering the workspace", () => {
@@ -78,7 +96,7 @@ test("recorded Agent review binds the compiled candidate set before entering the
 });
 
 test("document modeler exposes deterministic presets and a read-only candidate graph", () => {
-  assert.match(documentModeler, /BUSINESS MODELING AGENT \/ RECORDED DEMO/);
+  assert.match(documentModeler, /QUALITY EVENT TRACE \/ PHASE 1/);
   assert.match(documentModeler, /SCENARIO PREVIEW \/ NOT COMPILED/);
   assert.match(documentModeler, /synthetic_demo/);
   assert.match(documentModeler, /<textarea/);
@@ -91,8 +109,75 @@ test("document modeler exposes deterministic presets and a read-only candidate g
   assert.match(documentModeler, /className=\{`document-evidence-item/);
 });
 
-test("document modeling stays frontend-only and exposes no API POST or credential surface", () => {
-  assert.doesNotMatch(documentModeler, /fetch\(|axios|\.post\(|method:\s*["']POST|\/api\/|token|credential/i);
+test("Phase 1 leads with the quality event, cross-source records, and an explicit data gap", () => {
+  assert.match(documentModeler, /className="quality-event-summary"/);
+  assert.match(documentModeler, /preset\.event\.id/);
+  assert.match(documentModeler, /preset\.investigationQuestion/);
+  assert.match(documentModeler, /className="source-record-list"/);
+  assert.match(documentModeler, /preset\.sourceRecords\.map/);
+  assert.match(documentModeler, /record\.status === "missing"/);
+  assert.match(documentModeler, /evidence\?\.evidenceRef/);
+  assert.match(documentModeler, /查看追溯证据链/);
+});
+
+test("Phase 1 reads one fixed investigation artifact and shows factors, counterevidence, and gaps", () => {
+  assert.match(documentModeler, /fetch\("\/artifacts\/quality-investigation\.json"/);
+  assert.match(documentModeler, /className="investigation-scope-summary"/);
+  assert.match(documentModeler, /className="investigation-factor-list"/);
+  assert.match(documentModeler, /investigation\.factors\.map/);
+  assert.match(documentModeler, /factor\.counterevidence_refs/);
+  assert.match(documentModeler, /investigation\.gaps\.map/);
+  assert.match(documentModeler, /优先调查/);
+  assert.match(documentModeler, /正常对照削弱/);
+  assert.doesNotMatch(documentModeler, /evaluate_investigation_scope|EXECUTED_ON.*USES_BATCH/s);
+});
+
+test("Phase 1 leads with four-state control scope objects before investigation factors", () => {
+  assert.match(documentModeler, /className="control-scope-summary"/);
+  assert.match(documentModeler, /className="control-scope-groups"/);
+  assert.match(documentModeler, /investigation\.control_scope_objects\.filter/);
+  assert.match(documentModeler, /确定影响/);
+  assert.match(documentModeler, /可能影响/);
+  assert.match(documentModeler, /已排除/);
+  assert.match(documentModeler, /无法评估/);
+  assert.match(documentModeler, /object\.reason/);
+  assert.ok(
+    documentModeler.indexOf('className="control-scope-summary"')
+      < documentModeler.indexOf('className="investigation-factor-list"'),
+  );
+});
+
+test("Phase 1 lets the quality owner finish a session-only control scope decision", () => {
+  assert.match(documentModeler, /controlDecisions, setControlDecisions/);
+  assert.match(documentModeler, /className="control-scope-actions"/);
+  assert.match(documentModeler, /纳入临时控制/);
+  assert.match(documentModeler, /待补证/);
+  assert.match(documentModeler, /aria-pressed=\{controlDecisions\[object\.object_id\] === action\.id\}/);
+  assert.match(documentModeler, /className="control-decision-summary"/);
+  assert.match(documentModeler, /本次范围已完成/);
+  assert.match(documentModeler, /会话内选择 · 未执行业务控制/);
+  assert.doesNotMatch(documentModeler, /localStorage|sessionStorage|method:\s*["']POST/);
+});
+
+test("Phase 1 lets the FDE adjust evidence-bound candidates and confirm a session-only pack", () => {
+  assert.match(documentModeler, /buildPhase1DecisionPack/);
+  assert.match(documentModeler, /preset\.decisionOwner/);
+  assert.match(documentModeler, /preset\.trigger/);
+  assert.match(documentModeler, /toggleCandidate/);
+  assert.match(documentModeler, /projectCandidateGraph\(result\.preset, includedCandidates\)/);
+  assert.match(documentModeler, /includedEntityIds\.has\(source\)/);
+  assert.match(documentModeler, /reviewNote/);
+  assert.match(documentModeler, /confirmDecisionPack/);
+  assert.doesNotMatch(documentModeler, /downloadDecisionPack|createObjectURL|Download/);
+  assert.match(documentModeler, /decision_pack\.phase1_candidate\.v1/);
+  assert.match(documentModeler, /SESSION ONLY/);
+  assert.match(documentModeler, /对象候选/);
+});
+
+test("document modeling only reads the fixed synthetic artifact and exposes no API POST or credential surface", () => {
+  assert.equal((documentModeler.match(/fetch\(/g) ?? []).length, 1);
+  assert.match(documentModeler, /fetch\("\/artifacts\/quality-investigation\.json"/);
+  assert.doesNotMatch(documentModeler, /axios|\.post\(|method:\s*["']POST|\/api\/|token|credential/i);
   assert.doesNotMatch(documentModeler, /file|upload|persist|publish|writeback|approval/i);
   assert.doesNotMatch(documentModeler, /ValidationReceipt|Action/);
 });

@@ -678,5 +678,898 @@
     "scene_name": "外贸订单履约风险识别与异常处置",
     "trigger": "订单预计交期、物料齐套或供应商承诺发生异常时"
   },
-  "schema": "model_recognition_demo.v1"
+  "schema": "model_recognition_demo.v1",
+  "validation_run": {
+    "authority": {
+      "baseline": {
+        "decision_pack": {
+          "artifact_ref": "#/decision_pack",
+          "content_hash": "dfb6431c60487f71b34e05d7878cea419bdce8332c8b545364cc00d920bb32ff"
+        },
+        "knowledge_unit": "knowledge/supply_chain/order_priority_policy_synthetic_s1_v1.json",
+        "ontology_spec": {
+          "artifact_ref": "#/ontology_spec",
+          "content_hash": "31b00f3432281459d71615fa7ba4733a522332987d26632aeeb50737a7ecfed3"
+        }
+      },
+      "candidate": {
+        "decision_pack": {
+          "content_hash": "f003c3a38cb1ecfc0c51d573e09ea96fdc811897b64c568af62099b07a03687f",
+          "pack": {
+            "input_bindings": [
+              {
+                "binding_id": "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                "label": "供应商",
+                "role_key": "supplier",
+                "semantic_key": "supplier.candidate"
+              },
+              {
+                "binding_id": "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+                "label": "物料",
+                "role_key": "material",
+                "semantic_key": "material.required"
+              },
+              {
+                "binding_id": "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+                "label": "客户订单",
+                "role_key": "customer_order",
+                "semantic_key": "order.primary"
+              }
+            ],
+            "knowledge_outcomes": [
+              {
+                "input_binding_ids": [
+                  "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                  "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+                  "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+                ],
+                "match_status": "applicable",
+                "reason_code": "applicable",
+                "suggestions": [
+                  {
+                    "contribution_type": "relation_semantics",
+                    "governance_status": "candidate",
+                    "input_binding_ids": [
+                      "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                      "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+                    ],
+                    "payload": {
+                      "description": "Purchase or receipt history records past supply evidence.",
+                      "predicate": "HAS_SUPPLIED",
+                      "source_role_key": "supplier",
+                      "target_role_key": "material"
+                    },
+                    "payload_schema": "relation_semantics.v1",
+                    "semantic_key": "supplier_has_supplied_material",
+                    "source_ref_ids": [
+                      "eip_quality_vocabulary_v11"
+                    ],
+                    "suggestion_id": "suggestion_014142e2dae72b5fefd73e4e506eabcd3a81c2d3ba7aaa476b84b49a91691a58",
+                    "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+                    "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+                    "unit_version": "1.0.0"
+                  },
+                  {
+                    "contribution_type": "acceptance_question",
+                    "governance_status": "candidate",
+                    "input_binding_ids": [
+                      "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                      "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+                    ],
+                    "payload": {
+                      "question": "When qualification data is absent, does the assessment remain information-insufficient rather than reporting zero qualified alternatives?"
+                    },
+                    "payload_schema": "acceptance_question.v1",
+                    "semantic_key": "qualification_absence_information_insufficient",
+                    "source_ref_ids": [
+                      "eip_supply_chain_risk_qualification_history_tests"
+                    ],
+                    "suggestion_id": "suggestion_0167df5992b1a7b4d80795abdbb2aed8a61c5942488991a55768c45cb998122c",
+                    "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+                    "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+                    "unit_version": "1.0.0"
+                  },
+                  {
+                    "contribution_type": "readiness_gap",
+                    "governance_status": "candidate",
+                    "input_binding_ids": [
+                      "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+                    ],
+                    "payload": {
+                      "description": "Queue-entry evidence policy requires business confirmation before evaluation.",
+                      "requirement_key": "queue_entry_evidence_policy"
+                    },
+                    "payload_schema": "readiness_gap.v1",
+                    "semantic_key": "queue_entry_evidence_policy_pending",
+                    "source_ref_ids": [
+                      "loop1_product_methodology_snapshot"
+                    ],
+                    "suggestion_id": "suggestion_093dca2a7acfa617028634a1e237c88279ab043818b714b883c35e1b83bc1267",
+                    "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+                    "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+                    "unit_version": "1.0.0"
+                  },
+                  {
+                    "contribution_type": "constraint",
+                    "governance_status": "candidate",
+                    "input_binding_ids": [
+                      "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                      "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+                    ],
+                    "payload": {
+                      "description": "HAS_SUPPLIED evidence cannot establish QUALIFIED_TO_SUPPLY qualification."
+                    },
+                    "payload_schema": "constraint.narrative.v1",
+                    "semantic_key": "purchase_history_not_qualification",
+                    "source_ref_ids": [
+                      "eip_quality_vocabulary_v11",
+                      "eip_supply_chain_risk_qualification_history_tests"
+                    ],
+                    "suggestion_id": "suggestion_2ce99e1c2320fb924699d5ef07d992ad9b991a69564eedd04735dc707ec30579",
+                    "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+                    "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+                    "unit_version": "1.0.0"
+                  },
+                  {
+                    "contribution_type": "data_requirement",
+                    "governance_status": "candidate",
+                    "input_binding_ids": [
+                      "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+                      "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+                    ],
+                    "payload": {
+                      "description": "Require order-to-material dependency and cross-source identity mapping."
+                    },
+                    "payload_schema": "data_requirement.narrative.v1",
+                    "semantic_key": "order_material_dependency_mapping",
+                    "source_ref_ids": [
+                      "loop1_product_methodology_snapshot"
+                    ],
+                    "suggestion_id": "suggestion_4188bf626fb7f339d2655d652fe76ad0bfb7c1e2ff0796e8f956e22f0fcb638c",
+                    "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+                    "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+                    "unit_version": "1.0.0"
+                  },
+                  {
+                    "contribution_type": "relation_semantics",
+                    "governance_status": "candidate",
+                    "input_binding_ids": [
+                      "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                      "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+                    ],
+                    "payload": {
+                      "description": "Material-level qualification and purchase history are distinct evidence semantics.",
+                      "predicate": "QUALIFIED_TO_SUPPLY",
+                      "source_role_key": "supplier",
+                      "target_role_key": "material"
+                    },
+                    "payload_schema": "relation_semantics.v1",
+                    "semantic_key": "supplier_qualified_to_supply_material",
+                    "source_ref_ids": [
+                      "eip_quality_vocabulary_v11"
+                    ],
+                    "suggestion_id": "suggestion_7c1547a8c4215306c1886c07f42f34ed7bd8b21fca79e6b39af398e75324f278",
+                    "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+                    "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+                    "unit_version": "1.0.0"
+                  },
+                  {
+                    "contribution_type": "data_requirement",
+                    "governance_status": "candidate",
+                    "input_binding_ids": [
+                      "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                      "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+                    ],
+                    "payload": {
+                      "description": "Require material-level qualification status, validity, scope, and snapshot completeness from an approved-supplier list or supplier master data."
+                    },
+                    "payload_schema": "data_requirement.narrative.v1",
+                    "semantic_key": "material_qualification_snapshot",
+                    "source_ref_ids": [
+                      "eip_quality_vocabulary_v11",
+                      "loop1_product_methodology_snapshot"
+                    ],
+                    "suggestion_id": "suggestion_b7dd10f2678ffd4ff2a44244c103ac7d511254d95ac8fcb22c4e09ee74d71881",
+                    "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+                    "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+                    "unit_version": "1.0.0"
+                  }
+                ],
+                "unit_content_hash": "5e9a5e7c621ccd97b209b2008a7a057421960bf3e0b0ac5c5c6279f2827eb9c6",
+                "unit_id": "supply_chain.order_priority.supplier_evidence_boundary",
+                "unit_version": "1.0.0"
+              },
+              {
+                "input_binding_ids": [
+                  "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+                ],
+                "match_status": "applicable",
+                "reason_code": "applicable",
+                "suggestions": [
+                  {
+                    "contribution_type": "decision_rule",
+                    "governance_status": "candidate",
+                    "input_binding_ids": [
+                      "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+                    ],
+                    "payload": {
+                      "condition_1_allowed_values": "at_risk,missed",
+                      "condition_1_semantic_key": "supplier_commitment_state",
+                      "condition_2_allowed_values": "none",
+                      "condition_2_semantic_key": "qualified_alternative_state",
+                      "description": "Synthetic categorical queue-entry policy.",
+                      "evidence_scope": "synthetic_demo",
+                      "negative_conclusion_value": "not_in_queue",
+                      "output_conclusion_key": "priority_intervention_queue_membership",
+                      "positive_conclusion_value": "in_queue",
+                      "rule_kind": "categorical_all_of_v1",
+                      "subject_role_key": "customer_order"
+                    },
+                    "payload_schema": "decision_rule.v1",
+                    "semantic_key": "order_priority_intervention_queue_rule",
+                    "source_ref_ids": [
+                      "synthetic_order_priority_policy_cases_v1"
+                    ],
+                    "suggestion_id": "suggestion_f2523867b14d4dd338084c72042bb91f4367176f9ca5d805704eed080550503e",
+                    "unit_content_hash": "b4c38750248ac68ce9c458e49ed1e842faf4fa8536fc5cb124828c61567c5ee1",
+                    "unit_id": "supply_chain.order_priority.synthetic_policy_s1",
+                    "unit_version": "2.0.0"
+                  }
+                ],
+                "unit_content_hash": "b4c38750248ac68ce9c458e49ed1e842faf4fa8536fc5cb124828c61567c5ee1",
+                "unit_id": "supply_chain.order_priority.synthetic_policy_s1",
+                "unit_version": "2.0.0"
+              }
+            ],
+            "scenario": {
+              "acceptance_questions": [
+                "业务人员修改一条约束后，风险排序和待办对象是否同步变化？",
+                "无法获得物流状态时，系统是否明确显示信息不足而不是给出确定结论？",
+                "系统能否解释订单风险由哪些物料、供应商承诺和生产节点共同造成？"
+              ],
+              "business_decision": "哪些订单进入优先干预队列",
+              "constraints": [
+                "ERP 仍是交易事实权威",
+                "缺少供应商承诺时不得推断为已确认交期",
+                "高风险处置必须由指定责任人确认"
+              ],
+              "customer_data_available": false,
+              "data_sources": [
+                {
+                  "name": "ERP 订单与物料数据",
+                  "status": "to_confirm",
+                  "type": "database"
+                },
+                {
+                  "name": "供应商交期反馈",
+                  "status": "to_confirm",
+                  "type": "spreadsheet"
+                },
+                {
+                  "name": "物流节点状态",
+                  "status": "unavailable",
+                  "type": "api"
+                }
+              ],
+              "decision_key": "order_priority_intervention",
+              "decision_owner": "供应链计划经理",
+              "declared_bridges": [
+                {
+                  "predicate": "REQUIRES",
+                  "semantic_key": "customer_order_requires_material",
+                  "source_role_key": "customer_order",
+                  "target_role_key": "material"
+                }
+              ],
+              "desired_actions": [
+                "创建订单异常核查任务",
+                "指定采购或计划责任人",
+                "记录接受、拒绝和人工覆盖理由"
+              ],
+              "industry": "制造业供应链",
+              "notes": "POC 从只读分析和内部任务开始，不直接回写 ERP。",
+              "object_role_bindings": [
+                {
+                  "object_label": "供应商",
+                  "role_key": "supplier",
+                  "semantic_key": "supplier.candidate"
+                },
+                {
+                  "object_label": "客户订单",
+                  "role_key": "customer_order",
+                  "semantic_key": "order.primary"
+                },
+                {
+                  "object_label": "物料",
+                  "role_key": "material",
+                  "semantic_key": "material.required"
+                }
+              ],
+              "objects": [
+                "供应商",
+                "处置任务",
+                "客户订单",
+                "履约风险",
+                "物料",
+                "物流节点",
+                "生产任务",
+                "订单行",
+                "采购承诺"
+              ],
+              "participants": [
+                "物流负责人",
+                "生产计划员",
+                "订单经理",
+                "采购负责人"
+              ],
+              "readiness_declarations": [
+                {
+                  "requirement_key": "queue_entry_evidence_policy",
+                  "status": "to_confirm"
+                }
+              ],
+              "relations": [],
+              "scene_name": "外贸订单履约风险识别与异常处置",
+              "trigger": "订单预计交期、物料齐套或供应商承诺发生异常时"
+            },
+            "schema": "decision_pack.v1",
+            "source_refs": [
+              {
+                "caveat": "First-party implementation snapshot, not a customer fact or industry standard.",
+                "locator": "nano-ontoprompt/backend/app/eip_extensions/quality/vocabulary.yaml, lines 19-32",
+                "revision": "version: 11",
+                "snapshot_sha256": "1e8b7bf0a128f716d55ab438a0830959dadd15cebcc91e576eee67e2ffd71425",
+                "source_kind": "implemented_artifact",
+                "source_ref_id": "eip_quality_vocabulary_v11",
+                "title": "EIP quality vocabulary v11"
+              },
+              {
+                "caveat": "Synthetic test behavior, not a production outcome.",
+                "locator": "nano-ontoprompt/backend/tests/test_eip_supply_chain_risk.py, qualification/history cases",
+                "revision": "qualification/history cases",
+                "snapshot_sha256": "a937a6b085733766b09ff5f40468ef9e9b1182c946d1cff9a201947111d27ed8",
+                "source_kind": "synthetic_example",
+                "source_ref_id": "eip_supply_chain_risk_qualification_history_tests",
+                "title": "EIP supply-chain qualification and purchase-history tests"
+              },
+              {
+                "caveat": "A product methodology assumption, not a customer or industry fact.",
+                "locator": "ontology-poc-generator/docs/superpowers/plans/2026-08-29-loop1-sourced-supply-chain-knowledge.md, lines 149-165",
+                "revision": "310c4d07bcc975fa955dea7a29f5dc7cc12172e4",
+                "snapshot_sha256": "639616ae2ede7eece52d765992ed41b41b2fae1b36fbc0af1968123d16c95ba3",
+                "source_kind": "practitioner_note",
+                "source_ref_id": "loop1_product_methodology_snapshot",
+                "title": "Loop 1 product methodology snapshot"
+              },
+              {
+                "caveat": "Synthetic test policy only; not a customer fact, industry standard, or production threshold; defines no Action or score.",
+                "locator": "tests/fixtures/policy/order_priority_policy_synthetic_cases_v1.json",
+                "revision": "ff327cbe9697e9651cd01ed2490da0ac97ed3d90",
+                "snapshot_sha256": "77a70331b2e6bcf5c7e6cae12a49717c77a176dc2194af5f4e44b4d3b0d1a487",
+                "source_kind": "synthetic_example",
+                "source_ref_id": "synthetic_order_priority_policy_cases_v1",
+                "title": "Synthetic order-priority policy cases v1"
+              }
+            ]
+          }
+        },
+        "knowledge_unit": "tests/fixtures/knowledge/order_priority_policy_synthetic_candidate_v2.json",
+        "ontology_spec": {
+          "content_hash": "082602ce38a67a9d70130cdd265d83fc3af17d1ced8adcd36fca005a6ae3edcb",
+          "spec": {
+            "compilation_issues": [
+              {
+                "code": "data_requirement_not_executable",
+                "issue_id": "compilation_issue_47c53647cf7d17c52ec637542c9a353de27e8ce5fea7b4b0ce1e096b1981c818",
+                "message": "Data requirement requires an explicit executable mapping.",
+                "payload_schema": "data_requirement.narrative.v1",
+                "severity": "requires_review",
+                "suggestion_id": "suggestion_4188bf626fb7f339d2655d652fe76ad0bfb7c1e2ff0796e8f956e22f0fcb638c"
+              },
+              {
+                "code": "acceptance_question_not_executable",
+                "issue_id": "compilation_issue_87363719fa94b0c0d47d750ad1cb25293db83badf614e0d958bcd2e9b2dcd0b6",
+                "message": "Acceptance question remains review input and is not executable.",
+                "payload_schema": "acceptance_question.v1",
+                "severity": "requires_review",
+                "suggestion_id": "suggestion_0167df5992b1a7b4d80795abdbb2aed8a61c5942488991a55768c45cb998122c"
+              },
+              {
+                "code": "data_requirement_not_executable",
+                "issue_id": "compilation_issue_97d7966fdea6984d66ec75480d33210fe8044248d6cc43e7639d9116663f5f04",
+                "message": "Data requirement requires an explicit executable mapping.",
+                "payload_schema": "data_requirement.narrative.v1",
+                "severity": "requires_review",
+                "suggestion_id": "suggestion_b7dd10f2678ffd4ff2a44244c103ac7d511254d95ac8fcb22c4e09ee74d71881"
+              },
+              {
+                "code": "readiness_gap_blocks_rule_compilation",
+                "issue_id": "compilation_issue_b95ba465be34bfdf3283554f8b3738d73c0f9de527e9d68999b2ef97b15ea007",
+                "message": "Readiness gap requires review before rule compilation.",
+                "payload_schema": "readiness_gap.v1",
+                "severity": "requires_review",
+                "suggestion_id": "suggestion_093dca2a7acfa617028634a1e237c88279ab043818b714b883c35e1b83bc1267"
+              },
+              {
+                "code": "narrative_constraint_requires_formalization",
+                "issue_id": "compilation_issue_d21616f47be26633b0300ed867fdd941c1226c5e21236d5446104f4dc89df5eb",
+                "message": "Narrative constraint requires formalization before execution.",
+                "payload_schema": "constraint.narrative.v1",
+                "severity": "requires_review",
+                "suggestion_id": "suggestion_2ce99e1c2320fb924699d5ef07d992ad9b991a69564eedd04735dc707ec30579"
+              }
+            ],
+            "decision_key": "order_priority_intervention",
+            "entity_types": [
+              {
+                "governance_status": "candidate",
+                "label": "供应商",
+                "origin_kind": "provided_input",
+                "origin_ref_id": "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                "role_key": "supplier",
+                "semantic_key": "supplier.candidate",
+                "type_id": "entity_type_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80"
+              },
+              {
+                "governance_status": "candidate",
+                "label": "物料",
+                "origin_kind": "provided_input",
+                "origin_ref_id": "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+                "role_key": "material",
+                "semantic_key": "material.required",
+                "type_id": "entity_type_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78"
+              },
+              {
+                "governance_status": "candidate",
+                "label": "客户订单",
+                "origin_kind": "provided_input",
+                "origin_ref_id": "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+                "role_key": "customer_order",
+                "semantic_key": "order.primary",
+                "type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+              }
+            ],
+            "evidence_scope": "synthetic_demo",
+            "governance_status": "candidate",
+            "input_binding_ids": [
+              "binding_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+              "binding_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+              "binding_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+            ],
+            "pack_content_hash": "f003c3a38cb1ecfc0c51d573e09ea96fdc811897b64c568af62099b07a03687f",
+            "property_types": [
+              {
+                "domain_type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+                "governance_status": "candidate",
+                "origin_kind": "knowledge_suggestion",
+                "origin_ref_id": "suggestion_f2523867b14d4dd338084c72042bb91f4367176f9ca5d805704eed080550503e",
+                "property_type_id": "property_type_3afb3f312a0cc2020c405c6da4b99a8bb226091d3624f041daf320c46b0bd9e7",
+                "semantic_key": "qualified_alternative_state",
+                "value_type": "symbolic_state"
+              },
+              {
+                "domain_type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+                "governance_status": "candidate",
+                "origin_kind": "knowledge_suggestion",
+                "origin_ref_id": "suggestion_f2523867b14d4dd338084c72042bb91f4367176f9ca5d805704eed080550503e",
+                "property_type_id": "property_type_4d36ec2be87b10e7fce131579892a1c494cdf531fa73cee7996182183bef30fb",
+                "semantic_key": "supplier_commitment_state",
+                "value_type": "symbolic_state"
+              }
+            ],
+            "relation_types": [
+              {
+                "description": "Material-level qualification and purchase history are distinct evidence semantics.",
+                "domain_type_id": "entity_type_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                "governance_status": "candidate",
+                "origin_kind": "knowledge_suggestion",
+                "origin_ref_id": "suggestion_7c1547a8c4215306c1886c07f42f34ed7bd8b21fca79e6b39af398e75324f278",
+                "predicate": "QUALIFIED_TO_SUPPLY",
+                "range_type_id": "entity_type_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+                "relation_type_id": "relation_type_2a815819ffbd931bd40c86db3ef3d618448585d62b37fdb134e4082780d0d5cc",
+                "semantic_key": "supplier_qualified_to_supply_material"
+              },
+              {
+                "description": "Purchase or receipt history records past supply evidence.",
+                "domain_type_id": "entity_type_00fee88d7c6976d22cce440a85548138134bdb85a03342526361c58efcf87a80",
+                "governance_status": "candidate",
+                "origin_kind": "knowledge_suggestion",
+                "origin_ref_id": "suggestion_014142e2dae72b5fefd73e4e506eabcd3a81c2d3ba7aaa476b84b49a91691a58",
+                "predicate": "HAS_SUPPLIED",
+                "range_type_id": "entity_type_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+                "relation_type_id": "relation_type_43cd3bb326bf6a1677439b655945c7441f510a6363a725ac2d15ae1a46c9fdc9",
+                "semantic_key": "supplier_has_supplied_material"
+              },
+              {
+                "description": "customer_order REQUIRES material",
+                "domain_type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643",
+                "governance_status": "candidate",
+                "origin_kind": "provided_input",
+                "origin_ref_id": "customer_order_requires_material",
+                "predicate": "REQUIRES",
+                "range_type_id": "entity_type_5f7c1614cd77f411fad60e8c71a939ac374ea3f64b4dec851a1f75b5f1a95c78",
+                "relation_type_id": "relation_type_fef93e626ec19a1c314b0c39f9a69b3bc7b987e8573b7d38c87fb3584d6cb160",
+                "semantic_key": "customer_order_requires_material"
+              }
+            ],
+            "rule_declarations": [
+              {
+                "conditions": [
+                  {
+                    "allowed_values": [
+                      "none"
+                    ],
+                    "operator": "in",
+                    "property_type_id": "property_type_3afb3f312a0cc2020c405c6da4b99a8bb226091d3624f041daf320c46b0bd9e7"
+                  },
+                  {
+                    "allowed_values": [
+                      "at_risk",
+                      "missed"
+                    ],
+                    "operator": "in",
+                    "property_type_id": "property_type_4d36ec2be87b10e7fce131579892a1c494cdf531fa73cee7996182183bef30fb"
+                  }
+                ],
+                "description": "Synthetic categorical queue-entry policy.",
+                "governance_status": "candidate",
+                "negative_conclusion_value": "not_in_queue",
+                "origin_suggestion_id": "suggestion_f2523867b14d4dd338084c72042bb91f4367176f9ca5d805704eed080550503e",
+                "output_conclusion_key": "priority_intervention_queue_membership",
+                "positive_conclusion_value": "in_queue",
+                "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+                "rule_kind": "categorical_all_of_v1",
+                "semantic_key": "order_priority_intervention_queue_rule",
+                "subject_type_id": "entity_type_bf2298d7ef20fcf2dc95f45be8af0b1222bfc5aec8abc85f3f0b511912aec643"
+              }
+            ],
+            "schema": "ontology_spec.v1",
+            "stage": "draft"
+          }
+        }
+      },
+      "evidence_scope": "synthetic_demo",
+      "facts_fixture": "tests/fixtures/policy/order_priority_policy_synthetic_cases_v1.json"
+    },
+    "cases": [
+      {
+        "baseline": {
+          "content_hash": "b9b18758eee6575fd9352a70344f583aed4c000aea09b8aeeb283a82c59cffa6",
+          "receipt": {
+            "actions_executed": false,
+            "decision_pack_content_hash": "dfb6431c60487f71b34e05d7878cea419bdce8332c8b545364cc00d920bb32ff",
+            "decision_result": "in_queue",
+            "draft_created": false,
+            "evaluation_status": "pass",
+            "evidence_refs": [
+              "evidence:order.synthetic.001:qualified_alternative_state",
+              "evidence:order.synthetic.001:supplier_commitment_state",
+              "synthetic_order_priority_policy_cases_v1"
+            ],
+            "external_write": false,
+            "fact_refs": [
+              "order.synthetic.001:qualified_alternative_state",
+              "order.synthetic.001:supplier_commitment_state"
+            ],
+            "facts_content_hash": "174f9c8d9639c68f970e817060c9994777698ba0559984e5b5cd799b6c0f0ef2",
+            "ontology_spec_content_hash": "31b00f3432281459d71615fa7ba4733a522332987d26632aeeb50737a7ecfed3",
+            "published": false,
+            "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+            "schema": "validation_receipt.v1"
+          }
+        },
+        "candidate": {
+          "content_hash": "1903501e9f4f15aa1a452b37935713fd846d30b21db3f78e7bda8d2faf876a3f",
+          "receipt": {
+            "actions_executed": false,
+            "decision_pack_content_hash": "f003c3a38cb1ecfc0c51d573e09ea96fdc811897b64c568af62099b07a03687f",
+            "decision_result": "in_queue",
+            "draft_created": false,
+            "evaluation_status": "pass",
+            "evidence_refs": [
+              "evidence:order.synthetic.001:qualified_alternative_state",
+              "evidence:order.synthetic.001:supplier_commitment_state",
+              "synthetic_order_priority_policy_cases_v1"
+            ],
+            "external_write": false,
+            "fact_refs": [
+              "order.synthetic.001:qualified_alternative_state",
+              "order.synthetic.001:supplier_commitment_state"
+            ],
+            "facts_content_hash": "174f9c8d9639c68f970e817060c9994777698ba0559984e5b5cd799b6c0f0ef2",
+            "ontology_spec_content_hash": "082602ce38a67a9d70130cdd265d83fc3af17d1ced8adcd36fca005a6ae3edcb",
+            "published": false,
+            "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+            "schema": "validation_receipt.v1"
+          }
+        },
+        "facts": {
+          "content_hash": "174f9c8d9639c68f970e817060c9994777698ba0559984e5b5cd799b6c0f0ef2",
+          "fact_set": {
+            "evidence_scope": "synthetic_demo",
+            "facts": [
+              {
+                "availability": "available",
+                "evidence_refs": [
+                  "evidence:order.synthetic.001:qualified_alternative_state"
+                ],
+                "fact_ref": "order.synthetic.001:qualified_alternative_state",
+                "property_type_id": "property_type_3afb3f312a0cc2020c405c6da4b99a8bb226091d3624f041daf320c46b0bd9e7",
+                "value": "none"
+              },
+              {
+                "availability": "available",
+                "evidence_refs": [
+                  "evidence:order.synthetic.001:supplier_commitment_state"
+                ],
+                "fact_ref": "order.synthetic.001:supplier_commitment_state",
+                "property_type_id": "property_type_4d36ec2be87b10e7fce131579892a1c494cdf531fa73cee7996182183bef30fb",
+                "value": "missed"
+              }
+            ],
+            "schema": "synthetic_fact_set.v1",
+            "subject_id": "order.synthetic.001"
+          }
+        },
+        "subject_id": "order.synthetic.001"
+      },
+      {
+        "baseline": {
+          "content_hash": "93cda074b0dde313d63620d0c8e78714aba489d0ae857a04452ffaf34d310666",
+          "receipt": {
+            "actions_executed": false,
+            "decision_pack_content_hash": "dfb6431c60487f71b34e05d7878cea419bdce8332c8b545364cc00d920bb32ff",
+            "decision_result": "not_in_queue",
+            "draft_created": false,
+            "evaluation_status": "fail",
+            "evidence_refs": [
+              "evidence:order.synthetic.002:qualified_alternative_state",
+              "evidence:order.synthetic.002:supplier_commitment_state",
+              "synthetic_order_priority_policy_cases_v1"
+            ],
+            "external_write": false,
+            "fact_refs": [
+              "order.synthetic.002:qualified_alternative_state",
+              "order.synthetic.002:supplier_commitment_state"
+            ],
+            "facts_content_hash": "bd7a87cf47145df93c64b9a585cbde81cffdeb91889273334253d613519b06d7",
+            "ontology_spec_content_hash": "31b00f3432281459d71615fa7ba4733a522332987d26632aeeb50737a7ecfed3",
+            "published": false,
+            "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+            "schema": "validation_receipt.v1"
+          }
+        },
+        "candidate": {
+          "content_hash": "be9c139d955c005b84d7dc14ef875b43e3a77759abeef9ca13763669bb6b9c7c",
+          "receipt": {
+            "actions_executed": false,
+            "decision_pack_content_hash": "f003c3a38cb1ecfc0c51d573e09ea96fdc811897b64c568af62099b07a03687f",
+            "decision_result": "in_queue",
+            "draft_created": false,
+            "evaluation_status": "pass",
+            "evidence_refs": [
+              "evidence:order.synthetic.002:qualified_alternative_state",
+              "evidence:order.synthetic.002:supplier_commitment_state",
+              "synthetic_order_priority_policy_cases_v1"
+            ],
+            "external_write": false,
+            "fact_refs": [
+              "order.synthetic.002:qualified_alternative_state",
+              "order.synthetic.002:supplier_commitment_state"
+            ],
+            "facts_content_hash": "bd7a87cf47145df93c64b9a585cbde81cffdeb91889273334253d613519b06d7",
+            "ontology_spec_content_hash": "082602ce38a67a9d70130cdd265d83fc3af17d1ced8adcd36fca005a6ae3edcb",
+            "published": false,
+            "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+            "schema": "validation_receipt.v1"
+          }
+        },
+        "facts": {
+          "content_hash": "bd7a87cf47145df93c64b9a585cbde81cffdeb91889273334253d613519b06d7",
+          "fact_set": {
+            "evidence_scope": "synthetic_demo",
+            "facts": [
+              {
+                "availability": "available",
+                "evidence_refs": [
+                  "evidence:order.synthetic.002:qualified_alternative_state"
+                ],
+                "fact_ref": "order.synthetic.002:qualified_alternative_state",
+                "property_type_id": "property_type_3afb3f312a0cc2020c405c6da4b99a8bb226091d3624f041daf320c46b0bd9e7",
+                "value": "none"
+              },
+              {
+                "availability": "available",
+                "evidence_refs": [
+                  "evidence:order.synthetic.002:supplier_commitment_state"
+                ],
+                "fact_ref": "order.synthetic.002:supplier_commitment_state",
+                "property_type_id": "property_type_4d36ec2be87b10e7fce131579892a1c494cdf531fa73cee7996182183bef30fb",
+                "value": "at_risk"
+              }
+            ],
+            "schema": "synthetic_fact_set.v1",
+            "subject_id": "order.synthetic.002"
+          }
+        },
+        "subject_id": "order.synthetic.002"
+      },
+      {
+        "baseline": {
+          "content_hash": "a0f6f3ac77f06751d71a00ce07439244d9b14cd8e95f3a7f9da3f82df9a1e145",
+          "receipt": {
+            "actions_executed": false,
+            "decision_pack_content_hash": "dfb6431c60487f71b34e05d7878cea419bdce8332c8b545364cc00d920bb32ff",
+            "decision_result": "not_in_queue",
+            "draft_created": false,
+            "evaluation_status": "fail",
+            "evidence_refs": [
+              "evidence:order.synthetic.003:qualified_alternative_state",
+              "evidence:order.synthetic.003:supplier_commitment_state",
+              "synthetic_order_priority_policy_cases_v1"
+            ],
+            "external_write": false,
+            "fact_refs": [
+              "order.synthetic.003:qualified_alternative_state",
+              "order.synthetic.003:supplier_commitment_state"
+            ],
+            "facts_content_hash": "a03dbcba8034bfc2076a4db26345f2a5378b7257e6d3d578f5c007f04c150ed4",
+            "ontology_spec_content_hash": "31b00f3432281459d71615fa7ba4733a522332987d26632aeeb50737a7ecfed3",
+            "published": false,
+            "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+            "schema": "validation_receipt.v1"
+          }
+        },
+        "candidate": {
+          "content_hash": "cfccdf3ff508718fbeef7bc29e67620621f418a3b28db8a9d51e055fc2ad4746",
+          "receipt": {
+            "actions_executed": false,
+            "decision_pack_content_hash": "f003c3a38cb1ecfc0c51d573e09ea96fdc811897b64c568af62099b07a03687f",
+            "decision_result": "not_in_queue",
+            "draft_created": false,
+            "evaluation_status": "fail",
+            "evidence_refs": [
+              "evidence:order.synthetic.003:qualified_alternative_state",
+              "evidence:order.synthetic.003:supplier_commitment_state",
+              "synthetic_order_priority_policy_cases_v1"
+            ],
+            "external_write": false,
+            "fact_refs": [
+              "order.synthetic.003:qualified_alternative_state",
+              "order.synthetic.003:supplier_commitment_state"
+            ],
+            "facts_content_hash": "a03dbcba8034bfc2076a4db26345f2a5378b7257e6d3d578f5c007f04c150ed4",
+            "ontology_spec_content_hash": "082602ce38a67a9d70130cdd265d83fc3af17d1ced8adcd36fca005a6ae3edcb",
+            "published": false,
+            "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+            "schema": "validation_receipt.v1"
+          }
+        },
+        "facts": {
+          "content_hash": "a03dbcba8034bfc2076a4db26345f2a5378b7257e6d3d578f5c007f04c150ed4",
+          "fact_set": {
+            "evidence_scope": "synthetic_demo",
+            "facts": [
+              {
+                "availability": "available",
+                "evidence_refs": [
+                  "evidence:order.synthetic.003:qualified_alternative_state"
+                ],
+                "fact_ref": "order.synthetic.003:qualified_alternative_state",
+                "property_type_id": "property_type_3afb3f312a0cc2020c405c6da4b99a8bb226091d3624f041daf320c46b0bd9e7",
+                "value": "available"
+              },
+              {
+                "availability": "available",
+                "evidence_refs": [
+                  "evidence:order.synthetic.003:supplier_commitment_state"
+                ],
+                "fact_ref": "order.synthetic.003:supplier_commitment_state",
+                "property_type_id": "property_type_4d36ec2be87b10e7fce131579892a1c494cdf531fa73cee7996182183bef30fb",
+                "value": "on_track"
+              }
+            ],
+            "schema": "synthetic_fact_set.v1",
+            "subject_id": "order.synthetic.003"
+          }
+        },
+        "subject_id": "order.synthetic.003"
+      },
+      {
+        "baseline": {
+          "content_hash": "cc1f50fbe3063b446be33857d100f5c98e2686cb3b3dde5ce2256070a1cf8783",
+          "receipt": {
+            "actions_executed": false,
+            "decision_pack_content_hash": "dfb6431c60487f71b34e05d7878cea419bdce8332c8b545364cc00d920bb32ff",
+            "decision_result": "information_insufficient",
+            "draft_created": false,
+            "evaluation_status": "not_evaluable",
+            "evidence_refs": [
+              "evidence:order.synthetic.004:qualified_alternative_state",
+              "evidence:order.synthetic.004:supplier_commitment_state",
+              "synthetic_order_priority_policy_cases_v1"
+            ],
+            "external_write": false,
+            "fact_refs": [
+              "order.synthetic.004:qualified_alternative_state",
+              "order.synthetic.004:supplier_commitment_state"
+            ],
+            "facts_content_hash": "ea63e5b66ddb0e8ecd33249518b75efd3238787fa9cf4a249648389b81bf86fa",
+            "ontology_spec_content_hash": "31b00f3432281459d71615fa7ba4733a522332987d26632aeeb50737a7ecfed3",
+            "published": false,
+            "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+            "schema": "validation_receipt.v1"
+          }
+        },
+        "candidate": {
+          "content_hash": "357cda1afc11f1c936dd17941a37da55612ef1c19dcc7fd9a6d621c7fb85f152",
+          "receipt": {
+            "actions_executed": false,
+            "decision_pack_content_hash": "f003c3a38cb1ecfc0c51d573e09ea96fdc811897b64c568af62099b07a03687f",
+            "decision_result": "information_insufficient",
+            "draft_created": false,
+            "evaluation_status": "not_evaluable",
+            "evidence_refs": [
+              "evidence:order.synthetic.004:qualified_alternative_state",
+              "evidence:order.synthetic.004:supplier_commitment_state",
+              "synthetic_order_priority_policy_cases_v1"
+            ],
+            "external_write": false,
+            "fact_refs": [
+              "order.synthetic.004:qualified_alternative_state",
+              "order.synthetic.004:supplier_commitment_state"
+            ],
+            "facts_content_hash": "ea63e5b66ddb0e8ecd33249518b75efd3238787fa9cf4a249648389b81bf86fa",
+            "ontology_spec_content_hash": "082602ce38a67a9d70130cdd265d83fc3af17d1ced8adcd36fca005a6ae3edcb",
+            "published": false,
+            "rule_id": "rule_9045503db7c0d3ee19c608388242fdf1a77931a765b848cc0446694286aceeb5",
+            "schema": "validation_receipt.v1"
+          }
+        },
+        "facts": {
+          "content_hash": "ea63e5b66ddb0e8ecd33249518b75efd3238787fa9cf4a249648389b81bf86fa",
+          "fact_set": {
+            "evidence_scope": "synthetic_demo",
+            "facts": [
+              {
+                "availability": "unavailable",
+                "evidence_refs": [
+                  "evidence:order.synthetic.004:qualified_alternative_state"
+                ],
+                "fact_ref": "order.synthetic.004:qualified_alternative_state",
+                "property_type_id": "property_type_3afb3f312a0cc2020c405c6da4b99a8bb226091d3624f041daf320c46b0bd9e7",
+                "value": null
+              },
+              {
+                "availability": "available",
+                "evidence_refs": [
+                  "evidence:order.synthetic.004:supplier_commitment_state"
+                ],
+                "fact_ref": "order.synthetic.004:supplier_commitment_state",
+                "property_type_id": "property_type_4d36ec2be87b10e7fce131579892a1c494cdf531fa73cee7996182183bef30fb",
+                "value": "missed"
+              }
+            ],
+            "schema": "synthetic_fact_set.v1",
+            "subject_id": "order.synthetic.004"
+          }
+        },
+        "subject_id": "order.synthetic.004"
+      }
+    ],
+    "run_status": {
+      "action": "not_started",
+      "external_write": false,
+      "publication": "not_started",
+      "review": "not_started",
+      "validation": "completed"
+    },
+    "runtime": {
+      "evaluator": "ontology_poc_generator.rule_runtime.evaluate_synthetic_rule",
+      "external_writes": false,
+      "mode": "recorded_deterministic",
+      "network_access": false
+    },
+    "schema": "validation_run.v1"
+  }
 }
