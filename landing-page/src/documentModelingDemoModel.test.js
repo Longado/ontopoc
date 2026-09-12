@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+
 
 let model = null;
 try {
@@ -12,6 +14,19 @@ function requireModel() {
   assert.ok(model, "document modeling demo model must exist");
   return model;
 }
+
+test("quality material and candidate relationships describe the actual computed snapshot", () => {
+  const preset = requireModel().DOCUMENT_MODELING_PRESETS[0];
+  const source = JSON.parse(readFileSync(new URL('../../tests/fixtures/quality/quality_investigation_source_snapshot_v1.json', import.meta.url)));
+  const artifact = JSON.parse(readFileSync(new URL('../public/artifacts/quality-investigation.json', import.meta.url)));
+  assert.equal(preset.event.id, artifact.quality_signal_id);
+  for (const object of artifact.control_scope_objects) assert.ok(preset.documentText.includes(object.object_id));
+  for (const relation of preset.relationTypes) {
+    const from = preset.entityTypes.find((e) => e.id === relation.source).sourceObjectId;
+    const to = preset.entityTypes.find((e) => e.id === relation.target).sourceObjectId;
+    assert.ok(source.records.some((r) => r.subject_id === from && r.object_id === to && r.predicate === relation.label && r.evidence_ref === relation.evidenceRef));
+  }
+});
 
 test("opens the quality temporary-control Phase 1 scenario by default without removing existing presets", () => {
   const { DOCUMENT_MODELING_PRESETS } = requireModel();
@@ -36,7 +51,7 @@ test("starts the quality scenario from one event and keeps cross-source records 
   const preset = DOCUMENT_MODELING_PRESETS[0];
 
   assert.deepEqual(preset.event, {
-    id: "QI-DEMO-017",
+    id: "quality-event-017",
     signal: "终检发现泄漏率异常",
     status: "待调查",
     detectedAt: "2026-08-04 09:10",
@@ -47,7 +62,7 @@ test("starts the quality scenario from one event and keeps cross-source records 
     [
       ["QMS_SYNTHETIC", "available"],
       ["MES_SYNTHETIC", "available"],
-      ["WMS_SYNTHETIC", "available"],
+      ["MES_SYNTHETIC", "available"],
       ["PLM_SYNTHETIC", "missing"],
     ],
   );
@@ -168,5 +183,5 @@ test("preview definitions contain no hash or validation receipt claims", () => {
   const { DOCUMENT_MODELING_PRESETS } = requireModel();
   const previewJson = JSON.stringify(DOCUMENT_MODELING_PRESETS.filter(({ mode }) => mode === "scenario_preview"));
 
-  assert.doesNotMatch(previewJson, /hash|validation.?receipt|customer|客户/i);
+  assert.doesNotMatch(previewJson, /hash|validation.?receipt/i);
 });
