@@ -136,7 +136,7 @@ test("Phase 1 leads with four-state control scope objects before investigation f
   assert.match(documentModeler, /className="control-scope-summary"/);
   assert.match(documentModeler, /className="control-scope-groups"/);
   assert.match(documentModeler, /investigation\.control_scope_objects\.filter/);
-  assert.match(documentModeler, /确定影响/);
+  assert.match(documentModeler, /同批次关联/);
   assert.match(documentModeler, /可能影响/);
   assert.match(documentModeler, /已排除/);
   assert.match(documentModeler, /无法评估/);
