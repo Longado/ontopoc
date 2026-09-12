@@ -21,6 +21,61 @@
 
 当前产品主线收敛为一个决策：质量异常发生后，哪些库存、在制、待发运、在途或客户侧对象进入临时控制或复检队列。系统只提出候选范围和证据，最终选择仍由质量负责人确认。
 
+## 公开召回范围核对（本地）
+
+新增一个独立的公开历史案例：openFDA 事件 **95876**，Russ Davis 2024 年黄瓜与加工食品召回。
+原始响应与人工核对的范围表保存在 `examples/recalls/`，覆盖 5 条召回记录、12 个产品分段和 93 条产品—批号对应关系。
+这是 `public_recall` 数据，不进入既有 `synthetic_demo` / OntologySpec / ValidationReceipt 链路。
+
+核对一项产品：
+
+```bash
+PYTHONPATH=src python -m ontology_poc_generator.recall_cli \
+  --product F-0369-2025/1 --lot X7547814
+```
+
+`--product` 接受范围表中的完整产品名称或 product_key；也可仅用 `--upc 795631810387` 标识产品。
+`--label-date 2024-11-15` 为可选的包装 Use/Sell By 日期，不是生产日期。
+返回 `matched / insufficient / conflict / not_matched`，每项附带原文和来源。匹配表示产品身份与列明批号匹配；没有提供日期时不核验日期。
+未匹配不代表安全；没有真实库存、逐批投料、正常检验或已执行控制的含义。公告已列明批号也不代表逐件检验阳性。
+
+在两个终端启动本地核对 API 与已有页面：
+
+```bash
+# 终端一：仓库根目录；仅监听本机，无模型调用或数据写回
+PYTHONPATH=src python -m ontology_poc_generator.recall_server
+
+# 终端二
+cd landing-page
+npm ci
+npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
+```
+
+打开 `http://127.0.0.1:5178`，默认进入事件 95876 核对清单。添加一行或使用 3 行练习示例，核对后逐行修正、补证或复核。练习输入不是实际库存。页面实时请求本地 Python，前端不重复实现匹配逻辑。
+
+支持从表格粘贴最多 100 行：不含表头，按产品名称或公告编号、批号、UPC、Use/Sell By 日期（YYYY-MM-DD）四列排列，用 Tab 分隔，空单元格保留。不是任意 Excel 文件导入。
+
+清单与已保存复核保存在当前浏览器/源站的 localStorage，切换场景或刷新可恢复；修改一行只清除该行旧结果和复核，来源版本变化后须重新核对。保存失败会提示下载摘要；损坏或不支持的草稿不会自动覆盖，可下载原始草稿后明确重置。“下载核对摘要”保存本地 JSON，含逐行结果、补证事项和范围说明；经办人是手工备注，不是认证身份或审批。
+
+辅助入口“示例建模（只读）”仍是固定合成案例，其会话选择不属于召回清单。现有静态 Sites 部署没有此 Python API，不代表云端已接入。
+
+本轮交互问题与验收记录见 [问题台账](docs/PM_INTERACTION_ISSUES.md) 和 [修改步骤](docs/superpowers/plans/2026-09-12-event-worklist-interaction.md)。
+
+DeepSeek 公告提取实测：
+
+```bash
+# 在本机安全配置 DEEPSEEK_API_KEY（也兼容 EIP_MODEL_API_KEY）；不要将密钥写入仓库。
+PYTHONPATH=src python scripts/check_recall_deepseek.py \
+  --model deepseek-flash --output output/recall-deepseek.json
+```
+
+脚本向 DeepSeek 官方端点发送 5 条公开公告，每条一次调用，仅提取产品与批号分组；输入不含人工核对答案。
+报告保留模型返回标识、耗时、候选与逐产品差异，任何遗漏、多出、串品或重复均不通过；模型输出不会覆盖范围表。
+2026-09-12 使用官方 `deepseek-flash` 完成一次在线测试：5/5 公告、12 个产品分段、93 条批号对应关系与核对表一致。
+该测试衡量公告提取能力，不是召回预测或业务效果。密钥缺失时退出码 2，不生成成功报告；重复运行须指定新报告路径。
+
+检查命令与逐轮计划见 [本轮实施计划](docs/superpowers/plans/2026-09-12-public-recall-scope.md)。
+
 ## MVP 输入
 
 参考 [`examples/dairy_rnd.json`](examples/dairy_rnd.json)：

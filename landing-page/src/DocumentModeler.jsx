@@ -11,9 +11,9 @@ import {
 const copy = {
   zh: {
     title: "从质量事件开始追溯",
-    intro: "先查看跨来源业务记录和缺失链路，再由 FDE 核对候选对象与关系。",
+    intro: "固定案例演示：材料只读。查看同一质量快照的对象范围，再核对核心关系。",
     scenario: "01 / 选择质量事件或演示场景",
-    document: "02 / 质量事件材料（合成）",
+    document: "02 / 固定质量事件材料（只读）",
     generate: "查看追溯证据链",
     evidence: "选中证据",
     empty: "选择质量事件后，查看跨来源记录、追溯链和当前数据缺口。",
@@ -36,7 +36,7 @@ const copy = {
     sourceRecord: "来源记录",
     controlScope: "建议临时控制范围",
     controlScopeBoundary: "SYNTHETIC DEMO · 未执行任何控制",
-    confirmedImpact: "确定影响",
+    confirmedImpact: "同批次关联",
     possibleImpact: "可能影响",
     excludedImpact: "已排除",
     notEvaluableImpact: "无法评估",
@@ -78,9 +78,9 @@ const copy = {
   },
   en: {
     title: "Start from a quality event",
-    intro: "Inspect cross-source records and missing links before the FDE reviews candidate objects and relations.",
+    intro: "Read-only fixed case. Inspect scope objects from the same quality snapshot, then review the core relationships.",
     scenario: "01 / SELECT QUALITY EVENT OR DEMO SCENARIO",
-    document: "02 / QUALITY EVENT MATERIAL (SYNTHETIC)",
+    document: "02 / FIXED CASE MATERIAL (READ ONLY)",
     generate: "VIEW TRACE EVIDENCE",
     evidence: "SELECTED EVIDENCE",
     empty: "Select a quality event to inspect cross-source records, its trace, and current data gaps.",
@@ -103,7 +103,7 @@ const copy = {
     sourceRecord: "SOURCE RECORD",
     controlScope: "SUGGESTED TEMPORARY CONTROL SCOPE",
     controlScopeBoundary: "SYNTHETIC DEMO · NO CONTROL EXECUTED",
-    confirmedImpact: "CONFIRMED IMPACT",
+    confirmedImpact: "SAME-BATCH ASSOCIATION",
     possibleImpact: "POSSIBLE IMPACT",
     excludedImpact: "EXCLUDED",
     notEvaluableImpact: "NOT EVALUABLE",
@@ -201,6 +201,7 @@ export function DocumentModeler({ language, runAgentDemo }) {
   const [investigation, setInvestigation] = useState(null);
   const [investigationStatus, setInvestigationStatus] = useState("idle");
   const [controlDecisions, setControlDecisions] = useState({});
+  const [showMaterial, setShowMaterial] = useState(true);
 
   const graph = useMemo(
     () => result?.status === "resolved" ? projectCandidateGraph(result.preset, includedCandidates) : { nodes: [], edges: [] },
@@ -208,6 +209,7 @@ export function DocumentModeler({ language, runAgentDemo }) {
   );
 
   const selectScenario = (preset) => {
+    setShowMaterial(true);
     setScenarioId(preset.id);
     setDocumentText(preset.documentText);
     setResult(null);
@@ -227,6 +229,7 @@ export function DocumentModeler({ language, runAgentDemo }) {
       return;
     }
     setResult(nextResult);
+    if (nextResult.status === "resolved") setShowMaterial(false);
     setControlDecisions({});
     if (nextResult.status === "resolved") {
       const nextPreset = nextResult.preset;
@@ -245,6 +248,8 @@ export function DocumentModeler({ language, runAgentDemo }) {
             nextInvestigation.schema !== "investigation_scope.v1"
             || nextInvestigation.evidence_scope !== "synthetic_demo"
             || nextInvestigation.root_cause_confirmed !== false
+            || nextInvestigation.quality_signal_id !== nextPreset.event.id
+            || nextInvestigation.control_scope_objects?.some((object) => !nextPreset.documentText.includes(object.object_id))
             || !Array.isArray(nextInvestigation.control_scope_objects)
             || !Array.isArray(nextInvestigation.factors)
             || !Array.isArray(nextInvestigation.gaps)
@@ -346,7 +351,8 @@ export function DocumentModeler({ language, runAgentDemo }) {
   };
 
   return (
-    <div className="document-modeler">
+    <div className={`document-modeler ${!showMaterial ? "document-material-collapsed" : ""}`}>
+      <button className="document-material-toggle" type="button" aria-expanded={showMaterial} onClick={() => setShowMaterial((value) => !value)}>{language === "zh" ? (showMaterial ? "收起案例材料" : "展开案例材料") : (showMaterial ? "Hide case material" : "Show case material")}</button>
       <section className="document-modeler-controls" aria-labelledby="document-modeler-title">
         <header>
           <span>QUALITY EVENT TRACE / PHASE 1</span>
@@ -374,15 +380,9 @@ export function DocumentModeler({ language, runAgentDemo }) {
           <span>{t.document}</span>
           <textarea
             rows={8}
+            readOnly
             value={documentText}
-            onChange={(event) => {
-              setDocumentText(event.target.value);
-              setResult(null);
-              setSelectedEvidence(null);
-              setInvestigation(null);
-              setInvestigationStatus("idle");
-              setControlDecisions({});
-            }}
+
           />
         </label>
         <button className="document-generate" type="button" onClick={generate}>
@@ -484,6 +484,7 @@ export function DocumentModeler({ language, runAgentDemo }) {
                                       type="button"
                                       className={controlDecisions[object.object_id] === action.id ? "is-active" : ""}
                                       aria-pressed={controlDecisions[object.object_id] === action.id}
+                                      aria-label={`${object.object_id} · ${action.label}`}
                                       onClick={() => setControlDecisions((current) => ({ ...current, [object.object_id]: action.id }))}
                                     >
                                       {action.label}

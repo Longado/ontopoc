@@ -1,0 +1,62 @@
+.recall-workspace { width: 100%; max-width: 1040px; min-height: 0; overflow-y: auto; margin: 0 auto; padding: 36px; color: #18342e; background: #fafcfb; font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+.recall-workspace h1 { font-size: clamp(25px, 3vw, 36px); line-height: 1.3; margin: 12px 0; }
+.recall-workspace p { line-height: 1.7; }
+.recall-eyebrow { font-size: 12px; letter-spacing: .1em; color: #42635a; font-weight: 700; }
+.recall-boundary { padding: 14px 18px; background: #edf3ee; border-left: 3px solid #52765b; font-size: 14px; }
+.recall-fields { border: 0; margin: 24px 0 16px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; min-width: 0; }
+.recall-fields label, .recall-review label { display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600; min-width: 0; }
+.recall-product { grid-column: 1 / -1; }
+.recall-workspace input, .recall-workspace select, .recall-workspace textarea { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #bacbc2; border-radius: 6px; padding: 12px; font: inherit; color: #18342e; background: white; }
+.recall-workspace textarea { min-height: 74px; resize: vertical; }
+.recall-date-hint { align-self: end; font-size: 13px; color: #50665c; margin: 0; }
+.recall-workspace button { border: 1px solid #b1c5b9; border-radius: 6px; padding: 11px 16px; background: white; color: #18342e; font: inherit; cursor: pointer; }
+.recall-workspace button:disabled { opacity: .5; cursor: not-allowed; }
+.recall-workspace .recall-primary, .recall-workspace button[aria-pressed="true"] { background: #214e3e; color: white; border-color: #214e3e; }
+.recall-form-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.recall-result { margin-top: 28px; padding: 22px; border: 1px solid #b8c9be; border-top: 5px solid #52765b; border-radius: 8px; background: white; }
+.recall-result h2 { margin: 8px 0; font-size: 24px; }
+.recall-result [role="status"] > span { font-size: 13px; overflow-wrap: anywhere; }
+.recall-conflict { border-top-color: #b56237; }
+.recall-insufficient { border-top-color: #ac8734; }
+.recall-not_matched { border-top-color: #697989; }
+.recall-workspace details { border-top: 1px solid #dce5df; margin-top: 20px; padding-top: 18px; }
+.recall-workspace summary { cursor: pointer; font-weight: 600; }
+.recall-evidence { margin: 18px 0; padding: 16px; background: #f3f6f4; overflow-wrap: anywhere; font-size: 14px; }
+.recall-evidence h3 { margin-top: 0; }
+.recall-review { margin-top: 24px; border-top: 1px solid #dce5df; padding-top: 8px; }
+.recall-review .recall-form-actions { margin: 12px 0; }
+.recall-review small { color: #53675c; }
+.recall-workspace footer { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 12px 24px; font-size: 12px; color: #50665c; overflow-wrap: anywhere; }
+.recall-workspace a { color: #245844; text-decoration: underline; }
+.recall-error { color: #943719; padding: 16px 0; }
+.recall-surface-switch { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 24px; border-bottom: 1px solid #dce5df; background: #f7faf8; }
+.recall-surface-switch button { font: inherit; padding: 10px 16px; border: 1px solid #bdcec3; border-radius: 6px; background: white; cursor: pointer; }
+.recall-surface-switch button[aria-pressed="true"] { background: #214e3e; color: white; }
+@media (max-width: 600px) { .recall-workspace { padding: 20px 14px; } .recall-fields { grid-template-columns: 1fr; } .recall-result { padding: 16px; } .recall-form-actions button { width: 100%; } }
+
+.recall-workspace { max-width: 1360px; }
+.recall-worklist-layout { display: grid; grid-template-columns: minmax(240px, .8fr) minmax(360px, 1.2fr); gap: 24px; align-items: start; }
+.recall-rows { display: grid; gap: 10px; }
+.recall-workspace .recall-row { display: grid; gap: 8px; width: 100%; text-align: left; padding: 16px; white-space: normal; overflow-wrap: anywhere; }
+.recall-workspace button[aria-pressed="true"] { border-color: #286b51; background: #e6f2eb; color: #173f30; }
+.recall-row-detail { min-width: 0; padding: 20px; border: 1px solid #d5dfd7; border-radius: 14px; background: white; }
+.recall-row-detail h2 { margin-top: 0; font-size: 19px; }
+.recall-counts { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.recall-paste { margin-top: 14px; }
+.recall-workspace textarea { width: 100%; box-sizing: border-box; min-height: 76px; }
+.recall-review fieldset { border: 0; padding: 0; display: grid; gap: 12px; min-width: 0; }
+.recall-review label { display: grid; gap: 6px; }
+.recall-workspace input, .recall-workspace select { min-width: 0; width: 100%; box-sizing: border-box; }
+.recall-conditions { padding-left: 20px; line-height: 1.7; }
+.recall-empty { padding: 36px 20px; border: 1px dashed #aac4b5; border-radius: 12px; }
+.recall-save-status { font-size: 13px; color: #536756; }
+.recall-workspace mark { background: #ffe28a; color: #382800; }
+.document-modeler .document-material-toggle { grid-column: 1 / -1; padding: 8px 14px; }
+.document-modeler:has(.document-material-toggle) { grid-template-rows: auto minmax(0, 1fr); }
+.document-modeler.document-material-collapsed { grid-template-columns: minmax(0, 1fr); }
+.document-modeler.document-material-collapsed > .document-modeler-controls { display: none; }
+@media (max-width: 700px) {
+  .recall-worklist-layout { grid-template-columns: minmax(0, 1fr); }
+  .recall-row-detail { padding: 14px; }
+  .recall-workspace .recall-fields { grid-template-columns: minmax(0, 1fr); }
+}

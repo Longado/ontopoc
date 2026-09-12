@@ -1,67 +1,115 @@
 export const DOCUMENT_MODELING_PRESETS = [
   {
-    id: "quality-temporary-control",
-    title: { zh: "质量临时控制", en: "Quality temporary control" },
-    evidenceScope: "synthetic_demo",
-    mode: "scenario_preview",
-    productMode: "phase1_decision_modeling",
-    event: {
-      id: "QI-DEMO-017",
-      signal: "终检发现泄漏率异常",
-      status: "待调查",
-      detectedAt: "2026-08-04 09:10",
+    "id": "quality-temporary-control",
+    "title": {
+      "zh": "质量临时控制",
+      "en": "Quality temporary control"
     },
-    investigationQuestion: "该异常与哪些批次、在制品和待发运件有关，哪条关键链路仍然缺失？",
-    decision: "哪些在制品和待发运件进入临时控制或复检队列？",
-    decisionOwner: "质量负责人",
-    trigger: "终检发现泄漏率异常且原因尚未确认",
-    documentText: "synthetic_demo\n终检发现质量事件 QI-DEMO-017：批次 B-17 的组件出现泄漏率异常，原因尚未确认。质量负责人需要判断在制品 WIP-B17 与待发运件 SHIP-B17 是否进入临时控制或复检队列。WIP-B17 使用批次 B-17；SHIP-B17 由 WIP-B17 形成，项目映射尚缺失。",
-    sourceRecords: [
+    "evidenceScope": "synthetic_demo",
+    "mode": "scenario_preview",
+    "productMode": "phase1_decision_modeling",
+    "event": {
+      "id": "quality-event-017",
+      "signal": "终检发现泄漏率异常",
+      "status": "待调查",
+      "detectedAt": "2026-08-04 09:10"
+    },
+    "investigationQuestion": "该异常与哪些批次、在制品和待发运件有关，哪条关键链路仍然缺失？",
+    "decision": "哪些对象进入临时控制或复检队列？",
+    "decisionOwner": "质量负责人",
+    "trigger": "终检发现泄漏率异常且原因尚未确认",
+    "documentText": "synthetic_demo\n质量事件 quality-event-017 识别异常件 unit-abnormal-017-a。unit-abnormal-017-a 使用批次 component-batch-017；work-order-wip-204 使用批次 component-batch-017。\n本次范围核对对象：inventory-lot-017、work-order-wip-204、pending-shipment-031、in-transit-shipment-044、customer-unit-group-017。pending-shipment-031 有版本关联但缺批次绑定；customer-unit-group-017 缺项目映射。\n下方核心关系图只展示事件、异常件、批次与在制品；完整对象范围以同一质量快照的计算清单为准。",
+    "sourceRecords": [
       {
-        id: "qms:quality-event-017",
-        sourceSystem: "QMS_SYNTHETIC",
-        status: "available",
-        label: "终检异常记录",
-        observedAt: "2026-08-04 09:10",
-        detail: "记录质量事件、异常指标与关联组件批次。",
+        "id": "qms:quality-event-017",
+        "sourceSystem": "QMS_SYNTHETIC",
+        "status": "available",
+        "label": "终检异常记录",
+        "observedAt": null,
+        "detail": "quality-event-017 识别 unit-abnormal-017-a。"
       },
       {
-        id: "mes:material-use-017",
-        sourceSystem: "MES_SYNTHETIC",
-        status: "available",
-        label: "实际投料记录",
-        observedAt: "2026-08-04 08:42",
-        detail: "记录在制品 WIP-B17 实际使用批次 B-17。",
+        "id": "mes:material-use-abnormal-017",
+        "sourceSystem": "MES_SYNTHETIC",
+        "status": "available",
+        "label": "异常件投料记录",
+        "observedAt": null,
+        "detail": "unit-abnormal-017-a 使用 component-batch-017。"
       },
       {
-        id: "wms:shipment-formation-017",
-        sourceSystem: "WMS_SYNTHETIC",
-        status: "available",
-        label: "待发运形成记录",
-        observedAt: "2026-08-04 10:05",
-        detail: "记录待发运件 SHIP-B17 由 WIP-B17 形成。",
+        "id": "mes:wip-batch-204",
+        "sourceSystem": "MES_SYNTHETIC",
+        "status": "available",
+        "label": "在制品投料记录",
+        "observedAt": null,
+        "detail": "work-order-wip-204 使用 component-batch-017。"
       },
       {
-        id: "plm:project-product-map-017",
-        sourceSystem: "PLM_SYNTHETIC",
-        status: "missing",
-        label: "项目与产品映射",
-        observedAt: null,
-        detail: "尚未取得项目映射，当前不能继续判断对应项目范围。",
-      },
+        "id": "plm:missing-project-product-map-017",
+        "sourceSystem": "PLM_SYNTHETIC",
+        "status": "missing",
+        "label": "项目与产品映射",
+        "observedAt": null,
+        "detail": "客户侧对象与异常件的项目映射缺失。"
+      }
     ],
-    entityTypes: [
-      { id: "quality-event", label: "质量事件 QI-DEMO-017", evidenceText: "质量事件 QI-DEMO-017", evidenceRef: "qms:quality-event-017" },
-      { id: "material-batch", label: "批次 B-17", evidenceText: "批次 B-17", evidenceRef: "qms:quality-event-017" },
-      { id: "work-in-progress", label: "在制品 WIP-B17", evidenceText: "在制品 WIP-B17", evidenceRef: "mes:material-use-017" },
-      { id: "pending-shipment", label: "待发运件 SHIP-B17", evidenceText: "待发运件 SHIP-B17", evidenceRef: "wms:shipment-formation-017" },
+    "entityTypes": [
+      {
+        "id": "quality-event",
+        "label": "质量事件 quality-event-017",
+        "sourceObjectId": "quality-event-017",
+        "evidenceText": "quality-event-017",
+        "evidenceRef": "qms:quality-event-017"
+      },
+      {
+        "id": "abnormal-unit",
+        "label": "异常件 unit-abnormal-017-a",
+        "sourceObjectId": "unit-abnormal-017-a",
+        "evidenceText": "unit-abnormal-017-a",
+        "evidenceRef": "qms:quality-event-017"
+      },
+      {
+        "id": "material-batch",
+        "label": "批次 component-batch-017",
+        "sourceObjectId": "component-batch-017",
+        "evidenceText": "component-batch-017",
+        "evidenceRef": "mes:material-use-abnormal-017"
+      },
+      {
+        "id": "work-in-progress",
+        "label": "在制品 work-order-wip-204",
+        "sourceObjectId": "work-order-wip-204",
+        "evidenceText": "work-order-wip-204",
+        "evidenceRef": "mes:wip-batch-204"
+      }
     ],
-    relationTypes: [
-      { id: "event-involves-batch", label: "INVOLVES", source: "quality-event", target: "material-batch", evidenceText: "质量事件 QI-DEMO-017：批次 B-17 的组件出现泄漏率异常", evidenceRef: "qms:quality-event-017" },
-      { id: "wip-uses-batch", label: "USES_BATCH", source: "work-in-progress", target: "material-batch", evidenceText: "WIP-B17 使用批次 B-17", evidenceRef: "mes:material-use-017" },
-      { id: "wip-forms-shipment", label: "FORMS_SHIPMENT", source: "work-in-progress", target: "pending-shipment", evidenceText: "SHIP-B17 由 WIP-B17 形成", evidenceRef: "wms:shipment-formation-017" },
+    "relationTypes": [
+      {
+        "id": "event-identifies-unit",
+        "label": "IDENTIFIES",
+        "source": "quality-event",
+        "target": "abnormal-unit",
+        "evidenceText": "quality-event-017 识别异常件 unit-abnormal-017-a",
+        "evidenceRef": "qms:quality-event-017"
+      },
+      {
+        "id": "unit-uses-batch",
+        "label": "USES_BATCH",
+        "source": "abnormal-unit",
+        "target": "material-batch",
+        "evidenceText": "unit-abnormal-017-a 使用批次 component-batch-017",
+        "evidenceRef": "mes:material-use-abnormal-017"
+      },
+      {
+        "id": "wip-uses-batch",
+        "label": "USES_BATCH",
+        "source": "work-in-progress",
+        "target": "material-batch",
+        "evidenceText": "work-order-wip-204 使用批次 component-batch-017",
+        "evidenceRef": "mes:wip-batch-204"
+      }
     ],
-    boundary: "候选只在当前浏览器会话中供 FDE 选择和修正；不会发布、创建外部任务或写回业务系统。",
+    "boundary": "固定合成案例；核心图为同一质量快照的关系子集。人工选择仅在演示会话内有效，不发布或执行业务动作。"
   },
   {
     id: "supply-chain-order-intervention",
