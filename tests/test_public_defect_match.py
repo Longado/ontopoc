@@ -62,7 +62,7 @@ class DefectMatchTests(unittest.TestCase):
         self.assertEqual(self.scope, before)
         for check in self.verdicts(result).values():
             self.assertEqual((check['verdict'], check['model'], check['prompt_version']),
-                             ('no', 'deepseek-flash', 'public_defect_match.v2'))
+                             ('no', 'deepseek-flash', 'public_defect_match.v3'))
 
     def test_recall_and_complaint_text_come_from_declared_attributes(self):
         gw = Matcher(lambda item: {'id': item['id'], 'reasoning': 'r', 'verdict': 'no', 'evidence': ''})

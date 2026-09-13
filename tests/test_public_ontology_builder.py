@@ -54,7 +54,7 @@ class AutoBuildOntologyTests(unittest.TestCase):
         o = self.api().auto_build_ontology(self.bundle, FakeGateway(self.recorded))
         self.assertEqual(o['source_bundle_hash'], bundle_content_hash(self.bundle))
         self.assertEqual(o['model'], 'deepseek-flash')
-        self.assertEqual(o['prompt_version'], 'public_ontology_modeler.v2')
+        self.assertEqual(o['prompt_version'], 'public_ontology_modeler.v3')
         self.assertEqual(o['evidence_scope'], 'public_data')
         self.assertEqual([t['key'] for t in o['object_types']], [t['key'] for t in self.recorded[1]['object_types']])
         self.assertEqual(o['data_gaps'], self.recorded[1]['open_questions'])
