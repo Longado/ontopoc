@@ -12,6 +12,8 @@
 .pr-status-ok { color: var(--ok); background: var(--ok-soft); }
 .pr-status-wait { color: var(--amber); background: var(--amber-soft); }
 .pr-meta { color: var(--text-2); font-size: 13px; }
+.pr-dataset { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; }
+.pr-dataset select { padding: 5px 28px 5px 10px; border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; font-weight: 600; max-width: 100%; }
 .pr-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--edge); }
 .pr-tabs button { position: relative; display: flex; align-items: baseline; gap: 6px; padding: 10px 16px; border: 0; color: var(--text-2); background: transparent; font-weight: 600; white-space: nowrap; }
 .pr-tabs button small { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); }
@@ -99,6 +101,8 @@
 
 @media (max-width: 760px) {
   .pr-page { padding: 18px 16px 32px; }
+  .pr-dataset { display: flex; flex: 1 1 100%; min-width: 0; }
+  .pr-dataset select { flex: 1; width: 100%; min-width: 0; text-overflow: ellipsis; }
   .pr-card { padding: 16px; }
   .pr-layout { grid-template-columns: minmax(0, 1fr); }
   .pr-list { max-height: none; }

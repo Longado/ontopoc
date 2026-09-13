@@ -1,0 +1,25 @@
+{
+ "schema": "review_datasets.v1",
+ "datasets": [
+  {
+   "id": "nhtsa-chevrolet-bolt-ev-bolt-euv-2017-2023",
+   "label": "CHEVROLET BOLT EV / BOLT EUV · 2017–2023",
+   "pack": "nhtsa-chevrolet-bolt-ev-bolt-euv-2017-2023.json",
+   "recalls": 13,
+   "complaints": 679,
+   "retrieved": "2026-09-13",
+   "report": "examples/nhtsa/runs/2026-09-13-bolt-deepseek-flash-v5.json",
+   "snapshot": "examples/nhtsa/chevrolet_bolt_2017_2023.json"
+  },
+  {
+   "id": "nhtsa-hyundai-kona-electric-kona-ev-2019-2021",
+   "label": "HYUNDAI KONA ELECTRIC / KONA EV · 2019–2021",
+   "pack": "nhtsa-hyundai-kona-electric-kona-ev-2019-2021.json",
+   "recalls": 4,
+   "complaints": 107,
+   "retrieved": "2026-09-13",
+   "report": "examples/nhtsa/runs/2026-09-13-kona-deepseek-flash-v1.json",
+   "snapshot": "examples/nhtsa/hyundai_kona_electric_kona_ev_2019_2021.json"
+  }
+ ]
+}

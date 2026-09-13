@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  BUCKETS, FLAG_LABELS, MARKS, PACK_URL, ROLE_LABELS, VERDICT_TO_MARK, confirmOntology, defaultRecallId, displayValue, emptyState,
+  BUCKETS, DATASET_KEY, FLAG_LABELS, INDEX_URL, MARKS, ROLE_LABELS, VERDICT_TO_MARK, confirmOntology, defaultRecallId, displayValue, emptyState,
   exportState, fieldLabel, highlight, markCandidate, markOf, nextSelection, noteCandidate, orderCandidates, restoreState, storageKey,
-  summarize, timingLabel, validatePack, visibleCandidates,
+  packUrl, pickDataset, summarize, timingLabel, validateIndex, validatePack, visibleCandidates,
 } from "./publicReviewModel.js";
 import "./PublicRecallReview.css";
 
@@ -73,7 +73,13 @@ function OntologyTab({ ontology, confirmedAt, onConfirm }) {
   </>;
 }
 
+const readJson = (url, what) => fetch(url, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`${what}读取失败（${r.status}）`); return r.json(); });
+const remember = (key, value) => { try { localStorage.setItem(key, value); } catch { /* storage unavailable: the choice just is not remembered */ } };
+const recallSaved = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
+
 export function PublicRecallReview({ language = "zh" }) {
+  const [index, setIndex] = useState(null);
+  const [datasetId, setDatasetId] = useState("");
   const [pack, setPack] = useState(null);
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -89,7 +95,23 @@ export function PublicRecallReview({ language = "zh" }) {
 
   useEffect(() => {
     let active = true;
-    fetch(PACK_URL, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`页面数据读取失败（${r.status}）`); return r.json(); })
+    readJson(INDEX_URL, "数据集清单").then((data) => {
+      if (!active) return;
+      const idx = validateIndex(data);
+      setIndex(idx);
+      setDatasetId(pickDataset(idx, recallSaved(DATASET_KEY)));
+    }).catch((e) => { if (active) setLoadError(e.message); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!index || !datasetId) return undefined;
+    let active = true;
+    remember(DATASET_KEY, datasetId);
+    setPack(null); setState(null); setLoadError(""); setStorageNote(""); setStorageBlocked(false);
+    setTab("ontology"); setBucket("outside_all"); setSelected("");
+    const entry = index.datasets.find((d) => d.id === datasetId);
+    readJson(packUrl(entry), `数据集 ${entry.label} `)
       .then((data) => {
         if (!active) return;
         const p = validatePack(data);
@@ -103,7 +125,7 @@ export function PublicRecallReview({ language = "zh" }) {
       })
       .catch((e) => { if (active) setLoadError(e.message); });
     return () => { active = false; };
-  }, []);
+  }, [index, datasetId]);
 
   useEffect(() => {
     if (!pack || !state || storageBlocked) return;
@@ -116,8 +138,14 @@ export function PublicRecallReview({ language = "zh" }) {
   const current = nextSelection(selected, visible);
   useEffect(() => { if (current !== selected) setSelected(current); }, [current, selected]);
 
-  if (loadError) return <section className="pr-page"><p role="alert">{loadError}</p></section>;
-  if (!pack || !state || !recall) return <section className="pr-page"><p role="status">读取数据中…</p></section>;
+  const datasetPicker = index && <label className="pr-dataset" htmlFor="pr-dataset">数据集
+    <select id="pr-dataset" value={datasetId} onChange={(e) => setDatasetId(e.target.value)}>
+      {index.datasets.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+    </select></label>;
+  if (loadError || !pack || !state || !recall) {
+    return <section className="pr-page"><header className="pr-head"><div className="pr-head-line"><h1 id="pr-title">汽车召回范围研判</h1>{datasetPicker}</div></header>
+      <p role={loadError ? "alert" : "status"} className={loadError ? "pr-error" : "pr-muted"}>{loadError ? `${loadError}。可以换一个数据集。` : "读取数据中…"}</p></section>;
+  }
 
   const byId = Object.fromEntries(pack.recalls.map((r) => [r.id, r]));
   const candidate = visible.find((c) => c.id === current);
@@ -141,7 +169,7 @@ export function PublicRecallReview({ language = "zh" }) {
   }
   function download() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(exportState(pack, state, now()), null, 2)], { type: "application/json" }));
-    const link = document.createElement("a"); link.href = url; link.download = "nhtsa-recall-review.json"; link.click();
+    const link = document.createElement("a"); link.href = url; link.download = `${datasetId}-review.json`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
@@ -151,7 +179,8 @@ export function PublicRecallReview({ language = "zh" }) {
       <div className="pr-head-line">
         <h1 id="pr-title">汽车召回范围研判</h1>
         <span className={`pr-status ${state.confirmed_at ? "pr-status-ok" : "pr-status-wait"}`}>{state.confirmed_at ? "本体已确认" : "本体待确认"}</span>
-        <span className="pr-meta">NHTSA · 雪佛兰 Bolt EV / EUV 2017–2023 · {pack.source.events} 个召回 · {pack.source.record_counts.complaints} 条投诉 · {pack.source.retrieved_from.slice(0, 10)} 取数</span>
+        {datasetPicker}
+        <span className="pr-meta">NHTSA · {pack.source.events} 个召回 · {pack.source.record_counts.complaints} 条投诉 · {pack.source.retrieved_from.slice(0, 10)} 取数</span>
       </div>
       <nav className="pr-tabs" role="tablist" aria-label="研判步骤">{TABS.map(([key, label]) => <button key={key} type="button" role="tab" id={`pr-tab-${key}`}
         aria-selected={tab === key} aria-controls="pr-panel" onClick={() => setTab(key)}>{label}{key === "review" && <small>{recall.id}</small>}{key === "results" && reviewedAll > 0 && <small>{reviewedAll}</small>}</button>)}</nav>
