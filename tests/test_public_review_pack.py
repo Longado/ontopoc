@@ -63,7 +63,7 @@ class ReviewPackTests(unittest.TestCase):
     def test_every_recall_gets_a_deterministic_scope(self):
         pack = self.pack()
         self.assertEqual(pack['schema'], 'public_review_pack.v1')
-        self.assertEqual([r['id'] for r in pack['recalls']], ['20V701000', '21V517000', '21V650000'])
+        self.assertEqual([r['id'] for r in pack['recalls']], ['21V517000', '20V701000', '21V650000'])  # by part, then date
         battery = self.recall(pack, '21V650000')
         self.assertEqual(battery['counts'], {'inside_scope': 1, 'covered_by_other_event': 1, 'outside_all': 1})
         self.assertEqual(battery['covered'], ['CHEVROLET BOLT EUV 2022', 'CHEVROLET BOLT EV 2020',
