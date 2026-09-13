@@ -119,6 +119,10 @@ class MissingModelYearTests(unittest.TestCase):
         self.assertIn('modelYear=2021', missing[0]['url'])
         self.assertIn('400', missing[0]['note'])
 
+    def test_recall_endpoint_spelling_is_accepted_too(self):
+        b = self.fetch(400, {'Count': 0, 'Message': 'Results returned successfully', 'results': []})
+        self.assertEqual(sum(bool(r.get('note')) for s in b['sources'].values() for r in s['requests']), 2)
+
     def test_other_errors_still_fail(self):
         with self.assertRaises(PublicSourceError):
             self.fetch(400, {'error': 'bad parameter'})
