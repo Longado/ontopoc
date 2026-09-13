@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Callable
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -21,6 +22,15 @@ _RECORD_KEY = {
     'recalls': lambda r: (str(r.get('NHTSACampaignNumber')), str(r.get('Model')), str(r.get('ModelYear'))),
     'complaints': lambda r: (str(r.get('odiNumber')),),
 }
+
+
+# NHTSA returns recall dates day-first and complaint dates month-first (checked on the 2026-09-13 snapshot:
+# all 42 recall values parse only as %d/%m/%Y where unambiguous, all 679 complaint values as %m/%d/%Y).
+DATE_FORMATS = {
+    'recalls': {'ReportReceivedDate': '%d/%m/%Y'},
+    'complaints': {'dateComplaintFiled': '%m/%d/%Y', 'dateOfIncident': '%m/%d/%Y'},
+}
+_ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
 class PublicSourceError(ValueError):
@@ -44,12 +54,26 @@ def build_nhtsa_bundle(responses: list[dict], *, decision: str) -> dict:
         'schema': SCHEMA,
         'evidence_scope': 'public_data',
         'decision': decision,
+        'date_fields': DATE_FORMATS,
         'sources': {kind: {
             'requests': sorted(s['requests'], key=lambda r: r['url']),
-            'records': [s['records'][k] for k in sorted(s['records'])],
+            'records': [_iso_dates(kind, s['records'][k]) for k in sorted(s['records'])],
         } for kind, s in sources.items()},
     }
     return validate_bundle(bundle)
+
+
+def _iso_dates(kind: str, record: dict) -> dict:
+    out = dict(record)
+    for field, fmt in DATE_FORMATS[kind].items():
+        value = record.get(field)
+        if value in (None, ''):
+            continue
+        try:
+            out[field] = datetime.strptime(str(value), fmt).date().isoformat()
+        except ValueError as exc:
+            raise PublicSourceError(f'{kind}.{field}: {value!r} does not match {fmt}') from exc
+    return out
 
 
 def fetch_nhtsa_bundle(make: str, models: list[str], years: list[int], *, decision: str,
@@ -92,6 +116,18 @@ def validate_bundle(bundle: object) -> dict:
         if not isinstance(source.get('records'), list) or \
                 any(not isinstance(r, dict) for r in source['records']):
             raise PublicSourceError(f'{name}: records must be a list of objects')
+    for name, fields in (bundle.get('date_fields') or {}).items():
+        for field in fields:
+            for record in sources.get(name, {}).get('records', []):
+                value = record.get(field)
+                if value in (None, ''):
+                    continue
+                try:
+                    valid = bool(_ISO_DATE.match(str(value))) and datetime.fromisoformat(str(value)) is not None
+                except ValueError:
+                    valid = False
+                if not valid:
+                    raise PublicSourceError(f'{name}.{field}: {value!r} is not an ISO date')
     return bundle
 
 
