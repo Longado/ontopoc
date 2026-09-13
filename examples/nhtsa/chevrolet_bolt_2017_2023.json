@@ -6629,13 +6629,6 @@
        "productMake": "CHEVROLET",
        "productModel": "BOLT EV",
        "manufacturer": "General Motors, LLC"
-      },
-      {
-       "type": "Vehicle",
-       "productYear": "9999",
-       "productMake": "TBD",
-       "productModel": "TBD",
-       "manufacturer": "ODI Demo Co"
       }
      ]
     },
@@ -10450,13 +10443,6 @@
        "productMake": "CHEVROLET",
        "productModel": "BOLT EV",
        "manufacturer": "General Motors, LLC"
-      },
-      {
-       "type": "Vehicle",
-       "productYear": "9999",
-       "productMake": "TBD_Test",
-       "productModel": "TBD_Test",
-       "manufacturer": "ODI Demo Co"
       }
      ]
     },
@@ -11015,13 +11001,6 @@
        "productMake": "CHEVROLET",
        "productModel": "BOLT EV",
        "manufacturer": "General Motors, LLC"
-      },
-      {
-       "type": "Vehicle",
-       "productYear": "9999",
-       "productMake": "TBD_TEST",
-       "productModel": "TBD_Test",
-       "manufacturer": "ODI Demo Co"
       }
      ]
     },
@@ -15808,5 +15787,12 @@
     }
    ]
   }
- }
+ },
+ "cleaning": [
+  {
+   "source": "complaints",
+   "rule": "complaints.products[] entries with manufacturer \"ODI Demo Co\" (NHTSA test placeholders)",
+   "removed": 3
+  }
+ ]
 }
