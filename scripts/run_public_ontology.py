@@ -8,7 +8,7 @@ import sys
 
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.nhtsa_sources import PublicSourceError, bundle_content_hash, load_source_bundle
-from ontology_poc_generator.public_ontology import auto_build_ontology
+from ontology_poc_generator.public_ontology import auto_build_ontology, propose_value_aliases
 from ontology_poc_generator.public_scope import ScopeError, check_candidates, scope
 
 DEFAULT_SNAPSHOT = Path(__file__).resolve().parents[1] / 'examples/nhtsa/chevrolet_bolt_2017_2023.json'
@@ -34,7 +34,7 @@ def main(argv=None):
         print(f'input error: {exc}', file=sys.stderr)
         return 2
     gateway = OpenAICompatibleGateway(api_base='https://api.deepseek.com', api_key=key,
-                                     model=args.model, timeout_seconds=180)
+                                     model=args.model, timeout_seconds=180, temperature=0)
     report = {'schema': 'public_ontology_run.v1', 'online': True, 'requested_model': args.model,
               'snapshot': args.snapshot.name, 'source_bundle_hash': bundle_content_hash(bundle),
               'started_at': datetime.now(timezone.utc).isoformat(), 'ontology': None, 'scopes': {},
@@ -53,9 +53,16 @@ def main(argv=None):
         report['errors'].append('ontology blocked; see ontology.verification.errors')
         save()
         return 1
+    print('aligning values across sources ...', flush=True)
+    report['ontology'] = ontology = propose_value_aliases(ontology, bundle, gateway)
+    save()
+    print(f'aliases: {len(ontology["value_aliases"])} accepted, '
+          f'{sum(a["verdict"] == "rejected" for a in ontology["alias_proposals"])} rejected', flush=True)
+    event_type = next(t for t in ontology['object_types'] if t['role'] == 'event')
+    (event_key,) = event_type['populated_from'][0]['identity']
     for campaign in args.campaign:
         try:
-            result = scope(ontology, bundle, {'campaign_number': campaign})
+            result = scope(ontology, bundle, {event_key: campaign})
         except ScopeError as exc:
             report['errors'].append(f'{campaign}: {exc}')
             save()
