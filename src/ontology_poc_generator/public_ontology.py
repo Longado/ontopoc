@@ -18,6 +18,7 @@ TRANSFORMS = ('none', 'split_comma', 'colon_hierarchy')
 _ROLE_PAIRS = (('event', 'affected_object'), ('event', 'mechanism'),
                ('signal', 'affected_object'), ('signal', 'mechanism'))
 _KEY = re.compile(r'^[a-z][a-z0-9_]{0,40}$')
+_ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
 def _error(code: str, message: str) -> dict:
@@ -87,7 +88,8 @@ def _structure_errors(proposal) -> list[dict]:
                 any(not isinstance(p, dict) or not isinstance(p.get('identity'), dict) or
                     any(not isinstance(v, str) for v in p['identity'].values())
                     for p in t['populated_from']) or \
-                any(not isinstance(a, dict) for a in t.get('attributes') or []):
+                any(not isinstance(a, dict) for a in t.get('attributes') or []) or \
+                ('time_field' in t and not isinstance(t['time_field'], dict)):
             errors.append(_error('invalid_response', f'malformed object type: {str(t)[:80]}'))
     for r in relations:
         if not isinstance(r, dict) or any(not isinstance(r.get(k), str) for k in ('key', 'from', 'to', 'source')):
@@ -153,6 +155,14 @@ def validate_proposal(proposal: dict, bundle: dict) -> list[dict]:
         for a in t['attributes']:
             if a.get('source') not in sources or not _path_exists(sources[a['source']], str(a.get('path'))):
                 errors.append(_error('unknown_field', f'{key}: attribute {a.get("source")}.{a.get("path")} does not exist'))
+        if t.get('time_field') is not None:
+            tf = t['time_field']
+            src, path = tf.get('source'), str(tf.get('path'))
+            values = [v for r in sources.get(src, []) for v in resolve(r, path) if v not in (None, '')]
+            if src not in {pop.get('source') for pop in t['populated_from']} or not values or \
+                    any(not _ISO_DATE.match(str(v)) for v in values):
+                errors.append(_error('time_field_invalid',
+                                     f'{key}: time field {src}.{path} must be an ISO date field of this type\'s source'))
     for f in p['ignored_fields']:
         if f.get('source') not in sources or not _path_exists(sources[f['source']], str(f.get('path'))):
             errors.append(_error('unknown_field', f'ignored field {f.get("source")}.{f.get("path")} does not exist'))
@@ -363,8 +373,8 @@ def ontology_content_hash(ontology: dict) -> str:
 def _clean(proposal: dict) -> tuple[list, list]:
     """Keep only the fields the ontology defines; anything else the model sent is dropped."""
     p = normalize_proposal(proposal)
-    types = [{f: t.get(f) for f in ('key', 'label', 'role', 'populated_from', 'attributes', 'rationale')}
-             for t in p['object_types']]
+    fields = ('key', 'label', 'role', 'populated_from', 'attributes', 'rationale', 'time_field')
+    types = [{f: t.get(f) for f in fields} for t in p['object_types']]
     relations = [{f: r.get(f) for f in ('key', 'from', 'to', 'source', 'meaning')} for r in p['relations']]
     return types, relations
 

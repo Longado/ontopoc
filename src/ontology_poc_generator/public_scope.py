@@ -1,6 +1,7 @@
 """Recall scope over an auto-built public ontology: deterministic buckets, then candidates for review."""
 from __future__ import annotations
 
+from datetime import date
 import json
 
 from ontology_poc_generator.nhtsa_sources import bundle_content_hash
@@ -25,6 +26,25 @@ def _identity(inst: tuple) -> dict:
     return dict(inst[1])
 
 
+def instance_date(ontology: dict, bundle: dict, graph: dict, inst: tuple) -> str | None:
+    """Earliest value of the type's declared time field across the records the instance comes from."""
+    t = next(t for t in ontology['object_types'] if t['key'] == inst[0])
+    tf = t.get('time_field')
+    if not tf:
+        return None
+    values = [v for s, i in graph['records_of'].get(inst, []) if s == tf['source']
+              for v in resolve(bundle['sources'][s]['records'][i], tf['path']) if v not in (None, '')]
+    return min(values) if values else None
+
+
+def _timing(event_date, signal_date):
+    if not event_date or not signal_date:
+        return None
+    days = (date.fromisoformat(signal_date) - date.fromisoformat(event_date)).days
+    relation = 'after' if days > 0 else 'same_day' if days == 0 else 'before'
+    return {'event_date': event_date, 'signal_date': signal_date, 'relation': relation, 'days': days}
+
+
 def require_matching_bundle(ontology: dict, bundle: dict) -> None:
     """The ontology is only valid for the exact bundle it was verified against."""
     if ontology.get('schema') != 'public_ontology.v1' or ontology.get('status') != 'auto_built_verified':
@@ -44,6 +64,7 @@ def scope(ontology: dict, bundle: dict, event_identity: dict, graph: dict | None
     covered = linked(graph, event, role['affected_object'])
     mechanism = linked(graph, event, role['mechanism'])
     mechanism_parents = {a for m in mechanism for a in ancestors(graph, m)}
+    event_date = instance_date(ontology, bundle, graph, event)
     siblings = [(e, linked(graph, e, role['affected_object'])) for e in sorted(graph['sources_of'])
                 if e[0] == role['event'] and e != event and linked(graph, e, role['mechanism']) == mechanism]
     candidates = []
@@ -66,6 +87,7 @@ def scope(ontology: dict, bundle: dict, event_identity: dict, graph: dict | None
             'bucket': bucket,
             'other_events': others,
             'source_refs': [{'source': s, 'index': i} for s, i in graph['records_of'][signal]],
+            'timing': _timing(event_date, instance_date(ontology, bundle, graph, signal)),
             'text_check': None,
         })
     return {
