@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  BUCKETS, FLAG_LABELS, MARKS, PACK_URL, ROLE_LABELS, VERDICT_TO_MARK, confirmOntology, defaultRecallId, emptyState,
-  exportState, highlight, markCandidate, markOf, nextSelection, noteCandidate, orderCandidates, restoreState, storageKey,
+  BUCKETS, FLAG_LABELS, MARKS, PACK_URL, ROLE_LABELS, VERDICT_TO_MARK, confirmOntology, defaultRecallId, displayValue, emptyState,
+  exportState, fieldLabel, highlight, markCandidate, markOf, nextSelection, noteCandidate, orderCandidates, restoreState, storageKey,
   summarize, timingLabel, validatePack, visibleCandidates,
 } from "./publicReviewModel.js";
 import "./PublicRecallReview.css";
@@ -170,7 +170,7 @@ export function PublicRecallReview({ language = "zh" }) {
             <p className="pr-muted">投诉部件：{signal.parts.join("、")}{candidate.timing ? ` · 召回 ${candidate.timing.event_date}，投诉 ${candidate.timing.signal_date}` : ""}</p>
             {candidate.via_alias && <p className="pr-note">这条投诉是经“名称对应”连上本召回的部件，确认本体时请看 ① 里的对应是否成立。</p>}
             {candidate.other_events.length > 0 && <p className="pr-muted">已被召回 {candidate.other_events.map((id) => `${id}（${byId[id]?.date || "?"}${byId[id]?.series === recall.series ? "，同一系列" : ""}）`).join("、")} 覆盖</p>}
-            <dl>{signal.fields.map((f, i) => <div key={`${f.path}#${i}`}><dt>{f.path}</dt><dd><Evidence text={f.value} evidence={candidate.text_check?.evidence} /></dd></div>)}</dl>
+            <dl>{signal.fields.map((f, i) => <div key={`${f.path}#${i}`}><dt>{fieldLabel(f.path)}</dt><dd><Evidence text={displayValue(f.value)} evidence={candidate.text_check?.evidence} /></dd></div>)}</dl>
             <div className="pr-model">{candidate.text_check ? <><strong>模型初判：{MARKS[VERDICT_TO_MARK[candidate.text_check.verdict]]}</strong><p>{candidate.text_check.reasoning}</p></> : <strong>这个召回没有模型初判</strong>}</div>
             <fieldset className="pr-marks" disabled={!state.confirmed_at}><legend>你的复核（点选即保存{seriesMembers.length > 1 ? "，同一系列共用" : ""}）</legend>
               {Object.entries(MARKS).map(([key, label]) => <button key={key} type="button" aria-pressed={entry?.mark === key} onClick={() => apply((s) => markCandidate(s, recall.series, candidate.id, key, now()))}>{label}</button>)}

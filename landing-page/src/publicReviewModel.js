@@ -9,6 +9,14 @@ export const VERDICT_TO_MARK = { yes: "same", no: "different", unknown: "unsure"
 export const ROLE_LABELS = { event: "事件", affected_object: "受影响对象", mechanism: "部件机制", signal: "信号", context: "背景" };
 
 export const FLAG_LABELS = { fire: "起火", crash: "碰撞" };
+const FIELD_LABELS = {
+  summary: "投诉描述", dateComplaintFiled: "投诉提交日期", dateOfIncident: "事发日期", crash: "涉及碰撞", fire: "涉及起火",
+  numberOfInjuries: "受伤人数", numberOfDeaths: "死亡人数", manufacturer: "制造商", vin: "车架号（前 11 位）",
+  Summary: "召回摘要", Consequence: "后果", Remedy: "补救措施", Notes: "备注", ReportReceivedDate: "召回报告日期",
+  Manufacturer: "制造商", parkIt: "建议停驶", parkOutSide: "建议室外停放", overTheAirUpdate: "可远程升级修复",
+};
+export const fieldLabel = (path) => FIELD_LABELS[path] || path;
+export const displayValue = (value) => (value === "True" ? "是" : value === "False" ? "否" : value);
 
 export function validatePack(pack) {
   if (!pack || pack.schema !== "public_review_pack.v1") throw new Error("页面数据格式不支持");
@@ -104,7 +112,14 @@ export function exportState(pack, state, now) {
       const entry = markOf(state, key, c.id);
       if (!entry || seen.has(`${key}/${c.id}`)) continue;
       seen.add(`${key}/${c.id}`);
-      reviews.push({ recall: key, complaint: c.id, bucket: c.bucket, human: entry.mark, note: entry.note, model_verdict: c.text_check?.verdict || null, updated_at: entry.updated_at });
+      const signal = pack.signals[c.id] || {};
+      reviews.push({
+        recall: key, complaint: c.id, bucket: c.bucket, human: entry.mark, note: entry.note,
+        model_verdict: c.text_check?.verdict || null, updated_at: entry.updated_at,
+        vehicles: signal.objects || [], parts: signal.parts || [], complaint_date: signal.date ?? null, flags: signal.flags || [],
+        recall_date: recall.date ?? null, timing: c.timing?.relation ?? null, days_from_recall: c.timing?.days ?? null,
+        via_alias: Boolean(c.via_alias), series_recalls: pack.recalls.filter((r) => seriesOf(r) === key).map((r) => r.id),
+      });
     }
   }
   return {
