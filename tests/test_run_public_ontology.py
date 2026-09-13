@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ontology_poc_generator.public_ontology import MODELER_SYSTEM_PROMPT
+from ontology_poc_generator.public_ontology import ALIAS_SYSTEM_PROMPT, MODELER_SYSTEM_PROMPT
 from ontology_poc_generator.recognition import ModelCompletion
 
 FIXTURES = Path(__file__).resolve().parent / 'fixtures/nhtsa'
@@ -18,6 +18,8 @@ class FakeModel:
     def complete_json(self, *, system_prompt, user_prompt):
         if system_prompt == MODELER_SYSTEM_PROMPT:
             content = (FIXTURES / 'reference_proposal.json').read_text(encoding='utf-8')
+        elif system_prompt == ALIAS_SYSTEM_PROMPT:
+            content = json.dumps({'aliases': []})
         else:
             items = json.loads(user_prompt)['complaints']
             content = json.dumps({'results': [{'id': i['id'], 'reasoning': 'r', 'verdict': 'no', 'evidence': ''}
@@ -61,6 +63,7 @@ class RunPublicOntologyScriptTests(unittest.TestCase):
                                     '--output', str(out)], {'DEEPSEEK_API_KEY': KEY})
             self.assertEqual(code, 0)
             self.assertEqual(gateway.call_args.kwargs['model'], 'deepseek-flash')
+            self.assertEqual(gateway.call_args.kwargs['temperature'], 0)
             text = out.read_text(encoding='utf-8')
             self.assertNotIn(KEY, text)
             self.assertNotIn(d, text)
@@ -68,6 +71,7 @@ class RunPublicOntologyScriptTests(unittest.TestCase):
             self.assertEqual(report['schema'], 'public_ontology_run.v1')
             self.assertTrue(report['finished'])
             self.assertEqual(report['ontology']['status'], 'auto_built_verified')
+            self.assertEqual(report['ontology']['value_aliases'], [])
             self.assertEqual(sorted(report['scopes']), ['21V517000', '21V650000'])
             self.assertTrue(all(c['text_check']['verdict'] == 'no' for c in report['scopes']['21V650000']['candidates']))
 
