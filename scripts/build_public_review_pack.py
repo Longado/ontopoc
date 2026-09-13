@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--report', type=Path, default=ROOT / 'examples/nhtsa/runs/2026-09-13-deepseek-flash-v3.json')
+    parser.add_argument('--report', type=Path, default=ROOT / 'examples/nhtsa/runs/2026-09-13-deepseek-flash-v4.json')
     parser.add_argument('--snapshot', type=Path, default=ROOT / 'examples/nhtsa/chevrolet_bolt_2017_2023.json')
     parser.add_argument('--output', type=Path, default=ROOT / 'landing-page/public/data/nhtsa-bolt-review-pack.json')
     parser.add_argument('--check', action='store_true', help='fail if the output is missing or stale')

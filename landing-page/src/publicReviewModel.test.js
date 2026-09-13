@@ -91,7 +91,8 @@ test("export carries labels with model verdicts and versions", () => {
   const out = exportState(pack(), state, NOW);
   assert.equal(out.schema, "public_review_export.v1");
   assert.equal(out.matcher_prompt_version, "public_defect_match.v2");
-  assert.deepEqual(out.reviews, [{ recall: "R1", complaint: "C2", bucket: "outside_all", human: "same", note: "", model_verdict: "no", updated_at: NOW }]);
+  assert.deepEqual(out.reviews, [{ recall: "R1", complaint: "C2", bucket: "outside_all", human: "same", note: "", model_verdict: "no", updated_at: NOW,
+    vehicles: [], parts: [], complaint_date: null, flags: [], recall_date: null, timing: null, days_from_recall: null, via_alias: false, series_recalls: ["R1"] }]);
 });
 
 test("evidence highlight finds the quote or returns nothing", () => {

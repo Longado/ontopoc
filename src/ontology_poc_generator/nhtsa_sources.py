@@ -31,6 +31,9 @@ DATE_FORMATS = {
     'complaints': {'dateComplaintFiled': '%m/%d/%Y', 'dateOfIncident': '%m/%d/%Y'},
 }
 _ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+# NHTSA's own test rows appear in complaint product lists as make TBD / year 9999, maker "ODI Demo Co".
+_DEMO_MAKER = 'ODI Demo Co'
+_DEMO_RULE = f'complaints.products[] entries with manufacturer "{_DEMO_MAKER}" (NHTSA test placeholders)'
 _CAMPAIGN_REF = re.compile(r'\b(\d{2})V-?(\d{3})(\d{3})?\b')
 
 
@@ -61,7 +64,23 @@ def build_nhtsa_bundle(responses: list[dict], *, decision: str) -> dict:
             'records': [_iso_dates(kind, s['records'][k]) for k in sorted(s['records'])],
         } for kind, s in sources.items()},
     }
-    return validate_bundle(bundle)
+    return validate_bundle(drop_demo_products(bundle))
+
+
+def drop_demo_products(bundle: dict) -> dict:
+    """Return a copy without NHTSA demo placeholder products, noting how many were removed."""
+    removed = 0
+    records = []
+    for record in bundle['sources']['complaints']['records']:
+        products = record.get('products')
+        if isinstance(products, list):
+            kept = [p for p in products if not (isinstance(p, dict) and p.get('manufacturer') == _DEMO_MAKER)]
+            removed += len(products) - len(kept)
+            record = {**record, 'products': kept}
+        records.append(record)
+    complaints = {**bundle['sources']['complaints'], 'records': records}
+    return {**bundle, 'cleaning': [{'source': 'complaints', 'rule': _DEMO_RULE, 'removed': removed}],
+            'sources': {**bundle['sources'], 'complaints': complaints}}
 
 
 def _iso_dates(kind: str, record: dict) -> dict:
