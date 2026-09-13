@@ -2,6 +2,17 @@
  "schema": "public_source_bundle.v1",
  "evidence_scope": "public_data",
  "decision": "一次汽车召回发布后，判断：哪些车型年款在召回范围内；哪些车主投诉指向同一部件，其中哪些车辆不在任何同部件召回的范围里（范围外疑似同类问题，需要质量工程师复核）。",
+ "scope": {
+  "make": "chevrolet",
+  "models": [
+   "bolt ev",
+   "bolt euv"
+  ],
+  "years": [
+   2017,
+   2023
+  ]
+ },
  "date_fields": {
   "recalls": {
    "ReportReceivedDate": "%d/%m/%Y"
@@ -15793,6 +15804,11 @@
    "source": "complaints",
    "rule": "complaints.products[] entries with manufacturer \"ODI Demo Co\" (NHTSA test placeholders)",
    "removed": 3
+  },
+  {
+   "source": "complaints",
+   "rule": "complaints naming none of the requested models BOLT EUV, BOLT EV (NHTSA matches model names loosely)",
+   "removed": 0
   }
  ]
 }

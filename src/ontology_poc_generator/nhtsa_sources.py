@@ -67,7 +67,8 @@ def build_nhtsa_bundle(responses: list[dict], *, decision: str, scope: dict | No
             'records': [_iso_dates(kind, s['records'][k]) for k in sorted(s['records'])],
         } for kind, s in sources.items()},
     }
-    return validate_bundle(drop_demo_products(bundle))
+    cleaned = drop_demo_products(bundle)
+    return validate_bundle(drop_unrequested_models(cleaned) if scope is not None else cleaned)
 
 
 def drop_demo_products(bundle: dict) -> dict:
@@ -82,7 +83,20 @@ def drop_demo_products(bundle: dict) -> dict:
             record = {**record, 'products': kept}
         records.append(record)
     complaints = {**bundle['sources']['complaints'], 'records': records}
-    return {**bundle, 'cleaning': [{'source': 'complaints', 'rule': _DEMO_RULE, 'removed': removed}],
+    return {**bundle, 'cleaning': [*bundle.get('cleaning', []), {'source': 'complaints', 'rule': _DEMO_RULE, 'removed': removed}],
+            'sources': {**bundle['sources'], 'complaints': complaints}}
+
+
+def drop_unrequested_models(bundle: dict) -> dict:
+    """NHTSA matches complaint model names loosely (\"kona electric\" also returns gasoline \"KONA\");
+    keep only complaints that name at least one requested model, and note how many were dropped."""
+    wanted = {m.upper() for m in _scope(bundle)['models']}
+    records = bundle['sources']['complaints']['records']
+    kept = [r for r in records if any(isinstance(p, dict) and str(p.get('productModel', '')).upper() in wanted
+                                      for p in r.get('products') or [])]
+    rule = 'complaints naming none of the requested models ' + ', '.join(sorted(wanted)) + ' (NHTSA matches model names loosely)'
+    complaints = {**bundle['sources']['complaints'], 'records': kept}
+    return {**bundle, 'cleaning': [*bundle.get('cleaning', []), {'source': 'complaints', 'rule': rule, 'removed': len(records) - len(kept)}],
             'sources': {**bundle['sources'], 'complaints': complaints}}
 
 
