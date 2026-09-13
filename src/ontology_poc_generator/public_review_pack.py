@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from ontology_poc_generator.nhtsa_sources import referenced_campaigns
+from ontology_poc_generator.nhtsa_sources import dataset_id, dataset_label, referenced_campaigns
 from ontology_poc_generator.public_ontology import build_graph, linked, ontology_content_hash, resolve
 from ontology_poc_generator.public_scope import BOUNDARY, ScopeError, instance_date, require_matching_bundle, scope
 
@@ -154,6 +154,7 @@ def build_review_pack(report: dict, bundle: dict) -> dict:
     requests = [r for s in bundle['sources'].values() for r in s['requests']]
     return {
         'schema': 'public_review_pack.v1',
+        'dataset': {'id': dataset_id(bundle), 'label': dataset_label(bundle)} if 'scope' in bundle else None,
         'boundary': BOUNDARY,
         'source': {
             'decision': bundle['decision'],
