@@ -87,10 +87,10 @@
 
 **文件：** 新建 `src/ontology_poc_generator/nhtsa_sources.py`、`tests/test_nhtsa_sources.py`、`examples/nhtsa/chevrolet_bolt_2017_2023.json`
 
-- [ ] 先写失败测试：缺 `requests` 或 `retrieved_at` 拒绝；`evidence_scope` 不是 `public_data` 拒绝；重复召回、重复投诉被去重；记录顺序稳定；同一文件两次加载哈希相同。
-- [ ] 实现 `load_source_bundle(path)` 和 `fetch_nhtsa_bundle(make, models, years, decision, opener=urlopen)`；取数函数只在脚本里被调用，测试用假 `opener`。
-- [ ] 用 `recorded/raw_2026-09-13/` 里的原始响应生成快照文件（13 个召回活动、679 条投诉），不重新取数，保证与试验结果可对照。
-- [ ] 运行 `PYTHONPATH=src python -m unittest tests.test_nhtsa_sources -v`，全过。
+- [x] 先写失败测试：缺 `requests` 或 `retrieved_at` 拒绝；`evidence_scope` 不是 `public_data` 拒绝；重复召回、重复投诉被去重；记录顺序稳定；同一文件两次加载哈希相同。
+- [x] 实现 `load_source_bundle(path)` 和 `fetch_nhtsa_bundle(make, models, years, decision, opener=urlopen)`；取数函数只在脚本里被调用，测试用假 `opener`。
+- [x] 用 `recorded/raw_2026-09-13/` 里的原始响应生成快照文件（13 个召回活动、679 条投诉），不重新取数，保证与试验结果可对照。
+- [x] 运行 `PYTHONPATH=src python -m unittest tests.test_nhtsa_sources -v`，全过。
 
 ### 任务 2：本体核验与对象图
 
@@ -98,48 +98,48 @@
 
 小样本 `mini_bundle.json` 从快照里按规则挑，不手编内容：召回 21V650000、20V701000、21V517000 的全部记录；投诉 11600123（2023 年款座椅下起火）、11429913（2019 年款召回配件未到）、11492459（2019 年款气囊未弹出）、11749605（转向问题），11429891（2020 年款、`fire=true` 的电气投诉）。`reference_proposal.json` 取 `experiments/nhtsa_auto_ontology/recorded/run_v2/ontology_attempts.json` 最后一次的 `spec`。2026-09-13 已用试验代码核对：该本体在这份小样本上通过全部核验，下面任务 4 的每条断言都成立。
 
-- [ ] 先写失败测试，每条核验规则一个用例，都在参照本体上做一处改动来触发：字段路径不存在；字段全空；同一类型两个来源身份键不同；有字段既没用上也没写忽略；某角色 0 个或 2 个；多字段身份用了 transform；身份字段来自两个不同列表；关系端点不在该来源；关系在数据里零连接；缺事件—受影响对象等四组关系之一；两个来源没有共享对象。
-- [ ] 再写对象图测试：冒号路径生成各级上级部件和上下级关系；逗号拆分；大小写和空白归一；参照本体在小样本上跨来源共享的车型年款、部件数量与手算一致。
-- [ ] 从试验代码 `experiments/nhtsa_auto_ontology/ontology.py` 移植 `validate_proposal`、`build_graph`、`graph_checks`，改成返回错误码；类型和关系编号用 `identity` 生成。
-- [ ] 运行该测试文件，全过。
+- [x] 先写失败测试，每条核验规则一个用例，都在参照本体上做一处改动来触发：字段路径不存在；字段全空；同一类型两个来源身份键不同；有字段既没用上也没写忽略；某角色 0 个或 2 个；多字段身份用了 transform；身份字段来自两个不同列表；关系端点不在该来源；关系在数据里零连接；缺事件—受影响对象等四组关系之一；两个来源没有共享对象。
+- [x] 再写对象图测试：冒号路径生成各级上级部件和上下级关系；逗号拆分；大小写和空白归一；参照本体在小样本上跨来源共享的车型年款、部件数量与手算一致。
+- [x] 从试验代码 `experiments/nhtsa_auto_ontology/ontology.py` 移植 `validate_proposal`、`build_graph`、`graph_checks`，改成返回错误码；类型和关系编号用 `identity` 生成。
+- [x] 运行该测试文件，全过。
 
 ### 任务 3：自动搭建循环
 
 **文件：** 修改 `src/ontology_poc_generator/public_ontology.py`；新建 `tests/test_public_ontology_builder.py`、`tests/fixtures/nhtsa/recorded_modeler_attempts.json`（取自 `recorded/run_v2/ontology_attempts.json` 的两次 `spec`）
 
-- [ ] 先写失败测试（假网关按顺序返回录好的真实输出）：第一次缺关系 → 第二次请求里带着第一次的错误 → 第二次通过，结果 `status=auto_built_verified`、`attempts` 两条；错误数没有减少就停，`status=blocked`；模型返回非 JSON 或缺字段记为 `invalid_response`，不抛出；结果带 `model`、`prompt_version`、`source_bundle_hash`；`human_review` 恒为 `pending`。
-- [ ] 实现 `auto_build_ontology(bundle, gateway)`。提示词作为模块常量，版本号 `public_ontology_modeler.v2`，内容取试验第二版。字段目录（字段名 + 最多 3 个示例值）由代码生成，发给模型的只有问题文字和字段目录，不发全部记录。
-- [ ] 运行该测试文件，全过。
+- [x] 先写失败测试（假网关按顺序返回录好的真实输出）：第一次缺关系 → 第二次请求里带着第一次的错误 → 第二次通过，结果 `status=auto_built_verified`、`attempts` 两条；错误数没有减少就停，`status=blocked`；模型返回非 JSON 或缺字段记为 `invalid_response`，不抛出；结果带 `model`、`prompt_version`、`source_bundle_hash`；`human_review` 恒为 `pending`。
+- [x] 实现 `auto_build_ontology(bundle, gateway)`。提示词作为模块常量，版本号 `public_ontology_modeler.v2`，内容取试验第二版。字段目录（字段名 + 最多 3 个示例值）由代码生成，发给模型的只有问题文字和字段目录，不发全部记录。
+- [x] 运行该测试文件，全过。
 
 ### 任务 4：范围查询
 
 **文件：** 新建 `src/ontology_poc_generator/public_scope.py`、`tests/test_public_scope.py`
 
-- [ ] 先写失败测试（参照本体 + 小样本）：21V650000 覆盖 2020–2022 Bolt EV 和 2022 Bolt EUV；11429891 进 `inside_scope`；11600123 进 `outside_all`；11429913 进 `covered_by_other_event`，并列出 20V701000；11749605 不出现在候选里；21V517000 下 11492459 进 `outside_all`；本体被标 `blocked` 时拒绝查询。
-- [ ] 实现 `scope(ontology, bundle, event_identity)`，不调用模型。
-- [ ] 运行该测试文件，全过。
+- [x] 先写失败测试（参照本体 + 小样本）：21V650000 覆盖 2020–2022 Bolt EV 和 2022 Bolt EUV；11429891 进 `inside_scope`；11600123 进 `outside_all`；11429913 进 `covered_by_other_event`，并列出 20V701000；11749605 不出现在候选里；21V517000 下 11492459 进 `outside_all`；本体被标 `blocked` 时拒绝查询。
+- [x] 实现 `scope(ontology, bundle, event_identity)`，不调用模型。
+- [x] 运行该测试文件，全过。
 
 ### 任务 5：投诉原文判断
 
 **文件：** 修改 `src/ontology_poc_generator/public_scope.py`；新建 `tests/test_public_defect_match.py`
 
-- [ ] 先写失败测试（假网关）：按 20 条一批切分；返回里缺某条编号 → 该条 `unknown`；判 yes 但证据片段不在投诉原文里 → 降为 `unknown` 并写明原因；非法判断值 → `unknown`；召回描述取本体里事件类型声明的文本属性，投诉原文取信号类型声明的文本属性。
-- [ ] 实现 `check_candidates(scope_result, ontology, bundle, gateway)`，提示词版本 `public_defect_match.v2`，内容取试验第二版。
-- [ ] 运行该测试文件，全过。
+- [x] 先写失败测试（假网关）：按 20 条一批切分；返回里缺某条编号 → 该条 `unknown`；判 yes 但证据片段不在投诉原文里 → 降为 `unknown` 并写明原因；非法判断值 → `unknown`；召回描述取本体里事件类型声明的文本属性，投诉原文取信号类型声明的文本属性。
+- [x] 实现 `check_candidates(scope_result, ontology, bundle, gateway)`，提示词版本 `public_defect_match.v2`，内容取试验第二版。
+- [x] 运行该测试文件，全过。
 
 ### 任务 6：在线脚本
 
-**文件：** 新建 `scripts/run_public_ontology.py`；在 `tests/test_public_defect_match.py` 里加脚本用例
+**文件：** 新建 `scripts/run_public_ontology.py`、`scripts/fetch_nhtsa_snapshot.py`、`tests/test_run_public_ontology.py`（实施时改为单独测试文件）
 
-- [ ] 先写失败测试：没有密钥环境变量 → 退出码 2，提示去本地配置；输出文件已存在 → 拒绝；默认模型 `deepseek-flash`；报告里不出现密钥。
-- [ ] 实现：读快照 → 自动搭建 → 对每个 `--campaign` 查范围并判断原文 → 写一份报告（本体 + 各召回的范围结果）；每一步打印进度，不打印密钥。
-- [ ] 在线跑一次：`--campaign 21V650000 --campaign 21V517000`，报告写到 `output/` 下的新文件。
+- [x] 先写失败测试：没有密钥环境变量 → 退出码 2，提示去本地配置；输出文件已存在 → 拒绝；默认模型 `deepseek-flash`；报告里不出现密钥。
+- [x] 实现：读快照 → 自动搭建 → 对每个 `--campaign` 查范围并判断原文 → 写一份报告（本体 + 各召回的范围结果）；每一步打印进度，不打印密钥。
+- [x] 在线跑一次：`--campaign 21V650000 --campaign 21V517000`，报告写到 `output/` 下的新文件。
 
 ### 任务 7：回归与文档
 
-- [ ] 运行全量回归：`PYTHONPATH=src python -m unittest discover -s tests -q`、前端 `test:unit`、`build`、`test:sites`、两个 artifact `--check`、`git diff --check`，记录确切数字。
-- [ ] README 加"公开场景自动搭建本体（本地）"一节：能做什么、怎么跑、边界（候选待复核、只到车型年款、四个角色）。
-- [ ] 在 `docs/NHTSA_AUTO_ONTOLOGY_PLAN.md` 第 4 节标 A 轮完成情况；删掉 `experiments/nhtsa_auto_ontology/` 里已被正式代码取代的部分，或在其开头写明已被取代。
+- [x] 运行全量回归：`PYTHONPATH=src python -m unittest discover -s tests -q`、前端 `test:unit`、`build`、`test:sites`、两个 artifact `--check`、`git diff --check`，记录确切数字。
+- [x] README 加"公开场景自动搭建本体（本地）"一节：能做什么、怎么跑、边界（候选待复核、只到车型年款、四个角色）。
+- [x] 在 `docs/NHTSA_AUTO_ONTOLOGY_PLAN.md` 第 4 节标 A 轮完成情况；删掉 `experiments/nhtsa_auto_ontology/` 里已被正式代码取代的部分，或在其开头写明已被取代。
 
 ### A 轮验收
 

@@ -1,3 +1,4 @@
+# Superseded by src/ontology_poc_generator/public_ontology.py and public_scope.py; kept as the 2026-09-13 spike record.
 """Deterministic half of the spike: sources, spec validation, graph build, scope query."""
 import glob
 import json

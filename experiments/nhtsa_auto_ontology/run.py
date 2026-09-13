@@ -1,3 +1,4 @@
+# Superseded by src/ontology_poc_generator/public_ontology.py and public_scope.py; kept as the 2026-09-13 spike record.
 """Spike: auto-build an ontology from NHTSA data, verify it in code, answer a recall scope question."""
 import json
 import os

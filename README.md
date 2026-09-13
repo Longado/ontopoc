@@ -21,6 +21,24 @@
 
 当前产品主线收敛为一个决策：质量异常发生后，哪些库存、在制、待发运、在途或客户侧对象进入临时控制或复检队列。系统只提出候选范围和证据，最终选择仍由质量负责人确认。
 
+## 公开场景自动搭建本体（本地）
+
+给一份公开数据快照和一个业务问题，模型根据字段目录提出本体（对象类型、身份字段、关系、忽略字段、数据缺口），Python 拿全部记录核验：字段存在、同一对象在不同来源用同一套身份键、每个字段要么用上要么写明忽略、事件 / 受影响对象 / 部件机制 / 信号四个角色齐全、关系在数据里真有连接、两个来源真的连上。核验出错就把错误回传模型重做，错误数不再减少就停。通过后按本体回答召回范围问题，并让模型逐条读投诉原文，判断是不是同一个缺陷。
+
+快照 `examples/nhtsa/chevrolet_bolt_2017_2023.json` 是 2026-09-13 从 NHTSA 公开接口取的 Bolt EV / EUV 2017–2023 召回和投诉（13 个召回活动、679 条投诉）。这是 `public_data`，不进入 `synthetic_demo` / OntologySpec / ValidationReceipt 链路；本体格式是 `public_ontology.v1`。
+
+```bash
+# 在线运行（需要本机 DeepSeek 凭据，见 docs/HANDOFF_2026-09-13.md 第 9 节）
+PYTHONPATH=src:. python scripts/run_public_ontology.py \
+  --campaign 21V650000 --campaign 21V517000 --output output/public-ontology-<时间>.json
+
+# 取另一个车型的快照
+PYTHONPATH=src:. python scripts/fetch_nhtsa_snapshot.py \
+  --make chevrolet --model "bolt ev" --years 2017-2023 --output examples/nhtsa/<名称>.json
+```
+
+边界：范围只到车型年款（召回数据没有车架号）；投诉原文判断是候选，待质量工程师复核，提示词换措辞结论会明显变化，校准前不能当结论；四个角色是为"召回范围研判"这一类问题设计的，不是任意问题的通用本体平台；人工确认本体的页面尚未做。方案与试验证据见 `docs/NHTSA_AUTO_ONTOLOGY_PLAN.md`。
+
 ## 公开召回范围核对（本地）
 
 新增一个独立的公开历史案例：openFDA 事件 **95876**，Russ Davis 2024 年黄瓜与加工食品召回。
