@@ -2,9 +2,9 @@
 
 ## Evidence
 
-- Source visual truth: `/Users/eddie/Desktop/Screenshot 2026-08-29 at 4.08.45 PM.png`
-- Implementation: `/tmp/ontopoc-demo-desktop-ontology-graph.png`
-- Side-by-side comparison: `/tmp/ontopoc-graph-design-comparison.png`
+- Source visual truth: local screenshot, 2026-08-29 (not committed)
+- Implementation: local temporary screenshot (not committed)
+- Side-by-side comparison: local temporary screenshot (not committed)
 - Source pixels: `2522 × 1114`
 - Implementation pixels and CSS viewport: `1440 × 900` at device scale factor `1`
 - Comparison normalization: both full views were scaled to a common comparison height without changing aspect ratio; browser chrome was excluded from the implementation capture.

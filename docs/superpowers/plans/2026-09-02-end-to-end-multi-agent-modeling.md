@@ -38,7 +38,7 @@ The decision analyst returns `decision_contract_candidate.v1`; the ontology mode
 - [x] **Step 2: Run the focused test and verify RED**
 
 ```bash
-PYTHONPATH=src /Users/eddie/.local/bin/python3.11 -m unittest tests.test_agent_modeling
+PYTHONPATH=src python3.11 -m unittest tests.test_agent_modeling
 ```
 
 Expected: failure because the existing function accepts only two gateways and emits v1.
@@ -122,7 +122,7 @@ self.assertEqual(json.loads(output.read_text())["modeling_status"], "ready_for_h
 - [x] **Step 2: Verify RED**
 
 ```bash
-PYTHONPATH=src /Users/eddie/.local/bin/python3.11 -m unittest tests.test_agent_modeling_cli
+PYTHONPATH=src python3.11 -m unittest tests.test_agent_modeling_cli
 ```
 
 Expected: failure because the CLI creates only two role gateways.
@@ -134,7 +134,7 @@ Instantiate three gateways with the existing configuration and keep `ontopoc-age
 - [x] **Step 4: Verify locally and against DeepSeek**
 
 ```bash
-PYTHONPATH=src /Users/eddie/.local/bin/python3.11 -m unittest \
+PYTHONPATH=src python3.11 -m unittest \
   tests.test_agent_modeling tests.test_agent_modeling_cli \
   tests.test_decision_pack tests.test_provided_compiler tests.test_spec_compiler
 git diff --check

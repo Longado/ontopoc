@@ -32,7 +32,7 @@
 
 **Local-sensitive artifact created during execution:**
 
-`/Users/eddie/Desktop/Workspace/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json`
+`<workspace>/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json`
 
 **Proof**
 
@@ -44,7 +44,7 @@
 
 ## Fixed comparison inputs
 
-- Negative: `/Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo/examples/dairy_rnd.json`
+- Negative: `examples/dairy_rnd.json`
 - Synthetic control (`source_kind=inline_synthetic`; exact UTF-8 text, no trailing newline): `某组件在终检中出现泄漏率异常，原因尚未确认。质量负责人决定将使用批次 B-17 的在制品和待发运件列入临时复检队列；已发运件因客户项目映射缺失暂不能判断。`
 - Fixed object labels used only for novelty comparison: `质量信号`、`受影响对象`、`质量证据`、`临时控制任务`
 - Fixed bridge used only for novelty comparison: `质量信号 → MAY_AFFECT → 受影响对象`
@@ -95,14 +95,14 @@
 **Files:**
 
 - Read: active execution-state relay in the current conversation
-- Read: user-selected positive source under `/Users/eddie/Desktop/Workspace/.local-sensitive/`
+- Read: user-selected positive source under `<workspace>/.local-sensitive/`
 - Modify: none
 
 - [ ] **Step 1: Confirm the five required values are explicit**
 
 The active relay must contain all five values:
 
-1. exact positive UTF-8 text or Markdown source path under `/Users/eddie/Desktop/Workspace/.local-sensitive/`;
+1. exact positive UTF-8 text or Markdown source path under `<workspace>/.local-sensitive/`;
 2. exact approved provider, model name and model settings; use `provider_default` when the approved interface exposes no setting controls;
 3. approval for exactly three model calls;
 4. five manual judgment bullets plus elapsed minutes, written before model output is shown.
@@ -115,7 +115,7 @@ If any value is absent, stop. Report only the missing value; do not create the e
 Run:
 
 ```bash
-cd /Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo
+cd .worktrees/pc-agent-modeling-demo
 git status --short --branch
 git rev-parse HEAD
 ```
@@ -126,7 +126,7 @@ Expected: branch `rico/handoff-v2`, no modified or untracked files before the ex
 
 Confirm the resolved positive source path starts with:
 
-`/Users/eddie/Desktop/Workspace/.local-sensitive/`
+`<workspace>/.local-sensitive/`
 
 If it resolves inside any git repository, `.data`, or the OntoPoc worktree, stop and request a safe copy under `.local-sensitive/`.
 
@@ -139,14 +139,14 @@ Confirm the source is already a redacted UTF-8 text or Markdown file describing 
 - Read: user-selected positive source
 - Read: `examples/dairy_rnd.json`
 - Use: the exact inline synthetic control text fixed in this plan
-- Create: `/Users/eddie/Desktop/Workspace/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json`
+- Create: `<workspace>/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json`
 
 - [ ] **Step 1: Create the evidence directory**
 
 Run:
 
 ```bash
-mkdir -p /Users/eddie/Desktop/Workspace/.local-sensitive/ontology-poc-generator/experiments
+mkdir -p <workspace>/.local-sensitive/ontology-poc-generator/experiments
 ```
 
 - [ ] **Step 2: Hash all three exact inputs**
@@ -179,7 +179,7 @@ Because this file contains customer text, use `apply_patch` and keep it only und
 
 **Files:**
 
-- Modify: `/Users/eddie/Desktop/Workspace/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json`
+- Modify: `<workspace>/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json`
 - Modify in repository: none
 
 - [ ] **Step 1: Run the positive case once**
@@ -202,7 +202,7 @@ Confirm exactly three model calls were made. Do not retry malformed output or ch
 
 **Files:**
 
-- Modify: `/Users/eddie/Desktop/Workspace/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json`
+- Modify: `<workspace>/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json`
 - Modify in repository: none
 
 - [ ] **Step 1: Validate the evidence record structure**
@@ -227,7 +227,7 @@ jq -e '
   )
   and (.manual_baseline.bullets | length == 5)
   and (.manual_baseline.elapsed_minutes > 0)
-' /Users/eddie/Desktop/Workspace/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json
+' <workspace>/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json
 ```
 
 Expected: `true`, exit 0.
@@ -245,7 +245,7 @@ jq -e '
     and all((.parsed_output.extracted_relations // [])[];
         .evidence_span as $span | $source | contains($span))
   )
-' /Users/eddie/Desktop/Workspace/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json
+' <workspace>/.local-sensitive/ontology-poc-generator/experiments/2026-09-02-gate1-quality-control-evidence.json
 ```
 
 Expected: `true`, exit 0. Any false or malformed case yields `no_go`; do not repair the model output.
@@ -279,7 +279,7 @@ Otherwise set it to `no_go`. Record the failed condition IDs and a short factual
 Run:
 
 ```bash
-cd /Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo
+cd .worktrees/pc-agent-modeling-demo
 git status --short --branch
 ```
 
