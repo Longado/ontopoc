@@ -1,0 +1,392 @@
+{
+ "schema": "public_source_bundle.v1",
+ "evidence_scope": "public_data",
+ "decision": "一次汽车召回发布后，判断：哪些车型年款在召回范围内；哪些车主投诉指向同一部件，其中哪些车辆不在任何同部件召回的范围里（范围外疑似同类问题，需要质量工程师复核）。",
+ "sources": {
+  "recalls": {
+   "requests": [
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2017",
+     "retrieved_at": "2026-09-13T03:29:44+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2018",
+     "retrieved_at": "2026-09-13T03:29:54+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2019",
+     "retrieved_at": "2026-09-13T03:30:09+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2020",
+     "retrieved_at": "2026-09-13T03:30:23+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2021",
+     "retrieved_at": "2026-09-13T03:30:34+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2022",
+     "retrieved_at": "2026-09-13T03:30:50+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2023",
+     "retrieved_at": "2026-09-13T03:31:06+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2017",
+     "retrieved_at": "2026-09-13T03:29:39+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2018",
+     "retrieved_at": "2026-09-13T03:29:46+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2019",
+     "retrieved_at": "2026-09-13T03:30:00+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2020",
+     "retrieved_at": "2026-09-13T03:30:11+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2021",
+     "retrieved_at": "2026-09-13T03:30:28+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2022",
+     "retrieved_at": "2026-09-13T03:30:43+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2023",
+     "retrieved_at": "2026-09-13T03:30:59+00:00"
+    }
+   ],
+   "records": [
+    {
+     "Manufacturer": "General Motors LLC",
+     "NHTSACampaignNumber": "20V701000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "NHTSAActionNumber": "PE20016",
+     "ReportReceivedDate": "13/11/2020",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY",
+     "Summary": "General Motors LLC (GM) is recalling all 2017-2018 and certain 2019 Chevrolet Bolt EV vehicles.  The high voltage battery could catch fire when charged to full or nearly full capacity.",
+     "Consequence": "A battery fire increases the risk of injury.",
+     "Remedy": "This recall has been superseded by recall number 21V-560.  Vehicles previously repaired under 20V-701 will still need to have the new remedy under recall 21V-560.  GM will notify owners, and as an interim repair, beginning on November 17, 2020, dealers will reprogram the hybrid propulsion control module 2 (HPCM2) to limit the full charge to 90%, free of charge.  Owners are advised to activate either the Hill Top Reserve (2017 and 2018 models) or Target Charge Level (2019 models) feature in their vehicle to limit the charge level to 90%, or park outside, until the software update is completed.  Owners were notified of the interim repair beginning November 17, 2020.  The second notice was mailed on May 11, 2021.  Owners may contact the Bolt EV Concierge Team at 1-833-382-4389.  GM's number for this recall is N202311730.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2017",
+     "Make": "CHEVROLET",
+     "Model": "BOLT EV"
+    },
+    {
+     "Manufacturer": "General Motors LLC",
+     "NHTSACampaignNumber": "20V701000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "NHTSAActionNumber": "PE20016",
+     "ReportReceivedDate": "13/11/2020",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY",
+     "Summary": "General Motors LLC (GM) is recalling all 2017-2018 and certain 2019 Chevrolet Bolt EV vehicles.  The high voltage battery could catch fire when charged to full or nearly full capacity.",
+     "Consequence": "A battery fire increases the risk of injury.",
+     "Remedy": "This recall has been superseded by recall number 21V-560.  Vehicles previously repaired under 20V-701 will still need to have the new remedy under recall 21V-560.  GM will notify owners, and as an interim repair, beginning on November 17, 2020, dealers will reprogram the hybrid propulsion control module 2 (HPCM2) to limit the full charge to 90%, free of charge.  Owners are advised to activate either the Hill Top Reserve (2017 and 2018 models) or Target Charge Level (2019 models) feature in their vehicle to limit the charge level to 90%, or park outside, until the software update is completed.  Owners were notified of the interim repair beginning November 17, 2020.  The second notice was mailed on May 11, 2021.  Owners may contact the Bolt EV Concierge Team at 1-833-382-4389.  GM's number for this recall is N202311730.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2018",
+     "Make": "CHEVROLET",
+     "Model": "BOLT EV"
+    },
+    {
+     "Manufacturer": "General Motors LLC",
+     "NHTSACampaignNumber": "20V701000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "NHTSAActionNumber": "PE20016",
+     "ReportReceivedDate": "13/11/2020",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY",
+     "Summary": "General Motors LLC (GM) is recalling all 2017-2018 and certain 2019 Chevrolet Bolt EV vehicles.  The high voltage battery could catch fire when charged to full or nearly full capacity.",
+     "Consequence": "A battery fire increases the risk of injury.",
+     "Remedy": "This recall has been superseded by recall number 21V-560.  Vehicles previously repaired under 20V-701 will still need to have the new remedy under recall 21V-560.  GM will notify owners, and as an interim repair, beginning on November 17, 2020, dealers will reprogram the hybrid propulsion control module 2 (HPCM2) to limit the full charge to 90%, free of charge.  Owners are advised to activate either the Hill Top Reserve (2017 and 2018 models) or Target Charge Level (2019 models) feature in their vehicle to limit the charge level to 90%, or park outside, until the software update is completed.  Owners were notified of the interim repair beginning November 17, 2020.  The second notice was mailed on May 11, 2021.  Owners may contact the Bolt EV Concierge Team at 1-833-382-4389.  GM's number for this recall is N202311730.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2019",
+     "Make": "CHEVROLET",
+     "Model": "BOLT EV"
+    },
+    {
+     "Manufacturer": "General Motors, LLC",
+     "NHTSACampaignNumber": "21V517000",
+     "parkIt": false,
+     "parkOutSide": false,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "08/07/2021",
+     "Component": "AIR BAGS:FRONTAL",
+     "Summary": "General Motors, LLC. (GM) is recalling certain 2022 Chevrolet Bolt EV and Bolt EUV vehicles.  One of the two fasteners that secure the driver's frontal air bag to the steering wheel may be missing or improperly tightened.",
+     "Consequence": "An improperly installed air bag may not deploy properly in a crash, increasing the risk of injury.",
+     "Remedy": "Dealers will inspect and replace as necessary, the driver-side air bag fasteners.  If the fasteners cannot be tightened properly, the air bag assembly will be replaced.  All repairs will be performed free of charge.  Owner notification letters were mailed on July 29, 2021.  Owners may contact Chevrolet customer service at 1-800-222-1020.  GM's number for this recall is N212340860.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.nhtsa.gov.",
+     "ModelYear": "2022",
+     "Make": "CHEVROLET",
+     "Model": "BOLT EUV"
+    },
+    {
+     "Manufacturer": "General Motors, LLC",
+     "NHTSACampaignNumber": "21V517000",
+     "parkIt": false,
+     "parkOutSide": false,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "08/07/2021",
+     "Component": "AIR BAGS:FRONTAL",
+     "Summary": "General Motors, LLC. (GM) is recalling certain 2022 Chevrolet Bolt EV and Bolt EUV vehicles.  One of the two fasteners that secure the driver's frontal air bag to the steering wheel may be missing or improperly tightened.",
+     "Consequence": "An improperly installed air bag may not deploy properly in a crash, increasing the risk of injury.",
+     "Remedy": "Dealers will inspect and replace as necessary, the driver-side air bag fasteners.  If the fasteners cannot be tightened properly, the air bag assembly will be replaced.  All repairs will be performed free of charge.  Owner notification letters were mailed on July 29, 2021.  Owners may contact Chevrolet customer service at 1-800-222-1020.  GM's number for this recall is N212340860.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.nhtsa.gov.",
+     "ModelYear": "2022",
+     "Make": "CHEVROLET",
+     "Model": "BOLT EV"
+    },
+    {
+     "Manufacturer": "General Motors, LLC",
+     "NHTSACampaignNumber": "21V650000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "NHTSAActionNumber": "PE20016",
+     "ReportReceivedDate": "20/08/2021",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY",
+     "Summary": "General Motors, LLC (GM) is recalling certain 2020-2022 Chevrolet Bolt EV and 2022 Chevrolet Bolt EUV vehicles.  The high voltage battery could catch fire when charged to full or nearly full capacity.",
+     "Consequence": "A battery fire increases the risk of injury.",
+     "Remedy": "Owners are advised to take the following interim steps:  Set the Target Charge Level feature in their vehicle to limit the charge level to 90%, charge their vehicle more frequently, avoid depleting the battery to 70 miles range remaining, park outside after charging, and do not charge the vehicle indoors overnight.  Defective battery modules will be replaced by GM, free of charge.  Owner notification letters were mailed on October 1, 2021 and June 23, 2023.  Owners may contact the Bolt EV Concierge Team at 1-833-382-4389.  This recall is an expansion of NHTSA recall 21V-560.  GM's number for this recall is N212345940.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.nhtsa.gov.",
+     "ModelYear": "2022",
+     "Make": "CHEVROLET",
+     "Model": "BOLT EUV"
+    },
+    {
+     "Manufacturer": "General Motors, LLC",
+     "NHTSACampaignNumber": "21V650000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "NHTSAActionNumber": "PE20016",
+     "ReportReceivedDate": "20/08/2021",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY",
+     "Summary": "General Motors, LLC (GM) is recalling certain 2020-2022 Chevrolet Bolt EV and 2022 Chevrolet Bolt EUV vehicles.  The high voltage battery could catch fire when charged to full or nearly full capacity.",
+     "Consequence": "A battery fire increases the risk of injury.",
+     "Remedy": "Owners are advised to take the following interim steps:  Set the Target Charge Level feature in their vehicle to limit the charge level to 90%, charge their vehicle more frequently, avoid depleting the battery to 70 miles range remaining, park outside after charging, and do not charge the vehicle indoors overnight.  Defective battery modules will be replaced by GM, free of charge.  Owner notification letters were mailed on October 1, 2021 and June 23, 2023.  Owners may contact the Bolt EV Concierge Team at 1-833-382-4389.  This recall is an expansion of NHTSA recall 21V-560.  GM's number for this recall is N212345940.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.nhtsa.gov.",
+     "ModelYear": "2020",
+     "Make": "CHEVROLET",
+     "Model": "BOLT EV"
+    },
+    {
+     "Manufacturer": "General Motors, LLC",
+     "NHTSACampaignNumber": "21V650000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "NHTSAActionNumber": "PE20016",
+     "ReportReceivedDate": "20/08/2021",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY",
+     "Summary": "General Motors, LLC (GM) is recalling certain 2020-2022 Chevrolet Bolt EV and 2022 Chevrolet Bolt EUV vehicles.  The high voltage battery could catch fire when charged to full or nearly full capacity.",
+     "Consequence": "A battery fire increases the risk of injury.",
+     "Remedy": "Owners are advised to take the following interim steps:  Set the Target Charge Level feature in their vehicle to limit the charge level to 90%, charge their vehicle more frequently, avoid depleting the battery to 70 miles range remaining, park outside after charging, and do not charge the vehicle indoors overnight.  Defective battery modules will be replaced by GM, free of charge.  Owner notification letters were mailed on October 1, 2021 and June 23, 2023.  Owners may contact the Bolt EV Concierge Team at 1-833-382-4389.  This recall is an expansion of NHTSA recall 21V-560.  GM's number for this recall is N212345940.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.nhtsa.gov.",
+     "ModelYear": "2021",
+     "Make": "CHEVROLET",
+     "Model": "BOLT EV"
+    },
+    {
+     "Manufacturer": "General Motors, LLC",
+     "NHTSACampaignNumber": "21V650000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "NHTSAActionNumber": "PE20016",
+     "ReportReceivedDate": "20/08/2021",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY",
+     "Summary": "General Motors, LLC (GM) is recalling certain 2020-2022 Chevrolet Bolt EV and 2022 Chevrolet Bolt EUV vehicles.  The high voltage battery could catch fire when charged to full or nearly full capacity.",
+     "Consequence": "A battery fire increases the risk of injury.",
+     "Remedy": "Owners are advised to take the following interim steps:  Set the Target Charge Level feature in their vehicle to limit the charge level to 90%, charge their vehicle more frequently, avoid depleting the battery to 70 miles range remaining, park outside after charging, and do not charge the vehicle indoors overnight.  Defective battery modules will be replaced by GM, free of charge.  Owner notification letters were mailed on October 1, 2021 and June 23, 2023.  Owners may contact the Bolt EV Concierge Team at 1-833-382-4389.  This recall is an expansion of NHTSA recall 21V-560.  GM's number for this recall is N212345940.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.nhtsa.gov.",
+     "ModelYear": "2022",
+     "Make": "CHEVROLET",
+     "Model": "BOLT EV"
+    }
+   ]
+  },
+  "complaints": {
+   "requests": [
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2017",
+     "retrieved_at": "2026-09-13T03:29:45+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2018",
+     "retrieved_at": "2026-09-13T03:29:56+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2019",
+     "retrieved_at": "2026-09-13T03:30:10+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2020",
+     "retrieved_at": "2026-09-13T03:30:26+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2021",
+     "retrieved_at": "2026-09-13T03:30:37+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2022",
+     "retrieved_at": "2026-09-13T03:30:56+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20euv&modelYear=2023",
+     "retrieved_at": "2026-09-13T03:31:11+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2017",
+     "retrieved_at": "2026-09-13T03:29:41+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2018",
+     "retrieved_at": "2026-09-13T03:29:48+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2019",
+     "retrieved_at": "2026-09-13T03:30:05+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2020",
+     "retrieved_at": "2026-09-13T03:30:18+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2021",
+     "retrieved_at": "2026-09-13T03:30:31+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2022",
+     "retrieved_at": "2026-09-13T03:30:47+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=chevrolet&model=bolt%20ev&modelYear=2023",
+     "retrieved_at": "2026-09-13T03:31:05+00:00"
+    }
+   ],
+   "records": [
+    {
+     "odiNumber": 11429891,
+     "manufacturer": "General Motors, LLC",
+     "crash": false,
+     "fire": true,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "08/16/2021",
+     "dateComplaintFiled": "08/20/2021",
+     "vin": "1G1FY6S00L4",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2020 Chevrolet Bolt. The contact stated that while the vehicle was plugged into the charge box however not being fully charged. The contact stated that prior to the failure occurring the vehicle was already charged fully, without warning a couple of hours later, the vehicle exploded in the driveway of the contact's residence. The contact looked out the window and noticed smoke appear under the vehicle. The contact ran outside and within a minute the vehicle was engulfed in flames. Flames were seen underneath the vehicle and around the rear wheel well. The police were contacted attempted to extinguish the flames however failed. The fire department was contacted and came out to extinguish the flames. The vehicle did damage the driveway. The vehicle was not repaired or diagnosed. The vehicle was still awaiting insurance adjustor results and the vehicle was towed by the insurance company. No dealer was contacted.  The manufacturer was notified of the failure and has started an investigation. Based on the vehicle information NHTSA Campaign Number: 20V701000,21V560000 (Electrical system)  was a possible solution to the failure however the VIN was not included in the open investigation with NHTSA. The failure mileage was approximate 5,000. Consumer stated manufacture is no longer communicating with the consumer. As of 08/25/2020 insurance company deemed the vehicle a total loss.  (RECALL RELATED INCIDENT) TS",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "CHEVROLET",
+       "productModel": "BOLT EV",
+       "manufacturer": "General Motors, LLC"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11429913,
+     "manufacturer": "General Motors, LLC",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "07/23/2021",
+     "dateComplaintFiled": "08/20/2021",
+     "vin": "1G1FW6S03K4",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Chevrolet Bolt EV. The contact received notification for NHTSA Campaign Number: 21V560000 (Electrical System) however, the part to do the recall repair was not yet available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The dealer was contacted and confirmed that the part was not available. The contact had not experienced a failure. The manufacturer was not notified of the failure. VIN tool confirms parts not available.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "CHEVROLET",
+       "productModel": "BOLT EV",
+       "manufacturer": "General Motors, LLC"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11492459,
+     "manufacturer": "General Motors, LLC",
+     "crash": true,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "11/05/2022",
+     "dateComplaintFiled": "11/06/2022",
+     "vin": "1G1FZ6S03K4",
+     "components": "AIR BAGS",
+     "summary": "collided with a deer at 45mph. enough force for airbag deployment. airbag attempted to deploy. I can smell igniter fumes and have smoke in the vehicle however the actual steering wheel bag did not deploy.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "CHEVROLET",
+       "productModel": "BOLT EV",
+       "manufacturer": "General Motors, LLC"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11600123,
+     "manufacturer": "General Motors, LLC",
+     "crash": false,
+     "fire": true,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "05/31/2024",
+     "dateComplaintFiled": "07/08/2024",
+     "vin": "1G1FX6S05P4",
+     "components": "ELECTRICAL SYSTEM,SEATS,UNKNOWN OR OTHER",
+     "summary": "I was sitting in the passenger seat of my new 2023 Chevy Bolt EV while parked at a convenience station. The vehicle was on and not hooked up to a charger. I smelled something burning and quickly thereafter I saw smoke coming from under the driver side seat. The driver exited the vehicle and looked under the seat. The driver attempted to put out the fire with his hand and the carpeting under the seat. The fire got bigger. I ran to the closest extinguisher and pulled the pin to extinguish the fire. It was out for several seconds before re-igniting again. Another round of extinguisher foam was released and the fire was put out. I reported the damage to the dealership, the car manufacturer and my insurance company. I towed it to the dealership where it has been sitting since 6/1/24. Nothing further has been done since then. The dealership refuses to assess the vehicle and to date the manufacturer has not sent any inspectors to diagnose the reason of the fire. As A matter of fact my insurance company, the dealership and the manufacturer all advised me to get and pay for my own inspection from a 3rd party inspector which I am working on scheduling now.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2023",
+       "productMake": "CHEVROLET",
+       "productModel": "BOLT EV",
+       "manufacturer": "General Motors, LLC"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11749605,
+     "manufacturer": "General Motors, LLC",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "07/10/2026",
+     "dateComplaintFiled": "07/10/2026",
+     "vin": "1G1FZ6S00k4",
+     "components": "STEERING",
+     "summary": "Steering wheel does not return to center on turns when driving at low speeds.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "CHEVROLET",
+       "productModel": "BOLT EV",
+       "manufacturer": "General Motors, LLC"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}
