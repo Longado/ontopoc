@@ -222,7 +222,7 @@ export function App() {
 
     <section className="build-section" id="build"><img className="build-field" src="/assets/decision-field.png" alt="" aria-hidden="true" /><div className="vertical-label">START WITH ONE DECISION</div><div className="build-content"><p className="eyebrow">{t.buildEyebrow}</p><h2>{t.buildTitle[0]}<br />{t.buildTitle[1]}</h2><p className="build-lead">{t.buildLead}</p><div className="build-actions"><button className="build-primary" type="button" onClick={() => setTrialOpen(true)}>{t.buildPrimary} <ArrowRight size={20} /></button><button className="build-secondary" type="button" onClick={() => document.querySelector("#proof")?.scrollIntoView({ behavior: "smooth" })}>{t.buildSecondary}</button></div></div></section>
 
-    <footer><img src="/assets/ontopoc-logo.png" alt="OntoPoc" /><p>AI FDE DECISION COMPILER</p><p>© 2026 OntoPoc</p></footer>
+    <footer><img src="/assets/ontopoc-logo-light.png" alt="OntoPoc" /><p>AI FDE DECISION COMPILER</p><p>© 2026 OntoPoc</p></footer>
     {trialOpen && <TrialModal t={t} language={language} onClose={() => setTrialOpen(false)} />}
   </main>;
 }
