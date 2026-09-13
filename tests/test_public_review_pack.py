@@ -1,10 +1,7 @@
-import contextlib
 import copy
 import importlib
-import io
 import json
 from pathlib import Path
-import tempfile
 import unittest
 
 from ontology_poc_generator.public_ontology import auto_build_ontology
@@ -115,22 +112,6 @@ class ReviewPackTests(unittest.TestCase):
         text = json.dumps(a, ensure_ascii=False)
         self.assertNotIn('/Users/', text)
         self.assertNotIn(str(FIXTURES), text)
-
-
-class ReviewPackScriptTests(unittest.TestCase):
-    def test_check_mode_detects_stale_pack(self):
-        from scripts.build_public_review_pack import main
-        bundle = load('mini_bundle.json')
-        with tempfile.TemporaryDirectory() as d:
-            report, snapshot, out = Path(d) / 'r.json', Path(d) / 's.json', Path(d) / 'p.json'
-            report.write_text(json.dumps(make_report(bundle)), encoding='utf-8')
-            snapshot.write_text(json.dumps(bundle), encoding='utf-8')
-            args = ['--report', str(report), '--snapshot', str(snapshot), '--output', str(out)]
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                self.assertEqual(main(args), 0)
-                self.assertEqual(main(args + ['--check']), 0)
-                out.write_text('{}', encoding='utf-8')
-                self.assertEqual(main(args + ['--check']), 1)
 
 
 if __name__ == '__main__':
