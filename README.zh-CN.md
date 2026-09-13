@@ -15,7 +15,7 @@
 4. 模型读投诉原文给初判；判"同一缺陷"必须引用原文，代码核对引用真在原文里。
 5. 质量工程师在静态页面上逐条复核；复核结果就是校准第 4 步的标注。
 
-验证数据：雪佛兰 Bolt EV / EUV 2017–2023，13 个召回、679 条投诉，2026-09-13 取数。没有客户数据，范围没到车架号，没有部署。
+验证数据：雪佛兰 Bolt EV / EUV 2017–2023（13 个召回、679 条投诉）与现代 Kona Electric / Kona EV 2019–2021（4 个召回、107 条投诉），均为 2026-09-13 取数。没有客户数据，范围没到车架号，没有部署。
 
 方向说明：项目 2026-08-29 起步时是售前 POC 方案编译器，经供应链、合成质量演示、食品召回三次场景后，2026-09-13 定为召回范围研判。旧线已从分支删除，完整历史在标签 `archive-2026-09-13-nhtsa-review`。
 
@@ -27,7 +27,7 @@
 cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-打开 `http://127.0.0.1:5178`：默认场景"汽车召回范围研判（NHTSA）"读静态数据 `landing-page/public/data/nhtsa-bolt-review-pack.json`，不需要 Python 服务。左侧导航切换两个入口；召回范围研判分四个标签页：本体（确认本体与名称对应）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序）→ 结果（与模型的一致情况、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
+打开 `http://127.0.0.1:5178`：默认场景"汽车召回范围研判（NHTSA）"读 `landing-page/public/data/` 下的静态数据（一份清单加每个数据集一个文件：雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric / Kona EV 2019–2021），不需要 Python 服务。左侧导航切换两个入口；召回范围研判分四个标签页：本体（确认本体与名称对应）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序）→ 结果（与模型的一致情况、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
 
 `/landing` 是产品首页。第二个入口"事件 95876 核对清单"是 openFDA 食品召回的产品—批号核对，需要本机 Python 服务（见下）。
 
@@ -37,12 +37,13 @@ cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --stric
 PYTHONPATH=src python -m unittest discover -s tests -q          # 后端测试
 npm --prefix landing-page run test:unit                           # 前端测试
 npm --prefix landing-page run build && npm --prefix landing-page run test:sites
-PYTHONPATH=src:. python scripts/build_public_review_pack.py --check   # 页面数据是否与运行报告一致
+PYTHONPATH=src:. python scripts/build_public_review_pack.py --check   # 清单里每份数据是否与其运行报告一致
 
 # 在线运行（需要本机 DeepSeek 凭据，见接力文档第 4 节；密钥不入库）
 PYTHONPATH=src:. python scripts/run_public_ontology.py \
   --campaign 21V650000 --campaign 18V576000 --output output/public-ontology-<时间>.json
-PYTHONPATH=src:. python scripts/build_public_review_pack.py --report output/public-ontology-<时间>.json
+cp output/public-ontology-<时间>.json examples/nhtsa/runs/<名称>.json
+PYTHONPATH=src:. python scripts/build_public_review_pack.py --report examples/nhtsa/runs/<名称>.json --snapshot examples/nhtsa/<快照>.json
 
 # 取另一个车型的快照
 PYTHONPATH=src:. python scripts/fetch_nhtsa_snapshot.py \

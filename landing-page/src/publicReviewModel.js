@@ -1,4 +1,17 @@
-export const PACK_URL = "/data/nhtsa-bolt-review-pack.json";
+export const INDEX_URL = "/data/index.json";
+export const DATASET_KEY = "ontopoc.public-review.dataset";
+const PACK_FILE = /^[a-z0-9][a-z0-9-]*\.json$/;
+
+export function validateIndex(index) {
+  if (!index || index.schema !== "review_datasets.v1" || !Array.isArray(index.datasets)) throw new Error("数据集清单格式不支持");
+  if (!index.datasets.length) throw new Error("数据集清单里没有数据集");
+  for (const d of index.datasets) {
+    if (typeof d.id !== "string" || typeof d.label !== "string" || !PACK_FILE.test(d.pack || "")) throw new Error(`数据集 ${d.id || "?"} 的文件名不合法`);
+  }
+  return index;
+}
+export const pickDataset = (index, saved) => (index.datasets.some((d) => d.id === saved) ? saved : index.datasets[0].id);
+export const packUrl = (entry) => `/data/${entry.pack}`;
 export const BUCKETS = {
   outside_all: "所有同类召回之外",
   covered_by_other_event: "其他同类召回已覆盖",

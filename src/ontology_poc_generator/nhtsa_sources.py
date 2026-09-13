@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 from typing import Callable
 from urllib.parse import urlencode
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 SCHEMA = 'public_source_bundle.v1'
@@ -41,7 +42,7 @@ class PublicSourceError(ValueError):
     """A public source bundle is incomplete or could not be retrieved."""
 
 
-def build_nhtsa_bundle(responses: list[dict], *, decision: str) -> dict:
+def build_nhtsa_bundle(responses: list[dict], *, decision: str, scope: dict | None = None) -> dict:
     """Merge raw API responses into one bundle: deduplicated, sorted, with every request kept."""
     sources = {kind: {'requests': [], 'records': {}} for kind in _URLS}
     for item in responses:
@@ -51,20 +52,23 @@ def build_nhtsa_bundle(responses: list[dict], *, decision: str) -> dict:
         results = (item.get('payload') or {}).get('results')
         if not isinstance(results, list):
             raise PublicSourceError(f'{kind} response has no results list: {item.get("url")}')
-        sources[kind]['requests'].append({'url': item.get('url'), 'retrieved_at': item.get('retrieved_at')})
+        sources[kind]['requests'].append({'url': item.get('url'), 'retrieved_at': item.get('retrieved_at'),
+                                          **({'note': item['note']} if item.get('note') else {})})
         for record in results:
             sources[kind]['records'].setdefault(_RECORD_KEY[kind](record), copy.deepcopy(record))
     bundle = {
         'schema': SCHEMA,
         'evidence_scope': 'public_data',
         'decision': decision,
+        **({'scope': scope} if scope is not None else {}),
         'date_fields': DATE_FORMATS,
         'sources': {kind: {
             'requests': sorted(s['requests'], key=lambda r: r['url']),
             'records': [_iso_dates(kind, s['records'][k]) for k in sorted(s['records'])],
         } for kind, s in sources.items()},
     }
-    return validate_bundle(drop_demo_products(bundle))
+    cleaned = drop_demo_products(bundle)
+    return validate_bundle(drop_unrequested_models(cleaned) if scope is not None else cleaned)
 
 
 def drop_demo_products(bundle: dict) -> dict:
@@ -79,7 +83,20 @@ def drop_demo_products(bundle: dict) -> dict:
             record = {**record, 'products': kept}
         records.append(record)
     complaints = {**bundle['sources']['complaints'], 'records': records}
-    return {**bundle, 'cleaning': [{'source': 'complaints', 'rule': _DEMO_RULE, 'removed': removed}],
+    return {**bundle, 'cleaning': [*bundle.get('cleaning', []), {'source': 'complaints', 'rule': _DEMO_RULE, 'removed': removed}],
+            'sources': {**bundle['sources'], 'complaints': complaints}}
+
+
+def drop_unrequested_models(bundle: dict) -> dict:
+    """NHTSA matches complaint model names loosely (\"kona electric\" also returns gasoline \"KONA\");
+    keep only complaints that name at least one requested model, and note how many were dropped."""
+    wanted = {m.upper() for m in _scope(bundle)['models']}
+    records = bundle['sources']['complaints']['records']
+    kept = [r for r in records if any(isinstance(p, dict) and str(p.get('productModel', '')).upper() in wanted
+                                      for p in r.get('products') or [])]
+    rule = 'complaints naming none of the requested models ' + ', '.join(sorted(wanted)) + ' (NHTSA matches model names loosely)'
+    complaints = {**bundle['sources']['complaints'], 'records': kept}
+    return {**bundle, 'cleaning': [*bundle.get('cleaning', []), {'source': 'complaints', 'rule': rule, 'removed': len(records) - len(kept)}],
             'sources': {**bundle['sources'], 'complaints': complaints}}
 
 
@@ -105,14 +122,29 @@ def fetch_nhtsa_bundle(make: str, models: list[str], years: list[int], *, decisi
         for year in years:
             for kind, base in _URLS.items():
                 url = f'{base}?{urlencode({"make": make, "model": model, "modelYear": year})}'
+                note = None
                 try:
                     with opener(Request(url, headers={'Accept': 'application/json'}),
                                 timeout=timeout_seconds) as reply:
                         payload = json.loads(reply.read().decode('utf-8'))
+                except HTTPError as exc:
+                    payload, note = _missing_model_year(exc, url)
                 except (OSError, ValueError) as exc:
                     raise PublicSourceError(f'NHTSA request failed: {url}: {exc}') from exc
-                responses.append({'kind': kind, 'url': url, 'retrieved_at': clock(), 'payload': payload})
-    return build_nhtsa_bundle(responses, decision=decision)
+                responses.append({'kind': kind, 'url': url, 'retrieved_at': clock(), 'payload': payload, 'note': note})
+    scope = {'make': make, 'models': list(models), 'years': [min(years), max(years)]}
+    return build_nhtsa_bundle(responses, decision=decision, scope=scope)
+
+
+def _missing_model_year(exc: HTTPError, url: str) -> tuple[dict, str]:
+    """NHTSA answers 400 with count 0 when the model name does not exist for that year; anything else is an error."""
+    try:
+        body = json.loads(exc.read().decode('utf-8')) if exc.code == 400 else None
+    except (OSError, ValueError):
+        body = None
+    if isinstance(body, dict) and body.get('count', body.get('Count')) == 0:
+        return {'results': []}, 'HTTP 400 with count 0: this model name does not exist for this year'
+    raise PublicSourceError(f'NHTSA request failed: {url}: HTTP {exc.code}') from exc
 
 
 def validate_bundle(bundle: object) -> dict:
@@ -122,6 +154,8 @@ def validate_bundle(bundle: object) -> dict:
         raise PublicSourceError('evidence_scope must be public_data')
     if not isinstance(bundle.get('decision'), str) or not bundle['decision'].strip():
         raise PublicSourceError('decision text is required')
+    if 'scope' in bundle:
+        _check_scope(bundle['scope'])
     sources = bundle.get('sources')
     if not isinstance(sources, dict) or not sources:
         raise PublicSourceError('sources must be a non-empty object')
@@ -149,6 +183,34 @@ def validate_bundle(bundle: object) -> dict:
                 if not valid:
                     raise PublicSourceError(f'{name}.{field}: {value!r} is not an ISO date')
     return bundle
+
+
+def _check_scope(scope) -> None:
+    ok = (isinstance(scope, dict) and isinstance(scope.get('make'), str) and scope['make'].strip()
+          and isinstance(scope.get('models'), list) and scope['models']
+          and all(isinstance(m, str) and m.strip() for m in scope['models'])
+          and isinstance(scope.get('years'), list) and len(scope['years']) == 2
+          and all(isinstance(y, int) for y in scope['years']) and scope['years'][0] <= scope['years'][1])
+    if not ok:
+        raise PublicSourceError('scope needs make, a non-empty models list and years [first, last]')
+
+
+def _scope(bundle: dict) -> dict:
+    if 'scope' not in bundle:
+        raise PublicSourceError('bundle has no scope (make, models, years); refetch or add it')
+    _check_scope(bundle['scope'])
+    return bundle['scope']
+
+
+def dataset_id(bundle: dict) -> str:
+    s = _scope(bundle)
+    words = [s['make'], *s['models'], str(s['years'][0]), str(s['years'][1])]
+    return 'nhtsa-' + re.sub(r'[^a-z0-9]+', '-', ' '.join(words).lower()).strip('-')
+
+
+def dataset_label(bundle: dict) -> str:
+    s = _scope(bundle)
+    return f'{s["make"].upper()} {" / ".join(m.upper() for m in s["models"])} · {s["years"][0]}–{s["years"][1]}'
 
 
 def load_source_bundle(path: str | Path) -> dict:

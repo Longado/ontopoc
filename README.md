@@ -15,7 +15,7 @@ After a recall is issued, which similar complaints fall outside its scope? OntoP
 4. The model gives a first verdict on each complaint text; "same defect" must quote the complaint, and code checks the quote is really there.
 5. A quality engineer reviews each candidate on a static page. The reviews are the labels that will calibrate step 4.
 
-Verified on Chevrolet Bolt EV / EUV 2017–2023 (13 recalls, 679 complaints, fetched 2026-09-13). No customer data, no VIN-level scope, no deployment yet.
+Verified on Chevrolet Bolt EV / EUV 2017–2023 (13 recalls, 679 complaints) and Hyundai Kona Electric / Kona EV 2019–2021 (4 recalls, 107 complaints), both fetched 2026-09-13. No customer data, no VIN-level scope, no deployment yet.
 
 History: the project started on 2026-08-29 as a pre-sales POC proposal compiler and went through supply-chain, synthetic quality and food-recall scenarios before settling on recall scope review on 2026-09-13. The retired lines were removed from the branch; the full state before removal is tagged `archive-2026-09-13-nhtsa-review`.
 
@@ -27,7 +27,7 @@ History: the project started on 2026-08-29 as a pre-sales POC proposal compiler 
 cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-Open `http://127.0.0.1:5178`. The default scenario, "Vehicle recall scope (NHTSA)", reads the static file `landing-page/public/data/nhtsa-bolt-review-pack.json` and needs no Python service. A left sidebar switches between the two entries; recall scope review has four tabs: Ontology (confirm ontology and aliases) → Recalls (grouped by part, re-recalls chained into series) → Review (ordered by after-recall, fire/crash, date) → Results (agreement with the model, download). Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
+Open `http://127.0.0.1:5178`. The default scenario, "Vehicle recall scope (NHTSA)", reads static files under `landing-page/public/data/` (an index plus one file per dataset: Chevrolet Bolt EV / EUV 2017–2023 and Hyundai Kona Electric / Kona EV 2019–2021) and needs no Python service. A left sidebar switches between the two entries; recall scope review has four tabs: Ontology (confirm ontology and aliases) → Recalls (grouped by part, re-recalls chained into series) → Review (ordered by after-recall, fire/crash, date) → Results (agreement with the model, download). Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
 
 `/landing` is the product page. The second entry, "Public recall lookup", matches products and lots for openFDA event 95876 and needs the local Python service below.
 
@@ -37,12 +37,13 @@ Open `http://127.0.0.1:5178`. The default scenario, "Vehicle recall scope (NHTSA
 PYTHONPATH=src python -m unittest discover -s tests -q            # backend tests
 npm --prefix landing-page run test:unit                             # frontend tests
 npm --prefix landing-page run build && npm --prefix landing-page run test:sites
-PYTHONPATH=src:. python scripts/build_public_review_pack.py --check # page data still matches the run report
+PYTHONPATH=src:. python scripts/build_public_review_pack.py --check # every dataset in the index still matches its run
 
 # online run (needs a local DeepSeek key, see handoff §4; never commit keys)
 PYTHONPATH=src:. python scripts/run_public_ontology.py \
   --campaign 21V650000 --campaign 18V576000 --output output/public-ontology-<time>.json
-PYTHONPATH=src:. python scripts/build_public_review_pack.py --report output/public-ontology-<time>.json
+cp output/public-ontology-<time>.json examples/nhtsa/runs/<name>.json
+PYTHONPATH=src:. python scripts/build_public_review_pack.py --report examples/nhtsa/runs/<name>.json --snapshot examples/nhtsa/<snapshot>.json
 
 # snapshot another make or model
 PYTHONPATH=src:. python scripts/fetch_nhtsa_snapshot.py \
