@@ -19,7 +19,7 @@
 
 方向说明：项目 2026-08-29 起步时是售前 POC 方案编译器，经供应链、合成质量演示、食品召回三次场景后，2026-09-13 定为召回范围研判。旧线已从分支删除，完整历史在标签 `archive-2026-09-13-nhtsa-review`。
 
-> 开发前先读[开发护栏](docs/DEVELOPMENT_GUARDRAILS.md)；当前状态与下一步见 [接力文档](docs/HANDOFF_2026-09-13.md)、[功能清单](docs/FEATURES_2026-09-13.md)、[缺点与改进路线](docs/superpowers/plans/2026-09-13-improvement-roadmap.md)。
+> 开发前先读[开发护栏](docs/DEVELOPMENT_GUARDRAILS.md)；当前状态与下一步见 [接力文档](docs/HANDOFF_2026-09-13.md)、[功能清单](docs/FEATURES_2026-09-13.md)、[迭代 2 需求](docs/PRD_ITERATION_2.md)。
 
 ## 页面
 
