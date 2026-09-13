@@ -128,7 +128,7 @@ def _missing_model_year(exc: HTTPError, url: str) -> tuple[dict, str]:
         body = json.loads(exc.read().decode('utf-8')) if exc.code == 400 else None
     except (OSError, ValueError):
         body = None
-    if isinstance(body, dict) and body.get('count') == 0:
+    if isinstance(body, dict) and body.get('count', body.get('Count')) == 0:
         return {'results': []}, 'HTTP 400 with count 0: this model name does not exist for this year'
     raise PublicSourceError(f'NHTSA request failed: {url}: HTTP {exc.code}') from exc
 
