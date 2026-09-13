@@ -10,6 +10,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 SCHEMA = 'public_source_bundle.v1'
+RECALL_SCOPE_DECISION = ('一次汽车召回发布后，判断：哪些车型年款在召回范围内；哪些车主投诉指向同一部件'
+                         '，其中哪些车辆不在任何同部件召回的范围里（范围外疑似同类问题，需要质量工程师复核）。')
 _URLS = {
     'recalls': 'https://api.nhtsa.gov/recalls/recallsByVehicle',
     'complaints': 'https://api.nhtsa.gov/complaints/complaintsByVehicle',
