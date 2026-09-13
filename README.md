@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="landing-page/public/assets/ontopoc-logo.png">
+  <img src="landing-page/public/assets/ontopoc-logo-light.png" alt="OntoPoc — Trace scope. Review evidence." width="420">
+</picture>
+
 # OntoPoc — Trace scope. Review evidence.
 
 **English summary.** OntoPoc answers one question for a quality engineer: after a recall is issued, which similar complaints fall outside its scope? It takes two public sources (NHTSA recall notices and owner complaints), lets a model propose an ontology from field names only, verifies that proposal in code against every record, aligns category names across sources with model-proposed and code-verified aliases, computes each recall's covered model years and same-part complaints in three buckets with before/after-recall timing, lets the model give a first verdict on each complaint text (quotes required and checked), and hands the final review to a human on a static web page whose reviews double as calibration labels. Verified on Chevrolet Bolt EV / EUV 2017–2023 (13 recalls, 679 complaints). No customer data, no VIN-level scope, no deployment yet. Documentation below is in Chinese.
