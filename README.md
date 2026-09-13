@@ -27,7 +27,7 @@ History: the project started on 2026-08-29 as a pre-sales POC proposal compiler 
 cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-Open `http://127.0.0.1:5178`. The default scenario, "Vehicle recall scope (NHTSA)", reads the static file `landing-page/public/data/nhtsa-bolt-review-pack.json` and needs no Python service. Four steps: confirm the ontology and aliases → pick a recall (grouped by part, re-recalls chained into series) → review candidate complaints (ordered by after-recall, fire/crash, date) → see agreement with the model and download. Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
+Open `http://127.0.0.1:5178`. The default scenario, "Vehicle recall scope (NHTSA)", reads the static file `landing-page/public/data/nhtsa-bolt-review-pack.json` and needs no Python service. A left sidebar switches between the two entries; recall scope review has four tabs: Ontology (confirm ontology and aliases) → Recalls (grouped by part, re-recalls chained into series) → Review (ordered by after-recall, fire/crash, date) → Results (agreement with the model, download). Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
 
 `/landing` is the product page. The second entry, "Public recall lookup", matches products and lots for openFDA event 95876 and needs the local Python service below.
 
