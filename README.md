@@ -37,7 +37,9 @@ PYTHONPATH=src:. python scripts/fetch_nhtsa_snapshot.py \
   --make chevrolet --model "bolt ev" --years 2017-2023 --output examples/nhtsa/<名称>.json
 ```
 
-边界：范围只到车型年款（召回数据没有车架号）；投诉原文判断是候选，待质量工程师复核，提示词换措辞结论会明显变化，校准前不能当结论；四个角色是为"召回范围研判"这一类问题设计的，不是任意问题的通用本体平台；人工确认本体的页面尚未做。方案与试验证据见 `docs/NHTSA_AUTO_ONTOLOGY_PLAN.md`。
+页面：`npm --prefix landing-page run dev` 后打开首页，默认场景"汽车召回范围研判（NHTSA）"读 `landing-page/public/data/nhtsa-bolt-review-pack.json`，不需要本机 Python 服务；确认本体后逐条复核候选投诉，复核结果存在本机浏览器，可下载。更新运行报告后用 `PYTHONPATH=src:. python scripts/build_public_review_pack.py` 重建页面数据（`--check` 验证未过时）。
+
+边界：范围只到车型年款（召回数据没有车架号）；投诉原文判断是候选，待质量工程师复核，提示词换措辞结论会明显变化，校准前不能当结论；四个角色是为"召回范围研判"这一类问题设计的，不是任意问题的通用本体平台；两个来源部件命名不同时会漏检（如刹车召回 0 条候选），见方案文档。方案与试验证据见 `docs/NHTSA_AUTO_ONTOLOGY_PLAN.md`。
 
 ## 公开召回范围核对（本地）
 
