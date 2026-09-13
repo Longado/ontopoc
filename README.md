@@ -19,7 +19,7 @@ Verified on Chevrolet Bolt EV / EUV 2017–2023 (13 recalls, 679 complaints, fet
 
 History: the project started on 2026-08-29 as a pre-sales POC proposal compiler and went through supply-chain, synthetic quality and food-recall scenarios before settling on recall scope review on 2026-09-13. The retired lines were removed from the branch; the full state before removal is tagged `archive-2026-09-13-nhtsa-review`.
 
-> Before developing, read the [guardrails](docs/DEVELOPMENT_GUARDRAILS.md). Current state and next steps: [handoff](docs/HANDOFF_2026-09-13.md), [feature inventory](docs/FEATURES_2026-09-13.md), [shortcomings and roadmap](docs/superpowers/plans/2026-09-13-improvement-roadmap.md). These documents are in Chinese.
+> Before developing, read the [guardrails](docs/DEVELOPMENT_GUARDRAILS.md). Current state and next steps: [handoff](docs/HANDOFF_2026-09-13.md), [feature inventory](docs/FEATURES_2026-09-13.md), [iteration 2 requirements](docs/PRD_ITERATION_2.md). These documents are in Chinese.
 
 ## Pages
 

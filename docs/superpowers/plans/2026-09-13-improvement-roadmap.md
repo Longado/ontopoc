@@ -1,5 +1,7 @@
 # 不足讨论与改进路线（2026-09-13，归档点之后）
 
+> **历史记录**：本文已由 `docs/PRD_ITERATION_2.md` 取代，保留作过程记录。
+
 > 前一份文档 `2026-09-13-nhtsa-shortcomings-and-next-rounds.md` 是工程问题清单。本文退一步看：这套东西证明了什么、还缺什么、下一段该按什么顺序补。数字都来自 `examples/nhtsa/runs/2026-09-13-deepseek-flash-v3.json` 与本文写作时现算。
 
 ## 1. 已经证明的
