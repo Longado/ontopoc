@@ -1,6 +1,7 @@
 """NHTSA recalls and complaints as a public source bundle; no judgement, only provenance."""
 from __future__ import annotations
 
+import copy
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -38,7 +39,7 @@ def build_nhtsa_bundle(responses: list[dict], *, decision: str) -> dict:
             raise PublicSourceError(f'{kind} response has no results list: {item.get("url")}')
         sources[kind]['requests'].append({'url': item.get('url'), 'retrieved_at': item.get('retrieved_at')})
         for record in results:
-            sources[kind]['records'].setdefault(_RECORD_KEY[kind](record), record)
+            sources[kind]['records'].setdefault(_RECORD_KEY[kind](record), copy.deepcopy(record))
     bundle = {
         'schema': SCHEMA,
         'evidence_scope': 'public_data',

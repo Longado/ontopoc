@@ -25,13 +25,19 @@ def _identity(inst: tuple) -> dict:
     return dict(inst[1])
 
 
-def scope(ontology: dict, bundle: dict, event_identity: dict) -> dict:
+def require_matching_bundle(ontology: dict, bundle: dict) -> None:
+    """The ontology is only valid for the exact bundle it was verified against."""
     if ontology.get('schema') != 'public_ontology.v1' or ontology.get('status') != 'auto_built_verified':
         raise ScopeError('ontology must be a verified public_ontology.v1')
     if ontology.get('source_bundle_hash') != bundle_content_hash(bundle):
         raise ScopeError('ontology was built from a different source bundle')
+
+
+def scope(ontology: dict, bundle: dict, event_identity: dict, graph: dict | None = None) -> dict:
+    """`graph` may be passed when the caller already built it from this same ontology and bundle."""
+    require_matching_bundle(ontology, bundle)
     role = {t['role']: t['key'] for t in ontology['object_types']}
-    graph = build_graph(ontology, bundle)
+    graph = graph or build_graph(ontology, bundle)
     event = (role['event'], tuple(sorted((k, normalize_value(v)) for k, v in event_identity.items())))
     if event not in graph['sources_of']:
         raise ScopeError(f'event not found in the bundle: {event_identity}')
@@ -112,6 +118,7 @@ def _signal_id(candidate: dict) -> str:
 
 def check_candidates(scope_result: dict, ontology: dict, bundle: dict, gateway, batch_size: int = 20) -> dict:
     """Return a copy of the scope result with text_check filled for every candidate."""
+    require_matching_bundle(ontology, bundle)
     role = {t['role']: t['key'] for t in ontology['object_types']}
     graph = build_graph(ontology, bundle)
     event = (role['event'], tuple(sorted(scope_result['event']['identity'].items())))

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ontology_poc_generator.public_ontology import build_graph, linked, ontology_content_hash, resolve
-from ontology_poc_generator.public_scope import BOUNDARY, ScopeError, scope
+from ontology_poc_generator.public_scope import BOUNDARY, ScopeError, require_matching_bundle, scope
 
 
 class PackError(ValueError):
@@ -50,8 +50,10 @@ def _ontology_summary(ontology: dict) -> dict:
 
 def build_review_pack(report: dict, bundle: dict) -> dict:
     ontology = report.get('ontology') or {}
-    if ontology.get('status') != 'auto_built_verified':
-        raise PackError('ontology in the report is not verified')
+    try:
+        require_matching_bundle(ontology, bundle)
+    except ScopeError as exc:
+        raise PackError(str(exc)) from exc
     role = {t['role']: t['key'] for t in ontology['object_types']}
     graph = build_graph(ontology, bundle)
     events = sorted(i for i in graph['sources_of'] if i[0] == role['event'])
@@ -61,7 +63,7 @@ def build_review_pack(report: dict, bundle: dict) -> dict:
         identity = dict(event[1])
         event_id = _label(identity)
         try:
-            result = scope(ontology, bundle, identity)
+            result = scope(ontology, bundle, identity, graph)
         except ScopeError as exc:
             raise PackError(str(exc)) from exc
         checks = {}
