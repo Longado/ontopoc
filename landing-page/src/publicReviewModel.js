@@ -8,12 +8,41 @@ export const MARKS = { same: "同一缺陷", different: "不是", unsure: "说�
 export const VERDICT_TO_MARK = { yes: "same", no: "different", unknown: "unsure" };
 export const ROLE_LABELS = { event: "事件", affected_object: "受影响对象", mechanism: "部件机制", signal: "信号", context: "背景" };
 
+export const FLAG_LABELS = { fire: "起火", crash: "碰撞" };
+
 export function validatePack(pack) {
   if (!pack || pack.schema !== "public_review_pack.v1") throw new Error("页面数据格式不支持");
   if (pack.ontology?.status !== "auto_built_verified" || !/^[0-9a-f]{64}$/.test(pack.ontology.hash || "")) throw new Error("页面数据里的本体未通过核验");
   if (!Array.isArray(pack.recalls) || !pack.signals || typeof pack.signals !== "object") throw new Error("页面数据缺少召回或投诉");
+  for (const r of pack.recalls) {
+    if (!Array.isArray(r.candidates) || !Array.isArray(r.covered) || !Array.isArray(r.mechanism) || !Array.isArray(r.fields)) throw new Error(`召回 ${r.id} 的数据不完整`);
+    const missing = r.candidates.find((c) => !pack.signals[c.id]);
+    if (missing) throw new Error(`召回 ${r.id} 引用的投诉 ${missing.id} 不在页面数据里`);
+  }
   return pack;
 }
+
+const TIMING_RANK = { after: 0, same_day: 1, before: 2 };
+export function orderCandidates(candidates, signals) {
+  const rank = (c) => TIMING_RANK[c.timing?.relation] ?? 3;
+  return [...candidates].sort((a, b) => rank(a) - rank(b)
+    || signals[b.id].flags.length - signals[a.id].flags.length
+    || (signals[b.id].date || "").localeCompare(signals[a.id].date || "")
+    || a.id.localeCompare(b.id));
+}
+
+export function timingLabel(timing) {
+  if (!timing) return "";
+  if (timing.relation === "same_day") return "召回当天";
+  return timing.relation === "after" ? `召回后 ${timing.days} 天` : `召回前 ${-timing.days} 天`;
+}
+
+export function defaultRecallId(pack) {
+  const pick = [...pack.recalls].sort((a, b) => Number(b.text_checked) - Number(a.text_checked) || b.counts.outside_all - a.counts.outside_all)[0];
+  return pick?.id || "";
+}
+
+const seriesOf = (recall) => recall.series || recall.id;
 
 export const storageKey = (pack) => `ontopoc.public-review.v1.${pack.ontology.hash.slice(0, 16)}`;
 export const emptyState = (pack) => ({ schema: "public_review_state.v1", ontology_hash: pack.ontology.hash, confirmed_at: null, marks: {} });
@@ -39,10 +68,11 @@ export const nextSelection = (selected, visible) => (visible.some((c) => c.id ==
 
 export function summarize(pack, state, recallId) {
   const recall = pack.recalls.find((r) => r.id === recallId);
+  const key = seriesOf(recall);
   let reviewed = 0, compared = 0, agree = 0;
   const disagreements = [];
   for (const c of recall.candidates) {
-    const human = markOf(state, recallId, c.id)?.mark;
+    const human = markOf(state, key, c.id)?.mark;
     if (!human) continue;
     reviewed++;
     if (!c.text_check) continue;
@@ -67,10 +97,14 @@ export function restoreState(raw, pack) {
 
 export function exportState(pack, state, now) {
   const reviews = [];
+  const seen = new Set();
   for (const recall of pack.recalls) {
+    const key = seriesOf(recall);
     for (const c of recall.candidates) {
-      const entry = markOf(state, recall.id, c.id);
-      if (entry) reviews.push({ recall: recall.id, complaint: c.id, bucket: c.bucket, human: entry.mark, note: entry.note, model_verdict: c.text_check?.verdict || null, updated_at: entry.updated_at });
+      const entry = markOf(state, key, c.id);
+      if (!entry || seen.has(`${key}/${c.id}`)) continue;
+      seen.add(`${key}/${c.id}`);
+      reviews.push({ recall: key, complaint: c.id, bucket: c.bucket, human: entry.mark, note: entry.note, model_verdict: c.text_check?.verdict || null, updated_at: entry.updated_at });
     }
   }
   return {

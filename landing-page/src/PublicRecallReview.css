@@ -58,3 +58,12 @@
   .pr-detail dl div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .pr-back { display: inline-block; }
 }
+.pr-groups { display: grid; gap: 14px; }
+.pr-group h3 { margin: 4px 0 8px; font-size: 14px; color: #42635a; overflow-wrap: anywhere; }
+.pr-date { font-weight: 400; color: #50665c; }
+.pr-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.pr-badge { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: #eef2ef; color: #33483f; }
+.pr-badge-after { background: #fde7d4; color: #7a3b0c; }
+.pr-badge-same_day { background: #fff1c2; color: #6b5200; }
+.pr-badge-flag { background: #f9d6d0; color: #8a1f0f; }
+.pr-badge-alias { background: #dde6f5; color: #213a66; }
