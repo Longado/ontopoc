@@ -1,0 +1,256 @@
+{
+  "schema": "public_recall_catalog.v1",
+  "evidence_scope": "public_recall",
+  "event_id": "95876",
+  "scope_note": "仅核对事件 95876 的已公布召回范围；未匹配不代表安全。无库存、正常检验或逐批投料记录。",
+  "source_file": "95876.openfda.json",
+  "review_method": "逐项按原公告编号分段核对产品与批号；不是模型提取结果。日期为标签 Use/Sell By，非生产日期。",
+  "products": [
+    {
+      "product_key": "F-0367-2025/1",
+      "recall_number": "F-0367-2025",
+      "name": "Peak Cucumber 08027 · 24 count",
+      "upc": null,
+      "lots": [
+        "X7544915",
+        "X7544941",
+        "X7545223",
+        "X7545254",
+        "X7545818",
+        "X7547379",
+        "X7549235",
+        "X7549567",
+        "X7552171"
+      ],
+      "label_date_range": null,
+      "description_quote": "1.  Peak Cucumber Item 08027, 24 count.  Product of Mexico.",
+      "code_quote": "1.   X7544915, X7544941, X7545223, X7545254, X7545818, X7547379, X7549235, X7549567, X7552171."
+    },
+    {
+      "product_key": "F-0367-2025/2",
+      "recall_number": "F-0367-2025",
+      "name": "Peak Cucumber 08009 · 5 LB",
+      "upc": null,
+      "lots": [
+        "X7544916",
+        "X7544942",
+        "X7545255",
+        "X7545671",
+        "X7545820",
+        "X7547380"
+      ],
+      "label_date_range": null,
+      "description_quote": "2.\tPeak Cucumber Item 08009, 5 LB. Product of Mexico.",
+      "code_quote": "2. X7544916, X7544942, X7545255, X7545671, X7545820, X7547380."
+    },
+    {
+      "product_key": "F-0367-2025/3",
+      "recall_number": "F-0367-2025",
+      "name": "Cucumber Super Select 22200 · 24 count",
+      "upc": null,
+      "lots": [
+        "X7522892",
+        "X7525242",
+        "X7527841",
+        "X7529877",
+        "X7538875",
+        "X7544860",
+        "X7545305",
+        "X7546056",
+        "X7546374",
+        "X7548174",
+        "X7549360",
+        "X7550452",
+        "X7550665",
+        "X7550864",
+        "X7551649",
+        "X7552580",
+        "X7554639"
+      ],
+      "label_date_range": null,
+      "description_quote": "3.\tCucumber Super Select Item 22200, 24 count. Product of Mexico.",
+      "code_quote": "3. X7522892, X7525242, X7527841, X7529877, X7538875, X7544860, X7545305, X7546056, X7546374, X7548174, X7549360, X7550452, X7550665, X7550864, X7551649, X7552580, X7554639."
+    },
+    {
+      "product_key": "F-0367-2025/4",
+      "recall_number": "F-0367-2025",
+      "name": "Cucumber 22201 · 5 LB",
+      "upc": null,
+      "lots": [
+        "X7523208",
+        "X7525604",
+        "X7527034",
+        "X7527842",
+        "X7528437",
+        "X7530464",
+        "X7532041",
+        "X7532810",
+        "X7535312",
+        "X7536804",
+        "X7537516",
+        "X7543731",
+        "X7544783",
+        "X7545096",
+        "X7546437",
+        "X7546473",
+        "X7547169",
+        "X7547211",
+        "X7547672",
+        "X7548066",
+        "X7549528",
+        "X7550453",
+        "X7552059",
+        "X7552233",
+        "X7556439"
+      ],
+      "label_date_range": null,
+      "description_quote": "4.\tCucumber Item 22201, 5 lb. Product of Mexico.",
+      "code_quote": "4.  X7523208, X7525604, X7527034, X7527842, X7528437, X7530464, X7532041, X7532810, X7535312, X7536804, X7537516, X7543731, X7544783, X7545096, X7546437, X7546473, X7547169, X7547211, X7547672, X7548066, X7549528, X7550453, X7552059, X7552233, X7556439."
+    },
+    {
+      "product_key": "F-0367-2025/5",
+      "recall_number": "F-0367-2025",
+      "name": "Cucumber Super Select 22227 · 6 CT",
+      "upc": null,
+      "lots": [
+        "X7547984",
+        "X7548122",
+        "X7548232",
+        "X7549231",
+        "X7549555"
+      ],
+      "label_date_range": null,
+      "description_quote": "5.\tCucumber Super Select Item 22227, 6 CT. Product of Mexico.",
+      "code_quote": "5. X7547984, X7548122, X7548232, X7549231, X7549555."
+    },
+    {
+      "product_key": "F-0367-2025/6",
+      "recall_number": "F-0367-2025",
+      "name": "Cucumber 1/4 Slice/Skin-On · 5 LB",
+      "upc": null,
+      "lots": [
+        "X7545151",
+        "X7549635",
+        "X7551987",
+        "X7556080",
+        "X7558549"
+      ],
+      "label_date_range": [
+        "2024-11-06",
+        "2024-11-13"
+      ],
+      "description_quote": "6.  Cucumber 1/4\" Slice/Skin-On    Net Wt 5 LB.  Keep Refrigerated.  Mexico",
+      "code_quote": "6.  X7545151, X7549635, X7551987, X7556080, X7558549.  Use By:  11/6/2024 - 11/13/2024."
+    },
+    {
+      "product_key": "F-0367-2025/7",
+      "recall_number": "F-0367-2025",
+      "name": "Cucumber Diced 3/8 · 5 LB",
+      "upc": null,
+      "lots": [
+        "X7568580"
+      ],
+      "label_date_range": [
+        "2024-11-17",
+        "2024-11-17"
+      ],
+      "description_quote": "7.  Cucumber Diced  3/8\"   Net Wt. 5 LB.  Keep Refrigerated.  Mexico",
+      "code_quote": "7.  X7568580, USE BY:  11/17/2024."
+    },
+    {
+      "product_key": "F-0367-2025/8",
+      "recall_number": "F-0367-2025",
+      "name": "Cucumber 1/4 Peeled Sliced · 5 LB",
+      "upc": null,
+      "lots": [
+        "X7550999",
+        "X7557325"
+      ],
+      "label_date_range": [
+        "2024-11-08",
+        "2024-11-12"
+      ],
+      "description_quote": "8.  Cucumber 1/4\" Peeled Sliced Net Wt. 5 LB.  Keep Refrigerated.  Mexico",
+      "code_quote": "8.  X7550999 and X7557325 USE BY:  11/8/2024 - 11/12/2024."
+    },
+    {
+      "product_key": "F-0368-2025/1",
+      "recall_number": "F-0368-2025",
+      "name": "Garden Salad w/Ranch Dressing · 9oz",
+      "upc": "795831810233",
+      "lots": [
+        "X7549263",
+        "X7552558",
+        "X7554472",
+        "X7556762",
+        "X7558018",
+        "X7560391",
+        "X7562507",
+        "X7564848"
+      ],
+      "label_date_range": [
+        "2024-11-06",
+        "2024-11-16"
+      ],
+      "description_quote": "Garden Salad w/Ranch Dressing,  Net Wt 9oz.  Keep Refrigerated.  UPC   7 95831-81023 3.  Containing Lettuce, tomatoes, cucumbers, cheddar cheese, carrots and hard cooked egg.  Sold under the following brands:   1.  Crazy Fresh 2.  quick & easy, Ready to Enjoy",
+      "code_quote": "Lot Codes:  X7549263, X7552558, X7554472, X7556762, X7558018, X7560391, X7562507, X7564848.   Sell By Dates:  November 6 - November 16, 2024"
+    },
+    {
+      "product_key": "F-0369-2025/1",
+      "recall_number": "F-0369-2025",
+      "name": "Bacon Avocado Wrap · 9.9oz",
+      "upc": "795631810387",
+      "lots": [
+        "X7547814",
+        "X7550037",
+        "X7554119",
+        "X7554784",
+        "X7556770",
+        "X7558868"
+      ],
+      "label_date_range": [
+        "2024-11-05",
+        "2024-11-15"
+      ],
+      "description_quote": "Bacon Avocado Wrap,  Net Wt 9.9oz.  Keep Refrigerated.  UPC   7 95631-81038 7.  Containing Flour Tortilla,Carrots, Lettuce, Cheddar Cheese, Cucumber, Guacamole, Bacon Bits, Ranch Dressing, Spinach, Cream Cheese.   Sold under the following brands:   1.  Crazy Fresh 2.  quick & easy, Meals",
+      "code_quote": "Lot Codes:  X7547814, X7550037, X7554119, X7554784, X7556770, X7558868.   Sell By Dates:  November 5 - November 15, 2024"
+    },
+    {
+      "product_key": "F-0370-2025/1",
+      "recall_number": "F-0370-2025",
+      "name": "Crazy Fresh Turkey Havarti Wrap · 6.8oz",
+      "upc": "795631811490",
+      "lots": [
+        "X7554170",
+        "X7558001",
+        "X7561390",
+        "X7565566"
+      ],
+      "label_date_range": [
+        "2024-11-09",
+        "2024-11-16"
+      ],
+      "description_quote": "Crazy Fresh Turkey Havarti Wrap,  Net Wt 6.8oz.  Keep Refrigerated.  UPC  7 95631-81149 0.    Containing Flour Tortilla, Cooked Turkey Breast, Roasted Tomatoes, Havarti cheese, Mayonnaise, Lettuce, Onion, Cucumber.",
+      "code_quote": "Lot Codes:  X7554170, X7558001, X7561390, X7565566.   Sell By Dates:  November 9 - November 16, 2024"
+    },
+    {
+      "product_key": "F-0371-2025/1",
+      "recall_number": "F-0371-2025",
+      "name": "Kowalski’s Garden Salad · 14oz",
+      "upc": "795631893359",
+      "lots": [
+        "X7545630",
+        "X7550110",
+        "X7554755",
+        "X7558921",
+        "X7562768"
+      ],
+      "label_date_range": [
+        "2024-11-06",
+        "2024-11-15"
+      ],
+      "description_quote": "Kowalski's Garden Salad Net Wt. 14oz.  Keep Refrigerated.  UPC  7 95631-89335 9.    Containing Lettuce, Cucumber, Tomatoes, Broccoli, Cheddar Cheese, Onion, Hard Cooked Eggs, Carrots, Roasted Sunflower Kernels.",
+      "code_quote": "Use/Sell By Dates:  November 6 - November 15, 2024 Lot Codes: X7545630, X7550110, X7554755, X7558921, X7562768."
+    }
+  ]
+}

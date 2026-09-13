@@ -19,6 +19,7 @@ class OpenAICompatibleGateway:
         model: str,
         timeout_seconds: float = 60,
         opener: Callable[..., object] = urlopen,
+        temperature: float | None = None,
     ) -> None:
         for field, value in (
             ("api_base", api_base),
@@ -34,6 +35,7 @@ class OpenAICompatibleGateway:
         self._model = model.strip()
         self._timeout_seconds = timeout_seconds
         self._opener = opener
+        self._temperature = temperature
 
     def complete_json(
         self,
@@ -41,17 +43,17 @@ class OpenAICompatibleGateway:
         system_prompt: str,
         user_prompt: str,
     ) -> ModelCompletion:
-        body = json.dumps(
-            {
-                "model": self._model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "response_format": {"type": "json_object"},
-            },
-            ensure_ascii=False,
-        ).encode("utf-8")
+        payload = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "response_format": {"type": "json_object"},
+        }
+        if self._temperature is not None:
+            payload["temperature"] = self._temperature
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         try:
             request = Request(
                 f"{self._api_base}/chat/completions",
