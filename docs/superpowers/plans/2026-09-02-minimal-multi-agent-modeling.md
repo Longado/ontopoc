@@ -32,7 +32,7 @@ The fake modeler returns objects and relations whose `evidence_span` values occu
 Run:
 
 ```bash
-PYTHONPATH=src /Users/eddie/.local/bin/python3.11 -m unittest tests.test_agent_modeling
+PYTHONPATH=src python3.11 -m unittest tests.test_agent_modeling
 ```
 
 Expected: import failure because `agent_modeling` does not exist.
@@ -80,7 +80,7 @@ Patch the existing gateway with an offline fake. Assert the CLI reads credential
 Run:
 
 ```bash
-PYTHONPATH=src /Users/eddie/.local/bin/python3.11 -m unittest tests.test_agent_modeling_cli
+PYTHONPATH=src python3.11 -m unittest tests.test_agent_modeling_cli
 ```
 
 Expected: import failure because `agent_modeling_cli` does not exist.
@@ -100,7 +100,7 @@ Reuse the existing atomic writer and output-collision check. Register only `onto
 Run:
 
 ```bash
-PYTHONPATH=src /Users/eddie/.local/bin/python3.11 -m unittest tests.test_agent_modeling tests.test_agent_modeling_cli
+PYTHONPATH=src python3.11 -m unittest tests.test_agent_modeling tests.test_agent_modeling_cli
 git diff --check
 ```
 

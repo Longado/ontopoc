@@ -9,7 +9,7 @@
 
 仓库：`https://github.com/Longado/ontopoc`
 
-开发工作树：`/Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo`
+开发工作树：`.worktrees/pc-agent-modeling-demo`
 
 分支：`rico/handoff-v2`
 
@@ -27,7 +27,7 @@ PR：[#12 feat: add five-system multi-agent quality assessment](https://github.c
 恢复开发前运行：
 
 ```bash
-cd /Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo
+cd .worktrees/pc-agent-modeling-demo
 git status --short --branch
 git rev-parse HEAD
 git merge-base --is-ancestor 61df67b HEAD
@@ -318,7 +318,7 @@ npm run build
 
 ```text
 接手 OntoPoc 前，先完整阅读：
-/Users/eddie/Desktop/Workspace/ontology-poc-generator/.worktrees/pc-agent-modeling-demo/docs/DEVELOPMENT_HANDOFF.md
+docs/DEVELOPMENT_HANDOFF.md
 
 当前功能开发已经冻结。先执行第 0 节对账，确认 branch、HEAD、PR 和 CI；不要把文档快照当成实时状态。
 
