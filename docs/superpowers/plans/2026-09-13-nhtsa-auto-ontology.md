@@ -1,6 +1,6 @@
 # 公开场景自动搭建本体 · 实施计划
 
-> 背景、试验证据见 `docs/NHTSA_AUTO_ONTOLOGY_PLAN.md`；试验代码在 `experiments/nhtsa_auto_ontology/`。本文是 A 轮的逐项实施计划，B、C、D 轮只定设计要点。步骤用 `- [ ]` 跟踪。
+> 背景、试验证据见 `docs/NHTSA_AUTO_ONTOLOGY_PLAN.md`；试验代码已在 A 轮后删除，试验记录在 `experiments/nhtsa_auto_ontology/recorded/`。本文是 A 轮的逐项实施计划，B、C、D 轮只定设计要点。步骤用 `- [ ]` 跟踪。
 
 **目标：** 给一份公开数据快照和一个业务问题，系统自动搭建本体，用代码拿数据核验，按本体回答"召回范围内外有哪些同类投诉"，并给出可复核的候选清单。
 
@@ -13,7 +13,7 @@
 | 决定 | 选择 | 理由 |
 |---|---|---|
 | 本体输出格式 | 新结构 `public_ontology.v1`，**不塞进** `OntologySpec` | `OntologySpec` 要求 `DecisionPack` 哈希、只允许 `synthetic_demo`，`validation.py` 规定对象类型只能来自 `provided_input`；硬塞需要改合成链路的校验器，而公开链路没有任何消费方用到它。README 已约定公开召回数据不进这条链路，本轮沿用。**待用户拍板** |
-| 编号 | 复用 `identity.stable_entity_type_id` / `stable_relation_type_id` | 以后要并入 `OntologySpec` 时编号规则一致 |
+| 编号 | ~~复用 `identity` 生成稳定编号~~ A 轮后删除 | 没有任何消费方，属于提前建设；真要并入 `OntologySpec` 时再加 |
 | 本体能回答的问题 | 固定四个角色：事件、受影响对象、部件机制、信号 | 为"召回范围研判"这一类问题设计；不做任意问题的通用平台 |
 | 查询只走直接关系 | 保留（试验时的做法） | 两跳路径由核验规则要求模型补直接关系；`ponytail:` 注释写明上限和升级路径（按关系链遍历） |
 | 模型判断的地位 | 只产生"候选，待复核" | 试验证明文本判断随提示词摆动；B 轮标注集校准前不当结论 |
@@ -36,7 +36,7 @@
 }
 ```
 
-- 原始响应在 `experiments/nhtsa_auto_ontology/recorded/raw_2026-09-13/`，取数时间 2026-09-13 03:29:39Z–03:31:11Z（按文件时间），每个请求的 `retrieved_at` 用对应文件时间。
+- 原始响应（A 轮后已并入快照文件并删除原件）取数时间 2026-09-13 03:29:39Z–03:31:11Z（按文件时间），每个请求的 `retrieved_at` 用对应文件时间。
 - 召回按（活动号、车型、年款）去重，投诉按 `odiNumber` 去重；记录按这两个键排序后写入，保证记录下标稳定。
 - 内容哈希 = 规范化 JSON 的 SHA-256，运行时计算，不存进文件。
 
@@ -89,7 +89,7 @@
 
 - [x] 先写失败测试：缺 `requests` 或 `retrieved_at` 拒绝；`evidence_scope` 不是 `public_data` 拒绝；重复召回、重复投诉被去重；记录顺序稳定；同一文件两次加载哈希相同。
 - [x] 实现 `load_source_bundle(path)` 和 `fetch_nhtsa_bundle(make, models, years, decision, opener=urlopen)`；取数函数只在脚本里被调用，测试用假 `opener`。
-- [x] 用 `recorded/raw_2026-09-13/` 里的原始响应生成快照文件（13 个召回活动、679 条投诉），不重新取数，保证与试验结果可对照。
+- [x] 用试验时的原始响应生成快照文件（13 个召回活动、679 条投诉），不重新取数，保证与试验结果可对照。
 - [x] 运行 `PYTHONPATH=src python -m unittest tests.test_nhtsa_sources -v`，全过。
 
 ### 任务 2：本体核验与对象图

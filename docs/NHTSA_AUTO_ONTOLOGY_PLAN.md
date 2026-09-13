@@ -26,13 +26,7 @@
 | 6 | 文本判断：投诉描述是不是同一个缺陷，yes / no / unknown，yes 必须附投诉原文片段，代码核对片段确实在原文里 | 模型，每 20 条一次 |
 | 7 | 人工：看、改、确认本体版本；复核候选投诉 | 人（页面待做） |
 
-试验代码在 `experiments/nhtsa_auto_ontology/`（`fetch.sh` 取数，`run.py` 跑全流程，提示词在 `prompts.py`，确定性部分在 `ontology.py`）。运行方式：
-
-```bash
-cd experiments/nhtsa_auto_ontology && ./fetch.sh
-( set -a; source ~/.local-sensitive/ontopoc/deepseek.env; set +a
-  ONTOPOC_SRC=../../src python run.py 21V650000 21V517000 )
-```
+试验代码已被正式代码取代并删除（`src/ontology_poc_generator/public_ontology.py`、`public_scope.py`，运行见 README"公开场景自动搭建本体"）。两轮试验的模型输出和报告留在 `experiments/nhtsa_auto_ontology/recorded/run_v1`、`run_v2`，下面第 3 节的数字出自这里；原始响应已并入 `examples/nhtsa/chevrolet_bolt_2017_2023.json`。
 
 ## 3. 试验结果
 
