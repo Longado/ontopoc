@@ -111,14 +111,17 @@ def normalize_proposal(proposal: dict) -> dict:
 
 def _where_errors(key: str, src: str, pop: dict, records: list[dict]) -> list[dict]:
     where = pop['where']
-    bad = _error('where_invalid', f'{key}/{src}: filter {where!r} must name an existing field of the same record '
+    bad = _error('where_invalid', f'{key}/{src}: filter {where!r} must name existing fields of the same record '
                                   'or identity list, and keep at least one object')
-    if not isinstance(where, dict) or not isinstance(where.get('path'), str) or not isinstance(where.get('equals'), str):
+    conditions = [where] if isinstance(where, dict) else where if isinstance(where, list) else None
+    if not conditions or any(not isinstance(c, dict) or not isinstance(c.get('path'), str)
+                             or not isinstance(c.get('equals'), str) for c in conditions):
         return [bad]
     heads = {path.split('[].')[0] for path in pop['identity'].values() if '[].' in path}
-    if '[].' in where['path'] and {where['path'].split('[].')[0]} != heads:
-        return [bad]
-    if not _path_exists(records, where['path']) or not any(_identities(r, pop) for r in records):
+    for c in conditions:
+        if ('[].' in c['path'] and {c['path'].split('[].')[0]} != heads) or not _path_exists(records, c['path']):
+            return [bad]
+    if not any(_identities(r, pop) for r in records):
         return [bad]
     return []
 
@@ -217,24 +220,29 @@ def normalize_value(value) -> str | None:
     return text or None
 
 
-def _kept(holder: dict, where: dict | None, field: str) -> bool:
-    return where is None or normalize_value(holder.get(field)) == normalize_value(where['equals'])
+def _conditions(pop: dict) -> list[dict]:
+    where = pop.get('where')
+    return [] if where is None else [where] if isinstance(where, dict) else list(where)
+
+
+def _kept(holder: dict, conditions: list[dict], strip: bool) -> bool:
+    return all(normalize_value(holder.get(c['path'].split('[].', 1)[1] if strip else c['path']))
+               == normalize_value(c['equals']) for c in conditions)
 
 
 def _identities(record: dict, pop: dict) -> list[tuple]:
     ident = pop['identity']
     keys = sorted(ident)
     heads = {path.split('[].')[0] for path in ident.values() if '[].' in path}
-    where = pop.get('where')
-    list_where = where if where and '[].' in where['path'] else None
-    if where and not list_where and not _kept(record, where, where['path']):
+    conditions = _conditions(pop)
+    on_list = [c for c in conditions if '[].' in c['path']]
+    if not _kept(record, [c for c in conditions if '[].' not in c['path']], False):
         return []
     if heads:
         (head,) = heads
         elements = record.get(head) if isinstance(record.get(head), list) else []
-        tail = list_where['path'].split('[].', 1)[1] if list_where else ''
         rows = [{k: (e.get(ident[k].split('[].', 1)[1]) if '[].' in ident[k] else record.get(ident[k]))
-                 for k in keys} for e in elements if isinstance(e, dict) and _kept(e, list_where, tail)]
+                 for k in keys} for e in elements if isinstance(e, dict) and _kept(e, on_list, True)]
     else:
         rows = [{k: record.get(ident[k]) for k in keys}]
     out = []
@@ -366,7 +374,7 @@ Return ONLY a JSON object with exactly these fields:
           "source": "<source name>",
           "identity": {"<logical_key>": "<field path>"},
           "transform": "none" | "split_comma" | "colon_hierarchy",
-          "where": {"path": "<field path>", "equals": "<value>"}   (optional)
+          "where": [{"path": "<field path>", "equals": "<value>"}]   (optional, all must hold)
       }],
       "time_field": {"source": "<source name>", "path": "<date field path>"}   (optional),
       "attributes": [{"source": "<source name>", "path": "<field path>"}],

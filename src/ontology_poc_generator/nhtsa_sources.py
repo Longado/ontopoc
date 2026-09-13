@@ -31,6 +31,7 @@ DATE_FORMATS = {
     'complaints': {'dateComplaintFiled': '%m/%d/%Y', 'dateOfIncident': '%m/%d/%Y'},
 }
 _ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+_CAMPAIGN_REF = re.compile(r'\b(\d{2})V-?(\d{3})(\d{3})?\b')
 
 
 class PublicSourceError(ValueError):
@@ -142,3 +143,9 @@ def load_source_bundle(path: str | Path) -> dict:
 def bundle_content_hash(bundle: dict) -> str:
     canonical = json.dumps(bundle, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
     return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+
+
+def referenced_campaigns(text: str, campaign_ids: list[str]) -> list[str]:
+    """Campaigns a recall text names explicitly, e.g. "previously remedied under recall number 21V-650"."""
+    keys = {f'{year}V{number}' for year, number, _ in _CAMPAIGN_REF.findall(text or '')}
+    return [c for c in campaign_ids if c[:6] in keys]
