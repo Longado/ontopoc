@@ -185,7 +185,7 @@ def validate_proposal(proposal: dict, bundle: dict) -> list[dict]:
     return errors
 
 
-def _norm(value) -> str | None:
+def normalize_value(value) -> str | None:
     if value in (None, ''):
         return None
     text = re.sub(r'\s+', ' ', str(value)).strip().upper()
@@ -205,7 +205,7 @@ def _identities(record: dict, pop: dict) -> list[tuple]:
         rows = [{k: record.get(ident[k]) for k in keys}]
     out = []
     for row in rows:
-        values = {k: _norm(v) for k, v in row.items()}
+        values = {k: normalize_value(v) for k, v in row.items()}
         if any(v is None for v in values.values()):
             continue
         if pop['transform'] == 'split_comma':
