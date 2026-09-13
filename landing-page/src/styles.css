@@ -65,6 +65,16 @@ section[id] { scroll-margin-top: 78px; }
 .standalone-demo-workspace { min-width: 0; min-height: 0; flex: 1; display: flex; overflow: hidden; }
 .standalone-demo-workspace > * { flex: 1; }
 
+@media (max-width: 760px) {
+  .standalone-demo-header { grid-template-columns: 120px minmax(0, 1fr); gap: 8px 12px; padding: 10px 16px; }
+  .standalone-demo-brand { width: 120px; }
+  .standalone-demo-title { grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; gap: 2px 10px; }
+  .standalone-demo-title span { display: none; }
+  .standalone-demo-actions { justify-self: end; gap: 8px; }
+  .standalone-demo-actions > a { padding: 8px 10px; }
+  .recall-surface-switch { padding: 10px 16px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *,
