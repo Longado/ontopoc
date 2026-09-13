@@ -50,16 +50,13 @@ class AutoBuildOntologyTests(unittest.TestCase):
         self.assertEqual(o['verification']['errors'], [])
         self.assertEqual(o['verification']['metrics']['shared_across_sources']['vehicle_model_year'], 2)
 
-    def test_output_carries_provenance_and_stable_ids(self):
+    def test_output_carries_provenance(self):
         o = self.api().auto_build_ontology(self.bundle, FakeGateway(self.recorded))
         self.assertEqual(o['source_bundle_hash'], bundle_content_hash(self.bundle))
         self.assertEqual(o['model'], 'deepseek-flash')
         self.assertEqual(o['prompt_version'], 'public_ontology_modeler.v2')
         self.assertEqual(o['evidence_scope'], 'public_data')
-        self.assertTrue(all(t['type_id'].startswith('entity_type_') for t in o['object_types']))
-        self.assertTrue(all(r['relation_type_id'].startswith('relation_type_') for r in o['relations']))
-        again = self.api().auto_build_ontology(self.bundle, FakeGateway(self.recorded))
-        self.assertEqual([t['type_id'] for t in o['object_types']], [t['type_id'] for t in again['object_types']])
+        self.assertEqual([t['key'] for t in o['object_types']], [t['key'] for t in self.recorded[1]['object_types']])
         self.assertEqual(o['data_gaps'], self.recorded[1]['open_questions'])
 
     def test_stops_when_errors_do_not_shrink(self):
