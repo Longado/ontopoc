@@ -1,0 +1,229 @@
+[
+  {
+    "spec": {
+      "reasoning": "两条数据源描述的是同一批现实事物：recalls 表的一行 = 一次召回活动（NHTSACampaignNumber）针对某一品牌/车型/年款（Make/Model/ModelYear）的一个部件（Component，冒号层级如 ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY）；complaints 表的一行 = 一条车主投诉（odiNumber），涉及一个 VIN、一组投诉部件（components，逗号分隔）以及一个 products[] 列表，列表里通常给出年份/品牌/车型（products[].productYear/productMake/productModel），但也会出现轮胎、设备等非车辆条目。两侧共同出现的现实事物有三类：车型年款（recalls 的 Make/Model/ModelYear 与 complaints 的 products[] 三字段）、部件（recalls 的 Component 与 complaints 的 components）、以及召回/投诉这两类事件本身。源之间没有 VIN 或活动号的直接连接，只能通过“车型年款 + 部件”做集合比对：某投诉的车型年款是否落在同部件召回的年款集合内。因此建四个对象类型（召回活动=事件、车型年款=受影响对象、部件=机制、投诉=信号），四条关系分别表达召回覆盖年款、召回针对部件、投诉指向年款、投诉指控部件；关键在于两侧用同名 logical_key（make/model/model_year、component）以便记录归并到同一对象。",
+      "object_types": [
+        {
+          "key": "recall_campaign",
+          "label": "召回活动",
+          "role": "event",
+          "populated_from": [
+            {
+              "source": "recalls",
+              "identity": {
+                "campaign_number": "NHTSACampaignNumber"
+              },
+              "transform": "none"
+            }
+          ],
+          "attributes": [
+            {
+              "source": "recalls",
+              "path": "Manufacturer"
+            },
+            {
+              "source": "recalls",
+              "path": "ReportReceivedDate"
+            },
+            {
+              "source": "recalls",
+              "path": "Consequence"
+            },
+            {
+              "source": "recalls",
+              "path": "Remedy"
+            },
+            {
+              "source": "recalls",
+              "path": "parkIt"
+            },
+            {
+              "source": "recalls",
+              "path": "parkOutSide"
+            },
+            {
+              "source": "recalls",
+              "path": "overTheAirUpdate"
+            },
+            {
+              "source": "recalls",
+              "path": "NHTSAActionNumber"
+            }
+          ],
+          "rationale": "每条召回记录由 NHTSACampaignNumber 唯一标识，是触发本次判断的事件本身。"
+        },
+        {
+          "key": "vehicle_model_year",
+          "label": "车型年款",
+          "role": "affected_object",
+          "populated_from": [
+            {
+              "source": "recalls",
+              "identity": {
+                "make": "Make",
+                "model": "Model",
+                "model_year": "ModelYear"
+              },
+              "transform": "none"
+            },
+            {
+              "source": "complaints",
+              "identity": {
+                "make": "products[].productMake",
+                "model": "products[].productModel",
+                "model_year": "products[].productYear"
+              },
+              "transform": "none"
+            }
+          ],
+          "attributes": [
+            {
+              "source": "complaints",
+              "path": "products[].type"
+            },
+            {
+              "source": "complaints",
+              "path": "products[].manufacturer"
+            }
+          ],
+          "rationale": "召回范围与投诉所涉车辆都以品牌+车型+年款三元组描述，是唯一可跨源归一的“可能在范围内”的对象；products[].type 用于剔除轮胎/设备等非车辆条目。"
+        },
+        {
+          "key": "component",
+          "label": "部件",
+          "role": "mechanism",
+          "populated_from": [
+            {
+              "source": "recalls",
+              "identity": {
+                "component": "Component"
+              },
+              "transform": "colon_hierarchy"
+            },
+            {
+              "source": "complaints",
+              "identity": {
+                "component": "components"
+              },
+              "transform": "split_comma"
+            }
+          ],
+          "attributes": [],
+          "rationale": "召回针对的系统/部件与投诉指控的部件是判断“是否同部件”的核心，Component 是冒号层级路径、components 是逗号列表，需分别展开后在上层类目上对齐。"
+        },
+        {
+          "key": "complaint",
+          "label": "车主投诉",
+          "role": "signal",
+          "populated_from": [
+            {
+              "source": "complaints",
+              "identity": {
+                "odi_number": "odiNumber"
+              },
+              "transform": "none"
+            }
+          ],
+          "attributes": [
+            {
+              "source": "complaints",
+              "path": "manufacturer"
+            },
+            {
+              "source": "complaints",
+              "path": "vin"
+            },
+            {
+              "source": "complaints",
+              "path": "crash"
+            },
+            {
+              "source": "complaints",
+              "path": "fire"
+            },
+            {
+              "source": "complaints",
+              "path": "numberOfInjuries"
+            },
+            {
+              "source": "complaints",
+              "path": "numberOfDeaths"
+            },
+            {
+              "source": "complaints",
+              "path": "dateOfIncident"
+            },
+            {
+              "source": "complaints",
+              "path": "dateComplaintFiled"
+            },
+            {
+              "source": "complaints",
+              "path": "summary"
+            }
+          ],
+          "rationale": "投诉是与召回相互独立的证据，可能落在召回范围内，也可能暴露范围外的同类问题。"
+        }
+      ],
+      "relations": [
+        {
+          "key": "recall_covers_vehicle",
+          "from": "recall_campaign",
+          "to": "vehicle_model_year",
+          "source": "recalls",
+          "meaning": "该召回活动把此品牌/车型/年款列入召回范围。"
+        },
+        {
+          "key": "recall_addresses_component",
+          "from": "recall_campaign",
+          "to": "component",
+          "source": "recalls",
+          "meaning": "该召回活动所针对的故障部件（决定“同部件”比较的基准）。"
+        },
+        {
+          "key": "complaint_about_vehicle",
+          "from": "complaint",
+          "to": "vehicle_model_year",
+          "source": "complaints",
+          "meaning": "该投诉对应的车主车辆品牌/车型/年款，用于对照召回范围判断是否在范围内。"
+        },
+        {
+          "key": "complaint_alleges_component",
+          "from": "complaint",
+          "to": "component",
+          "source": "complaints",
+          "meaning": "该投诉指控存在故障的部件，用于与召回部件比对以识别范围外疑似同类问题。"
+        }
+      ],
+      "open_questions": [
+        "recalls 源没有 VIN 或生产日期区间，只能按品牌/车型/年款做范围匹配，无法判断单台车辆是否真的在召回范围内。",
+        "recalls 的 ModelYear 是单值字段，但 Summary 文本常描述年款区间（如 2020-2022），结构化年款可能只覆盖区间的一部分，存在召回范围被低估的风险。",
+        "部件命名体系不一致：recalls 用冒号层级（如 AIR BAGS:FRONTAL、ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY），complaints 用逗号分隔且含斜杠子类（如 VISIBILITY/WIPER），跨源“同部件”判定的粒度需要质量工程师给出对齐规则。",
+        "complaints 的 components 字段与 summary 文本可能不一致，文本中提到的缺陷未必写入 components，会漏掉指向同一部件的投诉。",
+        "complaints 的 products[] 可包含轮胎、设备等非车辆条目（products[].type），且一条投诉可能涉及多个产品，需要明确过滤规则。",
+        "两侧缺少时间对齐依据（recalls.ReportReceivedDate 与 complaints.dateOfIncident/dateComplaintFiled 无法直接关联），无法判断投诉是否发生在召回发布之后或是否已被现有召回覆盖。"
+      ]
+    },
+    "errors": [],
+    "metrics": {
+      "instances": {
+        "recall_campaign": 13,
+        "vehicle_model_year": 15,
+        "component": 36,
+        "complaint": 679
+      },
+      "shared_across_sources": {
+        "recall_campaign": 0,
+        "vehicle_model_year": 7,
+        "component": 5,
+        "complaint": 0
+      },
+      "links": {
+        "recall_covers_vehicle": 42,
+        "recall_addresses_component": 42,
+        "complaint_about_vehicle": 686,
+        "complaint_alleges_component": 973
+      }
+    }
+  }
+]
