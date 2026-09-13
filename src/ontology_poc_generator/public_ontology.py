@@ -109,6 +109,20 @@ def normalize_proposal(proposal: dict) -> dict:
     return p
 
 
+def _where_errors(key: str, src: str, pop: dict, records: list[dict]) -> list[dict]:
+    where = pop['where']
+    bad = _error('where_invalid', f'{key}/{src}: filter {where!r} must name an existing field of the same record '
+                                  'or identity list, and keep at least one object')
+    if not isinstance(where, dict) or not isinstance(where.get('path'), str) or not isinstance(where.get('equals'), str):
+        return [bad]
+    heads = {path.split('[].')[0] for path in pop['identity'].values() if '[].' in path}
+    if '[].' in where['path'] and {where['path'].split('[].')[0]} != heads:
+        return [bad]
+    if not _path_exists(records, where['path']) or not any(_identities(r, pop) for r in records):
+        return [bad]
+    return []
+
+
 def validate_proposal(proposal: dict, bundle: dict) -> list[dict]:
     errors = _structure_errors(proposal)
     if errors:
@@ -147,6 +161,8 @@ def validate_proposal(proposal: dict, bundle: dict) -> list[dict]:
                     errors.append(_error('unknown_field', f'{key}/{src}: field {path!r} does not exist'))
                 elif not _has_value(sources[src], path):
                     errors.append(_error('empty_field', f'{key}/{src}: field {path!r} has no values'))
+            if pop.get('where') is not None:
+                errors += _where_errors(key, src, pop, sources[src])
             if logical is None:
                 logical = set(ident)
             elif set(ident) != logical:
@@ -201,15 +217,24 @@ def normalize_value(value) -> str | None:
     return text or None
 
 
+def _kept(holder: dict, where: dict | None, field: str) -> bool:
+    return where is None or normalize_value(holder.get(field)) == normalize_value(where['equals'])
+
+
 def _identities(record: dict, pop: dict) -> list[tuple]:
     ident = pop['identity']
     keys = sorted(ident)
     heads = {path.split('[].')[0] for path in ident.values() if '[].' in path}
+    where = pop.get('where')
+    list_where = where if where and '[].' in where['path'] else None
+    if where and not list_where and not _kept(record, where, where['path']):
+        return []
     if heads:
         (head,) = heads
         elements = record.get(head) if isinstance(record.get(head), list) else []
+        tail = list_where['path'].split('[].', 1)[1] if list_where else ''
         rows = [{k: (e.get(ident[k].split('[].', 1)[1]) if '[].' in ident[k] else record.get(ident[k]))
-                 for k in keys} for e in elements if isinstance(e, dict)]
+                 for k in keys} for e in elements if isinstance(e, dict) and _kept(e, list_where, tail)]
     else:
         rows = [{k: record.get(ident[k]) for k in keys}]
     out = []
