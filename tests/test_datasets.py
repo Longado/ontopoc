@@ -99,5 +99,32 @@ class DatasetIndexScriptTests(unittest.TestCase):
             self.assertEqual(self.run_script(['--report', str(report), '--snapshot', str(snap), '--data-dir', str(Path(d) / 'data')]), 2)
 
 
+class MissingModelYearTests(unittest.TestCase):
+    """NHTSA answers 400 with count 0 for a model name that does not exist in that year (Kona Electric → Kona EV in 2021)."""
+
+    def fetch(self, status, body):
+        import urllib.error
+
+        def opener(request, timeout):
+            if 'modelYear=2021' in request.full_url:
+                raise urllib.error.HTTPError(request.full_url, status, 'Bad Request', {}, io.BytesIO(json.dumps(body).encode()))
+            return Reply(json.dumps({'results': []}).encode())
+        return fetch_nhtsa_bundle('hyundai', ['kona electric'], [2020, 2021], decision='d', opener=opener,
+                                  clock=lambda: '2026-09-13T00:00:00+00:00')
+
+    def test_missing_model_year_is_recorded_as_empty(self):
+        b = self.fetch(400, {'count': 0, 'message': 'Results returned successfully', 'results': []})
+        missing = [r for r in b['sources']['complaints']['requests'] if r.get('note')]
+        self.assertEqual(len(missing), 1)
+        self.assertIn('modelYear=2021', missing[0]['url'])
+        self.assertIn('400', missing[0]['note'])
+
+    def test_other_errors_still_fail(self):
+        with self.assertRaises(PublicSourceError):
+            self.fetch(400, {'error': 'bad parameter'})
+        with self.assertRaises(PublicSourceError):
+            self.fetch(500, {'count': 0})
+
+
 if __name__ == '__main__':
     unittest.main()
