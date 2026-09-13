@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 from typing import Callable
 from urllib.parse import urlencode
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 SCHEMA = 'public_source_bundle.v1'
@@ -51,7 +52,8 @@ def build_nhtsa_bundle(responses: list[dict], *, decision: str, scope: dict | No
         results = (item.get('payload') or {}).get('results')
         if not isinstance(results, list):
             raise PublicSourceError(f'{kind} response has no results list: {item.get("url")}')
-        sources[kind]['requests'].append({'url': item.get('url'), 'retrieved_at': item.get('retrieved_at')})
+        sources[kind]['requests'].append({'url': item.get('url'), 'retrieved_at': item.get('retrieved_at'),
+                                          **({'note': item['note']} if item.get('note') else {})})
         for record in results:
             sources[kind]['records'].setdefault(_RECORD_KEY[kind](record), copy.deepcopy(record))
     bundle = {
@@ -106,15 +108,29 @@ def fetch_nhtsa_bundle(make: str, models: list[str], years: list[int], *, decisi
         for year in years:
             for kind, base in _URLS.items():
                 url = f'{base}?{urlencode({"make": make, "model": model, "modelYear": year})}'
+                note = None
                 try:
                     with opener(Request(url, headers={'Accept': 'application/json'}),
                                 timeout=timeout_seconds) as reply:
                         payload = json.loads(reply.read().decode('utf-8'))
+                except HTTPError as exc:
+                    payload, note = _missing_model_year(exc, url)
                 except (OSError, ValueError) as exc:
                     raise PublicSourceError(f'NHTSA request failed: {url}: {exc}') from exc
-                responses.append({'kind': kind, 'url': url, 'retrieved_at': clock(), 'payload': payload})
+                responses.append({'kind': kind, 'url': url, 'retrieved_at': clock(), 'payload': payload, 'note': note})
     scope = {'make': make, 'models': list(models), 'years': [min(years), max(years)]}
     return build_nhtsa_bundle(responses, decision=decision, scope=scope)
+
+
+def _missing_model_year(exc: HTTPError, url: str) -> tuple[dict, str]:
+    """NHTSA answers 400 with count 0 when the model name does not exist for that year; anything else is an error."""
+    try:
+        body = json.loads(exc.read().decode('utf-8')) if exc.code == 400 else None
+    except (OSError, ValueError):
+        body = None
+    if isinstance(body, dict) and body.get('count') == 0:
+        return {'results': []}, 'HTTP 400 with count 0: this model name does not exist for this year'
+    raise PublicSourceError(f'NHTSA request failed: {url}: HTTP {exc.code}') from exc
 
 
 def validate_bundle(bundle: object) -> dict:
