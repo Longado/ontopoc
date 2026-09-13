@@ -1,6 +1,1 @@
-"""Decision-centered ontology POC proposal generator."""
-
-from ontology_poc_generator.generator import generate_proposal
-from ontology_poc_generator.models import Proposal, ScenarioParameters
-
-__all__ = ["Proposal", "ScenarioParameters", "generate_proposal"]
+"""OntoPoc: recall scope review over public data — auto-built ontology, code-verified, human-reviewed."""

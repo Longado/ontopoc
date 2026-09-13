@@ -1,20 +1,15 @@
 import { useEffect, useState } from "react";
 
-import { TrialWorkspace } from "./TrialWorkspace.jsx";
 import { RecallWorkspace } from "./RecallWorkspace.jsx";
 import { PublicRecallReview } from "./PublicRecallReview.jsx";
 
 const copy = {
-  zh: {
-    title: "事件范围核对工作台",
-    boundary: "synthetic_demo · SESSION ONLY",
-    landing: "产品首页",
-  },
-  en: {
-    title: "EVENT SCOPE WORKBENCH",
-    boundary: "synthetic_demo · SESSION ONLY",
-    landing: "PRODUCT HOME",
-  },
+  zh: { title: "召回范围研判工作台", landing: "产品首页", scenario: "工作场景",
+        subtitle: { public: "公开数据 · 自动搭建本体 · 人工复核", recall: "公开历史召回 · 本地核对" },
+        tabs: { public: "汽车召回范围研判（NHTSA）", recall: "事件 95876 核对清单" } },
+  en: { title: "RECALL SCOPE WORKBENCH", landing: "PRODUCT HOME", scenario: "Scenario",
+        subtitle: { public: "PUBLIC DATA · AUTO-BUILT ONTOLOGY · HUMAN REVIEW", recall: "PUBLIC HISTORICAL RECALL · LOCAL LOOKUP" },
+        tabs: { public: "Vehicle recall scope (NHTSA)", recall: "Public recall lookup" } },
 };
 
 export function StandaloneDemo() {
@@ -34,7 +29,7 @@ export function StandaloneDemo() {
       </a>
       <div className="standalone-demo-title">
         <strong>{t.title}</strong>
-        <span>{scenario === "public" ? (language === "zh" ? "公开数据 · 自动搭建本体 · 人工复核" : "PUBLIC DATA · AUTO-BUILT ONTOLOGY · HUMAN REVIEW") : scenario === "recall" ? (language === "zh" ? "公开历史召回 · 本地核对" : "PUBLIC HISTORICAL RECALL · LOCAL LOOKUP") : t.boundary}</span>
+        <span>{t.subtitle[scenario]}</span>
       </div>
       <div className="standalone-demo-actions">
         <a href="/landing">{t.landing}</a>
@@ -44,13 +39,11 @@ export function StandaloneDemo() {
         </div>
       </div>
     </header>
-    <nav className="recall-surface-switch" aria-label={language === "zh" ? "工作场景" : "Scenario"}>
-        <button type="button" disabled={recallBusy} aria-pressed={scenario === "public"} onClick={() => setScenario("public")}>{language === "zh" ? "汽车召回范围研判（NHTSA）" : "Vehicle recall scope (NHTSA)"}</button>
-        <button type="button" disabled={recallBusy} aria-pressed={scenario === "recall"} onClick={() => setScenario("recall")}>{language === "zh" ? "事件 95876 核对清单" : "Public recall lookup"}</button>
-        <button type="button" disabled={recallBusy} aria-pressed={scenario === "demo"} onClick={() => setScenario("demo")}>{language === "zh" ? "示例建模（只读）" : "Synthetic modeling demo"}</button>
+    <nav className="recall-surface-switch" aria-label={t.scenario}>
+      {Object.entries(t.tabs).map(([key, label]) => <button key={key} type="button" disabled={recallBusy} aria-pressed={scenario === key} onClick={() => setScenario(key)}>{label}</button>)}
     </nav>
     <section className="standalone-demo-workspace" aria-label={t.title}>
-      {scenario === "public" ? <PublicRecallReview language={language} /> : scenario === "recall" ? <RecallWorkspace language={language} onBusyChange={setRecallBusy} /> : <TrialWorkspace language={language} />}
+      {scenario === "public" ? <PublicRecallReview language={language} /> : <RecallWorkspace language={language} onBusyChange={setRecallBusy} />}
     </section>
   </main>;
 }

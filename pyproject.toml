@@ -5,17 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ontopoc"
 version = "0.1.0"
-description = "Decision-centered ontology POC proposal generator"
+description = "Recall scope review over public data: auto-built ontology, code-verified, human-reviewed"
 requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
-ontopoc = "ontology_poc_generator.cli:main"
-ontopoc-agent-model = "ontology_poc_generator.agent_modeling_cli:main"
-ontopoc-connected-assess = "ontology_poc_generator.connected_assessment_cli:main"
-ontopoc-recognize = "ontology_poc_generator.recognition_cli:main"
-ontology-poc = "ontology_poc_generator.cli:main"
-ontology-poc-recognize = "ontology_poc_generator.recognition_cli:main"
+ontopoc-recall = "ontology_poc_generator.recall_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

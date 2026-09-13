@@ -1,0 +1,41 @@
+.landing { color: var(--ink); background: var(--paper); }
+.landing-header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 78px; padding: 0 32px; color: white; background: var(--ink); }
+.landing-brand { width: 148px; height: 42px; display: flex; align-items: center; overflow: hidden; }
+.landing-brand img { width: 100%; height: auto; }
+.landing-header nav { display: flex; gap: 28px; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; }
+.landing-actions { display: flex; align-items: center; gap: 14px; }
+.landing-language { display: inline-flex; padding: 3px; border: 1px solid rgba(255, 255, 255, 0.38); }
+.landing-language button { min-width: 32px; height: 28px; padding: 0 7px; color: #aaa9a3; background: transparent; border: 0; font-size: 10px; font-weight: 850; }
+.landing-language button.is-active { color: var(--ink); background: var(--paper); }
+.landing-open { padding: 12px 18px; background: var(--blue); color: white; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; }
+.landing-kicker { margin: 0 0 14px; color: var(--blue); font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.landing-hero { position: relative; overflow: hidden; padding: clamp(56px, 9vw, 120px) 32px clamp(48px, 7vw, 96px); }
+.landing-field { position: absolute; right: -10%; top: -10%; width: 62%; max-width: none; opacity: 0.28; pointer-events: none; }
+.landing-hero h1 { position: relative; margin: 0 0 24px; font-size: clamp(34px, 6vw, 72px); line-height: 1.02; letter-spacing: -0.02em; max-width: 14em; }
+.landing-hero h1 span { display: block; }
+.landing-lead { position: relative; max-width: 42em; margin: 0 0 32px; font-size: clamp(16px, 1.6vw, 20px); line-height: 1.7; }
+.landing-cta { position: relative; display: inline-block; padding: 16px 22px; background: var(--blue); color: white; font-size: 15px; font-weight: 700; }
+.landing-section { padding: clamp(48px, 7vw, 96px) 32px; border-top: 1px solid var(--line); }
+.landing-section h2 { margin: 0 0 32px; font-size: clamp(26px, 3.6vw, 44px); line-height: 1.15; letter-spacing: -0.01em; max-width: 20em; }
+.landing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; }
+.landing-grid article { padding: 22px; border: 1px solid var(--line); background: white; }
+.landing-grid h3, .landing-steps h3 { margin: 0 0 10px; font-size: 18px; }
+.landing-grid p, .landing-steps p { margin: 0; line-height: 1.7; }
+.landing-dark { color: white; background: var(--ink); border-top: 0; }
+.landing-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 28px; margin: 0; padding: 0; list-style: none; }
+.landing-steps span { display: block; margin-bottom: 12px; color: #84a9ff; font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.1em; }
+.landing-steps p { color: rgba(255, 255, 255, 0.82); }
+.landing-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; }
+.landing-facts div { padding: 22px 0; border-top: 3px solid var(--ink); }
+.landing-facts strong { display: block; margin-bottom: 8px; font-size: clamp(36px, 5vw, 56px); line-height: 1; letter-spacing: -0.03em; }
+.landing-facts span { line-height: 1.6; }
+.landing-limits ul { max-width: 44em; margin: 0 0 32px; padding-left: 22px; line-height: 1.8; font-size: 16px; }
+.landing-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; padding: 28px 32px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.landing-footer img { width: 160px; height: auto; }
+.landing-footer p:last-child { margin-left: auto; }
+@media (max-width: 760px) {
+  .landing-header { padding: 12px 16px; flex-wrap: wrap; }
+  .landing-header nav { order: 3; width: 100%; gap: 18px; padding-bottom: 8px; }
+  .landing-hero, .landing-section, .landing-footer { padding-left: 16px; padding-right: 16px; }
+  .landing-field { width: 110%; right: -40%; opacity: 0.18; }
+}
