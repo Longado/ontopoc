@@ -60,6 +60,9 @@ PYTHONPATH=src:. python scripts/build_public_review_pack.py --check
 PYTHONPATH=src:. python scripts/import_reviews.py --input <数据集>-review.json --reviewer <代号>   # 写进 examples/labels/（公开仓库：只存投诉编号和判断，不存投诉原文和车架号）
 PYTHONPATH=src:. python scripts/compare_judgments.py --labels examples/labels/<数据集>.jsonl
 
+# 用运行记录里的同一输入重跑模型初判，数一数有多少变了（需要凭据）
+PYTHONPATH=src:. python scripts/check_stability.py --report examples/nhtsa/runs/<名称>.json --snapshot examples/nhtsa/<快照>.json --output output/stability-<时间>.json
+
 # 事件 95876 本地核对服务与命令行
 PYTHONPATH=src python -m ontology_poc_generator.recall_server
 PYTHONPATH=src python -m ontology_poc_generator.recall_cli --product F-0369-2025/1 --lot X7547814

@@ -60,6 +60,9 @@ PYTHONPATH=src:. python scripts/build_public_review_pack.py --check
 PYTHONPATH=src:. python scripts/import_reviews.py --input <dataset>-review.json --reviewer <code name>   # writes examples/labels/ (public repo: complaint ids and verdicts, no complaint text or VINs)
 PYTHONPATH=src:. python scripts/compare_judgments.py --labels examples/labels/<dataset>.jsonl
 
+# rerun the model's first calls on a recorded run's inputs and count how many change (needs the key)
+PYTHONPATH=src:. python scripts/check_stability.py --report examples/nhtsa/runs/<name>.json --snapshot examples/nhtsa/<snapshot>.json --output output/stability-<time>.json
+
 # event 95876 local service and CLI
 PYTHONPATH=src python -m ontology_poc_generator.recall_server
 PYTHONPATH=src python -m ontology_poc_generator.recall_cli --product F-0369-2025/1 --lot X7547814

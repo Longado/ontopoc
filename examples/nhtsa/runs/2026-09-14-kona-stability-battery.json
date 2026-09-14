@@ -1,0 +1,192 @@
+{
+ "schema": "model_stability.v1",
+ "report": "2026-09-14-kona-deepseek-flash-v2.json",
+ "snapshot": "hyundai_kona_electric_kona_ev_2019_2021_2026-09-14.json",
+ "model": "deepseek-flash",
+ "prompt_version": "public_defect_match.v3",
+ "started_at": "2026-09-14T09:01:58.250372+00:00",
+ "campaigns": {
+  "20V630000": {
+   "candidates": 71,
+   "same": 45,
+   "changed": [
+    {
+     "id": "11365831",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11377540",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11408391",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11414925",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11418256",
+     "before": "yes",
+     "after": "unknown"
+    },
+    {
+     "id": "11418460",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11418874",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11418887",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11420016",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11424366",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11429272",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11431228",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11432312",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11433804",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11441865",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11441950",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11445971",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11446645",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11446867",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11447669",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11458393",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11461436",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11475688",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11486128",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11489330",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11508764",
+     "before": "unknown",
+     "after": "no"
+    }
+   ]
+  },
+  "21V127000": {
+   "candidates": 71,
+   "same": 64,
+   "changed": [
+    {
+     "id": "11424366",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11424424",
+     "before": "unknown",
+     "after": "yes"
+    },
+    {
+     "id": "11429272",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11431228",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11432312",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11433804",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11458393",
+     "before": "no",
+     "after": "unknown"
+    }
+   ]
+  }
+ },
+ "totals": {
+  "candidates": 142,
+  "same": 109,
+  "changed": 33
+ }
+}
