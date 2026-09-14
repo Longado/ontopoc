@@ -40,13 +40,15 @@ class RequestedModelTests(unittest.TestCase):
         note = next(n for n in b['cleaning'] if 'requested models' in n['rule'])
         self.assertEqual(note['removed'], 2)
 
-    def test_committed_snapshots_hold_only_requested_models(self):
+    def test_committed_snapshots_hold_only_requested_models_or_vin_rescued_ones(self):
         for name in ('chevrolet_bolt_2017_2023.json', 'hyundai_kona_electric_kona_ev_2019_2021.json'):
             b = load_source_bundle(ROOT / 'examples/nhtsa' / name)
             wanted = {m.upper() for m in b['scope']['models']}
+            rescued = {i for n in b.get('cleaning', []) if 'VIN prefix' in n['rule'] for i in n['records']}
             for c in b['sources']['complaints']['records']:
                 with self.subTest(snapshot=name, complaint=c['odiNumber']):
-                    self.assertTrue({p.get('productModel', '').upper() for p in c['products']} & wanted)
+                    named = {p.get('productModel', '').upper() for p in c['products']} & wanted
+                    self.assertTrue(named or c['odiNumber'] in rescued)
 
 
 if __name__ == '__main__':
