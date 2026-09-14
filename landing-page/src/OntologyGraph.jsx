@@ -43,7 +43,7 @@ function Inspector({ run, selected, findings }) {
       {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]} 个{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key]} 个在多张表里出现` : ""}</dd></div>}
     </dl>
     <h4>数据检查</h4>
-    {own.length ? <ul className="og-findings">{own.map((f, i) => <li key={i}>{FINDING[f.kind](f.detail)}</li>)}</ul> : <p className="og-ok">这个对象没有发现问题。</p>}
+    {own.length ? <ul className="og-findings">{own.map((f, i) => <li key={i} className={f.severity === "note" ? "og-note" : ""}>{f.severity === "note" ? "提示：" : ""}{FINDING[f.kind](f.detail)}</li>)}</ul> : <p className="og-ok">这个对象没有发现问题。</p>}
   </div>;
 }
 
@@ -52,12 +52,14 @@ export function OntologyGraph({ run }) {
   const graph = layoutGraph(ontology);
   const findings = findingsByType(run.evaluation.data_fit);
   const [selected, setSelected] = useState({ kind: "node", key: graph.nodes[0]?.key });
-  const problemCount = Object.values(findings).reduce((n, list) => n + list.length, 0);
+  const all = Object.values(findings).flat();
+  const problemCount = all.filter((f) => f.severity === "problem").length;
+  const noteCount = all.length - problemCount;
   const isSelected = (kind, key) => selected.kind === kind && selected.key === key;
   return <div className="og-wrap">
     <div className="og-canvas">
       <div className="og-bar"><span>本体 · {graph.nodes.length} 个对象 · {graph.edges.length} 条关系</span>
-        <span>{run.evaluation.data_fit ? `数据检查发现 ${problemCount} 处问题` : "未评测"}</span></div>
+        <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : "未评测"}</span></div>
       <div className="og-scroll">
         <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", minWidth: Math.min(graph.width, 560), maxWidth: graph.width }} role="group" aria-label="本体关系图">
           <defs><marker id="og-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" className="og-arrowhead" /></marker></defs>
@@ -67,14 +69,14 @@ export function OntologyGraph({ run }) {
               <path d={e.path} markerEnd="url(#og-arrow)" />
               {rel.label && <text x={e.lx} y={e.ly - 6} textAnchor="middle">{rel.label}</text>}
             </g>; })}
-          {graph.nodes.map((n) => { const count = (findings[n.key] || []).length;
+          {graph.nodes.map((n) => { const own = findings[n.key] || []; const count = own.length; const onlyNotes = own.every((f) => f.severity === "note");
             return <g key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}`} transform={`translate(${n.x},${n.y})`}
               role="button" tabIndex={0} aria-label={`对象 ${n.label}${count ? `，${count} 处数据问题` : ""}`} {...select(setSelected, { kind: "node", key: n.key })}>
               <rect width={n.w} height={n.h} className="og-node-box" />
               <rect width={40} height={n.h} className="og-node-side" />
               <text x={54} y={26} className="og-node-key">{n.key.length > 18 ? `${n.key.slice(0, 18)}…` : n.key}</text>
               <text x={54} y={47} className="og-node-label">{n.label}</text>
-              {count > 0 && <g transform={`translate(${n.w - 14},0)`}><circle r="11" className="og-badge" /><text textAnchor="middle" y="4" className="og-badge-text">{count}</text></g>}
+              {count > 0 && <g transform={`translate(${n.w - 14},0)`}><circle r="11" className={`og-badge${onlyNotes ? " og-badge-note" : ""}`} /><text textAnchor="middle" y="4" className="og-badge-text">{count}</text></g>}
             </g>; })}
         </svg>
       </div>

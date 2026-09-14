@@ -34,7 +34,8 @@ export function layoutGraph(ontology) {
       const x1 = forward ? a.x + a.w : a.x + a.w / 2, y1 = forward ? a.y + a.h / 2 : a.y + a.h;
       const x2 = forward ? b.x : b.x + b.w / 2, y2 = forward ? b.y + b.h / 2 : b.y;
       const bend = forward ? (x2 - x1) / 2 : 0;
-      const lift = twin * 22;
+      const skips = forward && Math.round((b.x - a.x) / (NODE.w + GAP.x)) > 1;   // arc over the columns in between
+      const lift = twin * 22 + (skips ? NODE.h + GAP.y : 0);
       const path = forward ? `M${x1},${y1} C${x1 + bend},${y1 - lift} ${x2 - bend},${y2 - lift} ${x2},${y2}`
         : `M${x1},${y1} C${x1 + 60 + lift},${y1 + 40} ${x2 + 60 + lift},${y2 - 40} ${x2},${y2}`;
       return { key: r.key, from: r.from, to: r.to, path, lx: (x1 + x2) / 2 + (forward ? 0 : 60 + lift), ly: (y1 + y2) / 2 - lift };
@@ -45,7 +46,7 @@ export function layoutGraph(ontology) {
 /** Evaluation findings grouped by the object type they concern, so the graph can mark the node. */
 export function findingsByType(fit) {
   const by = {};
-  const add = (type, kind, detail) => (by[type] ||= []).push({ kind, detail });
+  const add = (type, kind, detail) => (by[type] ||= []).push({ kind, detail, severity: kind === "orphans" ? "note" : "problem" });
   if (!fit) return by;
   for (const c of fit.identity_conflicts || []) add(c.type, "identity_conflict", c);
   for (const s of fit.identity_spellings || []) add(s.type, "identity_spelling", s);
