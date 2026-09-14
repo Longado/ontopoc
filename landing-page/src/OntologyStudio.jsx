@@ -54,8 +54,11 @@ function OntologyTab({ run }) {
   const attempts = attemptSummary(ontology);
   return <>
     <section className="pr-card">
-      <div className="pr-card-head"><h2>{run.file.name}</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{attempts.passed ? "已通过代码核验" : "未通过核验"}</span></div>
+      <div className="pr-card-head"><h2>{run.file.name}</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{attempts.passed ? "本体结构已通过核验" : "本体结构未通过核验"}</span></div>
       <p className="pr-muted">{run.sources.map((s) => `${s.name} ${s.rows} 行 ${s.fields} 列`).join(" · ")}</p>
+      {run.sources.some((s) => s.skipped_rows) && <p className="pr-muted">表头上方的标题行已跳过：{run.sources.filter((s) => s.skipped_rows).map((s) => `${s.name}（${s.skipped_rows.join("；")}）`).join("、")}</p>}
+      <p>建模目的：{run.purpose}<span className="pr-muted">（这句话作为建模目的交给了模型）</span></p>
+      <p className="pr-muted">"结构已通过核验"只说明本体里的字段、身份和关系都能在数据里对上；数据本身干不干净看"评测"。</p>
       <p>模型提交 {attempts.attempts} 次{attempts.rejected.length ? `，前面被代码退回的原因：${attempts.rejected.map(([code, n]) => `${ERROR_LABELS[code] || code} ${n} 处`).join("、")}` : "，第一次就通过"}。模型 {ontology.model}，提示词 {ontology.prompt_version}。</p>
     </section>
     <section className="pr-card">
@@ -90,7 +93,7 @@ function EvaluationTab({ run }) {
   const summary = checkSummary(fit);
   return <>
     <section className="pr-card">
-      <div className="pr-card-head"><h2>评测一：本体和数据对不对得上</h2><span className="pr-muted">通过 {summary.passed} / {summary.total} 项</span></div>
+      <div className="pr-card-head"><h2>评测一：数据检查（本体和数据对不对得上）</h2><span className="pr-muted">通过 {summary.passed} / {summary.total} 项</span></div>
       <p className="pr-muted">全部由代码拿上传的每一行计算，不经过模型。</p>
       <ul className="os-checks">{fit.checks.map((c) => <li key={c.key}><span className={`os-pill ${c.passed ? "os-pass" : "os-fail"}`}>{c.passed ? "通过" : "不通过"}</span>{CHECK_LABELS[c.key] || c.key}</li>)}</ul>
     </section>
@@ -98,6 +101,16 @@ function EvaluationTab({ run }) {
       <h2>同一对象信息打架（{fit.identity_conflicts.length}）</h2>
       <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>对象</th><th>表</th><th>身份</th><th>字段</th><th>不同的值</th></tr></thead>
         <tbody>{fit.identity_conflicts.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td>{c.values.join(" / ")}</td></tr>)}</tbody></table></div>
+    </section>}
+    {fit.identity_spellings?.length > 0 && <section className="pr-card">
+      <h2>同一个编号有几种写法（{fit.identity_spellings.length}）</h2>
+      <p className="pr-muted">这些写法被当成同一个对象合并了，但源数据里写法不统一，建议在源系统里统一。</p>
+      <ul className="pr-rows">{fit.identity_spellings.map((s, i) => <li key={i}><b>{typeLabel(ontology, s.type)} {s.identity}</b><span>写法：{s.variants.map((v) => `“${v}”`).join("、")}</span></li>)}</ul>
+    </section>}
+    {fit.suspected_duplicates?.length > 0 && <section className="pr-card">
+      <h2>疑似重复（请人工确认）</h2>
+      <p className="pr-muted">去掉开头的 0 以后相同的编号，现在被当成不同的对象；如果它们其实是同一个，需要在源数据里统一。</p>
+      <ul className="pr-rows">{fit.suspected_duplicates.map((d, i) => <li key={i}><b>{typeLabel(ontology, d.type)}</b><span>{d.identities.join(" 和 ")}</span></li>)}</ul>
     </section>}
     {fit.missing_across_sources.length > 0 && <section className="pr-card">
       <h2>引用了、但在它所属的表里找不到</h2>
@@ -160,7 +173,7 @@ export function OntologyStudio() {
     <header className="pr-head">
       <div className="pr-head-line">
         <h1 id="os-title">上传建本体</h1>
-        {run && <span className="pr-meta">当前：{run.file.name} · {run.ontology.object_types.length} 个对象 · {run.ontology.relations.length} 条关系{fitSummary ? ` · 评测一通过 ${fitSummary.passed}/${fitSummary.total}` : ""}</span>}
+        {run && <span className="pr-meta">当前：{run.file.name} · {run.ontology.object_types.length} 个对象 · {run.ontology.relations.length} 条关系{fitSummary ? ` · 数据检查通过 ${fitSummary.passed}/${fitSummary.total}` : ""}</span>}
         {run && <button className="pr-link" onClick={download}>下载结果</button>}
       </div>
       <nav className="pr-tabs" role="tablist" aria-label="步骤">{TABS.map(([key, label]) => <button key={key} type="button" role="tab" id={`os-tab-${key}`}

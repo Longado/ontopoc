@@ -39,12 +39,27 @@ def _headers(row) -> list[str]:
     return names
 
 
-def _records(rows: list[list]) -> list[dict]:
-    rows = [r for r in rows if any(_cell(c) is not None for c in r)]
+def _width(row) -> int:
+    return sum(_cell(c) is not None for c in row)
+
+
+def _records(rows: list[list]) -> tuple[list[dict], list[str]]:
+    """Rows to records. Title lines above the real header (fewer filled cells than half the widest row) are skipped
+    and returned, so exports that start with a report title still read their real header."""
+    rows = [r for r in rows if _width(r) > 0]
     if not rows:
-        return []
-    header = _headers(rows[0])
-    return [{name: _cell(row[i]) if i < len(row) else None for i, name in enumerate(header)} for row in rows[1:]]
+        return [], []
+    widest = max(_width(r) for r in rows[:10])
+    needed = max(2, (widest + 1) // 2) if widest >= 2 else 1
+    start = next(i for i, r in enumerate(rows) if _width(r) >= needed)
+    skipped = [' '.join(str(_cell(c)) for c in r if _cell(c) is not None) for r in rows[:start]]
+    header_row, data = rows[start], rows[start + 1:]
+    width = max(len(r) for r in [header_row, *data])
+    keep = [i for i in range(width) if (i < len(header_row) and _cell(header_row[i]) is not None)
+            or any(i < len(r) and _cell(r[i]) is not None for r in data)]
+    header = _headers([header_row[i] if i < len(header_row) else None for i in keep])
+    records = [{name: _cell(row[i]) if i < len(row) else None for i, name in zip(keep, header)} for row in data]
+    return records, skipped
 
 
 def _decode(data: bytes) -> str:
@@ -80,7 +95,8 @@ def load_table_file(filename: str, data: bytes, purpose: str | None = None) -> d
         sheets = {PurePath(filename).stem: _records(list(csv.reader(io.StringIO(_decode(data)))))}
     else:
         sheets = _read_xlsx(data)
-    sources = {name: {'records': records, 'requests': []} for name, records in sheets.items() if records}
+    sources = {name: {'records': records, 'requests': [], **({'skipped_rows': skipped} if skipped else {})}
+               for name, (records, skipped) in sheets.items() if records}
     if not sources:
         raise SourceFileError('文件里没有数据行：第一行应是表头，下面是数据')
     return {

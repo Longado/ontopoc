@@ -89,6 +89,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(503, {'error': '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'})
                 return
             result = build_and_evaluate(bundle, gateway)
+            outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
+            if result['ontology']['status'] != 'auto_built_verified' and outage:
+                self.reply(502, {'error': f'模型请求失败（{outage[-1][:160]}）。这不是数据的问题，请稍后重试。'})
+                return
             stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
             name = f'{stamp}-{bundle["file"]["sha256"][:8]}.json'
             output_dir.mkdir(parents=True, exist_ok=True)

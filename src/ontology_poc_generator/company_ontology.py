@@ -77,7 +77,8 @@ def build_and_evaluate(bundle: dict, gateway) -> dict:
         'started_at': started_at,
         'file': bundle['file'],
         'purpose': bundle['decision'],
-        'sources': [{'name': name, 'rows': len(s['records']), 'fields': len(field_paths(s['records']))}
+        'sources': [{'name': name, 'rows': len(s['records']), 'fields': len(field_paths(s['records'])),
+                     **({'skipped_rows': s['skipped_rows']} if s.get('skipped_rows') else {})}
                     for name, s in bundle['sources'].items()],
         'ontology': ontology,
         'evaluation': {'data_fit': data_fit(ontology, bundle) if verified else None},

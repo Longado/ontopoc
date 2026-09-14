@@ -41,6 +41,37 @@ def _identity_conflicts(p: dict, bundle: dict, graph: dict) -> list[dict]:
     return out
 
 
+def _identity_spellings(p: dict, bundle: dict) -> list[dict]:
+    """One object written several ways (case, spaces): the graph merges them, the data owner should still hear about it."""
+    out = []
+    for t in p['object_types']:
+        seen: dict[str, set] = {}
+        for pop in t['populated_from']:
+            if pop['transform'] != 'none' or any('[].' in path for path in pop['identity'].values()):
+                continue
+            keys = sorted(pop['identity'])
+            for record in bundle['sources'][pop['source']]['records']:
+                raw = [record.get(pop['identity'][k]) for k in keys]
+                if any(v in (None, '') for v in raw):
+                    continue
+                seen.setdefault('|'.join(normalize_value(v) for v in raw), set()).add('|'.join(str(v) for v in raw))
+        out += [{'type': t['key'], 'identity': key, 'variants': sorted(v)} for key, v in seen.items() if len(v) > 1]
+    return out
+
+
+def _suspected_duplicates(p: dict, graph: dict) -> list[dict]:
+    """Numeric identities that only differ by leading zeros (00106 / 106): flagged for a person to confirm, not merged."""
+    out = []
+    for t in p['object_types']:
+        groups: dict[int, list[str]] = {}
+        for inst in graph['sources_of']:
+            label = _label(inst)
+            if inst[0] == t['key'] and label.isdigit():
+                groups.setdefault(int(label), []).append(label)
+        out += [{'type': t['key'], 'rule': 'leading_zeros', 'identities': sorted(g)} for g in groups.values() if len(g) > 1]
+    return out
+
+
 def _missing_across_sources(p: dict, graph: dict) -> list[dict]:
     """Objects referenced in one table but absent from the table that describes them (the one giving attributes)."""
     out = []
@@ -98,6 +129,8 @@ def data_fit(ontology: dict, bundle: dict) -> dict:
     fit = {
         'fields': _fields(p, bundle),
         'identity_conflicts': _identity_conflicts(p, bundle, graph),
+        'identity_spellings': _identity_spellings(p, bundle),
+        'suspected_duplicates': _suspected_duplicates(p, graph),
         'missing_across_sources': _missing_across_sources(p, graph),
         'relations': _relations(p, bundle, graph),
         'orphans': _orphans(p, graph),
@@ -106,6 +139,7 @@ def data_fit(ontology: dict, bundle: dict) -> dict:
     fit['checks'] = [
         {'key': 'fields_accounted', 'passed': all(f['unaccounted'] == 0 for f in fit['fields'].values())},
         {'key': 'identity_consistent', 'passed': not fit['identity_conflicts']},
+        {'key': 'identity_spelling', 'passed': not fit['identity_spellings']},
         {'key': 'relations_link', 'passed': all(r['linked_rows'] > 0 for r in fit['relations'])},
         {'key': 'references_resolve', 'passed': not fit['missing_across_sources']},
         {'key': 'sources_connected', 'passed': len(fit['source_groups']) == 1},
