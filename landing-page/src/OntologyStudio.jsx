@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ACCEPT, CHECK_LABELS, DEMO_URL, ERROR_LABELS, RESULT_KEY, attemptSummary, checkSummary, typeLabel, typeSources, validateRun,
+  ACCEPT, CHECK_LABELS, DEMO_URL, ERROR_LABELS, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
+  typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { OntologyGraph } from "./OntologyGraph.jsx";
 import "./PublicRecallReview.css";
@@ -50,7 +51,40 @@ function UploadTab({ health, busy, elapsed, error, onBuild, onDemo }) {
   </>;
 }
 
-function OntologyTab({ run }) {
+function QuestionItem({ item }) {
+  const lines = answerLines(item);
+  return <li className="os-question">
+    <div className="os-question-head"><span className={`os-pill os-${item.status}`}>{STATUS_LABELS[item.status] || item.status}</span><b>{item.question}</b></div>
+    {lines.length > 0 && <ul className="os-answer">{lines.map((l) => <li key={l}>{l}</li>)}</ul>}
+    {item.path && <p className="pr-muted">怎么查的：{item.path}</p>}
+    {item.status !== "answered" && item.reason && <p className="pr-muted">原因：{item.reason}</p>}
+  </li>;
+}
+
+function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef }) {
+  const [text, setText] = useState("");
+  const round = run.evaluation.questions;
+  const asked = run.evaluation.asked || [];
+  return <section className="pr-card">
+    <div className="pr-card-head"><h2>评测二：能不能回答业务问题</h2>{round && <span className="pr-muted">{questionSummary(round)}</span>}</div>
+    <p className="pr-muted">模型只负责把问题写成查询（一次调用）；答案由代码在上传的数据上算出来。答不了时写明是本体缺了哪一块，还是数据里没有。</p>
+    {!canAsk && <p className="pr-note">要自己出题或提问，需要上传文件并开着本机建模服务；示例结果里已附一轮问答。</p>}
+    <div className="os-ask">
+      <button className="pr-primary" disabled={!canAsk || busy} onClick={() => onAsk(null)}>{busy ? "出题回答中…" : round ? "重新出一组问题" : "出一组业务问题并用数据回答"}</button>
+      <label htmlFor="os-question">或者问一个问题
+        <span className="os-ask-row"><input id="os-question" ref={askRef} value={text} maxLength={300} disabled={!canAsk || busy} placeholder="例如：哪些客户的售后工单最多？" onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) onAsk(text.trim()); }} />
+        <button className="pr-link" disabled={!canAsk || busy || !text.trim()} onClick={() => onAsk(text.trim())}>问</button></span>
+      </label>
+    </div>
+    {error && <p role="alert" className="pr-error">{error}</p>}
+    {asked.length > 0 && <><h3 className="os-sub">你问的</h3><ul className="os-questions">{[...asked].reverse().flatMap((r, ri) => r.error ? [<li key={`e${ri}`} className="pr-error">{r.error}</li>] : r.items.map((item, i) => <QuestionItem key={`${ri}-${i}`} item={item} />))}</ul></>}
+    {round && <><h3 className="os-sub">模型出的题（{round.model}，{round.prompt_version}）</h3>
+      {round.error ? <p className="pr-error">{round.error}</p> : <ul className="os-questions">{round.items.map((item, i) => <QuestionItem key={i} item={item} />)}</ul>}</>}
+  </section>;
+}
+
+function OntologyTab({ run, onAskOntology }) {
   const { ontology } = run;
   const attempts = attemptSummary(ontology);
   const [view, setView] = useState("graph");
@@ -66,7 +100,7 @@ function OntologyTab({ run }) {
     <section className="pr-card">
       <div className="pr-card-head"><h2>本体</h2>
         <div className="og-toggle" role="group" aria-label="显示方式">{[["graph", "关系图"], ["list", "列表"]].map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
-      {view === "graph" && <OntologyGraph run={run} />}
+      {view === "graph" && <OntologyGraph run={run} onAsk={onAskOntology} />}
     </section>
     {view === "list" && <><section className="pr-card">
       <h2>对象（{ontology.object_types.length}）</h2>
@@ -93,7 +127,7 @@ function OntologyTab({ run }) {
   </>;
 }
 
-function EvaluationTab({ run }) {
+function EvaluationTab({ run, questions }) {
   const fit = run.evaluation.data_fit;
   const { ontology } = run;
   if (!fit) return <section className="pr-card"><p className="pr-error">本体没有通过核验，无法评测。先看"本体"里被退回的原因。</p></section>;
@@ -135,7 +169,8 @@ function EvaluationTab({ run }) {
       <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>表</th><th>列数</th><th>用上</th><th>写明不用</th><th>没有去处</th></tr></thead>
         <tbody>{Object.entries(fit.fields).map(([name, f]) => <tr key={name}><td>{name}</td><td>{f.total}</td><td>{f.used}</td><td>{f.ignored}</td><td>{f.unaccounted}</td></tr>)}</tbody></table></div>
     </section>
-    <section className="pr-card"><p className="pr-muted">评测二（能不能回答业务问题）和评测三（与标准答案比对）在开发中。</p></section>
+    <QuestionsSection run={run} {...questions} />
+    <section className="pr-card"><p className="pr-muted">评测三（与标准答案比对）在开发中。</p></section>
   </>;
 }
 
@@ -146,7 +181,10 @@ export function OntologyStudio() {
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState("");
   const timer = useRef(null);
+  const askRef = useRef(null);
 
   useEffect(() => {
     fetch("/api/ontology/health", { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -168,6 +206,17 @@ export function OntologyStudio() {
     } catch (e) { setError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); }
     finally { clearInterval(timer.current); setBusy(false); }
   }
+  async function ask(question) {
+    setAsking(true); setAskError("");
+    try {
+      const response = await fetch("/api/ontology/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ saved_as: run.saved_as, ...(question ? { question } : {}) }) });
+      const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
+      if (!response.ok) throw new Error(data.error || `服务返回 ${response.status}`);
+      const valid = validateRun(data); setRun(valid); saveLocal(valid);
+    } catch (e) { setAskError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); }
+    finally { setAsking(false); }
+  }
+  function askOntology() { setTab("evaluation"); requestAnimationFrame(() => askRef.current?.scrollIntoView({ block: "center" })); setTimeout(() => askRef.current?.focus(), 50); }
   function demo() { setError(""); readText(DEMO_URL).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }
   function download() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(run, null, 2)], { type: "application/json" }));
@@ -188,8 +237,8 @@ export function OntologyStudio() {
     </header>
     <div id="os-panel" role="tabpanel" aria-labelledby={`os-tab-${tab}`} className="pr-panel os-panel">
       {tab === "upload" && <UploadTab health={health} busy={busy} elapsed={elapsed} error={error} onBuild={build} onDemo={demo} />}
-      {tab === "ontology" && run && <OntologyTab run={run} />}
-      {tab === "evaluation" && run && <EvaluationTab run={run} />}
+      {tab === "ontology" && run && <OntologyTab run={run} onAskOntology={askOntology} />}
+      {tab === "evaluation" && run && <EvaluationTab run={run} questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef }} />}
     </div>
   </section>;
 }

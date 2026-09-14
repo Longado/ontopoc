@@ -38,3 +38,17 @@ export function attemptSummary(ontology) {
 
 export const typeSources = (t) => t.populated_from.map((p) => `${p.source}（${Object.values(p.identity).join(" + ")}）`).join("、");
 export const typeLabel = (ontology, key) => ontology.object_types.find((t) => t.key === key)?.label || key;
+
+export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块" };
+
+export function answerLines(item) {
+  const a = item.answer;
+  if (!a) return [];
+  if (a.total !== undefined) return [`共 ${a.total} 个`];
+  const lines = a.groups.map(([value, n]) => `${value}：${n}`);
+  if (a.total_groups > a.groups.length) lines.push(`另有 ${a.total_groups - a.groups.length} 组未列出`);
+  if (a.without_value) lines.push(`${a.without_value} 个没有这个值`);
+  return lines;
+}
+
+export const questionSummary = (round) => (round ? `能回答 ${round.answered} / ${round.total} 题` : null);

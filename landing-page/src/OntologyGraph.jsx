@@ -47,7 +47,7 @@ function Inspector({ run, selected, findings }) {
   </div>;
 }
 
-export function OntologyGraph({ run }) {
+export function OntologyGraph({ run, onAsk }) {
   const { ontology } = run;
   const graph = layoutGraph(ontology);
   const findings = findingsByType(run.evaluation.data_fit);
@@ -84,6 +84,7 @@ export function OntologyGraph({ run }) {
     <aside className="og-inspector" aria-label="证据检查">
       <div className="og-inspector-head">证据检查 · 点图里的对象或关系</div>
       {selected.key && <Inspector run={run} selected={selected} findings={findings} />}
+      {onAsk && <button type="button" className="og-ask" onClick={onAsk}>询问这个本体：用数据回答业务问题 →</button>}
     </aside>
   </div>;
 }
