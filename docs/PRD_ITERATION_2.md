@@ -83,8 +83,8 @@
 
 ### R7 小项（P2）
 
-- 网站 favicon 与 GitHub 社交预览图，从像素 Logo 切。
-- 清理 GitHub 上已合并的旧分支，只留 main、开发分支和归档标签。
+- 网站 favicon 与 GitHub 社交预览图，从像素 Logo 切。（2026-09-14 favicon 已做：按 Logo 里四个方块的形状和取样颜色重画成清晰像素图，`landing-page/public/favicon.svg`、`favicon-32.png`、`apple-touch-icon.png`；社交预览图要在 GitHub 网页设置里上传，未做。）
+- 清理 GitHub 上已合并的旧分支，只留 main、开发分支和归档标签。（2026-09-14 已做：删除 27 个分支，其中 14 个按提交历史已并入 main，13 个的每个提交都已以同等补丁进入 main；远端现在只剩 main、`codex/recall-scope-deepseek` 和标签 `archive-2026-09-13-nhtsa-review`。）
 - 更新"现状与路线"网页的截图为新版界面。
 
 ## 5. 非功能要求
