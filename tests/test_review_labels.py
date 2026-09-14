@@ -209,10 +209,10 @@ class ScriptsTest(unittest.TestCase):
         return [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()]
 
     def test_import_then_reimport_lists_what_was_overwritten(self):
-        code, out, _ = self.run_import(export(review('c1', 'same'), review('c2', 'different')))
+        code, out, _ = self.run_import(export(review('c1', 'same'), review('c2', 'different')), '--reviewer', 'qe-01')
         self.assertEqual(code, 0, out)
         self.assertEqual([r['human'] for r in self.stored()], ['same', 'different'])
-        code, out, _ = self.run_import(export(review('c2', 'same', at='2026-10-03T00:00:00Z')))
+        code, out, _ = self.run_import(export(review('c2', 'same', at='2026-10-03T00:00:00Z')), '--reviewer', 'qe-01')
         self.assertEqual(code, 0)
         self.assertEqual([r['human'] for r in self.stored()], ['same', 'same'])
         self.assertIn('20V001000/c2', out)
@@ -228,6 +228,13 @@ class ScriptsTest(unittest.TestCase):
                 self.assertEqual(code, 2)
                 self.assertIn(message, err)
                 self.assertFalse(self.labels.exists())
+
+    def test_import_needs_the_reviewer_code_on_the_command_line(self):
+        code, _, err = self.run_import(export(review('c1', 'same'), reviewer='张伟'))
+        self.assertEqual(code, 2)
+        self.assertIn('--reviewer', err)
+        self.assertIn('张伟', err)
+        self.assertFalse(self.labels.exists())
 
     def test_compare_prints_counts_not_percentages(self):
         from scripts.compare_judgments import main

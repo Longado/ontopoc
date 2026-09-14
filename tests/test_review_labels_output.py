@@ -67,7 +67,7 @@ class ScriptMessagesTest(unittest.TestCase):
     def test_import_speaks_chinese_and_lists_only_real_changes(self):
         from scripts import import_reviews
         download = self.root / 'dl.json'
-        argv = ['--input', str(download), '--data-dir', str(self.data), '--labels-dir', str(self.root / 'labels')]
+        argv = ['--input', str(download), '--data-dir', str(self.data), '--labels-dir', str(self.root / 'labels'), '--reviewer', 'qe-01']
         download.write_text(json.dumps(export(review('c1', 'same'), review('c2', 'different'))), encoding='utf-8')
         code, out, _ = self.run_main(import_reviews, argv)
         self.assertEqual(code, 0)
