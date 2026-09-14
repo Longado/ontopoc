@@ -732,6 +732,130 @@
     "total": 1,
     "error": null
    }
-  ]
+  ],
+  "reference": {
+   "name": "demo_reference_ontology.json",
+   "compared_at": "2026-09-14T13:03:58+00:00",
+   "diff": {
+    "types": {
+     "matched": [
+      [
+       "客户",
+       "客户"
+      ],
+      [
+       "产品",
+       "产品"
+      ],
+      [
+       "订单",
+       "订单"
+      ],
+      [
+       "售后工单",
+       "售后工单"
+      ]
+     ],
+     "only_reference": [
+      "售后工程师"
+     ],
+     "only_ours": []
+    },
+    "relations": {
+     "matched": [
+      [
+       "订单 — 客户",
+       "订单 — 客户"
+      ],
+      [
+       "订单 — 产品",
+       "订单 — 产品"
+      ],
+      [
+       "售后工单 — 订单",
+       "售后工单 — 订单"
+      ]
+     ],
+     "only_reference": [
+      "售后工单 — 售后工程师"
+     ],
+     "only_ours": []
+    },
+    "counts": {
+     "types": {
+      "reference": 5,
+      "ours": 4,
+      "matched": 4
+     },
+     "relations": {
+      "reference": 4,
+      "ours": 3,
+      "matched": 3
+     }
+    }
+   }
+  }
+ },
+ "previous": {
+  "saved_as": null,
+  "started_at": "2026-09-14T12:08:10+00:00",
+  "diff": {
+   "types": {
+    "matched": [
+     [
+      "客户",
+      "客户"
+     ],
+     [
+      "产品",
+      "产品"
+     ],
+     [
+      "订单",
+      "订单"
+     ],
+     [
+      "售后工单",
+      "售后工单"
+     ]
+    ],
+    "only_reference": [
+     "售后工程师"
+    ],
+    "only_ours": []
+   },
+   "relations": {
+    "matched": [
+     [
+      "订单 — 客户",
+      "订单 — 客户"
+     ],
+     [
+      "订单 — 产品",
+      "订单 — 产品"
+     ],
+     [
+      "售后工单 — 订单",
+      "售后工单 — 订单"
+     ]
+    ],
+    "only_reference": [
+     "售后工单 — 售后工程师"
+    ],
+    "only_ours": []
+   },
+   "counts": {
+    "types": {
+     "reference": 5,
+     "ours": 4,
+     "matched": 4
+    },
+    "relations": {
+     "reference": 4,
+     "ours": 3,
+     "matched": 3
+    }
+   }
+  }
  }
 }
