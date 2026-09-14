@@ -31,7 +31,7 @@ class DataFitTests(unittest.TestCase):
 
     def test_checks_pass_or_fail_only_where_right_and_wrong_are_clear(self):
         self.assertEqual({c['key']: c['passed'] for c in self.fit['checks']}, {
-            'fields_accounted': True, 'identity_consistent': False, 'relations_link': True,
+            'fields_accounted': True, 'identity_consistent': False, 'identity_spelling': True, 'relations_link': True,
             'references_resolve': False, 'sources_connected': True})
 
     def test_an_unconnected_sheet_is_reported(self):

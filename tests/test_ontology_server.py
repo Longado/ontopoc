@@ -63,7 +63,8 @@ class OntologyServerTests(unittest.TestCase):
             self.assertEqual(result['ontology']['status'], 'auto_built_verified')
             self.assertEqual(result['sources'], [{'name': 'orders', 'rows': 2, 'fields': 3}])
             self.assertEqual({c['key'] for c in result['evaluation']['data_fit']['checks']},
-                             {'fields_accounted', 'identity_consistent', 'relations_link', 'references_resolve', 'sources_connected'})
+                             {'fields_accounted', 'identity_consistent', 'identity_spelling', 'relations_link',
+                              'references_resolve', 'sources_connected'})
             saved = out / result['saved_as']
             self.assertEqual(json.loads(saved.read_text(encoding='utf-8'))['ontology']['status'], 'auto_built_verified')
             self.assertNotIn('O1', json.dumps(result['sources']))
