@@ -37,7 +37,7 @@ test("rejects data that is not a verified review pack", () => {
 
 test("review is blocked until the ontology is confirmed", () => {
   const state = emptyState(pack());
-  assert.throws(() => markCandidate(state, "R1", "C1", "same", NOW), /确认本体/);
+  assert.throws(() => markCandidate(state, "R1", "C1", "same", NOW), /口径/);
   const confirmed = confirmOntology(state, NOW);
   assert.equal(confirmed.confirmed_at, NOW);
   assert.equal(state.confirmed_at, null);
