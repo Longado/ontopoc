@@ -200,6 +200,48 @@ export function summarize(pack, state, recallId) {
   return { total: recall.candidates.length, reviewed, compared, agree, disagreements };
 }
 
+/** Other recalls (outside this series) where the same complaint is a candidate, with their first call and your review. */
+export function elsewhere(pack, state, recallId, complaintId) {
+  const here = seriesOf(pack.recalls.find((r) => r.id === recallId));
+  return pack.recalls.filter((r) => seriesOf(r) !== here).flatMap((r) => r.candidates.filter((c) => c.id === complaintId).map((c) => ({
+    recall: r.id, date: r.date, bucket: c.bucket, model: c.text_check ? VERDICT_TO_MARK[c.text_check.verdict] : null,
+    human: markOf(state, seriesOf(r), c.id)?.mark || null,
+  })));
+}
+
+export function hasConflict(pack, recall, candidate) {
+  if (!candidate.text_check) return false;
+  const mine = VERDICT_TO_MARK[candidate.text_check.verdict];
+  return elsewhere(pack, { marks: {} }, recall.id, candidate.id).some((x) => x.model && x.model !== mine);
+}
+
+/** Review progress for every recall series, so work spread over several recalls is not hidden behind the current one. */
+export function overview(pack, state) {
+  const bySeries = new Map();
+  for (const r of pack.recalls) {
+    const key = seriesOf(r);
+    const row = bySeries.get(key) || { series: key, recalls: [], candidates: new Map() };
+    row.recalls.push(r.id);
+    for (const c of r.candidates) if (!row.candidates.has(c.id)) row.candidates.set(c.id, { recall: r.id, candidate: c });
+    bySeries.set(key, row);
+  }
+  return [...bySeries.values()].map(({ series, recalls, candidates }) => {
+    let reviewed = 0, compared = 0, agree = 0;
+    const disagreements = [];
+    for (const { recall, candidate } of candidates.values()) {
+      const human = markOf(state, series, candidate.id)?.mark;
+      if (!human) continue;
+      reviewed++;
+      if (!candidate.text_check) continue;
+      compared++;
+      const model = VERDICT_TO_MARK[candidate.text_check.verdict];
+      if (model === human) agree++;
+      else disagreements.push({ recall, id: candidate.id, model, human });
+    }
+    return { series, recalls, total: candidates.size, reviewed, compared, agree, disagreements };
+  });
+}
+
 export function restoreState(raw, pack) {
   if (raw === null) return emptyState(pack);
   const state = JSON.parse(raw);

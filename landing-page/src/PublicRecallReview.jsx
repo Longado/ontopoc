@@ -3,7 +3,7 @@ import {
   ALIAS_VERDICTS, BUCKETS, DATASET_KEY, FLAG_LABELS, REVIEWER_KEY, INDEX_URL, MARKS, ROLE_LABELS, VERDICT_TO_MARK, aliasDoubts, aliasKey,
   confirmOntology, displayValue, emptyState, exportState, fieldLabel, highlight, markCandidate, markOf, nextSelection, noteCandidate,
   orderCandidates, partExample, readyToConfirm, restoreState, restoreView, sharedModelYears, stepSelection, storageKey, viewKey,
-  dateCaveat, earlierDates, keyAction, NOTICE, personalInfo, uncleanNotes, verdictSplit,
+  dateCaveat, earlierDates, keyAction, NOTICE, personalInfo, uncleanNotes, verdictSplit, elsewhere, hasConflict, overview,
   packUrl, pickDataset, summarize, timingLabel, validateIndex, validatePack, visibleCandidates,
 } from "./publicReviewModel.js";
 import "./PublicRecallReview.css";
@@ -19,13 +19,14 @@ function Evidence({ text, evidence }) {
   return parts ? <>{parts[0]}<mark>{parts[1]}</mark>{parts[2]}</> : text;
 }
 
-function Badges({ candidate, signal, earlier }) {
+function Badges({ candidate, signal, earlier, conflict }) {
   const time = timingLabel(candidate.timing);
   return <span className="pr-badges">
     {time && <span className={`pr-badge pr-badge-${candidate.timing.relation}`}>{time}</span>}
     {earlier.map((path) => <span key={path} className="pr-badge pr-badge-earlier">{fieldLabel(path)}在召回前</span>)}
     {signal.flags.map((f) => <span key={f} className="pr-badge pr-badge-flag">{FLAG_LABELS[f] || f}</span>)}
     {candidate.via_alias && <span className="pr-badge pr-badge-alias">经名称对应</span>}
+    {conflict && <span className="pr-badge pr-badge-conflict">各召回初判不同</span>}
   </span>;
 }
 
@@ -129,6 +130,7 @@ export function PublicRecallReview({ language = "zh" }) {
   const [reviewer, setReviewer] = useState(() => recallSaved(REVIEWER_KEY) || "");
   const [focusTick, setFocusTick] = useState(0);
   const [scrollTick, setScrollTick] = useState(0);
+  const [onlyConflicts, setOnlyConflicts] = useState(false);
   const detailRef = useRef(null);
   const listRef = useRef(null);
 
@@ -171,7 +173,9 @@ export function PublicRecallReview({ language = "zh" }) {
   }, [pack, state, storageBlocked]);
 
   const recall = pack?.recalls.find((r) => r.id === recallId);
-  const visible = recall ? orderCandidates(visibleCandidates(recall, bucket), pack.signals) : [];
+  const inBucket = recall ? orderCandidates(visibleCandidates(recall, bucket), pack.signals) : [];
+  const conflictIds = new Set(recall ? inBucket.filter((c) => hasConflict(pack, recall, c)).map((c) => c.id) : []);
+  const visible = onlyConflicts ? inBucket.filter((c) => conflictIds.has(c.id)) : inBucket;
   const current = nextSelection(selected, visible);
   useEffect(() => { if (current !== selected) setSelected(current); }, [current, selected]);
   useEffect(() => {
@@ -201,6 +205,8 @@ export function PublicRecallReview({ language = "zh" }) {
   const signal = candidate && pack.signals[candidate.id];
   const entry = candidate && markOf(state, recall.series, candidate.id);
   const stats = summarize(pack, state, recall.id);
+  const rows = overview(pack, state);
+  const otherRecalls = candidate ? elsewhere(pack, state, recall.id, candidate.id) : [];
   const recallText = recall.fields.find((f) => f.path === "Summary")?.value || recall.fields[0]?.value || "";
   const seriesMembers = pack.recalls.filter((r) => r.series === recall.series);
   const reviewedAll = Object.keys(state.marks).length;
@@ -222,7 +228,11 @@ export function PublicRecallReview({ language = "zh" }) {
     if (action.step) { setSelected(stepSelection(current, visible, action.step)); setFocusTick((n) => n + 1); }
     else if (state.confirmed_at) apply((s) => markCandidate(s, recall.series, candidate.id, action.mark, now()));
   };
-  function openRecall(id) { setRecallId(id); setSelected(""); setTab("review"); }
+  function openRecall(id) { setRecallId(id); setSelected(""); setOnlyConflicts(false); setTab("review"); }
+  function jumpTo(recallId, complaintId) {
+    const target = byId[recallId].candidates.find((c) => c.id === complaintId);
+    setRecallId(recallId); setBucket(target.bucket); setOnlyConflicts(false); setTab("review"); choose(complaintId);
+  }
   function backToList() {
     listRef.current?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "center" });
   }
@@ -276,7 +286,8 @@ export function PublicRecallReview({ language = "zh" }) {
           <p className="pr-quote">{recallText}</p>
         </section>
         <section className="pr-card">
-          <div className="pr-buckets" role="group" aria-label="候选分类">{Object.entries(BUCKETS).map(([key, label]) => <button key={key} aria-pressed={bucket === key} onClick={() => setBucket(key)}>{label}<b>{recall.counts[key]}</b>{recall.text_checked && <small>模型判是 {verdictSplit(visibleCandidates(recall, key)).yes}</small>}</button>)}</div>
+          <div className="pr-buckets" role="group" aria-label="候选分类">{Object.entries(BUCKETS).map(([key, label]) => <button key={key} aria-pressed={bucket === key} onClick={() => setBucket(key)}>{label}<b>{recall.counts[key]}</b>{recall.text_checked && <small>模型判是 {verdictSplit(visibleCandidates(recall, key)).yes}</small>}</button>)}
+            {(conflictIds.size > 0 || onlyConflicts) && <button className="pr-filter" aria-pressed={onlyConflicts} onClick={() => setOnlyConflicts((v) => !v)}>只看各召回初判不同的<b>{conflictIds.size}</b></button>}</div>
           <p className="pr-muted">分类只按车型年款和部件划分，不代表同一故障已确认；每类旁边是模型判"是"的条数，其余是"不是""说不清"或没有初判。</p>
           <p className="pr-muted">排序：召回后提交的在前，其次是起火、碰撞，再按提交日期由新到旧。{storageNote} 本召回已复核 {stats.reviewed}/{stats.total}。</p>
           {!state.confirmed_at && <p className="pr-note">先在“口径”里核对，才能复核。</p>}
@@ -288,16 +299,20 @@ export function PublicRecallReview({ language = "zh" }) {
                 const mark = markOf(state, recall.series, c.id)?.mark;
                 return <button key={c.id} aria-pressed={c.id === current} tabIndex={c.id === current ? 0 : -1} onClick={() => choose(c.id)}>
                   <strong>投诉 {c.id}</strong><span>{pack.signals[c.id].objects.join("、")}</span>
-                  <Badges candidate={c} signal={pack.signals[c.id]} earlier={earlierDates(pack, c)} />
+                  <Badges candidate={c} signal={pack.signals[c.id]} earlier={earlierDates(pack, c)} conflict={conflictIds.has(c.id)} />
                   <small>模型：{c.text_check ? MARKS[VERDICT_TO_MARK[c.text_check.verdict]] : "未判断"} · 复核：{mark ? MARKS[mark] : "未复核"}</small>
                 </button>;
               })}</div>
               {candidate && <article className="pr-detail" ref={detailRef} aria-label="投诉详情">
                 <h3>投诉 {candidate.id} · {signal.objects.join("、")}</h3>
-                <Badges candidate={candidate} signal={signal} earlier={earlierDates(pack, candidate)} />
+                <Badges candidate={candidate} signal={signal} earlier={earlierDates(pack, candidate)} conflict={conflictIds.has(candidate.id)} />
                 <p className="pr-muted">投诉部件：{signal.parts.join("、")}{candidate.timing ? ` · 召回 ${candidate.timing.event_date}，投诉 ${candidate.timing.signal_date}` : ""}</p>
                 {candidate.via_alias && <p className="pr-note">这条投诉是经名称对应连上本召回部件的。你在口径里的判断：{pack.ontology.value_aliases.map((a) => `“${a.value} → ${a.target_value}”${ALIAS_VERDICTS[state.alias_checks?.[aliasKey(a)]] || "未判断"}`).join("、")}{doubts.length ? "，请按原文判断它是不是同一故障" : ""}。
                   <button type="button" className="pr-link" onClick={() => setTab("ontology")}>去口径改判断</button></p>}
+                {otherRecalls.length > 0 && <div className="pr-elsewhere"><p>这条投诉也是另外 {otherRecalls.length} 个召回的候选，那边的模型初判和你的复核：</p>
+                  <ul>{otherRecalls.map((x) => <li key={x.recall}><button type="button" className="pr-link" onClick={() => jumpTo(x.recall, candidate.id)}>召回 {x.recall}</button>
+                    <span>{x.date} · {BUCKETS[x.bucket]} · 模型：{x.model ? MARKS[x.model] : "没有初判"} · 你：{x.human ? MARKS[x.human] : "未复核"}</span></li>)}</ul>
+                  <p className="pr-muted">不同召回可能是不同故障，结论不会自动沿用。</p></div>}
                 {candidate.other_events.length > 0 && <p className="pr-muted">已被召回 {candidate.other_events.map((id) => `${id}（${byId[id]?.date || "?"}${byId[id]?.series === recall.series ? "，同一系列" : ""}）`).join("、")} 覆盖</p>}
                 <dl className="pr-kv">{signal.fields.map((f, i) => <div key={`${f.path}#${i}`}><dt>{fieldLabel(f.path)}</dt><dd><Evidence text={displayValue(f.value)} evidence={candidate.text_check?.evidence} /></dd></div>)}</dl>
                 <div className="pr-model">{candidate.text_check ? <><strong>模型初判：{MARKS[VERDICT_TO_MARK[candidate.text_check.verdict]]}</strong><p>{candidate.text_check.reasoning}</p></> : <strong>这个召回没有模型初判</strong>}</div>
@@ -317,19 +332,19 @@ export function PublicRecallReview({ language = "zh" }) {
       {tab === "results" && <>
         <section className="pr-card">
           <h2>复核进度</h2>
-          <dl className="pr-fields">
-            <Field label="已复核（全部召回）">{reviewedAll} 条</Field>
-            <Field label={`召回 ${recall.id}`}>{stats.reviewed}/{stats.total} 条</Field>
-            <Field label="与模型一致">{stats.compared ? `${stats.agree}/${stats.compared} 条` : "暂无可比条目"}</Field>
-            <Field label="未进入任何候选的投诉">{pack.unconsidered.count} 条，最多的部件是 {pack.unconsidered.top_parts.slice(0, 3).map(([p, n]) => `${p} ${n}`).join("、")}</Field>
-          </dl>
+          <p className="pr-muted">已复核 {reviewedAll} 条（全部召回）。同一系列的召回共用复核，合成一行。</p>
+          <div className="pr-table-wrap"><table className="pr-table">
+            <thead><tr><th scope="col">召回</th><th scope="col">已复核 / 候选</th><th scope="col">与模型一致</th><th scope="col">分歧</th></tr></thead>
+            <tbody>{rows.map((r) => <tr key={r.series}><th scope="row">{r.recalls.join(" → ")}</th><td>{r.reviewed} / {r.total}</td>
+              <td>{r.compared ? `${r.agree} / ${r.compared}` : "—"}</td><td>{r.disagreements.length || "—"}</td></tr>)}</tbody>
+          </table></div>
+          <p className="pr-muted">未进入任何候选的投诉 {pack.unconsidered.count} 条，最多的部件是 {pack.unconsidered.top_parts.slice(0, 3).map(([p, n]) => `${p} ${n}`).join("、")}。</p>
         </section>
         <section className="pr-card">
           <h2>和模型不一致的条目</h2>
-          {stats.disagreements.length ? <ul className="pr-rows">{stats.disagreements.map((d) => {
-            const c = recall.candidates.find((x) => x.id === d.id);
-            return <li key={d.id}><button type="button" className="pr-link" onClick={() => { setTab("review"); setBucket(c.bucket); choose(d.id); }}>投诉 {d.id}</button><span>模型“{MARKS[d.model]}”，你“{MARKS[d.human]}”</span></li>;
-          })}</ul> : <p className="pr-muted">召回 {recall.id} 暂时没有分歧。复核有模型初判的投诉后，分歧会出现在这里。</p>}
+          {rows.some((r) => r.disagreements.length) ? <ul className="pr-rows">{rows.flatMap((r) => r.disagreements).map((d) =>
+            <li key={`${d.recall}/${d.id}`}><button type="button" className="pr-link" onClick={() => jumpTo(d.recall, d.id)}>召回 {d.recall} · 投诉 {d.id}</button><span>模型“{MARKS[d.model]}”，你“{MARKS[d.human]}”</span></li>)}</ul>
+            : <p className="pr-muted">暂时没有分歧。复核有模型初判的投诉后，分歧会出现在这里。</p>}
         </section>
         <section className="pr-card">
           <h2>下载</h2>

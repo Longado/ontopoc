@@ -63,6 +63,18 @@
 .pr-sub { margin: 18px 0 8px; color: var(--text-2); font-size: 12.5px; }
 .pr-errors { margin: 4px 0 0; padding-left: 18px; flex-basis: 100%; color: var(--text-2); font-size: 12.5px; }
 .pr-keys { margin: 12px 0 0; font-size: 12px; }
+.pr-badge-conflict { color: var(--amber); background: var(--amber-soft); }
+.pr-buckets .pr-filter { border-style: dashed; }
+.pr-elsewhere { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--edge); border-radius: 8px; font-size: 13px; }
+.pr-elsewhere p { margin: 0 0 6px; }
+.pr-elsewhere ul { margin: 0 0 6px; padding: 0; list-style: none; display: grid; gap: 4px; }
+.pr-elsewhere li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.pr-elsewhere li span { color: var(--text-2); }
+.pr-table-wrap { overflow-x: auto; margin: 6px 0 12px; }
+.pr-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pr-table th, .pr-table td { padding: 8px 10px; border-top: 1px solid var(--edge); text-align: left; white-space: nowrap; }
+.pr-table thead th { border-top: 0; color: var(--text-2); font-size: 12px; font-weight: 600; }
+.pr-table tbody th { font-weight: 600; white-space: normal; }
 .pr-source { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--edge); color: var(--text-2); font-size: 12px; }
 .pr-buckets button small { font-size: 11px; font-weight: 600; }
 .pr-page details ul { margin: 8px 0 0; padding-left: 20px; color: var(--text-2); font-size: 13px; }
