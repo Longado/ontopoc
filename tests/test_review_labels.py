@@ -69,7 +69,7 @@ class LabelsFromExportTest(unittest.TestCase):
                          ('qe-01', '2026-10-01T02:00:00Z', '2026-10-02T00:00:00Z'))
         self.assertEqual(first['ontology_hash'], HASH)
         self.assertEqual(first['flags'], ['fire'])
-        self.assertIn('caught fire in the garage', first['text'])
+        self.assertEqual(first['rule_verdict'], 'yes')
         self.assertIsNone(second['model_verdict'])
         self.assertIsNone(second['prompt_version'])
 
@@ -130,9 +130,9 @@ class CleanTest(unittest.TestCase):
         check_clean([row])
 
 
-def label(complaint, human, model, *, text='Battery would not charge', flags=(), series='20V001000'):
+def label(complaint, human, model, *, text='Battery would not charge', flags=(), series='20V001000', rule='no'):
     return {'series': series, 'complaint': complaint, 'human': human, 'model_verdict': model,
-            'text': text, 'flags': list(flags), 'reviewer': 'qe-01'}
+            'text': text, 'flags': list(flags), 'reviewer': 'qe-01', 'rule_verdict': rule}
 
 
 class RuleTest(unittest.TestCase):
@@ -148,14 +148,14 @@ class RuleTest(unittest.TestCase):
 
 class CompareTest(unittest.TestCase):
     LABELS = [
-        label('a', 'same', 'yes', text='smoke'),        # rule yes, model yes
-        label('b', 'same', 'no', text='smoke'),         # rule yes, model no
-        label('c', 'same', 'yes'),                      # rule no, model yes
-        label('d', 'different', 'no', text='smoke'),    # rule yes, model no
-        label('e', 'different', 'no'),                  # rule no, model no
-        label('f', 'different', 'unknown', text='fire'),  # rule yes, model undecided
-        label('g', 'different', None),                  # rule no, never checked
-        label('h', 'unsure', 'yes', text='fire'),       # not counted
+        label('a', 'same', 'yes', rule='yes'),
+        label('b', 'same', 'no', rule='yes'),
+        label('c', 'same', 'yes', rule='no'),
+        label('d', 'different', 'no', rule='yes'),
+        label('e', 'different', 'no', rule='no'),
+        label('f', 'different', 'unknown', rule='yes'),  # model undecided
+        label('g', 'different', None, rule='no'),        # never checked by the model
+        label('h', 'unsure', 'yes', rule='yes'),         # not counted
     ]
 
     def test_counts_for_each_way_of_judging(self):
