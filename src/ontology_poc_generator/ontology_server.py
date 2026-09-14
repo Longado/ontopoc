@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from ontology_poc_generator.company_ontology import build_and_evaluate
 from ontology_poc_generator.company_sources import MAX_BYTES, SourceFileError, load_table_file
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
+from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_questions import ask_questions
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -82,6 +83,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/ask':
                 self.ask()
                 return
+            if self.path == '/api/ontology/compare':
+                self.compare()
+                return
             if self.path != '/api/ontology/build':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
                 return
@@ -110,10 +114,51 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
             name = f'{stamp}-{bundle["file"]["sha256"][:8]}.json'
             output_dir.mkdir(parents=True, exist_ok=True)
+            previous = self.previous_run(bundle['file']['sha256'])
+            if previous and result['ontology']['status'] == 'auto_built_verified':
+                result['previous'] = {'saved_as': previous['saved_as'], 'started_at': previous['started_at'],
+                                      'diff': compare_ontologies(previous['ontology'], result['ontology'])}
             result['saved_as'] = name
             (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             # the uploaded rows stay on this machine so later questions can be answered from them
             (output_dir / name.replace('.json', '.bundle.json')).write_text(json.dumps(bundle, ensure_ascii=False), encoding='utf-8')
+            self.reply(200, result)
+
+        def previous_run(self, sha256):
+            """The latest verified earlier run of the same file, so a rerun shows what changed."""
+            for path in sorted(output_dir.glob('*.json'), reverse=True):
+                if path.name.endswith('.bundle.json') or not SAVED_NAME.match(path.name):
+                    continue
+                earlier = json.loads(path.read_text(encoding='utf-8'))
+                if earlier['file']['sha256'] == sha256 and earlier['ontology']['status'] == 'auto_built_verified':
+                    return earlier
+            return None
+
+        def load_run(self, payload):
+            name = str(payload.get('saved_as') or '')
+            if not SAVED_NAME.match(name):
+                raise ValueError('saved_as 不是这个服务保存的结果名')
+            return output_dir / name
+
+        def compare(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                result_path = self.load_run(payload)
+                reference = parse_reference(payload.get('reference'))
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            if not result_path.exists():
+                self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                return
+            result = json.loads(result_path.read_text(encoding='utf-8'))
+            result['evaluation']['reference'] = {
+                'name': str(payload.get('reference_name') or '参考本体')[:120],
+                'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                'diff': compare_ontologies(reference, result['ontology'])}
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
         def ask(self):
