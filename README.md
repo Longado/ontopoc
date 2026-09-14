@@ -27,7 +27,7 @@ History: the project started on 2026-08-29 as a pre-sales POC proposal compiler 
 cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-Open `http://127.0.0.1:5178`. The default scenario, "Vehicle recall scope (NHTSA)", reads static files under `landing-page/public/data/` (an index plus one file per dataset: Chevrolet Bolt EV / EUV 2017–2023 and Hyundai Kona Electric / Kona EV 2019–2021) and needs no Python service. A left sidebar switches between the two entries; recall scope review has four tabs: Ontology (confirm ontology and aliases) → Recalls (grouped by part, re-recalls chained into series) → Review (ordered by after-recall, fire/crash, date) → Results (agreement with the model, download). Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
+Open `http://127.0.0.1:5178`. The default scenario, "Vehicle recall scope (NHTSA)", reads static files under `landing-page/public/data/` (an index plus one file per dataset: Chevrolet Bolt EV / EUV 2017–2023 and Hyundai Kona Electric / Kona EV 2019–2021) and needs no Python service. A left sidebar switches between the two entries; recall scope review has four tabs: Data scope (check how the data was read, judge each name mapping; the auto-built ontology sits under technical details) → Recalls (grouped by part, re-recalls chained into series) → Review (ordered by after-recall, fire/crash, date; arrow keys and 1/2/3 work) → Results (agreement with the model, reviewer name, download). Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
 
 `/landing` is the product page. The second entry, "Public recall lookup", matches products and lots for openFDA event 95876 and needs the local Python service below.
 
@@ -49,6 +49,10 @@ PYTHONPATH=src:. python scripts/build_public_review_pack.py --report examples/nh
 PYTHONPATH=src:. python scripts/fetch_nhtsa_snapshot.py \
   --make chevrolet --model "bolt ev" --years 2017-2023 --output examples/nhtsa/<name>.json
 
+# after a review: add the download to the label store, then compare rule, model and rule-then-model (counts only)
+PYTHONPATH=src:. python scripts/import_reviews.py --input <dataset>-review.json --reviewer <code name>   # writes examples/labels/, which is committed to this public repo
+PYTHONPATH=src:. python scripts/compare_judgments.py --labels examples/labels/<dataset>.jsonl
+
 # event 95876 local service and CLI
 PYTHONPATH=src python -m ontology_poc_generator.recall_server
 PYTHONPATH=src python -m ontology_poc_generator.recall_cli --product F-0369-2025/1 --lot X7547814
@@ -62,6 +66,7 @@ PYTHONPATH=src python -m ontology_poc_generator.recall_cli --product F-0369-2025
 | `src/ontology_poc_generator/public_ontology.py` | field catalog, ontology verification (17 error codes), object graph, build loop, value aliases |
 | `src/ontology_poc_generator/public_scope.py` | scope query, before/after timing, complaint text check with quote gate |
 | `src/ontology_poc_generator/public_review_pack.py` | page data: groups, series, candidates, blind-spot counts |
+| `src/ontology_poc_generator/review_labels.py` | review downloads → label store; the fire-keyword rule; rule / model / rule-then-model counts |
 | `src/ontology_poc_generator/model_gateway.py`, `recognition.py` | OpenAI-compatible gateway and the model call contract |
 | `src/ontology_poc_generator/recall_*.py` | event 95876 lookup (scope table, matching, local server, DeepSeek extraction check) |
 | `landing-page/src/PublicRecallReview.jsx`, `publicReviewModel.js` | review page and its pure functions |

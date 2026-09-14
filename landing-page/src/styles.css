@@ -66,7 +66,8 @@ section[id] { scroll-margin-top: 78px; }
   .app-side { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px 16px; }
   .app-brand { padding: 0; border: 0; }
   .app-brand img { width: 120px; }
-  .app-nav { order: 3; width: 100%; grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; }
+  .app-nav { order: 3; width: 100%; display: flex; flex-wrap: wrap; gap: 4px; }
+  .app-nav button, .app-nav a { width: auto; padding: 8px 10px; }
   .app-nav small { display: none; }
   .app-lang { margin: 0 0 0 auto; }
   .app-main { overflow: visible; }

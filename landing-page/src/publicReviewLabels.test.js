@@ -35,6 +35,6 @@ test("download rows can be read without the page", () => {
     recall: "A1", complaint: "C1", bucket: "outside_all", human: "same", note: "座椅下起火", model_verdict: "no",
     updated_at: NOW, vehicles: ["CHEVROLET BOLT EV 2023"], parts: ["ELECTRICAL SYSTEM", "SEATS"],
     complaint_date: "2024-07-08", flags: ["fire"], recall_date: "2020-01-01", timing: "after", days_from_recall: 1650,
-    via_alias: true, series_recalls: ["A1", "A2"],
+    via_alias: true, series_recalls: ["A1", "A2"], reviewer: null,
   });
 });

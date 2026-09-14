@@ -37,7 +37,7 @@ test("rejects data that is not a verified review pack", () => {
 
 test("review is blocked until the ontology is confirmed", () => {
   const state = emptyState(pack());
-  assert.throws(() => markCandidate(state, "R1", "C1", "same", NOW), /确认本体/);
+  assert.throws(() => markCandidate(state, "R1", "C1", "same", NOW), /口径/);
   const confirmed = confirmOntology(state, NOW);
   assert.equal(confirmed.confirmed_at, NOW);
   assert.equal(state.confirmed_at, null);
@@ -92,7 +92,7 @@ test("export carries labels with model verdicts and versions", () => {
   assert.equal(out.schema, "public_review_export.v1");
   assert.equal(out.matcher_prompt_version, "public_defect_match.v2");
   assert.deepEqual(out.reviews, [{ recall: "R1", complaint: "C2", bucket: "outside_all", human: "same", note: "", model_verdict: "no", updated_at: NOW,
-    vehicles: [], parts: [], complaint_date: null, flags: [], recall_date: null, timing: null, days_from_recall: null, via_alias: false, series_recalls: ["R1"] }]);
+    vehicles: [], parts: [], complaint_date: null, flags: [], recall_date: null, timing: null, days_from_recall: null, via_alias: false, series_recalls: ["R1"], reviewer: null }]);
 });
 
 test("evidence highlight finds the quote or returns nothing", () => {

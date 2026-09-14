@@ -25,6 +25,7 @@
 .landing-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 28px; margin: 0; padding: 0; list-style: none; }
 .landing-steps span { display: block; margin-bottom: 12px; color: #84a9ff; font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.1em; }
 .landing-steps p { color: rgba(255, 255, 255, 0.82); }
+.landing-note { max-width: 68ch; margin: -8px 0 28px; color: var(--muted); line-height: 1.7; }
 .landing-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; }
 .landing-facts div { padding: 22px 0; border-top: 3px solid var(--ink); }
 .landing-facts strong { display: block; margin-bottom: 8px; font-size: clamp(36px, 5vw, 56px); line-height: 1; letter-spacing: -0.03em; }

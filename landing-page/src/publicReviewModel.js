@@ -1,5 +1,6 @@
 export const INDEX_URL = "/data/index.json";
 export const DATASET_KEY = "ontopoc.public-review.dataset";
+export const REVIEWER_KEY = "ontopoc.public-review.reviewer";
 const PACK_FILE = /^[a-z0-9][a-z0-9-]*\.json$/;
 
 export function validateIndex(index) {
@@ -26,7 +27,7 @@ const FIELD_LABELS = {
   summary: "投诉描述", dateComplaintFiled: "投诉提交日期", dateOfIncident: "事发日期", crash: "涉及碰撞", fire: "涉及起火",
   numberOfInjuries: "受伤人数", numberOfDeaths: "死亡人数", manufacturer: "制造商", vin: "车架号（前 11 位）",
   Summary: "召回摘要", Consequence: "后果", Remedy: "补救措施", Notes: "备注", ReportReceivedDate: "召回报告日期",
-  Manufacturer: "制造商", parkIt: "建议停驶", parkOutSide: "建议室外停放", overTheAirUpdate: "可远程升级修复",
+  Manufacturer: "制造商", "products[].type": "产品类型", parkIt: "建议停驶", parkOutSide: "建议室外停放", overTheAirUpdate: "可远程升级修复",
 };
 export const fieldLabel = (path) => FIELD_LABELS[path] || path;
 export const displayValue = (value) => (value === "True" ? "是" : value === "False" ? "否" : value);
@@ -67,11 +68,40 @@ const seriesOf = (recall) => recall.series || recall.id;
 
 export const storageKey = (pack) => `ontopoc.public-review.v1.${pack.ontology.hash.slice(0, 16)}`;
 export const emptyState = (pack) => ({ schema: "public_review_state.v1", ontology_hash: pack.ontology.hash, confirmed_at: null, marks: {} });
-export const confirmOntology = (state, now) => ({ ...state, confirmed_at: now });
+export const ALIAS_VERDICTS = { right: "对", wrong: "不对", unsure: "说不清" };
+export const aliasKey = (a) => `${a.source}|${a.value}|${a.target_value}`;
+export const readyToConfirm = (pack, checks) => pack.ontology.value_aliases.every((a) => ALIAS_VERDICTS[checks[aliasKey(a)]]);
+const validChecks = (checks) => Object.values(checks).every((v) => ALIAS_VERDICTS[v]);
+
+export function confirmOntology(state, now, aliasChecks = {}) {
+  if (!validChecks(aliasChecks)) throw new Error("名称对应只能判为：对、不对、说不清。");
+  return { ...state, confirmed_at: now, alias_checks: { ...aliasChecks } };
+}
+
+/** Name mappings the reviewer judged wrong or could not judge; candidates linked through them deserve a warning. */
+export const aliasDoubts = (pack, state) => pack.ontology.value_aliases
+  .map((a) => ({ ...a, verdict: state.alias_checks?.[aliasKey(a)] }))
+  .filter((a) => a.verdict === "wrong" || a.verdict === "unsure");
+
+/** The widest recall: its part and a broader complaint part that still counts as the same part, taken from the data. */
+export function partExample(pack) {
+  for (const r of [...pack.recalls].sort((x, y) => y.candidates.length - x.candidates.length)) {
+    for (const m of r.mechanism) {
+      const hit = r.candidates.flatMap((c) => pack.signals[c.id].parts).find((p) => p !== m && m.startsWith(`${p}:`));
+      if (hit) return { recall: m, complaint: hit, candidates: r.candidates.length };
+    }
+  }
+  return null;
+}
+
+export function sharedModelYears(pack) {
+  const complained = new Set(Object.values(pack.signals).flatMap((s) => s.objects));
+  return [...new Set(pack.recalls.flatMap((r) => r.covered))].filter((o) => complained.has(o)).sort();
+}
 const markKey = (recallId, candidateId) => `${recallId}/${candidateId}`;
 
 export function markCandidate(state, recallId, candidateId, mark, now) {
-  if (!state.confirmed_at) throw new Error("请先确认本体，再复核投诉。");
+  if (!state.confirmed_at) throw new Error("请先在“口径”里核对，再复核投诉。");
   if (!MARKS[mark]) throw new Error("复核结论只能是：同一缺陷、不是、说不清。");
   const key = markKey(recallId, candidateId);
   return { ...state, marks: { ...state.marks, [key]: { mark, note: state.marks[key]?.note || "", updated_at: now } } };
@@ -86,6 +116,52 @@ export function noteCandidate(state, recallId, candidateId, note, now) {
 export const markOf = (state, recallId, candidateId) => state.marks[markKey(recallId, candidateId)] || null;
 export const visibleCandidates = (recall, bucket) => recall.candidates.filter((c) => c.bucket === bucket);
 export const nextSelection = (selected, visible) => (visible.some((c) => c.id === selected) ? selected : visible[0]?.id || "");
+export function stepSelection(selected, visible, delta) {
+  const at = visible.findIndex((c) => c.id === selected);
+  if (at < 0) return visible[0]?.id || "";
+  return visible[Math.min(visible.length - 1, Math.max(0, at + delta))].id;
+}
+
+export const TAB_KEYS = ["ontology", "recalls", "review", "results"];
+const KEY_MARKS = { 1: "same", 2: "different", 3: "unsure" };
+/** What a key press means on the review tab; nothing while the reviewer is typing or using a shortcut. */
+export function keyAction(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey || /^(TEXTAREA|INPUT|SELECT)$/.test(e.target?.tagName || "")) return null;
+  if (KEY_MARKS[e.key]) return { mark: KEY_MARKS[e.key] };
+  const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+  return step ? { step } : null;
+}
+
+const signalTime = (pack) => pack.ontology.object_types.find((t) => t.role === "signal")?.time_field;
+const otherDateFields = (pack) => {
+  const time = signalTime(pack);
+  return time ? (pack.source.date_fields?.[time.source] || []).filter((f) => f !== time.path) : [];
+};
+/** Other complaint dates (e.g. the incident date) that fall before the recall although the complaint was filed after it. */
+export function earlierDates(pack, candidate) {
+  if (candidate.timing?.relation !== "after") return [];
+  const fields = pack.signals[candidate.id].fields;
+  return otherDateFields(pack).filter((path) => fields.some((f) => f.path === path && f.value < candidate.timing.event_date));
+}
+export function dateCaveat(pack) {
+  const fields = otherDateFields(pack);
+  if (!fields.length) return null;
+  const after = pack.recalls.flatMap((r) => r.candidates).filter((c) => c.timing?.relation === "after");
+  return { fields, after: after.length, earlier: after.filter((c) => earlierDates(pack, c).length).length };
+}
+export const viewKey = (pack) => `ontopoc.public-review.view.${pack.ontology.hash.slice(0, 16)}`;
+/** Where the reviewer was (tab, recall, list, complaint); anything stale falls back to a sensible start. */
+export function restoreView(raw, pack, confirmed) {
+  let saved = {};
+  try { saved = JSON.parse(raw) || {}; } catch { saved = {}; }
+  const recall = pack.recalls.find((r) => r.id === saved.recallId);
+  const tab = !confirmed ? "ontology" : TAB_KEYS.includes(saved.tab) ? saved.tab : "recalls";
+  return {
+    tab, recallId: recall ? recall.id : defaultRecallId(pack),
+    bucket: recall && BUCKETS[saved.bucket] ? saved.bucket : "outside_all",
+    selected: recall && typeof saved.selected === "string" ? saved.selected : "",
+  };
+}
 
 export function summarize(pack, state, recallId) {
   const recall = pack.recalls.find((r) => r.id === recallId);
@@ -113,10 +189,12 @@ export function restoreState(raw, pack) {
   for (const entry of Object.values(state.marks)) {
     if (!entry || !MARKS[entry.mark] || typeof entry.note !== "string") throw new Error("本机复核记录内容有误");
   }
+  if (state.alias_checks !== undefined && (typeof state.alias_checks !== "object" || state.alias_checks === null || !validChecks(state.alias_checks))) throw new Error("本机复核记录内容有误");
   return state;
 }
 
-export function exportState(pack, state, now) {
+export function exportState(pack, state, now, reviewer = "") {
+  const who = reviewer.trim() || null;
   const reviews = [];
   const seen = new Set();
   for (const recall of pack.recalls) {
@@ -131,12 +209,14 @@ export function exportState(pack, state, now) {
         model_verdict: c.text_check?.verdict || null, updated_at: entry.updated_at,
         vehicles: signal.objects || [], parts: signal.parts || [], complaint_date: signal.date ?? null, flags: signal.flags || [],
         recall_date: recall.date ?? null, timing: c.timing?.relation ?? null, days_from_recall: c.timing?.days ?? null,
-        via_alias: Boolean(c.via_alias), series_recalls: pack.recalls.filter((r) => seriesOf(r) === key).map((r) => r.id),
+        via_alias: Boolean(c.via_alias), series_recalls: pack.recalls.filter((r) => seriesOf(r) === key).map((r) => r.id), reviewer: who,
       });
     }
   }
   return {
-    schema: "public_review_export.v1", exported_at: now, ontology_hash: pack.ontology.hash,
+    schema: "public_review_export.v1", exported_at: now, dataset: pack.dataset?.id ?? null, reviewer: who, ontology_hash: pack.ontology.hash,
+    alias_checks: (pack.ontology.value_aliases || []).map((a) => ({ source: a.source, value: a.value, target_source: a.target_source,
+      target_value: a.target_value, records_linked: a.records_linked, verdict: state.alias_checks?.[aliasKey(a)] ?? null })),
     ontology_confirmed_at: state.confirmed_at, model: pack.run.model,
     matcher_prompt_version: pack.run.matcher_prompt_version, boundary: pack.boundary, reviews,
   };
