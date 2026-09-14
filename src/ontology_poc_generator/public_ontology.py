@@ -442,7 +442,8 @@ def _clean(proposal: dict) -> tuple[list, list]:
     p = normalize_proposal(proposal)
     fields = ('key', 'label', 'role', 'populated_from', 'attributes', 'rationale', 'time_field')
     types = [{f: t.get(f) for f in fields} for t in p['object_types']]
-    relations = [{f: r.get(f) for f in ('key', 'from', 'to', 'source', 'meaning')} for r in p['relations']]
+    relations = [{f: r.get(f) for f in ('key', 'from', 'to', 'source', 'meaning', 'label') if f != 'label' or r.get(f)}
+                 for r in p['relations']]
     return types, relations
 
 

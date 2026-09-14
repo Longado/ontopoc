@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_URL, ERROR_LABELS, RESULT_KEY, attemptSummary, checkSummary, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
+import { OntologyGraph } from "./OntologyGraph.jsx";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
@@ -52,6 +53,7 @@ function UploadTab({ health, busy, elapsed, error, onBuild, onDemo }) {
 function OntologyTab({ run }) {
   const { ontology } = run;
   const attempts = attemptSummary(ontology);
+  const [view, setView] = useState("graph");
   return <>
     <section className="pr-card">
       <div className="pr-card-head"><h2>{run.file.name}</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{attempts.passed ? "本体结构已通过核验" : "本体结构未通过核验"}</span></div>
@@ -62,6 +64,11 @@ function OntologyTab({ run }) {
       <p>模型提交 {attempts.attempts} 次{attempts.rejected.length ? `，前面被代码退回的原因：${attempts.rejected.map(([code, n]) => `${ERROR_LABELS[code] || code} ${n} 处`).join("、")}` : "，第一次就通过"}。模型 {ontology.model}，提示词 {ontology.prompt_version}。</p>
     </section>
     <section className="pr-card">
+      <div className="pr-card-head"><h2>本体</h2>
+        <div className="og-toggle" role="group" aria-label="显示方式">{[["graph", "关系图"], ["list", "列表"]].map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
+      {view === "graph" && <OntologyGraph run={run} />}
+    </section>
+    {view === "list" && <><section className="pr-card">
       <h2>对象（{ontology.object_types.length}）</h2>
       <div className="pr-types">{ontology.object_types.map((t) => <article key={t.key} className="pr-type">
         <span className="pr-tag">{t.key}</span>
@@ -75,9 +82,9 @@ function OntologyTab({ run }) {
     <section className="pr-card">
       <h2>关系（{ontology.relations.length}）</h2>
       {ontology.relations.length ? <ul className="pr-rows">{ontology.relations.map((r) => <li key={r.key}>
-        <b>{typeLabel(ontology, r.from)} → {typeLabel(ontology, r.to)}</b><span>{r.meaning}</span><code>{r.source}</code></li>)}</ul>
+        <b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><span>{r.meaning}</span><code>{r.source}</code></li>)}</ul>
         : <p className="pr-muted">没有关系。</p>}
-    </section>
+    </section></>}
     <section className="pr-card">
       <h2>模型指出的数据缺口（{ontology.data_gaps.length}）</h2>
       {ontology.data_gaps.length ? <ul className="os-list">{ontology.data_gaps.map((g) => <li key={g}>{g}</li>)}</ul> : <p className="pr-muted">没有。</p>}
