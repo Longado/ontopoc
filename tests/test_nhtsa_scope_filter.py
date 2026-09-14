@@ -41,7 +41,8 @@ class RequestedModelTests(unittest.TestCase):
         self.assertEqual(note['removed'], 2)
 
     def test_committed_snapshots_hold_only_requested_models_or_vin_rescued_ones(self):
-        for name in ('chevrolet_bolt_2017_2023.json', 'hyundai_kona_electric_kona_ev_2019_2021.json'):
+        for name in ('chevrolet_bolt_2017_2023.json', 'hyundai_kona_electric_kona_ev_2019_2021.json',
+                     'hyundai_kona_electric_kona_ev_2019_2021_2026-09-14.json'):
             b = load_source_bundle(ROOT / 'examples/nhtsa' / name)
             wanted = {m.upper() for m in b['scope']['models']}
             rescued = {i for n in b.get('cleaning', []) if 'VIN prefix' in n['rule'] for i in n['records']}
