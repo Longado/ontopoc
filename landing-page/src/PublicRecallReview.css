@@ -4,7 +4,7 @@
 .pr-page h3 { margin: 0 0 6px; font-size: 14px; }
 .pr-page p { margin: 0 0 10px; }
 .pr-page button { font: inherit; cursor: pointer; }
-.pr-page button:focus-visible, .pr-page textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.pr-page button:focus-visible, .pr-page textarea:focus-visible, .pr-page input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 .pr-head { display: grid; gap: 16px; }
 .pr-head-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
@@ -30,6 +30,8 @@
 .pr-primary { margin-top: 6px; padding: 10px 18px; border: 0; border-radius: 8px; color: #fff; background: var(--ink); font-weight: 700; }
 .pr-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .pr-link { padding: 0; border: 0; color: var(--blue); background: transparent; font-weight: 600; }
+.pr-reviewer { display: grid; gap: 4px; max-width: 320px; margin: 4px 0 10px; color: var(--text-2); font-size: 13px; }
+.pr-reviewer input { padding: 8px 10px; border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; min-width: 0; }
 
 .pr-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 32px; margin: 0 0 14px; }
 .pr-field dt { color: var(--text-2); font-size: 12px; }

@@ -1,5 +1,6 @@
 export const INDEX_URL = "/data/index.json";
 export const DATASET_KEY = "ontopoc.public-review.dataset";
+export const REVIEWER_KEY = "ontopoc.public-review.reviewer";
 const PACK_FILE = /^[a-z0-9][a-z0-9-]*\.json$/;
 
 export function validateIndex(index) {
@@ -116,7 +117,8 @@ export function restoreState(raw, pack) {
   return state;
 }
 
-export function exportState(pack, state, now) {
+export function exportState(pack, state, now, reviewer = "") {
+  const who = reviewer.trim() || null;
   const reviews = [];
   const seen = new Set();
   for (const recall of pack.recalls) {
@@ -131,12 +133,12 @@ export function exportState(pack, state, now) {
         model_verdict: c.text_check?.verdict || null, updated_at: entry.updated_at,
         vehicles: signal.objects || [], parts: signal.parts || [], complaint_date: signal.date ?? null, flags: signal.flags || [],
         recall_date: recall.date ?? null, timing: c.timing?.relation ?? null, days_from_recall: c.timing?.days ?? null,
-        via_alias: Boolean(c.via_alias), series_recalls: pack.recalls.filter((r) => seriesOf(r) === key).map((r) => r.id),
+        via_alias: Boolean(c.via_alias), series_recalls: pack.recalls.filter((r) => seriesOf(r) === key).map((r) => r.id), reviewer: who,
       });
     }
   }
   return {
-    schema: "public_review_export.v1", exported_at: now, ontology_hash: pack.ontology.hash,
+    schema: "public_review_export.v1", exported_at: now, dataset: pack.dataset?.id ?? null, reviewer: who, ontology_hash: pack.ontology.hash,
     ontology_confirmed_at: state.confirmed_at, model: pack.run.model,
     matcher_prompt_version: pack.run.matcher_prompt_version, boundary: pack.boundary, reviews,
   };

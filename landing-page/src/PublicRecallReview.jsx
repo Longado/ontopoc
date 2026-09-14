@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  BUCKETS, DATASET_KEY, FLAG_LABELS, INDEX_URL, MARKS, ROLE_LABELS, VERDICT_TO_MARK, confirmOntology, defaultRecallId, displayValue, emptyState,
+  BUCKETS, DATASET_KEY, FLAG_LABELS, REVIEWER_KEY, INDEX_URL, MARKS, ROLE_LABELS, VERDICT_TO_MARK, confirmOntology, defaultRecallId, displayValue, emptyState,
   exportState, fieldLabel, highlight, markCandidate, markOf, nextSelection, noteCandidate, orderCandidates, restoreState, storageKey,
   packUrl, pickDataset, summarize, timingLabel, validateIndex, validatePack, visibleCandidates,
 } from "./publicReviewModel.js";
@@ -90,6 +90,7 @@ export function PublicRecallReview({ language = "zh" }) {
   const [bucket, setBucket] = useState("outside_all");
   const [selected, setSelected] = useState("");
   const [error, setError] = useState("");
+  const [reviewer, setReviewer] = useState(() => recallSaved(REVIEWER_KEY) || "");
   const detailRef = useRef(null);
   const listRef = useRef(null);
 
@@ -168,7 +169,7 @@ export function PublicRecallReview({ language = "zh" }) {
     listRef.current?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "center" });
   }
   function download() {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(exportState(pack, state, now()), null, 2)], { type: "application/json" }));
+    const url = URL.createObjectURL(new Blob([JSON.stringify(exportState(pack, state, now(), reviewer), null, 2)], { type: "application/json" }));
     const link = document.createElement("a"); link.href = url; link.download = `${datasetId}-review.json`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -270,6 +271,10 @@ export function PublicRecallReview({ language = "zh" }) {
         <section className="pr-card">
           <h2>下载</h2>
           <p className="pr-muted">每行带车型、部件、投诉日期、起火碰撞、召回前后与所属系列；这些复核就是校准模型初判的标注。</p>
+          <label className="pr-reviewer" htmlFor="pr-reviewer">复核人
+            <input id="pr-reviewer" value={reviewer} maxLength={40} placeholder="代号即可，样本库是公开的" autoComplete="off"
+              onChange={(e) => { setReviewer(e.target.value); remember(REVIEWER_KEY, e.target.value); }} />
+          </label>
           <button className="pr-primary" onClick={download} disabled={!reviewedAll}>下载复核结果</button>
         </section>
       </>}
