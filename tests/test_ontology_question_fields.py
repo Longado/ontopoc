@@ -1,6 +1,6 @@
 import unittest
 
-from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, run_query
+from ontology_poc_generator.ontology_questions import QUESTION_SYSTEM_PROMPT, run_query
 from tests.test_company_ontology import BUNDLE, PROPOSAL
 
 
@@ -23,7 +23,7 @@ class FieldFormTests(unittest.TestCase):
         self.assertEqual(result['status'], 'ontology_gap')
 
     def test_the_prompt_asks_for_bare_attribute_names(self):
-        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v2')
+        self.assertIn('attribute path of the start type, exactly as listed', QUESTION_SYSTEM_PROMPT)
 
 
 if __name__ == '__main__':
