@@ -45,6 +45,8 @@ def _ontology_summary(ontology: dict) -> dict:
         'human_review': ontology['human_review'],
         'hash': ontology_content_hash(ontology),
         'attempts': len(ontology.get('attempts') or []),
+        'attempt_errors': [[{'code': e['code'], 'message': e['message']} for e in a.get('errors') or []]
+                           for a in ontology.get('attempts') or []],
         'object_types': [{
             'key': t['key'], 'label': t.get('label'), 'role': t['role'], 'rationale': t.get('rationale'),
             'time_field': t.get('time_field'),
@@ -162,6 +164,7 @@ def build_review_pack(report: dict, bundle: dict) -> dict:
             'record_counts': {name: len(s['records']) for name, s in bundle['sources'].items()},
             'retrieved_from': min(r['retrieved_at'] for r in requests),
             'retrieved_to': max(r['retrieved_at'] for r in requests),
+            'cleaning': bundle.get('cleaning') or [],
         },
         'run': {'model': ontology.get('model'), 'modeler_prompt_version': ontology.get('prompt_version'),
                 'alias_prompt_version': ontology.get('alias_prompt_version'),

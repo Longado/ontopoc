@@ -1,10 +1,9 @@
 """Compare rule, model, and rule-then-model against human labels. Prints counts only, never percentages."""
 import argparse
-import json
 from pathlib import Path
 import sys
 
-from ontology_poc_generator.review_labels import compare
+from ontology_poc_generator.review_labels import LabelError, compare, read_json_file
 
 NAMES = {'rule': '只用规则', 'model': '只用模型', 'rule_then_model': '先规则再看模型'}
 
@@ -29,9 +28,9 @@ def main(argv=None):
     parser.add_argument('--labels', type=Path, required=True, help='examples/labels/<dataset>.jsonl')
     args = parser.parse_args(argv)
     try:
-        labels = [json.loads(line) for line in args.labels.read_text(encoding='utf-8').splitlines() if line.strip()]
-    except (OSError, ValueError) as exc:
-        print(f'cannot read labels: {exc}', file=sys.stderr)
+        labels = read_json_file(args.labels, lines=True)
+    except (OSError, LabelError) as exc:
+        print(f'无法读取样本库：{exc}', file=sys.stderr)
         return 2
     out = ['规则是迭代 1 的起火基线：投诉标了起火，或原文有以 fire / smoke / burn / flame / thermal / melt 开头的词；'
            '它只对起火类召回有意义。', '只列条数，不换算比例：一次试用的样本只够看方向。', '', '## 全部', '', *_table(labels)]

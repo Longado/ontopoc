@@ -1,11 +1,13 @@
 """Human reviews as a label store, and three ways of judging compared against them."""
 from __future__ import annotations
 
+import json
 import re
 
 EXPORT_SCHEMA = 'public_review_export.v1'
 LABEL_SCHEMA = 'review_label.v1'
 HUMAN_MARKS = {'same': 'yes', 'different': 'no', 'unsure': None}
+HUMAN_LABELS = {'same': '同一缺陷', 'different': '不是', 'unsure': '说不清'}
 # The iteration-1 baseline, kept fixed: a fire flag, or a fire word at the start of a word ("misfire" is not one).
 RULE_WORDS = re.compile(r'\b(?:fire|smoke|burn|flame|thermal|melt)', re.IGNORECASE)
 _UNCLEAN = (('本机路径', re.compile(r'/Users/|/home/|[A-Za-z]:\\')),
@@ -14,6 +16,18 @@ _UNCLEAN = (('本机路径', re.compile(r'/Users/|/home/|[A-Za-z]:\\')),
 
 class LabelError(ValueError):
     """The download cannot become labels without misrepresenting what was reviewed."""
+
+
+def read_json_file(path, *, lines: bool = False):
+    """Read a JSON (or JSON-lines) file, turning missing and malformed files into plain messages."""
+    try:
+        text = path.read_text(encoding='utf-8')
+    except FileNotFoundError:
+        raise LabelError(f'找不到文件：{path}') from None
+    try:
+        return [json.loads(line) for line in text.splitlines() if line.strip()] if lines else json.loads(text)
+    except ValueError:
+        raise LabelError(f'{path} 不是有效的 JSON') from None
 
 
 def labels_from_export(export: dict, pack: dict, reviewer: str | None, imported_at: str) -> list[dict]:
@@ -52,17 +66,18 @@ def labels_from_export(export: dict, pack: dict, reviewer: str | None, imported_
     return rows
 
 
-def _key(row: dict) -> tuple:
+def label_key(row: dict) -> tuple:
     return row['reviewer'], row['series'], row['complaint']
 
 
 def merge_labels(existing: list[dict], new: list[dict]) -> tuple[list[dict], list[dict]]:
-    """The latest import wins per reviewer, series and complaint; returns (merged, overwritten rows)."""
-    incoming = {_key(r): r for r in new}
-    merged = [incoming.get(_key(r), r) for r in existing]
-    overwritten = [r for r in existing if _key(r) in incoming]
-    known = {_key(r) for r in existing}
-    return merged + [r for r in new if _key(r) not in known], overwritten
+    """The latest import wins per reviewer, series and complaint; returns (merged, rows whose verdict or note changed)."""
+    incoming = {label_key(r): r for r in new}
+    merged = [incoming.get(label_key(r), r) for r in existing]
+    overwritten = [r for r in existing if label_key(r) in incoming
+                   and (r['human'], r['note']) != (incoming[label_key(r)]['human'], incoming[label_key(r)]['note'])]
+    known = {label_key(r) for r in existing}
+    return merged + [r for r in new if label_key(r) not in known], overwritten
 
 
 def check_clean(rows: list[dict]) -> None:
@@ -91,11 +106,12 @@ METHODS = {
 def compare(labels: list[dict]) -> dict:
     """Counts only: agreement with the human, misses, extras and undecided per method. Unsure labels are left out."""
     decided = [l for l in labels if HUMAN_MARKS.get(l['human'])]
+    several = len({l['reviewer'] for l in labels}) > 1
     methods = {}
     for name, judge in METHODS.items():
         tally = {'agree': 0, 'missed': [], 'extra': [], 'undecided': []}
         for l in decided:
-            verdict, ref = judge(l), f'{l["series"]}/{l["complaint"]}'
+            verdict, ref = judge(l), f'{l["series"]}/{l["complaint"]}' + (f'（{l["reviewer"]}）' if several else '')
             if verdict == 'unknown':
                 tally['undecided'].append(ref)
             elif verdict == HUMAN_MARKS[l['human']]:
