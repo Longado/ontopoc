@@ -21,8 +21,8 @@ test("only a company ontology run is shown", () => {
   assert.throws(() => validateRun({ ...run(), ontology: null }), /结果格式/);
 });
 
-test("the upload accepts tables and says which", () => {
-  assert.equal(ACCEPT, ".csv,.xlsx");
+test("the upload accepts tables and documents", () => {
+  assert.equal(ACCEPT, ".csv,.xlsx,.md,.txt,.docx,.pdf");
 });
 
 test("checks read as plain sentences with a pass count", () => {
