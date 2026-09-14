@@ -7,14 +7,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import re
 from urllib.parse import urlsplit
 
 from ontology_poc_generator.company_ontology import build_and_evaluate
 from ontology_poc_generator.company_sources import MAX_BYTES, SourceFileError, load_table_file
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
+from ontology_poc_generator.ontology_questions import ask_questions
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
+SAVED_NAME = re.compile(r'^\d{8}T\d{6}Z-[0-9a-f]{8}\.json$')
 
 
 def gateway_from_env():
@@ -60,22 +63,33 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, {'model_ready': gateway is not None})
 
+        def read_json(self):
+            length = int(self.headers.get('Content-Length', '0'))
+            if not 0 < length <= MAX_BODY:
+                self.reply(413, {'error': f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。'})
+                return None
+            if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                self.reply(415, {'error': 'Expected application/json'})
+                return None
+            payload = json.loads(self.rfile.read(length))
+            if not isinstance(payload, dict):
+                raise ValueError('请求必须是 JSON 对象')
+            return payload
+
         def do_POST(self):
             if not self.local_request():
+                return
+            if self.path == '/api/ontology/ask':
+                self.ask()
                 return
             if self.path != '/api/ontology/build':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
                 return
             try:
-                length = int(self.headers.get('Content-Length', '0'))
-                if not 0 < length <= MAX_BODY:
-                    self.reply(413, {'error': f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。'})
+                payload = self.read_json()
+                if payload is None:
                     return
-                if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
-                    self.reply(415, {'error': 'Expected application/json'})
-                    return
-                payload = json.loads(self.rfile.read(length))
-                if not isinstance(payload, dict) or not isinstance(payload.get('content_base64'), str):
+                if not isinstance(payload.get('content_base64'), str):
                     raise SourceFileError('请求缺少 content_base64（文件内容）')
                 try:
                     data = base64.b64decode(payload['content_base64'], validate=True)
@@ -98,6 +112,45 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             output_dir.mkdir(parents=True, exist_ok=True)
             result['saved_as'] = name
             (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            # the uploaded rows stay on this machine so later questions can be answered from them
+            (output_dir / name.replace('.json', '.bundle.json')).write_text(json.dumps(bundle, ensure_ascii=False), encoding='utf-8')
+            self.reply(200, result)
+
+        def ask(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = str(payload.get('saved_as') or '')
+                if not SAVED_NAME.match(name):
+                    raise ValueError('saved_as 不是这个服务保存的结果名')
+                question = payload.get('question')
+                if question is not None and (not isinstance(question, str) or not 0 < len(question.strip()) <= 300):
+                    raise ValueError('问题要写 1–300 个字')
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            result_path, bundle_path = output_dir / name, output_dir / name.replace('.json', '.bundle.json')
+            if not result_path.exists() or not bundle_path.exists():
+                self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                return
+            if gateway is None:
+                self.reply(503, {'error': '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'})
+                return
+            result = json.loads(result_path.read_text(encoding='utf-8'))
+            if result['ontology']['status'] != 'auto_built_verified':
+                self.reply(400, {'error': '本体没有通过结构核验，不能出题'})
+                return
+            bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+            answered = ask_questions(result['ontology'], bundle, gateway, question.strip() if question else None)
+            if answered['error'] and answered['error'].startswith('模型请求失败'):
+                self.reply(502, {'error': answered['error']})
+                return
+            if question:
+                result['evaluation'].setdefault('asked', []).append(answered)
+            else:
+                result['evaluation']['questions'] = answered
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
     return ThreadingHTTPServer(('127.0.0.1', port), Handler)
