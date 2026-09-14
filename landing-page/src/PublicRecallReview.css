@@ -75,6 +75,7 @@
 .pr-table th, .pr-table td { padding: 8px 10px; border-top: 1px solid var(--edge); text-align: left; white-space: nowrap; }
 .pr-table thead th { border-top: 0; color: var(--text-2); font-size: 12px; font-weight: 600; }
 .pr-table tbody th { font-weight: 600; white-space: normal; }
+.pr-ids { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); overflow-wrap: anywhere; }
 .pr-source { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--edge); color: var(--text-2); font-size: 12px; }
 .pr-buckets button small { font-size: 11px; font-weight: 600; }
 .pr-page details ul { margin: 8px 0 0; padding-left: 20px; color: var(--text-2); font-size: 13px; }

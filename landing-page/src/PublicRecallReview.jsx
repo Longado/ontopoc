@@ -61,7 +61,9 @@ function ScopeTab({ pack, state, onAnswer, onConfirm }) {
       <ul className="pr-checks">
         <li><h3>数据范围</h3>
           <p>{pack.dataset?.label || "本数据集"}，NHTSA 公开数据，{source.retrieved_from.slice(0, 10)} 取数：{source.events} 个召回，{source.record_counts.complaints} 条车主投诉。{filters.map((f) => `${f}。`).join("")}</p>
-          {source.cleaning?.filter((c) => c.removed > 0).map((c) => <p key={c.rule} className="pr-muted">取数时去掉 {c.removed} 条投诉，规则：<code>{c.rule}</code></p>)}
+          {source.cleaning?.filter((c) => c.removed > 0).map((c) => <div key={c.rule}><p className="pr-muted">取数时去掉 {c.removed} 条投诉，规则：<code>{c.rule}</code></p>
+            {c.records?.length > 0 && <details><summary>被去掉的投诉编号（{c.records.length}）</summary><p className="pr-ids">{c.records.join("、")}</p></details>}</div>)}
+          {source.cleaning?.filter((c) => c.kept > 0).map((c) => <p key={c.rule} className="pr-muted">其中 {c.kept} 条车型名不符、但车架号前几位与所选车型的投诉一致，予以保留（投诉 {c.records.join("、")}）。规则：<code>{c.rule}</code></p>)}
         </li>
         <li><h3>召回和投诉怎么对上</h3>
           <p>靠车型年款和部件两样对上：两边都出现的车型年款 {shared("affected_object")} 个{years.length ? `（例如 ${years.slice(0, 3).join("、")}）` : ""}，部件 {shared("mechanism")} 个。</p>
