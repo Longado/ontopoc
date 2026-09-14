@@ -4,7 +4,7 @@
 .pr-page h3 { margin: 0 0 6px; font-size: 14px; }
 .pr-page p { margin: 0 0 10px; }
 .pr-page button { font: inherit; cursor: pointer; }
-.pr-page button:focus-visible, .pr-page textarea:focus-visible, .pr-page input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.pr-page button:focus-visible, .pr-page textarea:focus-visible, .pr-page input:focus-visible, .pr-page summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 .pr-head { display: grid; gap: 16px; }
 .pr-head-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
@@ -54,6 +54,15 @@
 .pr-rows span { color: var(--text-2); font-size: 13px; flex: 1 1 280px; }
 .pr-rows code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 1px 6px; border-radius: 6px; background: var(--canvas); color: var(--text-2); }
 .pr-page details { margin-top: 10px; }
+.pr-page code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 1px 5px; border-radius: 5px; background: var(--canvas); overflow-wrap: anywhere; }
+.pr-checks, .pr-aliases { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 0; }
+.pr-checks > li, .pr-aliases > li { padding: 14px 0; border-top: 1px solid var(--edge); }
+.pr-checks > li:first-child, .pr-aliases > li:first-child { border-top: 0; padding-top: 0; }
+.pr-checks p, .pr-aliases p { margin: 0 0 6px; max-width: 72ch; }
+.pr-aliases .pr-marks { margin-top: 8px; }
+.pr-sub { margin: 18px 0 8px; color: var(--text-2); font-size: 12.5px; }
+.pr-errors { margin: 4px 0 0; padding-left: 18px; flex-basis: 100%; color: var(--text-2); font-size: 12.5px; }
+.pr-keys { margin: 12px 0 0; font-size: 12px; }
 .pr-page details ul { margin: 8px 0 0; padding-left: 20px; color: var(--text-2); font-size: 13px; }
 .pr-page summary { cursor: pointer; font-weight: 600; }
 
@@ -62,6 +71,7 @@
 .pr-recalls { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .pr-recalls button, .pr-list button { display: grid; gap: 3px; width: 100%; padding: 12px 14px; border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); background: var(--surface); text-align: left; overflow-wrap: anywhere; }
 .pr-recalls button:hover, .pr-list button:hover { border-color: var(--edge-strong); }
+.pr-recalls button:active, .pr-list button:active { background: var(--canvas); }
 .pr-recalls button[aria-pressed="true"], .pr-list button[aria-pressed="true"] { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); background: var(--blue-soft); }
 .pr-recalls small, .pr-list small { color: var(--text-2); font-size: 12px; }
 .pr-date { font-weight: 400; color: var(--text-2); }
