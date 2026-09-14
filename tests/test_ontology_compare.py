@@ -1,6 +1,6 @@
 import unittest
 
-from ontology_poc_generator.ontology_compare import ReferenceError, compare_ontologies, parse_reference
+from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 
 
 def t(key, label, source, **identity):
@@ -50,7 +50,7 @@ class ReferenceFileTests(unittest.TestCase):
         self.assertEqual(ref['object_types'][0]['key'], '客户')
         for bad, message in (({}, 'object_types'), ({'object_types': [{}]}, 'label'),
                              ({'object_types': [{'label': 'A'}], 'relations': [{'from': 'A', 'to': 'B'}]}, 'B')):
-            with self.subTest(message=message), self.assertRaisesRegex(ReferenceError, message):
+            with self.subTest(message=message), self.assertRaisesRegex(ReferenceFileError, message):
                 parse_reference(bad)
 
 
