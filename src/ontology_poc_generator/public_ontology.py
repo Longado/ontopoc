@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import copy
+from dataclasses import dataclass
 import hashlib
 import json
 import re
@@ -11,7 +12,6 @@ from ontology_poc_generator.nhtsa_sources import bundle_content_hash
 from ontology_poc_generator.recognition import RecognitionError
 
 ROLES = ('event', 'affected_object', 'mechanism', 'signal')
-_ALL_ROLES = ROLES + ('context',)
 TRANSFORMS = ('none', 'split_comma', 'colon_hierarchy')
 # The scope question walks these four pairs; each needs a direct relation.
 # ponytail: direct relations only; follow relation chains if two-hop paths become common.
@@ -19,6 +19,18 @@ _ROLE_PAIRS = (('event', 'affected_object'), ('event', 'mechanism'),
                ('signal', 'affected_object'), ('signal', 'mechanism'))
 _KEY = re.compile(r'^[a-z][a-z0-9_]{0,40}$')
 _ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+
+@dataclass(frozen=True)
+class Profile:
+    """What one kind of ontology must contain: the recall slice needs four roles wired together, a company ontology none."""
+    schema: str
+    evidence_scope: str
+    prompt: str
+    prompt_version: str
+    roles: tuple = ()
+    role_pairs: tuple = ()
+    shared_roles: tuple = ()
 
 
 def _error(code: str, message: str) -> dict:
@@ -126,7 +138,7 @@ def _where_errors(key: str, src: str, pop: dict, records: list[dict]) -> list[di
     return []
 
 
-def validate_proposal(proposal: dict, bundle: dict) -> list[dict]:
+def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> list[dict]:
     errors = _structure_errors(proposal)
     if errors:
         return errors
@@ -139,7 +151,7 @@ def validate_proposal(proposal: dict, bundle: dict) -> list[dict]:
             errors.append(_error('invalid_response', f'bad or duplicate object type key: {key!r}'))
             continue
         types[key] = t
-        if t.get('role') not in _ALL_ROLES:
+        if roles and t.get('role') not in roles + ('context',):
             errors.append(_error('invalid_response', f'{key}: unknown role {t.get("role")!r}'))
         if not t['populated_from']:
             errors.append(_error('invalid_response', f'{key}: populated_from is empty'))
@@ -193,7 +205,7 @@ def validate_proposal(proposal: dict, bundle: dict) -> list[dict]:
         for path in field_paths(records):
             if (src, path) not in used:
                 errors.append(_error('field_unaccounted', f'{src}.{path}: neither used nor listed in ignored_fields'))
-    for role in ROLES:
+    for role in roles:
         count = sum(t.get('role') == role for t in types.values())
         if count != 1:
             errors.append(_error('role_count', f'role {role}: needs exactly one object type, got {count}'))
@@ -323,9 +335,10 @@ def ancestors(graph: dict, inst: tuple) -> list:
     return out
 
 
-def graph_checks(proposal: dict, graph: dict) -> tuple[dict, list[dict]]:
-    """Checks that only the data can answer: links exist, the four role pairs connect, sources share objects."""
-    role = {t['role']: t['key'] for t in proposal['object_types'] if t.get('role') in ROLES}
+def graph_checks(proposal: dict, graph: dict, profile: Profile | None = None) -> tuple[dict, list[dict]]:
+    """Checks that only the data can answer: links exist; for the recall slice, the role pairs connect and sources share objects."""
+    profile = profile or RECALL_PROFILE
+    role = {t['role']: t['key'] for t in proposal['object_types'] if t.get('role') in profile.roles}
     errors = []
     metrics = {'instances': {}, 'shared_across_sources': {}, 'links': {}}
     for t in proposal['object_types']:
@@ -336,22 +349,23 @@ def graph_checks(proposal: dict, graph: dict) -> tuple[dict, list[dict]]:
         metrics['links'][r['key']] = len(graph['edges'][r['key']])
         if not metrics['links'][r['key']]:
             errors.append(_error('relation_zero_links', f'relation {r["key"]}: no record links {r["from"]} and {r["to"]}'))
-    for a, b in _ROLE_PAIRS:
+    for a, b in profile.role_pairs:
         if not any({r['from'], r['to']} == {role[a], role[b]} for r in proposal['relations']):
             errors.append(_error('role_relation_missing',
                                  f'no direct relation between {a} ({role[a]}) and {b} ({role[b]})'))
-    for r in ('affected_object', 'mechanism'):
+    for r in profile.shared_roles:
         if not metrics['shared_across_sources'][role[r]]:
             errors.append(_error('sources_not_connected',
                                  f'{r} ({role[r]}): no object appears in more than one source'))
     return metrics, errors
 
 
-def verify_proposal(proposal: dict, bundle: dict) -> dict:
-    errors = validate_proposal(proposal, bundle)
+def verify_proposal(proposal: dict, bundle: dict, profile: Profile | None = None) -> dict:
+    profile = profile or RECALL_PROFILE
+    errors = validate_proposal(proposal, bundle, profile.roles)
     if errors:
         return {'errors': errors, 'metrics': None}
-    metrics, errors = graph_checks(normalize_proposal(proposal), build_graph(proposal, bundle))
+    metrics, errors = graph_checks(normalize_proposal(proposal), build_graph(proposal, bundle), profile)
     return {'errors': errors, 'metrics': metrics}
 
 
@@ -409,6 +423,9 @@ Rules:
   Keep descriptive text fields (defect descriptions, complaint narratives) as attributes of their object type.
 - Do not invent fields, sources, values or join keys.
 '''
+RECALL_PROFILE = Profile(schema='public_ontology.v1', evidence_scope='public_data', prompt=MODELER_SYSTEM_PROMPT,
+                         prompt_version=MODELER_PROMPT_VERSION, roles=ROLES, role_pairs=_ROLE_PAIRS,
+                         shared_roles=('affected_object', 'mechanism'))
 
 
 def _content_hash(value) -> str:
@@ -429,21 +446,22 @@ def _clean(proposal: dict) -> tuple[list, list]:
     return types, relations
 
 
-def auto_build_ontology(bundle: dict, gateway) -> dict:
+def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None) -> dict:
     """Ask for a proposal, verify it in code, send the errors back; stop when errors stop shrinking."""
+    profile = profile or RECALL_PROFILE
     catalog = field_catalog(bundle)
     request = {'decision': bundle['decision'], 'sources': catalog}
     attempts, proposal, model = [], None, None
     while True:
         try:
-            completion = gateway.complete_json(system_prompt=MODELER_SYSTEM_PROMPT,
+            completion = gateway.complete_json(system_prompt=profile.prompt,
                                                user_prompt=json.dumps(request, ensure_ascii=False))
             model = completion.model
             try:
                 candidate = json.loads(completion.content)
             except ValueError:
                 candidate = None
-            result = verify_proposal(candidate, bundle) if candidate is not None else \
+            result = verify_proposal(candidate, bundle, profile) if candidate is not None else \
                 {'errors': [_error('invalid_response', 'model response is not JSON')], 'metrics': None}
         except RecognitionError as exc:
             candidate, result = None, {'errors': [_error('model_request_failed', str(exc))], 'metrics': None}
@@ -458,14 +476,14 @@ def auto_build_ontology(bundle: dict, gateway) -> dict:
                    'previous_proposal': candidate, 'errors_found_by_code': result['errors']}
     types, relations = _clean(proposal) if proposal is not None else ([], [])
     return {
-        'schema': 'public_ontology.v1',
-        'evidence_scope': 'public_data',
+        'schema': profile.schema,
+        'evidence_scope': profile.evidence_scope,
         'status': 'blocked' if result['errors'] else 'auto_built_verified',
         'human_review': 'pending',
         'decision': bundle['decision'],
         'source_bundle_hash': bundle_content_hash(bundle),
         'model': model,
-        'prompt_version': MODELER_PROMPT_VERSION,
+        'prompt_version': profile.prompt_version,
         'object_types': types,
         'relations': relations,
         'ignored_fields': normalize_proposal(proposal)['ignored_fields'] if proposal else [],
