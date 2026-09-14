@@ -3,7 +3,7 @@ import {
   ALIAS_VERDICTS, BUCKETS, DATASET_KEY, FLAG_LABELS, REVIEWER_KEY, INDEX_URL, MARKS, ROLE_LABELS, VERDICT_TO_MARK, aliasDoubts, aliasKey,
   confirmOntology, displayValue, emptyState, exportState, fieldLabel, highlight, markCandidate, markOf, nextSelection, noteCandidate,
   orderCandidates, partExample, readyToConfirm, restoreState, restoreView, sharedModelYears, stepSelection, storageKey, viewKey,
-  dateCaveat, earlierDates, keyAction,
+  dateCaveat, earlierDates, keyAction, NOTICE, personalInfo, uncleanNotes, verdictSplit,
   packUrl, pickDataset, summarize, timingLabel, validateIndex, validatePack, visibleCandidates,
 } from "./publicReviewModel.js";
 import "./PublicRecallReview.css";
@@ -12,8 +12,7 @@ const now = () => new Date().toISOString();
 const narrow = () => window.matchMedia?.("(max-width: 760px)").matches;
 const TRANSFORM_NOTE = { colon_hierarchy: "（按层级拆分）", split_comma: "（逗号分隔多项）" };
 const TABS = [["ontology", "口径"], ["recalls", "召回"], ["review", "复核"], ["results", "结果"]];
-// Same patterns the import script refuses; warning here keeps a path or key from leaving the browser in a download.
-const UNCLEAN = /\/Users\/|\/home\/|[A-Za-z]:\\|\bsk-[A-Za-z0-9_-]{16,}/;
+
 
 function Evidence({ text, evidence }) {
   const parts = highlight(text, evidence);
@@ -206,7 +205,8 @@ export function PublicRecallReview({ language = "zh" }) {
   const seriesMembers = pack.recalls.filter((r) => r.series === recall.series);
   const reviewedAll = Object.keys(state.marks).length;
   const doubts = aliasDoubts(pack, state);
-  const reviewerUnclean = UNCLEAN.test(reviewer);
+  const reviewerIssue = personalInfo(reviewer);
+  const noteIssues = uncleanNotes(state);
 
   function apply(change) {
     try { setState((s) => change(s)); setError(""); } catch (e) { setError(e.message); }
@@ -259,7 +259,7 @@ export function PublicRecallReview({ language = "zh" }) {
           <div className="pr-recalls">{g.recalls.map((id) => byId[id]).map((r) => <button key={r.id} aria-pressed={r.id === recallId} onClick={() => openRecall(r.id)}>
             <strong>{r.id}<span className="pr-date"> · {r.date}</span></strong>
             {r.references.length > 0 && <span className="pr-chain">接续召回 {r.references.join("、")}</span>}
-            <small>覆盖 {r.covered.length} 个车型年款 · 范围外 {r.counts.outside_all} 条{r.text_checked ? " · 已有模型初判" : ""}</small>
+            <small>覆盖 {r.covered.length} 个车型年款 · 范围外 {r.counts.outside_all} 条{r.text_checked ? `（模型判是 ${verdictSplit(visibleCandidates(r, "outside_all")).yes}）` : " · 没有模型初判"}</small>
           </button>)}</div>
         </div>)}</div>
       </section>}
@@ -276,7 +276,8 @@ export function PublicRecallReview({ language = "zh" }) {
           <p className="pr-quote">{recallText}</p>
         </section>
         <section className="pr-card">
-          <div className="pr-buckets" role="group" aria-label="候选分类">{Object.entries(BUCKETS).map(([key, label]) => <button key={key} aria-pressed={bucket === key} onClick={() => setBucket(key)}>{label}<b>{recall.counts[key]}</b></button>)}</div>
+          <div className="pr-buckets" role="group" aria-label="候选分类">{Object.entries(BUCKETS).map(([key, label]) => <button key={key} aria-pressed={bucket === key} onClick={() => setBucket(key)}>{label}<b>{recall.counts[key]}</b>{recall.text_checked && <small>模型判是 {verdictSplit(visibleCandidates(recall, key)).yes}</small>}</button>)}</div>
+          <p className="pr-muted">分类只按车型年款和部件划分，不代表同一故障已确认；每类旁边是模型判"是"的条数，其余是"不是""说不清"或没有初判。</p>
           <p className="pr-muted">排序：召回后提交的在前，其次是起火、碰撞，再按提交日期由新到旧。{storageNote} 本召回已复核 {stats.reviewed}/{stats.total}。</p>
           {!state.confirmed_at && <p className="pr-note">先在“口径”里核对，才能复核。</p>}
           {error && <p role="alert" className="pr-error">{error}</p>}
@@ -295,7 +296,7 @@ export function PublicRecallReview({ language = "zh" }) {
                 <h3>投诉 {candidate.id} · {signal.objects.join("、")}</h3>
                 <Badges candidate={candidate} signal={signal} earlier={earlierDates(pack, candidate)} />
                 <p className="pr-muted">投诉部件：{signal.parts.join("、")}{candidate.timing ? ` · 召回 ${candidate.timing.event_date}，投诉 ${candidate.timing.signal_date}` : ""}</p>
-                {candidate.via_alias && <p className="pr-note">这条投诉是经名称对应连上本召回部件的。你在口径里的判断：{pack.ontology.value_aliases.map((a) => `“${a.value} → ${a.target_value}”${ALIAS_VERDICTS[state.alias_checks?.[aliasKey(a)]] || "未判断"}`).join("、")}{doubts.length ? "，请按原文判断它是不是同一缺陷" : ""}。
+                {candidate.via_alias && <p className="pr-note">这条投诉是经名称对应连上本召回部件的。你在口径里的判断：{pack.ontology.value_aliases.map((a) => `“${a.value} → ${a.target_value}”${ALIAS_VERDICTS[state.alias_checks?.[aliasKey(a)]] || "未判断"}`).join("、")}{doubts.length ? "，请按原文判断它是不是同一故障" : ""}。
                   <button type="button" className="pr-link" onClick={() => setTab("ontology")}>去口径改判断</button></p>}
                 {candidate.other_events.length > 0 && <p className="pr-muted">已被召回 {candidate.other_events.map((id) => `${id}（${byId[id]?.date || "?"}${byId[id]?.series === recall.series ? "，同一系列" : ""}）`).join("、")} 覆盖</p>}
                 <dl className="pr-kv">{signal.fields.map((f, i) => <div key={`${f.path}#${i}`}><dt>{fieldLabel(f.path)}</dt><dd><Evidence text={displayValue(f.value)} evidence={candidate.text_check?.evidence} /></dd></div>)}</dl>
@@ -303,12 +304,13 @@ export function PublicRecallReview({ language = "zh" }) {
                 <fieldset className="pr-marks" disabled={!state.confirmed_at}><legend>你的复核（点选即保存{seriesMembers.length > 1 ? "，同一系列共用" : ""}）</legend>
                   {Object.entries(MARKS).map(([key, label]) => <button key={key} type="button" aria-pressed={entry?.mark === key} onClick={() => apply((s) => markCandidate(s, recall.series, candidate.id, key, now()))}>{label}</button>)}
                   <label htmlFor="pr-note">备注（可选）</label>
-                  <textarea id="pr-note" maxLength={1000} disabled={!entry} value={entry?.note || ""} placeholder={entry ? "" : "先选结论再写备注"} onChange={(e) => apply((s) => noteCandidate(s, recall.series, candidate.id, e.target.value, now()))} />
+                  <textarea id="pr-note" maxLength={1000} disabled={!entry} value={entry?.note || ""} placeholder={entry ? "只写看到的事实，不写推测的结论；不要写车主姓名、电话或车架号" : "先选结论再写备注"} aria-describedby="pr-note-hint" onChange={(e) => apply((s) => noteCandidate(s, recall.series, candidate.id, e.target.value, now()))} />
+                  {personalInfo(entry?.note) && <p id="pr-note-hint" className="pr-error">备注里像是有{personalInfo(entry.note)}。样本库是公开的，请删掉，否则无法下载。</p>}
                 </fieldset>
                 <button className="pr-back" onClick={backToList}>返回列表</button>
               </article>}
             </div>}
-          {visible.length > 0 && <p className="pr-muted pr-keys">键盘：列表里用 ↑ ↓ 切换投诉，按 1 同一缺陷、2 不是、3 说不清。</p>}
+          {visible.length > 0 && <p className="pr-muted pr-keys">键盘：列表里用 ↑ ↓ 切换投诉，按 1 同一故障、2 不是、3 说不清。</p>}
         </section>
       </div>}
 
@@ -332,15 +334,18 @@ export function PublicRecallReview({ language = "zh" }) {
         <section className="pr-card">
           <h2>下载</h2>
           <p className="pr-muted">下载的文件交给实施人员导入样本库，不需要自己读懂。文件里每行带车型、部件、投诉日期、起火碰撞、召回前后与所属系列，还有你对名称对应的判断；这些复核就是校准模型初判的标注。</p>
+          <p className="pr-note">{NOTICE}</p>
           <label className="pr-reviewer" htmlFor="pr-reviewer">复核人
-            <input id="pr-reviewer" value={reviewer} maxLength={40} placeholder="代号即可，样本库是公开的" autoComplete="off" aria-invalid={reviewerUnclean}
+            <input id="pr-reviewer" value={reviewer} maxLength={40} placeholder="代号即可，样本库是公开的" autoComplete="off" aria-invalid={Boolean(reviewerIssue)}
               aria-describedby="pr-reviewer-hint" onChange={(e) => { setReviewer(e.target.value); remember(REVIEWER_KEY, e.target.value); }} />
           </label>
-          <p id="pr-reviewer-hint" className={reviewerUnclean ? "pr-error" : "pr-muted"}>{reviewerUnclean ? "复核人里像是本机路径或密钥。样本库是公开的，请换成代号，否则导入时会被拒绝。"
+          <p id="pr-reviewer-hint" className={reviewerIssue ? "pr-error" : "pr-muted"}>{reviewerIssue ? `复核人里像是有${reviewerIssue}。样本库是公开的，请换成代号。`
             : reviewer.trim() ? "" : "不填也能下载，导入时需要补上复核人。"}</p>
-          <button className="pr-primary" onClick={download} disabled={!reviewedAll || reviewerUnclean}>下载复核结果</button>
+          {noteIssues.length > 0 && <p className="pr-error">这些备注里像是有个人信息或本机内容，删掉后才能下载：{noteIssues.map((n) => `召回 ${n.recall} 投诉 ${n.complaint}（${n.issue}）`).join("、")}</p>}
+          <button className="pr-primary" onClick={download} disabled={!reviewedAll || Boolean(reviewerIssue) || noteIssues.length > 0}>下载复核结果</button>
         </section>
       </>}
     </div>
+    <footer className="pr-source">数据来自 NHTSA 公开接口（{pack.source.retrieved_from.slice(0, 10)} 取数）。OntoPoc 与 NHTSA 及所涉车企无关联，页面内容不是官方结论。</footer>
   </section>;
 }

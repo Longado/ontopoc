@@ -9,13 +9,15 @@ English · [中文](README.zh-CN.md)
 
 After a recall is issued, which similar complaints fall outside its scope? OntoPoc answers that question for a quality engineer from two public sources, NHTSA recall notices and owner complaints:
 
-1. A model proposes an ontology from field names and sample values only; code verifies the proposal against every record (17 checks) and sends errors back, three attempts at most.
+1. A model proposes an ontology from field names and sample values only; code verifies the proposal against every record (17 kinds of error) and sends errors back, three attempts at most.
 2. Category names that exist in only one source go to the model for an alias; code keeps an alias only when it links more records, and every candidate that depends on one is marked.
 3. For each recall, code computes the covered model years and the same-part complaints in three buckets (inside this recall, covered by another same-part recall, outside every one), dated before or after the recall. Recalls that name an earlier recall as the repair they redo are chained into a series.
-4. The model gives a first verdict on each complaint text; "same defect" must quote the complaint, and code checks the quote is really there.
+4. The model gives a first verdict on each complaint text; "same failure" must quote the complaint, and code checks the quote is really there.
 5. A quality engineer reviews each candidate on a static page. The reviews are the labels that will calibrate step 4.
 
 Verified on Chevrolet Bolt EV / EUV 2017–2023 (13 recalls, 679 complaints) and Hyundai Kona Electric / Kona EV 2019–2021 (4 recalls, 107 complaints), both fetched 2026-09-13. No customer data, no VIN-level scope, no deployment yet.
+
+Data comes from the NHTSA public API. OntoPoc is not affiliated with NHTSA, General Motors or Hyundai; its candidates and first-pass verdicts are not official findings or defect determinations.
 
 History: the project started on 2026-08-29 as a pre-sales POC proposal compiler and went through supply-chain, synthetic quality and food-recall scenarios before settling on recall scope review on 2026-09-13. The retired lines were removed from the branch; the full state before removal is tagged `archive-2026-09-13-nhtsa-review`.
 
@@ -39,18 +41,23 @@ npm --prefix landing-page run test:unit                             # frontend t
 npm --prefix landing-page run build && npm --prefix landing-page run test:sites
 PYTHONPATH=src:. python scripts/build_public_review_pack.py --check # every dataset in the index still matches its run
 
-# online run (needs a local DeepSeek key, see handoff §4; never commit keys)
-PYTHONPATH=src:. python scripts/run_public_ontology.py \
-  --campaign 21V650000 --campaign 18V576000 --output output/public-ontology-<time>.json
+# add a dataset, in order (steps 3 and later need a local DeepSeek key, see handoff §4; never commit keys)
+# 1. snapshot a make, models and years from NHTSA
+PYTHONPATH=src:. python scripts/fetch_nhtsa_snapshot.py \
+  --make chevrolet --model "bolt ev" --model "bolt euv" --years 2017-2023 --output examples/nhtsa/<snapshot>.json
+# 2. list the recall campaigns in that snapshot
+PYTHONPATH=src:. python scripts/run_public_ontology.py --snapshot examples/nhtsa/<snapshot>.json
+# 3. online run on the same snapshot: build the ontology, then scope and first verdicts for the campaigns you pick
+PYTHONPATH=src:. python scripts/run_public_ontology.py --snapshot examples/nhtsa/<snapshot>.json \
+  --campaign 20V701000 --campaign 18V576000 --output output/public-ontology-<time>.json
+# 4. keep the run, publish the page data (also updates landing-page/public/data/index.json), check it
 cp output/public-ontology-<time>.json examples/nhtsa/runs/<name>.json
 PYTHONPATH=src:. python scripts/build_public_review_pack.py --report examples/nhtsa/runs/<name>.json --snapshot examples/nhtsa/<snapshot>.json
-
-# snapshot another make or model
-PYTHONPATH=src:. python scripts/fetch_nhtsa_snapshot.py \
-  --make chevrolet --model "bolt ev" --years 2017-2023 --output examples/nhtsa/<name>.json
+PYTHONPATH=src:. python scripts/build_public_review_pack.py --check
+# 5. the dataset now appears in the page's dataset picker
 
 # after a review: add the download to the label store, then compare rule, model and rule-then-model (counts only)
-PYTHONPATH=src:. python scripts/import_reviews.py --input <dataset>-review.json --reviewer <code name>   # writes examples/labels/, which is committed to this public repo
+PYTHONPATH=src:. python scripts/import_reviews.py --input <dataset>-review.json --reviewer <code name>   # writes examples/labels/ (public repo: complaint ids and verdicts, no complaint text or VINs)
 PYTHONPATH=src:. python scripts/compare_judgments.py --labels examples/labels/<dataset>.jsonl
 
 # event 95876 local service and CLI

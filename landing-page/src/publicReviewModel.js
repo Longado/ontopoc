@@ -18,7 +18,26 @@ export const BUCKETS = {
   covered_by_other_event: "其他同类召回已覆盖",
   inside_scope: "本召回范围内",
 };
-export const MARKS = { same: "同一缺陷", different: "不是", unsure: "说不清" };
+export const MARKS = { same: "同一故障", different: "不是", unsure: "说不清" };
+export const NOTICE = "内部技术排查工作稿：记录的是复核人对“投诉与召回是否同一故障”的初步判断，依据是 NHTSA 公开数据和模型初判；未经工程与法务确认，不构成缺陷认定或召回范围结论。";
+// Mirrors the import script's check, so a path, key or personal detail never leaves the browser in a download.
+const PERSONAL = [
+  ["本机路径", /\/Users\/|\/home\/|[A-Za-z]:\\/],
+  ["疑似密钥", /\bsk-[A-Za-z0-9_-]{16,}/],
+  ["疑似车架号", /\b(?=[A-HJ-NPR-Z0-9]*\d)(?=[A-HJ-NPR-Z0-9]*[A-HJ-NPR-Z])[A-HJ-NPR-Z0-9]{11}(?:[A-HJ-NPR-Z0-9]{6})?\b/],
+  ["邮箱", /[\w.+-]+@[\w-]+\.[\w.]+/],
+  ["电话", /(?<!\d)1[3-9]\d{9}(?!\d)|\+\d{1,3}[\s-]?\d[\d\s-]{6,}\d|\(\d{3}\)\s?\d{3}-\d{4}|(?<!\d)\d{3}-\d{3}-\d{4}(?!\d)/],
+];
+export const personalInfo = (text) => PERSONAL.find(([, pattern]) => pattern.test(text || ""))?.[0] || "";
+export const uncleanNotes = (state) => Object.entries(state.marks)
+  .map(([key, entry]) => ({ key, issue: personalInfo(entry.note) }))
+  .filter((x) => x.issue)
+  .map(({ key, issue }) => { const [recall, complaint] = key.split("/"); return { recall, complaint, issue }; });
+export function verdictSplit(candidates) {
+  const split = { yes: 0, no: 0, unknown: 0, none: 0 };
+  for (const c of candidates) split[c.text_check ? c.text_check.verdict : "none"] += 1;
+  return split;
+}
 export const VERDICT_TO_MARK = { yes: "same", no: "different", unknown: "unsure" };
 export const ROLE_LABELS = { event: "事件", affected_object: "受影响对象", mechanism: "部件机制", signal: "信号", context: "背景" };
 
@@ -102,7 +121,7 @@ const markKey = (recallId, candidateId) => `${recallId}/${candidateId}`;
 
 export function markCandidate(state, recallId, candidateId, mark, now) {
   if (!state.confirmed_at) throw new Error("请先在“口径”里核对，再复核投诉。");
-  if (!MARKS[mark]) throw new Error("复核结论只能是：同一缺陷、不是、说不清。");
+  if (!MARKS[mark]) throw new Error("复核结论只能是：同一故障、不是、说不清。");
   const key = markKey(recallId, candidateId);
   return { ...state, marks: { ...state.marks, [key]: { mark, note: state.marks[key]?.note || "", updated_at: now } } };
 }
@@ -214,7 +233,7 @@ export function exportState(pack, state, now, reviewer = "") {
     }
   }
   return {
-    schema: "public_review_export.v1", exported_at: now, dataset: pack.dataset?.id ?? null, reviewer: who, ontology_hash: pack.ontology.hash,
+    schema: "public_review_export.v1", notice: NOTICE, exported_at: now, dataset: pack.dataset?.id ?? null, reviewer: who, ontology_hash: pack.ontology.hash,
     alias_checks: (pack.ontology.value_aliases || []).map((a) => ({ source: a.source, value: a.value, target_source: a.target_source,
       target_value: a.target_value, records_linked: a.records_linked, verdict: state.alias_checks?.[aliasKey(a)] ?? null })),
     ontology_confirmed_at: state.confirmed_at, model: pack.run.model,

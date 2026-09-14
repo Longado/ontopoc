@@ -22,12 +22,12 @@ const copy = {
       ["自动搭建本体", "模型只看字段名和示例值，提出对象、身份字段、关系、时间字段、过滤条件；代码用全部记录核验 17 项，出错退回重做，最多三次。"],
       ["跨来源名称对应", "只出现在一个来源的名称交给模型提出对应，代码核验确实多连上记录才采纳，经对应连上的候选单独标出。"],
       ["范围与时间", "每个召回算出覆盖的车型年款和同部件投诉，分成范围内、其他召回已覆盖、所有召回之外；每条标召回前后与间隔天数。"],
-      ["初判与复核", "模型判“同一缺陷”必须引用原文，代码核对引用真在原文里；质量工程师逐条复核，复核结果就是校准模型的标注。"],
+      ["初判与复核", "模型判“同一故障”必须引用原文，代码核对引用真在原文里；质量工程师逐条复核，复核结果就是校准模型的标注。"],
     ],
     proofKicker: "验证",
     proofTitle: "两家车企的公开数据，同一套代码",
     proofNote: "2026-09-13 从 NHTSA 取数：雪佛兰 Bolt EV / EUV 2017–2023，13 个召回、679 条投诉；现代 Kona Electric 2019–2021，4 个召回、107 条投诉。",
-    facts: [["17", "项本体核验。两份数据上模型都是第 1 次提交被退回、第 2 次通过"], ["0 → 34", "Bolt 刹车召回的候选投诉，靠一条核验过的名称对应补回；同一条对应在 Kona 上补回 11 条"], ["43", "条 Bolt 电池投诉落在所有召回之外、都在召回之后。这是待复核的候选，模型初判 41 条不是同一缺陷、2 条说不清"], ["10", "条 Kona 2021 款电池投诉落在两个电池召回之外，因为这两个召回只覆盖 2019–2020 款"]],
+    facts: [["17", "类本体错误检查。两份数据上模型都是第 1 次提交被退回、第 2 次通过"], ["0 → 34", "Bolt 刹车召回的候选投诉，靠一条核验过的名称对应补回；同一条对应在 Kona 上补回 11 条"], ["43", "条 Bolt 电池投诉落在所有召回之外、都在召回之后。这是待复核的候选，模型初判 41 条不是同一缺陷、2 条说不清"], ["10", "条 Kona 2021 款电池投诉落在两个电池召回之外，因为这两个召回只覆盖 2019–2020 款"]],
     limitsKicker: "边界",
     limits: [
       "范围只到车型年款，召回公开数据没有车架号。",
@@ -37,6 +37,7 @@ const copy = {
     ],
     cta: "打开工作台，从电池召回开始",
     footer: "Trace scope. Review evidence.",
+    source: "数据来自 NHTSA 公开接口，2026-09-13 取数。OntoPoc 与 NHTSA、通用汽车、现代汽车无关联，页面内容不是官方结论，也不构成缺陷认定。",
   },
   en: {
     nav: [["#problem", "PROBLEM"], ["#method", "METHOD"], ["#proof", "EVIDENCE"], ["#limits", "LIMITS"]],
@@ -63,7 +64,7 @@ const copy = {
     proofKicker: "EVIDENCE",
     proofTitle: "Two automakers' public data, one codebase",
     proofNote: "Fetched from NHTSA on 2026-09-13: Chevrolet Bolt EV / EUV 2017–2023, 13 recalls and 679 complaints; Hyundai Kona Electric 2019–2021, 4 recalls and 107 complaints.",
-    facts: [["17", "ontology checks; on both datasets the model was sent back once and passed on the second attempt"], ["0 → 34", "Bolt brake recall candidates recovered by one verified alias; the same alias recovers 11 on Kona"], ["43", "Bolt battery complaints outside every recall, all filed after it. They are candidates to review: the model's first call is 41 not the same defect, 2 unclear"], ["10", "Kona 2021 battery complaints outside both battery recalls, which cover only 2019–2020"]],
+    facts: [["17", "kinds of ontology error checked; on both datasets the model was sent back once and passed on the second attempt"], ["0 → 34", "Bolt brake recall candidates recovered by one verified alias; the same alias recovers 11 on Kona"], ["43", "Bolt battery complaints outside every recall, all filed after it. They are candidates to review: the model's first call is 41 not the same defect, 2 unclear"], ["10", "Kona 2021 battery complaints outside both battery recalls, which cover only 2019–2020"]],
     limitsKicker: "LIMITS",
     limits: [
       "Scope stops at model year; public recall data has no VIN.",
@@ -73,6 +74,7 @@ const copy = {
     ],
     cta: "Open the workbench and start with the battery recall",
     footer: "Trace scope. Review evidence.",
+    source: "Data from the NHTSA public API, fetched 2026-09-13. OntoPoc is not affiliated with NHTSA, General Motors or Hyundai; nothing here is an official finding or a defect determination.",
   },
 };
 
@@ -127,6 +129,6 @@ export function App() {
       <a className="landing-cta" href="/">{t.cta}</a>
     </section>
 
-    <footer className="landing-footer"><img src="/assets/ontopoc-logo-light.png" alt="OntoPoc" /><p>{t.footer}</p><p>© 2026 OntoPoc</p></footer>
+    <footer className="landing-footer"><img src="/assets/ontopoc-logo-light.png" alt="OntoPoc" /><p>{t.footer}</p><p className="landing-source">{t.source}</p><p>© 2026 OntoPoc</p></footer>
   </div>;
 }
