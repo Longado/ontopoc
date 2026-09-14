@@ -123,6 +123,32 @@ export function stepSelection(selected, visible, delta) {
 }
 
 export const TAB_KEYS = ["ontology", "recalls", "review", "results"];
+const KEY_MARKS = { 1: "same", 2: "different", 3: "unsure" };
+/** What a key press means on the review tab; nothing while the reviewer is typing or using a shortcut. */
+export function keyAction(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey || /^(TEXTAREA|INPUT|SELECT)$/.test(e.target?.tagName || "")) return null;
+  if (KEY_MARKS[e.key]) return { mark: KEY_MARKS[e.key] };
+  const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+  return step ? { step } : null;
+}
+
+const signalTime = (pack) => pack.ontology.object_types.find((t) => t.role === "signal")?.time_field;
+const otherDateFields = (pack) => {
+  const time = signalTime(pack);
+  return time ? (pack.source.date_fields?.[time.source] || []).filter((f) => f !== time.path) : [];
+};
+/** Other complaint dates (e.g. the incident date) that fall before the recall although the complaint was filed after it. */
+export function earlierDates(pack, candidate) {
+  if (candidate.timing?.relation !== "after") return [];
+  const fields = pack.signals[candidate.id].fields;
+  return otherDateFields(pack).filter((path) => fields.some((f) => f.path === path && f.value < candidate.timing.event_date));
+}
+export function dateCaveat(pack) {
+  const fields = otherDateFields(pack);
+  if (!fields.length) return null;
+  const after = pack.recalls.flatMap((r) => r.candidates).filter((c) => c.timing?.relation === "after");
+  return { fields, after: after.length, earlier: after.filter((c) => earlierDates(pack, c).length).length };
+}
 export const viewKey = (pack) => `ontopoc.public-review.view.${pack.ontology.hash.slice(0, 16)}`;
 /** Where the reviewer was (tab, recall, list, complaint); anything stale falls back to a sensible start. */
 export function restoreView(raw, pack, confirmed) {

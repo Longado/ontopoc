@@ -108,6 +108,7 @@
 .pr-badge-after { color: var(--amber); background: var(--amber-soft); }
 .pr-badge-same_day { color: var(--amber); background: var(--amber-soft); }
 .pr-badge-flag { color: var(--red); background: var(--red-soft); }
+.pr-badge-earlier { color: var(--text-2); background: var(--canvas); border: 1px dashed var(--edge-strong); }
 .pr-badge-alias { color: var(--indigo); background: var(--indigo-soft); }
 .pr-page mark { background: #ffe28a; color: #382800; }
 

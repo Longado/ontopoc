@@ -3,6 +3,7 @@ import {
   ALIAS_VERDICTS, BUCKETS, DATASET_KEY, FLAG_LABELS, REVIEWER_KEY, INDEX_URL, MARKS, ROLE_LABELS, VERDICT_TO_MARK, aliasDoubts, aliasKey,
   confirmOntology, displayValue, emptyState, exportState, fieldLabel, highlight, markCandidate, markOf, nextSelection, noteCandidate,
   orderCandidates, partExample, readyToConfirm, restoreState, restoreView, sharedModelYears, stepSelection, storageKey, viewKey,
+  dateCaveat, earlierDates, keyAction,
   packUrl, pickDataset, summarize, timingLabel, validateIndex, validatePack, visibleCandidates,
 } from "./publicReviewModel.js";
 import "./PublicRecallReview.css";
@@ -11,7 +12,6 @@ const now = () => new Date().toISOString();
 const narrow = () => window.matchMedia?.("(max-width: 760px)").matches;
 const TRANSFORM_NOTE = { colon_hierarchy: "（按层级拆分）", split_comma: "（逗号分隔多项）" };
 const TABS = [["ontology", "口径"], ["recalls", "召回"], ["review", "复核"], ["results", "结果"]];
-const MARK_KEYS = { 1: "same", 2: "different", 3: "unsure" };
 // Same patterns the import script refuses; warning here keeps a path or key from leaving the browser in a download.
 const UNCLEAN = /\/Users\/|\/home\/|[A-Za-z]:\\|\bsk-[A-Za-z0-9_-]{16,}/;
 
@@ -20,10 +20,11 @@ function Evidence({ text, evidence }) {
   return parts ? <>{parts[0]}<mark>{parts[1]}</mark>{parts[2]}</> : text;
 }
 
-function Badges({ candidate, signal }) {
+function Badges({ candidate, signal, earlier }) {
   const time = timingLabel(candidate.timing);
   return <span className="pr-badges">
     {time && <span className={`pr-badge pr-badge-${candidate.timing.relation}`}>{time}</span>}
+    {earlier.map((path) => <span key={path} className="pr-badge pr-badge-earlier">{fieldLabel(path)}在召回前</span>)}
     {signal.flags.map((f) => <span key={f} className="pr-badge pr-badge-flag">{FLAG_LABELS[f] || f}</span>)}
     {candidate.via_alias && <span className="pr-badge pr-badge-alias">经名称对应</span>}
   </span>;
@@ -46,6 +47,7 @@ function ScopeTab({ pack, state, onAnswer, onConfirm }) {
   const years = sharedModelYears(pack);
   const eventTime = typeOf("event")?.time_field;
   const signalTime = typeOf("signal")?.time_field;
+  const caveat = dateCaveat(pack);
   const answered = ontology.value_aliases.filter((a) => checks[aliasKey(a)]).length;
   const ready = readyToConfirm(pack, checks);
   function answer(a, verdict) {
@@ -66,10 +68,11 @@ function ScopeTab({ pack, state, onAnswer, onConfirm }) {
           {ontology.data_gaps.length > 0 && <details><summary>系统自己指出的数据缺口（{ontology.data_gaps.length} 条）</summary><ul>{ontology.data_gaps.map((g) => <li key={g}>{g}</li>)}</ul></details>}
         </li>
         <li><h3>哪些投诉算候选</h3>
-          <p>投诉写的部件和召回部件相同，或是召回部件的上一层，就算同部件候选。{example && <>例如召回写 <code>{example.recall}</code>，投诉只写 <code>{example.complaint}</code> 也算，所以这个召回有 {example.candidates} 条候选，多数要靠复核排除。</>}</p>
+          <p>投诉写的部件和召回部件相同，或是召回部件的任意一层上级，就算同部件候选。{example && <>例如召回写 <code>{example.recall}</code>，投诉只写 <code>{example.complaint}</code> 也算，所以这个召回有 {example.candidates} 条候选，多数要靠复核排除。</>}</p>
         </li>
         <li><h3>召回前后怎么算</h3>
           <p>{eventTime && signalTime ? `召回按“${fieldLabel(eventTime.path)}”，投诉按“${fieldLabel(signalTime.path)}”，比较谁先谁后。` : "这份数据没有可比的日期，不标召回前后。"}</p>
+          {caveat && <p>投诉另有“{caveat.fields.map(fieldLabel).join("、")}”，没有用来比较先后。按它算，标为召回后的 {caveat.after} 条次候选里有 {caveat.earlier} 条次其实发生在召回之前；复核列表里这些会单独标出。</p>}
         </li>
       </ul>
     </section>
@@ -176,6 +179,13 @@ export function PublicRecallReview({ language = "zh" }) {
     if (pack && recall) remember(viewKey(pack), JSON.stringify({ tab, recallId, bucket, selected: current }));
   }, [pack, recall, tab, recallId, bucket, current]);
   useEffect(() => { if (focusTick) listRef.current?.querySelector('[aria-pressed="true"]')?.focus(); }, [focusTick]);
+  const keyRef = useRef(null);
+  useEffect(() => {
+    if (tab !== "review") return undefined;
+    const listener = (e) => keyRef.current?.(e);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, [tab]);
   useEffect(() => { if (scrollTick && narrow()) detailRef.current?.scrollIntoView({ block: "start" }); }, [scrollTick]);
 
   const datasetPicker = index && <label className="pr-dataset" htmlFor="pr-dataset">数据集
@@ -205,19 +215,13 @@ export function PublicRecallReview({ language = "zh" }) {
     setSelected(id);
     setScrollTick((n) => n + 1);
   }
-  function onListKey(e) {
-    const delta = { ArrowDown: 1, ArrowUp: -1 }[e.key];
-    if (!delta) return;
+  keyRef.current = (e) => {
+    const action = keyAction(e);
+    if (!action || !candidate) return;
     e.preventDefault();
-    setSelected(stepSelection(current, visible, delta));
-    setFocusTick((n) => n + 1);
-  }
-  function onReviewKey(e) {
-    const mark = MARK_KEYS[e.key];
-    if (!mark || !candidate || !state.confirmed_at || e.metaKey || e.ctrlKey || e.altKey || /^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName)) return;
-    e.preventDefault();
-    apply((s) => markCandidate(s, recall.series, candidate.id, mark, now()));
-  }
+    if (action.step) { setSelected(stepSelection(current, visible, action.step)); setFocusTick((n) => n + 1); }
+    else if (state.confirmed_at) apply((s) => markCandidate(s, recall.series, candidate.id, action.mark, now()));
+  };
   function openRecall(id) { setRecallId(id); setSelected(""); setTab("review"); }
   function backToList() {
     listRef.current?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "center" });
@@ -260,7 +264,7 @@ export function PublicRecallReview({ language = "zh" }) {
         </div>)}</div>
       </section>}
 
-      {tab === "review" && <div className="pr-panel" onKeyDown={onReviewKey}>
+      {tab === "review" && <div className="pr-panel">
         <section className="pr-card">
           <div className="pr-card-head"><h2>召回 {recall.id}</h2><button type="button" className="pr-link" onClick={() => setTab("recalls")}>换一个召回</button></div>
           <dl className="pr-fields">
@@ -279,21 +283,20 @@ export function PublicRecallReview({ language = "zh" }) {
           {!recall.candidates.length ? <p className="pr-empty">没有找到同部件投诉。0 条不代表没有同类问题：两边的部件名称写法不同、又没有通过核验的名称对应时，记录连不上。</p>
             : !visible.length ? <p className="pr-empty">这一类没有投诉，换一个分类看看。</p>
             : <div className="pr-layout">
-              <div className="pr-list" ref={listRef} aria-label="投诉列表（上下方向键切换）" onKeyDown={onListKey}>{visible.map((c) => {
+              <div className="pr-list" ref={listRef} aria-label="投诉列表（上下方向键切换）">{visible.map((c) => {
                 const mark = markOf(state, recall.series, c.id)?.mark;
                 return <button key={c.id} aria-pressed={c.id === current} tabIndex={c.id === current ? 0 : -1} onClick={() => choose(c.id)}>
                   <strong>投诉 {c.id}</strong><span>{pack.signals[c.id].objects.join("、")}</span>
-                  <Badges candidate={c} signal={pack.signals[c.id]} />
+                  <Badges candidate={c} signal={pack.signals[c.id]} earlier={earlierDates(pack, c)} />
                   <small>模型：{c.text_check ? MARKS[VERDICT_TO_MARK[c.text_check.verdict]] : "未判断"} · 复核：{mark ? MARKS[mark] : "未复核"}</small>
                 </button>;
               })}</div>
               {candidate && <article className="pr-detail" ref={detailRef} aria-label="投诉详情">
                 <h3>投诉 {candidate.id} · {signal.objects.join("、")}</h3>
-                <Badges candidate={candidate} signal={signal} />
+                <Badges candidate={candidate} signal={signal} earlier={earlierDates(pack, candidate)} />
                 <p className="pr-muted">投诉部件：{signal.parts.join("、")}{candidate.timing ? ` · 召回 ${candidate.timing.event_date}，投诉 ${candidate.timing.signal_date}` : ""}</p>
-                {candidate.via_alias && (doubts.length
-                  ? <p className="pr-note">这条投诉是经名称对应连上的，而你把 {doubts.map((a) => `“${a.value} → ${a.target_value}”判为${ALIAS_VERDICTS[a.verdict]}`).join("、")}。请按原文判断它是不是同一缺陷。</p>
-                  : <p className="pr-note">这条投诉是经名称对应连上本召回的部件（见“口径”）。</p>)}
+                {candidate.via_alias && <p className="pr-note">这条投诉是经名称对应连上本召回部件的。你在口径里的判断：{pack.ontology.value_aliases.map((a) => `“${a.value} → ${a.target_value}”${ALIAS_VERDICTS[state.alias_checks?.[aliasKey(a)]] || "未判断"}`).join("、")}{doubts.length ? "，请按原文判断它是不是同一缺陷" : ""}。
+                  <button type="button" className="pr-link" onClick={() => setTab("ontology")}>去口径改判断</button></p>}
                 {candidate.other_events.length > 0 && <p className="pr-muted">已被召回 {candidate.other_events.map((id) => `${id}（${byId[id]?.date || "?"}${byId[id]?.series === recall.series ? "，同一系列" : ""}）`).join("、")} 覆盖</p>}
                 <dl className="pr-kv">{signal.fields.map((f, i) => <div key={`${f.path}#${i}`}><dt>{fieldLabel(f.path)}</dt><dd><Evidence text={displayValue(f.value)} evidence={candidate.text_check?.evidence} /></dd></div>)}</dl>
                 <div className="pr-model">{candidate.text_check ? <><strong>模型初判：{MARKS[VERDICT_TO_MARK[candidate.text_check.verdict]]}</strong><p>{candidate.text_check.reasoning}</p></> : <strong>这个召回没有模型初判</strong>}</div>

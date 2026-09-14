@@ -165,6 +165,7 @@ def build_review_pack(report: dict, bundle: dict) -> dict:
             'retrieved_from': min(r['retrieved_at'] for r in requests),
             'retrieved_to': max(r['retrieved_at'] for r in requests),
             'cleaning': bundle.get('cleaning') or [],
+            'date_fields': {name: list(fields) for name, fields in (bundle.get('date_fields') or {}).items()},
         },
         'run': {'model': ontology.get('model'), 'modeler_prompt_version': ontology.get('prompt_version'),
                 'alias_prompt_version': ontology.get('alias_prompt_version'),
