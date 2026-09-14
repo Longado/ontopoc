@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ACCEPT, CHECK_LABELS, DEMO_URL, RESULT_KEY, attemptSummary, checkSummary, typeLabel, typeSources, validateRun,
+  ACCEPT, CHECK_LABELS, DEMO_URL, ERROR_LABELS, RESULT_KEY, attemptSummary, checkSummary, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
@@ -56,7 +56,7 @@ function OntologyTab({ run }) {
     <section className="pr-card">
       <div className="pr-card-head"><h2>{run.file.name}</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{attempts.passed ? "已通过代码核验" : "未通过核验"}</span></div>
       <p className="pr-muted">{run.sources.map((s) => `${s.name} ${s.rows} 行 ${s.fields} 列`).join(" · ")}</p>
-      <p>模型提交 {attempts.attempts} 次{attempts.rejected.length ? `，前面被代码退回的原因：${attempts.rejected.map(([code, n]) => `${code} ×${n}`).join("、")}` : "，第一次就通过"}。模型 {ontology.model}，提示词 {ontology.prompt_version}。</p>
+      <p>模型提交 {attempts.attempts} 次{attempts.rejected.length ? `，前面被代码退回的原因：${attempts.rejected.map(([code, n]) => `${ERROR_LABELS[code] || code} ${n} 处`).join("、")}` : "，第一次就通过"}。模型 {ontology.model}，提示词 {ontology.prompt_version}。</p>
     </section>
     <section className="pr-card">
       <h2>对象（{ontology.object_types.length}）</h2>

@@ -9,6 +9,14 @@ export const CHECK_LABELS = {
   sources_connected: "所有表通过共同的对象连成一片",
 };
 
+export const ERROR_LABELS = {
+  field_unaccounted: "有字段没有去处", relation_source_mismatch: "关系写错了所在的表", relation_zero_links: "关系在数据里一条都连不上",
+  relation_unknown_type: "关系指向不存在的对象", unknown_field: "引用了不存在的字段", unknown_source: "引用了不存在的表",
+  empty_field: "身份字段没有值", identity_keys_mismatch: "同一对象在各表的身份键名不一致", mixed_list_identity: "身份字段混用了不同列表",
+  transform_needs_single_field: "拆分规则只能用于单个身份字段", time_field_invalid: "时间字段不是日期", where_invalid: "筛选条件不成立",
+  invalid_response: "返回的格式不对", model_request_failed: "模型请求失败",
+};
+
 export function validateRun(run) {
   if (!run || run.schema !== "company_ontology_run.v1" || !run.ontology || !Array.isArray(run.ontology.object_types) || !run.evaluation) {
     throw new Error("结果格式不支持：需要 company_ontology_run.v1");
