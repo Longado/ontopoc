@@ -25,3 +25,4 @@
 .os-answered { color: var(--ok); background: var(--ok-soft); }
 .os-no_data { color: var(--amber); background: var(--amber-soft); }
 .os-ontology_gap { color: var(--red); background: var(--red-soft); }
+.os-query_limit { color: var(--text-2); background: var(--canvas); border: 1px solid var(--edge-strong); }

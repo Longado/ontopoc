@@ -39,7 +39,7 @@ export function attemptSummary(ontology) {
 export const typeSources = (t) => t.populated_from.map((p) => `${p.source}（${Object.values(p.identity).join(" + ")}）`).join("、");
 export const typeLabel = (ontology, key) => ontology.object_types.find((t) => t.key === key)?.label || key;
 
-export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块" };
+export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "查询写法表达不了（不是本体的问题）" };
 
 export function answerLines(item) {
   const a = item.answer;

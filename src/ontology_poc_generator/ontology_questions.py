@@ -8,7 +8,7 @@ import json
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
 from ontology_poc_generator.recognition import RecognitionError
 
-QUESTION_PROMPT_VERSION = 'company_questions.v2'
+QUESTION_PROMPT_VERSION = 'company_questions.v3'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 CATEGORY_LIMIT = 12         # attributes with at most this many distinct values are shown to the model with their values
 TOP_GROUPS = 10
@@ -24,7 +24,8 @@ Return ONLY a JSON object:
         "where": [{{"field": "<attribute path of the start type, exactly as listed>", "equals": "<exact value>"}}],
         "via": ["<relation key>", "..."],
         "group_by": "<attribute path of the type reached after via (or of the start type when via is empty), exactly as listed>" or null
-    }} or null
+    }} or null,
+    "missing": "ontology" | "query_language"   (only when query is null)
 }}]}}
 
 Meaning of a query: take the objects of `start` that match every `where`; walk the `via` relations in order (either
@@ -32,8 +33,10 @@ direction; each relation must touch the type reached so far); then
 - with group_by: count the start objects per value of that attribute on the objects reached;
 - without group_by: count the objects reached (or the start objects when via is empty).
 Use only type keys, relation keys and attribute paths listed in the ontology, and filter values from an attribute's
-`values` when it lists them. When a question needs something the ontology lacks, keep the question, set "query" to null and
-say in reasoning what is missing.
+`values` when it lists them. When a question cannot be written as one query, keep it, set "query" to null, say why in reasoning, and set
+"missing": "ontology" when the ontology lacks the objects, relations or attributes it needs, or "query_language" when the
+ontology has them but this query format cannot express it (for example grouping by two attributes at once); in that
+case also add the simpler questions that together answer it.
 Write {QUESTION_COUNT} questions; if `purpose` contains a question, answer that first. If `asked` is present, write
 exactly one item for that question and nothing else.
 '''
@@ -171,8 +174,11 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         if not isinstance(q, dict) or not isinstance(q.get('question'), str):
             continue
         query = q.get('query')
-        result = run_query(ontology, bundle, query, graph) if isinstance(query, dict) else \
-            {'status': 'ontology_gap', 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题')}
+        if isinstance(query, dict):
+            result = run_query(ontology, bundle, query, graph)
+        else:
+            status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
+            result = {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题')}
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
                              **result, **({'asked': True} if question else {})})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])
