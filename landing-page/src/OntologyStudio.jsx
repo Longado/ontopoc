@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_URL, ERROR_LABELS, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  typeLabel, typeSources, validateRun,
+  referenceCounts, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { OntologyGraph } from "./OntologyGraph.jsx";
 import "./PublicRecallReview.css";
@@ -84,6 +84,34 @@ function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef }) {
   </section>;
 }
 
+function DiffList({ title, items }) {
+  return items.length ? <div className="os-diff"><h3 className="os-sub">{title}（{items.length}）</h3><ul className="os-list">{items.map((x) => <li key={Array.isArray(x) ? x.join("/") : x}>{Array.isArray(x) ? (x[0] === x[1] ? x[0] : `${x[0]} ↔ ${x[1]}`) : x}</li>)}</ul></div> : null;
+}
+
+function ReferenceSection({ run, canCompare, onCompare, busy, error }) {
+  const ref = run.evaluation.reference;
+  const fileRef = useRef(null);
+  return <section className="pr-card">
+    <div className="pr-card-head"><h2>评测三：和标准答案比</h2>{ref && <span className="pr-muted">{referenceCounts(ref.diff)}</span>}</div>
+    <p className="pr-muted">上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按"读同一张表、用同样的身份字段"来对应对象，名字不同也能对上；关系两端都对上才算命中。</p>
+    <div className="os-upload">
+      <label htmlFor="os-reference">选择参考本体（.json）<input id="os-reference" ref={fileRef} type="file" accept=".json,application/json" disabled={!canCompare || busy}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onCompare(f); e.target.value = ""; }} /></label>
+      <p className="pr-muted">示例公司的参考本体：<a href="/data/demo-reference-ontology.json" target="_blank" rel="noreferrer">demo-reference-ontology.json</a></p>
+    </div>
+    {!canCompare && <p className="pr-note">要和自己的参考本体比，需要上传文件并开着本机建模服务；示例结果里已附一次比对。</p>}
+    {error && <p role="alert" className="pr-error">{error}</p>}
+    {ref && <>
+      <p className="pr-muted">参考本体：{ref.name}</p>
+      <DiffList title="参考里有、本体里没有的对象" items={ref.diff.types.only_reference} />
+      <DiffList title="本体里多出来的对象" items={ref.diff.types.only_ours} />
+      <DiffList title="对上的对象" items={ref.diff.types.matched} />
+      <DiffList title="参考里有、本体里没有的关系" items={ref.diff.relations.only_reference} />
+      <DiffList title="本体里多出来的关系" items={ref.diff.relations.only_ours} />
+    </>}
+  </section>;
+}
+
 function OntologyTab({ run, onAskOntology }) {
   const { ontology } = run;
   const attempts = attemptSummary(ontology);
@@ -97,6 +125,13 @@ function OntologyTab({ run, onAskOntology }) {
       <p className="pr-muted">"结构已通过核验"只说明本体里的字段、身份和关系都能在数据里对上；数据本身干不干净看"评测"。</p>
       <p>模型提交 {attempts.attempts} 次{attempts.rejected.length ? `，前面被代码退回的原因：${attempts.rejected.map(([code, n]) => `${ERROR_LABELS[code] || code} ${n} 处`).join("、")}` : "，第一次就通过"}。模型 {ontology.model}，提示词 {ontology.prompt_version}。</p>
     </section>
+    {run.previous && <section className="pr-card">
+      <h2>和上一次运行比</h2>
+      {stabilityLines(run.previous.diff).length
+        ? <><p className="pr-muted">同一份文件上一次运行（{run.previous.started_at.slice(0, 16).replace("T", " ")}）得到的本体和这次不一样。模型每次搭的本体会有出入，下面是差别；拿不准时用"评测三"和参考本体比。</p>
+          <ul className="os-list">{stabilityLines(run.previous.diff).map((l) => <li key={l}>{l}</li>)}</ul></>
+        : <p className="pr-muted">同一份文件上一次运行（{run.previous.started_at.slice(0, 16).replace("T", " ")}）得到的对象和关系与这次完全一致。</p>}
+    </section>}
     <section className="pr-card">
       <div className="pr-card-head"><h2>本体</h2>
         <div className="og-toggle" role="group" aria-label="显示方式">{[["graph", "关系图"], ["list", "列表"]].map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
@@ -170,7 +205,7 @@ function EvaluationTab({ run, questions }) {
         <tbody>{Object.entries(fit.fields).map(([name, f]) => <tr key={name}><td>{name}</td><td>{f.total}</td><td>{f.used}</td><td>{f.ignored}</td><td>{f.unaccounted}</td></tr>)}</tbody></table></div>
     </section>
     <QuestionsSection run={run} {...questions} />
-    <section className="pr-card"><p className="pr-muted">评测三（与标准答案比对）在开发中。</p></section>
+    <ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} />
   </>;
 }
 
@@ -183,6 +218,8 @@ export function OntologyStudio() {
   const [error, setError] = useState("");
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState("");
+  const [comparing, setComparing] = useState(false);
+  const [compareError, setCompareError] = useState("");
   const timer = useRef(null);
   const askRef = useRef(null);
 
@@ -216,6 +253,18 @@ export function OntologyStudio() {
     } catch (e) { setAskError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); }
     finally { setAsking(false); }
   }
+  async function compare(file) {
+    setComparing(true); setCompareError("");
+    try {
+      let reference;
+      try { reference = JSON.parse(await file.text()); } catch { throw new Error(`${file.name} 不是有效的 JSON`); }
+      const response = await fetch("/api/ontology/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ saved_as: run.saved_as, reference, reference_name: file.name }) });
+      const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
+      if (!response.ok) throw new Error(data.error || `服务返回 ${response.status}`);
+      const valid = validateRun(data); setRun(valid); saveLocal(valid);
+    } catch (e) { setCompareError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); }
+    finally { setComparing(false); }
+  }
   function askOntology() { setTab("evaluation"); requestAnimationFrame(() => askRef.current?.scrollIntoView({ block: "center" })); setTimeout(() => askRef.current?.focus(), 50); }
   function demo() { setError(""); readText(DEMO_URL).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }
   function download() {
@@ -238,7 +287,7 @@ export function OntologyStudio() {
     <div id="os-panel" role="tabpanel" aria-labelledby={`os-tab-${tab}`} className="pr-panel os-panel">
       {tab === "upload" && <UploadTab health={health} busy={busy} elapsed={elapsed} error={error} onBuild={build} onDemo={demo} />}
       {tab === "ontology" && run && <OntologyTab run={run} onAskOntology={askOntology} />}
-      {tab === "evaluation" && run && <EvaluationTab run={run} questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef }} />}
+      {tab === "evaluation" && run && <EvaluationTab run={run} questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef, onCompare: compare, comparing, compareError }} />}
     </div>
   </section>;
 }

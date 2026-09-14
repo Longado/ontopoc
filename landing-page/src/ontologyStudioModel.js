@@ -52,3 +52,18 @@ export function answerLines(item) {
 }
 
 export const questionSummary = (round) => (round ? `能回答 ${round.answered} / ${round.total} 题` : null);
+
+export function stabilityLines(diff) {
+  const lines = [];
+  const add = (label, items) => { if (items.length) lines.push(`${label}：${items.join("、")}`); };
+  add("对象少了", diff.types.only_reference);
+  add("对象多了", diff.types.only_ours);
+  add("关系少了", diff.relations.only_reference);
+  add("关系多了", diff.relations.only_ours);
+  return lines;
+}
+
+export function referenceCounts(diff) {
+  const { types, relations } = diff.counts;
+  return `对象命中 ${types.matched} / ${types.reference}，多出 ${types.ours - types.matched} 个；关系命中 ${relations.matched} / ${relations.reference}，多出 ${relations.ours - relations.matched} 条`;
+}
