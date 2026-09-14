@@ -64,7 +64,7 @@ export function OntologyGraph({ run, onAsk }) {
       <div className="og-bar"><span>本体 · {graph.nodes.length} 个对象 · {graph.edges.length} 条关系</span>
         <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
       <div className="og-scroll">
-        <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", minWidth: Math.min(graph.width, 560), maxWidth: graph.width }} role="group" aria-label="本体关系图">
+        <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", minWidth: Math.max(Math.min(graph.width, 560), Math.round(graph.width * 0.7)), maxWidth: graph.width }} role="group" aria-label="本体关系图">
           <defs><marker id="og-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" className="og-arrowhead" /></marker></defs>
           {graph.edges.map((e) => { const stats = edgeStats(run.evaluation.data_fit, e.key); const rel = ontology.relations.find((r) => r.key === e.key);
             return <g key={e.key} className={`og-edge${isSelected("edge", e.key) ? " is-selected" : ""}${stats && !stats.complete ? " is-partial" : ""}`}

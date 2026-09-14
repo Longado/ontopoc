@@ -140,7 +140,7 @@ function OntologyTab({ run, onAskOntology }) {
     <section className="pr-card">
       <div className="pr-card-head"><h2>本体</h2>
         <div className="og-toggle" role="group" aria-label="显示方式">{[["graph", "关系图"], ["list", "列表"]].map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
-      {view === "graph" && <OntologyGraph run={run} onAsk={onAskOntology} />}
+      {view === "graph" && <OntologyGraph run={run} onAsk={doc ? null : onAskOntology} />}
     </section>
     {view === "list" && <><section className="pr-card">
       <h2>对象（{ontology.object_types.length}）</h2>
