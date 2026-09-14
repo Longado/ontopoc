@@ -7,11 +7,17 @@ import re
 EXPORT_SCHEMA = 'public_review_export.v1'
 LABEL_SCHEMA = 'review_label.v1'
 HUMAN_MARKS = {'same': 'yes', 'different': 'no', 'unsure': None}
-HUMAN_LABELS = {'same': '同一缺陷', 'different': '不是', 'unsure': '说不清'}
+HUMAN_LABELS = {'same': '同一故障', 'different': '不是', 'unsure': '说不清'}
 # The iteration-1 baseline, kept fixed: a fire flag, or a fire word at the start of a word ("misfire" is not one).
 RULE_WORDS = re.compile(r'\b(?:fire|smoke|burn|flame|thermal|melt)', re.IGNORECASE)
+RULE_VERSION = 'fire_keywords.v1'
+_VIN_CHARS = '[A-HJ-NPR-Z0-9]'
 _UNCLEAN = (('本机路径', re.compile(r'/Users/|/home/|[A-Za-z]:\\')),
-            ('疑似密钥', re.compile(r'\bsk-[A-Za-z0-9_-]{16,}')))
+            ('疑似密钥', re.compile(r'\bsk-[A-Za-z0-9_-]{16,}')),
+            # an 11-character VIN prefix or a full 17-character VIN: letters and digits mixed, no I/O/Q
+            ('疑似车架号', re.compile(rf'\b(?=[A-HJ-NPR-Z0-9]*\d)(?=[A-HJ-NPR-Z0-9]*[A-HJ-NPR-Z]){_VIN_CHARS}{{11}}(?:{_VIN_CHARS}{{6}})?\b')),
+            ('邮箱', re.compile(r'[\w.+-]+@[\w-]+\.[\w.]+')),
+            ('电话', re.compile(r'(?<!\d)1[3-9]\d{9}(?!\d)|\+\d{1,3}[\s-]?\d[\d\s-]{6,}\d|\(\d{3}\)\s?\d{3}-\d{4}|(?<!\d)\d{3}-\d{3}-\d{4}(?!\d)')))
 
 
 class LabelError(ValueError):
@@ -61,7 +67,11 @@ def labels_from_export(export: dict, pack: dict, reviewer: str | None, imported_
             'bucket': candidates[key]['bucket'], 'human': r['human'], 'note': r.get('note') or '',
             'model_verdict': check.get('verdict'), 'model': check.get('model'), 'prompt_version': check.get('prompt_version'),
             'reviewer': who, 'reviewed_at': r.get('updated_at'), 'imported_at': imported_at,
-            'flags': list(signal.get('flags') or []), 'text': '\n'.join(f['value'] for f in signal.get('fields') or []),
+            'flags': list(signal.get('flags') or []),
+            # the complaint text stays in the page data; the public label store keeps only the rule's result
+            'rule_verdict': rule_verdict({'flags': signal.get('flags') or [],
+                                          'text': '\n'.join(f['value'] for f in signal.get('fields') or [])}),
+            'rule_version': RULE_VERSION,
         })
     return rows
 
@@ -85,7 +95,7 @@ def check_clean(rows: list[dict]) -> None:
         for field, value in row.items():
             for name, pattern in _UNCLEAN:
                 if isinstance(value, str) and pattern.search(value):
-                    raise LabelError(f'投诉 {row.get("complaint")} 的 {field} 含{name}，样本库是公开的，请改掉后重新下载')
+                    raise LabelError(f'投诉 {row.get("complaint")} 的 {field} 含{name}，样本库是公开的，请在页面上改掉后重新下载')
 
 
 def rule_verdict(label: dict) -> str:
@@ -97,9 +107,9 @@ def _model(label: dict) -> str:
 
 
 METHODS = {
-    'rule': rule_verdict,
+    'rule': lambda label: label['rule_verdict'],
     'model': _model,
-    'rule_then_model': lambda label: _model(label) if rule_verdict(label) == 'yes' else 'no',
+    'rule_then_model': lambda label: _model(label) if label['rule_verdict'] == 'yes' else 'no',
 }
 
 

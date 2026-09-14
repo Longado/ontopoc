@@ -11,16 +11,25 @@ from ontology_poc_generator.nhtsa_sources import PublicSourceError, bundle_conte
 from ontology_poc_generator.public_ontology import auto_build_ontology, propose_value_aliases
 from ontology_poc_generator.public_scope import ScopeError, check_candidates, scope
 
-DEFAULT_SNAPSHOT = Path(__file__).resolve().parents[1] / 'examples/nhtsa/chevrolet_bolt_2017_2023.json'
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--snapshot', type=Path, default=DEFAULT_SNAPSHOT)
-    parser.add_argument('--campaign', action='append', required=True, help='recall campaign number; repeatable')
-    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--snapshot', type=Path, required=True, help='examples/nhtsa/<snapshot>.json from fetch_nhtsa_snapshot.py')
+    parser.add_argument('--campaign', action='append', help='recall campaign number; repeatable. Omit to list them')
+    parser.add_argument('--output', type=Path)
     parser.add_argument('--model', default=os.environ.get('EIP_MODEL_NAME', 'deepseek-flash'))
     args = parser.parse_args(argv)
+    if not args.campaign:
+        try:
+            bundle = load_source_bundle(args.snapshot)
+        except PublicSourceError as exc:
+            print(f'input error: {exc}', file=sys.stderr)
+            return 2
+        campaigns = sorted({str(r.get('NHTSACampaignNumber')) for r in bundle['sources']['recalls']['records']})
+        print(f'{len(campaigns)} recall campaign(s) in {args.snapshot.name}; pass the ones to check with --campaign:')
+        print('\n'.join(campaigns))
+        return 0
+    if not args.output:
+        parser.error('--output is required with --campaign')
     key = os.environ.get('DEEPSEEK_API_KEY') or os.environ.get('EIP_MODEL_API_KEY')
     if not key:
         print('blocked: configure DEEPSEEK_API_KEY or EIP_MODEL_API_KEY locally', file=sys.stderr)
