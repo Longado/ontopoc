@@ -17,10 +17,13 @@ export function layoutGraph(ontology) {
   for (const k of keys) (columns[layer[k]] ||= []).push(k);
   const filled = columns.filter(Boolean);
   const tallest = Math.max(...filled.map((c) => c.length));
-  const height = PAD * 2 + tallest * NODE.h + (tallest - 1) * GAP.y;
+  const column = Object.fromEntries(filled.flatMap((c, ci) => c.map((k) => [k, ci])));
+  const arcs = edges.some((e) => column[e.to] - column[e.from] > 1);
+  const headroom = arcs ? Math.round((NODE.h + GAP.y) * 0.8) : 0;   // room for edges that arc over a column
+  const height = PAD * 2 + headroom + tallest * NODE.h + (tallest - 1) * GAP.y;
   const label = Object.fromEntries(ontology.object_types.map((t) => [t.key, t.label || t.key]));
   const nodes = filled.flatMap((column, ci) => {
-    const top = (height - (column.length * NODE.h + (column.length - 1) * GAP.y)) / 2;
+    const top = headroom + (height - headroom - (column.length * NODE.h + (column.length - 1) * GAP.y)) / 2;
     return column.map((k, i) => ({ key: k, label: label[k], x: PAD + ci * (NODE.w + GAP.x), y: top + i * (NODE.h + GAP.y), ...NODE }));
   });
   const at = Object.fromEntries(nodes.map((n) => [n.key, n]));
