@@ -32,6 +32,16 @@ class VinRescueTests(unittest.TestCase):
         rescued = next(n for n in b['cleaning'] if 'VIN prefix' in n['rule'])
         self.assertEqual((rescued['kept'], rescued['records']), (1, [2]))
 
+    def test_a_rescued_complaint_takes_the_model_name_its_vin_matched_and_the_rename_is_recorded(self):
+        b = self.fetch([
+            complaint(1, 'KONA ELECTRIC', 'KM8K33AG0LU'),
+            {'odiNumber': 2, 'vin': 'KM8K33AG5LU', 'products': [product('KONA'), product('ENERGY SAVER', make='MICHELIN', kind='Tire')]},
+        ])
+        rescued = b['sources']['complaints']['records'][1]
+        self.assertEqual([p['productModel'] for p in rescued['products']], ['KONA ELECTRIC', 'ENERGY SAVER'])
+        note = next(n for n in b['cleaning'] if 'VIN prefix' in n['rule'])
+        self.assertEqual(note['renamed'], [{'odiNumber': 2, 'from': 'KONA', 'to': 'KONA ELECTRIC'}])
+
     def test_nothing_to_rescue_is_still_recorded(self):
         b = self.fetch([complaint(1, 'KONA ELECTRIC', 'KM8K33AG0LU')])
         dropped = next(n for n in b['cleaning'] if 'requested models' in n['rule'])
