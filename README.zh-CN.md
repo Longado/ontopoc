@@ -27,7 +27,7 @@
 cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-打开 `http://127.0.0.1:5178`：默认场景"汽车召回范围研判（NHTSA）"读 `landing-page/public/data/` 下的静态数据（一份清单加每个数据集一个文件：雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric / Kona EV 2019–2021），不需要 Python 服务。左侧导航切换两个入口；召回范围研判分四个标签页：本体（确认本体与名称对应）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序）→ 结果（与模型的一致情况、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
+打开 `http://127.0.0.1:5178`：默认场景"汽车召回范围研判（NHTSA）"读 `landing-page/public/data/` 下的静态数据（一份清单加每个数据集一个文件：雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric / Kona EV 2019–2021），不需要 Python 服务。左侧导航切换两个入口；召回范围研判分四个标签页：本体（确认本体与名称对应）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序）→ 结果（与模型的一致情况、复核人、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
 
 `/landing` 是产品首页。第二个入口"事件 95876 核对清单"是 openFDA 食品召回的产品—批号核对，需要本机 Python 服务（见下）。
 
@@ -49,6 +49,10 @@ PYTHONPATH=src:. python scripts/build_public_review_pack.py --report examples/nh
 PYTHONPATH=src:. python scripts/fetch_nhtsa_snapshot.py \
   --make chevrolet --model "bolt ev" --years 2017-2023 --output examples/nhtsa/<名称>.json
 
+# 复核之后：把下载文件汇入样本库，再比较规则、模型、先规则再看模型（只列条数）
+PYTHONPATH=src:. python scripts/import_reviews.py --input <数据集>-review.json --reviewer <代号>
+PYTHONPATH=src:. python scripts/compare_judgments.py --labels examples/labels/<数据集>.jsonl
+
 # 事件 95876 本地核对服务与命令行
 PYTHONPATH=src python -m ontology_poc_generator.recall_server
 PYTHONPATH=src python -m ontology_poc_generator.recall_cli --product F-0369-2025/1 --lot X7547814
@@ -62,6 +66,7 @@ PYTHONPATH=src python -m ontology_poc_generator.recall_cli --product F-0369-2025
 | `src/ontology_poc_generator/public_ontology.py` | 字段目录、本体核验（17 种错误码）、对象图、自动搭建循环、名称对应 |
 | `src/ontology_poc_generator/public_scope.py` | 范围查询、召回前后、投诉原文判断与证据核对 |
 | `src/ontology_poc_generator/public_review_pack.py` | 页面数据：分组、系列、候选、盲区统计 |
+| `src/ontology_poc_generator/review_labels.py` | 复核下载文件汇入样本库；起火关键词规则；三种做法的条数对比 |
 | `src/ontology_poc_generator/model_gateway.py`、`recognition.py` | OpenAI 兼容网关与模型调用契约 |
 | `src/ontology_poc_generator/recall_*.py` | 事件 95876 核对（范围表、匹配、本地服务、DeepSeek 提取对照） |
 | `landing-page/src/PublicRecallReview.jsx`、`publicReviewModel.js` | 复核页面与其纯函数 |
