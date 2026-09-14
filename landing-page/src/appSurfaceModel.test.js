@@ -19,9 +19,10 @@ test("unknown paths fall back to the standalone workspace", () => {
   assert.equal(resolveAppSurface("/missing"), "demo");
 });
 
-test("standalone surface defaults to the public recall scenario and keeps the local lookup", async () => {
+test("standalone surface opens on upload-to-ontology and keeps both recall examples", async () => {
   const source = await readFile(new URL("./StandaloneDemo.jsx", import.meta.url), "utf8");
-  assert.match(source, /useState\("public"\)/);
+  assert.match(source, /useState\("studio"\)/);
+  assert.match(source, /<OntologyStudio \/>/);
   assert.match(source, /<PublicRecallReview language=\{language\} \/>/);
   assert.match(source, /<RecallWorkspace language=\{language\} onBusyChange=\{setRecallBusy\} \/>/);
   assert.match(source, /href="\/landing"/);
