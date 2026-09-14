@@ -1,0 +1,446 @@
+{
+ "schema": "company_ontology_run.v1",
+ "started_at": "2026-09-14T12:08:10+00:00",
+ "file": {
+  "name": "demo_company.xlsx",
+  "kind": "table",
+  "sha256": "d190f35f80242f73704dc9ba19a66892ba26cae7731357f70693e2824856b275"
+ },
+ "purpose": "描述这家公司的业务：有哪些对象（如客户、产品、订单）、它们之间怎样关联，让管理者的业务问题能在数据上回答。",
+ "sources": [
+  {
+   "name": "客户",
+   "rows": 31,
+   "fields": 5
+  },
+  {
+   "name": "产品",
+   "rows": 12,
+   "fields": 4
+  },
+  {
+   "name": "订单",
+   "rows": 160,
+   "fields": 7
+  },
+  {
+   "name": "售后工单",
+   "rows": 45,
+   "fields": 7
+  }
+ ],
+ "ontology": {
+  "schema": "company_ontology.v1",
+  "evidence_scope": "uploaded_file",
+  "status": "auto_built_verified",
+  "human_review": "pending",
+  "decision": "描述这家公司的业务：有哪些对象（如客户、产品、订单）、它们之间怎样关联，让管理者的业务问题能在数据上回答。",
+  "source_bundle_hash": "640d8f489123f99864b794a7b173b9a427354a676b0f07409e00e9ea363ba5c4",
+  "model": "deepseek-flash",
+  "prompt_version": "company_ontology_modeler.v1",
+  "object_types": [
+   {
+    "key": "customer",
+    "label": "客户",
+    "role": null,
+    "populated_from": [
+     {
+      "source": "客户",
+      "identity": {
+       "customer_id": "客户编号"
+      },
+      "transform": "none"
+     },
+     {
+      "source": "订单",
+      "identity": {
+       "customer_id": "客户编号"
+      },
+      "transform": "none"
+     }
+    ],
+    "attributes": [
+     {
+      "source": "客户",
+      "path": "客户名称"
+     },
+     {
+      "source": "客户",
+      "path": "行业"
+     },
+     {
+      "source": "客户",
+      "path": "城市"
+     },
+     {
+      "source": "客户",
+      "path": "客户等级"
+     }
+    ],
+    "rationale": "客户表描述下单的企业客户，客户编号唯一标识客户，订单表中的客户编号指向同一客户。",
+    "time_field": null
+   },
+   {
+    "key": "product",
+    "label": "产品",
+    "role": null,
+    "populated_from": [
+     {
+      "source": "产品",
+      "identity": {
+       "product_id": "产品编号"
+      },
+      "transform": "none"
+     },
+     {
+      "source": "订单",
+      "identity": {
+       "product_id": "产品编号"
+      },
+      "transform": "none"
+     }
+    ],
+    "attributes": [
+     {
+      "source": "产品",
+      "path": "产品名称"
+     },
+     {
+      "source": "产品",
+      "path": "品类"
+     },
+     {
+      "source": "产品",
+      "path": "单价"
+     }
+    ],
+    "rationale": "产品表描述可销售的电机、控制器等产品，产品编号唯一标识产品，订单表中的产品编号指向同一产品。",
+    "time_field": null
+   },
+   {
+    "key": "order",
+    "label": "订单",
+    "role": null,
+    "populated_from": [
+     {
+      "source": "订单",
+      "identity": {
+       "order_id": "订单号"
+      },
+      "transform": "none"
+     },
+     {
+      "source": "售后工单",
+      "identity": {
+       "order_id": "订单号"
+      },
+      "transform": "none"
+     }
+    ],
+    "attributes": [
+     {
+      "source": "订单",
+      "path": "数量"
+     },
+     {
+      "source": "订单",
+      "path": "金额"
+     },
+     {
+      "source": "订单",
+      "path": "下单日期"
+     },
+     {
+      "source": "订单",
+      "path": "订单状态"
+     }
+    ],
+    "rationale": "订单表描述一笔销售订单事件，订单号唯一标识订单，下单日期用于时间定位，售后工单中的订单号指向同一订单。",
+    "time_field": {
+     "source": "订单",
+     "path": "下单日期"
+    }
+   },
+   {
+    "key": "service_ticket",
+    "label": "售后工单",
+    "role": null,
+    "populated_from": [
+     {
+      "source": "售后工单",
+      "identity": {
+       "ticket_id": "工单号"
+      },
+      "transform": "none"
+     }
+    ],
+    "attributes": [
+     {
+      "source": "售后工单",
+      "path": "问题类型"
+     },
+     {
+      "source": "售后工单",
+      "path": "问题描述"
+     },
+     {
+      "source": "售后工单",
+      "path": "创建日期"
+     },
+     {
+      "source": "售后工单",
+      "path": "处理状态"
+     }
+    ],
+    "rationale": "售后工单表描述一次售后服务事件，工单号唯一标识工单，创建日期用于时间定位。",
+    "time_field": {
+     "source": "售后工单",
+     "path": "创建日期"
+    }
+   },
+   {
+    "key": "engineer",
+    "label": "售后工程师",
+    "role": null,
+    "populated_from": [
+     {
+      "source": "售后工单",
+      "identity": {
+       "engineer_name": "负责工程师"
+      },
+      "transform": "none"
+     }
+    ],
+    "attributes": [],
+    "rationale": "售后工单表中的负责工程师标识执行服务的售后工程师，是工单的责任人。",
+    "time_field": null
+   }
+  ],
+  "relations": [
+   {
+    "key": "order_customer",
+    "from": "order",
+    "to": "customer",
+    "source": "订单",
+    "meaning": "订单通过客户编号关联到客户，表示每笔订单由一个客户下达。"
+   },
+   {
+    "key": "order_product",
+    "from": "order",
+    "to": "product",
+    "source": "订单",
+    "meaning": "订单通过产品编号关联到产品，表示每笔订单针对一个产品。"
+   },
+   {
+    "key": "service_ticket_order",
+    "from": "service_ticket",
+    "to": "order",
+    "source": "售后工单",
+    "meaning": "售后工单通过订单号关联到订单，表示每个工单针对某一笔订单的售后问题。"
+   },
+   {
+    "key": "service_ticket_engineer",
+    "from": "service_ticket",
+    "to": "engineer",
+    "source": "售后工单",
+    "meaning": "售后工单通过负责工程师关联到售后工程师，表示每个工单由一位工程师负责。"
+   }
+  ],
+  "ignored_fields": [],
+  "data_gaps": [
+   "订单表只有单一产品编号和数量，无法表达一个订单包含多种产品的订单行明细，按产品拆分金额不可靠。",
+   "缺少订单的交付日期、发货日期，无法计算交付及时率或交付周期。",
+   "缺少产品的库存、供应商与采购价格，无法开展供应链与毛利分析。",
+   "售后工程师仅有姓名没有工号、技能和部门，存在重名与归属无法核实的风险。",
+   "售后工单缺少处理时长、解决方案与关闭时间，无法评估售后服务质量与响应时效。",
+   "问题描述为自由文本，问题类型粒度粗，难以按问题根因做定量归因分析。",
+   "缺少客户联系人、信用与回款信息，无法支持应收账款与客户信用管理。",
+   "售后工单只能通过订单间接关联产品，若订单信息缺失或错误则无法定位问题产品。",
+   "缺少客户等级、行业分类的判定规则说明，等级与行业维度的分析口径不明确。"
+  ],
+  "model_reasoning": "四张表各描述一类业务对象：客户表描述客户公司（客户编号唯一标识），产品表描述产品（产品编号唯一标识），订单表描述销售订单事件（订单号唯一标识，并通过客户编号、产品编号分别指向客户和产品），售后工单表描述售后服务事件（工单号唯一标识，并通过订单号指回订单，通过负责工程师指向售后工程师）。因此订单与售后工单是连接客户、产品、工程师的核心事件。为了让引用列与外键指向的对象解析为同一个对象，客户额外从订单表的『客户编号』填充（同一 logical_key customer_id），产品额外从订单表的『产品编号』填充（product_id），订单额外从售后工单表的『订单号』填充（order_id）。金额、数量、状态、日期等作为事件的属性，工程师姓名作为售后工单中的责任人工标识。",
+  "verification": {
+   "errors": [],
+   "metrics": {
+    "instances": {
+     "customer": 31,
+     "product": 12,
+     "order": 160,
+     "service_ticket": 45,
+     "engineer": 4
+    },
+    "shared_across_sources": {
+     "customer": 30,
+     "product": 12,
+     "order": 36,
+     "service_ticket": 0,
+     "engineer": 0
+    },
+    "links": {
+     "order_customer": 160,
+     "order_product": 160,
+     "service_ticket_order": 45,
+     "service_ticket_engineer": 45
+    }
+   }
+  },
+  "attempts": [
+   {
+    "errors": [
+     {
+      "code": "relation_source_mismatch",
+      "message": "relation order_customer: customer is not populated from '订单'"
+     },
+     {
+      "code": "relation_source_mismatch",
+      "message": "relation order_product: product is not populated from '订单'"
+     },
+     {
+      "code": "relation_source_mismatch",
+      "message": "relation service_ticket_order: order is not populated from '售后工单'"
+     }
+    ],
+    "model": "deepseek-flash"
+   },
+   {
+    "errors": [],
+    "model": "deepseek-flash"
+   }
+  ]
+ },
+ "evaluation": {
+  "data_fit": {
+   "fields": {
+    "客户": {
+     "total": 5,
+     "used": 5,
+     "ignored": 0,
+     "unaccounted": 0
+    },
+    "产品": {
+     "total": 4,
+     "used": 4,
+     "ignored": 0,
+     "unaccounted": 0
+    },
+    "订单": {
+     "total": 7,
+     "used": 7,
+     "ignored": 0,
+     "unaccounted": 0
+    },
+    "售后工单": {
+     "total": 7,
+     "used": 7,
+     "ignored": 0,
+     "unaccounted": 0
+    }
+   },
+   "identity_conflicts": [
+    {
+     "type": "customer",
+     "source": "客户",
+     "identity": "KH012",
+     "field": "城市",
+     "values": [
+      "合肥",
+      "苏州"
+     ]
+    }
+   ],
+   "missing_across_sources": [
+    {
+     "type": "customer",
+     "source": "客户",
+     "count": 1,
+     "examples": [
+      "KH099"
+     ]
+    }
+   ],
+   "relations": [
+    {
+     "key": "order_customer",
+     "source": "订单",
+     "rows": 160,
+     "linked_rows": 160
+    },
+    {
+     "key": "order_product",
+     "source": "订单",
+     "rows": 160,
+     "linked_rows": 160
+    },
+    {
+     "key": "service_ticket_order",
+     "source": "售后工单",
+     "rows": 45,
+     "linked_rows": 45
+    },
+    {
+     "key": "service_ticket_engineer",
+     "source": "售后工单",
+     "rows": 45,
+     "linked_rows": 45
+    }
+   ],
+   "orphans": [
+    {
+     "type": "customer",
+     "count": 0,
+     "examples": []
+    },
+    {
+     "type": "product",
+     "count": 0,
+     "examples": []
+    },
+    {
+     "type": "order",
+     "count": 0,
+     "examples": []
+    },
+    {
+     "type": "service_ticket",
+     "count": 0,
+     "examples": []
+    },
+    {
+     "type": "engineer",
+     "count": 0,
+     "examples": []
+    }
+   ],
+   "source_groups": [
+    [
+     "客户",
+     "产品",
+     "订单",
+     "售后工单"
+    ]
+   ],
+   "checks": [
+    {
+     "key": "fields_accounted",
+     "passed": true
+    },
+    {
+     "key": "identity_consistent",
+     "passed": false
+    },
+    {
+     "key": "relations_link",
+     "passed": true
+    },
+    {
+     "key": "references_resolve",
+     "passed": false
+    },
+    {
+     "key": "sources_connected",
+     "passed": true
+    }
+   ]
+  }
+ }
+}

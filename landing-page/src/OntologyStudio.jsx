@@ -1,0 +1,175 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  ACCEPT, CHECK_LABELS, DEMO_URL, RESULT_KEY, attemptSummary, checkSummary, typeLabel, typeSources, validateRun,
+} from "./ontologyStudioModel.js";
+import "./PublicRecallReview.css";
+import "./OntologyStudio.css";
+
+const TABS = [["upload", "上传"], ["ontology", "本体"], ["evaluation", "评测"]];
+const START = "PYTHONPATH=src python -m ontology_poc_generator.ontology_server";
+
+const readText = (url) => fetch(url, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`读取失败（${r.status}）`); return r.json(); });
+const saveLocal = (run) => { try { localStorage.setItem(RESULT_KEY, JSON.stringify(run)); } catch { /* storage unavailable: the result is only kept in this tab */ } };
+const loadLocal = () => { try { return validateRun(JSON.parse(localStorage.getItem(RESULT_KEY))); } catch { return null; } };
+
+function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] || "");
+    reader.onerror = () => reject(new Error("文件读取失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function UploadTab({ health, busy, elapsed, error, onBuild, onDemo }) {
+  const [file, setFile] = useState(null);
+  const [purpose, setPurpose] = useState("");
+  const offline = health === "offline";
+  return <>
+    <section className="pr-card">
+      <h2>上传一份业务数据表</h2>
+      <p className="pr-muted">支持 Excel（.xlsx，每个 sheet 当作一张表）和 CSV。模型只看表头和每列少量示例值，提出对象、身份字段和关系；代码拿全部行核验，出错退回重做，最多三次。文件和结果只留在本机。</p>
+      <div className="os-upload">
+        <label htmlFor="os-file">选择文件<input id="os-file" type="file" accept={ACCEPT} disabled={busy} onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
+        <label htmlFor="os-purpose">这份本体要帮谁回答什么问题（可不填）
+          <textarea id="os-purpose" rows={2} maxLength={300} disabled={busy} value={purpose} placeholder="例如：让售后负责人看清哪些客户、产品的售后问题最多" onChange={(e) => setPurpose(e.target.value)} />
+        </label>
+        <button className="pr-primary" disabled={!file || busy || offline || health === "no-key"} onClick={() => onBuild(file, purpose)}>{busy ? `生成中… ${elapsed} 秒` : "生成本体并评测"}</button>
+      </div>
+      {busy && <p className="pr-muted" role="status">模型提出本体、代码核验、必要时退回重做，通常要 1–3 分钟。</p>}
+      {error && <p role="alert" className="pr-error">{error}</p>}
+      {offline && <div className="pr-note"><p>本机的建模服务没有启动。在仓库根目录运行（需要本机 DeepSeek 凭据）：</p><code className="os-cmd">{START}</code></div>}
+      {health === "no-key" && <p className="pr-note">建模服务已启动，但没有模型凭据：设置 DEEPSEEK_API_KEY 后重启服务。</p>}
+    </section>
+    <section className="pr-card">
+      <h2>先看一个示例</h2>
+      <p className="pr-muted">一家合成的"示例制造公司"：客户、产品、订单、售后工单四张表（Excel），数据全部是编造的，里面故意放了两个数据问题。结果是用 DeepSeek 实际跑出来的。</p>
+      <button className="pr-link" onClick={onDemo} disabled={busy}>打开示例结果</button>
+    </section>
+  </>;
+}
+
+function OntologyTab({ run }) {
+  const { ontology } = run;
+  const attempts = attemptSummary(ontology);
+  return <>
+    <section className="pr-card">
+      <div className="pr-card-head"><h2>{run.file.name}</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{attempts.passed ? "已通过代码核验" : "未通过核验"}</span></div>
+      <p className="pr-muted">{run.sources.map((s) => `${s.name} ${s.rows} 行 ${s.fields} 列`).join(" · ")}</p>
+      <p>模型提交 {attempts.attempts} 次{attempts.rejected.length ? `，前面被代码退回的原因：${attempts.rejected.map(([code, n]) => `${code} ×${n}`).join("、")}` : "，第一次就通过"}。模型 {ontology.model}，提示词 {ontology.prompt_version}。</p>
+    </section>
+    <section className="pr-card">
+      <h2>对象（{ontology.object_types.length}）</h2>
+      <div className="pr-types">{ontology.object_types.map((t) => <article key={t.key} className="pr-type">
+        <span className="pr-tag">{t.key}</span>
+        <h3>{t.label || t.key}</h3>
+        <p>来自：{typeSources(t)}</p>
+        {t.attributes.length > 0 && <p>属性：{t.attributes.map((a) => a.path).join("、")}</p>}
+        {t.time_field && <p>时间：{t.time_field.path}</p>}
+        {t.rationale && <small>{t.rationale}</small>}
+      </article>)}</div>
+    </section>
+    <section className="pr-card">
+      <h2>关系（{ontology.relations.length}）</h2>
+      {ontology.relations.length ? <ul className="pr-rows">{ontology.relations.map((r) => <li key={r.key}>
+        <b>{typeLabel(ontology, r.from)} → {typeLabel(ontology, r.to)}</b><span>{r.meaning}</span><code>{r.source}</code></li>)}</ul>
+        : <p className="pr-muted">没有关系。</p>}
+    </section>
+    <section className="pr-card">
+      <h2>模型指出的数据缺口（{ontology.data_gaps.length}）</h2>
+      {ontology.data_gaps.length ? <ul className="os-list">{ontology.data_gaps.map((g) => <li key={g}>{g}</li>)}</ul> : <p className="pr-muted">没有。</p>}
+      {ontology.ignored_fields.length > 0 && <details><summary>标为不用的字段（{ontology.ignored_fields.length}）</summary><ul>{ontology.ignored_fields.map((f) => <li key={`${f.source}.${f.path}`}>{f.source}.{f.path}：{f.reason}</li>)}</ul></details>}
+    </section>
+  </>;
+}
+
+function EvaluationTab({ run }) {
+  const fit = run.evaluation.data_fit;
+  const { ontology } = run;
+  if (!fit) return <section className="pr-card"><p className="pr-error">本体没有通过核验，无法评测。先看"本体"里被退回的原因。</p></section>;
+  const summary = checkSummary(fit);
+  return <>
+    <section className="pr-card">
+      <div className="pr-card-head"><h2>评测一：本体和数据对不对得上</h2><span className="pr-muted">通过 {summary.passed} / {summary.total} 项</span></div>
+      <p className="pr-muted">全部由代码拿上传的每一行计算，不经过模型。</p>
+      <ul className="os-checks">{fit.checks.map((c) => <li key={c.key}><span className={`os-pill ${c.passed ? "os-pass" : "os-fail"}`}>{c.passed ? "通过" : "不通过"}</span>{CHECK_LABELS[c.key] || c.key}</li>)}</ul>
+    </section>
+    {fit.identity_conflicts.length > 0 && <section className="pr-card">
+      <h2>同一对象信息打架（{fit.identity_conflicts.length}）</h2>
+      <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>对象</th><th>表</th><th>身份</th><th>字段</th><th>不同的值</th></tr></thead>
+        <tbody>{fit.identity_conflicts.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td>{c.values.join(" / ")}</td></tr>)}</tbody></table></div>
+    </section>}
+    {fit.missing_across_sources.length > 0 && <section className="pr-card">
+      <h2>引用了、但在它所属的表里找不到</h2>
+      <ul className="pr-rows">{fit.missing_across_sources.map((m) => <li key={`${m.type}/${m.source}`}><b>{typeLabel(ontology, m.type)}：{m.count} 个不在"{m.source}"表里</b><span>例如 {m.examples.join("、")}</span></li>)}</ul>
+    </section>}
+    <section className="pr-card">
+      <h2>关系连通</h2>
+      <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>关系</th><th>所在表</th><th>连上的行 / 总行</th></tr></thead>
+        <tbody>{fit.relations.map((r) => { const rel = ontology.relations.find((x) => x.key === r.key);
+          return <tr key={r.key}><td>{rel ? `${typeLabel(ontology, rel.from)} → ${typeLabel(ontology, rel.to)}` : r.key}</td><td>{r.source}</td><td>{r.linked_rows} / {r.rows}</td></tr>; })}</tbody></table></div>
+      <p className="pr-muted">孤立对象（一条关系都没有）：{fit.orphans.map((o) => `${typeLabel(ontology, o.type)} ${o.count}`).join("、") || "无"}。表的连通：{fit.source_groups.map((g) => g.join(" + ")).join(" ｜ ")}。</p>
+    </section>
+    <section className="pr-card">
+      <h2>字段去处</h2>
+      <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>表</th><th>列数</th><th>用上</th><th>写明不用</th><th>没有去处</th></tr></thead>
+        <tbody>{Object.entries(fit.fields).map(([name, f]) => <tr key={name}><td>{name}</td><td>{f.total}</td><td>{f.used}</td><td>{f.ignored}</td><td>{f.unaccounted}</td></tr>)}</tbody></table></div>
+    </section>
+    <section className="pr-card"><p className="pr-muted">评测二（能不能回答业务问题）和评测三（与标准答案比对）在开发中。</p></section>
+  </>;
+}
+
+export function OntologyStudio() {
+  const [tab, setTab] = useState("upload");
+  const [run, setRun] = useState(() => loadLocal());
+  const [health, setHealth] = useState("checking");
+  const [busy, setBusy] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [error, setError] = useState("");
+  const timer = useRef(null);
+
+  useEffect(() => {
+    fetch("/api/ontology/health", { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((h) => setHealth(h.model_ready ? "ready" : "no-key")).catch(() => setHealth("offline"));
+  }, []);
+  useEffect(() => () => clearInterval(timer.current), []);
+
+  function show(result) { const valid = validateRun(result); setRun(valid); saveLocal(valid); setTab("ontology"); }
+  async function build(file, purpose) {
+    setBusy(true); setError(""); setElapsed(0);
+    const started = Date.now();
+    timer.current = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000);
+    try {
+      const body = JSON.stringify({ filename: file.name, content_base64: await toBase64(file), purpose });
+      const response = await fetch("/api/ontology/build", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
+      if (!response.ok) throw new Error(data.error || `服务返回 ${response.status}`);
+      show(data);
+    } catch (e) { setError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); }
+    finally { clearInterval(timer.current); setBusy(false); }
+  }
+  function demo() { setError(""); readText(DEMO_URL).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }
+  function download() {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(run, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a"); link.href = url; link.download = `${run.file.name.replace(/\.[^.]+$/, "")}-ontology.json`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  const fitSummary = run && checkSummary(run.evaluation.data_fit);
+  return <section className="pr-page" aria-labelledby="os-title">
+    <header className="pr-head">
+      <div className="pr-head-line">
+        <h1 id="os-title">上传建本体</h1>
+        {run && <span className="pr-meta">当前：{run.file.name} · {run.ontology.object_types.length} 个对象 · {run.ontology.relations.length} 条关系{fitSummary ? ` · 评测一通过 ${fitSummary.passed}/${fitSummary.total}` : ""}</span>}
+        {run && <button className="pr-link" onClick={download}>下载结果</button>}
+      </div>
+      <nav className="pr-tabs" role="tablist" aria-label="步骤">{TABS.map(([key, label]) => <button key={key} type="button" role="tab" id={`os-tab-${key}`}
+        aria-selected={tab === key} aria-controls="os-panel" disabled={key !== "upload" && !run} onClick={() => setTab(key)}>{label}</button>)}</nav>
+    </header>
+    <div id="os-panel" role="tabpanel" aria-labelledby={`os-tab-${tab}`} className="pr-panel os-panel">
+      {tab === "upload" && <UploadTab health={health} busy={busy} elapsed={elapsed} error={error} onBuild={build} onDemo={demo} />}
+      {tab === "ontology" && run && <OntologyTab run={run} />}
+      {tab === "evaluation" && run && <EvaluationTab run={run} />}
+    </div>
+  </section>;
+}
