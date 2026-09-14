@@ -16,10 +16,10 @@
    "label": "HYUNDAI KONA ELECTRIC / KONA EV · 2019–2021",
    "pack": "nhtsa-hyundai-kona-electric-kona-ev-2019-2021.json",
    "recalls": 4,
-   "complaints": 107,
-   "retrieved": "2026-09-13",
-   "report": "examples/nhtsa/runs/2026-09-13-kona-deepseek-flash-v1.json",
-   "snapshot": "examples/nhtsa/hyundai_kona_electric_kona_ev_2019_2021.json"
+   "complaints": 112,
+   "retrieved": "2026-09-14",
+   "report": "examples/nhtsa/runs/2026-09-14-kona-deepseek-flash-v2.json",
+   "snapshot": "examples/nhtsa/hyundai_kona_electric_kona_ev_2019_2021_2026-09-14.json"
   }
  ]
 }

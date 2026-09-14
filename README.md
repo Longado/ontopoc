@@ -15,7 +15,7 @@ After a recall is issued, which similar complaints fall outside its scope? OntoP
 4. The model gives a first verdict on each complaint text; "same failure" must quote the complaint, and code checks the quote is really there.
 5. A quality engineer reviews each candidate on a static page. The reviews are the labels that will calibrate step 4.
 
-Verified on Chevrolet Bolt EV / EUV 2017–2023 (13 recalls, 679 complaints) and Hyundai Kona Electric / Kona EV 2019–2021 (4 recalls, 107 complaints), both fetched 2026-09-13. No customer data, no VIN-level scope, no deployment yet.
+Verified on Chevrolet Bolt EV / EUV 2017–2023 (13 recalls, 679 complaints, fetched 2026-09-13) and Hyundai Kona Electric / Kona EV 2019–2021 (4 recalls, 112 complaints, fetched 2026-09-14). No customer data, no VIN-level scope, no deployment yet.
 
 Data comes from the NHTSA public API. OntoPoc is not affiliated with NHTSA, General Motors or Hyundai; its candidates and first-pass verdicts are not official findings or defect determinations.
 
