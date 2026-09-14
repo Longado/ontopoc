@@ -1,7 +1,10 @@
 """A company ontology from uploaded business tables: same propose-verify-retry loop, no recall roles."""
 from __future__ import annotations
 
-from ontology_poc_generator.public_ontology import Profile, auto_build_ontology, verify_proposal
+from datetime import datetime, timezone
+
+from ontology_poc_generator.ontology_eval import data_fit
+from ontology_poc_generator.public_ontology import Profile, auto_build_ontology, field_paths, verify_proposal
 
 COMPANY_PROMPT_VERSION = 'company_ontology_modeler.v1'
 COMPANY_SYSTEM_PROMPT = '''You design the ontology of one company from the business tables described by the user:
@@ -61,3 +64,21 @@ def verify_company_proposal(proposal: dict, bundle: dict) -> dict:
 
 def build_company_ontology(bundle: dict, gateway) -> dict:
     return auto_build_ontology(bundle, gateway, COMPANY_PROFILE)
+
+
+def build_and_evaluate(bundle: dict, gateway) -> dict:
+    """One upload: build the ontology, then evaluate it against the same data. The result carries counts and a few
+    example identities and values as evidence, never whole rows."""
+    started_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    ontology = build_company_ontology(bundle, gateway)
+    verified = ontology['status'] == 'auto_built_verified'
+    return {
+        'schema': 'company_ontology_run.v1',
+        'started_at': started_at,
+        'file': bundle['file'],
+        'purpose': bundle['decision'],
+        'sources': [{'name': name, 'rows': len(s['records']), 'fields': len(field_paths(s['records']))}
+                    for name, s in bundle['sources'].items()],
+        'ontology': ontology,
+        'evaluation': {'data_fit': data_fit(ontology, bundle) if verified else None},
+    }
