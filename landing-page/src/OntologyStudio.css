@@ -27,3 +27,4 @@
 .os-ontology_gap { color: var(--red); background: var(--red-soft); }
 .os-query_limit { color: var(--text-2); background: var(--canvas); border: 1px solid var(--edge-strong); }
 .os-diff { margin-top: 4px; }
+.os-demos { display: flex; flex-wrap: wrap; gap: 8px 20px; }

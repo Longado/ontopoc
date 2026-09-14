@@ -25,7 +25,8 @@ function Inspector({ run, selected, findings }) {
       <span className="og-kicker">关系 · {r.key}</span>
       <h3>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</h3>
       <p>{r.meaning}</p>
-      <dl className="og-kv"><div><dt>所在表</dt><dd>{r.source}</dd></div>
+      {r.evidence?.length > 0 && <div className="og-quotes">{r.evidence.map((q, i) => <blockquote key={i}>原文：{q}</blockquote>)}</div>}
+      <dl className="og-kv"><div><dt>{r.evidence ? "出自" : "所在表"}</dt><dd>{r.source}</dd></div>
         {stats && <div><dt>连上的行</dt><dd className={stats.complete ? "" : "og-warn"}>{stats.linked_rows} / {stats.rows}{stats.complete ? "" : "（有行没连上）"}</dd></div>}</dl>
     </div>;
   }
@@ -36,14 +37,16 @@ function Inspector({ run, selected, findings }) {
     <span className="og-kicker">对象 · {t.key}</span>
     <h3>{t.label || t.key}</h3>
     {t.rationale && <p>{t.rationale}</p>}
+    {t.definition && <p>{t.definition}</p>}
+    {t.evidence?.length > 0 && <div className="og-quotes">{t.evidence.map((q, i) => <blockquote key={i}>原文：{q}</blockquote>)}</div>}
     <dl className="og-kv">
-      <div><dt>来自</dt><dd>{typeSources(t)}</dd></div>
+      {t.populated_from.length > 0 && <div><dt>来自</dt><dd>{typeSources(t)}</dd></div>}
       {t.attributes.length > 0 && <div><dt>属性</dt><dd>{t.attributes.map((a) => a.path).join("、")}</dd></div>}
       {t.time_field && <div><dt>时间</dt><dd>{t.time_field.path}</dd></div>}
       {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]} 个{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key]} 个在多张表里出现` : ""}</dd></div>}
     </dl>
-    <h4>数据检查</h4>
-    {own.length ? <ul className="og-findings">{own.map((f, i) => <li key={i} className={f.severity === "note" ? "og-note" : ""}>{f.severity === "note" ? "提示：" : ""}{FINDING[f.kind](f.detail)}</li>)}</ul> : <p className="og-ok">这个对象没有发现问题。</p>}
+    {fit && <h4>数据检查</h4>}
+    {!fit ? null : own.length ? <ul className="og-findings">{own.map((f, i) => <li key={i} className={f.severity === "note" ? "og-note" : ""}>{f.severity === "note" ? "提示：" : ""}{FINDING[f.kind](f.detail)}</li>)}</ul> : <p className="og-ok">这个对象没有发现问题。</p>}
   </div>;
 }
 
@@ -59,7 +62,7 @@ export function OntologyGraph({ run, onAsk }) {
   return <div className="og-wrap">
     <div className="og-canvas">
       <div className="og-bar"><span>本体 · {graph.nodes.length} 个对象 · {graph.edges.length} 条关系</span>
-        <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : "未评测"}</span></div>
+        <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
       <div className="og-scroll">
         <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", minWidth: Math.min(graph.width, 560), maxWidth: graph.width }} role="group" aria-label="本体关系图">
           <defs><marker id="og-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" className="og-arrowhead" /></marker></defs>

@@ -43,3 +43,5 @@
 }
 .og-ask { margin-top: auto; padding: 12px 16px; border: 0; border-top: 1px solid var(--edge); background: var(--blue); color: #fff; font-weight: 700; text-align: left; cursor: pointer; }
 .og-ask:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.og-quotes { display: grid; gap: 6px; }
+.og-quotes blockquote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--blue); background: var(--canvas); font-size: 12.5px; color: var(--ink); }

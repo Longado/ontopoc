@@ -1,5 +1,6 @@
-export const ACCEPT = ".csv,.xlsx";
+export const ACCEPT = ".csv,.xlsx,.md,.txt,.docx,.pdf";
 export const DEMO_URL = "/data/demo-company-result.json";
+export const DEMO_DOC_URL = "/data/demo-document-result.json";
 export const RESULT_KEY = "ontopoc.studio.last-result";
 export const CHECK_LABELS = {
   fields_accounted: "每个字段都有去处（用上或写明不用）",
@@ -8,7 +9,12 @@ export const CHECK_LABELS = {
   relations_link: "每条关系都在数据里真的连上了",
   references_resolve: "引用的对象都能在它所属的表里找到",
   sources_connected: "所有表通过共同的对象连成一片",
+  quotes_verified: "模型提出的每一项都能在原文里找到引用",
+  no_isolated_concepts: "每个概念至少和一个别的概念有关系",
 };
+
+export const isDocument = (run) => run.file?.kind === "document";
+export const sourceLine = (run) => run.sources.map((s) => (s.paragraphs !== undefined ? `${s.name} ${s.paragraphs} 段 ${s.chars} 字` : `${s.name} ${s.rows} 行 ${s.fields} 列`)).join(" · ");
 
 export const ERROR_LABELS = {
   field_unaccounted: "有字段没有去处", relation_source_mismatch: "关系写错了所在的表", relation_zero_links: "关系在数据里一条都连不上",

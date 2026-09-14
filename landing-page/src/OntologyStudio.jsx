@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ACCEPT, CHECK_LABELS, DEMO_URL, ERROR_LABELS, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
+  ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
   referenceCounts, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { OntologyGraph } from "./OntologyGraph.jsx";
@@ -23,14 +23,15 @@ function toBase64(file) {
   });
 }
 
-function UploadTab({ health, busy, elapsed, error, onBuild, onDemo }) {
+function UploadTab({ health, busy, elapsed, error, onBuild, onDemo, onDocDemo }) {
   const [file, setFile] = useState(null);
   const [purpose, setPurpose] = useState("");
   const offline = health === "offline";
   return <>
     <section className="pr-card">
-      <h2>上传一份业务数据表</h2>
-      <p className="pr-muted">支持 Excel（.xlsx，每个 sheet 当作一张表）和 CSV。模型只看表头和每列少量示例值，提出对象、身份字段和关系；代码拿全部行核验，出错退回重做，最多三次。文件和结果只留在本机。</p>
+      <h2>上传一份业务数据表或文档</h2>
+      <p className="pr-muted">数据表：Excel（.xlsx，每个 sheet 当作一张表）或 CSV。模型只看表头和每列少量示例值，提出对象、身份字段和关系；代码拿全部行核验，出错退回重做，最多三次。</p>
+      <p className="pr-muted">文档：Markdown、文本、Word（.docx）或 PDF。模型按段落提出概念和关系，每一项都要引用原文；代码核对引用确实在原文里，找不到的剔除并列出。文件和结果只留在本机。</p>
       <div className="os-upload">
         <label htmlFor="os-file">选择文件<input id="os-file" type="file" accept={ACCEPT} disabled={busy} onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
         <label htmlFor="os-purpose">这份本体要帮谁回答什么问题（可不填）
@@ -46,7 +47,8 @@ function UploadTab({ health, busy, elapsed, error, onBuild, onDemo }) {
     <section className="pr-card">
       <h2>先看一个示例</h2>
       <p className="pr-muted">一家合成的"示例制造公司"：客户、产品、订单、售后工单四张表（Excel），数据全部是编造的，里面故意放了两个数据问题。结果是用 DeepSeek 实际跑出来的。</p>
-      <button className="pr-link" onClick={onDemo} disabled={busy}>打开示例结果</button>
+      <div className="os-demos"><button className="pr-link" onClick={onDemo} disabled={busy}>打开示例结果（数据表）</button>
+        <button className="pr-link" onClick={onDocDemo} disabled={busy}>打开示例结果（售后服务流程文档）</button></div>
     </section>
   </>;
 }
@@ -114,16 +116,19 @@ function ReferenceSection({ run, canCompare, onCompare, busy, error }) {
 
 function OntologyTab({ run, onAskOntology }) {
   const { ontology } = run;
+  const doc = isDocument(run);
   const attempts = attemptSummary(ontology);
   const [view, setView] = useState("graph");
   return <>
     <section className="pr-card">
-      <div className="pr-card-head"><h2>{run.file.name}</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{attempts.passed ? "本体结构已通过核验" : "本体结构未通过核验"}</span></div>
-      <p className="pr-muted">{run.sources.map((s) => `${s.name} ${s.rows} 行 ${s.fields} 列`).join(" · ")}</p>
+      <div className="pr-card-head"><h2>{run.file.name}</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{doc ? (attempts.passed ? "每一项都有原文引用" : "没有提取出可核实的概念") : attempts.passed ? "本体结构已通过核验" : "本体结构未通过核验"}</span></div>
+      <p className="pr-muted">{sourceLine(run)}</p>
       {run.sources.some((s) => s.skipped_rows) && <p className="pr-muted">表头上方的标题行已跳过：{run.sources.filter((s) => s.skipped_rows).map((s) => `${s.name}（${s.skipped_rows.join("；")}）`).join("、")}</p>}
       <p>建模目的：{run.purpose}<span className="pr-muted">（这句话作为建模目的交给了模型）</span></p>
-      <p className="pr-muted">"结构已通过核验"只说明本体里的字段、身份和关系都能在数据里对上；数据本身干不干净看"评测"。</p>
-      <p>模型提交 {attempts.attempts} 次{attempts.rejected.length ? `，前面被代码退回的原因：${attempts.rejected.map(([code, n]) => `${ERROR_LABELS[code] || code} ${n} 处`).join("、")}` : "，第一次就通过"}。模型 {ontology.model}，提示词 {ontology.prompt_version}。</p>
+      {!doc && <p className="pr-muted">"结构已通过核验"只说明本体里的字段、身份和关系都能在数据里对上；数据本身干不干净看"评测"。</p>}
+      {doc ? <p>文档分 {ontology.chunks_processed} 段交给模型{ontology.chunks_total > ontology.chunks_processed ? `（共 ${ontology.chunks_total} 段，文档太长，后面的没有处理）` : ""}；被剔除 {ontology.rejected.length} 项（引用在原文里找不到，或两端不是已核实的概念）。模型 {ontology.model}，提示词 {ontology.prompt_version}。</p>
+      : <p>模型提交 {attempts.attempts} 次{attempts.rejected.length ? `，前面被代码退回的原因：${attempts.rejected.map(([code, n]) => `${ERROR_LABELS[code] || code} ${n} 处`).join("、")}` : "，第一次就通过"}。模型 {ontology.model}，提示词 {ontology.prompt_version}。</p>}
+      {doc && ontology.rejected.length > 0 && <details><summary>被剔除的项（{ontology.rejected.length}）</summary><ul>{ontology.rejected.map((r, i) => <li key={i}>{r.item}：{r.reason}</li>)}</ul></details>}
     </section>
     {run.previous && <section className="pr-card">
       <h2>和上一次运行比</h2>
@@ -162,7 +167,24 @@ function OntologyTab({ run, onAskOntology }) {
   </>;
 }
 
+function DocumentFit({ run, questions }) {
+  const fit = run.evaluation.document_fit;
+  if (!fit) return <section className="pr-card"><p className="pr-error">没有提取出可核实的概念，无法评测。先看"本体"里被剔除的原因。</p></section>;
+  const summary = checkSummary(fit);
+  return <>
+    <section className="pr-card">
+      <div className="pr-card-head"><h2>评测一：文档检查（每一项都能回到原文吗）</h2><span className="pr-muted">通过 {summary.passed} / {summary.total} 项</span></div>
+      <p className="pr-muted">由代码逐项核对模型给的引用是否真在原文里，不经过模型。模型共提出 {fit.proposed} 项，保留 {fit.kept} 项，剔除 {fit.rejected} 项。{fit.cut ? "文档太长，只处理了前面的部分。" : ""}</p>
+      <ul className="os-checks">{fit.checks.map((c) => <li key={c.key}><span className={`os-pill ${c.passed ? "os-pass" : "os-fail"}`}>{c.passed ? "通过" : "不通过"}</span>{CHECK_LABELS[c.key] || c.key}</li>)}</ul>
+      {fit.isolated.length > 0 && <p className="pr-muted">没有任何关系的概念：{fit.isolated.join("、")}</p>}
+    </section>
+    <section className="pr-card"><h2>评测二：能不能回答业务问题</h2><p className="pr-muted">文档没有数据行可以查询，评测二只对数据表可用。把同一业务的数据表也上传，就能用数据回答问题。</p></section>
+    <ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} />
+  </>;
+}
+
 function EvaluationTab({ run, questions }) {
+  if (isDocument(run)) return <DocumentFit run={run} questions={questions} />;
   const fit = run.evaluation.data_fit;
   const { ontology } = run;
   if (!fit) return <section className="pr-card"><p className="pr-error">本体没有通过核验，无法评测。先看"本体"里被退回的原因。</p></section>;
@@ -266,26 +288,26 @@ export function OntologyStudio() {
     finally { setComparing(false); }
   }
   function askOntology() { setTab("evaluation"); requestAnimationFrame(() => askRef.current?.scrollIntoView({ block: "center" })); setTimeout(() => askRef.current?.focus(), 50); }
-  function demo() { setError(""); readText(DEMO_URL).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }
+  function demo(url = DEMO_URL) { setError(""); readText(url).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }
   function download() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(run, null, 2)], { type: "application/json" }));
     const link = document.createElement("a"); link.href = url; link.download = `${run.file.name.replace(/\.[^.]+$/, "")}-ontology.json`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  const fitSummary = run && checkSummary(run.evaluation.data_fit);
+  const fitSummary = run && checkSummary(run.evaluation.data_fit || run.evaluation.document_fit);
   return <section className="pr-page" aria-labelledby="os-title">
     <header className="pr-head">
       <div className="pr-head-line">
         <h1 id="os-title">上传建本体</h1>
-        {run && <span className="pr-meta">当前：{run.file.name} · {run.ontology.object_types.length} 个对象 · {run.ontology.relations.length} 条关系{fitSummary ? ` · 数据检查通过 ${fitSummary.passed}/${fitSummary.total}` : ""}</span>}
+        {run && <span className="pr-meta">当前：{run.file.name} · {run.ontology.object_types.length} 个对象 · {run.ontology.relations.length} 条关系{fitSummary ? ` · ${isDocument(run) ? "文档" : "数据"}检查通过 ${fitSummary.passed}/${fitSummary.total}` : ""}</span>}
         {run && <button className="pr-link" onClick={download}>下载结果</button>}
       </div>
       <nav className="pr-tabs" role="tablist" aria-label="步骤">{TABS.map(([key, label]) => <button key={key} type="button" role="tab" id={`os-tab-${key}`}
         aria-selected={tab === key} aria-controls="os-panel" disabled={key !== "upload" && !run} onClick={() => setTab(key)}>{label}</button>)}</nav>
     </header>
     <div id="os-panel" role="tabpanel" aria-labelledby={`os-tab-${tab}`} className="pr-panel os-panel">
-      {tab === "upload" && <UploadTab health={health} busy={busy} elapsed={elapsed} error={error} onBuild={build} onDemo={demo} />}
+      {tab === "upload" && <UploadTab health={health} busy={busy} elapsed={elapsed} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "ontology" && run && <OntologyTab run={run} onAskOntology={askOntology} />}
       {tab === "evaluation" && run && <EvaluationTab run={run} questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef, onCompare: compare, comparing, compareError }} />}
     </div>
