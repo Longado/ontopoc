@@ -17,8 +17,8 @@ export function layoutGraph(ontology) {
   for (const k of keys) (columns[layer[k]] ||= []).push(k);
   const filled = columns.filter(Boolean);
   const tallest = Math.max(...filled.map((c) => c.length));
-  const column = Object.fromEntries(filled.flatMap((c, ci) => c.map((k) => [k, ci])));
-  const arcs = edges.some((e) => column[e.to] - column[e.from] > 1);
+  const colOf = Object.fromEntries(filled.flatMap((c, ci) => c.map((k) => [k, ci])));
+  const arcs = edges.some((e) => colOf[e.to] - colOf[e.from] > 1);
   const headroom = arcs ? Math.round((NODE.h + GAP.y) * 0.8) : 0;   // room for edges that arc over a column
   const height = PAD * 2 + headroom + tallest * NODE.h + (tallest - 1) * GAP.y;
   const label = Object.fromEntries(ontology.object_types.map((t) => [t.key, t.label || t.key]));
