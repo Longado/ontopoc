@@ -27,7 +27,7 @@
 cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-打开 `http://127.0.0.1:5178`：默认场景"汽车召回范围研判（NHTSA）"读 `landing-page/public/data/` 下的静态数据（一份清单加每个数据集一个文件：雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric / Kona EV 2019–2021），不需要 Python 服务。左侧导航切换两个入口；召回范围研判分四个标签页：本体（确认本体与名称对应）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序）→ 结果（与模型的一致情况、复核人、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
+打开 `http://127.0.0.1:5178`：默认场景"汽车召回范围研判（NHTSA）"读 `landing-page/public/data/` 下的静态数据（一份清单加每个数据集一个文件：雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric / Kona EV 2019–2021），不需要 Python 服务。左侧导航切换两个入口；召回范围研判分四个标签页：口径（核对系统怎么读这份数据，逐条判断名称对应；自动搭建的本体在"技术细节"里）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序；可用方向键和 1/2/3）→ 结果（与模型的一致情况、复核人、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
 
 `/landing` 是产品首页。第二个入口"事件 95876 核对清单"是 openFDA 食品召回的产品—批号核对，需要本机 Python 服务（见下）。
 
@@ -50,7 +50,7 @@ PYTHONPATH=src:. python scripts/fetch_nhtsa_snapshot.py \
   --make chevrolet --model "bolt ev" --years 2017-2023 --output examples/nhtsa/<名称>.json
 
 # 复核之后：把下载文件汇入样本库，再比较规则、模型、先规则再看模型（只列条数）
-PYTHONPATH=src:. python scripts/import_reviews.py --input <数据集>-review.json --reviewer <代号>
+PYTHONPATH=src:. python scripts/import_reviews.py --input <数据集>-review.json --reviewer <代号>   # 写进 examples/labels/，会随公开仓库提交
 PYTHONPATH=src:. python scripts/compare_judgments.py --labels examples/labels/<数据集>.jsonl
 
 # 事件 95876 本地核对服务与命令行
