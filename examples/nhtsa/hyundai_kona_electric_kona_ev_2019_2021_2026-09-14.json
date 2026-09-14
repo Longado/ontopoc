@@ -1,0 +1,3021 @@
+{
+ "schema": "public_source_bundle.v1",
+ "evidence_scope": "public_data",
+ "decision": "一次汽车召回发布后，判断：哪些车型年款在召回范围内；哪些车主投诉指向同一部件，其中哪些车辆不在任何同部件召回的范围里（范围外疑似同类问题，需要质量工程师复核）。",
+ "scope": {
+  "make": "hyundai",
+  "models": [
+   "kona electric",
+   "kona ev"
+  ],
+  "years": [
+   2019,
+   2021
+  ]
+ },
+ "date_fields": {
+  "recalls": {
+   "ReportReceivedDate": "%d/%m/%Y"
+  },
+  "complaints": {
+   "dateComplaintFiled": "%m/%d/%Y",
+   "dateOfIncident": "%m/%d/%Y"
+  }
+ },
+ "sources": {
+  "recalls": {
+   "requests": [
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=hyundai&model=kona+electric&modelYear=2019",
+     "retrieved_at": "2026-09-14T08:35:06.706506+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=hyundai&model=kona+electric&modelYear=2020",
+     "retrieved_at": "2026-09-14T08:35:09.183149+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=hyundai&model=kona+electric&modelYear=2021",
+     "retrieved_at": "2026-09-14T08:35:11.961002+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=hyundai&model=kona+ev&modelYear=2019",
+     "retrieved_at": "2026-09-14T08:35:14.769319+00:00",
+     "note": "HTTP 400 with count 0: this model name does not exist for this year"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=hyundai&model=kona+ev&modelYear=2020",
+     "retrieved_at": "2026-09-14T08:35:17.408704+00:00",
+     "note": "HTTP 400 with count 0: this model name does not exist for this year"
+    },
+    {
+     "url": "https://api.nhtsa.gov/recalls/recallsByVehicle?make=hyundai&model=kona+ev&modelYear=2021",
+     "retrieved_at": "2026-09-14T08:35:20.349859+00:00",
+     "note": "HTTP 400 with count 0: this model name does not exist for this year"
+    }
+   ],
+   "records": [
+    {
+     "Manufacturer": "Hyundai Motor America",
+     "NHTSACampaignNumber": "20V630000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "2020-10-13",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY:MANAGEMENT SYSTEM/ENERGY CONTROL MODULE (BMS/BECM):SOFTWARE",
+     "Summary": "Hyundai Motor America (Hyundai) is recalling certain 2019-2020 Kona Electric vehicles.  The lithium-ion (Li-ion) battery may short-circuit.",
+     "Consequence": "An electrical short in the Li-ion battery increases the risk of a fire.",
+     "Remedy": "Hyundai will notify owners, and dealers will update the Battery Management System (BMS) software and inspect the Li-ion battery, replacing it if necessary, free of charge.  Owners are advised to park their vehicles outside and away from structures until the repair is complete.  The recall began November 13, 2020.  Owners may contact Hyundai customer service at 1-855-371-9460.  Hyundai's number for this recall is 196.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2019",
+     "Make": "HYUNDAI",
+     "Model": "KONA ELECTRIC"
+    },
+    {
+     "Manufacturer": "Hyundai Motor America",
+     "NHTSACampaignNumber": "20V630000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "2020-10-13",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY:MANAGEMENT SYSTEM/ENERGY CONTROL MODULE (BMS/BECM):SOFTWARE",
+     "Summary": "Hyundai Motor America (Hyundai) is recalling certain 2019-2020 Kona Electric vehicles.  The lithium-ion (Li-ion) battery may short-circuit.",
+     "Consequence": "An electrical short in the Li-ion battery increases the risk of a fire.",
+     "Remedy": "Hyundai will notify owners, and dealers will update the Battery Management System (BMS) software and inspect the Li-ion battery, replacing it if necessary, free of charge.  Owners are advised to park their vehicles outside and away from structures until the repair is complete.  The recall began November 13, 2020.  Owners may contact Hyundai customer service at 1-855-371-9460.  Hyundai's number for this recall is 196.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2020",
+     "Make": "HYUNDAI",
+     "Model": "KONA ELECTRIC"
+    },
+    {
+     "Manufacturer": "Hyundai Motor America",
+     "NHTSACampaignNumber": "20V748000",
+     "parkIt": false,
+     "parkOutSide": false,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "2020-12-01",
+     "Component": "SERVICE BRAKES, HYDRAULIC:POWER ASSIST:ELECTRIC:CONTROL MODULE:SOFTWARE",
+     "Summary": "Hyundai Motor America (Hyundai) is recalling certain 2019-2020 Nexo Fuel Cell and 2019-2021 Kona Electric vehicles.  The Integrated Electronic Brake (IEB) system may detect an abnormal sensor signal and as a result, may significantly reduce braking performance.",
+     "Consequence": "Reduced braking power could lengthen the distance required to stop the vehicle, increasing the risk of a crash.",
+     "Remedy": "Hyundai will notify owners, and dealers will update the IEB software, free of charge.  The recall began January 25, 2021.  Owners may contact Hyundai customer service at 1-855-371-9460.  Hyundai's number for this recall is 199.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2019",
+     "Make": "HYUNDAI",
+     "Model": "KONA ELECTRIC"
+    },
+    {
+     "Manufacturer": "Hyundai Motor America",
+     "NHTSACampaignNumber": "20V748000",
+     "parkIt": false,
+     "parkOutSide": false,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "2020-12-01",
+     "Component": "SERVICE BRAKES, HYDRAULIC:POWER ASSIST:ELECTRIC:CONTROL MODULE:SOFTWARE",
+     "Summary": "Hyundai Motor America (Hyundai) is recalling certain 2019-2020 Nexo Fuel Cell and 2019-2021 Kona Electric vehicles.  The Integrated Electronic Brake (IEB) system may detect an abnormal sensor signal and as a result, may significantly reduce braking performance.",
+     "Consequence": "Reduced braking power could lengthen the distance required to stop the vehicle, increasing the risk of a crash.",
+     "Remedy": "Hyundai will notify owners, and dealers will update the IEB software, free of charge.  The recall began January 25, 2021.  Owners may contact Hyundai customer service at 1-855-371-9460.  Hyundai's number for this recall is 199.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2020",
+     "Make": "HYUNDAI",
+     "Model": "KONA ELECTRIC"
+    },
+    {
+     "Manufacturer": "Hyundai Motor America",
+     "NHTSACampaignNumber": "20V748000",
+     "parkIt": false,
+     "parkOutSide": false,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "2020-12-01",
+     "Component": "SERVICE BRAKES, HYDRAULIC:POWER ASSIST:ELECTRIC:CONTROL MODULE:SOFTWARE",
+     "Summary": "Hyundai Motor America (Hyundai) is recalling certain 2019-2020 Nexo Fuel Cell and 2019-2021 Kona Electric vehicles.  The Integrated Electronic Brake (IEB) system may detect an abnormal sensor signal and as a result, may significantly reduce braking performance.",
+     "Consequence": "Reduced braking power could lengthen the distance required to stop the vehicle, increasing the risk of a crash.",
+     "Remedy": "Hyundai will notify owners, and dealers will update the IEB software, free of charge.  The recall began January 25, 2021.  Owners may contact Hyundai customer service at 1-855-371-9460.  Hyundai's number for this recall is 199.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2021",
+     "Make": "HYUNDAI",
+     "Model": "KONA ELECTRIC"
+    },
+    {
+     "Manufacturer": "Hyundai Motor America",
+     "NHTSACampaignNumber": "21V127000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "2021-03-01",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY",
+     "Summary": "Hyundai Motor America (Hyundai) is recalling certain 2019-2020 Kona Electric and 2020 Ioniq Electric vehicles.  The lithium-ion (Li-ion) battery may short-circuit.",
+     "Consequence": "An electrical short in the Li-ion battery increases the risk of a fire.",
+     "Remedy": "Owners are advised to park their vehicles outside and away from structures until the interim action is complete.  Hyundai will notify owners, and as an interim action, owners have the option to follow provided instructions to perform a battery update through the vehicle's infotainment system or request a Hyundai dealer to provide the update.  Once parts are available, dealers will inspect the Battery System Assembly (BSA), and replace it if necessary.  Repairs will be performed free of charge.  Owners were notified of the safety risk, and the interim action, with a letter mailed April 9, 2021.  Final owner notification letters were mailed June 17, 2021.  Owners may contact Hyundai customer service at 1-855-371-9460.  Hyundai's number for this recall is 200.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2019",
+     "Make": "HYUNDAI",
+     "Model": "KONA ELECTRIC"
+    },
+    {
+     "Manufacturer": "Hyundai Motor America",
+     "NHTSACampaignNumber": "21V127000",
+     "parkIt": false,
+     "parkOutSide": true,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "2021-03-01",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY",
+     "Summary": "Hyundai Motor America (Hyundai) is recalling certain 2019-2020 Kona Electric and 2020 Ioniq Electric vehicles.  The lithium-ion (Li-ion) battery may short-circuit.",
+     "Consequence": "An electrical short in the Li-ion battery increases the risk of a fire.",
+     "Remedy": "Owners are advised to park their vehicles outside and away from structures until the interim action is complete.  Hyundai will notify owners, and as an interim action, owners have the option to follow provided instructions to perform a battery update through the vehicle's infotainment system or request a Hyundai dealer to provide the update.  Once parts are available, dealers will inspect the Battery System Assembly (BSA), and replace it if necessary.  Repairs will be performed free of charge.  Owners were notified of the safety risk, and the interim action, with a letter mailed April 9, 2021.  Final owner notification letters were mailed June 17, 2021.  Owners may contact Hyundai customer service at 1-855-371-9460.  Hyundai's number for this recall is 200.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+     "ModelYear": "2020",
+     "Make": "HYUNDAI",
+     "Model": "KONA ELECTRIC"
+    },
+    {
+     "Manufacturer": "Hyundai Motor America",
+     "NHTSACampaignNumber": "22V941000",
+     "parkIt": false,
+     "parkOutSide": false,
+     "overTheAirUpdate": false,
+     "ReportReceivedDate": "2022-12-16",
+     "Component": "ELECTRICAL SYSTEM:PROPULSION SYSTEM:TRACTION BATTERY:THERMAL MANAGEMENT:FLUID/COOLANT",
+     "Summary": "Hyundai Motor America (Hyundai) is recalling certain 2021 Kona EV vehicles.  The Electric Power Control Unit (EPCU) may have been improperly sealed and may leak coolant internally.",
+     "Consequence": "Coolant contacting the EPCU circuit board may cause a loss of drive power, increasing the risk of a crash.",
+     "Remedy": "Dealers will inspect and replace the EPCU, as necessary, free of charge.  Owner notification letters were mailed March 22, 2023.  A second notice will be sent once the final remedy is available.  Owners may contact Hyundai customer service at 1-855-371-9460.  Hyundai's number for this recall is 239.",
+     "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.nhtsa.gov.",
+     "ModelYear": "2021",
+     "Make": "HYUNDAI",
+     "Model": "KONA ELECTRIC"
+    }
+   ]
+  },
+  "complaints": {
+   "requests": [
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=hyundai&model=kona+electric&modelYear=2019",
+     "retrieved_at": "2026-09-14T08:35:08.166824+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=hyundai&model=kona+electric&modelYear=2020",
+     "retrieved_at": "2026-09-14T08:35:11.011869+00:00"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=hyundai&model=kona+electric&modelYear=2021",
+     "retrieved_at": "2026-09-14T08:35:13.584027+00:00",
+     "note": "HTTP 400 with count 0: this model name does not exist for this year"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=hyundai&model=kona+ev&modelYear=2019",
+     "retrieved_at": "2026-09-14T08:35:16.194284+00:00",
+     "note": "HTTP 400 with count 0: this model name does not exist for this year"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=hyundai&model=kona+ev&modelYear=2020",
+     "retrieved_at": "2026-09-14T08:35:18.900306+00:00",
+     "note": "HTTP 400 with count 0: this model name does not exist for this year"
+    },
+    {
+     "url": "https://api.nhtsa.gov/complaints/complaintsByVehicle?make=hyundai&model=kona+ev&modelYear=2021",
+     "retrieved_at": "2026-09-14T08:35:22.467923+00:00"
+    }
+   ],
+   "records": [
+    {
+     "odiNumber": 11300587,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-01-20",
+     "dateComplaintFiled": "2020-01-20",
+     "vin": "KM8K53AG0KU",
+     "components": "SERVICE BRAKES",
+     "summary": "AUTOMATIC EMERGENCY BRAKING ACTIVATED UNEXPECTEDLY WHILE DRIVING IN A HIGHWAY. VEHICLES AHEAD WERE STOPPED OR SLOWING DOWN AND I WAS STARTING TO BRAKE AND THE CAR ACTIVATED THE EMERGENCY BRAKING BRINGING THE CAR TO A COMPLETE STOP EVEN THOUGH THERE WAS NOT IMMEDIATE DANGER OF COLLISION, THERE WAS MORE THAN A CAR SPACE BETWEEN MY CAR AND THE STOPPED CAR. THE CAR BEHIND ME HAD TO VEER OFF THE ROAD NOT TO HIT ME. A SIMILAR SITUATION HAPPENED TWICE BEFORE.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11309058,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-02-12",
+     "dateComplaintFiled": "2020-02-13",
+     "vin": "KM8K53AG7LU",
+     "components": "SERVICE BRAKES",
+     "summary": "DRIVING DURING RUSH HOUR ON INTERSTATE IN AN URBAN AREA. CARS IN FRONT SLOWED RAPIDLY, APPLIED BRAKES TO SLOW DOWN, DID SO SUCCESSFULLY. DYNAMIC BRAKE SUPPORT THEN APPARENTLY KICKED IN, AND FORCED THE CAR TO A STOP, DESPITE BRAKE BEING FULLY RELEASED. CAR FROM BEHIND BARELY ABLE TO AVOID CRASHING INTO ME, THE DRIVER HAD TO SWERVE ONTO THE SHOULDER TO AVOID ME AND ENDED UP STOPPING BESIDE MY CAR.    ONCE CAR CAME TO A STOP, WAS ABLE TO GET GOING AGAIN. ISSUE HAS NOT REPRODUCED SINCE.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11365383,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-10-20",
+     "dateComplaintFiled": "2020-10-20",
+     "vin": "KM8K23AG3LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "THERE IS A RECALL ON POSSIBLE BATTERY EXPLOSION AND THERE IS NO CURRENT REPLACEMENT POLICY OR REPLACEMENT SCHEDULE.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11365831,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-10-15",
+     "dateComplaintFiled": "2020-10-22",
+     "vin": "KM8K33AG1LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "TL* THE CONTACT OWNS A 2020 HYUNDAI KONA. THE CONTACT DISCOVERED ONLINE THAT THE VEHICLE WAS INCLUDED IN NHTSA RECALL NUMBER: 20V630000 (ELECTRICAL SYSTEM) HOWEVER, THE PART TO DO THE RECALL REPAIR WAS NOT YET AVAILABLE. TEAM HYUNDAI OF BEND (2250 NE HWY 20, BEND, OR 97701) AND TONKIN GLADSTONE HYUNDAI (19300 SE MCLOUGHLIN BLVD, GLADSTONE, OR 97027) WERE MADE AWARE OF THE ISSUE AND BOTH CONFIRMED THAT PARTS WERE NOT YET AVAILABLE. THE CONTACT STATED THAT THE BATTERY SOFTWARE WAS UPDATED AT TEAM HYUNDAI OF BEND. THE MANUFACTURER WAS MADE AWARE OF THE ISSUE. THE CONTACT HAD NOT EXPERIENCED A FAILURE. VIN TOOL CONFIRMS PARTS NOT AVAILABLE.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11377540,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-11-20",
+     "dateComplaintFiled": "2020-12-02",
+     "vin": "KM8K33AG6KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "TL* THE CONTACT OWNS A 2019 HYUNDAI KONA. THE CONTACT RECEIVED NOTIFICATION OF NHTSA CAMPAIGN NUMBER: 20V630000 (ELECTRICAL SYSTEM). ROWE HYUNDAI WESTBROOK (91 MAIN ST SUITE #3, WESTBROOK, ME 04092) WAS CONTACTED AND INFORMED THE CONTACT THAT THE BATTERY SOFTWARE WOULD BE UPDATED, WHICH WOULD LIMIT THE BATTERY POWER. DESPITE THE UPDATE, THE CONTACT WAS NOT ENSURED THAT THE SYSTEM UPDATE WOULD PREVENT THE FAILURE FROM RECURRING. THE MANUFACTURER WAS MADE AWARE OF THE ISSUE. THE CONTACT HAD NOT EXPERIENCED A FAILURE. PARTS DISTRIBUTION DISCONNECT.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11383561,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-12-01",
+     "dateComplaintFiled": "2020-12-15",
+     "vin": "KM8K33AG2LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "TL* THE CONTACT OWNS A 2020 HYUNDAI KONA. THE CONTACT RECEIVED NOTIFICATION OF NHTSA CAMPAIGN NUMBER: 20V630000 (ELECTRICAL SYSTEM). THE VEHICLE WAS TAKEN TO PALM SPRINGS HYUNDAI (3919 E PALM CANYON DR SUITE A, PALM SPRINGS, CA 92264; (760) 202-8888) WHERE THE RECALL REPAIR WAS PERFORMED. THE CONTACT STATED THAT TWO DAYS AFTER THE RECALL REPAIR WAS PERFORMED, THE CONTACT WAS UNABLE TO START THE VEHICLE. THE CONTACT STATED THAT AN UNKNOWN ELECTRICAL WARNING LIGHT WAS ILLUMINATED. THE VEHICLE WAS NOT DRIVABLE. THE VEHICLE WAS TOWED BACK TO THE SAME DEALER. THE MECHANIC WAS UNABLE TO DUPLICATE THE FAILURE. THE VEHICLE WAS NOT REPAIRED. THE VIN WAS INCLUDED IN NHTSA CAMPAIGN NUMBER: 20V748000 (SERVICE BRAKES, HYDRAULIC) AND 20V630000 (ELECTRICAL SYSTEM). THE MANUFACTURER WAS MADE AWARE OF THE FAILURE. THE FAILURE MILEAGE WAS APPROXIMATELY 4,400.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11385986,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-12-01",
+     "dateComplaintFiled": "2021-01-01",
+     "vin": "KM8K33AG3KU",
+     "components": "ELECTRICAL SYSTEM,UNKNOWN OR OTHER,FUEL/PROPULSION SYSTEM",
+     "summary": "THERE IS A RECALL ON THE EV BATTERY SYSTEM BOTH ON THE HYUNDAI SITE AND THE NTSB SITE FOR THIS.  HYUNDAI CLAIMS THERE IS NO SUCH RECALL.  MY BATTERY SYSTEM DOES NOT FUNCTION ACCORDING TO SPECIFICATIONS.  HYUNDAI SAYS NOT TO PARK THE VEHICLE INSIDE DUE TO THE POSSIBILITY OF CATASTROPHIC  FIRE.  NEITHER THE DEALER NOR THE MANUFACTURER WILL REMEDY THE SITUATION.  THEY BOTH DENY THERE IS ANY PROBLEM.   I PURCHASED THE VEHICLE USED FROM A DEALER DECEMBER 2020.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11398037,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-01-01",
+     "dateComplaintFiled": "2021-02-26",
+     "vin": "KM8K33AG3KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "MANUFACTURER RECALLS THIS VEHICLE TO REPLACE BATTERY PACK DUE TO CATASTROPHIC FIRE RISK.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11404447,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-23",
+     "dateComplaintFiled": "2021-03-23",
+     "vin": "KM8K53AG6LU",
+     "components": "ELECTRICAL SYSTEM,FUEL/PROPULSION SYSTEM",
+     "summary": "HYUNDAI IS FAILING TO PROVIDE THE INTERIM REMEDY PROMISED IN YOUR SAFETY RECALL REPORT 21V-127 (ATTACHED). THIS REMEDY CONSISTS OF SIMPLY DISCLOSING THE SAFE CHARGING LIMIT PERCENTAGE FOR THE PROPULSION BATTERY.    THE RECALL REPORT STATES, UNDER REMEDY PROGRAM, \"OWNERS WILL ALSO BE PROVIDED WITH INSTRUCTIONS TO MANUALLY LOWER THE BATTERY'S STATE OF CHARGE LIMIT VIA THE INFOTAINMENT SYSTEM.\" I REQUESTED THAT INFORMATION FROM HYUNDAI CUSTOMER CARE. HOWEVER THEY REPLIED \"CURRENTLY THERE IS NO REMEDY AVAILABLE.\" (SEE ATTACHED)    PLEASE DIRECT HYUNDAI TO MAKE THIS INFORMATION AVAILABLE FORTHWITH SO THAT I AND OTHER HYUNDAI EV OWNERS CAN SAFELY CHARGE OUR VEHICLES.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11408391,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-13",
+     "dateComplaintFiled": "2021-04-16",
+     "vin": "KM8K33AG1KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "TL* THE CONTACT OWNS A 2019 HYUNDAI KONA. THE CONTACT RECEIVED NOTIFICATION OF NHTSA CAMPAIGN NUMBER: 21V127000 (ELECTRICAL SYSTEM) HOWEVER, THE PART TO DO THE RECALL REPAIR WAS NOT YET AVAILABLE. THE CONTACT STATED THAT CENTEREACH HYUNDAI LOCATED AT 1815 MIDDLE COUNTRY RD, CENTEREACH, NY 11720, (631) 615-4549) HAD EXCEEDED A REASONABLE AMOUNT OF TIME FOR THE RECALL REPAIR. THE MANUFACTURER WAS NOTIFIED OF THE ISSUE. THE CONTACT HAD NOT EXPERIENCED A FAILURE. VIN TOOL CONFIRMS PARTS NOT AVAILABLE.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11408597,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-17",
+     "dateComplaintFiled": "2021-04-18",
+     "vin": "KM8K23AG6MU",
+     "components": "VEHICLE SPEED CONTROL",
+     "summary": "I WAS ENTERING MY NEIGHBORHOOD AND SLOWED DOWN AS WE NEARED OUR HOUSE WITH MY FOOT ON THE BRAKES SO THAT I CAN OPEN MY GARAGE DOOR, AS I RELEASED THE BRAKES, THE CAR STARTED ACCELERATING BY ITSELF REALLY FAST AND I HAD TO SLAM ON MY BRAKES TO STOP THE CAR FROM SPEEDING UP ON ITS OWN.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11414925,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-08",
+     "dateComplaintFiled": "2021-05-03",
+     "vin": "KM8K23AG7KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "TL* THE CONTACT OWNS A 2019 HYUNDAI KONA. THE CONTACT RECEIVED NOTIFICATION OF NHTSA CAMPAIGN NUMBER: 21V127000 (ELECTRICAL SYSTEM) HOWEVER, THE PART TO DO THE RECALL REPAIR WAS NOT YET AVAILABLE. THE CONTACT THEN RECEIVED AN EMAIL FROM HYUNDAI THAT STATED THAT A SOFTWARE UPDATE WOULD BE SENT TO THE VEHICLE THROUGH THE INFOTAINMENT SYSTEM WHERE THE VEHICLE WOULD NOW ONLY CHARGE UP TO 80%. THE CONTACT WAS INSTRUCTED THROUGH THE EMAIL TO TAKE THE VEHICLE TO A LOCAL DEALER TO VERIFY THE UPDATE. THE VEHICLE WAS NOT YET TAKEN TO A DEALER. THE MANUFACTURER WAS MADE AWARE OF THE ISSUE. THE CONTACT STATED THAT THE MANUFACTURER HAD EXCEEDED A REASONABLE AMOUNT OF TIME FOR THE RECALL REPAIR. THE CONTACT HAD NOT EXPERIENCED A FAILURE. PARTS DISTRIBUTION DISCONNECT.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11415035,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-05-03",
+     "dateComplaintFiled": "2021-05-03",
+     "vin": "KM8K53AG6LU",
+     "components": "SERVICE BRAKES,FORWARD COLLISION AVOIDANCE",
+     "summary": "MY VEHICLE UNNECESSARILY ACTIVATED AUTOMATIC EMERGENCY BRAKING, LOCKING THE WHEELS AND CAUSING THE TRUCK BEHIND ME TO SWERVE ONTO THE SHOULDER TO AVOID CRASHING INTO MY VEHICLE. THIS IS THE SECOND TIME THIS HAS OCCURRED WITH THIS CAR.    I WAS DRIVING IN THE SLOW LANE OF A LIMITED ACCESS FREEWAY. THE LANE WAS CONGESTED AND I ESTIMATE THE SPEED AT ABOUT 40 MPH. THE CARS AHEAD SLOWED AND BEGAN TO STOP.    I TOOK MY FOOT OFF THE ACCELERATOR AND MOVED TO THE BRAKE. AT THIS TIME I WAS THREE OR FOUR CAR LENGTHS BEHIND THE CAR AHEAD, AND COULD HAVE STOPPED EASILY WITH FIRM BUT NORMAL BRAKING.    AS SOON AS MY FOOT TOUCHED THE BRAKE PEDAL, MY VEHICLE LOCKED ITS BRAKES AND SCREECHED TO AN ABRUPT STOP. OBJECTS ON THE PASSENGER SEAT WERE THROWN TO THE FLOOR. A TRUCK BEHIND ME HAD TO SWERVE TO THE RIGHT OF MY VEHICLE TO AVOID CRASHING INTO IT. THE DRIVER FOLLOWED ME HONKING FOR HALF A MILE UNTIL MY EXIT.    THIS HAPPENED ONCE BEFORE, IN FEBRUARY 2020. FOLLOWING THAT INCIDENT, I TOOK THE CAR TO HYUNDAI DEALER SERVICE, WHO ADVISED THAT \"THE CAR IS OPERATING CORRECTLY.\" SEE ATTACHED SERVICE REPORT. NOTE THAT NO VEHICLES CHANGED LANES IN FRONT OF MINE DURING EITHER INCIDENT, BUT NOTWITHSTANDING, THE DEALER SERVICE SUGGESTED THAT AS A CAUSE.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11415523,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-07",
+     "dateComplaintFiled": "2021-05-07",
+     "vin": "KM8K33AG5KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "HYUNDAI HAS A RECALL ON MY VEHICLE DUE TO BATTERY SAFETY ISSUES. THEY HAVE REDUCED MY BATTERY STORAGE TO 80% CAPACITY AND THIS LIMITS MY ABILITY TO TRAVEL UNLESS I STOP FOR EXTENDED PERIODS TO RECHARGE MY BATTERY. THE ONLY COMPENSATION THEY HAVE PROVIDED WAS A $200 VISA CARD, WHICH IS INCREDIBLY INADEQUATE, FOR THE TIME AND MONEY THIS IS COSTING ME. I'VE BEEN WITHOUT FULL BATTERY CAPACITY FOR OVER A MONTH NOW.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11417745,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-01",
+     "dateComplaintFiled": "2021-05-19",
+     "vin": "KM8K53AG3KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The March 1, 2021 recall has not been resolved. The vehicle was purchased for its mile capacity however, due to this recall, I'm unable to use the vehicle for my travel/work as intended when I purchased the vehicle.    As a result of the reduced miles, I must charge my vehicle between trips to ensure I have sufficient miles to make it home.  This takes time out of my schedule and I must pay for the charging (I charge my car at my residence and have solar panels - thus no charging expense). This does Not take into consideration that at times, I cannot use my air conditioning or heating in my car to ensure I have sufficient miles to make it home or to the next charging station.  I paid a lot of money for a fully functional car, for which I am NOT receiving.    If I have reached the incorrect department, please forward this complaint to the appropriate department.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11418256,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-07",
+     "dateComplaintFiled": "2021-05-24",
+     "vin": "KM8K53AG3KU",
+     "components": "POWER TRAIN,ELECTRICAL SYSTEM,ENGINE",
+     "summary": "4/7/21 while in Las Vegas parked at the Venetian Hotel, my 2019 Hyundai Kona EV battery failed causing the vehicle to be inoperative.  I am still waiting for Hyundai to replace the recalled EV battery",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11418460,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-01",
+     "dateComplaintFiled": "2021-05-25",
+     "vin": "KM8K33AGXLU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2020 Hyundai Kona. The contact received notification of NHTSA Campaign Number: 20V127000 (Electrical System) however, the part to do the recall repair was not yet available. The dealer was contacted and confirmed that the part was not yet available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was not made aware of the issue. The contact had not experienced a failure. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11418500,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-01",
+     "dateComplaintFiled": "2021-05-25",
+     "vin": "KM8K33AG8KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received notification of NHTSA Campaign Number: 21V127000 (Electrical System) however, the part to do the recall repair was unavailable. The vehicle was taken to the dealer where it was confirmed that the part was not yet available. The contact stated that the dealer reduced the ability to charge the vehicle above 80%, reducing the amount of driving the contact could do. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was made aware of the issue. The contact had not experienced an issue. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11418578,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-06-24",
+     "dateComplaintFiled": "2021-05-26",
+     "vin": "KM8K33AG6KU",
+     "components": "POWER TRAIN",
+     "summary": "The car has been recalled because incidents worldwide of the high voltage battery catching fire and/or exploding. Supposedly Hyundai is going to replace the batteries in affected cars, but to date has NOT done so.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11418874,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-01",
+     "dateComplaintFiled": "2021-05-28",
+     "vin": "KM8K33AG7KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai KONA. The contact stated that the vehicle had been subjected to several recalls due to the charging capacity. Recently, the contact received notification of NHTSA Campaign Number: 21V127000 (Electrical System) however, the part to do the recall repair was not yet available. The dealer confirmed that the part was not yet available. The manufacturer was notified of the failure and offered to buy back the vehicle however, the contact declined. The contact stated that the manufacturer had exceeded a reasonable amount of time for the repair. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11418887,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-05-28",
+     "dateComplaintFiled": "2021-05-28",
+     "vin": "",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received notification of NHTSA campaign number: 21V127000 (Electrical System) however, the part to do the recall repair was not yet available. The local dealer was contacted and it was confirmed that the part was not yet available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was made aware of the issue and informed the contact that there was no estimated arrival time for parts availability. The contact was unable to see the mileage without charging the vehicle. The vin was unavailable. A failure mileage was not available.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11418951,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-05-24",
+     "dateComplaintFiled": "2021-05-29",
+     "vin": "KM8K53AG7LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "Smell like electrical overheating.  Not driving due to fire risk.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11418961,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-10-01",
+     "dateComplaintFiled": "2021-05-29",
+     "vin": "KM8K33AG0LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "Hyundai issued a several recalls that notified me of various updates related to my car battery as well as that I cannot park my car in my garage as battery could catch fire. I have taken my car to a local dealer each time for these software updates as required. They originally did a \"fix\" for the battery issue back in 2020 but clearly the issue has not been remedied since it first came to light in 3/2019. Then in 3/2021, Hyundai notified me by mail that in addition, I must limit my battery capacity to 80%, prohibiting my use of the car for longer planned trips this spring and summer and likely fall 2021. I have had to change my lifestyle and make other arrangements in order to continue my plans. The battery has a lifetime guarantee and I bought the car due to this guarantee as well as the use of 100% of the battery expected mileage as I have a long commute and take long day trips since this is my only car. The requirement of parking outside my garage for over 6 months now reduces the value of my car as it is subject to intense heat/sun/sandy wind/fire debris as I live in a Southern California desert. Between the reduction in battery change, fire danger of battery, parking outside, the value of my purchase had decreased significantly and it was false advertising when I purchased the car in 11/2019. I would not have purchased this car if I only had 80% of the battery capacity and had to park it outside to avoid possible fire due to charging. Hyundai has only offered $200 to come in to dealer to have then change battery capacity to 80% (which I did . That is not enough compensation for the loss of use, loss of value, loss of car quality from parking outside, and loss of my time.  My fear is that they will issue a buyback that does not include the value of my window tinting and specialized lazer fit car mats and deducts value for my mileage. There is not ETA on when the battery will be replaced/fixed at this time - completely unacceptable.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11419993,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-10",
+     "dateComplaintFiled": "2021-06-07",
+     "vin": "KM8K33AG3KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received notification of NHTSA campaign number: 21V127000 (Electrical System) however, the part to do the recall repair was not yet available. The local dealer was contacted and it was confirmed that the part was not yet available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was made aware of the issue. The contact stated that the vehicle had experienced the same failure listed in the recall. Parts distribution disconnect. The approximate failure mileage was 21,000.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11420016,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-06-07",
+     "dateComplaintFiled": "2021-06-07",
+     "vin": "KM8K53AGXLU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2020 Hyundai Kona. The contact received notification of NHTSA campaign number: 21V127000 (Electrical System) however, the part to do the recall repair was not yet available. The vehicle was taken to the local dealer and it was confirmed that the part was not yet available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was made aware of the issue. The contact had not experienced a failure. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11420023,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-01",
+     "dateComplaintFiled": "2021-06-07",
+     "vin": "KM8K53AG6LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2020 Hyundai Kona. The contact received a notification for NHTSA Campaign Number: 21V127000 (Electrical System) however, the part to do the recall repair was not yet available. The dealer was notified about the issue and provided a temporary fix by reducing the battery charging capacity to 80%. The part for the final repair remained unavailable. The manufacturer was made aware of the issue. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The contact had not experienced a failure. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11420078,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-11-05",
+     "dateComplaintFiled": "2021-06-08",
+     "vin": "KM8K53AG4KU",
+     "components": "ELECTRICAL SYSTEM,FUEL/PROPULSION SYSTEM",
+     "summary": "Manufacturer Recall Number200 NHTSA Recall Number21V127000 Recall StatusRecall Incomplete Summary HYUNDAI MOTOR AMERICA (HYUNDAI) IS RECALLING CERTAIN 2019-2020 KONA ELECTRIC AND 2020 IONIQ ELECTRIC VEHICLES. THE LITHIUM-ION (LI-ION) BATTERY MAY SHORT-CIRCUIT. I have been in touch with Hyundai corporate and they have no time estimate of when this recall can be completed. It has been way too long for this type of problem to not be fixed.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11420084,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-01",
+     "dateComplaintFiled": "2021-06-08",
+     "vin": "KM8K23AG8KU",
+     "components": "ELECTRICAL SYSTEM,FUEL/PROPULSION SYSTEM",
+     "summary": "The manufacturer has announced a safety recall (NHTSA Recall Number21V127000) due to the hazard of battery fire.    It has been months since the recall was announced (and a year since battery fires were first reported) and the manufacturer has offered no remedy.  Manufacturer has not provided timely communication or remedy to this safety problem, and we need help from NHTSA to get a safe solution to this fire danger.    Hyundai either needs to provide a replacement battery immediately, or replace the car.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11420089,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-26",
+     "dateComplaintFiled": "2021-06-08",
+     "vin": "KM8K23AG6KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The 2019 Hyundai Kona EV (my vehicle) is a fire hazard. I am not satisfied with Hyundai's current mitigation of limiting our battery (and so our range) to 80% of its capacity. A full battery replacement is planned, but there is no timeline, so it could take 1 year for all I know. 1 year during which I am stuck with 80% of my range (which is not what I purchased) and the potential, however unlikely, that my car is still a fire hazard. I wish Hyundai would do more!",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11420457,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-05-10",
+     "dateComplaintFiled": "2021-06-10",
+     "vin": "KM8K33AG9KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "We brought our 2019 Kona EV in for the battery recall and the Battery Maintenance System (BMS) recall. The reduced charge amount to 80% and ran the BMS software update. This was on a Friday (5/7/21). We picked up our car that same day and drove home. Drove the car twice over the weekend and charged the car overnight, Sunday-Monday. When we got in the car Monday morning (5/10/21), the car would not go into gear (forward or reverse). On the dash and the info screen, was a message about an Electrical System Failure. We had to have the car towed to the local Hyundai dealer (Curry Hyundai, Cortlandt, NY). The told us the BMS caused the battery to go into lockdown mode and that there was no resolution except for the battery to be replaced. We were told to get a battery could take several months. They gave us a loaner but it is not an electric vehicle. So far no one know when or if a battery will be available.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11424366,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-06-01",
+     "dateComplaintFiled": "2021-07-12",
+     "vin": "KM8K23AG6KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact stated that the vehicle failed to start. The battery warning light was illuminated. The contact received notification of NHTSA campaign number: 21V127000 (Electrical System) however, the part to do the recall was unavailable. The vehicle was towed to the local dealer who stated that the part was not yet available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was not notified of the failure. The failure mileage was 7,000. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11424419,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-07-12",
+     "dateComplaintFiled": "2021-07-12",
+     "vin": "KM8K53AGXKU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received a recall notification for NHTSA Campaign Number: 21V127000 (Electrical System) however, the dealer informed the contact that the part for the recall repair was not yet available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The contact had not experienced a failure however, the dealer limited the charge of the battery of the vehicle to prevent a short-circuit. The manufacturer was not notified of the issue. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11424424,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-02-24",
+     "dateComplaintFiled": "2021-07-12",
+     "vin": "KM8K33AG4LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The traction batteries are deffective and needs to be replaced due to the battery catching fire under Recall 200 for Hyundia Kona Electric cars. The cars effected were manufactured from Aug 28,2018 to March 2, 2020 which our car falls within this window date. According to Hyundai Consumer Assistance there is no solution.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11424438,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-01-11",
+     "dateComplaintFiled": "2021-07-12",
+     "vin": "KM8K33AG4KU",
+     "components": "ELECTRICAL SYSTEM,FUEL/PROPULSION SYSTEM",
+     "summary": "The vehicle was purchased 11/6/2019.  On 1/11/2020 while driving from Oregon to California the main computer shorted out causing complete shutdown of the vehicle.  It took the Sacramento Hyundai dealership almost 3 weeks to deliver the vehicle back to me.  Since then the vehicle has appeared to run well.  However, my faith in taking the vehicle on long drives is at least shaken.  Several recall notices have been issued for my vehicle.  Most notably is number 200.    A recall notice #196, received in November, 2020 states \"The high-voltage battery system... may have been produced with internal damage to certain cells ... that could increase the risk of an electrical short circuit ... increase the risk of fire.\"  On July 2020 I received another Service Campaign notice which stated \"The HIgh Voltage Battery Monitoring System is being enhanced to include additional monitoring...\".  On April 23, 2021 the local Hyundai dealership set the maximum charge to 80% as a result of another recall notice.  Early in July, 2021 I received yet another recall notice which stating that vehicles battery cell manufactured in the LG Energy Solutions China plant could suffer an electrical short ... increasing the risk of a vehicle fire.  I need to have a vehicle that is free from dangerous conditions.  It is now 21 months since the dangerous condition in my vehicle was brought to Hyundai's attention.    In one of the last paragraphs of Hyundai's latest recall notice they state that if they have failed or are unable to remedy the defect within a reasonable time, I may submit a complaint to you, NHTSA.  I believe this situation meets that criteria.  Thank you for your assistance, David Steinberg",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11426290,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-03-01",
+     "dateComplaintFiled": "2021-07-24",
+     "vin": "KM8K33AG3KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "My vehicle is equipped with battery cells manufactured in the LG Energy Solutions China (Nanjing) plant in which the Anode (Negative) tab can be folded. Thus, this could result in my car catching on fire.  I have had my car serviced for updates since March 2020. (Recall 196) As of today, the problem has not been fixed. My dealer tells me they are waiting for the Hyundai headquarters to remedy the problem.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11427400,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-08-02",
+     "dateComplaintFiled": "2021-08-02",
+     "vin": "KM8K53AGXKU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "2019 HYUNDAI KONA EV. CONSUMER WRITES IN REGARDS TO DESIGN/MANUFACTURER PROBLEMS.   THE CONSUMER TRADED-IN THE KONA EV DUE TO THE BATTERY ISSUES. THE CONSUMER LEASED A IONIQ BUT, STATED IT WAS A DOWNGRADE FROM THE KONA. THE CONSUMER REQUESTED TO BE RELEASED FROM THE LEASE WITHOUT PENALTY OR CHARGE.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11427736,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-06-01",
+     "dateComplaintFiled": "2021-08-04",
+     "vin": "KM8K53AG3KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received notification of NHTSA campaign number: 21V127000 (Electrical System) however, the part to do the recall repair was not available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The dealer was made aware of the recall and informed the contact that parts were not available and the equipment to perform the recall repair was not available. The manufacturer was made aware of the issue and confirmed that parts were not available. The contact had not experienced a failure. Parts distribution disconnect. Range reduced to 80% of capacity. Car can not be garaged due to fire hazard and must be parked 50 feet from home and other vehicles.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11429272,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-08-01",
+     "dateComplaintFiled": "2021-08-16",
+     "vin": "KM8K33AG6KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact stated that the battery warning light was illuminated. The contact stated he continued to drive to his destination with the warning light illuminated. The contact took the vehicle to the local dealer and the mechanic was unable to determine the cause of the failure. The contact received notification of NHTSA Campaign Number: 21V127000 (Electrical System) however, the part to do the recall repair was unavailable. The contact took the vehicle to the local dealer and Alexandria Hyundai (1707 Mt Vernon Ave, Alexandria, VA 22301: (703) 535-6840) and it was confirmed that the part was not yet available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was made aware of the issue. Parts distribution disconnect. The failure mileage was approximately 8,000.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11429387,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-06-24",
+     "dateComplaintFiled": "2021-08-17",
+     "vin": "KM8K33AG3KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The battery in my electrical vehicle is recalled due to the potential for shorting and fires. The dealer performed a software update but states that they cannot request a replacement battery because the manufacturer will reject it because a specific code was not generated during the software update. The manufacturer tells me to try to find a different dealer that will replace it. This doesn't make sense because the manufacturer should be in contact with the dealership telling them what to do.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11429391,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-05-10",
+     "dateComplaintFiled": "2021-08-17",
+     "vin": "KM8K33AG9KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received notification of NHTSA Campaign Number: 21V127000 (Electrical System) however, the part to do the recall repair was unavailable. The contact stated that while the software was being updated, the mechanic was able to provide the full recall repair because the battery replacement portion of the recall was unavailable. The dealer informed the contact that they were unable to complete the recall repair due to the part not being available. The contact stated that the manufacturer exceeded a reasonable amount of time for the recall repair. The manufacturer was made aware of the issue. The contact had not experienced a failure. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11429579,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-08-10",
+     "dateComplaintFiled": "2021-08-18",
+     "vin": "KM8K33AG1KU",
+     "components": "FUEL/PROPULSION SYSTEM",
+     "summary": "This vehicle was at Alexandria Hyundai (Virginia) for about a month for a couple of small issues and for recall work to be performed. Service advisor never informed us that the recall was intended to replace the EV battery pack if necessary upon inspection, and invoice only states \"took picture of battery\". Recall remains open.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11430654,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-08-10",
+     "dateComplaintFiled": "2021-08-26",
+     "vin": "KM8K33AG2LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2020 Hyundai Kona. The contact received notification of NHTSA Campaign Number: 21V127000 (Electrical System) however, the part to do the recall repair was unavailable. The local dealer was contacted, and it was confirmed that the part was not available. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was made aware of the issue. The contact had not experienced a failure. The contact was concerned that the manufacturer had not yet determined what the remedy would be for his vehicle. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11430674,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-08-11",
+     "dateComplaintFiled": "2021-08-26",
+     "vin": "KM8K33AG3MU",
+     "components": "UNKNOWN OR OTHER",
+     "summary": "On 8/11/21, I tried to start my Hyundai Kona EV, and it displayed the high voltage warning . The car would not start or go into gear and had to be towed to the dealership. We purchased the car in May 2021, and it had about 3000 miles on it at the time.   At the dealership, the mechanic diagnosed it as a faulty battery and indicated that the whole LG battery underneath for the electric car would need to be replaced.   After doing further research, there is already a recall on the 2018 to 2020 models for the same issue, with the battery catching fire in some instances. The car has the same battery a the 2018 to 2020 models. The guidance for those model years has been to park the car outside, in case there is a fire. We live in an HOA condo (and do have the option to park outside our garage).   As of today, there is no ETA of a fix for a new battery. If they end up replacing it with another LG battery with the same faulty cell issues, I feel like this is a danger to my and my family's lives. Due to the battery issue, they also quit selling the Kona in Korea in April, a full month before we purchased our car. They sold us a car with a known issue. I want them to buy back this car, due to the safety issues.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11431228,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-07-15",
+     "dateComplaintFiled": "2021-08-31",
+     "vin": "KM8K53AG3MU",
+     "components": "ELECTRICAL SYSTEM,ENGINE",
+     "summary": "After charging the vehicle at home with level 2 charger to 100% it would not go into drive or reverse. It can go to neutral or Park only. The car is at the dealership and they told the battery must be replaced when one is available.   It is a safety concern because one can get stranded on the road with vehicle that does not move although is fully charged.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11432312,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-07-08",
+     "dateComplaintFiled": "2021-09-09",
+     "vin": "KM8K23AG2KU",
+     "components": "ELECTRICAL SYSTEM,UNKNOWN OR OTHER",
+     "summary": "I received recall 200 notice from Hyundai regarding my Kona EV 2019 in June.(my mileage was around 14,000) After calling the dealer I got the appointment on 07/16. On 07/16 the service advisor said she fixed all recalls as per the instructions from Hyundai and said recall 200 is also fixed. (see attached service record) I asked how you fixed the folded anode issue without replacing the battery. They said, they did the software update and the battery now doesn't have the fire risk. Called Hyundai and opened a case 18464387 asking them how is recall 200 is fixed without battery replacement. They admitted that recall 200 was not performed and they will replace the battery very soon. Its not still 2 months and they don't have any battery replacement plan. Also my car is making some strange sound while charging and abruptly stopping charging around 70%. I am asking nhtsa's help as I am not getting any response from Hyundai regarding battery replacement. They also rejected the buyback saying the lemon law of MA is not applicable even though my mileage was <15,000 when I took the service appointment. (see attached health report from Hyundai dated 07/08)",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11433366,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-28",
+     "dateComplaintFiled": "2021-09-17",
+     "vin": "KM8K33AG3KU",
+     "components": "FUEL/PROPULSION SYSTEM",
+     "summary": "I did follow the multiple recommended recalls.  I have set my battery at 80% max charge on April 28, 2021.. On August 4th, it has been determined by the dealer that I needed a new battery. The battery has been ordered but we are still waiting for it. It has been 6 weeks so far. Since my current battery is only charged at 80%, I have not been able to use my car at is full potential for the past 5 months .",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11433696,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-02-01",
+     "dateComplaintFiled": "2021-09-20",
+     "vin": "KM8K33AG3KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received notification of NHTSA Campaign Number: 21V127000 (Electrical System) however, the part to do the recall repair was unavailable. The dealer was made aware of the issue however, the contact was informed that parts were not yet available. The manufacturer was made aware of the issue. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The contact had not experienced a failure. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11433804,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-08-16",
+     "dateComplaintFiled": "2021-09-21",
+     "vin": "KM8K23AG2LU",
+     "components": "POWER TRAIN,ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2020 Hyundai Kona. The contact stated that several unknown recalls related to the battery were performed on the vehicle. The contact stated that after the recall repairs were performed and while starting the vehicle, the battery warning light illuminated. Additionally, the transmission failed to shift into gear as needed. The vehicle was towed to the dealer who diagnosed that the battery failed and needed to be replaced. The vehicle had not been repaired. The manufacturer was made aware of the failure and opened a case. The approximate failure mileage was 10,000.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11433926,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-09-14",
+     "dateComplaintFiled": "2021-09-22",
+     "vin": "KM8K23AG8LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "Car battery not longer allows for the car to drive  The electric system stop working due to failure of the battery  A new battery needs to be order  Car not longer works",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11438341,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": true,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-10-26",
+     "dateComplaintFiled": "2021-10-27",
+     "vin": "KM8K23AG4MU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2021 Hyundai Kona Electric. The contact stated that while his wife disconnected the charger, the vehicle caught fire without warning.  There were no reported injuries. The installation plug was melted. The vehicle was taken to the local dealer where it was diagnosed the connection wiring needed to be replaced. The vehicle was not repaired. An inspector was able to inspect the vehicle. The manufacturer was notified however no further assistance was provided. The approximate failure mileage was 8,000.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11438845,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-10-01",
+     "dateComplaintFiled": "2021-11-01",
+     "vin": "KM8K53AG6LU",
+     "components": "FORWARD COLLISION AVOIDANCE",
+     "summary": "When starting the vehicle, the forward collision avoidance system is automatically on, this is the default.  I must take the active step of turning it off every time I begin to drive, if I do not wish to use it.  The issue is that the avoidance system has several times almost CAUSED me to have an accident and thrown me forward, through sudden and hard breaking if the car thinks I am too close to the vehicle in front of me.  This is why I continually turn it off.  I would like to point out that I have NEVER rear ended anyone in over 40 years of driving, so rather than truly avoiding any collision, the car causes me to come very close to having an accident, as the sudden and hard braking has caused me to swerve while preparing to pass another vehicle.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11440056,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": true,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-05-01",
+     "dateComplaintFiled": "2021-11-10",
+     "vin": "KM8K33AG9KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact's wife owns a 2019 Hyundai Kona. The contact stated that upon warming the vehicle in cold weather, an abnormal, wire-burning smell would emit from the vehicle without warning. The manufacturer was initially notified about the failure and was informed that he would receive a callback; the contact had yet to receive a callback. The contact then took the vehicle to the dealer where they found no failure with the vehicle. The contact stated that he had a young child and that the odor could be toxic to his child's breathing. The vehicle had yet to be repaired. The failure mileage was approximately 1,000.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11440767,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-12-01",
+     "dateComplaintFiled": "2021-11-17",
+     "vin": "KM8K33AGXKU",
+     "components": "ELECTRICAL SYSTEM,UNKNOWN OR OTHER,ENGINE",
+     "summary": "This complaint is regarding our 2019 Electric Hyundai Kona. Hyundai had a Recall #200 that started last year 2020 if I’m not mistaken. They have sent us a lot of letters in the mail that they are still trying to find a solution to the battery issue of the electric car and will let us know once they come up with a solution. Last month, we went to Eckert Hyundai in Denton, TX and we tried to get the recall fixed but the tech said they can’t fix it since they do not have that much experience dealing with electric cars especially with batteries (which is the main issue due to risk of fire, explosion). I tried contacting McKinney and Plano Hyundai dealerships too but they tell me the same thing. As of the moment, the car does not fully charge, I don’t charge at home and there’s always a risk of fire whenever in use and while charging.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11441865,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-09-09",
+     "dateComplaintFiled": "2021-11-28",
+     "vin": "KM8K53AG0KU",
+     "components": "ELECTRICAL SYSTEM,FUEL/PROPULSION SYSTEM",
+     "summary": "My car is subject to recall #200 (EV Battery replacement). I initially set my max charge level to 80% back in the spring, then was called by my local dealership for the battery replacement in early September. At that time, they checked my car in, but then sent me back out with it pending delivery of replacement batteries. I have reached out to the dealership several times since about the delay and they have responded that they're still waiting for batteries.  It's been almost three months since my car was \"checked in\" for service.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11441950,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-02-09",
+     "dateComplaintFiled": "2021-11-29",
+     "vin": "KM8K53AG6KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received a notification for NHTSA Campaign Number: 20V630000 (Electrical System) and 21V127000 (Electrical System). The dealer had been notified about the recalls; however, the contact was informed that the parts were not yet available. The manufacturer had also been notified of the recalls. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repairs. The contact had not experienced a failure. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11445281,
+     "manufacturer": "Nexen Tire Corporation",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-12-21",
+     "dateComplaintFiled": "2021-12-28",
+     "vin": "KM8K33AG9LU",
+     "components": "TIRES",
+     "summary": "215/55/R17  The N Priz AH8 tires are extremely slippery on wet pavement. Unless I drive exceptionally slow and cautiously, I could lose control of my Hyundai Kona Ev",
+     "products": [
+      {
+       "type": "Tire",
+       "productYear": "9999",
+       "productMake": "NEXEN",
+       "productModel": "N PRIZ AH8",
+       "size": "215/55R17",
+       "manufacturer": "Nexen Tire Corporation"
+      },
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11445971,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-01-01",
+     "dateComplaintFiled": "2022-01-03",
+     "vin": "KM8K53AG4KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "Hyundai has been unable to complete a recall on the Kona EV's battery for nearly a year, which is not \"reasonable\" by anyone's definition of the word.   During that time, we've been unable to charge our car in our garage (where our charger is installed) and haven't been able to use the car on roadtrips as we have to limit the charging capacity (per the recall instructions). I requested a buyback under my state's lemon laws but they claimed it wasn't applicable (I disagree based on the law and will be filing a complaint with the state as well). I've been waiting months for the battery to arrive at the dealership. There have been no updates from corporate since they denied the buyback request. Local dealerships have complained that corporate keeps changing the rules and how they're supposed to handle the recall, and are of no help.   We're going on a year without being able to fully utilize the car and Hyundai refuses to offer any help. They claim there are issues with the battery supply but are marketing brand new cars with batteries.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11446612,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-10-01",
+     "dateComplaintFiled": "2022-01-07",
+     "vin": "KM8K53AG7LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2020 Hyundai Kona. The contact received notification of NHTSA Campaign Number: 21V127000, however, the dealer exceeded a reasonable amount of time for the recall repair. The contact stated that the dealer advised her the vehicle can not be fixed due to no parts. The contact was concerned that her vehicle would have a failure while driving. The manufacturer was made aware of the issue.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11446645,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-07-30",
+     "dateComplaintFiled": "2022-01-07",
+     "vin": "KM8K23AG6KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "Took my 2019 Hyundai Electric Kona into dealer on 7/30/21, re: Recall #200. They kept the car for 2 1/2 weeks, finally determining that the entire battery pack should be replaced. Five months later, I am still waiting. The maximum charge is at 80%, I have brought it in for all the other recalls. The dealership keeps telling me that they have some battery packs, but that those are for \"other\" customers, and that I must wait. Hyundai is building new electric cars, there are clearly battery packs available.  As I lease my car, and the 3 year lease is up in Sept. 2022, I am beginning to wonder if the dealership is purposely delaying the battery replacement to force me into returning the car, rather than purchasing it, at the end of the lease. Why hasn't this safety recall been addressed by Hyundai? Please help me.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11446867,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-08-27",
+     "dateComplaintFiled": "2022-01-10",
+     "vin": "KM8K33AG7KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "I was directed by Jennifer Kruger at the NHTSA to complete this form.  My 2019 Hundai Kona EV is part of the EV battery recall.  On August 27, 2021, my local dealer took my car while waiting for a replacement battery.  I do have use of a rental vehicle.  I've reached out to Hyundai Customer Service many times in an attempt to find out when my care will be fixed and returned to me.  I've not been able to get any answers.  My car is 17 months old and they have now had it for over 4 months.  That is unacceptable.   I filed a Lemon Law request in July after months of 20% battery reduction with no indication of when that would be fixed.  My request was denied.  One month later they determined that my car was part of the recall.  I'm not sure why the manufacturer gets to make that determination - that seems self serving to me.  Can you help me find some resolution to this issue?  Please let me know if you need any additional information from me.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11447669,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2020-10-30",
+     "dateComplaintFiled": "2022-01-16",
+     "vin": "KM8K33AG0LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "Since the October 2020 recall requirements, I have been told not to park in my garage (thereby exposing my car exterior paint and plastic to the elements) and I have not been able to use my battery at 100% (forced to change limit to 80%). I would not have bought this car if I was going to be limited to 80% of the estimated mileage and gone with a Tesla instead. I live in a desert climate so exposing my car each day to sand and sun is aggravating when I normally park in my garage to protect my car's plastic elements and paint. It has been 16 months without a resolution to the issue and no reasonable compensation for loss of use of vehicle and increased damage to exterior of car since October 2020. Hyundai sold 2020 Kona EV owners a defective car. Had I known I would have been limited to about 200 miles, I would have chosen a different car.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11448096,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-01",
+     "dateComplaintFiled": "2022-01-19",
+     "vin": "KM8K23AG1KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact stated that she initially received notification of NHTSA Campaign Number: 21V127000 (Electrical System). The vehicle was taken to the dealer and the battery was reduced to 80%. The contact was instructed to park the vehicle away from structures until a final remedy was available. The contact never received information about the final remedy from the dealer. Months later, the contact had taken the vehicle to the dealer for a maintenance repair and the battery was reset to 100%. After a few weeks of driving the vehicle, the EV warning light appeared on the instrument panel and the dealer was notified of the issue. The contact was then instructed to bring the vehicle back to the dealer where it remained in their possession. The manufacturer had been notified of the failure and provided the contact a case manager. The contact had not yet heard from the case manager regarding her vehicle. The vehicle was not repaired. The failure mileage was approximately 21,000.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11449155,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-01-19",
+     "dateComplaintFiled": "2022-01-27",
+     "vin": "KM8K33AG5MU",
+     "components": "VISIBILITY",
+     "summary": "Sunroof exploded. On 19 January 2022 around 15:45 (Pacific Time) while driving approximately 65mph in my 2021 Hyundai Kona Electric on Hwy 60 (Moreno Valley, California), west-bound I experienced a loud explosion sound in my Kona and glass raining down on me and the inside of the car. I looked up and noticed there was a hole in the sunroof (see attached photos). I immediately found a safe place to exit the highway and stopped.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11451836,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-08-29",
+     "dateComplaintFiled": "2022-02-14",
+     "vin": "KM8K33AG1KU",
+     "components": "FUEL/PROPULSION SYSTEM",
+     "summary": "I left my car with the dealer at the end of August for a repair, and they identified that Recall 200 had to be done. I received a rental car at that time. It is now February and I have still not gotten my car back. I have contacted both the dealer and Hyundai corporate to try to find out what is happened but they just tell me there is no \"ETA\" on the replacement part.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11458393,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-01",
+     "dateComplaintFiled": "2022-03-25",
+     "vin": "KM8K23AG5KU",
+     "components": "ELECTRICAL SYSTEM,FUEL/PROPULSION SYSTEM",
+     "summary": "There has been a battery recall on our Kona EV since March 2021. We were asked to keep the battery charged only to 80% to prevent problems. Hyundai is aware that we need a battery and we were contacted in late summer to set up an appointment to replace it. Every time we try to set something up they tell us that they don't have the battery or the proper parts. This is unacceptable. We have spoken with the service writer several times without resolution. At this point we do not trust Hyundai and are extremely unhappy with our vehicle purchase given the ongoing safety concern of continuing to drive a car with a batter that has been recalled.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11458516,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-03-15",
+     "dateComplaintFiled": "2022-03-27",
+     "vin": "KM8K53AG6LU",
+     "components": "SERVICE BRAKES",
+     "summary": "Braking: When coming to a stop, the vehicle slows as expected. at about 10 MPH or less, while still continuing to apply braking pressure by foot,  the vehicle stops braking and a sudden acceleration kick occurs, propelling the vehicle forward an additional 10 feet or so, then the brake kicks in again.  Was able to duplicate this issue with a Tech from Hyundai of Moreno Valley riding as a passenger.  This is hazardous, because it could result in striking a vehicle or pedestrian in a crosswalk for example.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11460131,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-04-07",
+     "dateComplaintFiled": "2022-04-08",
+     "vin": "KM8K53AG0KU",
+     "components": "WHEELS",
+     "summary": "At time of purchase (new) this car did not come with a spare or jack but included a can of fix a flat and a cheep compressor. While traveling I became stranded with an un repairable flat tire and had to have someone come get me with a jack and abandon the car on the side of the road. I then purchased a spare tire kit directly from the purchase point dealer. On a second incident I discovered that the spare tire (donut) does not fit the rear wheels. It does not clear the brake calipers. Come to find out there is no other rim or tire that will fit this car thus leaving the driver with no options should a flat or bent rim happen. Hyundai's solution to this is to throw a can of fix a flat in the trunk. How can that be legal in this country. For the second time in two years.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11461436,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-01",
+     "dateComplaintFiled": "2022-04-20",
+     "vin": "KM8K53AG1KU",
+     "components": "POWER TRAIN,ELECTRICAL SYSTEM",
+     "summary": "Hyundai has failed to replace the battery after more than a year.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11465941,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-04-09",
+     "dateComplaintFiled": "2022-05-24",
+     "vin": "KM8K33AG4KU",
+     "components": "UNKNOWN OR OTHER",
+     "summary": "As noted above, the recall (200) for this problem was issued in March 2021. I have been trying to get Hyundai to repair the vehicle since I received this information. Late last year I was told by the dealer in my area that a fix was ready and took the car in for repair on December 27, 2021. The dealer had no fix. I have contacted the dealer several times in the past 6 months, and recently filed a complaint with the national Hyundai Corporation. As of now, I am still driving the car with the urgent battery problem, and have not received a date for the necessary repair",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11468863,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-06-06",
+     "dateComplaintFiled": "2022-06-12",
+     "vin": "KM8K53AG2MU",
+     "components": "SERVICE BRAKES",
+     "summary": "Check regenerative brake warning comes on and the emergency brake applies while driving also when I come to a stop. When I started my car the immediately the light came on. When I cut my car off the light clears. It happens when I’m braking. The regenerative brake light warning is becoming more frequent. I took my car back to the Hyundai dealership and they “checked” it out and found no problem with my vehicle. They ran a diagnostics and a update for my car, but 4 days later the warning can on again, after the repair.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11475688,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-15",
+     "dateComplaintFiled": "2022-07-25",
+     "vin": "KM8K23AG0KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received notification of NHTSA Campaign Number: 21V127000 (Electrical System) however, the part to do the recall repair was not yet available. The local dealer was contacted. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was made aware of the issue. The contact had not experienced a failure. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11476368,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-07-14",
+     "dateComplaintFiled": "2022-07-28",
+     "vin": "KM8K53AG2MU",
+     "components": "UNKNOWN OR OTHER",
+     "summary": "I was parking my Hyundai Kona electric car going very slow when without warning it took off going over 100 miles per hour.  I couldn't control the vehicle.  The brakes didn't stop the car. It ran over a wood parking beam, hit two light posts, and went over a concrete structure before finally stopping on its own.  I was not hurt.  Fortunately, no one else was hurt.  I had my seat belt on.  The air bags did not deploy.  It was witnessed by another person.  I had it towed to the Hyundai dealer in Webster.  It is at Vision Collision.  State Farm is paying for the repairs.  When I got home after the incident I went online and discovered that acceleration problems with this car and year had been reported by others.  This is a serious car defect that could result in the loss of life.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11483089,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-08-26",
+     "dateComplaintFiled": "2022-09-06",
+     "vin": "KM8K33AG2MU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "I have a 2021 Hyundai Kona Electric Vehicle with approximately 20,000 miles.  On August 26, 2022 several warning lights came on indicating that the lithium battery was inoperable but fully charged in danger of catching fire.  The dealer immediately towed my vehicle and disconnected the battery.  The recall for battery replacement due to fire risk for the 2018-2020 now appears to be affecting the 2021 model year.  The dealer is telling me they have no replacement batteries and cannot give me a timeline for replacing mine nor can they assure me that will resolve the problem.  The recall needs to be extended to all model years.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11486128,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-09-03",
+     "dateComplaintFiled": "2022-09-23",
+     "vin": "KM8K23AG0MU",
+     "components": "ELECTRICAL SYSTEM,ENGINE",
+     "summary": "My 2021 Hyundai Kona EV battery need to be replaced. But the dealer would not have estimated time when my Kona EV get new battery. It could take 1 month or 3 months. No clues. I would not make a mistake to buy another car like Hyundai EV.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11489330,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2021-03-01",
+     "dateComplaintFiled": "2022-10-14",
+     "vin": "KM8K33AG7KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact received notification of NHTSA Campaign Number: 21V127000 (Electrical System) however, the part to do the recall repair was unavailable. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was not made aware of the issue. The contact had not experienced a failure. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11497674,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-12-15",
+     "dateComplaintFiled": "2022-12-15",
+     "vin": "KM8K53AG9MU",
+     "components": "EXTERIOR LIGHTING",
+     "summary": "The headlights even though they are LED they have a terrible beam pattern with noticeable dark spots in your field of view. Also I get flashed from oncoming traffic because of the low mounting position of the head lights easily blinds on coming traffic with the slightest bump or incline in the road. I had the dealer check out their alignment and was told they are fine. I myself have been dazzled by other Kona’s coming at me. I feel these lights are an issue and I see more and more cars with these low mounted headlights which I feel is a design issue that needs to be addressed due to the angle the lights need to shine they easily dazzle oncoming traffic.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11504227,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-12-15",
+     "dateComplaintFiled": "2023-01-28",
+     "vin": "KM8K23AG3MU",
+     "components": "ELECTRICAL SYSTEM,VISIBILITY",
+     "summary": "After just 18 months and about 5,000 miles, the heater/defroster system stopped working.  My local Hyundai dealer (Dick Hannah Volkswagen/Hyundai) confirmed the failure.  Even after installing a new heater unit, the dealer reported the system is still not working.  My car has been at the dealer since 1-17-23.  Having no defroster is a serious safety issue in the winter here in Portland, Oregon, as the car can become unsafe to drive when the windows fog-up (as is common in the winter here).  There were no warning lights or notifications to indicate that anything had failed; I just noticed that heat was not coming on, and only cold air was blowing through the defroster vents.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11504717,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-07-10",
+     "dateComplaintFiled": "2023-01-31",
+     "vin": "KM8K53AG9MU",
+     "components": "UNKNOWN OR OTHER",
+     "summary": "July of 2022, vehicle went in due to battery not charging. Vehicle kept at Temecula Hyundai repair until September 2022 for EV battery replacement.  Upon return, EV battery still didn't change. September 2022 vehicle went back for repairs. Returned October 2022. Was told battery overheating sensor was faulty and was turned off. As a result the EV battery will not be able to charge beyond 90%. Was told nothing else they could do to repair the car.  When I asked if there was an increased risk of battery getting too hot, the response was \" their should not be\". My concern is that their going to be an overheating issue while the vehicle is changing at my home.  Contacted Hyundai about it; they did an investigation and determined there was reason for them to buy back the vehicle. They offered to buy it back at less that what the buy out the finance company states.  It is now February 2023. Hyundai still has yet to buy back the vehicle at what is owed on it, and still have no idea how to due the proper repairs. They still cannot assure that the battery won't overheat and there are no sensors to notify if it does.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11508764,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2023-02-01",
+     "dateComplaintFiled": "2023-02-23",
+     "vin": "KM8K33AG3MU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The contact owns a 2021 Hyundai Kona Electric. The contact received notification of NHTSA Campaign Number: 22V941000 (Electrical System) however, the part to do the recall repair was not yet available. The local dealer was contacted. The contact stated that the manufacturer had exceeded a reasonable amount of time for the recall repair. The manufacturer was made aware of the issue. The contact had not experienced a failure. Parts distribution disconnect.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11518983,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2023-04-25",
+     "dateComplaintFiled": "2023-04-25",
+     "vin": "KM8K53AGXKU",
+     "components": "ELECTRICAL SYSTEM,ENGINE",
+     "summary": "I purchased a 2019 Hyundai Kona electric from dealership. They said they had to change the electric battery before selling it to us and now the emergency light went on the dash we brought it back to the dealership and they said the battery the installed is not safe and will take 6 months to get a new one and are not giving us a car to drive.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11520279,
+     "manufacturer": "Hyundai Motor America",
+     "crash": true,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2023-05-01",
+     "dateComplaintFiled": "2023-05-03",
+     "vin": "KM8K53AG0KU",
+     "components": "SERVICE BRAKES,POWER TRAIN",
+     "summary": "The contact owns a 2019 Hyundai Kona. The contact stated while driving at 10 MPH, the steering wheel became stiff without any warning, causing the contact to lose control of the vehicle. The vehicle drove into a parking lot. The contact desperately pressed the brake pedal, but the vehicle would not stop. The contact jumped out of the vehicle and the vehicle struck a pole, causing minor damages to the bumper of the vehicle. The contact had minor injuries but did not seek medical attention. The contact mentioned being shocked after the events. A police report was filed. The vehicle was towed to the police impound. The vehicle was not diagnosed. The dealer was contacted and advised to contact the manufacturer. The manufacturer was contacted but did not provide any assistance. The failure mileage was 70,000.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11541136,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2023-08-25",
+     "dateComplaintFiled": "2023-08-28",
+     "vin": "KM8K33AG7MU",
+     "components": "VEHICLE SPEED CONTROL",
+     "summary": "While driving on the highway at 70 mph, cruise control engaged, there was a sudden loss of drive power. I could not accelerate, or return to the cruising speed. The speed just dramatically fell. The only remedy was to pull over to the side of the road, turn off the car, and start it again. This VIN was not included in the initial similar recall earlier this year.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11541418,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2023-08-08",
+     "dateComplaintFiled": "2023-08-29",
+     "vin": "KM8K23AG6MU",
+     "components": "ELECTRICAL SYSTEM,ENGINE",
+     "summary": "The contact owns a 2021 Hyundai Kona Electric. The contact stated that the battery had discharged. The contact stated that the 12-volt battery and “Bring in for Service, and key not detected messages were displayed. The contact stated that while his mother was driving at an undisclosed speed, the vehicle stalled on two occasions. The vehicle flickered, and the vanity lights dimmed and flickered. The contact called the local dealer, where the vehicle was rebooted. The contact stated that five attempts were needed to unlock the parking brake. The tow truck mechanic informed the driver that the 12-volt battery was not registering. The vehicle was towed to the local dealer, who was unable to duplicate the failure. The vehicle was not repaired. The manufacturer was contacted, and no assistance was provided. The failure mileage was approximately 38,000.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11543580,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2023-09-09",
+     "dateComplaintFiled": "2023-09-09",
+     "vin": "KM8K53AG7LU",
+     "components": "SERVICE BRAKES",
+     "summary": "I was driving at about 45mph and my vehicle brakes suddenly stopped responding. The car alarms went crazy and said \"regenerative brake failure\" which is fine and all, but why the hell would the regent failing impact my ability to stop entirely? I could not get the vehicle to respond by pumping the brakes, so I put my flashers on and rolled into a lot and thankfully didn't kill anyone. Rolled into an uphill spot, thanked the curb, and engaged the ebrake which I'm not sure actually worked. The brake was both firm and soft when pressed. That was terrifying and I was literally just on the freeway.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11544847,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2022-07-15",
+     "dateComplaintFiled": "2023-09-15",
+     "vin": "KM8K33AG8KU",
+     "components": "ENGINE,FUEL/PROPULSION SYSTEM",
+     "summary": "The vehicle began making a clicking/ticking sound under acceleration and deceleration. The noise progressively worsened until The dealer diagnosed the motor as failing internally and replaced it under warranty. Several people online in forums have experienced the same issue, some cases resulted in the reduction gear catastrophically failing causing the vehicle to suddenly stop accelerating. I worry that this issue may result in more sudden drivetrain failures because of how widespread the problem is. Hyundai does not seem to have a definite solution as the noise comes back for many owners.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11547485,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2023-09-30",
+     "dateComplaintFiled": "2023-09-30",
+     "vin": "KM8K53AG6KU",
+     "components": "SERVICE BRAKES,FORWARD COLLISION AVOIDANCE",
+     "summary": "I started directing the car to the side of the road to park. As I was guiding the car to a stop, with my foot on the brake, I was about 12 ft. from the car in front of me when the car suddenly accelerated. The vehicle accelerated for approximately 10 ft. before the anti-collision system auto-braked the car just prior to impacting the car in front of me.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11574761,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-01-03",
+     "dateComplaintFiled": "2024-02-29",
+     "vin": "KM8K53AG5LU",
+     "components": "SERVICE BRAKES,FORWARD COLLISION AVOIDANCE",
+     "summary": "This has happened about 15 times since I bought my Hyundai Kona EV Ultimate new in February 2021: When a car in front of me slows very quickly, occasionally my car tries to help me too much.  I have been in complete control of the situations, but my car beeps it's warning, adds it's efforts and the brakes lock up with tires squealing, and we stop with plenty of space in between myself and the car in front of me.  This usually happens in freeway traffic.  It is terrifying and I always immediately look in my rearview mirror to see if I'm going to get rear-ended.  I haven't been hit yet, though I have been flipped off a few times. One of these days, people will be hurt, along with the damages to the cars.   The first time it happened was only about 2 weeks after the purchase.  I had my 5-year old twin granddaughters in their car seats.  Just as described above, the brakes locked up and it really scared them (me too!).  I took it back to the salesman I bought it from at Stevens Creek Hyundai and he said it was just a setting with the response time, so he changed it.  But it kept happening intermittently.  I brought into the Future Hyundai of Concord dealer and they test drove it, could not replicate it, and after checking with their computers, said that the \"system is working as designed\".  Frustrated that I wasn't being heard, I contacted Hyundai Consumer Affairs.  They supported me and I got a case number and another appointment at a different dealer, Dublin Hyundai.  This time, I went on the test drive and the technician was able to replicate the situation.  At first he said it was a setting, but I said that I didn't care what the setting was, this should never happen. It is very dangerous. He agreed and said he would need to contact \"Techline\" the next day.  But when I tried to find out any information about this conversation, I got only silence.  Then I got a message that I could come pick up my car and that \"the system is working as designed\".  Help!",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11580665,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-03-04",
+     "dateComplaintFiled": "2024-04-02",
+     "vin": "KM8K23AGXLU",
+     "components": "POWER TRAIN,ELECTRICAL SYSTEM",
+     "summary": "We just had our 2020 Kona updated from the dealer with major software and recall updates. Since that point the car has been draining from the 12volt battery on it's own and killing the charging circuit for the battery. It has caused us to have to jump start the car and not be able to keep the 12 volt charged which runs all of the environmentals and car systems. Unless you have a jump pack with you, you have to jump it after every stop. I have tested the battery and it is fine but the system needs a high end initial draw and is not getting it. I have contacted the dealer but they are saying it is not their problem. This needs government address, as it is the same issue in the NHTSA recalls or Hybrid and EV Sonata and Ioniq 5 models.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11585896,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-04-09",
+     "dateComplaintFiled": "2024-04-29",
+     "vin": "KM8K33AG8LU",
+     "components": "FORWARD COLLISION AVOIDANCE",
+     "summary": "I am concerned about the safety of my car and have little faith that there are qualified mechanics who understand EVs and can properly service an EV car.  Two times on April 9, 2024 (and on at least 4 other occasions in 2023) while drive at approximately 45 miles an hour on a RI State highway at a safe distance from any care in front of me, my vehicle went into the fail-safe mode while I was driving causing a sudden significant loss of power to the car and it appeared to be that it was going to stall.    There was no warning sound indicating that I was going to crash into the forward vehicle (again, I was at a safe distance).  In order to continue driving, I had to pull onto the road shoulder, shut off the car, which seemed to reset it.  On this particular day/occasion, this situation occurred twice in the span of about 10 minutes.    Had there been anyone driving right behind me, they would have hit my car.    In addition, I brought my car to the dealer to address but the dealership did not know how to fix/address my problem.  They did find \"multiple codes\" in the car history, deleted the codes, and test drove the car.  They said if it happened again, to let them know.  They also told me if it occurred again, then I should bring it in when the 1 and only technician, who knows anything about the EV cars, was working.    I took a photo of the dashboard immediately after one of the episodes while the car was still running before I shut if off.  I will attach it.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11586833,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-05-03",
+     "dateComplaintFiled": "2024-05-03",
+     "vin": "KM8K23AGXMU",
+     "components": "UNKNOWN OR OTHER",
+     "summary": "My vehicle has said, refill inverter coolant, I took it in a couple of days ago and they said there is an open recall and they would fix it. They called me back after I dropped it off and informed me that they did not have the specific coolant, and no one in the area did. Over the past couple days, my vehicle has had issues turning on.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11630575,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-12-13",
+     "dateComplaintFiled": "2024-12-13",
+     "vin": "KM8K53AG7MU",
+     "components": "BACK OVER PREVENTION",
+     "summary": "The contact owns a 2021 Hyundai Kona Electric. The contact stated while the vehicle was parked, the rearview camera became inoperable. The contact stated that the image on the rearview camera went blank. There was no warning light illuminated. The vehicle was taken to the dealer, and it was diagnosed and determined that the tailgate wiring harness had failed and needed to be replaced. The vehicle was not repaired. The manufacturer was made aware of the failure and offered to pay for 60 percent of the parts and labor cost to repair the vehicle. The contact declined the offer provided by the manufacturer. The approximate failure mileage was 86,612.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11636790,
+     "manufacturer": "Enel X Way USA, LLC",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-01-08",
+     "dateComplaintFiled": "2025-01-18",
+     "vin": "KM8K23AG3KU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "The Charging unit made by Enel X called a JuiceBox 40 failed to complete a charge. Upon examination of the charger it was determined that the plug from the unit to the 240V receptacle was fused to the outlet and could not be removed. When my electrician opened the box he was able to force the plug out of the outlet. He found that the plug was burned as well as the copper wire that went to the plug from the electrical box.",
+     "products": [
+      {
+       "type": "Equipment",
+       "productYear": "9999",
+       "productMake": "ENEL X",
+       "productModel": "JUICEBOX LEVEL 2 CHARGER",
+       "manufacturer": "Enel X Way USA, LLC"
+      },
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11641724,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-06-17",
+     "dateComplaintFiled": "2025-02-10",
+     "vin": "KM8K53AG3LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "6/17/2024 12 volt battery was dead; EV was fully charged 6/16/2024 using Level 2 charger in my home garage. AAA charged the battery; I drove to Crossroads Hyundai Loveland, CO and asked to have the converter to the main battery checked; this was not done. Crossroads checked the battery via CADEX with \"good battery charge\" as result. No other diagnostic work was performed. 8/26/2024 12 volt battery again depleted; AAA charged twice 11:06 am  (recharge and retest ) and 3:51pm (Bad & replace). I drove again to Crossroads Hyundai which claimed battery test showed good battery. Technician found a draw dropped after pulling fuses F6 multi media and F16 memory. Techline at Hyundai was contacted and tech was instructed to install junction box for fuses (91950-K4061 Junction Box assembly I/PNL 91).  The car was undriveable on the Crossroads lot until part received and replaced 9/20/2024.  9/24/2024 when I arrived to pick up the car, the service advisor told me the door was left ajar after car wash, causing draw on battery; the battery was damaged by continued discharge due to strain from parts replaced. Hyundai agreed to replace the battery at no charge to customer. There were no warming lamps, messages or other symptoms of the problem prior to 6/17/2024. My safety, as a senior and woman is at risk if the car was stranded in a parking lot or other area outside of my home garage.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11643397,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-02-14",
+     "dateComplaintFiled": "2025-02-18",
+     "vin": "KM8K33AG1KU",
+     "components": "POWER TRAIN",
+     "summary": "-the gear drive was diagnosed as needed to be replaced -the GRU may lock up during driving causing the vehicle to stop -dealer confirmed needs replacing -no warnings or lights on vehicle, it was noticed that the vehicle made a louder noise while driving but could be confused with tires or normal air noise while driving.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11654523,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-03-22",
+     "dateComplaintFiled": "2025-04-14",
+     "vin": "KM8K53AG3LU",
+     "components": "UNKNOWN OR OTHER",
+     "summary": "On 3.22.2025 the rear view camera did not display; either a black screen with text \"Check surroundings for your safety,\" a green screen reading \"No camera signa received. Please try again later,\" or distorted images appeared. Camera was replaced under warranty on 4.14.2025; I learned from Crossroads Hyundai that other vehicles had a recall in effect. Images and work order are included.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11657178,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-04-28",
+     "dateComplaintFiled": "2025-04-28",
+     "vin": "KM8K33AG6MU",
+     "components": "ENGINE",
+     "summary": "Fill coolant warning came on, we checked the coolant and the coolant level was good. I spoke to a Hyundai service center and the rep said that sometimes this happens with Hyundais and it may go off.  Indeed it did but then Fill coolant warning came back and the coolant level was still good.  After several weeks of the Fill Coolant warning being on more often than not, the car started one morning but couldn’t be driven as the handbrake was stuck on, the fill coolant warning was on and the tire pressure warning was on, (even though the tire pressure on all tires was ok) I guess this was the EVs way of saying “Do Not Drive Me”.   We got the car to the dealership, they performed a scan and found no codes.  They preformed a total coolant flush as per Service Campaign T9E.   This service was performed on 21 April, 2025 and thus far the fill coolant light has stated off.  We bought this car used just 2 months prior and found through previous maintenance history that this EV had this service Campaign T9E done in January 2024. Our concern with this issue is two fold, 1) My wife could have been anywhere when the car went into: Don’t drive me mode.  2) is this going to be an annual event, which will cost several hundred dollars to address each time when this may no longer be covered by warranty",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11665430,
+     "manufacturer": "Hyundai Motor America",
+     "crash": true,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-09-01",
+     "dateComplaintFiled": "2025-06-06",
+     "vin": "KM8K53AG3MU",
+     "components": "AIR BAGS,FORWARD COLLISION AVOIDANCE",
+     "summary": "My wife's car t-boned another vehicle, but the air bags didn't deploy. Luckily, she wasn't hurt badly, but the vehicle was deemed a total loss, so you can imagine the force of the collision. The forward collision warning and automatic emergency braking didn't activate either. I reported it to Hyundai. They sent an inspector to examine the vehicle, and I also showed them photos and a copy of the police report, but they claim that my car was hit on the side, and the pre collision system doesn't detect imminent side impact. That's completely outrageous. I don't know what their inspector wrote in their report, but the photos and police report are irrefutable proof that my wife had a frontal collision with the side of another vehicle. Hyundai kept denying it because they didn't want to help financially. I attached a copy of their determination letters (the second one was after I submitted a copy of the police report to prove that my wife's car is the one that hit the other vehicle, but Hyundai refused to see it as it happened). This is a link to see the interior and exterior photos of the vehicle: [XXX]  INFORMATION REDACTED PURSUANT TO THE FREEDOM OF INFORMATION ACT (FOIA), 5 U.S.C. 552(B)(6)",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11667507,
+     "manufacturer": "Hyundai Motor America",
+     "crash": true,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-06-17",
+     "dateComplaintFiled": "2025-06-17",
+     "vin": "KM8K53AG4LU",
+     "components": "UNKNOWN OR OTHER,ENGINE,FORWARD COLLISION AVOIDANCE",
+     "summary": "My wife was pulling into a parking place at Home Depot when the car suddenly accelerated, jumped the curb & hit a tree on the sidewalk.  It did significant damage to the front bumper of the car but the airbags did not deploy & my wife was not hurt. I am guessing that it will be several thousand dollars to repair.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11669350,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-08-16",
+     "dateComplaintFiled": "2025-06-25",
+     "vin": "KM8K33AGXMU",
+     "components": "SERVICE BRAKES",
+     "summary": "After powering on the car, the dashboard displayed multiple brake system warnings, including the brake system warning light and a message on the LCD display that read \"Check regenerative brakes.\" A Hyundai dealer replaced the integrated electric brake unit assembly (invoice attached).",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11669567,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-05-31",
+     "dateComplaintFiled": "2025-06-26",
+     "vin": "KM8K33AGXMU",
+     "components": "ELECTRICAL SYSTEM,FUEL/PROPULSION SYSTEM",
+     "summary": "The car was unable to charge using level 3 DC fast chargers, necessitating the use of a level 2 charger for an extended length of time in order to be able to return home. A Hyundai dealer replaced the charging inlet lock actuator (invoice attached).",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11674690,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-07-04",
+     "dateComplaintFiled": "2025-07-19",
+     "vin": "KM8K23AGXMU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "Hyundia has had my car in for the SAME recall 4 to 5 times . 6 total weeks this time around.  The \"\"refill inverter coolant\" light kept coming back on . The last time I got it home it had more issues than when I took it in and wouldn't even catch a charge . (EV)   They fried my compassitor trying to fix the inverter coolant recall .   I then took had to pay 450 for a diagnostic ' (Kerry hyundai alexandria) They said electric motor is bad and will cost 8000 to 9000.  Got a 2nd diagnostic (Jeff wyler hyundai cincinnati) Completely different result-  Zero mention of motor ' said Ac compasitor failed.  (Had no issues prior to them working on the original recall ) The light for the recall is still on by the way and they want me to pay 3500 for new AC capacitor . (600 diagnostic included in that price )   \"  The dealership’s failure to properly perform the inverter coolant refill recall directly caused the AC compressor failure in my 2021 Hyundai Kona EV. Before taking the vehicle in for the recall, the AC system was fully functional, delivering cold air without any issues, and the car experienced no charging problems, indicating the battery and cooling systems were operating normally. The recall, intended to flush the inverter cooling system and replace the crystallizing BSC-1 coolant with BSC-2, was not completed correctly, as evidenced by the dealership’s admission that they couldn’t fix it. This botched service likely left air or debris in the cooling system, which, in Kona EVs with a heat pump, could overwork the AC compressor used for battery cooling during charging. The compressor’s failure shortly after the recall service, despite no prior issues, strongly suggests that the improper coolant flush caused undue stress on the compressor, leading to its $3,000 failure, which should be covered under warranty or as a goodwill repair due to the dealership’s error\".  [XXX]   INFORMATION REDACTED PURSUANT TO THE FREEDOM OF INFORMATION ACT (FOIA), 5 U.S.C. 552(B)(6)",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11677951,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-06-27",
+     "dateComplaintFiled": "2025-08-02",
+     "vin": "KM8K23AGXMU",
+     "components": "UNKNOWN OR OTHER",
+     "summary": "Manufacturing defect ...  Took it in 4 times for \"refill inverter coolant\" warning .  They had a campaign ' tried by couldn't get the light to go away . It was their first time ever performing this on an EV at Kerry hyundai alexandria .   Now TD EV in mason Ohio is confirming my inverter failed as a direct result of the poor flushes and poor manufacturing.    I am seeking for hyundai to cover all related costs. I haven't had my vehicle for over a month .   It's out of warranty 'however this was a known issue they issued a campaign for 'and then couldn't fix the issue after 4 or 5 tries and 2 different hyundia dealers .   All work performed will be listed at Kerry hounding in alexandria KY and Jefferson wyler hyundai cincinnati Ohio.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11680934,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": true,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-06-24",
+     "dateComplaintFiled": "2025-08-15",
+     "vin": "KM8K53AG0KU",
+     "components": "ELECTRICAL SYSTEM,SERVICE BRAKES,ENGINE",
+     "summary": "Component Failed: Electric transmission/drive unit failed twice before 150,000 miles. Still in vehicle, available for inspection.  Safety Risk: Loss of propulsion while driving creates risk of being rear-ended or stranded in dangerous traffic conditions. Right now the car is not drivable   Confirmed By: Problem confirmed by Hyundai dealership/service center on both failures.  Inspection: Inspected by authorized Hyundai service center; manufacturer was notified.   Warning Symptoms: Before the failure there was a screeching sound coming from the hood. In both failures, these warnings appeared shortly before or during the loss of propulsion.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11683954,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-11-06",
+     "dateComplaintFiled": "2025-08-29",
+     "vin": "KM8K23AG4MU",
+     "components": "UNKNOWN OR OTHER",
+     "summary": "File with NHTSA now please!!!! What do you have to lose???  If anything  If they do an investigation we are safe post warranty.   Report a Vehicle Safety Problem, Equipment Issue | NHTSA [XXX]   The Hyundai Kona Electric Vehicle (EV) has experienced issues with its Integrated Charging Control Unit (ICCU) due to problems with the low-conductivity coolant (BSC-1) used in models produced between 2018 and October 2021. This coolant can crystallize, forming debris that clogs the cooling system, leading to false \"Refill Inverter Coolant\" warnings and potential overheating risks. A Technical Service Bulletin (TSB 23-01-049H) outlines a recall to flush and replace the coolant with an improved BSC-2 formula to address this issue. However, improper or repeated coolant flushes, if not performed correctly using Hyundai’s specialized equipment and procedures, can leave air bubbles or residual debris in the system, which may impair cooling efficiency and stress critical components like the ICCU, inverter, and electric motor.  Repeated coolant flushes, especially when not executed properly, can exacerbate issues by introducing air locks or failing to fully remove crystallized debris, potentially causing damage to the ICCU, inverter, and motor. Air bubbles trapped in the cooling system can reduce heat dissipation, leading to overheating that may degrade the ICCU’s electronics or cause the inverter and motor to operate at unsafe temperatures, risking premature failure. Posts on forums indicate that some vehicles required multiple flushes to clear the warning, with improper flushing sometimes leaving contaminants that continue to trigger sensors or obstruct coolant flow. This underscores the importance of having the procedure done by trained technicians using the correct tools to avoid long-term damage to these sensitive components. INFORMATION REDACTED PURSUANT TO THE FREEDOM OF INFORMATION ACT (FOIA), 5 U.S.C. 552(B)(6)",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11683955,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2024-08-12",
+     "dateComplaintFiled": "2025-08-29",
+     "vin": "KM8K23AGXMU",
+     "components": "UNKNOWN OR OTHER",
+     "summary": "Potential Fire and safety risk ...  The Hyundai Kona Electric Vehicle (EV) has experienced issues with its Integrated Charging Control Unit (ICCU) due to problems with the low-conductivity coolant (BSC-1) used in models produced between 2018 and October 2021. This coolant can crystallize, forming debris that clogs the cooling system, leading to false \"Refill Inverter Coolant\" warnings and potential overheating risks. A Technical Service Bulletin (TSB 23-01-049H) outlines a recall to flush and replace the coolant with an improved BSC-2 formula to address this issue. However, improper or repeated coolant flushes, if not performed correctly using Hyundai’s specialized equipment and procedures, can leave air bubbles or residual debris in the system, which may impair cooling efficiency and stress critical components like the ICCU, inverter, and electric motor.  Repeated coolant flushes, especially when not executed properly, can exacerbate issues by introducing air locks or failing to fully remove crystallized debris, potentially causing damage to the ICCU, inverter, and motor. Air bubbles trapped in the cooling system can reduce heat dissipation, leading to overheating that may degrade the ICCU’s electronics or cause the inverter and motor to operate at unsafe temperatures, risking premature failure. Posts on forums indicate that some vehicles required multiple flushes to clear the warning, with improper flushing sometimes leaving contaminants that continue to trigger sensors or obstruct coolant flow. This underscores the importance of having the procedure done by trained technicians using the correct tools to avoid long-term damage to these sensitive components.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11688160,
+     "manufacturer": "Hyundai Motor America",
+     "crash": true,
+     "fire": false,
+     "numberOfInjuries": 1,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-09-10",
+     "dateComplaintFiled": "2025-09-18",
+     "vin": "KM8K53AG0KU",
+     "components": "VEHICLE SPEED CONTROL",
+     "summary": "The contact owned a 2019 Hyundai Kona. The contact stated that while attempting to drive from a complete stop, the vehicle accelerated rapidly through a busy intersection on its own and would not slow or stop, despite the brake pedal being depressed. As a result, the contact briefly lost control of the vehicle as it swerved left to right, only coming to a complete stop after colliding with another vehicle. The air bags did deploy. No warning lights were illuminated. The vehicle was towed to a storage facility and deemed a total loss by the contact's insurance provider. A police report was filed, and injuries were reported. The contact was transported to an area hospital and treated for a broken sternum and hematoma on both her right and left breasts. The manufacturer was not notified of the failure. The failure mileage was 70,000.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2019",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11699982,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2025-11-15",
+     "dateComplaintFiled": "2025-11-17",
+     "vin": "KM8K23AG5LU",
+     "components": "ELECTRICAL SYSTEM",
+     "summary": "the headlights in this model Kona keep burning out after 9 months or so.  I have replaced them multiple times in the last 5 years on both left and right sides.  I use glove to put in the bulbs and are very careful not to let my hands touch the bulb.  I have never had this happen with any other car I have owned.  I suspect an electrical system issue, or perhaps wiring, but that is speculation.  I have not had this inspected by the dealership.  The latest date of failure is listed below.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11719765,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2026-02-03",
+     "dateComplaintFiled": "2026-02-22",
+     "vin": "KM8K33AGXMU",
+     "components": "POWER TRAIN,ELECTRICAL SYSTEM",
+     "summary": "On February 3, 2026, while driving in a high-traffic turning lane, my Hyundai Kona Electric vehicle suddenly lost propulsion and would not accelerate. The vehicle shut down without warning and could not be restarted. Traffic was building behind me, creating a safety hazard. I felt unsafe due to surrounding vehicles expecting movement, I contacted the police for assistance. The vehicle had to be towed from the roadway. The vehicle was transferred between 3 dealerships before being diagonsed. On February 16, 2026, the issue was diagnosed as a motor position sensor failure affecting the propulsion system. The vehicle has remained inoperable since February 3, 2026, and there is  no repair ETA due to parts availability. The vehicle remains at the servicing dealership and is available for inspection upon request. There were no prior warning lamps, dashboard messages, or noticeable symptoms before the sudden loss of propulsion. This incident involved a sudden failure of the vehicle’s propulsion system while operating in active traffic and presented a significant safety concern.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11722050,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2026-02-02",
+     "dateComplaintFiled": "2026-03-04",
+     "vin": "KM8K53AG7LU",
+     "components": "POWER TRAIN,ELECTRICAL SYSTEM,FUEL/PROPULSION SYSTEM",
+     "summary": "While driving approximately 70 mph on I-10 in Louisiana late at night, my 2020 Hyundai Kona EV displayed a “Check EV System” warning while I was on the highway. There were no safe areas or emergency shoulders available to pull over, so I continued driving toward the nearest exit.  Approximately 15 minutes after the warning appeared, as I attempted to exit the highway, the vehicle suddenly lost power and rapidly slowed. The vehicle came to a complete stop and could not accelerate, move forward, or reverse. This created a serious safety risk because the vehicle lost propulsion while traveling at highway speed.  The vehicle had approximately 62,000 miles at the time of the incident. The vehicle was towed to Giles Hyundai where the dealership diagnosed an internal temperature sensor and resolver failure. Because these components are integrated into the drive system, the dealership replaced the entire traction motor assembly.  The repair cost was approximately $9,000. The sudden loss of propulsion at highway speed created a dangerous situation for both the driver and surrounding traffic.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11735057,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2026-04-30",
+     "dateComplaintFiled": "2026-05-01",
+     "vin": "KM8K53AG7MU",
+     "components": "FORWARD COLLISION AVOIDANCE",
+     "summary": "The automatic emergency braking system brakes way too hard causing the car to stop too fast and risks causing a rear end collision. This is not fixed by adjusting settings. It is a common complaint and the system needs to be calibrated to brake more smoothly.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2021",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11738158,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2026-05-09",
+     "dateComplaintFiled": "2026-05-15",
+     "vin": "KM8K33AG6LU",
+     "components": "STRUCTURE",
+     "summary": "2020 Hyundai Kona, ~36,300 miles. Driver's side door latch assembly. On or around May 9, 2026, an abnormal mechanical noise began coming from inside the driver's door whenever the key fob lock/unlock button was pressed, consistent with a failing latch actuator. I booked a service appointment, and on May 15, 2026, an authorized Hyundai dealership confirmed the defect and recommended full replacement of the driver's door latch assembly. The vehicle is available for inspection.  A latch that does not reliably operate is a serious safety risk. The driver's door is the primary egress point. An intermittent or inoperative latch could prevent emergency exit, block post-collision egress, or prevent first-responder access. The vehicle regularly transports children, increasing the consequence of any failure.  No dashboard warning lights, alerts, or messages preceded the failure. This is a mechanical defect that does not trigger electronic warnings.  Hyundai TSB 21-BD-006H (May 2021) acknowledges this exact failure mode — door handle inoperative or requiring repeated attempts to open — on the Elantra (AD/ADa) and Tucson (TL). The remedy is full latch assembly replacement, and Hyundai extended warranty coverage on the latch to 10 years / unlimited miles on those models. The 2020 Kona is not named in 21-BD-006H despite exhibiting the identical failure mode at low mileage on a 6-year-old vehicle. The defect appears to extend to the Kona platform and is not currently covered.  Vehicle has not been inspected by Hyundai corporate, police, insurance, or independent shops. Filing this complaint to record the cross-platform defect pattern and request that NHTSA evaluate whether the door latch warranty extension should be expanded to include the Kona.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    },
+    {
+     "odiNumber": 11740362,
+     "manufacturer": "Hyundai Motor America",
+     "crash": false,
+     "fire": false,
+     "numberOfInjuries": 0,
+     "numberOfDeaths": 0,
+     "dateOfIncident": "2026-05-15",
+     "dateComplaintFiled": "2026-05-27",
+     "vin": "KM8K23AG0LU",
+     "components": "SERVICE BRAKES",
+     "summary": "I am receiving an intermittent \"check regenerative brake\" message.  The message will clear automatically and then reappear every three to four weeks. An internet search reveals this is a common error for the Kona.  Most people report no repair by the dealer.  In several cases, the brakes stopped working, resulting in collisions.  The hydraulic breaks do not work if the regenerative brake system fails leaving you with no way to stop the car.  The manufacture has no solution.",
+     "products": [
+      {
+       "type": "Vehicle",
+       "productYear": "2020",
+       "productMake": "HYUNDAI",
+       "productModel": "KONA ELECTRIC",
+       "manufacturer": "Hyundai Motor America"
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "cleaning": [
+  {
+   "source": "complaints",
+   "rule": "complaints.products[] entries with manufacturer \"ODI Demo Co\" (NHTSA test placeholders)",
+   "removed": 0
+  },
+  {
+   "source": "complaints",
+   "rule": "complaints naming none of the requested models KONA ELECTRIC, KONA EV (NHTSA matches model names loosely)",
+   "removed": 268,
+   "records": [
+    11315963,
+    11342139,
+    11343979,
+    11349952,
+    11355579,
+    11360770,
+    11367063,
+    11372615,
+    11375178,
+    11376613,
+    11377956,
+    11378381,
+    11382989,
+    11395078,
+    11400028,
+    11405331,
+    11405511,
+    11406057,
+    11406862,
+    11413081,
+    11413166,
+    11414159,
+    11415480,
+    11415579,
+    11416149,
+    11416444,
+    11417598,
+    11419113,
+    11421013,
+    11421152,
+    11421351,
+    11421446,
+    11421651,
+    11421821,
+    11421832,
+    11421941,
+    11422290,
+    11422677,
+    11422685,
+    11422690,
+    11422714,
+    11422967,
+    11422992,
+    11423012,
+    11423062,
+    11423085,
+    11423551,
+    11423860,
+    11423969,
+    11424040,
+    11424084,
+    11424119,
+    11424245,
+    11424460,
+    11424837,
+    11425074,
+    11425503,
+    11425525,
+    11425617,
+    11425942,
+    11426527,
+    11426761,
+    11426832,
+    11427888,
+    11427978,
+    11427980,
+    11428006,
+    11428007,
+    11428454,
+    11428824,
+    11429481,
+    11429683,
+    11429959,
+    11430886,
+    11431003,
+    11431690,
+    11431980,
+    11432560,
+    11432913,
+    11432981,
+    11433252,
+    11434388,
+    11435130,
+    11435237,
+    11436204,
+    11436313,
+    11436468,
+    11436598,
+    11436623,
+    11437335,
+    11438279,
+    11439490,
+    11440141,
+    11440522,
+    11443128,
+    11443797,
+    11445745,
+    11445833,
+    11445933,
+    11448690,
+    11449232,
+    11449246,
+    11449347,
+    11451095,
+    11451190,
+    11452866,
+    11453449,
+    11462075,
+    11463808,
+    11464208,
+    11469519,
+    11471364,
+    11475293,
+    11476520,
+    11479585,
+    11483608,
+    11487041,
+    11488340,
+    11488659,
+    11488711,
+    11493121,
+    11495945,
+    11497174,
+    11498069,
+    11498864,
+    11499629,
+    11501418,
+    11506590,
+    11507764,
+    11508959,
+    11509241,
+    11512082,
+    11513717,
+    11515378,
+    11518771,
+    11519189,
+    11522420,
+    11527785,
+    11532048,
+    11536246,
+    11538061,
+    11539241,
+    11539947,
+    11540924,
+    11542322,
+    11546966,
+    11547072,
+    11551145,
+    11554623,
+    11556710,
+    11559743,
+    11559897,
+    11565025,
+    11565034,
+    11566268,
+    11568299,
+    11570221,
+    11572540,
+    11573735,
+    11574843,
+    11577828,
+    11578324,
+    11582248,
+    11590642,
+    11599565,
+    11604466,
+    11606207,
+    11612002,
+    11614742,
+    11616081,
+    11618291,
+    11618813,
+    11620582,
+    11622271,
+    11630098,
+    11630183,
+    11630714,
+    11637541,
+    11639227,
+    11640412,
+    11643311,
+    11644183,
+    11645781,
+    11647527,
+    11647670,
+    11648537,
+    11651114,
+    11651868,
+    11656037,
+    11660153,
+    11665015,
+    11668695,
+    11671093,
+    11671708,
+    11675152,
+    11676648,
+    11676914,
+    11677887,
+    11678261,
+    11678493,
+    11680070,
+    11682180,
+    11682204,
+    11682248,
+    11682393,
+    11683392,
+    11683888,
+    11684798,
+    11685669,
+    11685674,
+    11685967,
+    11688351,
+    11688598,
+    11690311,
+    11690319,
+    11691130,
+    11691257,
+    11693239,
+    11693682,
+    11695903,
+    11695939,
+    11698269,
+    11699021,
+    11704777,
+    11708210,
+    11708967,
+    11710179,
+    11714551,
+    11715307,
+    11716502,
+    11717883,
+    11720602,
+    11722507,
+    11722878,
+    11723139,
+    11723633,
+    11725552,
+    11726081,
+    11727112,
+    11727138,
+    11728446,
+    11728721,
+    11728953,
+    11729398,
+    11729419,
+    11730099,
+    11730363,
+    11731892,
+    11733095,
+    11733726,
+    11737100,
+    11737318,
+    11740710,
+    11744307,
+    11745092,
+    11746920,
+    11747397,
+    11748215,
+    11749283,
+    11752233,
+    11754634,
+    11755635,
+    11757800,
+    11758555,
+    11759509,
+    11759906,
+    11760900,
+    11763068
+   ]
+  },
+  {
+   "source": "complaints",
+   "rule": "complaints naming another model but sharing a 8-character VIN prefix with complaints that name KONA ELECTRIC, KONA EV (kept; vehicle model renamed to the matched name)",
+   "kept": 5,
+   "records": [
+    11447669,
+    11699982,
+    11735057,
+    11738158,
+    11740362
+   ],
+   "renamed": [
+    {
+     "odiNumber": 11447669,
+     "from": "KONA",
+     "to": "KONA ELECTRIC"
+    },
+    {
+     "odiNumber": 11699982,
+     "from": "KONA",
+     "to": "KONA ELECTRIC"
+    },
+    {
+     "odiNumber": 11735057,
+     "from": "KONA",
+     "to": "KONA ELECTRIC"
+    },
+    {
+     "odiNumber": 11738158,
+     "from": "KONA",
+     "to": "KONA ELECTRIC"
+    },
+    {
+     "odiNumber": 11740362,
+     "from": "KONA",
+     "to": "KONA ELECTRIC"
+    }
+   ]
+  }
+ ]
+}

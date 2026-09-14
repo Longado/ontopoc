@@ -1,0 +1,27 @@
+{
+ "schema": "vin_decode_check.v1",
+ "checked_at": "2026-09-14",
+ "source": "NHTSA vPIC DecodeVinValues on 11-character VIN prefixes",
+ "snapshot": "hyundai_kona_electric_kona_ev_2019_2021_2026-09-14.json",
+ "kept": {
+  "complaints": 112,
+  "decoded_bev": 111,
+  "without_vin": 1
+ },
+ "dropped": {
+  "complaints": 268,
+  "decoded_gasoline": 261,
+  "decoded_bev": 0,
+  "without_vin": [
+   11647527,
+   11683392,
+   11647670
+  ],
+  "undetermined": [
+   11367063,
+   11413166,
+   11425074,
+   11449232
+  ]
+ }
+}

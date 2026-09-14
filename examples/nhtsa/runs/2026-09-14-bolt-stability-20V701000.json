@@ -1,0 +1,286 @@
+{
+ "schema": "model_stability.v1",
+ "report": "2026-09-13-bolt-deepseek-flash-v5.json",
+ "snapshot": "chevrolet_bolt_2017_2023.json",
+ "model": "deepseek-flash",
+ "prompt_version": "public_defect_match.v3",
+ "started_at": "2026-09-14T08:26:09.924571+00:00",
+ "campaigns": {
+  "20V701000": {
+   "candidates": 287,
+   "same": 234,
+   "changed": [
+    {
+     "id": "11351966",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11426101",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11426319",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11427199",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11427581",
+     "before": "yes",
+     "after": "no"
+    },
+    {
+     "id": "11427618",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11428348",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11428445",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11428884",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11429913",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11432326",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11432790",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11432885",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11433235",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11433240",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11433275",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11433485",
+     "before": "unknown",
+     "after": "yes"
+    },
+    {
+     "id": "11433586",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11433606",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11433995",
+     "before": "yes",
+     "after": "unknown"
+    },
+    {
+     "id": "11443626",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11445290",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11445946",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11446205",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11447489",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11450250",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11453776",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11456669",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11457825",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11459125",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11483093",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11484586",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11485155",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11487888",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11488327",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11489555",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11490106",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11493642",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11494433",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11507826",
+     "before": "unknown",
+     "after": "no"
+    },
+    {
+     "id": "11516832",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11518249",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11518918",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11519317",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11519911",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11520319",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11523415",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11523962",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11524996",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11525792",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11526968",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11528981",
+     "before": "no",
+     "after": "unknown"
+    },
+    {
+     "id": "11529205",
+     "before": "no",
+     "after": "unknown"
+    }
+   ]
+  }
+ },
+ "totals": {
+  "candidates": 287,
+  "same": 234,
+  "changed": 53
+ }
+}

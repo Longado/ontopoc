@@ -69,7 +69,7 @@ class LabelsFromExportTest(unittest.TestCase):
                          ('qe-01', '2026-10-01T02:00:00Z', '2026-10-02T00:00:00Z'))
         self.assertEqual(first['ontology_hash'], HASH)
         self.assertEqual(first['flags'], ['fire'])
-        self.assertIn('caught fire in the garage', first['text'])
+        self.assertEqual(first['rule_verdict'], 'yes')
         self.assertIsNone(second['model_verdict'])
         self.assertIsNone(second['prompt_version'])
 
@@ -130,9 +130,9 @@ class CleanTest(unittest.TestCase):
         check_clean([row])
 
 
-def label(complaint, human, model, *, text='Battery would not charge', flags=(), series='20V001000'):
+def label(complaint, human, model, *, text='Battery would not charge', flags=(), series='20V001000', rule='no'):
     return {'series': series, 'complaint': complaint, 'human': human, 'model_verdict': model,
-            'text': text, 'flags': list(flags), 'reviewer': 'qe-01'}
+            'text': text, 'flags': list(flags), 'reviewer': 'qe-01', 'rule_verdict': rule}
 
 
 class RuleTest(unittest.TestCase):
@@ -148,14 +148,14 @@ class RuleTest(unittest.TestCase):
 
 class CompareTest(unittest.TestCase):
     LABELS = [
-        label('a', 'same', 'yes', text='smoke'),        # rule yes, model yes
-        label('b', 'same', 'no', text='smoke'),         # rule yes, model no
-        label('c', 'same', 'yes'),                      # rule no, model yes
-        label('d', 'different', 'no', text='smoke'),    # rule yes, model no
-        label('e', 'different', 'no'),                  # rule no, model no
-        label('f', 'different', 'unknown', text='fire'),  # rule yes, model undecided
-        label('g', 'different', None),                  # rule no, never checked
-        label('h', 'unsure', 'yes', text='fire'),       # not counted
+        label('a', 'same', 'yes', rule='yes'),
+        label('b', 'same', 'no', rule='yes'),
+        label('c', 'same', 'yes', rule='no'),
+        label('d', 'different', 'no', rule='yes'),
+        label('e', 'different', 'no', rule='no'),
+        label('f', 'different', 'unknown', rule='yes'),  # model undecided
+        label('g', 'different', None, rule='no'),        # never checked by the model
+        label('h', 'unsure', 'yes', rule='yes'),         # not counted
     ]
 
     def test_counts_for_each_way_of_judging(self):
@@ -209,10 +209,10 @@ class ScriptsTest(unittest.TestCase):
         return [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()]
 
     def test_import_then_reimport_lists_what_was_overwritten(self):
-        code, out, _ = self.run_import(export(review('c1', 'same'), review('c2', 'different')))
+        code, out, _ = self.run_import(export(review('c1', 'same'), review('c2', 'different')), '--reviewer', 'qe-01')
         self.assertEqual(code, 0, out)
         self.assertEqual([r['human'] for r in self.stored()], ['same', 'different'])
-        code, out, _ = self.run_import(export(review('c2', 'same', at='2026-10-03T00:00:00Z')))
+        code, out, _ = self.run_import(export(review('c2', 'same', at='2026-10-03T00:00:00Z')), '--reviewer', 'qe-01')
         self.assertEqual(code, 0)
         self.assertEqual([r['human'] for r in self.stored()], ['same', 'same'])
         self.assertIn('20V001000/c2', out)
@@ -228,6 +228,13 @@ class ScriptsTest(unittest.TestCase):
                 self.assertEqual(code, 2)
                 self.assertIn(message, err)
                 self.assertFalse(self.labels.exists())
+
+    def test_import_needs_the_reviewer_code_on_the_command_line(self):
+        code, _, err = self.run_import(export(review('c1', 'same'), reviewer='张伟'))
+        self.assertEqual(code, 2)
+        self.assertIn('--reviewer', err)
+        self.assertIn('张伟', err)
+        self.assertFalse(self.labels.exists())
 
     def test_compare_prints_counts_not_percentages(self):
         from scripts.compare_judgments import main

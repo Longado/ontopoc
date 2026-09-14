@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--input', type=Path, required=True, help='the file downloaded from the review page')
-    parser.add_argument('--reviewer', help='who reviewed; overrides the name in the file (use a code name, the repo is public)')
+    parser.add_argument('--reviewer', help='required: the reviewer\'s code name (the label store is public; the name typed in the page is not used)')
     parser.add_argument('--data-dir', type=Path, default=ROOT / 'landing-page/public/data')
     parser.add_argument('--labels-dir', type=Path, default=ROOT / 'examples/labels',
                         help='label store; the default is committed to the public repo')
@@ -29,6 +29,10 @@ def main(argv=None):
         pack = read_json_file(args.data_dir / entry['pack'])
         rows = labels_from_export(export, pack, args.reviewer, datetime.now(timezone.utc).isoformat(timespec='seconds'))
         check_clean(rows)
+        if not args.reviewer:
+            typed = export.get('reviewer') or ''
+            raise LabelError('导入时要用 --reviewer 写明复核人代号；样本库是公开的，不直接用页面里填的名字'
+                             + (f'（文件里是"{typed}"）' if typed else ''))
         path = args.labels_dir / f'{entry["id"]}.jsonl'
         existing = read_json_file(path, lines=True) if path.exists() else []
     except (OSError, ValueError, KeyError, AttributeError, TypeError) as exc:

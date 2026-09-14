@@ -1,5 +1,7 @@
+import contextlib
 import copy
 import importlib
+import io
 import json
 import unittest
 from unittest.mock import patch
@@ -17,7 +19,8 @@ class RecallExtractionTests(unittest.TestCase):
                 patch.dict('os.environ', {'DEEPSEEK_API_KEY': 'offline-test'}, clear=True), \
                 patch('scripts.check_recall_deepseek.OpenAICompatibleGateway') as gateway, \
                 patch('scripts.check_recall_deepseek.extract_record', return_value={'accepted': True}):
-            self.assertEqual(main(['--output', str(Path(directory) / 'report.json')]), 0)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main(['--output', str(Path(directory) / 'report.json')]), 0)
             self.assertEqual(gateway.call_args.kwargs['model'], 'deepseek-flash')
 
     def api(self):

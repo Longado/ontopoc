@@ -1,6 +1,7 @@
 """NHTSA recalls and complaints as a public source bundle; no judgement, only provenance."""
 from __future__ import annotations
 
+from collections import Counter
 import copy
 from datetime import datetime, timezone
 import hashlib
@@ -87,17 +88,58 @@ def drop_demo_products(bundle: dict) -> dict:
             'sources': {**bundle['sources'], 'complaints': complaints}}
 
 
+_VIN_PREFIX = 8  # manufacturer, model line, body and motor: enough to tell an electric Kona from a gasoline one
+
+
 def drop_unrequested_models(bundle: dict) -> dict:
     """NHTSA matches complaint model names loosely (\"kona electric\" also returns gasoline \"KONA\");
-    keep only complaints that name at least one requested model, and note how many were dropped."""
+    keep complaints that name a requested model, plus those whose VIN prefix matches one of them (owners
+    sometimes file an electric Kona as plain \"KONA\"). Dropped and rescued complaints are listed by id."""
     wanted = {m.upper() for m in _scope(bundle)['models']}
     records = bundle['sources']['complaints']['records']
-    kept = [r for r in records if any(isinstance(p, dict) and str(p.get('productModel', '')).upper() in wanted
-                                      for p in r.get('products') or [])]
-    rule = 'complaints naming none of the requested models ' + ', '.join(sorted(wanted)) + ' (NHTSA matches model names loosely)'
+
+    def names_wanted(r):
+        return any(isinstance(p, dict) and str(p.get('productModel', '')).upper() in wanted for p in r.get('products') or [])
+
+    def prefix(r):
+        vin = str(r.get('vin') or '')
+        return vin[:_VIN_PREFIX] if len(vin) >= _VIN_PREFIX else None
+    names_by_prefix = {}
+    for r in records:
+        if names_wanted(r) and prefix(r):
+            names_by_prefix.setdefault(prefix(r), Counter()).update(
+                p['productModel'] for p in r.get('products') or [] if isinstance(p, dict) and str(p.get('productModel', '')).upper() in wanted)
+    renamed = []
+
+    def rescue(r):
+        """The vehicle entries take the requested model name their VIN prefix matched, so model years line up with recalls."""
+        to = names_by_prefix[prefix(r)].most_common(1)[0][0]
+        products = []
+        for p in r.get('products') or []:
+            if isinstance(p, dict) and p.get('type') == 'Vehicle' and str(p.get('productModel', '')).upper() not in wanted:
+                renamed.append({'odiNumber': r.get('odiNumber'), 'from': p.get('productModel'), 'to': to})
+                p = {**p, 'productModel': to}
+            products.append(p)
+        return {**r, 'products': products}
+    kept, dropped, rescued = [], [], []
+    for r in records:
+        if names_wanted(r):
+            kept.append(r)
+        elif prefix(r) in names_by_prefix:
+            rescued.append(r)
+            kept.append(rescue(r))
+        else:
+            dropped.append(r)
+    models = ', '.join(sorted(wanted))
+    notes = [
+        {'source': 'complaints', 'rule': f'complaints naming none of the requested models {models} (NHTSA matches model names loosely)',
+         'removed': len(dropped), 'records': [r.get('odiNumber') for r in dropped]},
+        {'source': 'complaints', 'rule': f'complaints naming another model but sharing a {_VIN_PREFIX}-character VIN prefix '
+         f'with complaints that name {models} (kept; vehicle model renamed to the matched name)',
+         'kept': len(rescued), 'records': [r.get('odiNumber') for r in rescued], 'renamed': renamed},
+    ]
     complaints = {**bundle['sources']['complaints'], 'records': kept}
-    return {**bundle, 'cleaning': [*bundle.get('cleaning', []), {'source': 'complaints', 'rule': rule, 'removed': len(records) - len(kept)}],
-            'sources': {**bundle['sources'], 'complaints': complaints}}
+    return {**bundle, 'cleaning': [*bundle.get('cleaning', []), *notes], 'sources': {**bundle['sources'], 'complaints': complaints}}
 
 
 def _iso_dates(kind: str, record: dict) -> dict:
