@@ -170,3 +170,15 @@ def document_fit(ontology: dict) -> dict:
     fit['checks'] = [{'key': 'quotes_verified', 'passed': not ontology['rejected']},
                      {'key': 'no_isolated_concepts', 'passed': not fit['isolated']}]
     return fit
+
+
+def build_and_evaluate_document(bundle: dict, gateway) -> dict:
+    from datetime import datetime, timezone
+    started_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    ontology = build_document_ontology(bundle, gateway)
+    return {
+        'schema': 'company_ontology_run.v1', 'started_at': started_at, 'file': bundle['file'], 'purpose': bundle['decision'],
+        'sources': [{'name': bundle['file']['name'], 'paragraphs': len(bundle['paragraphs']), 'chars': sum(len(p) for p in bundle['paragraphs'])}],
+        'ontology': ontology,
+        'evaluation': {'data_fit': None, 'document_fit': document_fit(ontology) if ontology['status'] == 'auto_built_verified' else None},
+    }

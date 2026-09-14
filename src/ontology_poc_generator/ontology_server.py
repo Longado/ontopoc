@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 
+from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
 from ontology_poc_generator.company_ontology import build_and_evaluate
 from ontology_poc_generator.company_sources import MAX_BYTES, SourceFileError, load_table_file
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
@@ -99,14 +100,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     data = base64.b64decode(payload['content_base64'], validate=True)
                 except (binascii.Error, ValueError):
                     raise SourceFileError('文件内容不是有效的 base64') from None
-                bundle = load_table_file(str(payload.get('filename') or ''), data, payload.get('purpose'))
+                filename = str(payload.get('filename') or '')
+                is_document = Path(filename).suffix.lower() in DOCUMENT_SUFFIXES
+                bundle = (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose'))
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             if gateway is None:
                 self.reply(503, {'error': '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'})
                 return
-            result = build_and_evaluate(bundle, gateway)
+            result = (build_and_evaluate_document if is_document else build_and_evaluate)(bundle, gateway)
             outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
             if result['ontology']['status'] != 'auto_built_verified' and outage:
                 self.reply(502, {'error': f'模型请求失败（{outage[-1][:160]}）。这不是数据的问题，请稍后重试。'})
@@ -183,6 +186,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(503, {'error': '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'})
                 return
             result = json.loads(result_path.read_text(encoding='utf-8'))
+            if result['file'].get('kind') == 'document':
+                self.reply(400, {'error': '文档没有数据行可以查询；评测二只对数据表可用'})
+                return
             if result['ontology']['status'] != 'auto_built_verified':
                 self.reply(400, {'error': '本体没有通过结构核验，不能出题'})
                 return
