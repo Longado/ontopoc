@@ -80,3 +80,15 @@
 .og-find { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
 .og-find input { width: 150px; padding: 4px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
 .og-find input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.og-verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.og-verdict button { padding: 3px 12px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer; }
+.og-verdict button.og-v-ok[aria-pressed="true"] { border-color: var(--ok); background: var(--ok); color: #fff; }
+.og-verdict button.og-v-wrong[aria-pressed="true"] { border-color: var(--red); background: var(--red); color: #fff; }
+.og-verdict button:focus-visible, .og-verdict input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.og-verdict input { flex: 1 1 120px; min-width: 0; padding: 3px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
+.og-mark { font-size: 11px; font-weight: 700; fill: var(--ok); }
+.og-node.is-wrong .og-mark { fill: var(--red); }
+.og-node.is-wrong .og-node-box { stroke: var(--red); }
+.og-node.is-selected .og-mark { fill: #fff; }
+/* the wide invisible line that takes the clicks; state styles for the drawn line must not repaint it */
+.og-edge path.og-edge-hit { stroke: transparent !important; stroke-width: 16 !important; stroke-dasharray: none !important; pointer-events: stroke; }

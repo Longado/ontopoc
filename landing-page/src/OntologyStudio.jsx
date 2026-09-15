@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, fileProblem, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  conflictGroups, conflictNote, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
+  conflictGroups, conflictNote, localTime, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraphModel.js";
-import { OntologyGraph } from "./OntologyGraph.jsx";
+import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
+import { addType, confirmProgress, decisionsOf, removeAdded, renameType, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
@@ -225,11 +226,13 @@ function DiffList({ title, items }) {
   return items.length ? <div className="os-diff"><h3 className="os-sub">{title}（{items.length}）</h3><ul className="os-list">{items.map((x) => <li key={Array.isArray(x) ? x.join("/") : x}>{Array.isArray(x) ? (x[0] === x[1] ? x[0] : `${x[0]} ↔ ${x[1]}`) : x}</li>)}</ul></div> : null;
 }
 
-function ReferenceSection({ run, canCompare, onCompare, busy, error, onUpload }) {
+function ReferenceSection({ run, canCompare, onCompare, busy, error, onUpload, onGoConfirm }) {
   const ref = run.evaluation.reference;
+  const own = ref?.confirmed && run.confirmation ? splitExtras(run.ontology, run.confirmation.decisions, ref.diff) : null;
   return <section className="pr-card">
-    <div className="pr-card-head"><h2>对照标准答案</h2>{ref && <span className="pr-muted">{referenceCounts(ref.diff)}</span>}</div>
-    <p className="pr-muted">上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按"读同一张表、用同样的识别字段"来对应对象，名字不同也能对上；关系两端都对上才算命中。</p>
+    <div className="pr-card-head"><h2>{ref?.confirmed ? "对照你确认过的本体" : "对照标准答案"}</h2>{ref && <span className="pr-muted">{referenceCounts(ref.diff)}</span>}</div>
+    <p className="pr-muted">标准答案有两种来源：在"看本体"里逐项确认（最常用，确认后自动对照，同一份文件以后再上传也会自动对照）；或者上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按"读同一张表、用同样的识别字段"来对应对象，名字不同也能对上；关系两端都对上才算命中。</p>
+    {onGoConfirm && <button type="button" className="pr-link os-go-confirm" onClick={onGoConfirm}>去逐项确认本体 →</button>}
     {canCompare && <div className="os-upload">
       <input id="os-reference" className="sr-only" type="file" accept=".json,application/json" disabled={!canCompare || busy}
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onCompare(f); e.target.value = ""; }} />
@@ -239,17 +242,53 @@ function ReferenceSection({ run, canCompare, onCompare, busy, error, onUpload })
     {!canCompare && <CannotAsk what="和自己的参考本体比" example={!run.saved_as} onUpload={onUpload} />}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {ref && <>
-      <p className="pr-muted">参考本体：{ref.name}</p>
-      <DiffList title="参考里有、本体里没有的对象" items={ref.diff.types.only_reference} />
-      <DiffList title="本体里多出来的对象" items={ref.diff.types.only_ours} />
-      <DiffList title="对上的对象" items={ref.diff.types.matched} />
-      <DiffList title="参考里有、本体里没有的关系" items={ref.diff.relations.only_reference} />
-      <DiffList title="本体里多出来的关系" items={ref.diff.relations.only_ours} />
+      <p className="pr-muted">参考本体：{ref.name}{ref.confirmed && ref.confirmed_at ? `（${localTime(ref.confirmed_at)} 保存）` : ""}</p>
+      <DiffList title={ref.confirmed ? "你补上、本体里没有的对象" : "参考里有、本体里没有的对象"} items={ref.diff.types.only_reference} />
+      {own ? <>
+        <DiffList title="你判为不对的对象" items={own.types.wrong} />
+        <DiffList title="还没判断的对象" items={own.types.unjudged} />
+      </> : <DiffList title={ref.confirmed ? "这次有、你上次确认里没有的对象" : "本体里多出来的对象"} items={ref.diff.types.only_ours} />}
+      <DiffList title={ref.confirmed ? "你判为对的对象" : "对上的对象"} items={ref.diff.types.matched} />
+      <DiffList title={ref.confirmed ? "你确认过、这次本体里没有的关系" : "参考里有、本体里没有的关系"} items={ref.diff.relations.only_reference} />
+      {own ? <>
+        <DiffList title="你判为不对的关系" items={own.relations.wrong} />
+        <DiffList title="还没判断的关系" items={own.relations.unjudged} />
+      </> : <DiffList title={ref.confirmed ? "这次有、你上次确认里没有的关系" : "本体里多出来的关系"} items={ref.diff.relations.only_ours} />}
     </>}
   </section>;
 }
 
-function OntologyTab({ run, view, setView, graphProps }) {
+function ConfirmCard({ run, confirm }) {
+  const [name, setName] = useState("");
+  const { ontology } = run;
+  const { decisions, canSave, saving, error } = confirm;
+  const progress = confirmProgress(ontology, decisions);
+  const saved = run.confirmation;
+  const add = () => { confirm.onAdd(name); setName(""); };
+  function downloadReference() {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(saved.reference, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a"); link.href = url; link.download = `${run.file.name.replace(/\.[^.]+$/, "")}-参考本体.json`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  return <section className="pr-card os-confirm" id="os-confirm">
+    <div className="pr-card-head"><h2>逐项确认：这个本体在业务上对不对</h2><span className="pr-muted">已判断 {progress.judged} / {progress.total}{progress.wrong ? `，其中 ${progress.wrong} 项不对` : ""}{progress.added ? `，补了 ${progress.added} 个` : ""}</span></div>
+    <p className="pr-muted">前面的检查只能说明本体和数据对得上，说明不了它在业务上对不对，这要懂业务的人判断。在关系图右栏或"列表"里给每个对象、每条关系点"对"或"不对"，名字不合适可以改，漏掉的对象在下面补上。保存后，这份判断就是这个文件的参考本体：马上对照一次，同一份文件以后再上传会自动对照。没判断的项不算进参考本体。</p>
+    <div className="os-add">
+      <label htmlFor="os-add-type">漏掉的对象<span className="os-ask-row"><input id="os-add-type" value={name} maxLength={40} placeholder="例如：售后工程师" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
+        <button type="button" className="pr-link" disabled={!name.trim()} onClick={add}>补上</button></span></label>
+      {decisions.added.length > 0 && <div className="os-chips os-suggest">{decisions.added.map((label) => <button key={label} type="button" onClick={() => confirm.onRemoveAdded(label)} aria-label={`去掉补充的对象 ${label}`}>{label} ✕</button>)}</div>}
+    </div>
+    <div className="os-go">
+      <button type="button" className="pr-primary" disabled={!canSave || saving || !(progress.ok || progress.added)} onClick={confirm.onSave}>{saving ? "保存中…" : saved ? "更新确认并重新对照" : "保存确认并对照"}</button>
+      {!canSave && <span className="pr-muted">{run.saved_as ? "本机建模服务没有连上，暂时不能保存。" : "这是示例结果，可以试着点，保存要上传自己的文件。"}</span>}
+      {canSave && !(progress.ok || progress.added) && <span className="pr-muted">至少判一个"对"，或补一个对象</span>}
+      {saved && <><span className="pr-muted">上次保存：{localTime(saved.confirmed_at)}</span><button type="button" className="pr-link" onClick={downloadReference}>下载为参考本体</button></>}
+    </div>
+    {error && <p role="alert" className="pr-error">{error}</p>}
+  </section>;
+}
+
+function OntologyTab({ run, view, setView, graphProps, confirm }) {
   const { ontology } = run;
   const doc = isDocument(run);
   const attempts = attemptSummary(ontology);
@@ -282,15 +321,17 @@ function OntologyTab({ run, view, setView, graphProps }) {
           <ul className="os-list">{stabilityLines(run.previous.diff).map((l) => <li key={l}>{l}</li>)}</ul></>
         : <p className="pr-muted">和这次的对象、关系完全一致。</p>}
     </section>}
+    <ConfirmCard run={run} confirm={confirm} />
     <section className="pr-card">
       <div className="pr-card-head"><h2>本体</h2>
         <div className="og-toggle" role="group" aria-label="显示方式">{[["graph", "关系图"], ["list", "列表"]].map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
-      {view === "graph" && <OntologyGraph run={run} {...graphProps} onAsk={doc ? null : graphProps.onAsk} />}
+      {view === "graph" && <OntologyGraph run={run} {...graphProps} confirm={confirm} onAsk={doc ? null : graphProps.onAsk} />}
       {view === "list" && <div className="os-list-view">
         <h3 className="os-sub">对象（{ontology.object_types.length}）</h3>
         <div className="pr-types">{ontology.object_types.map((t) => <article key={t.key} className="pr-type">
           <span className="pr-tag">{t.key}</span>
           <h3>{t.label || t.key}</h3>
+          <Verdict confirm={confirm} kind="types" item={t} />
           {t.populated_from.length > 0 && <p>来自：{typeSources(t)}</p>}
           {t.definition && <p>{t.definition}</p>}
           {t.attributes.length > 0 && <p>属性：{t.attributes.map((a) => a.path).join("、")}</p>}
@@ -299,7 +340,7 @@ function OntologyTab({ run, view, setView, graphProps }) {
         </article>)}</div>
         <h3 className="os-sub">关系（{ontology.relations.length}）</h3>
         {ontology.relations.length ? <ul className="pr-rows">{ontology.relations.map((r) => <li key={r.key}>
-          <b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><span>{r.meaning}</span><code>{r.source}</code></li>)}</ul>
+          <b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><span>{r.meaning}</span><code>{r.source}</code><Verdict confirm={confirm} kind="relations" item={r} /></li>)}</ul>
           : <p className="pr-muted">没有关系。</p>}
       </div>}
     </section>
@@ -372,7 +413,7 @@ function EvaluationTab({ run, evalView, setEvalView, questions, onShow, onPath }
     {evalView === "fit" && (doc ? <DocumentFitView run={run} onShow={onShow} /> : <DataFit run={run} onShow={onShow} />)}
     {evalView === "qa" && (doc ? <section className="pr-card"><h2>业务问答</h2><p className="pr-muted">文档没有数据行可以查询，业务问答只对数据表可用。把同一业务的数据表也上传，就能用数据回答问题。</p></section>
       : <QuestionsSection run={run} {...questions} onPath={onPath} />)}
-    {evalView === "ref" && <ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} onUpload={questions.onUpload} />}
+    {evalView === "ref" && <ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} onUpload={questions.onUpload} onGoConfirm={questions.onGoConfirm} />}
   </>;
 }
 
@@ -389,6 +430,9 @@ export function OntologyStudio() {
   const [comparing, setComparing] = useState(false);
   const [compareError, setCompareError] = useState("");
   const [view, setView] = useState("graph");
+  const [decisions, setDecisions] = useState(() => (run ? decisionsOf(run) : null));
+  const [saving, setSaving] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
   const [evalView, setEvalView] = useState("fit");
   const [selected, setSelected] = useState(null);
   const [path, setPath] = useState(null);
@@ -402,7 +446,7 @@ export function OntologyStudio() {
   }, []);
   useEffect(() => () => clearInterval(timer.current), []);
 
-  function show(result) { const valid = validateRun(result); setRun(valid); saveLocal(valid); setSelected(null); setPath(null); setEvalView("fit"); setTab("ontology"); }
+  function show(result) { const valid = validateRun(result); setRun(valid); saveLocal(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setTab("ontology"); }
   function update(result) { const valid = validateRun(result); setRun(valid); saveLocal(valid); }
   async function build(file, purpose) {
     setBusy(true); setError(""); setElapsed(0); setEvents([]);
@@ -445,10 +489,19 @@ export function OntologyStudio() {
   function showOnGraph(type) { if (!type) return; setPath(null); setSelected({ kind: "node", key: type }); setView("graph"); setTab("ontology"); setReveal((n) => n + 1); }
   function showPath(query, text) { const p = pathOf(run.ontology, query); if (!p) return; setPath({ ...p, text }); setSelected({ kind: "node", key: p.nodes[p.nodes.length - 1] }); setView("graph"); setTab("ontology"); setReveal((n) => n + 1); }
   function openTile(key) {
+    if (key === "ref" && !run.evaluation.reference) { setTab("ontology"); setTimeout(() => document.getElementById("os-confirm")?.scrollIntoView({ block: "start" }), 50); return; }
     if (key === "ontology" || key === "stability") { setTab("ontology"); if (key === "stability") setTimeout(() => document.getElementById("os-stability")?.scrollIntoView({ block: "start" }), 50); return; }
     setEvalView(key); setTab("evaluation");
   }
   function demo(url = DEMO_URL) { setError(""); readText(url).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }
+  const confirmProps = run && decisions && {
+    decisions, saving, error: confirmError, canSave: Boolean(run.saved_as) && health === "ready",
+    onVerdict: (kind, key, verdict) => setDecisions((d) => setVerdict(run.ontology, d, kind, key, verdict)),
+    onRename: (key, label) => setDecisions((d) => renameType(d, key, label)),
+    onAdd: (label) => setDecisions((d) => addType(run.ontology, d, label)),
+    onRemoveAdded: (label) => setDecisions((d) => removeAdded(d, label)),
+    onSave: () => post("/api/ontology/confirm", { saved_as: run.saved_as, decisions }, setSaving, setConfirmError),
+  };
   function download() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(run, null, 2)], { type: "application/json" }));
     const link = document.createElement("a"); link.href = url; link.download = `${run.file.name.replace(/\.[^.]+$/, "")}-本体和评测.json`; link.click();
@@ -470,10 +523,11 @@ export function OntologyStudio() {
     </header>
     <div id="os-panel" role="tabpanel" aria-labelledby={`os-tab-${tab}`} className="pr-panel os-panel">
       {tab === "upload" && <UploadTab health={health} busy={busy} events={events} elapsed={elapsed} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} last={run} onOpenLast={() => setTab("ontology")} />}
-      {tab === "ontology" && run && <OntologyTab run={run} view={view} setView={setView}
+      {tab === "ontology" && run && <OntologyTab run={run} view={view} setView={setView} confirm={confirmProps}
         graphProps={{ selected, onSelect: (s) => { setSelected(s); setPath(null); }, path, onClearPath: () => setPath(null), onAsk: askOntology, reveal }} />}
       {tab === "evaluation" && run && <EvaluationTab run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} onPath={showPath}
-        questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload") }} />}
+        questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload"),
+          onGoConfirm: () => { setTab("ontology"); setTimeout(() => document.getElementById("os-confirm")?.scrollIntoView({ block: "start" }), 50); } }} />}
     </div>
   </section>;
 }

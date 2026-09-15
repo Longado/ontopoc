@@ -123,3 +123,8 @@ small.os-tone-warn { color: var(--amber); }
 .os-preview table caption { caption-side: top; text-align: left; padding: 6px 0; font-weight: 700; color: var(--ink); }
 .os-preview .pr-table td { white-space: normal; min-width: 80px; }
 .os-more-groups { justify-self: start; padding: 0; font-weight: 700; }
+.os-add { display: grid; gap: 8px; max-width: 560px; }
+.os-add label { display: grid; gap: 6px; color: var(--text-2); font-size: 13px; }
+.os-add input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; }
+.pr-type .og-verdict, .pr-rows .og-verdict { margin-top: 4px; }
+.os-go-confirm { justify-self: start; padding: 0; font-weight: 700; }

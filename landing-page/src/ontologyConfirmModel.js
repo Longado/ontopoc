@@ -44,3 +44,15 @@ export function confirmProgress(ontology, decisions) {
   return { judged: all.length, total: ontology.object_types.length + ontology.relations.length,
     ok: all.filter((d) => d.verdict === "ok").length, wrong: all.filter((d) => d.verdict === "wrong").length, added: decisions.added.length };
 }
+
+/** Against a person's own confirmation, "the ontology has it, the reference does not" means judged wrong or not judged yet. */
+export function splitExtras(ontology, decisions, diff) {
+  const label = (key) => ontology.object_types.find((t) => t.key === key)?.label || key;
+  const typeKey = Object.fromEntries(ontology.object_types.map((t) => [t.label || t.key, t.key]));
+  const relKey = Object.fromEntries(ontology.relations.map((r) => [`${label(r.from)} — ${label(r.to)}`, r.key]));
+  const split = (names, keyOf, verdicts) => ({
+    wrong: names.filter((n) => verdicts[keyOf[n]]?.verdict === "wrong"),
+    unjudged: names.filter((n) => verdicts[keyOf[n]]?.verdict !== "wrong"),
+  });
+  return { types: split(diff.types.only_ours, typeKey, decisions.types), relations: split(diff.relations.only_ours, relKey, decisions.relations) };
+}
