@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, fileProblem, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  conflictNote, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
+  conflictGroups, conflictNote, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraphModel.js";
 import { OntologyGraph } from "./OntologyGraph.jsx";
@@ -131,6 +131,36 @@ function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDo
       <p className="pr-muted os-downloads">下载示例文件自己上传：<a href="/samples/demo_company.xlsx" download>示例数据表</a> · <a href="/samples/after_sales_process.md" download>示例文档</a> · <a href="/samples/demo_reference_ontology.json" download>参考本体</a></p>
     </aside>
   </div>;
+}
+
+function useFirst(items, n = SHOWN_GROUPS) {
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, n);
+  const toggle = items.length > n && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? `只看前 ${n} 条` : `展开其余 ${items.length - n} 条`}</button>;
+  return [shown, toggle];
+}
+
+function Conflicts({ fit, ontology, onShow }) {
+  const [rows, toggle] = useFirst(fit.identity_conflicts);
+  const groups = conflictGroups(fit);
+  return <section className="pr-card">
+    <h2>同一对象信息打架（{fit.identity_conflicts.length}）</h2>
+    <p className="pr-muted">同一个编号在不同行里，某个字段写了不同的值。{fit.identity_conflicts.length > SHOWN_GROUPS ? "如果一类对象大量打架，常见原因是识别字段不够区分：同一个编号其实是好几样东西（例如缺了行号）。" : ""}</p>
+    {groups.length > 1 && <ul className="os-list">{groups.map((g) => <li key={`${g.type}/${g.field}`}>{typeLabel(ontology, g.type)}的“{g.field}”：{g.count} 个编号</li>)}</ul>}
+    <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>对象</th><th>表</th><th>编号</th><th>字段</th><th>不同的值</th><th></th></tr></thead>
+      <tbody>{rows.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td>{c.values.join(" / ")}</td><td><ShowOnGraph type={c.type} onShow={onShow} /></td></tr>)}</tbody></table></div>
+    {toggle}
+  </section>;
+}
+
+function Spellings({ fit, ontology, onShow }) {
+  const [rows, toggle] = useFirst(fit.identity_spellings);
+  return <section className="pr-card">
+    <h2>同一个编号有几种写法（{fit.identity_spellings.length}）</h2>
+    <p className="pr-muted">这些写法被当成同一个对象合并了，但源数据里写法不统一，建议在源系统里统一。</p>
+    <ul className="pr-rows">{rows.map((x, i) => <li key={i}><b>{typeLabel(ontology, x.type)} {x.identity}</b><span>写法：{x.variants.map((v) => `“${v}”`).join("、")}</span><ShowOnGraph type={x.type} onShow={onShow} /></li>)}</ul>
+    {toggle}
+  </section>;
 }
 
 function ShowOnGraph({ type, onShow }) {
@@ -296,16 +326,8 @@ function DataFit({ run, onShow }) {
   if (!fit) return <section className="pr-card"><p className="pr-error">本体没有通过核验，无法评测。先看"看本体"里被退回的原因。</p></section>;
   return <>
     <Checks fit={fit} title="数据体检：本体和数据对得上吗" note="全部由代码拿上传的每一行计算，不经过模型。每个问题都可以点“在图上看”，回到关系图里对应的对象。" />
-    {fit.identity_conflicts.length > 0 && <section className="pr-card">
-      <h2>同一对象信息打架（{fit.identity_conflicts.length}）</h2>
-      <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>对象</th><th>表</th><th>编号</th><th>字段</th><th>不同的值</th><th></th></tr></thead>
-        <tbody>{fit.identity_conflicts.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td>{c.values.join(" / ")}</td><td><ShowOnGraph type={c.type} onShow={onShow} /></td></tr>)}</tbody></table></div>
-    </section>}
-    {fit.identity_spellings?.length > 0 && <section className="pr-card">
-      <h2>同一个编号有几种写法（{fit.identity_spellings.length}）</h2>
-      <p className="pr-muted">这些写法被当成同一个对象合并了，但源数据里写法不统一，建议在源系统里统一。</p>
-      <ul className="pr-rows">{fit.identity_spellings.map((x, i) => <li key={i}><b>{typeLabel(ontology, x.type)} {x.identity}</b><span>写法：{x.variants.map((v) => `“${v}”`).join("、")}</span><ShowOnGraph type={x.type} onShow={onShow} /></li>)}</ul>
-    </section>}
+    {fit.identity_conflicts.length > 0 && <Conflicts fit={fit} ontology={ontology} onShow={onShow} />}
+    {fit.identity_spellings?.length > 0 && <Spellings fit={fit} ontology={ontology} onShow={onShow} />}
     {fit.suspected_duplicates?.length > 0 && <section className="pr-card">
       <h2>疑似重复（请人工确认）</h2>
       <p className="pr-muted">去掉开头的 0 以后相同的编号，现在被当成不同的对象；如果它们其实是同一个，需要在源数据里统一。</p>

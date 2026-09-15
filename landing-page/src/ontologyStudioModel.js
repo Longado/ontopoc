@@ -139,3 +139,13 @@ export function conflictNote(run, typeKeys) {
   }).filter(Boolean);
   return parts.length ? `按编号数对象：有 ${parts.join("、")}在数据里信息不一致（见数据体检），每个编号只算一次。` : "";
 }
+
+/** Identity conflicts summed by object type and field, largest first, so a thousand rows read as a few lines. */
+export function conflictGroups(fit) {
+  const groups = new Map();
+  for (const c of fit.identity_conflicts || []) {
+    const key = JSON.stringify([c.type, c.field]);
+    groups.set(key, { type: c.type, field: c.field, count: (groups.get(key)?.count || 0) + 1 });
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count);
+}
