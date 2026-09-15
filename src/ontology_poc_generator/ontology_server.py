@@ -8,7 +8,9 @@ import json
 import os
 from pathlib import Path
 import re
+import threading
 from urllib.parse import urlsplit
+import uuid
 
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
 from ontology_poc_generator.company_ontology import build_and_evaluate
@@ -19,7 +21,9 @@ from ontology_poc_generator.ontology_questions import ask_questions
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
-SAVED_NAME = re.compile(r'^\d{8}T\d{6}Z-[0-9a-f]{8}\.json$')
+SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
+JOB_ID = re.compile(r'^[0-9a-f]{12}$')
+NO_KEY = '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'
 
 
 def gateway_from_env():
@@ -31,6 +35,46 @@ def gateway_from_env():
 
 
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs'):
+    jobs, jobs_lock = {}, threading.Lock()
+
+    def parse_upload(payload):
+        if not isinstance(payload.get('content_base64'), str):
+            raise SourceFileError('请求缺少 content_base64（文件内容）')
+        try:
+            data = base64.b64decode(payload['content_base64'], validate=True)
+        except (binascii.Error, ValueError):
+            raise SourceFileError('文件内容不是有效的 base64') from None
+        filename = str(payload.get('filename') or '')
+        is_document = Path(filename).suffix.lower() in DOCUMENT_SUFFIXES
+        return (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose')), is_document
+
+    def previous_run(sha256):
+        """The latest verified earlier run of the same file, so a rerun shows what changed."""
+        for path in sorted(output_dir.glob('*.json'), reverse=True):
+            if path.name.endswith('.bundle.json') or not SAVED_NAME.match(path.name):
+                continue
+            earlier = json.loads(path.read_text(encoding='utf-8'))
+            if earlier['file']['sha256'] == sha256 and earlier['ontology']['status'] == 'auto_built_verified':
+                return earlier
+        return None
+
+    def finish_build(bundle, is_document, progress=None):
+        result = (build_and_evaluate_document if is_document else build_and_evaluate)(bundle, gateway, progress)
+        outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
+        if result['ontology']['status'] != 'auto_built_verified' and outage:
+            return 502, {'error': f'模型请求失败（{outage[-1][:160]}）。这不是数据的问题，请稍后重试。'}
+        now = datetime.now(timezone.utc)
+        name = f'{now.strftime("%Y%m%dT%H%M%S")}{now.microsecond // 1000:03d}Z-{bundle["file"]["sha256"][:8]}.json'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        previous = previous_run(bundle['file']['sha256'])
+        if previous and result['ontology']['status'] == 'auto_built_verified':
+            result['previous'] = {'saved_as': previous['saved_as'], 'started_at': previous['started_at'],
+                                  'diff': compare_ontologies(previous['ontology'], result['ontology'])}
+        result['saved_as'] = name
+        (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+        # the uploaded rows stay on this machine so later questions can be answered from them
+        (output_dir / name.replace('.json', '.bundle.json')).write_text(json.dumps(bundle, ensure_ascii=False), encoding='utf-8')
+        return 200, result
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
             pass
@@ -60,6 +104,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         def do_GET(self):
             if not self.local_request():
                 return
+            if self.path.startswith('/api/ontology/jobs/'):
+                job_id = self.path.rsplit('/', 1)[1]
+                if JOB_ID.match(job_id):
+                    self.job_status(job_id)
+                else:
+                    self.reply(404, {'error': '找不到这个任务'})
+                return
             if self.path != '/api/ontology/health':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
                 return
@@ -87,6 +138,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/compare':
                 self.compare()
                 return
+            if self.path == '/api/ontology/jobs':
+                self.start_job()
+                return
             if self.path != '/api/ontology/build':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
                 return
@@ -94,48 +148,58 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 payload = self.read_json()
                 if payload is None:
                     return
-                if not isinstance(payload.get('content_base64'), str):
-                    raise SourceFileError('请求缺少 content_base64（文件内容）')
-                try:
-                    data = base64.b64decode(payload['content_base64'], validate=True)
-                except (binascii.Error, ValueError):
-                    raise SourceFileError('文件内容不是有效的 base64') from None
-                filename = str(payload.get('filename') or '')
-                is_document = Path(filename).suffix.lower() in DOCUMENT_SUFFIXES
-                bundle = (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose'))
+                bundle, is_document = parse_upload(payload)
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             if gateway is None:
-                self.reply(503, {'error': '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'})
+                self.reply(503, {'error': NO_KEY})
                 return
-            result = (build_and_evaluate_document if is_document else build_and_evaluate)(bundle, gateway)
-            outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
-            if result['ontology']['status'] != 'auto_built_verified' and outage:
-                self.reply(502, {'error': f'模型请求失败（{outage[-1][:160]}）。这不是数据的问题，请稍后重试。'})
-                return
-            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-            name = f'{stamp}-{bundle["file"]["sha256"][:8]}.json'
-            output_dir.mkdir(parents=True, exist_ok=True)
-            previous = self.previous_run(bundle['file']['sha256'])
-            if previous and result['ontology']['status'] == 'auto_built_verified':
-                result['previous'] = {'saved_as': previous['saved_as'], 'started_at': previous['started_at'],
-                                      'diff': compare_ontologies(previous['ontology'], result['ontology'])}
-            result['saved_as'] = name
-            (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
-            # the uploaded rows stay on this machine so later questions can be answered from them
-            (output_dir / name.replace('.json', '.bundle.json')).write_text(json.dumps(bundle, ensure_ascii=False), encoding='utf-8')
-            self.reply(200, result)
+            self.reply(*finish_build(bundle, is_document))
 
-        def previous_run(self, sha256):
-            """The latest verified earlier run of the same file, so a rerun shows what changed."""
-            for path in sorted(output_dir.glob('*.json'), reverse=True):
-                if path.name.endswith('.bundle.json') or not SAVED_NAME.match(path.name):
-                    continue
-                earlier = json.loads(path.read_text(encoding='utf-8'))
-                if earlier['file']['sha256'] == sha256 and earlier['ontology']['status'] == 'auto_built_verified':
-                    return earlier
-            return None
+        def start_job(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                bundle, is_document = parse_upload(payload)
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            if gateway is None:
+                self.reply(503, {'error': NO_KEY})
+                return
+            job_id = uuid.uuid4().hex[:12]
+            job = {'state': 'running', 'events': [], 'result': None, 'error': None}
+            with jobs_lock:
+                jobs[job_id] = job
+
+            def report(stage, detail):
+                with jobs_lock:
+                    job['events'].append({'stage': stage, 'detail': detail,
+                                          'at': datetime.now(timezone.utc).isoformat(timespec='seconds')})
+            report('read', {'file': bundle['file']['name'], 'kind': bundle['file']['kind']})
+
+            def run():
+                try:
+                    status, body = finish_build(bundle, is_document, report)
+                except Exception as exc:  # the job must end in a state the page can show; the server log keeps the rest
+                    status, body = 500, {'error': f'建模时出错：{exc}'}
+                report('done' if status == 200 else 'failed', {})
+                with jobs_lock:
+                    job['state'] = 'done' if status == 200 else 'failed'
+                    job['result' if status == 200 else 'error'] = body if status == 200 else body['error']
+            threading.Thread(target=run, daemon=True).start()
+            self.reply(202, {'job_id': job_id})
+
+        def job_status(self, job_id):
+            with jobs_lock:
+                job = jobs.get(job_id)
+                snapshot = None if job is None else json.loads(json.dumps(job))
+            if snapshot is None:
+                self.reply(404, {'error': '找不到这个任务'})
+                return
+            self.reply(200, snapshot)
 
         def load_run(self, payload):
             name = str(payload.get('saved_as') or '')
@@ -183,7 +247,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
                 return
             if gateway is None:
-                self.reply(503, {'error': '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'})
+                self.reply(503, {'error': NO_KEY})
                 return
             result = json.loads(result_path.read_text(encoding='utf-8'))
             if result['file'].get('kind') == 'document':

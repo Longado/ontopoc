@@ -108,13 +108,15 @@ def _squash(text) -> str:
     return re.sub(r'\s+', '', str(text or ''))
 
 
-def build_document_ontology(bundle: dict, gateway) -> dict:
+def build_document_ontology(bundle: dict, gateway, progress=None) -> dict:
     """One model call per chunk (independent, not chained); code verifies every quote against its chunk."""
     chunks = bundle['chunks'][:MAX_CHUNKS]
     concepts: dict[str, dict] = {}
     proposed_labels: dict[str, str] = {}
     relations, rejected, model, errors = [], [], None, []
-    for chunk in chunks:
+    for index, chunk in enumerate(chunks, start=1):
+        if progress:
+            progress('chunk', {'index': index, 'total': len(chunks)})
         request = {'purpose': bundle['decision'], 'text': chunk,
                    'known_concepts': [{'key': k, 'label': c['label']} for k, c in concepts.items()]}
         try:
@@ -172,10 +174,12 @@ def document_fit(ontology: dict) -> dict:
     return fit
 
 
-def build_and_evaluate_document(bundle: dict, gateway) -> dict:
+def build_and_evaluate_document(bundle: dict, gateway, progress=None) -> dict:
     from datetime import datetime, timezone
     started_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
-    ontology = build_document_ontology(bundle, gateway)
+    ontology = build_document_ontology(bundle, gateway, progress)
+    if progress:
+        progress('evaluate', {})
     return {
         'schema': 'company_ontology_run.v1', 'started_at': started_at, 'file': bundle['file'], 'purpose': bundle['decision'],
         'sources': [{'name': bundle['file']['name'], 'paragraphs': len(bundle['paragraphs']), 'chars': sum(len(p) for p in bundle['paragraphs'])}],
