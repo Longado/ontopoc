@@ -7,21 +7,21 @@
 
 English · [中文](README.zh-CN.md)
 
-After a recall is issued, which similar complaints fall outside its scope? OntoPoc answers that question for a quality engineer from two public sources, NHTSA recall notices and owner complaints:
+An ontology drafting and checking tool for implementation consultants and ontology teams. Give it a client's business tables or a process document and within minutes get a draft ontology, together with where it has evidence and where it cannot be trusted:
 
-1. A model proposes an ontology from field names and sample values only; code verifies the proposal against every record (17 kinds of error) and sends errors back, three attempts at most.
-2. Category names that exist in only one source go to the model for an alias; code keeps an alias only when it links more records, and every candidate that depends on one is marked.
-3. For each recall, code computes the covered model years and the same-part complaints in three buckets (inside this recall, covered by another same-part recall, outside every one), dated before or after the recall. Recalls that name an earlier recall as the repair they redo are chained into a series.
-4. The model gives a first verdict on each complaint text; "same failure" must quote the complaint, and code checks the quote is really there.
-5. A quality engineer reviews each candidate on a static page. The reviews are the labels that will calibrate step 4.
+1. A model sees only field names and a few sample values and proposes the objects, how each is identified and how they relate; code checks the proposal against all the data and sends errors back, three attempts at most. Every concept and relation from a document must quote the text, and code drops what it cannot find.
+2. Each upload is modelled three times at once; code aligns the runs and marks objects and relations missing from some of them, the places where the model is unsure and a person should decide.
+3. The data check is computed row by row in code: whether every field has a place, whether one identity disagrees with itself, whether IDs are spelled one way, whether relations really link and references resolve.
+4. The model writes business questions as structured queries and code computes the answers on the data (counts, shares, grouping by several fields); when it cannot answer, it says whether the ontology, the data or the query format is missing something.
+5. When someone has written a reference ontology, code compares the two item by item.
 
-Verified on Chevrolet Bolt EV / EUV 2017–2023 (13 recalls, 679 complaints, fetched 2026-09-13) and Hyundai Kona Electric / Kona EV 2019–2021 (4 recalls, 112 complaints, fetched 2026-09-14). No customer data, no VIN-level scope, no deployment yet.
+Before building, the upload page shows everything that would be sent to the model; files and results stay on the machine. Verified on a synthetic manufacturing company (four sheets) and its after-sales process document, and on three real public files (Chicago city contracts, a listed company's related-party transaction policy, UCI Online Retail II); see `docs/PRD_ITERATION_3.md` §12. No real client has used it yet, and it is not deployed.
 
-Data comes from the NHTSA public API. OntoPoc is not affiliated with NHTSA, General Motors or Hyundai; its candidates and first-pass verdicts are not official findings or defect determinations.
+Example scenario: vehicle recall scope review. The same "the model proposes, code verifies" approach applied to NHTSA recall notices and owner complaints, computing the similar complaints inside and outside each recall for a quality engineer to review (Chevrolet Bolt EV / EUV 2017–2023, Hyundai Kona Electric 2019–2021). Data comes from the NHTSA public API; OntoPoc is not affiliated with NHTSA, General Motors or Hyundai, and its candidates and first-pass verdicts are not official findings or defect determinations.
 
-History: the project started on 2026-08-29 as a pre-sales POC proposal compiler and went through supply-chain, synthetic quality and food-recall scenarios before settling on recall scope review on 2026-09-13. The retired lines were removed from the branch; the full state before removal is tagged `archive-2026-09-13-nhtsa-review`.
+History: the project started on 2026-08-29 as a pre-sales POC proposal compiler, went through supply-chain, synthetic quality, food-recall and recall-scope scenarios, and on 2026-09-14 settled on "upload a file, build an ontology, evaluate it automatically", with recall review kept as an example. The retired lines are tagged `archive-2026-09-13-nhtsa-review`.
 
-> Before developing, read the [guardrails](docs/DEVELOPMENT_GUARDRAILS.md). Current state and next steps: [handoff](docs/HANDOFF_2026-09-13.md), [feature inventory](docs/FEATURES_2026-09-13.md), [iteration 2 requirements](docs/PRD_ITERATION_2.md). These documents are in Chinese.
+> Before developing, read the [guardrails](docs/DEVELOPMENT_GUARDRAILS.md). Current plan and results: [iteration 3 requirements](docs/PRD_ITERATION_3.md); handoff notes: [handoff](docs/HANDOFF_2026-09-13.md). These documents are in Chinese.
 
 ## Pages
 
