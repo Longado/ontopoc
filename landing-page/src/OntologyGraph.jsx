@@ -93,6 +93,13 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
   const focus = path ? { nodes: new Set(path.nodes), edges: new Set(path.edges) }
     : focusing || selected !== chosen ? null : edge ? { nodes: new Set([edge.from, edge.to]), edges: new Set([edge.key]) } : neighboursOf(ontology, selected.key);
   const dim = (kind, key) => focus && (kind === "node" ? !focus.nodes.has(key) : !focus.edges.has(key)) ? " is-dim" : "";
+  useEffect(() => {   // in focus the centre is what matters: scroll it to the middle of a narrow canvas, without moving the page
+    const scroller = canvas.current?.querySelector(".og-scroll");
+    const node = canvas.current?.querySelector(`.og-node[data-key="${CSS.escape(center || "")}"]`);
+    if (!focusing || !scroller || !node) return;
+    const s = scroller.getBoundingClientRect(), n = node.getBoundingClientRect();
+    scroller.scrollLeft += n.left - s.left - (s.width - n.width) / 2;
+  }, [focusing, center, box?.w]);
   const find = (e) => {
     const t = ontology.object_types.find((x) => (x.label || x.key) === e.target.value);
     if (t) { setSelected({ kind: "node", key: t.key }); e.target.value = ""; }
@@ -128,7 +135,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
               {rel.label && <text x={e.lx} y={e.ly - 6} textAnchor="middle">{rel.label}</text>}
             </g>; })}
           {graph.nodes.map((n) => { const own = findings[n.key] || []; const count = own.length; const onlyNotes = own.every((f) => f.severity === "note");
-            return <g key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}${path?.nodes.includes(n.key) ? " is-path" : ""}${unsteady(run.evaluation.stability, "types", n.key) ? " is-unsteady" : ""}${dim("node", n.key)}`} transform={`translate(${n.x},${n.y})`}
+            return <g key={n.key} data-key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}${path?.nodes.includes(n.key) ? " is-path" : ""}${unsteady(run.evaluation.stability, "types", n.key) ? " is-unsteady" : ""}${dim("node", n.key)}`} transform={`translate(${n.x},${n.y})`}
               role="button" tabIndex={0} aria-label={`对象 ${n.label}${count ? `，${count} 处数据问题` : ""}`} {...select(setSelected, { kind: "node", key: n.key })}>
               <rect width={n.w} height={n.h} className="og-node-box" />
               <rect width={40} height={n.h} className="og-node-side" />
