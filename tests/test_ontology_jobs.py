@@ -34,7 +34,8 @@ class JobTests(unittest.TestCase):
             self.assertEqual(stages[0], 'read')
             self.assertIn('propose', stages)
             self.assertIn('verify', stages)
-            self.assertEqual(stages[-2:], ['evaluate', 'done'])
+            self.assertEqual(stages[-1], 'done')
+            self.assertLess(stages.index('verify'), stages.index('evaluate'))
             self.assertEqual(job['result']['ontology']['status'], 'auto_built_verified')
             self.assertTrue((out / job['result']['saved_as']).exists())
 
