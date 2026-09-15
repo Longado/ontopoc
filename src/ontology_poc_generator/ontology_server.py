@@ -17,6 +17,7 @@ from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_an
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
 from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
+from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_questions import ask_questions
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
@@ -168,6 +169,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/jobs':
                 self.start_job()
                 return
+            if self.path == '/api/ontology/preview':
+                self.preview()
+                return
             if self.path != '/api/ontology/build':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
                 return
@@ -183,6 +187,17 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(503, {'error': NO_KEY})
                 return
             self.reply(*finish_build(bundle, is_document))
+
+        def preview(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                bundle, _ = parse_upload(payload)
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, model_preview(bundle))
 
         def start_job(self):
             try:
