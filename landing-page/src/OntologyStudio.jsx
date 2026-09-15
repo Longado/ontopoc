@@ -3,7 +3,7 @@ import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, fileProblem, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
   progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
-import { overviewTiles, pathOf } from "./ontologyGraphModel.js";
+import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
 import { OntologyGraph } from "./OntologyGraph.jsx";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
@@ -200,7 +200,12 @@ function OntologyTab({ run, view, setView, graphProps }) {
         {doc && ontology.rejected.length > 0 && <ul>{ontology.rejected.map((r, i) => <li key={i}>{r.item}：{r.reason}</li>)}</ul>}
       </details>
     </section>
-    {run.previous && <section className="pr-card" id="os-stability">
+    {run.evaluation.stability && <section className="pr-card" id="os-stability">
+      <h2>同一份文件建了 {run.evaluation.stability.runs + run.evaluation.stability.failed} 次，哪些靠得住</h2>
+      <p className="pr-muted">模型每次搭的本体会有出入，所以这次上传同时建了几次，代码把它们对齐后数每个对象、每条关系出现了几次。每次都有的可以放心用；不是每次都有的，是模型拿不准的地方，图上画成虚线框，要不要按你的业务决定。数据体检和问答用的是第一次的本体。</p>
+      <ul className="os-list">{consensusLines(ontology, run.evaluation.stability).map((l) => <li key={l}>{l}</li>)}</ul>
+    </section>}
+    {run.previous && <section className="pr-card" id={run.evaluation.stability ? undefined : "os-stability"}>
       <h2>和上一次运行比</h2>
       <p className="pr-muted">{previousLine(run.previous)}。{run.previous.purpose && run.previous.purpose !== run.purpose ? "两次的建模目的不同，差别可能来自目的，也可能是模型本身的出入。" : ""}</p>
       {stabilityLines(run.previous.diff).length

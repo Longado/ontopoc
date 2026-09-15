@@ -104,7 +104,41 @@ export function overviewTiles(run) {
       hint: doc ? "文档没有数据行" : !q ? (run.saved_as ? "点开出一组问题" : "上传自己的文件后可以提问") : q.answered === q.total ? "都能用数据回答" : `${q.total - q.answered} 题答不了，点开看原因` },
     { key: "ref", label: "对照标准", value: ref ? `命中 ${ref.matched} / ${ref.reference}` : "还没比对", tone: !ref ? "neutral" : ref.matched === ref.reference ? "ok" : "warn",
       hint: !ref ? "上传参考本体后可以比" : ref.matched === ref.reference ? "参考里的对象都对上了" : `参考里有 ${ref.reference - ref.matched} 个对象没对上` },
-    { key: "stability", label: "稳定性", value: changes === null ? "第一次运行" : changes ? `和上次有 ${changes} 处不同` : "和上次一致", tone: changes === null ? "neutral" : changes ? "warn" : "ok",
-      hint: changes === null ? "再上传同一文件可看差别" : changes ? "模型每次搭的会有出入" : "两次搭的一样" },
+    evaluation.stability ? stabilityTile(ontology, evaluation.stability)
+      : { key: "stability", label: "稳定性", value: changes === null ? "第一次运行" : changes ? `和上次有 ${changes} 处不同` : "和上次一致", tone: changes === null ? "neutral" : changes ? "warn" : "ok",
+        hint: changes === null ? "再上传同一文件可看差别" : changes ? "模型每次搭的会有出入" : "两次搭的一样" },
   ];
+}
+
+const times = (runs) => (runs === 3 ? "三次" : `${runs} 次`);
+
+/** Whether an object ("types") or relation ("relations") of the shown run was missing from some other run. */
+export function unsteady(stability, kind, key) {
+  return Boolean(stability && stability[kind][key] !== undefined && stability[kind][key] < stability.runs);
+}
+
+function stabilityTile(ontology, s) {
+  const steadyTypes = ontology.object_types.filter((t) => !unsteady(s, "types", t.key)).length;
+  const shownSteady = steadyTypes === ontology.object_types.length && !ontology.relations.some((r) => unsteady(s, "relations", r.key));
+  const extra = s.elsewhere.types.length;
+  const tile = (tone, value, hint) => ({ key: "stability", label: "稳定性", tone, value, hint });
+  if (s.runs < 2) return tile("neutral", "另外两次都没成功", "这次无法比较");
+  if (!shownSteady) return tile("warn", `${steadyTypes} / ${ontology.object_types.length} 个对象${times(s.runs)}都有`, "虚线框的对象不是每次都有");
+  if (extra || s.elsewhere.relations.length) return tile("ok", `这次的 ${ontology.object_types.length} 个对象${times(s.runs)}都有`, extra ? `另有 ${extra} 个对象只在别的某次出现` : "别的某次多了关系，点开看");
+  return tile("ok", `${times(s.runs)}搭的都一样`, "对象和关系每次都有");
+}
+
+export function consensusLines(ontology, s) {
+  const label = (key) => ontology.object_types.find((t) => t.key === key)?.label || key;
+  const of = (n) => `（${s.runs} 次里 ${n} 次）`;
+  const lines = [];
+  if (s.failed) lines.push(s.runs < 2 ? "另外两次都没有成功，这次无法比较" : `另外${s.failed === 1 ? "一次" : `${s.failed} 次`}没有成功，只比了 ${s.runs} 次`);
+  const steady = ontology.object_types.filter((t) => !unsteady(s, "types", t.key)).map((t) => t.label || t.key);
+  if (steady.length) lines.push(`每次都有：${steady.join("、")}`);
+  const shaky = [...ontology.object_types.filter((t) => unsteady(s, "types", t.key)).map((t) => `${t.label || t.key}${of(s.types[t.key])}`),
+    ...ontology.relations.filter((r) => unsteady(s, "relations", r.key)).map((r) => `关系 ${label(r.from)} — ${label(r.to)}${of(s.relations[r.key])}`)];
+  if (shaky.length) lines.push(`不是每次都有：${shaky.join("；")}`);
+  const elsewhere = [...s.elsewhere.types.map((t) => `${t.label}${of(t.count)}`), ...s.elsewhere.relations.map((r) => `关系 ${r.label}${of(r.count)}`)];
+  if (elsewhere.length) lines.push(`这次没有、别的某次有：${elsewhere.join("；")}`);
+  return lines;
 }

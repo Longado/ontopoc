@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { edgeStats, findingsByType, layoutGraph, neighboursOf } from "./ontologyGraphModel.js";
+import { edgeStats, findingsByType, layoutGraph, neighboursOf, unsteady } from "./ontologyGraphModel.js";
 import { typeLabel, typeSources } from "./ontologyStudioModel.js";
 import "./OntologyGraph.css";
 
@@ -28,6 +28,7 @@ function PathInspector({ ontology, path, onClearPath }) {
 
 function Inspector({ run, selected, findings }) {
   const { ontology } = run;
+  const stability = run.evaluation.stability;
   const fit = run.evaluation.data_fit;
   if (selected.kind === "edge") {
     const r = ontology.relations.find((x) => x.key === selected.key);
@@ -38,6 +39,7 @@ function Inspector({ run, selected, findings }) {
       <p>{r.meaning}</p>
       {r.evidence?.length > 0 && <div className="og-quotes">{r.evidence.map((q, i) => <blockquote key={i}>原文：{q}</blockquote>)}</div>}
       <dl className="og-kv"><div><dt>{r.evidence ? "出自" : "所在表"}</dt><dd>{r.source}</dd></div>
+        {stability && stability.relations[r.key] !== undefined && <div><dt>{stability.runs} 次建模</dt><dd className={unsteady(stability, "relations", r.key) ? "og-warn" : ""}>{unsteady(stability, "relations", r.key) ? `只有 ${stability.relations[r.key]} 次有这条关系` : "每次都有"}</dd></div>}
         {stats && <div><dt>连上的行</dt><dd className={stats.complete ? "" : "og-warn"}>{stats.linked_rows} / {stats.rows}{stats.complete ? "" : "（有行没连上）"}</dd></div>}</dl>
     </div>;
   }
@@ -54,6 +56,7 @@ function Inspector({ run, selected, findings }) {
       {t.populated_from.length > 0 && <div><dt>来自</dt><dd>{typeSources(t)}</dd></div>}
       {t.attributes.length > 0 && <div><dt>属性</dt><dd>{t.attributes.map((a) => a.path).join("、")}</dd></div>}
       {t.time_field && <div><dt>时间</dt><dd>{t.time_field.path}</dd></div>}
+      {stability && stability.types[t.key] !== undefined && <div><dt>{stability.runs} 次建模</dt><dd className={unsteady(stability, "types", t.key) ? "og-warn" : ""}>{unsteady(stability, "types", t.key) ? `只有 ${stability.types[t.key]} 次有它：模型对要不要单独建这个对象拿不准，可以按你的业务决定` : "每次都有"}</dd></div>}
       {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]} 个{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key]} 个在多张表里出现` : ""}</dd></div>}
     </dl>
     {fit && <h4>数据检查</h4>}
@@ -89,13 +92,13 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
         <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", minWidth: Math.max(Math.min(graph.width, 560), Math.round(graph.width * 0.7)), maxWidth: graph.width }} role="group" aria-label="本体关系图">
           <defs><marker id="og-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" className="og-arrowhead" /></marker></defs>
           {graph.edges.map((e) => { const stats = edgeStats(run.evaluation.data_fit, e.key); const rel = ontology.relations.find((r) => r.key === e.key);
-            return <g key={e.key} className={`og-edge${isSelected("edge", e.key) ? " is-selected" : ""}${path?.edges.includes(e.key) ? " is-path" : ""}${stats && !stats.complete ? " is-partial" : ""}${dim("edge", e.key)}`}
+            return <g key={e.key} className={`og-edge${isSelected("edge", e.key) ? " is-selected" : ""}${path?.edges.includes(e.key) ? " is-path" : ""}${stats && !stats.complete ? " is-partial" : ""}${unsteady(run.evaluation.stability, "relations", e.key) ? " is-unsteady" : ""}${dim("edge", e.key)}`}
               role="button" tabIndex={0} aria-label={`关系 ${typeLabel(ontology, e.from)} 到 ${typeLabel(ontology, e.to)}`} {...select(setSelected, { kind: "edge", key: e.key })}>
               <path d={e.path} markerEnd="url(#og-arrow)" />
               {rel.label && <text x={e.lx} y={e.ly - 6} textAnchor="middle">{rel.label}</text>}
             </g>; })}
           {graph.nodes.map((n) => { const own = findings[n.key] || []; const count = own.length; const onlyNotes = own.every((f) => f.severity === "note");
-            return <g key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}${path?.nodes.includes(n.key) ? " is-path" : ""}${dim("node", n.key)}`} transform={`translate(${n.x},${n.y})`}
+            return <g key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}${path?.nodes.includes(n.key) ? " is-path" : ""}${unsteady(run.evaluation.stability, "types", n.key) ? " is-unsteady" : ""}${dim("node", n.key)}`} transform={`translate(${n.x},${n.y})`}
               role="button" tabIndex={0} aria-label={`对象 ${n.label}${count ? `，${count} 处数据问题` : ""}`} {...select(setSelected, { kind: "node", key: n.key })}>
               <rect width={n.w} height={n.h} className="og-node-box" />
               <rect width={40} height={n.h} className="og-node-side" />
@@ -107,6 +110,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
       </div>
       <ul className="og-legend" aria-label="图例">
         {run.evaluation.data_fit && <><li><i className="og-legend-badge" />数据问题</li><li><i className="og-legend-badge og-badge-note" />提示</li><li><i className="og-legend-dash" />有行没连上的关系</li></>}
+        {run.evaluation.stability && <li><i className="og-legend-unsteady" />虚线框、点线：不是每次建模都有</li>}
         <li>点对象，只看它和相连的对象</li>
       </ul>
     </div>
