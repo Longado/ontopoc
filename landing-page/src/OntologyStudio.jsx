@@ -46,6 +46,36 @@ function Progress({ events, kind, elapsed }) {
   </div>;
 }
 
+function SendPreview({ file }) {
+  const [state, setState] = useState({ status: "idle" });
+  async function load() {
+    if (state.status !== "idle") return;
+    setState({ status: "loading" });
+    try {
+      const response = await fetch("/api/ontology/preview", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, content_base64: await toBase64(file) }) });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(serviceError(response.status, data));
+      setState({ status: "ready", data });
+    } catch (e) { setState({ status: "error", error: e.message === "Failed to fetch" ? "连不上本机建模服务。" : e.message }); }
+  }
+  const d = state.data;
+  return <details className="os-how os-preview" onToggle={(e) => { if (e.currentTarget.open) load(); }}>
+    <summary>看看会发给模型什么</summary>
+    {state.status === "loading" && <p>正在读取文件…</p>}
+    {state.status === "error" && <p className="pr-error">{state.error}</p>}
+    {d?.kind === "document" && <p>文档的正文会按段发给模型：共 {d.paragraphs} 段、{d.chars} 字，分成 {d.chunks_total} 块，这次会发 {d.chunks_sent} 块{d.chunks_sent < d.chunks_total ? "（太长，后面的不处理）" : ""}。</p>}
+    {d?.kind === "table" && <>
+      <p>只发下面这些：每列的字段名和最多 3 个示例值；出题时，取值不超过 12 种的列会发全部取值。其余的行不会离开本机，数据体检和答题都在本机算。</p>
+      {d.sources.map((src) => <div key={src.name} className="pr-table-wrap"><table className="pr-table">
+        <caption>{src.name}（{src.record_count} 行）</caption>
+        <thead><tr><th>字段</th><th>示例值</th><th>出题时发送的全部取值</th></tr></thead>
+        <tbody>{src.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td>{f.examples.join("、")}</td><td>{f.values ? f.values.join("、") : "—"}</td></tr>)}</tbody>
+      </table></div>)}
+    </>}
+  </details>;
+}
+
 function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDocDemo, last, onOpenLast }) {
   const [file, setFile] = useState(null);
   const [purpose, setPurpose] = useState("");
@@ -78,6 +108,7 @@ function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDo
           <textarea id="os-purpose" rows={2} maxLength={300} value={purpose} placeholder="例如：哪些客户、产品的售后问题最多？" onChange={(e) => setPurpose(e.target.value)} />
         </label>
         <div className="os-chips os-suggest" role="group" aria-label="示例问题">{EXAMPLE_QUESTIONS.map((q) => <button key={q} type="button" onClick={() => setPurpose(q)}>{q}</button>)}</div>
+        {file && !problem && !offline && <SendPreview key={`${file.name}-${file.size}-${file.lastModified}`} file={file} />}
         <div className="os-go">
           <button className="pr-primary" disabled={Boolean(blocked)} onClick={() => onBuild(file, purpose)}>生成本体并评测</button>
           {blocked && <span className="pr-muted">{blocked}</span>}
