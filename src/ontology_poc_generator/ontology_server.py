@@ -71,7 +71,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         output_dir.mkdir(parents=True, exist_ok=True)
         previous = previous_run(bundle['file']['sha256'])
         if previous and result['ontology']['status'] == 'auto_built_verified':
-            result['previous'] = {'saved_as': previous['saved_as'], 'started_at': previous['started_at'],
+            result['previous'] = {'saved_as': previous['saved_as'], 'started_at': previous['started_at'], 'purpose': previous.get('purpose'),
+                                  'counts': {'types': len(previous['ontology']['object_types']), 'relations': len(previous['ontology']['relations'])},
                                   'diff': compare_ontologies(previous['ontology'], result['ontology'])}
         result['saved_as'] = name
         (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')

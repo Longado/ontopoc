@@ -92,13 +92,19 @@ export function overviewTiles(run) {
   const passed = fit ? fit.checks.filter((c) => c.passed).length : 0;
   const diffCount = (d) => d.types.only_reference.length + d.types.only_ours.length + d.relations.only_reference.length + d.relations.only_ours.length;
   const ref = evaluation.reference?.diff.counts.types;
-  const q = evaluation.questions;
+  const asked = (evaluation.asked || []).flatMap((r) => r.items || []);
+  const round = evaluation.questions?.total ? evaluation.questions : { answered: 0, total: 0 };
+  const q = round.total + asked.length ? { answered: round.answered + asked.filter((i) => i.status === "answered").length, total: round.total + asked.length } : null;
   const changes = run.previous ? diffCount(run.previous.diff) : null;
   return [
-    { key: "ontology", label: "本体", value: `${ontology.object_types.length} 个对象 · ${ontology.relations.length} 条关系`, tone: "neutral" },
-    { key: "fit", label: doc ? "文档检查" : "数据体检", value: fit ? `通过 ${passed} / ${fit.checks.length}` : "未评测", tone: !fit ? "neutral" : passed === fit.checks.length ? "ok" : "warn" },
-    { key: "qa", label: "业务问答", value: doc ? "不适用于文档" : q ? `能回答 ${q.answered} / ${q.total}` : "还没出题", tone: !q || doc ? "neutral" : q.answered === q.total ? "ok" : "warn" },
-    { key: "ref", label: "对照标准", value: ref ? `命中 ${ref.matched} / ${ref.reference}` : "还没比对", tone: !ref ? "neutral" : ref.matched === ref.reference ? "ok" : "warn" },
-    { key: "stability", label: "稳定性", value: changes === null ? "第一次运行" : changes ? `和上次有 ${changes} 处不同` : "和上次一致", tone: changes === null ? "neutral" : changes ? "warn" : "ok" },
+    { key: "ontology", label: "本体", value: `${ontology.object_types.length} 个对象 · ${ontology.relations.length} 条关系`, tone: "neutral", hint: "点开看关系图" },
+    { key: "fit", label: doc ? "文档检查" : "数据体检", value: fit ? `通过 ${passed} / ${fit.checks.length}` : "未评测", tone: !fit ? "neutral" : passed === fit.checks.length ? "ok" : "warn",
+      hint: !fit ? "" : passed === fit.checks.length ? "全部通过" : `${fit.checks.length - passed} 项没通过，点开看是哪些` },
+    { key: "qa", label: "业务问答", value: doc ? "不适用于文档" : q ? `能回答 ${q.answered} / ${q.total}` : "还没出题", tone: !q || doc ? "neutral" : q.answered === q.total ? "ok" : "warn",
+      hint: doc ? "文档没有数据行" : !q ? (run.saved_as ? "点开出一组问题" : "上传自己的文件后可以提问") : q.answered === q.total ? "都能用数据回答" : `${q.total - q.answered} 题答不了，点开看原因` },
+    { key: "ref", label: "对照标准", value: ref ? `命中 ${ref.matched} / ${ref.reference}` : "还没比对", tone: !ref ? "neutral" : ref.matched === ref.reference ? "ok" : "warn",
+      hint: !ref ? "上传参考本体后可以比" : ref.matched === ref.reference ? "参考里的对象都对上了" : `参考里有 ${ref.reference - ref.matched} 个对象没对上` },
+    { key: "stability", label: "稳定性", value: changes === null ? "第一次运行" : changes ? `和上次有 ${changes} 处不同` : "和上次一致", tone: changes === null ? "neutral" : changes ? "warn" : "ok",
+      hint: changes === null ? "再上传同一文件可看差别" : changes ? "模型每次搭的会有出入" : "两次搭的一样" },
   ];
 }

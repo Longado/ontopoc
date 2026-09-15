@@ -108,3 +108,21 @@ export function serviceError(status, data) {
   if (status === 404) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
   return data?.error || `服务返回 ${status}`;
 }
+
+/** Why the service would refuse this file, said before it is sent; "" when it is fine. */
+export function fileProblem(file) {
+  const suffix = (file.name.match(/\.[^.]+$/)?.[0] || "").toLowerCase();
+  if (!ACCEPT.split(",").includes(suffix)) return `不支持 ${suffix || "没有扩展名的"} 文件。数据表用 .csv .xlsx，文档用 .md .txt .docx .pdf`;
+  if (!file.size) return "文件是空的";
+  if (file.size > 10 * 1024 * 1024) return "文件超过 10 MB";
+  return "";
+}
+
+export function previousLine(previous) {
+  const d = new Date(previous.started_at);
+  const two = (n) => String(n).padStart(2, "0");
+  const when = `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+  const purpose = previous.purpose ? `，建模目的“${previous.purpose}”` : "";
+  const counts = previous.counts ? `，${previous.counts.types} 个对象、${previous.counts.relations} 条关系` : "";
+  return `上一次运行：${when}${purpose}${counts}`;
+}
