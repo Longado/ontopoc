@@ -135,11 +135,12 @@ function stabilityTile(ontology, s) {
   return tile("ok", `${times(s.runs)}搭的都一样`, "对象和关系每次都有");
 }
 
-export function consensusLines(ontology, s) {
+export function consensusLines(ontology, s, errorLabels = {}) {
   const label = (key) => ontology.object_types.find((t) => t.key === key)?.label || key;
   const of = (n) => `（${s.runs} 次里 ${n} 次）`;
   const lines = [];
-  if (s.failed) lines.push(s.runs < 2 ? "另外两次都没有成功，这次无法比较" : `另外${s.failed === 1 ? "一次" : `${s.failed} 次`}没有成功，只比了 ${s.runs} 次`);
+  const why = (s.failures || []).map((f) => (f.error ? "模型请求出错" : f.codes.map((c) => errorLabels[c] || c).join("、"))).filter(Boolean).join("；");
+  if (s.failed) lines.push(s.runs < 2 ? `另外两次都没有成功${why ? `（${why}）` : ""}，这次无法比较` : `另外${s.failed === 1 ? "一次" : `${s.failed} 次`}没有成功${why ? `（${why}）` : ""}，只比了 ${s.runs} 次`);
   const steady = ontology.object_types.filter((t) => !unsteady(s, "types", t.key)).map((t) => t.label || t.key);
   if (steady.length) lines.push(`每次都有：${steady.join("、")}`);
   const shaky = [...ontology.object_types.filter((t) => unsteady(s, "types", t.key)).map((t) => `${t.label || t.key}${of(s.types[t.key])}`),

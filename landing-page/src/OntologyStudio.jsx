@@ -236,7 +236,7 @@ function OntologyTab({ run, view, setView, graphProps }) {
     {run.evaluation.stability && <section className="pr-card" id="os-stability">
       <h2>同一份文件建了 {run.evaluation.stability.runs + run.evaluation.stability.failed} 次，哪些靠得住</h2>
       <p className="pr-muted">模型每次搭的本体会有出入，所以这次上传同时建了几次，代码把它们对齐后数每个对象、每条关系出现了几次。每次都有的可以放心用；不是每次都有的，是模型拿不准的地方，图上画成虚线框，要不要按你的业务决定。</p>
-      <ul className="os-list">{consensusLines(ontology, run.evaluation.stability).map((l) => <li key={l}>{l}</li>)}</ul>
+      <ul className="os-list">{consensusLines(ontology, run.evaluation.stability, ERROR_LABELS).map((l) => <li key={l}>{l}</li>)}</ul>
       <p>页面上的数据体检和问答用的是显示的这一次本体。数据体检是代码按本体逐行算的，本体一样，体检结果就一样{ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) ? "；和虚线框对象有关的体检结果，看你要不要这个对象再取舍" : ""}。问答的题每次由模型重新出，所以题目和"能答几题"会变；每道题的答案是代码在数据上算的，同样的查询答案不变。</p>
     </section>}
     {run.previous && <section className="pr-card" id={run.evaluation.stability ? undefined : "os-stability"}>
