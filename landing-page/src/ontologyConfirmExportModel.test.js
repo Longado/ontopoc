@@ -15,5 +15,6 @@ test("the downloaded reference says who confirmed it, for which file, and which 
   const out = referenceDownload(run);
   assert.deepEqual(out.confirmed, { at: "2026-09-15T12:00:00+00:00", by: "王工", file: "retail.csv", sha256: "ab" });
   assert.deepEqual(out.object_types, run.confirmation.reference.object_types);
-  assert.deepEqual(out.data_check, [{ type: "line", label: "发票行", note: "识别字段在数据里不唯一：2 个编号在不同行里信息不一致" }]);
+  assert.deepEqual(out.data_check, [{ type: "line", label: "发票行", note: "识别字段在数据里不唯一：2 个编号在不同行里信息不一致" },
+    { type: "product", label: "商品", note: "识别字段在数据里不唯一：1 个编号在不同行里信息不一致" }]);
 });
