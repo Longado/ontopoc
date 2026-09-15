@@ -12,7 +12,7 @@ def _signature(t: dict) -> set:
     return {(p.get('source'), frozenset((p.get('identity') or {}).values())) for p in t.get('populated_from') or []}
 
 
-def _match_types(reference: list, ours: list) -> dict:
+def match_types(reference: list, ours: list) -> dict:
     mapping, taken = {}, set()
     for rule in (lambda r, o: _signature(r) & _signature(o), lambda r, o: (r.get('label') or r['key']) == (o.get('label') or o['key'])):
         for r in reference:
@@ -28,7 +28,7 @@ def _match_types(reference: list, ours: list) -> dict:
 def compare_ontologies(reference: dict, ours: dict) -> dict:
     ref_types, our_types = reference['object_types'], ours['object_types']
     name = {('ref', t['key']): t.get('label') or t['key'] for t in ref_types} | {('our', t['key']): t.get('label') or t['key'] for t in our_types}
-    mapping = _match_types(ref_types, our_types)
+    mapping = match_types(ref_types, our_types)
     rel_text = lambda side, r: f'{name[(side, r["from"])]} — {name[(side, r["to"])]}'
     matched_rel, used = [], set()
     for r in reference['relations']:
