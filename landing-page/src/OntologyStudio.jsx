@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, fileProblem, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
+  conflictGroups, conflictNote, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
-import { overviewTiles, pathOf } from "./ontologyGraphModel.js";
+import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraphModel.js";
 import { OntologyGraph } from "./OntologyGraph.jsx";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
@@ -46,6 +46,36 @@ function Progress({ events, kind, elapsed }) {
   </div>;
 }
 
+function SendPreview({ file }) {
+  const [state, setState] = useState({ status: "idle" });
+  async function load() {
+    if (state.status !== "idle") return;
+    setState({ status: "loading" });
+    try {
+      const response = await fetch("/api/ontology/preview", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, content_base64: await toBase64(file) }) });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(serviceError(response.status, data));
+      setState({ status: "ready", data });
+    } catch (e) { setState({ status: "error", error: e.message === "Failed to fetch" ? "连不上本机建模服务。" : e.message }); }
+  }
+  const d = state.data;
+  return <details className="os-how os-preview" onToggle={(e) => { if (e.currentTarget.open) load(); }}>
+    <summary>看看会发给模型什么</summary>
+    {state.status === "loading" && <p>正在读取文件…</p>}
+    {state.status === "error" && <p className="pr-error">{state.error}</p>}
+    {d?.kind === "document" && <p>文档的正文会按段发给模型：共 {d.paragraphs} 段、{d.chars} 字，分成 {d.chunks_total} 块，这次会发 {d.chunks_sent} 块{d.chunks_sent < d.chunks_total ? "（太长，后面的不处理）" : ""}。</p>}
+    {d?.kind === "table" && <>
+      <p>只发下面这些：每列的字段名和最多 3 个示例值；出题时，取值不超过 12 种的列会发全部取值。其余的行不会离开本机，数据体检和答题都在本机算。</p>
+      {d.sources.map((src) => <div key={src.name} className="pr-table-wrap"><table className="pr-table">
+        <caption>{src.name}（{src.record_count} 行）</caption>
+        <thead><tr><th>字段</th><th>示例值</th><th>出题时发送的全部取值</th></tr></thead>
+        <tbody>{src.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td>{f.examples.join("、")}</td><td>{f.values ? f.values.join("、") : "—"}</td></tr>)}</tbody>
+      </table></div>)}
+    </>}
+  </details>;
+}
+
 function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDocDemo, last, onOpenLast }) {
   const [file, setFile] = useState(null);
   const [purpose, setPurpose] = useState("");
@@ -78,6 +108,7 @@ function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDo
           <textarea id="os-purpose" rows={2} maxLength={300} value={purpose} placeholder="例如：哪些客户、产品的售后问题最多？" onChange={(e) => setPurpose(e.target.value)} />
         </label>
         <div className="os-chips os-suggest" role="group" aria-label="示例问题">{EXAMPLE_QUESTIONS.map((q) => <button key={q} type="button" onClick={() => setPurpose(q)}>{q}</button>)}</div>
+        {file && !problem && !offline && <SendPreview key={`${file.name}-${file.size}-${file.lastModified}`} file={file} />}
         <div className="os-go">
           <button className="pr-primary" disabled={Boolean(blocked)} onClick={() => onBuild(file, purpose)}>生成本体并评测</button>
           {blocked && <span className="pr-muted">{blocked}</span>}
@@ -102,21 +133,58 @@ function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDo
   </div>;
 }
 
+function useFirst(items, n = SHOWN_GROUPS) {
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, n);
+  const toggle = items.length > n && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? `只看前 ${n} 条` : `展开其余 ${items.length - n} 条`}</button>;
+  return [shown, toggle];
+}
+
+function Conflicts({ fit, ontology, onShow }) {
+  const [rows, toggle] = useFirst(fit.identity_conflicts);
+  const groups = conflictGroups(fit);
+  return <section className="pr-card">
+    <h2>同一对象信息打架（{fit.identity_conflicts.length}）</h2>
+    <p className="pr-muted">同一个编号在不同行里，某个字段写了不同的值。{fit.identity_conflicts.length > SHOWN_GROUPS ? "如果一类对象大量打架，常见原因是识别字段不够区分：同一个编号其实是好几样东西（例如缺了行号）。" : ""}</p>
+    {groups.length > 1 && <ul className="os-list">{groups.map((g) => <li key={`${g.type}/${g.field}`}>{typeLabel(ontology, g.type)}的“{g.field}”：{g.count} 个编号</li>)}</ul>}
+    <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>对象</th><th>表</th><th>编号</th><th>字段</th><th>不同的值</th><th></th></tr></thead>
+      <tbody>{rows.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td>{c.values.join(" / ")}</td><td><ShowOnGraph type={c.type} onShow={onShow} /></td></tr>)}</tbody></table></div>
+    {toggle}
+  </section>;
+}
+
+function Spellings({ fit, ontology, onShow }) {
+  const [rows, toggle] = useFirst(fit.identity_spellings);
+  return <section className="pr-card">
+    <h2>同一个编号有几种写法（{fit.identity_spellings.length}）</h2>
+    <p className="pr-muted">这些写法被当成同一个对象合并了，但源数据里写法不统一，建议在源系统里统一。</p>
+    <ul className="pr-rows">{rows.map((x, i) => <li key={i}><b>{typeLabel(ontology, x.type)} {x.identity}</b><span>写法：{x.variants.map((v) => `“${v}”`).join("、")}</span><ShowOnGraph type={x.type} onShow={onShow} /></li>)}</ul>
+    {toggle}
+  </section>;
+}
+
 function ShowOnGraph({ type, onShow }) {
   return <button type="button" className="os-graph-link" onClick={() => onShow(type)}>在图上看</button>;
 }
 
-function QuestionItem({ item, onPath }) {
+const SHOWN_GROUPS = 10;   // one screen of bars; the rest open on request
+
+function QuestionItem({ item, onPath, run }) {
+  const [all, setAll] = useState(false);
   const a = item.answer;
+  const note = run && item.query ? conflictNote(run, pathOf(run.ontology, item.query)?.nodes || []) : "";
   const max = a?.groups?.length ? Math.max(...a.groups.map(([, n]) => n)) : 0;
+  const width = ([, n, all]) => (a.share ? (n / all) * 100 : (n / max) * 100);
   const extra = answerLines(item).slice(a?.groups?.length || 0);   // group lines come first; the bars show those
   return <li className="os-question">
     <div className="os-question-head"><span className={`os-pill os-${item.status}`}>{STATUS_LABELS[item.status] || item.status}</span><b>{item.question}</b></div>
-    {a?.groups?.length > 0 && <ul className="os-bars">{a.groups.map(([value, n]) => <li key={value}><span>{value}</span><i style={{ width: `${Math.max(4, (n / max) * 100)}%` }} /><b>{n}</b></li>)}</ul>}
+    {a?.share && a.groups && <p className="pr-muted">每组里“{a.share.field}”为“{a.share.equals}”的占比，按占比从高到低；分母小的组比例容易偏高，请一起看分母。</p>}
+    {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${Math.round((g[1] / g[2]) * 100)}%）` : g[1]}</b></li>)}</ul>}
+    {a?.groups?.length > SHOWN_GROUPS && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? "只看前 10 组" : `展开其余 ${a.groups.length - SHOWN_GROUPS} 组`}</button>}
+    {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
     {item.path && <p className="pr-muted">怎么查的：{item.path}{item.query && onPath && <> <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看路径</button></>}</p>}
-    {item.status === "query_limit" && <p className="pr-muted">这个问题要同时按几样东西分组，或者要算比例；现在的查询只能按一样东西分组、数个数，所以还答不了。本体本身没有问题。</p>}
-    {item.status === "query_limit" && item.reason && <details className="os-how"><summary>模型的说明</summary><p>{item.reason}</p></details>}
+    {item.status === "query_limit" && <p className="pr-muted">这种问法现在的查询还做不到（查询能数个数、算占比、按几样东西分组，还不能求和、求平均、限定时间段），本体本身没有问题。{item.reason ? `模型的说明：${item.reason}` : ""}</p>}
     {item.status !== "answered" && item.status !== "query_limit" && item.reason && <p className="pr-muted">原因：{item.reason}</p>}
   </li>;
 }
@@ -139,9 +207,9 @@ function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef, onPath, onU
       </label>
     </div>}
     {error && <p role="alert" className="pr-error">{error}</p>}
-    {asked.length > 0 && <><h3 className="os-sub">你问的</h3><ul className="os-questions">{[...asked].reverse().flatMap((r, ri) => r.error ? [<li key={`e${ri}`} className="pr-error">{r.error}</li>] : r.items.map((item, i) => <QuestionItem key={`${ri}-${i}`} item={item} onPath={onPath} />))}</ul></>}
+    {asked.length > 0 && <><h3 className="os-sub">你问的</h3><ul className="os-questions">{[...asked].reverse().flatMap((r, ri) => r.error ? [<li key={`e${ri}`} className="pr-error">{r.error}</li>] : r.items.map((item, i) => <QuestionItem key={`${ri}-${i}`} item={item} onPath={onPath} run={run} />))}</ul></>}
     {round && <><h3 className="os-sub">模型出的题{round.total ? `（${questionSummary(round)}）` : ""}</h3>
-      {round.error ? <p className="pr-error">{round.error}</p> : <ul className="os-questions">{round.items.map((item, i) => <QuestionItem key={i} item={item} onPath={onPath} />)}</ul>}
+      {round.error ? <p className="pr-error">{round.error}</p> : <ul className="os-questions">{round.items.map((item, i) => <QuestionItem key={i} item={item} onPath={onPath} run={run} />)}</ul>}
       <p className="pr-muted os-tech">出题模型 {round.model}，提示词 {round.prompt_version}</p></>}
   </section>;
 }
@@ -200,8 +268,14 @@ function OntologyTab({ run, view, setView, graphProps }) {
         {doc && ontology.rejected.length > 0 && <ul>{ontology.rejected.map((r, i) => <li key={i}>{r.item}：{r.reason}</li>)}</ul>}
       </details>
     </section>
-    {run.previous && <section className="pr-card" id="os-stability">
-      <h2>和上一次运行比</h2>
+    {run.evaluation.stability && <section className="pr-card" id="os-stability">
+      <h2>同一份文件建了 {run.evaluation.stability.runs + run.evaluation.stability.failed} 次，哪些靠得住</h2>
+      <p className="pr-muted">模型每次搭的本体会有出入，所以这次上传同时建了几次，代码把它们对齐后数每个对象、每条关系出现了几次。每次都有的可以放心用；不是每次都有的，是模型拿不准的地方，图上画成虚线框，要不要按你的业务决定。</p>
+      <ul className="os-list">{consensusLines(ontology, run.evaluation.stability, ERROR_LABELS).map((l) => <li key={l}>{l}</li>)}</ul>
+      <p>页面上的数据体检和问答用的是显示的这一次本体。数据体检是代码按本体逐行算的，本体一样，体检结果就一样{ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) ? "；和虚线框对象有关的体检结果，看你要不要这个对象再取舍" : ""}。问答的题每次由模型重新出，所以题目和"能答几题"会变；每道题的答案是代码在数据上算的，同样的查询答案不变。</p>
+    </section>}
+    {run.previous && <section className="pr-card" id={run.evaluation.stability ? undefined : "os-stability"}>
+      <h2>和上一次运行比（只比本体）</h2>
       <p className="pr-muted">{previousLine(run.previous)}。{run.previous.purpose && run.previous.purpose !== run.purpose ? "两次的建模目的不同，差别可能来自目的，也可能是模型本身的出入。" : ""}</p>
       {stabilityLines(run.previous.diff).length
         ? <><p className="pr-muted">和这次比，本体有下面这些差别。模型每次搭的本体会有出入；拿不准时用"对照标准"和参考本体比。</p>
@@ -252,16 +326,8 @@ function DataFit({ run, onShow }) {
   if (!fit) return <section className="pr-card"><p className="pr-error">本体没有通过核验，无法评测。先看"看本体"里被退回的原因。</p></section>;
   return <>
     <Checks fit={fit} title="数据体检：本体和数据对得上吗" note="全部由代码拿上传的每一行计算，不经过模型。每个问题都可以点“在图上看”，回到关系图里对应的对象。" />
-    {fit.identity_conflicts.length > 0 && <section className="pr-card">
-      <h2>同一对象信息打架（{fit.identity_conflicts.length}）</h2>
-      <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>对象</th><th>表</th><th>编号</th><th>字段</th><th>不同的值</th><th></th></tr></thead>
-        <tbody>{fit.identity_conflicts.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td>{c.values.join(" / ")}</td><td><ShowOnGraph type={c.type} onShow={onShow} /></td></tr>)}</tbody></table></div>
-    </section>}
-    {fit.identity_spellings?.length > 0 && <section className="pr-card">
-      <h2>同一个编号有几种写法（{fit.identity_spellings.length}）</h2>
-      <p className="pr-muted">这些写法被当成同一个对象合并了，但源数据里写法不统一，建议在源系统里统一。</p>
-      <ul className="pr-rows">{fit.identity_spellings.map((x, i) => <li key={i}><b>{typeLabel(ontology, x.type)} {x.identity}</b><span>写法：{x.variants.map((v) => `“${v}”`).join("、")}</span><ShowOnGraph type={x.type} onShow={onShow} /></li>)}</ul>
-    </section>}
+    {fit.identity_conflicts.length > 0 && <Conflicts fit={fit} ontology={ontology} onShow={onShow} />}
+    {fit.identity_spellings?.length > 0 && <Spellings fit={fit} ontology={ontology} onShow={onShow} />}
     {fit.suspected_duplicates?.length > 0 && <section className="pr-card">
       <h2>疑似重复（请人工确认）</h2>
       <p className="pr-muted">去掉开头的 0 以后相同的编号，现在被当成不同的对象；如果它们其实是同一个，需要在源数据里统一。</p>

@@ -2,6 +2,7 @@
 import argparse
 import base64
 import binascii
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -13,11 +14,13 @@ from urllib.parse import urlsplit
 import uuid
 
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
-from ontology_poc_generator.company_ontology import build_and_evaluate
+from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
 from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
+from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_questions import ask_questions
+from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
@@ -62,15 +65,31 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         return None
 
     def finish_build(bundle, is_document, progress=None):
-        result = (build_and_evaluate_document if is_document else build_and_evaluate)(bundle, gateway, progress)
+        if is_document:
+            return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress)
+        # the extra runs start together with the shown one, so three runs take about as long as one
+        with ThreadPoolExecutor(max_workers=STABILITY_RUNS - 1) as pool:
+            extra = [pool.submit(build_company_ontology, bundle, gateway) for _ in range(STABILITY_RUNS - 1)]
+            result = build_and_evaluate(bundle, gateway, progress)
+            if result['ontology']['status'] == 'auto_built_verified':
+                if progress:
+                    progress('questions', {})
+                result['evaluation']['questions'] = ask_questions(result['ontology'], bundle, gateway)
+                if progress:
+                    progress('stability', {'total': STABILITY_RUNS - 1})
+                result['evaluation']['stability'] = stability_of(result['ontology'], [extra_result(f) for f in extra])
+        return save_build(bundle, result, progress)
+
+    def extra_result(future):
+        try:
+            return future.result()
+        except Exception as exc:   # an extra run is evidence, not the answer: its failure is counted, the upload goes on
+            return {'status': 'failed', 'error': f'{type(exc).__name__}: {exc}'[:200]}
+
+    def save_build(bundle, result, progress=None):
         outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
         if result['ontology']['status'] != 'auto_built_verified' and outage:
             return 502, {'error': f'模型请求失败（{outage[-1][:160]}）。这不是数据的问题，请稍后重试。'}
-        if not is_document and result['ontology']['status'] == 'auto_built_verified':
-            # evaluation 2 runs as its own judgement after code has verified the ontology, so the upload arrives with all automatic checks
-            if progress:
-                progress('questions', {})
-            result['evaluation']['questions'] = ask_questions(result['ontology'], bundle, gateway)
         now = datetime.now(timezone.utc)
         name = f'{now.strftime("%Y%m%dT%H%M%S")}{now.microsecond // 1000:03d}Z-{bundle["file"]["sha256"][:8]}.json'
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -150,6 +169,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/jobs':
                 self.start_job()
                 return
+            if self.path == '/api/ontology/preview':
+                self.preview()
+                return
             if self.path != '/api/ontology/build':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
                 return
@@ -165,6 +187,17 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(503, {'error': NO_KEY})
                 return
             self.reply(*finish_build(bundle, is_document))
+
+        def preview(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                bundle, _ = parse_upload(payload)
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, model_preview(bundle))
 
         def start_job(self):
             try:

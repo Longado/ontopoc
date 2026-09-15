@@ -28,6 +28,10 @@ export function layoutGraph(ontology) {
   });
   const at = Object.fromEntries(nodes.map((n) => [n.key, n]));
   const width = PAD * 2 + filled.length * NODE.w + (filled.length - 1) * GAP.x;
+  const degree = Object.fromEntries(keys.map((k) => [k, 0]));
+  for (const r of edges) { degree[r.from] += 1; degree[r.to] += 1; }
+  // cubic Bezier point: names go toward the end with fewer relations, so a hub's names spread out instead of piling up
+  const bezier = (t, p0, p1, p2, p3) => (1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1 + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3;
   return {
     width, height, nodes,
     edges: ontology.relations.filter((r) => at[r.from] && at[r.to]).map((r, i, all) => {
@@ -39,9 +43,10 @@ export function layoutGraph(ontology) {
       const bend = forward ? (x2 - x1) / 2 : 0;
       const skips = forward && Math.round((b.x - a.x) / (NODE.w + GAP.x)) > 1;   // arc over the columns in between
       const lift = twin * 22 + (skips ? NODE.h + GAP.y : 0);
-      const path = forward ? `M${x1},${y1} C${x1 + bend},${y1 - lift} ${x2 - bend},${y2 - lift} ${x2},${y2}`
-        : `M${x1},${y1} C${x1 + 60 + lift},${y1 + 40} ${x2 + 60 + lift},${y2 - 40} ${x2},${y2}`;
-      return { key: r.key, from: r.from, to: r.to, path, lx: (x1 + x2) / 2 + (forward ? 0 : 60 + lift), ly: (y1 + y2) / 2 - lift };
+      const c = forward ? [x1 + bend, y1 - lift, x2 - bend, y2 - lift] : [x1 + 60 + lift, y1 + 40, x2 + 60 + lift, y2 - 40];
+      const path = `M${x1},${y1} C${c[0]},${c[1]} ${c[2]},${c[3]} ${x2},${y2}`;
+      const t = degree[r.from] > degree[r.to] ? 0.72 : degree[r.from] < degree[r.to] ? 0.28 : 0.5;
+      return { key: r.key, from: r.from, to: r.to, path, lx: bezier(t, x1, c[0], c[2], x2), ly: bezier(t, y1, c[1], c[3], y2) };
     }),
   };
 }
@@ -70,19 +75,26 @@ export function neighboursOf(ontology, key) {
   return { nodes, edges };
 }
 
-/** The types and relations a question's query walks, so the graph can show how an answer was found. */
+/** The types and relations a question's query walks, so the graph can show how an answer was found: one walk per
+ * grouping route (or the top-level via), and the union of them for highlighting. */
 export function pathOf(ontology, query) {
   if (!query || !ontology.object_types.some((t) => t.key === query.start)) return null;
-  const nodes = [query.start], edges = [];
-  let current = query.start;
-  for (const key of query.via || []) {
-    const r = ontology.relations.find((x) => x.key === key);
-    if (!r || (r.from !== current && r.to !== current)) return null;
-    current = r.from === current ? r.to : r.from;
-    nodes.push(current);
-    edges.push(key);
-  }
-  return { nodes, edges };
+  const walk = (via) => {
+    const nodes = [query.start], edges = [];
+    let current = query.start;
+    for (const key of via || []) {
+      const r = ontology.relations.find((x) => x.key === key);
+      if (!r || (r.from !== current && r.to !== current)) return null;
+      current = r.from === current ? r.to : r.from;
+      nodes.push(current);
+      edges.push(key);
+    }
+    return { nodes, edges };
+  };
+  const dims = Array.isArray(query.group_by) ? query.group_by.filter((d) => d && typeof d === "object") : [];
+  const walks = (dims.length ? dims.map((d) => d.via) : [query.via]).map(walk);
+  if (walks.some((w) => !w)) return null;
+  return { walks, nodes: [...new Set(walks.flatMap((w) => w.nodes))], edges: [...new Set(walks.flatMap((w) => w.edges))] };
 }
 
 export function overviewTiles(run) {
@@ -104,7 +116,63 @@ export function overviewTiles(run) {
       hint: doc ? "文档没有数据行" : !q ? (run.saved_as ? "点开出一组问题" : "上传自己的文件后可以提问") : q.answered === q.total ? "都能用数据回答" : `${q.total - q.answered} 题答不了，点开看原因` },
     { key: "ref", label: "对照标准", value: ref ? `命中 ${ref.matched} / ${ref.reference}` : "还没比对", tone: !ref ? "neutral" : ref.matched === ref.reference ? "ok" : "warn",
       hint: !ref ? "上传参考本体后可以比" : ref.matched === ref.reference ? "参考里的对象都对上了" : `参考里有 ${ref.reference - ref.matched} 个对象没对上` },
-    { key: "stability", label: "稳定性", value: changes === null ? "第一次运行" : changes ? `和上次有 ${changes} 处不同` : "和上次一致", tone: changes === null ? "neutral" : changes ? "warn" : "ok",
-      hint: changes === null ? "再上传同一文件可看差别" : changes ? "模型每次搭的会有出入" : "两次搭的一样" },
+    evaluation.stability ? stabilityTile(ontology, evaluation.stability)
+      : { key: "stability", label: "稳定性", value: changes === null ? "第一次运行" : changes ? `和上次有 ${changes} 处不同` : "和上次一致", tone: changes === null ? "neutral" : changes ? "warn" : "ok",
+        hint: changes === null ? "再上传同一文件可看差别" : changes ? "模型每次搭的会有出入" : "两次搭的一样" },
   ];
+}
+
+const times = (runs) => (runs === 3 ? "三次" : `${runs} 次`);
+
+/** Whether an object ("types") or relation ("relations") of the shown run was missing from some other run. */
+export function unsteady(stability, kind, key) {
+  return Boolean(stability && stability[kind][key] !== undefined && stability[kind][key] < stability.runs);
+}
+
+function stabilityTile(ontology, s) {
+  const steadyTypes = ontology.object_types.filter((t) => !unsteady(s, "types", t.key)).length;
+  const shownSteady = steadyTypes === ontology.object_types.length && !ontology.relations.some((r) => unsteady(s, "relations", r.key));
+  const extra = s.elsewhere.types.length;
+  const tile = (tone, value, hint) => ({ key: "stability", label: "本体稳定性", tone, value, hint });
+  if (s.runs < 2) return tile("neutral", "另外两次都没成功", "这次无法比较");
+  if (!shownSteady) return tile("warn", `${steadyTypes} / ${ontology.object_types.length} 个对象${times(s.runs)}都有`, "虚线框的对象不是每次都有");
+  if (extra || s.elsewhere.relations.length) return tile("ok", `这次的 ${ontology.object_types.length} 个对象${times(s.runs)}都有`, extra ? `另有 ${extra} 个对象这次没有、别的几次有` : "别的某次多了关系，点开看");
+  return tile("ok", `${times(s.runs)}搭的都一样`, "对象和关系每次都有");
+}
+
+export function consensusLines(ontology, s, errorLabels = {}) {
+  const label = (key) => ontology.object_types.find((t) => t.key === key)?.label || key;
+  const of = (n) => `（${s.runs} 次里 ${n} 次）`;
+  const lines = [];
+  const why = (s.failures || []).map((f) => (f.error ? "模型请求出错" : f.codes.map((c) => errorLabels[c] || c).join("、"))).filter(Boolean).join("；");
+  if (s.failed) lines.push(s.runs < 2 ? `另外两次都没有成功${why ? `（${why}）` : ""}，这次无法比较` : `另外${s.failed === 1 ? "一次" : `${s.failed} 次`}没有成功${why ? `（${why}）` : ""}，只比了 ${s.runs} 次`);
+  const steady = ontology.object_types.filter((t) => !unsteady(s, "types", t.key)).map((t) => t.label || t.key);
+  if (steady.length) lines.push(`每次都有：${steady.join("、")}`);
+  const shaky = [...ontology.object_types.filter((t) => unsteady(s, "types", t.key)).map((t) => `${t.label || t.key}${of(s.types[t.key])}`),
+    ...ontology.relations.filter((r) => unsteady(s, "relations", r.key)).map((r) => `关系 ${label(r.from)} — ${label(r.to)}${of(s.relations[r.key])}`)];
+  if (shaky.length) lines.push(`不是每次都有：${shaky.join("；")}`);
+  const elsewhere = [...s.elsewhere.types.map((t) => `${t.label}${of(t.count)}`), ...s.elsewhere.relations.map((r) => `关系 ${r.label}${of(r.count)}`)];
+  if (elsewhere.length) lines.push(`这次没有、别的某次有：${elsewhere.join("；")}`);
+  return lines;
+}
+
+/** Types ordered by how many relations touch them, most connected first; ties keep the ontology's order. */
+export function rankByDegree(ontology) {
+  const degree = Object.fromEntries(ontology.object_types.map((t) => [t.key, 0]));
+  for (const r of ontology.relations) { degree[r.from] += 1; if (r.to !== r.from) degree[r.to] += 1; }
+  return ontology.object_types.map((t, i) => ({ t, i })).sort((a, b) => degree[b.t.key] - degree[a.t.key] || a.i - b.i).map((x) => x.t);
+}
+
+/** The part of the ontology around one type: it and its neighbours (or the given keys), with the relations among them. */
+export function focusOntology(ontology, key, keep = null) {
+  const keys = new Set(keep || neighboursOf(ontology, key).nodes);
+  return { ...ontology, object_types: ontology.object_types.filter((t) => keys.has(t.key)),
+    relations: ontology.relations.filter((r) => keys.has(r.from) && keys.has(r.to)) };
+}
+
+/** Whether the whole graph cannot be seen at once: it would scroll sideways at its smallest scale, or be taller than the screen. */
+export function needsFocus(graph, width, height) {
+  if (graph.width * 0.7 > width) return true;   // 0.7 is the smallest scale the graph is drawn at (see OntologyGraph)
+  const scale = Math.min(1, width / graph.width);
+  return graph.height * scale > height;
 }

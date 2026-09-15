@@ -50,8 +50,9 @@ export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有"
 export function answerLines(item) {
   const a = item.answer;
   if (!a) return [];
-  if (a.total !== undefined) return [`共 ${a.total} 个`];
-  const lines = a.groups.map(([value, n]) => `${value}：${n}`);
+  const pct = (m, n) => `${Math.round((m / n) * 100)}%`;
+  if (a.total !== undefined) return [a.share ? `共 ${a.total} 个，其中 ${a.matched} 个“${a.share.field}”为“${a.share.equals}”（${pct(a.matched, a.total)}）` : `共 ${a.total} 个`];
+  const lines = a.groups.map(([value, n, all]) => (a.share ? `${value}：${n} / ${all}（${pct(n, all)}）` : `${value}：${n}`));
   if (a.total_groups > a.groups.length) lines.push(`另有 ${a.total_groups - a.groups.length} 组未列出`);
   if (a.without_value) lines.push(`${a.without_value} 个没有这个值`);
   return lines;
@@ -98,6 +99,7 @@ export function progressSteps(events, kind) {
     }
     if (ev.stage === "evaluate") { mark("model", "done"); if (steps[at.verify].status === "pending") mark("verify", "done"); mark("evaluate", "active"); current = "evaluate"; }
     if (ev.stage === "questions") mark("evaluate", "active", "数据体检已完成，正在出题并用数据回答");
+    if (ev.stage === "stability") mark("evaluate", "active", "问答已完成，正在等另外两次建模，比对哪些每次都有");
     if (ev.stage === "done") for (const s of steps) s.status = "done";
   }
   if (!events.some((ev) => ["evaluate", "done", "failed"].includes(ev.stage)) && steps[at[current]].status === "pending") mark(current, "active");
@@ -126,4 +128,24 @@ export function previousLine(previous) {
   const purpose = previous.purpose ? `，建模目的“${previous.purpose}”` : "";
   const counts = previous.counts ? `，${previous.counts.types} 个对象、${previous.counts.relations} 条关系` : "";
   return `上一次运行：${when}${purpose}${counts}`;
+}
+
+/** Answers count objects by identity; say so when some identities disagree with themselves in the data. */
+export function conflictNote(run, typeKeys) {
+  const conflicts = run.evaluation.data_fit?.identity_conflicts || [];
+  const parts = typeKeys.map((key) => {
+    const ids = new Set(conflicts.filter((c) => c.type === key).map((c) => c.identity));
+    return ids.size ? `${ids.size} 个${typeLabel(run.ontology, key)}编号` : "";
+  }).filter(Boolean);
+  return parts.length ? `按编号数对象：有 ${parts.join("、")}在数据里信息不一致（见数据体检），每个编号只算一次。` : "";
+}
+
+/** Identity conflicts summed by object type and field, largest first, so a thousand rows read as a few lines. */
+export function conflictGroups(fit) {
+  const groups = new Map();
+  for (const c of fit.identity_conflicts || []) {
+    const key = JSON.stringify([c.type, c.field]);
+    groups.set(key, { type: c.type, field: c.field, count: (groups.get(key)?.count || 0) + 1 });
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count);
 }
