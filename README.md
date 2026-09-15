@@ -29,7 +29,7 @@ History: the project started on 2026-08-29 as a pre-sales POC proposal compiler 
 cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-Open `http://127.0.0.1:5178`. Since 2026-09-14 the default entry is "Upload to ontology" (plan: `docs/PRD_ITERATION_3.md`). You upload a business table (Excel or CSV) or a document (Markdown, text, Word or PDF), get a company ontology built automatically, and see three evaluations:
+Open `http://127.0.0.1:5178`. Since 2026-09-14 the default entry is "Upload to ontology" (plan: `docs/PRD_ITERATION_3.md`). You upload a business table (Excel or CSV) or a document (Markdown, text, Word or PDF), get a company ontology built automatically, and see three evaluations. The first two run on their own after every build (documents get only the first); the third runs when you upload a reference:
 
 - how well the ontology fits the data (for documents: whether every item quotes the text);
 - whether it can answer business questions (the model writes the queries, code answers them on the data);
