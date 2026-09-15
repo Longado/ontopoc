@@ -50,30 +50,38 @@ def _types(p: dict) -> dict:
     return {t['key']: t for t in p['object_types']}
 
 
-def _attr_fields(t: dict) -> set:
-    return {f'{a.get("source")}.{a.get("path")}' for a in t['attributes']}
+def _identity_fields(t: dict) -> dict:
+    """"table.path" -> logical key, for the fields that identify the type (a department is often only its name)."""
+    return {f'{pop.get("source")}.{path}': logical for pop in t.get('populated_from') or []
+            for logical, path in (pop.get('identity') or {}).items()}
+
+
+def _fields(t: dict) -> list:
+    """Every field a query may use on a type: its attributes, then its identity fields."""
+    seen = [f'{a.get("source")}.{a.get("path")}' for a in t['attributes']]
+    return seen + [f for f in _identity_fields(t) if f not in seen]
 
 
 def _resolve_field(t: dict, field) -> str | None:
-    """"table.path", "type.path" or a bare "path" -> the type's attribute as "table.path"; None when the type lacks it.
+    """"table.path", "type.path" or a bare "path" -> the type's field as "table.path"; None when the type lacks it.
     A formatting slip by the model must not be scored as a gap in the ontology."""
     field = str(field or '')
-    if field in _attr_fields(t):
+    if field in _fields(t):
         return field
     prefix, dot, rest = field.partition('.')
     path = rest if dot and prefix in (t['key'], t.get('label')) else field
-    return next((f'{a["source"]}.{a["path"]}' for a in t['attributes'] if a.get('path') == path), None)
+    return next((f for f in _fields(t) if f.partition('.')[2] == path), None)
 
 
 def categorical_values(ontology: dict, bundle: dict) -> dict:
-    """Attribute fields with few distinct values, listed so the model can filter on real values."""
+    """Fields with few distinct values, listed so the model can filter on real values."""
     out = {}
     for t in normalize_proposal(ontology)['object_types']:
-        for a in t['attributes']:
-            values = {str(v) for r in bundle['sources'].get(a.get('source'), {}).get('records', [])
-                      for v in resolve(r, a.get('path', '')) if v not in (None, '')}
+        for field in _fields(t):
+            source, _, path = field.partition('.')
+            values = {str(v) for r in bundle['sources'].get(source, {}).get('records', []) for v in resolve(r, path) if v not in (None, '')}
             if 0 < len(values) <= CATEGORY_LIMIT:
-                out[f'{a["source"]}.{a["path"]}'] = sorted(values)
+                out[field] = sorted(values)
     return out
 
 
@@ -137,7 +145,12 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         for a, b, _ in graph['edges'][key]:
             adj.setdefault(a, set()).add(b)
             adj.setdefault(b, set()).add(a)
-    has = lambda inst, cond: normalize_value(cond['equals']) in {normalize_value(v) for v in _values(bundle, graph, inst, cond['field'])}
+    identity = {(k, f): logical for k, t in types.items() for f, logical in _identity_fields(t).items()}
+
+    def values(inst, field):   # identity fields read the object's own identity, so objects seen only in another table count too
+        logical = identity.get((inst[0], field))
+        return {str(v) for k, v in inst[1] if k == logical and v not in (None, '')} if logical else _values(bundle, graph, inst, field)
+    has = lambda inst, cond: normalize_value(cond['equals']) in {normalize_value(v) for v in values(inst, cond['field'])}
     starts = [i for i in graph['sources_of'] if i[0] == start and all(has(i, w) for w in where)]
     name = lambda field: field.partition('.')[2]
     kept = '、'.join(f'“{name(w["field"])}”为“{w["equals"]}”' for w in where)
@@ -166,8 +179,8 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     for s in starts:
         combos = [[]]
         for d in dims:
-            values = sorted({v for n in reach(s, d['via']) for v in _values(bundle, graph, n, d['field'])})
-            combos = [c + [v] for c in combos for v in values]
+            found = sorted({v for n in reach(s, d['via']) for v in values(n, d['field'])})
+            combos = [c + [v] for c in combos for v in found]
         without += not combos
         for combo in combos:
             key = ' · '.join(combo)
@@ -188,8 +201,9 @@ def _catalog(ontology: dict, bundle: dict) -> dict:
     values = categorical_values(ontology, bundle)
     return {
         'object_types': [{'key': t['key'], 'label': t.get('label'), 'attributes': [
-            {'path': a['path'], **({'values': values[f'{a["source"]}.{a["path"]}']} if f'{a["source"]}.{a["path"]}' in values else {})}
-            for a in t['attributes']]} for t in p['object_types']],
+            {'path': f.partition('.')[2], **({'identity': True} if f in _identity_fields(t) and f not in {f'{a.get("source")}.{a.get("path")}' for a in t['attributes']} else {}),
+             **({'values': values[f]} if f in values else {})}
+            for f in _fields(t)]} for t in p['object_types']],
         'relations': [{k: r.get(k) for k in ('key', 'from', 'to', 'label', 'meaning')} for r in p['relations']],
     }
 

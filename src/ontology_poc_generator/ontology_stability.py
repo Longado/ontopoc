@@ -48,6 +48,8 @@ def stability_of(shown: dict, others: list[dict]) -> dict:
             entry['count'] += 1
     return {
         'runs': 1 + len(verified), 'failed': len(others) - len(verified),
+        'failures': [{'error': o['error']} if o.get('error') else {'codes': sorted({e['code'] for e in (o.get('attempts') or [{}])[-1].get('errors', [])})}
+                     for o in others if o.get('status') != 'auto_built_verified'],
         'types': types, 'relations': relations,
         'elsewhere': {'types': [{'label': _label(c['type']), 'count': c['count']} for c in elsewhere_types],
                       'relations': list(elsewhere_relations.values())},
