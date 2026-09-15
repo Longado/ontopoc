@@ -117,7 +117,7 @@ function QuestionItem({ item, onPath }) {
     {a?.groups?.length > 0 && <ul className="os-bars">{a.groups.map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${Math.round((g[1] / g[2]) * 100)}%）` : g[1]}</b></li>)}</ul>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
     {item.path && <p className="pr-muted">怎么查的：{item.path}{item.query && onPath && <> <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看路径</button></>}</p>}
-    {item.status === "query_limit" && <p className="pr-muted">这个问题要同时按几样东西分组，或者要算比例；现在的查询只能按一样东西分组、数个数，所以还答不了。本体本身没有问题。</p>}
+    {item.status === "query_limit" && <p className="pr-muted">这个问题要对数字求和或求平均、限定时间段，或者要按起点以外的对象筛选；现在的查询只能数个数、算占比，所以还答不了。本体本身没有问题。</p>}
     {item.status === "query_limit" && item.reason && <details className="os-how"><summary>模型的说明</summary><p>{item.reason}</p></details>}
     {item.status !== "answered" && item.status !== "query_limit" && item.reason && <p className="pr-muted">原因：{item.reason}</p>}
   </li>;
