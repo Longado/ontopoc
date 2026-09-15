@@ -83,7 +83,7 @@ function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDo
           {blocked && <span className="pr-muted">{blocked}</span>}
         </div>
         <details className="os-how"><summary>它会怎么做</summary>
-          <p>数据表：模型只看表头和每列少量示例值，提出对象、识别字段和关系；代码拿全部行核验，出错退回重做，最多三次。</p>
+          <p>数据表：模型只看表头和每列少量示例值，提出对象、识别字段和关系；代码拿全部行核验，出错退回重做，最多三次。通过后代码自动做数据体检，模型再出一组业务问题、由代码在数据上回答。</p>
           <p>文档：模型按段落提出概念和关系，每一项都要引用原文；代码核对引用确实在原文里，找不到的剔除并列出。</p>
         </details>
       </>}
@@ -385,7 +385,7 @@ export function OntologyStudio() {
   function demo(url = DEMO_URL) { setError(""); readText(url).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }
   function download() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(run, null, 2)], { type: "application/json" }));
-    const link = document.createElement("a"); link.href = url; link.download = `${run.file.name.replace(/\.[^.]+$/, "")}-ontology.json`; link.click();
+    const link = document.createElement("a"); link.href = url; link.download = `${run.file.name.replace(/\.[^.]+$/, "")}-本体和评测.json`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
@@ -393,10 +393,10 @@ export function OntologyStudio() {
     <header className="pr-head">
       <div className="pr-head-line">
         <h1 id="os-title">上传建本体</h1>
-        <span className="pr-meta">上传一份业务文件，自动整理出公司本体（业务里有哪些东西、各自按什么编号区分、彼此怎么关联），再自动体检、问答、对照</span>
+        <span className="pr-meta">上传一份业务文件，自动整理出公司本体（业务里有哪些东西、各自按什么编号区分、彼此怎么关联）。数据体检和业务问答自动做；有人写的参考本体时，再对照标准</span>
       </div>
       {run && tab !== "upload" && <div className="os-overview">
-        <div className="os-overview-file"><span className="pr-muted">当前文件</span><b>{run.file.name}</b><button className="pr-link" onClick={download}>下载结果</button></div>
+        <div className="os-overview-file"><span className="pr-muted">当前文件</span><b>{run.file.name}</b><button className="pr-link" onClick={download} title="本体、数据体检、问答和对照结果，一个 JSON 文件">下载本体和评测</button></div>
         {overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b>{t.hint && <em>{t.hint}</em>}</button>)}
       </div>}
       <nav className="pr-tabs os-steps-nav" role="tablist" aria-label="步骤">{TABS.map(([key, label], i) => <button key={key} type="button" role="tab" id={`os-tab-${key}`}

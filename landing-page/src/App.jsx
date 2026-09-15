@@ -7,7 +7,7 @@ const copy = {
     open: "打开工作台",
     kicker: "上传建本体 · 自动评测",
     title: ["上传一份业务文件，", "得到公司本体，和它的体检报告"],
-    lead: "交一份数据表（CSV、Excel）或业务文档（Markdown、Word、PDF）。模型提出本体里有哪些对象、按什么识别、彼此怎么关联，代码拿每一行数据核验；然后自动做三项评测：数据体检、业务问答、对照标准答案。",
+    lead: "交一份数据表（CSV、Excel）或业务文档（Markdown、Word、PDF）。模型提出本体里有哪些对象、按什么识别、彼此怎么关联，代码拿每一行数据核验；然后自动做数据体检和业务问答，有人写的标准答案时再逐项对照。",
     problemKicker: "问题",
     problemTitle: "本体画出来容易，知道它对不对难",
     problems: [
@@ -48,7 +48,7 @@ const copy = {
     open: "OPEN WORKBENCH",
     kicker: "UPLOAD TO ONTOLOGY · AUTO EVALUATION",
     title: ["Upload one business file,", "get a company ontology and its health report"],
-    lead: "Give it a table (CSV, Excel) or a business document (Markdown, Word, PDF). The model proposes the objects, how each is identified and how they relate; code checks the proposal against every row. Then three evaluations run on their own: a data check, business questions, and a comparison with a reference answer.",
+    lead: "Give it a table (CSV, Excel) or a business document (Markdown, Word, PDF). The model proposes the objects, how each is identified and how they relate; code checks the proposal against every row. Then a data check and a round of business questions run on their own, and a hand-written reference answer can be compared item by item.",
     problemKicker: "PROBLEM",
     problemTitle: "Drawing an ontology is easy; knowing it is right is not",
     problems: [

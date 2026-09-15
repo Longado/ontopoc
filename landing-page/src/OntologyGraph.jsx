@@ -15,6 +15,17 @@ function select(setSelected, value) {
   return { onClick: () => setSelected(value), onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(value); } } };
 }
 
+function PathInspector({ ontology, path, onClearPath }) {
+  const relation = (key) => ontology.relations.find((r) => r.key === key);
+  return <div className="og-inspector-body">
+    <span className="og-kicker">查询路径</span>
+    <h3>{path.text || path.nodes.map((k) => typeLabel(ontology, k)).join(" → ")}</h3>
+    <ol className="og-steps">{path.nodes.map((k, i) => <li key={`${k}-${i}`}>{i === 0 ? `从“${typeLabel(ontology, k)}”出发` : `经关系“${relation(path.edges[i - 1])?.label || relation(path.edges[i - 1])?.meaning || path.edges[i - 1]}”到“${typeLabel(ontology, k)}”`}</li>)}</ol>
+    <p>图上高亮的就是这条路；数字由代码沿着它在数据里一行行数出来。</p>
+    <button type="button" className="pr-link og-inline" onClick={onClearPath}>清除路径，看“{typeLabel(ontology, path.nodes[path.nodes.length - 1])}”的数据检查</button>
+  </div>;
+}
+
 function Inspector({ run, selected, findings }) {
   const { ontology } = run;
   const fit = run.evaluation.data_fit;
@@ -71,7 +82,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
   const isSelected = (kind, key) => selected.kind === kind && selected.key === key;
   return <div className="og-wrap" ref={wrap}>
     <div className="og-canvas">
-      <div className="og-bar"><span>本体 · {graph.nodes.length} 个对象 · {graph.edges.length} 条关系</span>
+      <div className="og-bar"><span>本体 · {graph.nodes.length} 个对象 · {graph.edges.length} 条关系<span className="og-swipe"> · 左右滑动看全图</span></span>
         <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
       {path && <div className="og-path" role="status"><span>查询路径：{path.text || path.nodes.map((k) => typeLabel(ontology, k)).join(" → ")}</span><button type="button" className="pr-link" onClick={onClearPath}>清除</button></div>}
       <div className="og-scroll">
@@ -101,7 +112,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
     </div>
     <aside className="og-inspector" aria-label="证据检查">
       <div className="og-inspector-head">证据检查 · 点图里的对象或关系</div>
-      {selected.key && <Inspector run={run} selected={selected} findings={findings} />}
+      {path ? <PathInspector ontology={ontology} path={path} onClearPath={onClearPath} /> : selected.key && <Inspector run={run} selected={selected} findings={findings} />}
       {onAsk && <button type="button" className="og-ask" onClick={onAsk}>询问这个本体：用数据回答业务问题 →</button>}
     </aside>
   </div>;

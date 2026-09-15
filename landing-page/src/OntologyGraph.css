@@ -1,7 +1,15 @@
 .og-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; background: var(--surface); }
 .og-canvas { min-width: 0; display: flex; flex-direction: column; background: var(--canvas); }
 .og-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 10px 16px; background: var(--ink); color: #f2f0e8; font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; }
-.og-scroll { overflow: auto; padding: 8px; background-image: radial-gradient(var(--edge) 1px, transparent 1px); background-size: 16px 16px; }
+.og-scroll { overflow: auto; padding: 8px; background-color: var(--canvas);
+  /* edge shadows appear only while there is more graph to scroll to */
+  background-image: linear-gradient(to right, var(--canvas) 30%, transparent), linear-gradient(to left, var(--canvas) 30%, transparent),
+    radial-gradient(farthest-side at 0 50%, rgba(20, 24, 40, 0.22), transparent), radial-gradient(farthest-side at 100% 50%, rgba(20, 24, 40, 0.22), transparent),
+    radial-gradient(var(--edge) 1px, transparent 1px);
+  background-position: left center, right center, left center, right center, 0 0;
+  background-size: 40px 100%, 40px 100%, 16px 100%, 16px 100%, 16px 16px;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  background-attachment: local, local, scroll, scroll, local; }
 .og-scroll svg { display: block; max-width: none; }
 .og-edge path { fill: none; stroke: var(--blue); stroke-width: 2; }
 .og-edge.is-partial path { stroke-dasharray: 6 4; }
@@ -15,7 +23,8 @@
 .og-node-label { fill: var(--ink); font-size: 15px; font-weight: 700; }
 .og-node.is-selected .og-node-box { fill: var(--blue); }
 .og-node.is-selected .og-node-key, .og-node.is-selected .og-node-label { fill: #fff; }
-.og-node:focus-visible .og-node-box, .og-edge:focus-visible path { stroke: var(--amber); stroke-width: 3; }
+.og-node:focus-visible .og-node-box { stroke: var(--amber); stroke-width: 5; }
+.og-edge:focus-visible path { stroke: var(--amber); stroke-width: 5; }
 .og-badge { fill: var(--red); }
 .og-badge-note { fill: var(--amber); }
 .og-findings .og-note { color: var(--amber); }
@@ -57,3 +66,7 @@
 .og-legend-badge.og-badge-note { background: var(--amber); }
 .og-legend-dash { width: 22px; border-top: 2px dashed var(--blue); }
 @media (prefers-reduced-motion: reduce) { .og-node, .og-edge { transition: none; } }
+.og-swipe { display: none; }
+@media (max-width: 700px) { .og-swipe { display: inline; } }
+.og-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; }
+.og-inline { justify-self: start; padding: 0; text-align: left; }
