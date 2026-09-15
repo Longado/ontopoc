@@ -128,7 +128,7 @@ function stabilityTile(ontology, s) {
   const steadyTypes = ontology.object_types.filter((t) => !unsteady(s, "types", t.key)).length;
   const shownSteady = steadyTypes === ontology.object_types.length && !ontology.relations.some((r) => unsteady(s, "relations", r.key));
   const extra = s.elsewhere.types.length;
-  const tile = (tone, value, hint) => ({ key: "stability", label: "稳定性", tone, value, hint });
+  const tile = (tone, value, hint) => ({ key: "stability", label: "本体稳定性", tone, value, hint });
   if (s.runs < 2) return tile("neutral", "另外两次都没成功", "这次无法比较");
   if (!shownSteady) return tile("warn", `${steadyTypes} / ${ontology.object_types.length} 个对象${times(s.runs)}都有`, "虚线框的对象不是每次都有");
   if (extra || s.elsewhere.relations.length) return tile("ok", `这次的 ${ontology.object_types.length} 个对象${times(s.runs)}都有`, extra ? `另有 ${extra} 个对象只在别的某次出现` : "别的某次多了关系，点开看");

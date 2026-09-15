@@ -107,13 +107,14 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
               <rect width={40} height={n.h} className="og-node-side" />
               <text x={54} y={26} className="og-node-key">{n.key.length > 18 ? `${n.key.slice(0, 18)}…` : n.key}</text>
               <text x={54} y={47} className="og-node-label">{n.label}</text>
-              {count > 0 && <g transform={`translate(${n.w - 14},0)`}><circle r="11" className={`og-badge${onlyNotes ? " og-badge-note" : ""}`} /><text textAnchor="middle" y="4" className="og-badge-text">{count}</text></g>}
+              {count > 0 && <g transform={`translate(${n.w - 14},0)`}><title>{`${count} 处${onlyNotes ? "提示" : "数据问题"}，点开看`}</title><circle r="11" className={`og-badge${onlyNotes ? " og-badge-note" : ""}`} /><text textAnchor="middle" y="4" className="og-badge-text">{count}</text></g>}
             </g>; })}
         </svg>
       </div>
       <ul className="og-legend" aria-label="图例">
-        {run.evaluation.data_fit && <><li><i className="og-legend-badge" />数据问题</li><li><i className="og-legend-badge og-badge-note" />提示</li><li><i className="og-legend-dash" />有行没连上的关系</li></>}
-        {run.evaluation.stability && <li><i className="og-legend-unsteady" />虚线框、点线：不是每次建模都有</li>}
+        {run.evaluation.data_fit && <><li><i className="og-legend-badge" />红圈里的数字：这个对象有几处数据问题</li><li><i className="og-legend-badge og-badge-note" />提示</li><li><i className="og-legend-dash" />有行没连上的关系</li></>}
+        {(ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) || ontology.relations.some((r) => unsteady(run.evaluation.stability, "relations", r.key)))
+          && <li><i className="og-legend-unsteady" />虚线框、点线：不是每次建模都有</li>}
         <li>点对象，只看它和相连的对象</li>
       </ul>
     </div>
