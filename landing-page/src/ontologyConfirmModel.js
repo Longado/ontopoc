@@ -1,7 +1,7 @@
 // A person's item-by-item judgement of an ontology. Every change returns new decisions; the old ones are never edited.
 
 export function decisionsOf(run) {
-  const saved = run.confirmation?.decisions;
+  const saved = run.confirmation?.decisions || run.evaluation?.reference?.suggested;   // a rerun starts from the last confirmation
   return saved ? { types: { ...saved.types }, relations: { ...saved.relations }, added: [...(saved.added || [])] } : { types: {}, relations: {}, added: [] };
 }
 
@@ -55,4 +55,19 @@ export function splitExtras(ontology, decisions, diff) {
     unjudged: names.filter((n) => verdicts[keyOf[n]]?.verdict !== "wrong"),
   });
   return { types: split(diff.types.only_ours, typeKey, decisions.types), relations: split(diff.relations.only_ours, relKey, decisions.relations) };
+}
+
+/** Objects that other runs of this file built and this one did not, offered for adding in one click. */
+export function otherRunTypes(run, decisions) {
+  const s = run.evaluation?.stability;
+  return (s?.elsewhere.types || []).filter((t) => !decisions.added.includes(t.label)).map((t) => ({ ...t, runs: s.runs }));
+}
+
+/** The confirmed reference as a file to keep or import: who confirmed it, for which file, and the identities the data check disproved. */
+export function referenceDownload(run) {
+  const c = run.confirmation;
+  const conflicts = run.evaluation.data_fit?.identity_conflicts || [];
+  const data_check = run.ontology.object_types.map((t) => ({ t, n: new Set(conflicts.filter((x) => x.type === t.key).map((x) => x.identity)).size }))
+    .filter(({ n }) => n).map(({ t, n }) => ({ type: t.key, label: t.label || t.key, note: `识别字段在数据里不唯一：${n} 个编号在不同行里信息不一致` }));
+  return { confirmed: { at: c.confirmed_at, by: c.confirmed_by || null, file: run.file.name, sha256: run.file.sha256 }, ...c.reference, data_check };
 }

@@ -75,7 +75,7 @@ function Inspector({ run, selected, findings, confirm }) {
       {t.attributes.length > 0 && <div><dt>属性</dt><dd>{t.attributes.map((a) => a.path).join("、")}</dd></div>}
       {t.time_field && <div><dt>时间</dt><dd>{t.time_field.path}</dd></div>}
       {stability && stability.types[t.key] !== undefined && <div><dt>{stability.runs} 次建模</dt><dd className={unsteady(stability, "types", t.key) ? "og-warn" : ""}>{unsteady(stability, "types", t.key) ? `只有 ${stability.types[t.key]} 次有它：模型对要不要单独建这个对象拿不准，可以按你的业务决定` : "每次都有"}</dd></div>}
-      {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]} 个{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key]} 个在多张表里出现` : ""}</dd></div>}
+      {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]} 个（按编号去重）{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key]} 个在多张表里出现` : ""}{(fit?.missing_across_sources || []).filter((m) => m.type === t.key).map((m) => `；${m.count} 个只在别的表里被引用、在“${m.source}”表里找不到`).join("")}</dd></div>}
     </dl>
     {fit && <h4>数据检查</h4>}
     {!fit ? null : own.length ? <ul className="og-findings">{own.map((f, i) => <li key={i} className={f.severity === "note" ? "og-note" : ""}>{f.severity === "note" ? "提示：" : ""}{FINDING[f.kind](f.detail)}</li>)}</ul> : <p className="og-ok">这个对象没有发现问题。</p>}
@@ -133,7 +133,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
       <div className="og-bar"><span>本体 · {ontology.object_types.length} 个对象 · {ontology.relations.length} 条关系<span className="og-swipe"> · 左右滑动看全图</span></span>
         <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
       {(big || mode !== "auto") && <div className="og-focusbar">
-        {focusing ? <span>{path ? "只显示查询经过的对象。" : <>对象太多，一张图看不清，现在只显示“{typeLabel(ontology, center)}”和与它相连的 {graph.nodes.length - 1} 个。点相连的对象可以换它做中心。</>}</span>
+        {focusing ? <span>{path ? "只显示查询经过的对象。" : <>对象太多，一张图看不清，现在只显示“{typeLabel(ontology, center)}”和与它相连的 {graph.nodes.length - 1} 个。点相连的对象可以换它做中心；要逐项判断，用上面的"列表"更快。</>}</span>
           : <span>这是全图，比屏幕大，可以滚动看。</span>}
         {focusing && <label htmlFor="og-find" className="og-find">找对象<input id="og-find" list="og-concepts" placeholder="输入名字" onChange={find} /></label>}
         <datalist id="og-concepts">{rankByDegree(ontology).map((t) => <option key={t.key} value={t.label || t.key} />)}</datalist>

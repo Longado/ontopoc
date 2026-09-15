@@ -128,3 +128,6 @@ small.os-tone-warn { color: var(--amber); }
 .os-add input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; }
 .pr-type .og-verdict, .pr-rows .og-verdict { margin-top: 4px; }
 .os-go-confirm { justify-self: start; padding: 0; font-weight: 700; }
+.os-signer { display: grid; gap: 6px; max-width: 360px; color: var(--text-2); font-size: 13px; }
+.os-signer input { padding: 8px 10px; border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; }
+.os-others { display: grid; gap: 6px; }
