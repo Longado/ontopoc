@@ -102,3 +102,9 @@ export function progressSteps(events, kind) {
   if (!events.some((ev) => ["evaluate", "done", "failed"].includes(ev.stage)) && steps[at[current]].status === "pending") mark(current, "active");
   return steps;
 }
+
+/** What to tell the user when the local service answers with an error. A 404 means the running service predates this page. */
+export function serviceError(status, data) {
+  if (status === 404) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
+  return data?.error || `服务返回 ${status}`;
+}

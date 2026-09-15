@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  progressSteps, referenceCounts, stabilityLines, typeLabel, typeSources, validateRun,
+  progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { overviewTiles, pathOf } from "./ontologyGraphModel.js";
 import { OntologyGraph } from "./OntologyGraph.jsx";
@@ -332,12 +332,12 @@ export function OntologyStudio() {
       const body = JSON.stringify({ filename: file.name, content_base64: await toBase64(file), purpose });
       const response = await fetch("/api/ontology/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body });
       const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
-      if (!response.ok) throw new Error(data.error || `服务返回 ${response.status}`);
+      if (!response.ok) throw new Error(serviceError(response.status, data));
       for (;;) {
         await new Promise((r) => setTimeout(r, 1000));
         const poll = await fetch(`/api/ontology/jobs/${data.job_id}`, { cache: "no-store" });
         const job = await poll.json().catch(() => ({ state: "failed", error: `服务返回 ${poll.status}` }));
-        if (!poll.ok) throw new Error(job.error || `服务返回 ${poll.status}`);
+        if (!poll.ok) throw new Error(serviceError(poll.status, job));
         setEvents(job.events || []);
         if (job.state === "done") { show(job.result); break; }
         if (job.state === "failed") throw new Error(job.error || "建模失败");
@@ -350,7 +350,7 @@ export function OntologyStudio() {
     try {
       const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
-      if (!response.ok) throw new Error(data.error || `服务返回 ${response.status}`);
+      if (!response.ok) throw new Error(serviceError(response.status, data));
       update(data);
     } catch (e) { setFailure(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); }
     finally { setWorking(false); }

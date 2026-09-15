@@ -14,7 +14,7 @@ import uuid
 
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
 from ontology_poc_generator.company_ontology import build_and_evaluate
-from ontology_poc_generator.company_sources import MAX_BYTES, SourceFileError, load_table_file
+from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_questions import ask_questions
@@ -45,7 +45,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         except (binascii.Error, ValueError):
             raise SourceFileError('文件内容不是有效的 base64') from None
         filename = str(payload.get('filename') or '')
-        is_document = Path(filename).suffix.lower() in DOCUMENT_SUFFIXES
+        suffix = Path(filename).suffix.lower()
+        if suffix not in DOCUMENT_SUFFIXES + TABLE_SUFFIXES:
+            raise SourceFileError(f'只支持数据表（{" / ".join(TABLE_SUFFIXES)}）或文档（{" / ".join(DOCUMENT_SUFFIXES)}），不支持 {suffix or "无扩展名"} 文件')
+        is_document = suffix in DOCUMENT_SUFFIXES
         return (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose')), is_document
 
     def previous_run(sha256):
