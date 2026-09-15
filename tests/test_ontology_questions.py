@@ -75,7 +75,7 @@ class AskTests(unittest.TestCase):
     def test_the_model_sees_the_few_values_a_category_field_takes(self):
         values = categorical_values(PROPOSAL, BUNDLE)
         self.assertEqual(values['客户.城市'], ['常州', '无锡', '苏州'])
-        self.assertNotIn('订单.订单号', values)
+        self.assertEqual(values['客户.客户编号'], ['C1', 'C2'])   # identity fields with few values are listed too
 
 
 if __name__ == '__main__':
