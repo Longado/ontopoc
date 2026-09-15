@@ -103,7 +103,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         if confirmed.exists() and result['ontology']['status'] == 'auto_built_verified':
             # a person confirmed an earlier run of this file: compare against that judgement without being asked
             ref = json.loads(confirmed.read_text(encoding='utf-8'))
-            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': ref['confirmed_at'],
+            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': ref['confirmed_at'], 'confirmed_by': ref.get('confirmed_by'),
                                                  'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                                  'diff': compare_ontologies(parse_reference(ref['reference']), result['ontology'])}
         result['saved_as'] = name
@@ -292,6 +292,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 result = json.loads(result_path.read_text(encoding='utf-8'))
                 reference = confirmed_reference(result['ontology'], payload.get('decisions'))
+                signer = payload.get('confirmed_by')
+                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
+                    raise ValueError('确认人最多写 40 个字')
+                signer = (signer or '').strip() or None
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
@@ -299,9 +303,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             refs = output_dir / 'references'
             refs.mkdir(parents=True, exist_ok=True)
             (refs / f"{result['file']['sha256']}.json").write_text(json.dumps(
-                {'confirmed_at': now, 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
-            result['confirmation'] = {'confirmed_at': now, 'decisions': payload['decisions'], 'reference': reference}
-            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'compared_at': now,
+                {'confirmed_at': now, 'confirmed_by': signer, 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
+            result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference}
+            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'compared_at': now,
                                                  'diff': compare_ontologies(parse_reference(reference), result['ontology'])}
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
