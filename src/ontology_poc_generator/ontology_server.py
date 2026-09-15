@@ -66,6 +66,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
         if result['ontology']['status'] != 'auto_built_verified' and outage:
             return 502, {'error': f'模型请求失败（{outage[-1][:160]}）。这不是数据的问题，请稍后重试。'}
+        if not is_document and result['ontology']['status'] == 'auto_built_verified':
+            # evaluation 2 runs as its own judgement after code has verified the ontology, so the upload arrives with all automatic checks
+            if progress:
+                progress('questions', {})
+            result['evaluation']['questions'] = ask_questions(result['ontology'], bundle, gateway)
         now = datetime.now(timezone.utc)
         name = f'{now.strftime("%Y%m%dT%H%M%S")}{now.microsecond // 1000:03d}Z-{bundle["file"]["sha256"][:8]}.json'
         output_dir.mkdir(parents=True, exist_ok=True)

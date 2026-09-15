@@ -97,6 +97,7 @@ export function progressSteps(events, kind) {
       current = d.errors ? "model" : "evaluate";
     }
     if (ev.stage === "evaluate") { mark("model", "done"); if (steps[at.verify].status === "pending") mark("verify", "done"); mark("evaluate", "active"); current = "evaluate"; }
+    if (ev.stage === "questions") mark("evaluate", "active", "数据体检已完成，正在出题并用数据回答");
     if (ev.stage === "done") for (const s of steps) s.status = "done";
   }
   if (!events.some((ev) => ["evaluate", "done", "failed"].includes(ev.stage)) && steps[at[current]].status === "pending") mark(current, "active");
