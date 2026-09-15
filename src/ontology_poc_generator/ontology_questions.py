@@ -17,7 +17,7 @@ written as structured queries that code will run on the company's data. Everythi
 
 Return ONLY a JSON object:
 {{"questions": [{{
-    "reasoning": "<first: which objects and relations answer it; if the ontology cannot express it, say exactly what is missing>",
+    "reasoning": "<in Chinese, first: which objects and relations answer it; if the ontology cannot express it, say exactly what is missing>",
     "question": "<the question in Chinese>",
     "query": {{
         "start": "<object type key whose objects are counted>",
