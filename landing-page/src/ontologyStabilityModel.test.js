@@ -15,6 +15,8 @@ test("the stability tile counts objects every run agrees on", () => {
   assert.deepEqual([shaky.value, shaky.tone, shaky.hint], ["2 / 3 个对象三次都有", "warn", "虚线框的对象不是每次都有"]);
   const steady = tile({ runs: 3, failed: 0, types: { customer: 3, order: 3, engineer: 3 }, relations: { r1: 3 }, elsewhere: { types: [], relations: [] } });
   assert.deepEqual([steady.value, steady.tone, steady.hint], ["三次搭的都一样", "ok", "对象和关系每次都有"]);
+  const extraElsewhere = tile({ runs: 3, failed: 0, types: { customer: 3, order: 3, engineer: 3 }, relations: { r1: 3 }, elsewhere: { types: [{ label: "工程师", count: 1 }], relations: [] } });
+  assert.deepEqual([extraElsewhere.value, extraElsewhere.tone, extraElsewhere.hint], ["这次的 3 个对象三次都有", "ok", "另有 1 个对象只在别的某次出现"]);
 });
 
 test("the stability card says what varies and whether a run failed", () => {
