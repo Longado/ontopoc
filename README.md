@@ -35,7 +35,7 @@ Open `http://127.0.0.1:5178`. Since 2026-09-14 the default entry is "Upload to o
 - whether it can answer business questions (the model writes the queries, code answers them on the data);
 - how it compares with a reference ontology written by a person.
 
-The ontology tab is a graph with an evidence inspector, and data problems are marked on the nodes. Uploading the same file again lists what changed since the previous run. Uploads and questions need the local modeling service; without it, two bundled demo results can be opened: a synthetic manufacturing company's workbook and its after-sales process document.
+The ontology tab is a graph with an evidence inspector, and data problems are marked on the nodes. Each table upload is modelled three times at once, and objects or relations missing from some runs are marked; uploading the same file again also lists what changed since the previous run. Before building, the upload page shows exactly what would be sent to the model. Uploads and questions need the local modeling service; without it, two bundled demo results can be opened: a synthetic manufacturing company's workbook and its after-sales process document.
 
 ```bash
 # local modeling service (port 8767, needs a local DeepSeek key; files and results stay in output/ontology-runs/)
