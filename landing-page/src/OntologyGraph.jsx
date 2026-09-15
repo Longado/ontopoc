@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { edgeStats, findingsByType, layoutGraph, neighboursOf, unsteady } from "./ontologyGraphModel.js";
+import { useEffect, useRef, useState } from "react";
+import { edgeStats, findingsByType, focusOntology, layoutGraph, needsFocus, neighboursOf, rankByDegree, unsteady } from "./ontologyGraphModel.js";
 import { typeLabel, typeSources } from "./ontologyStudioModel.js";
 import "./OntologyGraph.css";
 
@@ -69,14 +69,34 @@ function Inspector({ run, selected, findings }) {
 
 export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelected, path, onClearPath, reveal }) {
   const { ontology } = run;
-  const graph = layoutGraph(ontology);
   const findings = findingsByType(run.evaluation.data_fit);
-  const selected = chosen && (chosen.kind === "edge" ? ontology.relations : ontology.object_types).some((x) => x.key === chosen.key) ? chosen : { kind: "node", key: graph.nodes[0]?.key };
-  const edge = selected.kind === "edge" && ontology.relations.find((r) => r.key === selected.key);
-  const focus = path ? { nodes: new Set(path.nodes), edges: new Set(path.edges) }
-    : selected !== chosen ? null : edge ? { nodes: new Set([edge.from, edge.to]), edges: new Set([edge.key]) } : neighboursOf(ontology, selected.key);
-  const dim = (kind, key) => focus && (kind === "node" ? !focus.nodes.has(key) : !focus.edges.has(key)) ? " is-dim" : "";
   const wrap = useRef(null);
+  const canvas = useRef(null);
+  const [box, setBox] = useState(null);
+  const [mode, setMode] = useState("auto");   // auto: the whole graph if it fits the screen, else one concept and its neighbours
+  useEffect(() => {
+    const measure = () => canvas.current && setBox({ w: canvas.current.clientWidth - 16, h: window.innerHeight });
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    if (observer && canvas.current) observer.observe(canvas.current);
+    return () => observer?.disconnect();
+  }, []);
+  const big = box ? needsFocus(layoutGraph(ontology), box.w, box.h) : false;
+  const focusing = mode === "focus" || (mode === "auto" && big);
+  const hub = rankByDegree(ontology)[0]?.key;
+  const selected = chosen && (chosen.kind === "edge" ? ontology.relations : ontology.object_types).some((x) => x.key === chosen.key) ? chosen
+    : { kind: "node", key: focusing ? hub : ontology.object_types[0]?.key };
+  const edge = selected.kind === "edge" && ontology.relations.find((r) => r.key === selected.key);
+  const center = edge ? edge.from : selected.key;
+  const shown = focusing ? focusOntology(ontology, center, path ? path.nodes : null) : ontology;
+  const graph = layoutGraph(shown);
+  const focus = path ? { nodes: new Set(path.nodes), edges: new Set(path.edges) }
+    : focusing || selected !== chosen ? null : edge ? { nodes: new Set([edge.from, edge.to]), edges: new Set([edge.key]) } : neighboursOf(ontology, selected.key);
+  const dim = (kind, key) => focus && (kind === "node" ? !focus.nodes.has(key) : !focus.edges.has(key)) ? " is-dim" : "";
+  const find = (e) => {
+    const t = ontology.object_types.find((x) => (x.label || x.key) === e.target.value);
+    if (t) { setSelected({ kind: "node", key: t.key }); e.target.value = ""; }
+  };
   useEffect(() => {   // arriving from an evaluation link: bring the graph and the chosen node into view
     if (!reveal) return;
     wrap.current?.scrollIntoView({ block: "start" });
@@ -87,9 +107,16 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
   const noteCount = all.length - problemCount;
   const isSelected = (kind, key) => selected.kind === kind && selected.key === key;
   return <div className="og-wrap" ref={wrap}>
-    <div className="og-canvas">
-      <div className="og-bar"><span>本体 · {graph.nodes.length} 个对象 · {graph.edges.length} 条关系<span className="og-swipe"> · 左右滑动看全图</span></span>
+    <div className="og-canvas" ref={canvas}>
+      <div className="og-bar"><span>本体 · {ontology.object_types.length} 个对象 · {ontology.relations.length} 条关系<span className="og-swipe"> · 左右滑动看全图</span></span>
         <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
+      {(big || mode !== "auto") && <div className="og-focusbar">
+        {focusing ? <span>{path ? "只显示查询经过的对象。" : <>对象太多，一张图看不清，现在只显示“{typeLabel(ontology, center)}”和与它相连的 {graph.nodes.length - 1} 个。点相连的对象可以换它做中心。</>}</span>
+          : <span>这是全图，比屏幕大，可以滚动看。</span>}
+        {focusing && <label htmlFor="og-find" className="og-find">找对象<input id="og-find" list="og-concepts" placeholder="输入名字" onChange={find} /></label>}
+        <datalist id="og-concepts">{rankByDegree(ontology).map((t) => <option key={t.key} value={t.label || t.key} />)}</datalist>
+        <button type="button" className="pr-link" onClick={() => setMode(focusing ? "full" : "focus")}>{focusing ? "看全图" : "只看选中的周围"}</button>
+      </div>}
       {path && <div className="og-path" role="status"><span>查询路径：{path.text || path.nodes.map((k) => typeLabel(ontology, k)).join(" → ")}</span><button type="button" className="pr-link" onClick={onClearPath}>清除</button></div>}
       <div className="og-scroll">
         <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", minWidth: Math.max(Math.min(graph.width, 560), Math.round(graph.width * 0.7)), maxWidth: graph.width }} role="group" aria-label="本体关系图">
@@ -115,7 +142,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
         {run.evaluation.data_fit && <><li><i className="og-legend-badge" />红圈里的数字：这个对象有几处数据问题</li><li><i className="og-legend-badge og-badge-note" />提示</li><li><i className="og-legend-dash" />有行没连上的关系</li></>}
         {(ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) || ontology.relations.some((r) => unsteady(run.evaluation.stability, "relations", r.key)))
           && <li><i className="og-legend-unsteady" />虚线框、点线：不是每次建模都有</li>}
-        <li>点对象，只看它和相连的对象</li>
+        <li>{focusing ? "点相连的对象，换它做中心" : "点对象，只看它和相连的对象"}</li>
       </ul>
     </div>
     <aside className="og-inspector" aria-label="证据检查">

@@ -74,3 +74,9 @@
 .og-node.is-unsteady .og-node-side { fill: var(--text-2); }
 .og-edge.is-unsteady path { stroke-dasharray: 2 5; stroke-linecap: round; }
 .og-legend-unsteady { width: 18px; height: 12px; border: 2px dashed var(--blue); border-radius: 2px; }
+.og-focusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 16px; border-bottom: 1px solid var(--edge); background: var(--surface); font-size: 13px; }
+.og-focusbar > span { flex: 1 1 260px; }
+.og-focusbar .pr-link { padding: 0; font-weight: 700; }
+.og-find { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.og-find input { width: 150px; padding: 4px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
+.og-find input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }

@@ -28,6 +28,10 @@ export function layoutGraph(ontology) {
   });
   const at = Object.fromEntries(nodes.map((n) => [n.key, n]));
   const width = PAD * 2 + filled.length * NODE.w + (filled.length - 1) * GAP.x;
+  const degree = Object.fromEntries(keys.map((k) => [k, 0]));
+  for (const r of edges) { degree[r.from] += 1; degree[r.to] += 1; }
+  // cubic Bezier point: names go toward the end with fewer relations, so a hub's names spread out instead of piling up
+  const bezier = (t, p0, p1, p2, p3) => (1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1 + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3;
   return {
     width, height, nodes,
     edges: ontology.relations.filter((r) => at[r.from] && at[r.to]).map((r, i, all) => {
@@ -39,9 +43,10 @@ export function layoutGraph(ontology) {
       const bend = forward ? (x2 - x1) / 2 : 0;
       const skips = forward && Math.round((b.x - a.x) / (NODE.w + GAP.x)) > 1;   // arc over the columns in between
       const lift = twin * 22 + (skips ? NODE.h + GAP.y : 0);
-      const path = forward ? `M${x1},${y1} C${x1 + bend},${y1 - lift} ${x2 - bend},${y2 - lift} ${x2},${y2}`
-        : `M${x1},${y1} C${x1 + 60 + lift},${y1 + 40} ${x2 + 60 + lift},${y2 - 40} ${x2},${y2}`;
-      return { key: r.key, from: r.from, to: r.to, path, lx: (x1 + x2) / 2 + (forward ? 0 : 60 + lift), ly: (y1 + y2) / 2 - lift };
+      const c = forward ? [x1 + bend, y1 - lift, x2 - bend, y2 - lift] : [x1 + 60 + lift, y1 + 40, x2 + 60 + lift, y2 - 40];
+      const path = `M${x1},${y1} C${c[0]},${c[1]} ${c[2]},${c[3]} ${x2},${y2}`;
+      const t = degree[r.from] > degree[r.to] ? 0.72 : degree[r.from] < degree[r.to] ? 0.28 : 0.5;
+      return { key: r.key, from: r.from, to: r.to, path, lx: bezier(t, x1, c[0], c[2], x2), ly: bezier(t, y1, c[1], c[3], y2) };
     }),
   };
 }
@@ -149,4 +154,25 @@ export function consensusLines(ontology, s, errorLabels = {}) {
   const elsewhere = [...s.elsewhere.types.map((t) => `${t.label}${of(t.count)}`), ...s.elsewhere.relations.map((r) => `关系 ${r.label}${of(r.count)}`)];
   if (elsewhere.length) lines.push(`这次没有、别的某次有：${elsewhere.join("；")}`);
   return lines;
+}
+
+/** Types ordered by how many relations touch them, most connected first; ties keep the ontology's order. */
+export function rankByDegree(ontology) {
+  const degree = Object.fromEntries(ontology.object_types.map((t) => [t.key, 0]));
+  for (const r of ontology.relations) { degree[r.from] += 1; if (r.to !== r.from) degree[r.to] += 1; }
+  return ontology.object_types.map((t, i) => ({ t, i })).sort((a, b) => degree[b.t.key] - degree[a.t.key] || a.i - b.i).map((x) => x.t);
+}
+
+/** The part of the ontology around one type: it and its neighbours (or the given keys), with the relations among them. */
+export function focusOntology(ontology, key, keep = null) {
+  const keys = new Set(keep || neighboursOf(ontology, key).nodes);
+  return { ...ontology, object_types: ontology.object_types.filter((t) => keys.has(t.key)),
+    relations: ontology.relations.filter((r) => keys.has(r.from) && keys.has(r.to)) };
+}
+
+/** Whether the whole graph cannot be seen at once: it would scroll sideways at its smallest scale, or be taller than the screen. */
+export function needsFocus(graph, width, height) {
+  if (graph.width * 0.7 > width) return true;   // 0.7 is the smallest scale the graph is drawn at (see OntologyGraph)
+  const scale = Math.min(1, width / graph.width);
+  return graph.height * scale > height;
 }
