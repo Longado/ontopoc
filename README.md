@@ -1,9 +1,9 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="landing-page/public/assets/ontopoc-logo.png">
-  <img src="landing-page/public/assets/ontopoc-logo-light.png" alt="OntoPoc — Trace scope. Review evidence." width="420">
+  <img src="landing-page/public/assets/ontopoc-logo-light.png" alt="OntoPoc — Draft the ontology. Show the evidence." width="420">
 </picture>
 
-# OntoPoc — Trace scope. Review evidence.
+# OntoPoc — Draft the ontology. Show the evidence.
 
 English · [中文](README.zh-CN.md)
 
@@ -46,7 +46,7 @@ PYTHONPATH=src:. python scripts/run_company_ontology.py --file examples/company/
 PYTHONPATH=src:. python scripts/make_demo_company.py
 ```
 
-The recall scope review is now the example entry "Example: vehicle recalls". It reads static files under `landing-page/public/data/` (an index plus one file per dataset: Chevrolet Bolt EV / EUV 2017–2023 and Hyundai Kona Electric / Kona EV 2019–2021) and needs no Python service. A left sidebar switches between the two entries; recall scope review has four tabs: Data scope (check how the data was read, judge each name mapping; the auto-built ontology sits under technical details) → Recalls (grouped by part, re-recalls chained into series) → Review (ordered by after-recall, fire/crash, date; arrow keys and 1/2/3 work) → Results (agreement with the model, reviewer name, download). Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
+The recall scope review is now the entry "Vehicle recall scope" under "More examples" in the sidebar. It reads static files under `landing-page/public/data/` (an index plus one file per dataset: Chevrolet Bolt EV / EUV 2017–2023 and Hyundai Kona Electric / Kona EV 2019–2021) and needs no Python service. Recall scope review has four tabs: Data scope (check how the data was read, judge each name mapping; the auto-built ontology sits under technical details) → Recalls (grouped by part, re-recalls chained into series) → Review (ordered by after-recall, fire/crash, date; arrow keys and 1/2/3 work) → Results (agreement with the model, reviewer name, download). Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
 
 `/landing` is the product page. The second entry, "Public recall lookup", matches products and lots for openFDA event 95876 and needs the local Python service below.
 
