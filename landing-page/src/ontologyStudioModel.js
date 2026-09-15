@@ -73,3 +73,32 @@ export function referenceCounts(diff) {
   const { types, relations } = diff.counts;
   return `对象命中 ${types.matched} / ${types.reference}，多出 ${types.ours - types.matched} 个；关系命中 ${relations.matched} / ${relations.reference}，多出 ${relations.ours - relations.matched} 条`;
 }
+
+/** Steps shown while a build runs, derived only from the events the job reported (nothing is guessed from time). */
+export function progressSteps(events, kind) {
+  const doc = kind === "document";
+  const steps = [
+    { key: "read", label: "读取文件" },
+    { key: "model", label: doc ? "逐段提取概念和关系" : "模型提出本体" },
+    { key: "verify", label: doc ? "核对原文引用" : "代码核验" },
+    { key: "evaluate", label: "自动评测" },
+  ].map((s) => ({ ...s, status: "pending", detail: "" }));
+  const at = Object.fromEntries(steps.map((s, i) => [s.key, i]));
+  const mark = (key, status, detail) => { const s = steps[at[key]]; s.status = status; if (detail !== undefined) s.detail = detail; };
+  let current = "model";
+  for (const ev of events) {
+    const d = ev.detail || {};
+    if (ev.stage === "read") mark("read", "done");
+    if (ev.stage === "propose") { mark("model", "active", `第 ${d.attempt} 次`); current = "model"; }
+    if (ev.stage === "chunk") { mark("model", "active", `第 ${d.index} / ${d.total} 段`); current = "model"; }
+    if (ev.stage === "verify") {
+      mark("verify", "done", d.errors ? `第 ${d.attempt} 次退回 ${d.errors} 处问题，模型重做` : `第 ${d.attempt} 次通过`);
+      if (!d.errors) mark("model", "done");
+      current = d.errors ? "model" : "evaluate";
+    }
+    if (ev.stage === "evaluate") { mark("model", "done"); if (steps[at.verify].status === "pending") mark("verify", "done"); mark("evaluate", "active"); current = "evaluate"; }
+    if (ev.stage === "done") for (const s of steps) s.status = "done";
+  }
+  if (!events.some((ev) => ["evaluate", "done", "failed"].includes(ev.stage)) && steps[at[current]].status === "pending") mark(current, "active");
+  return steps;
+}
