@@ -96,8 +96,8 @@ small.os-tone-warn { color: var(--amber); }
 .os-segments button[aria-selected="true"] small { color: #d9d6cc; }
 .os-graph-link { flex: none; padding: 2px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--blue); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .os-graph-link:hover { border-color: var(--blue); background: var(--blue-soft); }
-.os-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-width: 560px; font-size: 13px; }
-.os-bars li { display: grid; grid-template-columns: minmax(80px, 200px) minmax(0, 1fr) minmax(40px, auto); align-items: center; gap: 8px; }
+.os-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-width: 880px; font-size: 13px; }
+.os-bars li { display: grid; grid-template-columns: minmax(96px, 2fr) minmax(60px, 3fr) minmax(40px, auto); align-items: center; gap: 8px; }
 .os-bars span { overflow-wrap: anywhere; }
 .os-bars i { display: block; height: 10px; border-radius: 3px; background: var(--blue); }
 .os-bars b { text-align: right; font-variant-numeric: tabular-nums; }
