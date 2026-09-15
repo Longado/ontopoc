@@ -36,7 +36,7 @@
 .os-drop { display: grid; justify-items: center; gap: 8px; padding: 28px 16px; border: 2px dashed var(--edge-strong); border-radius: 12px; background: var(--canvas); color: var(--ink); text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
 .os-drop:hover, .os-drop.is-over { border-color: var(--blue); background: var(--blue-soft); }
 .os-drop small { color: var(--text-2); }
-#os-file:focus-visible + .os-purpose, .os-drop:focus-within { outline: 2px solid var(--blue); outline-offset: 2px; }
+#os-file:focus-visible + .os-drop, #os-file:focus-visible + .os-file-card, #os-reference:focus-visible + .os-pick { outline: 2px solid var(--blue); outline-offset: 2px; }
 .os-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .os-chips > span { padding: 2px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--edge); color: var(--text-2); font-size: 12px; }
 .os-file-card { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--blue); border-radius: 12px; background: var(--blue-soft); }
@@ -108,3 +108,10 @@ small.os-tone-warn { color: var(--amber); }
 @media (max-width: 560px) { .os-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); } .os-segments { grid-template-columns: minmax(0, 1fr); } .os-segments button { border-left: 0; border-top: 1px solid var(--edge); } .os-segments button:first-child { border-top: 0; } }
 .os-cannot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; }
 .os-cannot .pr-link { padding: 0; font-weight: 700; }
+.os-tile em { color: var(--text-2); font-size: 12px; font-style: normal; }
+.os-last { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 10px 14px; border-radius: 10px; background: var(--blue-soft); font-size: 13px; }
+.os-last .pr-link { padding: 0; font-weight: 700; }
+.os-file-card.is-bad { border-color: var(--red); background: var(--red-soft); }
+.os-bad { color: var(--red) !important; }
+.os-pick { justify-self: start; padding: 8px 14px; border: 1px solid var(--edge-strong); border-radius: 8px; background: var(--surface); color: var(--ink) !important; font-weight: 600; cursor: pointer; }
+.os-pick:hover { border-color: var(--blue); background: var(--blue-soft); }
