@@ -3,6 +3,8 @@ Kept objects carry the tables and identity fields they were built from, so later
 not by what they are called; renamed objects keep that match. The reference is what evaluation 3 compares against."""
 from __future__ import annotations
 
+from ontology_poc_generator.ontology_compare import match_types
+
 VERDICTS = ('ok', 'wrong')
 MAX_LABEL = 40
 MAX_ADDED = 30
@@ -69,3 +71,19 @@ def confirmed_reference(ontology: dict, decisions: dict) -> dict:
     if not kept:
         raise ConfirmError('至少要判一个对象"对"，或补充一个对象')
     return {'object_types': kept, 'relations': links}
+
+
+def prefill_from_reference(ontology: dict, reference: dict) -> dict:
+    """Decisions for a new run of a confirmed file: what matches the confirmation starts as right (with its confirmed
+    name); an object the person added that this run now has starts as right too; only the differences are left."""
+    ours = {t['key']: t for t in ontology['object_types']}
+    ref_types = reference['object_types']
+    mapping = match_types(ref_types, ontology['object_types'])   # same table and identity fields, else same name
+    types = {}
+    for ref_key, our_key in mapping.items():
+        label = next(t['label'] for t in ref_types if t['key'] == ref_key)
+        types[our_key] = {'verdict': 'ok', **({'label': label} if label != (ours[our_key].get('label') or our_key) else {})}
+    confirmed_ends = [{mapping.get(r['from']), mapping.get(r['to'])} for r in reference['relations']]
+    relations = {r['key']: {'verdict': 'ok'} for r in ontology['relations'] if {r['from'], r['to']} in confirmed_ends}
+    added = [t['label'] for t in ref_types if t['key'].startswith('added_') and t['key'] not in mapping]
+    return {'types': types, 'relations': relations, 'added': added}

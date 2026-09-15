@@ -19,7 +19,7 @@ from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, So
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
-from ontology_poc_generator.ontology_confirm import confirmed_reference
+from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
 from ontology_poc_generator.ontology_questions import ask_questions
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 
@@ -105,7 +105,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             ref = json.loads(confirmed.read_text(encoding='utf-8'))
             result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': ref['confirmed_at'], 'confirmed_by': ref.get('confirmed_by'),
                                                  'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
-                                                 'diff': compare_ontologies(parse_reference(ref['reference']), result['ontology'])}
+                                                 'diff': compare_ontologies(parse_reference(ref['reference']), result['ontology']),
+                                                 'suggested': prefill_from_reference(result['ontology'], ref['reference'])}
         result['saved_as'] = name
         (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
         # the uploaded rows stay on this machine so later questions can be answered from them
