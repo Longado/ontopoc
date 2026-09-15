@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, fileProblem, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
+  conflictNote, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraphModel.js";
 import { OntologyGraph } from "./OntologyGraph.jsx";
@@ -137,19 +137,24 @@ function ShowOnGraph({ type, onShow }) {
   return <button type="button" className="os-graph-link" onClick={() => onShow(type)}>在图上看</button>;
 }
 
-function QuestionItem({ item, onPath }) {
+const SHOWN_GROUPS = 10;   // one screen of bars; the rest open on request
+
+function QuestionItem({ item, onPath, run }) {
+  const [all, setAll] = useState(false);
   const a = item.answer;
+  const note = run && item.query ? conflictNote(run, pathOf(run.ontology, item.query)?.nodes || []) : "";
   const max = a?.groups?.length ? Math.max(...a.groups.map(([, n]) => n)) : 0;
   const width = ([, n, all]) => (a.share ? (n / all) * 100 : (n / max) * 100);
   const extra = answerLines(item).slice(a?.groups?.length || 0);   // group lines come first; the bars show those
   return <li className="os-question">
     <div className="os-question-head"><span className={`os-pill os-${item.status}`}>{STATUS_LABELS[item.status] || item.status}</span><b>{item.question}</b></div>
     {a?.share && a.groups && <p className="pr-muted">每组里“{a.share.field}”为“{a.share.equals}”的占比，按占比从高到低；分母小的组比例容易偏高，请一起看分母。</p>}
-    {a?.groups?.length > 0 && <ul className="os-bars">{a.groups.map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${Math.round((g[1] / g[2]) * 100)}%）` : g[1]}</b></li>)}</ul>}
+    {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${Math.round((g[1] / g[2]) * 100)}%）` : g[1]}</b></li>)}</ul>}
+    {a?.groups?.length > SHOWN_GROUPS && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? "只看前 10 组" : `展开其余 ${a.groups.length - SHOWN_GROUPS} 组`}</button>}
+    {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
     {item.path && <p className="pr-muted">怎么查的：{item.path}{item.query && onPath && <> <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看路径</button></>}</p>}
-    {item.status === "query_limit" && <p className="pr-muted">这个问题要对数字求和或求平均、限定时间段，或者要按起点以外的对象筛选；现在的查询只能数个数、算占比，所以还答不了。本体本身没有问题。</p>}
-    {item.status === "query_limit" && item.reason && <details className="os-how"><summary>模型的说明</summary><p>{item.reason}</p></details>}
+    {item.status === "query_limit" && <p className="pr-muted">这种问法现在的查询还做不到（查询能数个数、算占比、按几样东西分组，还不能求和、求平均、限定时间段），本体本身没有问题。{item.reason ? `模型的说明：${item.reason}` : ""}</p>}
     {item.status !== "answered" && item.status !== "query_limit" && item.reason && <p className="pr-muted">原因：{item.reason}</p>}
   </li>;
 }
@@ -172,9 +177,9 @@ function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef, onPath, onU
       </label>
     </div>}
     {error && <p role="alert" className="pr-error">{error}</p>}
-    {asked.length > 0 && <><h3 className="os-sub">你问的</h3><ul className="os-questions">{[...asked].reverse().flatMap((r, ri) => r.error ? [<li key={`e${ri}`} className="pr-error">{r.error}</li>] : r.items.map((item, i) => <QuestionItem key={`${ri}-${i}`} item={item} onPath={onPath} />))}</ul></>}
+    {asked.length > 0 && <><h3 className="os-sub">你问的</h3><ul className="os-questions">{[...asked].reverse().flatMap((r, ri) => r.error ? [<li key={`e${ri}`} className="pr-error">{r.error}</li>] : r.items.map((item, i) => <QuestionItem key={`${ri}-${i}`} item={item} onPath={onPath} run={run} />))}</ul></>}
     {round && <><h3 className="os-sub">模型出的题{round.total ? `（${questionSummary(round)}）` : ""}</h3>
-      {round.error ? <p className="pr-error">{round.error}</p> : <ul className="os-questions">{round.items.map((item, i) => <QuestionItem key={i} item={item} onPath={onPath} />)}</ul>}
+      {round.error ? <p className="pr-error">{round.error}</p> : <ul className="os-questions">{round.items.map((item, i) => <QuestionItem key={i} item={item} onPath={onPath} run={run} />)}</ul>}
       <p className="pr-muted os-tech">出题模型 {round.model}，提示词 {round.prompt_version}</p></>}
   </section>;
 }

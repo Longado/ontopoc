@@ -129,3 +129,13 @@ export function previousLine(previous) {
   const counts = previous.counts ? `，${previous.counts.types} 个对象、${previous.counts.relations} 条关系` : "";
   return `上一次运行：${when}${purpose}${counts}`;
 }
+
+/** Answers count objects by identity; say so when some identities disagree with themselves in the data. */
+export function conflictNote(run, typeKeys) {
+  const conflicts = run.evaluation.data_fit?.identity_conflicts || [];
+  const parts = typeKeys.map((key) => {
+    const ids = new Set(conflicts.filter((c) => c.type === key).map((c) => c.identity));
+    return ids.size ? `${ids.size} 个${typeLabel(run.ontology, key)}编号` : "";
+  }).filter(Boolean);
+  return parts.length ? `按编号数对象：有 ${parts.join("、")}在数据里信息不一致（见数据体检），每个编号只算一次。` : "";
+}

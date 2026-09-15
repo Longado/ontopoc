@@ -122,3 +122,4 @@ small.os-tone-warn { color: var(--amber); }
   background-repeat: no-repeat; background-attachment: local, local, scroll, scroll; }
 .os-preview table caption { caption-side: top; text-align: left; padding: 6px 0; font-weight: 700; color: var(--ink); }
 .os-preview .pr-table td { white-space: normal; min-width: 80px; }
+.os-more-groups { justify-self: start; padding: 0; font-weight: 700; }
