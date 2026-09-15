@@ -117,22 +117,23 @@ function QuestionItem({ item, onPath }) {
   </li>;
 }
 
-function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef, onPath }) {
+function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef, onPath, onUpload }) {
+  const example = !run.saved_as;
   const [text, setText] = useState("");
   const round = run.evaluation.questions;
   const asked = run.evaluation.asked || [];
   return <section className="pr-card">
     <div className="pr-card-head"><h2>业务问答：能用数据回答问题吗</h2>{round && <span className="pr-muted">{questionSummary(round)}</span>}</div>
     <p className="pr-muted">模型只负责把问题写成查询（一次调用）；答案由代码在上传的数据上算出来。答不了时写明是本体缺了哪一块、数据里没有，还是查询写法表达不了。</p>
-    {!canAsk && <p className="pr-note">要自己出题或提问，需要上传文件并开着本机建模服务；示例结果里已附一轮问答。</p>}
-    <div className="os-ask">
+    {!canAsk && <CannotAsk what="自己提问、重新出题" example={example} onUpload={onUpload} />}
+    {canAsk && <div className="os-ask">
       <button className="pr-primary" disabled={!canAsk || busy} onClick={() => onAsk(null)}>{busy ? "出题回答中…" : round ? "重新出一组问题" : "出一组业务问题并用数据回答"}</button>
       <label htmlFor="os-question">或者问一个问题
         <span className="os-ask-row"><input id="os-question" ref={askRef} value={text} maxLength={300} disabled={!canAsk || busy} placeholder="例如：哪些客户的售后工单最多？" onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) onAsk(text.trim()); }} />
         <button className="pr-link" disabled={!canAsk || busy || !text.trim()} onClick={() => onAsk(text.trim())}>问</button></span>
       </label>
-    </div>
+    </div>}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {asked.length > 0 && <><h3 className="os-sub">你问的</h3><ul className="os-questions">{[...asked].reverse().flatMap((r, ri) => r.error ? [<li key={`e${ri}`} className="pr-error">{r.error}</li>] : r.items.map((item, i) => <QuestionItem key={`${ri}-${i}`} item={item} onPath={onPath} />))}</ul></>}
     {round && <><h3 className="os-sub">模型出的题</h3>
@@ -141,21 +142,28 @@ function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef, onPath }) {
   </section>;
 }
 
+function CannotAsk({ what, example, onUpload }) {
+  return <div className="pr-note os-cannot">
+    <span>{example ? `这是示例结果，只能看，不能${what}。上传自己的文件后就可以。` : `本机建模服务没有连上，暂时不能${what}。启动建模服务后刷新页面。`}</span>
+    {example && onUpload && <button type="button" className="pr-link" onClick={onUpload}>上传自己的文件</button>}
+  </div>;
+}
+
 function DiffList({ title, items }) {
   return items.length ? <div className="os-diff"><h3 className="os-sub">{title}（{items.length}）</h3><ul className="os-list">{items.map((x) => <li key={Array.isArray(x) ? x.join("/") : x}>{Array.isArray(x) ? (x[0] === x[1] ? x[0] : `${x[0]} ↔ ${x[1]}`) : x}</li>)}</ul></div> : null;
 }
 
-function ReferenceSection({ run, canCompare, onCompare, busy, error }) {
+function ReferenceSection({ run, canCompare, onCompare, busy, error, onUpload }) {
   const ref = run.evaluation.reference;
   return <section className="pr-card">
     <div className="pr-card-head"><h2>对照标准答案</h2>{ref && <span className="pr-muted">{referenceCounts(ref.diff)}</span>}</div>
     <p className="pr-muted">上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按"读同一张表、用同样的识别字段"来对应对象，名字不同也能对上；关系两端都对上才算命中。</p>
-    <div className="os-upload">
+    {canCompare && <div className="os-upload">
       <label htmlFor="os-reference">选择参考本体（.json）<input id="os-reference" type="file" accept=".json,application/json" disabled={!canCompare || busy}
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onCompare(f); e.target.value = ""; }} /></label>
       <p className="pr-muted">示例公司的参考本体：<a href="/samples/demo_reference_ontology.json" download>下载 demo_reference_ontology.json</a></p>
-    </div>
-    {!canCompare && <p className="pr-note">要和自己的参考本体比，需要上传文件并开着本机建模服务；示例结果里已附一次比对。</p>}
+    </div>}
+    {!canCompare && <CannotAsk what="和自己的参考本体比" example={!run.saved_as} onUpload={onUpload} />}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {ref && <>
       <p className="pr-muted">参考本体：{ref.name}</p>
@@ -292,7 +300,7 @@ function EvaluationTab({ run, evalView, setEvalView, questions, onShow, onPath }
     {evalView === "fit" && (doc ? <DocumentFitView run={run} onShow={onShow} /> : <DataFit run={run} onShow={onShow} />)}
     {evalView === "qa" && (doc ? <section className="pr-card"><h2>业务问答</h2><p className="pr-muted">文档没有数据行可以查询，业务问答只对数据表可用。把同一业务的数据表也上传，就能用数据回答问题。</p></section>
       : <QuestionsSection run={run} {...questions} onPath={onPath} />)}
-    {evalView === "ref" && <ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} />}
+    {evalView === "ref" && <ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} onUpload={questions.onUpload} />}
   </>;
 }
 
@@ -393,7 +401,7 @@ export function OntologyStudio() {
       {tab === "ontology" && run && <OntologyTab run={run} view={view} setView={setView}
         graphProps={{ selected, onSelect: (s) => { setSelected(s); setPath(null); }, path, onClearPath: () => setPath(null), onAsk: askOntology, reveal }} />}
       {tab === "evaluation" && run && <EvaluationTab run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} onPath={showPath}
-        questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef, onCompare: compare, comparing, compareError }} />}
+        questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload") }} />}
     </div>
   </section>;
 }
