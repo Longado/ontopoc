@@ -29,7 +29,18 @@
 cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-打开 `http://127.0.0.1:5178`：默认场景"汽车召回范围研判（NHTSA）"读 `landing-page/public/data/` 下的静态数据（一份清单加每个数据集一个文件：雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric / Kona EV 2019–2021），不需要 Python 服务。左侧导航切换两个入口；召回范围研判分四个标签页：口径（核对系统怎么读这份数据，逐条判断名称对应；自动搭建的本体在"技术细节"里）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序；可用方向键和 1/2/3）→ 结果（与模型的一致情况、复核人、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
+打开 `http://127.0.0.1:5178`，默认入口是"上传建本体"（2026-09-14 起的主线，见 `docs/PRD_ITERATION_3.md`）：上传一份业务数据表（Excel / CSV）或文档（Markdown / 文本 / Word / PDF），自动生成公司本体，并做三种评测。第一种是本体和数据对不对得上，文档则检查每一项能不能回到原文；第二种是能不能回答业务问题，模型出题、代码在数据上作答；第三种是和人写的参考本体比。本体页是关系图加证据检查栏，评测发现的问题标在对应的节点上；同一份文件再上传，会列出和上一次相比的差别。上传和提问需要本机建模服务，没开时可以打开内置的两个示例结果（合成的示例制造公司数据表和售后服务流程文档）。
+
+```bash
+# 本机建模服务（端口 8767，需要本机 DeepSeek 凭据；文件和结果只存在 output/ontology-runs/）
+PYTHONPATH=src python -m ontology_poc_generator.ontology_server
+# 命令行跑一份文件，结果写到 --output
+PYTHONPATH=src:. python scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
+# 重新生成合成示例数据表
+PYTHONPATH=src:. python scripts/make_demo_company.py
+```
+
+召回研判收为示例入口"示例：汽车召回"，它读 `landing-page/public/data/` 下的静态数据（一份清单加每个数据集一个文件：雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric / Kona EV 2019–2021），不需要 Python 服务。左侧导航切换两个入口；召回范围研判分四个标签页：口径（核对系统怎么读这份数据，逐条判断名称对应；自动搭建的本体在"技术细节"里）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序；可用方向键和 1/2/3）→ 结果（与模型的一致情况、复核人、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
 
 `/landing` 是产品首页。第二个入口"事件 95876 核对清单"是 openFDA 食品召回的产品—批号核对，需要本机 Python 服务（见下）。
 

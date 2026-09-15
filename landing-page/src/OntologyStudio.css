@@ -1,0 +1,30 @@
+.os-panel { margin-top: 18px; }
+.os-upload { display: grid; gap: 12px; max-width: 560px; margin-top: 10px; }
+.os-upload label { display: grid; gap: 6px; color: var(--text-2); font-size: 13px; }
+.os-upload input[type="file"] { color: var(--ink); font: inherit; }
+.os-upload textarea { padding: 8px 10px; border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; resize: vertical; }
+.os-cmd { display: block; margin-top: 6px; padding: 8px 10px; border-radius: 6px; background: var(--surface); color: var(--ink); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.os-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.os-checks { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.os-checks li { display: flex; align-items: baseline; gap: 10px; }
+.os-pill { flex: none; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.os-pass { color: var(--ok); background: var(--ok-soft); }
+.os-fail { color: var(--red); background: var(--red-soft); }
+.pr-page .os-upload input:focus-visible, .pr-page .os-upload textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.pr-tabs button:disabled { opacity: 0.4; cursor: not-allowed; }
+.os-ask { display: grid; gap: 10px; max-width: 640px; margin: 6px 0 4px; }
+.os-ask label { display: grid; gap: 6px; color: var(--text-2); font-size: 13px; }
+.os-ask-row { display: flex; gap: 8px; }
+.os-ask-row input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; }
+.os-sub { margin: 18px 0 8px; font-size: 13px; color: var(--text-2); }
+.os-questions { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.os-question { padding: 12px 0; border-top: 1px solid var(--edge); display: grid; gap: 6px; }
+.os-question-head { display: flex; gap: 10px; align-items: baseline; }
+.os-question p { margin: 0; }
+.os-answer { margin: 0; padding-left: 20px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.os-answered { color: var(--ok); background: var(--ok-soft); }
+.os-no_data { color: var(--amber); background: var(--amber-soft); }
+.os-ontology_gap { color: var(--red); background: var(--red-soft); }
+.os-query_limit { color: var(--text-2); background: var(--canvas); border: 1px solid var(--edge-strong); }
+.os-diff { margin-top: 4px; }
+.os-demos { display: flex; flex-wrap: wrap; gap: 8px 20px; }

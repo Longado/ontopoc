@@ -1,0 +1,861 @@
+{
+ "schema": "company_ontology_run.v1",
+ "started_at": "2026-09-14T12:55:48+00:00",
+ "file": {
+  "name": "demo_company.xlsx",
+  "kind": "table",
+  "sha256": "d190f35f80242f73704dc9ba19a66892ba26cae7731357f70693e2824856b275"
+ },
+ "purpose": "哪些客户、产品的售后问题最多？",
+ "sources": [
+  {
+   "name": "客户",
+   "rows": 31,
+   "fields": 5
+  },
+  {
+   "name": "产品",
+   "rows": 12,
+   "fields": 4
+  },
+  {
+   "name": "订单",
+   "rows": 160,
+   "fields": 7
+  },
+  {
+   "name": "售后工单",
+   "rows": 45,
+   "fields": 7
+  }
+ ],
+ "ontology": {
+  "schema": "company_ontology.v1",
+  "evidence_scope": "uploaded_file",
+  "status": "auto_built_verified",
+  "human_review": "pending",
+  "decision": "哪些客户、产品的售后问题最多？",
+  "source_bundle_hash": "a92a6341bf51748083ae31d2cb00c0e3bd1527fa860e475c170eead265bac4a1",
+  "model": "deepseek-flash",
+  "prompt_version": "company_ontology_modeler.v2",
+  "object_types": [
+   {
+    "key": "customer",
+    "label": "客户",
+    "role": null,
+    "populated_from": [
+     {
+      "source": "客户",
+      "identity": {
+       "客户编号": "客户编号"
+      },
+      "transform": "none"
+     },
+     {
+      "source": "订单",
+      "identity": {
+       "客户编号": "客户编号"
+      },
+      "transform": "none"
+     }
+    ],
+    "attributes": [
+     {
+      "source": "客户",
+      "path": "客户名称"
+     },
+     {
+      "source": "客户",
+      "path": "行业"
+     },
+     {
+      "source": "客户",
+      "path": "城市"
+     },
+     {
+      "source": "客户",
+      "path": "客户等级"
+     }
+    ],
+    "rationale": "客户表描述客户主体，订单表中的客户编号引用同一个客户对象。",
+    "time_field": null
+   },
+   {
+    "key": "product",
+    "label": "产品",
+    "role": null,
+    "populated_from": [
+     {
+      "source": "产品",
+      "identity": {
+       "产品编号": "产品编号"
+      },
+      "transform": "none"
+     },
+     {
+      "source": "订单",
+      "identity": {
+       "产品编号": "产品编号"
+      },
+      "transform": "none"
+     }
+    ],
+    "attributes": [
+     {
+      "source": "产品",
+      "path": "产品名称"
+     },
+     {
+      "source": "产品",
+      "path": "品类"
+     },
+     {
+      "source": "产品",
+      "path": "单价"
+     }
+    ],
+    "rationale": "产品表描述产品主体，订单表中的产品编号引用同一个产品对象。",
+    "time_field": null
+   },
+   {
+    "key": "order",
+    "label": "订单",
+    "role": null,
+    "populated_from": [
+     {
+      "source": "订单",
+      "identity": {
+       "订单号": "订单号"
+      },
+      "transform": "none"
+     },
+     {
+      "source": "售后工单",
+      "identity": {
+       "订单号": "订单号"
+      },
+      "transform": "none"
+     }
+    ],
+    "attributes": [
+     {
+      "source": "订单",
+      "path": "数量"
+     },
+     {
+      "source": "订单",
+      "path": "金额"
+     },
+     {
+      "source": "订单",
+      "path": "下单日期"
+     },
+     {
+      "source": "订单",
+      "path": "订单状态"
+     }
+    ],
+    "rationale": "订单表描述一次下单行为，售后工单中的订单号引用同一订单。",
+    "time_field": {
+     "source": "订单",
+     "path": "下单日期"
+    }
+   },
+   {
+    "key": "after_sales_ticket",
+    "label": "售后工单",
+    "role": null,
+    "populated_from": [
+     {
+      "source": "售后工单",
+      "identity": {
+       "工单号": "工单号"
+      },
+      "transform": "none"
+     }
+    ],
+    "attributes": [
+     {
+      "source": "售后工单",
+      "path": "问题类型"
+     },
+     {
+      "source": "售后工单",
+      "path": "问题描述"
+     },
+     {
+      "source": "售后工单",
+      "path": "创建日期"
+     },
+     {
+      "source": "售后工单",
+      "path": "处理状态"
+     },
+     {
+      "source": "售后工单",
+      "path": "负责工程师"
+     }
+    ],
+    "rationale": "售后工单表描述每一次售后问题受理，工单号唯一标识一张工单。",
+    "time_field": {
+     "source": "售后工单",
+     "path": "创建日期"
+    }
+   }
+  ],
+  "relations": [
+   {
+    "key": "order_belongs_to_customer",
+    "from": "order",
+    "to": "customer",
+    "source": "订单",
+    "meaning": "订单通过客户编号归属于某位客户。",
+    "label": "属于"
+   },
+   {
+    "key": "order_orders_product",
+    "from": "order",
+    "to": "product",
+    "source": "订单",
+    "meaning": "订单通过产品编号订购某一产品。",
+    "label": "订购"
+   },
+   {
+    "key": "after_sales_ticket_targets_order",
+    "from": "after_sales_ticket",
+    "to": "order",
+    "source": "售后工单",
+    "meaning": "售后工单通过订单号针对某一笔订单，从而可上溯到客户与产品。",
+    "label": "针对"
+   }
+  ],
+  "ignored_fields": [],
+  "data_gaps": [
+   "售后工单只通过订单号关联订单，若存在订单号缺失或指向不存在订单的工单，则无法归属到具体客户和产品，售后问题最多的客户/产品统计会偏低。",
+   "问题描述中出现的编码器 E-1024、运动控制器 MC-8、光电传感器 G-10 等具体型号没有结构化为产品编号，无法直接用于按产品统计售后问题。",
+   "订单状态含“已取消”，按客户/产品统计售后问题时是否应排除已取消订单的工单口径不明。",
+   "负责工程师只是文本姓名，缺少工程师主数据表，无法按工程师维度可靠归并分析。",
+   "工单创建日期跨年且订单下单日期与工单创建日期不同步，需确认统计是按全部历史还是限定时间范围。",
+   "客户等级、行业、城市等维度可用于细分，但缺少产品与客户的直接关联表，售后问题对客户的归属只能依赖订单链路。"
+  ],
+  "model_reasoning": "四张表分别描述四类业务对象：客户表以客户编号标识一个客户，附带名称、行业、城市、等级等描述；产品表以产品编号标识一个产品，附带名称、品类、单价；订单表以订单号标识一次下单行为，行内的客户编号、产品编号分别指向客户表和产品表中的对象，数量、金额、下单日期、订单状态是订单自身的属性；售后工单表以工单号标识一张售后工单，行内的订单号指向订单表中的对象，问题类型、问题描述、创建日期、处理状态、负责工程师是工单自身的属性。要回答‘哪些客户、产品的售后问题最多’，需要沿 售后工单→订单→客户/产品 的引用链把工单归属到客户和产品，因此订单号、客户编号、产品编号共用同一 logical_key，使引用列与目标表解析到同一对象。下单日期与创建日期既作为时间字段，也作为描述性属性保留，以保证每个字段都被使用或说明。",
+  "verification": {
+   "errors": [],
+   "metrics": {
+    "instances": {
+     "customer": 31,
+     "product": 12,
+     "order": 160,
+     "after_sales_ticket": 45
+    },
+    "shared_across_sources": {
+     "customer": 30,
+     "product": 12,
+     "order": 36,
+     "after_sales_ticket": 0
+    },
+    "links": {
+     "order_belongs_to_customer": 160,
+     "order_orders_product": 160,
+     "after_sales_ticket_targets_order": 45
+    }
+   }
+  },
+  "attempts": [
+   {
+    "errors": [
+     {
+      "code": "field_unaccounted",
+      "message": "订单.下单日期: neither used nor listed in ignored_fields"
+     },
+     {
+      "code": "field_unaccounted",
+      "message": "售后工单.创建日期: neither used nor listed in ignored_fields"
+     }
+    ],
+    "model": "deepseek-flash"
+   },
+   {
+    "errors": [],
+    "model": "deepseek-flash"
+   }
+  ]
+ },
+ "evaluation": {
+  "data_fit": {
+   "fields": {
+    "客户": {
+     "total": 5,
+     "used": 5,
+     "ignored": 0,
+     "unaccounted": 0
+    },
+    "产品": {
+     "total": 4,
+     "used": 4,
+     "ignored": 0,
+     "unaccounted": 0
+    },
+    "订单": {
+     "total": 7,
+     "used": 7,
+     "ignored": 0,
+     "unaccounted": 0
+    },
+    "售后工单": {
+     "total": 7,
+     "used": 7,
+     "ignored": 0,
+     "unaccounted": 0
+    }
+   },
+   "identity_conflicts": [
+    {
+     "type": "customer",
+     "source": "客户",
+     "identity": "KH012",
+     "field": "城市",
+     "values": [
+      "合肥",
+      "苏州"
+     ]
+    }
+   ],
+   "identity_spellings": [],
+   "suspected_duplicates": [],
+   "missing_across_sources": [
+    {
+     "type": "customer",
+     "source": "客户",
+     "count": 1,
+     "examples": [
+      "KH099"
+     ]
+    }
+   ],
+   "relations": [
+    {
+     "key": "order_belongs_to_customer",
+     "source": "订单",
+     "rows": 160,
+     "linked_rows": 160
+    },
+    {
+     "key": "order_orders_product",
+     "source": "订单",
+     "rows": 160,
+     "linked_rows": 160
+    },
+    {
+     "key": "after_sales_ticket_targets_order",
+     "source": "售后工单",
+     "rows": 45,
+     "linked_rows": 45
+    }
+   ],
+   "orphans": [
+    {
+     "type": "customer",
+     "count": 0,
+     "examples": []
+    },
+    {
+     "type": "product",
+     "count": 0,
+     "examples": []
+    },
+    {
+     "type": "order",
+     "count": 0,
+     "examples": []
+    },
+    {
+     "type": "after_sales_ticket",
+     "count": 0,
+     "examples": []
+    }
+   ],
+   "source_groups": [
+    [
+     "客户",
+     "产品",
+     "订单",
+     "售后工单"
+    ]
+   ],
+   "checks": [
+    {
+     "key": "fields_accounted",
+     "passed": true
+    },
+    {
+     "key": "identity_consistent",
+     "passed": false
+    },
+    {
+     "key": "identity_spelling",
+     "passed": true
+    },
+    {
+     "key": "relations_link",
+     "passed": true
+    },
+    {
+     "key": "references_resolve",
+     "passed": false
+    },
+    {
+     "key": "sources_connected",
+     "passed": true
+    }
+   ]
+  },
+  "questions": {
+   "prompt_version": "company_questions.v3",
+   "model": "deepseek-flash",
+   "asked_at": "2026-09-14T13:00:47+00:00",
+   "items": [
+    {
+     "question": "哪些客户、产品的售后问题最多？",
+     "reasoning": "要回答“哪些客户、产品的售后问题最多”，需要统计售后工单分别按客户和产品分组。售后工单 after_sales_ticket 可通过 after_sales_ticket_targets_order 到达 order，再通过 order_belongs_to_customer 到达 customer，或通过 order_orders_product 到达 product。本体中对象、关系和属性都足够，但查询格式只能提供一个 group_by，不能同时按客户名称和产品名称两个属性分组，因此无法用单条查询表达。",
+     "query": null,
+     "status": "query_limit",
+     "reason": "要回答“哪些客户、产品的售后问题最多”，需要统计售后工单分别按客户和产品分组。售后工单 after_sales_ticket 可通过 after_sales_ticket_targets_order 到达 order，再通过 order_belongs_to_customer 到达 customer，或通过 order_orders_product 到达 product。本体中对象、关系和属性都足够，但查询格式只能提供一个 group_by，不能同时按客户名称和产品名称两个属性分组，因此无法用单条查询表达。"
+    },
+    {
+     "question": "哪些客户的售后工单最多？",
+     "reasoning": "以售后工单 after_sales_ticket 为计数对象，经 after_sales_ticket_targets_order 到达 order，再经 order_belongs_to_customer 到达 customer，按客户名称分组计数，即可得到售后工单最多的客户。",
+     "query": {
+      "start": "after_sales_ticket",
+      "where": [],
+      "via": [
+       "after_sales_ticket_targets_order",
+       "order_belongs_to_customer"
+      ],
+      "group_by": "客户名称"
+     },
+     "status": "answered",
+     "path": "售后工单 → 订单 → 客户，按“客户名称”分组数售后工单",
+     "answer": {
+      "groups": [
+       [
+        "宁波家电客户25",
+        4
+       ],
+       [
+        "东莞家电客户02",
+        3
+       ],
+       [
+        "合肥家电客户05",
+        3
+       ],
+       [
+        "宁波家电客户16",
+        3
+       ],
+       [
+        "无锡医疗器械客户07",
+        3
+       ],
+       [
+        "苏州家电客户22",
+        3
+       ],
+       [
+        "东莞家电客户01",
+        2
+       ],
+       [
+        "东莞家电客户17",
+        2
+       ],
+       [
+        "东莞家电客户23",
+        2
+       ],
+       [
+        "合肥家电客户11",
+        2
+       ]
+      ],
+      "total_groups": 22,
+      "without_value": 2
+     }
+    },
+    {
+     "question": "哪些产品的售后工单最多？",
+     "reasoning": "以售后工单 after_sales_ticket 为计数对象，经 after_sales_ticket_targets_order 到达 order，再经 order_orders_product 到达 product，按产品名称分组计数，即可得到售后工单最多的产品。",
+     "query": {
+      "start": "after_sales_ticket",
+      "where": [],
+      "via": [
+       "after_sales_ticket_targets_order",
+       "order_orders_product"
+      ],
+      "group_by": "产品名称"
+     },
+     "status": "answered",
+     "path": "售后工单 → 订单 → 产品，按“产品名称”分组数售后工单",
+     "answer": {
+      "groups": [
+       [
+        "编码器 E-1024",
+        8
+       ],
+       [
+        "接近开关 J-12",
+        7
+       ],
+       [
+        "运动控制器 MC-8",
+        7
+       ],
+       [
+        "减速机 R-60",
+        4
+       ],
+       [
+        "温度传感器 T-100",
+        4
+       ],
+       [
+        "伺服电机 S-200",
+        3
+       ],
+       [
+        "直线模组 L-300",
+        3
+       ],
+       [
+        "PLC 模块 P-16",
+        2
+       ],
+       [
+        "伺服电机 S-400",
+        2
+       ],
+       [
+        "光电传感器 G-10",
+        2
+       ]
+      ],
+      "total_groups": 12,
+      "without_value": 0
+     }
+    },
+    {
+     "question": "各问题类型的售后工单数量是多少？",
+     "reasoning": "售后工单 after_sales_ticket 自身有属性“问题类型”，直接按该属性分组计数，即可得到各问题类型的售后工单数量。",
+     "query": {
+      "start": "after_sales_ticket",
+      "where": [],
+      "via": [],
+      "group_by": "问题类型"
+     },
+     "status": "answered",
+     "path": "售后工单，按“问题类型”分组数售后工单",
+     "answer": {
+      "groups": [
+       [
+        "质量缺陷",
+        19
+       ],
+       [
+        "使用咨询",
+        11
+       ],
+       [
+        "安装调试",
+        10
+       ],
+       [
+        "物流破损",
+        5
+       ]
+      ],
+      "total_groups": 4,
+      "without_value": 0
+     }
+    },
+    {
+     "question": "各负责工程师的售后工单数量是多少？",
+     "reasoning": "售后工单 after_sales_ticket 自身有属性“负责工程师”，直接按该属性分组计数，即可得到各负责工程师的售后工单数量。",
+     "query": {
+      "start": "after_sales_ticket",
+      "where": [],
+      "via": [],
+      "group_by": "负责工程师"
+     },
+     "status": "answered",
+     "path": "售后工单，按“负责工程师”分组数售后工单",
+     "answer": {
+      "groups": [
+       [
+        "售后工程师-乙",
+        13
+       ],
+       [
+        "售后工程师-丙",
+        12
+       ],
+       [
+        "售后工程师-丁",
+        10
+       ],
+       [
+        "售后工程师-甲",
+        10
+       ]
+      ],
+      "total_groups": 4,
+      "without_value": 0
+     }
+    },
+    {
+     "question": "哪些行业的客户售后工单最多？",
+     "reasoning": "以售后工单 after_sales_ticket 为计数对象，经 after_sales_ticket_targets_order 到达 order，再经 order_belongs_to_customer 到达 customer，按客户的“行业”分组计数，即可得到哪些行业的客户售后工单最多。",
+     "query": {
+      "start": "after_sales_ticket",
+      "where": [],
+      "via": [
+       "after_sales_ticket_targets_order",
+       "order_belongs_to_customer"
+      ],
+      "group_by": "行业"
+     },
+     "status": "answered",
+     "path": "售后工单 → 订单 → 客户，按“行业”分组数售后工单",
+     "answer": {
+      "groups": [
+       [
+        "家电",
+        26
+       ],
+       [
+        "电子",
+        10
+       ],
+       [
+        "医疗器械",
+        4
+       ],
+       [
+        "汽车零部件",
+        3
+       ]
+      ],
+      "total_groups": 4,
+      "without_value": 2
+     }
+    }
+   ],
+   "answered": 5,
+   "total": 6,
+   "error": null
+  },
+  "asked": [
+   {
+    "prompt_version": "company_questions.v1",
+    "model": "deepseek-flash",
+    "asked_at": "2026-09-14T12:56:37+00:00",
+    "items": [
+     {
+      "question": "质量缺陷类的售后工单，都集中在哪些产品？",
+      "reasoning": "要回答质量缺陷类售后工单集中在哪些产品，需要统计售后工单按产品分组的数量。售后工单通过 after_sales_ticket_targets_order 关联到订单，订单再通过 order_orders_product 关联到产品；过滤条件为售后工单.问题类型等于“质量缺陷”；最后按产品.产品名称分组统计售后工单数量。该问题可由现有本体表达。",
+      "query": {
+       "start": "after_sales_ticket",
+       "where": [
+        {
+         "field": "售后工单.问题类型",
+         "equals": "质量缺陷"
+        }
+       ],
+       "via": [
+        "after_sales_ticket_targets_order",
+        "order_orders_product"
+       ],
+       "group_by": "产品.产品名称"
+      },
+      "status": "answered",
+      "path": "售后工单 → 订单 → 产品，按“产品名称”分组数售后工单",
+      "answer": {
+       "groups": [
+        [
+         "减速机 R-60",
+         3
+        ],
+        [
+         "接近开关 J-12",
+         3
+        ],
+        [
+         "编码器 E-1024",
+         3
+        ],
+        [
+         "运动控制器 MC-8",
+         3
+        ],
+        [
+         "直线模组 L-300",
+         2
+        ],
+        [
+         "伺服电机 S-200",
+         1
+        ],
+        [
+         "伺服电机 S-400",
+         1
+        ],
+        [
+         "光电传感器 G-10",
+         1
+        ],
+        [
+         "变频器 V-5.5",
+         1
+        ],
+        [
+         "步进电机 B-57",
+         1
+        ]
+       ],
+       "total_groups": 10,
+       "without_value": 0
+      },
+      "asked": true
+     }
+    ],
+    "answered": 1,
+    "total": 1,
+    "error": null
+   }
+  ],
+  "reference": {
+   "name": "demo_reference_ontology.json",
+   "compared_at": "2026-09-14T13:03:58+00:00",
+   "diff": {
+    "types": {
+     "matched": [
+      [
+       "客户",
+       "客户"
+      ],
+      [
+       "产品",
+       "产品"
+      ],
+      [
+       "订单",
+       "订单"
+      ],
+      [
+       "售后工单",
+       "售后工单"
+      ]
+     ],
+     "only_reference": [
+      "售后工程师"
+     ],
+     "only_ours": []
+    },
+    "relations": {
+     "matched": [
+      [
+       "订单 — 客户",
+       "订单 — 客户"
+      ],
+      [
+       "订单 — 产品",
+       "订单 — 产品"
+      ],
+      [
+       "售后工单 — 订单",
+       "售后工单 — 订单"
+      ]
+     ],
+     "only_reference": [
+      "售后工单 — 售后工程师"
+     ],
+     "only_ours": []
+    },
+    "counts": {
+     "types": {
+      "reference": 5,
+      "ours": 4,
+      "matched": 4
+     },
+     "relations": {
+      "reference": 4,
+      "ours": 3,
+      "matched": 3
+     }
+    }
+   }
+  }
+ },
+ "previous": {
+  "saved_as": null,
+  "started_at": "2026-09-14T12:08:10+00:00",
+  "diff": {
+   "types": {
+    "matched": [
+     [
+      "客户",
+      "客户"
+     ],
+     [
+      "产品",
+      "产品"
+     ],
+     [
+      "订单",
+      "订单"
+     ],
+     [
+      "售后工单",
+      "售后工单"
+     ]
+    ],
+    "only_reference": [
+     "售后工程师"
+    ],
+    "only_ours": []
+   },
+   "relations": {
+    "matched": [
+     [
+      "订单 — 客户",
+      "订单 — 客户"
+     ],
+     [
+      "订单 — 产品",
+      "订单 — 产品"
+     ],
+     [
+      "售后工单 — 订单",
+      "售后工单 — 订单"
+     ]
+    ],
+    "only_reference": [
+     "售后工单 — 售后工程师"
+    ],
+    "only_ours": []
+   },
+   "counts": {
+    "types": {
+     "reference": 5,
+     "ours": 4,
+     "matched": 4
+    },
+    "relations": {
+     "reference": 4,
+     "ours": 3,
+     "matched": 3
+    }
+   }
+  }
+ }
+}

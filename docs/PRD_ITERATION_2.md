@@ -1,6 +1,6 @@
 # OntoPoc 迭代 2 需求：换数据不改代码，复核能回流
 
-> 状态：M1、M2 已完成（2026-09-13 / 09-14），第一轮模拟用户的修正已完成（第 11 节）；M2b 试用前加固已完成（方案第 12 节，结果第 13 节），下一步 M3 真人试用。起草 2026-09-13，基线 main `1fc0f08`。本文是当前唯一的迭代计划；`superpowers/plans/2026-09-13-improvement-roadmap.md` 与 `2026-09-13-nhtsa-shortcomings-and-next-rounds.md` 转为历史记录。
+> 状态：历史记录。M1、M2、M2b 已完成（第 9–13 节）。2026-09-14 用户定向改为"上传文件 → 自动生成公司本体 → 自动评测"，当前计划见 `PRD_ITERATION_3.md`；本文的 M3 真人试用不再是主线，召回研判留作示例场景。起草 2026-09-13，基线 main `1fc0f08`。本文是当前唯一的迭代计划；`superpowers/plans/2026-09-13-improvement-roadmap.md` 与 `2026-09-13-nhtsa-shortcomings-and-next-rounds.md` 转为历史记录。
 
 ## 1. 现状
 

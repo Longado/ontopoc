@@ -29,7 +29,24 @@ History: the project started on 2026-08-29 as a pre-sales POC proposal compiler 
 cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-Open `http://127.0.0.1:5178`. The default scenario, "Vehicle recall scope (NHTSA)", reads static files under `landing-page/public/data/` (an index plus one file per dataset: Chevrolet Bolt EV / EUV 2017–2023 and Hyundai Kona Electric / Kona EV 2019–2021) and needs no Python service. A left sidebar switches between the two entries; recall scope review has four tabs: Data scope (check how the data was read, judge each name mapping; the auto-built ontology sits under technical details) → Recalls (grouped by part, re-recalls chained into series) → Review (ordered by after-recall, fire/crash, date; arrow keys and 1/2/3 work) → Results (agreement with the model, reviewer name, download). Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
+Open `http://127.0.0.1:5178`. Since 2026-09-14 the default entry is "Upload to ontology" (plan: `docs/PRD_ITERATION_3.md`). You upload a business table (Excel or CSV) or a document (Markdown, text, Word or PDF), get a company ontology built automatically, and see three evaluations:
+
+- how well the ontology fits the data (for documents: whether every item quotes the text);
+- whether it can answer business questions (the model writes the queries, code answers them on the data);
+- how it compares with a reference ontology written by a person.
+
+The ontology tab is a graph with an evidence inspector, and data problems are marked on the nodes. Uploading the same file again lists what changed since the previous run. Uploads and questions need the local modeling service; without it, two bundled demo results can be opened: a synthetic manufacturing company's workbook and its after-sales process document.
+
+```bash
+# local modeling service (port 8767, needs a local DeepSeek key; files and results stay in output/ontology-runs/)
+PYTHONPATH=src python -m ontology_poc_generator.ontology_server
+# run one file from the command line
+PYTHONPATH=src:. python scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
+# regenerate the synthetic demo workbook
+PYTHONPATH=src:. python scripts/make_demo_company.py
+```
+
+The recall scope review is now the example entry "Example: vehicle recalls". It reads static files under `landing-page/public/data/` (an index plus one file per dataset: Chevrolet Bolt EV / EUV 2017–2023 and Hyundai Kona Electric / Kona EV 2019–2021) and needs no Python service. A left sidebar switches between the two entries; recall scope review has four tabs: Data scope (check how the data was read, judge each name mapping; the auto-built ontology sits under technical details) → Recalls (grouped by part, re-recalls chained into series) → Review (ordered by after-recall, fire/crash, date; arrow keys and 1/2/3 work) → Results (agreement with the model, reviewer name, download). Reviews live in the local browser; they are local records, not approvals. The page text is Chinese.
 
 `/landing` is the product page. The second entry, "Public recall lookup", matches products and lots for openFDA event 95876 and needs the local Python service below.
 

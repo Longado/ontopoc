@@ -1,0 +1,16 @@
+{
+ "note": "示例制造公司（合成数据）的参考本体：由人按业务理解手写，用作评测三的标准答案",
+ "object_types": [
+  {"key": "customer", "label": "客户", "populated_from": [{"source": "客户", "identity": {"customer_id": "客户编号"}}, {"source": "订单", "identity": {"customer_id": "客户编号"}}]},
+  {"key": "product", "label": "产品", "populated_from": [{"source": "产品", "identity": {"product_id": "产品编号"}}, {"source": "订单", "identity": {"product_id": "产品编号"}}]},
+  {"key": "order", "label": "订单", "populated_from": [{"source": "订单", "identity": {"order_id": "订单号"}}, {"source": "售后工单", "identity": {"order_id": "订单号"}}]},
+  {"key": "ticket", "label": "售后工单", "populated_from": [{"source": "售后工单", "identity": {"ticket_id": "工单号"}}]},
+  {"key": "engineer", "label": "售后工程师", "populated_from": [{"source": "售后工单", "identity": {"engineer": "负责工程师"}}]}
+ ],
+ "relations": [
+  {"from": "order", "to": "customer"},
+  {"from": "order", "to": "product"},
+  {"from": "ticket", "to": "order"},
+  {"from": "ticket", "to": "engineer"}
+ ]
+}

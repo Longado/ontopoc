@@ -1,0 +1,502 @@
+{
+ "schema": "company_ontology_run.v1",
+ "started_at": "2026-09-14T13:10:53+00:00",
+ "file": {
+  "name": "after_sales_process.md",
+  "kind": "document",
+  "sha256": "b3bc3cea7063192232a416441028e1a261732561980c01ca8aaac8ab43b6b681"
+ },
+ "purpose": "描述这家公司的业务：有哪些对象（如客户、产品、订单）、它们之间怎样关联，让管理者的业务问题能在数据上回答。",
+ "sources": [
+  {
+   "name": "after_sales_process.md",
+   "paragraphs": 14,
+   "chars": 572
+  }
+ ],
+ "ontology": {
+  "schema": "document_ontology.v1",
+  "status": "auto_built_verified",
+  "model": "deepseek-flash",
+  "prompt_version": "company_document_modeler.v1",
+  "object_types": [
+   {
+    "key": "product",
+    "label": "产品",
+    "definition": "公司销售并可能产生售后问题的物品，包括电机、控制器、传感器和传动部件。",
+    "evidence": [
+     "本流程适用于公司销售的全部产品，包括电机、控制器、传感器和传动部件。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "customer",
+    "label": "客户",
+    "definition": "购买公司产品并在收货或使用中提出售后请求的个人或组织。",
+    "evidence": [
+     "客户在收货后发现问题，或在使用中需要技术支持时，均按本流程处理。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "order",
+    "label": "订单",
+    "definition": "记录下单客户和所购产品、用于关联售后工单的销售凭证。",
+    "evidence": [
+     "每张售后工单必须关联一张订单，订单记录了下单客户和所购产品。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "after_sales_ticket",
+    "label": "售后工单",
+    "definition": "客服专员为客户售后请求建立的、需关联订单并记录处理过程的工作单。",
+    "evidence": [
+     "客户通过电话或邮件提出售后请求后，客服专员在系统中建立售后工单。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "customer_service_specialist",
+    "label": "客服专员",
+    "definition": "受理客户售后请求、建立并派发售后工单以及回访客户的岗位角色。",
+    "evidence": [
+     "客户通过电话或邮件提出售后请求后，客服专员在系统中建立售后工单。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "after_sales_engineer",
+    "label": "售后工程师",
+    "definition": "负责联系客户、现场取回故障件、更换备件并关闭工单的技术人员。",
+    "evidence": [
+     "客服专员根据产品品类把售后工单派给售后工程师。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "issue_type",
+    "label": "问题类型",
+    "definition": "建立售后工单时选择的售后问题分类，如安装调试、质量缺陷、物流破损或使用咨询。",
+    "evidence": [
+     "建立工单时需要选择问题类型：安装调试、质量缺陷、物流破损或使用咨询。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "quality_inspection_department",
+    "label": "质检部门",
+    "definition": "接收故障件并出具质检报告、判断问题原因的部门。",
+    "evidence": [
+     "质检部门收到故障件后出具质检报告，判断问题属于产品质量缺陷还是使用不当。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "quality_inspection_report",
+    "label": "质检报告",
+    "definition": "质检部门对故障件分析后出具的、需附在对应售后工单上的报告。",
+    "evidence": [
+     "质检报告需要附在对应的售后工单上。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "faulty_part",
+    "label": "故障件",
+    "definition": "因质量缺陷等原因需要售后工程师现场取回并提交质检部门分析的产品部件。",
+    "evidence": [
+     "涉及质量缺陷的工单，售后工程师需要到现场取回故障件，并提交质检部门分析。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "spare_part",
+    "label": "备件",
+    "definition": "确认质量缺陷后售后工程师为客户更换的替换部件。",
+    "evidence": [
+     "确认是质量缺陷的，售后工程师为客户更换备件，并在工单中记录更换的备件编号。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "return_exchange_request",
+    "label": "退换货申请",
+    "definition": "客户因物流破损产品提出的、必须引用原订单号的退换货请求。",
+    "evidence": [
+     "物流破损的产品由客户申请退换货，退换货申请必须引用原订单号。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "warehouse",
+    "label": "仓库",
+    "definition": "接收退回产品、重新发出同型号产品并在原订单登记退换货记录的场所。",
+    "evidence": [
+     "仓库收到退回的产品后，重新发出同型号产品，并在原订单上登记退换货记录。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "quality_manager",
+    "label": "质量经理",
+    "definition": "接收同一客户短期内多次售后请求上报的管理角色。",
+    "evidence": [
+     "同一客户在三个月内就同一产品提出三次以上售后请求的，需要上报质量经理。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "customer_satisfaction",
+    "label": "客户满意度",
+    "definition": "客服专员回访客户时记录的客户对售后处理结果的满意程度。",
+    "evidence": [
+     "客服专员在工单关闭后一周内回访客户，记录客户满意度。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "product_category",
+    "label": "产品品类",
+    "definition": "用于决定售后工单派给哪位售后工程师的产品分类。",
+    "evidence": [
+     "客服专员根据产品品类把售后工单派给售后工程师。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   },
+   {
+    "key": "after_sales_request",
+    "label": "售后请求",
+    "definition": "客户通过电话或邮件提出的、触发建立售后工单的请求。",
+    "evidence": [
+     "客户通过电话或邮件提出售后请求后，客服专员在系统中建立售后工单。"
+    ],
+    "populated_from": [],
+    "attributes": []
+   }
+  ],
+  "relations": [
+   {
+    "key": "customer_after_sales_request_1",
+    "from": "customer",
+    "to": "after_sales_request",
+    "label": "提出",
+    "meaning": "客户通过电话或邮件提出售后请求。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "客户通过电话或邮件提出售后请求后，客服专员在系统中建立售后工单。"
+    ]
+   },
+   {
+    "key": "customer_order_2",
+    "from": "customer",
+    "to": "order",
+    "label": "下单",
+    "meaning": "客户是订单的下单方。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "每张售后工单必须关联一张订单，订单记录了下单客户和所购产品。"
+    ]
+   },
+   {
+    "key": "order_product_3",
+    "from": "order",
+    "to": "product",
+    "label": "所购产品",
+    "meaning": "订单记录了客户所购买的产品。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "每张售后工单必须关联一张订单，订单记录了下单客户和所购产品。"
+    ]
+   },
+   {
+    "key": "customer_service_specialist_after_sales_ticket_4",
+    "from": "customer_service_specialist",
+    "to": "after_sales_ticket",
+    "label": "建立",
+    "meaning": "客服专员在系统中建立售后工单。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "客户通过电话或邮件提出售后请求后，客服专员在系统中建立售后工单。"
+    ]
+   },
+   {
+    "key": "after_sales_request_after_sales_ticket_5",
+    "from": "after_sales_request",
+    "to": "after_sales_ticket",
+    "label": "触发建立",
+    "meaning": "客户提出售后请求后，客服专员据此建立售后工单。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "客户通过电话或邮件提出售后请求后，客服专员在系统中建立售后工单。"
+    ]
+   },
+   {
+    "key": "after_sales_ticket_order_6",
+    "from": "after_sales_ticket",
+    "to": "order",
+    "label": "关联订单",
+    "meaning": "每张售后工单必须关联一张订单。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "每张售后工单必须关联一张订单，订单记录了下单客户和所购产品。"
+    ]
+   },
+   {
+    "key": "after_sales_ticket_issue_type_7",
+    "from": "after_sales_ticket",
+    "to": "issue_type",
+    "label": "选择类型",
+    "meaning": "建立工单时需要选择问题类型。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "建立工单时需要选择问题类型：安装调试、质量缺陷、物流破损或使用咨询。"
+    ]
+   },
+   {
+    "key": "customer_service_specialist_after_sales_engineer_8",
+    "from": "customer_service_specialist",
+    "to": "after_sales_engineer",
+    "label": "派工",
+    "meaning": "客服专员根据产品品类把售后工单派给售后工程师。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "客服专员根据产品品类把售后工单派给售后工程师。"
+    ]
+   },
+   {
+    "key": "product_category_after_sales_engineer_9",
+    "from": "product_category",
+    "to": "after_sales_engineer",
+    "label": "派工依据",
+    "meaning": "产品品类是工单派给哪位售后工程师的依据。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "客服专员根据产品品类把售后工单派给售后工程师。"
+    ]
+   },
+   {
+    "key": "after_sales_engineer_customer_10",
+    "from": "after_sales_engineer",
+    "to": "customer",
+    "label": "联系客户",
+    "meaning": "售后工程师应在两个工作日内联系客户确认问题现象。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "售后工程师应在两个工作日内联系客户，确认问题现象。"
+    ]
+   },
+   {
+    "key": "after_sales_engineer_faulty_part_11",
+    "from": "after_sales_engineer",
+    "to": "faulty_part",
+    "label": "取回故障件",
+    "meaning": "涉及质量缺陷的工单，售后工程师到现场取回故障件。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "涉及质量缺陷的工单，售后工程师需要到现场取回故障件，并提交质检部门分析。"
+    ]
+   },
+   {
+    "key": "after_sales_engineer_quality_inspection_department_12",
+    "from": "after_sales_engineer",
+    "to": "quality_inspection_department",
+    "label": "提交质检",
+    "meaning": "售后工程师把故障件提交质检部门分析。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "涉及质量缺陷的工单，售后工程师需要到现场取回故障件，并提交质检部门分析。"
+    ]
+   },
+   {
+    "key": "quality_inspection_department_quality_inspection_report_13",
+    "from": "quality_inspection_department",
+    "to": "quality_inspection_report",
+    "label": "出具报告",
+    "meaning": "质检部门收到故障件后出具质检报告。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "质检部门收到故障件后出具质检报告，判断问题属于产品质量缺陷还是使用不当。"
+    ]
+   },
+   {
+    "key": "quality_inspection_report_after_sales_ticket_14",
+    "from": "quality_inspection_report",
+    "to": "after_sales_ticket",
+    "label": "附于工单",
+    "meaning": "质检报告需要附在对应的售后工单上。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "质检报告需要附在对应的售后工单上。"
+    ]
+   },
+   {
+    "key": "quality_inspection_report_product_15",
+    "from": "quality_inspection_report",
+    "to": "product",
+    "label": "判断质量",
+    "meaning": "质检报告判断问题属于产品质量缺陷还是使用不当。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "质检部门收到故障件后出具质检报告，判断问题属于产品质量缺陷还是使用不当。"
+    ]
+   },
+   {
+    "key": "after_sales_engineer_spare_part_16",
+    "from": "after_sales_engineer",
+    "to": "spare_part",
+    "label": "更换备件",
+    "meaning": "确认质量缺陷后，售后工程师为客户更换备件。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "确认是质量缺陷的，售后工程师为客户更换备件，并在工单中记录更换的备件编号。"
+    ]
+   },
+   {
+    "key": "after_sales_ticket_spare_part_17",
+    "from": "after_sales_ticket",
+    "to": "spare_part",
+    "label": "记录备件",
+    "meaning": "售后工单中记录更换的备件编号。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "确认是质量缺陷的，售后工程师为客户更换备件，并在工单中记录更换的备件编号。"
+    ]
+   },
+   {
+    "key": "customer_return_exchange_request_18",
+    "from": "customer",
+    "to": "return_exchange_request",
+    "label": "申请退换",
+    "meaning": "物流破损的产品由客户申请退换货。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "物流破损的产品由客户申请退换货，退换货申请必须引用原订单号。"
+    ]
+   },
+   {
+    "key": "return_exchange_request_order_19",
+    "from": "return_exchange_request",
+    "to": "order",
+    "label": "引用订单",
+    "meaning": "退换货申请必须引用原订单号。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "物流破损的产品由客户申请退换货，退换货申请必须引用原订单号。"
+    ]
+   },
+   {
+    "key": "warehouse_product_20",
+    "from": "warehouse",
+    "to": "product",
+    "label": "重新发出",
+    "meaning": "仓库收到退回的产品后，重新发出同型号产品。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "仓库收到退回的产品后，重新发出同型号产品，并在原订单上登记退换货记录。"
+    ]
+   },
+   {
+    "key": "warehouse_order_21",
+    "from": "warehouse",
+    "to": "order",
+    "label": "登记退换",
+    "meaning": "仓库在原订单上登记退换货记录。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "仓库收到退回的产品后，重新发出同型号产品，并在原订单上登记退换货记录。"
+    ]
+   },
+   {
+    "key": "after_sales_engineer_after_sales_ticket_22",
+    "from": "after_sales_engineer",
+    "to": "after_sales_ticket",
+    "label": "关闭工单",
+    "meaning": "问题处理完毕后，售后工程师关闭售后工单。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "问题处理完毕后，售后工程师关闭售后工单。"
+    ]
+   },
+   {
+    "key": "customer_service_specialist_customer_23",
+    "from": "customer_service_specialist",
+    "to": "customer",
+    "label": "回访客户",
+    "meaning": "客服专员在工单关闭后一周内回访客户。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "客服专员在工单关闭后一周内回访客户，记录客户满意度。"
+    ]
+   },
+   {
+    "key": "customer_service_specialist_customer_satisfaction_24",
+    "from": "customer_service_specialist",
+    "to": "customer_satisfaction",
+    "label": "记录满意度",
+    "meaning": "客服专员回访客户时记录客户满意度。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "客服专员在工单关闭后一周内回访客户，记录客户满意度。"
+    ]
+   },
+   {
+    "key": "after_sales_request_quality_manager_25",
+    "from": "after_sales_request",
+    "to": "quality_manager",
+    "label": "上报经理",
+    "meaning": "同一客户在三个月内就同一产品提出三次以上售后请求的，需要上报质量经理。",
+    "source": "after_sales_process.md",
+    "evidence": [
+     "同一客户在三个月内就同一产品提出三次以上售后请求的，需要上报质量经理。"
+    ]
+   }
+  ],
+  "rejected": [],
+  "chunks_processed": 1,
+  "chunks_total": 1,
+  "data_gaps": [],
+  "ignored_fields": [],
+  "attempts": [
+   {
+    "errors": []
+   }
+  ]
+ },
+ "evaluation": {
+  "data_fit": null,
+  "document_fit": {
+   "proposed": 42,
+   "kept": 42,
+   "rejected": 0,
+   "isolated": [],
+   "cut": false,
+   "checks": [
+    {
+     "key": "quotes_verified",
+     "passed": true
+    },
+    {
+     "key": "no_isolated_concepts",
+     "passed": true
+    }
+   ]
+  }
+ }
+}
