@@ -50,8 +50,9 @@ export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有"
 export function answerLines(item) {
   const a = item.answer;
   if (!a) return [];
-  if (a.total !== undefined) return [`共 ${a.total} 个`];
-  const lines = a.groups.map(([value, n]) => `${value}：${n}`);
+  const pct = (m, n) => `${Math.round((m / n) * 100)}%`;
+  if (a.total !== undefined) return [a.share ? `共 ${a.total} 个，其中 ${a.matched} 个“${a.share.field}”为“${a.share.equals}”（${pct(a.matched, a.total)}）` : `共 ${a.total} 个`];
+  const lines = a.groups.map(([value, n, all]) => (a.share ? `${value}：${n} / ${all}（${pct(n, all)}）` : `${value}：${n}`));
   if (a.total_groups > a.groups.length) lines.push(`另有 ${a.total_groups - a.groups.length} 组未列出`);
   if (a.without_value) lines.push(`${a.without_value} 个没有这个值`);
   return lines;

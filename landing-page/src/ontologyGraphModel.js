@@ -70,19 +70,26 @@ export function neighboursOf(ontology, key) {
   return { nodes, edges };
 }
 
-/** The types and relations a question's query walks, so the graph can show how an answer was found. */
+/** The types and relations a question's query walks, so the graph can show how an answer was found: one walk per
+ * grouping route (or the top-level via), and the union of them for highlighting. */
 export function pathOf(ontology, query) {
   if (!query || !ontology.object_types.some((t) => t.key === query.start)) return null;
-  const nodes = [query.start], edges = [];
-  let current = query.start;
-  for (const key of query.via || []) {
-    const r = ontology.relations.find((x) => x.key === key);
-    if (!r || (r.from !== current && r.to !== current)) return null;
-    current = r.from === current ? r.to : r.from;
-    nodes.push(current);
-    edges.push(key);
-  }
-  return { nodes, edges };
+  const walk = (via) => {
+    const nodes = [query.start], edges = [];
+    let current = query.start;
+    for (const key of via || []) {
+      const r = ontology.relations.find((x) => x.key === key);
+      if (!r || (r.from !== current && r.to !== current)) return null;
+      current = r.from === current ? r.to : r.from;
+      nodes.push(current);
+      edges.push(key);
+    }
+    return { nodes, edges };
+  };
+  const dims = Array.isArray(query.group_by) ? query.group_by.filter((d) => d && typeof d === "object") : [];
+  const walks = (dims.length ? dims.map((d) => d.via) : [query.via]).map(walk);
+  if (walks.some((w) => !w)) return null;
+  return { walks, nodes: [...new Set(walks.flatMap((w) => w.nodes))], edges: [...new Set(walks.flatMap((w) => w.edges))] };
 }
 
 export function overviewTiles(run) {

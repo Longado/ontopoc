@@ -20,7 +20,10 @@ function PathInspector({ ontology, path, onClearPath }) {
   return <div className="og-inspector-body">
     <span className="og-kicker">查询路径</span>
     <h3>{path.text || path.nodes.map((k) => typeLabel(ontology, k)).join(" → ")}</h3>
-    <ol className="og-steps">{path.nodes.map((k, i) => <li key={`${k}-${i}`}>{i === 0 ? `从“${typeLabel(ontology, k)}”出发` : `经关系“${relation(path.edges[i - 1])?.label || relation(path.edges[i - 1])?.meaning || path.edges[i - 1]}”到“${typeLabel(ontology, k)}”`}</li>)}</ol>
+    {(path.walks || [path]).map((walk, w) => <div key={w} className="og-walk">
+      {(path.walks || []).length > 1 && <h4>第 {w + 1} 条路</h4>}
+      <ol className="og-steps">{walk.nodes.map((k, i) => <li key={`${k}-${i}`}>{i === 0 ? `从“${typeLabel(ontology, k)}”出发` : `经关系“${relation(walk.edges[i - 1])?.label || relation(walk.edges[i - 1])?.meaning || walk.edges[i - 1]}”到“${typeLabel(ontology, k)}”`}</li>)}</ol>
+    </div>)}
     <p>图上高亮的就是这条路；数字由代码沿着它在数据里一行行数出来。</p>
     <button type="button" className="pr-link og-inline" onClick={onClearPath}>清除路径，看“{typeLabel(ontology, path.nodes[path.nodes.length - 1])}”的数据检查</button>
   </div>;

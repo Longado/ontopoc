@@ -109,10 +109,12 @@ function ShowOnGraph({ type, onShow }) {
 function QuestionItem({ item, onPath }) {
   const a = item.answer;
   const max = a?.groups?.length ? Math.max(...a.groups.map(([, n]) => n)) : 0;
+  const width = ([, n, all]) => (a.share ? (n / all) * 100 : (n / max) * 100);
   const extra = answerLines(item).slice(a?.groups?.length || 0);   // group lines come first; the bars show those
   return <li className="os-question">
     <div className="os-question-head"><span className={`os-pill os-${item.status}`}>{STATUS_LABELS[item.status] || item.status}</span><b>{item.question}</b></div>
-    {a?.groups?.length > 0 && <ul className="os-bars">{a.groups.map(([value, n]) => <li key={value}><span>{value}</span><i style={{ width: `${Math.max(4, (n / max) * 100)}%` }} /><b>{n}</b></li>)}</ul>}
+    {a?.share && a.groups && <p className="pr-muted">每组里“{a.share.field}”为“{a.share.equals}”的占比，按占比从高到低；分母小的组比例容易偏高，请一起看分母。</p>}
+    {a?.groups?.length > 0 && <ul className="os-bars">{a.groups.map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${Math.round((g[1] / g[2]) * 100)}%）` : g[1]}</b></li>)}</ul>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
     {item.path && <p className="pr-muted">怎么查的：{item.path}{item.query && onPath && <> <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看路径</button></>}</p>}
     {item.status === "query_limit" && <p className="pr-muted">这个问题要同时按几样东西分组，或者要算比例；现在的查询只能按一样东西分组、数个数，所以还答不了。本体本身没有问题。</p>}
