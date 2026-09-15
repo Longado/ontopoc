@@ -45,7 +45,7 @@ export function attemptSummary(ontology) {
 export const typeSources = (t) => t.populated_from.map((p) => `${p.source}（${Object.values(p.identity).join(" + ")}）`).join("、");
 export const typeLabel = (ontology, key) => ontology.object_types.find((t) => t.key === key)?.label || key;
 
-export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "查询写法表达不了（不是本体的问题）" };
+export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "这种问法还不支持" };
 
 export function answerLines(item) {
   const a = item.answer;
@@ -72,4 +72,58 @@ export function stabilityLines(diff) {
 export function referenceCounts(diff) {
   const { types, relations } = diff.counts;
   return `对象命中 ${types.matched} / ${types.reference}，多出 ${types.ours - types.matched} 个；关系命中 ${relations.matched} / ${relations.reference}，多出 ${relations.ours - relations.matched} 条`;
+}
+
+/** Steps shown while a build runs, derived only from the events the job reported (nothing is guessed from time). */
+export function progressSteps(events, kind) {
+  const doc = kind === "document";
+  const steps = [
+    { key: "read", label: "读取文件" },
+    { key: "model", label: doc ? "逐段提取概念和关系" : "模型提出本体" },
+    { key: "verify", label: doc ? "核对原文引用" : "代码核验" },
+    { key: "evaluate", label: "自动评测" },
+  ].map((s) => ({ ...s, status: "pending", detail: "" }));
+  const at = Object.fromEntries(steps.map((s, i) => [s.key, i]));
+  const mark = (key, status, detail) => { const s = steps[at[key]]; s.status = status; if (detail !== undefined) s.detail = detail; };
+  let current = "model";
+  for (const ev of events) {
+    const d = ev.detail || {};
+    if (ev.stage === "read") mark("read", "done");
+    if (ev.stage === "propose") { mark("model", "active", `第 ${d.attempt} 次`); current = "model"; }
+    if (ev.stage === "chunk") { mark("model", "active", `第 ${d.index} / ${d.total} 段`); current = "model"; }
+    if (ev.stage === "verify") {
+      mark("verify", "done", d.errors ? `第 ${d.attempt} 次退回 ${d.errors} 处问题，模型重做` : `第 ${d.attempt} 次通过`);
+      if (!d.errors) mark("model", "done");
+      current = d.errors ? "model" : "evaluate";
+    }
+    if (ev.stage === "evaluate") { mark("model", "done"); if (steps[at.verify].status === "pending") mark("verify", "done"); mark("evaluate", "active"); current = "evaluate"; }
+    if (ev.stage === "questions") mark("evaluate", "active", "数据体检已完成，正在出题并用数据回答");
+    if (ev.stage === "done") for (const s of steps) s.status = "done";
+  }
+  if (!events.some((ev) => ["evaluate", "done", "failed"].includes(ev.stage)) && steps[at[current]].status === "pending") mark(current, "active");
+  return steps;
+}
+
+/** What to tell the user when the local service answers with an error. A 404 means the running service predates this page. */
+export function serviceError(status, data) {
+  if (status === 404) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
+  return data?.error || `服务返回 ${status}`;
+}
+
+/** Why the service would refuse this file, said before it is sent; "" when it is fine. */
+export function fileProblem(file) {
+  const suffix = (file.name.match(/\.[^.]+$/)?.[0] || "").toLowerCase();
+  if (!ACCEPT.split(",").includes(suffix)) return `不支持 ${suffix || "没有扩展名的"} 文件。数据表用 .csv .xlsx，文档用 .md .txt .docx .pdf`;
+  if (!file.size) return "文件是空的";
+  if (file.size > 10 * 1024 * 1024) return "文件超过 10 MB";
+  return "";
+}
+
+export function previousLine(previous) {
+  const d = new Date(previous.started_at);
+  const two = (n) => String(n).padStart(2, "0");
+  const when = `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+  const purpose = previous.purpose ? `，建模目的“${previous.purpose}”` : "";
+  const counts = previous.counts ? `，${previous.counts.types} 个对象、${previous.counts.relations} 条关系` : "";
+  return `上一次运行：${when}${purpose}${counts}`;
 }

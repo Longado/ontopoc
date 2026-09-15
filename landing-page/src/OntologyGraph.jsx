@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { edgeStats, findingsByType, layoutGraph } from "./ontologyGraphModel.js";
+import { useEffect, useRef } from "react";
+import { edgeStats, findingsByType, layoutGraph, neighboursOf } from "./ontologyGraphModel.js";
 import { typeLabel, typeSources } from "./ontologyStudioModel.js";
 import "./OntologyGraph.css";
 
@@ -13,6 +13,17 @@ const FINDING = {
 
 function select(setSelected, value) {
   return { onClick: () => setSelected(value), onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(value); } } };
+}
+
+function PathInspector({ ontology, path, onClearPath }) {
+  const relation = (key) => ontology.relations.find((r) => r.key === key);
+  return <div className="og-inspector-body">
+    <span className="og-kicker">查询路径</span>
+    <h3>{path.text || path.nodes.map((k) => typeLabel(ontology, k)).join(" → ")}</h3>
+    <ol className="og-steps">{path.nodes.map((k, i) => <li key={`${k}-${i}`}>{i === 0 ? `从“${typeLabel(ontology, k)}”出发` : `经关系“${relation(path.edges[i - 1])?.label || relation(path.edges[i - 1])?.meaning || path.edges[i - 1]}”到“${typeLabel(ontology, k)}”`}</li>)}</ol>
+    <p>图上高亮的就是这条路；数字由代码沿着它在数据里一行行数出来。</p>
+    <button type="button" className="pr-link og-inline" onClick={onClearPath}>清除路径，看“{typeLabel(ontology, path.nodes[path.nodes.length - 1])}”的数据检查</button>
+  </div>;
 }
 
 function Inspector({ run, selected, findings }) {
@@ -50,30 +61,41 @@ function Inspector({ run, selected, findings }) {
   </div>;
 }
 
-export function OntologyGraph({ run, onAsk }) {
+export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelected, path, onClearPath, reveal }) {
   const { ontology } = run;
   const graph = layoutGraph(ontology);
   const findings = findingsByType(run.evaluation.data_fit);
-  const [selected, setSelected] = useState({ kind: "node", key: graph.nodes[0]?.key });
+  const selected = chosen && (chosen.kind === "edge" ? ontology.relations : ontology.object_types).some((x) => x.key === chosen.key) ? chosen : { kind: "node", key: graph.nodes[0]?.key };
+  const edge = selected.kind === "edge" && ontology.relations.find((r) => r.key === selected.key);
+  const focus = path ? { nodes: new Set(path.nodes), edges: new Set(path.edges) }
+    : selected !== chosen ? null : edge ? { nodes: new Set([edge.from, edge.to]), edges: new Set([edge.key]) } : neighboursOf(ontology, selected.key);
+  const dim = (kind, key) => focus && (kind === "node" ? !focus.nodes.has(key) : !focus.edges.has(key)) ? " is-dim" : "";
+  const wrap = useRef(null);
+  useEffect(() => {   // arriving from an evaluation link: bring the graph and the chosen node into view
+    if (!reveal) return;
+    wrap.current?.scrollIntoView({ block: "start" });
+    wrap.current?.querySelector(".og-node.is-selected")?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [reveal]);
   const all = Object.values(findings).flat();
   const problemCount = all.filter((f) => f.severity === "problem").length;
   const noteCount = all.length - problemCount;
   const isSelected = (kind, key) => selected.kind === kind && selected.key === key;
-  return <div className="og-wrap">
+  return <div className="og-wrap" ref={wrap}>
     <div className="og-canvas">
-      <div className="og-bar"><span>本体 · {graph.nodes.length} 个对象 · {graph.edges.length} 条关系</span>
+      <div className="og-bar"><span>本体 · {graph.nodes.length} 个对象 · {graph.edges.length} 条关系<span className="og-swipe"> · 左右滑动看全图</span></span>
         <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
+      {path && <div className="og-path" role="status"><span>查询路径：{path.text || path.nodes.map((k) => typeLabel(ontology, k)).join(" → ")}</span><button type="button" className="pr-link" onClick={onClearPath}>清除</button></div>}
       <div className="og-scroll">
         <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", minWidth: Math.max(Math.min(graph.width, 560), Math.round(graph.width * 0.7)), maxWidth: graph.width }} role="group" aria-label="本体关系图">
           <defs><marker id="og-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" className="og-arrowhead" /></marker></defs>
           {graph.edges.map((e) => { const stats = edgeStats(run.evaluation.data_fit, e.key); const rel = ontology.relations.find((r) => r.key === e.key);
-            return <g key={e.key} className={`og-edge${isSelected("edge", e.key) ? " is-selected" : ""}${stats && !stats.complete ? " is-partial" : ""}`}
+            return <g key={e.key} className={`og-edge${isSelected("edge", e.key) ? " is-selected" : ""}${path?.edges.includes(e.key) ? " is-path" : ""}${stats && !stats.complete ? " is-partial" : ""}${dim("edge", e.key)}`}
               role="button" tabIndex={0} aria-label={`关系 ${typeLabel(ontology, e.from)} 到 ${typeLabel(ontology, e.to)}`} {...select(setSelected, { kind: "edge", key: e.key })}>
               <path d={e.path} markerEnd="url(#og-arrow)" />
               {rel.label && <text x={e.lx} y={e.ly - 6} textAnchor="middle">{rel.label}</text>}
             </g>; })}
           {graph.nodes.map((n) => { const own = findings[n.key] || []; const count = own.length; const onlyNotes = own.every((f) => f.severity === "note");
-            return <g key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}`} transform={`translate(${n.x},${n.y})`}
+            return <g key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}${path?.nodes.includes(n.key) ? " is-path" : ""}${dim("node", n.key)}`} transform={`translate(${n.x},${n.y})`}
               role="button" tabIndex={0} aria-label={`对象 ${n.label}${count ? `，${count} 处数据问题` : ""}`} {...select(setSelected, { kind: "node", key: n.key })}>
               <rect width={n.w} height={n.h} className="og-node-box" />
               <rect width={40} height={n.h} className="og-node-side" />
@@ -83,10 +105,14 @@ export function OntologyGraph({ run, onAsk }) {
             </g>; })}
         </svg>
       </div>
+      <ul className="og-legend" aria-label="图例">
+        {run.evaluation.data_fit && <><li><i className="og-legend-badge" />数据问题</li><li><i className="og-legend-badge og-badge-note" />提示</li><li><i className="og-legend-dash" />有行没连上的关系</li></>}
+        <li>点对象，只看它和相连的对象</li>
+      </ul>
     </div>
     <aside className="og-inspector" aria-label="证据检查">
       <div className="og-inspector-head">证据检查 · 点图里的对象或关系</div>
-      {selected.key && <Inspector run={run} selected={selected} findings={findings} />}
+      {path ? <PathInspector ontology={ontology} path={path} onClearPath={onClearPath} /> : selected.key && <Inspector run={run} selected={selected} findings={findings} />}
       {onAsk && <button type="button" className="og-ask" onClick={onAsk}>询问这个本体：用数据回答业务问题 →</button>}
     </aside>
   </div>;

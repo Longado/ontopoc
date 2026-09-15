@@ -63,3 +63,48 @@ export function edgeStats(fit, key) {
   const r = fit?.relations?.find((x) => x.key === key);
   return r ? { rows: r.rows, linked_rows: r.linked_rows, complete: r.linked_rows === r.rows } : null;
 }
+
+export function neighboursOf(ontology, key) {
+  const nodes = new Set([key]), edges = new Set();
+  for (const r of ontology.relations) if (r.from === key || r.to === key) { edges.add(r.key); nodes.add(r.from); nodes.add(r.to); }
+  return { nodes, edges };
+}
+
+/** The types and relations a question's query walks, so the graph can show how an answer was found. */
+export function pathOf(ontology, query) {
+  if (!query || !ontology.object_types.some((t) => t.key === query.start)) return null;
+  const nodes = [query.start], edges = [];
+  let current = query.start;
+  for (const key of query.via || []) {
+    const r = ontology.relations.find((x) => x.key === key);
+    if (!r || (r.from !== current && r.to !== current)) return null;
+    current = r.from === current ? r.to : r.from;
+    nodes.push(current);
+    edges.push(key);
+  }
+  return { nodes, edges };
+}
+
+export function overviewTiles(run) {
+  const { ontology, evaluation } = run;
+  const doc = run.file?.kind === "document";
+  const fit = evaluation.data_fit || evaluation.document_fit;
+  const passed = fit ? fit.checks.filter((c) => c.passed).length : 0;
+  const diffCount = (d) => d.types.only_reference.length + d.types.only_ours.length + d.relations.only_reference.length + d.relations.only_ours.length;
+  const ref = evaluation.reference?.diff.counts.types;
+  const asked = (evaluation.asked || []).flatMap((r) => r.items || []);
+  const round = evaluation.questions?.total ? evaluation.questions : { answered: 0, total: 0 };
+  const q = round.total + asked.length ? { answered: round.answered + asked.filter((i) => i.status === "answered").length, total: round.total + asked.length } : null;
+  const changes = run.previous ? diffCount(run.previous.diff) : null;
+  return [
+    { key: "ontology", label: "本体", value: `${ontology.object_types.length} 个对象 · ${ontology.relations.length} 条关系`, tone: "neutral", hint: "点开看关系图" },
+    { key: "fit", label: doc ? "文档检查" : "数据体检", value: fit ? `通过 ${passed} / ${fit.checks.length}` : "未评测", tone: !fit ? "neutral" : passed === fit.checks.length ? "ok" : "warn",
+      hint: !fit ? "" : passed === fit.checks.length ? "全部通过" : `${fit.checks.length - passed} 项没通过，点开看是哪些` },
+    { key: "qa", label: "业务问答", value: doc ? "不适用于文档" : q ? `能回答 ${q.answered} / ${q.total}` : "还没出题", tone: !q || doc ? "neutral" : q.answered === q.total ? "ok" : "warn",
+      hint: doc ? "文档没有数据行" : !q ? (run.saved_as ? "点开出一组问题" : "上传自己的文件后可以提问") : q.answered === q.total ? "都能用数据回答" : `${q.total - q.answered} 题答不了，点开看原因` },
+    { key: "ref", label: "对照标准", value: ref ? `命中 ${ref.matched} / ${ref.reference}` : "还没比对", tone: !ref ? "neutral" : ref.matched === ref.reference ? "ok" : "warn",
+      hint: !ref ? "上传参考本体后可以比" : ref.matched === ref.reference ? "参考里的对象都对上了" : `参考里有 ${ref.reference - ref.matched} 个对象没对上` },
+    { key: "stability", label: "稳定性", value: changes === null ? "第一次运行" : changes ? `和上次有 ${changes} 处不同` : "和上次一致", tone: changes === null ? "neutral" : changes ? "warn" : "ok",
+      hint: changes === null ? "再上传同一文件可看差别" : changes ? "模型每次搭的会有出入" : "两次搭的一样" },
+  ];
+}

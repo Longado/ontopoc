@@ -29,10 +29,16 @@ test("standalone surface opens on upload-to-ontology and keeps both recall examp
   assert.doesNotMatch(source, /synthetic_demo|TrialWorkspace/);
 });
 
-test("landing page describes the current scenario, not the retired ones", async () => {
+test("landing page leads with upload-to-ontology and auto evaluation, recall as an example", async () => {
   const source = await readFile(new URL("./App.jsx", import.meta.url), "utf8");
+  assert.match(source, /上传一份业务文件/);
+  assert.match(source, /数据体检/);
+  assert.match(source, /业务问答/);
+  assert.match(source, /对照标准/);
+  assert.match(source, /示例场景/);
   assert.match(source, /召回范围研判/);
   assert.match(source, /href="\/"/);
+  assert.match(source, /demo_company\.xlsx/);
   assert.doesNotMatch(source, /供应链|SUPPLY CHAIN|synthetic_demo|ImpactTrace|TrialWorkspace/);
 });
 

@@ -116,7 +116,8 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     starts = [i for i in graph['sources_of'] if i[0] == start and all(
         normalize_value(w['equals']) in {normalize_value(v) for v in _values(bundle, graph, i, w['field'])}
         for w in where)]
-    path = ' → '.join(label(k) for k in [start, *steps])
+    kept = '、'.join(f'“{w["field"].partition(".")[2]}”为“{w["equals"]}”' for w in where)
+    path = ' → '.join([f'只看{kept}的{label(start)}' if kept else label(start), *(label(k) for k in steps)])
     if group_by:
         path += f'，按“{group_by.partition(".")[2]}”分组数{label(start)}'
     if not starts:

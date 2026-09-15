@@ -63,16 +63,18 @@ def verify_company_proposal(proposal: dict, bundle: dict) -> dict:
     return verify_proposal(proposal, bundle, COMPANY_PROFILE)
 
 
-def build_company_ontology(bundle: dict, gateway) -> dict:
-    return auto_build_ontology(bundle, gateway, COMPANY_PROFILE)
+def build_company_ontology(bundle: dict, gateway, progress=None) -> dict:
+    return auto_build_ontology(bundle, gateway, COMPANY_PROFILE, progress)
 
 
-def build_and_evaluate(bundle: dict, gateway) -> dict:
+def build_and_evaluate(bundle: dict, gateway, progress=None) -> dict:
     """One upload: build the ontology, then evaluate it against the same data. The result carries counts and a few
     example identities and values as evidence, never whole rows."""
     started_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
-    ontology = build_company_ontology(bundle, gateway)
+    ontology = build_company_ontology(bundle, gateway, progress)
     verified = ontology['status'] == 'auto_built_verified'
+    if progress:
+        progress('evaluate', {})
     return {
         'schema': 'company_ontology_run.v1',
         'started_at': started_at,

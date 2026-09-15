@@ -447,13 +447,15 @@ def _clean(proposal: dict) -> tuple[list, list]:
     return types, relations
 
 
-def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None) -> dict:
-    """Ask for a proposal, verify it in code, send the errors back; stop when errors stop shrinking."""
+def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, progress=None) -> dict:
+    """Ask for a proposal, verify it in code, send the errors back; stop when a retry fixes none of the errors it was sent."""
     profile = profile or RECALL_PROFILE
     catalog = field_catalog(bundle)
     request = {'decision': bundle['decision'], 'sources': catalog}
     attempts, proposal, model = [], None, None
+    report = progress or (lambda stage, detail: None)
     while True:
+        report('propose', {'attempt': len(attempts) + 1})
         try:
             completion = gateway.complete_json(system_prompt=profile.prompt,
                                                user_prompt=json.dumps(request, ensure_ascii=False))
@@ -469,9 +471,11 @@ def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None) -
         if candidate is not None and not _structure_errors(candidate):
             proposal = candidate
         attempts.append({'errors': result['errors'], 'model': model})
+        report('verify', {'attempt': len(attempts), 'errors': len(result['errors'])})
         previous = attempts[-2]['errors'] if len(attempts) > 1 else None
+        seen = lambda errors: {(e['code'], e['message']) for e in errors}
         if not result['errors'] or len(attempts) >= MAX_MODELER_ATTEMPTS or \
-                (previous is not None and len(result['errors']) >= len(previous)):
+                (previous is not None and not seen(previous) - seen(result['errors'])):
             break
         request = {'decision': bundle['decision'], 'sources': catalog,
                    'previous_proposal': candidate, 'errors_found_by_code': result['errors']}

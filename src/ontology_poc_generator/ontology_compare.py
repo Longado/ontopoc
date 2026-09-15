@@ -53,7 +53,7 @@ def compare_ontologies(reference: dict, ours: dict) -> dict:
 def parse_reference(data) -> dict:
     """A hand-written reference: object types with a label (key and populated_from optional), relations naming types."""
     if not isinstance(data, dict) or not isinstance(data.get('object_types'), list) or not data['object_types']:
-        raise ReferenceFileError('参考本体要有 object_types 列表')
+        raise ReferenceFileError('参考本体的 JSON 里要有 object_types（对象列表），格式可以照示例参考本体写')
     types = []
     for i, t in enumerate(data['object_types']):
         if not isinstance(t, dict) or not isinstance(t.get('label'), str) or not t['label'].strip():
