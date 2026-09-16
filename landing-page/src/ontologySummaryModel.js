@@ -4,6 +4,7 @@ import { ACCEPTANCE_LABELS } from "./ontologyAcceptanceModel.js";
 import { CHECK_LABELS, answerLines, isDocument, localTime, typeLabel } from "./ontologyStudioModel.js";
 
 const name = (ontology, key) => typeLabel(ontology, key);
+const SHOWN = 10;   // a handover page, not a data dump: the rest is in the JSON beside it
 
 export function summaryMarkdown(run) {
   const { ontology, evaluation } = run;
@@ -24,7 +25,7 @@ export function summaryMarkdown(run) {
   if (fit) {
     const failed = fit.checks.filter((c) => !c.passed);
     out.push("## 数据体检", "", failed.length ? `${fit.checks.length} 项检查里 ${failed.length} 项没通过：` : `${fit.checks.length} 项检查全部通过。`, "");
-    out.push(...failed.map((c) => `- ${CHECK_LABELS[c.key] || c.key}`));
+    out.push(...failed.map((c) => `- 未通过：${CHECK_LABELS[c.key] || c.key}`));
     for (const c of (fit.identity_conflicts || []).slice(0, 5)) {
       out.push(`- ${name(ontology, c.type)} ${c.identity} 的“${c.field}”在不同行里写了 ${c.values.join(" / ")}`);
     }
@@ -41,7 +42,10 @@ export function summaryMarkdown(run) {
       out.push(`### ${item.question}`, "");
       if (item.note) out.push(`口径：${item.note}`, "");
       out.push(`结果：${ACCEPTANCE_LABELS[item.status] || item.status}${item.changed === null ? "" : item.changed ? "，和上次不一样" : "，和上次一致"}`, "");
-      out.push(...answerLines(item).map((line) => `- ${line}`), "");
+      const lines = answerLines(item);
+      out.push(...lines.slice(0, SHOWN).map((line) => `- ${line}`));
+      if (lines.length > SHOWN) out.push(`- 另有 ${lines.length - SHOWN} 组，完整结果见“本体和评测”文件`);
+      out.push("");
       if (item.path) out.push(`怎么算的：${item.path}`, "");
     }
   }
