@@ -306,17 +306,21 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if not bundle_path.exists():
                     self.reply(404, {'error': '找不到这次上传的数据，请重新上传文件'})
                     return
-                items = parse_acceptance(payload.get('items'))
+                items = parse_acceptance(payload.get('items')) if payload.get('items') else []
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
-            bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-            result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, items)
-            saved = {'saved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'file': result['file'],
-                     'purpose': result.get('purpose'), 'items': result['evaluation']['acceptance']['items']}
-            folder = output_dir / 'acceptance'
-            folder.mkdir(parents=True, exist_ok=True)
-            (folder / f"{result['file']['sha256']}.json").write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
+            stored = output_dir / 'acceptance' / f"{result['file']['sha256']}.json"
+            if not items:   # the last question was removed: this file has no fixed questions again
+                result['evaluation'].pop('acceptance', None)
+                stored.unlink(missing_ok=True)
+            else:
+                bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+                result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, items)
+                saved = {'saved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'file': result['file'],
+                         'purpose': result.get('purpose'), 'items': result['evaluation']['acceptance']['items']}
+                stored.parent.mkdir(parents=True, exist_ok=True)
+                stored.write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
