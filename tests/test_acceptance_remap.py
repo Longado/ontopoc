@@ -68,7 +68,8 @@ class RemapTests(unittest.TestCase):
         snapshot = saved_once()[0]['snapshot']
         self.assertEqual({t['key'] for t in snapshot['types']}, {'order', 'customer'})
         self.assertEqual([r['key'] for r in snapshot['relations']], ['order_customer'])
-        self.assertEqual(snapshot['types'][0]['populated_from'], PROPOSAL['object_types'][1]['populated_from'])
+        kept = {t['key']: t['populated_from'] for t in snapshot['types']}
+        self.assertEqual(kept, {t['key']: t['populated_from'] for t in PROPOSAL['object_types']})
 
 
 if __name__ == '__main__':
