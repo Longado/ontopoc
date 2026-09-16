@@ -131,3 +131,5 @@ small.os-tone-warn { color: var(--amber); }
 .os-signer { display: grid; gap: 6px; max-width: 360px; color: var(--text-2); font-size: 13px; }
 .os-signer input { padding: 8px 10px; border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; }
 .os-others { display: grid; gap: 6px; }
+.os-acceptance .os-question-head .pr-muted { font-size: 12px; }
+.os-accept { justify-self: start; padding: 0; font-weight: 700; }
