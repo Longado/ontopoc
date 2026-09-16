@@ -39,7 +39,7 @@ test("a long answer is cut to one screen, saying how many groups there are in al
   const md = summaryMarkdown(run({ evaluation: { ...run().evaluation,
     acceptance: { total: 1, answered: 1, items: [{ question: "每个客户几张工单？", note: "", status: "answered", changed: null,
       answer: { groups, total_groups: 30, without_value: 0 }, path: "工单 → 客户" }] } } }));
-  assert.equal(md.split("\n").filter((l) => l.startsWith("- 客户")).length, 10);
+  assert.equal(md.split("\n").filter((l) => /^- 客户\d+：/.test(l)).length, 10);
   assert.match(md, /另有 20 组，完整结果见“本体和评测”文件/);
 });
 
