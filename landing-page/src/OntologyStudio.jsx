@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, fileProblem, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  conflictGroups, conflictNote, localTime, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
+  COVERAGE_NOTE, conflictGroups, conflictNote, localTime, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraphModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
@@ -147,7 +147,7 @@ function Conflicts({ fit, ontology, onShow }) {
   const groups = conflictGroups(fit);
   return <section className="pr-card">
     <h2>同一对象信息打架（{fit.identity_conflicts.length}）</h2>
-    <p className="pr-muted">同一个编号在不同行里，某个字段写了不同的值。{fit.identity_conflicts.length > SHOWN_GROUPS ? "如果一类对象大量打架，常见原因是识别字段不够区分：同一个编号其实是好几样东西（例如缺了行号）。" : ""}</p>
+    <p className="pr-muted">同一个编号在不同行里，某个字段写了不同的值。也可能不是数据错了，而是这里本来就是一对多（例如一张订单分三次交付，三个交付日期挂在了订单上）：那要把它拆成单独的对象，而不是回去改数据。{fit.identity_conflicts.length > SHOWN_GROUPS ? "如果一类对象大量打架，常见原因是识别字段不够区分：同一个编号其实是好几样东西（例如缺了行号）。" : ""}</p>
     {groups.length > 1 && <ul className="os-list">{groups.map((g) => <li key={`${g.type}/${g.field}`}>{typeLabel(ontology, g.type)}的“{g.field}”：{g.count} 个编号</li>)}</ul>}
     <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>对象</th><th>表</th><th>编号</th><th>字段</th><th>不同的值</th><th></th></tr></thead>
       <tbody>{rows.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td>{c.values.join(" / ")}</td><td><ShowOnGraph type={c.type} onShow={onShow} /></td></tr>)}</tbody></table></div>
@@ -402,6 +402,7 @@ function Checks({ fit, title, note }) {
   return <section className="pr-card">
     <div className="pr-card-head"><h2>{title}</h2><span className="pr-muted">通过 {summary.passed} / {summary.total} 项</span></div>
     <p className="pr-muted">{note}</p>
+    <p className="pr-muted">{COVERAGE_NOTE}</p>
     <ul className="os-checks">{fit.checks.map((c) => <li key={c.key}><span className={`os-pill ${c.passed ? "os-pass" : "os-fail"}`}>{c.passed ? "通过" : "不通过"}</span>{CHECK_LABELS[c.key] || c.key}</li>)}</ul>
   </section>;
 }
@@ -414,6 +415,11 @@ function DataFit({ run, onShow }) {
     <Checks fit={fit} title="数据体检：本体和数据对得上吗" note="全部由代码拿上传的每一行计算，不经过模型。每个问题都可以点“在图上看”，回到关系图里对应的对象。" />
     {fit.identity_conflicts.length > 0 && <Conflicts fit={fit} ontology={ontology} onShow={onShow} />}
     {fit.identity_spellings?.length > 0 && <Spellings fit={fit} ontology={ontology} onShow={onShow} />}
+    {fit.identity_risks?.length > 0 && <section className="pr-card">
+      <h2>识别字段可能不稳（{fit.identity_risks.length}）</h2>
+      <p className="pr-muted">这是提示，不是不通过：代码只看了识别字段的名字像不像"名称"一类会被改写的字段。</p>
+      <ul className="pr-rows">{fit.identity_risks.map((r) => <li key={r.type}><b>{typeLabel(ontology, r.type)}：按 {r.fields.join("、")} 识别</b><span>{r.reason}</span><ShowOnGraph type={r.type} onShow={onShow} /></li>)}</ul>
+    </section>}
     {fit.suspected_duplicates?.length > 0 && <section className="pr-card">
       <h2>疑似重复（请人工确认）</h2>
       <p className="pr-muted">去掉开头的 0 以后相同的编号，现在被当成不同的对象；如果它们其实是同一个，需要在源数据里统一。</p>

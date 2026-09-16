@@ -115,13 +115,13 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     for w in query.get('where') or []:
         field = _resolve_field(types[start], w.get('field'))
         if field is None:
-            return gap(f'{label(start)} 没有属性 {w.get("field")}，无法按它筛选')
+            return gap(f'本体里的 {label(start)} 没有属性 {w.get("field")}，无法按它筛选')
         where.append({'field': field, 'equals': w.get('equals')})
     share = query.get('share') if isinstance(query.get('share'), dict) else None
     if share:
         field = _resolve_field(types[start], share.get('field'))
         if field is None:
-            return gap(f'{label(start)} 没有属性 {share.get("field")}，无法算它的占比')
+            return gap(f'本体里的 {label(start)} 没有属性 {share.get("field")}，无法算它的占比')
         share = {'field': field, 'equals': share.get('equals')}
     top, reason = _walk(relations, start, query.get('via'), label)
     if reason:
@@ -136,7 +136,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             return gap(reason)
         field = _resolve_field(types[walked[0]], d.get('field'))
         if field is None:
-            return gap(f'{label(walked[0])} 没有属性 {d.get("field")}，无法按它分组')
+            return gap(f'本体里的 {label(walked[0])} 没有属性 {d.get("field")}，无法按它分组')
         dims.append({'via': d.get('via') or [], 'steps': walked[1], 'field': field})
     graph = graph or build_graph(ontology, bundle)
     neighbours = {}

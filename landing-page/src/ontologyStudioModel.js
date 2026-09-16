@@ -10,8 +10,10 @@ export const CHECK_LABELS = {
   references_resolve: "引用的对象都能在它所属的表里找到",
   sources_connected: "所有表通过共同的对象连成一片",
   quotes_verified: "模型提出的每一项都能在原文里找到引用",
-  no_isolated_concepts: "每个概念至少和一个别的概念有关系",
+  no_isolated_concepts: "抽出来的概念，每个都至少连着一条抽出来的关系",
 };
+
+export const COVERAGE_NOTE = "所有结论只覆盖这一次上传的文件；别的系统里有没有、别的表里记没记，这里看不到。";
 
 export const isDocument = (run) => run.file?.kind === "document";
 export const sourceLine = (run) => run.sources.map((s) => (s.paragraphs !== undefined ? `${s.name} ${s.paragraphs} 段 ${s.chars} 字` : `${s.name} ${s.rows} 行 ${s.fields} 列`)).join(" · ");
