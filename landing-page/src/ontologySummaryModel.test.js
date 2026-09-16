@@ -34,6 +34,15 @@ test("without a confirmation it says plainly that nobody has checked it yet", ()
   assert.doesNotMatch(md, /确认人/);
 });
 
+test("a long answer is cut to one screen, saying how many groups there are in all", () => {
+  const groups = Array.from({ length: 30 }, (_, i) => [`客户${i}`, 30 - i]);
+  const md = summaryMarkdown(run({ evaluation: { ...run().evaluation,
+    acceptance: { total: 1, answered: 1, items: [{ question: "每个客户几张工单？", note: "", status: "answered", changed: null,
+      answer: { groups, total_groups: 30, without_value: 0 }, path: "工单 → 客户" }] } } }));
+  assert.equal(md.split("\n").filter((l) => l.startsWith("- 客户")).length, 10);
+  assert.match(md, /另有 20 组，完整结果见“本体和评测”文件/);
+});
+
 test("fixed questions come with the meaning agreed on and whether they still hold", () => {
   const md = summaryMarkdown(run({ evaluation: { ...run().evaluation,
     acceptance: { total: 1, answered: 1, items: [{ question: "哪些客户经常延期交货？", note: "按订单号计数", status: "answered", changed: false,
@@ -41,5 +50,6 @@ test("fixed questions come with the meaning agreed on and whether they still hol
   assert.match(md, /验收问题/);
   assert.match(md, /按订单号计数/);
   assert.match(md, /甲：2 \/ 2（100%）/);
+  assert.match(md, /未通过：同一个对象在不同行里的信息不打架/);
   assert.match(md, /和上次一致/);
 });
