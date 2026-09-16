@@ -10,7 +10,7 @@ class RunQueryTests(unittest.TestCase):
     def test_counts_start_objects_per_group_of_the_type_reached(self):
         result = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'where': [], 'via': ['order_customer'], 'group_by': '客户.名称'})
         self.assertEqual(result['status'], 'answered')
-        self.assertEqual(result['answer'], {'groups': [['乙', 1], ['甲', 1]], 'total_groups': 2, 'without_value': 1})
+        self.assertEqual(result['answer'], {'groups': [['乙', 1], ['甲', 1]], 'total_groups': 2, 'without_value': 1, 'without_value_examples': ['O3']})
         self.assertEqual(result['path'], '订单 → 客户，按“名称”分组数订单')
 
     def test_filters_on_the_start_type_and_counts_when_nothing_is_grouped(self):
