@@ -156,3 +156,21 @@ export function conflictGroups(fit) {
   }
   return [...groups.values()].sort((a, b) => b.count - a.count);
 }
+
+/** Why a fresh-looking result has nothing remembered against it: the system tells files apart by their content. */
+export function memoryNote(run) {
+  if (!run.saved_as) return "";
+  const remembered = run.confirmation || run.evaluation.reference?.confirmed || run.evaluation.acceptance;
+  return remembered ? "" : "这份文件还没有保存过确认或验收问题。系统按文件内容认文件：同一张表改了一行，就算另一份，上次的确认不会自动带过来。";
+}
+
+/** Keep the result in this browser. Returns "" when it is kept, or what to tell the user when it will not fit. */
+export function saveResult(storage, run) {
+  if (!storage) return "";   // no storage at all (a private window): the result lives in this tab, nothing to warn about
+  try {
+    storage.setItem(RESULT_KEY, JSON.stringify(run));
+    return "";
+  } catch {
+    return "这次结果太大，没能存进浏览器：刷新或关掉标签页就会丢。请先下载纪要和本体和评测。";
+  }
+}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  COVERAGE_NOTE, conflictGroups, conflictNote, localTime, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
+  COVERAGE_NOTE, conflictGroups, conflictNote, localTime, memoryNote, saveResult, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
@@ -16,7 +16,7 @@ const TABS = [["upload", "上传"], ["ontology", "看本体"], ["evaluation", "�
 const START = "PYTHONPATH=src python -m ontology_poc_generator.ontology_server";
 
 const readText = (url) => fetch(url, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`读取失败（${r.status}）`); return r.json(); });
-const saveLocal = (run) => { try { localStorage.setItem(RESULT_KEY, JSON.stringify(run)); } catch { /* storage unavailable: the result is only kept in this tab */ } };
+const storage = () => { try { return window.localStorage; } catch { return null; } };
 const loadLocal = () => { try { return validateRun(JSON.parse(localStorage.getItem(RESULT_KEY))); } catch { return null; } };
 
 function toBase64(file) {
@@ -315,6 +315,7 @@ function ConfirmCard({ run, confirm }) {
     <div className="pr-card-head"><h2>逐项确认：这个本体在业务上对不对</h2><span className="pr-muted">已判断 {progress.judged} / {progress.total}{progress.wrong ? `，其中 ${progress.wrong} 项不对` : ""}{progress.added ? `，补了 ${progress.added} 个` : ""}</span></div>
     <p className="pr-muted">前面的检查只能说明本体和数据对得上，说明不了它在业务上对不对，这要懂业务的人判断。在关系图右栏或"列表"里给每个对象、每条关系点"对"或"不对"，名字不合适可以改，漏掉的对象在下面补上（对象多时用"列表"判得快）。保存后，这份判断就是这个文件的参考本体：马上对照一次，同一份文件以后再上传会自动对照，并带上这次的判断，只剩有差别的要看。没判断的项不算进参考本体。</p>
     <p className="pr-muted">判"对"的意思是这个对象、这条关系在业务上成立，不代表建模目的已经能回答；能不能回答，看"业务问答"和下面"模型指出的数据缺口"。</p>
+    {memoryNote(run) && !saved && <p className="pr-muted">{memoryNote(run)}</p>}
     {run.evaluation.reference?.suggested && !saved && <p className="pr-note">已按你上次的确认预先填好（{localTime(run.evaluation.reference.confirmed_at)}{run.evaluation.reference.confirmed_by ? `，${run.evaluation.reference.confirmed_by}` : ""}），只需看有差别的项，再保存。</p>}
     {others.length > 0 && <div className="pr-note os-others"><span>模型别的几次建模里还有这些对象，这次没有。如果业务上该有，点一下补上：</span>
       <div className="os-chips os-suggest">{others.map((t) => <button key={t.label} type="button" onClick={() => confirm.onAdd(t.label)}>{t.label}（{t.runs} 次里 {t.count} 次）</button>)}</div></div>}
@@ -490,6 +491,7 @@ export function OntologyStudio() {
   const [compareError, setCompareError] = useState("");
   const [view, setView] = useState("graph");
   const [decisions, setDecisions] = useState(() => (run ? decisionsOf(run) : null));
+  const [storageWarning, setStorageWarning] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [evalView, setEvalView] = useState("fit");
@@ -505,8 +507,9 @@ export function OntologyStudio() {
   }, []);
   useEffect(() => () => clearInterval(timer.current), []);
 
-  function show(result) { const valid = validateRun(result); setRun(valid); saveLocal(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setTab("ontology"); }
-  function update(result) { const valid = validateRun(result); setRun(valid); saveLocal(valid); }
+  const keep = (valid) => setStorageWarning(saveResult(storage(), valid));
+  function show(result) { const valid = validateRun(result); setRun(valid); keep(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setTab("ontology"); }
+  function update(result) { const valid = validateRun(result); setRun(valid); keep(valid); }
   async function build(files, purpose) {
     setBusy(true); setError(""); setElapsed(0); setEvents([]);
     const started = Date.now();
@@ -580,6 +583,7 @@ export function OntologyStudio() {
         <h1 id="os-title">上传建本体</h1>
         <span className="pr-meta">上传一份业务文件，自动整理出公司本体（业务里有哪些东西、各自按什么编号区分、彼此怎么关联）。数据体检和业务问答自动做；有人写的参考本体时，再对照标准</span>
       </div>
+      {storageWarning && <p role="alert" className="pr-note os-storage">{storageWarning}</p>}
       {run && tab !== "upload" && <div className="os-overview">
         <div className="os-overview-file"><span className="pr-muted">当前文件</span><b>{run.file.name}</b><button className="pr-link" onClick={downloadSummary} title="一页纪要，给会上的人看">下载纪要</button>
         <button className="pr-link" onClick={download} title="本体、数据体检、问答和对照结果，一个 JSON 文件">下载本体和评测</button></div>
