@@ -121,10 +121,15 @@ export function fileProblem(file) {
   return "";
 }
 
-export function previousLine(previous) {
-  const d = new Date(previous.started_at);
+/** An ISO time from the service, shown in this machine's time zone as "MM-DD HH:mm". */
+export function localTime(iso) {
+  const d = new Date(iso);
   const two = (n) => String(n).padStart(2, "0");
-  const when = `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+  return `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+export function previousLine(previous) {
+  const when = localTime(previous.started_at);
   const purpose = previous.purpose ? `，建模目的“${previous.purpose}”` : "";
   const counts = previous.counts ? `，${previous.counts.types} 个对象、${previous.counts.relations} 条关系` : "";
   return `上一次运行：${when}${purpose}${counts}`;

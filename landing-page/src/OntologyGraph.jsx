@@ -15,6 +15,19 @@ function select(setSelected, value) {
   return { onClick: () => setSelected(value), onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(value); } } };
 }
 
+/** "对 / 不对" for one object or relation, plus a rename box for objects that are judged right. */
+export function Verdict({ confirm, kind, item }) {
+  if (!confirm) return null;
+  const d = confirm.decisions[kind][item.key];
+  const name = (item.label || item.key);
+  return <div className="og-verdict" role="group" aria-label={`你的判断：${name}`}>
+    <span>你的判断</span>
+    {[["ok", "对"], ["wrong", "不对"]].map(([v, text]) => <button key={v} type="button" aria-pressed={d?.verdict === v} className={`og-v-${v}`} onClick={() => confirm.onVerdict(kind, item.key, v)}>{text}</button>)}
+    {kind === "types" && d?.verdict === "ok" && <input aria-label={`${name} 改名为`} placeholder="改名（可选）" maxLength={40} defaultValue={d.label || ""} key={`${item.key}-${d.label || ""}`}
+      onBlur={(e) => confirm.onRename(item.key, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />}
+  </div>;
+}
+
 function PathInspector({ ontology, path, onClearPath }) {
   const relation = (key) => ontology.relations.find((r) => r.key === key);
   return <div className="og-inspector-body">
@@ -29,7 +42,7 @@ function PathInspector({ ontology, path, onClearPath }) {
   </div>;
 }
 
-function Inspector({ run, selected, findings }) {
+function Inspector({ run, selected, findings, confirm }) {
   const { ontology } = run;
   const stability = run.evaluation.stability;
   const fit = run.evaluation.data_fit;
@@ -39,6 +52,7 @@ function Inspector({ run, selected, findings }) {
     return <div className="og-inspector-body">
       <span className="og-kicker">关系 · {r.key}</span>
       <h3>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</h3>
+      <Verdict confirm={confirm} kind="relations" item={r} />
       <p>{r.meaning}</p>
       {r.evidence?.length > 0 && <div className="og-quotes">{r.evidence.map((q, i) => <blockquote key={i}>原文：{q}</blockquote>)}</div>}
       <dl className="og-kv"><div><dt>{r.evidence ? "出自" : "所在表"}</dt><dd>{r.source}</dd></div>
@@ -52,6 +66,7 @@ function Inspector({ run, selected, findings }) {
   return <div className="og-inspector-body">
     <span className="og-kicker">对象 · {t.key}</span>
     <h3>{t.label || t.key}</h3>
+    <Verdict confirm={confirm} kind="types" item={t} />
     {t.rationale && <p>{t.rationale}</p>}
     {t.definition && <p>{t.definition}</p>}
     {t.evidence?.length > 0 && <div className="og-quotes">{t.evidence.map((q, i) => <blockquote key={i}>原文：{q}</blockquote>)}</div>}
@@ -60,14 +75,14 @@ function Inspector({ run, selected, findings }) {
       {t.attributes.length > 0 && <div><dt>属性</dt><dd>{t.attributes.map((a) => a.path).join("、")}</dd></div>}
       {t.time_field && <div><dt>时间</dt><dd>{t.time_field.path}</dd></div>}
       {stability && stability.types[t.key] !== undefined && <div><dt>{stability.runs} 次建模</dt><dd className={unsteady(stability, "types", t.key) ? "og-warn" : ""}>{unsteady(stability, "types", t.key) ? `只有 ${stability.types[t.key]} 次有它：模型对要不要单独建这个对象拿不准，可以按你的业务决定` : "每次都有"}</dd></div>}
-      {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]} 个{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key]} 个在多张表里出现` : ""}</dd></div>}
+      {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]} 个（按编号去重）{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key]} 个在多张表里出现` : ""}{(fit?.missing_across_sources || []).filter((m) => m.type === t.key).map((m) => `；${m.count} 个只在别的表里被引用、在“${m.source}”表里找不到`).join("")}</dd></div>}
     </dl>
     {fit && <h4>数据检查</h4>}
     {!fit ? null : own.length ? <ul className="og-findings">{own.map((f, i) => <li key={i} className={f.severity === "note" ? "og-note" : ""}>{f.severity === "note" ? "提示：" : ""}{FINDING[f.kind](f.detail)}</li>)}</ul> : <p className="og-ok">这个对象没有发现问题。</p>}
   </div>;
 }
 
-export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelected, path, onClearPath, reveal }) {
+export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelected, path, onClearPath, reveal, confirm }) {
   const { ontology } = run;
   const findings = findingsByType(run.evaluation.data_fit);
   const wrap = useRef(null);
@@ -118,7 +133,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
       <div className="og-bar"><span>本体 · {ontology.object_types.length} 个对象 · {ontology.relations.length} 条关系<span className="og-swipe"> · 左右滑动看全图</span></span>
         <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
       {(big || mode !== "auto") && <div className="og-focusbar">
-        {focusing ? <span>{path ? "只显示查询经过的对象。" : <>对象太多，一张图看不清，现在只显示“{typeLabel(ontology, center)}”和与它相连的 {graph.nodes.length - 1} 个。点相连的对象可以换它做中心。</>}</span>
+        {focusing ? <span>{path ? "只显示查询经过的对象。" : <>对象太多，一张图看不清，现在只显示“{typeLabel(ontology, center)}”和与它相连的 {graph.nodes.length - 1} 个。点相连的对象可以换它做中心；要逐项判断，用上面的"列表"更快。</>}</span>
           : <span>这是全图，比屏幕大，可以滚动看。</span>}
         {focusing && <label htmlFor="og-find" className="og-find">找对象<input id="og-find" list="og-concepts" placeholder="输入名字" onChange={find} /></label>}
         <datalist id="og-concepts">{rankByDegree(ontology).map((t) => <option key={t.key} value={t.label || t.key} />)}</datalist>
@@ -131,16 +146,18 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
           {graph.edges.map((e) => { const stats = edgeStats(run.evaluation.data_fit, e.key); const rel = ontology.relations.find((r) => r.key === e.key);
             return <g key={e.key} className={`og-edge${isSelected("edge", e.key) ? " is-selected" : ""}${path?.edges.includes(e.key) ? " is-path" : ""}${stats && !stats.complete ? " is-partial" : ""}${unsteady(run.evaluation.stability, "relations", e.key) ? " is-unsteady" : ""}${dim("edge", e.key)}`}
               role="button" tabIndex={0} aria-label={`关系 ${typeLabel(ontology, e.from)} 到 ${typeLabel(ontology, e.to)}`} {...select(setSelected, { kind: "edge", key: e.key })}>
+              <path d={e.path} className="og-edge-hit" />
               <path d={e.path} markerEnd="url(#og-arrow)" />
               {rel.label && <text x={e.lx} y={e.ly - 6} textAnchor="middle">{rel.label}</text>}
             </g>; })}
           {graph.nodes.map((n) => { const own = findings[n.key] || []; const count = own.length; const onlyNotes = own.every((f) => f.severity === "note");
-            return <g key={n.key} data-key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}${path?.nodes.includes(n.key) ? " is-path" : ""}${unsteady(run.evaluation.stability, "types", n.key) ? " is-unsteady" : ""}${dim("node", n.key)}`} transform={`translate(${n.x},${n.y})`}
+            return <g key={n.key} data-key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}${path?.nodes.includes(n.key) ? " is-path" : ""}${unsteady(run.evaluation.stability, "types", n.key) ? " is-unsteady" : ""}${confirm?.decisions.types[n.key] ? ` is-${confirm.decisions.types[n.key].verdict}` : ""}${dim("node", n.key)}`} transform={`translate(${n.x},${n.y})`}
               role="button" tabIndex={0} aria-label={`对象 ${n.label}${count ? `，${count} 处数据问题` : ""}`} {...select(setSelected, { kind: "node", key: n.key })}>
               <rect width={n.w} height={n.h} className="og-node-box" />
               <rect width={40} height={n.h} className="og-node-side" />
               <text x={54} y={26} className="og-node-key">{n.key.length > 18 ? `${n.key.slice(0, 18)}…` : n.key}</text>
               <text x={54} y={47} className="og-node-label">{n.label}</text>
+              {confirm?.decisions.types[n.key] && <text x={n.w - 10} y={n.h - 10} textAnchor="end" className="og-mark">{confirm.decisions.types[n.key].verdict === "ok" ? "✓ 对" : "✕ 不对"}</text>}
               {count > 0 && <g transform={`translate(${n.w - 14},0)`}><title>{`${count} 处${onlyNotes ? "提示" : "数据问题"}，点开看`}</title><circle r="11" className={`og-badge${onlyNotes ? " og-badge-note" : ""}`} /><text textAnchor="middle" y="4" className="og-badge-text">{count}</text></g>}
             </g>; })}
         </svg>
@@ -154,7 +171,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
     </div>
     <aside className="og-inspector" aria-label="证据检查">
       <div className="og-inspector-head">证据检查 · 点图里的对象或关系</div>
-      {path ? <PathInspector ontology={ontology} path={path} onClearPath={onClearPath} /> : selected.key && <Inspector run={run} selected={selected} findings={findings} />}
+      {path ? <PathInspector ontology={ontology} path={path} onClearPath={onClearPath} /> : selected.key && <Inspector run={run} selected={selected} findings={findings} confirm={confirm} />}
       {onAsk && <button type="button" className="og-ask" onClick={onAsk}>询问这个本体：用数据回答业务问题 →</button>}
     </aside>
   </div>;

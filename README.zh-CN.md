@@ -1,9 +1,9 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="landing-page/public/assets/ontopoc-logo.png">
-  <img src="landing-page/public/assets/ontopoc-logo-light.png" alt="OntoPoc — Trace scope. Review evidence." width="420">
+  <img src="landing-page/public/assets/ontopoc-logo-light.png" alt="OntoPoc — Draft the ontology. Show the evidence." width="420">
 </picture>
 
-# OntoPoc — Trace scope. Review evidence.
+# OntoPoc — Draft the ontology. Show the evidence.
 
 [English](README.md) · 中文
 
@@ -40,7 +40,7 @@ PYTHONPATH=src:. python scripts/run_company_ontology.py --file examples/company/
 PYTHONPATH=src:. python scripts/make_demo_company.py
 ```
 
-召回研判收为示例入口"示例：汽车召回"，它读 `landing-page/public/data/` 下的静态数据（一份清单加每个数据集一个文件：雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric / Kona EV 2019–2021），不需要 Python 服务。左侧导航切换两个入口；召回范围研判分四个标签页：口径（核对系统怎么读这份数据，逐条判断名称对应；自动搭建的本体在"技术细节"里）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序；可用方向键和 1/2/3）→ 结果（与模型的一致情况、复核人、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
+召回研判收进左侧导航"更多示例"下的"汽车召回范围研判"，它读 `landing-page/public/data/` 下的静态数据（一份清单加每个数据集一个文件：雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric / Kona EV 2019–2021），不需要 Python 服务。召回范围研判分四个标签页：口径（核对系统怎么读这份数据，逐条判断名称对应；自动搭建的本体在"技术细节"里）→ 召回（按部件分组，接续召回连成系列）→ 复核（按召回后、起火/碰撞、日期排序；可用方向键和 1/2/3）→ 结果（与模型的一致情况、复核人、下载）。复核存在本机浏览器，可恢复、可下载；它是本机记录，不是审批。
 
 `/landing` 是产品首页。第二个入口"事件 95876 核对清单"是 openFDA 食品召回的产品—批号核对，需要本机 Python 服务（见下）。
 

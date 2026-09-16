@@ -19,6 +19,7 @@ from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, So
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
+from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
 from ontology_poc_generator.ontology_questions import ask_questions
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 
@@ -98,6 +99,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             result['previous'] = {'saved_as': previous['saved_as'], 'started_at': previous['started_at'], 'purpose': previous.get('purpose'),
                                   'counts': {'types': len(previous['ontology']['object_types']), 'relations': len(previous['ontology']['relations'])},
                                   'diff': compare_ontologies(previous['ontology'], result['ontology'])}
+        confirmed = output_dir / 'references' / f"{bundle['file']['sha256']}.json"
+        if confirmed.exists() and result['ontology']['status'] == 'auto_built_verified':
+            # a person confirmed an earlier run of this file: compare against that judgement without being asked
+            ref = json.loads(confirmed.read_text(encoding='utf-8'))
+            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': ref['confirmed_at'], 'confirmed_by': ref.get('confirmed_by'),
+                                                 'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                                                 'diff': compare_ontologies(parse_reference(ref['reference']), result['ontology']),
+                                                 'suggested': prefill_from_reference(result['ontology'], ref['reference'])}
         result['saved_as'] = name
         (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
         # the uploaded rows stay on this machine so later questions can be answered from them
@@ -171,6 +180,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/ontology/preview':
                 self.preview()
+                return
+            if self.path == '/api/ontology/confirm':
+                self.confirm()
                 return
             if self.path != '/api/ontology/build':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
@@ -267,6 +279,35 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 'name': str(payload.get('reference_name') or '参考本体')[:120],
                 'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 'diff': compare_ontologies(reference, result['ontology'])}
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
+        def confirm(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                result_path = self.load_run(payload)
+                if not result_path.exists():
+                    self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                    return
+                result = json.loads(result_path.read_text(encoding='utf-8'))
+                reference = confirmed_reference(result['ontology'], payload.get('decisions'))
+                signer = payload.get('confirmed_by')
+                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
+                    raise ValueError('确认人最多写 40 个字')
+                signer = (signer or '').strip() or None
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            now = datetime.now(timezone.utc).isoformat(timespec='seconds')
+            refs = output_dir / 'references'
+            refs.mkdir(parents=True, exist_ok=True)
+            (refs / f"{result['file']['sha256']}.json").write_text(json.dumps(
+                {'confirmed_at': now, 'confirmed_by': signer, 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
+            result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference}
+            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'compared_at': now,
+                                                 'diff': compare_ontologies(parse_reference(reference), result['ontology'])}
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
