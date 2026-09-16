@@ -16,7 +16,7 @@ const run = (extra = {}) => ({
 });
 
 test("the summary is for the people in the room: what was read, what it says, what to check", () => {
-  const md = summaryMarkdown(run({ confirmation: { confirmed_at: "2026-09-16T03:00:00+00:00", confirmed_by: "信息部 王工", decisions: { types: { customer: { verdict: "ok" } }, relations: {}, added: [] } } }));
+  const md = summaryMarkdown(run({ confirmation: { confirmed_at: "2026-09-16T03:00:00+00:00", confirmed_by: "信息部 王工", decisions: { types: { customer: { verdict: "ok", label: "客户主体" } }, relations: { r1: { verdict: "ok" } }, added: ["售后工程师"] } } }));
   assert.match(md, /^# 客户订单\.xlsx 本体摸底纪要/);
   assert.match(md, /哪些客户经常延期交货？/);
   assert.match(md, /客户（26 行 4 列）/);
@@ -25,6 +25,7 @@ test("the summary is for the people in the room: what was read, what it says, wh
   assert.match(md, /C099/);
   assert.match(md, /缺少实际交货日期/);
   assert.match(md, /信息部 王工/);
+  assert.match(md, /改名：客户 改成“客户主体”/);
   assert.doesNotMatch(md, /customer|auto_built_verified/);   // no internal names in front of a client
 });
 
