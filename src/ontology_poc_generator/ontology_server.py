@@ -18,6 +18,7 @@ from ontology_poc_generator.company_ontology import build_and_evaluate, build_co
 from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
+from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
 from ontology_poc_generator.ontology_questions import ask_questions
@@ -107,6 +108,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                                  'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                                  'diff': compare_ontologies(parse_reference(ref['reference']), result['ontology']),
                                                  'suggested': prefill_from_reference(result['ontology'], ref['reference'])}
+        accepted = output_dir / 'acceptance' / f"{bundle['file']['sha256']}.json"
+        if accepted.exists() and result['ontology']['status'] == 'auto_built_verified' and result['file'].get('kind') != 'document':
+            # the questions a person fixed for this file: the same queries, so two runs can be judged on the same thing
+            saved = json.loads(accepted.read_text(encoding='utf-8'))
+            result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, saved['items'])
+            accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
         result['saved_as'] = name
         (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
         # the uploaded rows stay on this machine so later questions can be answered from them
@@ -183,6 +190,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/ontology/confirm':
                 self.confirm()
+                return
+            if self.path == '/api/ontology/acceptance':
+                self.acceptance()
                 return
             if self.path != '/api/ontology/build':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
@@ -279,6 +289,34 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 'name': str(payload.get('reference_name') or '参考本体')[:120],
                 'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 'diff': compare_ontologies(reference, result['ontology'])}
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
+        def acceptance(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                result_path = self.load_run(payload)
+                if not result_path.exists():
+                    self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                    return
+                result = json.loads(result_path.read_text(encoding='utf-8'))
+                bundle_path = output_dir / result['saved_as'].replace('.json', '.bundle.json')
+                if not bundle_path.exists():
+                    self.reply(404, {'error': '找不到这次上传的数据，请重新上传文件'})
+                    return
+                items = parse_acceptance(payload.get('items'))
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+            result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, items)
+            saved = {'saved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'file': result['file'],
+                     'purpose': result.get('purpose'), 'items': result['evaluation']['acceptance']['items']}
+            folder = output_dir / 'acceptance'
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"{result['file']['sha256']}.json").write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
