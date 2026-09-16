@@ -345,7 +345,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             now = datetime.now(timezone.utc).isoformat(timespec='seconds')
             refs = output_dir / 'references'
             refs.mkdir(parents=True, exist_ok=True)
-            (refs / f"{result['file']['sha256']}.json").write_text(json.dumps(
+            stored = refs / f"{result['file']['sha256']}.json"
+            if stored.exists():   # a changed judgement replaces the old one; keep the old one so it can still be read
+                old = json.loads(stored.read_text(encoding='utf-8'))
+                (refs / 'history').mkdir(exist_ok=True)
+                (refs / 'history' / f"{result['file']['sha256'][:8]}-{old['confirmed_at'].replace(':', '')}.json").write_text(
+                    json.dumps(old, ensure_ascii=False, indent=1), encoding='utf-8')
+            stored.write_text(json.dumps(
                 {'confirmed_at': now, 'confirmed_by': signer, 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
             result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference}
             result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'compared_at': now,
