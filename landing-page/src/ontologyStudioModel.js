@@ -10,8 +10,10 @@ export const CHECK_LABELS = {
   references_resolve: "引用的对象都能在它所属的表里找到",
   sources_connected: "所有表通过共同的对象连成一片",
   quotes_verified: "模型提出的每一项都能在原文里找到引用",
-  no_isolated_concepts: "每个概念至少和一个别的概念有关系",
+  no_isolated_concepts: "抽出来的概念，每个都至少连着一条抽出来的关系",
 };
+
+export const COVERAGE_NOTE = "所有结论只覆盖这一次上传的文件；别的系统里有没有、别的表里记没记，这里看不到。";
 
 export const isDocument = (run) => run.file?.kind === "document";
 export const sourceLine = (run) => run.sources.map((s) => (s.paragraphs !== undefined ? `${s.name} ${s.paragraphs} 段 ${s.chars} 字` : `${s.name} ${s.rows} 行 ${s.fields} 列`)).join(" · ");
@@ -54,7 +56,7 @@ export function answerLines(item) {
   if (a.total !== undefined) return [a.share ? `共 ${a.total} 个，其中 ${a.matched} 个“${a.share.field}”为“${a.share.equals}”（${pct(a.matched, a.total)}）` : `共 ${a.total} 个`];
   const lines = a.groups.map(([value, n, all]) => (a.share ? `${value}：${n} / ${all}（${pct(n, all)}）` : `${value}：${n}`));
   if (a.total_groups > a.groups.length) lines.push(`另有 ${a.total_groups - a.groups.length} 组未列出`);
-  if (a.without_value) lines.push(`${a.without_value} 个没有这个值`);
+  if (a.without_value) lines.push(`${a.without_value} 个没有这个值${a.without_value_examples?.length ? `（例如 ${a.without_value_examples.join("、")}）` : ""}`);
   return lines;
 }
 
@@ -121,10 +123,15 @@ export function fileProblem(file) {
   return "";
 }
 
-export function previousLine(previous) {
-  const d = new Date(previous.started_at);
+/** An ISO time from the service, shown in this machine's time zone as "MM-DD HH:mm". */
+export function localTime(iso) {
+  const d = new Date(iso);
   const two = (n) => String(n).padStart(2, "0");
-  const when = `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+  return `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+export function previousLine(previous) {
+  const when = localTime(previous.started_at);
   const purpose = previous.purpose ? `，建模目的“${previous.purpose}”` : "";
   const counts = previous.counts ? `，${previous.counts.types} 个对象、${previous.counts.relations} 条关系` : "";
   return `上一次运行：${when}${purpose}${counts}`;
@@ -148,4 +155,22 @@ export function conflictGroups(fit) {
     groups.set(key, { type: c.type, field: c.field, count: (groups.get(key)?.count || 0) + 1 });
   }
   return [...groups.values()].sort((a, b) => b.count - a.count);
+}
+
+/** Why a fresh-looking result has nothing remembered against it: the system tells files apart by their content. */
+export function memoryNote(run) {
+  if (!run.saved_as) return "";
+  const remembered = run.confirmation || run.evaluation.reference?.confirmed || run.evaluation.acceptance;
+  return remembered ? "" : "这份文件还没有保存过确认或验收问题。系统按文件内容认文件：同一张表改了一行，就算另一份，上次的确认不会自动带过来。";
+}
+
+/** Keep the result in this browser. Returns "" when it is kept, or what to tell the user when it will not fit. */
+export function saveResult(storage, run) {
+  if (!storage) return "";   // no storage at all (a private window): the result lives in this tab, nothing to warn about
+  try {
+    storage.setItem(RESULT_KEY, JSON.stringify(run));
+    return "";
+  } catch {
+    return "这次结果太大，没能存进浏览器：刷新或关掉标签页就会丢。请先下载纪要和本体和评测。";
+  }
 }

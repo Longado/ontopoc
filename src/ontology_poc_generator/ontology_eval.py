@@ -123,12 +123,28 @@ def _source_groups(bundle: dict, graph: dict) -> list[list[str]]:
     return list(groups.values())
 
 
+NAME_LIKE = ('名称', '姓名', '名字', 'name')
+
+
+def _identity_risks(p: dict) -> list[dict]:
+    """Objects identified only by something people rewrite. Renaming then splits an object's history in two, and no
+    check can notice, so this is a screening hint for the modeller, not a verdict on the data."""
+    out = []
+    for t in p['object_types']:
+        fields = sorted({path for pop in t['populated_from'] for path in pop['identity'].values()})
+        if fields and all(any(word in path.lower() for word in NAME_LIKE) for path in fields):
+            out.append({'type': t['key'], 'fields': fields,
+                        'reason': '识别字段是名称一类会被改写的字段：客户改名、写法变化都会被当成另一个对象，而且任何检查都发现不了。看看数据里有没有编号一类的字段可以用。'})
+    return out
+
+
 def data_fit(ontology: dict, bundle: dict) -> dict:
     p = normalize_proposal(ontology)
     graph = build_graph(ontology, bundle)
     fit = {
         'fields': _fields(p, bundle),
         'identity_conflicts': _identity_conflicts(p, bundle, graph),
+        'identity_risks': _identity_risks(p),
         'identity_spellings': _identity_spellings(p, bundle),
         'suspected_duplicates': _suspected_duplicates(p, graph),
         'missing_across_sources': _missing_across_sources(p, graph),

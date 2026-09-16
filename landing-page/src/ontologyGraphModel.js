@@ -115,7 +115,9 @@ export function overviewTiles(run) {
     { key: "qa", label: "业务问答", value: doc ? "不适用于文档" : q ? `能回答 ${q.answered} / ${q.total}` : "还没出题", tone: !q || doc ? "neutral" : q.answered === q.total ? "ok" : "warn",
       hint: doc ? "文档没有数据行" : !q ? (run.saved_as ? "点开出一组问题" : "上传自己的文件后可以提问") : q.answered === q.total ? "都能用数据回答" : `${q.total - q.answered} 题答不了，点开看原因` },
     { key: "ref", label: "对照标准", value: ref ? `命中 ${ref.matched} / ${ref.reference}` : "还没比对", tone: !ref ? "neutral" : ref.matched === ref.reference ? "ok" : "warn",
-      hint: !ref ? "上传参考本体后可以比" : ref.matched === ref.reference ? "参考里的对象都对上了" : `参考里有 ${ref.reference - ref.matched} 个对象没对上` },
+      hint: !ref ? "逐项确认本体，或上传参考本体" : evaluation.reference.confirmed
+        ? `对照你确认过的本体：${ref.matched === ref.reference ? "都对上了" : `${ref.reference - ref.matched} 个对象没对上`}`
+        : ref.matched === ref.reference ? "参考里的对象都对上了" : `参考里有 ${ref.reference - ref.matched} 个对象没对上` },
     evaluation.stability ? stabilityTile(ontology, evaluation.stability)
       : { key: "stability", label: "稳定性", value: changes === null ? "第一次运行" : changes ? `和上次有 ${changes} 处不同` : "和上次一致", tone: changes === null ? "neutral" : changes ? "warn" : "ok",
         hint: changes === null ? "再上传同一文件可看差别" : changes ? "模型每次搭的会有出入" : "两次搭的一样" },

@@ -15,10 +15,12 @@ import uuid
 
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
-from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file
+from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
+from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
+from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
 from ontology_poc_generator.ontology_questions import ask_questions
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 
@@ -40,19 +42,33 @@ def gateway_from_env():
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs'):
     jobs, jobs_lock = {}, threading.Lock()
 
-    def parse_upload(payload):
-        if not isinstance(payload.get('content_base64'), str):
+    def decode_part(part):
+        if not isinstance(part.get('content_base64'), str):
             raise SourceFileError('请求缺少 content_base64（文件内容）')
         try:
-            data = base64.b64decode(payload['content_base64'], validate=True)
+            data = base64.b64decode(part['content_base64'], validate=True)
         except (binascii.Error, ValueError):
             raise SourceFileError('文件内容不是有效的 base64') from None
-        filename = str(payload.get('filename') or '')
+        filename = str(part.get('filename') or '')
         suffix = Path(filename).suffix.lower()
         if suffix not in DOCUMENT_SUFFIXES + TABLE_SUFFIXES:
             raise SourceFileError(f'只支持数据表（{" / ".join(TABLE_SUFFIXES)}）或文档（{" / ".join(DOCUMENT_SUFFIXES)}），不支持 {suffix or "无扩展名"} 文件')
-        is_document = suffix in DOCUMENT_SUFFIXES
-        return (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose')), is_document
+        return filename, data, suffix in DOCUMENT_SUFFIXES
+
+    def parse_upload(payload):
+        files = payload.get('files')
+        if not isinstance(files, list):
+            filename, data, is_document = decode_part(payload)
+            return (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose')), is_document
+        if not files:
+            raise SourceFileError('没有选择文件')
+        parts = []
+        for part in files:
+            filename, data, is_document = decode_part(part if isinstance(part, dict) else {})
+            if is_document:
+                raise SourceFileError(f'{Path(filename).name}：一次只能传数据表，或者单独传一份文档，不能混在一起')
+            parts.append((filename, data))
+        return load_table_files(parts, payload.get('purpose')), False
 
     def previous_run(sha256):
         """The latest verified earlier run of the same file, so a rerun shows what changed."""
@@ -98,6 +114,20 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             result['previous'] = {'saved_as': previous['saved_as'], 'started_at': previous['started_at'], 'purpose': previous.get('purpose'),
                                   'counts': {'types': len(previous['ontology']['object_types']), 'relations': len(previous['ontology']['relations'])},
                                   'diff': compare_ontologies(previous['ontology'], result['ontology'])}
+        confirmed = output_dir / 'references' / f"{bundle['file']['sha256']}.json"
+        if confirmed.exists() and result['ontology']['status'] == 'auto_built_verified':
+            # a person confirmed an earlier run of this file: compare against that judgement without being asked
+            ref = json.loads(confirmed.read_text(encoding='utf-8'))
+            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': ref['confirmed_at'], 'confirmed_by': ref.get('confirmed_by'),
+                                                 'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                                                 'diff': compare_ontologies(parse_reference(ref['reference']), result['ontology']),
+                                                 'suggested': prefill_from_reference(result['ontology'], ref['reference'])}
+        accepted = output_dir / 'acceptance' / f"{bundle['file']['sha256']}.json"
+        if accepted.exists() and result['ontology']['status'] == 'auto_built_verified' and result['file'].get('kind') != 'document':
+            # the questions a person fixed for this file: the same queries, so two runs can be judged on the same thing
+            saved = json.loads(accepted.read_text(encoding='utf-8'))
+            result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, saved['items'])
+            accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
         result['saved_as'] = name
         (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
         # the uploaded rows stay on this machine so later questions can be answered from them
@@ -171,6 +201,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/ontology/preview':
                 self.preview()
+                return
+            if self.path == '/api/ontology/confirm':
+                self.confirm()
+                return
+            if self.path == '/api/ontology/acceptance':
+                self.acceptance()
                 return
             if self.path != '/api/ontology/build':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
@@ -267,6 +303,73 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 'name': str(payload.get('reference_name') or '参考本体')[:120],
                 'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 'diff': compare_ontologies(reference, result['ontology'])}
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
+        def acceptance(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                result_path = self.load_run(payload)
+                if not result_path.exists():
+                    self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                    return
+                result = json.loads(result_path.read_text(encoding='utf-8'))
+                bundle_path = output_dir / result['saved_as'].replace('.json', '.bundle.json')
+                if not bundle_path.exists():
+                    self.reply(404, {'error': '找不到这次上传的数据，请重新上传文件'})
+                    return
+                items = parse_acceptance(payload.get('items')) if payload.get('items') else []
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            stored = output_dir / 'acceptance' / f"{result['file']['sha256']}.json"
+            if not items:   # the last question was removed: this file has no fixed questions again
+                result['evaluation'].pop('acceptance', None)
+                stored.unlink(missing_ok=True)
+            else:
+                bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+                result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, items)
+                saved = {'saved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'file': result['file'],
+                         'purpose': result.get('purpose'), 'items': result['evaluation']['acceptance']['items']}
+                stored.parent.mkdir(parents=True, exist_ok=True)
+                stored.write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
+        def confirm(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                result_path = self.load_run(payload)
+                if not result_path.exists():
+                    self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                    return
+                result = json.loads(result_path.read_text(encoding='utf-8'))
+                reference = confirmed_reference(result['ontology'], payload.get('decisions'))
+                signer = payload.get('confirmed_by')
+                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
+                    raise ValueError('确认人最多写 40 个字')
+                signer = (signer or '').strip() or None
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            now = datetime.now(timezone.utc).isoformat(timespec='seconds')
+            refs = output_dir / 'references'
+            refs.mkdir(parents=True, exist_ok=True)
+            stored = refs / f"{result['file']['sha256']}.json"
+            if stored.exists():   # a changed judgement replaces the old one; keep the old one so it can still be read
+                old = json.loads(stored.read_text(encoding='utf-8'))
+                (refs / 'history').mkdir(exist_ok=True)
+                (refs / 'history' / f"{result['file']['sha256'][:8]}-{old['confirmed_at'].replace(':', '')}.json").write_text(
+                    json.dumps(old, ensure_ascii=False, indent=1), encoding='utf-8')
+            stored.write_text(json.dumps(
+                {'confirmed_at': now, 'confirmed_by': signer, 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
+            result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference}
+            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'compared_at': now,
+                                                 'diff': compare_ontologies(parse_reference(reference), result['ontology'])}
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 

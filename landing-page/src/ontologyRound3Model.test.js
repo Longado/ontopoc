@@ -36,6 +36,6 @@ test("each tile says in words whether its number is good", () => {
   const fresh = hints(run({ data_fit: { checks: [{ passed: true }] } }));
   assert.equal(fresh.fit, "全部通过");
   assert.equal(fresh.qa, "上传自己的文件后可以提问");
-  assert.equal(fresh.ref, "上传参考本体后可以比");
+  assert.equal(fresh.ref, "逐项确认本体，或上传参考本体");
   assert.equal(fresh.stability, "再上传同一文件可看差别");
 });

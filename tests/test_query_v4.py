@@ -10,7 +10,7 @@ class GroupByManyTests(unittest.TestCase):
     def test_each_dimension_walks_its_own_relations_and_groups_combine(self):
         result = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'group_by': [BY_CUSTOMER, {'via': [], 'field': '订单.金额'}]})
         self.assertEqual(result['status'], 'answered')
-        self.assertEqual(result['answer'], {'groups': [['乙 · 50', 1], ['甲 · 100', 1]], 'total_groups': 2, 'without_value': 1})
+        self.assertEqual(result['answer'], {'groups': [['乙 · 50', 1], ['甲 · 100', 1]], 'total_groups': 2, 'without_value': 1, 'without_value_examples': ['O3']})
         self.assertEqual(result['path'], '订单：按“名称”（经 订单 → 客户）和“金额”分组数订单')
 
     def test_a_dimension_on_a_field_the_type_lacks_is_a_gap(self):

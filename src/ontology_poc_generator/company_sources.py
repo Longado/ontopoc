@@ -83,25 +83,66 @@ def _read_xlsx(data: bytes) -> dict[str, list[dict]]:
         book.close()
 
 
-def load_table_file(filename: str, data: bytes, purpose: str | None = None) -> dict:
+def _sheets(filename: str, data: bytes) -> dict:
+    """One uploaded table file to its sheets; a CSV is one sheet named after the file."""
     suffix = PurePath(filename).suffix.lower()
     if suffix not in TABLE_SUFFIXES:
         raise SourceFileError(f'数据表只支持 {" / ".join(TABLE_SUFFIXES)}，不支持 {suffix or "无扩展名"} 文件')
     if not data:
         raise SourceFileError('文件是空的')
-    if len(data) > MAX_BYTES:
-        raise SourceFileError(f'文件太大（{len(data) // 1024 // 1024} MB），上限 {MAX_BYTES // 1024 // 1024} MB')
     if suffix == '.csv':
-        sheets = {PurePath(filename).stem: _records(list(csv.reader(io.StringIO(_decode(data)))))}
-    else:
-        sheets = _read_xlsx(data)
-    sources = {name: {'records': records, 'requests': [], **({'skipped_rows': skipped} if skipped else {})}
-               for name, (records, skipped) in sheets.items() if records}
+        return {PurePath(filename).stem: _records(list(csv.reader(io.StringIO(_decode(data)))))}
+    return _read_xlsx(data)
+
+
+def _bundle(sources: dict, file: dict, purpose: str | None) -> dict:
     if not sources:
         raise SourceFileError('文件里没有数据行：第一行应是表头，下面是数据')
     return {
         'schema': 'company_source_bundle.v1',
         'decision': (purpose or '').strip() or DEFAULT_PURPOSE,
-        'file': {'name': PurePath(filename).name, 'kind': 'table', 'sha256': hashlib.sha256(data).hexdigest()},
+        'file': file,
         'sources': sources,
     }
+
+
+def load_table_file(filename: str, data: bytes, purpose: str | None = None) -> dict:
+    if len(data) > MAX_BYTES:
+        raise SourceFileError(f'文件太大（{len(data) // 1024 // 1024} MB），上限 {MAX_BYTES // 1024 // 1024} MB')
+    sources = {name: {'records': records, 'requests': [], **({'skipped_rows': skipped} if skipped else {})}
+               for name, (records, skipped) in _sheets(filename, data).items() if records}
+    return _bundle(sources, {'name': PurePath(filename).name, 'kind': 'table', 'sha256': hashlib.sha256(data).hexdigest()}, purpose)
+
+
+def load_table_files(files: list[tuple[str, bytes]], purpose: str | None = None) -> dict:
+    """Several tables uploaded together, read as one set so the model can see how they relate. A table keeps its own
+    name; only a real collision inside this batch gets the file's name added, because that name is what later runs
+    match a confirmed ontology by."""
+    if not files:
+        raise SourceFileError('没有选择文件')
+    if len(files) == 1:
+        return load_table_file(files[0][0], files[0][1], purpose)
+    total = sum(len(data) for _, data in files)
+    if total > MAX_BYTES:
+        raise SourceFileError(f'这些文件一共 {total // 1024 // 1024} MB，上限 {MAX_BYTES // 1024 // 1024} MB，请分批上传')
+    sources: dict = {}
+    for filename, data in files:
+        try:
+            sheets = _sheets(filename, data)
+        except SourceFileError as exc:
+            raise SourceFileError(f'{PurePath(filename).name}：{exc}') from None
+        for name, (records, skipped) in sheets.items():
+            if not records:
+                continue
+            key = name
+            if key in sources:
+                stem = PurePath(filename).stem
+                named = f'{name}（{stem}）'
+                key = named if stem != name and named not in sources else next(
+                    f'{name}（{n}）' for n in range(2, 99) if f'{name}（{n}）' not in sources)
+            sources[key] = {'records': records, 'requests': [], **({'skipped_rows': skipped} if skipped else {})}
+    digests = sorted(hashlib.sha256(data).hexdigest() for _, data in files)
+    file = {'name': '、'.join(PurePath(f).name for f, _ in files)[:200], 'kind': 'table',
+            'sha256': hashlib.sha256(''.join(digests).encode()).hexdigest(),
+            'files': [{'name': PurePath(f).name, 'sha256': hashlib.sha256(d).hexdigest()} for f, d in files]}
+    return _bundle(sources, file, purpose)
