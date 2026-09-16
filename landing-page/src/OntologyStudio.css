@@ -133,3 +133,4 @@ small.os-tone-warn { color: var(--amber); }
 .os-others { display: grid; gap: 6px; }
 .os-acceptance .os-question-head .pr-muted { font-size: 12px; }
 .os-accept { justify-self: start; padding: 0; font-weight: 700; }
+.os-add-file { cursor: pointer; }

@@ -1,4 +1,5 @@
 // A person's item-by-item judgement of an ontology. Every change returns new decisions; the old ones are never edited.
+import { savedAcceptance } from "./ontologyAcceptanceModel.js";
 
 export function decisionsOf(run) {
   const saved = run.confirmation?.decisions || run.evaluation?.reference?.suggested;   // a rerun starts from the last confirmation
@@ -69,5 +70,7 @@ export function referenceDownload(run) {
   const conflicts = run.evaluation.data_fit?.identity_conflicts || [];
   const data_check = run.ontology.object_types.map((t) => ({ t, n: new Set(conflicts.filter((x) => x.type === t.key).map((x) => x.identity)).size }))
     .filter(({ n }) => n).map(({ t, n }) => ({ type: t.key, label: t.label || t.key, note: `识别字段在数据里不唯一：${n} 个编号在不同行里信息不一致` }));
-  return { confirmed: { at: c.confirmed_at, by: c.confirmed_by || null, file: run.file.name, sha256: run.file.sha256 }, ...c.reference, data_check };
+  return { schema: "ontopoc_reference.v1", purpose: run.purpose,
+    confirmed: { at: c.confirmed_at, by: c.confirmed_by || null, file: run.file.name, sha256: run.file.sha256 },
+    ...c.reference, acceptance: savedAcceptance(run), data_check };
 }
