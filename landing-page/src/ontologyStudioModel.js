@@ -56,7 +56,7 @@ export function answerLines(item) {
   if (a.total !== undefined) return [a.share ? `共 ${a.total} 个，其中 ${a.matched} 个“${a.share.field}”为“${a.share.equals}”（${pct(a.matched, a.total)}）` : `共 ${a.total} 个`];
   const lines = a.groups.map(([value, n, all]) => (a.share ? `${value}：${n} / ${all}（${pct(n, all)}）` : `${value}：${n}`));
   if (a.total_groups > a.groups.length) lines.push(`另有 ${a.total_groups - a.groups.length} 组未列出`);
-  if (a.without_value) lines.push(`${a.without_value} 个没有这个值`);
+  if (a.without_value) lines.push(`${a.without_value} 个没有这个值${a.without_value_examples?.length ? `（例如 ${a.without_value_examples.join("、")}）` : ""}`);
   return lines;
 }
 

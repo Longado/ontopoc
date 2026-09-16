@@ -51,10 +51,16 @@ export function summaryMarkdown(run) {
   }
 
   out.push("## 谁确认过", "");
-  out.push(confirmed
-    ? `${confirmed.confirmed_by ? `${confirmed.confirmed_by}，` : ""}${localTime(confirmed.confirmed_at)} 逐项确认：判对 ${Object.values(confirmed.decisions.types).filter((d) => d.verdict === "ok").length} 个对象`
-      + `${confirmed.decisions.added.length ? `，补了 ${confirmed.decisions.added.join("、")}` : ""}。`
-    : "还没有人逐项确认，以上都是模型的草稿，不能当结论。", "");
+  if (!confirmed) {
+    out.push("还没有人逐项确认，以上都是模型的草稿，不能当结论。", "");
+  } else {
+    const verdicts = (kind) => Object.values(confirmed.decisions[kind]).filter((d) => d.verdict === "ok").length;
+    const wrong = [...Object.values(confirmed.decisions.types), ...Object.values(confirmed.decisions.relations)].filter((d) => d.verdict === "wrong").length;
+    out.push(`${confirmed.confirmed_by ? `${confirmed.confirmed_by}，` : ""}${localTime(confirmed.confirmed_at)} 逐项确认：判对 ${verdicts("types")} 个对象、${verdicts("relations")} 条关系`
+      + `${wrong ? `，判错 ${wrong} 项` : ""}${confirmed.decisions.added.length ? `，补了 ${confirmed.decisions.added.join("、")}` : ""}。`, "");
+    const renames = Object.entries(confirmed.decisions.types).filter(([, d]) => d.label).map(([key, d]) => `- 改名：${name(ontology, key)} 改成“${d.label}”`);
+    if (renames.length) out.push("确认时改过的名字（纪要正文用的是模型给的名字）：", "", ...renames, "");
+  }
 
   if (ontology.data_gaps.length) {
     out.push("## 模型指出的数据缺口", "");

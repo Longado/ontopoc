@@ -175,13 +175,16 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             return {'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'matched': sum(has(s, share) for s in starts), 'share': shown_share}}
         found = {n for s in starts for n in reach(s, query.get('via') or [])} if query.get('via') else set(starts)
         return {'status': 'answered' if found else 'no_data', 'answer': {'total': len(found)}, 'path': path}
-    counts, hits, without = {}, {}, 0
+    counts, hits, without, left_out = {}, {}, 0, []
     for s in starts:
         combos = [[]]
         for d in dims:
             found = sorted({v for n in reach(s, d['via']) for v in values(n, d['field'])})
             combos = [c + [v] for c in combos for v in found]
-        without += not combos
+        if not combos:
+            without += 1
+            if len(left_out) < 3:   # naming a few beats a bare count when someone asks which ones fell out
+                left_out.append('、'.join(str(v) for _, v in s[1]))
         for combo in combos:
             key = ' · '.join(combo)
             counts[key] = counts.get(key, 0) + 1
@@ -193,7 +196,8 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         ranked = sorted(counts, key=lambda k: (-counts[k], k))
         groups = [[k, counts[k]] for k in ranked[:MAX_GROUPS]]   # the page shows the first screen and can open the rest
     return {'status': 'answered' if ranked else 'no_data', 'path': path,
-            'answer': {'groups': groups, 'total_groups': len(ranked), 'without_value': without, **({'share': shown_share} if share else {})}}
+            'answer': {'groups': groups, 'total_groups': len(ranked), 'without_value': without,
+                       **({'without_value_examples': left_out} if left_out else {}), **({'share': shown_share} if share else {})}}
 
 
 def _catalog(ontology: dict, bundle: dict) -> dict:
