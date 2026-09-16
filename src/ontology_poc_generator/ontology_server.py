@@ -15,7 +15,7 @@ import uuid
 
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
-from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file
+from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
@@ -42,19 +42,33 @@ def gateway_from_env():
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs'):
     jobs, jobs_lock = {}, threading.Lock()
 
-    def parse_upload(payload):
-        if not isinstance(payload.get('content_base64'), str):
+    def decode_part(part):
+        if not isinstance(part.get('content_base64'), str):
             raise SourceFileError('请求缺少 content_base64（文件内容）')
         try:
-            data = base64.b64decode(payload['content_base64'], validate=True)
+            data = base64.b64decode(part['content_base64'], validate=True)
         except (binascii.Error, ValueError):
             raise SourceFileError('文件内容不是有效的 base64') from None
-        filename = str(payload.get('filename') or '')
+        filename = str(part.get('filename') or '')
         suffix = Path(filename).suffix.lower()
         if suffix not in DOCUMENT_SUFFIXES + TABLE_SUFFIXES:
             raise SourceFileError(f'只支持数据表（{" / ".join(TABLE_SUFFIXES)}）或文档（{" / ".join(DOCUMENT_SUFFIXES)}），不支持 {suffix or "无扩展名"} 文件')
-        is_document = suffix in DOCUMENT_SUFFIXES
-        return (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose')), is_document
+        return filename, data, suffix in DOCUMENT_SUFFIXES
+
+    def parse_upload(payload):
+        files = payload.get('files')
+        if not isinstance(files, list):
+            filename, data, is_document = decode_part(payload)
+            return (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose')), is_document
+        if not files:
+            raise SourceFileError('没有选择文件')
+        parts = []
+        for part in files:
+            filename, data, is_document = decode_part(part if isinstance(part, dict) else {})
+            if is_document:
+                raise SourceFileError(f'{Path(filename).name}：一次只能传数据表，或者单独传一份文档，不能混在一起')
+            parts.append((filename, data))
+        return load_table_files(parts, payload.get('purpose')), False
 
     def previous_run(sha256):
         """The latest verified earlier run of the same file, so a rerun shows what changed."""
