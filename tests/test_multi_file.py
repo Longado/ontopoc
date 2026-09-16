@@ -30,8 +30,8 @@ class MultiFileTests(unittest.TestCase):
     def test_tables_of_the_same_name_from_two_files_are_told_apart_by_their_file(self):
         bundle = load_table_files([('本月.csv', ORDERS), ('上月.csv', OTHER_ORDERS)], None)
         self.assertEqual(sorted(bundle['sources']), ['上月', '本月'])   # each CSV is named after its own file
-        two = load_table_files([('a/订单.csv', ORDERS), ('b/订单.csv', OTHER_ORDERS)], None)
-        self.assertEqual(sorted(two['sources']), ['订单（b）', '订单'])
+        same = load_table_files([('订单.csv', ORDERS), ('订单.csv', OTHER_ORDERS)], None)
+        self.assertEqual(sorted(same['sources']), ['订单', '订单（2）'])   # same name twice: nothing to tell them apart but the order
 
     def test_a_file_that_cannot_be_read_names_itself_and_stops_the_batch(self):
         with self.assertRaisesRegex(SourceFileError, '坏的.csv'):
