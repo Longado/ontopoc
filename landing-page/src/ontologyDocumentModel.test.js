@@ -5,7 +5,7 @@ import { CHECK_LABELS, isDocument, sourceLine } from "./ontologyStudioModel.js";
 
 test("document checks read as plain sentences", () => {
   assert.equal(CHECK_LABELS.quotes_verified, "模型提出的每一项都能在原文里找到引用");
-  assert.equal(CHECK_LABELS.no_isolated_concepts, "每个概念至少和一个别的概念有关系");
+  assert.equal(CHECK_LABELS.no_isolated_concepts, "抽出来的概念，每个都至少连着一条抽出来的关系");
 });
 
 test("a document run is told apart from a table run and described by paragraphs", () => {
