@@ -8,6 +8,7 @@ from ontology_poc_generator.ontology_compare import match_types
 VERDICTS = ('ok', 'wrong')
 MAX_LABEL = 40
 MAX_ADDED = 30
+MAX_VARIANT_GROUPS = 50
 
 
 class ConfirmError(ValueError):
@@ -32,6 +33,27 @@ def _verdicts(given, known: dict, what: str) -> dict:
         if not isinstance(d, dict) or d.get('verdict') not in VERDICTS:
             raise ConfirmError(f'{what} {key} 的 verdict 只能是 ok 或 wrong')
         out[key] = d
+    return out
+
+
+def _variants(given, types: dict, kept_keys: set) -> list:
+    """Groups of spellings a person accepted as one and the same thing. The candidates were already checked against the
+    data before they were shown (`name_variants.variant_candidates`); here only the person's own judgement is checked."""
+    if given is None:
+        return []
+    if not isinstance(given, list) or len(given) > MAX_VARIANT_GROUPS:
+        raise ConfirmError(f'写法对应的格式不对：最多 {MAX_VARIANT_GROUPS} 组')
+    out = []
+    for i, g in enumerate(given):
+        key = g.get('type') if isinstance(g, dict) else None
+        if key not in types:
+            raise ConfirmError(f'本体里没有这个对象：{key}')
+        if key not in kept_keys:
+            raise ConfirmError(f'第 {i + 1} 组写法属于{types[key].get("label") or key}，但这个对象没有判“对”')
+        values = g.get('values')
+        if not isinstance(values, list) or len({v for v in values if isinstance(v, str) and v.strip()}) < 2:
+            raise ConfirmError(f'第 {i + 1} 组写法要给同一个对象的两个或更多写法')
+        out.append({'type': key, 'values': sorted({v.strip() for v in values})})
     return out
 
 
@@ -70,7 +92,8 @@ def confirmed_reference(ontology: dict, decisions: dict) -> dict:
         kept.append({'key': f'added_{i + 1}', 'label': name, 'populated_from': []})
     if not kept:
         raise ConfirmError('至少要判一个对象"对"，或补充一个对象')
-    return {'object_types': kept, 'relations': links}
+    variants = _variants(decisions.get('variants'), types, kept_keys)
+    return {'object_types': kept, 'relations': links, **({'name_variants': variants} if variants else {})}
 
 
 def prefill_from_reference(ontology: dict, reference: dict) -> dict:
@@ -86,4 +109,5 @@ def prefill_from_reference(ontology: dict, reference: dict) -> dict:
     confirmed_ends = [{mapping.get(r['from']), mapping.get(r['to'])} for r in reference['relations']]
     relations = {r['key']: {'verdict': 'ok'} for r in ontology['relations'] if {r['from'], r['to']} in confirmed_ends}
     added = [t['label'] for t in ref_types if t['key'].startswith('added_') and t['key'] not in mapping]
-    return {'types': types, 'relations': relations, 'added': added}
+    variants = [{'type': mapping[g['type']], 'values': g['values']} for g in reference.get('name_variants') or [] if g['type'] in mapping]
+    return {'types': types, 'relations': relations, 'added': added, 'variants': variants}
