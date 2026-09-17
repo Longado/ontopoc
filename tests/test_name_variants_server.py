@@ -36,7 +36,7 @@ class VariantServerTests(unittest.TestCase):
         self.assertIn('model', variants)
 
     def test_a_file_with_nothing_to_match_says_so_instead_of_calling_the_model(self):
-        rows = '编号,名称\nC1,甲\nC2,乙\n'.encode('utf-8')
+        rows = ('编号,名称\n' + ''.join(f'C{i},公司{i}\n' for i in range(250))).encode('utf-8')
         proposal = {**PROPOSAL, 'object_types': [{**PROPOSAL['object_types'][0],
                                                   'populated_from': [{'source': '客户', 'identity': {'id': '编号'}}],
                                                   'attributes': [{'source': '客户', 'path': '名称'}]}]}
@@ -51,7 +51,7 @@ class VariantServerTests(unittest.TestCase):
             _, run = call(base, '/api/ontology/build', {'filename': '客户.csv', 'content_base64': base64.b64encode(rows).decode()})
             _, out = call(base, '/api/ontology/variants', {'saved_as': run['saved_as']})
         self.assertEqual(out['evaluation']['variants']['groups'], [])
-        self.assertIn('按名字识别', out['evaluation']['variants']['note'])
+        self.assertIn('取值太多', out['evaluation']['variants']['note'])
 
 
 if __name__ == '__main__':

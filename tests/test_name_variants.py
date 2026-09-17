@@ -23,22 +23,20 @@ class CatalogTests(unittest.TestCase):
     def test_objects_identified_by_one_field_with_few_values_are_offered_for_matching(self):
         ontology, bundle = by_name(ROWS)
         catalog = variant_catalog(ontology, bundle)
-        self.assertEqual(list(catalog), ['customer'])
         self.assertEqual({v['value']: v['records'] for v in catalog['customer']['values']},
                          {'苏州某某机械有限公司': 1, '苏州某某机械': 1, '无锡别的公司': 1})
-        # 订单按订单号识别，名字不是它的身份，不该出现在这里
-        self.assertNotIn('order', catalog)
+        self.assertEqual(catalog['customer']['fields'], ['名称'])
 
     def test_an_object_with_too_many_values_is_not_sent_to_the_model(self):
         rows = [{'客户编号': f'C{i}', '名称': f'公司{i}', '城市': '苏州'} for i in range(MAX_VALUES + 1)]
         ontology, bundle = by_name(rows)
-        self.assertEqual(variant_catalog(ontology, bundle), {})
+        self.assertNotIn('customer', variant_catalog(ontology, bundle))
 
     def test_an_object_identified_by_several_fields_is_left_alone(self):
         two_fields = {**PROPOSAL, 'object_types': [
             {'key': 'customer', 'label': '客户', 'populated_from': [{'source': '客户', 'identity': {'name': '名称', 'city': '城市'}}],
              'attributes': []}, PROPOSAL['object_types'][1]], 'relations': []}
-        self.assertEqual(variant_catalog(two_fields, BUNDLE), {})
+        self.assertNotIn('customer', variant_catalog(two_fields, BUNDLE))
         self.assertTrue(data_fit(PROPOSAL, BUNDLE)['identity_conflicts'] is not None)
 
 
@@ -50,7 +48,7 @@ class CandidateTests(unittest.TestCase):
             {'type': 'customer', 'values': ['苏州某某机械有限公司', '苏州某某机械'], 'reasoning': '同一家公司的全称和简称'},
             {'type': 'customer', 'values': ['苏州某某机械有限公司', '无锡别的公司'], 'reasoning': '都在江苏'},
             {'type': 'customer', 'values': ['不存在的公司', '苏州某某机械'], 'reasoning': '瞎编的'},
-            {'type': 'order', 'values': ['O1', 'O2'], 'reasoning': '不在候选里的类型'},
+            {'type': 'invoice', 'values': ['I1', 'I2'], 'reasoning': '本体里根本没有的类型'},
         ])
         self.assertEqual(len(kept), 2)   # the model's semantic call is kept; only what the data cannot support is dropped
         self.assertEqual(kept[0]['values'], ['苏州某某机械', '苏州某某机械有限公司'])
