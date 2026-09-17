@@ -18,6 +18,7 @@ from ontology_poc_generator.company_ontology import build_and_evaluate, build_co
 from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
+from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
@@ -208,6 +209,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/acceptance':
                 self.acceptance()
                 return
+            if self.path == '/api/ontology/variants':
+                self.variants()
+                return
             if self.path != '/api/ontology/build':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
                 return
@@ -303,6 +307,35 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 'name': str(payload.get('reference_name') or '参考本体')[:120],
                 'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 'diff': compare_ontologies(reference, result['ontology'])}
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
+        def variants(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                result_path = self.load_run(payload)
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            bundle_path = output_dir / result_path.name.replace('.json', '.bundle.json')
+            if not result_path.exists() or not bundle_path.exists():
+                self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                return
+            if gateway is None:
+                self.reply(503, {'error': NO_KEY})
+                return
+            result = json.loads(result_path.read_text(encoding='utf-8'))
+            if result['ontology']['status'] != 'auto_built_verified':
+                self.reply(400, {'error': '本体没有通过结构核验，先看退回的原因'})
+                return
+            bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+            found = propose_name_variants(result['ontology'], bundle, gateway)
+            if found['error'] and found['error'].startswith('模型请求失败'):
+                self.reply(502, {'error': found['error']})
+                return
+            result['evaluation']['variants'] = found
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
