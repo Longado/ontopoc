@@ -120,6 +120,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             # a person confirmed an earlier run of this file: compare against that judgement without being asked
             ref = json.loads(confirmed.read_text(encoding='utf-8'))
             result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': ref['confirmed_at'], 'confirmed_by': ref.get('confirmed_by'),
+                                                 'purpose': ref.get('purpose'),   # what the judgement was made for; this upload may be for something else
                                                  'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                                  'diff': compare_ontologies(parse_reference(ref['reference']), result['ontology']),
                                                  'suggested': prefill_from_reference(result['ontology'], ref['reference'])}
@@ -399,9 +400,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 (refs / 'history' / f"{result['file']['sha256'][:8]}-{old['confirmed_at'].replace(':', '')}.json").write_text(
                     json.dumps(old, ensure_ascii=False, indent=1), encoding='utf-8')
             stored.write_text(json.dumps(
-                {'confirmed_at': now, 'confirmed_by': signer, 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
+                {'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
             result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference}
-            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'compared_at': now,
+            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'compared_at': now,
                                                  'diff': compare_ontologies(parse_reference(reference), result['ontology'])}
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
