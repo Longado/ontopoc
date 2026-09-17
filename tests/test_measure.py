@@ -36,6 +36,8 @@ class MeasureTests(unittest.TestCase):
         self.assertEqual(run_query(PROPOSAL, BUNDLE, SUM)['path'], '订单，把“金额”加起来')
         grouped = run_query(PROPOSAL, BUNDLE, {**SUM, 'group_by': [BY_CUSTOMER], 'measure': {'field': '订单.金额', 'op': 'average'}})
         self.assertEqual(grouped['path'], '订单 → 客户，按“名称”分组，算每组“金额”的平均')
+        total = run_query(PROPOSAL, BUNDLE, {**SUM, 'group_by': [BY_CUSTOMER]})
+        self.assertEqual(total['path'], '订单 → 客户，按“名称”分组，算每组“金额”的合计')
 
     def test_a_measure_on_a_field_the_start_type_lacks_is_a_gap(self):
         gap = run_query(PROPOSAL, BUNDLE, {**SUM, 'measure': {'field': '客户.城市', 'op': 'sum'}})
