@@ -189,7 +189,7 @@ function Variants({ run, variants, onShow }) {
     </li>)}</ul>}
     {note?.dropped.length > 0 && <details className="os-how"><summary>代码丢掉的 {note.dropped.length} 组</summary>
       <ul>{note.dropped.map((d) => <li key={d}>{d}</li>)}</ul></details>}
-    {accepted.length > 0 && <p className="pr-note">采纳的 {accepted.length} 组还没存下来：到“看本体”的逐项确认里保存确认，它们才会进你确认过的本体，下次上传同一份文件自动带回来。</p>}
+    {accepted.length > 0 && <p className="pr-note">采纳的 {accepted.length} 组要到“看本体”的逐项确认里保存确认才算数：保存后它们进你确认过的本体，下次上传同一份文件自动带回来。</p>}
   </section>;
 }
 
