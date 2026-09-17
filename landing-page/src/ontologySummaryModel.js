@@ -43,8 +43,10 @@ export function summaryMarkdown(run) {
       if (item.note) out.push(`口径：${item.note}`, "");
       out.push(`结果：${ACCEPTANCE_LABELS[item.status] || item.status}${item.changed === null ? "" : item.changed ? "，和上次不一样" : "，和上次一致"}`, "");
       const lines = answerLines(item);
-      out.push(...lines.slice(0, SHOWN).map((line) => `- ${line}`));
-      if (lines.length > SHOWN) out.push(`- 另有 ${lines.length - SHOWN} 组，完整结果见“本体和评测”文件`);
+      const listed = item.answer?.groups?.length || 0;   // group lines come first; what follows says what the figures leave out
+      out.push(...lines.slice(0, Math.min(listed, SHOWN)).map((line) => `- ${line}`));
+      if (listed > SHOWN) out.push(`- 另有 ${listed - SHOWN} 组，完整结果见“本体和评测”文件`);
+      out.push(...lines.slice(listed).map((line) => `- ${line}`));   // never cut: how many values were read, skipped, or unreadable
       out.push("");
       if (item.path) out.push(`怎么算的：${item.path}`, "");
     }
