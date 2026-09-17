@@ -173,9 +173,9 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     else:
         path = ' → '.join([head, *(label(k) for k in (dims[0]['steps'] if dims else top[1]))]) + (f'，按“{name(dims[0]["field"])}”分组' if dims else '')
     shown_share = share and {'field': name(share['field']), 'equals': share['equals']}
-    op_text = measure and ('把“%s”加起来' % name(measure['field']) if measure['op'] == 'sum' else '算“%s”的平均' % name(measure['field']))
     if measure:
-        path += f'，算每组{op_text[1:]}' if dims else f'，{op_text}'
+        what, field = ('合计', name(measure['field'])) if measure['op'] == 'sum' else ('平均', name(measure['field']))
+        path += f'，算每组“{field}”的{what}' if dims else (f'，把“{field}”加起来' if measure['op'] == 'sum' else f'，算“{field}”的平均')
     elif share:
         path += f'，算“{shown_share["field"]}”为“{shown_share["equals"]}”的{label(start)}占比'
     elif dims:
