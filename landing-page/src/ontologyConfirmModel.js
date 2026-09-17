@@ -3,7 +3,8 @@ import { savedAcceptance } from "./ontologyAcceptanceModel.js";
 
 export function decisionsOf(run) {
   const saved = run.confirmation?.decisions || run.evaluation?.reference?.suggested;   // a rerun starts from the last confirmation
-  return saved ? { types: { ...saved.types }, relations: { ...saved.relations }, added: [...(saved.added || [])] } : { types: {}, relations: {}, added: [] };
+  return saved ? { types: { ...saved.types }, relations: { ...saved.relations }, added: [...(saved.added || [])], variants: [...(saved.variants || [])] }
+    : { types: {}, relations: {}, added: [], variants: [] };
 }
 
 const without = (map, key) => Object.fromEntries(Object.entries(map).filter(([k]) => k !== key));

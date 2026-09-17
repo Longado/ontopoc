@@ -9,6 +9,7 @@ import { summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
 import { ACCEPTANCE_LABELS, acceptanceSummary, canAccept, savedAcceptance } from "./ontologyAcceptanceModel.js";
 import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload, removeAdded, renameType, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
+import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
@@ -163,6 +164,32 @@ function Spellings({ fit, ontology, onShow }) {
     <p className="pr-muted">这些写法被当成同一个对象合并了，但源数据里写法不统一，建议在源系统里统一。</p>
     <ul className="pr-rows">{rows.map((x, i) => <li key={i}><b>{typeLabel(ontology, x.type)} {x.identity}</b><span>写法：{x.variants.map((v) => `“${v}”`).join("、")}</span><ShowOnGraph type={x.type} onShow={onShow} /></li>)}</ul>
     {toggle}
+  </section>;
+}
+
+function Variants({ run, variants, onShow }) {
+  const rows = variantRows(run, variants.decisions);
+  const note = variantNote(run);
+  const accepted = rows.filter((g) => g.accepted);
+  return <section className="pr-card" id="os-variants">
+    <div className="pr-card-head"><h2>同一个东西的两种写法</h2>{rows.length > 0 && <span className="pr-muted">候选 {rows.length} 组，采纳 {accepted.length} 组</span>}</div>
+    <p className="pr-muted">上面那项检查只认大小写和空格的差别。真正难办的是全称和简称：“DEPARTMENT OF FLEET AND FACILITY MANAGEMENT”和“DEPT OF FLEET MGMT”是同一个部门，代码看不出来，所以它们现在是两个对象。这一步把按名字识别的对象的全部取值交给模型，问哪些指同一个东西；模型给的每一组，代码都拿数据核对过，数据里没有的取值一律丢掉。采不采纳你说了算：采纳只是记下你的判断，不会改数据、也不会自动合并。</p>
+    <div className="os-go">
+      <button type="button" className="pr-primary" disabled={!variants.canFind || variants.busy} onClick={variants.onFind}>{variants.busy ? "找对应中…" : note ? "重新找一遍" : "找出可能的对应"}</button>
+      <span className="pr-muted">{variants.canFind ? "会调用一次模型，只发对象名字的取值和每个取值的记录数。" : run.saved_as ? "本机建模服务没有连上，暂时不能找。" : "这是示例结果，找对应要上传自己的文件。"}</span>
+    </div>
+    {variants.error && <p role="alert" className="pr-error">{variants.error}</p>}
+    {note && <p className="pr-muted">{note.line}</p>}
+    {rows.length > 0 && <ul className="pr-rows os-variants">{rows.map((g) => <li key={`${g.type}/${g.values.join("/")}`}>
+      <b>{g.label}：{g.values.map((v) => `“${v}”`).join(" ＝ ")}</b>
+      <span>{g.records ? `记录数 ${g.records.join(" / ")}` : "上次确认时采纳的"}{g.reasoning ? `｜模型：${g.reasoning}` : ""}</span>
+      {g.accepted && variants.decisions.types?.[g.type]?.verdict !== "ok" && <span className="os-tone-warn">保存确认前要先把{g.label}判“对”</span>}
+      <button type="button" className="pr-link" onClick={() => variants.onToggle(g)}>{g.accepted ? "已采纳，点一下撤回" : "采纳"}</button>
+      <ShowOnGraph type={g.type} onShow={onShow} />
+    </li>)}</ul>}
+    {note?.dropped.length > 0 && <details className="os-how"><summary>代码丢掉的 {note.dropped.length} 组</summary>
+      <ul>{note.dropped.map((d) => <li key={d}>{d}</li>)}</ul></details>}
+    {accepted.length > 0 && <p className="pr-note">采纳的 {accepted.length} 组还没存下来：到“看本体”的逐项确认里保存确认，它们才会进你确认过的本体，下次上传同一份文件自动带回来。</p>}
   </section>;
 }
 
@@ -410,7 +437,7 @@ function Checks({ fit, title, note }) {
   </section>;
 }
 
-function DataFit({ run, onShow }) {
+function DataFit({ run, onShow, variants }) {
   const fit = run.evaluation.data_fit;
   const { ontology } = run;
   if (!fit) return <section className="pr-card"><p className="pr-error">本体没有通过核验，无法评测。先看"看本体"里被退回的原因。</p></section>;
@@ -418,6 +445,7 @@ function DataFit({ run, onShow }) {
     <Checks fit={fit} title="数据体检：本体和数据对得上吗" note="全部由代码拿上传的每一行计算，不经过模型。每个问题都可以点“在图上看”，回到关系图里对应的对象。" />
     {fit.identity_conflicts.length > 0 && <Conflicts fit={fit} ontology={ontology} onShow={onShow} />}
     {fit.identity_spellings?.length > 0 && <Spellings fit={fit} ontology={ontology} onShow={onShow} />}
+    {variants?.decisions && <Variants run={run} variants={variants} onShow={onShow} />}
     {fit.identity_risks?.length > 0 && <section className="pr-card">
       <h2>识别字段可能不稳（{fit.identity_risks.length}）</h2>
       <p className="pr-muted">这是提示，不是不通过：代码只看了识别字段的名字像不像"名称"一类会被改写的字段。</p>
@@ -458,14 +486,14 @@ function DocumentFitView({ run, onShow }) {
 
 const EVAL_VIEWS = [["fit", "数据体检"], ["qa", "业务问答"], ["ref", "对照标准"]];
 
-function EvaluationTab({ run, evalView, setEvalView, questions, onShow, onPath }) {
+function EvaluationTab({ run, evalView, setEvalView, questions, variants, onShow, onPath }) {
   const doc = isDocument(run);
   const [adding, setAdding] = useState(null);   // the answered question being fixed, with the note being written
   const tiles = Object.fromEntries(overviewTiles(run).map((t) => [t.key, t]));
   return <>
     <div className="os-segments" role="tablist" aria-label="评测">{EVAL_VIEWS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={evalView === key} onClick={() => setEvalView(key)}>
       <b>{key === "fit" && doc ? "文档检查" : label}</b><small className={`os-tone-${tiles[key].tone}`}>{tiles[key].value}</small></button>)}</div>
-    {evalView === "fit" && (doc ? <DocumentFitView run={run} onShow={onShow} /> : <DataFit run={run} onShow={onShow} />)}
+    {evalView === "fit" && (doc ? <DocumentFitView run={run} onShow={onShow} /> : <DataFit run={run} onShow={onShow} variants={variants} />)}
     {evalView === "qa" && (doc ? <section className="pr-card"><h2>业务问答</h2><p className="pr-muted">文档没有数据行可以查询，业务问答只对数据表可用。把同一业务的数据表也上传，就能用数据回答问题。</p></section>
       : <>
         <AcceptanceSection run={run} acceptance={run.evaluation.acceptance} onSave={questions.onAccept} onPath={onPath}
@@ -487,6 +515,8 @@ export function OntologyStudio() {
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState("");
   const [comparing, setComparing] = useState(false);
+  const [finding, setFinding] = useState(false);
+  const [findError, setFindError] = useState("");
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState("");
   const [compareError, setCompareError] = useState("");
@@ -567,6 +597,11 @@ export function OntologyStudio() {
     onRemoveAdded: (label) => setDecisions((d) => removeAdded(d, label)),
     onSave: (signer) => post("/api/ontology/confirm", { saved_as: run.saved_as, decisions, ...(signer.trim() ? { confirmed_by: signer.trim() } : {}) }, setSaving, setConfirmError),
   };
+  const variantProps = run && decisions && {
+    decisions, busy: finding, error: findError, canFind: Boolean(run.saved_as) && health === "ready",
+    onFind: () => post("/api/ontology/variants", { saved_as: run.saved_as }, setFinding, setFindError),
+    onToggle: (group) => setDecisions((d) => toggleVariant(d, group)),
+  };
   function save(content, type, suffix) {
     const url = URL.createObjectURL(new Blob([content], { type }));
     const link = document.createElement("a");
@@ -597,7 +632,7 @@ export function OntologyStudio() {
       {tab === "upload" && <UploadTab health={health} busy={busy} events={events} elapsed={elapsed} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} last={run} onOpenLast={() => setTab("ontology")} />}
       {tab === "ontology" && run && <OntologyTab run={run} view={view} setView={setView} confirm={confirmProps}
         graphProps={{ selected, onSelect: (s) => { setSelected(s); setPath(null); }, path, onClearPath: () => setPath(null), onAsk: askOntology, reveal }} />}
-      {tab === "evaluation" && run && <EvaluationTab run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} onPath={showPath}
+      {tab === "evaluation" && run && <EvaluationTab run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} onPath={showPath} variants={variantProps}
         questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload"),
           onAccept: (items) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items }, setAccepting, setAcceptError), accepting, acceptError,
           onGoConfirm: () => { setTab("ontology"); setTimeout(() => document.getElementById("os-confirm")?.scrollIntoView({ block: "start" }), 50); } }} />}
