@@ -236,8 +236,8 @@ function Answer({ item, onPath, run }) {
   const extra = answerLines(item).slice(a?.groups?.length || 0);   // group lines come first; the bars show those
   return <>
     {a?.share && a.groups && <p className="pr-muted">每组里“{a.share.field}”为“{a.share.equals}”的占比，按占比从高到低；分母小的组比例容易偏高，请一起看分母。</p>}
-    {a?.measure && <p className="pr-muted">这一题算的是{a.measure.op === "sum" ? "合计" : "平均"}，不是条数：读到 {a.measure.counted} 个“{a.measure.field}”的值{a.measure.skipped ? `，另有 ${a.measure.skipped} 个不是数字或为空，没算进去` : ""}。</p>}
-    {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${Math.round((g[1] / g[2]) * 100)}%）` : a.measure ? g[1].toLocaleString("zh-CN", { maximumFractionDigits: 2 }) : g[1]}</b></li>)}</ul>}
+    {a?.measure && a.measure.value !== null && <p className="pr-muted">这一题算的是{a.measure.op === "sum" ? "合计" : "平均"}，不是条数：读到 {a.measure.counted} 个“{a.measure.field}”的值{a.measure.skipped ? `，另有 ${a.measure.skipped} 个不是数字或为空，没算进去` : ""}。{a.groups && a.measure.op === "average" ? "每组后面写着它是由几个值算出来的；只有一两个值的组，别当成规律。" : ""}</p>}
+    {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${Math.round((g[1] / g[2]) * 100)}%）` : a.measure ? `${g[1].toLocaleString("zh-CN", { maximumFractionDigits: 2 })}${g[2] === undefined ? "" : `（${g[2]} 个值）`}` : g[1]}</b></li>)}</ul>}
     {a?.groups?.length > SHOWN_GROUPS && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? "只看前 10 组" : `展开其余 ${a.groups.length - SHOWN_GROUPS} 组`}</button>}
     {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
