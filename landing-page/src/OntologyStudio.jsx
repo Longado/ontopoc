@@ -7,7 +7,7 @@ import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraph
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
 import { summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
-import { ACCEPTANCE_LABELS, acceptanceSummary, canAccept, savedAcceptance } from "./ontologyAcceptanceModel.js";
+import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, purposeNote, savedAcceptance } from "./ontologyAcceptanceModel.js";
 import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload, removeAdded, renameType, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import "./PublicRecallReview.css";
@@ -211,15 +211,16 @@ function AcceptanceSection({ run, acceptance, onSave, onPath, busy, error, addin
         {item.changed !== null && <span className={`pr-muted ${item.changed ? "os-tone-warn" : ""}`}>{item.changed ? "和上次不一样" : "和上次一致"}</span>}</div>
       {item.note && <p className="pr-muted">口径：{item.note}</p>}
       <Answer item={item} onPath={onPath} run={run} />
+      {!item.query && <p className="pr-muted">这道还没有能执行的查询，所以每次重跑都算作答不了。在下面的问答里再问一次，答出来并认可口径后，存为验收问题就会替换它。</p>}
       {item.status === "broken" && <p className="pr-error">这道题的查询在这一版本体上走不通：{item.reason}。要么改本体，要么重新出题并重新认可口径。</p>}
       {item.changed && item.previous?.answer && <details className="os-how"><summary>上次的答案</summary><Answer item={item.previous} /></details>}
       <button type="button" className="pr-link" disabled={busy} onClick={() => onSave(saved.filter((s) => s.question !== item.question))}>去掉这道</button>
     </li>)}</ul>}
     {adding && <div className="os-add">
-      <label htmlFor="os-note">口径说明（可选，写清按什么算，例如"按订单号计数，不是按订单行"）
+      <label htmlFor="os-note">{adding.item.query ? '口径说明（可选，写清按什么算，例如"按订单号计数，不是按订单行"）' : "这道现在还答不了。先记下来，它会一直留在验收问题里、算进总数，不会被其他题的通过盖住。备注（可选，例如谁点名要的、要补什么数据）"}
         <input id="os-note" value={adding.note} maxLength={200} onChange={(e) => setAdding({ ...adding, note: e.target.value })} /></label>
       <div className="os-go">
-        <button type="button" className="pr-primary" disabled={busy} onClick={() => { onSave([...saved, { question: adding.item.question, query: adding.item.query, note: adding.note.trim() }]); setAdding(null); }}>{busy ? "保存中…" : "确认存下"}</button>
+        <button type="button" className="pr-primary" disabled={busy} onClick={() => { onSave(acceptItem(saved, adding.item, adding.note)); setAdding(null); }}>{busy ? "保存中…" : "确认存下"}</button>
         <button type="button" className="pr-link" onClick={() => setAdding(null)}>取消</button>
       </div>
     </div>}
@@ -254,6 +255,7 @@ function QuestionItem({ item, onPath, run, onAccept }) {
     {onAccept && item.status === "answered" && (why
       ? <p className="pr-muted">{why}</p>
       : <button type="button" className="pr-link os-accept" onClick={() => onAccept(item)}>存为验收问题（把这道题和这个查询固定下来）</button>)}
+    {onAccept && item.status !== "answered" && !why && <button type="button" className="pr-link os-accept" onClick={() => onAccept(item)}>这道是必须答的：记为验收问题（现在还答不了，先留在清单上）</button>}
   </li>;
 }
 
@@ -344,6 +346,7 @@ function ConfirmCard({ run, confirm }) {
     <p className="pr-muted">前面的检查只能说明本体和数据对得上，说明不了它在业务上对不对，这要懂业务的人判断。在关系图右栏或"列表"里给每个对象、每条关系点"对"或"不对"，名字不合适可以改，漏掉的对象在下面补上（对象多时用"列表"判得快）。保存后，这份判断就是这个文件的参考本体：马上对照一次，同一份文件以后再上传会自动对照，并带上这次的判断，只剩有差别的要看。没判断的项不算进参考本体。</p>
     <p className="pr-muted">判"对"的意思是这个对象、这条关系在业务上成立，不代表建模目的已经能回答；能不能回答，看"业务问答"和下面"模型指出的数据缺口"。</p>
     {memoryNote(run) && !saved && <p className="pr-muted">{memoryNote(run)}</p>}
+    {purposeNote(run) && !saved && <p role="status" className="pr-note os-tone-warn">{purposeNote(run)}</p>}
     {run.evaluation.reference?.suggested && !saved && <p className="pr-note">已按你上次的确认预先填好（{localTime(run.evaluation.reference.confirmed_at)}{run.evaluation.reference.confirmed_by ? `，${run.evaluation.reference.confirmed_by}` : ""}），只需看有差别的项，再保存。</p>}
     {others.length > 0 && <div className="pr-note os-others"><span>模型别的几次建模里还有这些对象，这次没有。如果业务上该有，点一下补上：</span>
       <div className="os-chips os-suggest">{others.map((t) => <button key={t.label} type="button" onClick={() => confirm.onAdd(t.label)}>{t.label}（{t.runs} 次里 {t.count} 次）</button>)}</div></div>}
