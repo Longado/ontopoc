@@ -45,7 +45,9 @@ def _variants(given, types: dict, kept_keys: set) -> list:
         raise ConfirmError(f'写法对应的格式不对：最多 {MAX_VARIANT_GROUPS} 组')
     out = []
     for i, g in enumerate(given):
-        key = g.get('type') if isinstance(g, dict) else None
+        if not isinstance(g, dict) or not isinstance(g.get('type'), str):
+            raise ConfirmError(f'第 {i + 1} 组写法没有写清是哪个对象的')
+        key = g['type']
         if key not in types:
             raise ConfirmError(f'本体里没有这个对象：{key}')
         if key not in kept_keys:
@@ -109,5 +111,7 @@ def prefill_from_reference(ontology: dict, reference: dict) -> dict:
     confirmed_ends = [{mapping.get(r['from']), mapping.get(r['to'])} for r in reference['relations']]
     relations = {r['key']: {'verdict': 'ok'} for r in ontology['relations'] if {r['from'], r['to']} in confirmed_ends}
     added = [t['label'] for t in ref_types if t['key'].startswith('added_') and t['key'] not in mapping]
-    variants = [{'type': mapping[g['type']], 'values': g['values']} for g in reference.get('name_variants') or [] if g['type'] in mapping]
+    groups = reference.get('name_variants')   # the stored file can have been hand-edited: anything unreadable is left out
+    variants = [{'type': mapping[g['type']], 'values': g['values']} for g in (groups if isinstance(groups, list) else [])
+                if isinstance(g, dict) and mapping.get(g.get('type')) and isinstance(g.get('values'), list)]
     return {'types': types, 'relations': relations, 'added': added, 'variants': variants}
