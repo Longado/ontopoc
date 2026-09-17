@@ -32,7 +32,8 @@ test("a group whose object is gone from this run is not shown as if it still app
 
 test("the note says what the model proposed, what code threw out, and why", () => {
   const found = { model: "deepseek-flash", groups: [GROUP], rejected: [{ type: "vendor", values: ["X", "Y"], reason: "这个值不在数据里：X" }], note: "", error: null };
-  assert.deepEqual(variantNote(run(found)), { line: "模型 deepseek-flash 提了 1 组，代码丢掉 1 组。", dropped: ["供应商 X、Y：这个值不在数据里：X"] });
+  assert.deepEqual(variantNote(run(found)), { line: "模型 deepseek-flash 提了 2 组，其中 1 组数据里没有，代码丢掉了。", dropped: ["供应商 X、Y：这个值不在数据里：X"] });
+  assert.equal(variantNote(run({ ...found, rejected: [] })).line, "模型 deepseek-flash 提了 1 组。");   // nothing dropped: no line about dropping
   assert.deepEqual(variantNote(run({ model: null, groups: [], rejected: [], note: "这份数据里没有需要对应写法的对象", error: null })),
     { line: "这份数据里没有需要对应写法的对象", dropped: [] });
   assert.equal(variantNote(run()), null);
