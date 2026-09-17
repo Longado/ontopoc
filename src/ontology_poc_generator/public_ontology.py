@@ -18,7 +18,7 @@ TRANSFORMS = ('none', 'split_comma', 'colon_hierarchy')
 _ROLE_PAIRS = (('event', 'affected_object'), ('event', 'mechanism'),
                ('signal', 'affected_object'), ('signal', 'mechanism'))
 _KEY = re.compile(r'^[a-z][a-z0-9_]{0,40}$')
-_ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+_ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$')   # real exports write dates as timestamps
 
 
 @dataclass(frozen=True)
