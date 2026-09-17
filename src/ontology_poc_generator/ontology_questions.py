@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import json
 
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
-from ontology_poc_generator.recognition import RecognitionError
+from ontology_poc_generator.recognition import RecognitionError, model_failure_text
 
 QUESTION_PROMPT_VERSION = 'company_questions.v5'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
@@ -278,7 +278,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         out['model'] = completion.model
         reply = json.loads(completion.content)
     except RecognitionError as exc:
-        return {**out, 'error': f'模型请求失败（{str(exc)[:160]}），请稍后重试'}
+        return {**out, 'error': model_failure_text(exc)}
     except ValueError:
         return {**out, 'error': '模型返回的不是 JSON'}
     raw = reply.get('questions') if isinstance(reply, dict) else None

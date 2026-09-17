@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 
-from ontology_poc_generator.recognition import RecognitionError
+from ontology_poc_generator.recognition import RecognitionError, model_failure_text
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 
 
@@ -81,7 +81,7 @@ def propose_name_variants(ontology: dict, bundle: dict, gateway) -> dict:
         out['model'] = completion.model
         proposals = json.loads(completion.content).get('groups')
     except RecognitionError as exc:
-        return {**out, 'error': f'模型请求失败（{str(exc)[:160]}），请稍后重试'}
+        return {**out, 'error': model_failure_text(exc)}
     except ValueError:
         return {**out, 'error': '模型返回的不是 JSON'}
     kept, rejected = variant_candidates(catalog, proposals)
