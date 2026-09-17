@@ -241,7 +241,7 @@ function Answer({ item, onPath, run }) {
     {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
     {item.path && <p className="pr-muted">怎么查的：{item.path}{item.query && onPath && <> <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看路径</button></>}</p>}
-    {item.status === "query_limit" && <p className="pr-muted">这种问法现在的查询还做不到（查询能数个数、算占比、按几样东西分组，还不能求和、求平均、限定时间段），本体本身没有问题。{item.reason ? `模型的说明：${item.reason}` : ""}</p>}
+    {item.status === "query_limit" && <p className="pr-muted">这种问法现在的查询还做不到（查询能数个数、算占比、求和求平均、按几样东西分组，还不能限定时间段、按数值条件筛选、一道题里同时给两个数），本体本身没有问题。{item.reason ? `模型的说明：${item.reason}` : ""}</p>}
     {item.status !== "answered" && item.status !== "query_limit" && item.reason && <p className="pr-muted">原因：{item.reason}</p>}
   </>;
 }
