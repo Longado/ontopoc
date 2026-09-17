@@ -28,7 +28,7 @@ class MeasureTests(unittest.TestCase):
 
     def test_a_total_per_group_ranks_by_the_total(self):
         answer = run_query(PROPOSAL, BUNDLE, {**SUM, 'group_by': [BY_CUSTOMER]})['answer']
-        self.assertEqual(answer['groups'], [['甲', 100], ['乙', 50]])
+        self.assertEqual(answer['groups'], [['甲', 100, 1], ['乙', 50, 1]])   # name, total, how many values were read
         self.assertEqual(answer['measure']['field'], '金额')
         self.assertEqual(answer['without_value'], 1)   # O3's customer is not in the customer table
 
