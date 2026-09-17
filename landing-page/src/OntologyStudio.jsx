@@ -172,17 +172,17 @@ function Variants({ run, variants, onShow }) {
   const note = variantNote(run);
   const accepted = rows.filter((g) => g.accepted);
   return <section className="pr-card" id="os-variants">
-    <div className="pr-card-head"><h2>同一个东西的两种写法</h2>{rows.length > 0 && <span className="pr-muted">候选 {rows.length} 组，采纳 {accepted.length} 组</span>}</div>
-    <p className="pr-muted">上面那项检查只认大小写和空格的差别。真正难办的是全称和简称：“DEPARTMENT OF FLEET AND FACILITY MANAGEMENT”和“DEPT OF FLEET MGMT”是同一个部门，代码看不出来，所以它们现在是两个对象。这一步把按名字识别的对象的全部取值交给模型，问哪些指同一个东西；模型给的每一组，代码都拿数据核对过，数据里没有的取值一律丢掉。采不采纳你说了算：采纳只是记下你的判断，不会改数据、也不会自动合并。</p>
+    <div className="pr-card-head"><h2>两个名字其实是同一个东西</h2>{rows.length > 0 && <span className="pr-muted">候选 {rows.length} 组，你采纳了 {accepted.length} 组</span>}</div>
+    <p className="pr-muted">上面那项检查管的是同一个编号被写歪（只认大小写和空格的差别）。这里管的是两个不同的名字：“DEPARTMENT OF FLEET AND FACILITY MANAGEMENT”和“DEPT OF FLEET MGMT”是同一个部门，代码看不出来，所以它们现在是两个对象。这一步把按名字识别的对象的全部取值交给模型，问哪些指同一个东西；模型给的每一组，代码都拿数据核对过，数据里没有的取值一律丢掉。</p>
     <div className="os-go">
       <button type="button" className="pr-primary" disabled={!variants.canFind || variants.busy} onClick={variants.onFind}>{variants.busy ? "找对应中…" : note ? "重新找一遍" : "找出可能的对应"}</button>
-      <span className="pr-muted">{variants.canFind ? "会调用一次模型，只发对象名字的取值和每个取值的记录数。" : run.saved_as ? "本机建模服务没有连上，暂时不能找。" : "这是示例结果，找对应要上传自己的文件。"}</span>
+      <span className="pr-muted">{variants.canFind ? "会调用一次模型，只发这些名字和各自的记录数。采纳只是记下你的判断：不改数据，也不把两个对象合并。" : run.saved_as ? "本机建模服务没有连上，暂时不能找。" : "这是示例结果，找对应要上传自己的文件。"}</span>
     </div>
     {variants.error && <p role="alert" className="pr-error">{variants.error}</p>}
     {note && <p className="pr-muted">{note.line}</p>}
     {rows.length > 0 && <ul className="pr-rows os-variants">{rows.map((g) => <li key={`${g.type}/${g.values.join("/")}`}>
-      <b>{g.label}：{g.values.map((v) => `“${v}”`).join(" ＝ ")}</b>
-      <span>{g.records ? `记录数 ${g.records.join(" / ")}` : "上次确认时采纳的"}{g.reasoning ? `｜模型：${g.reasoning}` : ""}</span>
+      <b>{g.label}：{g.values.map((v, i) => `“${v}”${g.records ? `（${g.records[i]} 条）` : ""}`).join(" ＝ ")}</b>
+      <span>{g.carried ? "这组是你上次确认时采纳的，这次模型没有重新提出" : ""}{g.reasoning ? `模型：${g.reasoning}` : ""}</span>
       {g.accepted && variants.decisions.types?.[g.type]?.verdict !== "ok" && <span className="os-tone-warn">保存确认前要先把{g.label}判“对”</span>}
       <button type="button" className="pr-link" onClick={() => variants.onToggle(g)}>{g.accepted ? "已采纳，点一下撤回" : "采纳"}</button>
       <ShowOnGraph type={g.type} onShow={onShow} />

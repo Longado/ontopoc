@@ -24,5 +24,5 @@ export function variantNote(run) {
   if (!found) return null;
   const dropped = (found.rejected || []).map((r) => `${labelOf(run.ontology, r.type)} ${(r.values || []).join("、")}：${r.reason}`);
   if (found.note) return { line: found.note, dropped };
-  return { line: `模型 ${found.model} 提了 ${found.groups.length} 组，代码丢掉 ${dropped.length} 组。`, dropped };
+  return { line: `模型 ${found.model} 提了 ${found.groups.length + dropped.length} 组${dropped.length ? `，其中 ${dropped.length} 组数据里没有，代码丢掉了` : ""}。`, dropped };
 }
