@@ -9,8 +9,8 @@ const ontology = { object_types: [{ key: "customer", label: "客户" }, { key: "
 const empty = decisionsOf({ ontology });
 
 test("a run starts with no decisions, or with the ones saved on it", () => {
-  assert.deepEqual(empty, { types: {}, relations: {}, added: [] });
-  const saved = { types: { order: { verdict: "ok" } }, relations: {}, added: ["发票"] };
+  assert.deepEqual(empty, { types: {}, relations: {}, added: [], variants: [] });
+  const saved = { types: { order: { verdict: "ok" } }, relations: {}, added: ["发票"], variants: [] };
   assert.deepEqual(decisionsOf({ ontology, confirmation: { decisions: saved } }), saved);
 });
 
