@@ -38,3 +38,14 @@ test("the note says what the model proposed, what code threw out, and why", () =
     { line: "这份数据里没有需要对应写法的对象", dropped: [] });
   assert.equal(variantNote(run()), null);
 });
+
+test("when the model's reply could not be used, the card says so instead of reading as zero groups", () => {
+  const found = { model: null, groups: [], rejected: [], note: "", error: "模型返回的不是 JSON" };
+  assert.deepEqual(variantNote(run(found)), { line: "模型返回的不是 JSON", dropped: [] });
+});
+
+test("a group is the same group however its spellings are ordered", () => {
+  const decisions = { variants: [{ type: "department", values: ["DEPT OF FLEET", "DEPARTMENT OF FLEET"] }] };
+  assert.equal(variantRows(run({ groups: [GROUP], rejected: [] }), decisions).length, 1);   // not once as a candidate and once as carried
+  assert.deepEqual(toggleVariant(decisions, GROUP).variants, []);
+});
