@@ -10,6 +10,8 @@ from ontology_poc_generator.ontology_questions import run_query
 
 MAX_ACCEPTANCE = 3   # ponytail: a short list a consultant can agree with a client; the model's own round still asks more
 MAX_NOTE = 200
+MAX_REASON = 600
+UNMET = ('query_limit', 'ontology_gap')   # asked, and no query could be written: the format or the ontology is missing something
 
 
 class AcceptanceError(ValueError):
@@ -28,11 +30,18 @@ def parse_acceptance(items) -> list[dict]:
         question = str(item.get('question') or '').strip()
         if not 0 < len(question) <= 300:
             raise AcceptanceError(f'第 {i} 道的问题要写 1–300 个字')
-        if not isinstance(item.get('query'), dict):
-            raise AcceptanceError(f'第 {i} 道没有查询：只有人看过、认可口径的问题才能存为验收问题')
         note = str(item.get('note') or '').strip()
         if len(note) > MAX_NOTE:
             raise AcceptanceError(f'第 {i} 道的口径说明最多 {MAX_NOTE} 个字')
+        if not isinstance(item.get('query'), dict):
+            # a question the client needs and nothing can answer yet: kept on the list so the others passing cannot hide it
+            if item.get('status') not in UNMET:
+                raise AcceptanceError(f'第 {i} 道没有查询：只有人看过、认可口径的问题，或问过但现在还答不了的问题，才能存为验收问题')
+            reason = str(item.get('reason') or '').strip()[:MAX_REASON]
+            if not reason:
+                raise AcceptanceError(f'第 {i} 道现在还答不了，要带上答不了的原因')
+            out.append({'question': question, 'query': None, 'note': note, 'status': item['status'], 'reason': reason})
+            continue
         out.append({'question': question, 'query': item['query'], 'note': note, 'snapshot': item.get('snapshot'),
                     'answer': item.get('answer'), 'status': item.get('status'), 'path': item.get('path')})
     return out
@@ -78,14 +87,21 @@ def remap_query(query: dict, snapshot: dict, ontology: dict) -> tuple[dict | Non
         relation_map[r['key']] = candidates[0]['key']
     walk = lambda via: [relation_map.get(k, k) for k in via or []]
     return {**query, 'start': mapping[query['start']], 'via': walk(query.get('via')),
-            **({'group_by': [{**d, 'via': walk(d.get('via'))} if isinstance(d, dict) else d for d in query['group_by']]} if query.get('group_by') else {})}, ''
+            # a group_by may still be the older single "对象.字段" text, which run_query accepts: leave that as it is
+            **({'group_by': [{**d, 'via': walk(d.get('via'))} if isinstance(d, dict) else d for d in query['group_by']]}
+               if isinstance(query.get('group_by'), list) else {})}, ''
 
 
 def check_acceptance(ontology: dict, bundle: dict, items: list[dict]) -> dict:
     """Run every saved query on this run's ontology and data; keep the previous answer beside the new one."""
     checked = []
     for item in items:
-        previous = {k: item.get(k) for k in ('status', 'answer', 'path')} if item.get('status') else None
+        if not isinstance(item.get('query'), dict):
+            # nothing to run: it stays unmet until a person asks it again and gets an answer they agree with
+            checked.append({'question': item['question'], 'note': item['note'], 'query': None, 'snapshot': None,
+                            'status': item['status'], 'reason': item['reason'], 'previous': None, 'changed': None})
+            continue
+        previous ={k: item.get(k) for k in ('status', 'answer', 'path')} if item.get('status') else None
         query, problem = remap_query(item['query'], item['snapshot'], ontology) if item.get('snapshot') else (item['query'], '')
         result = {'status': 'broken', 'reason': problem} if problem else run_query(ontology, bundle, query)
         if result['status'] == 'ontology_gap':

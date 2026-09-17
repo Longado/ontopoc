@@ -204,14 +204,19 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             got, missed = numbers(inst)
             read += got
             skipped += missed or (not got)
-        total = sum(read)
-        value = total if measure['op'] == 'sum' else (total / len(read) if read else 0)
+        if not read:   # nothing could be read as a number: that is "unknown", never a total or an average of 0
+            return {'field': name(measure['field']), 'op': measure['op'], 'value': None, 'counted': 0, 'skipped': skipped}
+        value = sum(read) if measure['op'] == 'sum' else sum(read) / len(read)
         return {'field': name(measure['field']), 'op': measure['op'],
                 'value': int(value) if float(value).is_integer() else value, 'counted': len(read), 'skipped': skipped}
 
     if not dims:
         if measure:
-            return {'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'measure': measured(starts)}}
+            whole = measured(starts)
+            if whole['value'] is None:
+                return {'status': 'no_data', 'path': path, 'answer': {'total': len(starts), 'measure': whole},
+                        'reason': f'“{whole["field"]}”里没有一个能读成数字的值（{whole["skipped"]} 个不是数字或为空）'}
+            return {'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'measure': whole}}
         if share:
             return {'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'matched': sum(has(s, share) for s in starts), 'share': shown_share}}
         found = {n for s in starts for n in reach(s, query.get('via') or [])} if query.get('via') else set(starts)
@@ -231,10 +236,12 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             counts[key] = counts.get(key, 0) + 1
             hits[key] = hits.get(key, 0) + bool(share and has(s, share))
             members.setdefault(key, []).append(s)
+    unread = []
     if measure:
         per_group = {k: measured(v) for k, v in members.items()}
-        ranked = sorted(counts, key=lambda k: (-per_group[k]['value'], k))
-        groups = [[k, per_group[k]['value']] for k in ranked[:MAX_GROUPS]]
+        unread = sorted(k for k in counts if per_group[k]['value'] is None)   # a group nobody reported for is not a group that scored 0
+        ranked = sorted((k for k in counts if per_group[k]['value'] is not None), key=lambda k: (-per_group[k]['value'], k))
+        groups = [[k, per_group[k]['value'], per_group[k]['counted']] for k in ranked[:MAX_GROUPS]]   # an average of one is a fact worth seeing
     elif share:
         ranked = sorted(counts, key=lambda k: (-hits[k] / counts[k], -counts[k], k))
         groups = [[k, hits[k], counts[k]] for k in ranked[:MAX_GROUPS]]
@@ -244,6 +251,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     return {'status': 'answered' if ranked else 'no_data', 'path': path,
             'answer': {'groups': groups, 'total_groups': len(ranked), 'without_value': without,
                        **({'without_value_examples': left_out} if left_out else {}), **({'share': shown_share} if share else {}),
+                       **({'unread_groups': {'count': len(unread), 'examples': unread[:3]}} if unread else {}),
                        **({'measure': measured(starts)} if measure else {})}}
 
 

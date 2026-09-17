@@ -53,6 +53,7 @@ const NUMBER = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
 
 /** "合计 4,631,003,200（读到 3000 个值）" — a number is never shown without saying what it was computed from. */
 function measureLine(m, whole) {
+  if (m.value === null) return `“${m.field}”没有一个能读成数字的值（${m.skipped} 个不是数字或为空）`;
   const read = `读到 ${m.counted} 个值${m.skipped ? `，${m.skipped} 个不是数字或为空，没算进去` : ""}`;
   return `${whole ? "全部" : `“${m.field}”`}${m.op === "sum" ? "合计" : "平均"} ${NUMBER.format(m.value)}（${read}）`;
 }
@@ -62,8 +63,9 @@ export function answerLines(item) {
   if (!a) return [];
   const pct = (m, n) => `${Math.round((m / n) * 100)}%`;
   if (a.measure && a.groups) {
-    return [...a.groups.map(([value, n]) => `${value}：${NUMBER.format(n)}`),
+    return [...a.groups.map(([value, n, read]) => `${value}：${NUMBER.format(n)}${read === undefined ? "" : `（${read} 个值）`}`),
       ...(a.total_groups > a.groups.length ? [`另有 ${a.total_groups - a.groups.length} 组未列出`] : []),
+      ...(a.unread_groups ? [`另有 ${a.unread_groups.count} 组一个能读成数字的值都没有，不算作 0，没有排进来（例如 ${a.unread_groups.examples.join("、")}）`] : []),
       ...(a.without_value ? [`${a.without_value} 个没有这个值${a.without_value_examples?.length ? `（例如 ${a.without_value_examples.join("、")}）` : ""}`] : []),
       measureLine(a.measure, true)];
   }
