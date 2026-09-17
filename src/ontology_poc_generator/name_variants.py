@@ -1,4 +1,4 @@
-"""Objects a table can only identify by their name: two spellings then become two objects and no check can notice.
+"""Objects a table identifies by one free field: two spellings then become two objects and no check can notice.
 The model says which names denote the same thing (a semantic judgement); code only decides what may be proposed at
 all, attaches the records behind each name, and refuses anything the data does not contain. Nothing is ever merged
 here — a person decides, and their decision is kept with the confirmed ontology."""
@@ -6,22 +6,25 @@ from __future__ import annotations
 
 import json
 
-from ontology_poc_generator.ontology_eval import NAME_LIKE
 from ontology_poc_generator.recognition import RecognitionError
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 
 
+MAX_VALUES = 200   # ponytail: what fits in one model call; a type with more values is almost always keyed by a code anyway
+
+
 def variant_catalog(ontology: dict, bundle: dict, graph: dict | None = None) -> dict:
-    """Per object type identified only by a name: every value, with how many rows carry it."""
+    """Per object type identified by a single field with few enough values to show the model: every value with its rows.
+    No guessing at field names: whether "department" or "客户名称" is a label is the model's call, not a keyword list."""
     graph = graph or build_graph(ontology, bundle)
     catalog = {}
     for t in normalize_proposal(ontology)['object_types']:
         fields = sorted({path for pop in t['populated_from'] for path in pop['identity'].values()})
-        if not fields or not all(any(word in path.lower() for word in NAME_LIKE) for path in fields):
+        if len({len(pop['identity']) for pop in t['populated_from']} | {1}) > 1 or len(fields) != 1:
             continue
         values = [{'value': '、'.join(str(v) for _, v in inst[1]), 'records': len(graph['records_of'].get(inst, []))}
                   for inst in graph['sources_of'] if inst[0] == t['key']]
-        if len(values) > 1:
+        if 1 < len(values) <= MAX_VALUES:
             catalog[t['key']] = {'label': t.get('label') or t['key'], 'fields': fields, 'values': sorted(values, key=lambda v: v['value'])}
     return catalog
 
@@ -36,7 +39,7 @@ def variant_candidates(catalog: dict, proposals) -> tuple[list[dict], list[dict]
             continue
         entry = catalog.get(p.get('type'))
         if entry is None:
-            rejected.append({**p, 'reason': '这个对象不是按名字识别的，写法问题看数据体检'})
+            rejected.append({**p, 'reason': '这个对象不在可对应的范围里，写法问题看数据体检'})
             continue
         records = {v['value']: v['records'] for v in entry['values']}
         missing = [v for v in p['values'] if v not in records]
@@ -71,7 +74,7 @@ def propose_name_variants(ontology: dict, bundle: dict, gateway) -> dict:
     catalog = variant_catalog(ontology, bundle)
     out = {'prompt_version': VARIANT_PROMPT_VERSION, 'model': None, 'groups': [], 'rejected': [], 'error': None, 'note': ''}
     if not catalog:
-        return {**out, 'note': '这份数据里没有只按名字识别的对象，写法不一致的问题请看数据体检。'}
+        return {**out, 'note': '这份数据里没有需要对应写法的对象：对象要么按编号识别、要么取值太多，写法不一致的问题请看数据体检。'}
     request = {t: {'label': e['label'], 'names': [[v['value'], v['records']] for v in e['values']]} for t, e in catalog.items()}
     try:
         completion = gateway.complete_json(system_prompt=VARIANT_SYSTEM_PROMPT, user_prompt=json.dumps(request, ensure_ascii=False))
