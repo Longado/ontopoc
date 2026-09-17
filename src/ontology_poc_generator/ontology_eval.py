@@ -72,11 +72,24 @@ def _suspected_duplicates(p: dict, graph: dict) -> list[dict]:
     return out
 
 
+def _row_owners(p: dict, graph: dict) -> dict[str, set]:
+    """Per table, the object type its rows are about: the one with the most distinct objects there. A results table
+    that repeats the hospital's name on every row is still about results, so it does not describe hospitals."""
+    counts: dict[str, dict[str, int]] = {}
+    for inst, sources in graph['sources_of'].items():
+        for src in sources:
+            counts.setdefault(src, {}).setdefault(inst[0], 0)
+            counts[src][inst[0]] += 1
+    return {src: {t for t, n in by_type.items() if n == max(by_type.values())} for src, by_type in counts.items()}
+
+
 def _missing_across_sources(p: dict, graph: dict) -> list[dict]:
-    """Objects referenced in one table but absent from the table that describes them (the one giving attributes)."""
+    """Objects referenced in one table but absent from the table that describes them: one that gives attributes
+    and whose rows are about this kind of object."""
     out = []
+    owners = _row_owners(p, graph)
     for t in p['object_types']:
-        defining = {a.get('source') for a in t['attributes']} & {pop['source'] for pop in t['populated_from']}
+        defining = {a.get('source') for a in t['attributes']} & {pop['source'] for pop in t['populated_from'] if t['key'] in owners.get(pop['source'], ())}
         if not defining or len({pop['source'] for pop in t['populated_from']}) < 2:
             continue
         for src in sorted(defining):
