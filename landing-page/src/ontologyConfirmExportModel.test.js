@@ -4,7 +4,7 @@ import test from "node:test";
 import { decisionsOf, referenceDownload } from "./ontologyConfirmModel.js";
 
 test("a rerun of a confirmed file starts from the suggested decisions", () => {
-  const suggested = { types: { order: { verdict: "ok" } }, relations: {}, added: ["发票"] };
+  const suggested = { types: { order: { verdict: "ok" } }, relations: {}, added: ["发票"], variants: [{ type: "order", values: ["A", "B"] }] };
   assert.deepEqual(decisionsOf({ evaluation: { reference: { confirmed: true, suggested } } }), suggested);
 });
 

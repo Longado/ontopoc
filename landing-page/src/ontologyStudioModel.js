@@ -49,10 +49,25 @@ export const typeLabel = (ontology, key) => ontology.object_types.find((t) => t.
 
 export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "这种问法还不支持" };
 
+const NUMBER = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
+
+/** "合计 4,631,003,200（读到 3000 个值）" — a number is never shown without saying what it was computed from. */
+function measureLine(m, whole) {
+  const read = `读到 ${m.counted} 个值${m.skipped ? `，${m.skipped} 个不是数字或为空，没算进去` : ""}`;
+  return `${whole ? "全部" : `“${m.field}”`}${m.op === "sum" ? "合计" : "平均"} ${NUMBER.format(m.value)}（${read}）`;
+}
+
 export function answerLines(item) {
   const a = item.answer;
   if (!a) return [];
   const pct = (m, n) => `${Math.round((m / n) * 100)}%`;
+  if (a.measure && a.groups) {
+    return [...a.groups.map(([value, n]) => `${value}：${NUMBER.format(n)}`),
+      ...(a.total_groups > a.groups.length ? [`另有 ${a.total_groups - a.groups.length} 组未列出`] : []),
+      ...(a.without_value ? [`${a.without_value} 个没有这个值${a.without_value_examples?.length ? `（例如 ${a.without_value_examples.join("、")}）` : ""}`] : []),
+      measureLine(a.measure, true)];
+  }
+  if (a.measure) return [measureLine(a.measure)];
   if (a.total !== undefined) return [a.share ? `共 ${a.total} 个，其中 ${a.matched} 个“${a.share.field}”为“${a.share.equals}”（${pct(a.matched, a.total)}）` : `共 ${a.total} 个`];
   const lines = a.groups.map(([value, n, all]) => (a.share ? `${value}：${n} / ${all}（${pct(n, all)}）` : `${value}：${n}`));
   if (a.total_groups > a.groups.length) lines.push(`另有 ${a.total_groups - a.groups.length} 组未列出`);

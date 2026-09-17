@@ -15,7 +15,7 @@ class QueryLimitTests(unittest.TestCase):
         ]})
         out = ask_questions(PROPOSAL, BUNDLE, model)
         self.assertEqual([i['status'] for i in out['items']], ['query_limit', 'ontology_gap', 'ontology_gap'])
-        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v4')
+        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v5')
 
 
 if __name__ == '__main__':

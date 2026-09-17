@@ -8,7 +8,7 @@ import json
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
 from ontology_poc_generator.recognition import RecognitionError
 
-QUESTION_PROMPT_VERSION = 'company_questions.v4'
+QUESTION_PROMPT_VERSION = 'company_questions.v5'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
 CATEGORY_LIMIT = 12         # attributes with at most this many distinct values are shown to the model with their values
@@ -24,7 +24,8 @@ Return ONLY a JSON object:
         "where": [{{"field": "<attribute path of the start type, exactly as listed>", "equals": "<exact value>"}}],
         "via": ["<relation key>", "..."],
         "group_by": [{{"via": ["<relation key>", "..."], "field": "<attribute path of the type that this via reaches from start (the start type when via is empty), exactly as listed>"}}],
-        "share": {{"field": "<attribute path of the start type, exactly as listed>", "equals": "<exact value>"}} or null
+        "share": {{"field": "<attribute path of the start type, exactly as listed>", "equals": "<exact value>"}} or null,
+        "measure": {{"field": "<numeric attribute path of the start type, exactly as listed>", "op": "sum" | "average"}} or null
     }} or null,
     "missing": "ontology" | "query_language"   (only when query is null)
 }}]}}
@@ -34,12 +35,15 @@ Meaning of a query: take the objects of `start` that match every `where`; then
   relation touching the type reached so far): count the start objects per combination of the dimensions' values;
 - with share: instead of plain counts, give how many start objects have `field` equal to `equals`, out of all of them
   (per group when there is a group_by). Use it for questions about how often, what proportion or which rate;
+- with measure: instead of counting the start objects, add up (sum) or average their `field`, per group when there is a
+  group_by. Only for a field whose values are numbers; code reports how many values it could read and how many it
+  skipped. Use it for questions about amounts, totals and averages;
 - with neither: count the objects reached by the top-level `via` (or the start objects when it is empty). The top-level
   `via` is only for this case.
 Use only type keys, relation keys and attribute paths listed in the ontology, and filter values from an attribute's
 `values` when it lists them. When a question cannot be written as one query, keep it, set "query" to null, say why in reasoning, and set
 "missing": "ontology" when the ontology lacks the objects, relations or attributes it needs, or "query_language" when the
-ontology has them but this query format cannot express it (for example sums or averages of numbers, time windows, or
+ontology has them but this query format cannot express it (for example time windows, filters on numeric ranges, or
 filters on objects other than start); in that case also add the simpler questions that together answer it.
 Write {QUESTION_COUNT} questions; if `purpose` contains a question, answer that first. If `asked` is present, write
 exactly one item for that question and nothing else.
@@ -117,6 +121,14 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         if field is None:
             return gap(f'本体里的 {label(start)} 没有属性 {w.get("field")}，无法按它筛选')
         where.append({'field': field, 'equals': w.get('equals')})
+    measure = query.get('measure') if isinstance(query.get('measure'), dict) else None
+    if measure:
+        field = _resolve_field(types[start], measure.get('field'))
+        if field is None:
+            return gap(f'本体里的 {label(start)} 没有属性 {measure.get("field")}，无法对它求和或求平均')
+        if measure.get('op') not in ('sum', 'average'):
+            return gap(f'不支持的算法 {measure.get("op")}，只能是 sum 或 average')
+        measure = {'field': field, 'op': measure['op']}
     share = query.get('share') if isinstance(query.get('share'), dict) else None
     if share:
         field = _resolve_field(types[start], share.get('field'))
@@ -161,7 +173,13 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     else:
         path = ' → '.join([head, *(label(k) for k in (dims[0]['steps'] if dims else top[1]))]) + (f'，按“{name(dims[0]["field"])}”分组' if dims else '')
     shown_share = share and {'field': name(share['field']), 'equals': share['equals']}
-    path += f'，算“{shown_share["field"]}”为“{shown_share["equals"]}”的{label(start)}占比' if share else (f'数{label(start)}' if dims else '')
+    if measure:
+        what, field = ('合计', name(measure['field'])) if measure['op'] == 'sum' else ('平均', name(measure['field']))
+        path += f'，算每组“{field}”的{what}' if dims else (f'，把“{field}”加起来' if measure['op'] == 'sum' else f'，算“{field}”的平均')
+    elif share:
+        path += f'，算“{shown_share["field"]}”为“{shown_share["equals"]}”的{label(start)}占比'
+    elif dims:
+        path += f'数{label(start)}' 
     if not starts:
         return {'status': 'no_data', 'reason': '数据里没有满足筛选条件的对象', 'path': path}
 
@@ -170,12 +188,35 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         for key in via:
             frontier = {n for f in frontier for n in neighbours[key].get(f, ())}
         return frontier
+    def numbers(inst):
+        """The values of the measure field that really are numbers; anything else is reported, never read as zero."""
+        read, skipped = [], 0
+        for v in values(inst, measure['field']):
+            try:
+                read.append(float(str(v).replace(',', '')))
+            except ValueError:
+                skipped += 1
+        return read, skipped
+
+    def measured(objects):
+        read, skipped = [], 0
+        for inst in objects:
+            got, missed = numbers(inst)
+            read += got
+            skipped += missed or (not got)
+        total = sum(read)
+        value = total if measure['op'] == 'sum' else (total / len(read) if read else 0)
+        return {'field': name(measure['field']), 'op': measure['op'],
+                'value': int(value) if float(value).is_integer() else value, 'counted': len(read), 'skipped': skipped}
+
     if not dims:
+        if measure:
+            return {'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'measure': measured(starts)}}
         if share:
             return {'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'matched': sum(has(s, share) for s in starts), 'share': shown_share}}
         found = {n for s in starts for n in reach(s, query.get('via') or [])} if query.get('via') else set(starts)
         return {'status': 'answered' if found else 'no_data', 'answer': {'total': len(found)}, 'path': path}
-    counts, hits, without, left_out = {}, {}, 0, []
+    counts, hits, without, left_out, members = {}, {}, 0, [], {}
     for s in starts:
         combos = [[]]
         for d in dims:
@@ -189,7 +230,12 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             key = ' · '.join(combo)
             counts[key] = counts.get(key, 0) + 1
             hits[key] = hits.get(key, 0) + bool(share and has(s, share))
-    if share:
+            members.setdefault(key, []).append(s)
+    if measure:
+        per_group = {k: measured(v) for k, v in members.items()}
+        ranked = sorted(counts, key=lambda k: (-per_group[k]['value'], k))
+        groups = [[k, per_group[k]['value']] for k in ranked[:MAX_GROUPS]]
+    elif share:
         ranked = sorted(counts, key=lambda k: (-hits[k] / counts[k], -counts[k], k))
         groups = [[k, hits[k], counts[k]] for k in ranked[:MAX_GROUPS]]
     else:
@@ -197,7 +243,8 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         groups = [[k, counts[k]] for k in ranked[:MAX_GROUPS]]   # the page shows the first screen and can open the rest
     return {'status': 'answered' if ranked else 'no_data', 'path': path,
             'answer': {'groups': groups, 'total_groups': len(ranked), 'without_value': without,
-                       **({'without_value_examples': left_out} if left_out else {}), **({'share': shown_share} if share else {})}}
+                       **({'without_value_examples': left_out} if left_out else {}), **({'share': shown_share} if share else {}),
+                       **({'measure': measured(starts)} if measure else {})}}
 
 
 def _catalog(ontology: dict, bundle: dict) -> dict:
