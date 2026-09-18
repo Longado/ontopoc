@@ -13,9 +13,11 @@ BUNDLE = {
 
 
 def proposal(populated_from):
+    parent_read = any(pop['identity'].get('id') == '上级' for pop in populated_from)
+    attributes = [{'source': '站点', 'path': '站名'}] + ([] if parent_read else [{'source': '站点', 'path': '上级'}])   # as in the real run: kept as a plain attribute
     return {'reasoning': 'r', 'object_types': [
         {'key': 'stop', 'label': '站点', 'populated_from': populated_from,
-         'attributes': [{'source': '站点', 'path': '站名'}], 'rationale': 'r'}],
+         'attributes': attributes, 'rationale': 'r'}],
         'relations': [{'key': 'stop_parent', 'from': 'stop', 'to': 'stop', 'source': '站点', 'meaning': '站台属于上级车站'}],
         'ignored_fields': [], 'open_questions': []}
 
