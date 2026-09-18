@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  COVERAGE_NOTE, conflictGroups, conflictNote, localTime, memoryNote, saveResult, progressSteps, referenceCounts, serviceError, stabilityLines, typeLabel, typeSources, validateRun,
+  COVERAGE_NOTE, conflictGroups, conflictNote, localTime, memoryNote, saveResult, progressSteps, referenceCounts, serviceError, sharePercent, stabilityLines, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
@@ -10,6 +10,7 @@ import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
 import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, purposeNote, savedAcceptance } from "./ontologyAcceptanceModel.js";
 import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload, removeAdded, renameType, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
+import { cardinalityLabel, cardinalityLine, fieldNote, formOf } from "./ontologyHandoverModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
@@ -237,7 +238,7 @@ function Answer({ item, onPath, run }) {
   return <>
     {a?.share && a.groups && <p className="pr-muted">每组里“{a.share.field}”为“{a.share.equals}”的占比，按占比从高到低；分母小的组比例容易偏高，请一起看分母。</p>}
     {a?.measure && a.measure.value !== null && <p className="pr-muted">这一题算的是{a.measure.op === "sum" ? "合计" : "平均"}，不是条数：读到 {a.measure.counted} 个“{a.measure.field}”的值{a.measure.skipped ? `，另有 ${a.measure.skipped} 个不是数字或为空，没算进去` : ""}。{a.groups && a.measure.op === "average" ? "每组后面写着它是由几个值算出来的；只有一两个值的组，别当成规律。" : ""}</p>}
-    {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${Math.round((g[1] / g[2]) * 100)}%）` : a.measure ? `${g[1].toLocaleString("zh-CN", { maximumFractionDigits: 2 })}${g[2] === undefined ? "" : `（${g[2]} 个值）`}` : g[1]}</b></li>)}</ul>}
+    {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${sharePercent(g[1], g[2])}%）` : a.measure ? `${g[1].toLocaleString("zh-CN", { maximumFractionDigits: 2 })}${g[2] === undefined ? "" : `（${g[2]} 个值）`}` : g[1]}</b></li>)}</ul>}
     {a?.groups?.length > SHOWN_GROUPS && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? "只看前 10 组" : `展开其余 ${a.groups.length - SHOWN_GROUPS} 组`}</button>}
     {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
@@ -343,7 +344,7 @@ function ConfirmCard({ run, confirm }) {
   }
   return <section className="pr-card os-confirm" id="os-confirm">
     <div className="pr-card-head"><h2>逐项确认：这个本体在业务上对不对</h2><span className="pr-muted">已判断 {progress.judged} / {progress.total}{progress.wrong ? `，其中 ${progress.wrong} 项不对` : ""}{progress.added ? `，补了 ${progress.added} 个` : ""}</span></div>
-    <p className="pr-muted">前面的检查只能说明本体和数据对得上，说明不了它在业务上对不对，这要懂业务的人判断。在关系图右栏或"列表"里给每个对象、每条关系点"对"或"不对"，名字不合适可以改，漏掉的对象在下面补上（对象多时用"列表"判得快）。保存后，这份判断就是这个文件的参考本体：马上对照一次，同一份文件以后再上传会自动对照，并带上这次的判断，只剩有差别的要看。没判断的项不算进参考本体。</p>
+    <p className="pr-muted">前面的检查只能说明本体和数据对得上，说明不了它在业务上对不对，这要懂业务的人判断。在关系图右栏，或者"对象""关系"两页里，给每个对象、每条关系点"对"或"不对"，名字不合适可以改，漏掉的对象在下面补上（对象多时用"对象""关系"两页判得快）。保存后，这份判断就是这个文件的参考本体：马上对照一次，同一份文件以后再上传会自动对照，并带上这次的判断，只剩有差别的要看。没判断的项不算进参考本体。</p>
     <p className="pr-muted">判"对"的意思是这个对象、这条关系在业务上成立，不代表建模目的已经能回答；能不能回答，看"业务问答"和下面"模型指出的数据缺口"。</p>
     {memoryNote(run) && !saved && <p className="pr-muted">{memoryNote(run)}</p>}
     {purposeNote(run) && !saved && <p role="status" className="pr-note os-tone-warn">{purposeNote(run)}</p>}
@@ -364,6 +365,44 @@ function ConfirmCard({ run, confirm }) {
     </div>
     {error && <p role="alert" className="pr-error">{error}</p>}
   </section>;
+}
+
+const VIEWS = [["graph", "关系图"], ["types", "对象"], ["relations", "关系"]];   // DIP's ontology pages: 本体建模 and 本体关系
+
+function TypesView({ run, confirm }) {
+  const { ontology } = run;
+  const form = formOf(run);
+  const byType = Object.fromEntries((form?.types || []).map((t) => [t.type, t]));
+  return <div className="os-list-view">
+    {form && <p className="pr-muted">每个对象一张表，列和到下游平台（例如 DIP）建对象时要填的一样。主键、类型、长度由代码拿每一行读出来；展示字段、中文名、描述只有人能写，留给你填。</p>}
+    <div className="os-type-forms">{ontology.object_types.map((t) => { const f = byType[t.key]; return <article key={t.key} className="pr-type os-type-form">
+      <div className="os-type-form-head"><h3>{t.label || t.key}</h3><span className="pr-tag">{t.key}</span><Verdict confirm={confirm} kind="types" item={t} /></div>
+      {t.populated_from.length > 0 && <p className="pr-muted">来自：{typeSources(t)}</p>}
+      {t.definition && <p>{t.definition}</p>}
+      {f?.needs_single_key && <p className="pr-note os-tone-warn">靠 {f.identity_fields.join(" + ")} 这几个字段一起识别。DIP 每张表只收一个主键，导入前要把它们合成一个，或者改建模。</p>}
+      {f ? <div className="pr-table-wrap"><table className="pr-table os-form-table">
+        <thead><tr><th>主键</th><th>字段</th><th>类型</th><th>长度</th><th>备注</th></tr></thead>
+        <tbody>{f.fields.map((x) => <tr key={x.path}><td>{x.identity ? "是" : ""}</td><td>{x.path}</td><td>{x.type || "—"}</td><td>{x.length || "—"}</td>
+          <td className="pr-muted">{[fieldNote(x), x.sources.length > 1 ? `来自 ${x.sources.join("、")}` : ""].filter(Boolean).join("；")}</td></tr>)}</tbody>
+      </table></div> : t.attributes.length > 0 && <p>属性：{t.attributes.map((a) => a.path).join("、")}</p>}
+      {t.time_field && <p className="pr-muted">时间：{t.time_field.path}</p>}
+      {t.rationale && <small>{t.rationale}</small>}
+    </article>; })}</div>
+  </div>;
+}
+
+function RelationsView({ run, confirm }) {
+  const { ontology } = run;
+  const cards = Object.fromEntries((formOf(run)?.relations || []).map((r) => [r.key, r]));
+  if (!ontology.relations.length) return <p className="pr-muted">没有关系。</p>;
+  return <div className="os-list-view"><div className="pr-table-wrap"><table className="pr-table os-form-table">
+    <thead><tr><th>关系</th><th>对应关系</th><th>含义</th><th>来自表</th></tr></thead>
+    <tbody>{ontology.relations.map((r) => { const c = cards[r.key]; return <tr key={r.key}>
+      <td><b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><Verdict confirm={confirm} kind="relations" item={r} /></td>
+      <td>{c ? <><b>{cardinalityLabel(c)}</b><br /><small className="pr-muted">{cardinalityLine(ontology, c)}</small></> : "—"}</td>
+      <td>{r.meaning}</td><td><code>{r.source}</code></td>
+    </tr>; })}</tbody>
+  </table></div></div>;
 }
 
 function OntologyTab({ run, view, setView, graphProps, confirm }) {
@@ -402,25 +441,10 @@ function OntologyTab({ run, view, setView, graphProps, confirm }) {
     <ConfirmCard run={run} confirm={confirm} />
     <section className="pr-card">
       <div className="pr-card-head"><h2>本体</h2>
-        <div className="og-toggle" role="group" aria-label="显示方式">{[["graph", "关系图"], ["list", "列表"]].map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
+        <div className="og-toggle" role="group" aria-label="显示方式">{VIEWS.map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
       {view === "graph" && <OntologyGraph run={run} {...graphProps} confirm={confirm} onAsk={doc ? null : graphProps.onAsk} />}
-      {view === "list" && <div className="os-list-view">
-        <h3 className="os-sub">对象（{ontology.object_types.length}）</h3>
-        <div className="pr-types">{ontology.object_types.map((t) => <article key={t.key} className="pr-type">
-          <span className="pr-tag">{t.key}</span>
-          <h3>{t.label || t.key}</h3>
-          <Verdict confirm={confirm} kind="types" item={t} />
-          {t.populated_from.length > 0 && <p>来自：{typeSources(t)}</p>}
-          {t.definition && <p>{t.definition}</p>}
-          {t.attributes.length > 0 && <p>属性：{t.attributes.map((a) => a.path).join("、")}</p>}
-          {t.time_field && <p>时间：{t.time_field.path}</p>}
-          {t.rationale && <small>{t.rationale}</small>}
-        </article>)}</div>
-        <h3 className="os-sub">关系（{ontology.relations.length}）</h3>
-        {ontology.relations.length ? <ul className="pr-rows">{ontology.relations.map((r) => <li key={r.key}>
-          <b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><span>{r.meaning}</span><code>{r.source}</code><Verdict confirm={confirm} kind="relations" item={r} /></li>)}</ul>
-          : <p className="pr-muted">没有关系。</p>}
-      </div>}
+      {view === "types" && <TypesView run={run} confirm={confirm} />}
+      {view === "relations" && <RelationsView run={run} confirm={confirm} />}
     </section>
     {(ontology.data_gaps.length > 0 || ontology.ignored_fields.length > 0) && <section className="pr-card">
       <h2>模型指出的数据缺口（{ontology.data_gaps.length}）</h2>
@@ -449,6 +473,11 @@ function DataFit({ run, onShow, variants }) {
     {fit.identity_conflicts.length > 0 && <Conflicts fit={fit} ontology={ontology} onShow={onShow} />}
     {fit.identity_spellings?.length > 0 && <Spellings fit={fit} ontology={ontology} onShow={onShow} />}
     {variants?.decisions && <Variants run={run} variants={variants} onShow={onShow} />}
+    {fit.id_only?.length > 0 && <section className="pr-card">
+      <h2>只有编号、没有描述它的表（{fit.id_only.length}）</h2>
+      <p className="pr-muted">这些对象是从别的表里的一列编号认出来的，这份数据里没有任何一张表在说它们是什么。它们能用来分组统计，但图上它们和有明细表的对象长得一样，讲给客户之前要说清楚：现在只有编号。</p>
+      <ul className="pr-rows">{fit.id_only.map((t) => <li key={t.type}><b>{typeLabel(ontology, t.type)}：{t.count} 个编号</b><span>来自“{t.source}”的“{t.field}”</span><ShowOnGraph type={t.type} onShow={onShow} /></li>)}</ul>
+    </section>}
     {fit.identity_risks?.length > 0 && <section className="pr-card">
       <h2>识别字段可能不稳（{fit.identity_risks.length}）</h2>
       <p className="pr-muted">这是提示，不是不通过：代码只看了识别字段的名字像不像"名称"一类会被改写的字段。</p>

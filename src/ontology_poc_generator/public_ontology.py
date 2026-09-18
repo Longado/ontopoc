@@ -311,6 +311,8 @@ def build_graph(proposal: dict, bundle: dict) -> dict:
                 continue
             for a in by_type.get(r['from'], []):
                 for b in by_type.get(r['to'], []):
+                    if a == b:   # a row naming one stop does not say that stop belongs to itself
+                        continue
                     edges[r['key']].add((a, b, (src, index)))
                     adjacent[a].add(b)
                     adjacent[b].add(a)
@@ -348,7 +350,10 @@ def graph_checks(proposal: dict, graph: dict, profile: Profile | None = None) ->
     for r in proposal['relations']:
         metrics['links'][r['key']] = len(graph['edges'][r['key']])
         if not metrics['links'][r['key']]:
-            errors.append(_error('relation_zero_links', f'relation {r["key"]}: no record links {r["from"]} and {r["to"]}'))
+            hint = (f'; both ends are the same kind of object, so each row must name two different {r["from"]} objects: '
+                    f'read {r["from"]} a second time in {r["source"]} from the column that holds the related id (a parent or manager id)'
+                    if r['from'] == r['to'] else '')
+            errors.append(_error('relation_zero_links', f'relation {r["key"]}: no record links {r["from"]} and {r["to"]}{hint}'))
     for a, b in profile.role_pairs:
         if not any({r['from'], r['to']} == {role[a], role[b]} for r in proposal['relations']):
             errors.append(_error('role_relation_missing',

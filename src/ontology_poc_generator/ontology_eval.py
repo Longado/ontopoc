@@ -72,6 +72,17 @@ def _suspected_duplicates(p: dict, graph: dict) -> list[dict]:
     return out
 
 
+def _unused_sources(p: dict, bundle: dict) -> list[dict]:
+    """Tables the ontology does not read at all. One column written off as unused is a judgement; a whole uploaded
+    file written off means that upload did nothing, and the person chose to send it."""
+    read = {pop['source'] for t in p['object_types'] for pop in t['populated_from']}
+    read |= {a.get('source') for t in p['object_types'] for a in t['attributes']}
+    read |= {t['time_field'].get('source') for t in p['object_types'] if t.get('time_field')}
+    read |= {r.get('source') for r in p['relations']}
+    return [{'source': name, 'rows': len(source['records']), 'fields': len(field_paths(source['records']))}
+            for name, source in bundle['sources'].items() if name not in read]
+
+
 def _row_owners(p: dict, graph: dict) -> dict[str, set]:
     """Per table, the object type its rows are about: the one with the most distinct objects there. A results table
     that repeats the hospital's name on every row is still about results, so it does not describe hospitals."""
@@ -81,6 +92,23 @@ def _row_owners(p: dict, graph: dict) -> dict[str, set]:
             counts.setdefault(src, {}).setdefault(inst[0], 0)
             counts[src][inst[0]] += 1
     return {src: {t for t, n in by_type.items() if n == max(by_type.values())} for src, by_type in counts.items()}
+
+
+def _id_only(p: dict, graph: dict) -> list[dict]:
+    """Objects no table describes: they exist only as a column of ids in a table about something else (an employee id
+    on an order, with no employee table). They are real enough to group by, but there is nothing behind the number,
+    and on a graph they look like every other object."""
+    owners = _row_owners(p, graph)
+    out = []
+    for t in p['object_types']:
+        if any(t['key'] in owners.get(pop['source'], ()) for pop in t['populated_from']) or t['attributes']:
+            continue
+        pop = t['populated_from'][0] if t['populated_from'] else None
+        if pop is None:
+            continue
+        out.append({'type': t['key'], 'source': pop['source'], 'field': '、'.join(sorted(pop['identity'].values())),
+                    'count': sum(1 for i in graph['sources_of'] if i[0] == t['key'])})
+    return out
 
 
 def _missing_across_sources(p: dict, graph: dict) -> list[dict]:
@@ -159,6 +187,8 @@ def data_fit(ontology: dict, bundle: dict) -> dict:
         'identity_conflicts': _identity_conflicts(p, bundle, graph),
         'identity_risks': _identity_risks(p),
         'identity_spellings': _identity_spellings(p, bundle),
+        'id_only': _id_only(p, graph),
+        'unused_sources': _unused_sources(p, bundle),
         'suspected_duplicates': _suspected_duplicates(p, graph),
         'missing_across_sources': _missing_across_sources(p, graph),
         'relations': _relations(p, bundle, graph),
@@ -172,5 +202,6 @@ def data_fit(ontology: dict, bundle: dict) -> dict:
         {'key': 'relations_link', 'passed': all(r['linked_rows'] > 0 for r in fit['relations'])},
         {'key': 'references_resolve', 'passed': not fit['missing_across_sources']},
         {'key': 'sources_connected', 'passed': len(fit['source_groups']) == 1},
+        {'key': 'sources_used', 'passed': not fit['unused_sources']},
     ]
     return fit

@@ -24,6 +24,7 @@ from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
 from ontology_poc_generator.ontology_questions import ask_questions
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
+from ontology_poc_generator.recognition import model_failure_text
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
@@ -106,7 +107,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
     def save_build(bundle, result, progress=None):
         outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
         if result['ontology']['status'] != 'auto_built_verified' and outage:
-            return 502, {'error': f'模型请求失败（{outage[-1][:160]}）。这不是数据的问题，请稍后重试。'}
+            return 502, {'error': model_failure_text(outage[-1])}
         now = datetime.now(timezone.utc)
         name = f'{now.strftime("%Y%m%dT%H%M%S")}{now.microsecond // 1000:03d}Z-{bundle["file"]["sha256"][:8]}.json'
         output_dir.mkdir(parents=True, exist_ok=True)

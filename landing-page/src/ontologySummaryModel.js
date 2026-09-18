@@ -32,6 +32,11 @@ export function summaryMarkdown(run) {
     for (const m of fit.missing_across_sources || []) {
       out.push(`- ${name(ontology, m.type)}：${m.count} 个被引用但在“${m.source}”里找不到，例如 ${m.examples.join("、")}`);
     }
+    const idOnly = fit.id_only || [];
+    if (idOnly.length) {
+      out.push("", "下面这些对象只有编号、没有描述它的表。它们能用来分组统计，但这份数据里没有任何一张表在说它们是什么：", "");
+      out.push(...idOnly.map((t) => `- ${name(ontology, t.type)}：${t.count} 个编号，来自“${t.source}”的“${t.field}”，这份数据里没有一张表在描述它`));
+    }
     out.push("", "这些结论只覆盖上面列出的文件，别的系统里有没有、别的表里记没记，这里看不到。", "");
   }
 
@@ -43,8 +48,10 @@ export function summaryMarkdown(run) {
       if (item.note) out.push(`口径：${item.note}`, "");
       out.push(`结果：${ACCEPTANCE_LABELS[item.status] || item.status}${item.changed === null ? "" : item.changed ? "，和上次不一样" : "，和上次一致"}`, "");
       const lines = answerLines(item);
-      out.push(...lines.slice(0, SHOWN).map((line) => `- ${line}`));
-      if (lines.length > SHOWN) out.push(`- 另有 ${lines.length - SHOWN} 组，完整结果见“本体和评测”文件`);
+      const listed = item.answer?.groups?.length || 0;   // group lines come first; what follows says what the figures leave out
+      out.push(...lines.slice(0, Math.min(listed, SHOWN)).map((line) => `- ${line}`));
+      if (listed > SHOWN) out.push(`- 另有 ${listed - SHOWN} 组，完整结果见“本体和评测”文件`);
+      out.push(...lines.slice(listed).map((line) => `- ${line}`));   // never cut: how many values were read, skipped, or unreadable
       out.push("");
       if (item.path) out.push(`怎么算的：${item.path}`, "");
     }

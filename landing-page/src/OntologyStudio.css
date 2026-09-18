@@ -135,3 +135,12 @@ small.os-tone-warn { color: var(--amber); }
 .os-accept { justify-self: start; padding: 0; font-weight: 700; }
 .os-add-file { cursor: pointer; }
 .os-storage { margin: 0 0 12px; }
+
+/* One form per object, in the columns a downstream platform asks for */
+.os-type-forms { display: grid; gap: 16px; }
+.os-type-form { display: grid; gap: 8px; }
+.os-type-form-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.os-type-form-head h3 { margin: 0; }
+.os-form-table td:first-child, .os-form-table th:first-child { white-space: nowrap; }
+.os-form-table td { vertical-align: top; }
+.os-form-table td:first-child { display: grid; gap: 6px; justify-items: start; }

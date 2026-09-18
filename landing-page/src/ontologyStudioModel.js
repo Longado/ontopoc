@@ -9,6 +9,7 @@ export const CHECK_LABELS = {
   relations_link: "每条关系都在数据里真的连上了",
   references_resolve: "引用的对象都能在它所属的表里找到",
   sources_connected: "所有表通过共同的对象连成一片",
+  sources_used: "每张传上来的表都被本体用上了",
   quotes_verified: "模型提出的每一项都能在原文里找到引用",
   no_isolated_concepts: "抽出来的概念，每个都至少连着一条抽出来的关系",
 };
@@ -58,10 +59,12 @@ function measureLine(m, whole) {
   return `${whole ? "全部" : `“${m.field}”`}${m.op === "sum" ? "合计" : "平均"} ${NUMBER.format(m.value)}（${read}）`;
 }
 
+/** A share as a figure, never rounded up into something it is not: 2 in 300 is 0.67%, not 1%. */
+export const sharePercent = (matched, all) => (all ? (matched / all) * 100 : 0).toLocaleString("zh-CN", { maximumSignificantDigits: 2, useGrouping: false });
+
 export function answerLines(item) {
   const a = item.answer;
   if (!a) return [];
-  const pct = (m, n) => `${Math.round((m / n) * 100)}%`;
   if (a.measure && a.groups) {
     return [...a.groups.map(([value, n, read]) => `${value}：${NUMBER.format(n)}${read === undefined ? "" : `（${read} 个值）`}`),
       ...(a.total_groups > a.groups.length ? [`另有 ${a.total_groups - a.groups.length} 组未列出`] : []),
@@ -70,8 +73,8 @@ export function answerLines(item) {
       measureLine(a.measure, true)];
   }
   if (a.measure) return [measureLine(a.measure)];
-  if (a.total !== undefined) return [a.share ? `共 ${a.total} 个，其中 ${a.matched} 个“${a.share.field}”为“${a.share.equals}”（${pct(a.matched, a.total)}）` : `共 ${a.total} 个`];
-  const lines = a.groups.map(([value, n, all]) => (a.share ? `${value}：${n} / ${all}（${pct(n, all)}）` : `${value}：${n}`));
+  if (a.total !== undefined) return [a.share ? `共 ${a.total} 个，其中 ${a.matched} 个“${a.share.field}”为“${a.share.equals}”（${sharePercent(a.matched, a.total)}%）` : `共 ${a.total} 个`];
+  const lines = a.groups.map(([value, n, all]) => (a.share ? `${value}：${n} / ${all}（${sharePercent(n, all)}%）` : `${value}：${n}`));
   if (a.total_groups > a.groups.length) lines.push(`另有 ${a.total_groups - a.groups.length} 组未列出`);
   if (a.without_value) lines.push(`${a.without_value} 个没有这个值${a.without_value_examples?.length ? `（例如 ${a.without_value_examples.join("、")}）` : ""}`);
   return lines;
