@@ -21,7 +21,8 @@ from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
-from ontology_poc_generator.object_rows import object_rows
+from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
+from ontology_poc_generator.public_ontology import build_graph
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
@@ -63,6 +64,21 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
     # one run file is read, changed and written back by several endpoints; this keeps two of them from overwriting each other
     runs_lock = threading.Lock()
     jobs_dir = output_dir / 'jobs'
+    graphs, graphs_lock = {}, threading.Lock()   # a kept run's graph, built once: the file and the ontology never change
+
+    def kept(name):
+        """A kept table run with its rows and its graph; KeyError when there is no such run."""
+        bundle_path = output_dir / name.replace('.json', '.bundle.json')
+        if not SAVED_NAME.match(name) or not (output_dir / name).exists() or not bundle_path.exists():
+            raise FileNotFoundError(name)
+        result = json.loads((output_dir / name).read_text(encoding='utf-8'))
+        if result['file'].get('kind') == 'document':
+            raise ValueError('文档没有数据行')
+        with graphs_lock:
+            if name not in graphs:
+                bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+                graphs[name] = (bundle, build_graph(result['ontology'], bundle))
+        return (result, *graphs[name])
 
     def keep_job(job_id, job):
         """The job as it stands, on disk, so a restarted service can still say how it ended. Called under jobs_lock."""
@@ -227,7 +243,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/runs':
                 self.list_runs()
                 return
-            if self.path.startswith('/api/ontology/runs/') and '/objects/' in self.path:
+            if self.path.startswith('/api/ontology/runs/') and self.path.count('/') > 4:
                 self.object_page()
                 return
             if self.path.startswith('/api/ontology/runs/'):
@@ -257,24 +273,29 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.reply(200, {'runs': runs})
 
         def object_page(self):
-            """One object's rows from a kept run, a page at a time: /api/ontology/runs/<run>/objects/<type>?page=N"""
+            """/api/ontology/runs/<run>/objects/<type>?page=N|all=1, /instances/<type>?q=, /graph?node=<id>"""
             url = urlsplit(self.path)
-            name, _, type_key = url.path[len('/api/ontology/runs/'):].partition('/objects/')
-            type_key = unquote(type_key)
-            bundle_path = output_dir / name.replace('.json', '.bundle.json')
-            if not SAVED_NAME.match(name) or not (output_dir / name).exists() or not bundle_path.exists():
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
-                return
+            rest = url.path[len('/api/ontology/runs/'):]
+            name, _, tail = rest.partition('/')
+            query = parse_qs(url.query)
             try:
-                query = parse_qs(url.query)
-                page = int((query.get('page') or ['1'])[0])
-                size = None if query.get('all') == ['1'] else 20   # all=1: every row, for a download
-                result = json.loads((output_dir / name).read_text(encoding='utf-8'))
-                if result['file'].get('kind') == 'document':
-                    raise ValueError('文档没有数据行')
-                self.reply(200, object_rows(result['ontology'], json.loads(bundle_path.read_text(encoding='utf-8')), type_key, page, size))
-            except KeyError:
-                self.reply(404, {'error': f'这份本体里没有对象 {type_key}'})
+                result, bundle, graph = kept(name)
+                if tail.startswith('objects/'):
+                    type_key = unquote(tail[len('objects/'):])
+                    page = int((query.get('page') or ['1'])[0])
+                    size = None if query.get('all') == ['1'] else 20   # all=1: every row, for a download
+                    self.reply(200, object_rows(result['ontology'], bundle, type_key, page, size, graph))
+                elif tail.startswith('instances/'):
+                    type_key = unquote(tail[len('instances/'):])
+                    self.reply(200, find_instances(result['ontology'], bundle, type_key, (query.get('q') or [''])[0], graph=graph))
+                elif tail == 'graph':
+                    self.reply(200, neighbourhood(result['ontology'], bundle, (query.get('node') or [''])[0], graph=graph))
+                else:
+                    self.reply(404, {'error': 'Unknown ontology endpoint'})
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+            except KeyError as exc:
+                self.reply(404, {'error': f'这份本体里没有 {exc.args[0]}'})
             except ValueError as exc:
                 self.reply(400, {'error': str(exc)})
 
