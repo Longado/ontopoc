@@ -44,11 +44,18 @@ def _type_of(values: list[str]) -> str | None:
     return 'VARCHAR'
 
 
-def _field_shape(path: str, source: str, records: list[dict], identity: bool) -> dict:
-    seen = [str(v) for r in records for v in resolve(r, path) if v not in (None, '')]
-    empty = len(records) - sum(1 for r in records if any(v not in (None, '') for v in resolve(r, path)))
-    return {'path': path, 'identity': identity, 'source': source, 'type': _type_of(seen),
-            'length': max((len(v) for v in seen), default=0), 'empty': empty, 'rows': len(records)}
+def _field_shape(path: str, reads: list[tuple[str, list[dict]]], identity: bool) -> dict:
+    """One row of the form for one field, however many tables it was read from: the type every value fits, the longest
+    value, and how many rows had nothing in it."""
+    seen, empty, rows = [], 0, 0
+    for _, records in reads:
+        for r in records:
+            got = [str(v) for v in resolve(r, path) if v not in (None, '')]
+            seen += got
+            empty += not got
+        rows += len(records)
+    return {'path': path, 'identity': identity, 'sources': sorted(source for source, _ in reads), 'type': _type_of(seen),
+            'length': max((len(v) for v in seen), default=0), 'empty': empty, 'rows': rows}
 
 
 def _cardinality(most_from: int, most_to: int) -> str:
@@ -66,17 +73,16 @@ def handover_form(ontology: dict, bundle: dict, graph: dict | None = None) -> di
     types = []
     for t in p['object_types']:
         identity_fields = sorted({path for pop in t['populated_from'] for path in pop['identity'].values()})
-        fields, seen = [], set()
+        reads: dict[str, list[str]] = {}   # field -> the tables it is read from, in the order first met
         for pop in t['populated_from']:
             for path in sorted(pop['identity'].values()):
-                if (pop['source'], path) not in seen:
-                    seen.add((pop['source'], path))
-                    fields.append(_field_shape(path, pop['source'], bundle['sources'][pop['source']]['records'], True))
+                reads.setdefault(path, []).append(pop['source'])
         for a in t['attributes']:
             source, path = a.get('source'), a.get('path')
-            if source in bundle['sources'] and (source, path) not in seen and path in field_paths(bundle['sources'][source]['records']):
-                seen.add((source, path))
-                fields.append(_field_shape(path, source, bundle['sources'][source]['records'], False))
+            if source in bundle['sources'] and path in field_paths(bundle['sources'][source]['records']):
+                reads.setdefault(path, []).append(source)
+        fields = [_field_shape(path, [(src, bundle['sources'][src]['records']) for src in dict.fromkeys(sources)], path in identity_fields)
+                  for path, sources in reads.items()]
         types.append({'type': t['key'], 'label': t.get('label') or t['key'], 'identity_fields': identity_fields,
                       # a platform that takes one primary key per table cannot hold an object identified by two columns
                       'needs_single_key': len(identity_fields) > 1, 'fields': fields})
