@@ -151,6 +151,9 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         if field is None:
             return gap(f'本体里的 {label(walked[0])} 没有属性 {d.get("field")}，无法按它分组')
         dims.append({'via': d.get('via') or [], 'steps': walked[1], 'field': field})
+    seen = [(tuple(d['via']), d['field']) for d in dims]
+    if len(set(seen)) < len(seen):   # "which X go together": one dimension cannot pair two different values of itself
+        return {'status': 'query_limit', 'reason': '同一个字段沿同一条路径分了两次组，这是在问哪些值常在一起出现；查询只会把每个值和它自己配成一对，这种问法还不支持'}
     graph = graph or build_graph(ontology, bundle)
     neighbours = {}
     for key in {k for d in dims for k in d['via']} | set(query.get('via') or []):
