@@ -172,10 +172,40 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 else:
                     self.reply(404, {'error': '找不到这个任务'})
                 return
+            if self.path == '/api/ontology/runs':
+                self.list_runs()
+                return
+            if self.path.startswith('/api/ontology/runs/'):
+                self.open_run(self.path.rsplit('/', 1)[1])
+                return
             if self.path != '/api/ontology/health':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
                 return
             self.reply(200, {'model_ready': gateway is not None})
+
+        def list_runs(self):
+            """Every run kept on this machine, newest first, so a closed tab or another day does not lose one."""
+            runs = []
+            for path in sorted(output_dir.glob('*.json'), reverse=True):
+                if not SAVED_NAME.match(path.name):
+                    continue
+                try:
+                    run = json.loads(path.read_text(encoding='utf-8'))
+                except (OSError, ValueError):
+                    continue   # a file cut short by a crash is not a run anyone can open
+                ontology = run.get('ontology') or {}
+                runs.append({'saved_as': path.name, 'file': (run.get('file') or {}).get('name'), 'kind': (run.get('file') or {}).get('kind'),
+                             'purpose': run.get('purpose'), 'started_at': run.get('started_at'), 'status': ontology.get('status'),
+                             'types': len(ontology.get('object_types') or []), 'relations': len(ontology.get('relations') or []),
+                             'confirmed': bool(run.get('confirmation'))})
+            self.reply(200, {'runs': runs})
+
+        def open_run(self, name):
+            path = output_dir / name
+            if not SAVED_NAME.match(name) or not path.exists():
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            self.reply(200, json.loads(path.read_text(encoding='utf-8')))
 
         def read_json(self):
             length = int(self.headers.get('Content-Length', '0'))
