@@ -17,6 +17,7 @@ import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./Objec
 import { InstanceGraph } from "./InstanceGraph.jsx";
 import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
+import { earlierVersionOf, versionRows } from "./versionModel.js";
 import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
 import { objectsNav, qaNav, sectionOfTile, sectionsFor } from "./workspaceModel.js";
 import "./PublicRecallReview.css";
@@ -91,8 +92,12 @@ function SendPreview({ file }) {
   </details>;
 }
 
-function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo, onDocDemo }) {
+function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo, onDocDemo, runs }) {
   const [files, setFiles] = useState([]);
+  const [asVersion, setAsVersion] = useState(null);   // null: not answered; true / false: the person's answer
+  const earlier = earlierVersionOf(runs, files);
+  useEffect(() => setAsVersion(null), [earlier?.saved_as]);
+  const go = () => onBuild(files, purpose, earlier && asVersion ? earlier.saved_as : null);
   const [purpose, setPurpose] = useState("");
   const [over, setOver] = useState(false);
   const offline = health === "offline";
@@ -113,12 +118,17 @@ function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo
         </div>}
         <label htmlFor="os-purpose" className="sr-only">这份本体要帮你回答什么问题</label>
         <textarea id="os-purpose" rows={3} maxLength={300} value={purpose} placeholder={files.length ? "想从这份数据里弄清什么？例如：哪些客户、产品的售后问题最多？" : "把文件拖进来，或点左下角的＋。再写一句想弄清的问题（可选）"}
-          onChange={(e) => setPurpose(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !blocked) onBuild(files, purpose); }} />
+          onChange={(e) => setPurpose(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !blocked) go(); }} />
         <div className="os-composer-bar">
           <label htmlFor="os-file" className="os-composer-add" title="选文件：数据表 .xlsx .csv，文档 .md .txt .docx .pdf，不超过 10 MB">＋</label>
-          <button type="button" className="os-composer-go" disabled={Boolean(blocked)} title={blocked || "生成本体并评测"} aria-label="生成本体并评测" onClick={() => onBuild(files, purpose)}>➤</button>
+          <button type="button" className="os-composer-go" disabled={Boolean(blocked)} title={blocked || "生成本体并评测"} aria-label="生成本体并评测" onClick={go}>➤</button>
         </div>
       </div>
+      {earlier && <div className="os-version-ask" role="group" aria-label="是不是新版本">
+        <span>「{folderLabel(earlier.file)}」的新版本？</span>
+        <button type="button" aria-pressed={asVersion === true} onClick={() => setAsVersion(true)} title="上次的确认、验收问题和规则接着用，并比出哪些对象多了、少了">是</button>
+        <button type="button" aria-pressed={asVersion === false} onClick={() => setAsVersion(false)}>不是</button>
+      </div>}
       <div className="os-start-chips">
         {!files.length && <><span className="pr-muted">没有文件？</span>
           <button type="button" onClick={onDemo}>打开示例数据表</button>
@@ -473,6 +483,16 @@ function ObjectsPlace({ run, confirm, place }) {
   const retries = attempts.attempts - 1;
   return <>
     {place === "confirm" && <ConfirmCard run={run} confirm={confirm} />}
+    {place === "version" && run.version && <section className="pr-card os-version">
+      <div className="pr-card-head"><h2>新版本</h2><span className="pr-muted">对比 {localTime(run.version.previous_started_at)} 那一版</span></div>
+      <ul className="os-version-list">{versionRows(run.version).map((o) => <li key={o.type} className={o.changed ? "is-changed" : ""}>
+        <b>{o.label}</b>
+        <span className="os-version-bars" aria-label={`之前 ${o.before}，现在 ${o.after}`}><i className="is-before" style={{ width: `${(o.before / o.scale) * 100}%` }} /><i className="is-after" style={{ width: `${(o.after / o.scale) * 100}%` }} /></span>
+        <span className="os-version-count">{o.before.toLocaleString("zh-CN")} → {o.after.toLocaleString("zh-CN")}</span>
+        <span className="os-version-delta">{o.added > 0 && <em className="is-added" title={o.added_examples.join("、")}>＋{o.added}</em>}{o.removed > 0 && <em className="is-removed" title={o.removed_examples.join("、")}>－{o.removed}</em>}{o.identity_changed && <em className="is-shift" title={`之前按 ${o.identity_changed.before.join(" + ")}，现在按 ${o.identity_changed.after.join(" + ")}：不能逐个对比`}>识别方式变了</em>}{!o.changed && !o.identity_changed && <em>=</em>}</span>
+        {o.changed && !o.identity_changed && <span className="os-version-examples">{[...o.added_examples.map((x) => ["+", x]), ...o.removed_examples.map((x) => ["−", x])].map(([k, x]) => <code key={k + x} className={k === "+" ? "is-added" : "is-removed"}>{k} {x}</code>)}</span>}
+      </li>)}</ul>
+    </section>}
     {place === "stability" && run.evaluation.stability && <section className="pr-card" id="os-stability">
       <div className="pr-card-head"><h2>建了 {run.evaluation.stability.runs + run.evaluation.stability.failed} 次，哪些每次都有</h2><span className="pr-muted">● 这一次有 ○ 这一次没有</span></div>
       <Hint>模型每次搭的本体会有出入（这是模型的搭法不同，不是数据变了），所以这次上传同时建了几次，代码把它们对齐后数每个对象、每条关系出现了几次。每次都有的可以放心用；不是每次都有的，是模型拿不准的地方，图上画成虚线框，要不要按你的业务决定。</Hint>
@@ -594,7 +614,7 @@ function QaSection({ run, questions, onPath, askRef, place }) {
   </>;
 }
 
-export function OntologyStudio({ request = null, section = null, nav = 0, onSection = () => {}, onRunsChanged = () => {}, onCurrent = () => {} } = {}) {
+export function OntologyStudio({ request = null, runs = null, section = null, nav = 0, onSection = () => {}, onRunsChanged = () => {}, onCurrent = () => {} } = {}) {
   const [run, setRun] = useState(() => loadLocal());
   const tab = section || (run ? "objects" : "upload");
   const setTab = onSection;
@@ -660,13 +680,13 @@ export function OntologyStudio({ request = null, section = null, nav = 0, onSect
       .then(async (r) => { const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(serviceError(r.status, body)); show(body); })
       .catch((e) => { setError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); setTab("upload"); });
   }, [request?.nonce]);   // eslint-disable-line react-hooks/exhaustive-deps
-  async function build(files, purpose) {
+  async function build(files, purpose, previous = null) {
     setBusy(true); setError(""); setEvents([]);
     let jobId;
     try {
       const contents = [];
       for (const file of files) contents.push(await toBase64(file));
-      const body = JSON.stringify(uploadPayload(files, purpose, ...contents));
+      const body = JSON.stringify({ ...uploadPayload(files, purpose, ...contents), ...(previous ? { previous } : {}) });
       const response = await fetch("/api/ontology/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body });
       const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
       if (!response.ok) throw new Error(serviceError(response.status, data));
@@ -774,7 +794,7 @@ export function OntologyStudio({ request = null, section = null, nav = 0, onSect
     </header>}
     {inDetail && <h1 id="os-title" className="sr-only">{folderLabel(run.file.name)}</h1>}
     <div className="pr-panel os-panel">
-      {tab === "upload" && <UploadTab health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
+      {tab === "upload" && <UploadTab runs={runs} health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "objects" && run && (objectKey
         ? <ObjectDetail run={run} typeKey={objectKey} confirm={confirmProps} onBack={() => setObjectKey(null)} onOpen={setObjectKey} onSaveConfirm={goConfirm} />
         : <SubLayout label="本体管理" items={objectsNav(run, decisions)} active={objPlace} onChange={setObjPlace}>

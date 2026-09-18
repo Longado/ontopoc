@@ -62,7 +62,6 @@ export function StandaloneDemo() {
         <p className="app-label">{t.tools}</p>
         {sectionsFor(open).map(([key, label]) => <button key={key} type="button" aria-current={scenario === "studio" && section === key ? "page" : undefined} onClick={() => go(key)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" className="app-ico">{ICONS[key]}</svg>{label}</button>)}
-        {!open && <p className="app-empty">打开一次运行，或者新建一次，这里就会列出它的数据、本体、关系、问答和体检。</p>}
       </nav>
       <nav className="app-nav" aria-label={t.nav}>
         <details className="app-more" open={scenario !== "studio" || undefined}>
@@ -88,7 +87,7 @@ export function StandaloneDemo() {
       <button type="button" className="app-lang" onClick={() => setLanguage(language === "zh" ? "en" : "zh")}>{t.lang}</button>
     </aside>
     <section className="app-main" aria-label={scenario === "studio" ? "OntoPoc" : t.tabs[scenario]}>
-      {scenario === "studio" ? <OntologyStudio request={request} section={section} nav={nav} onSection={setSection} onRunsChanged={refresh} onCurrent={setOpen} />
+      {scenario === "studio" ? <OntologyStudio request={request} runs={runs} section={section} nav={nav} onSection={setSection} onRunsChanged={refresh} onCurrent={setOpen} />
         : scenario === "public" ? <PublicRecallReview language={language} /> : <RecallWorkspace language={language} onBusyChange={setRecallBusy} />}
     </section>
   </main>;

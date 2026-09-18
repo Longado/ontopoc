@@ -474,3 +474,23 @@ small.os-tone-warn { color: var(--amber); }
 .os-rule-actions { display: inline-flex; gap: 12px; margin-left: auto; }
 .os-muted-link { color: var(--text-2) !important; }
 .os-rule-row .os-chips { justify-content: flex-start; }
+
+/* new versions */
+.os-version-ask { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; font-size: 13px; }
+.os-version-ask button { padding: 3px 14px; border: 1px solid var(--edge-strong); border-radius: 999px; background: var(--surface); color: var(--ink); }
+.os-version-ask button[aria-pressed="true"] { border-color: var(--primary); color: var(--primary-ink); background: var(--primary-soft); font-weight: 700; }
+.os-version-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.os-version-list li { display: grid; grid-template-columns: 120px minmax(120px, 1fr) 130px 110px; align-items: center; gap: 6px 14px; padding: 10px 0; border-top: 1px solid var(--edge); font-size: 14px; }
+.os-version-list li:first-child { border-top: 0; }
+.os-version-bars { display: grid; gap: 3px; }
+.os-version-bars i { display: block; height: 7px; min-width: 2px; border-radius: 999px; }
+.os-version-bars .is-before { background: var(--edge-strong); }
+.os-version-bars .is-after { background: var(--primary); }
+.os-version-count { font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 13px; }
+.os-version-delta { display: flex; gap: 6px; }
+.os-version-delta em { padding: 0 8px; border-radius: 999px; font-size: 12px; font-style: normal; font-weight: 700; color: var(--text-2); background: var(--canvas); }
+.os-version-delta em.is-added, .os-version-examples .is-added { color: var(--ok); background: var(--ok-soft); }
+.os-version-delta em.is-removed, .os-version-examples .is-removed { color: var(--red); background: var(--red-soft); }
+.os-version-examples { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 760px) { .os-version-list li { grid-template-columns: 1fr auto; } .os-version-bars { grid-column: 1 / -1; } }
+.os-version-delta em.is-shift { color: var(--amber); background: var(--amber-soft); }

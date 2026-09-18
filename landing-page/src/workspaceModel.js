@@ -46,6 +46,7 @@ export function objectsNav(run, decisions) {
   return [
     ["objects", "对象", String(ontology.object_types.length)],
     ["confirm", "逐项确认", `${judged} / ${ontology.object_types.length + ontology.relations.length}`],
+    ...(run.version ? [["version", "新版本", `＋${run.version.objects.reduce((n, o) => n + (o.added || 0), 0)} －${run.version.objects.reduce((n, o) => n + (o.removed || 0), 0)}`]] : []),
     ...(evaluation.stability ? [["stability", "稳定性", `${evaluation.stability.runs} 次`]] : []),
     ...(run.previous ? [["history", "和上次比", ""]] : []),
     ["build", "建模记录", gaps ? `缺口 ${gaps}` : ""],

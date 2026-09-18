@@ -23,6 +23,15 @@ def version_diff(previous: dict, previous_bundle: dict, result: dict, bundle: di
         after = {value(i): i for i in after_graph['records_of'] if i[0] == after_key}
         added = [i for n, i in after.items() if n not in before]
         removed = [i for n, i in before.items() if n not in after]
+        fields = lambda t: list(dict.fromkeys(f for pop in t['populated_from'] for f in pop['identity'].values()))
+        if before_key and after_key and set(fields(before_types[before_key])) != set(fields(after_types[after_key])):
+            # told apart by other fields in the two builds: the same contract has a different number in each, so
+            # matching one by one would call every one of them removed and added again
+            t = after_types[after_key]
+            objects.append({'type': after_key, 'label': t.get('label') or t['key'], 'before': len(before), 'after': len(after),
+                            'added': None, 'removed': None, 'added_examples': [], 'removed_examples': [],
+                            'identity_changed': {'before': fields(before_types[before_key]), 'after': fields(t)}})
+            continue
         name_after = _labeller(after_types[after_key], bundle, after_graph['records_of']) if after_key else None
         name_before = _labeller(before_types[before_key], previous_bundle, before_graph['records_of']) if before_key else None
         t = after_types.get(after_key) or before_types[before_key]
