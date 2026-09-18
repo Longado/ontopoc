@@ -34,10 +34,13 @@ ONTOLOGY = {
 class NeighbourhoodTests(unittest.TestCase):
     def test_an_object_comes_with_its_fields_and_the_objects_it_connects_to(self):
         [c1] = [i for i in find_instances(ONTOLOGY, BUNDLE, 'customer', '甲')['items']]
-        self.assertEqual(c1['label'], '甲公司')   # a name-like field is shown, as a platform's display field
+        # the number is the label, because it is what the object is; a name-like field is a second line. On Northwind an
+        # order took its shipName as its label and read like a customer.
+        self.assertEqual((c1['label'], c1['name']), ('c1', '甲公司'))
         g = neighbourhood(ONTOLOGY, BUNDLE, c1['id'])
         self.assertEqual(g['center']['fields'], {'客户编号': 'c1', '客户名称': '甲公司'})   # as written, not as matched
         self.assertEqual(sorted(n['label'] for n in g['nodes'] if n['type'] == 'order'), ['O1', 'O2'])
+        self.assertEqual(g['center']['name'], '甲公司')
         self.assertEqual({(e['from'], e['to'], e['relation']) for e in g['edges']},
                          {(n['id'], c1['id'], 'order_customer') for n in g['nodes'] if n['type'] == 'order'})
         self.assertEqual(g['more'], [])
