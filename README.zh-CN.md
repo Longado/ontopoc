@@ -58,6 +58,9 @@ PYTHONPATH=src:. python scripts/run_company_ontology.py --file examples/company/
 PYTHONPATH=src:. python scripts/make_demo_company.py            # 重新生成合成示例工作簿
 ```
 
+
+页面上的每个功能也都是一个标准 MCP 工具（stdio，17 个），Claude Code 或任何 MCP 客户端都能直接调：`claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server`。说明见 `docs/MCP.md`。
+
 ## 示例场景：车辆召回范围研判
 
 同一套"模型提议、代码核验"用在 NHTSA 召回公告和车主投诉上，算出每个召回范围内外的同类投诉，由质量工程师逐条复核（雪佛兰 Bolt EV / EUV 2017–2023、现代 Kona Electric 2019–2021）。入口在页面侧边栏"更多示例"下，读 `landing-page/public/data/` 里的静态文件，不需要 Python 服务。命令和代码位置见 [docs/RECALL_EXAMPLE.md](docs/RECALL_EXAMPLE.md)。

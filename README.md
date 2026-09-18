@@ -49,6 +49,8 @@ cd landing-page && npm ci && npm run dev -- --host 127.0.0.1 --port 5178 --stric
 PYTHONPATH=src python -m ontology_poc_generator.ontology_server
 ```
 
+Every feature on the page is also a standard MCP tool (stdio, 17 tools) for Claude Code or any MCP client: `claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server`. See `docs/MCP.md`.
+
 Open `http://127.0.0.1:5178`. Without the service, two bundled demo results can still be opened: a synthetic company's workbook and its after-sales process document. Changing the backend means restarting the service — the page says so when it sees a stale one.
 
 ```bash
