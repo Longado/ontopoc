@@ -221,12 +221,26 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             return {'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'matched': sum(has(s, share) for s in starts), 'share': shown_share}}
         found = {n for s in starts for n in reach(s, query.get('via') or [])} if query.get('via') else set(starts)
         return {'status': 'answered' if found else 'no_data', 'answer': {'total': len(found)}, 'path': path}
+    def combinations(s):
+        """Every combination has to be witnessed by one chain in the data. Two dimensions walked down the same path
+        must read the same object on the way: otherwise a company holding a food licence and a tobacco licence comes
+        out as holding a food tobacco licence too, which no row ever said."""
+        states = [([], {(): s})]   # the values chosen so far, and which object was walked to at each path
+        for d in dims:
+            via, out = tuple(d['via']), []
+            for chosen, walked in states:
+                if via in walked:
+                    steps = [(walked[via], walked)]
+                else:
+                    known = max((p for p in walked if via[:len(p)] == p), key=len)   # continue from the longest path already walked
+                    steps = [(node, {**walked, via: node}) for node in reach(walked[known], via[len(known):])]
+                out += [(chosen + [v], nodes) for node, nodes in steps for v in sorted(values(node, d['field']))]
+            states = out
+        return [chosen for chosen, _ in states]
+
     counts, hits, without, left_out, members = {}, {}, 0, [], {}
     for s in starts:
-        combos = [[]]
-        for d in dims:
-            found = sorted({v for n in reach(s, d['via']) for v in values(n, d['field'])})
-            combos = [c + [v] for c in combos for v in found]
+        combos = combinations(s)
         if not combos:
             without += 1
             if len(left_out) < 3:   # naming a few beats a bare count when someone asks which ones fell out
