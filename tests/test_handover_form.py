@@ -51,7 +51,7 @@ class HandoverFormTests(unittest.TestCase):
                                                              'attributes': [{'source': '公司', 'path': '空列'}]}]},
                               {**BUNDLE, 'sources': {**BUNDLE['sources'],
                                                      '公司': {'records': [{'统编': 'A', '空列': ''}], 'requests': []}}})
-        self.assertEqual(empty['types'][0]['fields'][-1], {'path': '空列', 'identity': False, 'source': '公司',
+        self.assertEqual(empty['types'][0]['fields'][-1], {'path': '空列', 'identity': False, 'sources': ['公司'],
                                                            'type': None, 'length': 0, 'empty': 1, 'rows': 1})
 
     def test_a_relation_says_how_many_hang_off_each_end(self):
