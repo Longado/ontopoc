@@ -26,6 +26,8 @@ from ontology_poc_generator.public_ontology import build_graph
 from ontology_poc_generator.relation_suggestions import suggest_relations
 from ontology_poc_generator.rule_discovery import check_rules, discover_rules
 from ontology_poc_generator.versions import version_diff
+from ontology_poc_generator.field_descriptions import MAX_DESCRIPTION, MAX_LABEL, draft_descriptions
+from ontology_poc_generator.handover_form import handover_form
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
@@ -83,6 +85,44 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 or not (output_dir / name.replace('.json', '.bundle.json')).exists():
             raise ValueError('previous 要写一次保存过的运行名')
         return name
+
+    def form_path(result):
+        return output_dir / 'forms' / f"{memory_key(result)}.json"
+
+    def form_state(result):
+        """The DIP form columns a person (or the drafting agent) wrote for this file, for the objects and fields there are."""
+        path = form_path(result)
+        if not path.exists():
+            return None
+        stored = json.loads(path.read_text(encoding='utf-8'))
+        fields = {t['type']: {f['path'] for f in t['fields']} for t in (result['evaluation'].get('handover') or {}).get('types', [])}
+        return {**stored, 'types': {k: {**v, 'fields': {f: x for f, x in v['fields'].items() if f in fields[k]}}
+                                    for k, v in stored['types'].items() if k in fields}}
+
+    def parse_form(form, handover):
+        """A form sent by the page: every object and field must exist, every text short, the display field its own."""
+        fields = {t['type']: {f['path'] for f in t['fields']} for t in handover.get('types', [])}
+        if not isinstance(form, dict) or not isinstance(form.get('types'), dict):
+            raise ValueError('form 要写 {"types": {对象: …}}')
+        out = {}
+        for key, t in form['types'].items():
+            if key not in fields or not isinstance(t, dict):
+                raise ValueError(f'本体里没有对象 {key}')
+            def text(v, limit, what):
+                if v is None or (isinstance(v, str) and len(v) <= limit):
+                    return v
+                raise ValueError(f'{key} 的{what}太长或不是文字')
+            if t.get('display_field') not in (None, *fields[key]):
+                raise ValueError(f"{key} 的展示字段 {t.get('display_field')} 不是它的字段")
+            entry = {'label': text(t.get('label'), MAX_LABEL, '中文名'), 'description': text(t.get('description'), MAX_DESCRIPTION, '描述'),
+                     'display_field': t.get('display_field'), 'drafted': bool(t.get('drafted')), 'fields': {}}
+            for path, f in (t.get('fields') or {}).items():
+                if path not in fields[key] or not isinstance(f, dict):
+                    raise ValueError(f'{key} 没有字段 {path}')
+                entry['fields'][path] = {'label': text(f.get('label'), MAX_LABEL, f'字段 {path} 的中文名'),
+                                         'description': text(f.get('description'), MAX_DESCRIPTION, f'字段 {path} 的描述'), 'drafted': bool(f.get('drafted'))}
+            out[key] = entry
+        return {'types': out}
 
     def rules_state(result, bundle, graph=None):
         """The rules offered for this file and the ones a person adopted, checked against this run's data."""
@@ -226,6 +266,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
         if result['ontology']['status'] == 'auto_built_verified' and result['file'].get('kind') != 'document':
             result['evaluation']['rules'] = rules_state(result, bundle)
+            if form_state(result):
+                result['evaluation']['form'] = form_state(result)
         result['saved_as'] = name
         (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
         # the uploaded rows stay on this machine so later questions can be answered from them
@@ -387,6 +429,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/rules':
                 with runs_lock:
                     self.rules()
+                return
+            if self.path == '/api/ontology/form/draft':
+                self.draft_form()
+                return
+            if self.path == '/api/ontology/form':
+                with runs_lock:
+                    self.save_form()
                 return
             if self.path == '/api/ontology/variants':
                 self.variants()
@@ -551,6 +600,74 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 stored.parent.mkdir(parents=True, exist_ok=True)
                 stored.write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
+        def draft_form(self):
+            """One call to the 字段释义员; what a person already wrote is kept."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = str(payload.get('saved_as') or '')
+                result, bundle, _ = kept(name)
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            if gateway is None:
+                self.reply(503, {'error': NO_KEY})
+                return
+            handover = result['evaluation'].get('handover') or handover_form(result['ontology'], bundle)
+            drafted = draft_descriptions(result['ontology'], bundle, handover, gateway, result.get('purpose') or '')
+            if drafted['error']:
+                self.reply(502, {'error': drafted['error']})
+                return
+
+            def keep_person(was, new):
+                """The draft fills in what nobody wrote yet; an object's or field's text a person wrote stays."""
+                if was is None:
+                    return new
+                head = new if was.get('drafted') else was
+                fields = dict(was['fields'])
+                for path, f in new['fields'].items():
+                    if fields.get(path, {}).get('drafted', True):
+                        fields[path] = f
+                return {**head, 'fields': fields}
+
+            def merge(run):
+                run['evaluation'].setdefault('handover', handover)
+                old = form_state(run) or {'types': {}}
+                types = {key: keep_person(old['types'].get(key), new) for key, new in drafted['types'].items()}
+                stored = {'types': {**old['types'], **types}, 'model': drafted['model'], 'prompt_version': drafted['prompt_version']}
+                form_path(run).parent.mkdir(parents=True, exist_ok=True)
+                form_path(run).write_text(json.dumps(stored, ensure_ascii=False, indent=1), encoding='utf-8')
+                run['evaluation']['form'] = {**form_state(run), 'rejected': drafted['rejected']}
+            self.reply(200, write_back(output_dir / name, merge))
+
+        def save_form(self):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = str(payload.get('saved_as') or '')
+                result, bundle, _ = kept(name)
+                handover = result['evaluation'].get('handover') or handover_form(result['ontology'], bundle)
+                form = parse_form(payload.get('form'), handover)
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            old = form_state(result) or {}
+            stored = {**{k: v for k, v in old.items() if k != 'types'}, 'types': {**old.get('types', {}), **form['types']}}
+            form_path(result).parent.mkdir(parents=True, exist_ok=True)
+            form_path(result).write_text(json.dumps(stored, ensure_ascii=False, indent=1), encoding='utf-8')
+            result['evaluation'].setdefault('handover', handover)
+            result['evaluation']['form'] = form_state(result)
+            (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
         def rules(self):
