@@ -447,3 +447,4 @@ small.os-tone-warn { color: var(--amber); }
 .ig-results small { margin-left: 6px; color: var(--text-2); font-size: 11px; }
 .ig-detail-name { margin: -4px 0 4px !important; color: var(--text-2); }
 .og-node-label { font-size: 15px; font-weight: 700; }
+.ig-detail-empty { margin: 0 !important; color: var(--edge-strong); font-size: 20px; text-align: center; }

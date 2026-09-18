@@ -181,7 +181,7 @@ function Variants({ run, variants, onShow }) {
       <b>{g.label}：{g.values.map((v, i) => `“${v}”${g.records ? `（${g.records[i]} 条）` : ""}`).join(" ＝ ")}</b>
       <span>{g.carried ? "这组是你上次确认时采纳的，这次模型没有重新提出" : ""}{g.reasoning ? `模型：${g.reasoning}` : ""}</span>
       {g.accepted && variants.decisions.types?.[g.type]?.verdict !== "ok" && <span className="os-tone-warn">保存确认前要先把{g.label}判“对”</span>}
-      <button type="button" className="pr-link" onClick={() => variants.onToggle(g)}>{g.accepted ? "已采纳，点一下撤回" : "采纳"}</button>
+      <button type="button" className="pr-link" onClick={() => variants.onToggle(g)}>{g.accepted ? "已采纳 ✕" : "采纳"}</button>
       <ShowOnGraph type={g.type} onShow={onShow} />
     </li>)}</ul>}
     {note?.dropped.length > 0 && <details className="os-how"><summary>代码丢掉的 {note.dropped.length} 组</summary>

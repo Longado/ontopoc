@@ -163,11 +163,10 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
         {(ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) || ontology.relations.some((r) => unsteady(run.evaluation.stability, "relations", r.key)))
           && <li><i className="og-legend-unsteady" />虚线框、点线：不是每次建模都有</li>}
         {hinted.length > 0 && <li><i className="og-legend-hint" />虚线"建议"：代码在数据里看到、本体里没有的关系</li>}
-        <li>拖动空白处平移，滚轮缩放，拖动方框调整位置</li>
       </ul>
     </div>
     <aside className="og-inspector" aria-label="证据检查">
-      <div className="og-inspector-head">证据检查 · 点图里的对象或关系</div>
+      <div className="og-inspector-head">证据检查</div>
       {path ? <PathInspector ontology={ontology} path={path} onClearPath={onClearPath} /> : selected.key && <Inspector run={run} selected={selected} findings={findings} confirm={confirm} />}
       {onAsk && <button type="button" className="og-ask" onClick={onAsk}>询问这个本体：用数据回答业务问题 →</button>}
     </aside>

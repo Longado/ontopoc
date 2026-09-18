@@ -72,7 +72,7 @@ export function InstanceGraph({ run }) {
     </aside>
     <div className="ig-canvas">
       {error && <p role="alert" className="pr-error">{error}</p>}
-      {!nodes.length ? <div className="ig-empty"><span aria-hidden="true">◎</span><p>在左边选一个对象，这里画出它在数据里连着的一切。</p></div>
+      {!nodes.length ? <div className="ig-empty" aria-label="还没有选对象"><span aria-hidden="true">◎</span></div>
         : <PanZoom width={graph.width} height={graph.height} label="实例图谱" resetKey={nodes[0]?.id} onNodeDrag={(id, dx, dy) => setPlaced((g) => moveNode(g || layout, id, dx, dy))}>
           {edges.filter((e) => at[e.from] && at[e.to]).map((e, i) => { const p = edgePath(at[e.from], at[e.to], 0);
             return <g key={`${e.from}>${e.to}>${e.relation}>${i}`} className={`ig-edge${e.more ? " is-more" : ""}`}><path d={p.path} />{e.label && <text x={p.lx} y={p.ly} textAnchor="middle">{e.label}</text>}</g>; })}
@@ -90,7 +90,7 @@ export function InstanceGraph({ run }) {
     <aside className="ig-detail" aria-label="选中的对象">
       {sel && fields[sel.id] ? <><p className="ig-detail-type"><i className={colour[sel.type]} />{typeLabel(ontology, sel.type)}</p><h3>{sel.label}</h3>{sel.name && <p className="ig-detail-name">{sel.name}</p>}
         <dl className="os-facts">{Object.entries(fields[sel.id]).map(([k, v]) => <div key={k} className="ig-fact"><dt>{k}</dt><dd>{v}</dd></div>)}</dl></>
-        : <p className="pr-muted">点一个节点看它的字段。</p>}
+        : <p className="ig-detail-empty" aria-hidden="true">—</p>}
     </aside>
   </div>;
 }
