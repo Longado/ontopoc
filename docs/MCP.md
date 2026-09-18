@@ -23,6 +23,8 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `run_overview` | 顶部的状态标签 | 否 |
 | `list_objects` | 本体管理 · 对象卡片 | 否 |
 | `object_fields` | 对象 · 属性 | 否 |
+| `draft_form` | 对象 · 属性：起草中文名、描述、展示字段 | 是 |
+| `save_form` | 对象 · 属性：保存 | 否 |
 | `object_rows` | 对象 · 数据（`all=true` 相当于下载 CSV） | 否 |
 | `list_relations` | 本体关系 | 否 |
 | `suggest_relations` | 本体关系 · 代码建议的关系（虚线） | 否 |

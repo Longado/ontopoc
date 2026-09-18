@@ -176,6 +176,14 @@ def set_rules(s, a):
     return run['evaluation']['rules']
 
 
+def draft_form(s, a):
+    return s.request('/api/ontology/form/draft', {'saved_as': _text(a.get('saved_as'), 'saved_as')})['evaluation']['form']
+
+
+def save_form(s, a):
+    return s.request('/api/ontology/form', {'saved_as': _text(a.get('saved_as'), 'saved_as'), 'form': a.get('form')})['evaluation']['form']
+
+
 def data_layout(s, a):
     ev = s.run(a.get('saved_as'))['evaluation']
     fit = ev.get('data_fit') or {}
@@ -269,6 +277,10 @@ TOOLS = [
     _tool(list_rules, '代码在数据里找到的规则（某字段每个对象都有值；两个日期总是先后有序）和人采纳的规则，采纳的带本次数据里的违反数和例子。', RUN, ('saved_as',)),
     _tool(set_rules, '采纳或不要规则：adopted、declined 各写完整的规则 id 列表（id 来自 list_rules）。采纳的规则以后每次重跑都会检查。',
           {**RUN, 'adopted': {'type': 'array', 'items': {'type': 'string'}}, 'declined': {'type': 'array', 'items': {'type': 'string'}}}, ('saved_as', 'adopted')),
+    _tool(draft_form, '让字段释义员起草 DIP 表单里只有人能写的列：每个对象和字段的中文名、一句话描述、展示字段。一次模型调用；人写过的不会被覆盖。', RUN, ('saved_as',)),
+    _tool(save_form, '保存 DIP 表单。form 形如 {"types": {"<对象key>": {"label": "中文名", "description": "描述", "display_field": "字段", '
+          '"drafted": false, "fields": {"<字段>": {"label": "…", "description": "…", "drafted": false}}}}}；drafted=false 表示人写的。',
+          {**RUN, 'form': {'type': 'object'}}, ('saved_as', 'form')),
     _tool(data_layout, '上传的每张表：行数、跳过的标题行、每列类型长度空值；表没连上时，能把它们连起来的列。', RUN, ('saved_as',)),
     _tool(data_check, '数据体检：七项检查是否通过，以及每类发现的数量和前几个例子。全部由代码算。', RUN, ('saved_as',)),
     _tool(ask_question, '用数据回答一个业务问题：模型把问题写成查询，代码在数据上算答案。不给 question 就让模型出一组题。会调用模型。',
