@@ -37,3 +37,30 @@ export function objectRelations(run, key) {
 export function sectionOfTile(tile) {
   return { ontology: "objects", stability: "objects", fit: "check", qa: "qa", ref: "check" }[tile] || "objects";
 }
+
+/** 本体管理's own places, each with the number that says whether to go there; a place with nothing in it is left out. */
+export function objectsNav(run, decisions) {
+  const { ontology, evaluation } = run;
+  const judged = [...Object.values(decisions?.types || {}), ...Object.values(decisions?.relations || {})].filter((d) => d.verdict).length;
+  const gaps = ontology.data_gaps?.length || 0;
+  return [
+    ["objects", "对象", String(ontology.object_types.length)],
+    ["confirm", "逐项确认", `${judged} / ${ontology.object_types.length + ontology.relations.length}`],
+    ...(evaluation.stability ? [["stability", "稳定性", `${evaluation.stability.runs} 次`]] : []),
+    ...(run.previous ? [["history", "和上次比", ""]] : []),
+    ["build", "建模记录", gaps ? `缺口 ${gaps}` : ""],
+  ];
+}
+
+/** 智能问答's places: asking, the questions fixed with the business, the model's round. */
+export function qaNav(run) {
+  const { evaluation } = run;
+  const mine = (evaluation.asked || []).reduce((n, r) => n + (r.items?.length || 0), 0);
+  const round = evaluation.questions;
+  const answered = round?.items?.filter((i) => i.status === "answered").length;
+  return [
+    ["ask", "提问", String(mine)],
+    ["acceptance", "验收问题", String(evaluation.acceptance?.items.length || 0)],
+    ["model", "模型出的题", round?.items ? `${answered} / ${round.items.length}` : "—"],
+  ];
+}

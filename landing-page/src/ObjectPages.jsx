@@ -175,3 +175,12 @@ export function FillBar({ field, rows }) {
   return <span className="os-fill" title={`${(f.rows - f.empty).toLocaleString("zh-CN")} / ${f.rows.toLocaleString("zh-CN")} 行有值`}>
     <span className="os-fill-track"><i style={{ width: `${f.share}%` }} className={f.share < 100 ? "is-gap" : ""} /></span><small>{f.share}%</small></span>;
 }
+
+/** A module's own places down the left, one shown at a time: the way DIP splits a module instead of stacking it. */
+export function SubLayout({ label, items, active, onChange, children }) {
+  return <div className="os-sublayout">
+    <nav className="os-subnav" aria-label={label}>{items.map(([key, text, count]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onChange(key)}>
+      <span>{text}</span>{count && <small>{count}</small>}</button>)}</nav>
+    <div className="os-subbody">{children}</div>
+  </div>;
+}

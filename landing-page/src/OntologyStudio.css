@@ -350,3 +350,38 @@ small.os-tone-warn { color: var(--amber); }
   .os-bars li { grid-template-columns: 34% minmax(0, 1fr) 14em; }   /* room for "10,163,925,249,310（137 个值）" on one line */
   .os-bars b { white-space: nowrap; }
 }
+
+/* a module's places down the left, one at a time */
+.os-sublayout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 20px; align-items: start; }
+.os-subnav { position: sticky; top: 12px; display: grid; gap: 2px; padding: 8px; border: 1px solid var(--edge); border-radius: 12px; background: var(--surface); }
+.os-subnav button { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font-size: 14px; text-align: left; }
+.os-subnav button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.os-subnav button small { flex: none; color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.os-subnav button:hover { background: rgba(20, 22, 31, 0.04); }
+.os-subnav button[aria-current="page"] { background: var(--primary-soft); color: var(--primary-ink); font-weight: 700; }
+.os-subnav button[aria-current="page"] small { color: var(--primary-ink); }
+.os-subbody { min-width: 0; display: grid; gap: 16px; }
+.os-subbody > .pr-card, .os-subbody > section { margin: 0; }
+
+/* the confirmation board */
+.os-board { display: grid; gap: 12px; }
+.os-board-top { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin: 0; }
+.os-board-progress { flex: 1; min-width: 240px; }
+.os-board-save { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.os-board-save input { width: 180px; padding: 8px 12px; border: 1px solid var(--edge-strong); border-radius: 8px; font: inherit; font-size: 13px; }
+.os-board-save .pr-primary { margin: 0; }
+.os-board-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
+.os-board-table { margin: 0; display: grid; gap: 16px; }
+.os-board-table .og-verdict > span { display: none; }   /* the column is already called 判断 */
+.os-board-side { display: grid; gap: 12px; }
+.os-board-side .pr-card { margin: 0; }
+.os-board-side h3 { margin: 10px 0 8px; font-size: 13px; }
+.os-board-side h3:first-child { margin-top: 0; }
+.os-board-side small { color: var(--text-2); }
+.os-chip-note { padding: 0 8px; border-radius: 5px; font-size: 12px; font-style: normal; color: var(--amber); background: var(--amber-soft); }
+.os-progress-legend .is-added::before { background: var(--primary); }
+@media (max-width: 900px) {
+  .os-sublayout { grid-template-columns: minmax(0, 1fr); }
+  .os-subnav { position: static; display: flex; flex-wrap: wrap; }
+  .os-board-grid { grid-template-columns: minmax(0, 1fr); }
+}
