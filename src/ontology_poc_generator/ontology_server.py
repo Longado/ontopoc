@@ -25,6 +25,7 @@ from ontology_poc_generator.object_rows import find_instances, neighbourhood, ob
 from ontology_poc_generator.public_ontology import build_graph
 from ontology_poc_generator.relation_suggestions import suggest_relations
 from ontology_poc_generator.rule_discovery import check_rules, discover_rules
+from ontology_poc_generator.versions import version_diff
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
@@ -68,9 +69,24 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
     jobs_dir = output_dir / 'jobs'
     graphs, graphs_lock = {}, threading.Lock()   # a kept run's graph, built once: the file and the ontology never change
 
+    def memory_key(result):
+        """Judgements are kept per file, or per line of versions once a person says a file is the next version of
+        another: then the line's first file names them all."""
+        return result.get('lineage') or result['file']['sha256']
+
+    def previous_version(payload):
+        """The kept run the person says this upload is the next version of, or None."""
+        name = payload.get('previous')
+        if name is None:
+            return None
+        if not isinstance(name, str) or not SAVED_NAME.match(name) or not (output_dir / name).exists() \
+                or not (output_dir / name.replace('.json', '.bundle.json')).exists():
+            raise ValueError('previous 要写一次保存过的运行名')
+        return name
+
     def rules_state(result, bundle, graph=None):
         """The rules offered for this file and the ones a person adopted, checked against this run's data."""
-        stored_path = output_dir / 'rules' / f"{result['file']['sha256']}.json"
+        stored_path = output_dir / 'rules' / f"{memory_key(result)}.json"
         stored = json.loads(stored_path.read_text(encoding='utf-8')) if stored_path.exists() else {'adopted': [], 'declined': []}
         taken = {r['id'] for r in stored['adopted']} | set(stored['declined'])
         return {'candidates': [r for r in discover_rules(result['ontology'], bundle, graph) if r['id'] not in taken],
@@ -151,9 +167,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return earlier
         return None
 
-    def finish_build(bundle, is_document, progress=None):
+    def finish_build(bundle, is_document, progress=None, previous=None):
         if is_document:
-            return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress)
+            return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress, previous)
         # the extra runs start together with the shown one, so three runs take about as long as one
         with ThreadPoolExecutor(max_workers=STABILITY_RUNS - 1) as pool:
             extra = [pool.submit(build_company_ontology, bundle, gateway) for _ in range(STABILITY_RUNS - 1)]
@@ -165,7 +181,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if progress:
                     progress('stability', {'total': STABILITY_RUNS - 1})
                 result['evaluation']['stability'] = stability_of(result['ontology'], [extra_result(f) for f in extra])
-        return save_build(bundle, result, progress)
+        return save_build(bundle, result, progress, previous)
 
     def extra_result(future):
         try:
@@ -173,19 +189,26 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         except Exception as exc:   # an extra run is evidence, not the answer: its failure is counted, the upload goes on
             return {'status': 'failed', 'error': f'{type(exc).__name__}: {exc}'[:200]}
 
-    def save_build(bundle, result, progress=None):
+    def save_build(bundle, result, progress=None, previous_name=None):
         outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
         if result['ontology']['status'] != 'auto_built_verified' and outage:
             return 502, {'error': model_failure_text(outage[-1])}
         now = datetime.now(timezone.utc)
         name = f'{now.strftime("%Y%m%dT%H%M%S")}{now.microsecond // 1000:03d}Z-{bundle["file"]["sha256"][:8]}.json'
         output_dir.mkdir(parents=True, exist_ok=True)
+        if previous_name:   # the person said this is the next version of that run: its judgements carry over
+            earlier = json.loads((output_dir / previous_name).read_text(encoding='utf-8'))
+            result['lineage'] = memory_key(earlier)
+            if result['ontology']['status'] == 'auto_built_verified' and earlier['ontology']['status'] == 'auto_built_verified' \
+                    and result['file'].get('kind') != 'document' and earlier['file'].get('kind') != 'document':
+                earlier_bundle = json.loads((output_dir / previous_name.replace('.json', '.bundle.json')).read_text(encoding='utf-8'))
+                result['version'] = version_diff(earlier, earlier_bundle, result, bundle)
         previous = previous_run(bundle['file']['sha256'])
         if previous and result['ontology']['status'] == 'auto_built_verified':
             result['previous'] = {'saved_as': previous['saved_as'], 'started_at': previous['started_at'], 'purpose': previous.get('purpose'),
                                   'counts': {'types': len(previous['ontology']['object_types']), 'relations': len(previous['ontology']['relations'])},
                                   'diff': compare_ontologies(previous['ontology'], result['ontology'])}
-        confirmed = output_dir / 'references' / f"{bundle['file']['sha256']}.json"
+        confirmed = output_dir / 'references' / f"{memory_key(result)}.json"
         if confirmed.exists() and result['ontology']['status'] == 'auto_built_verified':
             # a person confirmed an earlier run of this file: compare against that judgement without being asked
             ref = json.loads(confirmed.read_text(encoding='utf-8'))
@@ -194,7 +217,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                                  'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                                  'diff': compare_ontologies(parse_reference(ref['reference']), result['ontology']),
                                                  'suggested': prefill_from_reference(result['ontology'], ref['reference'])}
-        accepted = output_dir / 'acceptance' / f"{bundle['file']['sha256']}.json"
+        accepted = output_dir / 'acceptance' / f"{memory_key(result)}.json"
         if accepted.exists() and result['ontology']['status'] == 'auto_built_verified' and result['file'].get('kind') != 'document':
             # the questions a person fixed for this file: the same queries, so two runs can be judged on the same thing
             with runs_lock:
@@ -376,13 +399,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if payload is None:
                     return
                 bundle, is_document = parse_upload(payload)
+                previous = previous_version(payload)
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             if gateway is None:
                 self.reply(503, {'error': NO_KEY})
                 return
-            self.reply(*finish_build(bundle, is_document))
+            self.reply(*finish_build(bundle, is_document, None, previous))
 
         def preview(self):
             try:
@@ -401,6 +425,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if payload is None:
                     return
                 bundle, is_document = parse_upload(payload)
+                previous = previous_version(payload)
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
@@ -422,7 +447,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
             def run():
                 try:
-                    status, body = finish_build(bundle, is_document, report)
+                    status, body = finish_build(bundle, is_document, report, previous)
                 except Exception as exc:  # the job must end in a state the page can show; the server log keeps the rest
                     status, body = 500, {'error': f'建模时出错：{exc}'}
                 report('done' if status == 200 else 'failed', {})
@@ -514,7 +539,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
-            stored = output_dir / 'acceptance' / f"{result['file']['sha256']}.json"
+            stored = output_dir / 'acceptance' / f"{memory_key(result)}.json"
             if not items:   # the last question was removed: this file has no fixed questions again
                 result['evaluation'].pop('acceptance', None)
                 stored.unlink(missing_ok=True)
@@ -551,7 +576,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if missing:
                 self.reply(400, {'error': f'这份数据里没有这条规则：{missing[0]}'})
                 return
-            stored = output_dir / 'rules' / f"{result['file']['sha256']}.json"
+            stored = output_dir / 'rules' / f"{memory_key(result)}.json"
             stored.parent.mkdir(parents=True, exist_ok=True)
             stored.write_text(json.dumps({'adopted': [known[x] for x in adopted], 'declined': sorted(set(declined) - set(adopted))},
                                          ensure_ascii=False, indent=1), encoding='utf-8')
@@ -580,7 +605,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             now = datetime.now(timezone.utc).isoformat(timespec='seconds')
             refs = output_dir / 'references'
             refs.mkdir(parents=True, exist_ok=True)
-            stored = refs / f"{result['file']['sha256']}.json"
+            stored = refs / f"{memory_key(result)}.json"
             if stored.exists():   # a changed judgement replaces the old one; keep the old one so it can still be read
                 old = json.loads(stored.read_text(encoding='utf-8'))
                 (refs / 'history').mkdir(exist_ok=True)
