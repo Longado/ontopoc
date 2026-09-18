@@ -15,7 +15,7 @@ import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverMod
 import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
 import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
-import { objectsNav, qaNav, sectionOfTile } from "./workspaceModel.js";
+import { objectsNav, qaNav, sectionOfTile, sectionsFor } from "./workspaceModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
@@ -739,13 +739,18 @@ export function OntologyStudio({ request = null, section = null, nav = 0, onSect
   const questions = { canAsk: Boolean(run?.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload"),
     onAccept: (items) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items }, setAccepting, setAcceptError), accepting, acceptError, onGoConfirm: goConfirm };
   const inDetail = tab === "objects" && objectKey;
+  const placeOf = (items, key) => items.find(([k]) => k === key)?.[1];
+  const crumb = !run ? [] : [sectionsFor(run).find(([k]) => k === tab)?.[1] || "",
+    tab === "objects" ? placeOf(objectsNav(run, decisions), objPlace) : tab === "qa" ? placeOf(qaNav(run), qaPlace)
+      : tab === "data" ? (dataPlace || run.sources[0]?.name) : tab === "graph" ? placeOf(VIEWS, view) : tab === "check" ? (evalView === "ref" ? "对照标准" : "体检") : ""].filter(Boolean);
   return <section className={`pr-page${open ? "" : " is-start"}${inDetail ? " is-object" : ""}`} aria-labelledby="os-title">
     {stale && <p role="alert" className="pr-note os-stale">{stale}</p>}
     {storageWarning && <p role="alert" className="pr-note os-storage">{storageWarning}</p>}
     {open && !inDetail && <header className="pr-head">
       <div className="os-overview">
-        <div className="os-overview-file"><div className="os-overview-name"><h1 id="os-title" title={run.file.name}>{folderLabel(run.file.name)}</h1>{run.purpose && <p className="os-purpose-line">{run.purpose}</p>}</div><button className="pr-link" onClick={downloadSummary} title="一页纪要，给会上的人看">下载纪要</button>
-        <button className="pr-link" onClick={download} title="本体、数据体检、问答和对照结果，一个 JSON 文件">下载本体和评测</button></div>
+        <div className="os-overview-file"><h1 id="os-title" className="os-crumb" title={`${run.file.name}${run.purpose ? `\n${run.purpose}` : ""}`}>{crumb.map((c, i) => <span key={c}>{i > 0 && <i aria-hidden="true">/</i>}{c}</span>)}</h1>
+          <button className="os-icon-btn" onClick={downloadSummary} title="下载纪要：一页 Markdown，给会上的人看">⤓ 纪要</button>
+          <button className="os-icon-btn" onClick={download} title="下载本体和评测：一个 JSON 文件">⤓ JSON</button></div>
         <div className="os-tiles">{overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} title={t.hint || undefined} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b></button>)}</div>
       </div>
     </header>}

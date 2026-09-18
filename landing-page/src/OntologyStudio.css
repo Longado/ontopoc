@@ -385,3 +385,9 @@ small.os-tone-warn { color: var(--amber); }
   .os-subnav { position: static; display: flex; flex-wrap: wrap; }
   .os-board-grid { grid-template-columns: minmax(0, 1fr); }
 }
+.os-crumb { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0; margin: 0 auto 0 0 !important; font-size: 20px !important; }
+.os-crumb span:first-child:not(:last-child) { color: var(--text-2); font-weight: 400; }
+.os-crumb i { margin: 0 10px; color: var(--edge-strong); font-style: normal; font-weight: 400; }
+.os-icon-btn { padding: 5px 10px; border: 1px solid var(--edge); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13px; }
+.os-icon-btn:hover { border-color: var(--primary); color: var(--primary-ink); }
+.os-overview-file { align-items: center !important; gap: 8px !important; }
