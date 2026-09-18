@@ -24,6 +24,7 @@ from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
 from ontology_poc_generator.public_ontology import build_graph
 from ontology_poc_generator.relation_suggestions import suggest_relations
+from ontology_poc_generator.rule_discovery import check_rules, discover_rules
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
@@ -66,6 +67,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
     runs_lock = threading.Lock()
     jobs_dir = output_dir / 'jobs'
     graphs, graphs_lock = {}, threading.Lock()   # a kept run's graph, built once: the file and the ontology never change
+
+    def rules_state(result, bundle, graph=None):
+        """The rules offered for this file and the ones a person adopted, checked against this run's data."""
+        stored_path = output_dir / 'rules' / f"{result['file']['sha256']}.json"
+        stored = json.loads(stored_path.read_text(encoding='utf-8')) if stored_path.exists() else {'adopted': [], 'declined': []}
+        taken = {r['id'] for r in stored['adopted']} | set(stored['declined'])
+        return {'candidates': [r for r in discover_rules(result['ontology'], bundle, graph) if r['id'] not in taken],
+                'adopted': check_rules(result['ontology'], bundle, stored['adopted'], graph), 'declined': stored['declined']}
 
     def kept(name):
         """A kept table run with its rows and its graph; KeyError when there is no such run."""
@@ -192,6 +201,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 saved = json.loads(accepted.read_text(encoding='utf-8'))
                 result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, saved['items'])
                 accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
+        if result['ontology']['status'] == 'auto_built_verified' and result['file'].get('kind') != 'document':
+            result['evaluation']['rules'] = rules_state(result, bundle)
         result['saved_as'] = name
         (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
         # the uploaded rows stay on this machine so later questions can be answered from them
@@ -289,6 +300,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif tail.startswith('instances/'):
                     type_key = unquote(tail[len('instances/'):])
                     self.reply(200, find_instances(result['ontology'], bundle, type_key, (query.get('q') or [''])[0], graph=graph))
+                elif tail == 'rules':
+                    self.reply(200, rules_state(result, bundle, graph))
                 elif tail == 'suggestions':
                     self.reply(200, {'suggestions': suggest_relations(result['ontology'], bundle, graph)})
                 elif tail == 'graph':
@@ -347,6 +360,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/acceptance':
                 with runs_lock:
                     self.acceptance()
+                return
+            if self.path == '/api/ontology/rules':
+                with runs_lock:
+                    self.rules()
                 return
             if self.path == '/api/ontology/variants':
                 self.variants()
@@ -509,6 +526,37 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 stored.parent.mkdir(parents=True, exist_ok=True)
                 stored.write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
+        def rules(self):
+            """Adopt or decline rules for this file: {saved_as, adopted: [rule ids], declined: [rule ids]}, each the whole list."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = str(payload.get('saved_as') or '')
+                result, bundle, graph = kept(name)
+                adopted, declined = payload.get('adopted') or [], payload.get('declined') or []
+                if not all(isinstance(x, str) for x in [*adopted, *declined]):
+                    raise ValueError('adopted 和 declined 要写规则 id')
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            now = rules_state(result, bundle, graph)
+            known = {r['id']: {k: v for k, v in r.items() if k != 'violations'} for r in now['candidates'] + now['adopted']}
+            missing = [x for x in adopted if x not in known]
+            if missing:
+                self.reply(400, {'error': f'这份数据里没有这条规则：{missing[0]}'})
+                return
+            stored = output_dir / 'rules' / f"{result['file']['sha256']}.json"
+            stored.parent.mkdir(parents=True, exist_ok=True)
+            stored.write_text(json.dumps({'adopted': [known[x] for x in adopted], 'declined': sorted(set(declined) - set(adopted))},
+                                         ensure_ascii=False, indent=1), encoding='utf-8')
+            result['evaluation']['rules'] = rules_state(result, bundle, graph)
+            (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
         def confirm(self):
