@@ -13,7 +13,8 @@ import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverModel.js";
 import { folderLabel } from "./runLibraryModel.js";
-import { ObjectCards, ObjectDetail } from "./ObjectPages.jsx";
+import { FillBar, ObjectCards, ObjectDetail, TypeChip } from "./ObjectPages.jsx";
+import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
 import { sectionOfTile } from "./workspaceModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
@@ -197,9 +198,9 @@ const SHOWN_GROUPS = 10;   // one screen of bars; the rest open on request
 function AcceptanceSection({ run, acceptance, onSave, onPath, busy, error, adding, setAdding }) {
   const saved = savedAcceptance(run);
   return <section className="pr-card os-acceptance" id="os-acceptance">
-    <div className="pr-card-head"><h2>验收问题：这次建模要回答的是什么</h2>{acceptance && <span className="pr-muted">{acceptanceSummary(acceptance)}</span>}</div>
+    <div className="pr-card-head"><h2>验收问题</h2>{acceptance && <span className="pr-muted">{acceptanceSummary(acceptance)}</span>}</div>
     <Hint>模型每次出的题都不一样，所以"能答几题"没法比较。把你和客户说定的 1–3 道问题固定下来：存的是你已经看过、认可口径的那个查询。同一份文件以后再上传，代码用同样的查询再算一次，只告诉你哪道的答案或口径变了；查询用到的字段没了，就停下来指出断点，不去猜新含义。</Hint>
-    {!acceptance && <p className="pr-muted">还没有固定的验收问题。在下面的问答里，答出来的问题旁边有"存为验收问题"。</p>}
+    {!acceptance && <p className="pr-muted">还没有。答出来的题旁点"存为验收问题"。</p>}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {acceptance && <ul className="os-questions">{acceptance.items.map((item, i) => <li key={i} className="os-question">
       <div className="os-question-head"><span className={`os-pill os-${item.status === "broken" ? "ontology_gap" : item.status}`}>{ACCEPTANCE_LABELS[item.status] || item.status}</span><b>{item.question}</b>
@@ -230,14 +231,13 @@ function Answer({ item, onPath, run }) {
   const width = ([, n, all]) => (a.share ? (n / all) * 100 : (n / max) * 100);   // a measure ranks by its own value, so max covers it too
   const extra = answerLines(item).slice(a?.groups?.length || 0);   // group lines come first; the bars show those
   return <>
-    {a?.share && a.groups && <p className="pr-muted">每组里“{a.share.field}”为“{a.share.equals}”的占比，按占比从高到低；分母小的组比例容易偏高，请一起看分母。</p>}
-    {a?.measure && a.measure.value !== null && <p className="pr-muted">这一题算的是{a.measure.op === "sum" ? "合计" : "平均"}，不是条数：读到 {a.measure.counted} 个“{a.measure.field}”的值{a.measure.skipped ? `，另有 ${a.measure.skipped} 个不是数字或为空，没算进去` : ""}。{a.groups && a.measure.op === "average" ? "每组后面写着它是由几个值算出来的；只有一两个值的组，别当成规律。" : ""}</p>}
+    {answerTags(item).length > 0 && <p className="os-answer-tags" title={a.share ? "分母小的组比例容易偏高，请一起看分母" : a.measure?.op === "average" ? "只有一两个值的组，别当成规律" : undefined}>{answerTags(item).map((t) => <span key={t}>{t}</span>)}</p>}
     {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${sharePercent(g[1], g[2])}%）` : a.measure ? `${g[1].toLocaleString("zh-CN", { maximumFractionDigits: 2 })}${g[2] === undefined ? "" : `（${g[2]} 个值）`}` : g[1]}</b></li>)}</ul>}
     {a?.groups?.length > SHOWN_GROUPS && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? "只看前 10 组" : `展开其余 ${a.groups.length - SHOWN_GROUPS} 组`}</button>}
     {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
-    {item.path && <p className="pr-muted">怎么查的：{item.path}{item.query && onPath && <> <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看路径</button></>}</p>}
-    {item.status === "query_limit" && <p className="pr-muted">这种问法现在的查询还做不到（查询能数个数、算占比、求和求平均、按几样东西分组，还不能限定时间段、按数值条件筛选、一道题里同时给两个数），本体本身没有问题。{item.reason ? `模型的说明：${item.reason}` : ""}</p>}
+    {item.path && <p className="os-path-line" title="怎么查的"><span aria-hidden="true">↳</span><span className="sr-only">怎么查的：</span>{item.path}{item.query && onPath && <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看</button>}</p>}
+    {item.status === "query_limit" && <p className="pr-muted" title="查询能数个数、算占比、求和求平均、按几样东西分组；还不能限定时间段、按数值条件筛选、一道题同时给两个数">这种问法还不支持，本体没问题。{item.reason ? `模型：${item.reason}` : ""}</p>}
     {item.status !== "answered" && item.status !== "query_limit" && item.reason && <p className="pr-muted">原因：{item.reason}</p>}
   </>;
 }
@@ -254,23 +254,27 @@ function QuestionItem({ item, onPath, run, onAccept }) {
   </li>;
 }
 
+const QUESTION_FILTERS = [["all", "全部"], ["answered", "能回答"], ["unanswered", "答不了"]];
+
 function QuestionsSection({ run, canAsk, busy, error, onAsk, onPath, onUpload, onAccept }) {
   const example = !run.saved_as;
   const round = run.evaluation.questions;
   const asked = run.evaluation.asked || [];
+  const [which, setWhich] = useState("all");
+  const mine = [...asked].reverse().flatMap((r, ri) => (r.error ? [{ error: r.error, key: `e${ri}` }] : r.items.map((item, i) => ({ item, key: `${ri}-${i}` }))));
+  const shownMine = mine.filter((m) => m.error ? which === "all" : filterQuestions([m.item], which).length);
+  const shownRound = round && !round.error ? filterQuestions(round.items, which) : [];
   return <section className="pr-card">
-    <div className="pr-card-head"><h2>业务问答：能用数据回答问题吗</h2><span className="pr-muted">{overviewTiles(run).find((t) => t.key === "qa").value}（含你问的）</span></div>
+    <div className="pr-card-head"><h2>业务问答</h2>
+      <div className="os-toolbar"><span className="pr-muted">{overviewTiles(run).find((t) => t.key === "qa").value}</span>
+        <div className="og-toggle" role="group" aria-label="按能不能回答筛选">{QUESTION_FILTERS.map(([k, t]) => <button key={k} type="button" aria-pressed={which === k} onClick={() => setWhich(k)}>{t}</button>)}</div>
+        {canAsk && <button type="button" className="pr-link" disabled={busy} onClick={() => onAsk(null)}>{busy ? "出题中…" : round ? "↻ 重新出一组" : "出一组题"}</button>}</div></div>
     <Hint>模型只负责把问题写成查询（一次调用）；答案由代码在上传的数据上算出来。答不了时写明是本体缺了哪一块、数据里没有，还是这种问法还不支持。</Hint>
     {!canAsk && <CannotAsk what="自己提问、重新出题" example={example} onUpload={onUpload} />}
-    {canAsk && <div className="os-ask">
-      <button className="pr-primary" disabled={!canAsk || busy} onClick={() => onAsk(null)}>{busy ? "出题回答中…" : round ? "重新出一组问题" : "出一组业务问题并用数据回答"}</button>
-      <span className="pr-muted">自己问一个问题，用上面的输入框。</span>
-    </div>}
     {error && <p role="alert" className="pr-error">{error}</p>}
-    {asked.length > 0 && <><h3 className="os-sub">你问的</h3><ul className="os-questions">{[...asked].reverse().flatMap((r, ri) => r.error ? [<li key={`e${ri}`} className="pr-error">{r.error}</li>] : r.items.map((item, i) => <QuestionItem key={`${ri}-${i}`} item={item} onPath={onPath} run={run} onAccept={onAccept} />))}</ul></>}
-    {round && <><h3 className="os-sub">模型出的题{round.total ? `（${questionSummary(round)}）` : ""}</h3>
-      {round.error ? <p className="pr-error">{round.error}</p> : <ul className="os-questions">{round.items.map((item, i) => <QuestionItem key={i} item={item} onPath={onPath} run={run} onAccept={onAccept} />)}</ul>}
-      <p className="pr-muted os-tech">出题模型 {round.model}，提示词 {round.prompt_version}</p></>}
+    {shownMine.length > 0 && <><h3 className="os-sub">你问的</h3><ul className="os-questions">{shownMine.map((m) => m.error ? <li key={m.key} className="pr-error">{m.error}</li> : <QuestionItem key={m.key} item={m.item} onPath={onPath} run={run} onAccept={onAccept} />)}</ul></>}
+    {round && <><h3 className="os-sub" title={`出题模型 ${round.model}，提示词 ${round.prompt_version}`}>模型出的题{round.total ? `（${questionSummary(round)}）` : ""}</h3>
+      {round.error ? <p className="pr-error">{round.error}</p> : shownRound.length ? <ul className="os-questions">{shownRound.map((item, i) => <QuestionItem key={i} item={item} onPath={onPath} run={run} onAccept={onAccept} />)}</ul> : <p className="pr-muted">没有这一类的题。</p>}</>}
   </section>;
 }
 
@@ -307,17 +311,18 @@ function DataTab({ run }) {
   return <>
     {split && <section className="pr-card os-bridge">
       <h2>有几张表没连上</h2>
-      <p className="pr-muted">本体里没有一个对象同时出现在这几组表里，所以跨组的问题答不了。{bridges.length ? "按取值看，下面这些列可以把它们连起来：" : "按取值也没找到一列能把它们连起来：两边没有一列的每个值都在另一张表的某个编号列里。"}</p>
+      <p className="pr-muted">{bridges.length ? "按取值，这些列能把它们连起来：" : "按取值也找不到能连起来的列。"}</p>
       {bridges.length > 0 && <ul className="os-list">{bridges.map((l) => <li key={l}>{l}</li>)}</ul>}
       {bridges.length > 0 && <Hint>这只说明取值对得上，是不是同一个东西由你判断。是的话，重新上传时在建模目的里写上这两列是同一个编号，模型会按它建关系；代码照样会核验。</Hint>}
     </section>}
     {tables.map((t) => <section key={t.name} className="pr-card os-table-card">
-      <div className="pr-card-head"><h2>{t.name}</h2><span className="pr-muted">{t.rows.toLocaleString("zh-CN")} 行 · {t.fields ? t.fields.length : t.fieldCount} 列{split ? ` · 第 ${t.group + 1} 组` : ""}</span></div>
-      {t.skipped.length > 0 && <p className="pr-muted">表头上方跳过的标题行：{t.skipped.join("；")}</p>}
+      <div className="pr-card-head"><h2>{t.name}</h2><span className="os-stats"><b>{t.rows.toLocaleString("zh-CN")}</b> 行<b>{t.fields ? t.fields.length : t.fieldCount}</b> 列{split && <em className="os-group">第 {t.group + 1} 组</em>}</span></div>
+      {t.fields && <div className="os-type-mix">{typeMix(t.fields).map(([type, n]) => <span key={type}><TypeChip type={type === "全空" ? null : type} />× {n}</span>)}</div>}
+      {t.skipped.length > 0 && <p className="pr-muted" title="表头上方的标题行，读表时跳过了">跳过：{t.skipped.join("；")}</p>}
       {t.fields ? <div className="os-table-scroll"><table className="os-fields">
-        <thead><tr><th scope="col">字段</th><th scope="col">类型</th><th scope="col">最长</th><th scope="col">空值</th></tr></thead>
-        <tbody>{t.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td>{f.type || "全空"}</td><td>{f.length}</td><td>{f.empty ? `${f.empty} 行` : "—"}</td></tr>)}</tbody>
-      </table></div> : <p className="pr-muted">这次运行保存得早，没有逐列记录。重新上传同一份文件就能看到每一列的类型、长度和空值。</p>}
+        <thead><tr><th scope="col">字段</th><th scope="col">类型</th><th scope="col">最长</th><th scope="col" title="有值的行占多少">填充</th></tr></thead>
+        <tbody>{t.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td><TypeChip type={f.type} /></td><td>{f.length || "—"}</td><td><FillBar field={f} rows={t.rows} /></td></tr>)}</tbody>
+      </table></div> : <p className="pr-muted">这次运行没有逐列记录，重新上传可看到。</p>}
     </section>)}
     <Hint>类型按每一个值判断，不看字段名：有一个值不是数字就算文本；以 0 开头的编号算文本，因为转成数字会丢掉那个 0。</Hint>
   </>;
@@ -381,13 +386,15 @@ function ConfirmCard({ run, confirm }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return <section className="pr-card os-confirm" id="os-confirm">
-    <div className="pr-card-head"><h2>逐项确认：这个本体在业务上对不对</h2><span className="pr-muted">已判断 {progress.judged} / {progress.total}{progress.wrong ? `，其中 ${progress.wrong} 项不对` : ""}{progress.added ? `，补了 ${progress.added} 个` : ""}</span></div>
-    <Hint>前面的检查只能说明本体和数据对得上，说明不了它在业务上对不对，这要懂业务的人判断。在关系图右栏，或者"对象""关系"两页里，给每个对象、每条关系点"对"或"不对"，名字不合适可以改，漏掉的对象在下面补上（对象多时用"对象""关系"两页判得快）。保存后，这份判断就是这个文件的参考本体：马上对照一次，同一份文件以后再上传会自动对照，并带上这次的判断，只剩有差别的要看。没判断的项不算进参考本体。</Hint>
-    <p className="pr-muted">判"对"的意思是这个对象、这条关系在业务上成立，不代表建模目的已经能回答；能不能回答，看"业务问答"和下面"模型指出的数据缺口"。</p>
-    {memoryNote(run) && !saved && <p className="pr-muted">{memoryNote(run)}</p>}
+    <div className="pr-card-head"><h2>逐项确认</h2><span className="pr-muted">{progress.judged} / {progress.total}{progress.added ? ` · 补了 ${progress.added} 个` : ""}</span></div>
+    <Hint>前面的检查只能说明本体和数据对得上，说明不了它在业务上对不对，这要懂业务的人判断。在每个对象自己页面的"确认"里，或本体关系图的右栏，给每个对象、每条关系点"对"或"不对"，名字不合适可以改，漏掉的对象在下面补上（对象多时用"对象""关系"两页判得快）。保存后，这份判断就是这个文件的参考本体：马上对照一次，同一份文件以后再上传会自动对照，并带上这次的判断，只剩有差别的要看。没判断的项不算进参考本体。{memoryNote(run) ? ` ${memoryNote(run)}` : ""}</Hint>
+    <div className="os-progress-bar" role="img" aria-label={`判对 ${progress.ok}，判错 ${progress.wrong}，没判 ${progress.total - progress.judged}`}>
+      <i className="is-ok" style={{ flex: progress.ok }} /><i className="is-wrong" style={{ flex: progress.wrong }} /><i style={{ flex: progress.total - progress.judged }} /></div>
+    <p className="pr-muted">判"对"的意思是业务上成立，不等于建模目的已能回答。</p>
+    <p className="os-progress-legend"><span className="is-ok">判对 {progress.ok}</span><span className="is-wrong">判错 {progress.wrong}</span><span>没判 {progress.total - progress.judged}</span></p>
     {purposeNote(run) && !saved && <p role="status" className="pr-note os-tone-warn">{purposeNote(run)}</p>}
     {run.evaluation.reference?.suggested && !saved && <p className="pr-note">已按你上次的确认预先填好（{localTime(run.evaluation.reference.confirmed_at)}{run.evaluation.reference.confirmed_by ? `，${run.evaluation.reference.confirmed_by}` : ""}），只需看有差别的项，再保存。</p>}
-    {others.length > 0 && <div className="pr-note os-others"><span>模型别的几次建模里还有这些对象，这次没有。如果业务上该有，点一下补上：</span>
+    {others.length > 0 && <div className="pr-note os-others"><span title="模型别的几次建模里有、这次没有的对象；业务上该有就点一下补上">别的几次还有：</span>
       <div className="os-chips os-suggest">{others.map((t) => <button key={t.label} type="button" onClick={() => confirm.onAdd(t.label)}>{t.label}（{t.runs} 次里 {t.count} 次）</button>)}</div></div>}
     <div className="os-add">
       <label htmlFor="os-add-type">漏掉的对象<span className="os-ask-row"><input id="os-add-type" value={name} maxLength={40} placeholder="例如：售后工程师" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
@@ -440,18 +447,17 @@ function OntologyExtras({ run, confirm }) {
   return <>
     <ConfirmCard run={run} confirm={confirm} />
     {run.evaluation.stability && <section className="pr-card" id="os-stability">
-      <h2>同一份文件建了 {run.evaluation.stability.runs + run.evaluation.stability.failed} 次，哪些靠得住</h2>
+      <div className="pr-card-head"><h2>建了 {run.evaluation.stability.runs + run.evaluation.stability.failed} 次，哪些每次都有</h2><span className="pr-muted">● 这一次有 ○ 这一次没有</span></div>
       <Hint>模型每次搭的本体会有出入（这是模型的搭法不同，不是数据变了），所以这次上传同时建了几次，代码把它们对齐后数每个对象、每条关系出现了几次。每次都有的可以放心用；不是每次都有的，是模型拿不准的地方，图上画成虚线框，要不要按你的业务决定。</Hint>
-      <ul className="os-list">{consensusLines(ontology, run.evaluation.stability, ERROR_LABELS).map((l) => <li key={l}>{l}</li>)}</ul>
-      <Hint>页面上的数据体检和问答用的是显示的这一次本体。数据体检是代码按本体逐行算的，本体一样，体检结果就一样{ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) ? "；和虚线框对象有关的体检结果，看你要不要这个对象再取舍" : ""}。问答的题每次由模型重新出，所以题目和"能答几题"会变；每道题的答案是代码在数据上算的，同样的查询答案不变。</Hint>
+      {run.evaluation.stability.failed > 0 && <p className="pr-muted os-tone-warn">{consensusLines(ontology, run.evaluation.stability, ERROR_LABELS)[0]}</p>}
+      <ul className="os-dots">{stabilityRows(ontology, run.evaluation.stability).map((r) => <li key={`${r.kind}-${r.label}`} className={r.present < r.runs ? "is-shaky" : ""}>
+        <span className="os-dots-marks" aria-label={`${r.runs} 次里 ${r.present} 次有`}>{Array.from({ length: r.runs }, (_, i) => <i key={i} className={i < r.present ? "is-on" : ""} />)}</span>
+        <span>{r.label}</span><small>{r.kind}{r.here ? "" : " · 这次没有"}</small></li>)}</ul>
     </section>}
     {run.previous && <section className="pr-card" id={run.evaluation.stability ? undefined : "os-stability"}>
-      <h2>和上一次运行比（只比本体）</h2>
-      <p className="pr-muted">{previousLine(run.previous)}。{run.previous.purpose && run.previous.purpose !== run.purpose ? "两次的建模目的不同，差别可能来自目的，也可能是模型本身的出入。" : ""}</p>
-      {stabilityLines(run.previous.diff).length
-        ? <><p className="pr-muted">和这次比，本体有下面这些差别。模型每次搭的本体会有出入；拿不准时用"对照标准"和参考本体比。</p>
-          <ul className="os-list">{stabilityLines(run.previous.diff).map((l) => <li key={l}>{l}</li>)}</ul></>
-        : <p className="pr-muted">和这次的对象、关系完全一致。</p>}
+      <div className="pr-card-head"><h2>和上一次比</h2><span className={`os-diff-count${stabilityLines(run.previous.diff).length ? " is-changed" : ""}`}>{stabilityLines(run.previous.diff).length ? `${stabilityLines(run.previous.diff).length} 处不同` : "完全一致"}</span></div>
+      <p className="pr-muted">{previousLine(run.previous)}{run.previous.purpose && run.previous.purpose !== run.purpose ? " · 两次目的不同" : ""}</p>
+      {stabilityLines(run.previous.diff).length > 0 && <details><summary>看差别</summary><ul className="os-list">{stabilityLines(run.previous.diff).map((l) => <li key={l}>{l}</li>)}</ul></details>}
     </section>}
     {(ontology.data_gaps.length > 0 || ontology.ignored_fields.length > 0) && <section className="pr-card">
       <h2>模型指出的数据缺口（{ontology.data_gaps.length}）</h2>

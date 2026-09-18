@@ -2,22 +2,41 @@ import { useEffect, useState } from "react";
 
 import { Verdict } from "./OntologyGraph.jsx";
 import { focusOntology, layoutGraph } from "./ontologyGraphModel.js";
-import { fieldNote, formOf } from "./ontologyHandoverModel.js";
+import { formOf } from "./ontologyHandoverModel.js";
 import { objectCards, objectRelations } from "./workspaceModel.js";
+import { filled, filterCards, rowsCsv } from "./visualModel.js";
 
 const VERDICT_TEXT = { ok: "判对", wrong: "判错" };
 
 /** 本体管理: one card per object, the way DIP lists its business ontologies. */
+const VERDICT_FILTERS = [["all", "全部"], ["ok", "判对"], ["wrong", "判错"], ["none", "没判"]];
+
 export function ObjectCards({ run, decisions, onOpen }) {
-  const cards = objectCards(run, decisions);
+  const [query, setQuery] = useState("");
+  const [verdict, setVerdict] = useState("all");
+  const [layout, setLayout] = useState("cards");
+  const all = objectCards(run, decisions);
+  const cards = filterCards(all, query, verdict);
+  const meta = (c) => <>{c.count !== null && <>共 {c.count.toLocaleString("zh-CN")} 个<i aria-hidden="true">|</i></>}关系 {c.relations} 条</>;
   return <section className="os-objects" aria-labelledby="os-objects-title">
-    <div className="os-objects-head"><h2 id="os-objects-title">业务对象 <small>({cards.length})</small></h2></div>
-    <div className="os-object-grid">{cards.map((c) => <button key={c.key} type="button" className={`os-object-card${c.verdict ? ` is-${c.verdict}` : ""}`} onClick={() => onOpen(c.key)}>
+    <div className="os-objects-head"><h2 id="os-objects-title">业务对象 <small>({all.length})</small></h2>
+      <div className="os-toolbar">
+        <label className="os-search"><span className="sr-only">按名称找对象</span><input id="os-object-search" value={query} placeholder="输入名称搜索" onChange={(e) => setQuery(e.target.value)} /></label>
+        <div className="og-toggle" role="group" aria-label="按判断筛选">{VERDICT_FILTERS.map(([k, t]) => <button key={k} type="button" aria-pressed={verdict === k} onClick={() => setVerdict(k)}>{t}</button>)}</div>
+        <div className="og-toggle" role="group" aria-label="显示方式">{[["cards", "卡片"], ["list", "列表"]].map(([k, t]) => <button key={k} type="button" aria-pressed={layout === k} onClick={() => setLayout(k)}>{t}</button>)}</div>
+      </div></div>
+    {!cards.length && <p className="pr-muted">没有符合条件的对象。</p>}
+    {layout === "cards" ? <div className="os-object-grid">{cards.map((c) => <button key={c.key} type="button" className={`os-object-card${c.verdict ? ` is-${c.verdict}` : ""}`} onClick={() => onOpen(c.key)}>
       <span className="os-object-title"><i aria-hidden="true" /><b>{c.renamed || c.label}</b>{c.verdict && <em>{VERDICT_TEXT[c.verdict]}</em>}</span>
       <span className="os-object-note">{c.note || `按 ${c.identity.join(" + ")} 识别`}</span>
-      <span className="os-object-meta">{c.count !== null && <>共 {c.count.toLocaleString("zh-CN")} 个<i aria-hidden="true">|</i></>}包含关系 {c.relations} 条</span>
-      <span className="os-object-from">来自 {c.sources.join("、")}</span>
+      <span className="os-object-meta">{meta(c)}</span>
+      <span className="os-object-from">{c.sources.join("、")}</span>
     </button>)}</div>
+      : <div className="os-table-scroll pr-card"><table className="os-fields os-object-table">
+        <thead><tr><th scope="col">对象</th><th scope="col">数量</th><th scope="col">关系</th><th scope="col">来自表</th><th scope="col">判断</th></tr></thead>
+        <tbody>{cards.map((c) => <tr key={c.key} onClick={() => onOpen(c.key)}><td><button type="button" className="pr-link" onClick={() => onOpen(c.key)}>{c.renamed || c.label}</button></td>
+          <td>{c.count?.toLocaleString("zh-CN") ?? "—"}</td><td>{c.relations}</td><td>{c.sources.join("、")}</td><td>{c.verdict ? <em className={`os-verdict is-${c.verdict}`}>{VERDICT_TEXT[c.verdict]}</em> : "—"}</td></tr>)}</tbody>
+      </table></div>}
   </section>;
 }
 
@@ -80,12 +99,11 @@ function FieldsTable({ run, type }) {
   return <section className="pr-card"><div className="pr-card-head"><h3>属性列表</h3><span className="pr-muted">{fields.length} 个</span></div>
     {form?.needs_single_key && <p className="pr-note os-tone-warn">靠 {form.identity_fields.join(" + ")} 这几个字段一起识别。DIP 每张表只收一个主键，导入前要把它们合成一个，或者改建模。</p>}
     <div className="os-table-scroll"><table className="os-fields">
-      <thead><tr><th scope="col">序号</th><th scope="col">字段</th>{profiled && <><th scope="col">类型</th><th scope="col">长度</th><th scope="col">空值</th></>}<th scope="col">来源</th></tr></thead>
+      <thead><tr><th scope="col">序号</th><th scope="col">字段</th>{profiled && <><th scope="col">类型</th><th scope="col">长度</th><th scope="col" title="有值的行占多少">填充</th></>}<th scope="col">来源</th></tr></thead>
       <tbody>{fields.map((f, i) => <tr key={f.path}><td>{i + 1}</td><td>{f.path}{f.identity && <em className="os-tag is-key">主键</em>}</td>
-        {profiled && <><td>{f.type || "—"}</td><td>{f.length || "—"}</td><td>{fieldNote(f) || "—"}</td></>}<td>{(f.sources || []).join("、") || "数据导入"}</td></tr>)}</tbody>
+        {profiled && <><td><TypeChip type={f.type} /></td><td>{f.length || "—"}</td><td><FillBar field={f} rows={f.rows} /></td></>}<td>{(f.sources || []).join("、") || "数据导入"}</td></tr>)}</tbody>
     </table></div>
     {!profiled && <p className="pr-muted">这次运行保存得早，没有逐列的类型和长度。重新上传同一份文件就能看到。</p>}
-    <p className="pr-muted">类型、长度、空值由代码拿每一行读出来；中文名、描述、展示字段只有人能写，导入 DIP 时再填。</p>
   </section>;
 }
 
@@ -104,7 +122,23 @@ function ObjectRows({ run, typeKey }) {
   }, [run.saved_as, typeKey, page]);
   const d = state.data;
   const pages = d ? Math.max(1, Math.ceil(d.total / d.size)) : 1;
-  return <section className="pr-card"><div className="pr-card-head"><h3>数据列表</h3>{d && <span className="pr-muted">共 {d.total.toLocaleString("zh-CN")} 个</span>}</div>
+  const [saving, setSaving] = useState("");
+  async function download() {
+    setSaving("…");
+    try {
+      const r = await fetch(`/api/ontology/runs/${run.saved_as}/objects/${encodeURIComponent(typeKey)}?all=1`, { cache: "no-store" });
+      const all = await r.json();
+      if (!r.ok) throw new Error(all.error || `服务返回 ${r.status}`);
+      const url = URL.createObjectURL(new Blob([rowsCsv(all.columns, all.rows)], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a"); link.href = url; link.download = `${all.label}.csv`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setSaving("");
+    } catch (e) { setSaving(e.message === "Failed to fetch" ? "连不上本机建模服务" : e.message); }
+  }
+  return <section className="pr-card"><div className="pr-card-head"><h3 title="每行是本体在数据里认出的一个对象；同一个对象出现在几张表里时合成一行，写得不一样时显示先读到的那个">数据列表</h3>
+    <div className="os-toolbar">{d && <span className="pr-muted">共 {d.total.toLocaleString("zh-CN")} 个</span>}
+      <button type="button" className="pr-link os-download" disabled={!d || saving === "…"} onClick={download}>{saving === "…" ? "准备中…" : "下载 CSV"}</button>
+      {saving && saving !== "…" && <span role="alert" className="pr-error">{saving}</span>}</div></div>
     {state.status === "error" && <p role="alert" className="pr-error">{state.error}</p>}
     {d && <div className={`os-table-scroll${state.status === "loading" ? " is-loading" : ""}`}><table className="os-fields">
       <thead><tr><th scope="col">序号</th>{d.columns.map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
@@ -113,7 +147,6 @@ function ObjectRows({ run, typeKey }) {
     {state.status === "loading" && !d && <p className="pr-muted">正在读取…</p>}
     {d && pages > 1 && <div className="os-pager"><button type="button" className="pr-link" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button>
       <span>第 {page} / {pages} 页</span><button type="button" className="pr-link" disabled={page >= pages} onClick={() => setPage(page + 1)}>下一页</button></div>}
-    <p className="pr-muted">每一行是本体在数据里认出的一个{d?.label || "对象"}，同一个对象出现在几张表里时合成一行；几张表写得不一样时显示先读到的那个，差异看"数据体检"。</p>
   </section>;
 }
 
@@ -129,4 +162,16 @@ function MiniGraph({ run, typeKey, onOpen }) {
       <rect width={n.w} height={n.h} rx="8" /><rect width={n.w} height={14} rx="4" className="os-mini-cap" /><text x={n.w / 2} y={n.h / 2 + 12} textAnchor="middle">{n.label}</text>
     </g>)}
   </svg></div>;
+}
+
+export function TypeChip({ type }) {
+  return <em className={`os-type os-type-${(type || "none").toLowerCase()}`}>{type || "全空"}</em>;
+}
+
+/** How full a column is, drawn: the bar is the share of rows with a value. */
+export function FillBar({ field, rows }) {
+  const f = filled(field, rows);
+  if (!f) return "—";
+  return <span className="os-fill" title={`${(f.rows - f.empty).toLocaleString("zh-CN")} / ${f.rows.toLocaleString("zh-CN")} 行有值`}>
+    <span className="os-fill-track"><i style={{ width: `${f.share}%` }} className={f.share < 100 ? "is-gap" : ""} /></span><small>{f.share}%</small></span>;
 }

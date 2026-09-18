@@ -266,11 +266,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
                 return
             try:
-                page = int((parse_qs(url.query).get('page') or ['1'])[0])
+                query = parse_qs(url.query)
+                page = int((query.get('page') or ['1'])[0])
+                size = None if query.get('all') == ['1'] else 20   # all=1: every row, for a download
                 result = json.loads((output_dir / name).read_text(encoding='utf-8'))
                 if result['file'].get('kind') == 'document':
                     raise ValueError('文档没有数据行')
-                self.reply(200, object_rows(result['ontology'], json.loads(bundle_path.read_text(encoding='utf-8')), type_key, page))
+                self.reply(200, object_rows(result['ontology'], json.loads(bundle_path.read_text(encoding='utf-8')), type_key, page, size))
             except KeyError:
                 self.reply(404, {'error': f'这份本体里没有对象 {type_key}'})
             except ValueError as exc:

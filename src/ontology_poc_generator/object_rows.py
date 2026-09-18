@@ -11,12 +11,13 @@ from ontology_poc_generator.public_ontology import build_graph, normalize_propos
 PAGE_SIZE = 20
 
 
-def object_rows(ontology: dict, bundle: dict, type_key: str, page: int = 1, size: int = PAGE_SIZE) -> dict:
+def object_rows(ontology: dict, bundle: dict, type_key: str, page: int = 1, size: int | None = PAGE_SIZE) -> dict:
+    """size=None hands over every row at once, for a download."""
     p = normalize_proposal(ontology)
     t = next((t for t in p['object_types'] if t['key'] == type_key), None)
     if t is None:
         raise KeyError(type_key)
-    if page < 1 or size < 1:
+    if page < 1 or (size is not None and size < 1):
         raise ValueError('page and size start at 1')
     read = {}   # source -> the fields this object takes from it, identity first
     for pop in t['populated_from']:
@@ -26,6 +27,7 @@ def object_rows(ontology: dict, bundle: dict, type_key: str, page: int = 1, size
     columns = list(dict.fromkeys(path for paths in read.values() for path in paths))
     records_of = build_graph(ontology, bundle)['records_of']
     found = [inst for inst in records_of if inst[0] == type_key]   # in the order the data first names them
+    size = size or max(1, len(found))
     rows = []
     for inst in found[(page - 1) * size: page * size]:
         row = {}
