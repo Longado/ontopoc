@@ -143,3 +143,4 @@ small.os-tone-warn { color: var(--amber); }
 .os-type-form-head h3 { margin: 0; }
 .os-form-table td:first-child, .os-form-table th:first-child { white-space: nowrap; }
 .os-form-table td { vertical-align: top; }
+.os-form-table td:first-child { display: grid; gap: 6px; justify-items: start; }

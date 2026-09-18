@@ -396,11 +396,11 @@ function RelationsView({ run, confirm }) {
   const cards = Object.fromEntries((formOf(run)?.relations || []).map((r) => [r.key, r]));
   if (!ontology.relations.length) return <p className="pr-muted">没有关系。</p>;
   return <div className="os-list-view"><div className="pr-table-wrap"><table className="pr-table os-form-table">
-    <thead><tr><th>关系</th><th>对应关系</th><th>含义</th><th>来自表</th><th></th></tr></thead>
+    <thead><tr><th>关系</th><th>对应关系</th><th>含义</th><th>来自表</th></tr></thead>
     <tbody>{ontology.relations.map((r) => { const c = cards[r.key]; return <tr key={r.key}>
-      <td><b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b></td>
+      <td><b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><Verdict confirm={confirm} kind="relations" item={r} /></td>
       <td>{c ? <><b>{cardinalityLabel(c)}</b><br /><small className="pr-muted">{cardinalityLine(ontology, c)}</small></> : "—"}</td>
-      <td>{r.meaning}</td><td><code>{r.source}</code></td><td><Verdict confirm={confirm} kind="relations" item={r} /></td>
+      <td>{r.meaning}</td><td><code>{r.source}</code></td>
     </tr>; })}</tbody>
   </table></div></div>;
 }
