@@ -33,7 +33,7 @@ ORDER_CUSTOMER = {'key': 'order_customer', 'from': 'order', 'to': 'customer', 's
 class SuggestionTests(unittest.TestCase):
     def test_a_column_pointing_at_another_objects_number_is_suggested_with_its_evidence(self):
         found = suggest_relations(ontology([ORDER_CUSTOMER]), BUNDLE)
-        self.assertEqual(found, [{'from': 'order', 'to': 'supplier', 'via': {'source': 'orders', 'field': '供应商'},
+        self.assertEqual(found, [{'kind': 'pointer', 'from': 'order', 'to': 'supplier', 'via': {'source': 'orders', 'field': '供应商'},
                                   'key': {'source': 'suppliers', 'field': '供应商编号'}, 'rows': 3, 'linked': 2, 'loose': True}])
 
     def test_a_relation_the_ontology_already_has_is_not_suggested_again(self):
