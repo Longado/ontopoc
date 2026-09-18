@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ontology_poc_generator.ontology_eval import data_fit
+from ontology_poc_generator.handover_form import handover_form
 from ontology_poc_generator.public_ontology import Profile, auto_build_ontology, field_paths, verify_proposal
 
 COMPANY_PROMPT_VERSION = 'company_ontology_modeler.v2'
@@ -84,5 +85,6 @@ def build_and_evaluate(bundle: dict, gateway, progress=None) -> dict:
                      **({'skipped_rows': s['skipped_rows']} if s.get('skipped_rows') else {})}
                     for name, s in bundle['sources'].items()],
         'ontology': ontology,
-        'evaluation': {'data_fit': data_fit(ontology, bundle) if verified else None},
+        'evaluation': {'data_fit': data_fit(ontology, bundle) if verified else None,
+                       'handover': handover_form(ontology, bundle) if verified else None},
     }
