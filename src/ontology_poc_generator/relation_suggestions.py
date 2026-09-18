@@ -5,6 +5,8 @@ and a relation is two objects named on the same row. So two objects read from on
 there is a relation left out; each such group is offered a link to the object that table's rows are about. Taking any
 one relation out of the saved real runs, this is what finds it again.
 
+The second is a column naming another object by its name (see _alternate_keys).
+
 The rare one is a pointer:
 a suggestion needs what a foreign key is: a column whose every filled value is the number of an object of another
 type, that type being identified by that one column and no number repeating. Numbers may differ in case and in the
@@ -22,6 +24,15 @@ from ontology_poc_generator.ontology_eval import _row_owners
 from ontology_poc_generator.public_ontology import build_graph, field_paths, normalize_proposal, resolve
 
 _SEPARATORS = re.compile(r'[\s\-_]')
+_LIST = re.compile(r'[,，、;；|]')   # several names in one cell
+
+
+def _number(v: str) -> bool:
+    try:
+        float(v.replace(',', ''))
+    except ValueError:
+        return False
+    return True
 
 
 def _loose(v: str) -> str:
@@ -70,6 +81,62 @@ def _same_row(p: dict, bundle: dict, related: set, graph: dict) -> list[dict]:
     return out
 
 
+def _alternate_keys(p: dict, bundle: dict, graph: dict) -> list[dict]:
+    """A column naming another object by its name, not its number (the alternate-key idea in ontexus's mapping
+    service). The name column has to tell its objects apart — no name repeats, no lists — and be names, not numbers,
+    which match each other by chance. Two things it must not pass off as a new relation: one matching name (a
+    restaurant called what a district is called), which shows no pattern; and names that on every row lead to the very
+    object the row already names (Northwind's shipName is the order's own customer on all 796 rows), which is the
+    relation said twice. On the Taiwan registry the opposite held: all 455 named corporations were other companies."""
+    sources, owners, per_record = bundle['sources'], _row_owners(p, graph), graph['per_record']
+    names = []   # (type, source, field, loose name -> object)
+    for t in p['object_types']:
+        for a in t['attributes']:
+            source, path = a.get('source'), a.get('path')
+            if source not in sources:
+                continue
+            values = _filled(sources[source]['records'], path)
+            loose = {_loose(v) for v in values}
+            if len(loose) > 1 and len(loose) == len(values) and not any(_number(v) or _LIST.search(v) for v in values):
+                objects = {}
+                for index, record in enumerate(sources[source]['records']):
+                    found = per_record.get((source, index), {}).get(t['key'])
+                    value = next((str(v).strip() for v in resolve(record, path)[:1] if v not in (None, '')), '')
+                    if found and value:
+                        objects[_loose(value)] = found[0]
+                names.append((t['key'], source, path, objects))
+    order = [t['key'] for t in p['object_types']]
+    out = []
+    for source, table in sources.items():
+        owner = next((t for t in order if t in owners.get(source, ())), None)
+        if owner is None:
+            continue
+        identity_here = {f for u in p['object_types'] for pop in u['populated_from'] if pop['source'] == source for f in pop['identity'].values()}
+        for field in field_paths(table['records']):
+            if field in identity_here:
+                continue
+            cells = [(index, [part for part in (x.strip() for x in _LIST.split(str(v))) if part])
+                     for index, record in enumerate(table['records']) for v in resolve(record, field)[:1] if v not in (None, '') and str(v).strip()]
+            for key_type, key_source, key_field, objects in names:
+                if key_source == source or key_type == owner:
+                    continue
+                linked, named, elsewhere = 0, set(), False
+                for index, parts in cells:
+                    hits = [objects[_loose(x)] for x in parts if _loose(x) in objects]
+                    if not hits:
+                        continue
+                    linked += 1
+                    named.update(hits)
+                    elsewhere |= any(h not in per_record.get((source, index), {}).get(key_type, ()) for h in hits)
+                if len(named) > 1 and elsewhere:
+                    out.append({'kind': 'alternate_key', 'from': owner, 'to': key_type, 'via': {'source': source, 'field': field},
+                                'key': {'source': key_source, 'field': key_field}, 'rows': len(table['records']), 'filled': len(cells), 'linked': linked})
+    best = {}   # the same two columns found both ways keep the way more rows bear out
+    for x in sorted(out, key=lambda x: -x['linked']):
+        best.setdefault(frozenset(((x['via']['source'], x['via']['field']), (x['key']['source'], x['key']['field']))), x)
+    return list(best.values())
+
+
 def suggest_relations(ontology: dict, bundle: dict, graph: dict | None = None) -> list[dict]:
     p = normalize_proposal(ontology)
     sources = bundle['sources']
@@ -89,7 +156,7 @@ def suggest_relations(ontology: dict, bundle: dict, graph: dict | None = None) -
         present = {**ontology, 'object_types': [{**t, 'populated_from': [pop for pop in t['populated_from'] if pop['source'] in sources]} for t in p['object_types']],
                    'relations': [r for r in p['relations'] if r.get('source') in sources]}
         graph = build_graph(present, bundle)
-    out = _same_row(p, bundle, related, graph)
+    out = _same_row(p, bundle, related, graph) + _alternate_keys(p, bundle, graph)
     for t in p['object_types']:
         for source in dict.fromkeys(pop['source'] for pop in t['populated_from']):
             if source not in sources:

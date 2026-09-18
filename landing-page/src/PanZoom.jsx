@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 /** A canvas you can pan (drag the background), zoom (wheel or buttons) and rearrange (drag an element marked
  *  data-node). A drag never counts as a click, so dragging a box does not also select it. */
-export function PanZoom({ width, height, label, onNodeDrag, resetKey, children, minHeight = 420, minWidth = 980 }) {
+export function PanZoom({ width, height, label, onNodeDrag, resetKey, children, minHeight = 360, minWidth = 720 }) {
   const svg = useRef(null);
   const drag = useRef(null);
   const dragged = useRef(false);

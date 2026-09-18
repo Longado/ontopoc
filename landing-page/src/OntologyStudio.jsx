@@ -441,7 +441,7 @@ function RelationsView({ run, confirm, suggestions = [] }) {
   return <div className="os-list-view">
     {suggestions.length > 0 && <div className="os-suggest-list"><h3>代码建议 <small>{suggestions.length}</small></h3>
       <ul>{suggestions.map((x, i) => <li key={i}><em className="os-chip-note">建议</em><b>{typeLabel(ontology, x.from)} — {typeLabel(ontology, x.to)}</b>
-        <span className="pr-muted" title={x.kind === "same_row" ? "两者出现在同一张表的同一行，本体里却没把它们连起来" : "这一列按名字和取值都指向对方的编号"}>{x.via.source} ·「{x.via.field}」· {x.linked.toLocaleString("zh-CN")} / {x.rows.toLocaleString("zh-CN")} 行{x.loose ? " · 编号写法有差别" : ""}</span></li>)}</ul></div>}
+        <span className="pr-muted" title={{ same_row: "两者出现在同一张表的同一行，本体里却没把它们连起来", alternate_key: `这一列写的是${typeLabel(ontology, x.to)}的名称（对上「${x.key?.field}」），指向的不是本行已经连着的那个`, pointer: "这一列按名字和取值都指向对方的编号" }[x.kind]}>{x.via.source} ·「{x.via.field}」· {x.linked.toLocaleString("zh-CN")} / {(x.filled ?? x.rows).toLocaleString("zh-CN")} 行{x.loose ? " · 编号写法有差别" : ""}</span></li>)}</ul></div>}
     <div className="pr-table-wrap"><table className="pr-table os-form-table">
     <thead><tr><th>关系</th><th>对应关系</th><th>含义</th><th>来自表</th></tr></thead>
     <tbody>{ontology.relations.map((r) => { const c = cards[r.key]; return <tr key={r.key}>

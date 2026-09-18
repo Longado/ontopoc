@@ -108,7 +108,8 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
     const twin = all.filter((o) => (o.from === r.from && o.to === r.to) || (o.from === r.to && o.to === r.from)).indexOf(r);
     return { key: r.key, from: r.from, to: r.to, ...edgePath(at[r.from], at[r.to], twin) };
   });
-  const hinted = suggestions.filter((x) => at[x.from] && at[x.to]).map((x, i) => ({ key: `hint-${i}`, hint: x, ...edgePath(at[x.from], at[x.to], 0) }));
+  const pairs = (a, b) => lines.filter((l) => (l.from === a && l.to === b) || (l.from === b && l.to === a)).length;   // bow a suggestion off a relation it shares a pair with
+  const hinted = suggestions.filter((x) => at[x.from] && at[x.to]).map((x, i) => ({ key: `hint-${i}`, hint: x, ...edgePath(at[x.from], at[x.to], pairs(x.from, x.to) + 1) }));
   const focus = path ? { nodes: new Set(path.nodes), edges: new Set(path.edges) }
     : focusing || selected !== chosen ? null : edge ? { nodes: new Set([edge.from, edge.to]), edges: new Set([edge.key]) } : neighboursOf(ontology, selected.key);
   const dim = (kind, key) => focus && (kind === "node" ? !focus.nodes.has(key) : !focus.edges.has(key)) ? " is-dim" : "";
@@ -162,7 +163,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
         {run.evaluation.data_fit && <><li><i className="og-legend-badge" />红圈里的数字：这个对象有几处数据问题</li><li><i className="og-legend-badge og-badge-note" />提示</li><li><i className="og-legend-dash" />有行没连上的关系</li></>}
         {(ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) || ontology.relations.some((r) => unsteady(run.evaluation.stability, "relations", r.key)))
           && <li><i className="og-legend-unsteady" />虚线框、点线：不是每次建模都有</li>}
-        {hinted.length > 0 && <li><i className="og-legend-hint" />虚线"建议"：代码在数据里看到、本体里没有的关系</li>}
+        {hinted.length > 0 && <li><i className="og-legend-hint" />代码建议</li>}
       </ul>
     </div>
     <aside className="og-inspector" aria-label="证据检查">
