@@ -27,7 +27,8 @@
 .pr-muted { color: var(--text-2); font-size: 13px; }
 .pr-note { padding: 10px 14px; border-radius: 8px; background: var(--amber-soft); color: var(--amber); font-size: 13px; }
 .pr-error { color: var(--red); }
-.pr-primary { margin-top: 6px; padding: 10px 18px; border: 0; border-radius: 8px; color: #fff; background: var(--ink); font-weight: 700; }
+.pr-primary { margin-top: 6px; padding: 10px 18px; border: 0; border-radius: 8px; color: #fff; background: var(--primary, var(--ink)); font-weight: 700; }
+.pr-primary:not(:disabled):hover { filter: brightness(1.08); }
 .pr-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .pr-link { padding: 0; border: 0; color: var(--blue); background: transparent; font-weight: 600; }
 .pr-reviewer { display: grid; gap: 4px; max-width: 320px; margin: 4px 0 10px; color: var(--text-2); font-size: 13px; }

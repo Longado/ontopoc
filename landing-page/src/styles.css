@@ -105,7 +105,7 @@ section[id] { scroll-margin-top: 78px; }
   .app-more { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .app-lang { margin: 0 0 0 auto; }
   .app-new { width: auto; padding: 6px 12px; }
-  .app-library { order: 4; width: 100%; max-height: 40vh; }
+  .app-library { order: 4; width: 100%; max-height: 168px; padding-bottom: 4px; border-bottom: 1px solid var(--edge); }   /* the run list must not push the run itself off a phone screen */
   .app-main { overflow: visible; }
 }
 

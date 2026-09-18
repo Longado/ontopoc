@@ -122,6 +122,10 @@ function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDo
   </div>;
 }
 
+function Hint({ children }) {   // the explanation a first-time reader needs once; the card opens on its result
+  return <details className="os-hint"><summary>这是什么</summary><div className="os-hint-body">{children}</div></details>;
+}
+
 function useFirst(items, n = SHOWN_GROUPS) {
   const [all, setAll] = useState(false);
   const shown = all ? items : items.slice(0, n);
@@ -158,7 +162,7 @@ function Variants({ run, variants, onShow }) {
   const accepted = rows.filter((g) => g.accepted);
   return <section className="pr-card" id="os-variants">
     <div className="pr-card-head"><h2>两个名字其实是同一个东西</h2>{rows.length > 0 && <span className="pr-muted">候选 {rows.length} 组，你采纳了 {accepted.length} 组</span>}</div>
-    <p className="pr-muted">上面那项检查管的是同一个编号被写歪（只认大小写和空格的差别）。这里管的是两个不同的名字：“DEPARTMENT OF FLEET AND FACILITY MANAGEMENT”和“DEPT OF FLEET MGMT”是同一个部门，代码看不出来，所以它们现在是两个对象。这一步把按名字识别的对象的全部取值交给模型，问哪些指同一个东西；模型给的每一组，代码都拿数据核对过，数据里没有的取值一律丢掉。</p>
+    <Hint>上面那项检查管的是同一个编号被写歪（只认大小写和空格的差别）。这里管的是两个不同的名字：“DEPARTMENT OF FLEET AND FACILITY MANAGEMENT”和“DEPT OF FLEET MGMT”是同一个部门，代码看不出来，所以它们现在是两个对象。这一步把按名字识别的对象的全部取值交给模型，问哪些指同一个东西；模型给的每一组，代码都拿数据核对过，数据里没有的取值一律丢掉。</Hint>
     <div className="os-go">
       <button type="button" className="pr-primary" disabled={!variants.canFind || variants.busy} onClick={variants.onFind}>{variants.busy ? "找对应中…" : note ? "重新找一遍" : "找出可能的对应"}</button>
       <span className="pr-muted">{variants.canFind ? "会调用一次模型，只发这些名字和各自的记录数。采纳只是记下你的判断：不改数据，也不把两个对象合并。" : run.saved_as ? "本机建模服务没有连上，暂时不能找。" : "这是示例结果，找对应要上传自己的文件。"}</span>
@@ -188,7 +192,7 @@ function AcceptanceSection({ run, acceptance, onSave, onPath, busy, error, addin
   const saved = savedAcceptance(run);
   return <section className="pr-card os-acceptance" id="os-acceptance">
     <div className="pr-card-head"><h2>验收问题：这次建模要回答的是什么</h2>{acceptance && <span className="pr-muted">{acceptanceSummary(acceptance)}</span>}</div>
-    <p className="pr-muted">模型每次出的题都不一样，所以"能答几题"没法比较。把你和客户说定的 1–3 道问题固定下来：存的是你已经看过、认可口径的那个查询。同一份文件以后再上传，代码用同样的查询再算一次，只告诉你哪道的答案或口径变了；查询用到的字段没了，就停下来指出断点，不去猜新含义。</p>
+    <Hint>模型每次出的题都不一样，所以"能答几题"没法比较。把你和客户说定的 1–3 道问题固定下来：存的是你已经看过、认可口径的那个查询。同一份文件以后再上传，代码用同样的查询再算一次，只告诉你哪道的答案或口径变了；查询用到的字段没了，就停下来指出断点，不去猜新含义。</Hint>
     {!acceptance && <p className="pr-muted">还没有固定的验收问题。在下面的问答里，答出来的问题旁边有"存为验收问题"。</p>}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {acceptance && <ul className="os-questions">{acceptance.items.map((item, i) => <li key={i} className="os-question">
@@ -251,7 +255,7 @@ function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef, onPath, onU
   const asked = run.evaluation.asked || [];
   return <section className="pr-card">
     <div className="pr-card-head"><h2>业务问答：能用数据回答问题吗</h2><span className="pr-muted">{overviewTiles(run).find((t) => t.key === "qa").value}（含你问的）</span></div>
-    <p className="pr-muted">模型只负责把问题写成查询（一次调用）；答案由代码在上传的数据上算出来。答不了时写明是本体缺了哪一块、数据里没有，还是这种问法还不支持。</p>
+    <Hint>模型只负责把问题写成查询（一次调用）；答案由代码在上传的数据上算出来。答不了时写明是本体缺了哪一块、数据里没有，还是这种问法还不支持。</Hint>
     {!canAsk && <CannotAsk what="自己提问、重新出题" example={example} onUpload={onUpload} />}
     {canAsk && <div className="os-ask">
       <button className="pr-primary" disabled={!canAsk || busy} onClick={() => onAsk(null)}>{busy ? "出题回答中…" : round ? "重新出一组问题" : "出一组业务问题并用数据回答"}</button>
@@ -285,7 +289,7 @@ function ReferenceSection({ run, canCompare, onCompare, busy, error, onUpload, o
   const own = ref?.confirmed && run.confirmation ? splitExtras(run.ontology, run.confirmation.decisions, ref.diff) : null;
   return <section className="pr-card">
     <div className="pr-card-head"><h2>{ref?.confirmed ? "对照你确认过的本体" : "对照标准答案"}</h2>{ref && <span className="pr-muted">{referenceCounts(ref.diff)}</span>}</div>
-    <p className="pr-muted">标准答案有两种来源：在"看本体"里逐项确认（最常用，确认后自动对照，同一份文件以后再上传也会自动对照）；或者上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按"读同一张表、用同样的识别字段"来对应对象，名字不同也能对上；关系两端都对上才算命中。</p>
+    <Hint>标准答案有两种来源：在"看本体"里逐项确认（最常用，确认后自动对照，同一份文件以后再上传也会自动对照）；或者上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按"读同一张表、用同样的识别字段"来对应对象，名字不同也能对上；关系两端都对上才算命中。</Hint>
     {onGoConfirm && <button type="button" className="pr-link os-go-confirm" onClick={onGoConfirm}>去逐项确认本体 →</button>}
     {canCompare && <div className="os-upload">
       <input id="os-reference" className="sr-only" type="file" accept=".json,application/json" disabled={!canCompare || busy}
@@ -328,7 +332,7 @@ function ConfirmCard({ run, confirm }) {
   }
   return <section className="pr-card os-confirm" id="os-confirm">
     <div className="pr-card-head"><h2>逐项确认：这个本体在业务上对不对</h2><span className="pr-muted">已判断 {progress.judged} / {progress.total}{progress.wrong ? `，其中 ${progress.wrong} 项不对` : ""}{progress.added ? `，补了 ${progress.added} 个` : ""}</span></div>
-    <p className="pr-muted">前面的检查只能说明本体和数据对得上，说明不了它在业务上对不对，这要懂业务的人判断。在关系图右栏，或者"对象""关系"两页里，给每个对象、每条关系点"对"或"不对"，名字不合适可以改，漏掉的对象在下面补上（对象多时用"对象""关系"两页判得快）。保存后，这份判断就是这个文件的参考本体：马上对照一次，同一份文件以后再上传会自动对照，并带上这次的判断，只剩有差别的要看。没判断的项不算进参考本体。</p>
+    <Hint>前面的检查只能说明本体和数据对得上，说明不了它在业务上对不对，这要懂业务的人判断。在关系图右栏，或者"对象""关系"两页里，给每个对象、每条关系点"对"或"不对"，名字不合适可以改，漏掉的对象在下面补上（对象多时用"对象""关系"两页判得快）。保存后，这份判断就是这个文件的参考本体：马上对照一次，同一份文件以后再上传会自动对照，并带上这次的判断，只剩有差别的要看。没判断的项不算进参考本体。</Hint>
     <p className="pr-muted">判"对"的意思是这个对象、这条关系在业务上成立，不代表建模目的已经能回答；能不能回答，看"业务问答"和下面"模型指出的数据缺口"。</p>
     {memoryNote(run) && !saved && <p className="pr-muted">{memoryNote(run)}</p>}
     {purposeNote(run) && !saved && <p role="status" className="pr-note os-tone-warn">{purposeNote(run)}</p>}
@@ -358,7 +362,7 @@ function TypesView({ run, confirm }) {
   const form = formOf(run);
   const byType = Object.fromEntries((form?.types || []).map((t) => [t.type, t]));
   return <div className="os-list-view">
-    {form && <p className="pr-muted">每个对象一张表，列和到下游平台（例如 DIP）建对象时要填的一样。主键、类型、长度由代码拿每一行读出来；展示字段、中文名、描述只有人能写，留给你填。</p>}
+    {form && <Hint>每个对象一张表，列和到下游平台（例如 DIP）建对象时要填的一样。主键、类型、长度由代码拿每一行读出来；展示字段、中文名、描述只有人能写，留给你填。</Hint>}
     <div className="os-type-forms">{ontology.object_types.map((t) => { const f = byType[t.key]; return <article key={t.key} className="pr-type os-type-form">
       <div className="os-type-form-head"><h3>{t.label || t.key}</h3><span className="pr-tag">{t.key}</span><Verdict confirm={confirm} kind="types" item={t} /></div>
       {t.populated_from.length > 0 && <p className="pr-muted">来自：{typeSources(t)}</p>}
@@ -395,24 +399,19 @@ function OntologyTab({ run, view, setView, graphProps, confirm }) {
   const attempts = attemptSummary(ontology);
   const retries = attempts.attempts - 1;
   return <>
-    <section className="pr-card os-summary-card">
-      <div className="pr-card-head"><h2>{run.file.name}</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{doc ? (attempts.passed ? "每一项都有原文引用" : "没有提取出可核实的概念") : attempts.passed ? "本体结构已通过核验" : "本体结构未通过核验"}</span></div>
-      <p className="pr-muted">{sourceLine(run)}{doc ? ` · 被剔除 ${ontology.rejected.length} 项` : attempts.passed ? ` · ${retries ? `模型改了 ${retries} 次后通过核验（${retries > 1 ? "前几版" : "第 1 版"}：${attempts.rejected.map(([code]) => ERROR_LABELS[code] || code).join("、")}）` : "第一版就通过核验"}` : ""}</p>
-      {run.sources.some((s) => s.skipped_rows) && <p className="pr-muted">表头上方的标题行已跳过：{run.sources.filter((s) => s.skipped_rows).map((s) => `${s.name}（${s.skipped_rows.join("；")}）`).join("、")}</p>}
-      <p>建模目的：{run.purpose}</p>
-      <details className="os-how"><summary>技术信息</summary>
-        {!doc && <p>"结构已通过核验"只说明本体里的字段、识别字段和关系都能在数据里对上；数据本身干不干净看"数据体检"。</p>}
-        {doc ? <p>文档分 {ontology.chunks_processed} 段交给模型{ontology.chunks_total > ontology.chunks_processed ? `（共 ${ontology.chunks_total} 段，文档太长，后面的没有处理）` : ""}；被剔除的项是引用在原文里找不到，或两端不是已核实的概念。</p>
-          : attempts.rejected.length > 0 && <p>前面被代码退回的原因：{attempts.rejected.map(([code, n]) => `${ERROR_LABELS[code] || code} ${n} 处`).join("、")}。</p>}
-        <p>模型 {ontology.model}，提示词 {ontology.prompt_version}。建模目的会作为提示的一部分交给模型。</p>
-        {doc && ontology.rejected.length > 0 && <ul>{ontology.rejected.map((r, i) => <li key={i}>{r.item}：{r.reason}</li>)}</ul>}
-      </details>
+    <section className="pr-card">
+      <div className="pr-card-head"><div className="os-head-title"><h2>本体</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{doc ? (attempts.passed ? "每一项都有原文引用" : "没有提取出可核实的概念") : attempts.passed ? "本体结构已通过核验" : "本体结构未通过核验"}</span></div>
+        <div className="og-toggle" role="group" aria-label="显示方式">{VIEWS.map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
+      {view === "graph" && <OntologyGraph run={run} {...graphProps} confirm={confirm} onAsk={doc ? null : graphProps.onAsk} />}
+      {view === "types" && <TypesView run={run} confirm={confirm} />}
+      {view === "relations" && <RelationsView run={run} confirm={confirm} />}
     </section>
+    <ConfirmCard run={run} confirm={confirm} />
     {run.evaluation.stability && <section className="pr-card" id="os-stability">
       <h2>同一份文件建了 {run.evaluation.stability.runs + run.evaluation.stability.failed} 次，哪些靠得住</h2>
-      <p className="pr-muted">模型每次搭的本体会有出入（这是模型的搭法不同，不是数据变了），所以这次上传同时建了几次，代码把它们对齐后数每个对象、每条关系出现了几次。每次都有的可以放心用；不是每次都有的，是模型拿不准的地方，图上画成虚线框，要不要按你的业务决定。</p>
+      <Hint>模型每次搭的本体会有出入（这是模型的搭法不同，不是数据变了），所以这次上传同时建了几次，代码把它们对齐后数每个对象、每条关系出现了几次。每次都有的可以放心用；不是每次都有的，是模型拿不准的地方，图上画成虚线框，要不要按你的业务决定。</Hint>
       <ul className="os-list">{consensusLines(ontology, run.evaluation.stability, ERROR_LABELS).map((l) => <li key={l}>{l}</li>)}</ul>
-      <p>页面上的数据体检和问答用的是显示的这一次本体。数据体检是代码按本体逐行算的，本体一样，体检结果就一样{ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) ? "；和虚线框对象有关的体检结果，看你要不要这个对象再取舍" : ""}。问答的题每次由模型重新出，所以题目和"能答几题"会变；每道题的答案是代码在数据上算的，同样的查询答案不变。</p>
+      <Hint>页面上的数据体检和问答用的是显示的这一次本体。数据体检是代码按本体逐行算的，本体一样，体检结果就一样{ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) ? "；和虚线框对象有关的体检结果，看你要不要这个对象再取舍" : ""}。问答的题每次由模型重新出，所以题目和"能答几题"会变；每道题的答案是代码在数据上算的，同样的查询答案不变。</Hint>
     </section>}
     {run.previous && <section className="pr-card" id={run.evaluation.stability ? undefined : "os-stability"}>
       <h2>和上一次运行比（只比本体）</h2>
@@ -422,19 +421,23 @@ function OntologyTab({ run, view, setView, graphProps, confirm }) {
           <ul className="os-list">{stabilityLines(run.previous.diff).map((l) => <li key={l}>{l}</li>)}</ul></>
         : <p className="pr-muted">和这次的对象、关系完全一致。</p>}
     </section>}
-    <ConfirmCard run={run} confirm={confirm} />
-    <section className="pr-card">
-      <div className="pr-card-head"><h2>本体</h2>
-        <div className="og-toggle" role="group" aria-label="显示方式">{VIEWS.map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
-      {view === "graph" && <OntologyGraph run={run} {...graphProps} confirm={confirm} onAsk={doc ? null : graphProps.onAsk} />}
-      {view === "types" && <TypesView run={run} confirm={confirm} />}
-      {view === "relations" && <RelationsView run={run} confirm={confirm} />}
-    </section>
     {(ontology.data_gaps.length > 0 || ontology.ignored_fields.length > 0) && <section className="pr-card">
       <h2>模型指出的数据缺口（{ontology.data_gaps.length}）</h2>
       {ontology.data_gaps.length > 0 && <ul className="os-list">{ontology.data_gaps.map((g) => <li key={g}>{g}</li>)}</ul>}
       {ontology.ignored_fields.length > 0 && <details><summary>标为不用的字段（{ontology.ignored_fields.length}）</summary><ul>{ontology.ignored_fields.map((f) => <li key={`${f.source}.${f.path}`}>{f.source}.{f.path}：{f.reason}</li>)}</ul></details>}
     </section>}
+    <details className="pr-card os-build-card">
+      <summary>这次是怎么建出来的</summary>
+      <p className="pr-muted">{sourceLine(run)}{doc ? ` · 被剔除 ${ontology.rejected.length} 项` : attempts.passed ? ` · ${retries ? `模型改了 ${retries} 次后通过核验（${retries > 1 ? "前几版" : "第 1 版"}：${attempts.rejected.map(([code]) => ERROR_LABELS[code] || code).join("、")}）` : "第一版就通过核验"}` : ""}</p>
+      {run.sources.some((s) => s.skipped_rows) && <p className="pr-muted">表头上方的标题行已跳过：{run.sources.filter((s) => s.skipped_rows).map((s) => `${s.name}（${s.skipped_rows.join("；")}）`).join("、")}</p>}
+      <div className="os-how">
+        {!doc && <p>"结构已通过核验"只说明本体里的字段、识别字段和关系都能在数据里对上；数据本身干不干净看"数据体检"。</p>}
+        {doc ? <p>文档分 {ontology.chunks_processed} 段交给模型{ontology.chunks_total > ontology.chunks_processed ? `（共 ${ontology.chunks_total} 段，文档太长，后面的没有处理）` : ""}；被剔除的项是引用在原文里找不到，或两端不是已核实的概念。</p>
+          : attempts.rejected.length > 0 && <p>前面被代码退回的原因：{attempts.rejected.map(([code, n]) => `${ERROR_LABELS[code] || code} ${n} 处`).join("、")}。</p>}
+        <p>模型 {ontology.model}，提示词 {ontology.prompt_version}。建模目的会作为提示的一部分交给模型。</p>
+        {doc && ontology.rejected.length > 0 && <ul>{ontology.rejected.map((r, i) => <li key={i}>{r.item}：{r.reason}</li>)}</ul>}
+      </div>
+    </details>
   </>;
 }
 
@@ -442,9 +445,9 @@ function Checks({ fit, title, note }) {
   const summary = checkSummary(fit);
   return <section className="pr-card">
     <div className="pr-card-head"><h2>{title}</h2><span className="pr-muted">通过 {summary.passed} / {summary.total} 项</span></div>
-    <p className="pr-muted">{note}</p>
-    <p className="pr-muted">{COVERAGE_NOTE}</p>
-    <ul className="os-checks">{fit.checks.map((c) => <li key={c.key}><span className={`os-pill ${c.passed ? "os-pass" : "os-fail"}`}>{c.passed ? "通过" : "不通过"}</span>{CHECK_LABELS[c.key] || c.key}</li>)}</ul>
+    <ul className="os-check-grid">{fit.checks.map((c) => <li key={c.key} className={c.passed ? "is-pass" : "is-fail"}>
+      <span className="os-check-mark" aria-hidden="true">{c.passed ? "✓" : "✕"}</span><span className="sr-only">{c.passed ? "通过：" : "不通过："}</span>{CHECK_LABELS[c.key] || c.key}</li>)}</ul>
+    <Hint><p>{note}</p><p>{COVERAGE_NOTE}</p></Hint>
   </section>;
 }
 
@@ -459,7 +462,7 @@ function DataFit({ run, onShow, variants }) {
     {variants?.decisions && <Variants run={run} variants={variants} onShow={onShow} />}
     {fit.id_only?.length > 0 && <section className="pr-card">
       <h2>只有编号、没有描述它的表（{fit.id_only.length}）</h2>
-      <p className="pr-muted">这些对象是从别的表里的一列编号认出来的，这份数据里没有任何一张表在说它们是什么。它们能用来分组统计，但图上它们和有明细表的对象长得一样，讲给客户之前要说清楚：现在只有编号。</p>
+      <Hint>这些对象是从别的表里的一列编号认出来的，这份数据里没有任何一张表在说它们是什么。它们能用来分组统计，但图上它们和有明细表的对象长得一样，讲给客户之前要说清楚：现在只有编号。</Hint>
       <ul className="pr-rows">{fit.id_only.map((t) => <li key={t.type}><b>{typeLabel(ontology, t.type)}：{t.count} 个编号</b><span>来自“{t.source}”的“{t.field}”</span><ShowOnGraph type={t.type} onShow={onShow} /></li>)}</ul>
     </section>}
     {fit.identity_risks?.length > 0 && <section className="pr-card">
@@ -648,9 +651,9 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
     {storageWarning && <p role="alert" className="pr-note os-storage">{storageWarning}</p>}
     {open && <header className="pr-head">
       <div className="os-overview">
-        <div className="os-overview-file"><h1 id="os-title" title={run.file.name}>{folderLabel(run.file.name)}</h1><button className="pr-link" onClick={downloadSummary} title="一页纪要，给会上的人看">下载纪要</button>
+        <div className="os-overview-file"><div className="os-overview-name"><h1 id="os-title" title={run.file.name}>{folderLabel(run.file.name)}</h1>{run.purpose && <p className="os-purpose-line">{run.purpose}</p>}</div><button className="pr-link" onClick={downloadSummary} title="一页纪要，给会上的人看">下载纪要</button>
         <button className="pr-link" onClick={download} title="本体、数据体检、问答和对照结果，一个 JSON 文件">下载本体和评测</button></div>
-        {overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b>{t.hint && <em>{t.hint}</em>}</button>)}
+        <div className="os-tiles">{overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} title={t.hint || undefined} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b></button>)}</div>
       </div>
       <nav className="pr-tabs os-steps-nav" role="tablist" aria-label="这次运行">{TABS.filter(([key]) => key !== "upload").map(([key, label]) => <button key={key} type="button" role="tab" id={`os-tab-${key}`}
         aria-selected={tab === key} aria-controls="os-panel" onClick={() => setTab(key)}>{label}</button>)}</nav>
