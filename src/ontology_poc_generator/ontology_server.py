@@ -28,6 +28,10 @@ from ontology_poc_generator.rule_discovery import check_rules, discover_rules
 from ontology_poc_generator.versions import version_diff
 from ontology_poc_generator.field_descriptions import MAX_DESCRIPTION, MAX_LABEL, draft_descriptions
 from ontology_poc_generator.handover_form import handover_form
+from ontology_poc_generator.dip_export import dip_files
+import io
+import zipfile
+from urllib.parse import quote as url_quote
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
@@ -294,6 +298,15 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.end_headers()
             self.wfile.write(body)
 
+        def reply_file(self, body: bytes, content_type: str, filename: str):
+            self.send_response(200)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Content-Disposition', f"attachment; filename*=UTF-8''{url_quote(filename)}")
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(body)
+
         def local_request(self):
             try:
                 host = urlsplit('http://' + self.headers.get('Host', '')).hostname
@@ -365,6 +378,17 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif tail.startswith('instances/'):
                     type_key = unquote(tail[len('instances/'):])
                     self.reply(200, find_instances(result['ontology'], bundle, type_key, (query.get('q') or [''])[0], graph=graph))
+                elif tail == 'export/dip':
+                    handover = result['evaluation'].get('handover') or handover_form(result['ontology'], bundle)
+                    files = dip_files(result['ontology'], handover, form_state({**result, 'evaluation': {**result['evaluation'], 'handover': handover}}))
+                    if (query.get('format') or [''])[0] == 'json':
+                        self.reply(200, {'files': files})
+                    else:
+                        packed = io.BytesIO()
+                        with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as z:
+                            for file_name, text in files.items():
+                                z.writestr(file_name, text.encode('utf-8'))
+                        self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-DIP表单.zip")
                 elif tail == 'rules':
                     self.reply(200, rules_state(result, bundle, graph))
                 elif tail == 'suggestions':

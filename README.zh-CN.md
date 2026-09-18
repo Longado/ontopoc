@@ -59,7 +59,7 @@ PYTHONPATH=src:. python scripts/make_demo_company.py            # 重新生成�
 ```
 
 
-页面上的每个功能也都是一个标准 MCP 工具（stdio，24 个），Claude Code 或任何 MCP 客户端都能直接调：`claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server`。说明见 `docs/MCP.md`。
+页面上的每个功能也都是一个标准 MCP 工具（stdio，25 个），Claude Code 或任何 MCP 客户端都能直接调：`claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server`。说明见 `docs/MCP.md`。
 
 ## 示例场景：车辆召回范围研判
 

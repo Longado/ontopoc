@@ -507,3 +507,4 @@ small.os-tone-warn { color: var(--amber); }
 .os-drafted { flex: none; padding: 0 6px; border-radius: 5px; font-size: 11px; font-style: normal; color: var(--amber); background: var(--amber-soft); }
 .os-save-form { margin: 0; padding: 5px 16px; }
 .os-form-fields td:nth-child(3) { min-width: 18em; }
+.os-icon-btn { text-decoration: none; display: inline-block; }
