@@ -1,5 +1,5 @@
-"""The ontology as DIP's object form wants it: one CSV per object, the form's columns in the form's order. Only the form
-is trusted (DIP_INTERFACE_REFERENCE.md section 0); the batch import contract is untested, so the package says so and
+"""The ontology as a data platform's object form wants it: one CSV per object, the form's columns in the form's order.
+Only the form is trusted (PLATFORM_FORM_REFERENCE.md); the batch import contract is untested, so the package says so and
 carries no relation table."""
 import base64
 import io
@@ -8,7 +8,7 @@ import unittest
 import zipfile
 from urllib.request import urlopen
 
-from ontology_poc_generator.dip_export import COLUMNS, dip_files
+from ontology_poc_generator.object_forms import COLUMNS, form_files
 from tests.test_ontology_ask_server import QuestionModel, call
 from tests.test_ontology_server import CSV, OntologyServerTests
 
@@ -22,9 +22,9 @@ FORM = {'types': {'order': {'label': '销售订单', 'description': '客户的�
                             'fields': {'freight': {'label': '运费', 'description': '', 'drafted': True}}}}}
 
 
-class DipFilesTests(unittest.TestCase):
+class FormFilesTests(unittest.TestCase):
     def test_one_csv_per_object_with_the_forms_columns_in_order(self):
-        files = dip_files({'object_types': [{'key': 'order', 'label': '订单'}]}, HANDOVER, FORM)
+        files = form_files({'object_types': [{'key': 'order', 'label': '订单'}]}, HANDOVER, FORM)
         self.assertEqual(sorted(files), ['order.csv', '说明.txt'])
         text = files['order.csv']
         self.assertTrue(text.startswith('﻿'))   # Excel reads the Chinese
@@ -41,18 +41,18 @@ class DipFilesTests(unittest.TestCase):
 
     def test_an_object_needing_two_key_fields_is_called_out(self):
         two = {'types': [{**HANDOVER['types'][0], 'identity_fields': ['orderID', 'shipName'], 'needs_single_key': True}]}
-        self.assertIn('orderID + shipName', dip_files({'object_types': [{'key': 'order', 'label': '订单'}]}, two, None)['说明.txt'])
+        self.assertIn('orderID + shipName', form_files({'object_types': [{'key': 'order', 'label': '订单'}]}, two, None)['说明.txt'])
 
 
-class DipExportServerTests(unittest.TestCase):
+class FormExportServerTests(unittest.TestCase):
     def test_a_kept_run_downloads_as_a_zip_of_forms(self):
         with OntologyServerTests().server(gateway=QuestionModel()) as (base, _):
             _, run = call(base, '/api/ontology/build', {'filename': 'orders.csv', 'content_base64': base64.b64encode(CSV).decode()})
-            with urlopen(f"{base}/api/ontology/runs/{run['saved_as']}/export/dip") as r:
+            with urlopen(f"{base}/api/ontology/runs/{run['saved_as']}/export/forms") as r:
                 self.assertEqual(r.headers['Content-Type'], 'application/zip')
                 names = zipfile.ZipFile(io.BytesIO(r.read())).namelist()
             self.assertEqual(sorted(names), ['customer.csv', 'order.csv', '说明.txt'])
-            with urlopen(f"{base}/api/ontology/runs/{run['saved_as']}/export/dip?format=json") as r:
+            with urlopen(f"{base}/api/ontology/runs/{run['saved_as']}/export/forms?format=json") as r:
                 self.assertEqual(sorted(json.load(r)['files']), ['customer.csv', 'order.csv', '说明.txt'])
 
 
