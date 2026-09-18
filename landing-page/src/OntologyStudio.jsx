@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { askSuggestions, bridgeLines, latestAsked, layoutTables } from "./dataLayoutModel.js";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
   COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, saveResult, progressSteps, referenceCounts, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, typeSources, validateRun,
@@ -15,7 +16,7 @@ import { folderLabel } from "./runLibraryModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
-const TABS = [["upload", "上传"], ["ontology", "看本体"], ["evaluation", "看评测"]];
+const TABS = [["upload", "上传"], ["ontology", "看本体"], ["evaluation", "看评测"], ["data", "看数据"]];
 const START = "PYTHONPATH=src python -m ontology_poc_generator.ontology_server";
 
 const readText = (url) => fetch(url, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`读取失败（${r.status}）`); return r.json(); });
@@ -252,9 +253,8 @@ function QuestionItem({ item, onPath, run, onAccept }) {
   </li>;
 }
 
-function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef, onPath, onUpload, onAccept }) {
+function QuestionsSection({ run, canAsk, busy, error, onAsk, onPath, onUpload, onAccept }) {
   const example = !run.saved_as;
-  const [text, setText] = useState("");
   const round = run.evaluation.questions;
   const asked = run.evaluation.asked || [];
   return <section className="pr-card">
@@ -263,11 +263,7 @@ function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef, onPath, onU
     {!canAsk && <CannotAsk what="自己提问、重新出题" example={example} onUpload={onUpload} />}
     {canAsk && <div className="os-ask">
       <button className="pr-primary" disabled={!canAsk || busy} onClick={() => onAsk(null)}>{busy ? "出题回答中…" : round ? "重新出一组问题" : "出一组业务问题并用数据回答"}</button>
-      <label htmlFor="os-question">或者问一个问题
-        <span className="os-ask-row"><input id="os-question" ref={askRef} value={text} maxLength={300} disabled={!canAsk || busy} placeholder="例如：哪些客户的售后工单最多？" onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) onAsk(text.trim()); }} />
-        <button className="pr-link" disabled={!canAsk || busy || !text.trim()} onClick={() => onAsk(text.trim())}>问</button></span>
-      </label>
+      <span className="pr-muted">自己问一个问题，用页面顶上的输入框。</span>
     </div>}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {asked.length > 0 && <><h3 className="os-sub">你问的</h3><ul className="os-questions">{[...asked].reverse().flatMap((r, ri) => r.error ? [<li key={`e${ri}`} className="pr-error">{r.error}</li>] : r.items.map((item, i) => <QuestionItem key={`${ri}-${i}`} item={item} onPath={onPath} run={run} onAccept={onAccept} />))}</ul></>}
@@ -275,6 +271,55 @@ function QuestionsSection({ run, canAsk, busy, error, onAsk, askRef, onPath, onU
       {round.error ? <p className="pr-error">{round.error}</p> : <ul className="os-questions">{round.items.map((item, i) => <QuestionItem key={i} item={item} onPath={onPath} run={run} onAccept={onAccept} />)}</ul>}
       <p className="pr-muted os-tech">出题模型 {round.model}，提示词 {round.prompt_version}</p></>}
   </section>;
+}
+
+function AskBar({ run, canAsk, busy, error, onAsk, askRef, onPath }) {
+  const [text, setText] = useState("");
+  const [shown, setShown] = useState(null);   // a suggestion's answer, or "latest" for what was just asked
+  const item = shown === "latest" ? latestAsked(run) : shown;
+  const rows = run.sources.reduce((n, s) => n + s.rows, 0);
+  const submit = () => { if (!text.trim() || busy) return; setShown("latest"); onAsk(text.trim()); setText(""); };
+  return <section className="os-askbar" aria-label="问这份本体">
+    <div className="os-askbar-row">
+      <label htmlFor="os-question" className="sr-only">问这份本体</label>
+      <input id="os-question" ref={askRef} value={text} maxLength={300} disabled={!canAsk || busy} autoComplete="off"
+        placeholder={canAsk ? "问这份本体，例如：每个客户买了多少钱？" : "建模服务连上后可以提问"} onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+      <button type="button" className="pr-primary" disabled={!canAsk || busy || !text.trim()} onClick={submit}>{busy ? "在算…" : "问"}</button>
+    </div>
+    {askSuggestions(run).length > 0 && <div className="os-askbar-chips" aria-label="这份数据已经答过的问题">
+      {askSuggestions(run).map((s) => <button key={s.question} type="button" aria-pressed={shown === s} onClick={() => setShown(shown === s ? null : s)}>{s.question}</button>)}</div>}
+    {busy && shown === "latest" && <p className="pr-muted" role="status">出题员在把问题写成查询，写好后由代码在数据上算。</p>}
+    {error && shown === "latest" && <p role="alert" className="pr-error">{error}</p>}
+    {!busy && !(error && shown === "latest") && item && <div className="os-askbar-answer">
+      {item.error ? <p className="pr-error">{item.error}</p> : <ul className="os-questions"><QuestionItem item={item} onPath={onPath} run={run} /></ul>}
+      <p className="os-footprint">查询由出题员（模型）写，数字由代码在上传的 {rows.toLocaleString("zh-CN")} 行数据上算，不采信模型给的任何数字。</p>
+      <button type="button" className="pr-link" onClick={() => setShown(null)}>收起</button>
+    </div>}
+  </section>;
+}
+
+function DataTab({ run }) {
+  const tables = layoutTables(run);
+  const bridges = bridgeLines(run);
+  const split = new Set(tables.map((t) => t.group)).size > 1;
+  return <>
+    {split && <section className="pr-card os-bridge">
+      <h2>有几张表没连上</h2>
+      <p className="pr-muted">本体里没有一个对象同时出现在这几组表里，所以跨组的问题答不了。{bridges.length ? "按取值看，下面这些列可以把它们连起来：" : "按取值也没找到一列能把它们连起来：两边没有一列的每个值都在另一张表的某个编号列里。"}</p>
+      {bridges.length > 0 && <ul className="os-list">{bridges.map((l) => <li key={l}>{l}</li>)}</ul>}
+      {bridges.length > 0 && <Hint>这只说明取值对得上，是不是同一个东西由你判断。是的话，重新上传时在建模目的里写上这两列是同一个编号，模型会按它建关系；代码照样会核验。</Hint>}
+    </section>}
+    {tables.map((t) => <section key={t.name} className="pr-card os-table-card">
+      <div className="pr-card-head"><h2>{t.name}</h2><span className="pr-muted">{t.rows.toLocaleString("zh-CN")} 行 · {t.fields ? t.fields.length : t.fieldCount} 列{split ? ` · 第 ${t.group + 1} 组` : ""}</span></div>
+      {t.skipped.length > 0 && <p className="pr-muted">表头上方跳过的标题行：{t.skipped.join("；")}</p>}
+      {t.fields ? <div className="os-table-scroll"><table className="os-fields">
+        <thead><tr><th scope="col">字段</th><th scope="col">类型</th><th scope="col">最长</th><th scope="col">空值</th></tr></thead>
+        <tbody>{t.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td>{f.type || "全空"}</td><td>{f.length}</td><td>{f.empty ? `${f.empty} 行` : "—"}</td></tr>)}</tbody>
+      </table></div> : <p className="pr-muted">这次运行保存得早，没有逐列记录。重新上传同一份文件就能看到每一列的类型、长度和空值。</p>}
+    </section>)}
+    <Hint>类型按每一个值判断，不看字段名：有一个值不是数字就算文本；以 0 开头的编号算文本，因为转成数字会丢掉那个 0。</Hint>
+  </>;
 }
 
 function CannotAsk({ what, example, onUpload }) {
@@ -634,7 +679,7 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
     try { reference = JSON.parse(await file.text()); } catch { setCompareError(`${file.name} 不是有效的 JSON`); return; }
     post("/api/ontology/compare", { saved_as: run.saved_as, reference, reference_name: file.name }, setComparing, setCompareError);
   }
-  function askOntology() { setEvalView("qa"); setTab("evaluation"); setTimeout(() => { askRef.current?.scrollIntoView({ block: "center" }); askRef.current?.focus(); }, 50); }
+  function askOntology() { askRef.current?.scrollIntoView({ block: "center" }); askRef.current?.focus(); }
   function showOnGraph(type) { if (!type) return; setPath(null); setSelected({ kind: "node", key: type }); setView("graph"); setTab("ontology"); setReveal((n) => n + 1); }
   function showPath(query, text) { const p = pathOf(run.ontology, query); if (!p) return; setPath({ ...p, text }); setSelected({ kind: "node", key: p.nodes[p.nodes.length - 1] }); setView("graph"); setTab("ontology"); setReveal((n) => n + 1); }
   function openTile(key) {
@@ -676,16 +721,18 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
         <div className="os-overview-file"><div className="os-overview-name"><h1 id="os-title" title={run.file.name}>{folderLabel(run.file.name)}</h1>{run.purpose && <p className="os-purpose-line">{run.purpose}</p>}</div><button className="pr-link" onClick={downloadSummary} title="一页纪要，给会上的人看">下载纪要</button>
         <button className="pr-link" onClick={download} title="本体、数据体检、问答和对照结果，一个 JSON 文件">下载本体和评测</button></div>
         <div className="os-tiles">{overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} title={t.hint || undefined} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b></button>)}</div>
+        {!isDocument(run) && <AskBar run={run} canAsk={Boolean(run.saved_as) && health === "ready"} busy={asking} error={askError} onAsk={ask} askRef={askRef} onPath={showPath} />}
       </div>
-      <nav className="pr-tabs os-steps-nav" role="tablist" aria-label="这次运行">{TABS.filter(([key]) => key !== "upload").map(([key, label]) => <button key={key} type="button" role="tab" id={`os-tab-${key}`}
+      <nav className="pr-tabs os-steps-nav" role="tablist" aria-label="这次运行">{TABS.filter(([key]) => key !== "upload" && !(key === "data" && isDocument(run))).map(([key, label]) => <button key={key} type="button" role="tab" id={`os-tab-${key}`}
         aria-selected={tab === key} aria-controls="os-panel" onClick={() => setTab(key)}>{label}</button>)}</nav>
     </header>}
     <div id="os-panel" role="tabpanel" aria-labelledby={tab === "upload" ? "os-title" : `os-tab-${tab}`} className="pr-panel os-panel">
       {tab === "upload" && <UploadTab health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "ontology" && run && <OntologyTab run={run} view={view} setView={setView} confirm={confirmProps}
         graphProps={{ selected, onSelect: (s) => { setSelected(s); setPath(null); }, path, onClearPath: () => setPath(null), onAsk: askOntology, reveal }} />}
+      {tab === "data" && run && <DataTab run={run} />}
       {tab === "evaluation" && run && <EvaluationTab run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} onPath={showPath} variants={variantProps}
-        questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, askRef, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload"),
+        questions={{ canAsk: Boolean(run.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload"),
           onAccept: (items) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items }, setAccepting, setAcceptError), accepting, acceptError,
           onGoConfirm: () => { setTab("ontology"); setTimeout(() => document.getElementById("os-confirm")?.scrollIntoView({ block: "start" }), 50); } }} />}
     </div>
