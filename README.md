@@ -15,7 +15,7 @@ For implementation consultants and ontology teams. It runs on your machine; file
 
 **The model proposes, code verifies, a person decides.** The model sees field names and a few example values and proposes the objects, identity fields and relations; code checks the proposal against every row and sends errors back, three attempts at most. Each upload is modelled three times at once and code marks what the runs disagree about — the places the model is unsure and a person should decide.
 
-**Every claim is computed, not asserted.** The data check runs six things row by row in code: whether every field has a place, whether one identity disagrees with itself, whether IDs are spelled one way, whether relations really link, whether references resolve, and whether every table connects to the rest. The model then writes business questions as structured queries and code computes the answers on the data — counts, shares, sums, averages, grouping by several fields. When it cannot answer, it says whether the ontology, the data or the query format is what is missing.
+**Every claim is computed, not asserted.** The data check runs seven things row by row in code: whether every field has a place, whether one identity disagrees with itself, whether IDs are spelled one way, whether relations really link, whether references resolve, whether every table connects to the rest, and whether every table you uploaded was read at all. The model then writes business questions as structured queries and code computes the answers on the data — counts, shares, sums, averages, grouping by several fields. When it cannot answer, it says whether the ontology, the data or the query format is what is missing.
 
 **The judgement survives.** A person judges each object and relation, renames, adds what is missing. Two spellings of one thing (a full name and its short form) are proposed by the model, checked against the data by code, and accepted or dropped by a person — nothing is merged, no data is changed. The confirmation becomes that file's reference ontology: upload the same file again and it is compared automatically, with last time's judgement prefilled, so only the differences need looking at. Renaming an object does not read as losing it — matching goes by which table and which identity fields, not by the label.
 
@@ -71,7 +71,7 @@ Data comes from the NHTSA public API. OntoPoc is not affiliated with NHTSA, Gene
 | `src/ontology_poc_generator/company_sources.py` | read uploaded tables and documents, one file or a batch |
 | `src/ontology_poc_generator/company_ontology.py` | the modelling prompt and the build-and-verify loop |
 | `src/ontology_poc_generator/public_ontology.py` | field catalog, ontology verification (17 error codes), object graph |
-| `src/ontology_poc_generator/ontology_eval.py` | the six data checks, computed row by row |
+| `src/ontology_poc_generator/ontology_eval.py` | the seven data checks, computed row by row |
 | `src/ontology_poc_generator/ontology_questions.py` | business questions and the structured queries code answers them with |
 | `src/ontology_poc_generator/name_variants.py` | two spellings of one thing: candidates the data backs, never merged |
 | `src/ontology_poc_generator/ontology_confirm.py` | a person's judgement, the reference ontology it becomes, and the prefill next time |

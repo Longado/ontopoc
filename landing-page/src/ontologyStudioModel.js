@@ -9,6 +9,7 @@ export const CHECK_LABELS = {
   relations_link: "每条关系都在数据里真的连上了",
   references_resolve: "引用的对象都能在它所属的表里找到",
   sources_connected: "所有表通过共同的对象连成一片",
+  sources_used: "每张传上来的表都被本体用上了",
   quotes_verified: "模型提出的每一项都能在原文里找到引用",
   no_isolated_concepts: "抽出来的概念，每个都至少连着一条抽出来的关系",
 };

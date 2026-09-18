@@ -21,7 +21,7 @@ const copy = {
     steps: [
       ["读文件", "表格自动找表头、跳过标题行；文档按段落切块，太长时写明只处理了前面多少。"],
       ["提出本体并核验", "模型看字段名和示例值提出对象、识别字段和关系；代码用全部数据检查，出错退回重做，最多三次。每次上传同时建三次，标出不是每次都有的对象和关系。文档里的每个概念和关系都要引用原文，引用找不到就剔除。"],
-      ["数据体检", "代码逐行计算六项：字段有没有去处、同一对象信息打不打架、编号写法是否统一、关系是否真连上、引用的对象找不找得到、表和表连不连得上。每个问题都能在关系图上点到。"],
+      ["数据体检", "代码逐行计算七项：字段有没有去处、同一对象信息打不打架、编号写法是否统一、关系是否真连上、引用的对象找不找得到、表和表连不连得上、每张传上来的表都被用上了。每个问题都能在关系图上点到。"],
       ["业务问答", "模型把业务问题写成查询，答案由代码在数据上算出（数个数、算占比、求和、求平均、按几样东西分组），答不了就写明是本体缺了、数据没有，还是这种问法还不支持。"],
       ["人逐项确认，判断存下来", "顾问对每个对象、每条关系判对不对，可以改名、补漏。同一个东西的两种写法（全称与简称）由模型提候选、代码拿数据核对、人决定采纳，不自动合并、不改数据。确认存成这份文件的参考本体：同一份文件下次上传自动对照标准，并把上次的判断预填好，只剩有差别的要看；手上本来就有人写的参考本体，也可以上传来逐项比。"],
     ],
@@ -63,7 +63,7 @@ const copy = {
     steps: [
       ["Read the file", "Tables get their header found and title rows skipped; documents are split by paragraph, and a cut is stated when a document is too long."],
       ["Propose and verify", "The model sees field names and example values and proposes objects, identity fields and relations; code checks all the data and sends errors back, three attempts at most. Each upload is modelled three times at once, and objects and relations missing from some runs are marked. Every concept and relation from a document must quote the text, or it is dropped."],
-      ["Data check", "Code computes six things, row by row: whether every field has a place, whether one object disagrees with itself, whether IDs are spelled one way, whether relations link, whether references resolve and whether every table connects to the rest. Each finding opens on the graph."],
+      ["Data check", "Code computes seven things, row by row: whether every field has a place, whether one object disagrees with itself, whether IDs are spelled one way, whether relations link, whether references resolve, whether every table connects to the rest, and whether every uploaded table was read at all. Each finding opens on the graph."],
       ["Business questions", "The model writes business questions as queries and code computes the answers on the data (counts, shares, sums, averages, grouping by several fields), saying whether the ontology, the data or the query format is what is missing."],
       ["A person decides, and the decision is kept", "The consultant judges every object and relation, renames, adds what is missing. Two spellings of one thing (a full name and its short form) are proposed by the model, checked against the data by code and accepted by a person: nothing is merged, no data is changed. The confirmation becomes this file's reference ontology, so the next upload of the same file is compared against it automatically, with last time's judgement prefilled; a reference ontology someone has already written can be uploaded and compared item by item too."],
     ],
