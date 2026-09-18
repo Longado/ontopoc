@@ -4,8 +4,10 @@ import base64
 import json
 import unittest
 
+from ontology_poc_generator.ontology_questions import QUESTION_SYSTEM_PROMPT
+from ontology_poc_generator.recognition import ModelCompletion
 from ontology_poc_generator.rule_discovery import check_rules, discover_rules
-from tests.test_ontology_ask_server import QuestionModel, call
+from tests.test_ontology_ask_server import call
 from tests.test_ontology_server import OntologyServerTests
 
 
@@ -40,11 +42,20 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(checked['required:contract:签订日期']['violations'], {'count': 0, 'examples': []})
 
 
+class ContractModel:
+    """Proposes the contract ontology above, and no questions."""
+
+    def complete_json(self, *, system_prompt, user_prompt):
+        content = {'questions': []} if system_prompt == QUESTION_SYSTEM_PROMPT else {**ONTOLOGY, 'reasoning': 'r',
+            'object_types': [{**t, 'populated_from': [{**p, 'source': 'contracts'} for p in t['populated_from']]} for t in ONTOLOGY['object_types']]}
+        return ModelCompletion(provider='fake', model='deepseek-flash', content=json.dumps(content))
+
+
 class RuleServerTests(unittest.TestCase):
     def test_rules_are_offered_with_a_run_and_adopted_ones_are_checked_on_the_next(self):
         csv = '\n'.join(','.join(r) for r in ROWS).encode('utf-8')
         upload = {'filename': 'contracts.csv', 'content_base64': base64.b64encode(csv).decode()}
-        with OntologyServerTests().server(gateway=QuestionModel()) as (base, _):
+        with OntologyServerTests().server(gateway=ContractModel()) as (base, _):
             _, run = call(base, '/api/ontology/build', upload)
             offered = run['evaluation']['rules']['candidates']
             self.assertTrue(offered)
