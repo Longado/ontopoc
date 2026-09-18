@@ -19,6 +19,7 @@ from ontology_poc_generator.company_ontology import build_and_evaluate, build_co
 from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
+from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
@@ -54,6 +55,8 @@ def code_fingerprint(code_dir: Path) -> str:
 
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent):
     running = code_fingerprint(code_dir)
+    if gateway is not None:   # every model call, from any agent, leaves one line beside the runs
+        gateway = LoggedGateway(gateway, output_dir / 'model_calls.jsonl')
     jobs, jobs_lock = {}, threading.Lock()
 
     def decode_part(part):

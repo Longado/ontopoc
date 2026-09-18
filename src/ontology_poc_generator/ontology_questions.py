@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 import json
 
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
-from ontology_poc_generator.recognition import RecognitionError, model_failure_text
+from ontology_poc_generator.agent_harness import ask_model
+from ontology_poc_generator.recognition import model_failure_text
 
 QUESTION_PROMPT_VERSION = 'company_questions.v5'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
@@ -287,14 +288,13 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         request['asked'] = question
     out = {'prompt_version': QUESTION_PROMPT_VERSION, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
            'items': [], 'answered': 0, 'total': 0, 'error': None}
-    try:
-        completion = gateway.complete_json(system_prompt=QUESTION_SYSTEM_PROMPT, user_prompt=json.dumps(request, ensure_ascii=False))
-        out['model'] = completion.model
-        reply = json.loads(completion.content)
-    except RecognitionError as exc:
-        return {**out, 'error': model_failure_text(exc)}
-    except ValueError:
+    judgement = ask_model(gateway, 'question_writer', QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT, request)
+    out['model'] = judgement.model
+    if judgement.failure == 'request':
+        return {**out, 'error': model_failure_text(judgement.message)}
+    if judgement.failure == 'not_json':
         return {**out, 'error': '模型返回的不是 JSON'}
+    reply = judgement.reply
     raw = reply.get('questions') if isinstance(reply, dict) else None
     if not isinstance(raw, list):
         return {**out, 'error': '模型没有返回问题列表'}

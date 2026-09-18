@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 
+from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.nhtsa_sources import bundle_content_hash
 from ontology_poc_generator.recognition import RecognitionError
 
@@ -461,25 +462,22 @@ def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, p
     report = progress or (lambda stage, detail: None)
     while True:
         report('propose', {'attempt': len(attempts) + 1})
-        try:
-            completion = gateway.complete_json(system_prompt=profile.prompt,
-                                               user_prompt=json.dumps(request, ensure_ascii=False))
-            model = completion.model
-            try:
-                candidate = json.loads(completion.content)
-            except ValueError:
-                candidate = None
-            result = verify_proposal(candidate, bundle, profile) if candidate is not None else \
-                {'errors': [_error('invalid_response', 'model response is not JSON')], 'metrics': None}
-        except RecognitionError as exc:
-            candidate, result = None, {'errors': [_error('model_request_failed', str(exc))], 'metrics': None}
+        judgement = ask_model(gateway, 'table_modeller', profile.prompt_version, profile.prompt, request)
+        model = judgement.model or model
+        candidate = judgement.reply
+        if judgement.failure == 'request':
+            result = {'errors': [_error('model_request_failed', judgement.message)], 'metrics': None}
+        elif judgement.failure == 'not_json':
+            result = {'errors': [_error('invalid_response', 'model response is not JSON')], 'metrics': None}
+        else:
+            result = verify_proposal(candidate, bundle, profile)
         if candidate is not None and not _structure_errors(candidate):
             proposal = candidate
         attempts.append({'errors': result['errors'], 'model': model})
         report('verify', {'attempt': len(attempts), 'errors': len(result['errors'])})
         previous = attempts[-2]['errors'] if len(attempts) > 1 else None
         seen = lambda errors: {(e['code'], e['message']) for e in errors}
-        if not result['errors'] or len(attempts) >= MAX_MODELER_ATTEMPTS or \
+        if not result['errors'] or len(attempts) >= MAX_MODELER_ATTEMPTS or judgement.account_empty or \
                 (previous is not None and not seen(previous) - seen(result['errors'])):
             break
         request = {'decision': bundle['decision'], 'sources': catalog,
