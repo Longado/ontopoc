@@ -228,3 +228,71 @@ small.os-tone-warn { color: var(--amber); }
 .os-fields td:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 8em; }
 .os-fields tr:last-child td { border-bottom: 0; }
 .os-askbar-answer .os-question { padding-top: 0; border-top: 0; }
+
+/* 本体管理: one card per object, as DIP lists its business ontologies */
+.os-objects { display: grid; gap: 12px; margin-bottom: 18px; }
+.os-objects-head h2 { margin: 0; font-size: 20px; }
+.os-objects-head small { color: var(--text-2); font-size: 14px; font-weight: 400; }
+.os-object-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.os-object-card { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 16px 18px; border: 1px solid var(--edge); border-radius: 12px; background: var(--surface); color: var(--ink); text-align: left; transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out); }
+.os-object-card:hover { border-color: var(--edge-strong); box-shadow: 0 6px 18px rgba(20, 22, 31, 0.07); }
+.os-object-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.os-object-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.os-object-title i, .os-object-name i { flex: none; width: 28px; height: 28px; border-radius: 7px; background: var(--primary) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Crect x='5' y='6' width='14' height='12' rx='1.5'/%3E%3Cpath d='M5 10h14'/%3E%3C/svg%3E") center / 16px no-repeat; }
+.os-object-title b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.os-object-title em { margin-left: auto; flex: none; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-style: normal; font-weight: 700; }
+.os-object-card.is-ok em { color: var(--ok); background: var(--ok-soft); }
+.os-object-card.is-wrong em { color: var(--red); background: var(--red-soft); }
+.os-object-note { color: var(--text-2); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.os-object-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
+.os-object-meta i { color: var(--edge-strong); font-style: normal; }
+
+/* an object's own page: a narrow second nav, then the page */
+.pr-page.is-object { max-width: none; padding: 0; }
+.os-object-page { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 100%; }
+.os-object-side { display: grid; align-content: start; gap: 2px; padding: 14px 12px; border-right: 1px solid var(--edge); background: var(--surface); }
+.os-back { justify-self: start; margin-bottom: 8px; padding: 4px 6px; border: 0; background: transparent; color: var(--text-2); font-size: 13px; }
+.os-object-name { display: flex; align-items: center; gap: 10px; margin: 0 0 12px !important; padding: 0 4px 12px; border-bottom: 1px solid var(--edge); font-weight: 700; line-height: 1.35; }
+.os-object-side button:not(.os-back) { padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); text-align: left; }
+.os-object-side button:not(.os-back):hover { background: rgba(20, 22, 31, 0.04); }
+.os-object-side button[aria-current="page"] { background: rgba(20, 22, 31, 0.07); font-weight: 700; }
+.os-object-side button:disabled { opacity: 0.45; cursor: not-allowed; }
+.os-object-body { min-width: 0; display: grid; align-content: start; gap: 16px; padding: 24px 28px 48px; }
+.os-object-header h2 { margin: 0 0 4px; font-size: 22px; }
+.os-object-header small { color: var(--text-2); font-size: 15px; font-weight: 400; }
+.os-object-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.os-object-overview .pr-card { margin: 0; }
+.os-span { grid-column: 1 / -1; }
+.os-facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 8px 0 0; font-size: 14px; }
+.os-facts dt { color: var(--text-2); }
+.os-facts dd { margin: 0; overflow-wrap: anywhere; }
+.os-field-tags { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.os-field-tags li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--edge); font-size: 14px; }
+.os-field-tags li:last-child { border-bottom: 0; }
+.os-field-tags em, .os-tag { padding: 0 7px; border-radius: 5px; font-size: 12px; font-style: normal; color: var(--ok); background: var(--ok-soft); }
+.os-field-tags em.is-key, .os-tag.is-key { color: var(--primary-ink); background: var(--primary-soft); }
+.os-tag { margin-left: 8px; }
+.os-mini-graph { overflow-x: auto; padding: 8px; border-radius: 10px; background: radial-gradient(var(--edge) 1px, transparent 1px) 0 0 / 14px 14px, var(--canvas); }
+.os-mini-graph svg { display: block; width: 100%; max-height: 360px; min-width: 320px; }
+.os-mini-edge { fill: none; stroke: var(--primary); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.os-mini-graph marker path { fill: var(--primary); }
+.os-mini-node rect { fill: var(--surface); stroke: var(--edge-strong); }
+.os-mini-node .os-mini-cap { fill: var(--primary); stroke: none; }
+.os-mini-node text { fill: var(--ink); font-size: 14px; }
+.os-mini-node[role="button"] { cursor: pointer; }
+.os-mini-node[role="button"]:hover rect:first-child, .os-mini-node[role="button"]:focus-visible rect:first-child { stroke: var(--primary); stroke-width: 2; }
+.os-mini-node.is-self rect:first-child { stroke: var(--primary); stroke-width: 2; }
+.os-pager { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 10px; font-size: 13px; }
+.os-table-scroll.is-loading { opacity: 0.55; }
+.os-object-relation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+@media (max-width: 760px) {
+  .os-object-page { grid-template-columns: minmax(0, 1fr); }
+  .os-object-side { display: flex; flex-wrap: wrap; align-items: center; border-right: 0; border-bottom: 1px solid var(--edge); }
+  .os-object-name { width: 100%; }
+  .os-object-overview { grid-template-columns: minmax(0, 1fr); }
+  .os-object-body { padding: 16px; }
+}
+.os-object-from { color: var(--text-2); font-size: 12px; overflow-wrap: anywhere; }
+.pr-page.is-object > .pr-panel { margin: 0; }
+.os-object-page { min-height: 100vh; }
+.pr-page.is-object { gap: 0; row-gap: 0; }

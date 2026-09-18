@@ -89,6 +89,6 @@ export function summaryMarkdown(run) {
     out.push(...ontology.data_gaps.map((g) => `- ${g}`), "");
   }
 
-  out.push("---", "", `本文由 OntoPoc 从${isDocument(run) ? "上传的文档" : "上传的数据表"}生成，每一条都能在页面上找到出处：对象和关系在“看本体”，体检在“看评测 / 数据体检”，验收问题在“看评测 / 业务问答”。`);
+  out.push("---", "", `本文由 OntoPoc 从${isDocument(run) ? "上传的文档" : "上传的数据表"}生成，每一条都能在页面上找到出处：对象在“本体管理”，关系在“本体关系”，体检在“数据体检”，验收问题在“智能问答”。`);
   return out.join("\n");
 }

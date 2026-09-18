@@ -119,3 +119,28 @@ section[id] { scroll-margin-top: 78px; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* DIP-shaped sidebar: modules in the middle, the workspace (a run) switched at the bottom */
+.app-modules { display: grid; align-content: start; gap: 2px; flex: 1; min-height: 0; }
+.app-modules button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px; color: var(--ink); background: transparent; font-size: 14px; text-align: left; }
+.app-modules button:hover { background: rgba(20, 22, 31, 0.04); }
+.app-modules button[aria-current="page"] { background: rgba(20, 22, 31, 0.07); font-weight: 700; }
+.app-modules button:focus-visible, .app-space summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app-ico { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.app-space { border-top: 1px solid var(--edge); padding-top: 10px; }
+.app-space > summary { display: grid; gap: 1px; padding: 6px 8px; border-radius: 8px; cursor: pointer; list-style: none; }
+.app-space > summary::-webkit-details-marker { display: none; }
+.app-space > summary:hover { background: rgba(20, 22, 31, 0.04); }
+.app-space > summary .app-label { margin: 0; padding: 0; }
+.app-space > summary b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-space > summary small { color: var(--text-2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-space { position: relative; }
+.app-space[open] > .app-library { position: absolute; left: 0; width: 340px; overflow-x: hidden; bottom: calc(100% + 6px); z-index: 20; max-height: min(62vh, 560px); margin: 0; padding: 8px; border: 1px solid var(--edge); border-radius: 12px; background: var(--surface); box-shadow: 0 12px 32px rgba(20, 22, 31, 0.14); }
+@media (max-width: 760px) {
+  .app-modules { order: 3; width: 100%; display: flex; flex-wrap: wrap; flex: none; }
+  .app-modules button { width: auto; padding: 7px 10px; }
+  .app-modules .app-label { display: none; }
+  .app-space { order: 5; width: 100%; }
+  .app-space[open] > .app-library { position: static; width: auto; max-height: 240px; box-shadow: none; margin-top: 6px; }
+}
+.app-space .app-folder { min-width: 0; }
