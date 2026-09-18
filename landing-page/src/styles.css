@@ -42,27 +42,55 @@ button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
 section[id] { scroll-margin-top: 78px; }
 
-.app-shell { height: 100vh; min-height: 560px; display: grid; grid-template-columns: 232px minmax(0, 1fr); color: var(--ink); background: var(--canvas); }
-.app-side { display: flex; flex-direction: column; gap: 20px; padding: 20px 14px; color: var(--paper); background: var(--ink); }
-.app-brand { display: block; padding: 4px 8px 16px; border-bottom: 1px solid rgba(242, 240, 232, 0.14); }
-.app-brand img { width: 168px; height: auto; display: block; }
-.app-nav { display: grid; gap: 4px; }
-.app-nav button, .app-nav a { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 8px; color: rgba(242, 240, 232, 0.78); background: transparent; font-size: 14px; text-align: left; }
-.app-nav i { flex: none; width: 8px; height: 8px; margin-top: 7px; background: rgba(242, 240, 232, 0.35); }
+/* The workbench palette. Scoped to the shell so the product home keeps its own look.
+   One primary (the logo's indigo), cool neutrals, and three status colours that are never used as decoration.
+   Every text/ground pair here reaches WCAG AA; the numbers are in docs/PRD_ITERATION_6.md. */
+.app-shell {
+  --primary: #4b4fd8; --primary-soft: #ebebfc; --primary-ink: #3a3eb8;
+  --blue: var(--primary); --blue-soft: var(--primary-soft); --indigo: var(--primary); --indigo-soft: var(--primary-soft);
+  --canvas: #f5f6fa; --surface: #ffffff; --sidebar: #eef0f7;
+  --edge: #e2e4ee; --edge-strong: #cbcedd;
+  --ink: #14161f; --text-2: #5b5f6e; --muted: #5b5f6e;
+  --ok: #1f7a4d; --ok-soft: #e1f4e9; --amber: #9a5b00; --amber-soft: #fceacc; --red: #b23a2e; --red-soft: #fbe1de;
+  --focus: #4b4fd8;
+  height: 100vh; min-height: 560px; display: grid; grid-template-columns: 248px minmax(0, 1fr); color: var(--ink); background: var(--canvas);
+}
+.app-side { min-height: 0; display: flex; flex-direction: column; gap: 18px; padding: 18px 12px; color: var(--ink); background: var(--sidebar); border-right: 1px solid var(--edge); }
+.app-brand { display: block; padding: 4px 8px 14px; border-bottom: 1px solid var(--edge); }
+.app-brand img { width: 150px; height: auto; display: block; }
+.app-new { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border: 1px solid var(--edge-strong); border-radius: 999px; color: var(--ink); background: var(--surface); font-size: 14px; font-weight: 700; box-shadow: 0 1px 2px rgba(20, 22, 31, 0.04); }
+.app-new span { font-size: 16px; line-height: 1; color: var(--primary); }
+.app-new:hover { border-color: var(--primary); }
+.app-new:focus-visible, .app-folder summary:focus-visible, .app-folder button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app-library { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 2px; margin: 0 -6px; padding: 0 6px; }
+.app-label { margin: 0 0 4px; padding: 0 8px; color: var(--text-2); font-size: 12px; letter-spacing: 0.04em; }
+.app-empty { margin: 0; padding: 0 8px; color: var(--text-2); font-size: 12px; line-height: 1.6; }
+.app-folder summary { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-folder summary::-webkit-details-marker { display: none; }
+.app-folder summary::before { content: "›"; flex: none; width: 10px; color: var(--text-2); transition: transform 160ms var(--ease-out); }
+.app-folder[open] summary::before { transform: rotate(90deg); }
+.app-folder summary small { margin-left: auto; flex: none; color: var(--text-2); font-size: 11px; font-weight: 400; }
+.app-folder summary:hover { background: rgba(20, 22, 31, 0.04); }
+.app-folder button { display: grid; gap: 1px; width: 100%; padding: 6px 8px 6px 26px; border: 0; border-radius: 8px; color: var(--text-2); background: transparent; font-size: 13px; text-align: left; }
+.app-folder button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-folder button small { color: var(--text-2); font-size: 11px; opacity: 0.85; }
+.app-folder button:hover { color: var(--ink); background: rgba(20, 22, 31, 0.04); }
+.app-folder button[aria-current="page"] { color: var(--primary-ink); background: var(--primary-soft); font-weight: 700; }
+.app-folder button[aria-current="page"] small { color: var(--primary-ink); opacity: 1; }
+.app-nav { display: grid; gap: 2px; padding-top: 10px; border-top: 1px solid var(--edge); }
+.app-nav button, .app-nav a { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; color: var(--text-2); background: transparent; font-size: 13px; text-align: left; }
+.app-nav i { flex: none; width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: var(--edge-strong); }
 .app-nav span { display: grid; gap: 2px; }
-.app-nav small { font-size: 11px; color: rgba(242, 240, 232, 0.5); }
-.app-nav button:hover, .app-nav a:hover { color: var(--paper); background: rgba(242, 240, 232, 0.08); }
-.app-nav [aria-current="page"] { color: var(--ink); background: var(--paper); font-weight: 700; }
-.app-nav [aria-current="page"] i { background: #e8a33a; }
-.app-nav [aria-current="page"] small { color: var(--text-2); }
+.app-nav small { font-size: 11px; color: var(--text-2); }
+.app-nav button:hover, .app-nav a:hover { color: var(--ink); background: rgba(20, 22, 31, 0.04); }
+.app-nav [aria-current="page"] { color: var(--primary-ink); background: var(--primary-soft); font-weight: 700; }
+.app-nav [aria-current="page"] i { background: var(--primary); }
 .app-nav button:disabled { opacity: 0.5; cursor: not-allowed; }
-.app-more { display: grid; gap: 4px; }
-.app-more summary { padding: 8px 12px; border-radius: 8px; color: rgba(242, 240, 232, 0.55); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; cursor: pointer; }
-.app-more summary:hover { color: var(--paper); }
-.app-more summary:focus-visible { outline: 2px solid #84a9ff; outline-offset: 2px; }
-.app-more[open] summary { color: rgba(242, 240, 232, 0.8); }
-.app-nav button:focus-visible, .app-nav a:focus-visible, .app-lang:focus-visible { outline: 2px solid #84a9ff; outline-offset: 2px; }
-.app-lang { margin-top: auto; align-self: flex-start; padding: 6px 10px; border: 1px solid rgba(242, 240, 232, 0.3); border-radius: 6px; color: rgba(242, 240, 232, 0.75); background: transparent; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+.app-more { display: grid; gap: 2px; }
+.app-more summary { padding: 6px 10px; border-radius: 8px; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; }
+.app-more summary:hover, .app-more[open] summary { color: var(--ink); }
+.app-more summary:focus-visible, .app-nav button:focus-visible, .app-nav a:focus-visible, .app-lang:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app-lang { align-self: flex-start; padding: 5px 10px; border: 1px solid var(--edge-strong); border-radius: 6px; color: var(--text-2); background: var(--surface); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
 .app-main { min-width: 0; min-height: 0; overflow-y: auto; display: flex; }
 .app-main > * { flex: 1; }
 
@@ -76,6 +104,8 @@ section[id] { scroll-margin-top: 78px; }
   .app-nav small { display: none; }
   .app-more { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .app-lang { margin: 0 0 0 auto; }
+  .app-new { width: auto; padding: 6px 12px; }
+  .app-library { order: 4; width: 100%; max-height: 168px; padding-bottom: 4px; border-bottom: 1px solid var(--edge); }   /* the run list must not push the run itself off a phone screen */
   .app-main { overflow: visible; }
 }
 
@@ -89,3 +119,28 @@ section[id] { scroll-margin-top: 78px; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* DIP-shaped sidebar: modules in the middle, the workspace (a run) switched at the bottom */
+.app-modules { display: grid; align-content: start; gap: 2px; flex: 1; min-height: 0; }
+.app-modules button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px; color: var(--ink); background: transparent; font-size: 14px; text-align: left; }
+.app-modules button:hover { background: rgba(20, 22, 31, 0.04); }
+.app-modules button[aria-current="page"] { background: rgba(20, 22, 31, 0.07); font-weight: 700; }
+.app-modules button:focus-visible, .app-space summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app-ico { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.app-space { border-top: 1px solid var(--edge); padding-top: 10px; }
+.app-space > summary { display: grid; gap: 1px; padding: 6px 8px; border-radius: 8px; cursor: pointer; list-style: none; }
+.app-space > summary::-webkit-details-marker { display: none; }
+.app-space > summary:hover { background: rgba(20, 22, 31, 0.04); }
+.app-space > summary .app-label { margin: 0; padding: 0; }
+.app-space > summary b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-space > summary small { color: var(--text-2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-space { position: relative; }
+.app-space[open] > .app-library { position: absolute; left: 0; width: 340px; overflow-x: hidden; bottom: calc(100% + 6px); z-index: 20; max-height: min(62vh, 560px); margin: 0; padding: 8px; border: 1px solid var(--edge); border-radius: 12px; background: var(--surface); box-shadow: 0 12px 32px rgba(20, 22, 31, 0.14); }
+@media (max-width: 760px) {
+  .app-modules { order: 3; width: 100%; display: flex; flex-wrap: wrap; flex: none; }
+  .app-modules button { width: auto; padding: 7px 10px; }
+  .app-modules .app-label { display: none; }
+  .app-space { order: 5; width: 100%; }
+  .app-space[open] > .app-library { position: static; width: auto; max-height: 240px; box-shadow: none; margin-top: 6px; }
+}
+.app-space .app-folder { min-width: 0; }

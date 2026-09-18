@@ -164,6 +164,37 @@ def _source_groups(bundle: dict, graph: dict) -> list[list[str]]:
     return list(groups.values())
 
 
+def _cells(records: list[dict], path: str) -> list[list[str]]:
+    return [[str(v).strip() for v in resolve(r, path) if v not in (None, '') and str(v).strip()] for r in records]
+
+
+def bridge_hints(bundle: dict, groups: list[list[str]]) -> list[dict]:
+    """For tables the ontology leaves unconnected: a column whose every filled value is a key of a table in another
+    group. That is what a foreign key is, so no share or cut-off is needed; the person decides whether it means
+    anything. Only asked when groups are split, which is why connected data never sees a hint."""
+    # ponytail: a one-row table or a column of small numbers can pass by chance; the hint says the counts, a person reads them
+    if len(groups) < 2:
+        return []
+    group_of = {name: i for i, g in enumerate(groups) for name in g}
+    keys = {}   # (source, path) -> its values, for columns where no value repeats
+    for name, source in bundle['sources'].items():
+        for path in field_paths(source['records']):
+            values = [v for row in _cells(source['records'], path) for v in row]
+            if values and len(set(values)) == len(values):
+                keys[(name, path)] = set(values)
+    hints = []
+    for name, source in bundle['sources'].items():
+        for path in field_paths(source['records']):
+            rows = [row for row in _cells(source['records'], path) if row]
+            if not rows:
+                continue
+            for (key_source, key_path), values in keys.items():
+                if group_of[key_source] != group_of[name] and all(v in values for row in rows for v in row):
+                    hints.append({'from_source': name, 'from_field': path, 'to_source': key_source, 'to_field': key_path,
+                                  'rows': len(source['records']), 'linked_rows': len(rows)})
+    return sorted(hints, key=lambda h: -h['linked_rows'])
+
+
 NAME_LIKE = ('名称', '姓名', '名字', 'name')
 
 
@@ -195,6 +226,7 @@ def data_fit(ontology: dict, bundle: dict) -> dict:
         'orphans': _orphans(p, graph),
         'source_groups': _source_groups(bundle, graph),
     }
+    fit['bridges'] = bridge_hints(bundle, fit['source_groups'])
     fit['checks'] = [
         {'key': 'fields_accounted', 'passed': all(f['unaccounted'] == 0 for f in fit['fields'].values())},
         {'key': 'identity_consistent', 'passed': not fit['identity_conflicts']},

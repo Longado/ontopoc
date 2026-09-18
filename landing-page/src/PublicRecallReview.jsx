@@ -265,7 +265,7 @@ export function PublicRecallReview({ language = "zh" }) {
 
       {tab === "recalls" && <section className="pr-card">
         <h2>选择一个召回</h2>
-        <p className="pr-muted">按部件分组，组内按日期排列。原文写明“修复后再召回”的召回连成一个系列，系列内共用复核结论和模型初判。点一个召回进入复核。</p>
+        <p className="pr-muted">按部件分组，组内按日期排列。原文写明“修复后再召回”的召回连成一个系列，系列内共用复核结论和模型初判。</p>
         <div className="pr-groups">{pack.groups.map((g) => <div key={g.id} className="pr-group">
           <h3>{g.id}</h3>
           <div className="pr-recalls">{g.recalls.map((id) => byId[id]).map((r) => <button key={r.id} aria-pressed={r.id === recallId} onClick={() => openRecall(r.id)}>

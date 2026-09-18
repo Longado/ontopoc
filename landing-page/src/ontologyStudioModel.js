@@ -134,6 +134,19 @@ export function serviceError(status, data) {
   return data?.error || `服务返回 ${status}`;
 }
 
+/** How a polled job ended: its run, or the words to show; null while it is still running. */
+export function jobOutcome(job) {
+  if (job.state === "done") return { result: job.result };
+  if (job.state === "running") return null;
+  return { error: job.error || "建模失败" };   // failed, or interrupted by a restart
+}
+
+/** When a job began, as the job itself reported it, so a page reopened mid-build keeps counting from there. */
+export function jobStartedAt(events, now) {
+  const first = Date.parse(events[0]?.at);
+  return Number.isNaN(first) ? now : first;
+}
+
 /** Why the service would refuse this file, said before it is sent; "" when it is fine. */
 export function fileProblem(file) {
   const suffix = (file.name.match(/\.[^.]+$/)?.[0] || "").toLowerCase();
@@ -194,3 +207,7 @@ export function saveResult(storage, run) {
     return "这次结果太大，没能存进浏览器：刷新或关掉标签页就会丢。请先下载纪要和本体和评测。";
   }
 }
+
+/** The service checks its own files against what it started with; a mismatch means edits it is not running yet. */
+export const staleNote = (health) => (health?.stale
+  ? "建模服务还在跑旧代码：它启动之后，后端文件改过。重启建模服务再用，不然看到的是改之前的行为。" : "");

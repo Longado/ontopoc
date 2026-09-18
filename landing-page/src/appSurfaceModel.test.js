@@ -22,7 +22,7 @@ test("unknown paths fall back to the standalone workspace", () => {
 test("standalone surface opens on upload-to-ontology and keeps both recall examples", async () => {
   const source = await readFile(new URL("./StandaloneDemo.jsx", import.meta.url), "utf8");
   assert.match(source, /useState\("studio"\)/);
-  assert.match(source, /<OntologyStudio \/>/);
+  assert.match(source, /<OntologyStudio request=\{request\}/);   // the sidebar's run library tells the studio which run to open
   assert.match(source, /<PublicRecallReview language=\{language\} \/>/);
   assert.match(source, /<RecallWorkspace language=\{language\} onBusyChange=\{setRecallBusy\} \/>/);
   assert.match(source, /href="\/landing"/);

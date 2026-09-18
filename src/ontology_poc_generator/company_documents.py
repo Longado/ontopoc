@@ -14,7 +14,7 @@ from xml.etree import ElementTree
 import zipfile
 
 from ontology_poc_generator.company_sources import DEFAULT_PURPOSE, MAX_BYTES
-from ontology_poc_generator.recognition import RecognitionError
+from ontology_poc_generator.agent_harness import ask_model
 
 DOCUMENT_SUFFIXES = ('.md', '.txt', '.docx', '.pdf')
 CHUNK_CHARS = 6000
@@ -119,16 +119,17 @@ def build_document_ontology(bundle: dict, gateway, progress=None) -> dict:
             progress('chunk', {'index': index, 'total': len(chunks)})
         request = {'purpose': bundle['decision'], 'text': chunk,
                    'known_concepts': [{'key': k, 'label': c['label']} for k, c in concepts.items()]}
-        try:
-            completion = gateway.complete_json(system_prompt=DOCUMENT_SYSTEM_PROMPT, user_prompt=json.dumps(request, ensure_ascii=False))
-            model = completion.model
-            reply = json.loads(completion.content)
-        except RecognitionError as exc:
-            errors.append({'code': 'model_request_failed', 'message': str(exc)})
+        judgement = ask_model(gateway, 'document_modeller', DOCUMENT_PROMPT_VERSION, DOCUMENT_SYSTEM_PROMPT, request)
+        model = judgement.model or model
+        if judgement.failure == 'request':
+            errors.append({'code': 'model_request_failed', 'message': judgement.message})
+            if judgement.account_empty:
+                break   # the next chunk would hit the same empty account
             continue
-        except ValueError:
-            errors.append({'code': 'invalid_response', 'message': 'model response is not JSON'})
+        if judgement.failure == 'not_json':
+            errors.append({'code': 'invalid_response', 'message': judgement.message})
             continue
+        reply = judgement.reply
         found = _squash(chunk)
         for c in reply.get('concepts') or [] if isinstance(reply, dict) else []:
             if not isinstance(c, dict) or not isinstance(c.get('key'), str) or not isinstance(c.get('label'), str):

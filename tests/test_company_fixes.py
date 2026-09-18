@@ -62,7 +62,7 @@ class ModelFailureTests(unittest.TestCase):
             self.assertEqual(status, 502)
             self.assertIn('模型请求失败', body['error'])
             self.assertIn('重试', body['error'])
-            self.assertEqual(list(out.iterdir()), [])
+            self.assertEqual([p.name for p in out.iterdir() if p.name != 'model_calls.jsonl'], [])   # no run is kept; the failed calls are
 
 
 if __name__ == '__main__':

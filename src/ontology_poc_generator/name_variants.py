@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import json
 
-from ontology_poc_generator.recognition import RecognitionError, model_failure_text
+from ontology_poc_generator.agent_harness import ask_model
+from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 
 
@@ -76,13 +77,12 @@ def propose_name_variants(ontology: dict, bundle: dict, gateway) -> dict:
     if not catalog:
         return {**out, 'note': '这份数据里没有需要对应写法的对象：对象要么按编号识别、要么取值太多，写法不一致的问题请看数据体检。'}
     request = {t: {'label': e['label'], 'names': [[v['value'], v['records']] for v in e['values']]} for t, e in catalog.items()}
-    try:
-        completion = gateway.complete_json(system_prompt=VARIANT_SYSTEM_PROMPT, user_prompt=json.dumps(request, ensure_ascii=False))
-        out['model'] = completion.model
-        proposals = json.loads(completion.content).get('groups')
-    except RecognitionError as exc:
-        return {**out, 'error': model_failure_text(exc)}
-    except ValueError:
+    judgement = ask_model(gateway, 'variant_matcher', VARIANT_PROMPT_VERSION, VARIANT_SYSTEM_PROMPT, request)
+    out['model'] = judgement.model
+    if judgement.failure == 'request':
+        return {**out, 'error': model_failure_text(judgement.message)}
+    if judgement.failure == 'not_json' or not isinstance(judgement.reply, dict):
         return {**out, 'error': '模型返回的不是 JSON'}
+    proposals = judgement.reply.get('groups')
     kept, rejected = variant_candidates(catalog, proposals)
     return {**out, 'groups': kept, 'rejected': rejected}
