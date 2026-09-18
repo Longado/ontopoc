@@ -58,6 +58,19 @@ def _field_shape(path: str, reads: list[tuple[str, list[dict]]], identity: bool)
             'length': max((len(v) for v in seen), default=0), 'empty': empty, 'rows': rows}
 
 
+def source_profile(bundle: dict) -> list[dict]:
+    """Every uploaded table as it was read: how many rows, which title lines above the header were skipped, and the
+    shape of every column — including the ones the ontology does not use."""
+    out = []
+    for name, source in bundle['sources'].items():
+        fields = []
+        for path in field_paths(source['records']):
+            shape = _field_shape(path, [(name, source['records'])], False)
+            fields.append({k: shape[k] for k in ('path', 'type', 'length', 'empty')})
+        out.append({'name': name, 'rows': len(source['records']), 'skipped_rows': source.get('skipped_rows', []), 'fields': fields})
+    return out
+
+
 def _cardinality(most_from: int, most_to: int) -> str:
     if most_from > 1 and most_to > 1:
         return 'many_to_many'
@@ -98,4 +111,4 @@ def handover_form(ontology: dict, bundle: dict, graph: dict | None = None) -> di
         most_to = max((len(v) for v in per_to.values()), default=0)
         relations.append({'key': r['key'], 'from': r['from'], 'to': r['to'],
                           'cardinality': _cardinality(most_from, most_to), 'most_from': most_from, 'most_to': most_to})
-    return {'types': types, 'relations': relations}
+    return {'types': types, 'relations': relations, 'sources': source_profile(bundle)}

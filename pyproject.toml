@@ -11,6 +11,7 @@ dependencies = ["openpyxl>=3.1"]
 
 [project.scripts]
 ontopoc-recall = "ontology_poc_generator.recall_cli:main"
+ontopoc-mcp = "ontology_poc_generator.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

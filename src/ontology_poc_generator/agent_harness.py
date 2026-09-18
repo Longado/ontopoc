@@ -21,6 +21,7 @@ AGENTS = {
     'document_modeller': '文档建模员',
     'question_writer': '出题员',
     'variant_matcher': '名称对应员',
+    'field_describer': '字段释义员',
 }
 
 

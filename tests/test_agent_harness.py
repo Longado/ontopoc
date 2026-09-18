@@ -54,7 +54,7 @@ class AskModelTests(unittest.TestCase):
 
     def test_every_agent_the_product_calls_has_a_name_a_person_can_read(self):
         self.assertEqual(AGENTS, {'table_modeller': '表格建模员', 'document_modeller': '文档建模员',
-                                  'question_writer': '出题员', 'variant_matcher': '名称对应员'})
+                                  'question_writer': '出题员', 'variant_matcher': '名称对应员', 'field_describer': '字段释义员'})
         with self.assertRaises(KeyError):
             ask_model(Gateway('{}'), 'free_chat', 'v', 's', {})   # no call goes out under a name nobody defined
 
