@@ -151,6 +151,19 @@ def list_relations(s, a):
                            **{k: cards.get(r['key'], {}).get(k) for k in ('cardinality', 'most_from', 'most_to')}} for r in run['ontology']['relations']]}
 
 
+def suggest_relations(s, a):
+    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/suggestions")
+
+
+def find_instances(s, a):
+    key = quote(_text(a.get('type'), 'type'))
+    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/instances/{key}?q={quote(str(a.get('query') or ''))}")
+
+
+def instance_neighbourhood(s, a):
+    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/graph?node={quote(_text(a.get('node'), 'node'))}")
+
+
 def data_layout(s, a):
     ev = s.run(a.get('saved_as'))['evaluation']
     fit = ev.get('data_fit') or {}
@@ -237,6 +250,10 @@ TOOLS = [
     _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到 DIP 要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
     _tool(object_rows, '一个对象在数据里的每一个实例，一页 20 个；all=true 一次给全部。', {**RUN, **TYPE, 'page': {'type': 'integer', 'minimum': 1}, 'all': {'type': 'boolean'}}, ('saved_as', 'type')),
     _tool(list_relations, '本体里的关系：两端、含义、来源表、一对一/一对多/多对多。', RUN, ('saved_as',)),
+    _tool(suggest_relations, '代码在数据里看到、本体里没有的关系，只作建议：同一张表同一行上的两个对象没连起来，或某列按名字和取值指向别的对象的编号。', RUN, ('saved_as',)),
+    _tool(find_instances, '按名称或编号找数据里的某个对象（实例图谱的起点），给出节点 id。', {**RUN, **TYPE, 'query': {'type': 'string'}}, ('saved_as', 'type')),
+    _tool(instance_neighbourhood, '实例图谱：一个对象的字段，和数据里与它相连的对象；每条关系先给 20 个，其余计数。',
+          {**RUN, 'node': {'type': 'string', 'description': '节点 id，来自 find_instances 或上一次的结果'}}, ('saved_as', 'node')),
     _tool(data_layout, '上传的每张表：行数、跳过的标题行、每列类型长度空值；表没连上时，能把它们连起来的列。', RUN, ('saved_as',)),
     _tool(data_check, '数据体检：七项检查是否通过，以及每类发现的数量和前几个例子。全部由代码算。', RUN, ('saved_as',)),
     _tool(ask_question, '用数据回答一个业务问题：模型把问题写成查询，代码在数据上算答案。不给 question 就让模型出一组题。会调用模型。',

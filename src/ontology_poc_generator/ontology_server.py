@@ -23,6 +23,7 @@ from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
 from ontology_poc_generator.public_ontology import build_graph
+from ontology_poc_generator.relation_suggestions import suggest_relations
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
@@ -273,7 +274,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.reply(200, {'runs': runs})
 
         def object_page(self):
-            """/api/ontology/runs/<run>/objects/<type>?page=N|all=1, /instances/<type>?q=, /graph?node=<id>"""
+            """/api/ontology/runs/<run>/objects/<type>?page=N|all=1, /instances/<type>?q=, /graph?node=<id>, /suggestions"""
             url = urlsplit(self.path)
             rest = url.path[len('/api/ontology/runs/'):]
             name, _, tail = rest.partition('/')
@@ -288,6 +289,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif tail.startswith('instances/'):
                     type_key = unquote(tail[len('instances/'):])
                     self.reply(200, find_instances(result['ontology'], bundle, type_key, (query.get('q') or [''])[0], graph=graph))
+                elif tail == 'suggestions':
+                    self.reply(200, {'suggestions': suggest_relations(result['ontology'], bundle, graph)})
                 elif tail == 'graph':
                     self.reply(200, neighbourhood(result['ontology'], bundle, (query.get('node') or [''])[0], graph=graph))
                 else:
