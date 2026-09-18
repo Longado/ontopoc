@@ -33,6 +33,7 @@ MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus t
 SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
 JOB_ID = re.compile(r'^[0-9a-f]{12}$')
 NO_KEY = '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'
+INTERRUPTED = '建模服务在这次建模途中重启过，这次作业中断了。请重新上传文件。'
 
 
 def gateway_from_env():
@@ -58,6 +59,32 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
     if gateway is not None:   # every model call, from any agent, leaves one line beside the runs
         gateway = LoggedGateway(gateway, output_dir / 'model_calls.jsonl')
     jobs, jobs_lock = {}, threading.Lock()
+    # one run file is read, changed and written back by several endpoints; this keeps two of them from overwriting each other
+    runs_lock = threading.Lock()
+    jobs_dir = output_dir / 'jobs'
+
+    def keep_job(job_id, job):
+        """The job as it stands, on disk, so a restarted service can still say how it ended. Called under jobs_lock."""
+        jobs_dir.mkdir(parents=True, exist_ok=True)
+        kept = {'state': job['state'], 'events': job['events'], 'error': job['error'],
+                'saved_as': (job['result'] or {}).get('saved_as')}
+        partial = jobs_dir / f'{job_id}.json.part'
+        partial.write_text(json.dumps(kept, ensure_ascii=False), encoding='utf-8')
+        partial.replace(jobs_dir / f'{job_id}.json')   # a reader never sees half a file
+
+    def job_from_disk(job_id):
+        path = jobs_dir / f'{job_id}.json'
+        if not path.exists():
+            return None
+        job = {**json.loads(path.read_text(encoding='utf-8')), 'result': None}
+        if job['state'] == 'running':   # nothing in this process is running it: the service restarted in the middle
+            return {**job, 'state': 'interrupted', 'error': INTERRUPTED}
+        run = output_dir / (job.pop('saved_as') or '')
+        if job['state'] == 'done':
+            if not SAVED_NAME.match(run.name) or not run.exists():
+                return {**job, 'state': 'failed', 'error': '这次作业的结果文件已经不在了，请重新上传文件'}
+            job['result'] = json.loads(run.read_text(encoding='utf-8'))
+        return job
 
     def decode_part(part):
         if not isinstance(part.get('content_base64'), str):
@@ -143,14 +170,23 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         accepted = output_dir / 'acceptance' / f"{bundle['file']['sha256']}.json"
         if accepted.exists() and result['ontology']['status'] == 'auto_built_verified' and result['file'].get('kind') != 'document':
             # the questions a person fixed for this file: the same queries, so two runs can be judged on the same thing
-            saved = json.loads(accepted.read_text(encoding='utf-8'))
-            result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, saved['items'])
-            accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
+            with runs_lock:
+                saved = json.loads(accepted.read_text(encoding='utf-8'))
+                result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, saved['items'])
+                accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
         result['saved_as'] = name
         (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
         # the uploaded rows stay on this machine so later questions can be answered from them
         (output_dir / name.replace('.json', '.bundle.json')).write_text(json.dumps(bundle, ensure_ascii=False), encoding='utf-8')
         return 200, result
+    def write_back(path, change):
+        """Apply one change to the run as it is on disk now: whatever was saved while the model was thinking stays."""
+        with runs_lock:
+            result = json.loads(path.read_text(encoding='utf-8'))
+            change(result)
+            path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+        return result
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
             pass
@@ -242,8 +278,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/ask':
                 self.ask()
                 return
+            # compare, confirm and acceptance read, change and write one run without a model call: they hold runs_lock
+            # throughout; ask and variants wait on the model first and take it only to write (see write_back)
             if self.path == '/api/ontology/compare':
-                self.compare()
+                with runs_lock:
+                    self.compare()
                 return
             if self.path == '/api/ontology/jobs':
                 self.start_job()
@@ -252,10 +291,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.preview()
                 return
             if self.path == '/api/ontology/confirm':
-                self.confirm()
+                with runs_lock:
+                    self.confirm()
                 return
             if self.path == '/api/ontology/acceptance':
-                self.acceptance()
+                with runs_lock:
+                    self.acceptance()
                 return
             if self.path == '/api/ontology/variants':
                 self.variants()
@@ -303,11 +344,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             job = {'state': 'running', 'events': [], 'result': None, 'error': None}
             with jobs_lock:
                 jobs[job_id] = job
+                keep_job(job_id, job)
 
             def report(stage, detail):
                 with jobs_lock:
                     job['events'].append({'stage': stage, 'detail': detail,
                                           'at': datetime.now(timezone.utc).isoformat(timespec='seconds')})
+                    keep_job(job_id, job)
             report('read', {'file': bundle['file']['name'], 'kind': bundle['file']['kind']})
 
             def run():
@@ -319,13 +362,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 with jobs_lock:
                     job['state'] = 'done' if status == 200 else 'failed'
                     job['result' if status == 200 else 'error'] = body if status == 200 else body['error']
+                    keep_job(job_id, job)
             threading.Thread(target=run, daemon=True).start()
             self.reply(202, {'job_id': job_id})
 
         def job_status(self, job_id):
             with jobs_lock:
                 job = jobs.get(job_id)
-                snapshot = None if job is None else json.loads(json.dumps(job))
+                snapshot = job_from_disk(job_id) if job is None else json.loads(json.dumps(job))
             if snapshot is None:
                 self.reply(404, {'error': '找不到这个任务'})
                 return
@@ -383,9 +427,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if found['error'] and found['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': found['error']})
                 return
-            result['evaluation']['variants'] = found
-            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
-            self.reply(200, result)
+            self.reply(200, write_back(result_path, lambda r: r['evaluation'].update(variants=found)))
 
         def acceptance(self):
             try:
@@ -487,12 +529,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if answered['error'] and answered['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': answered['error']})
                 return
-            if question:
-                result['evaluation'].setdefault('asked', []).append(answered)
-            else:
-                result['evaluation']['questions'] = answered
-            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
-            self.reply(200, result)
+            self.reply(200, write_back(result_path, (lambda r: r['evaluation'].setdefault('asked', []).append(answered)) if question
+                                       else (lambda r: r['evaluation'].update(questions=answered))))
 
     return ThreadingHTTPServer(('127.0.0.1', port), Handler)
 

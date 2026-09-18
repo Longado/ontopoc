@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  COVERAGE_NOTE, conflictGroups, conflictNote, localTime, memoryNote, saveResult, progressSteps, referenceCounts, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, typeSources, validateRun,
+  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, saveResult, progressSteps, referenceCounts, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
@@ -20,6 +20,9 @@ const START = "PYTHONPATH=src python -m ontology_poc_generator.ontology_server";
 
 const readText = (url) => fetch(url, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`读取失败（${r.status}）`); return r.json(); });
 const storage = () => { try { return window.localStorage; } catch { return null; } };
+const JOB_KEY = "ontopoc.job";   // this tab's build in progress, so a refresh picks it up again
+const pendingJob = { get: () => { try { return sessionStorage.getItem(JOB_KEY); } catch { return null; } },
+  set: (id) => { try { if (id) sessionStorage.setItem(JOB_KEY, id); else sessionStorage.removeItem(JOB_KEY); } catch { /* a private window without storage: a refresh just loses the progress view */ } } };
 const loadLocal = () => { try { return validateRun(JSON.parse(localStorage.getItem(RESULT_KEY))); } catch { return null; } };
 
 function toBase64(file) {
@@ -39,7 +42,7 @@ function Mark() {
     <rect x="10" y="3" width="12" height="4" fill="#7474f9" /><rect x="3" y="10" width="4" height="12" fill="#7474f9" /><rect x="25" y="10" width="4" height="12" fill="#4748e2" /><rect x="10" y="25" width="12" height="4" fill="#7474f9" /></svg>;
 }
 
-function Progress({ events, kind, elapsed }) {
+function Progress({ events, kind, elapsed, lost }) {
   const steps = progressSteps(events, kind);
   return <div className="os-progress" role="status" aria-live="polite">
     <ol className="os-steps">{steps.map((st) => <li key={st.key} className={`is-${st.status}`}>
@@ -48,6 +51,7 @@ function Progress({ events, kind, elapsed }) {
       <em className="sr-only">{st.status === "done" ? "完成" : st.status === "active" ? "进行中" : "未开始"}</em>
     </li>)}</ol>
     <p className="pr-muted">已用 {elapsed} 秒。每一步都来自本机服务的实时回报；模型出错时代码会退回重做，最多三次。</p>
+    {lost && <p className="os-stale" role="alert">现在连不上本机建模服务。它回来后，这里会接着显示这次建模的结果；它若重启过，会告诉你这次建模中断了。</p>}
   </div>;
 }
 
@@ -81,7 +85,7 @@ function SendPreview({ file }) {
   </details>;
 }
 
-function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDocDemo }) {
+function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo, onDocDemo }) {
   const [files, setFiles] = useState([]);
   const [purpose, setPurpose] = useState("");
   const [over, setOver] = useState(false);
@@ -94,7 +98,7 @@ function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDo
   return <div className="os-start">
     <h1 id="os-title">今天要看哪份数据？</h1>
     <p className="os-start-sub">传几张业务表或一份文档，写一句你想弄清的问题。文件只留在这台电脑上。</p>
-    {busy ? <div className="os-composer is-busy"><Progress events={events} kind={kind} elapsed={elapsed} /></div> : <>
+    {busy ? <div className="os-composer is-busy"><Progress events={events} kind={kind} elapsed={elapsed} lost={lost} /></div> : <>
       <input id="os-file" className="sr-only" type="file" accept={ACCEPT} multiple onChange={(e) => { pick(e.target.files || []); e.target.value = ""; }} />
       <div className={`os-composer${over ? " is-over" : ""}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={drop}>
         {files.length > 0 && <div className="os-composer-files">
@@ -531,6 +535,7 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
   const [busy, setBusy] = useState(false);
   const [events, setEvents] = useState([]);
   const [elapsed, setElapsed] = useState(0);
+  const [lost, setLost] = useState(false);
   const [error, setError] = useState("");
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState("");
@@ -549,7 +554,7 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
   const [selected, setSelected] = useState(null);
   const [path, setPath] = useState(null);
   const [reveal, setReveal] = useState(0);
-  const timer = useRef(null);
+  const following = useRef(null);
   const askRef = useRef(null);
 
   useEffect(() => {   // asked again whenever the window comes back, so edits made meanwhile are caught before the next run
@@ -559,7 +564,6 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
     window.addEventListener("focus", check);
     return () => window.removeEventListener("focus", check);
   }, []);
-  useEffect(() => () => clearInterval(timer.current), []);
 
   const keep = (valid) => setStorageWarning(saveResult(storage(), valid));
   function show(result) { const valid = validateRun(result); setRun(valid); keep(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setTab("ontology"); onCurrent(valid.saved_as || null); onRunsChanged(); }
@@ -574,9 +578,8 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
       .catch((e) => { setError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); setTab("upload"); });
   }, [request?.nonce]);   // eslint-disable-line react-hooks/exhaustive-deps
   async function build(files, purpose) {
-    setBusy(true); setError(""); setElapsed(0); setEvents([]);
-    const started = Date.now();
-    timer.current = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000);
+    setBusy(true); setError(""); setEvents([]);
+    let jobId;
     try {
       const contents = [];
       for (const file of files) contents.push(await toBase64(file));
@@ -584,18 +587,37 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
       const response = await fetch("/api/ontology/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body });
       const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
       if (!response.ok) throw new Error(serviceError(response.status, data));
+      jobId = data.job_id;
+      pendingJob.set(jobId);
+    } catch (e) { setError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); setBusy(false); return; }
+    follow(jobId, Date.now());
+  }
+  async function follow(jobId, started) {
+    if (following.current === jobId) return;   // already being followed (React may run the mount effect twice)
+    following.current = jobId;
+    setBusy(true); setTab("upload");
+    const tick = () => setElapsed(Math.max(0, Math.round((Date.now() - started) / 1000)));   // once a poll, about once a second
+    tick();
+    try {
       for (;;) {
-        await new Promise((r) => setTimeout(r, 1000));
-        const poll = await fetch(`/api/ontology/jobs/${data.job_id}`, { cache: "no-store" });
-        const job = await poll.json().catch(() => ({ state: "failed", error: `服务返回 ${poll.status}` }));
-        if (!poll.ok) throw new Error(serviceError(poll.status, job));
+        const poll = await fetch(`/api/ontology/jobs/${jobId}`, { cache: "no-store" }).catch(() => null);
+        const job = poll && await poll.json().catch(() => null);
+        // no answer, or a proxy's error page instead of the service's JSON: the service is down, perhaps restarting
+        setLost(!job);
+        if (!job) { tick(); await new Promise((r) => setTimeout(r, 1000)); continue; }
+        if (!poll.ok) throw new Error(poll.status === 404 ? "找不到这次建模任务，请重新上传文件。" : serviceError(poll.status, job));
         setEvents(job.events || []);
-        if (job.state === "done") { show(job.result); break; }
-        if (job.state === "failed") throw new Error(job.error || "建模失败");
+        started = jobStartedAt(job.events || [], started);
+        tick();
+        const outcome = jobOutcome(job);
+        if (outcome?.result) { show(outcome.result); break; }
+        if (outcome) throw new Error(outcome.error);
+        await new Promise((r) => setTimeout(r, 1000));
       }
     } catch (e) { setError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); }
-    finally { clearInterval(timer.current); setBusy(false); }
+    finally { following.current = null; pendingJob.set(null); setLost(false); setBusy(false); }
   }
+  useEffect(() => { const id = pendingJob.get(); if (id) follow(id, Date.now()); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
   async function post(url, payload, setWorking, setFailure) {
     setWorking(true); setFailure("");
     try {
@@ -659,7 +681,7 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
         aria-selected={tab === key} aria-controls="os-panel" onClick={() => setTab(key)}>{label}</button>)}</nav>
     </header>}
     <div id="os-panel" role="tabpanel" aria-labelledby={tab === "upload" ? "os-title" : `os-tab-${tab}`} className="pr-panel os-panel">
-      {tab === "upload" && <UploadTab health={health} busy={busy} events={events} elapsed={elapsed} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
+      {tab === "upload" && <UploadTab health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "ontology" && run && <OntologyTab run={run} view={view} setView={setView} confirm={confirmProps}
         graphProps={{ selected, onSelect: (s) => { setSelected(s); setPath(null); }, path, onClearPath: () => setPath(null), onAsk: askOntology, reveal }} />}
       {tab === "evaluation" && run && <EvaluationTab run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} onPath={showPath} variants={variantProps}

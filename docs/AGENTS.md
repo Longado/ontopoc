@@ -79,4 +79,4 @@
 
 ## 参照过、没有照搬的
 
-调研过 Instructor、DSPy、pydantic-ai、Guardrails AI、BAML 五个开源外壳，以及 DeepSeek 的 DSH。都没有直接引入：它们的卖点是由库来管重试、依赖注入、多轮编排，正是护栏要留在代码里的东西；而且它们的重试都是固定次数，我们的"一个错误都没改好就停"更严。借了三个思路：一个入口统一调用（Instructor、pydantic-ai），每次调用留记录（pydantic-ai 的调用追踪），服务知道自己是不是在跑旧代码（DSH 的热更新想解决的同一个问题，我们只做检测、不自动重启，因为作业状态还在内存里，自动重启会把正在跑的作业弄丢）。还没做的一个：改提示词后拿一批标注样本跑回归比对（BAML 的 test、DSPy 的 Evaluate）。
+调研过 Instructor、DSPy、pydantic-ai、Guardrails AI、BAML 五个开源外壳，以及 DeepSeek 的 DSH。都没有直接引入：它们的卖点是由库来管重试、依赖注入、多轮编排，正是护栏要留在代码里的东西；而且它们的重试都是固定次数，我们的"一个错误都没改好就停"更严。借了三个思路：一个入口统一调用（Instructor、pydantic-ai），每次调用留记录（pydantic-ai 的调用追踪），服务知道自己是不是在跑旧代码（DSH 的热更新想解决的同一个问题，我们只做检测、不自动重启，因为正在跑的建模在进程里，重启就断；作业进度写在 `output/ontology-runs/jobs/`，重启后页面会说清这次中断了，而不是一直转圈）。还没做的一个：改提示词后拿一批标注样本跑回归比对（BAML 的 test、DSPy 的 Evaluate）。
