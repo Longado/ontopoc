@@ -46,14 +46,15 @@ def node_id(inst: tuple) -> str:
 
 
 def _labeller(t: dict, bundle: dict, records_of: dict):
-    """An object's name on the graph: a name-like field when it has one (a platform's display field), else its number."""
+    """An object's number as it is written, and a name-like field when it has one as a second line. The number leads:
+    on Northwind an order's name-like field is its ship name, and an order labelled by it read like a customer."""
     read = _read(t)
     identity = list(dict.fromkeys(p for pop in t['populated_from'] for p in pop['identity'].values()))
     display = next((a.get('path') for a in t['attributes'] if any(w in str(a.get('path', '')).lower() for w in NAME_LIKE)), None)
 
     def label(inst):
         row = _row(bundle, records_of, read, inst)
-        return row.get(display) or '|'.join(row.get(p, '') for p in identity) or node_id(inst).split(':', 1)[1], row
+        return '|'.join(row.get(p, '') for p in identity).strip('|') or node_id(inst).split(':', 1)[1], row.get(display), row
     return label
 
 
@@ -80,9 +81,9 @@ def find_instances(ontology: dict, bundle: dict, type_key: str, query: str = '',
     q = query.strip().upper()
     found = []
     for inst in (i for i in records_of if i[0] == type_key):
-        name, _ = label(inst)
-        if not q or q in name.upper() or q in node_id(inst).split(':', 1)[1].upper():
-            found.append({'id': node_id(inst), 'label': name})
+        number, name, _ = label(inst)
+        if not q or q in number.upper() or q in (name or '').upper():
+            found.append({'id': node_id(inst), 'label': number, 'name': name})
     return {'type': type_key, 'total': len(found), 'items': found[:size]}
 
 
@@ -97,8 +98,8 @@ def neighbourhood(ontology: dict, bundle: dict, node: str, size: int = PAGE_SIZE
     types = {t['key']: t for t in p['object_types']}
     labels = {k: _labeller(t, bundle, records_of) for k, t in types.items()}
     order = {i: n for n, i in enumerate(records_of)}   # neighbours in the order the data first names them
-    name, fields = labels[inst[0]](inst)
-    nodes = {node: {'id': node, 'type': inst[0], 'label': name}}
+    number, name, fields = labels[inst[0]](inst)
+    nodes = {node: {'id': node, 'type': inst[0], 'label': number, 'name': name}}
     edges, more = [], []
     for r in p['relations']:
         if inst[0] not in (r['from'], r['to']):
@@ -106,7 +107,9 @@ def neighbourhood(ontology: dict, bundle: dict, node: str, size: int = PAGE_SIZE
         pairs = [(a, b) for a, b, _ in graph['edges'][r['key']] if inst in (a, b)]
         others = sorted({b if a == inst else a for a, b in pairs}, key=lambda i: order.get(i, 0))
         for other in others[:size]:
-            nodes.setdefault(node_id(other), {'id': node_id(other), 'type': other[0], 'label': labels[other[0]](other)[0]})
+            if node_id(other) not in nodes:
+                number, name, _ = labels[other[0]](other)
+                nodes[node_id(other)] = {'id': node_id(other), 'type': other[0], 'label': number, 'name': name}
         shown = {node_id(o) for o in others[:size]}
         edges += [{'from': node_id(a), 'to': node_id(b), 'relation': r['key'], 'label': r.get('label')}
                   for a, b in dict.fromkeys(pairs) if {node_id(a), node_id(b)} - {node} <= shown]

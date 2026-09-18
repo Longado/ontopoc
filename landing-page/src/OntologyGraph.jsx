@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { edgeStats, findingsByType, focusOntology, layoutGraph, needsFocus, neighboursOf, rankByDegree, unsteady } from "./ontologyGraphModel.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { edgeStats, findingsByType, focusOntology, neighboursOf, rankByDegree, unsteady } from "./ontologyGraphModel.js";
+import { edgePath, forceLayout, moveNode } from "./forceLayoutModel.js";
+import { PanZoom } from "./PanZoom.jsx";
 import { typeLabel, typeSources } from "./ontologyStudioModel.js";
 import "./OntologyGraph.css";
 
@@ -82,39 +84,34 @@ function Inspector({ run, selected, findings, confirm }) {
   </div>;
 }
 
-export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelected, path, onClearPath, reveal, confirm }) {
+export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelected, path, onClearPath, reveal, confirm, suggestions = [] }) {
   const { ontology } = run;
   const findings = findingsByType(run.evaluation.data_fit);
   const wrap = useRef(null);
   const canvas = useRef(null);
-  const [box, setBox] = useState(null);
-  const [mode, setMode] = useState("auto");   // auto: the whole graph if it fits the screen, else one concept and its neighbours
-  useEffect(() => {
-    const measure = () => canvas.current && setBox({ w: canvas.current.clientWidth - 16, h: window.innerHeight });
-    measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    if (observer && canvas.current) observer.observe(canvas.current);
-    return () => observer?.disconnect();
-  }, []);
-  const big = box ? needsFocus(layoutGraph(ontology), box.w, box.h) : false;
-  const focusing = mode === "focus" || (mode === "auto" && big);
+  const [mode, setMode] = useState("full");   // full, or "focus": the selected object and its neighbours only
+  const focusing = mode === "focus";   // the whole graph by default: it can be zoomed and dragged now
   const hub = rankByDegree(ontology)[0]?.key;
   const selected = chosen && (chosen.kind === "edge" ? ontology.relations : ontology.object_types).some((x) => x.key === chosen.key) ? chosen
     : { kind: "node", key: focusing ? hub : ontology.object_types[0]?.key };
   const edge = selected.kind === "edge" && ontology.relations.find((r) => r.key === selected.key);
   const center = edge ? edge.from : selected.key;
   const shown = focusing ? focusOntology(ontology, center, path ? path.nodes : null) : ontology;
-  const graph = layoutGraph(shown);
+  const shownKey = shown.object_types.map((t) => t.key).join("|") + "#" + shown.relations.map((r) => r.key).join("|");
+  const base = useMemo(() => forceLayout(shown.object_types.map((t) => ({ id: t.key, label: t.label || t.key, sub: t.key })),
+    [...shown.relations, ...suggestions].map((r) => ({ from: r.from, to: r.to }))), [shownKey, suggestions.length]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const [moved, setMoved] = useState(null);   // the layout after the person dragged boxes about
+  useEffect(() => setMoved(null), [base]);
+  const graph = moved || base;
+  const at = Object.fromEntries(graph.nodes.map((n) => [n.id, n]));
+  const lines = shown.relations.filter((r) => at[r.from] && at[r.to]).map((r, _, all) => {
+    const twin = all.filter((o) => (o.from === r.from && o.to === r.to) || (o.from === r.to && o.to === r.from)).indexOf(r);
+    return { key: r.key, from: r.from, to: r.to, ...edgePath(at[r.from], at[r.to], twin) };
+  });
+  const hinted = suggestions.filter((x) => at[x.from] && at[x.to]).map((x, i) => ({ key: `hint-${i}`, hint: x, ...edgePath(at[x.from], at[x.to], 0) }));
   const focus = path ? { nodes: new Set(path.nodes), edges: new Set(path.edges) }
     : focusing || selected !== chosen ? null : edge ? { nodes: new Set([edge.from, edge.to]), edges: new Set([edge.key]) } : neighboursOf(ontology, selected.key);
   const dim = (kind, key) => focus && (kind === "node" ? !focus.nodes.has(key) : !focus.edges.has(key)) ? " is-dim" : "";
-  useEffect(() => {   // in focus the centre is what matters: scroll it to the middle of a narrow canvas, without moving the page
-    const scroller = canvas.current?.querySelector(".og-scroll");
-    const node = canvas.current?.querySelector(`.og-node[data-key="${CSS.escape(center || "")}"]`);
-    if (!focusing || !scroller || !node) return;
-    const s = scroller.getBoundingClientRect(), n = node.getBoundingClientRect();
-    scroller.scrollLeft += n.left - s.left - (s.width - n.width) / 2;
-  }, [focusing, center, box?.w]);
   const find = (e) => {
     const t = ontology.object_types.find((x) => (x.label || x.key) === e.target.value);
     if (t) { setSelected({ kind: "node", key: t.key }); e.target.value = ""; }
@@ -130,43 +127,43 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
   const isSelected = (kind, key) => selected.kind === kind && selected.key === key;
   return <div className="og-wrap" ref={wrap}>
     <div className="og-canvas" ref={canvas}>
-      <div className="og-bar"><span>本体 · {ontology.object_types.length} 个对象 · {ontology.relations.length} 条关系<span className="og-swipe"> · 左右滑动看全图</span></span>
+      <div className="og-bar"><span>{ontology.object_types.length} 个对象 · {ontology.relations.length} 条关系{!focusing && ontology.object_types.length > 2 && <button type="button" className="pr-link og-focus-link" onClick={() => setMode("focus")}>只看选中的周围</button>}</span>
         <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
-      {(big || mode !== "auto") && <div className="og-focusbar">
-        {focusing ? <span>{path ? "只显示查询经过的对象。" : <>对象太多，一张图看不清，现在只显示“{typeLabel(ontology, center)}”和与它相连的 {graph.nodes.length - 1} 个。点相连的对象可以换它做中心；要逐项判断，用上面的"对象""关系"两页更快。</>}</span>
-          : <span>这是全图，比屏幕大，可以滚动看。</span>}
+      {focusing && <div className="og-focusbar">
+        <span>{path ? "只显示查询经过的对象" : <>只显示“{typeLabel(ontology, center)}”和相连的 {graph.nodes.length - 1} 个</>}</span>
         {focusing && <label htmlFor="og-find" className="og-find">找对象<input id="og-find" list="og-concepts" placeholder="输入名字" onChange={find} /></label>}
         <datalist id="og-concepts">{rankByDegree(ontology).map((t) => <option key={t.key} value={t.label || t.key} />)}</datalist>
-        <button type="button" className="pr-link" onClick={() => setMode(focusing ? "full" : "focus")}>{focusing ? "看全图" : "只看选中的周围"}</button>
+        <button type="button" className="pr-link" onClick={() => setMode("full")}>看全图</button>
       </div>}
       {path && <div className="og-path" role="status"><span>查询路径：{path.text || path.nodes.map((k) => typeLabel(ontology, k)).join(" → ")}</span><button type="button" className="pr-link" onClick={onClearPath}>清除</button></div>}
-      <div className="og-scroll">
-        <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", minWidth: Math.max(Math.min(graph.width, 560), Math.round(graph.width * 0.7)), maxWidth: graph.width }} role="group" aria-label="本体关系图">
+      <PanZoom width={graph.width} height={graph.height} label="本体关系图" resetKey={shownKey} onNodeDrag={(id, dx, dy) => setMoved((g) => moveNode(g || base, id, dx, dy))}>
           <defs><marker id="og-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" className="og-arrowhead" /></marker></defs>
-          {graph.edges.map((e) => { const stats = edgeStats(run.evaluation.data_fit, e.key); const rel = ontology.relations.find((r) => r.key === e.key);
+          {hinted.map((e) => <g key={e.key} className="og-edge is-suggest"><title>{`代码建议：${e.hint.via.source} 的「${e.hint.via.field}」，${e.hint.linked} / ${e.hint.rows} 行`}</title>
+            <path d={e.path} /><text x={e.lx} y={e.ly} textAnchor="middle">建议</text></g>)}
+          {lines.map((e) => { const stats = edgeStats(run.evaluation.data_fit, e.key); const rel = ontology.relations.find((r) => r.key === e.key);
             return <g key={e.key} className={`og-edge${isSelected("edge", e.key) ? " is-selected" : ""}${path?.edges.includes(e.key) ? " is-path" : ""}${stats && !stats.complete ? " is-partial" : ""}${unsteady(run.evaluation.stability, "relations", e.key) ? " is-unsteady" : ""}${dim("edge", e.key)}`}
               role="button" tabIndex={0} aria-label={`关系 ${typeLabel(ontology, e.from)} 到 ${typeLabel(ontology, e.to)}`} {...select(setSelected, { kind: "edge", key: e.key })}>
               <path d={e.path} className="og-edge-hit" />
               <path d={e.path} markerEnd="url(#og-arrow)" />
-              {rel.label && <text x={e.lx} y={e.ly - 6} textAnchor="middle">{rel.label}</text>}
+              {rel.label && <text x={e.lx} y={e.ly} textAnchor="middle">{rel.label}</text>}
             </g>; })}
-          {graph.nodes.map((n) => { const own = findings[n.key] || []; const count = own.length; const onlyNotes = own.every((f) => f.severity === "note");
-            return <g key={n.key} data-key={n.key} className={`og-node${isSelected("node", n.key) ? " is-selected" : ""}${path?.nodes.includes(n.key) ? " is-path" : ""}${unsteady(run.evaluation.stability, "types", n.key) ? " is-unsteady" : ""}${confirm?.decisions.types[n.key] ? ` is-${confirm.decisions.types[n.key].verdict}` : ""}${dim("node", n.key)}`} transform={`translate(${n.x},${n.y})`}
-              role="button" tabIndex={0} aria-label={`对象 ${n.label}${count ? `，${count} 处数据问题` : ""}`} {...select(setSelected, { kind: "node", key: n.key })}>
-              <rect width={n.w} height={n.h} className="og-node-box" />
-              <rect width={40} height={n.h} className="og-node-side" />
-              <text x={54} y={26} className="og-node-key">{n.key.length > 18 ? `${n.key.slice(0, 18)}…` : n.key}</text>
-              <text x={54} y={47} className="og-node-label">{n.label}</text>
-              {confirm?.decisions.types[n.key] && <text x={n.w - 10} y={n.h - 10} textAnchor="end" className="og-mark">{confirm.decisions.types[n.key].verdict === "ok" ? "✓ 对" : "✕ 不对"}</text>}
-              {count > 0 && <g transform={`translate(${n.w - 14},0)`}><title>{`${count} 处${onlyNotes ? "提示" : "数据问题"}，点开看`}</title><circle r="11" className={`og-badge${onlyNotes ? " og-badge-note" : ""}`} /><text textAnchor="middle" y="4" className="og-badge-text">{count}</text></g>}
+          {graph.nodes.map((n) => { const own = findings[n.id] || []; const count = own.length; const onlyNotes = own.every((f) => f.severity === "note");
+            return <g key={n.id} data-key={n.id} data-node={n.id} className={`og-node${isSelected("node", n.id) ? " is-selected" : ""}${path?.nodes.includes(n.id) ? " is-path" : ""}${unsteady(run.evaluation.stability, "types", n.id) ? " is-unsteady" : ""}${confirm?.decisions.types[n.id] ? ` is-${confirm.decisions.types[n.id].verdict}` : ""}${dim("node", n.id)}`} transform={`translate(${n.x},${n.y})`}
+              role="button" tabIndex={0} aria-label={`对象 ${n.label}${count ? `，${count} 处数据问题` : ""}`} {...select(setSelected, { kind: "node", key: n.id })}>
+              <title>{n.sub}</title>
+              <rect width={n.w} height={n.h} rx="10" className="og-node-box" />
+              <rect width={n.w} height={5} rx="2" className="og-node-cap" />
+              <text x={n.w / 2} y={n.h / 2 + 7} textAnchor="middle" className="og-node-label">{n.label}</text>
+              {confirm?.decisions.types[n.id] && <text x={n.w - 8} y={n.h - 6} textAnchor="end" className="og-mark">{confirm.decisions.types[n.id].verdict === "ok" ? "✓" : "✕"}</text>}
+              {count > 0 && <g transform={`translate(${n.w - 4},2)`}><title>{`${count} 处${onlyNotes ? "提示" : "数据问题"}，点开看`}</title><circle r="10" className={`og-badge${onlyNotes ? " og-badge-note" : ""}`} /><text textAnchor="middle" y="4" className="og-badge-text">{count}</text></g>}
             </g>; })}
-        </svg>
-      </div>
+      </PanZoom>
       <ul className="og-legend" aria-label="图例">
         {run.evaluation.data_fit && <><li><i className="og-legend-badge" />红圈里的数字：这个对象有几处数据问题</li><li><i className="og-legend-badge og-badge-note" />提示</li><li><i className="og-legend-dash" />有行没连上的关系</li></>}
         {(ontology.object_types.some((t) => unsteady(run.evaluation.stability, "types", t.key)) || ontology.relations.some((r) => unsteady(run.evaluation.stability, "relations", r.key)))
           && <li><i className="og-legend-unsteady" />虚线框、点线：不是每次建模都有</li>}
-        <li>{focusing ? "点相连的对象，换它做中心" : "点对象，只看它和相连的对象"}</li>
+        {hinted.length > 0 && <li><i className="og-legend-hint" />虚线"建议"：代码在数据里看到、本体里没有的关系</li>}
+        <li>拖动空白处平移，滚轮缩放，拖动方框调整位置</li>
       </ul>
     </div>
     <aside className="og-inspector" aria-label="证据检查">

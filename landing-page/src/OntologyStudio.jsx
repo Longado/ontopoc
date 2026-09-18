@@ -14,6 +14,7 @@ import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel
 import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverModel.js";
 import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
+import { InstanceGraph } from "./InstanceGraph.jsx";
 import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
 import { objectsNav, qaNav, sectionOfTile, sectionsFor } from "./workspaceModel.js";
 import "./PublicRecallReview.css";
@@ -431,13 +432,17 @@ function ConfirmCard({ run, confirm }) {
   </section>;
 }
 
-const VIEWS = [["graph", "关系图"], ["relations", "关系列表"]];   // DIP's 本体关系 page; objects have their own pages under 本体管理
+const VIEWS = [["graph", "关系图"], ["instances", "实例图谱"], ["relations", "关系列表"]];   // DIP's 本体关系 page; objects have their own pages under 本体管理
 
-function RelationsView({ run, confirm }) {
+function RelationsView({ run, confirm, suggestions = [] }) {
   const { ontology } = run;
   const cards = Object.fromEntries((formOf(run)?.relations || []).map((r) => [r.key, r]));
-  if (!ontology.relations.length) return <p className="pr-muted">没有关系。</p>;
-  return <div className="os-list-view"><div className="pr-table-wrap"><table className="pr-table os-form-table">
+  if (!ontology.relations.length && !suggestions.length) return <p className="pr-muted">没有关系。</p>;
+  return <div className="os-list-view">
+    {suggestions.length > 0 && <div className="os-suggest-list"><h3>代码建议 <small>{suggestions.length}</small></h3>
+      <ul>{suggestions.map((x, i) => <li key={i}><em className="os-chip-note">建议</em><b>{typeLabel(ontology, x.from)} — {typeLabel(ontology, x.to)}</b>
+        <span className="pr-muted" title={x.kind === "same_row" ? "两者出现在同一张表的同一行，本体里却没把它们连起来" : "这一列按名字和取值都指向对方的编号"}>{x.via.source} ·「{x.via.field}」· {x.linked.toLocaleString("zh-CN")} / {x.rows.toLocaleString("zh-CN")} 行{x.loose ? " · 编号写法有差别" : ""}</span></li>)}</ul></div>}
+    <div className="pr-table-wrap"><table className="pr-table os-form-table">
     <thead><tr><th>关系</th><th>对应关系</th><th>含义</th><th>来自表</th></tr></thead>
     <tbody>{ontology.relations.map((r) => { const c = cards[r.key]; return <tr key={r.key}>
       <td><b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><Verdict confirm={confirm} kind="relations" item={r} /></td>
@@ -447,14 +452,15 @@ function RelationsView({ run, confirm }) {
   </table></div></div>;
 }
 
-function GraphSection({ run, view, setView, graphProps, confirm }) {
+function GraphSection({ run, view, setView, graphProps, confirm, suggestions }) {
   const doc = isDocument(run);
   const attempts = attemptSummary(run.ontology);
   return <section className="pr-card">
       <div className="pr-card-head"><div className="os-head-title"><h2>本体关系</h2><span className={`pr-status ${attempts.passed ? "pr-status-ok" : "pr-status-wait"}`}>{doc ? (attempts.passed ? "每一项都有原文引用" : "没有提取出可核实的概念") : attempts.passed ? "本体结构已通过核验" : "本体结构未通过核验"}</span></div>
-        <div className="og-toggle" role="group" aria-label="显示方式">{VIEWS.map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
-      {view === "graph" && <OntologyGraph run={run} {...graphProps} confirm={confirm} onAsk={doc ? null : graphProps.onAsk} />}
-      {view === "relations" && <RelationsView run={run} confirm={confirm} />}
+        <div className="og-toggle" role="group" aria-label="显示方式">{VIEWS.filter(([key]) => !(doc && key === "instances")).map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
+      {view === "graph" && <OntologyGraph run={run} {...graphProps} confirm={confirm} onAsk={doc ? null : graphProps.onAsk} suggestions={suggestions} />}
+      {view === "instances" && !doc && <InstanceGraph run={run} />}
+      {view === "relations" && <RelationsView run={run} confirm={confirm} suggestions={suggestions} />}
     </section>;
 }
 
@@ -593,6 +599,13 @@ export function OntologyStudio({ request = null, section = null, nav = 0, onSect
   const [objPlace, setObjPlace] = useState("objects");   // which of 本体管理's places is shown
   const [qaPlace, setQaPlace] = useState("ask");
   const [dataPlace, setDataPlace] = useState(null);   // which uploaded table 数据接入 shows
+  const [suggestions, setSuggestions] = useState([]);   // relations code sees in the data and the ontology lacks
+  useEffect(() => {
+    setSuggestions([]);
+    if (!run?.saved_as || isDocument(run) || run.ontology.status !== "auto_built_verified") return;
+    fetch(`/api/ontology/runs/${run.saved_as}/suggestions`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : { suggestions: [] }))
+      .then((b) => setSuggestions(b.suggestions || []), () => setSuggestions([]));   // suggestions are extra: without them the page still works
+  }, [run?.saved_as]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setObjectKey(null); }, [nav]);
   useEffect(() => { if (!section) onSection(tab); }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- tell the sidebar where the studio opened
   const [health, setHealth] = useState("checking");
@@ -762,7 +775,7 @@ export function OntologyStudio({ request = null, section = null, nav = 0, onSect
         : <SubLayout label="本体管理" items={objectsNav(run, decisions)} active={objPlace} onChange={setObjPlace}>
           {objPlace === "objects" ? <ObjectCards run={run} decisions={decisions} onOpen={setObjectKey} /> : <ObjectsPlace run={run} confirm={confirmProps} place={objPlace} />}
         </SubLayout>)}
-      {tab === "graph" && run && <GraphSection run={run} view={view} setView={setView} confirm={confirmProps}
+      {tab === "graph" && run && <GraphSection run={run} view={view} setView={setView} confirm={confirmProps} suggestions={suggestions}
         graphProps={{ selected, onSelect: (s) => { setSelected(s); setPath(null); }, path, onClearPath: () => setPath(null), onAsk: askOntology, reveal }} />}
       {tab === "data" && run && <SubLayout label="上传的表" items={run.sources.map((t) => [t.name, t.name, t.rows?.toLocaleString("zh-CN") ?? ""])} active={dataPlace || run.sources[0]?.name} onChange={setDataPlace}>
         <DataTab run={run} place={dataPlace} /></SubLayout>}

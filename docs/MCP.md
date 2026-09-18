@@ -25,6 +25,9 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `object_fields` | 对象 · 属性 | 否 |
 | `object_rows` | 对象 · 数据（`all=true` 相当于下载 CSV） | 否 |
 | `list_relations` | 本体关系 | 否 |
+| `suggest_relations` | 本体关系 · 代码建议的关系（虚线） | 否 |
+| `find_instances` | 本体关系 · 实例图谱：找起点 | 否 |
+| `instance_neighbourhood` | 本体关系 · 实例图谱：展开一个对象 | 否 |
 | `data_layout` | 数据接入（含桥接提示） | 否 |
 | `data_check` | 数据体检 | 否 |
 | `ask_question` | 智能问答 · 提问 / 出一组题 | 是 |
