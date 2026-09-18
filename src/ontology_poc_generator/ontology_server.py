@@ -5,6 +5,7 @@ import binascii
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -41,7 +42,18 @@ def gateway_from_env():
                                    model=os.environ.get('EIP_MODEL_NAME', 'deepseek-flash'), timeout_seconds=180, temperature=0)
 
 
-def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs'):
+def code_fingerprint(code_dir: Path) -> str:
+    """What the service's Python files hold right now. Taken once at start and again on every health check: when the
+    two differ, the files changed after the service started and it is still running the old code."""
+    digest = hashlib.sha256()
+    for path in sorted(code_dir.glob('*.py')):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent):
+    running = code_fingerprint(code_dir)
     jobs, jobs_lock = {}, threading.Lock()
 
     def decode_part(part):
@@ -181,7 +193,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path != '/api/ontology/health':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
                 return
-            self.reply(200, {'model_ready': gateway is not None})
+            on_disk = code_fingerprint(code_dir)
+            self.reply(200, {'model_ready': gateway is not None, 'running': running, 'on_disk': on_disk, 'stale': on_disk != running})
 
         def list_runs(self):
             """Every run kept on this machine, newest first, so a closed tab or another day does not lose one."""

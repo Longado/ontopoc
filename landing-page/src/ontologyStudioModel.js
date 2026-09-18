@@ -194,3 +194,7 @@ export function saveResult(storage, run) {
     return "这次结果太大，没能存进浏览器：刷新或关掉标签页就会丢。请先下载纪要和本体和评测。";
   }
 }
+
+/** The service checks its own files against what it started with; a mismatch means edits it is not running yet. */
+export const staleNote = (health) => (health?.stale
+  ? "建模服务还在跑旧代码：它启动之后，后端文件改过。重启建模服务再用，不然看到的是改之前的行为。" : "");

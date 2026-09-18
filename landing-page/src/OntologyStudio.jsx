@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, questionSummary,
-  COVERAGE_NOTE, conflictGroups, conflictNote, localTime, memoryNote, saveResult, progressSteps, referenceCounts, serviceError, sharePercent, stabilityLines, typeLabel, typeSources, validateRun,
+  COVERAGE_NOTE, conflictGroups, conflictNote, localTime, memoryNote, saveResult, progressSteps, referenceCounts, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, typeSources, validateRun,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf, unsteady } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
@@ -524,6 +524,7 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
   const [run, setRun] = useState(() => loadLocal());
   const [tab, setTab] = useState(() => (run ? "ontology" : "upload"));
   const [health, setHealth] = useState("checking");
+  const [stale, setStale] = useState("");
   const [busy, setBusy] = useState(false);
   const [events, setEvents] = useState([]);
   const [elapsed, setElapsed] = useState(0);
@@ -548,9 +549,12 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
   const timer = useRef(null);
   const askRef = useRef(null);
 
-  useEffect(() => {
-    fetch("/api/ontology/health", { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((h) => setHealth(h.model_ready ? "ready" : "no-key")).catch(() => setHealth("offline"));
+  useEffect(() => {   // asked again whenever the window comes back, so edits made meanwhile are caught before the next run
+    const check = () => fetch("/api/ontology/health", { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((h) => { setHealth(h.model_ready ? "ready" : "no-key"); setStale(staleNote(h)); }).catch(() => { setHealth("offline"); setStale(""); });
+    check();
+    window.addEventListener("focus", check);
+    return () => window.removeEventListener("focus", check);
   }, []);
   useEffect(() => () => clearInterval(timer.current), []);
 
@@ -640,6 +644,7 @@ export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCur
 
   const open = run && tab !== "upload";
   return <section className={`pr-page${open ? "" : " is-start"}`} aria-labelledby="os-title">
+    {stale && <p role="alert" className="pr-note os-stale">{stale}</p>}
     {storageWarning && <p role="alert" className="pr-note os-storage">{storageWarning}</p>}
     {open && <header className="pr-head">
       <div className="os-overview">
