@@ -93,7 +93,7 @@ small.os-tone-warn { color: var(--amber); }
 .os-segments button b { font-size: 14px; }
 .os-segments button small { font-size: 12px; }
 .os-segments button[aria-selected="true"] { background: var(--ink); color: #fff; }
-.os-segments button[aria-selected="true"] small { color: #d9d6cc; }
+.os-segments button[aria-selected="true"] small { color: var(--primary-ink); }
 .os-graph-link { flex: none; padding: 2px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--blue); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .os-graph-link:hover { border-color: var(--blue); background: var(--blue-soft); }
 .os-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-width: 880px; font-size: 13px; }

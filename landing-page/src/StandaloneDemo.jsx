@@ -42,7 +42,7 @@ export function StandaloneDemo() {
   return <main className="app-shell">
     <aside className="app-side">
       <a className="app-brand" href="/landing" aria-label="OntoPoc product home">
-        <img src="/assets/ontopoc-logo.png" alt="OntoPoc" />
+        <img src="/assets/ontopoc-logo-light.png" alt="OntoPoc" />
       </a>
       <button type="button" className="app-new" onClick={() => ask({ kind: "new" })}><span aria-hidden="true">＋</span>{t.create}</button>
       <nav className="app-library" aria-label={t.library}>

@@ -1,6 +1,6 @@
 .og-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; background: var(--surface); }
 .og-canvas { min-width: 0; display: flex; flex-direction: column; background: var(--canvas); }
-.og-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 10px 16px; background: var(--ink); color: #f2f0e8; font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; }
+.og-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 10px 16px; background: var(--ink); color: var(--surface); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; }
 .og-scroll { overflow: auto; padding: 8px; background-color: var(--canvas);
   /* edge shadows appear only while there is more graph to scroll to */
   background-image: linear-gradient(to right, var(--canvas) 30%, transparent), linear-gradient(to left, var(--canvas) 30%, transparent),
