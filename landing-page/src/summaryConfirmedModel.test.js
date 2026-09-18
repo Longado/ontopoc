@@ -22,7 +22,7 @@ test("after confirmation the body lists what was judged right, under the names t
       relations: { r1: { verdict: "ok" }, r2: { verdict: "wrong" } }, added: ["售后工程师"] } })), "业务里有哪些东西");
   assert.match(body, /- 客户主体\n/);
   assert.match(body, /- 订单 属于 客户主体/);
-  assert.doesNotMatch(body, /- 大区\n|位于/);                  // judged wrong: not stated as part of the business
+  assert.doesNotMatch(body, /- 大区\n|- 客户主体 位于/);       // judged wrong: not stated as part of the business
   assert.match(body, /确认时判错、没有列进来：大区；客户主体 位于 大区/);
   assert.match(body, /确认时补上的：售后工程师/);
 });
