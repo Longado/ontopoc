@@ -15,6 +15,8 @@ import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverMod
 import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
 import { InstanceGraph } from "./InstanceGraph.jsx";
+import { RulesView } from "./RulesView.jsx";
+import { rulesTile } from "./rulesModel.js";
 import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
 import { objectsNav, qaNav, sectionOfTile, sectionsFor } from "./workspaceModel.js";
 import "./PublicRecallReview.css";
@@ -566,15 +568,16 @@ function DocumentFitView({ run, onShow }) {
   </>;
 }
 
-const CHECK_VIEWS = [["fit", "数据体检"], ["ref", "对照标准"]];
+const CHECK_VIEWS = [["fit", "数据体检"], ["rules", "规则"], ["ref", "对照标准"]];
 
-function CheckSection({ run, evalView, setEvalView, questions, variants, onShow }) {
+function CheckSection({ run, evalView, setEvalView, questions, variants, onShow, rules }) {
   const doc = isDocument(run);
-  const tiles = Object.fromEntries(overviewTiles(run).map((t) => [t.key, t]));
-  const view = evalView === "ref" ? "ref" : "fit";
+  const tiles = { ...Object.fromEntries(overviewTiles(run).map((t) => [t.key, t])), rules: rulesTile(run.evaluation.rules) || { value: "", tone: "muted" } };
+  const view = ["ref", "rules"].includes(evalView) && !(doc && evalView === "rules") ? evalView : "fit";
   return <>
-    <div className="os-segments" role="tablist" aria-label="数据体检">{CHECK_VIEWS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setEvalView(key)}>
+    <div className="os-segments" role="tablist" aria-label="数据体检">{CHECK_VIEWS.filter(([key]) => !(doc && key === "rules")).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setEvalView(key)}>
       <b>{key === "fit" && doc ? "文档检查" : label}</b><small className={`os-tone-${tiles[key].tone}`}>{tiles[key].value}</small></button>)}</div>
+    {view === "rules" && <RulesView run={run} {...rules} />}
     {view === "fit" && (doc ? <DocumentFitView run={run} onShow={onShow} /> : <DataFit run={run} onShow={onShow} variants={variants} />)}
     {view === "ref" && <ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} onUpload={questions.onUpload} onGoConfirm={questions.onGoConfirm} />}
   </>;
@@ -599,6 +602,8 @@ export function OntologyStudio({ request = null, section = null, nav = 0, onSect
   const [objPlace, setObjPlace] = useState("objects");   // which of 本体管理's places is shown
   const [qaPlace, setQaPlace] = useState("ask");
   const [dataPlace, setDataPlace] = useState(null);   // which uploaded table 数据接入 shows
+  const [savingRules, setSavingRules] = useState(false);
+  const [rulesError, setRulesError] = useState("");
   const [suggestions, setSuggestions] = useState([]);   // relations code sees in the data and the ontology lacks
   useEffect(() => {
     setSuggestions([]);
@@ -755,7 +760,7 @@ export function OntologyStudio({ request = null, section = null, nav = 0, onSect
   const placeOf = (items, key) => items.find(([k]) => k === key)?.[1];
   const crumb = !run ? [] : [sectionsFor(run).find(([k]) => k === tab)?.[1] || "",
     tab === "objects" ? placeOf(objectsNav(run, decisions), objPlace) : tab === "qa" ? placeOf(qaNav(run), qaPlace)
-      : tab === "data" ? (dataPlace || run.sources[0]?.name) : tab === "graph" ? placeOf(VIEWS, view) : tab === "check" ? (evalView === "ref" ? "对照标准" : "体检") : ""].filter(Boolean);
+      : tab === "data" ? (dataPlace || run.sources[0]?.name) : tab === "graph" ? placeOf(VIEWS, view) : tab === "check" ? ({ ref: "对照标准", rules: "规则" }[evalView] || "体检") : ""].filter(Boolean);
   return <section className={`pr-page${open ? "" : " is-start"}${inDetail ? " is-object" : ""}`} aria-labelledby="os-title">
     {stale && <p role="alert" className="pr-note os-stale">{stale}</p>}
     {storageWarning && <p role="alert" className="pr-note os-storage">{storageWarning}</p>}
@@ -781,7 +786,8 @@ export function OntologyStudio({ request = null, section = null, nav = 0, onSect
         <DataTab run={run} place={dataPlace} /></SubLayout>}
       {tab === "qa" && run && <SubLayout label="智能问答" items={qaNav(run)} active={qaPlace} onChange={setQaPlace}>
         <QaSection run={run} questions={questions} onPath={showPath} askRef={askRef} place={qaPlace} /></SubLayout>}
-      {tab === "check" && run && <CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions} />}
+      {tab === "check" && run && <CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions}
+        rules={{ canSave: Boolean(run.saved_as) && health === "ready", busy: savingRules, error: rulesError, onSave: (next) => post("/api/ontology/rules", { saved_as: run.saved_as, ...next }, setSavingRules, setRulesError) }} />}
     </div>
   </section>;
 }

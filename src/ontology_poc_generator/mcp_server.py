@@ -164,6 +164,18 @@ def instance_neighbourhood(s, a):
     return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/graph?node={quote(_text(a.get('node'), 'node'))}")
 
 
+def list_rules(s, a):
+    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/rules")
+
+
+def set_rules(s, a):
+    adopted, declined = a.get('adopted'), a.get('declined') or []
+    if not isinstance(adopted, list) or not isinstance(declined, list):
+        raise ToolError('adopted、declined 要写规则 id 的列表')
+    run = s.request('/api/ontology/rules', {'saved_as': _text(a.get('saved_as'), 'saved_as'), 'adopted': adopted, 'declined': declined})
+    return run['evaluation']['rules']
+
+
 def data_layout(s, a):
     ev = s.run(a.get('saved_as'))['evaluation']
     fit = ev.get('data_fit') or {}
@@ -254,6 +266,9 @@ TOOLS = [
     _tool(find_instances, '按名称或编号找数据里的某个对象（实例图谱的起点），给出节点 id。', {**RUN, **TYPE, 'query': {'type': 'string'}}, ('saved_as', 'type')),
     _tool(instance_neighbourhood, '实例图谱：一个对象的字段，和数据里与它相连的对象；每条关系先给 20 个，其余计数。',
           {**RUN, 'node': {'type': 'string', 'description': '节点 id，来自 find_instances 或上一次的结果'}}, ('saved_as', 'node')),
+    _tool(list_rules, '代码在数据里找到的规则（某字段每个对象都有值；两个日期总是先后有序）和人采纳的规则，采纳的带本次数据里的违反数和例子。', RUN, ('saved_as',)),
+    _tool(set_rules, '采纳或不要规则：adopted、declined 各写完整的规则 id 列表（id 来自 list_rules）。采纳的规则以后每次重跑都会检查。',
+          {**RUN, 'adopted': {'type': 'array', 'items': {'type': 'string'}}, 'declined': {'type': 'array', 'items': {'type': 'string'}}}, ('saved_as', 'adopted')),
     _tool(data_layout, '上传的每张表：行数、跳过的标题行、每列类型长度空值；表没连上时，能把它们连起来的列。', RUN, ('saved_as',)),
     _tool(data_check, '数据体检：七项检查是否通过，以及每类发现的数量和前几个例子。全部由代码算。', RUN, ('saved_as',)),
     _tool(ask_question, '用数据回答一个业务问题：模型把问题写成查询，代码在数据上算答案。不给 question 就让模型出一组题。会调用模型。',

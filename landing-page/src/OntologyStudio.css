@@ -448,3 +448,29 @@ small.os-tone-warn { color: var(--amber); }
 .ig-detail-name { margin: -4px 0 4px !important; color: var(--text-2); }
 .og-node-label { font-size: 15px; font-weight: 700; }
 .ig-detail-empty { margin: 0 !important; color: var(--edge-strong); font-size: 20px; text-align: center; }
+
+/* rules */
+.os-empty-line { margin: 0 !important; color: var(--edge-strong); }
+.os-rule-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.os-rule-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 9px 0; border-top: 1px solid var(--edge); font-size: 14px; }
+.os-rule-list li:first-child { border-top: 0; }
+.os-rule-mark { min-width: 44px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; text-align: center; }
+.is-kept .os-rule-mark { color: var(--ok); background: var(--ok-soft); }
+.is-broken .os-rule-mark { color: var(--red); background: var(--red-soft); }
+.os-rule-type { color: var(--text-2); font-size: 12px; }
+.os-rule-text { display: inline-flex; align-items: center; gap: 6px; }
+.os-rule-text em { padding: 0 6px; border-radius: 5px; font-size: 11px; font-style: normal; color: var(--primary-ink); background: var(--primary-soft); }
+.os-rule-text i { color: var(--primary); font-style: normal; font-weight: 700; }
+.os-rule-examples { display: flex; flex-wrap: wrap; gap: 4px; }
+.os-rule-list .pr-link { margin-left: auto; }
+.os-rule-group { padding: 10px 0; border-top: 1px solid var(--edge); }
+.os-rule-group:first-of-type { border-top: 0; }
+.os-rule-group h3 { margin: 0 0 6px; font-size: 13px; }
+.os-rule-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 4px 0; }
+.os-rule-kind { flex: none; width: 36px; color: var(--text-2); font-size: 12px; }
+.os-rule-row .os-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.os-rule-row .os-chips button { padding: 2px 10px; border: 1px solid var(--edge-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 12px; }
+.os-rule-row .os-chips button:hover { border-color: var(--primary); color: var(--primary-ink); background: var(--primary-soft); }
+.os-rule-actions { display: inline-flex; gap: 12px; margin-left: auto; }
+.os-muted-link { color: var(--text-2) !important; }
+.os-rule-row .os-chips { justify-content: flex-start; }

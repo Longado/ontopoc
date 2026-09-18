@@ -30,6 +30,8 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `instance_neighbourhood` | 本体关系 · 实例图谱：展开一个对象 | 否 |
 | `data_layout` | 数据接入（含桥接提示） | 否 |
 | `data_check` | 数据体检 | 否 |
+| `list_rules` | 数据体检 · 规则 | 否 |
+| `set_rules` | 数据体检 · 规则：采纳 / 不要 | 否 |
 | `ask_question` | 智能问答 · 提问 / 出一组题 | 是 |
 | `list_questions` | 智能问答 · 你问的、模型出的题、验收问题 | 否 |
 | `fix_question` | 存为验收问题 | 否 |

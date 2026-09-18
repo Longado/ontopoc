@@ -37,6 +37,7 @@ def discover_rules(ontology: dict, bundle: dict, graph: dict | None = None) -> l
             if all(row.get(field) not in (None, '') for _, row in objects):
                 rules.append({'id': f'required:{key}:{field}', 'kind': 'required', 'type': key, 'field': field, 'holds': len(objects)})
         dates = [f for f in fields if _type_of([row[f] for _, row in objects if row.get(f)]) in ('DATE', 'DATETIME')]
+        orders = []
         for a in dates:
             for b in dates:
                 if a == b:
@@ -44,7 +45,10 @@ def discover_rules(ontology: dict, bundle: dict, graph: dict | None = None) -> l
                 both = [(row[a], row[b]) for _, row in objects if row.get(a) and row.get(b)]
                 # written as YYYY-MM-DD[ hh:mm], so comparing the text is comparing the dates; equal on every row is no order
                 if both and all(x <= y for x, y in both) and any(x < y for x, y in both):
-                    rules.append({'id': f'order:{key}:{a}:{b}', 'kind': 'order', 'type': key, 'before': a, 'after': b, 'holds': len(both)})
+                    orders.append({'id': f'order:{key}:{a}:{b}', 'kind': 'order', 'type': key, 'before': a, 'after': b, 'holds': len(both)})
+        pairs = {(o['before'], o['after']) for o in orders}
+        # applied <= paid and paid <= issued already say applied <= issued: offer only the steps of a chain
+        rules += [o for o in orders if not any((o['before'], m) in pairs and (m, o['after']) in pairs for m in dates)]
     return rules
 
 
