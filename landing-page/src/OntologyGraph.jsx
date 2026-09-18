@@ -133,7 +133,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
       <div className="og-bar"><span>本体 · {ontology.object_types.length} 个对象 · {ontology.relations.length} 条关系<span className="og-swipe"> · 左右滑动看全图</span></span>
         <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
       {(big || mode !== "auto") && <div className="og-focusbar">
-        {focusing ? <span>{path ? "只显示查询经过的对象。" : <>对象太多，一张图看不清，现在只显示“{typeLabel(ontology, center)}”和与它相连的 {graph.nodes.length - 1} 个。点相连的对象可以换它做中心；要逐项判断，用上面的"列表"更快。</>}</span>
+        {focusing ? <span>{path ? "只显示查询经过的对象。" : <>对象太多，一张图看不清，现在只显示“{typeLabel(ontology, center)}”和与它相连的 {graph.nodes.length - 1} 个。点相连的对象可以换它做中心；要逐项判断，用上面的"对象""关系"两页更快。</>}</span>
           : <span>这是全图，比屏幕大，可以滚动看。</span>}
         {focusing && <label htmlFor="og-find" className="og-find">找对象<input id="og-find" list="og-concepts" placeholder="输入名字" onChange={find} /></label>}
         <datalist id="og-concepts">{rankByDegree(ontology).map((t) => <option key={t.key} value={t.label || t.key} />)}</datalist>
