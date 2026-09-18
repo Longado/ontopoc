@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 import re
 import threading
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 import uuid
 
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
@@ -21,6 +21,7 @@ from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
+from ontology_poc_generator.object_rows import object_rows
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
@@ -226,6 +227,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/runs':
                 self.list_runs()
                 return
+            if self.path.startswith('/api/ontology/runs/') and '/objects/' in self.path:
+                self.object_page()
+                return
             if self.path.startswith('/api/ontology/runs/'):
                 self.open_run(self.path.rsplit('/', 1)[1])
                 return
@@ -251,6 +255,26 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                              'types': len(ontology.get('object_types') or []), 'relations': len(ontology.get('relations') or []),
                              'confirmed': bool(run.get('confirmation'))})
             self.reply(200, {'runs': runs})
+
+        def object_page(self):
+            """One object's rows from a kept run, a page at a time: /api/ontology/runs/<run>/objects/<type>?page=N"""
+            url = urlsplit(self.path)
+            name, _, type_key = url.path[len('/api/ontology/runs/'):].partition('/objects/')
+            type_key = unquote(type_key)
+            bundle_path = output_dir / name.replace('.json', '.bundle.json')
+            if not SAVED_NAME.match(name) or not (output_dir / name).exists() or not bundle_path.exists():
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            try:
+                page = int((parse_qs(url.query).get('page') or ['1'])[0])
+                result = json.loads((output_dir / name).read_text(encoding='utf-8'))
+                if result['file'].get('kind') == 'document':
+                    raise ValueError('文档没有数据行')
+                self.reply(200, object_rows(result['ontology'], json.loads(bundle_path.read_text(encoding='utf-8')), type_key, page))
+            except KeyError:
+                self.reply(404, {'error': f'这份本体里没有对象 {type_key}'})
+            except ValueError as exc:
+                self.reply(400, {'error': str(exc)})
 
         def open_run(self, name):
             path = output_dir / name
