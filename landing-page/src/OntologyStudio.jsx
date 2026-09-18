@@ -11,6 +11,7 @@ import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, purposeNot
 import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload, removeAdded, renameType, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import { cardinalityLabel, cardinalityLine, fieldNote, formOf } from "./ontologyHandoverModel.js";
+import { folderLabel } from "./runLibraryModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
@@ -80,61 +81,44 @@ function SendPreview({ file }) {
   </details>;
 }
 
-function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDocDemo, last, onOpenLast }) {
+function UploadTab({ health, busy, events, elapsed, error, onBuild, onDemo, onDocDemo }) {
   const [files, setFiles] = useState([]);
   const [purpose, setPurpose] = useState("");
   const [over, setOver] = useState(false);
-  const inputRef = useRef(null);
   const offline = health === "offline";
   const kind = files.length && !files.some(isDoc) ? "table" : files.length ? "document" : null;
-  const problem = batchProblem(files);
-  const blocked = offline ? "本机建模服务没有启动" : health === "no-key" ? "建模服务缺少模型凭据" : problem;
+  const problem = files.length ? batchProblem(files) : "";
+  const blocked = offline ? "本机建模服务没有启动" : health === "no-key" ? "建模服务缺少模型凭据" : !files.length ? "先传文件" : problem;
   const pick = (picked) => setFiles((old) => [...old, ...[...picked].filter((f) => !old.some((o) => o.name === f.name && o.size === f.size))]);
-  return <div className="os-upload-grid">
-    <section className="pr-card os-main-card">
-      <h2>上传一份业务文件</h2>
-      {last && !busy && <div className="os-last"><span>上一次的结果还在：<b>{last.file.name}</b></span><button type="button" className="pr-link" onClick={onOpenLast}>打开结果</button></div>}
-      {busy ? <Progress events={events} kind={kind} elapsed={elapsed} /> : <>
-        <input id="os-file" ref={inputRef} className="sr-only" type="file" accept={ACCEPT} multiple onChange={(e) => { pick(e.target.files || []); e.target.value = ""; }} />
-        {files.length > 0 ? <div className={`os-file-card${problem ? " is-bad" : ""}`}>
-          <Mark />
-          <div><b>{files.map((f) => f.name).join("、")}</b>{problem ? <small className="os-bad">{problem}</small> : <small>{batchSummary(files)}</small>}</div>
-          <label htmlFor="os-file" className="pr-link os-add-file">再加文件</label>
-          <button type="button" className="pr-link" onClick={() => setFiles([])}>清空</button>
-        </div> : <label htmlFor="os-file" className={`os-drop${over ? " is-over" : ""}`}
-          onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
-          onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files || []); }}>
-          <Mark />
-          <b>把文件拖到这里，或点击选择（几张表可以一起传）</b>
-          <span className="os-chips"><span>数据表 .xlsx .csv</span><span>文档 .md .txt .docx .pdf</span></span>
-          <small>不超过 10 MB · 文件和结果只留在本机</small>
-        </label>}
-        <label htmlFor="os-purpose" className="os-purpose">这份本体要帮你回答什么问题？<span>（可选，会交给模型作为建模目的，也会作为第一道业务问答题）</span>
-          <textarea id="os-purpose" rows={2} maxLength={300} value={purpose} placeholder="例如：哪些客户、产品的售后问题最多？" onChange={(e) => setPurpose(e.target.value)} />
-        </label>
-        <div className="os-chips os-suggest" role="group" aria-label="示例问题">{EXAMPLE_QUESTIONS.map((q) => <button key={q} type="button" onClick={() => setPurpose(q)}>{q}</button>)}</div>
-        {files.length === 1 && !problem && !offline && <SendPreview key={`${files[0].name}-${files[0].size}-${files[0].lastModified}`} file={files[0]} />}
-        <div className="os-go">
-          <button className="pr-primary" disabled={Boolean(blocked)} onClick={() => onBuild(files, purpose)}>生成本体并评测</button>
-          {blocked && <span className="pr-muted">{blocked}</span>}
+  const drop = (e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files || []); };
+  return <div className="os-start">
+    <h1 id="os-title">今天要看哪份数据？</h1>
+    <p className="os-start-sub">传几张业务表或一份文档，写一句你想弄清的问题。文件只留在这台电脑上。</p>
+    {busy ? <div className="os-composer is-busy"><Progress events={events} kind={kind} elapsed={elapsed} /></div> : <>
+      <input id="os-file" className="sr-only" type="file" accept={ACCEPT} multiple onChange={(e) => { pick(e.target.files || []); e.target.value = ""; }} />
+      <div className={`os-composer${over ? " is-over" : ""}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={drop}>
+        {files.length > 0 && <div className="os-composer-files">
+          {files.map((f) => <span key={`${f.name}-${f.size}`} className="os-file-chip">{f.name}<button type="button" aria-label={`去掉 ${f.name}`} onClick={() => setFiles(files.filter((o) => o !== f))}>×</button></span>)}
+          <small className={problem ? "os-bad" : "pr-muted"}>{problem || batchSummary(files)}</small>
+        </div>}
+        <label htmlFor="os-purpose" className="sr-only">这份本体要帮你回答什么问题</label>
+        <textarea id="os-purpose" rows={3} maxLength={300} value={purpose} placeholder={files.length ? "想从这份数据里弄清什么？例如：哪些客户、产品的售后问题最多？" : "把文件拖进来，或点左下角的＋。再写一句想弄清的问题（可选）"}
+          onChange={(e) => setPurpose(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !blocked) onBuild(files, purpose); }} />
+        <div className="os-composer-bar">
+          <label htmlFor="os-file" className="os-composer-add" title="选文件：数据表 .xlsx .csv，文档 .md .txt .docx .pdf，不超过 10 MB">＋</label>
+          <button type="button" className="os-composer-go" disabled={Boolean(blocked)} title={blocked || "生成本体并评测"} aria-label="生成本体并评测" onClick={() => onBuild(files, purpose)}>➤</button>
         </div>
-        <details className="os-how"><summary>它会怎么做</summary>
-          <p>数据表：模型只看表头和每列少量示例值，提出对象、识别字段和关系；代码拿全部行核验，出错退回重做，最多三次。通过后代码自动做数据体检，模型再出一组业务问题、由代码在数据上回答。</p>
-          <p>文档：模型按段落提出概念和关系，每一项都要引用原文；代码核对引用确实在原文里，找不到的剔除并列出。</p>
-        </details>
-      </>}
-      {error && <p role="alert" className="pr-error">{error}</p>}
-      {offline && <div className="pr-note"><p>本机的建模服务没有启动。在仓库根目录运行（需要本机 DeepSeek 凭据）：</p><code className="os-cmd">{START}</code></div>}
-    </section>
-    <aside className="pr-card os-side-card">
-      <h2>没有文件？先试示例</h2>
-      <p className="pr-muted">一家合成的"示例制造公司"，数据全部是编造的，里面故意放了几个数据问题。结果是用 DeepSeek 实际跑出来的。</p>
-      <div className="os-demo-buttons">
-        <button type="button" className="os-demo" onClick={onDemo} disabled={busy}><b>示例数据表</b><small>客户、产品、订单、售后工单四张表</small></button>
-        <button type="button" className="os-demo" onClick={onDocDemo} disabled={busy}><b>示例文档</b><small>售后服务流程说明</small></button>
       </div>
-      <p className="pr-muted os-downloads">下载示例文件自己上传：<a href="/samples/demo_company.xlsx" download>示例数据表</a> · <a href="/samples/after_sales_process.md" download>示例文档</a> · <a href="/samples/demo_reference_ontology.json" download>参考本体</a></p>
-    </aside>
+      <div className="os-start-chips">
+        {!files.length && <><span className="pr-muted">没有文件？</span>
+          <button type="button" onClick={onDemo}>打开示例数据表</button>
+          <button type="button" onClick={onDocDemo}>打开示例文档</button></>}
+        {files.length > 0 && !purpose && EXAMPLE_QUESTIONS.map((q) => <button key={q} type="button" onClick={() => setPurpose(q)}>{q}</button>)}
+      </div>
+      {files.length === 1 && !problem && !offline && <SendPreview key={`${files[0].name}-${files[0].size}-${files[0].lastModified}`} file={files[0]} />}
+    </>}
+    {error && <p role="alert" className="pr-error">{error}</p>}
+    {offline && <div className="pr-note"><p>本机的建模服务没有启动。在仓库根目录运行（需要本机 DeepSeek 凭据）：</p><code className="os-cmd">{START}</code></div>}
   </div>;
 }
 
@@ -536,7 +520,7 @@ function EvaluationTab({ run, evalView, setEvalView, questions, variants, onShow
   </>;
 }
 
-export function OntologyStudio() {
+export function OntologyStudio({ request = null, onRunsChanged = () => {}, onCurrent = () => {} } = {}) {
   const [run, setRun] = useState(() => loadLocal());
   const [tab, setTab] = useState(() => (run ? "ontology" : "upload"));
   const [health, setHealth] = useState("checking");
@@ -571,8 +555,17 @@ export function OntologyStudio() {
   useEffect(() => () => clearInterval(timer.current), []);
 
   const keep = (valid) => setStorageWarning(saveResult(storage(), valid));
-  function show(result) { const valid = validateRun(result); setRun(valid); keep(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setTab("ontology"); }
-  function update(result) { const valid = validateRun(result); setRun(valid); keep(valid); }
+  function show(result) { const valid = validateRun(result); setRun(valid); keep(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setTab("ontology"); onCurrent(valid.saved_as || null); onRunsChanged(); }
+  function update(result) { const valid = validateRun(result); setRun(valid); keep(valid); onRunsChanged(); }
+  useEffect(() => { onCurrent(run && tab !== "upload" ? run.saved_as || null : null); }, [run, tab]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {   // the sidebar asked for new work, or for a run kept on this machine
+    if (!request) return;
+    if (request.kind === "new") { setError(""); setTab("upload"); return; }
+    setError("");
+    fetch(`/api/ontology/runs/${request.saved_as}`, { cache: "no-store" })
+      .then(async (r) => { const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(serviceError(r.status, body)); show(body); })
+      .catch((e) => { setError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); setTab("upload"); });
+  }, [request?.nonce]);   // eslint-disable-line react-hooks/exhaustive-deps
   async function build(files, purpose) {
     setBusy(true); setError(""); setElapsed(0); setEvents([]);
     const started = Date.now();
@@ -645,23 +638,20 @@ export function OntologyStudio() {
   const download = () => save(JSON.stringify(run, null, 2), "application/json", "本体和评测.json");
   const downloadSummary = () => save(summaryMarkdown(run), "text/markdown;charset=utf-8", "纪要.md");
 
-  return <section className="pr-page" aria-labelledby="os-title">
-    <header className="pr-head">
-      <div className="pr-head-line">
-        <h1 id="os-title">上传建本体</h1>
-        <span className="pr-meta">上传一份业务文件，自动整理出公司本体（业务里有哪些东西、各自按什么编号区分、彼此怎么关联）。数据体检和业务问答自动做；有人写的参考本体时，再对照标准</span>
-      </div>
-      {storageWarning && <p role="alert" className="pr-note os-storage">{storageWarning}</p>}
-      {run && tab !== "upload" && <div className="os-overview">
-        <div className="os-overview-file"><span className="pr-muted">当前文件</span><b>{run.file.name}</b><button className="pr-link" onClick={downloadSummary} title="一页纪要，给会上的人看">下载纪要</button>
+  const open = run && tab !== "upload";
+  return <section className={`pr-page${open ? "" : " is-start"}`} aria-labelledby="os-title">
+    {storageWarning && <p role="alert" className="pr-note os-storage">{storageWarning}</p>}
+    {open && <header className="pr-head">
+      <div className="os-overview">
+        <div className="os-overview-file"><h1 id="os-title" title={run.file.name}>{folderLabel(run.file.name)}</h1><button className="pr-link" onClick={downloadSummary} title="一页纪要，给会上的人看">下载纪要</button>
         <button className="pr-link" onClick={download} title="本体、数据体检、问答和对照结果，一个 JSON 文件">下载本体和评测</button></div>
         {overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b>{t.hint && <em>{t.hint}</em>}</button>)}
-      </div>}
-      <nav className="pr-tabs os-steps-nav" role="tablist" aria-label="步骤">{TABS.map(([key, label], i) => <button key={key} type="button" role="tab" id={`os-tab-${key}`}
-        aria-selected={tab === key} aria-controls="os-panel" disabled={key !== "upload" && !run} onClick={() => setTab(key)}><span className="os-step-no">{i + 1}</span>{label}</button>)}</nav>
-    </header>
-    <div id="os-panel" role="tabpanel" aria-labelledby={`os-tab-${tab}`} className="pr-panel os-panel">
-      {tab === "upload" && <UploadTab health={health} busy={busy} events={events} elapsed={elapsed} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} last={run} onOpenLast={() => setTab("ontology")} />}
+      </div>
+      <nav className="pr-tabs os-steps-nav" role="tablist" aria-label="这次运行">{TABS.filter(([key]) => key !== "upload").map(([key, label]) => <button key={key} type="button" role="tab" id={`os-tab-${key}`}
+        aria-selected={tab === key} aria-controls="os-panel" onClick={() => setTab(key)}>{label}</button>)}</nav>
+    </header>}
+    <div id="os-panel" role="tabpanel" aria-labelledby={tab === "upload" ? "os-title" : `os-tab-${tab}`} className="pr-panel os-panel">
+      {tab === "upload" && <UploadTab health={health} busy={busy} events={events} elapsed={elapsed} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "ontology" && run && <OntologyTab run={run} view={view} setView={setView} confirm={confirmProps}
         graphProps={{ selected, onSelect: (s) => { setSelected(s); setPath(null); }, path, onClearPath: () => setPath(null), onAsk: askOntology, reveal }} />}
       {tab === "evaluation" && run && <EvaluationTab run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} onPath={showPath} variants={variantProps}

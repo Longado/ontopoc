@@ -144,3 +144,31 @@ small.os-tone-warn { color: var(--amber); }
 .os-form-table td:first-child, .os-form-table th:first-child { white-space: nowrap; }
 .os-form-table td { vertical-align: top; }
 .os-form-table td:first-child { display: grid; gap: 6px; justify-items: start; }
+
+/* The empty workbench: one question, one box */
+.os-start { width: min(760px, 100%); margin: 0 auto; padding-block: 16vh 48px; display: grid; gap: 14px; justify-items: center; text-align: center; }
+.os-start h1 { margin: 0; font-size: clamp(26px, 3.2vw, 34px); letter-spacing: -0.01em; text-wrap: balance; }
+.os-start-sub { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+.os-composer { width: 100%; display: grid; gap: 8px; padding: 14px 14px 10px; border: 1px solid var(--edge); border-radius: 22px; background: var(--surface); box-shadow: 0 1px 2px rgba(10, 11, 13, 0.04), 0 8px 24px rgba(10, 11, 13, 0.05); text-align: left; transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out); }
+.os-composer:focus-within { border-color: var(--edge-strong); }
+.os-composer.is-over { border-color: var(--indigo); box-shadow: 0 0 0 3px var(--indigo-soft); }
+.os-composer.is-busy { padding: 18px; }
+.os-composer textarea { width: 100%; min-height: 72px; padding: 4px 6px; border: 0; resize: vertical; background: transparent; font: inherit; font-size: 15px; line-height: 1.6; color: var(--ink); }
+.os-composer textarea:focus { outline: none; }
+.os-composer-files { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.os-file-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border: 1px solid var(--edge); border-radius: 999px; background: var(--canvas); font-size: 13px; }
+.os-file-chip button { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); line-height: 1; }
+.os-file-chip button:hover { background: var(--edge); color: var(--ink); }
+.os-composer-files small { font-size: 12px; }
+.os-composer-bar { display: flex; align-items: center; justify-content: space-between; }
+.os-composer-add { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: var(--muted); font-size: 20px; cursor: pointer; }
+.os-composer-add:hover { background: var(--canvas); color: var(--ink); }
+.os-composer-go { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; color: #fff; background: var(--indigo); font-size: 15px; }
+.os-composer-go:disabled { background: var(--edge-strong); cursor: not-allowed; }
+.os-composer-go:not(:disabled):hover { filter: brightness(1.08); }
+.os-composer-add:focus-visible, .os-composer-go:focus-visible, .os-start-chips button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.os-start-chips { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; font-size: 13px; }
+.os-start-chips button { padding: 6px 12px; border: 1px solid var(--edge); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 13px; }
+.os-start-chips button:hover { border-color: var(--edge-strong); }
+.os-start .os-preview, .os-start .pr-note, .os-start .pr-error { width: 100%; text-align: left; }
+.os-overview-file h1 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
