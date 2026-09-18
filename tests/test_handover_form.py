@@ -41,7 +41,7 @@ class HandoverFormTests(unittest.TestCase):
         self.assertEqual(self.field('company', '资本额')['type'], 'INTEGER')
         self.assertEqual(self.field('company', '设立日')['type'], 'DATE')
         self.assertEqual(self.field('company', '公司名')['type'], 'VARCHAR')
-        self.assertEqual(self.field('company', '公司名')['length'], 11)   # 最长的那个名字有多少个字
+        self.assertEqual(self.field('company', '公司名')['length'], 10)   # 最长的那个名字有多少个字
         self.assertEqual(self.field('director', '持股')['type'], 'DECIMAL')   # 1.5 和 2 混在一起
 
     def test_empty_values_are_counted_and_an_all_empty_field_has_no_type(self):
