@@ -83,6 +83,23 @@ def _row_owners(p: dict, graph: dict) -> dict[str, set]:
     return {src: {t for t, n in by_type.items() if n == max(by_type.values())} for src, by_type in counts.items()}
 
 
+def _id_only(p: dict, graph: dict) -> list[dict]:
+    """Objects no table describes: they exist only as a column of ids in a table about something else (an employee id
+    on an order, with no employee table). They are real enough to group by, but there is nothing behind the number,
+    and on a graph they look like every other object."""
+    owners = _row_owners(p, graph)
+    out = []
+    for t in p['object_types']:
+        if any(t['key'] in owners.get(pop['source'], ()) for pop in t['populated_from']) or t['attributes']:
+            continue
+        pop = t['populated_from'][0] if t['populated_from'] else None
+        if pop is None:
+            continue
+        out.append({'type': t['key'], 'source': pop['source'], 'field': '、'.join(sorted(pop['identity'].values())),
+                    'count': sum(1 for i in graph['sources_of'] if i[0] == t['key'])})
+    return out
+
+
 def _missing_across_sources(p: dict, graph: dict) -> list[dict]:
     """Objects referenced in one table but absent from the table that describes them: one that gives attributes
     and whose rows are about this kind of object."""
@@ -159,6 +176,7 @@ def data_fit(ontology: dict, bundle: dict) -> dict:
         'identity_conflicts': _identity_conflicts(p, bundle, graph),
         'identity_risks': _identity_risks(p),
         'identity_spellings': _identity_spellings(p, bundle),
+        'id_only': _id_only(p, graph),
         'suspected_duplicates': _suspected_duplicates(p, graph),
         'missing_across_sources': _missing_across_sources(p, graph),
         'relations': _relations(p, bundle, graph),

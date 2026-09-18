@@ -449,6 +449,11 @@ function DataFit({ run, onShow, variants }) {
     {fit.identity_conflicts.length > 0 && <Conflicts fit={fit} ontology={ontology} onShow={onShow} />}
     {fit.identity_spellings?.length > 0 && <Spellings fit={fit} ontology={ontology} onShow={onShow} />}
     {variants?.decisions && <Variants run={run} variants={variants} onShow={onShow} />}
+    {fit.id_only?.length > 0 && <section className="pr-card">
+      <h2>只有编号、没有描述它的表（{fit.id_only.length}）</h2>
+      <p className="pr-muted">这些对象是从别的表里的一列编号认出来的，这份数据里没有任何一张表在说它们是什么。它们能用来分组统计，但图上它们和有明细表的对象长得一样，讲给客户之前要说清楚：现在只有编号。</p>
+      <ul className="pr-rows">{fit.id_only.map((t) => <li key={t.type}><b>{typeLabel(ontology, t.type)}：{t.count} 个编号</b><span>来自“{t.source}”的“{t.field}”</span><ShowOnGraph type={t.type} onShow={onShow} /></li>)}</ul>
+    </section>}
     {fit.identity_risks?.length > 0 && <section className="pr-card">
       <h2>识别字段可能不稳（{fit.identity_risks.length}）</h2>
       <p className="pr-muted">这是提示，不是不通过：代码只看了识别字段的名字像不像"名称"一类会被改写的字段。</p>
