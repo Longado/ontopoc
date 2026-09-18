@@ -623,6 +623,9 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const [qaPlace, setQaPlace] = useState("ask");
   const [dataPlace, setDataPlace] = useState(null);   // which uploaded table 数据接入 shows
   const [savingRules, setSavingRules] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [savingForm, setSavingForm] = useState(false);
+  const [formError, setFormError] = useState("");
   const [rulesError, setRulesError] = useState("");
   const [suggestions, setSuggestions] = useState([]);   // relations code sees in the data and the ontology lacks
   useEffect(() => {
@@ -796,7 +799,10 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     <div className="pr-panel os-panel">
       {tab === "upload" && <UploadTab runs={runs} health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "objects" && run && (objectKey
-        ? <ObjectDetail run={run} typeKey={objectKey} confirm={confirmProps} onBack={() => setObjectKey(null)} onOpen={setObjectKey} onSaveConfirm={goConfirm} />
+        ? <ObjectDetail run={run} typeKey={objectKey} confirm={confirmProps} onBack={() => setObjectKey(null)} onOpen={setObjectKey} onSaveConfirm={goConfirm}
+          form={isDocument(run) ? null : { canDraft: Boolean(run.saved_as) && health === "ready", canSave: Boolean(run.saved_as) && health === "ready", drafting, saving: savingForm, error: formError,
+            onDraft: () => post("/api/ontology/form/draft", { saved_as: run.saved_as }, setDrafting, setFormError),
+            onSave: (type, entry) => post("/api/ontology/form", { saved_as: run.saved_as, form: { types: { [type]: entry } } }, setSavingForm, setFormError) }} />
         : <SubLayout label="本体管理" items={objectsNav(run, decisions)} active={objPlace} onChange={setObjPlace}>
           {objPlace === "objects" ? <ObjectCards run={run} decisions={decisions} onOpen={setObjectKey} /> : <ObjectsPlace run={run} confirm={confirmProps} place={objPlace} />}
         </SubLayout>)}

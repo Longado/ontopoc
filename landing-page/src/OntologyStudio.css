@@ -494,3 +494,16 @@ small.os-tone-warn { color: var(--amber); }
 .os-version-examples { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
 @media (max-width: 760px) { .os-version-list li { grid-template-columns: 1fr auto; } .os-version-bars { grid-column: 1 / -1; } }
 .os-version-delta em.is-shift { color: var(--amber); background: var(--amber-soft); }
+
+/* the DIP form, filled in */
+.os-form-head { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; margin-bottom: 12px; font-size: 13px; }
+.os-form-head label { color: var(--text-2); }
+.os-form-head span, .os-cell-edit { display: flex; align-items: center; gap: 6px; }
+.os-form-head input, .os-form-fields input:not([type="radio"]) { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--edge); border-radius: 6px; background: var(--surface); font: inherit; font-size: 13px; color: var(--ink); box-sizing: border-box; }
+.os-form-head input:focus, .os-form-fields input:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: transparent; }
+.os-form-fields td { vertical-align: middle; }
+.os-form-fields td:nth-child(2) { min-width: 9em; }
+.os-desc-input { min-width: 14em; }
+.os-drafted { flex: none; padding: 0 6px; border-radius: 5px; font-size: 11px; font-style: normal; color: var(--amber); background: var(--amber-soft); }
+.os-save-form { margin: 0; padding: 5px 16px; }
+.os-form-fields td:nth-child(3) { min-width: 18em; }

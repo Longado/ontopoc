@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 
 import { Verdict } from "./OntologyGraph.jsx";
 import { focusOntology, layoutGraph } from "./ontologyGraphModel.js";
-import { formOf } from "./ontologyHandoverModel.js";
+import { formOf as formOfRun } from "./ontologyHandoverModel.js";
 import { objectCards, objectRelations } from "./workspaceModel.js";
 import { filled, filterCards, rowsCsv } from "./visualModel.js";
+import { editForm, formOf } from "./formModel.js";
 
 const VERDICT_TEXT = { ok: "判对", wrong: "判错" };
 
@@ -43,7 +44,7 @@ export function ObjectCards({ run, decisions, onOpen }) {
 const SUBS = [["overview", "概览"], ["fields", "属性"], ["rows", "数据"], ["confirm", "确认"]];
 
 /** One object's own page: 概览 / 属性 / 数据 / 确认, as DIP's object page has 概览 / 属性 / 对象. */
-export function ObjectDetail({ run, typeKey, confirm, onBack, onOpen, onSaveConfirm }) {
+export function ObjectDetail({ run, typeKey, confirm, onBack, onOpen, onSaveConfirm, form }) {
   const [sub, setSub] = useState("overview");
   useEffect(() => setSub("overview"), [typeKey]);
   const card = objectCards(run, confirm?.decisions).find((c) => c.key === typeKey);
@@ -71,7 +72,7 @@ export function ObjectDetail({ run, typeKey, confirm, onBack, onOpen, onSaveConf
         <section className="pr-card os-span"><div className="pr-card-head"><h3>属性 <small>({fieldsOf(run, type).length})</small></h3><button type="button" className="pr-link" onClick={() => setSub("fields")}>看全部</button></div>
           <ul className="os-field-tags">{fieldsOf(run, type).slice(0, 8).map((f) => <li key={f.path}>{f.path}{f.identity && <em className="is-key">主键</em>}{f.type && <em>{f.type}</em>}</li>)}</ul></section>
       </div>}
-      {sub === "fields" && <FieldsTable run={run} type={type} />}
+      {sub === "fields" && <FieldsTable run={run} type={type} form={form} />}
       {sub === "rows" && <ObjectRows run={run} typeKey={typeKey} />}
       {sub === "confirm" && <section className="pr-card os-object-confirm">
         <h3>这个对象在业务上对不对</h3>
@@ -86,26 +87,50 @@ export function ObjectDetail({ run, typeKey, confirm, onBack, onOpen, onSaveConf
 }
 
 function fieldsOf(run, type) {
-  const form = formOf(run)?.types.find((t) => t.type === type.key);
+  const form = formOfRun(run)?.types.find((t) => t.type === type.key);
   if (form) return form.fields;
   const identity = new Set(type.populated_from.flatMap((p) => Object.values(p.identity)));
   return [...identity].map((path) => ({ path, identity: true })).concat(type.attributes.filter((a) => !identity.has(a.path)).map((a) => ({ path: a.path, identity: false })));
 }
 
-function FieldsTable({ run, type }) {
+function FieldsTable({ run, type, form }) {
   const fields = fieldsOf(run, type);
-  const form = formOf(run)?.types.find((t) => t.type === type.key);
-  const profiled = Boolean(form);
-  return <section className="pr-card"><div className="pr-card-head"><h3>属性列表</h3><span className="pr-muted">{fields.length} 个</span></div>
-    {form?.needs_single_key && <p className="pr-note os-tone-warn">靠 {form.identity_fields.join(" + ")} 这几个字段一起识别。DIP 每张表只收一个主键，导入前要把它们合成一个，或者改建模。</p>}
-    <div className="os-table-scroll"><table className="os-fields">
-      <thead><tr><th scope="col">序号</th><th scope="col">字段</th>{profiled && <><th scope="col">类型</th><th scope="col">长度</th><th scope="col" title="有值的行占多少">填充</th></>}<th scope="col">来源</th></tr></thead>
-      <tbody>{fields.map((f, i) => <tr key={f.path}><td>{i + 1}</td><td>{f.path}{f.identity && <em className="os-tag is-key">主键</em>}</td>
-        {profiled && <><td><TypeChip type={f.type} /></td><td>{f.length || "—"}</td><td><FillBar field={f} rows={f.rows} /></td></>}<td>{(f.sources || []).join("、") || "数据导入"}</td></tr>)}</tbody>
+  const [draft, setDraft] = useState(() => formOf(run, type.key));
+  useEffect(() => setDraft(formOf(run, type.key)), [run, type.key]);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(formOf(run, type.key));
+  const shape = formOfHandover(run, type.key);
+  const profiled = Boolean(shape);
+  const set = (path, key, value) => setDraft((d) => editForm(d, path, key, value));
+  const mark = (x) => x?.drafted && <em className="os-drafted" title="模型起草的，还没人改过">模型</em>;
+  return <section className="pr-card os-form-card">
+    <div className="pr-card-head"><h3>属性列表 <small>{fields.length}</small></h3>
+      {form && <div className="os-toolbar">
+        <button type="button" className="pr-link" disabled={!form.canDraft || form.drafting} onClick={form.onDraft} title="一次模型调用，起草中文名、描述和展示字段；你改过的不会被覆盖">{form.drafting ? "起草中…" : "✦ 起草"}</button>
+        <button type="button" className="pr-primary os-save-form" disabled={!form.canSave || !dirty || form.saving} onClick={() => form.onSave(type.key, draft)}>{form.saving ? "保存中…" : "保存"}</button>
+      </div>}</div>
+    {form?.error && <p role="alert" className="pr-error">{form.error}</p>}
+    <div className="os-form-head">
+      <label htmlFor="os-type-label">中文名</label><span><input id="os-type-label" value={draft.label} maxLength={40} onChange={(e) => set(null, "label", e.target.value)} />{mark(draft.drafted && draft.label && draft)}</span>
+      <label htmlFor="os-type-desc">描述</label><span><input id="os-type-desc" value={draft.description} maxLength={200} onChange={(e) => set(null, "description", e.target.value)} /></span>
+    </div>
+    {shape?.needs_single_key && <p className="pr-note os-tone-warn">靠 {shape.identity_fields.join(" + ")} 这几个字段一起识别。DIP 每张表只收一个主键，导入前要把它们合成一个，或者改建模。</p>}
+    <div className="os-table-scroll"><table className="os-fields os-form-fields">
+      <thead><tr><th scope="col">字段</th><th scope="col">中文名</th><th scope="col">描述</th><th scope="col" title="展示给人看的字段，每个对象一个">展示</th>{profiled && <><th scope="col">类型</th><th scope="col">长度</th><th scope="col" title="有值的行占多少">填充</th></>}</tr></thead>
+      <tbody>{fields.map((f) => { const x = draft.fields[f.path]; return <tr key={f.path}>
+        <td>{f.path}{f.identity && <em className="os-tag is-key">主键</em>}</td>
+        <td><span className="os-cell-edit"><input aria-label={`${f.path} 的中文名`} value={x?.label || ""} maxLength={40} onChange={(e) => set(f.path, "label", e.target.value)} />{mark(x)}</span></td>
+        <td><input aria-label={`${f.path} 的描述`} className="os-desc-input" value={x?.description || ""} maxLength={200} onChange={(e) => set(f.path, "description", e.target.value)} /></td>
+        <td><input type="radio" name={`display-${type.key}`} aria-label={`用 ${f.path} 展示`} checked={draft.display_field === f.path} onChange={() => set(null, "display_field", f.path)} /></td>
+        {profiled && <><td><TypeChip type={f.type} /></td><td>{f.length || "—"}</td><td><FillBar field={f} rows={f.rows} /></td></>}
+      </tr>; })}</tbody>
     </table></div>
-    {!profiled && <p className="pr-muted">这次运行保存得早，没有逐列的类型和长度。重新上传同一份文件就能看到。</p>}
+    {!profiled && <p className="pr-muted">这次运行没有逐列的类型和长度，重新上传可看到。</p>}
+    {run.evaluation.form?.rejected?.length > 0 && <details className="os-how"><summary>起草时剔除的 {run.evaluation.form.rejected.length} 项</summary>
+      <ul>{run.evaluation.form.rejected.map((r, i) => <li key={i}>{r.item}：{r.reason}</li>)}</ul></details>}
   </section>;
 }
+
+const formOfHandover = (run, key) => formOfRun(run)?.types.find((t) => t.type === key);
 
 function ObjectRows({ run, typeKey }) {
   const [page, setPage] = useState(1);
