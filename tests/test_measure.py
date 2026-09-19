@@ -44,7 +44,7 @@ class MeasureTests(unittest.TestCase):
         self.assertEqual(gap['status'], 'ontology_gap')
 
     def test_the_prompt_moves_to_v5_and_describes_the_measure(self):
-        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v5')
+        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v6')
         self.assertIn('"measure"', QUESTION_SYSTEM_PROMPT)
 
 
