@@ -1,5 +1,6 @@
 /** The workspace laid out as a data platform: modules in the sidebar, one card per object, and an object's own
  *  page. A run plays the part of a workspace. */
+import { formOf as formOfRun } from "./ontologyHandoverModel.js";
 import { isDocument, typeLabel } from "./ontologyStudioModel.js";
 
 const SECTIONS = [["data", "数据接入"], ["objects", "本体管理"], ["graph", "本体关系"], ["qa", "智能问答"], ["check", "数据体检"]];
@@ -64,4 +65,12 @@ export function qaNav(run) {
     ["acceptance", "验收问题", String(evaluation.acceptance?.items.length || 0)],
     ["model", "模型出的题", round?.items ? `${answered} / ${round.items.length}` : "—"],
   ];
+}
+
+/** An object's fields, identity fields first: the handover form's when there is one, else read off the ontology. */
+export function fieldsOf(run, type) {
+  const form = formOfRun(run)?.types.find((t) => t.type === type.key);
+  if (form) return form.fields;
+  const identity = new Set(type.populated_from.flatMap((p) => Object.values(p.identity)));
+  return [...identity].map((path) => ({ path, identity: true })).concat(type.attributes.filter((a) => !identity.has(a.path)).map((a) => ({ path: a.path, identity: false })));
 }

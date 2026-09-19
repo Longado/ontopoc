@@ -508,3 +508,17 @@ small.os-tone-warn { color: var(--amber); }
 .os-save-form { margin: 0; padding: 5px 16px; }
 .os-form-fields td:nth-child(3) { min-width: 18em; }
 .os-icon-btn { text-decoration: none; display: inline-block; }
+
+/* ⌘K search */
+.os-search-back { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; background: color-mix(in srgb, var(--ink) 28%, transparent); }
+.os-search-box { width: min(560px, 100%); border: 1px solid var(--edge-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 18px 48px color-mix(in srgb, var(--ink) 22%, transparent); overflow: hidden; }
+.os-search-box input { width: 100%; box-sizing: border-box; padding: 14px 16px; border: 0; border-bottom: 1px solid var(--edge); background: transparent; color: var(--ink); font-size: 16px; outline: none; }
+.os-hits { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow-y: auto; }
+.os-hits li { display: flex; align-items: baseline; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--ink); }
+.os-hits li[aria-selected="true"] { background: var(--primary-soft); }
+.os-hits small { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.os-hit-kind { flex: none; font-style: normal; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--canvas); color: var(--muted); }
+.os-hit-kind.is-object { background: var(--blue-soft); color: var(--blue); }
+.os-hit-kind.is-relation { background: var(--amber-soft); color: var(--amber); }
+.os-hit-kind.is-table { background: var(--ok-soft); color: var(--ok); }
+.os-hits .os-hit-none { cursor: default; color: var(--muted); }

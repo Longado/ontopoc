@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Verdict } from "./OntologyGraph.jsx";
 import { focusOntology, layoutGraph } from "./ontologyGraphModel.js";
 import { formOf as formOfRun } from "./ontologyHandoverModel.js";
-import { objectCards, objectRelations } from "./workspaceModel.js";
+import { fieldsOf, objectCards, objectRelations } from "./workspaceModel.js";
 import { filled, filterCards, rowsCsv } from "./visualModel.js";
 import { editForm, formOf } from "./formModel.js";
 
@@ -44,9 +44,9 @@ export function ObjectCards({ run, decisions, onOpen }) {
 const SUBS = [["overview", "概览"], ["fields", "属性"], ["rows", "数据"], ["confirm", "确认"]];
 
 /** One object's own page: 概览 / 属性 / 数据 / 确认, as a data platform's object page has overview / fields / instances. */
-export function ObjectDetail({ run, typeKey, confirm, onBack, onOpen, onSaveConfirm, form }) {
-  const [sub, setSub] = useState("overview");
-  useEffect(() => setSub("overview"), [typeKey]);
+export function ObjectDetail({ run, typeKey, startAt = null, confirm, onBack, onOpen, onSaveConfirm, form }) {
+  const [sub, setSub] = useState(startAt || "overview");
+  useEffect(() => setSub(startAt || "overview"), [typeKey]);   // eslint-disable-line react-hooks/exhaustive-deps
   const card = objectCards(run, confirm?.decisions).find((c) => c.key === typeKey);
   const type = run.ontology.object_types.find((t) => t.key === typeKey);
   if (!card) return <p className="pr-muted">这份本体里没有这个对象。<button type="button" className="pr-link" onClick={onBack}>返回</button></p>;
@@ -84,13 +84,6 @@ export function ObjectDetail({ run, typeKey, confirm, onBack, onOpen, onSaveConf
       </section>}
     </div>
   </div>;
-}
-
-function fieldsOf(run, type) {
-  const form = formOfRun(run)?.types.find((t) => t.type === type.key);
-  if (form) return form.fields;
-  const identity = new Set(type.populated_from.flatMap((p) => Object.values(p.identity)));
-  return [...identity].map((path) => ({ path, identity: true })).concat(type.attributes.filter((a) => !identity.has(a.path)).map((a) => ({ path: a.path, identity: false })));
 }
 
 function FieldsTable({ run, type, form }) {
