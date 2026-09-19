@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+
+import { SearchDialog } from "./SearchDialog.jsx";
 import { askSuggestions, bridgeLines, latestAsked, layoutTables } from "./dataLayoutModel.js";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary,
@@ -660,6 +662,22 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const [selected, setSelected] = useState(null);
   const [path, setPath] = useState(null);
   const [reveal, setReveal] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [objectSub, setObjectSub] = useState({ sub: null, n: 0 });   // where a search opened an object's page
+  const open = run && tab !== "upload";
+  useEffect(() => {
+    if (!open) return undefined;
+    const key = (e) => { if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setSearching(true); } };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [open]);
+  function go(target) {
+    setSearching(false);
+    if (target.tab === "objects") { setObjectSub((o) => ({ sub: target.sub || null, n: o.n + 1 })); setObjectKey(target.object); }
+    if (target.tab === "graph") { setPath(null); setSelected({ kind: "edge", key: target.relation }); setView("graph"); setReveal((n) => n + 1); }
+    if (target.tab === "data") setDataPlace(target.table);
+    setTab(target.tab);
+  }
   const following = useRef(null);
   const askRef = useRef(null);
 
@@ -776,7 +794,6 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const download = () => save(JSON.stringify(run, null, 2), "application/json", "本体和评测.json");
   const downloadSummary = () => save(summaryMarkdown(run), "text/markdown;charset=utf-8", "纪要.md");
 
-  const open = run && tab !== "upload";
   const questions = { canAsk: Boolean(run?.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload"),
     onAccept: (items) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items }, setAccepting, setAcceptError), accepting, acceptError, onGoConfirm: goConfirm };
   const inDetail = tab === "objects" && objectKey;
@@ -790,6 +807,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     {open && !inDetail && <header className="pr-head">
       <div className="os-overview">
         <div className="os-overview-file"><h1 id="os-title" className="os-crumb" title={`${run.file.name}${run.purpose ? `\n${run.purpose}` : ""}`}>{crumb.map((c, i) => <span key={c}>{i > 0 && <i aria-hidden="true">/</i>}{c}</span>)}</h1>
+          <button className="os-icon-btn" onClick={() => setSearching(true)} title="搜索对象、字段、关系和表（⌘K）">⌕ 搜索</button>
           <button className="os-icon-btn" onClick={downloadSummary} title="下载纪要：一页 Markdown，给会上的人看">⤓ 纪要</button>
           <button className="os-icon-btn" onClick={download} title="下载本体和评测：一个 JSON 文件">⤓ JSON</button>
           {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/forms`} download title="按对象表单导出：每个对象一张 CSV，导入目标平台前请先实测">⤓ 表单</a>}</div>
@@ -800,7 +818,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     <div className="pr-panel os-panel">
       {tab === "upload" && <UploadTab runs={runs} health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "objects" && run && (objectKey
-        ? <ObjectDetail run={run} typeKey={objectKey} confirm={confirmProps} onBack={() => setObjectKey(null)} onOpen={setObjectKey} onSaveConfirm={goConfirm}
+        ? <ObjectDetail key={`${objectKey}-${objectSub.n}`} startAt={objectSub.sub} run={run} typeKey={objectKey} confirm={confirmProps} onBack={() => setObjectKey(null)} onOpen={setObjectKey} onSaveConfirm={goConfirm}
           form={isDocument(run) ? null : { canDraft: Boolean(run.saved_as) && health === "ready", canSave: Boolean(run.saved_as) && health === "ready", drafting, saving: savingForm, error: formError,
             onDraft: () => post("/api/ontology/form/draft", { saved_as: run.saved_as }, setDrafting, setFormError),
             onSave: (type, entry) => post("/api/ontology/form", { saved_as: run.saved_as, form: { types: { [type]: entry } } }, setSavingForm, setFormError) }} />
@@ -816,5 +834,6 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
       {tab === "check" && run && <CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions}
         rules={{ canSave: Boolean(run.saved_as) && health === "ready", busy: savingRules, error: rulesError, onSave: (next) => post("/api/ontology/rules", { saved_as: run.saved_as, ...next }, setSavingRules, setRulesError) }} />}
     </div>
+    {searching && open && <SearchDialog run={run} decisions={decisions} onGo={go} onClose={() => setSearching(false)} />}
   </section>;
 }
