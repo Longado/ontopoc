@@ -451,6 +451,7 @@ small.os-tone-warn { color: var(--amber); }
 
 /* rules */
 .os-empty-line { margin: 0 !important; color: var(--edge-strong); }
+.os-pill.os-purpose { background: var(--primary-soft); color: var(--primary-ink); }
 .os-rule-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
 .os-rule-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 9px 0; border-top: 1px solid var(--edge); font-size: 14px; }
 .os-rule-list li:first-child { border-top: 0; }
