@@ -810,7 +810,8 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
           <button className="os-icon-btn" onClick={() => setSearching(true)} title="搜索对象、字段、关系和表（⌘K）">⌕ 搜索</button>
           <button className="os-icon-btn" onClick={downloadSummary} title="下载纪要：一页 Markdown，给会上的人看">⤓ 纪要</button>
           <button className="os-icon-btn" onClick={download} title="下载本体和评测：一个 JSON 文件">⤓ JSON</button>
-          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/forms`} download title="按对象表单导出：每个对象一张 CSV，导入目标平台前请先实测">⤓ 表单</a>}</div>
+          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/forms`} download title="按对象表单导出：每个对象一张 CSV，导入目标平台前请先实测">⤓ 表单</a>}
+          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/ttl`} download title="按 W3C 标准导出：OWL 本体、数据、SHACL 规则（Turtle）">⤓ TTL</a>}</div>
         <div className="os-tiles">{overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} title={t.hint || undefined} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b></button>)}</div>
       </div>
     </header>}

@@ -9,6 +9,9 @@ description = "Recall scope review over public data: auto-built ontology, code-v
 requires-python = ">=3.11"
 dependencies = ["openpyxl>=3.1"]
 
+[project.optional-dependencies]
+check = ["rdflib>=7", "pyshacl>=0.26"]   # tests read the Turtle export back; the service does not need them
+
 [project.scripts]
 ontopoc-recall = "ontology_poc_generator.recall_cli:main"
 ontopoc-mcp = "ontology_poc_generator.mcp_server:main"

@@ -32,7 +32,7 @@
 
 用户上传若干业务表（Excel、CSV）或一份流程文档后，OntoPoc 生成本体草案，包括业务中的对象、各对象的识别字段以及对象之间的关系。代码随后逐行校验草案：字段是否存在、识别字段是否有值、关系能否在数据中连通。在此基础上，系统执行数据质量检查，并基于数据回答业务问题。顾问逐项确认后，结果将被保存；同一文件或其新版本再次上传时，系统以此为基准进行比对。
 
-建模结果可按数据平台的对象表单导出；全部功能也已封装为 MCP 工具，可供其他 Agent 调用。
+建模结果可按数据平台的对象表单导出，也可按 W3C 标准导出为 Turtle（OWL 与 SHACL）；全部功能也已封装为 MCP 工具，可供其他 Agent 调用。
 
 > **早期版本。** 目前仅在公开数据和合成数据上验证过（芝加哥市政合同、Northwind、BART 地铁、台湾公司登记、CMS 医院等），尚无作者以外的用户独立完成全流程；仅在 macOS 上测试；尚未在任何数据平台上实测批量导入。详见[已知问题](#已知问题)。
 
@@ -66,6 +66,7 @@
 | 标记上传文件为新版本 | 沿用上一版的确认、验收问题与规则，并统计各对象的新增与减少数量 |
 | 生成对象表单草稿 | 一次模型调用，生成中文名称、描述与展示字段；人工修改过的内容不会被再次生成覆盖 |
 | 导出对象表单 | 每个对象生成一份 CSV，列为数据平台建对象时的常见表单列 |
+| 点击右上角"⤓ TTL" | 导出三份 Turtle 文件：`ontology.ttl` 用 OWL 描述对象、字段、关系与识别字段；`data.ttl` 中每个对象按识别值命名，同一对象跨表、跨版本同名，可直接合并；`shapes.ttl` 将已采纳的规则写成 SHACL，可用通用校验器检查。判错的对象与关系不导出 |
 
 模型只负责判断，循环与计算均由代码完成；每个用户操作至多调用模型 3 次。系统共有 5 个 Agent，定义见 [docs/AGENTS.md](docs/AGENTS.md)。
 
@@ -118,7 +119,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 ### 接入 Claude Code 或其他 MCP 客户端
 
-页面上的每项功能都有对应的 MCP 工具，共 25 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
+页面上的每项功能都有对应的 MCP 工具，共 26 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -152,6 +153,7 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 - **关系推断的召回有限。** 在 17 份已保存的运行（公开数据与合成数据）上逐条移除关系后重新推断，33 条中找回 24 条；在完整本体上未出现误报。
 - **查询能力的限制。** 暂不支持按数值条件筛选、限定时间范围、单个问题返回两个数值，以及"哪些项目经常同时出现"一类问题；遇到时系统会如实说明。
 - **批量导入尚未实测。** 导出的表单列按数据平台的常见表单整理，但导入格式、主键规则与关系表达因平台而异，尚未在任何平台上实测，因此暂不导出关系表。
+- **TTL 仅用 rdflib 与 pyshacl 读回验证过。** 尚未在 Protégé 或图数据库中实际导入。
 - **仅在 macOS 上测试。** Windows 与 Linux 尚未测试。
 
 ## 参与共建
@@ -171,7 +173,7 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（487 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（500 个）
 npm --prefix landing-page run test:unit                       # 前端测试（191 个）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合成示例工作簿
@@ -181,7 +183,7 @@ PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合�
 |---|---|
 | [docs/PRODUCT.md](docs/PRODUCT.md) | 产品定位与范围 |
 | [docs/AGENTS.md](docs/AGENTS.md) | 5 个 Agent 的定义与调用记录 |
-| [docs/MCP.md](docs/MCP.md) | 25 个 MCP 工具 |
+| [docs/MCP.md](docs/MCP.md) | 26 个 MCP 工具 |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | 数据平台对象表单对照 |
 | [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | 最近一轮迭代的计划与执行记录 |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 开发红线与待触发的方向 |

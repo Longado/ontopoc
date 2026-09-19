@@ -29,6 +29,7 @@ from ontology_poc_generator.versions import version_diff
 from ontology_poc_generator.field_descriptions import MAX_DESCRIPTION, MAX_LABEL, draft_descriptions
 from ontology_poc_generator.handover_form import handover_form
 from ontology_poc_generator.object_forms import form_files
+from ontology_poc_generator.ttl_export import ttl_files
 import io
 import zipfile
 from urllib.parse import quote as url_quote
@@ -378,9 +379,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif tail.startswith('instances/'):
                     type_key = unquote(tail[len('instances/'):])
                     self.reply(200, find_instances(result['ontology'], bundle, type_key, (query.get('q') or [''])[0], graph=graph))
-                elif tail == 'export/forms':
+                elif tail in ('export/forms', 'export/ttl'):
                     handover = result['evaluation'].get('handover') or handover_form(result['ontology'], bundle)
-                    files = form_files(result['ontology'], handover, form_state({**result, 'evaluation': {**result['evaluation'], 'handover': handover}}))
+                    form = form_state({**result, 'evaluation': {**result['evaluation'], 'handover': handover}})
+                    if tail == 'export/forms':
+                        files, zip_name = form_files(result['ontology'], handover, form), '对象表单'
+                    else:
+                        files, zip_name = ttl_files(result['ontology'], bundle, handover, form, (result.get('confirmation') or {}).get('decisions'),
+                                                    rules_state(result, bundle, graph)['adopted'], f'urn:ontopoc:{memory_key(result)}/', graph), 'TTL'
                     if (query.get('format') or [''])[0] == 'json':
                         self.reply(200, {'files': files})
                     else:
@@ -388,7 +394,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as z:
                             for file_name, text in files.items():
                                 z.writestr(file_name, text.encode('utf-8'))
-                        self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-对象表单.zip")
+                        self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-{zip_name}.zip")
                 elif tail == 'rules':
                     self.reply(200, rules_state(result, bundle, graph))
                 elif tail == 'suggestions':
