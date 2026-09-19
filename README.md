@@ -24,6 +24,11 @@
   <a href="#参与共建">参与共建</a>
 </p>
 
+<p align="center">
+  <img src="docs/media/ontopoc-hero.gif" alt="OntoPoc 蓝色角色将业务表格连接为等待确认的本体关系草案" width="960">
+</p>
+<p align="center"><sub>功能主题插画 · <a href="docs/media/ontopoc-poster.png">静态版</a> · <a href="docs/media/ontopoc-motion.mp4">MP4</a></sub></p>
+
 常见做法是由大模型直接生成本体，其正确性难以判断。OntoPoc 将模型的作用限定为提出方案：每一项均由代码对照全部数据逐行校验，再经人工确认。
 
 **原始文件留在本机** · **所有数值均由代码计算** · **不修改源数据**

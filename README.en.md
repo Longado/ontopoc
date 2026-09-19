@@ -24,6 +24,11 @@
   <a href="#contributing">Contributing</a>
 </p>
 
+<p align="center">
+  <img src="docs/media/ontopoc-hero.gif" alt="OntoPoc companion connects business tables into a draft ontology for review" width="960">
+</p>
+<p align="center"><sub>Concept illustration · <a href="docs/media/ontopoc-poster.png">Still image</a> · <a href="docs/media/ontopoc-motion.mp4">MP4</a></sub></p>
+
 A common approach is to let a language model generate the ontology directly, which leaves its correctness hard to judge. OntoPoc restricts the model to proposing: every element is verified by code against every row, then confirmed by a person.
 
 **Your files stay on your machine** · **All figures are computed by code** · **Source data is never modified**
