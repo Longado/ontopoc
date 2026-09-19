@@ -35,7 +35,7 @@ import zipfile
 from urllib.parse import quote as url_quote
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
-from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference
+from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
 from ontology_poc_generator.ontology_questions import ask_questions
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
@@ -382,10 +382,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif tail in ('export/forms', 'export/ttl'):
                     handover = result['evaluation'].get('handover') or handover_form(result['ontology'], bundle)
                     form = form_state({**result, 'evaluation': {**result['evaluation'], 'handover': handover}})
+                    decisions = (result.get('confirmation') or {}).get('decisions')
+                    reviewed = without_wrong(result['ontology'], decisions)   # both exports carry what the person kept
+                    kept_types = {t['key'] for t in reviewed['object_types']}
+                    handover = {**handover, 'types': [t for t in handover.get('types', []) if t['type'] in kept_types]}
                     if tail == 'export/forms':
-                        files, zip_name = form_files(result['ontology'], handover, form), '对象表单'
+                        files, zip_name = form_files(reviewed, handover, form), '对象表单'
                     else:
-                        files, zip_name = ttl_files(result['ontology'], bundle, handover, form, (result.get('confirmation') or {}).get('decisions'),
+                        files, zip_name = ttl_files(reviewed, bundle, handover, form, decisions,
                                                     rules_state(result, bundle, graph)['adopted'], f'urn:ontopoc:{memory_key(result)}/', graph), 'TTL'
                     if (query.get('format') or [''])[0] == 'json':
                         self.reply(200, {'files': files})
@@ -795,7 +799,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': '本体没有通过结构核验，不能出题'})
                 return
             bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-            answered = ask_questions(result['ontology'], bundle, gateway, question.strip() if question else None)
+            reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
+            answered = ask_questions(reviewed, bundle, gateway, question.strip() if question else None)
             if answered['error'] and answered['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': answered['error']})
                 return

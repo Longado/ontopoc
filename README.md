@@ -26,7 +26,7 @@
 
 常见做法是由大模型直接生成本体，其正确性难以判断。OntoPoc 将模型的作用限定为提出方案：每一项均由代码对照全部数据逐行校验，再经人工确认。
 
-**原始数据不出本机** · **所有数值均由代码计算** · **不修改源数据**
+**原始文件留在本机** · **所有数值均由代码计算** · **不修改源数据**
 
 ## 简介
 
@@ -173,8 +173,8 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（500 个）
-npm --prefix landing-page run test:unit                       # 前端测试（195 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（510 个）
+npm --prefix landing-page run test:unit                       # 前端测试（196 个）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合成示例工作簿
 ```

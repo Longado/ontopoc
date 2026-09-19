@@ -19,7 +19,7 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `health` | 服务状态、旧代码提示 | 否 |
 | `list_runs` | 左下角的空间（运行记录） | 否 |
 | `preview_upload` | "看看会发给模型什么" | 否 |
-| `build_ontology` | 新建：上传并建本体，跑完才返回 | 是 |
+| `build_ontology` | 新建：上传并建本体，跑完才返回；给 `previous` 即作为那次运行的新版本 | 是 |
 | `run_overview` | 顶部的状态标签 | 否 |
 | `list_objects` | 本体管理 · 对象卡片 | 否 |
 | `object_fields` | 对象 · 属性 | 否 |
