@@ -1,4 +1,4 @@
-"""字段释义员: drafts the columns of DIP's object form that only a person was left to fill — a business name and a one-line
+"""字段释义员: drafts the columns of a data platform's object form that only a person was left to fill — a business name and a one-line
 description for each object and each of its fields, and which field shows an object to people. Type, length and key
 are read from the data by code (handover_form); this is the one part that is a judgement about meaning, most of all
 when the headers are English. One call, on request. Code keeps only what names a real object and field of this

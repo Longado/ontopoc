@@ -9,7 +9,7 @@ import { editForm, formOf } from "./formModel.js";
 
 const VERDICT_TEXT = { ok: "判对", wrong: "判错" };
 
-/** 本体管理: one card per object, the way DIP lists its business ontologies. */
+/** 本体管理: one card per object, the way data platforms list their business objects. */
 const VERDICT_FILTERS = [["all", "全部"], ["ok", "判对"], ["wrong", "判错"], ["none", "没判"]];
 
 export function ObjectCards({ run, decisions, onOpen }) {
@@ -43,7 +43,7 @@ export function ObjectCards({ run, decisions, onOpen }) {
 
 const SUBS = [["overview", "概览"], ["fields", "属性"], ["rows", "数据"], ["confirm", "确认"]];
 
-/** One object's own page: 概览 / 属性 / 数据 / 确认, as DIP's object page has 概览 / 属性 / 对象. */
+/** One object's own page: 概览 / 属性 / 数据 / 确认, as a data platform's object page has overview / fields / instances. */
 export function ObjectDetail({ run, typeKey, confirm, onBack, onOpen, onSaveConfirm, form }) {
   const [sub, setSub] = useState("overview");
   useEffect(() => setSub("overview"), [typeKey]);
@@ -113,7 +113,7 @@ function FieldsTable({ run, type, form }) {
       <label htmlFor="os-type-label">中文名</label><span><input id="os-type-label" value={draft.label} maxLength={40} onChange={(e) => set(null, "label", e.target.value)} />{mark(draft.drafted && draft.label && draft)}</span>
       <label htmlFor="os-type-desc">描述</label><span><input id="os-type-desc" value={draft.description} maxLength={200} onChange={(e) => set(null, "description", e.target.value)} /></span>
     </div>
-    {shape?.needs_single_key && <p className="pr-note os-tone-warn">靠 {shape.identity_fields.join(" + ")} 这几个字段一起识别。DIP 每张表只收一个主键，导入前要把它们合成一个，或者改建模。</p>}
+    {shape?.needs_single_key && <p className="pr-note os-tone-warn">靠 {shape.identity_fields.join(" + ")} 这几个字段一起识别。目标平台每张表只收一个主键时，导入前要把它们合成一个，或者改建模。</p>}
     <div className="os-table-scroll"><table className="os-fields os-form-fields">
       <thead><tr><th scope="col">字段</th><th scope="col">中文名</th><th scope="col">描述</th><th scope="col" title="展示给人看的字段，每个对象一个">展示</th>{profiled && <><th scope="col">类型</th><th scope="col">长度</th><th scope="col" title="有值的行占多少">填充</th></>}</tr></thead>
       <tbody>{fields.map((f) => { const x = draft.fields[f.path]; return <tr key={f.path}>
@@ -201,7 +201,7 @@ export function FillBar({ field, rows }) {
     <span className="os-fill-track"><i style={{ width: `${f.share}%` }} className={f.share < 100 ? "is-gap" : ""} /></span><small>{f.share}%</small></span>;
 }
 
-/** A module's own places down the left, one shown at a time: the way DIP splits a module instead of stacking it. */
+/** A module's own places down the left, one shown at a time: split instead of stacked. */
 export function SubLayout({ label, items, active, onChange, children }) {
   return <div className="os-sublayout">
     <nav className="os-subnav" aria-label={label}>{items.map(([key, text, count]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onChange(key)}>

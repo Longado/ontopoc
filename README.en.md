@@ -6,8 +6,8 @@
 </p>
 
 <h1 align="center">OntoPoc</h1>
-<p align="center"><strong>Hand it a client's business tables; minutes later you have a draft ontology, and evidence for how far each part can be trusted.</strong></p>
-<p align="center">For consultants delivering data platforms, at the moment you first get a client's data and need to know what the business consists of and how it connects.</p>
+<p align="center"><strong>Generates a draft ontology from business data, with verifiable evidence for every element.</strong></p>
+<p align="center">For data platform implementation consultants mapping the business objects and relationships in a client's data for the first time.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="MIT"></a>
@@ -20,25 +20,25 @@
 <p align="center">
   <a href="README.md">中文</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#try-these">Try these</a> ·
-  <a href="#build-with-us">Build with us</a>
+  <a href="#try-it">Try it</a> ·
+  <a href="#contributing">Contributing</a>
 </p>
 
-Other tools let a language model draw the whole ontology in one go and leave you to guess whether it is right. OntoPoc lets the model only propose; code checks every part against every row, and you decide.
+A common approach is to let a language model generate the ontology directly, which leaves its correctness hard to judge. OntoPoc restricts the model to proposing: every element is verified by code against every row, then confirmed by a person.
 
-**Whole rows never leave your machine** · **Every number is computed by code** · **Your data is never changed**
+**Raw data stays on your machine** · **All figures are computed by code** · **Source data is never modified**
 
 The interface is in Chinese; this page describes it in English.
 
-## What it is
+## Overview
 
 Upload a few business tables (Excel, CSV) or a process document, and OntoPoc drafts an ontology: which objects the business has, what tells each one apart, and how they relate. Code then checks it against every row: do the fields exist, do the identity fields have values, do the relations actually connect in the data. It runs a data check and answers business questions from the data. You judge each part right or wrong; your judgement is kept, and the next upload of the same file, or a new version of it, starts from it.
 
-The result can be exported in the shape of the DIP platform's object form, and every feature is also an MCP tool other agents can call.
+The result can be exported in the shape of a data platform's object form, and every feature is also an MCP tool other agents can call.
 
-> **Early version.** Everything has been checked on public and synthetic data only (Chicago city contracts, Northwind, BART transit, the Taiwan company registry, CMS hospitals and more). Nobody but the author has yet used it end to end on their own. Tested on macOS only. DIP's batch import contract has not been tested. See [Known issues](#known-issues).
+> **Early version.** Everything has been checked on public and synthetic data only (Chicago city contracts, Northwind, BART transit, the Taiwan company registry, CMS hospitals and more). Nobody but the author has yet used it end to end on their own. Tested on macOS only. Batch import has not been tested on any data platform. See [Known issues](#known-issues).
 
-## A look
+## Screenshots
 
 <p align="center"><img src="docs/images/readme-objects.png" alt="Ontology: one card per business object" width="880"></p>
 <p align="center"><sub>Ontology (本体管理): the 4 objects built from the sample workbook, with check, question and stability status on top.</sub></p>
@@ -56,7 +56,7 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 
 ## How it works
 
-| You… | It… |
+| Action | What the system does |
 |---|---|
 | Upload tables and write the question you want answered | The model sees only each column's name and up to 3 example values, and proposes objects, identity fields and relations; code checks 17 kinds of error and sends it back to redo, up to 3 drafts |
 | Wait for the build | Builds the same file 3 times at once and marks where the 3 disagree (where the model is unsure and you should decide) |
@@ -66,22 +66,22 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 | Fix up to 3 questions as acceptance questions | Every rerun computes them with the same query and tells you which changed |
 | Adopt rules found in the data | Every rerun checks them and lists the objects that break them |
 | Upload a client's new version and say so | Last time's confirmation, questions and rules carry over, with how many of each object came and went |
-| Click "Draft" (起草) on the DIP form | One model call drafts Chinese names, descriptions and display fields; what you edited is never overwritten by a redraft |
-| Click "⤓ DIP" at the top right | One CSV per object, in the columns of DIP's object form |
+| Click "Draft" (起草) on the object form | One model call drafts Chinese names, descriptions and display fields; what you edited is never overwritten by a redraft |
+| Click "⤓ 表单" at the top right | One CSV per object, in the columns data platforms usually ask for when defining an object |
 
 The model only judges; loops and calculations are in code, with at most 3 model calls per user action. There are 5 agents, each with a definition card in [docs/AGENTS.md](docs/AGENTS.md).
 
-## Try these
+## Try it
 
 Once installed (see [Quick start](#quick-start)), with the synthetic sample in the repository:
 
-| Try | You see |
+| Action | Expected result |
 |---|---|
 | Without the modelling service, click "Open sample tables" (打开示例数据表) | A bundled result: 4 objects, 3 relations |
 | Upload `examples/company/demo_company.xlsx` with "哪些客户的售后问题最多？" | After half a minute to a minute, 4 cards: customer, product, order, after-sales ticket; data check 5 / 7, the two failures being the problems planted in the sample |
 | Ask "每个客户的订单总金额是多少？" (total order amount per customer) | Totals per customer, highest 241,420, from 160 values read |
 | Relations (本体关系) → Instance graph, pick a customer | The customer and its orders as a graph; click an order to open its product |
-| "⤓ DIP" at the top right | A zip: 4 object-form CSVs and a note on what to test before importing |
+| "⤓ 表单" at the top right | A zip: 4 object-form CSVs and a note on what to test before importing |
 
 ## Quick start
 
@@ -133,7 +133,7 @@ The tool list is in [docs/MCP.md](docs/MCP.md).
 | Module | What is in it |
 |---|---|
 | Data (数据接入) | Each uploaded table: rows, skipped title lines, each column's type, length and fill; when tables are left unconnected, the column that would connect them |
-| Ontology (本体管理) | Object cards (search, filter by your verdict, cards or list); each object's page: overview, fields (the DIP form), rows (paged, CSV download), confirmation; plus confirmation board, stability, last-run comparison, new version, build record |
+| Ontology (本体管理) | Object cards (search, filter by your verdict, cards or list); each object's page: overview, fields (the object form), rows (paged, CSV download), confirmation; plus confirmation board, stability, last-run comparison, new version, build record |
 | Relations (本体关系) | A graph that lays itself out (drag, zoom), the instance graph, the relation list; relations code sees in the data but the ontology lacks are drawn as dashed suggestions |
 | Questions (智能问答) | Ask, acceptance questions, the model's questions (filter by answered) |
 | Data check (数据体检) | 7 checks, rules, comparison with a reference ontology |
@@ -153,18 +153,18 @@ There is also an example use of the same method on vehicle recall scope (NHTSA p
 - **A new version may come with a different way of telling objects apart.** Once, Chicago's contracts went from "number + revision" to number alone; then only counts can be compared, not objects one by one, and the page says so.
 - **Code finds only some missing relations.** Removing each relation in turn on 17 saved runs (public and synthetic data), it found 24 of 33 again; on complete ontologies it has not suggested a false one.
 - **Queries cannot yet** filter by a numeric condition, limit to a time range, give two numbers in one question, or say which things tend to appear together. It says so when asked.
-- **DIP batch import is untested.** The exported form columns were checked against DIP's interface; the import format, key rules and how relations are expressed have not been confirmed with the platform, so no relation table is exported.
+- **Batch import is untested.** The exported form columns follow what data platforms usually ask for; import format, key rules and how relations are expressed differ by platform and have not been tested on any, so no relation table is exported.
 - **Tested on macOS only.** Windows and Linux are untested.
 
-## Build with us
+## Contributing
 
 **Can an ontology be read, corrected and carried forward by the people whose business it describes?**
 
-| If you like… | You could |
+| Area | Contribution |
 |---|---|
 | User research | Have a consultant who is not the author use it from upload to handover notes without help, and record where they get stuck |
 | Data quality | Rule discovery has only "required" and "date order"; value ranges, non-negative and others need defining on real data first |
-| Platform integration | Test DIP's batch import contract and add the relation table export |
+| Platform integration | Test batch import on a specific data platform and add the relation table export |
 | Prompts and evaluation | Pick accepted results from local runs as labelled samples, and compare old and new prompts with one command |
 | Cross-platform | Run it on Windows or Linux and file what breaks |
 
@@ -186,7 +186,7 @@ The design documents are in Chinese:
 | [docs/PRODUCT.md](docs/PRODUCT.md) | What the product is and which layers it covers |
 | [docs/AGENTS.md](docs/AGENTS.md) | The 5 agents' definition cards and the call log |
 | [docs/MCP.md](docs/MCP.md) | The 25 MCP tools |
-| [docs/DIP_INTERFACE_REFERENCE.md](docs/DIP_INTERFACE_REFERENCE.md) | DIP's form and interface, compared |
+| [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | Data platform object forms, compared |
 | [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | The latest round's plan and record |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |
 

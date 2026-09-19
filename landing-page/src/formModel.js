@@ -1,4 +1,4 @@
-/** The DIP form columns only a person was left to fill, as the page edits them. */
+/** The object form columns only a person was left to fill, as the page edits them. */
 
 const EMPTY = { label: "", description: "", display_field: null, drafted: false, fields: {} };
 
