@@ -16,7 +16,7 @@ import uuid
 
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
-from ontology_poc_generator.company_sources import MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
+from ontology_poc_generator.company_sources import DEFAULT_PURPOSE, MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
@@ -219,10 +219,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         with ThreadPoolExecutor(max_workers=STABILITY_RUNS - 1) as pool:
             extra = [pool.submit(build_company_ontology, bundle, gateway) for _ in range(STABILITY_RUNS - 1)]
             result = build_and_evaluate(bundle, gateway, progress)
-            if result['ontology']['status'] == 'auto_built_verified':
+            if result['ontology']['status'] == 'auto_built_verified' and bundle['decision'] != DEFAULT_PURPOSE:
+                # the person's own question is answered with the draft; the model's round of questions is on request
                 if progress:
                     progress('questions', {})
-                result['evaluation']['questions'] = ask_questions(result['ontology'], bundle, gateway)
+                answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True)
+                if answered['items'] or answered['error']:
+                    result['evaluation']['asked'] = [answered]
+            if result['ontology']['status'] == 'auto_built_verified':
                 if progress:
                     progress('stability', {'total': STABILITY_RUNS - 1})
                 result['evaluation']['stability'] = stability_of(result['ontology'], [extra_result(f) for f in extra])

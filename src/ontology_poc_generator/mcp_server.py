@@ -74,11 +74,11 @@ def _upload(files, purpose, previous=None) -> dict:
 def _overview(run: dict) -> dict:
     ontology, ev = run['ontology'], run['evaluation']
     fit = ev.get('data_fit') or ev.get('document_fit') or {}
-    questions = ev.get('questions') or {}
+    items = [i for r in ev.get('asked', []) for i in r.get('items', [])] + (ev.get('questions') or {}).get('items', [])
     return {'saved_as': run.get('saved_as'), 'file': run['file']['name'], 'kind': run['file'].get('kind'), 'purpose': run.get('purpose'),
             'status': ontology['status'], 'objects': len(ontology['object_types']), 'relations': len(ontology['relations']),
             'checks_passed': f"{sum(c['passed'] for c in fit.get('checks', []))} / {len(fit.get('checks', []))}",
-            'questions_answered': f"{questions.get('answered', 0)} / {questions.get('total', 0)}",
+            'questions_answered': f"{sum(i.get('status') == 'answered' for i in items)} / {len(items)}",
             'stability': ev.get('stability') and {'runs': ev['stability']['runs'], 'types': ev['stability']['types']},
             'confirmed': bool(run.get('confirmation')), 'acceptance': bool(ev.get('acceptance'))}
 

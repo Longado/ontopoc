@@ -9,7 +9,7 @@ from ontology_poc_generator.public_ontology import build_graph, normalize_propos
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.recognition import model_failure_text
 
-QUESTION_PROMPT_VERSION = 'company_questions.v5'
+QUESTION_PROMPT_VERSION = 'company_questions.v6'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
 CATEGORY_LIMIT = 12         # attributes with at most this many distinct values are shown to the model with their values
@@ -47,7 +47,8 @@ Use only type keys, relation keys and attribute paths listed in the ontology, an
 ontology has them but this query format cannot express it (for example time windows, filters on numeric ranges, or
 filters on objects other than start); in that case also add the simpler questions that together answer it.
 Write {QUESTION_COUNT} questions; if `purpose` contains a question, answer that first. If `asked` is present, write
-exactly one item for that question and nothing else.
+exactly one item for that question and nothing else. If `only_purpose` is true, write one item for each question the
+person wrote in `purpose`, in their words, and nothing else; if `purpose` asks no question, return {{"questions": []}}.
 '''
 
 
@@ -285,10 +286,14 @@ def _catalog(ontology: dict, bundle: dict) -> dict:
     }
 
 
-def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = None) -> dict:
+def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = None, purpose_only: bool = False) -> dict:
+    """One call. With question: that question. With purpose_only: the questions the person wrote as the purpose, which
+    an upload answers. With neither: the model's own round, asked for on the questions page."""
     request = {'purpose': bundle['decision'], 'ontology': _catalog(ontology, bundle)}
     if question:
         request['asked'] = question
+    elif purpose_only:
+        request['only_purpose'] = True
     out = {'prompt_version': QUESTION_PROMPT_VERSION, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
            'items': [], 'answered': 0, 'total': 0, 'error': None}
     judgement = ask_model(gateway, 'question_writer', QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT, request)
@@ -312,7 +317,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
             result = {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题')}
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
-                             **result, **({'asked': True} if question else {})})
+                             **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])
     out['total'] = len(out['items'])
     return out
