@@ -6,6 +6,7 @@ import io
 import json
 import unittest
 import zipfile
+from datetime import datetime
 from urllib.request import urlopen
 
 from ontology_poc_generator.handover_form import handover_form
@@ -104,7 +105,7 @@ class MergeTests(unittest.TestCase):
         exported = [('订单号', '客户编号', '金额', '下单时间', '发货时间'), ('O1', 'C1', '100', '2024-01-05T10:30:00.000', '2024-01-06T09:00:00.000')]
         g = parsed(export(orders=exported)['data.ttl'])
         value = g.value(URIRef(BASE + 'data/order/O1'), URIRef(BASE + 'order/%E4%B8%8B%E5%8D%95%E6%97%B6%E9%97%B4'))
-        self.assertEqual((str(value), value.datatype), ('2024-01-05T10:30:00.000', XSD.dateTime))
+        self.assertEqual((value.toPython(), value.datatype), (datetime(2024, 1, 5, 10, 30), XSD.dateTime))   # rdflib drops a zero fraction
 
 
 @unittest.skipIf(Graph is None, 'rdflib and pyshacl are not installed (pip install -e ".[check]")')
