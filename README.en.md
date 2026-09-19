@@ -32,7 +32,7 @@ The interface is in Chinese; this page describes it in English.
 
 ## Overview
 
-Upload a few business tables (Excel, CSV) or a process document, and OntoPoc drafts an ontology: which objects the business has, what tells each one apart, and how they relate. Code then checks it against every row: do the fields exist, do the identity fields have values, do the relations actually connect in the data. It runs a data check and answers business questions from the data. You judge each part right or wrong; your judgement is kept, and the next upload of the same file, or a new version of it, starts from it.
+Upload a few business tables (Excel, CSV) or a process document, and OntoPoc drafts an ontology: which objects the business has, what tells each one apart, and how they relate. Code then checks it against every row: do the fields exist, do the identity fields have values, do the relations actually connect in the data. It runs a data check and answers the question you wrote from the data. You judge each part right or wrong; your judgement is kept, and the next upload of the same file, or a new version of it, starts from it.
 
 The result can be exported in the shape of a data platform's object form or as W3C Turtle (OWL and SHACL), and every feature is also an MCP tool other agents can call.
 
@@ -59,9 +59,9 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 | Action | What the system does |
 |---|---|
 | Upload tables and write the question you want answered | The model sees only each column's name and up to 3 example values, and proposes objects, identity fields and relations; code checks 17 kinds of error and sends it back to redo, up to 3 drafts |
-| Wait for the build | Builds the same file 3 times at once and marks where the 3 disagree (where the model is unsure and you should decide) |
+| Wait for the build | Builds the same file 3 times at once and marks where the 3 disagree (where the model is unsure and you should decide); if your purpose asks a question, it is answered from the data too, ready to keep as an acceptance question |
 | Open the data check (数据体检) | Code computes 7 checks row by row, e.g. whether one number carries conflicting details, whether every uploaded table is used |
-| Ask a question (智能问答) | The model writes a structured query and code computes the answer on the data; when it cannot, it says whether the ontology lacks something, the data lacks it, or the question is beyond the query. 6 questions per round |
+| Ask a question (智能问答) | The model writes a structured query and code computes the answer on the data; when it cannot, it says whether the ontology lacks something, the data lacks it, or the question is beyond the query. The model can also write a round of 6 questions on request |
 | Judge each part, rename, add what is missing | Saved as this file's reference ontology; the next upload is compared against it and prefilled |
 | Fix up to 3 questions as acceptance questions | Every rerun computes them with the same query and tells you which changed |
 | Adopt rules found in the data | Every rerun checks them and lists the objects that break them |
@@ -70,7 +70,7 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 | Click "⤓ 表单" at the top right | One CSV per object, in the columns data platforms usually ask for when defining an object |
 | Click "⤓ TTL" at the top right | Three Turtle files: `ontology.ttl` describes objects, fields, relations and identity fields in OWL; in `data.ttl` every object is named by its identity values, so the same object in two tables or two versions of a file has one name and merges; `shapes.ttl` writes adopted rules as SHACL for any validator. What you judged wrong is left out |
 
-The model only judges; loops and calculations are in code, with at most 3 model calls per user action. There are 5 agents, each with a definition card in [docs/AGENTS.md](docs/AGENTS.md).
+The model only judges; loops and calculations are in code, with model calls chained at most 3 deep and each call tied to a judgement a person has to make. There are 5 agents, each with a definition card in [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Try it
 
@@ -79,7 +79,7 @@ Once installed (see [Quick start](#quick-start)), with the synthetic sample in t
 | Action | Expected result |
 |---|---|
 | Without the modelling service, click "Open sample tables" (打开示例数据表) | A bundled result: 4 objects, 3 relations |
-| Upload `examples/company/demo_company.xlsx` with "哪些客户的售后问题最多？" | After half a minute to a minute, 4 cards: customer, product, order, after-sales ticket; data check 5 / 7, the two failures being the problems planted in the sample |
+| Upload `examples/company/demo_company.xlsx` with "哪些客户的售后问题最多？" | After half a minute to a minute, 4 cards: customer, product, order, after-sales ticket; data check 5 / 7, the two failures being the problems planted in the sample; the questions chip shows your question answered from the data |
 | Ask "每个客户的订单总金额是多少？" (total order amount per customer) | Totals per customer, highest 241,420, from 160 values read |
 | Relations (本体关系) → Instance graph, pick a customer | The customer and its orders as a graph; click an order to open its product |
 | "⤓ 表单" at the top right | A zip: 4 object-form CSVs and a note on what to test before importing |
@@ -175,8 +175,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (510)
-npm --prefix landing-page run test:unit                       # page tests (196)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (513)
+npm --prefix landing-page run test:unit                       # page tests (198)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook
 ```

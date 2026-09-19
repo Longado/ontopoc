@@ -21,7 +21,7 @@ import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
 import { earlierVersionOf, versionRows } from "./versionModel.js";
 import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
-import { objectsNav, qaNav, sectionOfTile, sectionsFor } from "./workspaceModel.js";
+import { objectsNav, qaNav, qaPlaceFor, sectionOfTile, sectionsFor } from "./workspaceModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
@@ -260,7 +260,7 @@ function Answer({ item, onPath, run }) {
 function QuestionItem({ item, onPath, run, onAccept }) {
   const why = run && onAccept ? canAccept(run, item) : "不可用";
   return <li className="os-question">
-    <div className="os-question-head"><span className={`os-pill os-${item.status}`}>{STATUS_LABELS[item.status] || item.status}</span><b>{item.question}</b></div>
+    <div className="os-question-head"><span className={`os-pill os-${item.status}`}>{STATUS_LABELS[item.status] || item.status}</span>{item.from_purpose && <span className="os-pill os-purpose" title="你在建模目的里写的问题，上传时一并回答">建模目的</span>}<b>{item.question}</b></div>
     <Answer item={item} onPath={onPath} run={run} />
     {onAccept && item.status === "answered" && (why
       ? <p className="pr-muted">{why}</p>
@@ -766,7 +766,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     if (key === "ref" && !run.evaluation.reference) { goConfirm(); return; }
     if (key === "fit" || key === "ref") setEvalView(key);
     if (key === "ontology" || key === "stability") { setObjectKey(null); setObjPlace(key === "stability" ? "stability" : "objects"); }
-    if (key === "qa") setQaPlace("model");
+    if (key === "qa") setQaPlace(qaPlaceFor(run));
     setTab(sectionOfTile(key));
   }
   function demo(url = DEMO_URL) { setError(""); readText(url).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }

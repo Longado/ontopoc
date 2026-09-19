@@ -74,11 +74,11 @@ def _upload(files, purpose, previous=None) -> dict:
 def _overview(run: dict) -> dict:
     ontology, ev = run['ontology'], run['evaluation']
     fit = ev.get('data_fit') or ev.get('document_fit') or {}
-    questions = ev.get('questions') or {}
+    items = [i for r in ev.get('asked', []) for i in r.get('items', [])] + (ev.get('questions') or {}).get('items', [])
     return {'saved_as': run.get('saved_as'), 'file': run['file']['name'], 'kind': run['file'].get('kind'), 'purpose': run.get('purpose'),
             'status': ontology['status'], 'objects': len(ontology['object_types']), 'relations': len(ontology['relations']),
             'checks_passed': f"{sum(c['passed'] for c in fit.get('checks', []))} / {len(fit.get('checks', []))}",
-            'questions_answered': f"{questions.get('answered', 0)} / {questions.get('total', 0)}",
+            'questions_answered': f"{sum(i.get('status') == 'answered' for i in items)} / {len(items)}",
             'stability': ev.get('stability') and {'runs': ev['stability']['runs'], 'types': ev['stability']['types']},
             'confirmed': bool(run.get('confirmation')), 'acceptance': bool(ev.get('acceptance'))}
 
@@ -274,7 +274,7 @@ TOOLS = [
     _tool(health, '本机建模服务是否在跑、有没有模型凭据、是否在跑旧代码。'),
     _tool(list_runs, '本机保存过的运行，新的在前。', {'limit': {'type': 'integer', 'minimum': 1}}),
     _tool(preview_upload, '不调用模型：看这几份文件会发给模型什么（字段名和示例值）。', FILES, ('files',)),
-    _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、自动出题、建三次比稳定性。给 previous 表示这是那次运行的新版本，沿用它的确认、验收问题和规则。会调用模型，等它跑完才返回。',
+    _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、建三次比稳定性，并回答 purpose 里写的问题。给 previous 表示这是那次运行的新版本，沿用它的确认、验收问题和规则。会调用模型，等它跑完才返回。',
           {**FILES, 'previous': {'type': 'string', 'description': '上一版本的运行保存名（来自 list_runs）；不是新版本就不写'}}, ('files',)),
     _tool(run_overview, '一次运行的概况：对象和关系数、体检通过几项、问答能答几道、稳定性、是否确认过。', RUN, ('saved_as',)),
     _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。', RUN, ('saved_as',)),

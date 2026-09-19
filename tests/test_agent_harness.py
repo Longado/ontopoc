@@ -72,12 +72,12 @@ class EmptyAccountTests(unittest.TestCase):
 class CallLogTests(unittest.TestCase):
     def test_the_service_keeps_one_line_per_model_call(self):
         with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
-            upload = {'filename': 'orders.csv', 'content_base64': base64.b64encode(CSV).decode()}
+            upload = {'filename': 'orders.csv', 'content_base64': base64.b64encode(CSV).decode(), 'purpose': '哪个客户订单最多？'}
             status, run = call(base, '/api/ontology/build', upload)
             self.assertEqual(status, 200, run)
             lines = [json.loads(line) for line in (out / 'model_calls.jsonl').read_text(encoding='utf-8').splitlines()]
         agents = [r['agent'] for r in lines]
-        self.assertEqual(agents.count('question_writer'), 1)
+        self.assertEqual(agents.count('question_writer'), 1)   # the question written as the purpose
         self.assertGreaterEqual(agents.count('table_modeller'), 3)   # the build, and the two runs beside it for stability
         self.assertTrue(all(r['outcome'] == 'ok' for r in lines))
 

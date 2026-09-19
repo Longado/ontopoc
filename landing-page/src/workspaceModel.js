@@ -54,6 +54,12 @@ export function objectsNav(run, decisions) {
   ];
 }
 
+/** Where the questions chip opens: the person's own questions (the purpose's among them), or the model's round when
+ *  that is all a run has (runs from before the purpose was answered on upload). */
+export function qaPlaceFor(run) {
+  return !run.evaluation.asked?.length && run.evaluation.questions?.items?.length ? "model" : "ask";
+}
+
 /** 智能问答's places: asking, the questions fixed with the business, the model's round. */
 export function qaNav(run) {
   const { evaluation } = run;
