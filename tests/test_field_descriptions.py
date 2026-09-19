@@ -1,4 +1,4 @@
-"""The fifth agent, 字段释义员: drafts the columns of DIP's form only a person was left to write — a Chinese name and a
+"""The fifth agent, 字段释义员: drafts the columns of a data platform's object form only a person was left to write — a Chinese name and a
 description for each object and field, and which field to display. One call, on request. Code keeps what names a
 real field and says why the rest was dropped; a person edits, and what they write is not overwritten by a redraft."""
 import base64

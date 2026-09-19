@@ -229,7 +229,7 @@ small.os-tone-warn { color: var(--amber); }
 .os-fields tr:last-child td { border-bottom: 0; }
 .os-askbar-answer .os-question { padding-top: 0; border-top: 0; }
 
-/* 本体管理: one card per object, as DIP lists its business ontologies */
+/* 本体管理: one card per object */
 .os-objects { display: grid; gap: 12px; margin-bottom: 18px; }
 .os-objects-head h2 { margin: 0; font-size: 20px; }
 .os-objects-head small { color: var(--text-2); font-size: 14px; font-weight: 400; }
@@ -495,7 +495,7 @@ small.os-tone-warn { color: var(--amber); }
 @media (max-width: 760px) { .os-version-list li { grid-template-columns: 1fr auto; } .os-version-bars { grid-column: 1 / -1; } }
 .os-version-delta em.is-shift { color: var(--amber); background: var(--amber-soft); }
 
-/* the DIP form, filled in */
+/* the object form, filled in */
 .os-form-head { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; margin-bottom: 12px; font-size: 13px; }
 .os-form-head label { color: var(--text-2); }
 .os-form-head span, .os-cell-edit { display: flex; align-items: center; gap: 6px; }

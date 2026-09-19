@@ -1,4 +1,4 @@
-// The form a downstream platform asks for (DIP asks for key / display / name / type / length per attribute, and a
+// The form a downstream platform asks for (one typically asks for key / display / name / type / length per attribute, and a
 // cardinality per relation), filled in as far as the data allows. Types and lengths are read from every value by code;
 // the columns only a person can write are left for them, never guessed.
 import { typeLabel } from "./ontologyStudioModel.js";

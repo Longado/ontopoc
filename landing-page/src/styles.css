@@ -120,7 +120,7 @@ section[id] { scroll-margin-top: 78px; }
   }
 }
 
-/* DIP-shaped sidebar: modules in the middle, the workspace (a run) switched at the bottom */
+/* sidebar: modules in the middle, the workspace (a run) switched at the bottom */
 .app-modules { display: grid; align-content: start; gap: 2px; flex: 1; min-height: 0; }
 .app-modules button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px; color: var(--ink); background: transparent; font-size: 14px; text-align: left; }
 .app-modules button:hover { background: rgba(20, 22, 31, 0.04); }

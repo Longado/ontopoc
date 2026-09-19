@@ -1,5 +1,5 @@
-/** The workspace laid out the way DIP lays out its platform: modules in the sidebar, one card per object, and an
- *  object's own page. A run plays the part of DIP's workspace. */
+/** The workspace laid out as a data platform: modules in the sidebar, one card per object, and an object's own
+ *  page. A run plays the part of a workspace. */
 import { isDocument, typeLabel } from "./ontologyStudioModel.js";
 
 const SECTIONS = [["data", "数据接入"], ["objects", "本体管理"], ["graph", "本体关系"], ["qa", "智能问答"], ["check", "数据体检"]];

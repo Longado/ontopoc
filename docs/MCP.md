@@ -40,7 +40,7 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `confirm_ontology` | 逐项确认 · 保存 | 否 |
 | `compare_reference` | 数据体检 · 对照标准 | 否 |
 | `find_name_variants` | 找出可能的对应 | 是 |
-| `export_dip` | 右上角 ⤓ DIP：按 DIP 对象表单导出 | 否 |
+| `export_forms` | 右上角 ⤓ 表单：按对象表单导出 | 否 |
 
 "下载纪要"没有单独的工具：纪要是页面把上面这些数据排版成的一页，要内容就调对应的工具。
 

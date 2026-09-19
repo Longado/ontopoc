@@ -6,8 +6,8 @@
 </p>
 
 <h1 align="center">OntoPoc</h1>
-<p align="center"><strong>把客户的业务表交给它，几分钟后拿到一份本体草案，以及每一条靠不靠得住的证据。</strong></p>
-<p align="center">给做数据平台交付的实施顾问：第一次拿到客户数据、要弄清"业务里有哪些东西、怎么连"的时候用。</p>
+<p align="center"><strong>从业务数据自动生成本体草案，并为每一项给出可核验的证据。</strong></p>
+<p align="center">面向数据平台的实施顾问，用于首次接触客户数据时梳理业务对象及其关系。</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="MIT"></a>
@@ -20,93 +20,93 @@
 <p align="center">
   <a href="README.en.md">English</a> ·
   <a href="#快速开始">快速开始</a> ·
-  <a href="#可以试试这些">可以试试这些</a> ·
-  <a href="#一起做">一起做</a>
+  <a href="#快速体验">快速体验</a> ·
+  <a href="#参与共建">参与共建</a>
 </p>
 
-别的做法是让大模型一口气画出本体，对不对全凭感觉；OntoPoc 让模型只提议，每一条都由代码拿数据逐行核一遍，再交给你拍板。
+常见做法是由大模型直接生成本体，其正确性难以判断。OntoPoc 将模型的作用限定为提出方案：每一项均由代码对照全部数据逐行校验，再经人工确认。
 
-**整行数据不出本机** · **每个数字都是代码算的** · **不改你的数据**
+**原始数据不出本机** · **所有数值均由代码计算** · **不修改源数据**
 
-## 是什么
+## 简介
 
-上传几张业务表（Excel、CSV）或一份流程文档，OntoPoc 起草一份本体：业务里有哪些对象、每个对象按什么识别、对象之间怎么关联。然后代码拿每一行去核：字段在不在、识别字段有没有值、关系在数据里连不连得上；再做一轮数据体检，用数据回答业务问题。你逐项判断对不对，判断被存下来，同一份文件或它的新版本下次上传，就从你的判断开始。
+用户上传若干业务表（Excel、CSV）或一份流程文档后，OntoPoc 生成本体草案，包括业务中的对象、各对象的识别字段以及对象之间的关系。代码随后逐行校验草案：字段是否存在、识别字段是否有值、关系能否在数据中连通。在此基础上，系统执行数据质量检查，并基于数据回答业务问题。顾问逐项确认后，结果将被保存；同一文件或其新版本再次上传时，系统以此为基准进行比对。
 
-最后可以按 DIP 平台的对象表单导出，或者把每个功能当成 MCP 工具交给别的 agent 调。
+建模结果可按数据平台的对象表单导出；全部功能也已封装为 MCP 工具，可供其他 Agent 调用。
 
-> **早期版本。** 验证用的全是公开数据和合成数据（芝加哥市政合同、Northwind、BART 地铁、台湾公司登记、CMS 医院等），还没有一个作者以外的人独立用完一遍。只在 macOS 上跑过。DIP 的批量导入契约没实测过。详见[已知问题](#已知问题)。
+> **早期版本。** 目前仅在公开数据和合成数据上验证过（芝加哥市政合同、Northwind、BART 地铁、台湾公司登记、CMS 医院等），尚无作者以外的用户独立完成全流程；仅在 macOS 上测试；尚未在任何数据平台上实测批量导入。详见[已知问题](#已知问题)。
 
-## 看一眼
+## 界面预览
 
-<p align="center"><img src="docs/images/readme-objects.png" alt="本体管理：每个业务对象一张卡片" width="880"></p>
-<p align="center"><sub>本体管理：示例工作簿建出的 4 个对象，顶部是体检、问答、稳定性的状态。</sub></p>
+<p align="center"><img src="docs/images/readme-objects.png" alt="本体管理：业务对象卡片" width="880"></p>
+<p align="center"><sub>本体管理：示例工作簿生成的 4 个业务对象，顶部为数据体检、问答与稳定性状态。</sub></p>
 
-<p align="center"><img src="docs/images/readme-instances.png" alt="实例图谱：从一个客户展开它的订单和产品" width="880"></p>
-<p align="center"><sub>实例图谱：从客户 KH001 展开它的订单，再从订单展开产品；右侧是选中订单的字段原值。</sub></p>
+<p align="center"><img src="docs/images/readme-instances.png" alt="实例图谱：由客户展开至订单与产品" width="880"></p>
+<p align="center"><sub>实例图谱：由客户 KH001 展开至其订单，再由订单展开至产品；右侧为所选订单的原始字段值。</sub></p>
 
-<p align="center"><img src="docs/images/readme-ask.png" alt="智能问答：答案由代码在数据上算出" width="880"></p>
-<p align="center"><sub>智能问答：模型把问题写成查询，数字由代码在上传的数据上算，并写明读到了几个值。</sub></p>
+<p align="center"><img src="docs/images/readme-ask.png" alt="智能问答：答案由代码基于数据计算" width="880"></p>
+<p align="center"><sub>智能问答：模型将问题转写为结构化查询，数值由代码基于上传数据计算，并注明参与计算的值数。</sub></p>
 
-<p align="center"><img src="docs/images/readme-rules.png" alt="规则：从数据里找到的规则，采纳后每次重跑都检查" width="880"></p>
-<p align="center"><sub>数据体检里的规则：代码从数据里找出候选规则，采纳后每次重跑都会检查。</sub></p>
+<p align="center"><img src="docs/images/readme-rules.png" alt="数据规则：从数据中发现，采纳后每次运行均会校验" width="880"></p>
+<p align="center"><sub>数据规则：代码从数据中发现候选规则，采纳后每次重新运行均会校验。</sub></p>
 
-截图都来自仓库自带的合成示例 `examples/company/demo_company.xlsx`，由无头浏览器离屏渲染。
+以上截图均基于仓库内置的合成示例 `examples/company/demo_company.xlsx`，由无头浏览器离屏渲染。
 
-## 它怎么做
+## 工作原理
 
-| 你…… | 它会…… |
+| 操作 | 系统行为 |
 |---|---|
-| 上传表格，写一句想弄清的问题 | 模型只看每列的字段名和最多 3 个示例值，提出对象、识别字段和关系；代码按 17 类错误核验，错了退回重做，最多 3 版 |
-| 等建模完成 | 同一份文件同时建 3 次，标出 3 次不一致的地方（那是模型拿不准、该你决定的地方） |
-| 打开"数据体检" | 代码逐行算 7 项检查，比如同一个编号的信息打不打架、每张上传的表是否都用上了 |
-| 在"智能问答"里提问 | 模型把问题写成结构化查询，代码在数据上算答案；答不了就写明是本体缺了、数据没有，还是问法不支持。每次出 6 道题 |
-| 逐项判对错、改名、补漏 | 存成这份文件的参考本体；下次上传自动对照、预填 |
-| 把几道题固定为验收问题（最多 3 道） | 以后每次重跑都用同一个查询再算一次，只告诉你哪道变了 |
-| 采纳数据里找到的规则 | 以后每次重跑都检查，列出违反规则的对象 |
-| 客户发来新版文件，你说"是新版本" | 上次的确认、验收问题、规则接着用，并给出每个对象多了几个、少了几个 |
-| 点"起草"填 DIP 表单 | 一次模型调用，起草中文名、描述、展示字段；你改过的不会被再次起草覆盖 |
-| 点右上角"⤓ DIP" | 每个对象一张 CSV，列与 DIP 对象表单一致 |
+| 上传数据表并填写建模目的 | 模型仅读取每列字段名及至多 3 个示例值，提出对象、识别字段与关系；代码按 17 类错误校验，不通过则退回修改，至多 3 轮 |
+| 建模完成 | 同一文件并行建模 3 次，标出三次结果不一致之处，即模型不确定、需人工判断的部分 |
+| 打开"数据体检" | 代码逐行执行 7 项检查，例如同一编号的属性是否冲突、每张上传的表是否均被使用 |
+| 智能问答 | 模型将问题转写为结构化查询，由代码基于数据计算答案；无法回答时说明原因：本体缺失、数据缺失或查询不支持。每轮生成 6 道问题 |
+| 逐项确认、重命名、补充对象 | 保存为该文件的参考本体，再次上传时自动比对并预填 |
+| 设定验收问题（至多 3 道） | 每次重新运行以相同查询复算，仅提示结果发生变化的问题 |
+| 采纳数据规则 | 每次重新运行均校验，列出违反规则的对象 |
+| 标记上传文件为新版本 | 沿用上一版的确认、验收问题与规则，并统计各对象的新增与减少数量 |
+| 生成对象表单草稿 | 一次模型调用，生成中文名称、描述与展示字段；人工修改过的内容不会被再次生成覆盖 |
+| 导出对象表单 | 每个对象生成一份 CSV，列为数据平台建对象时的常见表单列 |
 
-模型只做判断，循环和计算都在代码里；每个用户动作最多 3 次模型调用。一共 5 个 Agent，定义卡在 [docs/AGENTS.md](docs/AGENTS.md)。
+模型只负责判断，循环与计算均由代码完成；每个用户操作至多调用模型 3 次。系统共有 5 个 Agent，定义见 [docs/AGENTS.md](docs/AGENTS.md)。
 
-## 可以试试这些
+## 快速体验
 
-装好后（见[快速开始](#快速开始)），用仓库自带的合成示例：
+完成安装（见[快速开始](#快速开始)）后，可用仓库内置的合成示例体验：
 
-| 试试 | 你会看到 |
+| 操作 | 预期结果 |
 |---|---|
-| 不启动建模服务，点"打开示例数据表" | 一份内置的结果：4 个对象、3 条关系 |
-| 上传 `examples/company/demo_company.xlsx`，写"哪些客户的售后问题最多？" | 半分钟到一分钟后出现客户、产品、订单、售后工单 4 张卡片；数据体检 5 / 7，没通过的两项正是示例里故意埋的问题 |
-| 智能问答里问"每个客户的订单总金额是多少？" | 按客户排序的合计，第一名 241,420，读到 160 个值 |
-| 本体关系 → 实例图谱，选一个客户 | 这个客户和它的订单连成一张图，点订单再展开产品 |
-| 右上角"⤓ DIP" | 一个压缩包：4 张对象表单 CSV 和一份导入前说明 |
+| 不启动建模服务，点击"打开示例数据表" | 显示内置结果：4 个对象、3 条关系 |
+| 上传 `examples/company/demo_company.xlsx`，建模目的填写"哪些客户的售后问题最多？" | 约半分钟至一分钟后生成客户、产品、订单、售后工单 4 个对象；数据体检 5 / 7 项通过，未通过的 2 项即示例中预置的问题 |
+| 在智能问答中提问"每个客户的订单总金额是多少？" | 按客户排序的合计金额，最高为 241,420，共计 160 个值 |
+| 本体关系 → 实例图谱，选择一个客户 | 以图谱展示该客户及其订单，点击订单可继续展开产品 |
+| 点击右上角"⤓ 表单" | 下载压缩包，内含 4 份对象表单 CSV 及一份导入说明 |
 
 ## 快速开始
 
-需要 Python 3.11+、Node 22+，以及一个 DeepSeek API key。
+环境要求：Python 3.11+、Node 22+，以及 DeepSeek API key。
 
-### 方式 A：让你的 AI 帮你装
+### 方式 A：由 AI 助手安装
 
-把下面这段贴进 Claude Code 或 Codex：
+将以下内容粘贴至 Claude Code 或 Codex：
 
 ```text
-帮我在本机装好并跑起 OntoPoc（https://github.com/Longado/ontopoc）：
-1. 先读仓库的 README.md，照"快速开始"做。
-2. 检查 python3 --version ≥ 3.11、node --version ≥ 22，不满足就告诉我怎么装，先别往下做。
-3. 克隆仓库，在 landing-page 里 npm ci。
-4. 问我要 DeepSeek API key，只放进当前终端的环境变量 DEEPSEEK_API_KEY，不要写进任何文件。
+请在本机安装并运行 OntoPoc（https://github.com/Longado/ontopoc）：
+1. 阅读仓库的 README.md，按"快速开始"操作。
+2. 检查 python3 --version ≥ 3.11、node --version ≥ 22；不满足时告诉我安装方法，并暂停后续步骤。
+3. 克隆仓库，在 landing-page 目录执行 npm ci。
+4. 向我索取 DeepSeek API key，仅写入当前终端的环境变量 DEEPSEEK_API_KEY，不要写入任何文件。
 5. 在仓库根目录启动建模服务：PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 6. 另开一个终端启动页面：cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
-7. 打开 http://127.0.0.1:5178，上传 examples/company/demo_company.xlsx 试一次，告诉我数据体检通过了几项。
+7. 打开 http://127.0.0.1:5178，上传 examples/company/demo_company.xlsx，告诉我"数据体检"通过了几项。
 ```
 
-### 方式 B：自己装
+### 方式 B：手动安装
 
 ```bash
 git clone https://github.com/Longado/ontopoc.git && cd ontopoc
 (cd landing-page && npm ci)
 
-# 终端 1：建模服务（端口 8767，结果存在 output/ontology-runs/）
+# 终端 1：建模服务（端口 8767，结果保存在 output/ontology-runs/）
 export DEEPSEEK_API_KEY=你的key
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 
@@ -114,11 +114,11 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-打开 `http://127.0.0.1:5178`。没有 key 也能打开内置示例；改了后端代码要重启建模服务，页面发现服务在跑旧代码会提示。
+访问 `http://127.0.0.1:5178`。未配置 key 时仍可查看内置示例。修改后端代码后需重启建模服务，页面检测到服务运行旧代码时会提示。
 
-### 接到 Claude Code 或别的 MCP 客户端
+### 接入 Claude Code 或其他 MCP 客户端
 
-页面上的每个功能都是一个标准 MCP 工具（stdio，25 个），调用的是同一个本机服务：
+页面上的每项功能都有对应的 MCP 工具，共 25 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -126,65 +126,65 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 
 工具清单见 [docs/MCP.md](docs/MCP.md)。
 
-## 功能
+## 功能模块
 
-| 模块 | 里面有什么 |
+| 模块 | 内容 |
 |---|---|
-| 数据接入 | 每张上传的表：行数、跳过的标题行、每列类型、长度、填充比例；表之间没连上时，提示能把它们连起来的列 |
-| 本体管理 | 对象卡片（搜索、按判断筛选、卡片 / 列表）；对象详情：概览、属性（即 DIP 表单）、数据行（分页、下载 CSV）、确认；逐项确认、稳定性、和上次比、新版本、建模记录 |
-| 本体关系 | 自动布局的关系图（可拖、可缩放）、实例图谱、关系列表；代码在数据里看到而本体里没有的关系画成虚线建议 |
-| 智能问答 | 提问、验收问题、模型出的题（按能不能答筛选） |
-| 数据体检 | 7 项体检、规则、对照标准本体 |
+| 数据接入 | 每张上传表的行数、跳过的标题行，以及各列的类型、长度、填充率；表之间未连通时，提示可用于关联的列 |
+| 本体管理 | 对象卡片（支持搜索、按确认结果筛选、卡片与列表视图）；对象详情页：概览、属性（即对象表单）、数据（分页浏览、导出 CSV）、确认；另含逐项确认、稳定性、历史比对、版本比对与建模记录 |
+| 本体关系 | 自动布局的关系图（支持拖拽与缩放）、实例图谱、关系列表；代码从数据中发现、本体中尚未包含的关系以虚线标示为建议 |
+| 智能问答 | 自由提问、验收问题、模型生成的问题（可按能否回答筛选） |
+| 数据体检 | 7 项数据检查、数据规则、与参考本体比对 |
 
-还有一个示例场景：用同一套方法研判车辆召回范围（NHTSA 公开数据），入口在侧边栏"更多示例"，说明见 [docs/RECALL_EXAMPLE.md](docs/RECALL_EXAMPLE.md)。OntoPoc 与 NHTSA 及任何车企无关联，候选结论不构成缺陷认定。
+仓库另附一个应用示例：用同一方法研判车辆召回范围（基于 NHTSA 公开数据），入口位于侧边栏"更多示例"，说明见 [docs/RECALL_EXAMPLE.md](docs/RECALL_EXAMPLE.md)。OntoPoc 与 NHTSA 及任何汽车厂商无关联，候选结果不构成缺陷认定。
 
 ## 隐私
 
-- 上传的文件和所有结果只存在本机的 `output/ontology-runs/`。
-- 发给模型（DeepSeek）的只有：每列字段名和最多 3 个示例值；出题时，取值不超过 12 种的列的全部取值；文档则是正文，每次最多 12 段。上传页可以在发送前逐列看清楚。
-- 每次模型调用在本机 `output/ontology-runs/model_calls.jsonl` 记一行（哪个 Agent、耗时、成败），不记内容。
-- 页面只接受本机请求。
+- 上传的文件及全部结果仅保存在本机 `output/ontology-runs/` 目录。
+- 发送给模型（DeepSeek）的内容仅包括：各列字段名及至多 3 个示例值；生成问题时，取值不超过 12 种的列的全部取值；文档则为正文，每次至多 12 段。上传前可在页面逐列查看将发送的内容。
+- 每次模型调用在本机 `output/ontology-runs/model_calls.jsonl` 记录一行（Agent、耗时、成功与否），不记录调用内容。
+- 服务仅接受本机请求。
 
 ## 已知问题
 
-- **模型每次搭得不一样。** 同一份文件建 3 次常有出入，比如 Northwind 那次 8 个对象里只有 4 个 3 次都有。页面把不一致的地方标出来，由你决定。
-- **新版本对比会遇到模型换识别方式。** 芝加哥合同有一次从"合同号 + 修订号"换成只用合同号，这时只能比数量，不能逐个比，页面会写明"识别方式变了"。
-- **代码推断关系只找回一部分。** 在 17 份保存过的运行（公开数据和合成数据）上逐条拿掉关系再找，33 条找回 24 条；完整的本体上没有报过假关系。
-- **查询还不支持**：按数值条件筛选、限定时间段、一道题给两个数、"哪些东西常一起出现"。遇到会照实说不支持。
-- **DIP 批量导入没实测。** 导出的表单列是按 DIP 界面核对过的，导入格式、主键规则、关系表达都还没和平台确认，所以关系表没导出。
-- **只在 macOS 上跑过。** Windows、Linux 没测。
+- **建模结果存在随机性。** 同一文件三次建模结果常有差异，例如 Northwind 数据中 8 个对象仅 4 个在三次中均出现。差异之处会在页面中标出，由人工判断。
+- **新旧版本的识别字段可能变化。** 芝加哥合同数据曾有一次由"合同号 + 修订号"改为仅用合同号识别，此时只能比较数量，无法逐一比对，页面会注明"识别方式已变更"。
+- **关系推断的召回有限。** 在 17 份已保存的运行（公开数据与合成数据）上逐条移除关系后重新推断，33 条中找回 24 条；在完整本体上未出现误报。
+- **查询能力的限制。** 暂不支持按数值条件筛选、限定时间范围、单个问题返回两个数值，以及"哪些项目经常同时出现"一类问题；遇到时系统会如实说明。
+- **批量导入尚未实测。** 导出的表单列按数据平台的常见表单整理，但导入格式、主键规则与关系表达因平台而异，尚未在任何平台上实测，因此暂不导出关系表。
+- **仅在 macOS 上测试。** Windows 与 Linux 尚未测试。
 
-## 一起做
+## 参与共建
 
-**这份本体能不能让业务方的人自己看懂、改对，并且下次还接得上？**
+**业务人员能否自行读懂、修正本体，并在后续工作中持续使用？**
 
-| 你喜欢…… | 可以贡献 |
+| 方向 | 可贡献的内容 |
 |---|---|
-| 做用户研究 | 找一位不是作者的顾问，不插手地从上传用到下载纪要，记下卡在哪 |
-| 数据质量 | 规则发现目前只有"必填"和"日期先后"两种，取值范围、不为负等要先在真数据上跑出定义 |
-| 数据平台对接 | 实测 DIP 的批量导入契约，补上关系表导出 |
-| 提示词与评测 | 从本机运行里挑一批认可的结果做标注样本，一条命令比较新旧提示词 |
-| 跨平台 | 在 Windows、Linux 上跑一遍，把卡住的地方写进 issue |
+| 用户研究 | 邀请一位非作者的顾问独立完成从上传到导出纪要的全流程，记录受阻环节 |
+| 数据质量 | 规则发现目前仅支持"必填"与"日期先后"两类，取值范围、非负等规则需先在真实数据上验证定义 |
+| 平台对接 | 在具体数据平台上实测批量导入，补充关系表导出 |
+| 提示词评测 | 从本机运行结果中选取已确认样本作为标注集，实现新旧提示词的一键对比 |
+| 跨平台 | 在 Windows、Linux 上完整运行，并以 issue 形式反馈问题 |
 
-欢迎提 issue 或 pull request。开发前先读[开发护栏](docs/DEVELOPMENT_GUARDRAILS.md)。
+欢迎提交 issue 或 pull request。开发前请先阅读[开发规范](docs/DEVELOPMENT_GUARDRAILS.md)。
 
 ## 开发
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（487 个）
-npm --prefix landing-page run test:unit                       # 页面测试（191 个）
+npm --prefix landing-page run test:unit                       # 前端测试（191 个）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合成示例工作簿
 ```
 
-| 文档 | 写什么 |
+| 文档 | 内容 |
 |---|---|
-| [docs/PRODUCT.md](docs/PRODUCT.md) | 产品是什么、站在哪几层 |
-| [docs/AGENTS.md](docs/AGENTS.md) | 5 个 Agent 的定义卡、调用记录 |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | 产品定位与范围 |
+| [docs/AGENTS.md](docs/AGENTS.md) | 5 个 Agent 的定义与调用记录 |
 | [docs/MCP.md](docs/MCP.md) | 25 个 MCP 工具 |
-| [docs/DIP_INTERFACE_REFERENCE.md](docs/DIP_INTERFACE_REFERENCE.md) | 对照 DIP 平台的表单与界面 |
-| [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | 最近一轮的计划与执行记录 |
-| [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 红线，以及等触发再做的方向 |
+| [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | 数据平台对象表单对照 |
+| [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | 最近一轮迭代的计划与执行记录 |
+| [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 开发红线与待触发的方向 |
 
 ## 许可证
 

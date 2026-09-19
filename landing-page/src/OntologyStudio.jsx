@@ -444,7 +444,7 @@ function ConfirmCard({ run, confirm }) {
   </section>;
 }
 
-const VIEWS = [["graph", "关系图"], ["instances", "实例图谱"], ["relations", "关系列表"]];   // DIP's 本体关系 page; objects have their own pages under 本体管理
+const VIEWS = [["graph", "关系图"], ["instances", "实例图谱"], ["relations", "关系列表"]];   // objects have their own pages under 本体管理 under 本体管理
 
 function RelationsView({ run, confirm, suggestions = [] }) {
   const { ontology } = run;
@@ -489,7 +489,7 @@ function ObjectsPlace({ run, confirm, place }) {
         <b>{o.label}</b>
         <span className="os-version-bars" aria-label={`之前 ${o.before}，现在 ${o.after}`}><i className="is-before" style={{ width: `${(o.before / o.scale) * 100}%` }} /><i className="is-after" style={{ width: `${(o.after / o.scale) * 100}%` }} /></span>
         <span className="os-version-count">{o.before.toLocaleString("zh-CN")} → {o.after.toLocaleString("zh-CN")}</span>
-        <span className="os-version-delta">{o.added > 0 && <em className="is-added" title={o.added_examples.join("、")}>＋{o.added}</em>}{o.removed > 0 && <em className="is-removed" title={o.removed_examples.join("、")}>－{o.removed}</em>}{o.identity_changed && <em className="is-shift" title={`之前按 ${o.identity_changed.before.join(" + ")}，现在按 ${o.identity_changed.after.join(" + ")}：不能逐个对比`}>识别方式变了</em>}{!o.changed && !o.identity_changed && <em>=</em>}</span>
+        <span className="os-version-delta">{o.added > 0 && <em className="is-added" title={o.added_examples.join("、")}>＋{o.added}</em>}{o.removed > 0 && <em className="is-removed" title={o.removed_examples.join("、")}>－{o.removed}</em>}{o.identity_changed && <em className="is-shift" title={`之前按 ${o.identity_changed.before.join(" + ")}，现在按 ${o.identity_changed.after.join(" + ")}：不能逐个对比`}>识别方式已变更</em>}{!o.changed && !o.identity_changed && <em>=</em>}</span>
         {o.changed && !o.identity_changed && <span className="os-version-examples">{[...o.added_examples.map((x) => ["+", x]), ...o.removed_examples.map((x) => ["−", x])].map(([k, x]) => <code key={k + x} className={k === "+" ? "is-added" : "is-removed"}>{k} {x}</code>)}</span>}
       </li>)}</ul>
     </section>}
@@ -792,7 +792,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
         <div className="os-overview-file"><h1 id="os-title" className="os-crumb" title={`${run.file.name}${run.purpose ? `\n${run.purpose}` : ""}`}>{crumb.map((c, i) => <span key={c}>{i > 0 && <i aria-hidden="true">/</i>}{c}</span>)}</h1>
           <button className="os-icon-btn" onClick={downloadSummary} title="下载纪要：一页 Markdown，给会上的人看">⤓ 纪要</button>
           <button className="os-icon-btn" onClick={download} title="下载本体和评测：一个 JSON 文件">⤓ JSON</button>
-          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/dip`} download title="按 DIP 对象表单导出：每个对象一张 CSV；导入契约还没实测">⤓ DIP</a>}</div>
+          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/forms`} download title="按对象表单导出：每个对象一张 CSV，导入目标平台前请先实测">⤓ 表单</a>}</div>
         <div className="os-tiles">{overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} title={t.hint || undefined} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b></button>)}</div>
       </div>
     </header>}

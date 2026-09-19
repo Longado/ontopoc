@@ -184,8 +184,8 @@ def save_form(s, a):
     return s.request('/api/ontology/form', {'saved_as': _text(a.get('saved_as'), 'saved_as'), 'form': a.get('form')})['evaluation']['form']
 
 
-def export_dip(s, a):
-    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/dip?format=json")
+def export_forms(s, a):
+    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/forms?format=json")
 
 
 def data_layout(s, a):
@@ -271,7 +271,7 @@ TOOLS = [
     _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、自动出题、建三次比稳定性。会调用模型，等它跑完才返回。', FILES, ('files',)),
     _tool(run_overview, '一次运行的概况：对象和关系数、体检通过几项、问答能答几道、稳定性、是否确认过。', RUN, ('saved_as',)),
     _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。', RUN, ('saved_as',)),
-    _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到 DIP 要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
+    _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到数据平台时要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
     _tool(object_rows, '一个对象在数据里的每一个实例，一页 20 个；all=true 一次给全部。', {**RUN, **TYPE, 'page': {'type': 'integer', 'minimum': 1}, 'all': {'type': 'boolean'}}, ('saved_as', 'type')),
     _tool(list_relations, '本体里的关系：两端、含义、来源表、一对一/一对多/多对多。', RUN, ('saved_as',)),
     _tool(suggest_relations, '代码在数据里看到、本体里没有的关系，只作建议：同一行上的两个对象没连起来；某列写的是别的对象的名称（且指向的不是本行已连着的那个）；或某列按名字和取值指向别的对象的编号。', RUN, ('saved_as',)),
@@ -281,11 +281,11 @@ TOOLS = [
     _tool(list_rules, '代码在数据里找到的规则（某字段每个对象都有值；两个日期总是先后有序）和人采纳的规则，采纳的带本次数据里的违反数和例子。', RUN, ('saved_as',)),
     _tool(set_rules, '采纳或不要规则：adopted、declined 各写完整的规则 id 列表（id 来自 list_rules）。采纳的规则以后每次重跑都会检查。',
           {**RUN, 'adopted': {'type': 'array', 'items': {'type': 'string'}}, 'declined': {'type': 'array', 'items': {'type': 'string'}}}, ('saved_as', 'adopted')),
-    _tool(draft_form, '让字段释义员起草 DIP 表单里只有人能写的列：每个对象和字段的中文名、一句话描述、展示字段。一次模型调用；人写过的不会被覆盖。', RUN, ('saved_as',)),
-    _tool(save_form, '保存 DIP 表单。form 形如 {"types": {"<对象key>": {"label": "中文名", "description": "描述", "display_field": "字段", '
+    _tool(draft_form, '让字段释义员起草对象表单里只有人能写的列：每个对象和字段的中文名、一句话描述、展示字段。一次模型调用；人写过的不会被覆盖。', RUN, ('saved_as',)),
+    _tool(save_form, '保存对象表单。form 形如 {"types": {"<对象key>": {"label": "中文名", "description": "描述", "display_field": "字段", '
           '"drafted": false, "fields": {"<字段>": {"label": "…", "description": "…", "drafted": false}}}}}；drafted=false 表示人写的。',
           {**RUN, 'form': {'type': 'object'}}, ('saved_as', 'form')),
-    _tool(export_dip, '按 DIP 对象表单导出：每个对象一张 CSV（主键、展示、中文名称、英文名称、描述、类型、长度、属性类型）和一份说明。导入契约还没实测，说明里写着导入前要测。', RUN, ('saved_as',)),
+    _tool(export_forms, '按对象表单导出：每个对象一张 CSV（主键、展示、中文名称、英文名称、描述、类型、长度、属性类型）和一份说明。导入契约还没实测，说明里写着导入前要测。', RUN, ('saved_as',)),
     _tool(data_layout, '上传的每张表：行数、跳过的标题行、每列类型长度空值；表没连上时，能把它们连起来的列。', RUN, ('saved_as',)),
     _tool(data_check, '数据体检：七项检查是否通过，以及每类发现的数量和前几个例子。全部由代码算。', RUN, ('saved_as',)),
     _tool(ask_question, '用数据回答一个业务问题：模型把问题写成查询，代码在数据上算答案。不给 question 就让模型出一组题。会调用模型。',
