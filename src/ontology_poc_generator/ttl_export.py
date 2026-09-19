@@ -34,7 +34,7 @@ def _value(value: str, kind: str | None) -> str:
         return f'"{value}"^^xsd:decimal'
     if kind == 'DATE' and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
         return f'"{value}"^^xsd:date'
-    m = re.fullmatch(r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(:\d{2})?', value) if kind == 'DATETIME' else None
+    m = re.fullmatch(r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(:\d{2}(\.\d+)?)?', value) if kind == 'DATETIME' else None
     if m:
         return f'"{m[1]}T{m[2]}{m[3] or ":00"}"^^xsd:dateTime'
     return _text(value)
