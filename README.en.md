@@ -26,7 +26,7 @@
 
 A common approach is to let a language model generate the ontology directly, which leaves its correctness hard to judge. OntoPoc restricts the model to proposing: every element is verified by code against every row, then confirmed by a person.
 
-**Raw data stays on your machine** · **All figures are computed by code** · **Source data is never modified**
+**Your files stay on your machine** · **All figures are computed by code** · **Source data is never modified**
 
 The interface is in Chinese; this page describes it in English.
 
@@ -175,8 +175,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (500)
-npm --prefix landing-page run test:unit                       # page tests (195)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (510)
+npm --prefix landing-page run test:unit                       # page tests (196)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook
 ```

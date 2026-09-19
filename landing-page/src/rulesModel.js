@@ -22,6 +22,17 @@ export const adoptAll = (state, rules) => rules.reduce((s, r) => toggleRule(s, r
 export function rulesTile(rules) {
   if (!rules) return null;
   if (!rules.adopted.length) return { value: rules.candidates.length ? `${rules.candidates.length} 条待看` : "没有", tone: "muted" };
-  const broken = rules.adopted.filter((r) => r.violations.count).length;
-  return broken ? { value: `${broken} / ${rules.adopted.length} 条被违反`, tone: "warn" } : { value: `${rules.adopted.length} 条都守住`, tone: "ok" };
+  const n = rules.adopted.length;
+  const broken = rules.adopted.filter((r) => r.violations?.count).length;
+  const unchecked = rules.adopted.filter((r) => !r.violations).length;
+  if (broken && unchecked) return { value: `${broken} 条被违反，${unchecked} 条无法检查`, tone: "warn" };
+  if (broken || unchecked) return { value: `${broken || unchecked} / ${n} 条${broken ? "被违反" : "无法检查"}`, tone: "warn" };
+  return { value: `${n} 条都守住`, tone: "ok" };
+}
+
+/** One adopted rule's mark: broken, kept, or not checked at all (its object or field is gone), which is never "kept". */
+export function ruleStatus(rule) {
+  if (!rule.violations) return { kind: "unchecked", mark: "?", label: `无法检查：${rule.unchecked || ""}` };
+  const n = rule.violations.count;
+  return n ? { kind: "broken", mark: `✕ ${n}`, label: `${n} 个违反` } : { kind: "kept", mark: "✓", label: "都守住" };
 }

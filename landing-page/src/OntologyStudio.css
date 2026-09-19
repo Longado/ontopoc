@@ -457,6 +457,7 @@ small.os-tone-warn { color: var(--amber); }
 .os-rule-mark { min-width: 44px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; text-align: center; }
 .is-kept .os-rule-mark { color: var(--ok); background: var(--ok-soft); }
 .is-broken .os-rule-mark { color: var(--red); background: var(--red-soft); }
+.is-unchecked .os-rule-mark { color: var(--amber); background: var(--amber-soft); }
 .os-rule-type { color: var(--text-2); font-size: 12px; }
 .os-rule-text { display: inline-flex; align-items: center; gap: 6px; }
 .os-rule-text em { padding: 0 6px; border-radius: 5px; font-size: 11px; font-style: normal; color: var(--primary-ink); background: var(--primary-soft); }

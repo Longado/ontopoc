@@ -14,6 +14,7 @@ import re
 from urllib.parse import quote
 
 from ontology_poc_generator.object_rows import _read, _row
+from ontology_poc_generator.ontology_confirm import without_wrong
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 
 PREFIXES = ('@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n'
@@ -46,14 +47,12 @@ def ttl_files(ontology: dict, bundle: dict, handover: dict, form: dict | None, d
     def iri(*parts):
         return '<' + base + '/'.join(quote(str(p), safe='') for p in parts) + '>'
 
-    p = normalize_proposal(ontology)
     graph = graph or build_graph(ontology, bundle)
+    p = without_wrong(normalize_proposal(ontology), decisions)
     judged = (decisions or {}).get('types', {})
     written = (form or {}).get('types', {})
-    types = [t for t in p['object_types'] if judged.get(t['key'], {}).get('verdict') != 'wrong']
+    types, relations = p['object_types'], p['relations']
     kept = {t['key'] for t in types}
-    relations = [r for r in p['relations'] if r['from'] in kept and r['to'] in kept
-                 and (decisions or {}).get('relations', {}).get(r['key'], {}).get('verdict') != 'wrong']
     fields = {t['type']: t['fields'] for t in handover.get('types', []) if t['type'] in kept}
     labels = {t['key']: judged.get(t['key'], {}).get('label') or written.get(t['key'], {}).get('label') or t.get('label') or t['key'] for t in types}
 

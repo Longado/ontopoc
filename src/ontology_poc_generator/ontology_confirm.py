@@ -11,6 +11,17 @@ MAX_ADDED = 30
 MAX_VARIANT_GROUPS = 50
 
 
+def without_wrong(ontology: dict, decisions: dict | None) -> dict:
+    """The ontology every consumer uses once a person has judged it: objects and relations judged wrong are out, and so
+    is a relation with a wrong object at either end. Not judged yet is kept. A copy; the stored draft is not changed."""
+    types = (decisions or {}).get('types') or {}
+    relations = (decisions or {}).get('relations') or {}
+    kept = [t for t in ontology['object_types'] if types.get(t['key'], {}).get('verdict') != 'wrong']
+    keys = {t['key'] for t in kept}
+    return {**ontology, 'object_types': kept, 'relations': [r for r in ontology['relations'] if r['from'] in keys and r['to'] in keys
+                                                             and relations.get(r['key'], {}).get('verdict') != 'wrong']}
+
+
 class ConfirmError(ValueError):
     """The decisions do not fit the ontology; the message is shown to the user."""
 
@@ -108,8 +119,9 @@ def prefill_from_reference(ontology: dict, reference: dict) -> dict:
     for ref_key, our_key in mapping.items():
         label = next(t['label'] for t in ref_types if t['key'] == ref_key)
         types[our_key] = {'verdict': 'ok', **({'label': label} if label != (ours[our_key].get('label') or our_key) else {})}
-    confirmed_ends = [{mapping.get(r['from']), mapping.get(r['to'])} for r in reference['relations']]
-    relations = {r['key']: {'verdict': 'ok'} for r in ontology['relations'] if {r['from'], r['to']} in confirmed_ends}
+    # the same two objects the other way round is another relation (a customer's orders is not an order's customer)
+    confirmed_ends = {(mapping.get(r['from']), mapping.get(r['to'])) for r in reference['relations']}
+    relations = {r['key']: {'verdict': 'ok'} for r in ontology['relations'] if (r['from'], r['to']) in confirmed_ends}
     added = [t['label'] for t in ref_types if t['key'].startswith('added_') and t['key'] not in mapping]
     groups = reference.get('name_variants')   # the stored file can have been hand-edited: anything unreadable is left out
     variants = [{'type': mapping[g['type']], 'values': g['values']} for g in (groups if isinstance(groups, list) else [])

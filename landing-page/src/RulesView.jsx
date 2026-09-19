@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { adoptAll, ruleGroups, toggleRule } from "./rulesModel.js";
+import { adoptAll, ruleGroups, ruleStatus, toggleRule } from "./rulesModel.js";
 import { typeLabel } from "./ontologyStudioModel.js";
 
 const ruleText = (r) => (r.kind === "required" ? <><b>{r.field}</b><em>必填</em></> : <><b>{r.before}</b><i aria-label="不晚于">→</i><b>{r.after}</b></>);
@@ -21,12 +21,12 @@ export function RulesView({ run, canSave, busy, error, onSave }) {
   return <>
     <section className="pr-card os-rules">
       <div className="pr-card-head"><h2>采纳的规则 <small>{rules.adopted.length}</small></h2></div>
-      {!rules.adopted.length ? <p className="os-empty-line">—</p> : <ul className="os-rule-list">{rules.adopted.map((r) => <li key={r.id} className={r.violations.count ? "is-broken" : "is-kept"}>
-        <span className="os-rule-mark" aria-label={r.violations.count ? `${r.violations.count} 个违反` : "都守住"}>{r.violations.count ? `✕ ${r.violations.count}` : "✓"}</span>
+      {!rules.adopted.length ? <p className="os-empty-line">—</p> : <ul className="os-rule-list">{rules.adopted.map((r) => { const status = ruleStatus(r); return <li key={r.id} className={`is-${status.kind}`}>
+        <span className="os-rule-mark" aria-label={status.label} title={status.label}>{status.mark}</span>
         <span className="os-rule-type">{typeLabel(run.ontology, r.type)}</span><span className="os-rule-text">{ruleText(r)}</span>
-        {r.violations.count > 0 && <span className="os-rule-examples">{r.violations.examples.map((x) => <code key={x}>{x}</code>)}</span>}
+        {r.violations?.count > 0 && <span className="os-rule-examples">{r.violations.examples.map((x) => <code key={x}>{x}</code>)}</span>}
         <button type="button" className="pr-link" disabled={busy || !canSave} onClick={() => save(toggleRule(state, r.id, "remove"))}>撤回</button>
-      </li>)}</ul>}
+      </li>; })}</ul>}
     </section>
     <section className="pr-card os-rules">
       <div className="pr-card-head"><h2>数据里找到的 <small>{rules.candidates.length}</small></h2>
