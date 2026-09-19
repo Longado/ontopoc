@@ -21,7 +21,7 @@ class DataDirTests(unittest.TestCase):
             call = started_with(['--port', '0', '--data-dir', d])
         self.assertEqual(call.kwargs['output_dir'], Path(d))
 
-    def test_by_default_runs_stay_where_they_always were(self):
+    def test_by_default_runs_stay_where_they_always_were(self):
         self.assertEqual(started_with([]).kwargs['output_dir'], ontology_server.ROOT / 'output/ontology-runs')
 
 
