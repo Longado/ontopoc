@@ -814,11 +814,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
     return ThreadingHTTPServer(('127.0.0.1', port), Handler)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8767)
+    parser.add_argument('--data-dir', type=Path, default=ROOT / 'output/ontology-runs',
+                        help='where runs, confirmations and rules are kept; point a trial run elsewhere')
+    args = parser.parse_args(argv)
     gateway = gateway_from_env()
-    server = make_server(parser.parse_args().port, gateway)
+    server = make_server(args.port, gateway, output_dir=args.data_dir)
     print(f'Ontology API: http://127.0.0.1:{server.server_port}'
           + ('' if gateway else '  (no model key: set DEEPSEEK_API_KEY to build ontologies)'), flush=True)
     try:
