@@ -192,6 +192,12 @@ def export_forms(s, a):
     return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/forms?format=json")
 
 
+def export_mermaid(s, a):
+    years = a.get('years')
+    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/mermaid?format=json"
+                     + (f"&years={quote(_text(years, 'years'))}" if years is not None else ''))
+
+
 def export_ttl(s, a):
     return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/ttl?format=json")
 
@@ -296,6 +302,9 @@ TOOLS = [
           '"drafted": false, "fields": {"<字段>": {"label": "…", "description": "…", "drafted": false}}}}}；drafted=false 表示人写的。',
           {**RUN, 'form': {'type': 'object'}}, ('saved_as', 'form')),
     _tool(export_forms, '按对象表单导出：每个对象一张 CSV（主键、展示、中文名称、英文名称、描述、类型、长度、属性类型）和一份说明。导入契约还没实测，说明里写着导入前要测。', RUN, ('saved_as',)),
+    _tool(export_mermaid, '组织架构模式的运行导出组织图（Mermaid）：组织隶属.mmd（隶属、汇报、担任）和协作交接.mmd（协作、交接及交接内容）。'
+          'years 写 2016-2022 只画这段时间的关系，没写时间的关系每段都画；判错的不画。',
+          {**RUN, 'years': {'type': 'string', 'pattern': '^[0-9]{4}-[0-9]{4}$'}}, ('saved_as',)),
     _tool(export_ttl, '按 W3C 标准导出 Turtle：ontology.ttl（OWL 类、字段、关系、识别键）、data.ttl（每个对象按识别值命名，同一对象跨表跨版本同名）、'
           'shapes.ttl（采纳的规则写成 SHACL，有规则时才有）。判错的对象和关系不导出。', RUN, ('saved_as',)),
     _tool(data_layout, '上传的每张表：行数、跳过的标题行、每列类型长度空值；表没连上时，能把它们连起来的列。', RUN, ('saved_as',)),

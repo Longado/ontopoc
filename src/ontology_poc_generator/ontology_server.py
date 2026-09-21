@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import uuid
 
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
-from ontology_poc_generator.org_documents import build_and_evaluate_org
+from ontology_poc_generator.org_documents import build_and_evaluate_org, org_mermaid
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
 from ontology_poc_generator.company_sources import DEFAULT_PURPOSE, MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
@@ -315,6 +315,32 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.end_headers()
             self.wfile.write(body)
 
+        def org_diagrams(self, name, query):
+            """/api/ontology/runs/<run>/export/mermaid?years=2016-2022&format=json: the organisation map as Mermaid."""
+            path = output_dir / name
+            if not SAVED_NAME.match(name) or not path.exists():
+                self.reply(404, {'error': '找不到这次运行'})
+                return
+            result = json.loads(path.read_text(encoding='utf-8'))
+            if result.get('mode') != 'org':
+                self.reply(400, {'error': '只有组织架构模式的运行能导出组织图'})
+                return
+            span = (query.get('years') or [''])[0]
+            found = re.fullmatch(r'(\d{4})-(\d{4})', span)
+            if span and not found:
+                self.reply(400, {'error': 'years 写成 2016-2022 这样的年份段'})
+                return
+            files = org_mermaid(result['ontology'], (result.get('confirmation') or {}).get('decisions'),
+                                (int(found[1]), int(found[2])) if found else None)
+            if (query.get('format') or [''])[0] == 'json':
+                self.reply(200, {'files': files})
+                return
+            packed = io.BytesIO()
+            with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as z:
+                for file_name, text in files.items():
+                    z.writestr(file_name, text.encode('utf-8'))
+            self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-组织图{('-' + span) if span else ''}.zip")
+
         def reply_file(self, body: bytes, content_type: str, filename: str):
             self.send_response(200)
             self.send_header('Content-Type', content_type)
@@ -385,6 +411,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             rest = url.path[len('/api/ontology/runs/'):]
             name, _, tail = rest.partition('/')
             query = parse_qs(url.query)
+            if tail == 'export/mermaid':   # an organisation map is a document: no rows, so not through kept()
+                self.org_diagrams(name, query)
+                return
             try:
                 result, bundle, graph = kept(name)
                 if tail.startswith('objects/'):
