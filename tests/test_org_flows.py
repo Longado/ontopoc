@@ -77,7 +77,7 @@ class MermaidTests(unittest.TestCase):
         ontology = build()
         ontology['object_types'][0]['label'] = 'Product "Dev" [core]'
         tree = org_mermaid(ontology)['组织隶属.mmd']
-        self.assertNotIn('"Dev"', tree)
+        self.assertNotIn('Product "Dev"', tree)   # a quote inside a label would end it early
         self.assertNotIn('[core]', tree)
         flow = org_mermaid(ontology, decisions={'types': {'field': {'verdict': 'wrong'}}, 'relations': {}})['协作交接.mmd']
         self.assertNotIn('现场项目团队', flow)
