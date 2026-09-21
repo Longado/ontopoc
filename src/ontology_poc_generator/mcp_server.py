@@ -56,7 +56,7 @@ def _text(value, name: str) -> str:
     return value.strip()
 
 
-def _upload(files, purpose, previous=None) -> dict:
+def _upload(files, purpose, previous=None, mode=None) -> dict:
     if not isinstance(files, list) or not files:
         raise ToolError('files 要写一个或几个本机文件路径')
     parts = []
@@ -68,6 +68,8 @@ def _upload(files, purpose, previous=None) -> dict:
     extra = {'purpose': purpose.strip()} if isinstance(purpose, str) and purpose.strip() else {}
     if previous is not None:
         extra['previous'] = _text(previous, 'previous')
+    if mode is not None:
+        extra['mode'] = _text(mode, 'mode')
     return {**parts[0], **extra} if len(parts) == 1 else {'files': parts, **extra}
 
 
@@ -103,7 +105,7 @@ def preview_upload(s, a):
 
 
 def build_ontology(s, a):
-    job = s.request('/api/ontology/jobs', _upload(a.get('files'), a.get('purpose'), a.get('previous')))['job_id']
+    job = s.request('/api/ontology/jobs', _upload(a.get('files'), a.get('purpose'), a.get('previous'), a.get('mode')))['job_id']
     while True:   # the job always ends as done, failed or interrupted; a dead service raises in request()
         state = s.request(f'/api/ontology/jobs/{job}')
         if state['state'] == 'done':
@@ -275,7 +277,8 @@ TOOLS = [
     _tool(list_runs, '本机保存过的运行，新的在前。', {'limit': {'type': 'integer', 'minimum': 1}}),
     _tool(preview_upload, '不调用模型：看这几份文件会发给模型什么（字段名和示例值）。', FILES, ('files',)),
     _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、建三次比稳定性，并回答 purpose 里写的问题。给 previous 表示这是那次运行的新版本，沿用它的确认、验收问题和规则。会调用模型，等它跑完才返回。',
-          {**FILES, 'previous': {'type': 'string', 'description': '上一版本的运行保存名（来自 list_runs）；不是新版本就不写'}}, ('files',)),
+          {**FILES, 'previous': {'type': 'string', 'description': '上一版本的运行保存名（来自 list_runs）；不是新版本就不写'},
+           'mode': {'type': 'string', 'enum': ['org'], 'description': '写 org 就按组织架构梳理一份文档：组织单元、岗位、人、工作环节及其关系'}}, ('files',)),
     _tool(run_overview, '一次运行的概况：对象和关系数、体检通过几项、问答能答几道、稳定性、是否确认过。', RUN, ('saved_as',)),
     _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。', RUN, ('saved_as',)),
     _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到数据平台时要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),

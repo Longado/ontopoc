@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import uuid
 
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
+from ontology_poc_generator.org_documents import build_and_evaluate_org
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
 from ontology_poc_generator.company_sources import DEFAULT_PURPOSE, MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
@@ -78,8 +79,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
     def memory_key(result):
         """Judgements are kept per file, or per line of versions once a person says a file is the next version of
-        another: then the line's first file names them all."""
-        return result.get('lineage') or result['file']['sha256']
+        another: then the line's first file names them all. An organisation map of a file is judged apart from its
+        plain reading, so the two never share a confirmation."""
+        return result.get('lineage') or (f"org-{result['file']['sha256']}" if result.get('mode') == 'org' else result['file']['sha256'])
 
     def previous_version(payload):
         """The kept run the person says this upload is the next version of, or None."""
@@ -188,10 +190,18 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         return filename, data, suffix in DOCUMENT_SUFFIXES
 
     def parse_upload(payload):
+        mode = payload.get('mode')
+        if mode not in (None, 'org'):
+            raise SourceFileError('mode 只能不写，或写 org（组织架构）')
         files = payload.get('files')
         if not isinstance(files, list):
             filename, data, is_document = decode_part(payload)
-            return (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose')), is_document
+            if mode == 'org' and not is_document:
+                raise SourceFileError(f'组织架构模式目前只收文档（{" / ".join(DOCUMENT_SUFFIXES)}），不收数据表')
+            bundle = (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose'))
+            return ({**bundle, 'mode': mode} if mode else bundle), is_document
+        if mode == 'org':
+            raise SourceFileError('组织架构模式一次只收一份文档')
         if not files:
             raise SourceFileError('没有选择文件')
         parts = []
@@ -202,17 +212,19 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             parts.append((filename, data))
         return load_table_files(parts, payload.get('purpose')), False
 
-    def previous_run(sha256):
-        """The latest verified earlier run of the same file, so a rerun shows what changed."""
+    def previous_run(sha256, mode=None):
+        """The latest verified earlier run of the same file in the same mode, so a rerun shows what changed."""
         for path in sorted(output_dir.glob('*.json'), reverse=True):
             if path.name.endswith('.bundle.json') or not SAVED_NAME.match(path.name):
                 continue
             earlier = json.loads(path.read_text(encoding='utf-8'))
-            if earlier['file']['sha256'] == sha256 and earlier['ontology']['status'] == 'auto_built_verified':
+            if earlier['file']['sha256'] == sha256 and earlier.get('mode') == mode and earlier['ontology']['status'] == 'auto_built_verified':
                 return earlier
         return None
 
     def finish_build(bundle, is_document, progress=None, previous=None):
+        if bundle.get('mode') == 'org':
+            return save_build(bundle, build_and_evaluate_org(bundle, gateway, progress), progress, previous)
         if is_document:
             return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress, previous)
         # the extra runs start together with the shown one, so three runs take about as long as one
@@ -252,7 +264,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     and result['file'].get('kind') != 'document' and earlier['file'].get('kind') != 'document':
                 earlier_bundle = json.loads((output_dir / previous_name.replace('.json', '.bundle.json')).read_text(encoding='utf-8'))
                 result['version'] = version_diff(earlier, earlier_bundle, result, bundle)
-        previous = previous_run(bundle['file']['sha256'])
+        previous = previous_run(bundle['file']['sha256'], bundle.get('mode'))
         if previous and result['ontology']['status'] == 'auto_built_verified':
             result['previous'] = {'saved_as': previous['saved_as'], 'started_at': previous['started_at'], 'purpose': previous.get('purpose'),
                                   'counts': {'types': len(previous['ontology']['object_types']), 'relations': len(previous['ontology']['relations'])},
