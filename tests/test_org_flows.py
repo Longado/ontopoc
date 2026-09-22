@@ -67,6 +67,13 @@ class MermaidTests(unittest.TestCase):
         self.assertIn('<-->|"共同构建初始应用"|', flow)
         self.assertNotIn('Product Development', flow)
 
+    def test_a_duty_line_too_long_for_a_box_ends_in_an_ellipsis(self):
+        ontology = build()
+        next(t for t in ontology['object_types'] if t['key'] == 'dev')['definition'] = '核心软件工程师' * 6
+        line = [l for l in org_mermaid(ontology)['组织隶属.mmd'].split('\n') if 'Dev<br/>' in l][0]
+        self.assertIn('…', line)
+        self.assertLess(len(line), 80)
+
     def test_a_period_keeps_what_it_dates_inside_it_and_what_is_undated(self):
         flow = org_mermaid(build(), years=(2016, 2022))['协作交接.mmd']
         self.assertIn('功能论证与候选代码', flow)          # undated: kept in every period
