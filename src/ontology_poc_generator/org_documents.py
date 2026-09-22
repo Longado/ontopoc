@@ -192,7 +192,8 @@ def org_mermaid(ontology: dict, decisions: dict | None = None, years: tuple[int,
                 if k not in ids:
                     ids[k] = f'n{len(ids) + 1}'
                     t = names[k]
-                    note = (t.get('definition') or '')[:24]
+                    note = (t.get('definition') or '').strip()
+                    note = note[:23] + '…' if len(note) > 24 else note
                     lines.append(f'    {ids[k]}["{_label(t["label"])}' + (f'<br/>{_label(note)}' if note else '') + '"]')
         lines += [edge(r, ids) for r in chosen]
         return f'flowchart {direction}\n' + '\n'.join(lines) + '\n'
