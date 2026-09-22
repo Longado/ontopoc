@@ -77,5 +77,13 @@ class PeriodTests(unittest.TestCase):
         self.assertEqual(laid['undated'], ['第三阶段'])
 
 
+class RunTests(unittest.TestCase):
+    def test_the_run_carries_the_periods_so_every_reader_lays_them_out_the_same(self):
+        from ontology_poc_generator.org_documents import build_and_evaluate_org
+        run = build_and_evaluate_org(load_document_file('study.md', TEXT.encode()), Model())
+        self.assertEqual([p['name'] for p in run['evaluation']['periods']['periods']], ['第一阶段', '第二阶段'])
+        self.assertEqual(run['evaluation']['periods']['undated'], ['第三阶段'])
+
+
 if __name__ == '__main__':
     unittest.main()
