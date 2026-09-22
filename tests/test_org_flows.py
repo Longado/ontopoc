@@ -48,10 +48,11 @@ class HandoffTests(unittest.TestCase):
         handoffs = {(r['from'], r['to']): r['what'] for r in build()['relations'] if r['kind'] == 'hands_to'}
         self.assertEqual(handoffs, {('field', 'product'): '功能论证与候选代码', ('product', 'field'): '路线协调与代码评审'})
 
-    def test_what_is_handed_over_is_a_short_phrase_or_nothing(self):
+    def test_a_handoff_whose_content_is_too_long_to_draw_is_dropped_with_a_reason(self):
         long = {**REPLY, 'facts': [{**REPLY['facts'][2], 'what': '很' * 80}]}
-        [r] = build_org_ontology(load_document_file('p.md', TEXT.encode(), ''), OrgModel(long))['relations']
-        self.assertIsNone(r['what'])
+        built = build_org_ontology(load_document_file('p.md', TEXT.encode(), ''), OrgModel(long))
+        self.assertEqual(built['relations'], [])
+        self.assertIn('交接什么', ' '.join(r['reason'] for r in built['rejected']))
 
 
 class MermaidTests(unittest.TestCase):
