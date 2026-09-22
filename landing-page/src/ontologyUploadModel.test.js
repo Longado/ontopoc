@@ -29,3 +29,9 @@ test("one file keeps the request shape it always had", () => {
   assert.deepEqual(Object.keys(many), ["files", "purpose"]);
   assert.deepEqual(many.files, [{ filename: "客户.csv", content_base64: "AAA" }, { filename: "订单.csv", content_base64: "AAA" }]);
 });
+
+test("an upload can say it is an organisation study", () => {
+  assert.deepEqual(uploadPayload([{ name: "palantir.md" }], "理清分工", "AA==", "org"),
+    { filename: "palantir.md", content_base64: "AA==", purpose: "理清分工", mode: "org" });
+  assert.equal("mode" in uploadPayload([{ name: "orders.csv" }], "", "AA=="), false);
+});
