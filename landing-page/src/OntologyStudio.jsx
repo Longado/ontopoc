@@ -8,6 +8,7 @@ import {
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
+import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js";
 import { summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
 import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, purposeNote, savedAcceptance } from "./ontologyAcceptanceModel.js";
@@ -99,11 +100,13 @@ function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo
   const [asVersion, setAsVersion] = useState(null);   // null: not answered; true / false: the person's answer
   const earlier = earlierVersionOf(runs, files);
   useEffect(() => setAsVersion(null), [earlier?.saved_as]);
-  const go = () => onBuild(files, purpose, earlier && asVersion ? earlier.saved_as : null);
+  const [mode, setMode] = useState(null);   // null: read the document as it comes; "org": map the organisation in it
+  const go = () => onBuild(files, purpose, earlier && asVersion ? earlier.saved_as : null, oneDoc ? mode : null);
   const [purpose, setPurpose] = useState("");
   const [over, setOver] = useState(false);
   const offline = health === "offline";
   const kind = files.length && !files.some(isDoc) ? "table" : files.length ? "document" : null;
+  const oneDoc = files.length === 1 && isDoc(files[0]);
   const problem = files.length ? batchProblem(files) : "";
   const blocked = offline ? "本机建模服务没有启动" : health === "no-key" ? "建模服务缺少模型凭据" : !files.length ? "先传文件" : problem;
   const pick = (picked) => setFiles((old) => [...old, ...[...picked].filter((f) => !old.some((o) => o.name === f.name && o.size === f.size))]);
@@ -126,6 +129,11 @@ function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo
           <button type="button" className="os-composer-go" disabled={Boolean(blocked)} title={blocked || "生成本体并评测"} aria-label="生成本体并评测" onClick={go}>➤</button>
         </div>
       </div>
+      {oneDoc && <div className="os-version-ask" role="group" aria-label="这份文档怎么读">
+        <span>这份文档怎么读？</span>
+        <button type="button" aria-pressed={mode === null} onClick={() => setMode(null)} title="读出它讲的业务对象和关系">业务本体</button>
+        <button type="button" aria-pressed={mode === "org"} onClick={() => setMode("org")} title="读出组织单元、岗位、人、工作环节，以及隶属、汇报、协作与交接">组织架构</button>
+      </div>}
       {earlier && <div className="os-version-ask" role="group" aria-label="是不是新版本">
         <span>「{folderLabel(earlier.file)}」的新版本？</span>
         <button type="button" aria-pressed={asVersion === true} onClick={() => setAsVersion(true)} title="上次的确认、验收问题和规则接着用，并比出哪些对象多了、少了">是</button>
@@ -605,6 +613,58 @@ function CheckSection({ run, evalView, setEvalView, questions, variants, onShow,
   </>;
 }
 
+const ORG_TYPE_TEXT = { unit: "组织单元", role: "岗位", person: "人", duty: "工作环节", period: "时期" };
+
+function TreeNode({ node, onShow }) {
+  return <li className={`os-org-node is-${node.type}`}>
+    <button type="button" className="os-org-name" onClick={() => onShow(node.key)} title="在关系图上看">{node.label}</button>
+    {node.note && <small>{node.note}</small>}
+    {node.children.length > 0 && <ul>{node.children.map((c) => <TreeNode key={c.key} node={c} onShow={onShow} />)}</ul>}
+  </li>;
+}
+
+function OrgSection({ run, place, onShow }) {
+  const { roots, loose } = orgTree(run);
+  const periods = run.evaluation.periods || { periods: [], undated: [] };
+  const by = Object.fromEntries((run.ontology.object_types || []).map((t) => [t.key, t.label]));
+  if (place === "tree") return <section className="pr-card">
+    <div className="pr-card-head"><h2>组织树</h2><span className="pr-muted">隶属、汇报在上，担任的人在下</span></div>
+    {roots.length ? <ul className="os-org-tree">{roots.map((n) => <TreeNode key={n.key} node={n} onShow={onShow} />)}</ul> : <p className="pr-muted">材料没说谁属于谁。</p>}
+    {loose.length > 0 && <p className="pr-muted">没说归属：{loose.join("、")}</p>}
+  </section>;
+  if (place === "flow") return <section className="pr-card">
+    <div className="pr-card-head"><h2>协作交接 <small>({handoffLines(run).length})</small></h2><span className="pr-muted">箭头上是交接的东西</span></div>
+    {handoffLines(run).length ? <ul className="os-org-flow">{handoffLines(run).map((l) => <li key={l.key}>
+      <b>{l.from}</b><i aria-hidden="true">{l.both ? "↔" : "→"}</i><b>{l.to}</b>
+      <span className="os-org-what">{l.what || "（没写交接什么）"}</span>{l.when && <em>{l.when}</em>}
+    </li>)}</ul> : <p className="pr-muted">材料没写谁和谁交接。</p>}
+  </section>;
+  if (place === "roles") return <section className="pr-card">
+    <div className="pr-card-head"><h2>角色 <small>({roleRows(run).length})</small></h2></div>
+    <div className="os-table-scroll"><table className="os-fields">
+      <thead><tr><th scope="col">角色</th><th scope="col">职责</th><th scope="col">所属</th><th scope="col">谁担任</th><th scope="col">和谁交接</th></tr></thead>
+      <tbody>{roleRows(run).map((r) => <tr key={r.key}>
+        <td><button type="button" className="pr-link" onClick={() => onShow(r.key)}>{r.label}</button></td>
+        <td>{[r.note, ...r.duties].filter(Boolean).join("；") || "—"}</td><td>{r.unit || "—"}</td>
+        <td>{r.people.join("、") || "—"}</td><td>{r.partners.join("、") || "—"}</td>
+      </tr>)}</tbody>
+    </table></div>
+  </section>;
+  if (place === "periods") return <section className="pr-card">
+    <div className="pr-card-head"><h2>时期 <small>({periods.periods.length})</small></h2></div>
+    <ul className="os-org-periods">{periods.periods.map((p) => <li key={p.key}>
+      <b>{p.name}</b><em>{p.from}–{p.to}</em>
+      <ul>{p.facts.map((f) => <li key={f.key}>{by[f.from] || f.from} {f.label} {by[f.to] || f.to}<small>{f.when}</small></li>)}</ul>
+      {!p.facts.length && <p className="pr-muted">这段时间里没有注明日期的事。</p>}
+    </li>)}</ul>
+    {periods.undated.length > 0 && <p className="pr-muted">年份没在原文里找到：{periods.undated.join("、")}</p>}
+  </section>;
+  return <section className="pr-card">
+    <div className="pr-card-head"><h2>材料没说明的 <small>({(run.ontology.open || []).length})</small></h2></div>
+    <ul className="os-list">{(run.ontology.open || []).map((o) => <li key={o.text}>{o.text}<small className="pr-muted">「{o.evidence}」</small></li>)}</ul>
+  </section>;
+}
+
 function QaSection({ run, questions, onPath, askRef, place }) {
   const [adding, setAdding] = useState(null);   // the answered question being fixed, with the note being written
   const onAccept = (item) => { setAdding({ item, note: "" }); setTimeout(() => document.getElementById("os-note")?.focus(), 50); };
@@ -623,6 +683,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const [objectKey, setObjectKey] = useState(null);   // the object whose own page is open under 本体管理
   const [objPlace, setObjPlace] = useState("objects");   // which of 本体管理's places is shown
   const [qaPlace, setQaPlace] = useState("ask");
+  const [orgPlace, setOrgPlace] = useState("tree");
   const [dataPlace, setDataPlace] = useState(null);   // which uploaded table 数据接入 shows
   const [savingRules, setSavingRules] = useState(false);
   const [drafting, setDrafting] = useState(false);
@@ -701,13 +762,13 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
       .then(async (r) => { const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(serviceError(r.status, body)); show(body); })
       .catch((e) => { setError(e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message); setTab("upload"); });
   }, [request?.nonce]);   // eslint-disable-line react-hooks/exhaustive-deps
-  async function build(files, purpose, previous = null) {
+  async function build(files, purpose, previous = null, mode = null) {
     setBusy(true); setError(""); setEvents([]);
     let jobId;
     try {
       const contents = [];
       for (const file of files) contents.push(await toBase64(file));
-      const body = JSON.stringify({ ...uploadPayload(files, purpose, ...contents), ...(previous ? { previous } : {}) });
+      const body = JSON.stringify({ ...uploadPayload(files, purpose, contents, mode), ...(previous ? { previous } : {}) });
       const response = await fetch("/api/ontology/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body });
       const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
       if (!response.ok) throw new Error(serviceError(response.status, data));
@@ -799,7 +860,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const inDetail = tab === "objects" && objectKey;
   const placeOf = (items, key) => items.find(([k]) => k === key)?.[1];
   const crumb = !run ? [] : [sectionsFor(run).find(([k]) => k === tab)?.[1] || "",
-    tab === "objects" ? placeOf(objectsNav(run, decisions), objPlace) : tab === "qa" ? placeOf(qaNav(run), qaPlace)
+    tab === "org" ? placeOf(orgPlaces(run), orgPlace) : tab === "objects" ? placeOf(objectsNav(run, decisions), objPlace) : tab === "qa" ? placeOf(qaNav(run), qaPlace)
       : tab === "data" ? (dataPlace || run.sources[0]?.name) : tab === "graph" ? placeOf(VIEWS, view) : tab === "check" ? ({ ref: "对照标准", rules: "规则" }[evalView] || "体检") : ""].filter(Boolean);
   return <section className={`pr-page${open ? "" : " is-start"}${inDetail ? " is-object" : ""}`} aria-labelledby="os-title">
     {stale && <p role="alert" className="pr-note os-stale">{stale}</p>}
@@ -811,7 +872,8 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
           <button className="os-icon-btn" onClick={downloadSummary} title="下载纪要：一页 Markdown，给会上的人看">⤓ 纪要</button>
           <button className="os-icon-btn" onClick={download} title="下载本体和评测：一个 JSON 文件">⤓ JSON</button>
           {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/forms`} download title="按对象表单导出：每个对象一张 CSV，导入目标平台前请先实测">⤓ 表单</a>}
-          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/ttl`} download title="按 W3C 标准导出：OWL 本体、数据、SHACL 规则（Turtle）">⤓ TTL</a>}</div>
+          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/ttl`} download title="按 W3C 标准导出：OWL 本体、数据、SHACL 规则（Turtle）">⤓ TTL</a>}
+          {run.saved_as && isOrg(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/mermaid`} download title="导出组织图（Mermaid）：组织隶属与协作交接各一张，可直接放进出图流程">⤓ 组织图</a>}</div>
         <div className="os-tiles">{overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} title={t.hint || undefined} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b></button>)}</div>
       </div>
     </header>}
@@ -832,6 +894,8 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
         <DataTab run={run} place={dataPlace} /></SubLayout>}
       {tab === "qa" && run && <SubLayout label="智能问答" items={qaNav(run)} active={qaPlace} onChange={setQaPlace}>
         <QaSection run={run} questions={questions} onPath={showPath} askRef={askRef} place={qaPlace} /></SubLayout>}
+      {tab === "org" && run && <SubLayout label="组织架构" items={orgPlaces(run)} active={orgPlace} onChange={setOrgPlace}>
+        <OrgSection run={run} place={orgPlace} onShow={showOnGraph} /></SubLayout>}
       {tab === "check" && run && <CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions}
         rules={{ canSave: Boolean(run.saved_as) && health === "ready", busy: savingRules, error: rulesError, onSave: (next) => post("/api/ontology/rules", { saved_as: run.saved_as, ...next }, setSavingRules, setRulesError) }} />}
     </div>

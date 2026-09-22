@@ -33,10 +33,11 @@ export function batchSummary(files) {
 }
 
 /** One file keeps the request the service has always taken; several go in the batch shape. */
-export function uploadPayload(files, purpose, ...contents) {
+export function uploadPayload(files, purpose, contents, mode = null) {
   const base64 = (i) => contents[i] ?? contents[0];
-  if (files.length === 1) return { filename: files[0].name, content_base64: base64(0), purpose };
-  return { files: files.map((f, i) => ({ filename: f.name, content_base64: base64(i) })), purpose };
+  const extra = mode ? { mode } : {};
+  if (files.length === 1) return { filename: files[0].name, content_base64: base64(0), purpose, ...extra };
+  return { files: files.map((f, i) => ({ filename: f.name, content_base64: base64(i) })), purpose, ...extra };
 }
 
 export { ACCEPT };
