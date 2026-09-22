@@ -156,7 +156,8 @@ def build_and_evaluate_org(bundle: dict, gateway, progress=None) -> dict:
         'schema': 'company_ontology_run.v1', 'mode': 'org', 'started_at': started_at, 'file': bundle['file'], 'purpose': bundle['decision'],
         'sources': [{'name': bundle['file']['name'], 'paragraphs': len(bundle['paragraphs']), 'chars': sum(len(p) for p in bundle['paragraphs'])}],
         'ontology': ontology,
-        'evaluation': {'data_fit': None, 'document_fit': document_fit(ontology) if ontology['status'] == 'auto_built_verified' else None},
+        'evaluation': {'data_fit': None, 'document_fit': document_fit(ontology) if ontology['status'] == 'auto_built_verified' else None,
+                       'periods': periods_of(ontology)},
     }
 
 
