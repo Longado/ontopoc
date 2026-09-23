@@ -12,6 +12,8 @@ export const CHECK_LABELS = {
   sources_used: "每张传上来的表都被本体用上了",
   quotes_verified: "模型提出的每一项都能在原文里找到引用",
   no_isolated_concepts: "抽出来的概念，每个都至少连着一条抽出来的关系",
+  every_period_dated: "每个时期的年份都在原文里写着",
+  every_role_placed: "每个岗位都说清了属于哪里，或者和谁交接",
 };
 
 export const COVERAGE_NOTE = "所有结论只覆盖这一次上传的文件；别的系统里有没有、别的表里记没记，这里看不到。";

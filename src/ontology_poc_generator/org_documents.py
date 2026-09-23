@@ -147,6 +147,21 @@ def build_org_ontology(bundle: dict, gateway, progress=None) -> dict:
     }
 
 
+def org_fit(ontology: dict) -> dict:
+    """What can go wrong with an organisation map, checked by code: a quote the text does not have, a period whose
+    years the text never gives, and a role the text places nowhere and hands nothing to."""
+    periods = periods_of(ontology)
+    placed = {r['from'] for r in ontology['relations']} | {r['to'] for r in ontology['relations']}
+    loose = [t['label'] for t in ontology['object_types'] if t['org_type'] == 'role' and t['key'] not in placed]
+    kept = len(ontology['object_types']) + len(ontology['relations'])
+    return {'proposed': kept + len(ontology['rejected']), 'kept': kept, 'rejected': len(ontology['rejected']),
+            'isolated': loose, 'loose_roles': loose, 'undated_periods': periods['undated'],
+            'cut': ontology['chunks_processed'] < ontology['chunks_total'],
+            'checks': [{'key': 'quotes_verified', 'passed': not ontology['rejected']},
+                       {'key': 'every_period_dated', 'passed': not periods['undated']},
+                       {'key': 'every_role_placed', 'passed': not loose}]}
+
+
 def build_and_evaluate_org(bundle: dict, gateway, progress=None) -> dict:
     started_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
     ontology = build_org_ontology(bundle, gateway, progress)
@@ -156,7 +171,7 @@ def build_and_evaluate_org(bundle: dict, gateway, progress=None) -> dict:
         'schema': 'company_ontology_run.v1', 'mode': 'org', 'started_at': started_at, 'file': bundle['file'], 'purpose': bundle['decision'],
         'sources': [{'name': bundle['file']['name'], 'paragraphs': len(bundle['paragraphs']), 'chars': sum(len(p) for p in bundle['paragraphs'])}],
         'ontology': ontology,
-        'evaluation': {'data_fit': None, 'document_fit': document_fit(ontology) if ontology['status'] == 'auto_built_verified' else None,
+        'evaluation': {'data_fit': None, 'document_fit': org_fit(ontology) if ontology['status'] == 'auto_built_verified' else None,
                        'periods': periods_of(ontology)},
     }
 
