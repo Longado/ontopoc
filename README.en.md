@@ -75,7 +75,7 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 | Click "⤓ 表单" at the top right | One CSV per object, in the columns data platforms usually ask for when defining an object |
 | Click "⤓ TTL" at the top right | Three Turtle files: `ontology.ttl` describes objects, fields, relations and identity fields in OWL; in `data.ttl` every object is named by its identity values, so the same object in two tables or two versions of a file has one name and merges; `shapes.ttl` writes adopted rules as SHACL for any validator. What you judged wrong is left out |
 
-The model only judges; loops and calculations are in code, with model calls chained at most 3 deep and each call tied to a judgement a person has to make. There are 5 agents, each with a definition card in [docs/AGENTS.md](docs/AGENTS.md).
+The model only judges; loops and calculations are in code, with model calls chained at most 3 deep and each call tied to a judgement a person has to make. There are 6 agents, each with a definition card in [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Try it
 
@@ -126,7 +126,7 @@ Open `http://127.0.0.1:5178`. The bundled samples open without a key. After chan
 
 ### Connect Claude Code or another MCP client
 
-Every feature on the page is a standard MCP tool (stdio, 26 tools) calling the same local service:
+Every feature on the page is a standard MCP tool (stdio, 27 tools) calling the same local service:
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -141,6 +141,7 @@ The tool list is in [docs/MCP.md](docs/MCP.md).
 | Data (数据接入) | Each uploaded table: rows, skipped title lines, each column's type, length and fill; when tables are left unconnected, the column that would connect them |
 | Ontology (本体管理) | Object cards (search, filter by your verdict, cards or list); each object's page: overview, fields (the object form), rows (paged, CSV download), confirmation; plus confirmation board, stability, last-run comparison, new version, build record |
 | Relations (本体关系) | A graph that lays itself out (drag, zoom), the instance graph, the relation list; relations code sees in the data but the ontology lacks are drawn as dashed suggestions |
+| Organisation (组织架构) | Read a public study as an organisation instead: the membership tree, who hands what to whom, a role table, the periods it is cut into, and what the text says is not known; exported as Mermaid diagrams, one per period if you want |
 | Questions (智能问答) | Ask, acceptance questions, the model's questions (filter by answered) |
 | Data check (数据体检) | 7 checks, rules, comparison with a reference ontology |
 
@@ -180,8 +181,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (515)
-npm --prefix landing-page run test:unit                       # page tests (198)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (546)
+npm --prefix landing-page run test:unit                       # page tests (205)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook
@@ -193,7 +194,7 @@ The design documents are in Chinese:
 |---|---|
 | [docs/PRODUCT.md](docs/PRODUCT.md) | What the product is and which layers it covers |
 | [docs/AGENTS.md](docs/AGENTS.md) | The 5 agents' definition cards and the call log |
-| [docs/MCP.md](docs/MCP.md) | The 26 MCP tools |
+| [docs/MCP.md](docs/MCP.md) | The 27 MCP tools |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | Data platform object forms, compared |
 | [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | The latest round's plan and record |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |

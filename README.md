@@ -35,7 +35,7 @@
 
 ## 简介
 
-用户上传若干业务表（Excel、CSV）或一份流程文档后，OntoPoc 生成本体草案，包括业务中的对象、各对象的识别字段以及对象之间的关系。代码随后逐行校验草案：字段是否存在、识别字段是否有值、关系能否在数据中连通。在此基础上，系统执行数据质量检查，并基于数据回答业务问题。顾问逐项确认后，结果将被保存；同一文件或其新版本再次上传时，系统以此为基准进行比对。
+用户上传若干业务表（Excel、CSV）或一份流程文档后，OntoPoc 生成本体草案，包括业务中的对象、各对象的识别字段以及对象之间的关系。代码随后逐行校验草案：字段是否存在、识别字段是否有值、关系能否在数据中连通。在此基础上，系统执行数据质量检查，并基于数据回答业务问题。文档也可按「组织架构」读，梳理出组织单元、岗位、人与工作环节及其隶属、协作、交接关系，每条都附原文出处。顾问逐项确认后，结果将被保存；同一文件或其新版本再次上传时，系统以此为基准进行比对。
 
 建模结果可按数据平台的对象表单导出，也可按 W3C 标准导出为 Turtle（OWL 与 SHACL）；全部功能也已封装为 MCP 工具，可供其他 Agent 调用。
 
@@ -73,7 +73,7 @@
 | 导出对象表单 | 每个对象生成一份 CSV，列为数据平台建对象时的常见表单列 |
 | 点击右上角"⤓ TTL" | 导出三份 Turtle 文件：`ontology.ttl` 用 OWL 描述对象、字段、关系与识别字段；`data.ttl` 中每个对象按识别值命名，同一对象跨表、跨版本同名，可直接合并；`shapes.ttl` 将已采纳的规则写成 SHACL，可用通用校验器检查。判错的对象与关系不导出 |
 
-模型只负责判断，循环与计算均由代码完成；模型调用串联至多 3 步，每次调用都对应一个需要人来做的判断。系统共有 5 个 Agent，定义见 [docs/AGENTS.md](docs/AGENTS.md)。
+模型只负责判断，循环与计算均由代码完成；模型调用串联至多 3 步，每次调用都对应一个需要人来做的判断。系统共有 6 个 Agent，定义见 [docs/AGENTS.md](docs/AGENTS.md)。
 
 ## 快速体验
 
@@ -124,7 +124,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 ### 接入 Claude Code 或其他 MCP 客户端
 
-页面上的每项功能都有对应的 MCP 工具，共 26 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
+页面上的每项功能都有对应的 MCP 工具，共 27 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -139,6 +139,7 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 | 数据接入 | 每张上传表的行数、跳过的标题行，以及各列的类型、长度、填充率；表之间未连通时，提示可用于关联的列 |
 | 本体管理 | 对象卡片（支持搜索、按确认结果筛选、卡片与列表视图）；对象详情页：概览、属性（即对象表单）、数据（分页浏览、导出 CSV）、确认；另含逐项确认、稳定性、历史比对、版本比对与建模记录 |
 | 本体关系 | 自动布局的关系图（支持拖拽与缩放）、实例图谱、关系列表；代码从数据中发现、本体中尚未包含的关系以虚线标示为建议 |
+| 组织架构 | 上传公开研究材料时选「组织架构」：组织树、协作交接（箭头上写明交接内容）、角色表、时期、材料未说明之处；可导出 Mermaid 组织图，按年份段分别出图 |
 | 智能问答 | 自由提问、验收问题、模型生成的问题（可按能否回答筛选） |
 | 数据体检 | 7 项数据检查、数据规则、与参考本体比对 |
 
@@ -178,8 +179,8 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（515 个）
-npm --prefix landing-page run test:unit                       # 前端测试（198 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（546 个）
+npm --prefix landing-page run test:unit                       # 前端测试（205 个）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录，不动已有运行
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合成示例工作簿
@@ -188,8 +189,8 @@ PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合�
 | 文档 | 内容 |
 |---|---|
 | [docs/PRODUCT.md](docs/PRODUCT.md) | 产品定位与范围 |
-| [docs/AGENTS.md](docs/AGENTS.md) | 5 个 Agent 的定义与调用记录 |
-| [docs/MCP.md](docs/MCP.md) | 26 个 MCP 工具 |
+| [docs/AGENTS.md](docs/AGENTS.md) | 6 个 Agent 的定义与调用记录 |
+| [docs/MCP.md](docs/MCP.md) | 27 个 MCP 工具 |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | 数据平台对象表单对照 |
 | [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | 最近一轮迭代的计划与执行记录 |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 开发红线与待触发的方向 |
