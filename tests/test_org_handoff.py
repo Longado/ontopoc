@@ -77,6 +77,17 @@ class PeriodTests(unittest.TestCase):
         self.assertEqual(laid['undated'], ['第三阶段'])
 
 
+class FitTests(unittest.TestCase):
+    def test_the_checks_are_about_the_map_not_about_a_document(self):
+        from ontology_poc_generator.org_documents import build_and_evaluate_org
+        fit = build_and_evaluate_org(load_document_file('study.md', TEXT.encode()), Model())['evaluation']['document_fit']
+        self.assertEqual({c['key']: c['passed'] for c in fit['checks']},
+                         {'quotes_verified': False,      # the period whose years the text does not have was dropped
+                          'every_period_dated': False,   # 第三阶段 has no years the text bears out
+                          'every_role_placed': True})    # every role hands something over or belongs somewhere
+        self.assertEqual(fit['loose_roles'], [])
+
+
 class RunTests(unittest.TestCase):
     def test_the_run_carries_the_periods_so_every_reader_lays_them_out_the_same(self):
         from ontology_poc_generator.org_documents import build_and_evaluate_org
