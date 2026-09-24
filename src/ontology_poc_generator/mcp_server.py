@@ -56,7 +56,7 @@ def _text(value, name: str) -> str:
     return value.strip()
 
 
-def _upload(files, purpose, previous=None) -> dict:
+def _upload(files, purpose, previous=None, mode=None) -> dict:
     if not isinstance(files, list) or not files:
         raise ToolError('files 要写一个或几个本机文件路径')
     parts = []
@@ -68,6 +68,8 @@ def _upload(files, purpose, previous=None) -> dict:
     extra = {'purpose': purpose.strip()} if isinstance(purpose, str) and purpose.strip() else {}
     if previous is not None:
         extra['previous'] = _text(previous, 'previous')
+    if mode is not None:
+        extra['mode'] = _text(mode, 'mode')
     return {**parts[0], **extra} if len(parts) == 1 else {'files': parts, **extra}
 
 
@@ -103,7 +105,7 @@ def preview_upload(s, a):
 
 
 def build_ontology(s, a):
-    job = s.request('/api/ontology/jobs', _upload(a.get('files'), a.get('purpose'), a.get('previous')))['job_id']
+    job = s.request('/api/ontology/jobs', _upload(a.get('files'), a.get('purpose'), a.get('previous'), a.get('mode')))['job_id']
     while True:   # the job always ends as done, failed or interrupted; a dead service raises in request()
         state = s.request(f'/api/ontology/jobs/{job}')
         if state['state'] == 'done':
@@ -188,6 +190,12 @@ def save_form(s, a):
 
 def export_forms(s, a):
     return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/forms?format=json")
+
+
+def export_mermaid(s, a):
+    years = a.get('years')
+    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/mermaid?format=json"
+                     + (f"&years={quote(_text(years, 'years'))}" if years is not None else ''))
 
 
 def export_ttl(s, a):
@@ -275,7 +283,8 @@ TOOLS = [
     _tool(list_runs, '本机保存过的运行，新的在前。', {'limit': {'type': 'integer', 'minimum': 1}}),
     _tool(preview_upload, '不调用模型：看这几份文件会发给模型什么（字段名和示例值）。', FILES, ('files',)),
     _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、建三次比稳定性，并回答 purpose 里写的问题。给 previous 表示这是那次运行的新版本，沿用它的确认、验收问题和规则。会调用模型，等它跑完才返回。',
-          {**FILES, 'previous': {'type': 'string', 'description': '上一版本的运行保存名（来自 list_runs）；不是新版本就不写'}}, ('files',)),
+          {**FILES, 'previous': {'type': 'string', 'description': '上一版本的运行保存名（来自 list_runs）；不是新版本就不写'},
+           'mode': {'type': 'string', 'enum': ['org'], 'description': '写 org 就按组织架构梳理一份文档：组织单元、岗位、人、工作环节及其关系'}}, ('files',)),
     _tool(run_overview, '一次运行的概况：对象和关系数、体检通过几项、问答能答几道、稳定性、是否确认过。', RUN, ('saved_as',)),
     _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。', RUN, ('saved_as',)),
     _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到数据平台时要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
@@ -293,6 +302,9 @@ TOOLS = [
           '"drafted": false, "fields": {"<字段>": {"label": "…", "description": "…", "drafted": false}}}}}；drafted=false 表示人写的。',
           {**RUN, 'form': {'type': 'object'}}, ('saved_as', 'form')),
     _tool(export_forms, '按对象表单导出：每个对象一张 CSV（主键、展示、中文名称、英文名称、描述、类型、长度、属性类型）和一份说明。导入契约还没实测，说明里写着导入前要测。', RUN, ('saved_as',)),
+    _tool(export_mermaid, '组织架构模式的运行导出组织图（Mermaid）：组织隶属.mmd（隶属、汇报、担任）和协作交接.mmd（协作、交接及交接内容）。'
+          'years 写 2016-2022 只画这段时间的关系，没写时间的关系每段都画；判错的不画。',
+          {**RUN, 'years': {'type': 'string', 'pattern': '^[0-9]{4}-[0-9]{4}$'}}, ('saved_as',)),
     _tool(export_ttl, '按 W3C 标准导出 Turtle：ontology.ttl（OWL 类、字段、关系、识别键）、data.ttl（每个对象按识别值命名，同一对象跨表跨版本同名）、'
           'shapes.ttl（采纳的规则写成 SHACL，有规则时才有）。判错的对象和关系不导出。', RUN, ('saved_as',)),
     _tool(data_layout, '上传的每张表：行数、跳过的标题行、每列类型长度空值；表没连上时，能把它们连起来的列。', RUN, ('saved_as',)),

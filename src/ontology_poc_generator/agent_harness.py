@@ -22,6 +22,7 @@ AGENTS = {
     'question_writer': '出题员',
     'variant_matcher': '名称对应员',
     'field_describer': '字段释义员',
+    'org_mapper': '组织梳理员',
 }
 
 

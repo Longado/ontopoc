@@ -524,3 +524,25 @@ small.os-tone-warn { color: var(--amber); }
 .os-hit-kind.is-relation { background: var(--amber-soft); color: var(--amber); }
 .os-hit-kind.is-table { background: var(--ok-soft); color: var(--ok); }
 .os-hits .os-hit-none { cursor: default; color: var(--muted); }
+
+/* organisation mode: tree, handoffs, periods */
+.os-org-tree, .os-org-tree ul { list-style: none; margin: 0; padding: 0; }
+.os-org-tree ul { margin-left: 18px; padding-left: 14px; border-left: 1px solid var(--edge); }
+.os-org-node { padding: 4px 0; }
+.os-org-name { border: 1px solid var(--edge); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 3px 10px; font-size: 14px; }
+.os-org-name:hover { border-color: var(--primary); color: var(--primary-ink); }
+.os-org-node.is-unit > .os-org-name { background: var(--primary-soft); border-color: var(--primary-soft); font-weight: 600; }
+.os-org-node.is-person > .os-org-name { border-style: dashed; }
+.os-org-node > small { margin-left: 8px; color: var(--muted); font-size: 12px; }
+.os-org-flow { list-style: none; margin: 0; padding: 0; }
+.os-org-flow li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--edge); font-size: 14px; }
+.os-org-flow li:first-child { border-top: 0; }
+.os-org-flow i { color: var(--muted); font-style: normal; }
+.os-org-what { color: var(--primary-ink); background: var(--primary-soft); border-radius: 6px; padding: 2px 8px; }
+.os-org-flow em { margin-left: auto; color: var(--muted); font-style: normal; font-size: 12px; }
+.os-org-periods { list-style: none; margin: 0; padding: 0; }
+.os-org-periods > li { padding: 8px 0; border-top: 1px solid var(--edge); }
+.os-org-periods > li:first-child { border-top: 0; }
+.os-org-periods em { margin-left: 8px; color: var(--muted); font-style: normal; font-variant-numeric: tabular-nums; }
+.os-org-periods ul { list-style: none; margin: 6px 0 0; padding-left: 14px; border-left: 1px solid var(--edge); color: var(--ink); font-size: 13px; }
+.os-org-periods ul small { margin-left: 8px; color: var(--muted); }

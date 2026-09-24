@@ -8,7 +8,10 @@ const SECTIONS = [["data", "数据接入"], ["objects", "本体管理"], ["graph
 /** The modules a run can show: a document has no rows to lay out or to answer questions from. */
 export function sectionsFor(run) {
   if (!run) return [];
-  return isDocument(run) ? SECTIONS.filter(([key]) => key !== "data" && key !== "qa") : SECTIONS;
+  if (!isDocument(run)) return SECTIONS;
+  const doc = SECTIONS.filter(([key]) => key !== "data" && key !== "qa");
+  if (run.mode !== "org") return doc;
+  return doc.flatMap((s) => (s[0] === "objects" ? [s, ["org", "组织架构"]] : [s]));
 }
 
 /** One card per object: what it is called, a line about it, where it is read from and how it connects. */
