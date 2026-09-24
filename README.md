@@ -68,7 +68,7 @@
 | 逐项确认、重命名、补充对象 | 保存为该文件的参考本体，再次上传时自动比对并预填 |
 | 设定验收问题（至多 3 道） | 每次重新运行以相同查询复算，仅提示结果发生变化的问题 |
 | 采纳数据规则 | 每次重新运行均校验，列出违反规则的对象 |
-| 标记上传文件为新版本 | 沿用上一版的确认、验收问题与规则，并统计各对象的新增与减少数量 |
+| 标记上传文件为新版本 | 沿用上一版的确认（含判错）、验收问题与规则，并统计各对象的新增与减少数量；模型再次提出此前判错的对象时单独提示 |
 | 生成对象表单草稿 | 一次模型调用，生成中文名称、描述与展示字段；人工修改过的内容不会被再次生成覆盖 |
 | 导出对象表单 | 每个对象生成一份 CSV，列为数据平台建对象时的常见表单列 |
 | 点击右上角"⤓ TTL" | 导出三份 Turtle 文件：`ontology.ttl` 用 OWL 描述对象、字段、关系与识别字段；`data.ttl` 中每个对象按识别值命名，同一对象跨表、跨版本同名，可直接合并；`shapes.ttl` 将已采纳的规则写成 SHACL，可用通用校验器检查。判错的对象与关系不导出 |
@@ -179,8 +179,8 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（546 个）
-npm --prefix landing-page run test:unit                       # 前端测试（205 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（554 个）
+npm --prefix landing-page run test:unit                       # 前端测试（207 个）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录，不动已有运行
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合成示例工作簿
