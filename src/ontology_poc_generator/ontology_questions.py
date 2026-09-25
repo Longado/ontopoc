@@ -349,7 +349,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
             result = run_query(ontology, bundle, query, graph, derived)
         else:
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
-            result = {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题')}
+            result = {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True}
         if result['status'] != 'answered' and result.get('reason'):
             result = {**result, 'reason': plain_reason(ontology, result['reason'])}
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
