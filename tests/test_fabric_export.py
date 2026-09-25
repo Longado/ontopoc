@@ -66,6 +66,14 @@ class DefinitionTests(unittest.TestCase):
         shown = next(p for p in customer['properties'] if p['id'] == customer['displayNamePropertyId'])
         self.assertEqual(shown['semanticEnrichment']['customAttributes']['column'], '客户名称')
 
+    def test_a_column_renamed_for_fabric_keeps_its_name_in_the_description(self):
+        _, got = parts(export())
+        order = by_name(got, 'EntityTypes/')['order']
+        renamed = [p for p in order['properties'] if p['name'] != p['semanticEnrichment']['customAttributes']['column']]
+        self.assertTrue(renamed)
+        for p in renamed:
+            self.assertEqual(p['semanticEnrichment']['description'], p['semanticEnrichment']['customAttributes']['column'])
+
     def test_types_are_the_ones_the_data_holds(self):
         _, got = parts(export())
         order = by_name(got, 'EntityTypes/')['order']
