@@ -8,8 +8,9 @@ import json
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.recognition import model_failure_text
+from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview
 
-QUESTION_PROMPT_VERSION = 'company_questions.v6'
+QUESTION_PROMPT_VERSION = 'company_questions.v7'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
 CATEGORY_LIMIT = 12         # attributes with at most this many distinct values are shown to the model with their values
@@ -26,8 +27,12 @@ Return ONLY a JSON object:
         "via": ["<relation key>", "..."],
         "group_by": [{{"via": ["<relation key>", "..."], "field": "<attribute path of the type that this via reaches from start (the start type when via is empty), exactly as listed>"}}],
         "share": {{"field": "<attribute path of the start type, exactly as listed>", "equals": "<exact value>"}} or null,
-        "measure": {{"field": "<numeric attribute path of the start type, exactly as listed>", "op": "sum" | "average"}} or null
+        "measure": {{"field": "<numeric attribute path of the start type, exactly as listed>", "op": "sum" | "average"}}
+                   or {{"derived": "<name of a derived measure of the start type>", "op": "sum" | "average"}} or null
     }} or null,
+    "derive": {{"type": "<object type key>", "label": "<short Chinese name>",
+                "terms": [{{"sign": 1 | -1, "factors": [{{"field": "<attribute path of that type>", "complement": true | false}}]}}]}}
+              (only when you propose a new derived measure),
     "missing": "ontology" | "query_language"   (only when query is null)
 }}]}}
 
@@ -41,6 +46,12 @@ Meaning of a query: take the objects of `start` that match every `where`; then
   skipped. Use it for questions about amounts, totals and averages;
 - with neither: count the objects reached by the top-level `via` (or the start objects when it is empty). The top-level
   `via` is only for this case.
+When the amount a question needs is not one column but a formula over one object's own fields (unit price ×
+quantity × (1 − discount), or price − cost), propose it in `derive` on that object: a sum of terms, each term a product
+of that object's fields, a factor with "complement": true meaning (1 − field). No constants, no division. Then start
+the query from that object and use {{"derived": "<its label>"}} as the measure, walking group_by to whatever the question
+groups by. An object's `derived` list holds measures a person has already confirmed: use them by name, do not propose
+them again. In reasoning, call objects and relations by their Chinese labels.
 Use only type keys, relation keys and attribute paths listed in the ontology, and filter values from an attribute's
 `values` when it lists them. When a question cannot be written as one query, keep it, set "query" to null, say why in reasoning, and set
 "missing": "ontology" when the ontology lacks the objects, relations or attributes it needs, or "query_language" when the
@@ -109,7 +120,7 @@ def _walk(relations: dict, start: str, via, label) -> tuple:
     return (current, steps), None
 
 
-def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None) -> dict:
+def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None) -> dict:
     p = normalize_proposal(ontology)
     types, relations = _types(p), {r['key']: r for r in p['relations']}
     label = lambda k: types[k].get('label') or k
@@ -125,12 +136,19 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         where.append({'field': field, 'equals': w.get('equals')})
     measure = query.get('measure') if isinstance(query.get('measure'), dict) else None
     if measure:
-        field = _resolve_field(types[start], measure.get('field'))
-        if field is None:
-            return gap(f'本体里的 {label(start)} 没有属性 {measure.get("field")}，无法对它求和或求平均')
         if measure.get('op') not in ('sum', 'average'):
             return gap(f'不支持的算法 {measure.get("op")}，只能是 sum 或 average')
-        measure = {'field': field, 'op': measure['op']}
+        if measure.get('derived') is not None:   # an amount computed from a formula a person confirmed
+            formula = next((d for d in derived or [] if d['type'] == start and d['label'] == measure['derived']), None)
+            if formula is None:
+                return gap(f'要先确认{label(start)}的指标“{measure["derived"]}”，才能对它求和或求平均')
+            # field is written '.<label>' so the naming below, which reads what follows the table's dot, shows the label
+            measure = {'field': f'.{formula["label"]}', 'op': measure['op'], 'derived': formula}
+        else:
+            field = _resolve_field(types[start], measure.get('field'))
+            if field is None:
+                return gap(f'本体里的 {label(start)} 没有属性 {measure.get("field")}，无法对它求和或求平均')
+            measure = {'field': field, 'op': measure['op']}
     share = query.get('share') if isinstance(query.get('share'), dict) else None
     if share:
         field = _resolve_field(types[start], share.get('field'))
@@ -193,8 +211,12 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         for key in via:
             frontier = {n for f in frontier for n in neighbours[key].get(f, ())}
         return frontier
+    computed = compute_derived(ontology, bundle, measure['derived'], graph)['values'] if measure and measure.get('derived') else None
+
     def numbers(inst):
         """The values of the measure field that really are numbers; anything else is reported, never read as zero."""
+        if computed is not None:   # one value per object, or none when its fields could not be read
+            return ([computed[inst]], 0) if inst in computed else ([], 1)
         read, skipped = [], 0
         for v in values(inst, measure['field']):
             try:
@@ -274,22 +296,24 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
                        **({'measure': measured(starts)} if measure else {})}}
 
 
-def _catalog(ontology: dict, bundle: dict) -> dict:
+def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
     p = normalize_proposal(ontology)
     values = categorical_values(ontology, bundle)
+    confirmed = lambda key: [{'name': d['label'], 'formula': formula_text(d)} for d in derived or [] if d['type'] == key]
     return {
         'object_types': [{'key': t['key'], 'label': t.get('label'), 'attributes': [
             {'path': f.partition('.')[2], **({'identity': True} if f in _identity_fields(t) and f not in {f'{a.get("source")}.{a.get("path")}' for a in t['attributes']} else {}),
              **({'values': values[f]} if f in values else {})}
-            for f in _fields(t)]} for t in p['object_types']],
+            for f in _fields(t)], **({'derived': confirmed(t['key'])} if confirmed(t['key']) else {})} for t in p['object_types']],
         'relations': [{k: r.get(k) for k in ('key', 'from', 'to', 'label', 'meaning')} for r in p['relations']],
     }
 
 
-def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = None, purpose_only: bool = False) -> dict:
+def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = None, purpose_only: bool = False,
+                  derived: list | None = None) -> dict:
     """One call. With question: that question. With purpose_only: the questions the person wrote as the purpose, which
     an upload answers. With neither: the model's own round, asked for on the questions page."""
-    request = {'purpose': bundle['decision'], 'ontology': _catalog(ontology, bundle)}
+    request = {'purpose': bundle['decision'], 'ontology': _catalog(ontology, bundle, derived)}
     if question:
         request['asked'] = question
     elif purpose_only:
@@ -311,11 +335,23 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         if not isinstance(q, dict) or not isinstance(q.get('question'), str):
             continue
         query = q.get('query')
-        if isinstance(query, dict):
-            result = run_query(ontology, bundle, query, graph)
+        wanted = (query.get('measure') or {}).get('derived') if isinstance(query, dict) and isinstance(query.get('measure'), dict) else None
+        known = any(d['label'] == wanted for d in derived or [])
+        if wanted is not None and not known and isinstance(q.get('derive'), dict):
+            # a new amount: code checks the formula and tries it on every object; the person confirms before it counts
+            formula, why = parse_derived(ontology, q['derive'])
+            if formula is None or formula['label'] != wanted:
+                result = {'status': 'ontology_gap', 'reason': f'模型提出的指标算不成：{why or "查询用的指标名和提出的不一致"}'}
+            else:
+                result = {'status': 'needs_derived', 'reason': f'要先确认“{formula["label"]} = {formula_text(formula)}”这个指标，才能回答',
+                          'derive': {**formula, 'formula': formula_text(formula), 'preview': derived_preview(ontology, bundle, formula, graph)}}
+        elif isinstance(query, dict):
+            result = run_query(ontology, bundle, query, graph, derived)
         else:
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
             result = {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题')}
+        if result['status'] != 'answered' and result.get('reason'):
+            result = {**result, 'reason': plain_reason(ontology, result['reason'])}
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
                              **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])
