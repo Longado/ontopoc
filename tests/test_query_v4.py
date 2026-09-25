@@ -36,7 +36,7 @@ class ShareTests(unittest.TestCase):
 
 class PromptTests(unittest.TestCase):
     def test_the_prompt_version_moves_and_describes_both_forms(self):
-        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v6')
+        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v7')
         self.assertIn('"share"', QUESTION_SYSTEM_PROMPT)
         self.assertIn('"group_by": [{', QUESTION_SYSTEM_PROMPT)
 
