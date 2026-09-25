@@ -4,7 +4,7 @@ import test from "node:test";
 import { STATUS_LABELS, answerLines, questionSummary } from "./ontologyStudioModel.js";
 
 test("each question says whether the ontology could answer it", () => {
-  assert.deepEqual(STATUS_LABELS, { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "这种问法还不支持" });
+  assert.deepEqual(STATUS_LABELS, { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "这种问法还不支持", needs_derived: "待确认指标" });
 });
 
 test("answers read as short lines", () => {
