@@ -42,6 +42,7 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `find_name_variants` | 找出可能的对应 | 是 |
 | `export_forms` | 右上角 ⤓ 表单：按对象表单导出 | 否 |
 | `export_ttl` | 右上角 ⤓ TTL：按 W3C 标准导出 OWL 本体、数据与 SHACL 规则 | 否 |
+| `export_fabric` | 右上角 ⤓ Fabric：导出 Microsoft Fabric IQ 本体定义；给了工作区和 Lakehouse ID 就带数据绑定 | 否 |
 | `export_mermaid` | 右上角 ⤓ 组织图：组织隶属与协作交接两张 Mermaid，可按年份段出图 | 否 |
 
 "下载纪要"没有单独的工具：纪要是页面把上面这些数据排版成的一页，要内容就调对应的工具。

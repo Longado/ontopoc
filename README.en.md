@@ -39,7 +39,7 @@ The interface is in Chinese; this page describes it in English.
 
 Upload a few business tables (Excel, CSV) or a process document, and OntoPoc drafts an ontology: which objects the business has, what tells each one apart, and how they relate. Code then checks it against every row: do the fields exist, do the identity fields have values, do the relations actually connect in the data. It runs a data check and answers the question you wrote from the data. You judge each part right or wrong; your judgement is kept, and the next upload of the same file, or a new version of it, starts from it.
 
-The result can be exported in the shape of a data platform's object form or as W3C Turtle (OWL and SHACL), and every feature is also an MCP tool other agents can call.
+The result can be exported in the shape of a data platform's object form as W3C Turtle (OWL and SHACL), or as a Microsoft Fabric IQ ontology definition with data bindings, and every feature is also an MCP tool other agents can call.
 
 > **Early version.** Everything has been checked on public and synthetic data only (Chicago city contracts, Northwind, BART transit, the Taiwan company registry, CMS hospitals and more). Nobody but the author has yet used it end to end on their own. Tested on macOS only. Batch import has not been tested on any data platform. See [Known issues](#known-issues).
 
@@ -74,6 +74,7 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 | Click "Draft" (起草) on the object form | One model call drafts Chinese names, descriptions and display fields; what you edited is never overwritten by a redraft |
 | Click "⤓ 表单" at the top right | One CSV per object, in the columns data platforms usually ask for when defining an object |
 | Click "⤓ TTL" at the top right | Three Turtle files: `ontology.ttl` describes objects, fields, relations and identity fields in OWL; in `data.ttl` every object is named by its identity values, so the same object in two tables or two versions of a file has one name and merges; `shapes.ttl` writes adopted rules as SHACL for any validator. What you judged wrong is left out |
+| Click "⤓ Fabric" at the top right | A Microsoft Fabric IQ ontology definition, the body of the create-ontology API. With the workspace and lakehouse IDs where the tables live, it carries data bindings: which table and column fill each object, and which two columns link each relation. A hand-drawn ontology cannot give these; what a binding cannot express (comma splits, rows picked by a condition) is left unbound and listed |
 
 The model only judges; loops and calculations are in code, with model calls chained at most 3 deep and each call tied to a judgement a person has to make. There are 6 agents, each with a definition card in [docs/AGENTS.md](docs/AGENTS.md).
 
@@ -137,7 +138,7 @@ In a new session there are two commands: `/ontopoc:ontopoc-build` (upload files 
 
 ### Connect Claude Code or another MCP client
 
-Every feature on the page is a standard MCP tool (stdio, 27 tools) calling the same local service:
+Every feature on the page is a standard MCP tool (stdio, 28 tools) calling the same local service:
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -173,6 +174,7 @@ There is also an example use of the same method on vehicle recall scope (NHTSA p
 - **Queries cannot yet** filter by a numeric condition, limit to a time range, give two numbers in one question, or say which things tend to appear together. It says so when asked.
 - **Batch import is untested.** The exported form columns follow what data platforms usually ask for; import format, key rules and how relations are expressed differ by platform and have not been tested on any, so no relation table is exported.
 - **Turtle export is checked only by reading it back with rdflib and pyshacl.** It has not been loaded into Protégé or a triple store.
+- **Fabric export is checked only against the field rules in Microsoft's public docs.** It has not been imported into a real Fabric workspace, and whether Chinese column names survive loading into a lakehouse is untested.
 - **Tested on macOS only.** Windows and Linux are untested.
 
 ## Contributing
@@ -192,8 +194,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (573)
-npm --prefix landing-page run test:unit                       # page tests (207)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (589)
+npm --prefix landing-page run test:unit                       # page tests (210)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook
@@ -205,7 +207,7 @@ The design documents are in Chinese:
 |---|---|
 | [docs/PRODUCT.md](docs/PRODUCT.md) | What the product is and which layers it covers |
 | [docs/AGENTS.md](docs/AGENTS.md) | The 5 agents' definition cards and the call log |
-| [docs/MCP.md](docs/MCP.md) | The 27 MCP tools |
+| [docs/MCP.md](docs/MCP.md) | The 28 MCP tools |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | Data platform object forms, compared |
 | [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | The latest round's plan and record |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |
