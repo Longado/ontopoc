@@ -30,6 +30,7 @@ from ontology_poc_generator.versions import version_diff
 from ontology_poc_generator.field_descriptions import MAX_DESCRIPTION, MAX_LABEL, draft_descriptions
 from ontology_poc_generator.handover_form import handover_form
 from ontology_poc_generator.object_forms import form_files
+from ontology_poc_generator.fabric_export import fabric_files
 from ontology_poc_generator.ttl_export import ttl_files
 import io
 import zipfile
@@ -424,7 +425,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif tail.startswith('instances/'):
                     type_key = unquote(tail[len('instances/'):])
                     self.reply(200, find_instances(result['ontology'], bundle, type_key, (query.get('q') or [''])[0], graph=graph))
-                elif tail in ('export/forms', 'export/ttl'):
+                elif tail in ('export/forms', 'export/ttl', 'export/fabric'):
                     handover = result['evaluation'].get('handover') or handover_form(result['ontology'], bundle)
                     form = form_state({**result, 'evaluation': {**result['evaluation'], 'handover': handover}})
                     decisions = (result.get('confirmation') or {}).get('decisions')
@@ -433,6 +434,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     handover = {**handover, 'types': [t for t in handover.get('types', []) if t['type'] in kept_types]}
                     if tail == 'export/forms':
                         files, zip_name = form_files(reviewed, handover, form), '对象表单'
+                    elif tail == 'export/fabric':
+                        where = {k: query[k][0] for k in ('workspace', 'lakehouse') if query.get(k)}
+                        files, zip_name = fabric_files(reviewed, bundle, handover, form, decisions, result['file']['name'], **where), 'Fabric'
                     else:
                         files, zip_name = ttl_files(reviewed, bundle, handover, form, decisions,
                                                     rules_state(result, bundle, graph)['adopted'], f'urn:ontopoc:{memory_key(result)}/', graph), 'TTL'

@@ -224,6 +224,11 @@ def export_ttl(s, a):
     return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/ttl?format=json")
 
 
+def export_fabric(s, a):
+    where = ''.join(f"&{k}={quote(_text(a[k], k))}" for k in ('workspace', 'lakehouse') if a.get(k) is not None)
+    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/fabric?format=json{where}")
+
+
 def data_layout(s, a):
     ev = s.run(a.get('saved_as'))['evaluation']
     fit = ev.get('data_fit') or {}
@@ -330,6 +335,11 @@ TOOLS = [
           {**RUN, 'years': {'type': 'string', 'pattern': '^[0-9]{4}-[0-9]{4}$'}}, ('saved_as',)),
     _tool(export_ttl, '按 W3C 标准导出 Turtle：ontology.ttl（OWL 类、字段、关系、识别键）、data.ttl（每个对象按识别值命名，同一对象跨表跨版本同名）、'
           'shapes.ttl（采纳的规则写成 SHACL，有规则时才有）。判错的对象和关系不导出。', RUN, ('saved_as',)),
+    _tool(export_fabric, '导出 Microsoft Fabric IQ 本体定义（fabric-ontology.json 是建本体接口的请求体）和说明。'
+          '给了表所在的工作区 ID 和 Lakehouse ID，就带上数据绑定：每个对象读哪张表哪一列、每条关系靠哪两列连起来；'
+          '绑定表达不了的部分（逗号拆分、格子里的列表、按条件取行）不绑定，在说明里列出。判错的不导出。',
+          {**RUN, 'workspace': {'type': 'string', 'description': '工作区 ID（GUID）'}, 'lakehouse': {'type': 'string', 'description': 'Lakehouse ID（GUID）'}},
+          ('saved_as',)),
     _tool(data_layout, '上传的每张表：行数、跳过的标题行、每列类型长度空值；表没连上时，能把它们连起来的列。', RUN, ('saved_as',)),
     _tool(data_check, '数据体检：七项检查是否通过，以及每类发现的数量和前几个例子。全部由代码算。', RUN, ('saved_as',)),
     _tool(ask_question, '用数据回答一个业务问题：模型把问题写成查询，代码在数据上算答案。不给 question 就让模型出一组题。会调用模型。',
