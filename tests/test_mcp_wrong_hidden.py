@@ -39,6 +39,15 @@ class HiddenTests(unittest.TestCase):
         objects = mcp_server.list_objects(Session({}), {'saved_as': 'r.json'})
         self.assertEqual((len(objects['objects']), objects['left_out']), (2, []))
 
+    def test_a_rerun_shows_the_last_judgement_of_the_file(self):
+        session = Session({})
+        session.data['confirmation'] = None
+        session.data['evaluation'] = {'reference': {'suggested': {'types': {'customer': {'verdict': 'wrong'}}, 'relations': {'order_customer': {'verdict': 'wrong'}}}}}
+        objects = mcp_server.list_objects(session, {'saved_as': 'r.json', 'include_wrong': True})
+        self.assertEqual({o['key']: o['last_time'] for o in objects['objects']}, {'order': None, 'customer': 'wrong'})
+        relations = mcp_server.list_relations(session, {'saved_as': 'r.json', 'include_wrong': True})
+        self.assertEqual([r['last_time'] for r in relations['relations']], ['wrong'])
+
     def test_the_tools_say_they_can_include_what_was_judged_wrong(self):
         tools = {t['name']: t for t in handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None)['result']['tools']}
         for name in ('list_objects', 'list_relations'):
