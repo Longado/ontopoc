@@ -131,6 +131,7 @@ def _kept(run: dict, a: dict) -> tuple[dict, dict]:
 def list_objects(s, a):
     run = s.run(a.get('saved_as'))
     ontology, decisions = _kept(run, a)
+    last = ((run['evaluation'].get('reference') or {}).get('suggested') or {})   # how the person judged this file last time
     counts = (run['ontology'].get('verification') or {}).get('metrics', {}).get('instances', {})
     verdicts = decisions.get('types', {})
     shown = {t['key'] for t in ontology['object_types']}
@@ -138,7 +139,8 @@ def list_objects(s, a):
                          'sources': sorted({p['source'] for p in t['populated_from']}),
                          'identity': sorted({f for p in t['populated_from'] for f in p['identity'].values()}),
                          'count': counts.get(t['key']), 'relations': sum(t['key'] in (r['from'], r['to']) for r in ontology['relations']),
-                         'verdict': verdicts.get(t['key'], {}).get('verdict')} for t in ontology['object_types']],
+                         'verdict': verdicts.get(t['key'], {}).get('verdict'),
+                         'last_time': last.get('types', {}).get(t['key'], {}).get('verdict')} for t in ontology['object_types']],
             'left_out': [{'key': t['key'], 'label': t.get('label') or t['key'], 'verdict': 'wrong'}
                          for t in run['ontology']['object_types'] if t['key'] not in shown]}
 
@@ -163,12 +165,14 @@ def object_rows(s, a):
 def list_relations(s, a):
     run = s.run(a.get('saved_as'))
     ontology, decisions = _kept(run, a)
+    last = ((run['evaluation'].get('reference') or {}).get('suggested') or {})
     verdicts = decisions.get('relations', {})
     cards = {c['key']: c for c in (run['evaluation'].get('handover') or {}).get('relations', [])}
     shown = {r['key'] for r in ontology['relations']}
     return {'relations': [{**{k: r.get(k) for k in ('key', 'from', 'to', 'label', 'meaning', 'source')},
                            **{k: cards.get(r['key'], {}).get(k) for k in ('cardinality', 'most_from', 'most_to')},
-                           'verdict': verdicts.get(r['key'], {}).get('verdict')} for r in ontology['relations']],
+                           'verdict': verdicts.get(r['key'], {}).get('verdict'),
+                           'last_time': last.get('relations', {}).get(r['key'], {}).get('verdict')} for r in ontology['relations']],
             'left_out': [{'key': r['key'], 'from': r['from'], 'to': r['to'], 'reason': '判错了' if verdicts.get(r['key'], {}).get('verdict') == 'wrong' else '一端的对象判错了'}
                          for r in run['ontology']['relations'] if r['key'] not in shown]}
 
