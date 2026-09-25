@@ -18,6 +18,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import ProxyHandler, Request, build_opener
 
+from ontology_poc_generator.ontology_confirm import without_wrong
+
 PROTOCOL_VERSIONS = ('2025-06-18', '2025-03-26', '2024-11-05')
 KEPT = ('question', 'query', 'note', 'snapshot', 'answer', 'status', 'path', 'reason')   # what an acceptance question carries
 UNMET = ('query_limit', 'ontology_gap')
@@ -119,16 +121,26 @@ def run_overview(s, a):
     return _overview(s.run(a.get('saved_as')))
 
 
+def _kept(run: dict, a: dict) -> tuple[dict, dict]:
+    """The ontology an agent reads: what the person judged wrong is out, as on the page and in the exports, unless the
+    caller asks for everything."""
+    decisions = (run.get('confirmation') or {}).get('decisions') or {}
+    return (run['ontology'] if a.get('include_wrong') else without_wrong(run['ontology'], decisions)), decisions
+
+
 def list_objects(s, a):
     run = s.run(a.get('saved_as'))
-    ontology = run['ontology']
-    counts = (ontology.get('verification') or {}).get('metrics', {}).get('instances', {})
-    verdicts = (run.get('confirmation') or {}).get('decisions', {}).get('types', {})
+    ontology, decisions = _kept(run, a)
+    counts = (run['ontology'].get('verification') or {}).get('metrics', {}).get('instances', {})
+    verdicts = decisions.get('types', {})
+    shown = {t['key'] for t in ontology['object_types']}
     return {'objects': [{'key': t['key'], 'label': t.get('label') or t['key'], 'definition': t.get('definition') or t.get('rationale'),
                          'sources': sorted({p['source'] for p in t['populated_from']}),
                          'identity': sorted({f for p in t['populated_from'] for f in p['identity'].values()}),
                          'count': counts.get(t['key']), 'relations': sum(t['key'] in (r['from'], r['to']) for r in ontology['relations']),
-                         'verdict': verdicts.get(t['key'], {}).get('verdict')} for t in ontology['object_types']]}
+                         'verdict': verdicts.get(t['key'], {}).get('verdict')} for t in ontology['object_types']],
+            'left_out': [{'key': t['key'], 'label': t.get('label') or t['key'], 'verdict': 'wrong'}
+                         for t in run['ontology']['object_types'] if t['key'] not in shown]}
 
 
 def object_fields(s, a):
@@ -150,9 +162,15 @@ def object_rows(s, a):
 
 def list_relations(s, a):
     run = s.run(a.get('saved_as'))
+    ontology, decisions = _kept(run, a)
+    verdicts = decisions.get('relations', {})
     cards = {c['key']: c for c in (run['evaluation'].get('handover') or {}).get('relations', [])}
+    shown = {r['key'] for r in ontology['relations']}
     return {'relations': [{**{k: r.get(k) for k in ('key', 'from', 'to', 'label', 'meaning', 'source')},
-                           **{k: cards.get(r['key'], {}).get(k) for k in ('cardinality', 'most_from', 'most_to')}} for r in run['ontology']['relations']]}
+                           **{k: cards.get(r['key'], {}).get(k) for k in ('cardinality', 'most_from', 'most_to')},
+                           'verdict': verdicts.get(r['key'], {}).get('verdict')} for r in ontology['relations']],
+            'left_out': [{'key': r['key'], 'from': r['from'], 'to': r['to'], 'reason': '判错了' if verdicts.get(r['key'], {}).get('verdict') == 'wrong' else '一端的对象判错了'}
+                         for r in run['ontology']['relations'] if r['key'] not in shown]}
 
 
 def suggest_relations(s, a):
@@ -267,6 +285,7 @@ def find_name_variants(s, a):
     return s.request('/api/ontology/variants', {'saved_as': _text(a.get('saved_as'), 'saved_as')})['evaluation']['variants']
 
 
+WRONG = {'include_wrong': {'type': 'boolean', 'description': '连人判错的也给（默认不给）'}}
 RUN = {'saved_as': {'type': 'string', 'description': '运行的保存名，来自 list_runs 或 build_ontology'}}
 TYPE = {'type': {'type': 'string', 'description': '对象的 key，来自 list_objects'}}
 FILES = {'files': {'type': 'array', 'items': {'type': 'string'}, 'description': '本机文件路径：一份或几份数据表（.csv .xlsx），或一份文档（.md .txt .docx .pdf）'},
@@ -286,10 +305,10 @@ TOOLS = [
           {**FILES, 'previous': {'type': 'string', 'description': '上一版本的运行保存名（来自 list_runs）；不是新版本就不写'},
            'mode': {'type': 'string', 'enum': ['org'], 'description': '写 org 就按组织架构梳理一份文档：组织单元、岗位、人、工作环节及其关系'}}, ('files',)),
     _tool(run_overview, '一次运行的概况：对象和关系数、体检通过几项、问答能答几道、稳定性、是否确认过。', RUN, ('saved_as',)),
-    _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。', RUN, ('saved_as',)),
+    _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。人判错的默认不给，列在 left_out 里；include_wrong=true 全给。', {**RUN, **WRONG}, ('saved_as',)),
     _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到数据平台时要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
     _tool(object_rows, '一个对象在数据里的每一个实例，一页 20 个；all=true 一次给全部。', {**RUN, **TYPE, 'page': {'type': 'integer', 'minimum': 1}, 'all': {'type': 'boolean'}}, ('saved_as', 'type')),
-    _tool(list_relations, '本体里的关系：两端、含义、来源表、一对一/一对多/多对多。', RUN, ('saved_as',)),
+    _tool(list_relations, '本体里的关系：两端、含义、来源表、一对一/一对多/多对多、人的判断。判错的、或一端对象判错的默认不给，列在 left_out 里；include_wrong=true 全给。', {**RUN, **WRONG}, ('saved_as',)),
     _tool(suggest_relations, '代码在数据里看到、本体里没有的关系，只作建议：同一行上的两个对象没连起来；某列写的是别的对象的名称（且指向的不是本行已连着的那个）；或某列按名字和取值指向别的对象的编号。', RUN, ('saved_as',)),
     _tool(find_instances, '按名称或编号找数据里的某个对象（实例图谱的起点），给出节点 id。', {**RUN, **TYPE, 'query': {'type': 'string'}}, ('saved_as', 'type')),
     _tool(instance_neighbourhood, '实例图谱：一个对象的字段，和数据里与它相连的对象；每条关系先给 20 个，其余计数。',
@@ -357,8 +376,22 @@ def handle(message: dict, service) -> dict | None:
     return error(-32601, f'不支持的方法 {method}')
 
 
+def check(base: str) -> None:
+    """For a session start: one line when the modelling service does not answer, nothing when it does. Never fails the
+    session, so it always exits 0."""
+    try:
+        with build_opener(ProxyHandler({})).open(base.rstrip('/') + '/api/ontology/health', timeout=3) as response:
+            json.load(response)
+    except Exception:   # any way of not answering is the same news for the person
+        print(f'OntoPoc：本机建模服务没有在 {base} 运行，OntoPoc 的工具暂时用不了。在仓库里运行 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server 启动它。')
+
+
 def main():
-    service = LocalService(os.environ.get('ONTOPOC_URL', 'http://127.0.0.1:8767'))
+    base = os.environ.get('ONTOPOC_URL', 'http://127.0.0.1:8767')
+    if sys.argv[1:] == ['--check']:
+        check(base)
+        return
+    service = LocalService(base)
     for line in sys.stdin:
         if not line.strip():
             continue

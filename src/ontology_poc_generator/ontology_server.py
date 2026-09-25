@@ -798,6 +798,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
+            earlier = result.get('confirmation') or {}
+            if earlier.get('decisions') == payload.get('decisions') and earlier.get('confirmed_by') == signer:
+                self.reply(200, result)   # the same judgement again (a retried call): nothing new to keep
+                return
             now = datetime.now(timezone.utc).isoformat(timespec='seconds')
             refs = output_dir / 'references'
             refs.mkdir(parents=True, exist_ok=True)

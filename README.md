@@ -122,6 +122,17 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 访问 `http://127.0.0.1:5178`。未配置 key 时仍可查看内置示例。修改后端代码后需重启建模服务，页面检测到服务运行旧代码时会提示。
 
+### 作为 Claude Code 插件安装
+
+仓库本身就是一个 Claude Code 插件。安装后可在 Claude Code 里直接建本体、逐项确认；建模、核验和确认记录仍在本机 OntoPoc 服务里完成，使用前需要先启动它（见上文）。
+
+```bash
+claude plugin marketplace add Longado/ontopoc
+claude plugin install ontopoc@ontopoc
+```
+
+新开一个会话后可用两个命令：`/ontopoc:ontopoc-build`（上传文件建本体）与 `/ontopoc:ontopoc-review`（逐项确认）。会话开始时，若本机服务没有运行，插件会提示一行。插件按 `ONTOPOC_PYTHON`、`python3`、`python` 的顺序寻找 Python。
+
 ### 接入 Claude Code 或其他 MCP 客户端
 
 页面上的每项功能都有对应的 MCP 工具，共 27 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
@@ -179,7 +190,7 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（554 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（572 个）
 npm --prefix landing-page run test:unit                       # 前端测试（207 个）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录，不动已有运行
