@@ -1,0 +1,15 @@
+{
+  "name": "ontopoc",
+  "version": "0.1.0",
+  "description": "OntoPoc：在 Claude Code 里上传业务表格或文档建本体、看体检、逐项确认。插件只是入口，建模、核验和确认记录都在本机的 OntoPoc 服务里，需要先启动它。",
+  "author": { "name": "Yutai Lin" },
+  "homepage": "https://github.com/Longado/ontopoc",
+  "repository": "https://github.com/Longado/ontopoc",
+  "license": "MIT",
+  "keywords": ["ontology", "data-modeling", "mcp", "claude-code"],
+  "mcpServers": {
+    "ontopoc": { "command": "${CLAUDE_PLUGIN_ROOT}/bin/ontopoc-mcp" }
+  },
+  "commands": "./plugin/commands",
+  "hooks": "./plugin/hooks.json"
+}

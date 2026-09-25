@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# OntoPoc 的 MCP 启动脚本：Claude Code 插件的连接器和会话开始时的检查都走这里。
+# MCP 服务只用 Python 标准库，所以不装依赖。按 ONTOPOC_PYTHON → python3 → python 找解释器：Mac 上常常只有 python3。
+set -u
+SELF="${BASH_SOURCE[0]}"
+DIR="${SELF%/*}"
+[ "$DIR" = "$SELF" ] && DIR=.
+ROOT="$(cd "$DIR/.." && pwd)"
+export PYTHONIOENCODING=utf-8
+for candidate in "${ONTOPOC_PYTHON:-}" python3 python; do
+  [ -n "$candidate" ] || continue
+  if command -v "$candidate" >/dev/null 2>&1; then
+    PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" exec "$candidate" -m ontology_poc_generator.mcp_server "$@"
+  fi
+done
+echo "OntoPoc：找不到 Python 3（试过 ONTOPOC_PYTHON、python3、python）。装好 Python 3.11 或更新版本，或把解释器路径写进 ONTOPOC_PYTHON。" >&2
+exit 127

@@ -1,0 +1,12 @@
+{
+  "name": "ontopoc",
+  "owner": { "name": "Longado" },
+  "description": "OntoPoc 的插件市场",
+  "plugins": [
+    {
+      "name": "ontopoc",
+      "source": "./",
+      "description": "在 Claude Code 里建本体、看体检、逐项确认。需要本机 Python 3.11 或更新版本，并先启动 OntoPoc 服务。"
+    }
+  ]
+}

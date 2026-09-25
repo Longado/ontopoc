@@ -21,12 +21,12 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `preview_upload` | "看看会发给模型什么" | 否 |
 | `build_ontology` | 新建：上传并建本体，跑完才返回；给 `previous` 即作为那次运行的新版本 | 是 |
 | `run_overview` | 顶部的状态标签 | 否 |
-| `list_objects` | 本体管理 · 对象卡片 | 否 |
+| `list_objects` | 本体管理 · 对象卡片（判错的默认不给，列在 left_out；`include_wrong` 全给） | 否 |
 | `object_fields` | 对象 · 属性 | 否 |
 | `draft_form` | 对象 · 属性：起草中文名、描述、展示字段 | 是 |
 | `save_form` | 对象 · 属性：保存 | 否 |
 | `object_rows` | 对象 · 数据（`all=true` 相当于下载 CSV） | 否 |
-| `list_relations` | 本体关系 | 否 |
+| `list_relations` | 本体关系（同上） | 否 |
 | `suggest_relations` | 本体关系 · 代码建议的关系（虚线） | 否 |
 | `find_instances` | 本体关系 · 实例图谱：找起点 | 否 |
 | `instance_neighbourhood` | 本体关系 · 实例图谱：展开一个对象 | 否 |

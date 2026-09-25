@@ -124,6 +124,17 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 Open `http://127.0.0.1:5178`. The bundled samples open without a key. After changing backend code, restart the modelling service; the page says so when it finds the service running old code.
 
+### Install as a Claude Code plugin
+
+The repository is itself a Claude Code plugin. Once installed you can build and confirm ontologies from Claude Code; modelling, checking and the confirmation record still happen in the local OntoPoc service, so start it first (see above).
+
+```bash
+claude plugin marketplace add Longado/ontopoc
+claude plugin install ontopoc@ontopoc
+```
+
+In a new session there are two commands: `/ontopoc:ontopoc-build` (upload files and build) and `/ontopoc:ontopoc-review` (confirm item by item). At session start the plugin says one line if the local service is not running. It looks for Python as `ONTOPOC_PYTHON`, then `python3`, then `python`.
+
 ### Connect Claude Code or another MCP client
 
 Every feature on the page is a standard MCP tool (stdio, 27 tools) calling the same local service:
@@ -181,7 +192,7 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (554)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (573)
 npm --prefix landing-page run test:unit                       # page tests (207)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
