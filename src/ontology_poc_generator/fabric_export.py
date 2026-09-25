@@ -95,8 +95,9 @@ def fabric_files(ontology: dict, bundle: dict, handover: dict, form: dict | None
             prop_id[column] = _id('property', key, column)
             mine = own.get('fields', {}).get(column, {})
             enrich = {'customAttributes': {'column': column}}
-            if mine.get('description') or mine.get('label'):
-                enrich['description'] = mine.get('description') or mine['label']
+            said = mine.get('description') or mine.get('label') or (column if names[column] != column else None)
+            if said:   # a Chinese column becomes field_N in Fabric; its own name stays readable here
+                enrich['description'] = said
             props.append({'id': prop_id[column], 'name': names[column], 'redefines': None, 'baseTypeNamespaceType': None,
                           'valueType': VALUE_TYPES.get((shapes.get(key, {}).get(column) or {}).get('type'), 'String'),
                           'semanticEnrichment': enrich})
@@ -174,7 +175,7 @@ def _note(bind: bool, tables: dict, used: set, left_out: list[str]) -> str:
     else:
         lines += ['## 先把表放进 Lakehouse', '', '数据绑定按下面的表名找表，列名和上传的文件一致：', '']
         lines += [f'- {source} → {name}' if source != name else f'- {name}' for source, name in tables.items() if source in used]
-        lines += ['']
+        lines += ['', '列名里有中文、空格这类字符时，放进 Lakehouse 后是否保持原名没有实测；如果被改了名，要同步改 sourceColumnName。', '']
     if left_out:
         lines += ['## 没有绑定的部分', '', 'Lakehouse 的数据绑定只能一列对一个属性，下面这些要先在表里整理好，再在 Fabric 里补绑定：', '']
         lines += [f'- {x}' for x in left_out] + ['']
