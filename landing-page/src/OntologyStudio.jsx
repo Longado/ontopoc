@@ -18,6 +18,7 @@ import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverMod
 import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
 import { InstanceGraph } from "./InstanceGraph.jsx";
+import { fabricLink } from "./fabricModel.js";
 import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
 import { earlierVersionOf, versionRows } from "./versionModel.js";
@@ -244,6 +245,24 @@ function AcceptanceSection({ run, acceptance, onSave, onPath, busy, error, addin
       </div>
     </div>}
   </section>;
+}
+
+function FabricExport({ savedAs }) {
+  const [workspace, setWorkspace] = useState("");
+  const [lakehouse, setLakehouse] = useState("");
+  const link = fabricLink(savedAs, workspace, lakehouse);
+  return <details className="os-fabric">
+    <summary className="os-icon-btn" title="导出 Microsoft Fabric IQ 本体定义：建本体接口的请求体，可带数据绑定">⤓ Fabric</summary>
+    <div className="os-fabric-panel">
+      <p className="pr-muted">表已经放进 Fabric 的 Lakehouse 时，填上它所在的工作区和 Lakehouse，导出的本体会带上每个对象读哪张表哪一列、每条关系靠哪两列连起来。</p>
+      <label htmlFor="os-fabric-workspace">工作区 ID</label>
+      <input id="os-fabric-workspace" value={workspace} onChange={(e) => setWorkspace(e.target.value)} placeholder="可不填" spellCheck={false} />
+      <label htmlFor="os-fabric-lakehouse">Lakehouse ID</label>
+      <input id="os-fabric-lakehouse" value={lakehouse} onChange={(e) => setLakehouse(e.target.value)} placeholder="可不填" spellCheck={false} />
+      <p className={link.url ? "pr-muted" : "pr-error"}>{link.note}</p>
+      {link.url ? <a className="pr-primary" href={link.url} download>下载</a> : <button type="button" className="pr-primary" disabled>下载</button>}
+    </div>
+  </details>;
 }
 
 function Answer({ item, onPath, run }) {
@@ -874,6 +893,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
           <button className="os-icon-btn" onClick={download} title="下载本体和评测：一个 JSON 文件">⤓ JSON</button>
           {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/forms`} download title="按对象表单导出：每个对象一张 CSV，导入目标平台前请先实测">⤓ 表单</a>}
           {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/ttl`} download title="按 W3C 标准导出：OWL 本体、数据、SHACL 规则（Turtle）">⤓ TTL</a>}
+          {run.saved_as && !isDocument(run) && <FabricExport savedAs={run.saved_as} />}
           {run.saved_as && isOrg(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/mermaid`} download title="导出组织图（Mermaid）：组织隶属与协作交接各一张，可直接放进出图流程">⤓ 组织图</a>}</div>
         <div className="os-tiles">{overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} title={t.hint || undefined} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b></button>)}</div>
       </div>
