@@ -66,7 +66,7 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 | Upload tables and write the question you want answered | The model sees only each column's name and up to 3 example values, and proposes objects, identity fields and relations; code checks 17 kinds of error and sends it back to redo, up to 3 drafts |
 | Wait for the build | Builds the same file 3 times at once and marks where the 3 disagree (where the model is unsure and you should decide); if your purpose asks a question, it is answered from the data too, ready to keep as an acceptance question |
 | Open the data check (数据体检) | Code computes 7 checks row by row, e.g. whether one number carries conflicting details, whether every uploaded table is used |
-| Ask a question (智能问答) | The model writes a structured query and code computes the answer on the data; when it cannot, it says whether the ontology lacks something, the data lacks it, or the question is beyond the query. The model can also write a round of 6 questions on request |
+| Ask a question (智能问答) | The model writes a structured query and code computes the answer on the data; when it cannot, it says whether the ontology lacks something, the data lacks it, or the question is beyond the query. An amount that needs a formula (unit price × quantity × (1 − discount)) is proposed by the model, tried by code on every row, and once you confirm it the question is recomputed and answered. The model can also write a round of 6 questions on request |
 | Judge each part, rename, add what is missing | Saved as this file's reference ontology; the next upload is compared against it and prefilled |
 | Fix up to 3 questions as acceptance questions | Every rerun computes them with the same query and tells you which changed |
 | Adopt rules found in the data | Every rerun checks them and lists the objects that break them |
@@ -137,7 +137,7 @@ In a new session there are two commands: `/ontopoc:ontopoc-build` (upload files 
 
 ### Connect Claude Code or another MCP client
 
-Every feature on the page is a standard MCP tool (stdio, 27 tools) calling the same local service:
+Every feature on the page is a standard MCP tool (stdio, 28 tools) calling the same local service:
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -192,8 +192,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (573)
-npm --prefix landing-page run test:unit                       # page tests (207)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (589)
+npm --prefix landing-page run test:unit                       # page tests (210)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook
