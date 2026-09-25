@@ -279,7 +279,7 @@ function Reason({ item }) {
 function DerivedCard({ item, run, onDerive, busy, error }) {
   const card = derivedCard(item, typeLabel(run.ontology, item.derive.type));
   return <div className="os-derived">
-    <p>{item.reason}</p>
+    <p>这道题要先确认一个新指标：</p>
     <p className="os-derived-formula">{card.formula}</p>
     <p className="pr-muted">{card.tried}</p>
     {card.examples.length > 0 && <p className="pr-muted">例：{card.examples.join("；")}</p>}
