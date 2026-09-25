@@ -546,3 +546,4 @@ small.os-tone-warn { color: var(--amber); }
 .os-org-periods em { margin-left: 8px; color: var(--muted); font-style: normal; font-variant-numeric: tabular-nums; }
 .os-org-periods ul { list-style: none; margin: 6px 0 0; padding-left: 14px; border-left: 1px solid var(--edge); color: var(--ink); font-size: 13px; }
 .os-org-periods ul small { margin-left: 8px; color: var(--muted); }
+.os-chip-note.is-returned { color: var(--amber); }

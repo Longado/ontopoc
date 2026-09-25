@@ -12,7 +12,7 @@ import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js
 import { summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
 import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, purposeNote, savedAcceptance } from "./ontologyAcceptanceModel.js";
-import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload, removeAdded, renameType, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
+import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload, removeAdded, renameType, returnedNote, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverModel.js";
 import { folderLabel } from "./runLibraryModel.js";
@@ -415,7 +415,8 @@ function ConfirmCard({ run, confirm }) {
         <div className="os-progress-bar" role="img" aria-label={`判对 ${progress.ok}，判错 ${progress.wrong}，没判 ${progress.total - progress.judged}`}>
           <i className="is-ok" style={{ flex: progress.ok }} /><i className="is-wrong" style={{ flex: progress.wrong }} /><i style={{ flex: progress.total - progress.judged }} /></div>
         <p className="os-progress-legend"><span className="is-ok">判对 {progress.ok}</span><span className="is-wrong">判错 {progress.wrong}</span><span>没判 {progress.total - progress.judged}</span>{progress.added > 0 && <span className="is-added">补了 {progress.added}</span>}
-          {run.evaluation.reference?.suggested && !saved && <em className="os-chip-note">已按上次确认预填</em>}</p>
+          {run.evaluation.reference?.suggested && !saved && <em className="os-chip-note">已按上次确认预填</em>}
+          {returnedNote(run) && <em className="os-chip-note is-returned" title="上次你判它不对，这次模型又提出来了，重新看一眼">{returnedNote(run)}</em>}</p>
       </div>
       <div className="os-board-save">
         <label htmlFor="os-signer" className="sr-only">确认人</label>

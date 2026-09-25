@@ -106,7 +106,14 @@ def confirmed_reference(ontology: dict, decisions: dict) -> dict:
     if not kept:
         raise ConfirmError('至少要判一个对象"对"，或补充一个对象')
     variants = _variants(decisions.get('variants'), types, kept_keys)
-    return {'object_types': kept, 'relations': links, **({'name_variants': variants} if variants else {})}
+    # what a person threw out is a correction too: kept so the next run of this file starts with it thrown out again
+    rejected = [{'key': key, 'label': types[key].get('label') or key,
+                 'populated_from': [{'source': p.get('source'), 'identity': p.get('identity') or {}} for p in types[key].get('populated_from') or []]}
+                for key, d in type_d.items() if d['verdict'] == 'wrong']
+    rejected_links = [{'key': key, 'from': relations[key]['from'], 'to': relations[key]['to']}
+                      for key, d in rel_d.items() if d['verdict'] == 'wrong']
+    return {'object_types': kept, 'relations': links, 'rejected_types': rejected, 'rejected_relations': rejected_links,
+            **({'name_variants': variants} if variants else {})}
 
 
 def prefill_from_reference(ontology: dict, reference: dict) -> dict:
@@ -115,15 +122,20 @@ def prefill_from_reference(ontology: dict, reference: dict) -> dict:
     ours = {t['key']: t for t in ontology['object_types']}
     ref_types = reference['object_types']
     mapping = match_types(ref_types, ontology['object_types'])   # same table and identity fields, else same name
-    types = {}
+    thrown = match_types(reference.get('rejected_types') or [], [t for t in ontology['object_types'] if t['key'] not in mapping.values()])
+    types = {our_key: {'verdict': 'wrong'} for our_key in thrown.values()}
     for ref_key, our_key in mapping.items():
         label = next(t['label'] for t in ref_types if t['key'] == ref_key)
         types[our_key] = {'verdict': 'ok', **({'label': label} if label != (ours[our_key].get('label') or our_key) else {})}
     # the same two objects the other way round is another relation (a customer's orders is not an order's customer)
     confirmed_ends = {(mapping.get(r['from']), mapping.get(r['to'])) for r in reference['relations']}
     relations = {r['key']: {'verdict': 'ok'} for r in ontology['relations'] if (r['from'], r['to']) in confirmed_ends}
+    thrown_ends = {(thrown.get(r['from'], mapping.get(r['from'])), thrown.get(r['to'], mapping.get(r['to'])))
+                   for r in reference.get('rejected_relations') or []}
+    relations.update({r['key']: {'verdict': 'wrong'} for r in ontology['relations'] if (r['from'], r['to']) in thrown_ends})
+    returned = [t['label'] for t in (reference.get('rejected_types') or []) if t['key'] in thrown]
     added = [t['label'] for t in ref_types if t['key'].startswith('added_') and t['key'] not in mapping]
     groups = reference.get('name_variants')   # the stored file can have been hand-edited: anything unreadable is left out
     variants = [{'type': mapping[g['type']], 'values': g['values']} for g in (groups if isinstance(groups, list) else [])
                 if isinstance(g, dict) and mapping.get(g.get('type')) and isinstance(g.get('values'), list)]
-    return {'types': types, 'relations': relations, 'added': added, 'variants': variants}
+    return {'types': types, 'relations': relations, 'added': added, 'variants': variants, 'returned': returned}

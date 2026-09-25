@@ -7,6 +7,12 @@ export function decisionsOf(run) {
     : { types: {}, relations: {}, added: [], variants: [] };
 }
 
+/** 重传时，模型又提出了哪些上次被判错的对象；这次重新确认过就不再提。 */
+export function returnedNote(run) {
+  const returned = run.confirmation ? [] : run.evaluation?.reference?.suggested?.returned || [];
+  return returned.length ? `模型又提出了你上次判错的：${returned.join("、")}` : "";
+}
+
 const without = (map, key) => Object.fromEntries(Object.entries(map).filter(([k]) => k !== key));
 
 /** Pressing the same verdict again clears it. A right relation marks its ends right; a wrong object marks its relations wrong. */
