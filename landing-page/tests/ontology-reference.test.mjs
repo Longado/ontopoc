@@ -17,7 +17,7 @@ function ab(...args) {
 }
 const evaluate = script => ab("eval", script).result;
 const click = name => { evaluate(`([...document.querySelectorAll('button')].find(e => (e.getAttribute('aria-label') || e.textContent.trim()) === ${JSON.stringify(name)} && !e.disabled)).focus()`); ab("press", "Enter"); };
-const get = async path => { const r = await fetch(url + path); assert.ok(r.ok); return r.json(); };
+const get = async path => { const r = await fetch(url + path, { headers: { Connection: "close" } }); assert.ok(r.ok); return r.json(); };
 after(() => ab("close"));
 
 test("select, map, inspect, confirm, reload and cancel keep the user's actual answers intact", async () => {
@@ -58,6 +58,8 @@ test("select, map, inspect, confirm, reload and cancel keep the user's actual an
   click("预览差异");
   ab("wait", ".dr-differences");
   assert.match(evaluate("document.querySelector('.dr-differences').innerText"), /已对应/);
+  assert.equal(evaluate("Boolean(document.querySelector('.dr-mappings'))"), false, "review should replace the mapping list rather than stack below it");
+  assert.ok(evaluate("document.querySelector('.dr-actions').getBoundingClientRect().bottom <= innerHeight"), "save controls must fit in the laptop viewport");
   assert.deepEqual((await get(`/api/ontology/runs/${savedAs}`)).evaluation, run.evaluation, "preview must not write a result");
   click("确认对应并保存");
   ab("wait", ".dr-saved");
