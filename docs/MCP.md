@@ -36,6 +36,7 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `set_rules` | 数据体检 · 规则：采纳 / 不要 | 否 |
 | `ask_question` | 智能问答 · 提问 / 出一组题 | 是 |
 | `list_questions` | 智能问答 · 你问的、模型出的题、验收问题 | 否 |
+| `confirm_derived` | 答案里「确认这个指标」：人同意后存下派生指标并重算等它的题 | 否 |
 | `fix_question` | 存为验收问题 | 否 |
 | `confirm_ontology` | 逐项确认 · 保存 | 否 |
 | `compare_reference` | 数据体检 · 对照标准 | 否 |

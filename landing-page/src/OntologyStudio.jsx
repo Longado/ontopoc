@@ -18,6 +18,7 @@ import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverMod
 import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
 import { InstanceGraph } from "./InstanceGraph.jsx";
+import { derivedCard, reasonView } from "./answerModel.js";
 import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
 import { earlierVersionOf, versionRows } from "./versionModel.js";
@@ -260,16 +261,41 @@ function Answer({ item, onPath, run }) {
     {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
     {item.path && <p className="os-path-line" title="怎么查的"><span aria-hidden="true">↳</span><span className="sr-only">怎么查的：</span>{item.path}{item.query && onPath && <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看</button>}</p>}
-    {item.status === "query_limit" && <p className="pr-muted" title="查询能数个数、算占比、求和求平均、按几样东西分组；还不能限定时间段、按数值条件筛选、一道题同时给两个数">这种问法还不支持，本体没问题。{item.reason ? `模型：${item.reason}` : ""}</p>}
-    {item.status !== "answered" && item.status !== "query_limit" && item.reason && <p className="pr-muted">原因：{item.reason}</p>}
+    {item.status !== "needs_derived" && <Reason item={item} />}
   </>;
 }
 
-function QuestionItem({ item, onPath, run, onAccept }) {
+const QUERY_CAN = "查询能数个数、算占比、求和求平均、按几样东西分组、对确认过的指标求和；还不能限定时间段、按数值条件筛选、一道题同时给两个数";
+
+function Reason({ item }) {
+  const view = reasonView(item);
+  if (!view) return null;
+  return <div className="os-reason">
+    <p className="pr-muted" title={item.status === "query_limit" ? QUERY_CAN : undefined}>{view.line}</p>
+    {view.detail && <details><summary>模型的说明</summary><p>{view.detail}</p></details>}
+  </div>;
+}
+
+function DerivedCard({ item, run, onDerive, busy, error }) {
+  const card = derivedCard(item, typeLabel(run.ontology, item.derive.type));
+  return <div className="os-derived">
+    <p>这道题要先确认一个新指标：</p>
+    <p className="os-derived-formula">{card.formula}</p>
+    <p className="pr-muted">{card.tried}</p>
+    {card.examples.length > 0 && <p className="pr-muted">例：{card.examples.join("；")}</p>}
+    {card.skipped.length > 0 && <p className="pr-muted">算不了的例子：{card.skipped.join("；")}</p>}
+    {onDerive && <button type="button" className="pr-primary os-derived-go" disabled={busy} onClick={() => onDerive(item)}
+      title="公式存下来跟着这份文件走，等这个指标的题会重算">{busy ? "重算中…" : "确认这个指标并重算"}</button>}
+    {error && <p role="alert" className="pr-error">{error}</p>}
+  </div>;
+}
+
+function QuestionItem({ item, onPath, run, onAccept, derive }) {
   const why = run && onAccept ? canAccept(run, item) : "不可用";
   return <li className="os-question">
     <div className="os-question-head"><span className={`os-pill os-${item.status}`}>{STATUS_LABELS[item.status] || item.status}</span>{item.from_purpose && <span className="os-pill os-purpose" title="你在建模目的里写的问题，上传时一并回答">建模目的</span>}<b>{item.question}</b></div>
     <Answer item={item} onPath={onPath} run={run} />
+    {item.status === "needs_derived" && item.derive && <DerivedCard item={item} run={run} {...derive} />}
     {onAccept && item.status === "answered" && (why
       ? <p className="pr-muted">{why}</p>
       : <button type="button" className="pr-link os-accept" onClick={() => onAccept(item)} title="把这道题和这个查询固定下来，以后重传同一份文件会再算一次">＋ 存为验收问题</button>)}
@@ -279,7 +305,8 @@ function QuestionItem({ item, onPath, run, onAccept }) {
 
 const QUESTION_FILTERS = [["all", "全部"], ["answered", "能回答"], ["unanswered", "答不了"]];
 
-function QuestionsSection({ run, canAsk, busy, error, onAsk, onPath, onUpload, onAccept, part }) {
+function QuestionsSection({ run, canAsk, busy, error, onAsk, onPath, onUpload, onAccept, part, onDerive, deriving, deriveError }) {
+  const derive = { onDerive: canAsk ? onDerive : null, busy: deriving, error: deriveError };
   const example = !run.saved_as;
   const round = run.evaluation.questions;
   const asked = run.evaluation.asked || [];
@@ -296,9 +323,9 @@ function QuestionsSection({ run, canAsk, busy, error, onAsk, onPath, onUpload, o
     {!canAsk && <CannotAsk what="自己提问、重新出题" example={example} onUpload={onUpload} />}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {part === "mine" && !mine.length && <p className="pr-muted">还没问过。</p>}
-    {part === "mine" && shownMine.length > 0 && <><ul className="os-questions">{shownMine.map((m) => m.error ? <li key={m.key} className="pr-error">{m.error}</li> : <QuestionItem key={m.key} item={m.item} onPath={onPath} run={run} onAccept={onAccept} />)}</ul></>}
+    {part === "mine" && shownMine.length > 0 && <><ul className="os-questions">{shownMine.map((m) => m.error ? <li key={m.key} className="pr-error">{m.error}</li> : <QuestionItem key={m.key} item={m.item} onPath={onPath} run={run} onAccept={onAccept} derive={derive} />)}</ul></>}
     {part === "model" && round && <>
-      {round.error ? <p className="pr-error">{round.error}</p> : shownRound.length ? <ul className="os-questions">{shownRound.map((item, i) => <QuestionItem key={i} item={item} onPath={onPath} run={run} onAccept={onAccept} />)}</ul> : <p className="pr-muted">没有这一类的题。</p>}</>}
+      {round.error ? <p className="pr-error">{round.error}</p> : shownRound.length ? <ul className="os-questions">{shownRound.map((item, i) => <QuestionItem key={i} item={item} onPath={onPath} run={run} onAccept={onAccept} derive={derive} />)}</ul> : <p className="pr-muted">没有这一类的题。</p>}</>}
   </section>;
 }
 
@@ -714,6 +741,8 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const [findError, setFindError] = useState("");
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState("");
+  const [deriving, setDeriving] = useState(false);
+  const [deriveError, setDeriveError] = useState("");
   const [compareError, setCompareError] = useState("");
   const [view, setView] = useState("graph");
   const [decisions, setDecisions] = useState(() => (run ? decisionsOf(run) : null));
@@ -857,7 +886,8 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const downloadSummary = () => save(summaryMarkdown(run), "text/markdown;charset=utf-8", "纪要.md");
 
   const questions = { canAsk: Boolean(run?.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload"),
-    onAccept: (items) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items }, setAccepting, setAcceptError), accepting, acceptError, onGoConfirm: goConfirm };
+    onAccept: (items) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items }, setAccepting, setAcceptError), accepting, acceptError, onGoConfirm: goConfirm,
+    onDerive: (item) => post("/api/ontology/derived", { saved_as: run.saved_as, derive: item.derive }, setDeriving, setDeriveError), deriving, deriveError };
   const inDetail = tab === "objects" && objectKey;
   const placeOf = (items, key) => items.find(([k]) => k === key)?.[1];
   const crumb = !run ? [] : [sectionsFor(run).find(([k]) => k === tab)?.[1] || "",
