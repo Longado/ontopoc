@@ -83,5 +83,13 @@ test("select, map, inspect, confirm, reload and cancel keep the user's actual an
   assert.ok(geometry.bottom <= geometry.viewport && geometry.height > 200, "graph must fit without scrolling the whole page");
   ab("press", "Escape");
   ab("set", "viewport", "390", "844");
+  openReference();
+  ab("wait", ".dr-saved");
+  assert.match(evaluate("document.querySelector('.dr-panel').innerText"), /领域参考对照/);
   assert.ok(evaluate("document.documentElement.scrollWidth <= innerWidth"), "narrow screen must not overflow horizontally");
+  click("查看参考 Buyer");
+  ab("wait", ".dr-graph-dialog[open] .og-node");
+  assert.ok(evaluate("document.querySelector('.dr-graph-dialog').getBoundingClientRect().bottom <= innerHeight"), "mobile graph dialog must fit");
+  click("关闭图");
+  assert.ok(evaluate("Boolean(document.querySelector('.dr-panel'))"), "closing the graph keeps the mapping page");
 });
