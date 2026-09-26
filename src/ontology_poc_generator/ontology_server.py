@@ -38,6 +38,7 @@ from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_a
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
+from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import ask_questions, run_query
 from ontology_poc_generator.derived_measures import parse_derived, plain_reason
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
@@ -394,6 +395,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/runs':
                 self.list_runs()
                 return
+            if self.path.startswith('/api/ontology/runs/') and self.path.endswith('/reference'):
+                self.reference_context(self.path.split('/')[-2])
+                return
             if self.path.startswith('/api/ontology/runs/') and self.path.count('/') > 4:
                 self.object_page()
                 return
@@ -484,6 +488,25 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, json.loads(path.read_text(encoding='utf-8')))
 
+        def reference_context(self, name):
+            try:
+                path = self.load_run({'saved_as': name})
+                result = json.loads(path.read_text(encoding='utf-8'))
+                record = result.get('evaluation', {}).get('domain_reference')
+                definition, stale = None, []
+                if record:
+                    try:
+                        definition = library_definition(record['reference_id'])
+                        stale = stale_reasons(definition, result, record)
+                    except (KeyError, ValueError, OSError):
+                        stale = ['参考版本已不可用，请重新选择本体库参考。']
+                self.reply(200, {'run_sha256': run_fingerprint(result), 'local': local_schema(result),
+                                 'record': record, 'definition': definition, 'stale': stale})
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，请重新打开。'})
+            except ValueError as exc:
+                self.reply(400, {'error': str(exc)})
+
         def read_json(self):
             length = int(self.headers.get('Content-Length', '0'))
             if not 0 < length <= MAX_BODY:
@@ -499,6 +522,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_POST(self):
             if not self.local_request():
+                return
+            if self.path in ('/api/ontology/reference/preview', '/api/ontology/reference/confirm'):
+                with runs_lock:
+                    self.domain_reference(self.path.endswith('/confirm'))
                 return
             if self.path == '/api/ontology/library/import':
                 try:
@@ -651,6 +678,40 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 'diff': compare_ontologies(reference, result['ontology'])}
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
+
+        def domain_reference(self, save):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                path = self.load_run(payload)
+                result = json.loads(path.read_text(encoding='utf-8'))
+                definition = library_definition(payload.get('reference_id'))
+                stale = stale_reasons(definition, result, payload)
+                if stale:
+                    self.reply(409, {'error': ' '.join(stale)})
+                    return
+                if save and payload.get('confirmed') is not True:
+                    raise ValueError('请先人工确认本次对应关系，再保存。')
+                mappings = payload.get('mappings')
+                diff = compare_definition(definition, result, mappings)
+                if not save:
+                    self.reply(200, {'diff': diff})
+                    return
+                result.setdefault('evaluation', {})['domain_reference'] = {
+                    'reference_id': definition['entry']['id'], 'reference_title': definition['entry']['title'],
+                    'reference_sha256': definition['sha256'], 'source_url': definition['entry']['source_url'],
+                    'source_commit': definition['entry']['commit'], 'run_sha256': run_fingerprint(result),
+                    'mappings': mappings, 'diff': diff,
+                    'confirmed_at': datetime.now(timezone.utc).isoformat(timespec='seconds')}
+                path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+                self.reply(200, result)
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，请重新打开。'})
+            except KeyError:
+                self.reply(404, {'error': '本体库里没有这一项。'})
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
 
         def variants(self):
             try:
