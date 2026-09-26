@@ -63,6 +63,7 @@ test("select, map, inspect, confirm, reload and cancel keep the user's actual an
   assert.deepEqual((await get(`/api/ontology/runs/${savedAs}`)).evaluation, run.evaluation, "preview must not write a result");
   click("确认对应并保存");
   ab("wait", ".dr-saved");
+  assert.match(evaluate("document.querySelector('.os-segments').innerText"), /有领域对应记录/);
   const context = await get(`/api/ontology/runs/${savedAs}/reference`);
   assert.equal(context.record.mappings.filter(m => m.local).length, 4);
   const persisted = await get(`/api/ontology/runs/${savedAs}`);
@@ -75,6 +76,7 @@ test("select, map, inspect, confirm, reload and cancel keep the user's actual an
   ab("select", '[aria-label="Buyer 对应对象"]', "");
   click("取消修改");
   assert.equal(evaluate("document.querySelector('[aria-label=\"Buyer 对应对象\"]').value"), customer.key);
+  assert.ok(evaluate("document.querySelector('.dr-actions').getBoundingClientRect().bottom <= innerHeight"), "editing controls must also fit the viewport");
   click("查看参考 Buyer");
   ab("wait", ".dr-graph-dialog[open] .og-node");
   const geometry = evaluate("(() => {const r=document.querySelector('.dr-graph-dialog .og-wrap').getBoundingClientRect(); return {bottom:r.bottom,height:r.height,viewport:innerHeight};})()");
