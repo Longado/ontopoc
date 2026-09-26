@@ -30,14 +30,14 @@ test("workbench header stays focused while evaluations remain accessible in thei
   assert.match(header, /JSON/);
   assert.ok(evaluate("document.querySelector('.os-panel').innerText.includes('业务对象 (4)')"));
 
-  click("button", "稳定性 3 次");
+  click("button", "稳定性3 次");
   assert.match(evaluate("document.querySelector('.os-panel').innerText"), /3|三次/);
   click("button", "智能问答");
-  click("button", "模型出的题 7 / 7");
+  click("button", "模型出的题6 / 6");
   assert.match(evaluate("document.querySelector('.os-panel').innerText"), /能回答 7 \/ 7/);
   click("button", "数据体检");
   assert.match(evaluate("document.querySelector('.os-panel').innerText"), /通过 4 \/ 6/);
-  click("tab", "对照标准 命中 4 / 5");
+  click("tab", "对照标准命中 4 / 5");
   assert.match(evaluate("document.querySelector('.os-panel').innerText"), /命中 4 \/ 5/);
   assert.ok(!evaluate("document.querySelector('.os-overview').closest('header').innerText").includes("通过 4 / 6"));
 });
