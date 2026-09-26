@@ -1,4 +1,5 @@
-// Isolated public-data run only. PLAYWRIGHT_MODULE may point to an existing Playwright installation.
+// Isolated public-data run, with or without a saved domain reference; this test does not save one.
+// PLAYWRIGHT_MODULE may point to an existing Playwright installation.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
@@ -18,7 +19,11 @@ test("domain correspondence draft survives tab and module navigation; cancel and
     const checkTab = name => page.getByRole("tab", { name: new RegExp(name) }).click();
     const product = page.getByRole("combobox", { name: "Product 对应对象", exact: true });
     await click("数据体检"); await checkTab("对照标准");
-    await page.getByRole("combobox", { name: "选择领域参考", exact: true }).selectOption("ecommerce");
+    const reference = page.getByRole("combobox", { name: "选择领域参考", exact: true });
+    await page.waitForFunction(() => document.querySelector('[aria-label="选择领域参考"]')?.disabled === false);
+    const selectionValues = () => page.locator('.dr-panel select').evaluateAll(selects => selects.map(s => [s.getAttribute('aria-label'), s.value]));
+    const savedSelections = await selectionValues();
+    await reference.selectOption("ecommerce");
     await product.selectOption("__skip");
     await page.getByRole("textbox", { name: "Product 不适用原因", exact: true }).fill("本次文件没有商品明细");
     await checkTab("数据体检");
@@ -32,7 +37,8 @@ test("domain correspondence draft survives tab and module navigation; cancel and
     await click("数据体检"); await checkTab("对照标准");
     assert.equal(await product.inputValue(), "__skip", "opening another module must retain the draft");
     await click("取消修改");
-    assert.equal(await product.inputValue(), "", "cancel restores the saved correspondence");
+    assert.deepEqual(await selectionValues(), savedSelections, "cancel restores the original saved reference and choices, including no reference");
+    await reference.selectOption("ecommerce");
     await product.selectOption("__skip");
     await page.getByRole("textbox", { name: "Product 不适用原因", exact: true }).fill("仍是旧运行的草稿");
     await click("新建"); await click("打开示例数据表");
