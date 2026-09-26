@@ -21,9 +21,6 @@
 .ol-count { color: var(--text-2); font-size: 12px; }
 .ol-card small { font-size: 11px; color: var(--muted); }
 .ol-open { margin-top: 14px; color: var(--primary-ink); font-size: 13px; }
-.ol-detail { margin-bottom: 16px; }
-.ol-detail h2 { font-size: 22px; margin: 14px 0 0; }
-.ol-detail p { overflow-wrap: anywhere; }
 .ol-source, .ol-source small { font-size: 12px; color: var(--text-2); }
 .ol-source small, .ol-warnings small { display: block; }
 .ol-warnings { padding: 12px; border-radius: 8px; background: var(--amber-soft); color: var(--amber); font-size: 13px; margin: 12px 0; }
@@ -37,4 +34,45 @@
 .ol-fields > div { padding-top: 8px; border-top: 1px solid var(--edge); font-size: 12px; }
 .ol-fields dt { font-weight: 700; }
 .ol-fields dd { margin: 4px 0 0; color: var(--text-2); overflow-wrap: anywhere; }
-@media (max-width: 760px) { .ol-head h1 { font-size: 24px; } .ol-detail .pr-card-head { align-items: flex-start; flex-direction: column; } .ol-object { align-items: flex-start; flex-direction: column; } .ol-object select { width: 100%; } }
+@media (max-width: 760px) { .ol-head h1 { font-size: 24px; } .ol-object { align-items: flex-start; flex-direction: column; } .ol-object select { width: 100%; } }
+
+/* The definition is a viewport workspace; only its long property list scrolls. */
+.ol-page.is-definition { height: 100%; min-height: 0; max-width: none; padding: 16px 24px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; overflow: hidden; }
+.ol-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+.ol-detail-title { flex: 1; min-width: 0; }
+.ol-detail-heading { display: flex; align-items: center; gap: 16px; }
+.ol-detail-heading .pr-link { flex: none; padding: 0; }
+.ol-detail-heading h1 { font-size: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ol-detail-title .ol-count { margin: 4px 0 0; }
+.ol-detail-title small { font-size: 11px; }
+.ol-detail-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ol-detail-tools .ol-object select { width: 168px; }
+.ol-detail-tools .ol-object { flex-direction: row; align-items: center; }
+.ol-info-button { padding: 8px 12px; border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--surface); }
+.ol-info-button.has-warnings { border-color: var(--amber); color: var(--amber); background: var(--amber-soft); }
+.ol-message { flex-basis: 100%; margin: 0 !important; }
+.is-definition .og-wrap { min-height: 0; height: 100%; grid-template-columns: minmax(0, 1fr) 320px; }
+.is-definition .og-canvas { min-height: 0; overflow: hidden; }
+.is-definition .pz { flex: 1; min-height: 0; }
+.is-definition .pz svg { height: 100%; min-height: 0; max-height: none; border-radius: 0; }
+.is-definition .og-inspector { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.is-definition .og-inspector-head { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.ol-info-dialog { width: min(860px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 1px solid var(--edge); border-radius: 12px; background: var(--surface); color: var(--ink); overflow: hidden; }
+.ol-info-dialog[open] { display: flex; flex-direction: column; }
+.ol-info-dialog::backdrop { background: rgba(20, 22, 31, 0.32); }
+.ol-info-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--edge); }
+.ol-info-dialog h2 { margin: 0; }
+.ol-info-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 20px; overflow-wrap: anywhere; }
+.ol-info-body .ol-raw pre { max-height: none; }
+@media (max-width: 1100px) { .is-definition .og-wrap { grid-template-columns: minmax(0, 1fr) 260px; } }
+@media (max-width: 760px) {
+  .app-shell:has(.ol-page.is-definition) { height: 100dvh; min-height: 0; }
+  .app-main:has(.ol-page.is-definition) { overflow: hidden; }
+  .ol-page.is-definition { padding: 10px 16px; gap: 8px; }
+  .ol-detail-title { flex-basis: 100%; }
+  .ol-detail-tools { gap: 6px; }
+  .ol-detail-tools .ol-object select { width: 130px; }
+  .ol-detail-tools .ol-import { padding: 6px 10px; font-size: 12px; }
+  .ol-info-button { padding: 6px 10px; font-size: 12px; }
+  .is-definition .og-wrap { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 0.8fr); }
+}

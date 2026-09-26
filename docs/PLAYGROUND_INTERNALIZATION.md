@@ -33,6 +33,20 @@ Smallest path：标准库解析 RDF/XML、本机服务提供读取接口，工�
 - `GET /api/ontology/library/<id>`：定义、原始 RDF、元数据及来源。
 - `POST /api/ontology/library/import`：`filename`、`content_base64`，返回定义；不保存为建模运行。
 
+### 详情布局修正
+
+Pain：说明和长属性列表把详情撑高，用户要滚动整页才能看完整关系图。
+
+Decision：看对象及其相邻关系时，能否保持图的位置并读完属性？
+
+Outcome：详情在当前可视区内显示完整图区域，长属性在侧栏内滚动；说明、来源、提示及原文按需打开。
+
+Non-goals：不改变图布局算法、解析规则或建模流程。
+
+Smallest path：本体库详情使用紧凑工具栏与限高布局，复用现有图和浏览器原生说明弹窗。
+
+布局回归可在本机服务启动后执行：`cd landing-page && node --test tests/ontology-library-layout.test.mjs`，需要已安装的 `agent-browser`。默认访问 5178，可用 `ONTOPOC_LAYOUT_URL` 指定试跑页面。
+
 ### 后续轮次
 
 2. 领域参考比对：人确认对象、关系和字段对应，再看差异。
