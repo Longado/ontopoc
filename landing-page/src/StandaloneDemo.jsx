@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RecallWorkspace } from "./RecallWorkspace.jsx";
 import { PublicRecallReview } from "./PublicRecallReview.jsx";
 import { OntologyStudio } from "./OntologyStudio.jsx";
+import { OntologyLibrary } from "./OntologyLibrary.jsx";
 import { folderLabel, groupRuns, runLabel } from "./runLibraryModel.js";
 import { localTime } from "./ontologyStudioModel.js";
 import { sectionsFor } from "./workspaceModel.js";
@@ -60,6 +61,8 @@ export function StandaloneDemo() {
       <button type="button" className="app-new" onClick={() => ask({ kind: "new" })}><span aria-hidden="true">＋</span>{t.create}</button>
       <nav className="app-modules" aria-label={t.modules}>
         <p className="app-label">{t.tools}</p>
+        <button type="button" aria-current={scenario === "library" ? "page" : undefined} onClick={() => setScenario("library")}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="app-ico">{ICONS.objects}</svg>本体库</button>
         {sectionsFor(open).map(([key, label]) => <button key={key} type="button" aria-current={scenario === "studio" && section === key ? "page" : undefined} onClick={() => go(key)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" className="app-ico">{ICONS[key]}</svg>{label}</button>)}
       </nav>
@@ -86,9 +89,12 @@ export function StandaloneDemo() {
       </details>
       <button type="button" className="app-lang" onClick={() => setLanguage(language === "zh" ? "en" : "zh")}>{t.lang}</button>
     </aside>
-    <section className="app-main" aria-label={scenario === "studio" ? "OntoPoc" : t.tabs[scenario]}>
-      {scenario === "studio" ? <OntologyStudio request={request} runs={runs} section={section} nav={nav} onSection={setSection} onRunsChanged={refresh} onCurrent={setOpen} />
-        : scenario === "public" ? <PublicRecallReview language={language} /> : <RecallWorkspace language={language} onBusyChange={setRecallBusy} />}
+    <section className="app-main" aria-label={scenario === "studio" ? "OntoPoc" : scenario === "library" ? "本体库" : t.tabs[scenario]}>
+      <div hidden={scenario !== "library"}><OntologyLibrary active={scenario === "library"} /></div>
+      <div hidden={scenario === "library"}>
+        {scenario === "studio" || scenario === "library" ? <OntologyStudio request={request} runs={runs} section={section} nav={nav} onSection={setSection} onRunsChanged={refresh} onCurrent={setOpen} />
+          : scenario === "public" ? <PublicRecallReview language={language} /> : <RecallWorkspace language={language} onBusyChange={setRecallBusy} />}
+      </div>
     </section>
   </main>;
 }

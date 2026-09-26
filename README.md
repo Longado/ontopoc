@@ -61,6 +61,7 @@
 
 | 操作 | 系统行为 |
 |---|---|
+| 打开左侧“本体库” | 搜索、按领域浏览 12 份 Playground 参考本体，在图上查看对象、属性和关系；也可导入 RDF/XML 格式的 `.rdf/.owl`。这里只看定义，导入不调用模型，刷新后需重新选文件 |
 | 上传数据表并填写建模目的 | 模型仅读取每列字段名及至多 3 个示例值，提出对象、识别字段与关系；代码按 17 类错误校验，不通过则退回修改，至多 3 轮 |
 | 建模完成 | 同一文件并行建模 3 次，标出三次结果不一致之处，即模型不确定、需人工判断的部分；建模目的里写了问题的，一并用数据算出答案，可直接存为验收问题 |
 | 打开"数据体检" | 代码逐行执行 7 项检查，例如同一编号的属性是否冲突、每张上传的表是否均被使用 |
@@ -200,6 +201,7 @@ PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合�
 | 文档 | 内容 |
 |---|---|
 | [docs/PRODUCT.md](docs/PRODUCT.md) | 产品定位与范围 |
+| [docs/PLAYGROUND_INTERNALIZATION.md](docs/PLAYGROUND_INTERNALIZATION.md) | 本体库来源、RDF/XML 导入边界与后续轮次 |
 | [docs/AGENTS.md](docs/AGENTS.md) | 6 个 Agent 的定义与调用记录 |
 | [docs/MCP.md](docs/MCP.md) | 27 个 MCP 工具 |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | 数据平台对象表单对照 |
