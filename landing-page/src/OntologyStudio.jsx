@@ -639,7 +639,7 @@ function CheckSection({ run, evalView, setEvalView, questions, variants, onShow,
       <b>{key === "fit" && doc ? "文档检查" : label}</b><small className={`os-tone-${tiles[key].tone}`}>{key === "ref" && run.evaluation.domain_reference ? "有领域对应记录" : tiles[key].value}</small></button>)}</div>
     {view === "rules" && <RulesView run={run} {...rules} />}
     {view === "fit" && (doc ? <DocumentFitView run={run} onShow={onShow} /> : <DataFit run={run} onShow={onShow} variants={variants} />)}
-    {view === "ref" && <ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} onUpload={questions.onUpload} onGoConfirm={questions.onGoConfirm} onUpdate={questions.onUpdate} />}
+    <div hidden={view !== "ref"}><ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} onUpload={questions.onUpload} onGoConfirm={questions.onGoConfirm} onUpdate={questions.onUpdate} /></div>
   </>;
 }
 
@@ -921,8 +921,8 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
         <QaSection run={run} questions={questions} onPath={showPath} askRef={askRef} place={qaPlace} /></SubLayout>}
       {tab === "org" && run && <SubLayout label="组织架构" items={orgPlaces(run)} active={orgPlace} onChange={setOrgPlace}>
         <OrgSection run={run} place={orgPlace} onShow={showOnGraph} /></SubLayout>}
-      {tab === "check" && run && <CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions}
-        rules={{ canSave: Boolean(run.saved_as) && health === "ready", busy: savingRules, error: rulesError, onSave: (next) => post("/api/ontology/rules", { saved_as: run.saved_as, ...next }, setSavingRules, setRulesError) }} />}
+      {run && <div hidden={tab !== "check"}><CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions}
+        rules={{ canSave: Boolean(run.saved_as) && health === "ready", busy: savingRules, error: rulesError, onSave: (next) => post("/api/ontology/rules", { saved_as: run.saved_as, ...next }, setSavingRules, setRulesError) }} /></div>}
     </div>
     {searching && open && <SearchDialog run={run} decisions={decisions} onGo={go} onClose={() => setSearching(false)} />}
   </section>;
