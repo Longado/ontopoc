@@ -3,6 +3,7 @@ import { edgeStats, findingsByType, focusOntology, neighboursOf, rankByDegree, u
 import { edgePath, forceLayout, moveNode } from "./forceLayoutModel.js";
 import { PanZoom } from "./PanZoom.jsx";
 import { typeLabel, typeSources } from "./ontologyStudioModel.js";
+import { DEFINITION_CARDINALITIES, DEFINITION_TYPES } from "./ontologyLibraryModel.js";
 import "./OntologyGraph.css";
 
 const FINDING = {
@@ -46,6 +47,7 @@ function PathInspector({ ontology, path, onClearPath }) {
 
 function Inspector({ run, selected, findings, confirm }) {
   const { ontology } = run;
+  const definition = run.schema === "ontology_definition.v1";
   const stability = run.evaluation.stability;
   const fit = run.evaluation.data_fit;
   if (selected.kind === "edge") {
@@ -57,7 +59,9 @@ function Inspector({ run, selected, findings, confirm }) {
       <Verdict confirm={confirm} kind="relations" item={r} />
       <p>{r.meaning}</p>
       {r.evidence?.length > 0 && <div className="og-quotes">{r.evidence.map((q, i) => <blockquote key={i}>原文：{q}</blockquote>)}</div>}
-      <dl className="og-kv"><div><dt>{r.evidence ? "出自" : "所在表"}</dt><dd>{r.source}</dd></div>
+      <dl className="og-kv"><div><dt>{definition || r.evidence ? "出自" : "所在表"}</dt><dd>{r.source}</dd></div>
+        {definition && <div><dt>定义的基数</dt><dd>{DEFINITION_CARDINALITIES[r.cardinality] || "原文未声明或暂不支持"}</dd></div>}
+        {definition && r.definition_attributes?.length > 0 && <div><dt>关系属性</dt><dd>{r.definition_attributes.map((a) => `${a.name}（${DEFINITION_TYPES[a.type] || "类型未声明"}）`).join("、")}</dd></div>}
         {stability && stability.relations[r.key] !== undefined && <div><dt>{stability.runs} 次建模</dt><dd className={unsteady(stability, "relations", r.key) ? "og-warn" : ""}>{unsteady(stability, "relations", r.key) ? `只有 ${stability.relations[r.key]} 次有这条关系` : "每次都有"}</dd></div>}
         {stats && <div><dt>连上的行</dt><dd className={stats.complete ? "" : "og-warn"}>{stats.linked_rows} / {stats.rows}{stats.complete ? "" : "（有行没连上）"}</dd></div>}</dl>
     </div>;
@@ -79,6 +83,13 @@ function Inspector({ run, selected, findings, confirm }) {
       {stability && stability.types[t.key] !== undefined && <div><dt>{stability.runs} 次建模</dt><dd className={unsteady(stability, "types", t.key) ? "og-warn" : ""}>{unsteady(stability, "types", t.key) ? `只有 ${stability.types[t.key]} 次有它：模型对要不要单独建这个对象拿不准，可以按你的业务决定` : "每次都有"}</dd></div>}
       {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]} 个（按编号去重）{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key]} 个在多张表里出现` : ""}{(fit?.missing_across_sources || []).filter((m) => m.type === t.key).map((m) => `；${m.count} 个只在别的表里被引用、在“${m.source}”表里找不到`).join("")}</dd></div>}
     </dl>
+    {definition && <dl className="ol-fields">{t.attributes.map(({ definition: p }) => <div key={p.id}>
+      <dt>{p.name}{p.isIdentifier ? " · 标识字段" : ""}</dt>
+      <dd>{DEFINITION_TYPES[p.type] || "类型未声明或暂不支持"}{p.unit ? ` · 单位：${p.unit}` : ""}</dd>
+      {p.values?.length > 0 && <dd>枚举：{p.values.join("、")}</dd>}
+      {p.description && <dd>{p.description}</dd>}
+      <dd>{p.id}</dd>
+    </div>)}</dl>}
     {fit && <h4>数据检查</h4>}
     {!fit ? null : own.length ? <ul className="og-findings">{own.map((f, i) => <li key={i} className={f.severity === "note" ? "og-note" : ""}>{f.severity === "note" ? "提示：" : ""}{FINDING[f.kind](f.detail)}</li>)}</ul> : <p className="og-ok">这个对象没有发现问题。</p>}
   </div>;
@@ -86,6 +97,7 @@ function Inspector({ run, selected, findings, confirm }) {
 
 export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelected, path, onClearPath, reveal, confirm, suggestions = [] }) {
   const { ontology } = run;
+  const definition = run.schema === "ontology_definition.v1";
   const findings = findingsByType(run.evaluation.data_fit);
   const wrap = useRef(null);
   const canvas = useRef(null);
@@ -129,7 +141,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
   return <div className="og-wrap" ref={wrap}>
     <div className="og-canvas" ref={canvas}>
       <div className="og-bar"><span>{ontology.object_types.length} 个对象 · {ontology.relations.length} 条关系{!focusing && ontology.object_types.length > 2 && <button type="button" className="pr-link og-focus-link" onClick={() => setMode("focus")}>只看选中的周围</button>}</span>
-        <span>{run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
+        <span>{definition ? "定义图，不含实例数据" : run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
       {focusing && <div className="og-focusbar">
         <span>{path ? "只显示查询经过的对象" : <>只显示“{typeLabel(ontology, center)}”和相连的 {graph.nodes.length - 1} 个</>}</span>
         {focusing && <label htmlFor="og-find" className="og-find">找对象<input id="og-find" list="og-concepts" placeholder="输入名字" onChange={find} /></label>}
@@ -166,8 +178,8 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
         {hinted.length > 0 && <li><i className="og-legend-hint" />代码建议</li>}
       </ul>
     </div>
-    <aside className="og-inspector" aria-label="证据检查">
-      <div className="og-inspector-head">证据检查</div>
+    <aside className="og-inspector" aria-label={definition ? "定义详情" : "证据检查"}>
+      <div className="og-inspector-head">{definition ? "定义详情" : "证据检查"}</div>
       {path ? <PathInspector ontology={ontology} path={path} onClearPath={onClearPath} /> : selected.key && <Inspector run={run} selected={selected} findings={findings} confirm={confirm} />}
       {onAsk && <button type="button" className="og-ask" onClick={onAsk}>询问这个本体：用数据回答业务问题 →</button>}
     </aside>

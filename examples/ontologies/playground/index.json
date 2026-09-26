@@ -1,0 +1,102 @@
+{
+  "repository": "microsoft/Ontology-Playground",
+  "commit": "42a5e5ec170c1e76343886b9d5ba7a55959cb112",
+  "entries": [
+    {
+      "id": "cosmic-coffee",
+      "title": "咖啡零售",
+      "category": "零售",
+      "rdf_file": "cosmic-coffee.rdf",
+      "source_path": "catalogue/official/cosmic-coffee/cosmic-coffee.rdf",
+      "sha256": "19d95caa7171970dae3d467648a3dd23ae1a6a20409dd0a8f39e2f95a518de60"
+    },
+    {
+      "id": "ecommerce",
+      "title": "电商平台",
+      "category": "零售",
+      "rdf_file": "ecommerce.rdf",
+      "source_path": "catalogue/official/ecommerce/ecommerce.rdf",
+      "sha256": "8f7cf81d1796260ef774f77652b0054aac991386a91a674b7e649f5c7e64893b"
+    },
+    {
+      "id": "healthcare",
+      "title": "医疗服务",
+      "category": "医疗",
+      "rdf_file": "healthcare.rdf",
+      "source_path": "catalogue/official/healthcare/healthcare.rdf",
+      "sha256": "49eb424773f94a92d1e4406798cc58a4397d671b9bf8fe6d15f0aba4c0ba5b0d"
+    },
+    {
+      "id": "finance",
+      "title": "银行与金融",
+      "category": "金融",
+      "rdf_file": "finance.rdf",
+      "source_path": "catalogue/official/finance/finance.rdf",
+      "sha256": "0afb2efa07168d456a69d8d98103357d2ec37b7a995492663298c260a45beb76"
+    },
+    {
+      "id": "manufacturing",
+      "title": "智能制造",
+      "category": "制造",
+      "rdf_file": "manufacturing.rdf",
+      "source_path": "catalogue/official/manufacturing/manufacturing.rdf",
+      "sha256": "3f91eb2f7d57e36c7fcd004fcfdbf515a5102f10559c80734f17a26dd4cb8336"
+    },
+    {
+      "id": "university",
+      "title": "大学教学",
+      "category": "教育",
+      "rdf_file": "university.rdf",
+      "source_path": "catalogue/official/university/university.rdf",
+      "sha256": "2dbbda1dcbf081140c5a0db98e120028f06156dd254d306fb32c06b34f688243"
+    },
+    {
+      "id": "iq-lab-retail-step-6",
+      "title": "零售供应链",
+      "category": "供应链",
+      "rdf_file": "iq-lab-retail-step-6.rdf",
+      "source_path": "catalogue/official/iq-lab-retail-step-6/iq-lab-retail-step-6.rdf",
+      "sha256": "b99f2b6b7d746b579d3f1f0613abfb84c5391a362b3e989961b9a5457f132a19"
+    },
+    {
+      "id": "zava-grove-to-shelf",
+      "title": "果园到货架",
+      "category": "供应链",
+      "rdf_file": "zava-grove-to-shelf.rdf",
+      "source_path": "catalogue/official/zava-grove-to-shelf/zava-grove-to-shelf.rdf",
+      "sha256": "7f6cee15e9f4572d7d40829adfb7e7e9f737642f30da1d82ae77f716f55f19de"
+    },
+    {
+      "id": "service-order-management",
+      "title": "售后服务工单",
+      "category": "服务",
+      "rdf_file": "ontology.rdf",
+      "source_path": "catalogue/community/marshall3366/service-order-management/ontology.rdf",
+      "sha256": "79e3344142bb5e50c48eaf51611958f6d4d006415d7a3653a5399f7ec42cfcdf"
+    },
+    {
+      "id": "hr-system",
+      "title": "人力资源",
+      "category": "组织",
+      "rdf_file": "ontology.rdf",
+      "source_path": "catalogue/community/ravi-chandu/hr-system/ontology.rdf",
+      "sha256": "7f8876037f931d1b0a81875f9cd7f3cfee9104ccf970de8dc9e1618cf8e0df84"
+    },
+    {
+      "id": "supply-chain-disruption-risk-propagation",
+      "title": "供应链中断与风险",
+      "category": "供应链",
+      "rdf_file": "ontology.rdf",
+      "source_path": "catalogue/community/ravi-chandu/supply-chain-disruption-risk-propagation/ontology.rdf",
+      "sha256": "c1571a7c7e7bc2bc0c397dfeeea436fb91ddfd232078b49238716dc5ec346fb4"
+    },
+    {
+      "id": "productionline-ontology-sample",
+      "title": "产线运营",
+      "category": "制造",
+      "rdf_file": "ontology.rdf",
+      "source_path": "catalogue/community/sandervandevelde/productionline-ontology-sample/ontology.rdf",
+      "sha256": "688e6b35300401417553a0f6476dcba5f5dd3a29a7b408ec1a3a6faaab7c64d0"
+    }
+  ]
+}

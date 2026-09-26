@@ -37,6 +37,7 @@ from urllib.parse import quote as url_quote
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
+from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_questions import ask_questions, run_query
 from ontology_poc_generator.derived_measures import parse_derived, plain_reason
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
@@ -374,6 +375,15 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         def do_GET(self):
             if not self.local_request():
                 return
+            if self.path == '/api/ontology/library' or self.path.startswith('/api/ontology/library/'):
+                try:
+                    self.reply(200, library_catalogue() if self.path == '/api/ontology/library'
+                               else library_definition(unquote(self.path[len('/api/ontology/library/'):])))
+                except KeyError:
+                    self.reply(404, {'error': '本体库里没有这一项。'})
+                except (ValueError, OSError) as exc:
+                    self.reply(400, {'error': str(exc)})
+                return
             if self.path.startswith('/api/ontology/jobs/'):
                 job_id = self.path.rsplit('/', 1)[1]
                 if JOB_ID.match(job_id):
@@ -489,6 +499,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_POST(self):
             if not self.local_request():
+                return
+            if self.path == '/api/ontology/library/import':
+                try:
+                    payload = self.read_json()
+                    if payload is not None:
+                        self.reply(200, import_definition(payload))
+                except (ValueError, UnicodeError) as exc:
+                    self.reply(400, {'error': str(exc)})
                 return
             if self.path == '/api/ontology/ask':
                 self.ask()

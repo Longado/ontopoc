@@ -23,7 +23,7 @@ import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
 import { earlierVersionOf, versionRows } from "./versionModel.js";
 import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
-import { objectsNav, qaNav, qaPlaceFor, sectionOfTile, sectionsFor } from "./workspaceModel.js";
+import { objectsNav, qaNav, sectionsFor } from "./workspaceModel.js";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
@@ -853,13 +853,6 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const goConfirm = () => { setObjectKey(null); setObjPlace("confirm"); setTab("objects"); };
   function showOnGraph(type) { if (!type) return; setPath(null); setSelected({ kind: "node", key: type }); setView("graph"); setTab("graph"); setReveal((n) => n + 1); }
   function showPath(query, text) { const p = pathOf(run.ontology, query); if (!p) return; setPath({ ...p, text }); setSelected({ kind: "node", key: p.nodes[p.nodes.length - 1] }); setView("graph"); setTab("graph"); setReveal((n) => n + 1); }
-  function openTile(key) {
-    if (key === "ref" && !run.evaluation.reference) { goConfirm(); return; }
-    if (key === "fit" || key === "ref") setEvalView(key);
-    if (key === "ontology" || key === "stability") { setObjectKey(null); setObjPlace(key === "stability" ? "stability" : "objects"); }
-    if (key === "qa") setQaPlace(qaPlaceFor(run));
-    setTab(sectionOfTile(key));
-  }
   function demo(url = DEMO_URL) { setError(""); readText(url).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }
   const confirmProps = run && decisions && {
     decisions, saving, error: confirmError, canSave: Boolean(run.saved_as) && health === "ready",
@@ -905,7 +898,6 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
           {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/forms`} download title="按对象表单导出：每个对象一张 CSV，导入目标平台前请先实测">⤓ 表单</a>}
           {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/ttl`} download title="按 W3C 标准导出：OWL 本体、数据、SHACL 规则（Turtle）">⤓ TTL</a>}
           {run.saved_as && isOrg(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/mermaid`} download title="导出组织图（Mermaid）：组织隶属与协作交接各一张，可直接放进出图流程">⤓ 组织图</a>}</div>
-        <div className="os-tiles">{overviewTiles(run).map((t) => <button key={t.key} type="button" className={`os-tile os-tone-${t.tone}`} title={t.hint || undefined} onClick={() => openTile(t.key)}><small>{t.label}</small><b>{t.value}</b></button>)}</div>
       </div>
     </header>}
     {inDetail && <h1 id="os-title" className="sr-only">{folderLabel(run.file.name)}</h1>}
