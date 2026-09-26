@@ -23,3 +23,11 @@ test("property identities include their owning reference object and clearing a c
   assert.notEqual(model.mappingKey(a), model.mappingKey(b));
   assert.deepEqual(model.updateMapping([a, b], a, null, { relationships: [] }), [b]);
 });
+
+test("graph location refuses unresolved reference edges and locates a property's owner", () => {
+  assert.equal(typeof model?.graphSelection, "function", "graph location must check whether the element was parsed");
+  const run = { ontology: { object_types: [{ key: "a" }], relations: [] } };
+  assert.equal(model.graphSelection(run, { kind: "relation", reference: "unresolved" }, "reference"), null);
+  assert.deepEqual(model.graphSelection(run, { kind: "property", owner: "a", reference: "p" }, "reference"), { kind: "node", key: "a" });
+  assert.equal(model.graphSelection(run, { kind: "object", local: "removed" }, "local"), null);
+});
