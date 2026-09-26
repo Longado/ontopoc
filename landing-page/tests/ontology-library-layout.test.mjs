@@ -78,3 +78,12 @@ test("description, warnings and RDF remain accessible without pushing the graph 
   assert.equal(evaluate("document.querySelector('.ol-page dialog').open"), false);
   fits(geometry());
 });
+
+test("leaving a definition restores normal mobile workbench scrolling", () => {
+  catalogue(390, 844);
+  definition("咖啡零售");
+  ab("click", ".app-new");
+  assert.equal(evaluate("document.querySelector('.ol-page').parentElement.hidden"), true);
+  assert.equal(evaluate("getComputedStyle(document.querySelector('.app-main')).overflowY"), "visible",
+    "a hidden library definition must not clip the existing mobile workbench");
+});
