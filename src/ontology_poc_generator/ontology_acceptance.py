@@ -92,7 +92,7 @@ def remap_query(query: dict, snapshot: dict, ontology: dict) -> tuple[dict | Non
                if isinstance(query.get('group_by'), list) else {})}, ''
 
 
-def check_acceptance(ontology: dict, bundle: dict, items: list[dict]) -> dict:
+def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: list | None = None) -> dict:
     """Run every saved query on this run's ontology and data; keep the previous answer beside the new one."""
     checked = []
     for item in items:
@@ -103,7 +103,7 @@ def check_acceptance(ontology: dict, bundle: dict, items: list[dict]) -> dict:
             continue
         previous ={k: item.get(k) for k in ('status', 'answer', 'path')} if item.get('status') else None
         query, problem = remap_query(item['query'], item['snapshot'], ontology) if item.get('snapshot') else (item['query'], '')
-        result = {'status': 'broken', 'reason': problem} if problem else run_query(ontology, bundle, query)
+        result = {'status': 'broken', 'reason': problem} if problem else run_query(ontology, bundle, query, derived=derived)
         if result['status'] == 'ontology_gap':
             # the query a person agreed with no longer fits this ontology: stop here instead of guessing a new meaning
             result = {'status': 'broken', 'reason': result['reason']}
