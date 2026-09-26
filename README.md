@@ -65,7 +65,7 @@
 | 上传数据表并填写建模目的 | 模型仅读取每列字段名及至多 3 个示例值，提出对象、识别字段与关系；代码按 17 类错误校验，不通过则退回修改，至多 3 轮 |
 | 建模完成 | 同一文件并行建模 3 次，标出三次结果不一致之处，即模型不确定、需人工判断的部分；建模目的里写了问题的，一并用数据算出答案，可直接存为验收问题 |
 | 打开"数据体检" | 代码逐行执行 7 项检查，例如同一编号的属性是否冲突、每张上传的表是否均被使用 |
-| 智能问答 | 模型将问题转写为结构化查询，由代码基于数据计算答案；无法回答时说明原因：本体缺失、数据缺失或查询不支持。也可以让模型按需出一组 6 道题 |
+| 智能问答 | 模型将问题转写为结构化查询，由代码基于数据计算答案；无法回答时说明原因：本体缺失、数据缺失或查询不支持。需要按公式算的金额（单价 × 数量 ×（1 − 折扣））由模型提出公式，代码在每一行上试算，确认后原题重算并答出。也可以让模型按需出一组 6 道题 |
 | 逐项确认、重命名、补充对象 | 保存为该文件的参考本体，再次上传时自动比对并预填 |
 | 设定验收问题（至多 3 道） | 每次重新运行以相同查询复算，仅提示结果发生变化的问题 |
 | 采纳数据规则 | 每次重新运行均校验，列出违反规则的对象 |
@@ -136,7 +136,7 @@ claude plugin install ontopoc@ontopoc
 
 ### 接入 Claude Code 或其他 MCP 客户端
 
-页面上的每项功能都有对应的 MCP 工具，共 27 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
+页面上的每项功能都有对应的 MCP 工具，共 28 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -191,8 +191,8 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（573 个）
-npm --prefix landing-page run test:unit                       # 前端测试（207 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（589 个）
+npm --prefix landing-page run test:unit                       # 前端测试（210 个）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录，不动已有运行
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合成示例工作簿
@@ -203,7 +203,7 @@ PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合�
 | [docs/PRODUCT.md](docs/PRODUCT.md) | 产品定位与范围 |
 | [docs/PLAYGROUND_INTERNALIZATION.md](docs/PLAYGROUND_INTERNALIZATION.md) | 本体库来源、RDF/XML 导入边界与后续轮次 |
 | [docs/AGENTS.md](docs/AGENTS.md) | 6 个 Agent 的定义与调用记录 |
-| [docs/MCP.md](docs/MCP.md) | 27 个 MCP 工具 |
+| [docs/MCP.md](docs/MCP.md) | 28 个 MCP 工具 |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | 数据平台对象表单对照 |
 | [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | 最近一轮迭代的计划与执行记录 |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 开发红线与待触发的方向 |

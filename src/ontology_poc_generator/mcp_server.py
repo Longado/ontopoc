@@ -257,6 +257,14 @@ def list_questions(s, a):
             'acceptance': ev.get('acceptance')}
 
 
+def confirm_derived(s, a):
+    derive = a.get('derive')
+    if not isinstance(derive, dict):
+        raise ToolError('derive 要写 {type, label, terms}：用 ask_question 或 list_questions 里那道题的 derive')
+    run = s.request('/api/ontology/derived', {'saved_as': _text(a.get('saved_as'), 'saved_as'), 'derive': derive})
+    return {'derived': run['evaluation'].get('derived', []), 'asked': run['evaluation'].get('asked', [])}
+
+
 def fix_question(s, a):
     run, question = s.run(a.get('saved_as')), _text(a.get('question'), 'question')
     ev = run['evaluation']
@@ -335,6 +343,9 @@ TOOLS = [
     _tool(ask_question, '用数据回答一个业务问题：模型把问题写成查询，代码在数据上算答案。不给 question 就让模型出一组题。会调用模型。',
           {**RUN, 'question': {'type': 'string', 'maxLength': 300}}, ('saved_as',)),
     _tool(list_questions, '这次运行里模型出的题、人问过的题和固定的验收问题，带答案和查询路径。', RUN, ('saved_as',)),
+    _tool(confirm_derived, '确认一个派生指标（例如 金额 = 单价 × 数量 ×（1 − 折扣））：服务再核一遍公式，存下后重算等它的题。'
+          '只在人看过公式和试算结果、同意之后调用；derive 用那道题返回的 derive 原样传。',
+          {**RUN, 'derive': {'type': 'object', 'description': '{type, label, terms}，来自那道题的 derive'}}, ('saved_as', 'derive')),
     _tool(fix_question, '把问过的一道题固定为验收问题：以后重传同一份文件，用同一个查询再算一次。',
           {**RUN, 'question': {'type': 'string'}, 'note': {'type': 'string', 'description': '口径说明，例如"按订单号计数"'}}, ('saved_as', 'question')),
     _tool(confirm_ontology, '保存人对本体的逐项判断，成为这个文件的参考本体并马上对照。decisions 形如 '

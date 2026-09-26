@@ -37,8 +37,9 @@ from urllib.parse import quote as url_quote
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
-from ontology_poc_generator.ontology_questions import ask_questions
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
+from ontology_poc_generator.ontology_questions import ask_questions, run_query
+from ontology_poc_generator.derived_measures import parse_derived, plain_reason
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 
@@ -131,6 +132,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                          'description': text(f.get('description'), MAX_DESCRIPTION, f'字段 {path} 的描述'), 'drafted': bool(f.get('drafted'))}
             out[key] = entry
         return {'types': out}
+
+    def derived_of(key):
+        """The derived measures a person confirmed for this file (its line of versions), oldest first."""
+        path = output_dir / 'derived' / f'{key}.json'
+        return json.loads(path.read_text(encoding='utf-8'))['measures'] if path.exists() else []
 
     def rules_state(result, bundle, graph=None):
         """The rules offered for this file and the ones a person adopted, checked against this run's data."""
@@ -236,7 +242,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 # the person's own question is answered with the draft; the model's round of questions is on request
                 if progress:
                     progress('questions', {})
-                answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True)
+                key = memory_key(json.loads((output_dir / previous).read_text(encoding='utf-8'))) if previous else bundle['file']['sha256']
+                answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True, derived=derived_of(key))
                 if answered['items'] or answered['error']:
                     result['evaluation']['asked'] = [answered]
             if result['ontology']['status'] == 'auto_built_verified':
@@ -288,6 +295,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
         if result['ontology']['status'] == 'auto_built_verified' and result['file'].get('kind') != 'document':
             result['evaluation']['rules'] = rules_state(result, bundle)
+            result['evaluation']['derived'] = derived_of(memory_key(result))
             if form_state(result):
                 result['evaluation']['form'] = form_state(result)
         result['saved_as'] = name
@@ -522,6 +530,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/acceptance':
                 with runs_lock:
                     self.acceptance()
+                return
+            if self.path == '/api/ontology/derived':
+                with runs_lock:
+                    self.confirm_derived()
                 return
             if self.path == '/api/ontology/rules':
                 with runs_lock:
@@ -837,6 +849,49 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
+        def confirm_derived(self):
+            """A person confirms a derived measure: code checks the formula again, keeps it with the file, and answers
+            again every question of this run that was waiting for it."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                result_path = self.load_run(payload)
+                if not result_path.exists():
+                    self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                    return
+                result = json.loads(result_path.read_text(encoding='utf-8'))
+                if result['file'].get('kind') == 'document':
+                    raise ValueError('文档没有数据行，不能定义指标')
+                formula, why = parse_derived(result['ontology'], payload.get('derive'))
+                if formula is None:
+                    raise ValueError(why)
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            key = memory_key(result)
+            kept = [d for d in derived_of(key) if (d['type'], d['label']) != (formula['type'], formula['label'])]
+            measures = kept + [{**formula, 'confirmed_at': datetime.now(timezone.utc).isoformat(timespec='seconds')}]
+            (output_dir / 'derived').mkdir(parents=True, exist_ok=True)
+            (output_dir / 'derived' / f'{key}.json').write_text(json.dumps({'measures': measures}, ensure_ascii=False, indent=1), encoding='utf-8')
+            bundle = json.loads((output_dir / result['saved_as'].replace('.json', '.bundle.json')).read_text(encoding='utf-8'))
+            reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
+            graph = build_graph(result['ontology'], bundle)
+            rounds = [*(result['evaluation'].get('asked') or []), *([result['evaluation']['questions']] if result['evaluation'].get('questions') else [])]
+            for answered in rounds:
+                for i, item in enumerate(answered.get('items') or []):
+                    wanted = ((item.get('query') or {}).get('measure') or {}).get('derived') if isinstance(item.get('query'), dict) else None
+                    if wanted != formula['label'] or item.get('query', {}).get('start') != formula['type']:
+                        continue
+                    again = run_query(reviewed, bundle, item['query'], graph, measures)
+                    if again['status'] != 'answered' and again.get('reason'):
+                        again = {**again, 'reason': plain_reason(reviewed, again['reason'])}
+                    answered['items'][i] = {**{k: v for k, v in item.items() if k not in ('derive', 'reason', 'answer', 'path', 'status')}, **again}
+                answered['answered'] = sum(x['status'] == 'answered' for x in answered.get('items') or [])
+            result['evaluation']['derived'] = measures
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
         def ask(self):
             try:
                 payload = self.read_json()
@@ -867,7 +922,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
-            answered = ask_questions(reviewed, bundle, gateway, question.strip() if question else None)
+            answered = ask_questions(reviewed, bundle, gateway, question.strip() if question else None, derived=derived_of(memory_key(result)))
             if answered['error'] and answered['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': answered['error']})
                 return
