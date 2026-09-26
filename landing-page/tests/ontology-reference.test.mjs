@@ -16,7 +16,7 @@ function ab(...args) {
   return reply.data;
 }
 const evaluate = script => ab("eval", script).result;
-const click = name => ab("find", "role", "button", "click", "--name", name, "--exact");
+const click = name => { evaluate(`([...document.querySelectorAll('button')].find(e => (e.getAttribute('aria-label') || e.textContent.trim()) === ${JSON.stringify(name)} && !e.disabled)).focus()`); ab("press", "Enter"); };
 const get = async path => { const r = await fetch(url + path); assert.ok(r.ok); return r.json(); };
 after(() => ab("close"));
 
@@ -45,7 +45,7 @@ test("select, map, inspect, confirm, reload and cancel keep the user's actual an
   openReference();
   ab("set", "viewport", "1280", "720");
   assert.equal(evaluate("Boolean(document.querySelector('[aria-label=选择领域参考]'))"), true, "domain reference picker should be available");
-  ab("wait", "[aria-label=选择领域参考] option[value=ecommerce]");
+  ab("wait", "[aria-label=选择领域参考]:not(:disabled)");
   ab("select", "[aria-label=选择领域参考]", "ecommerce");
   ab("wait", ".dr-mapping-row");
   ab("select", '[aria-label="Buyer 对应对象"]', customer.key);
