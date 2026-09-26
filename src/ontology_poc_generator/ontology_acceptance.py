@@ -70,7 +70,7 @@ def remap_query(query: dict, snapshot: dict, ontology: dict) -> tuple[dict | Non
     the matched ends with no other candidate beside it."""
     label = {t['key']: (t.get('label') or t['key']) for t in snapshot['types']}
     mapping = match_types(snapshot['types'], ontology['object_types'])
-    missing = [label[k] for k in {query.get('start'), *(e for r in snapshot['relations'] for e in (r['from'], r['to']))} if k and k not in mapping]
+    missing = [label.get(k, k) for k in {query.get('start'), *(e for r in snapshot['relations'] for e in (r['from'], r['to']))} if k and k not in mapping]
     if missing:
         return None, f'这一版本体里找不到{"、".join(sorted(missing))}，这道题要重新确认'
     relation_map = {}
@@ -92,7 +92,8 @@ def remap_query(query: dict, snapshot: dict, ontology: dict) -> tuple[dict | Non
                if isinstance(query.get('group_by'), list) else {})}, ''
 
 
-def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: list | None = None) -> dict:
+def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: list | None = None,
+                     snapshot_ontology: dict | None = None) -> dict:
     """Run every saved query on this run's ontology and data; keep the previous answer beside the new one."""
     checked = []
     for item in items:
@@ -102,13 +103,23 @@ def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: l
                             'status': item['status'], 'reason': item['reason'], 'previous': None, 'changed': None})
             continue
         previous ={k: item.get(k) for k in ('status', 'answer', 'path')} if item.get('status') else None
-        query, problem = remap_query(item['query'], item['snapshot'], ontology) if item.get('snapshot') else (item['query'], '')
+        # Human rejection affects execution, not the saved identity of the query's objects.
+        identities = snapshot_ontology if snapshot_ontology is not None else ontology
+        snapshot = item.get('snapshot')
+        if snapshot is not None:
+            # Repair older incomplete snapshots only from exact keys still present in this run.
+            # Existing identity evidence takes precedence, so cross-version matching is unchanged.
+            available = snapshot_of(identities, item['query'])
+            snapshot = {kind: [*snapshot.get(kind, []), *(entry for entry in available[kind]
+                        if entry['key'] not in {saved['key'] for saved in snapshot.get(kind, [])})]
+                        for kind in ('types', 'relations')}
+        query, problem = remap_query(item['query'], snapshot, identities) if snapshot is not None else (item['query'], '')
         result = {'status': 'broken', 'reason': problem} if problem else run_query(ontology, bundle, query, derived=derived)
         if result['status'] == 'ontology_gap':
             # the query a person agreed with no longer fits this ontology: stop here instead of guessing a new meaning
             result = {'status': 'broken', 'reason': result['reason']}
         checked.append({'question': item['question'], 'note': item['note'], 'query': query if not problem else item['query'],
-                        'snapshot': snapshot_of(ontology, query) if not problem else item.get('snapshot'), **result,
+                        'snapshot': snapshot_of(identities, query) if not problem else snapshot, **result,
                         'previous': previous,
                         'changed': None if previous is None else (result.get('answer') != previous['answer'] or result['status'] != previous['status'])})
     return {'checked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'items': checked,

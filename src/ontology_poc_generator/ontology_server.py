@@ -146,7 +146,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         if decisions is None:
             decisions = (result['evaluation'].get('reference') or {}).get('suggested')
         return check_acceptance(without_wrong(result['ontology'], decisions), bundle, items,
-                                derived=derived_of(memory_key(result)))
+                                derived=derived_of(memory_key(result)), snapshot_ontology=result['ontology'])
 
     def rules_state(result, bundle, graph=None):
         """The rules offered for this file and the ones a person adopted, checked against this run's data."""
