@@ -1,5 +1,14 @@
 export const mappingKey = row => JSON.stringify([row.kind, row.owner || "", row.reference]);
 
+/** API responses replace object references; only changed correspondence inputs invalidate a draft. */
+export function referenceRevision(run) {
+  const inputs = { ontology: run.ontology, decisions: run.confirmation?.decisions,
+    fields: run.evaluation?.handover?.sources?.map(source => ({ name: source.name, fields: source.fields })),
+    record: run.evaluation?.domain_reference };
+  return JSON.stringify(inputs, (_, value) => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value);
+}
+
 export function graphSelection(run, row, side) {
   const key = side === "reference" ? (row.kind === "property" ? row.owner : row.reference)
     : (row.kind === "property" ? row.local_owner : row.local);

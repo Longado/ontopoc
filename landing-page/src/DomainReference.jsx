@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { OntologyGraph } from "./OntologyGraph.jsx";
 import { definitionRun, libraryEntries } from "./ontologyLibraryModel.js";
-import { graphSelection, mappingKey, updateMapping } from "./ontologyReferenceModel.js";
+import { graphSelection, mappingKey, referenceRevision, updateMapping } from "./ontologyReferenceModel.js";
 import "./DomainReference.css";
 
 const KINDS = { object: "对象", relation: "关系", property: "属性" };
@@ -34,6 +34,7 @@ export function DomainReference({ run, onUpdate }) {
   const dialog = useRef(null);
   const sequence = useRef(0);
   const definitionGraph = useMemo(() => definition ? definitionRun(definition) : null, [definition]);
+  const revision = referenceRevision(run);
 
   function restore(ctx) {
     setReview(false);
@@ -51,7 +52,7 @@ export function DomainReference({ run, onUpdate }) {
       .catch(e => { if (turn === sequence.current) setError(e.message); })
       .finally(() => { if (turn === sequence.current) setBusy(false); });
     return () => { sequence.current++; };
-  }, [run.saved_as, run.ontology, run.confirmation, retry]);
+  }, [run.saved_as, revision, retry]);
 
   async function choose(id) {
     setReview(false);
@@ -74,7 +75,7 @@ export function DomainReference({ run, onUpdate }) {
         run_sha256: context.run_sha256, mappings, ...(save ? { confirmed: true } : {}) };
       const body = await read(`/api/ontology/reference/${save ? "confirm" : "preview"}`, payload);
       if (turn !== sequence.current) return;
-      if (save) onUpdate(body);
+      if (save) { onUpdate(body); setRetry(n => n + 1); }
       else { setPreview(body.diff); setReview(true); setGroup(body.diff.different.length ? "different" : "mapped"); }
     } catch (e) { if (turn === sequence.current) setError(e.message); }
     finally { if (turn === sequence.current) setBusy(false); }
