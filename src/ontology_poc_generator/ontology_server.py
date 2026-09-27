@@ -38,6 +38,7 @@ from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_a
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
+from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import ask_questions, run_query
 from ontology_poc_generator.derived_measures import parse_derived, plain_reason
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
@@ -137,6 +138,15 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         """The derived measures a person confirmed for this file (its line of versions), oldest first."""
         path = output_dir / 'derived' / f'{key}.json'
         return json.loads(path.read_text(encoding='utf-8'))['measures'] if path.exists() else []
+
+    def reviewed_acceptance(result, bundle, items):
+        # A rerun carries the previous human decisions as suggestions until reviewed again.
+        # Those rejected objects/relations must not silently become passing acceptance paths.
+        decisions = (result.get('confirmation') or {}).get('decisions')
+        if decisions is None:
+            decisions = (result['evaluation'].get('reference') or {}).get('suggested')
+        return check_acceptance(without_wrong(result['ontology'], decisions), bundle, items,
+                                derived=derived_of(memory_key(result)), snapshot_ontology=result['ontology'])
 
     def rules_state(result, bundle, graph=None):
         """The rules offered for this file and the ones a person adopted, checked against this run's data."""
@@ -291,7 +301,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             # the questions a person fixed for this file: the same queries, so two runs can be judged on the same thing
             with runs_lock:
                 saved = json.loads(accepted.read_text(encoding='utf-8'))
-                result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, saved['items'])
+                result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, saved['items'])
                 accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
         if result['ontology']['status'] == 'auto_built_verified' and result['file'].get('kind') != 'document':
             result['evaluation']['rules'] = rules_state(result, bundle)
@@ -394,6 +404,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/runs':
                 self.list_runs()
                 return
+            if self.path.startswith('/api/ontology/runs/') and self.path.endswith('/reference'):
+                self.reference_context(self.path.split('/')[-2])
+                return
             if self.path.startswith('/api/ontology/runs/') and self.path.count('/') > 4:
                 self.object_page()
                 return
@@ -484,6 +497,25 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, json.loads(path.read_text(encoding='utf-8')))
 
+        def reference_context(self, name):
+            try:
+                path = self.load_run({'saved_as': name})
+                result = json.loads(path.read_text(encoding='utf-8'))
+                record = result.get('evaluation', {}).get('domain_reference')
+                definition, stale = None, []
+                if record:
+                    try:
+                        definition = library_definition(record['reference_id'])
+                        stale = stale_reasons(definition, result, record)
+                    except (KeyError, ValueError, OSError):
+                        stale = ['参考版本已不可用，请重新选择本体库参考。']
+                self.reply(200, {'run_sha256': run_fingerprint(result), 'local': local_schema(result),
+                                 'record': record, 'definition': definition, 'stale': stale})
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，请重新打开。'})
+            except ValueError as exc:
+                self.reply(400, {'error': str(exc)})
+
         def read_json(self):
             length = int(self.headers.get('Content-Length', '0'))
             if not 0 < length <= MAX_BODY:
@@ -499,6 +531,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_POST(self):
             if not self.local_request():
+                return
+            if self.path in ('/api/ontology/reference/preview', '/api/ontology/reference/confirm'):
+                with runs_lock:
+                    self.domain_reference(self.path.endswith('/confirm'))
                 return
             if self.path == '/api/ontology/library/import':
                 try:
@@ -652,6 +688,40 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
+        def domain_reference(self, save):
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                path = self.load_run(payload)
+                result = json.loads(path.read_text(encoding='utf-8'))
+                definition = library_definition(payload.get('reference_id'))
+                stale = stale_reasons(definition, result, payload)
+                if stale:
+                    self.reply(409, {'error': ' '.join(stale)})
+                    return
+                if save and payload.get('confirmed') is not True:
+                    raise ValueError('请先人工确认本次对应关系，再保存。')
+                mappings = payload.get('mappings')
+                diff = compare_definition(definition, result, mappings)
+                if not save:
+                    self.reply(200, {'diff': diff})
+                    return
+                result.setdefault('evaluation', {})['domain_reference'] = {
+                    'reference_id': definition['entry']['id'], 'reference_title': definition['entry']['title'],
+                    'reference_sha256': definition['sha256'], 'source_url': definition['entry']['source_url'],
+                    'source_commit': definition['entry']['commit'], 'run_sha256': run_fingerprint(result),
+                    'mappings': mappings, 'diff': diff,
+                    'confirmed_at': datetime.now(timezone.utc).isoformat(timespec='seconds')}
+                path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+                self.reply(200, result)
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，请重新打开。'})
+            except KeyError:
+                self.reply(404, {'error': '本体库里没有这一项。'})
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+
         def variants(self):
             try:
                 payload = self.read_json()
@@ -703,7 +773,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 stored.unlink(missing_ok=True)
             else:
                 bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-                result['evaluation']['acceptance'] = check_acceptance(result['ontology'], bundle, items)
+                result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, items)
                 saved = {'saved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'file': result['file'],
                          'purpose': result.get('purpose'), 'items': result['evaluation']['acceptance']['items']}
                 stored.parent.mkdir(parents=True, exist_ok=True)
@@ -846,6 +916,15 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference}
             result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'compared_at': now,
                                                  'diff': compare_ontologies(parse_reference(reference), result['ontology'])}
+            acceptance = result['evaluation'].get('acceptance')
+            bundle_path = output_dir / result['saved_as'].replace('.json', '.bundle.json')
+            if acceptance and result['file'].get('kind') != 'document' and bundle_path.exists():
+                bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+                result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, acceptance['items'])
+                accepted = output_dir / 'acceptance' / f"{memory_key(result)}.json"
+                accepted.parent.mkdir(parents=True, exist_ok=True)
+                accepted.write_text(json.dumps({'saved_at': now, 'file': result['file'], 'purpose': result.get('purpose'),
+                                               'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
@@ -913,7 +992,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if gateway is None:
                 self.reply(503, {'error': NO_KEY})
                 return
-            result = json.loads(result_path.read_text(encoding='utf-8'))
+            with runs_lock:
+                result = json.loads(result_path.read_text(encoding='utf-8'))
             if result['file'].get('kind') == 'document':
                 self.reply(400, {'error': '文档没有数据行可以查询；评测二只对数据表可用'})
                 return
@@ -926,8 +1006,17 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if answered['error'] and answered['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': answered['error']})
                 return
-            self.reply(200, write_back(result_path, (lambda r: r['evaluation'].setdefault('asked', []).append(answered)) if question
-                                       else (lambda r: r['evaluation'].update(questions=answered))))
+            with runs_lock:
+                latest = json.loads(result_path.read_text(encoding='utf-8'))
+                if (latest.get('confirmation') or {}).get('decisions') != (result.get('confirmation') or {}).get('decisions'):
+                    self.reply(409, {'error': '等待回答期间，本体的人工确认已改变。这次回答没有保存，请按最新确认重新提问。'})
+                    return
+                if question:
+                    latest['evaluation'].setdefault('asked', []).append(answered)
+                else:
+                    latest['evaluation']['questions'] = answered
+                result_path.write_text(json.dumps(latest, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, latest)
 
     return ThreadingHTTPServer(('127.0.0.1', port), Handler)
 

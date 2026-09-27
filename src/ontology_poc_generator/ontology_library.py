@@ -81,8 +81,11 @@ def parse_rdf(text: str, filename='ontology.rdf') -> dict:
         return resolved
 
     def endpoint(element, tag):
-        child = element.find(f'{{{RDFS}}}{tag}')
-        return resource(child) if child is not None else None
+        children = element.findall(f'{{{RDFS}}}{tag}')
+        if len(children) > 1:
+            warn('multiple_endpoints', f'同一项声明了多个 {tag}，暂未转换该约束；完整声明保留在 RDF 原文中。', resource(element, 'about') or '')
+            return None
+        return resource(children[0]) if children else None
 
     allowed = {f'{{{RDF}}}RDF', *(f'{{{OWL}}}{n}' for n in ('Ontology', 'Class', 'DatatypeProperty', 'ObjectProperty')),
                *(f'{{{RDFS}}}{n}' for n in ('label', 'comment', 'domain', 'range'))}
@@ -114,6 +117,8 @@ def parse_rdf(text: str, filename='ontology.rdf') -> dict:
         range_iri = endpoint(element, 'range')
         declared = _annotation(element, 'propertyType') or _annotation(element, 'attributeType')
         kind = declared if declared in PROPERTY_TYPES else XSD_TYPES.get((range_iri or '').removeprefix(XSD)) if range_iri and range_iri.startswith(XSD) else None
+        if len(element.findall(f'{{{RDFS}}}range')) > 1:
+            kind = None
         if kind is None:
             warn('unknown_type', '属性类型未声明或暂不支持，按原文保留，未补成字符串。', iri)
         comments = [''.join(c.itertext()).strip() for c in element.findall(f'{{{RDFS}}}comment')]
@@ -153,7 +158,8 @@ def parse_rdf(text: str, filename='ontology.rdf') -> dict:
             warn('unknown_cardinality', '关系基数暂不支持，未填入默认值。', iri)
         ends = {side: endpoint(element, tag) for side, tag in [('from', 'domain'), ('to', 'range')]}
         for side, annotation in [('from', 'fromEntityId'), ('to', 'toEntityId')]:
-            if ends[side] is None:
+            tag = 'domain' if side == 'from' else 'range'
+            if ends[side] is None and len(element.findall(f'{{{RDFS}}}{tag}')) <= 1:
                 ends[side] = annotated_endpoint(element, annotation)
         if any(end not in entities for end in ends.values()):
             warn('unresolved_endpoint', '关系端点未能对应到显式类，定义已保留，图中没有连线。', iri)

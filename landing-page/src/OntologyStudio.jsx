@@ -24,6 +24,7 @@ import { rulesTile } from "./rulesModel.js";
 import { earlierVersionOf, versionRows } from "./versionModel.js";
 import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
 import { objectsNav, qaNav, sectionsFor } from "./workspaceModel.js";
+import { DomainReference } from "./DomainReference.jsx";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
 
@@ -390,10 +391,11 @@ function DiffList({ title, items }) {
   return items.length ? <div className="os-diff"><h3 className="os-sub">{title}（{items.length}）</h3><ul className="os-list">{items.map((x) => <li key={Array.isArray(x) ? x.join("/") : x}>{Array.isArray(x) ? (x[0] === x[1] ? x[0] : `${x[0]} ↔ ${x[1]}`) : x}</li>)}</ul></div> : null;
 }
 
-function ReferenceSection({ run, canCompare, onCompare, busy, error, onUpload, onGoConfirm }) {
+function ReferenceSection({ run, canCompare, onCompare, busy, error, onUpload, onGoConfirm, onUpdate }) {
   const ref = run.evaluation.reference;
   const own = ref?.confirmed && run.confirmation ? splitExtras(run.ontology, run.confirmation.decisions, ref.diff) : null;
-  return <section className="pr-card">
+  return <><DomainReference key={run.saved_as || "example"} run={run} onUpdate={onUpdate} />
+    <details className="dr-legacy"><summary>已确认本体 / JSON 标准答案</summary><section className="pr-card">
     <div className="pr-card-head"><h2>{ref?.confirmed ? "对照你确认过的本体" : "对照标准答案"}</h2>{ref && <span className="pr-muted">{referenceCounts(ref.diff)}</span>}</div>
     <Hint>标准答案有两种来源：在"本体管理"里逐项确认（最常用，确认后自动对照，同一份文件以后再上传也会自动对照）；或者上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按"读同一张表、用同样的识别字段"来对应对象，名字不同也能对上；关系两端都对上才算命中。</Hint>
     {onGoConfirm && <button type="button" className="pr-link os-go-confirm" onClick={onGoConfirm}>去逐项确认本体 →</button>}
@@ -419,7 +421,7 @@ function ReferenceSection({ run, canCompare, onCompare, busy, error, onUpload, o
         <DiffList title="还没判断的关系" items={own.relations.unjudged} />
       </> : <DiffList title={ref.confirmed ? "这次有、你上次确认里没有的关系" : "本体里多出来的关系"} items={ref.diff.relations.only_ours} />}
     </>}
-  </section>;
+  </section></details></>;
 }
 
 function ConfirmCard({ run, confirm }) {
@@ -634,10 +636,10 @@ function CheckSection({ run, evalView, setEvalView, questions, variants, onShow,
   const view = ["ref", "rules"].includes(evalView) && !(doc && evalView === "rules") ? evalView : "fit";
   return <>
     <div className="os-segments" role="tablist" aria-label="数据体检">{CHECK_VIEWS.filter(([key]) => !(doc && key === "rules")).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setEvalView(key)}>
-      <b>{key === "fit" && doc ? "文档检查" : label}</b><small className={`os-tone-${tiles[key].tone}`}>{tiles[key].value}</small></button>)}</div>
+      <b>{key === "fit" && doc ? "文档检查" : label}</b><small className={`os-tone-${tiles[key].tone}`}>{key === "ref" && run.evaluation.domain_reference ? "有领域对应记录" : tiles[key].value}</small></button>)}</div>
     {view === "rules" && <RulesView run={run} {...rules} />}
     {view === "fit" && (doc ? <DocumentFitView run={run} onShow={onShow} /> : <DataFit run={run} onShow={onShow} variants={variants} />)}
-    {view === "ref" && <ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} onUpload={questions.onUpload} onGoConfirm={questions.onGoConfirm} />}
+    <div hidden={view !== "ref"}><ReferenceSection run={run} canCompare={questions.canAsk} onCompare={questions.onCompare} busy={questions.comparing} error={questions.compareError} onUpload={questions.onUpload} onGoConfirm={questions.onGoConfirm} onUpdate={questions.onUpdate} /></div>
   </>;
 }
 
@@ -878,7 +880,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const download = () => save(JSON.stringify(run, null, 2), "application/json", "本体和评测.json");
   const downloadSummary = () => save(summaryMarkdown(run), "text/markdown;charset=utf-8", "纪要.md");
 
-  const questions = { canAsk: Boolean(run?.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpload: () => setTab("upload"),
+  const questions = { canAsk: Boolean(run?.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpdate: update, onUpload: () => setTab("upload"),
     onAccept: (items) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items }, setAccepting, setAcceptError), accepting, acceptError, onGoConfirm: goConfirm,
     onDerive: (item) => post("/api/ontology/derived", { saved_as: run.saved_as, derive: item.derive }, setDeriving, setDeriveError), deriving, deriveError };
   const inDetail = tab === "objects" && objectKey;
@@ -919,8 +921,8 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
         <QaSection run={run} questions={questions} onPath={showPath} askRef={askRef} place={qaPlace} /></SubLayout>}
       {tab === "org" && run && <SubLayout label="组织架构" items={orgPlaces(run)} active={orgPlace} onChange={setOrgPlace}>
         <OrgSection run={run} place={orgPlace} onShow={showOnGraph} /></SubLayout>}
-      {tab === "check" && run && <CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions}
-        rules={{ canSave: Boolean(run.saved_as) && health === "ready", busy: savingRules, error: rulesError, onSave: (next) => post("/api/ontology/rules", { saved_as: run.saved_as, ...next }, setSavingRules, setRulesError) }} />}
+      {run && <div hidden={tab !== "check"}><CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions}
+        rules={{ canSave: Boolean(run.saved_as) && health === "ready", busy: savingRules, error: rulesError, onSave: (next) => post("/api/ontology/rules", { saved_as: run.saved_as, ...next }, setSavingRules, setRulesError) }} /></div>}
     </div>
     {searching && open && <SearchDialog run={run} decisions={decisions} onGo={go} onClose={() => setSearching(false)} />}
   </section>;

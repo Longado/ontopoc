@@ -104,11 +104,13 @@ class RunWriteTests(unittest.TestCase):
                     asking.join(20)
             finally:
                 held.release.set()
-            self.assertEqual(asked['status'], 200, asked.get('body'))
+            self.assertEqual(asked['status'], 409, asked.get('body'))
+            self.assertIn('人工确认已改变', asked['body']['error'])
+            self.assertIn('没有保存', asked['body']['error'])
             kept = json.loads((Path(out) / run['saved_as']).read_text(encoding='utf-8'))
         self.assertIn('confirmation', kept)       # written while the question was out with the model
-        self.assertEqual(len(kept['evaluation']['asked']), 1)
-        self.assertIn('confirmation', asked['body'])   # and the page is handed the run with both
+        self.assertEqual(kept['confirmation']['decisions'], decisions)
+        self.assertFalse(kept['evaluation'].get('asked'))   # an answer based on the older review is not saved
 
 
 if __name__ == '__main__':
