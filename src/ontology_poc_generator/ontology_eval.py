@@ -126,10 +126,12 @@ def _missing_across_sources(p: dict, graph: dict) -> list[dict]:
             if missing:
                 out.append({'type': t['key'], 'source': src, 'count': len(missing), 'examples': missing[:EXAMPLES]})
     bound = {}
+    relations = {r['key']: r for r in p['relations']}
     for item in graph.get('missing_references', []):
         group = (item['type'], item['source'], item['relation'], item['endpoint'])
         bound.setdefault(group, set()).add('|'.join(value for _, value in item['identity']))
     out += [{'type': key, 'source': src, 'relation': relation, 'endpoint': end,
+             'fields': list(relations[relation][f'{end}_identity'].values()),
              'count': len(values), 'examples': sorted(values)[:EXAMPLES]}
             for (key, src, relation, end), values in bound.items()]
     return out

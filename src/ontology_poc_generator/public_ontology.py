@@ -158,7 +158,10 @@ def _binding_errors(r: dict, end: str, t: dict, sources: dict) -> list[dict]:
         if not isinstance(binding, dict) or not binding or set(binding) != logical:
             reason = f'{name} must map exactly the identity keys {sorted(logical)} to source columns'
         elif any(not isinstance(path, str) or '[].' in path or
-                 not _path_exists(sources.get(r['source'], []), path) for path in binding.values()):
+                 not _path_exists(sources.get(r['source'], []), path) or
+                 any(value is not None and not isinstance(value, (str, int, float, bool))
+                     for record in sources.get(r['source'], []) for value in resolve(record, path))
+                 for path in binding.values()):
             reason = f'{name} must name existing scalar columns in {r["source"]}'
         else:
             return []
@@ -166,7 +169,7 @@ def _binding_errors(r: dict, end: str, t: dict, sources: dict) -> list[dict]:
     return [{**_error('relation_binding_invalid', f'relation {r["key"]}: {reason}'),
              'relation': r['key'], 'endpoint': end, 'source': r['source'],
              'fields': list(binding.values()) if isinstance(binding, dict) else [],
-             'hint': '关系两端分别绑定该表中的实际编号列，键名须与对象的识别键一致；同类对象关系须明确两端。'}]
+             'hint': '关系两端分别绑定该表中的实际编号列，编号须为单个值；键名须与对象的识别键一致，同类对象关系须明确两端。'}]
 
 
 def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> list[dict]:

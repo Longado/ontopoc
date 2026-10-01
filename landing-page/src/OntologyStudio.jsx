@@ -4,7 +4,7 @@ import { SearchDialog } from "./SearchDialog.jsx";
 import { askSuggestions, bridgeLines, latestAsked, layoutTables } from "./dataLayoutModel.js";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary,
-  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
+  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
@@ -614,8 +614,9 @@ function DataFit({ run, onShow, variants }) {
       <ul className="pr-rows">{fit.suspected_duplicates.map((d, i) => <li key={i}><b>{typeLabel(ontology, d.type)}</b><span>{d.identities.join(" 和 ")}</span><ShowOnGraph type={d.type} onShow={onShow} /></li>)}</ul>
     </section>}
     {fit.missing_across_sources.length > 0 && <section className="pr-card">
-      <h2>引用了、但在它所属的表里找不到</h2>
-      <ul className="pr-rows">{fit.missing_across_sources.map((m) => <li key={`${m.type}/${m.source}`}><b>{typeLabel(ontology, m.type)}：{m.count} 个不在"{m.source}"表里</b><span>例如 {m.examples.join("、")}</span><ShowOnGraph type={m.type} onShow={onShow} /></li>)}</ul>
+      <h2>找不到对应对象的引用</h2>
+      <ul className="pr-rows">{fit.missing_across_sources.map((m) => { const feedback = missingReferenceFeedback(ontology, m);
+        return <li key={feedback.key}><b>{feedback.title}</b><span>例如 {m.examples.join("、")}</span><ShowOnGraph type={m.type} onShow={onShow} /></li>; })}</ul>
     </section>}
     <details className="pr-card os-more"><summary>关系连通、字段去处等明细</summary>
       <h3 className="os-sub">关系连通</h3>

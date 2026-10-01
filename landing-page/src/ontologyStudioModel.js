@@ -54,6 +54,14 @@ export const typeLabel = (ontology, key) => ontology.object_types.find((t) => t.
 export const relationBindingLine = (r) => r.from_identity || r.to_identity
   ? `${r.source}：${Object.values(r.from_identity || {}).join(" + ") || "按对象识别"} → ${Object.values(r.to_identity || {}).join(" + ") || "按对象识别"}` : "";
 
+export function missingReferenceFeedback(ontology, m) {
+  if (!m.relation) return { key: `${m.type}/${m.source}`, title: `${typeLabel(ontology, m.type)}：${m.count} 个不在"${m.source}"表里` };
+  const relation = (ontology.relations || []).find((r) => r.key === m.relation);
+  const fields = m.fields || Object.values(relation?.[`${m.endpoint}_identity`] || {});
+  return { key: `${m.type}/${m.source}/${m.relation}/${m.endpoint}`,
+    title: `${relation?.label || m.relation}（${m.endpoint === "from" ? "起点" : "终点"}）：${m.source} 的 ${fields.join(" + ")} 列中有 ${m.count} 个编号找不到对应的${typeLabel(ontology, m.type)}` };
+}
+
 export function verificationIssues(ontology) {
   return (ontology.verification?.errors || []).map((error) => {
     const r = (ontology.relations || []).find((r) => r.key === error.relation);
