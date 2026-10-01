@@ -5,6 +5,8 @@ import json
 import unittest
 
 from ontology_poc_generator.recognition import ModelCompletion
+from ontology_poc_generator.mcp_server import LocalService, handle
+from ontology_poc_generator.ontology_questions import QUESTION_SYSTEM_PROMPT
 from tests.test_ontology_ask_server import call
 from tests import test_ontology_server as server_helpers
 from tests.test_ontology_server import PROPOSAL
@@ -19,7 +21,9 @@ B = {'question': '订单数？', 'query': {'start': 'order'}, 'note': ''}
 class BoundModel:
     column = '客户编号'
 
-    def complete_json(self, **_):
+    def complete_json(self, *, system_prompt, user_prompt):
+        if system_prompt == QUESTION_SYSTEM_PROMPT:
+            return ModelCompletion(provider='fake', model='fake', content=json.dumps({'questions': [A]}))
         proposal = copy.deepcopy(PROPOSAL)
         proposal['object_types'][0]['attributes'].append({'source': 'orders', 'path': 'BillToId'})
         proposal['relations'][0].update(from_identity={'order_id': '订单号'}, to_identity={'customer_id': self.column})
@@ -59,3 +63,25 @@ class AcceptanceSnapshotEditTests(unittest.TestCase):
             item = accepted['evaluation']['acceptance']['items'][0]
             self.assertEqual(item['status'], 'answered')
             self.assertEqual(item['snapshot']['relations'][0]['to_identity'], {'customer_id': 'BillToId'})
+
+    def test_explicit_mcp_reaccept_uses_the_new_binding_without_reaccepting_other_questions(self):
+        model = BoundModel()
+        with server_helpers.OntologyServerTests().server(gateway=model) as (base, _):
+            first = call(base, '/api/ontology/build', UPLOAD)[1]
+            call(base, '/api/ontology/acceptance', {'saved_as': first['saved_as'], 'items': [A, B]})
+            model.column = 'BillToId'
+            again = call(base, '/api/ontology/build', UPLOAD)[1]
+            old = again['evaluation']['acceptance']['items']
+            self.assertEqual(old[0]['status'], 'broken')
+            asked = call(base, '/api/ontology/ask', {'saved_as': again['saved_as'], 'question': A['question']})[1]
+            self.assertEqual(asked['evaluation']['asked'][-1]['items'][0]['status'], 'answered')
+            response = handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'fix_question',
+                               'arguments': {'saved_as': again['saved_as'], 'question': A['question'],
+                                             'note': '明确认可 BillToId 口径'}}}, LocalService(base))['result']
+            self.assertFalse(response.get('isError'), response)
+            items = response['structuredContent']['acceptance']['items']
+            new_a = next(item for item in items if item['question'] == A['question'])
+            kept_b = next(item for item in items if item['question'] == B['question'])
+            self.assertEqual(new_a['status'], 'answered')
+            self.assertEqual(new_a['snapshot']['relations'][0]['to_identity'], {'customer_id': 'BillToId'})
+            self.assertEqual(kept_b['snapshot'], old[1]['snapshot'])
