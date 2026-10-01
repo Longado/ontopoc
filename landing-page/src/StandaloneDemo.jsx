@@ -11,10 +11,12 @@ import { sectionsFor } from "./workspaceModel.js";
 const copy = {
   zh: { nav: "工作台导航", landing: "产品首页", lang: "EN", more: "更多示例", create: "新建", library: "运行记录", modules: "模块", space: "空间", pick: "选一次运行", tools: "工具",
         empty: "还没有运行记录。传一份文件，结果会一直留在这里。", offline: "建模服务没连上，看不到运行记录。",
+        needRun: "请先上传文件，或在下方“空间”打开已有运行。",
         tabs: { public: "汽车召回范围研判", recall: "食品召回事件 95876" },
         hints: { public: "NHTSA 公开数据", recall: "openFDA · 需本机服务" } },
   en: { nav: "Workbench", landing: "Product home", lang: "中文", more: "More examples", create: "New", library: "Runs", modules: "Modules", space: "Space", pick: "Pick a run", tools: "Tools",
         empty: "No runs yet. Upload a file and its result stays here.", offline: "The modelling service is not reachable, so runs cannot be listed.",
+        needRun: "Upload a file or open a saved run under Space below.",
         tabs: { public: "Vehicle recall scope", recall: "Food recall event 95876" },
         hints: { public: "NHTSA public data", recall: "openFDA · local service" } },
 };
@@ -63,8 +65,12 @@ export function StandaloneDemo() {
         <p className="app-label">{t.tools}</p>
         <button type="button" aria-current={scenario === "library" ? "page" : undefined} onClick={() => setScenario("library")}>
           <svg aria-hidden="true" viewBox="0 0 24 24" className="app-ico">{ICONS.objects}</svg>本体库</button>
-        {sectionsFor(open).map(([key, label]) => <button key={key} type="button" aria-current={scenario === "studio" && section === key ? "page" : undefined} onClick={() => go(key)}>
+        {sectionsFor(open).map(([key, label]) => <button key={key} type="button" disabled={!open && key !== "data"}
+          title={!open && key !== "data" ? t.needRun : undefined}
+          aria-current={scenario === "studio" && section === key ? "page" : undefined}
+          onClick={() => !open && key === "data" ? ask({ kind: "new" }) : go(key)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" className="app-ico">{ICONS[key]}</svg>{label}</button>)}
+        {!open && <p className="app-empty">{t.needRun}</p>}
       </nav>
       <nav className="app-nav" aria-label={t.nav}>
         <details className="app-more" open={scenario !== "studio" || undefined}>
