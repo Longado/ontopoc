@@ -160,6 +160,10 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         return gap(reason)
     group_by = query.get('group_by')   # v3 wrote one field reached by the top-level via; v4 writes dimensions
     raw = [group_by] if isinstance(group_by, str) else group_by if isinstance(group_by, list) else []
+    paths = [query.get('via') or [], *[(d.get('via') or []) if isinstance(d, dict) else (query.get('via') or []) for d in raw]]
+    if any(relations.get(key, {}).get('from') == relations.get(key, {}).get('to')
+           for path in paths for key in path if key in relations):
+        return {'status': 'query_limit', 'reason': '这条关系连接同类对象，查询尚不能指定方向，无法区分上级与下属等角色。请直接按原表字段核对。'}
     dims = []
     for d in raw:
         d = {'via': query.get('via') or [], 'field': d} if isinstance(d, str) else d if isinstance(d, dict) else {}

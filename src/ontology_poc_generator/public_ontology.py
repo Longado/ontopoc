@@ -139,6 +139,36 @@ def _where_errors(key: str, src: str, pop: dict, records: list[dict]) -> list[di
     return []
 
 
+def relation_fields(relations: list[dict]) -> set:
+    """Explicit endpoint references use real columns, even though they do not populate objects."""
+    return {(r['source'], path) for r in relations for end in ('from', 'to')
+            if isinstance(r.get(f'{end}_identity'), dict)
+            for path in r[f'{end}_identity'].values() if isinstance(path, str)}
+
+
+def _binding_errors(r: dict, end: str, t: dict, sources: dict) -> list[dict]:
+    name = f'{end}_identity'
+    if name not in r:
+        if r['from'] != r['to'] or not any(f'{e}_identity' in r for e in ('from', 'to')):
+            return []
+        reason = 'a same-type relation with explicit bindings must bind both endpoints'
+    else:
+        binding = r[name]
+        logical = set(t['populated_from'][0]['identity']) if t['populated_from'] else set()
+        if not isinstance(binding, dict) or not binding or set(binding) != logical:
+            reason = f'{name} must map exactly the identity keys {sorted(logical)} to source columns'
+        elif any(not isinstance(path, str) or '[].' in path or
+                 not _path_exists(sources.get(r['source'], []), path) for path in binding.values()):
+            reason = f'{name} must name existing scalar columns in {r["source"]}'
+        else:
+            return []
+    binding = r.get(name)
+    return [{**_error('relation_binding_invalid', f'relation {r["key"]}: {reason}'),
+             'relation': r['key'], 'endpoint': end, 'source': r['source'],
+             'fields': list(binding.values()) if isinstance(binding, dict) else [],
+             'hint': '关系两端分别绑定该表中的实际编号列，键名须与对象的识别键一致；同类对象关系须明确两端。'}]
+
+
 def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> list[dict]:
     errors = _structure_errors(proposal)
     if errors:
@@ -202,6 +232,7 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
             for path in pop['identity'].values()}
     used |= {(a.get('source'), a.get('path')) for t in types.values() for a in t['attributes']}
     used |= {(f.get('source'), f.get('path')) for f in p['ignored_fields']}
+    used |= relation_fields(p['relations'])
     for src, records in sources.items():
         for path in field_paths(records):
             if (src, path) not in used:
@@ -216,13 +247,17 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
             errors.append(_error('invalid_response', f'bad or duplicate relation key: {r["key"]!r}'))
             continue
         relation_keys.add(r['key'])
+        if r['source'] not in sources:
+            errors.append(_error('unknown_source', f'relation {r["key"]}: unknown source {r["source"]!r}'))
         for end in ('from', 'to'):
             t = types.get(r[end])
             if t is None:
                 errors.append(_error('relation_unknown_type', f'relation {r["key"]}: unknown {end} type {r[end]!r}'))
-            elif r['source'] not in {pop.get('source') for pop in t['populated_from']}:
-                errors.append(_error('relation_source_mismatch',
-                                     f'relation {r["key"]}: {r[end]} is not populated from {r["source"]!r}'))
+            else:
+                errors += _binding_errors(r, end, t, sources)
+                if f'{end}_identity' not in r and r['source'] not in {pop.get('source') for pop in t['populated_from']}:
+                    errors.append(_error('relation_source_mismatch',
+                                         f'relation {r["key"]}: {r[end]} is not populated from {r["source"]!r}'))
     return errors
 
 
@@ -306,19 +341,36 @@ def build_graph(proposal: dict, bundle: dict) -> dict:
                 per_record[(src, index)].setdefault(t['key'], []).extend(found)
     edges = {r['key']: set() for r in p['relations']}
     adjacent = defaultdict(set)
+    missing_references = []
     for r in p['relations']:
-        for (src, index), by_type in per_record.items():
-            if src != r['source']:
-                continue
-            for a in by_type.get(r['from'], []):
-                for b in by_type.get(r['to'], []):
+        src = r['source']
+        for index, record in enumerate(bundle['sources'][src]['records']):
+            by_type = per_record.get((src, index), {})
+            ends = {}
+            for end in ('from', 'to'):
+                binding = r.get(f'{end}_identity')
+                if binding is None:
+                    ends[end] = by_type.get(r[end], [])
+                    continue
+                ends[end] = []
+                for ident in _identities(record, {'identity': binding, 'transform': 'none'}):
+                    target = aliases.get((r[end], src, ident[0][1])) if len(ident) == 1 else None
+                    inst = (r[end], ((ident[0][0], target),)) if target else (r[end], ident)
+                    if inst in sources_of:
+                        ends[end].append(inst)
+                    else:
+                        missing_references.append({'relation': r['key'], 'endpoint': end, 'type': r[end],
+                                                   'source': src, 'record': index, 'identity': ident})
+            for a in ends['from']:
+                for b in ends['to']:
                     if a == b:   # a row naming one stop does not say that stop belongs to itself
                         continue
                     edges[r['key']].add((a, b, (src, index)))
                     adjacent[a].add(b)
                     adjacent[b].add(a)
     return {'sources_of': dict(sources_of), 'records_of': dict(records_of), 'part_of': part_of,
-            'edges': edges, 'adjacent': dict(adjacent), 'per_record': dict(per_record), 'aliased': aliased}
+            'edges': edges, 'adjacent': dict(adjacent), 'per_record': dict(per_record), 'aliased': aliased,
+            'missing_references': missing_references}
 
 
 def _alias_map(ontology: dict) -> dict:
@@ -354,7 +406,10 @@ def graph_checks(proposal: dict, graph: dict, profile: Profile | None = None) ->
             hint = (f'; both ends are the same kind of object, so each row must name two different {r["from"]} objects: '
                     f'read {r["from"]} a second time in {r["source"]} from the column that holds the related id (a parent or manager id)'
                     if r['from'] == r['to'] else '')
-            errors.append(_error('relation_zero_links', f'relation {r["key"]}: no record links {r["from"]} and {r["to"]}{hint}'))
+            errors.append({**_error('relation_zero_links', f'relation {r["key"]}: no record links {r["from"]} and {r["to"]}{hint}'),
+                           'relation': r['key'], 'source': r['source'],
+                           'fields': sorted(path for source, path in relation_fields([r])),
+                           'hint': '检查两端编号列及对象识别键；引用的编号须存在于对象数据中，同类对象的两端不能读同一个编号。'})
     for a, b in profile.role_pairs:
         if not any({r['from'], r['to']} == {role[a], role[b]} for r in proposal['relations']):
             errors.append(_error('role_relation_missing',
@@ -448,7 +503,8 @@ def _clean(proposal: dict) -> tuple[list, list]:
     p = normalize_proposal(proposal)
     fields = ('key', 'label', 'role', 'populated_from', 'attributes', 'rationale', 'time_field')
     types = [{f: t.get(f) for f in fields} for t in p['object_types']]
-    relations = [{f: r.get(f) for f in ('key', 'from', 'to', 'source', 'meaning', 'label') if f != 'label' or r.get(f)}
+    relations = [{f: r.get(f) for f in ('key', 'from', 'to', 'source', 'meaning', 'label', 'from_identity', 'to_identity')
+                  if f not in ('label', 'from_identity', 'to_identity') or (r.get(f) if f == 'label' else f in r)}
                  for r in p['relations']]
     return types, relations
 

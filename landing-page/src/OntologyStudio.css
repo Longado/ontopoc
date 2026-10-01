@@ -1,4 +1,5 @@
 .os-panel { margin-top: 18px; }
+.os-verification-issues code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .os-upload { display: grid; gap: 12px; max-width: 560px; margin-top: 10px; }
 .os-upload label { display: grid; gap: 6px; color: var(--text-2); font-size: 13px; }
 .os-upload input[type="file"] { color: var(--ink); font: inherit; }

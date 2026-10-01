@@ -4,7 +4,7 @@ import { SearchDialog } from "./SearchDialog.jsx";
 import { askSuggestions, bridgeLines, latestAsked, layoutTables } from "./dataLayoutModel.js";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary,
-  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, saveResult, progressSteps, referenceCounts, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, validateRun,
+  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
@@ -499,7 +499,7 @@ function RelationsView({ run, confirm, suggestions = [] }) {
     <tbody>{ontology.relations.map((r) => { const c = cards[r.key]; return <tr key={r.key}>
       <td><b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><Verdict confirm={confirm} kind="relations" item={r} /></td>
       <td>{c ? <><b>{cardinalityLabel(c)}</b><br /><small className="pr-muted">{cardinalityLine(ontology, c)}</small></> : "—"}</td>
-      <td>{r.meaning}</td><td><code>{r.source}</code></td>
+      <td>{r.meaning}</td><td><code>{r.source}</code>{relationBindingLine(r) && <p className="pr-muted">{relationBindingLine(r)}</p>}</td>
     </tr>; })}</tbody>
   </table></div></div>;
 }
@@ -514,6 +514,19 @@ function GraphSection({ run, view, setView, graphProps, confirm, suggestions }) 
       {view === "instances" && !doc && <InstanceGraph run={run} />}
       {view === "relations" && <RelationsView run={run} confirm={confirm} suggestions={suggestions} />}
     </section>;
+}
+
+function VerificationIssues({ ontology }) {
+  const issues = verificationIssues(ontology);
+  if (!issues.length) return null;
+  return <section className="pr-card os-verification-issues" role="alert">
+    <h2>本体还没通过核验</h2>
+    <p className="pr-muted">模型已尝试 {ontology.attempts.length} 次，以下问题仍未解决。核对绑定与文件，补充建模目的后重新生成。</p>
+    <ul className="os-list">{issues.map((issue, i) => <li key={i}>
+      <b>{issue.title}</b>{issue.location && <p>{issue.location}</p>}<p>{issue.hint}</p>
+      <details><summary>查看核验详情</summary><code>{issue.detail}</code></details>
+    </li>)}</ul>
+  </section>;
 }
 
 function ObjectsPlace({ run, confirm, place }) {
@@ -904,6 +917,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     </header>}
     {inDetail && <h1 id="os-title" className="sr-only">{folderLabel(run.file.name)}</h1>}
     <div className="pr-panel os-panel">
+      {run && tab !== "upload" && !isDocument(run) && <VerificationIssues ontology={run.ontology} />}
       {tab === "upload" && <UploadTab runs={runs} health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "objects" && run && (objectKey
         ? <ObjectDetail key={`${objectKey}-${objectSub.n}`} startAt={objectSub.sub} run={run} typeKey={objectKey} confirm={confirmProps} onBack={() => setObjectKey(null)} onOpen={setObjectKey} onSaveConfirm={goConfirm}

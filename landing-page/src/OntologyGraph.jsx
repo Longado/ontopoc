@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { edgeStats, findingsByType, focusOntology, neighboursOf, rankByDegree, unsteady } from "./ontologyGraphModel.js";
 import { edgePath, forceLayout, moveNode } from "./forceLayoutModel.js";
 import { PanZoom } from "./PanZoom.jsx";
-import { typeLabel, typeSources } from "./ontologyStudioModel.js";
+import { relationBindingLine, typeLabel, typeSources } from "./ontologyStudioModel.js";
 import { DEFINITION_CARDINALITIES, DEFINITION_TYPES } from "./ontologyLibraryModel.js";
 import "./OntologyGraph.css";
 
@@ -60,10 +60,11 @@ function Inspector({ run, selected, findings, confirm }) {
       <p>{r.meaning}</p>
       {r.evidence?.length > 0 && <div className="og-quotes">{r.evidence.map((q, i) => <blockquote key={i}>原文：{q}</blockquote>)}</div>}
       <dl className="og-kv"><div><dt>{definition || r.evidence ? "出自" : "所在表"}</dt><dd>{r.source}</dd></div>
+        {relationBindingLine(r) && <div><dt>端点绑定</dt><dd>{relationBindingLine(r)}</dd></div>}
         {definition && <div><dt>定义的基数</dt><dd>{DEFINITION_CARDINALITIES[r.cardinality] || "原文未声明或暂不支持"}</dd></div>}
         {definition && r.definition_attributes?.length > 0 && <div><dt>关系属性</dt><dd>{r.definition_attributes.map((a) => `${a.name}（${DEFINITION_TYPES[a.type] || "类型未声明"}）`).join("、")}</dd></div>}
         {stability && stability.relations[r.key] !== undefined && <div><dt>{stability.runs} 次建模</dt><dd className={unsteady(stability, "relations", r.key) ? "og-warn" : ""}>{unsteady(stability, "relations", r.key) ? `只有 ${stability.relations[r.key]} 次有这条关系` : "每次都有"}</dd></div>}
-        {stats && <div><dt>连上的行</dt><dd className={stats.complete ? "" : "og-warn"}>{stats.linked_rows} / {stats.rows}{stats.complete ? "" : "（有行没连上）"}</dd></div>}</dl>
+        {stats && <div><dt>连上的行</dt><dd className={stats.complete ? "" : "og-warn"}>{stats.linked_rows} / {stats.rows - (stats.empty_rows || 0)}{stats.complete ? "" : "（有行没连上）"}{stats.empty_rows > 0 && `；${stats.empty_rows} 行端点编号为空`}</dd></div>}</dl>
     </div>;
   }
   const t = ontology.object_types.find((x) => x.key === selected.key);

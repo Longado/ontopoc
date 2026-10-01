@@ -3,7 +3,7 @@ Kept objects carry the tables and identity fields they were built from, so later
 not by what they are called; renamed objects keep that match. The reference is what evaluation 3 compares against."""
 from __future__ import annotations
 
-from ontology_poc_generator.ontology_compare import match_types
+from ontology_poc_generator.ontology_compare import match_types, relation_matches
 
 VERDICTS = ('ok', 'wrong')
 MAX_LABEL = 40
@@ -70,6 +70,13 @@ def _variants(given, types: dict, kept_keys: set) -> list:
     return out
 
 
+def _relation_reference(r: dict) -> dict:
+    fields = ('key', 'from', 'to')
+    if any(f'{end}_identity' in r for end in ('from', 'to')):
+        fields += ('source', 'from_identity', 'to_identity')
+    return {f: r[f] for f in fields if f in r}
+
+
 def confirmed_reference(ontology: dict, decisions: dict) -> dict:
     types = {t['key']: t for t in ontology['object_types']}
     relations = {r['key']: r for r in ontology['relations']}
@@ -95,7 +102,7 @@ def confirmed_reference(ontology: dict, decisions: dict) -> dict:
         dropped = [types[end].get('label') or end for end in (r['from'], r['to']) if end not in kept_keys]
         if dropped:
             raise ConfirmError(f'关系 {key} 判了"对"，但它连着的{"、".join(dropped)}没有判"对"')
-        links.append({'key': key, 'from': r['from'], 'to': r['to']})
+        links.append(_relation_reference(r))
     names = {t['label'] for t in kept}
     for i, name in enumerate(added):
         name = _label(name, f'补充的第 {i + 1} 个对象')
@@ -110,7 +117,7 @@ def confirmed_reference(ontology: dict, decisions: dict) -> dict:
     rejected = [{'key': key, 'label': types[key].get('label') or key,
                  'populated_from': [{'source': p.get('source'), 'identity': p.get('identity') or {}} for p in types[key].get('populated_from') or []]}
                 for key, d in type_d.items() if d['verdict'] == 'wrong']
-    rejected_links = [{'key': key, 'from': relations[key]['from'], 'to': relations[key]['to']}
+    rejected_links = [_relation_reference(relations[key])
                       for key, d in rel_d.items() if d['verdict'] == 'wrong']
     return {'object_types': kept, 'relations': links, 'rejected_types': rejected, 'rejected_relations': rejected_links,
             **({'name_variants': variants} if variants else {})}
@@ -128,11 +135,11 @@ def prefill_from_reference(ontology: dict, reference: dict) -> dict:
         label = next(t['label'] for t in ref_types if t['key'] == ref_key)
         types[our_key] = {'verdict': 'ok', **({'label': label} if label != (ours[our_key].get('label') or our_key) else {})}
     # the same two objects the other way round is another relation (a customer's orders is not an order's customer)
-    confirmed_ends = {(mapping.get(r['from']), mapping.get(r['to'])) for r in reference['relations']}
-    relations = {r['key']: {'verdict': 'ok'} for r in ontology['relations'] if (r['from'], r['to']) in confirmed_ends}
-    thrown_ends = {(thrown.get(r['from'], mapping.get(r['from'])), thrown.get(r['to'], mapping.get(r['to'])))
-                   for r in reference.get('rejected_relations') or []}
-    relations.update({r['key']: {'verdict': 'wrong'} for r in ontology['relations'] if (r['from'], r['to']) in thrown_ends})
+    relations = {r['key']: {'verdict': 'ok'} for r in ontology['relations']
+                 if any(relation_matches(ref, r, mapping, directed=True) for ref in reference['relations'])}
+    relations.update({r['key']: {'verdict': 'wrong'} for r in ontology['relations']
+                      if any(relation_matches(ref, r, {**mapping, **thrown}, directed=True)
+                             for ref in reference.get('rejected_relations') or [])})
     returned = [t['label'] for t in (reference.get('rejected_types') or []) if t['key'] in thrown]
     added = [t['label'] for t in ref_types if t['key'].startswith('added_') and t['key'] not in mapping]
     groups = reference.get('name_variants')   # the stored file can have been hand-edited: anything unreadable is left out
