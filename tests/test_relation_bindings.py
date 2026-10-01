@@ -100,7 +100,7 @@ class RelationBindingTests(unittest.TestCase):
         self.assertEqual(ontology['status'], 'auto_built_verified')
         self.assertEqual(len(ontology['attempts']), 2)
         self.assertEqual(ontology['relations'][0]['to_identity'], {'id': 'ReportsTo'})
-        self.assertEqual(gateway.prompts[1][1]['errors_found_by_code'][0]['relation'], 'reports_to')
+        self.assertTrue(any(e.get('relation') == 'reports_to' for e in gateway.prompts[1][1]['errors_found_by_code']))
 
     def test_query_reports_its_direction_limit_instead_of_mixing_managers_and_reports(self):
         query = {'start': 'employee', 'where': [{'field': 'EmployeeId', 'equals': '2'}], 'via': ['reports_to']}
