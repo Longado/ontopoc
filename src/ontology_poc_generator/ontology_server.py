@@ -39,7 +39,8 @@ from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
-from ontology_poc_generator.ontology_questions import ask_questions, run_query
+from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, ask_questions, run_query
+from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived, plain_reason
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
@@ -252,8 +253,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 # the person's own question is answered with the draft; the model's round of questions is on request
                 if progress:
                     progress('questions', {})
-                key = memory_key(json.loads((output_dir / previous).read_text(encoding='utf-8'))) if previous else bundle['file']['sha256']
-                answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True, derived=derived_of(key))
+                if len(result['ontology']['attempts']) >= MAX_MODELER_ATTEMPTS:
+                    answered = {'prompt_version': QUESTION_PROMPT_VERSION, 'model': None,
+                                'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                                'items': [], 'answered': 0, 'total': 0,
+                                'error': f'本次建模已用满 {MAX_MODELER_ATTEMPTS} 次调用，目的问题尚未回答。可在“智能问答”中单独提问。'}
+                else:
+                    key = memory_key(json.loads((output_dir / previous).read_text(encoding='utf-8'))) if previous else bundle['file']['sha256']
+                    answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True, derived=derived_of(key))
                 if answered['items'] or answered['error']:
                     result['evaluation']['asked'] = [answered]
             if result['ontology']['status'] == 'auto_built_verified':
@@ -764,6 +771,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     self.reply(404, {'error': '找不到这次上传的数据，请重新上传文件'})
                     return
                 items = parse_acceptance(payload.get('items')) if payload.get('items') else []
+                existing = {item['question']: item for item in (result['evaluation'].get('acceptance') or {}).get('items', [])}
+                for item in items:
+                    old = existing.get(item['question'])
+                    if item['question'] == payload.get('replace_question'):
+                        item['snapshot'] = None   # explicitly accepting this query again uses the current ontology
+                    elif isinstance(item.get('query'), dict) and old and item['query'] == old.get('query') and old.get('snapshot') is not None:
+                        # A list edit keeps server-held identity evidence; accepting a new query is a separate decision.
+                        item.update({key: old.get(key) for key in ('snapshot', 'status', 'answer', 'path')})
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return

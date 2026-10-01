@@ -278,7 +278,7 @@ def fix_question(s, a):
         raise ToolError('只有答出来的题，或问过但现在还答不了的题，才能固定为验收问题')
     kept = [{k: i.get(k) for k in KEPT} for i in (ev.get('acceptance') or {}).get('items', []) if i.get('question') != question]
     new = {**{k: item.get(k) for k in KEPT}, 'note': str(a.get('note') or '').strip()}
-    result = s.request('/api/ontology/acceptance', {'saved_as': run['saved_as'], 'items': kept + [new]})
+    result = s.request('/api/ontology/acceptance', {'saved_as': run['saved_as'], 'items': kept + [new], 'replace_question': question})
     return {'acceptance': result['evaluation']['acceptance']}
 
 
