@@ -22,7 +22,7 @@ test("only a question a person has seen answered can be fixed, and at most three
 
 test("the saved list is what gets sent back, with the note a person wrote", () => {
   const run = { evaluation: { acceptance: { items: [item({ note: "按订单号计数", answer: { total: 3 }, previous: null, changed: null })] } } };
-  assert.deepEqual(savedAcceptance(run), [{ question: "每个客户有多少订单？", query: { start: "order" }, note: "按订单号计数" }]);
+  assert.deepEqual(savedAcceptance(run), [{ question: "每个客户有多少订单？", query: { start: "order" }, note: "按订单号计数", status: "answered", answer: { total: 3 } }]);
   assert.deepEqual(savedAcceptance({ evaluation: {} }), []);
 });
 
