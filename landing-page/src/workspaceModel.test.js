@@ -26,7 +26,7 @@ test("an organisation run offers the organisation module and leaves out data and
 test("the sidebar offers every module for a table run, and leaves out data and questions for a document", () => {
   assert.deepEqual(sectionsFor(run()).map(([key]) => key), ["data", "objects", "graph", "qa", "check"]);
   assert.deepEqual(sectionsFor(run({ file: { name: "制度.md", kind: "document" } })).map(([key]) => key), ["objects", "graph", "check"]);
-  assert.deepEqual(sectionsFor(null), []);
+  assert.deepEqual(sectionsFor(null).map(([key]) => key), ["data", "objects", "graph", "qa", "check"]);
 });
 
 test("each object is a card: its name, a line about it, the tables it comes from, how many there are and how it connects", () => {
