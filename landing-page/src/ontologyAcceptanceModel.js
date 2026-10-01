@@ -8,7 +8,12 @@ const UNMET = ["query_limit", "ontology_gap"];   // asked, and no query could be
 // An unmet question has no query to run again, so why it is unmet has to travel with it.
 const kept = ({ question, query, note, status, reason }) => (query ? { question, query, note } : { question, query: null, note, status, reason });
 
-export const savedAcceptance = (run) => (run.evaluation.acceptance?.items || []).map(kept);
+// Editing the list keeps each existing query's identity and last checked result; a newly accepted question starts fresh.
+export const savedAcceptance = (run) => (run.evaluation.acceptance?.items || []).map((item) => ({
+  ...kept(item),
+  ...(item.query ? Object.fromEntries(["snapshot", "answer", "status", "path"]
+    .filter((field) => Object.hasOwn(item, field)).map((field) => [field, item[field]])) : {}),
+}));
 
 /** "" when this question can be fixed as an acceptance question, else why not. A question nothing can answer yet
  *  can be fixed too: otherwise the ones that pass hide the one the client actually asked for. */

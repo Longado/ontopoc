@@ -111,7 +111,10 @@ function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo
   const oneDoc = files.length === 1 && isDoc(files[0]);
   const problem = files.length ? batchProblem(files) : "";
   const blocked = offline ? "本机建模服务没有启动" : health === "no-key" ? "建模服务缺少模型凭据" : !files.length ? "先传文件" : problem;
-  const pick = (picked) => setFiles((old) => [...old, ...[...picked].filter((f) => !old.some((o) => o.name === f.name && o.size === f.size))]);
+  const pick = (picked) => {
+    const selected = [...picked];
+    setFiles((old) => [...old, ...selected.filter((f) => !old.some((o) => o.name === f.name && o.size === f.size))]);
+  };
   const drop = (e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files || []); };
   return <div className="os-start">
     <h1 id="os-title">今天要看哪份数据？</h1>
