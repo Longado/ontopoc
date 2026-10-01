@@ -7,7 +7,7 @@ const SECTIONS = [["data", "数据接入"], ["objects", "本体管理"], ["graph
 
 /** The modules a run can show: a document has no rows to lay out or to answer questions from. */
 export function sectionsFor(run) {
-  if (!run) return [];
+  if (!run) return SECTIONS;
   if (!isDocument(run)) return SECTIONS;
   const doc = SECTIONS.filter(([key]) => key !== "data" && key !== "qa");
   if (run.mode !== "org") return doc;
