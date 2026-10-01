@@ -25,6 +25,17 @@ def match_types(reference: list, ours: list) -> dict:
     return mapping
 
 
+def relation_matches(reference: dict, ours: dict, mapping: dict, *, directed: bool = False) -> bool:
+    ends = (mapping.get(reference['from']), mapping.get(reference['to']))
+    if None in ends:
+        return False
+    bound = any(f'{end}_identity' in r for r in (reference, ours) for end in ('from', 'to'))
+    if bound:
+        return ends == (ours['from'], ours['to']) and all(reference.get(f) == ours.get(f)
+                     for f in ('source', 'from_identity', 'to_identity'))
+    return ends == (ours['from'], ours['to']) if directed else set(ends) == {ours['from'], ours['to']}
+
+
 def compare_ontologies(reference: dict, ours: dict) -> dict:
     ref_types, our_types = reference['object_types'], ours['object_types']
     name = {('ref', t['key']): t.get('label') or t['key'] for t in ref_types} | {('our', t['key']): t.get('label') or t['key'] for t in our_types}
@@ -32,8 +43,7 @@ def compare_ontologies(reference: dict, ours: dict) -> dict:
     rel_text = lambda side, r: f'{name[(side, r["from"])]} — {name[(side, r["to"])]}'
     matched_rel, used = [], set()
     for r in reference['relations']:
-        ends = {mapping.get(r['from']), mapping.get(r['to'])}
-        o = next((o for o in ours['relations'] if o['key'] not in used and None not in ends and {o['from'], o['to']} == ends), None)
+        o = next((o for o in ours['relations'] if o['key'] not in used and relation_matches(r, o, mapping)), None)
         if o is not None:
             used.add(o['key'])
             matched_rel.append((r, o))
@@ -68,5 +78,16 @@ def parse_reference(data) -> dict:
         for end in ('from', 'to'):
             if r.get(end) not in known:
                 raise ReferenceFileError(f'参考本体第 {i + 1} 条关系的 {end} 指向不存在的对象：{r.get(end)}')
-        relations.append({'key': str(r.get('key') or f'r{i + 1}'), 'from': known[r['from']], 'to': known[r['to']]})
+        relation = {'key': str(r.get('key') or f'r{i + 1}'), 'from': known[r['from']], 'to': known[r['to']]}
+        for end in ('from', 'to'):
+            field = f'{end}_identity'
+            if field in r:
+                binding = r[field]
+                if not isinstance(binding, dict) or not binding or any(not isinstance(k, str) or not isinstance(v, str)
+                                                                      for k, v in binding.items()):
+                    raise ReferenceFileError(f'参考本体第 {i + 1} 条关系的 {field} 必须是识别键到字段名的对应')
+                relation[field] = dict(binding)
+        if isinstance(r.get('source'), str):
+            relation['source'] = r['source']
+        relations.append(relation)
     return {'object_types': types, 'relations': relations}

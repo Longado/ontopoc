@@ -3,7 +3,7 @@ labelled by how many runs contain it. Runs are aligned with the same rule as eva
 fields, else same label); nothing is merged, only counted."""
 from __future__ import annotations
 
-from ontology_poc_generator.ontology_compare import match_types
+from ontology_poc_generator.ontology_compare import match_types, relation_matches
 
 STABILITY_RUNS = 3   # product choice: three runs tell "every time" from "most times" from "once"
 
@@ -13,8 +13,7 @@ def _label(t: dict) -> str:
 
 
 def _relation_matches(r: dict, others: list, mapping: dict) -> bool:
-    ends = {mapping.get(r['from']), mapping.get(r['to'])}
-    return None not in ends and any({o['from'], o['to']} == ends for o in others)
+    return any(relation_matches(r, o, mapping) for o in others)
 
 
 def stability_of(shown: dict, others: list[dict]) -> dict:
@@ -39,11 +38,13 @@ def stability_of(shown: dict, others: list[dict]) -> dict:
         back = {v: k for k, v in mapping.items()}
         shown_label = {t['key']: _label(t) for t in shown['object_types']}
         name = {t['key']: shown_label[back[t['key']]] if t['key'] in back else _label(t) for t in run['object_types']}
-        shown_ends = {frozenset((r['from'], r['to'])) for r in shown['relations']}
         for r in run['relations']:
-            if frozenset((back.get(r['from']), back.get(r['to']))) in shown_ends:
+            if any(relation_matches(r, shown_relation, back) for shown_relation in shown['relations']):
                 continue   # one of the shown run's relations, already counted above
             ends = frozenset((name[r['from']], name[r['to']]))
+            if any(f'{end}_identity' in r for end in ('from', 'to')):
+                ends = (name[r['from']], name[r['to']], r['source'],
+                        tuple(sorted((r.get('from_identity') or {}).items())), tuple(sorted((r.get('to_identity') or {}).items())))
             entry = elsewhere_relations.setdefault(ends, {'label': f'{name[r["from"]]} — {name[r["to"]]}', 'count': 0})
             entry['count'] += 1
     return {

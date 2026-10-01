@@ -11,7 +11,7 @@ class RelationLabelTests(unittest.TestCase):
         proposal['relations'][0]['label'] = '属于'
         ontology = build_company_ontology(BUNDLE, Reply(proposal))
         self.assertEqual(ontology['relations'][0]['label'], '属于')
-        self.assertEqual(COMPANY_PROMPT_VERSION, 'company_ontology_modeler.v2')
+        self.assertEqual(COMPANY_PROMPT_VERSION, 'company_ontology_modeler.v3')
         self.assertIn('"label": "<2-6', COMPANY_SYSTEM_PROMPT)
 
 

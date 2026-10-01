@@ -171,6 +171,7 @@ def list_relations(s, a):
     cards = {c['key']: c for c in (run['evaluation'].get('handover') or {}).get('relations', [])}
     shown = {r['key'] for r in ontology['relations']}
     return {'relations': [{**{k: r.get(k) for k in ('key', 'from', 'to', 'label', 'meaning', 'source')},
+                           **{k: r[k] for k in ('from_identity', 'to_identity') if k in r},
                            **{k: cards.get(r['key'], {}).get(k) for k in ('cardinality', 'most_from', 'most_to')},
                            'verdict': verdicts.get(r['key'], {}).get('verdict'),
                            'last_time': last.get('relations', {}).get(r['key'], {}).get('verdict')} for r in ontology['relations']],

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ontology_poc_generator.ontology_compare import match_types
+from ontology_poc_generator.ontology_compare import match_types, relation_matches
 from ontology_poc_generator.ontology_questions import run_query
 
 MAX_ACCEPTANCE = 3   # ponytail: a short list a consultant can agree with a client; the model's own round still asks more
@@ -61,7 +61,8 @@ def snapshot_of(ontology: dict, query: dict) -> dict:
     used_relations = [relations[k] for k in _used(query)[1] if k in relations]
     wanted = {query.get('start'), *(end for r in used_relations for end in (r['from'], r['to']))}
     return {'types': [{k: t.get(k) for k in ('key', 'label', 'populated_from')} for t in ontology['object_types'] if t['key'] in wanted],
-            'relations': [{k: r.get(k) for k in ('key', 'from', 'to', 'label', 'source')} for r in used_relations]}
+            'relations': [{**{k: r.get(k) for k in ('key', 'from', 'to', 'label', 'source')},
+                           **{k: r[k] for k in ('from_identity', 'to_identity') if k in r}} for r in used_relations]}
 
 
 def remap_query(query: dict, snapshot: dict, ontology: dict) -> tuple[dict | None, str]:
@@ -75,10 +76,9 @@ def remap_query(query: dict, snapshot: dict, ontology: dict) -> tuple[dict | Non
         return None, f'这一版本体里找不到{"、".join(sorted(missing))}，这道题要重新确认'
     relation_map = {}
     for r in snapshot['relations']:
-        ends = {mapping[r['from']], mapping[r['to']]}
-        candidates = [o for o in ontology['relations'] if {o['from'], o['to']} == ends]
+        candidates = [o for o in ontology['relations'] if relation_matches(r, o, mapping)]
         if not candidates:
-            return None, f'这一版本体里 {label[r["from"]]} 和 {label[r["to"]]} 之间没有关系了，这道题要重新确认'
+            return None, f'这一版本体里 {label[r["from"]]} 和 {label[r["to"]]} 之间找不到原来的关系或编号绑定，这道题要重新确认'
         if len(candidates) > 1:
             same_source = [o for o in candidates if o.get('source') == r.get('source')]
             candidates = same_source if len(same_source) == 1 else candidates

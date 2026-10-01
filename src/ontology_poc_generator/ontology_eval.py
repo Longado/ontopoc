@@ -1,7 +1,7 @@
 """Automatic evaluation of an ontology against the data it was built from. Code only: every number has a source row."""
 from __future__ import annotations
 
-from ontology_poc_generator.public_ontology import build_graph, field_paths, normalize_proposal, normalize_value, resolve
+from ontology_poc_generator.public_ontology import build_graph, field_paths, normalize_proposal, normalize_value, relation_fields, resolve
 
 EXAMPLES = 5  # identities listed per finding; the counts are always complete
 
@@ -14,6 +14,7 @@ def _fields(p: dict, bundle: dict) -> dict:
     used = {(pop['source'], path) for t in p['object_types'] for pop in t['populated_from'] for path in pop['identity'].values()}
     used |= {(a.get('source'), a.get('path')) for t in p['object_types'] for a in t['attributes']}
     used |= {(t['time_field'].get('source'), t['time_field'].get('path')) for t in p['object_types'] if t.get('time_field')}
+    used |= relation_fields(p['relations'])
     ignored = {(f.get('source'), f.get('path')) for f in p['ignored_fields']}
     out = {}
     for name, source in bundle['sources'].items():
@@ -124,12 +125,24 @@ def _missing_across_sources(p: dict, graph: dict) -> list[dict]:
             missing = sorted(_label(i) for i, srcs in graph['sources_of'].items() if i[0] == t['key'] and src not in srcs)
             if missing:
                 out.append({'type': t['key'], 'source': src, 'count': len(missing), 'examples': missing[:EXAMPLES]})
+    bound = {}
+    relations = {r['key']: r for r in p['relations']}
+    for item in graph.get('missing_references', []):
+        group = (item['type'], item['source'], item['relation'], item['endpoint'])
+        bound.setdefault(group, set()).add('|'.join(value for _, value in item['identity']))
+    out += [{'type': key, 'source': src, 'relation': relation, 'endpoint': end,
+             'fields': list(relations[relation][f'{end}_identity'].values()),
+             'count': len(values), 'examples': sorted(values)[:EXAMPLES]}
+            for (key, src, relation, end), values in bound.items()]
     return out
 
 
 def _relations(p: dict, bundle: dict, graph: dict) -> list[dict]:
     return [{'key': r['key'], 'source': r['source'], 'rows': len(bundle['sources'][r['source']]['records']),
-             'linked_rows': len({ref for _, _, ref in graph['edges'][r['key']]})} for r in p['relations']]
+             'linked_rows': len({ref for _, _, ref in graph['edges'][r['key']]}),
+             **({'empty_rows': sum(any(normalize_value(record.get(path)) is None for _, path in relation_fields([r]))
+                                    for record in bundle['sources'][r['source']]['records'])}
+                if relation_fields([r]) else {})} for r in p['relations']]
 
 
 def _orphans(p: dict, graph: dict) -> list[dict]:
@@ -152,7 +165,10 @@ def _source_groups(bundle: dict, graph: dict) -> list[list[str]]:
         while parent[n] != n:
             n = parent[n]
         return n
-    for srcs in graph['sources_of'].values():
+    connected = list(graph['sources_of'].values())
+    connected += [graph['sources_of'][a] | graph['sources_of'][b] | {src}
+                  for edges in graph['edges'].values() for a, b, (src, _) in edges]
+    for srcs in connected:
         first, *rest = sorted(srcs, key=names.index)
         for other in rest:
             a, b = root(first), root(other)

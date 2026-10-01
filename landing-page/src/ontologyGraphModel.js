@@ -66,7 +66,8 @@ export function findingsByType(fit) {
 
 export function edgeStats(fit, key) {
   const r = fit?.relations?.find((x) => x.key === key);
-  return r ? { rows: r.rows, linked_rows: r.linked_rows, complete: r.linked_rows === r.rows } : null;
+  return r ? { rows: r.rows, linked_rows: r.linked_rows, complete: r.linked_rows === r.rows - (r.empty_rows || 0),
+    ...(r.empty_rows !== undefined ? { empty_rows: r.empty_rows } : {}) } : null;
 }
 
 export function neighboursOf(ontology, key) {
