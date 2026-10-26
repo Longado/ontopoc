@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { SearchDialog } from "./SearchDialog.jsx";
 import { askSuggestions, bridgeLines, latestAsked, layoutTables } from "./dataLayoutModel.js";
 import {
-  ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary,
+  ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, evidenceLines, evidenceTitle,
   COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
@@ -258,12 +258,14 @@ function Answer({ item, onPath, run }) {
   const max = a?.groups?.length ? Math.max(...a.groups.map(([, n]) => n)) : 0;
   const width = ([, n, all]) => (a.share ? (n / all) * 100 : (n / max) * 100);   // a measure ranks by its own value, so max covers it too
   const extra = answerLines(item).slice(a?.groups?.length || 0);   // group lines come first; the bars show those
+  const pack = evidenceLines(item);
   return <>
     {answerTags(item).length > 0 && <p className="os-answer-tags" title={a.share ? "分母小的组比例容易偏高，请一起看分母" : a.measure?.op === "average" ? "只有一两个值的组，别当成规律" : undefined}>{answerTags(item).map((t) => <span key={t}>{t}</span>)}</p>}
     {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${sharePercent(g[1], g[2])}%）` : a.measure ? `${g[1].toLocaleString("zh-CN", { maximumFractionDigits: 2 })}${g[2] === undefined ? "" : `（${g[2]} 个值）`}` : g[1]}</b></li>)}</ul>}
     {a?.groups?.length > SHOWN_GROUPS && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? "只看前 10 组" : `展开其余 ${a.groups.length - SHOWN_GROUPS} 组`}</button>}
     {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
+    {pack.length > 0 && <details className="os-how"><summary>{evidenceTitle(item)}</summary><ul className="os-answer">{pack.map((l) => <li key={l}>{l}</li>)}</ul></details>}
     {item.path && <p className="os-path-line" title="怎么查的"><span aria-hidden="true">↳</span><span className="sr-only">怎么查的：</span>{item.path}{item.query && onPath && <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看</button>}</p>}
     {item.status !== "needs_derived" && <Reason item={item} />}
   </>;

@@ -104,6 +104,26 @@ export function answerLines(item) {
   return lines;
 }
 
+const filterLine = (f) => {
+  const removed = f.before - f.after;
+  const named = `按“${f.field}”=“${f.equals}”`;
+  const flag = f.not_in_question ? "；问题原文里没有这个条件，是模型加的，请核对" : "";
+  if (!removed) return `${named}一个也没筛掉${flag}`;
+  const lost = f.removed_measure === undefined ? "" : `，合计 ${NUMBER.format(f.removed_measure)} 没算进去`;
+  return `${named}筛掉 ${NUMBER.format(removed)} 个（${NUMBER.format(f.before)} → ${NUMBER.format(f.after)}）${f.examples?.length ? `（例如 ${f.examples.join("、")}）` : ""}${lost}${flag}`;
+};
+
+const mergedLine = (m) => `“${m.group}”这一组里，有 ${m.starts} 个对象${m.starts === 1 ? `连到 ${m.objects} 个不同的对象` : `各连到不止一个不同的对象，最多 ${m.objects} 个`}${m.examples?.length ? `（例如 ${m.examples.join("、")}）` : ""}，已只数一次`;
+
+/** The check pack beside an answer: what each filter removed, and groups where several objects fed one count. */
+export const evidenceLines = (item) => [...(item.evidence?.filters || []).map(filterLine), ...(item.evidence?.merged || []).map(mergedLine)];
+
+/** The fold's title; a filter the question never named is visible without opening it. */
+export function evidenceTitle(item) {
+  const unasked = (item.evidence?.filters || []).filter((f) => f.not_in_question).length;
+  return unasked ? `核对：有${unasked === 1 ? "一个" : ` ${unasked} 个`}筛选条件问题里没提` : "核对";
+}
+
 export const questionSummary = (round) => (round ? `能回答 ${round.answered} / ${round.total} 题` : null);
 
 export function stabilityLines(diff) {
