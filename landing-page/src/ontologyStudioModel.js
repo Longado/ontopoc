@@ -113,9 +113,20 @@ const filterLine = (f) => {
   return `${named}筛掉 ${NUMBER.format(removed)} 个（${NUMBER.format(f.before)} → ${NUMBER.format(f.after)}）${f.examples?.length ? `（例如 ${f.examples.join("、")}）` : ""}${lost}${flag}`;
 };
 
-const mergedLine = (m) => `“${m.group}”这一组里，有 ${m.starts} 个对象${m.starts === 1 ? `连到 ${m.objects} 个不同的对象` : `各连到不止一个不同的对象，最多 ${m.objects} 个`}${m.examples?.length ? `（例如 ${m.examples.join("、")}）` : ""}，已只数一次`;
+// "例如" only when the examples are not all of them
+const shown = (examples, all) => (examples?.length ? `${all > examples.length ? "例如 " : ""}${examples.join("、")}` : "");
 
-const foldedLine = (f) => `“${f.field}”在 ${f.objects} 个对象上各有好几个一样的值（${f.table} 表${f.examples?.length ? `，例如 ${f.examples.join("、")}` : ""}），每个对象只算了一次`;
+// results saved before the type labels were kept say 对象
+const mergedLine = (m) => {
+  const [start, reached] = [m.start || "对象", m.reached || "对象"];
+  const who = m.starts === 1 ? `有 1 个${start}连到 ${m.objects} 个不同的${reached}` : `有 ${m.starts} 个${start}各连到不止一个不同的${reached}，最多 ${m.objects} 个`;
+  return `“${m.group}”这一组里，${who}${m.examples?.length ? `（${shown(m.examples, m.objects)}）` : ""}，只数了一次`;
+};
+
+const foldedLine = (f) => {
+  const start = f.start || "对象";
+  return `“${f.field}”在 ${f.objects} 个${start}上各有好几行一样的值（${f.examples?.length ? `${shown(f.examples, f.objects)}，` : ""}${f.table} 表），每个${start}只算了一次`;
+};
 
 /** The check pack beside an answer: what each filter removed, values copied on several rows of one object, and groups
  *  where several objects fed one count. */
@@ -126,10 +137,18 @@ export function evidenceLines(item) {
     ...(unlisted > 0 ? [`另有 ${unlisted} 组也是这样，没有列出`] : [])];
 }
 
-/** The fold's title; a filter the question never named is visible without opening it. */
+/** The fold's title says what the check pack found, so it is seen without opening it. */
 export function evidenceTitle(item) {
-  const unasked = (item.evidence?.filters || []).filter((f) => f.not_in_question).length;
-  return unasked ? `核对：有${unasked === 1 ? "一个" : ` ${unasked} 个`}筛选条件问题里没提` : "核对";
+  const e = item.evidence || {};
+  const unasked = (e.filters || []).filter((f) => f.not_in_question).length;
+  const merged = Math.max(e.merged_total || 0, (e.merged || []).length);
+  const [one] = e.merged || [];
+  const found = [
+    ...(unasked ? [`有${unasked === 1 ? "一个" : ` ${unasked} 个`}筛选条件问题里没提`] : []),
+    ...(merged === 1 && one.reached ? [`“${one.group}”背后有 ${one.objects} 个${one.reached}`] : merged ? [`有 ${merged} 组背后不止一个对象`] : []),
+    ...(e.folded?.length ? ["有重复行只算了一次"] : []),
+  ];
+  return found.length ? `核对：${found.join("；")}` : "核对";
 }
 
 export const questionSummary = (round) => (round ? `能回答 ${round.answered} / ${round.total} 题` : null);

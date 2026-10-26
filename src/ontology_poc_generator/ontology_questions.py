@@ -168,7 +168,7 @@ def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, 
     Refused when the values disagree or sit in one row's list, and when a type that reads the table a row each carries
     the field too: that one is what to add up. A value only the start object carries is a copy on each of its rows."""
     label = lambda k: types[k].get('label') or k
-    text = lambda inst: '、'.join(str(v) for _, v in inst[1])
+    text = lambda inst: ' · '.join(str(v) for _, v in inst[1])   # one object's key parts, kept apart from the next example
     own = _identity_fields(types[start])   # an identity field is one value per object by definition
     rows = lambda entries, src: {i for s, i in entries if s == src}   # one row read twice (two roles, one table) is one row
     what = '加' if measure['op'] == 'sum' else '求平均'
@@ -201,7 +201,7 @@ def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, 
         if per_row:
             return (f'有的{name}在 {src} 表里有好几行（例如 {text(several[0][0])}），“{path}”在这几行里都一样。如果它是每个“{row}”各自的数，请从“{row}”出发，再按{name}分组；'
                     f'如果它是{name}自己的属性，请在本体里把它从“{row}”去掉。'), []
-        folded.append({'field': path, 'table': src, 'objects': len(several), 'examples': [text(i) for i, _ in several[:3]]})
+        folded.append({'field': path, 'table': src, 'start': name, 'objects': len(several), 'examples': [text(i) for i, _ in several[:3]]})
     return None, folded
 
 
@@ -320,6 +320,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         return read, skipped
     int_if_whole = lambda v: int(v) if float(v).is_integer() else v
     text = lambda node: '、'.join(str(v) for _, v in node[1])
+    named = lambda node: ' · '.join(str(v) for _, v in node[1])   # in the check pack's lists, one object's key parts stay together
 
     def removed_amount(gone):
         """What the objects a filter removed would have added to the measure; absent when none of them reads as a number,
@@ -330,7 +331,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         return {'removed_measure': int_if_whole(sum(read))} if read else {}
     lookup = _identity_fields(types[start])   # looking one object up by its key: the others it passed over are no news
     filters = [{'field': name(w['field']), 'equals': w['equals'], 'before': before, 'after': after,
-                **({} if w['field'] in lookup else {'examples': [text(i) for i in gone[:3]], **removed_amount(gone)})}
+                **({} if w['field'] in lookup else {'examples': [named(i) for i in gone[:3]], **removed_amount(gone)})}
                for w, before, after, gone in stages] if everyone else []
 
     def proved(result, merged=(), merged_total=0):
@@ -408,8 +409,9 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     def differing(chains):
         """The walked objects that tell one start's chains to a group apart; the ones all chains share are left out."""
         return [n for k in range(len(next(iter(chains)))) for n in {c[k] for c in chains} if len({c[k] for c in chains}) > 1]
-    evidence = [{'group': key, 'starts': len(per_start), 'objects': max(len(differing(c)) for c in per_start),
-                 'examples': sorted({text(n) for c in per_start for n in differing(c)})[:3]}
+    evidence = [{'group': key, 'starts': len(per_start), 'objects': max(len(differing(c)) for c in per_start), 'start': label(start),
+                 'reached': '、'.join(dict.fromkeys(label(n[0]) for c in per_start for n in differing(c))),
+                 'examples': sorted({named(n) for c in per_start for n in differing(c)})[:3]}
                 for key, per_start in sorted(merged.items())[:MAX_MERGED]]
     unread = []
     if measure:
