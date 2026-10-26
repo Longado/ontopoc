@@ -235,7 +235,14 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         logical = identity.get((inst[0], field))
         return {str(v) for k, v in inst[1] if k == logical and v not in (None, '')} if logical else _values(bundle, graph, inst, field)
     has = lambda inst, cond: normalize_value(cond['equals']) in {normalize_value(v) for v in values(inst, cond['field'])}
-    starts = [i for i in graph['sources_of'] if i[0] == start and all(has(i, w) for w in where)]
+    everyone = [i for i in graph['sources_of'] if i[0] == start]
+    starts, stages = everyone, []   # stages: (condition, objects before it, objects left, objects it removed), for the check pack
+    for w in where:
+        hit, miss = [], []
+        for i in starts:
+            (hit if has(i, w) else miss).append(i)
+        stages.append((w, len(starts), len(hit), miss))
+        starts = hit
     folded = _folded_rows(types, bundle, graph, start, starts, measure) if measure else None
     if folded:
         return {'status': 'query_limit', 'reason': folded}
@@ -255,14 +262,6 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         path += f'，算“{shown_share["field"]}”为“{shown_share["equals"]}”的{label(start)}占比'
     elif dims:
         path += f'数{label(start)}' 
-    if not starts:
-        return {'status': 'no_data', 'reason': '数据里没有满足筛选条件的对象', 'path': path}
-
-    def reach(inst, via):
-        frontier = {inst}
-        for key in via:
-            frontier = {n for f in frontier for n in neighbours[key].get(f, ())}
-        return frontier
     computed = compute_derived(ontology, bundle, measure['derived'], graph)['values'] if measure and measure.get('derived') else None
 
     def numbers(inst):
@@ -276,6 +275,28 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             except ValueError:
                 skipped += 1
         return read, skipped
+    int_if_whole = lambda v: int(v) if float(v).is_integer() else v
+    text = lambda node: '、'.join(str(v) for _, v in node[1])
+
+    def removed_amount(gone):
+        """What the objects a filter removed would have added to the measure; absent when none of them reads as a number."""
+        read = [n for inst in gone for n in numbers(inst)[0]] if measure else []
+        return {'removed_measure': int_if_whole(sum(read))} if read else {}
+    filters = [{'field': name(w['field']), 'equals': w['equals'], 'before': before, 'after': after,
+                'examples': [text(i) for i in gone[:3]], **removed_amount(gone)} for w, before, after, gone in stages] if everyone else []
+
+    def proved(result, merged=()):
+        """The check pack rides beside the answer, never inside it: acceptance compares `answer` between runs."""
+        pack = {**({'filters': filters} if filters else {}), **({'merged': merged} if merged else {})}
+        return {**result, **({'evidence': pack} if pack else {})}
+    if not starts:
+        return proved({'status': 'no_data', 'reason': '数据里没有满足筛选条件的对象', 'path': path})
+
+    def reach(inst, via):
+        frontier = {inst}
+        for key in via:
+            frontier = {n for f in frontier for n in neighbours[key].get(f, ())}
+        return frontier
 
     def measured(objects):
         read, skipped = [], 0
@@ -286,20 +307,19 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         if not read:   # nothing could be read as a number: that is "unknown", never a total or an average of 0
             return {'field': name(measure['field']), 'op': measure['op'], 'value': None, 'counted': 0, 'skipped': skipped}
         value = sum(read) if measure['op'] == 'sum' else sum(read) / len(read)
-        return {'field': name(measure['field']), 'op': measure['op'],
-                'value': int(value) if float(value).is_integer() else value, 'counted': len(read), 'skipped': skipped}
+        return {'field': name(measure['field']), 'op': measure['op'], 'value': int_if_whole(value), 'counted': len(read), 'skipped': skipped}
 
     if not dims:
         if measure:
             whole = measured(starts)
             if whole['value'] is None:
-                return {'status': 'no_data', 'path': path, 'answer': {'total': len(starts), 'measure': whole},
-                        'reason': f'“{whole["field"]}”里没有一个能读成数字的值（{whole["skipped"]} 个不是数字或为空）'}
-            return {'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'measure': whole}}
+                return proved({'status': 'no_data', 'path': path, 'answer': {'total': len(starts), 'measure': whole},
+                               'reason': f'“{whole["field"]}”里没有一个能读成数字的值（{whole["skipped"]} 个不是数字或为空）'})
+            return proved({'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'measure': whole}})
         if share:
-            return {'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'matched': sum(has(s, share) for s in starts), 'share': shown_share}}
+            return proved({'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'matched': sum(has(s, share) for s in starts), 'share': shown_share}})
         found = {n for s in starts for n in reach(s, query.get('via') or [])} if query.get('via') else set(starts)
-        return {'status': 'answered' if found else 'no_data', 'answer': {'total': len(found)}, 'path': path}
+        return proved({'status': 'answered' if found else 'no_data', 'answer': {'total': len(found)}, 'path': path})
     def combinations(s):
         """(values, objects walked to) for every combination, witnessed by one chain in the data. Two dimensions walked
         down the same path must read the same object on the way: otherwise a company holding a food licence and a tobacco
@@ -319,7 +339,6 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         return [(chosen, tuple(walked[via] for via in ends)) for chosen, walked in states]
 
     counts, hits, without, left_out, members, merged = {}, {}, 0, [], {}, {}
-    text = lambda node: '、'.join(str(v) for _, v in node[1])
     for s in starts:
         reached = {}   # group key -> the chains of walked objects that gave it
         for combo, chain in combinations(s):
@@ -350,12 +369,23 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     else:
         ranked = sorted(counts, key=lambda k: (-counts[k], k))
         groups = [[k, counts[k]] for k in ranked[:MAX_GROUPS]]   # the page shows the first screen and can open the rest
-    return {'status': 'answered' if ranked else 'no_data', 'path': path,
-            'answer': {'groups': groups, 'total_groups': len(ranked), 'without_value': without,
-                       **({'without_value_examples': left_out} if left_out else {}), **({'share': shown_share} if share else {}),
-                       **({'unread_groups': {'count': len(unread), 'examples': unread[:3]}} if unread else {}),
-                       **({'measure': measured(starts)} if measure else {})},
-            **({'evidence': {'merged': evidence}} if evidence else {})}
+    return proved({'status': 'answered' if ranked else 'no_data', 'path': path,
+                   'answer': {'groups': groups, 'total_groups': len(ranked), 'without_value': without,
+                              **({'without_value_examples': left_out} if left_out else {}), **({'share': shown_share} if share else {}),
+                              **({'unread_groups': {'count': len(unread), 'examples': unread[:3]}} if unread else {}),
+                              **({'measure': measured(starts)} if measure else {})}}, evidence)
+
+
+def flag_unasked_filters(result: dict, question: str) -> dict:
+    """Mark the filters whose value the question never says: the model added them on its own. A hint for the person
+    checking the answer, not a refusal. Compared upper-cased with spaces removed, and as a substring of the question."""
+    filters = (result.get('evidence') or {}).get('filters')
+    if not filters:
+        return result
+    squash = lambda value: (normalize_value(value) or '').replace(' ', '')
+    said = squash(question)
+    marked = [f if squash(f['equals']) and squash(f['equals']) in said else {**f, 'not_in_question': True} for f in filters]
+    return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
 
 
 def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
@@ -408,7 +438,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
                 result = {'status': 'needs_derived', 'reason': f'要先确认“{formula["label"]} = {formula_text(formula)}”这个指标，才能回答',
                           'derive': {**formula, 'formula': formula_text(formula), 'preview': derived_preview(ontology, bundle, formula, graph)}}
         elif isinstance(query, dict):
-            result = run_query(ontology, bundle, query, graph, derived)
+            result = flag_unasked_filters(run_query(ontology, bundle, query, graph, derived), question or q['question'])
         else:
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
             result = {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True}

@@ -39,7 +39,7 @@ from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
-from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, ask_questions, run_query
+from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, ask_questions, flag_unasked_filters, run_query
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived, plain_reason
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
@@ -977,7 +977,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     wanted = ((item.get('query') or {}).get('measure') or {}).get('derived') if isinstance(item.get('query'), dict) else None
                     if wanted != formula['label'] or item.get('query', {}).get('start') != formula['type']:
                         continue
-                    again = run_query(reviewed, bundle, item['query'], graph, measures)
+                    again = flag_unasked_filters(run_query(reviewed, bundle, item['query'], graph, measures), item['question'])
                     if again['status'] != 'answered' and again.get('reason'):
                         again = {**again, 'reason': plain_reason(reviewed, again['reason'])}
                     answered['items'][i] = {**{k: v for k, v in item.items() if k not in ('derive', 'reason', 'answer', 'path', 'status')}, **again}
