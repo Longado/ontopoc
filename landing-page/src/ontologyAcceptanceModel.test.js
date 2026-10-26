@@ -71,18 +71,18 @@ test("without a confirmation the page still compares with the last run, in the o
 });
 
 test("with a confirmation it says it is compared with what the person agreed to, and when the data is another version", () => {
-  assert.equal(acceptance.changeLabel(item({ changed: false, previous: agreed }), here("sha-v1")), "和确认时一致");
-  assert.equal(acceptance.changeLabel(item({ changed: true, previous: agreed }), here("sha-v1")), "和确认时不一样");
-  assert.equal(acceptance.changeLabel(item({ changed: true, previous: agreed }), here("sha-v2")), "和确认时不一样，数据已换版本");
-  assert.equal(acceptance.changeLabel(item({ changed: false, previous: agreed }), here("sha-v2")), "和确认时一致");
-  assert.equal(acceptance.previousTitle(item({ changed: true, previous: agreed })), `确认时的答案（${localTime(agreed.confirmed_at)}）`);
+  assert.equal(acceptance.changeLabel(item({ changed: false, previous: agreed }), here("sha-v1")), "和认可时一致");
+  assert.equal(acceptance.changeLabel(item({ changed: true, previous: agreed }), here("sha-v1")), "和认可时不一样");
+  assert.equal(acceptance.changeLabel(item({ changed: true, previous: agreed }), here("sha-v2")), "和认可时不一样，数据已换版本");
+  assert.equal(acceptance.changeLabel(item({ changed: false, previous: agreed }), here("sha-v2")), "和认可时一致");
+  assert.equal(acceptance.previousTitle(item({ changed: true, previous: agreed })), `认可时的答案（${localTime(agreed.confirmed_at)}）`);
 });
 
 test("the summary counts against the confirmation only when every compared question has one", () => {
   const withAgreement = (changed) => item({ changed, previous: agreed });
-  assert.equal(acceptanceSummary({ total: 2, answered: 2, items: [withAgreement(true), withAgreement(false)] }), "2 道里能答 2 道，1 道和确认时不一样");
+  assert.equal(acceptanceSummary({ total: 2, answered: 2, items: [withAgreement(true), withAgreement(false)] }), "2 道里能答 2 道，1 道和认可时不一样");
   assert.equal(acceptanceSummary({ total: 2, answered: 2, items: [withAgreement(true), item({ changed: true, previous: { status: "answered" } })] }), "2 道里能答 2 道，2 道和上次不一样");
-  assert.equal(acceptanceSummary({ total: 2, answered: 2, items: [withAgreement(true), item({ changed: null })] }), "2 道里能答 2 道，1 道和确认时不一样");
+  assert.equal(acceptanceSummary({ total: 2, answered: 2, items: [withAgreement(true), item({ changed: null })] }), "2 道里能答 2 道，1 道和认可时不一样");
   assert.equal(acceptanceSummary({ total: 1, answered: 1, items: [item({ changed: null })] }), "1 道里能答 1 道，第一次执行");
 });
 

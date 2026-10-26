@@ -59,8 +59,8 @@ test("a fixed question says it is compared with the answer agreed to, and when t
   const item = (previous, changed) => ({ question: "每个客户几张工单？", note: "", status: "answered", changed, previous, answer: { total: 3 }, path: "工单" });
   const agreed = { status: "answered", answer: { total: 2 }, confirmed_at: "2026-10-01T08:00:00.000Z", confirmed_file: "sha-v1" };
   const md = (items, sha) => summaryMarkdown(run({ file: { name: "订单.csv", kind: "table", sha256: sha }, evaluation: { ...run().evaluation, acceptance: { total: items.length, answered: items.length, items } } }));
-  assert.match(md([item(agreed, true)], "sha-v2"), /结果：能回答，和确认时不一样，数据已换版本/);
-  assert.match(md([item(agreed, true)], "sha-v1"), /结果：能回答，和确认时不一样\n/);
-  assert.match(md([item(agreed, false)], "sha-v2"), /结果：能回答，和确认时一致/);
+  assert.match(md([item(agreed, true)], "sha-v2"), /结果：能回答，和认可时不一样，数据已换版本/);
+  assert.match(md([item(agreed, true)], "sha-v1"), /结果：能回答，和认可时不一样\n/);
+  assert.match(md([item(agreed, false)], "sha-v2"), /结果：能回答，和认可时一致/);
   assert.match(md([item({ status: "answered", answer: { total: 2 } }, true)], "sha-v2"), /结果：能回答，和上次不一样\n/);
 });
