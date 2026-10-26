@@ -3,7 +3,7 @@ import unittest
 from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_confirm import without_wrong
 from ontology_poc_generator.public_ontology import build_graph
-from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT, run_query
+from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT, ask_questions, run_query
 from tests.test_company_ontology import BUNDLE, PROPOSAL
 
 # 订单：O1 金额 100（客户甲）、O2 金额 50（客户乙）、O3 金额 70（客户 C9，客户表里没有）
@@ -159,6 +159,14 @@ class RepeatedValuesTests(unittest.TestCase):
         graph = build_graph(WITH_INVOICE_TYPE, INVOICES)   # confirming a formula builds the graph from the ontology before review
         result = run_query(reviewed, INVOICES, {'start': 'customer', 'measure': {'derived': '授信', 'op': 'sum'}}, graph, [limit])
         self.assertEqual(result['answer']['measure']['value'], 150)
+
+    def test_a_new_formula_the_query_could_not_add_up_is_refused_before_anyone_is_asked_to_confirm_it(self):
+        from tests.test_ontology_questions import AskTests
+        reply = {'questions': [{'reasoning': 'r', 'question': '客户发票金额合计？', 'query': {'start': 'customer', 'measure': {'derived': '金额', 'op': 'sum'}},
+                                'derive': {'type': 'customer', 'label': '金额', 'terms': [{'sign': 1, 'factors': [{'field': 'amount'}]}]}}]}
+        [item] = ask_questions(WITH_INVOICE_TYPE, INVOICES, AskTests.Model(reply))['items']
+        self.assertEqual(item['status'], 'query_limit')
+        self.assertIn('“发票”', item['reason'])
 
 
 if __name__ == '__main__':
