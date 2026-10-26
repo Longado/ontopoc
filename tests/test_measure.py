@@ -99,14 +99,14 @@ class RowsBehindOneObjectTests(unittest.TestCase):
         self.assertEqual(answer['measure'], {'field': 'credit_limit', 'op': 'sum', 'value': 150, 'counted': 2, 'skipped': 0})
 
     def test_a_derived_measure_reads_every_factor_field_the_same_way(self):
-        limit, why = parse_derived(WITH_INVOICE_TYPE, {'type': 'customer', 'label': '授信', 'terms': [{'sign': 1, 'factors': [{'field': 'credit_limit'}]}]})
-        self.assertIsNone(why)
-        query = {'start': 'customer', 'measure': {'derived': '授信', 'op': 'sum'}}
-        refused = run_query(WITH_INVOICE_TYPE, INVOICES, query, derived=[limit])
-        self.assertEqual(refused['status'], 'query_limit')
-        self.assertIn('“发票”', refused['reason'])
-        answered = run_query(CUSTOMER_ONLY, INVOICES, query, derived=[limit])   # without a row-level object the copy is one value
-        self.assertEqual(answered['answer']['measure']['value'], 150)
+        formula = lambda label, field: parse_derived(WITH_INVOICE_TYPE, {'type': 'customer', 'label': label, 'terms': [{'sign': 1, 'factors': [{'field': field}]}]})[0]
+        per_row = run_query(WITH_INVOICE_TYPE, INVOICES, {'start': 'customer', 'measure': {'derived': '金额', 'op': 'sum'}}, derived=[formula('金额', 'amount')])
+        self.assertEqual(per_row['status'], 'query_limit')
+        self.assertIn('“发票”', per_row['reason'])
+        limit = formula('授信', 'credit_limit')   # only the customer carries it: a copy on every row, one value per customer
+        for ontology in (WITH_INVOICE_TYPE, CUSTOMER_ONLY):
+            answered = run_query(ontology, INVOICES, {'start': 'customer', 'measure': {'derived': '授信', 'op': 'sum'}}, derived=[limit])
+            self.assertEqual(answered['answer']['measure']['value'], 150)
 
     def test_an_identity_field_is_one_value_per_object_however_many_rows_it_has(self):
         numbered = {**INVOICES, 'sources': {'invoices': {'records': [{**r, 'customer_id': {'A': '1', 'B': '2'}[r['customer_id']]}
