@@ -121,6 +121,32 @@ def _walk(relations: dict, start: str, via, label) -> tuple:
     return (current, steps), None
 
 
+def _folded_rows(types: dict, bundle: dict, graph: dict, start: str, starts: list, measure: dict) -> str | None:
+    """Why the measure cannot be read as one value per start object, or None. _values() keeps the distinct values of an
+    object, so one that owns several rows of the measure's table would add each distinct value once and lose the repeats.
+    Refused when its rows disagree, or when another object type reads that table a row each: that one is what to add up."""
+    label = lambda k: types[k].get('label') or k
+    own = _identity_fields(types[start])   # an identity field is one value per object by definition
+    rows = lambda inst, src: sum(s == src for s, _ in graph['records_of'].get(inst, []))
+    fields = [f['field'] for term in measure['derived']['terms'] for f in term['factors']] if measure.get('derived') else [measure['field']]
+    for field in dict.fromkeys(f for f in fields if f not in own):
+        src, _, path = field.partition('.')
+        several = [i for i in starts if rows(i, src) > 1]
+        if not several:
+            continue
+        most = {}   # per object type: the most rows of src that one of its objects owns
+        for inst in graph['records_of']:
+            if rows(inst, src):
+                most[inst[0]] = max(most.get(inst[0], 0), rows(inst, src))
+        row_level = [label(k) for k, n in most.items() if k != start and n == 1]
+        if row_level or any(len(_values(bundle, graph, i, field)) > 1 for i in several):
+            what = '加' if measure['op'] == 'sum' else '求平均'
+            instead = (f'请从“{"”或“".join(row_level)}”出发，再按{label(start)}分组。' if row_level
+                       else '本体里也没有一行对应一个对象的类型可以改从它出发，这道题现在算不了。')
+            return f'一个{label(start)}在 {src} 表里有好几行，“{path}”是每行一个值，按{label(start)}{what}会把行并掉。{instead}'
+    return None
+
+
 def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None) -> dict:
     p = normalize_proposal(ontology)
     types, relations = _types(p), {r['key']: r for r in p['relations']}
@@ -192,6 +218,9 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         return {str(v) for k, v in inst[1] if k == logical and v not in (None, '')} if logical else _values(bundle, graph, inst, field)
     has = lambda inst, cond: normalize_value(cond['equals']) in {normalize_value(v) for v in values(inst, cond['field'])}
     starts = [i for i in graph['sources_of'] if i[0] == start and all(has(i, w) for w in where)]
+    folded = _folded_rows(types, bundle, graph, start, starts, measure) if measure else None
+    if folded:
+        return {'status': 'query_limit', 'reason': folded}
     name = lambda field: field.partition('.')[2]
     kept = '、'.join(f'“{name(w["field"])}”为“{w["equals"]}”' for w in where)
     head = f'只看{kept}的{label(start)}' if kept else label(start)
