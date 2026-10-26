@@ -11,7 +11,7 @@ import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./on
 import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js";
 import { summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
-import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, changeLabel, previousTitle, purposeNote, savedAcceptance } from "./ontologyAcceptanceModel.js";
+import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, canReaccept, changeLabel, previousTitle, purposeNote, savedAcceptance } from "./ontologyAcceptanceModel.js";
 import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload, removeAdded, renameType, returnedNote, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverModel.js";
@@ -238,6 +238,7 @@ function AcceptanceSection({ run, acceptance, onSave, onPath, busy, error, addin
       {!item.query && <p className="pr-muted">这道还没有能执行的查询，所以每次重跑都算作答不了。在下面的问答里再问一次，答出来并认可口径后，存为验收问题就会替换它。</p>}
       {item.status === "broken" && <p className="pr-error">这道题的查询在这一版本体上走不通：{item.reason}。要么改本体，要么重新出题并重新认可口径。</p>}
       {item.changed && item.previous?.answer && <details className="os-how"><summary>{previousTitle(item)}</summary><Answer item={item.previous} /></details>}
+      {canReaccept(item) && <button type="button" className="pr-link" disabled={busy} onClick={() => onSave(saved, item.question)} title="以后的重跑和现在这个答案比">按现在的答案重新认可</button>}
       <button type="button" className="pr-link" disabled={busy} onClick={() => onSave(saved.filter((s) => s.question !== item.question))}>去掉这道</button>
     </li>)}</ul>}
     {adding && <div className="os-add">
@@ -900,7 +901,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const downloadSummary = () => save(summaryMarkdown(run), "text/markdown;charset=utf-8", "纪要.md");
 
   const questions = { canAsk: Boolean(run?.saved_as) && health === "ready", busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpdate: update, onUpload: () => setTab("upload"),
-    onAccept: (items) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items }, setAccepting, setAcceptError), accepting, acceptError, onGoConfirm: goConfirm,
+    onAccept: (items, again) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items, ...(again ? { replace_question: again } : {}) }, setAccepting, setAcceptError), accepting, acceptError, onGoConfirm: goConfirm,
     onDerive: (item) => post("/api/ontology/derived", { saved_as: run.saved_as, derive: item.derive }, setDeriving, setDeriveError), deriving, deriveError };
   const inDetail = tab === "objects" && objectKey;
   const placeOf = (items, key) => items.find(([k]) => k === key)?.[1];

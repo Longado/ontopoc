@@ -40,15 +40,18 @@ export function changeLabel(item, run) {
   if (!item.previous?.confirmed_at) return item.changed ? "和上次不一样" : "和上次一致";
   const now = run?.file?.sha256;
   const moved = Boolean(now && item.previous.confirmed_file && item.previous.confirmed_file !== now);   // not the file the person agreed on
-  return item.changed ? `和确认时不一样${moved ? "，数据已换版本" : ""}` : "和确认时一致";
+  return item.changed ? `和认可时不一样${moved ? "，数据已换版本" : ""}` : "和认可时一致";
 }
 
-export const previousTitle = (item) => (item.previous?.confirmed_at ? `确认时的答案（${localTime(item.previous.confirmed_at)}）` : "上次的答案");
+/** A moved answer can be agreed on again as it reads now; a query that no longer runs has nothing to agree on. */
+export const canReaccept = (item) => Boolean(item.query && item.changed && item.status === "answered");
+
+export const previousTitle = (item) => (item.previous?.confirmed_at ? `认可时的答案（${localTime(item.previous.confirmed_at)}）` : "上次的答案");
 
 export function acceptanceSummary(acceptance) {
   const changed = acceptance.items.filter((i) => i.changed).length;
   const unmet = acceptance.items.filter((i) => !i.query).length;
-  const against = compared(acceptance).every((i) => i.previous?.confirmed_at) ? "确认时" : "上次";
+  const against = compared(acceptance).every((i) => i.previous?.confirmed_at) ? "认可时" : "上次";
   const since = compared(acceptance).length ? `${changed} 道和${against}不一样` : "第一次执行";
   return `${acceptance.total} 道里能答 ${acceptance.answered} 道，${unmet ? `${unmet} 道现在还答不了，` : ""}${since}`;
 }

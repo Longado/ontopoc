@@ -115,8 +115,16 @@ const filterLine = (f) => {
 
 const mergedLine = (m) => `“${m.group}”这一组里，有 ${m.starts} 个对象${m.starts === 1 ? `连到 ${m.objects} 个不同的对象` : `各连到不止一个不同的对象，最多 ${m.objects} 个`}${m.examples?.length ? `（例如 ${m.examples.join("、")}）` : ""}，已只数一次`;
 
-/** The check pack beside an answer: what each filter removed, and groups where several objects fed one count. */
-export const evidenceLines = (item) => [...(item.evidence?.filters || []).map(filterLine), ...(item.evidence?.merged || []).map(mergedLine)];
+const foldedLine = (f) => `“${f.field}”在 ${f.objects} 个对象上各有好几个一样的值（${f.table} 表${f.examples?.length ? `，例如 ${f.examples.join("、")}` : ""}），每个对象只算了一次`;
+
+/** The check pack beside an answer: what each filter removed, values copied on several rows of one object, and groups
+ *  where several objects fed one count. */
+export function evidenceLines(item) {
+  const e = item.evidence || {};
+  const unlisted = (e.merged_total || 0) - (e.merged || []).length;
+  return [...(e.filters || []).map(filterLine), ...(e.folded || []).map(foldedLine), ...(e.merged || []).map(mergedLine),
+    ...(unlisted > 0 ? [`另有 ${unlisted} 组也是这样，没有列出`] : [])];
+}
 
 /** The fold's title; a filter the question never named is visible without opening it. */
 export function evidenceTitle(item) {
