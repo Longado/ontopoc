@@ -102,7 +102,11 @@ def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: l
             checked.append({'question': item['question'], 'note': item['note'], 'query': None, 'snapshot': None,
                             'status': item['status'], 'reason': item['reason'], 'previous': None, 'changed': None})
             continue
-        previous ={k: item.get(k) for k in ('status', 'answer', 'path')} if item.get('status') else None
+        confirmed = item.get('confirmed')
+        if confirmed:   # judged against what the person agreed to, not the last rerun: a slow drift over several reruns still shows
+            previous = {**{k: confirmed.get(k) for k in ('status', 'answer', 'path')}, 'confirmed_at': confirmed['at'], 'confirmed_file': confirmed['file']}
+        else:
+            previous = {k: item.get(k) for k in ('status', 'answer', 'path')} if item.get('status') else None
         # Human rejection affects execution, not the saved identity of the query's objects.
         identities = snapshot_ontology if snapshot_ontology is not None else ontology
         snapshot = item.get('snapshot')
@@ -120,7 +124,16 @@ def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: l
             result = {'status': 'broken', 'reason': result['reason']}
         checked.append({'question': item['question'], 'note': item['note'], 'query': query if not problem else item['query'],
                         'snapshot': snapshot_of(identities, query) if not problem else snapshot, **result,
-                        'previous': previous,
+                        **({'confirmed': confirmed} if confirmed else {}), 'previous': previous,
                         'changed': None if previous is None else (result.get('answer') != previous['answer'] or result['status'] != previous['status'])})
     return {'checked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'items': checked,
             'answered': sum(i['status'] == 'answered' for i in checked), 'total': len(checked)}
+
+
+def record_confirmed(checked: dict, questions: set, file_sha: str, saved_as: str) -> dict:
+    """Keep the answer a person agreed to, apart from every later rerun. It is the answer this check just gave to the
+    questions accepted in this request, never what the page sent; a question that did not answer has nothing agreed."""
+    at = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    return {**checked, 'items': [{**i, 'confirmed': {'status': i['status'], 'answer': i.get('answer'), 'path': i.get('path'), 'at': at,
+                                                      'file': file_sha, 'saved_as': saved_as}}
+                                 if i['question'] in questions and i['status'] == 'answered' else i for i in checked['items']]}

@@ -34,7 +34,7 @@ from ontology_poc_generator.ttl_export import ttl_files
 import io
 import zipfile
 from urllib.parse import quote as url_quote
-from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
+from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance, record_confirmed
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
@@ -772,13 +772,21 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 items = parse_acceptance(payload.get('items')) if payload.get('items') else []
                 existing = {item['question']: item for item in (result['evaluation'].get('acceptance') or {}).get('items', [])}
+                accepted_now = set()   # what the person agrees to in this request; the rest of the list was agreed earlier
                 for item in items:
                     old = existing.get(item['question'])
+                    same = isinstance(item.get('query'), dict) and old and item['query'] == old.get('query')
                     if item['question'] == payload.get('replace_question'):
                         item['snapshot'] = None   # explicitly accepting this query again uses the current ontology
-                    elif isinstance(item.get('query'), dict) and old and item['query'] == old.get('query') and old.get('snapshot') is not None:
+                        accepted_now.add(item['question'])   # and is a new agreement, on the answer in front of the person now
+                        continue
+                    if same and old.get('snapshot') is not None:
                         # A list edit keeps server-held identity evidence; accepting a new query is a separate decision.
                         item.update({key: old.get(key) for key in ('snapshot', 'status', 'answer', 'path')})
+                    if same and old.get('confirmed'):
+                        item['confirmed'] = old['confirmed']   # the page never holds it: an edit gives back what was agreed
+                    elif not same:
+                        accepted_now.add(item['question'])
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
@@ -788,7 +796,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 stored.unlink(missing_ok=True)
             else:
                 bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-                result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, items)
+                result['evaluation']['acceptance'] = record_confirmed(reviewed_acceptance(result, bundle, items), accepted_now,
+                                                                      result['file']['sha256'], result['saved_as'])
                 saved = {'saved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'file': result['file'],
                          'purpose': result.get('purpose'), 'items': result['evaluation']['acceptance']['items']}
                 stored.parent.mkdir(parents=True, exist_ok=True)
