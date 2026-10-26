@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ontology_poc_generator.ontology_compare import match_types, relation_matches
-from ontology_poc_generator.ontology_questions import run_query
+from ontology_poc_generator.ontology_questions import flag_unasked_filters, run_query
 
 MAX_ACCEPTANCE = 3   # ponytail: a short list a consultant can agree with a client; the model's own round still asks more
 MAX_NOTE = 200
@@ -118,7 +118,7 @@ def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: l
                         if entry['key'] not in {saved['key'] for saved in snapshot.get(kind, [])})]
                         for kind in ('types', 'relations')}
         query, problem = remap_query(item['query'], snapshot, identities) if snapshot is not None else (item['query'], '')
-        result = {'status': 'broken', 'reason': problem} if problem else run_query(ontology, bundle, query, derived=derived)
+        result = {'status': 'broken', 'reason': problem} if problem else flag_unasked_filters(run_query(ontology, bundle, query, derived=derived), item['question'])
         if result['status'] == 'ontology_gap':
             # the query a person agreed with no longer fits this ontology: stop here instead of guessing a new meaning
             result = {'status': 'broken', 'reason': result['reason']}

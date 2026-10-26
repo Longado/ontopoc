@@ -89,7 +89,7 @@ def _overview(run: dict) -> dict:
 
 def _question(item: dict) -> dict:
     return {**{k: item.get(k) for k in ('question', 'status', 'answer', 'path', 'reason', 'query')},
-            **({'derive': item['derive']} if 'derive' in item else {})}
+            **{k: item[k] for k in ('derive', 'evidence') if k in item}}
 
 
 # ---- the tools: one per feature ----

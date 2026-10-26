@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import re
 
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
 from ontology_poc_generator.agent_harness import ask_model
@@ -122,42 +123,86 @@ def _walk(relations: dict, start: str, via, label) -> tuple:
     return (current, steps), None
 
 
+def _extra(shape: dict, allowed: set) -> list:
+    """Keys a query part has no place for. One left empty says nothing and is let be; any other is named, never dropped."""
+    return sorted(str(k) for k, v in shape.items() if k not in allowed and v not in (None, '', [], {}))
+
+
 def _condition_limit(condition) -> str | None:
-    """A where or share condition is a field equal to a value. Any other key is named, never dropped: a date range read
+    """A where or share condition is a field equal to one value. Any other key is named, never dropped: a date range read
     as an equals of nothing used to come back as "no object satisfies the filter"."""
     if not isinstance(condition, dict):
         return '筛选要写成“某个字段等于某个值”，这道题的写法查询语言读不了'
-    extra = sorted(set(condition) - {'field', 'equals'})
+    extra = _extra(condition, {'field', 'equals'})
     if extra:
-        return f'筛选只能写“等于”，这道题用了 {"、".join(map(str, extra))}：查询语言还表达不了这种条件'
+        return f'筛选只能写“等于”，这道题用了 {"、".join(extra)}：查询语言还表达不了这种条件'
     missing = [k for k in ('field', 'equals') if k not in condition]
-    return f'筛选条件缺少 {"、".join(missing)}，要写成“某个字段等于某个值”' if missing else None
+    if missing:
+        return f'筛选条件缺少 {"、".join(missing)}，要写成“某个字段等于某个值”'
+    if isinstance(condition['equals'], (list, dict)):
+        return '筛选只能等于一个值，这道题写了一组值或一个范围：查询语言还表达不了这种条件'
+    return None
 
 
-def _folded_rows(types: dict, bundle: dict, graph: dict, start: str, starts: list, measure: dict) -> str | None:
-    """Why the measure cannot be read as one value per start object, or None. _values() keeps the distinct values of an
-    object, so one that owns several rows of the measure's table would add each distinct value once and lose the repeats.
-    Refused when its rows disagree, or when another object type reads that table a row each: that one is what to add up."""
+def _shape_limit(query: dict) -> str | None:
+    """Why a part of the query has no place in the format, or None. Checked before any data is read."""
+    extra = _extra(query, QUERY_KEYS)
+    if extra:
+        return f'这道题用了 {"、".join(extra)}：查询语言还表达不了'
+    conditions = [*(query.get('where') or []), *([query['share']] if query.get('share') else [])]
+    reason = next(filter(None, map(_condition_limit, conditions)), None)
+    if reason:
+        return reason
+    for d in query['group_by'] if isinstance(query.get('group_by'), list) else []:
+        extra = _extra(d, {'via', 'field'}) if isinstance(d, dict) else []
+        if extra:
+            return f'分组只能按字段原来的值，这道题用了 {"、".join(extra)}：查询语言还表达不了'
+    extra = _extra(query['measure'], {'field', 'op', 'derived'}) if isinstance(query.get('measure'), dict) else []
+    return f'求和、求平均只能直接算一个字段，这道题用了 {"、".join(extra)}：查询语言还表达不了' if extra else None
+
+
+def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, measure: dict) -> tuple[str | None, list]:
+    """How the measure reads on objects that hold several values of it: (why it cannot be added up, the objects whose
+    values were one value repeated and count once). _values() keeps an object's distinct values, so an object owning
+    several rows of the measure's table, or a list in one row, would add each distinct value once and lose the repeats.
+    Refused when the values disagree or sit in one row's list, and when a type that reads the table a row each carries
+    the field too: that one is what to add up. A value only the start object carries is a copy on each of its rows."""
     label = lambda k: types[k].get('label') or k
+    text = lambda inst: '、'.join(str(v) for _, v in inst[1])
     own = _identity_fields(types[start])   # an identity field is one value per object by definition
-    rows = lambda inst, src: sum(s == src for s, _ in graph['records_of'].get(inst, []))
+    rows = lambda entries, src: {i for s, i in entries if s == src}   # one row read twice (two roles, one table) is one row
+    what = '加' if measure['op'] == 'sum' else '求平均'
     fields = [f['field'] for term in measure['derived']['terms'] for f in term['factors']] if measure.get('derived') else [measure['field']]
+    folded = []
     for field in dict.fromkeys(f for f in fields if f not in own):
         src, _, path = field.partition('.')
-        several = [i for i in starts if rows(i, src) > 1]
+        records = bundle['sources'].get(src, {}).get('records', [])
+        read = lambda inst: [[str(v) for v in resolve(records[i], path) if v not in (None, '')] for i in sorted(rows(graph['records_of'].get(inst, []), src))]
+        several = [(inst, got) for inst, got in ((inst, read(inst)) for inst in objects) if sum(map(len, got)) > 1]
         if not several:
             continue
-        most = {}   # per object type: the most rows of src that one of its objects owns
-        for inst in graph['records_of']:
-            if rows(inst, src):
-                most[inst[0]] = max(most.get(inst[0], 0), rows(inst, src))
-        row_level = [label(k) for k, n in most.items() if k != start and n == 1]
-        if row_level or any(len(_values(bundle, graph, i, field)) > 1 for i in several):
-            what = '加' if measure['op'] == 'sum' else '求平均'
-            instead = (f'请从“{"”或“".join(row_level)}”出发，再按{label(start)}分组。' if row_level
-                       else '本体里也没有一行对应一个对象的类型可以改从它出发，这道题现在算不了。')
-            return f'一个{label(start)}在 {src} 表里有好几行，“{path}”是每行一个值，按{label(start)}{what}会把行并掉。{instead}'
-    return None
+        name = label(start)
+        inside = next(((inst, got) for inst, got in several if any(len(g) > 1 for g in got)), None)
+        if inside:
+            shown = '、'.join([v for g in inside[1] for v in g][:3])
+            return (f'“{path}”在一个{name}里有好几个值（例如 {text(inside[0])}：{shown}），按{name}{what}只会把不同的值各算一次；'
+                    f'查询还不能把一个对象里的一组值加起来，这道题现在算不了。'), []
+        most = {}   # per other type still in the ontology: the most rows of src one of its objects owns
+        for inst, entries in graph['records_of'].items():
+            if inst[0] != start and inst[0] in types and rows(entries, src):
+                most[inst[0]] = max(most.get(inst[0], 0), len(rows(entries, src)))
+        per_row = [label(k) for k, n in most.items() if n == 1 and field in _fields(types[k])]
+        row = '”或“'.join(per_row)
+        differ = next(((inst, got) for inst, got in several if len({v for g in got for v in g}) > 1), None)
+        if differ:
+            shown = '、'.join(list(dict.fromkeys(v for g in differ[1] for v in g))[:3])
+            return (f'一个{name}在 {src} 表里对应好几个不同的“{path}”（例如 {text(differ[0])}：{shown}），按{name}{what}只会把每个不同的值算一次。'
+                    + (f'请从“{row}”出发，再按{name}分组。' if per_row else '本体里没有一行对应一个对象、又带这个字段的类型可以改从它出发，这道题现在算不了。')), []
+        if per_row:
+            return (f'有的{name}在 {src} 表里有好几行（例如 {text(several[0][0])}），“{path}”在这几行里都一样。如果它是每个“{row}”各自的数，请从“{row}”出发，再按{name}分组；'
+                    f'如果它是{name}自己的属性，请在本体里把它从“{row}”去掉。'), []
+        folded.append({'field': path, 'table': src, 'objects': len(several), 'examples': [text(i) for i, _ in several[:3]]})
+    return None, folded
 
 
 def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None) -> dict:
@@ -168,9 +213,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     start = query.get('start')
     if start not in types:
         return gap(f'本体里没有对象类型 {start}')
-    extra = sorted(set(query) - QUERY_KEYS)
-    shapes = [*(query.get('where') or []), *([query['share']] if query.get('share') else [])]
-    reason = f'这道题用了 {"、".join(map(str, extra))}：查询语言还表达不了' if extra else next(filter(None, map(_condition_limit, shapes)), None)
+    reason = _shape_limit(query)
     if reason:
         return {'status': 'query_limit', 'reason': reason}
     where = []
@@ -243,9 +286,9 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             (hit if has(i, w) else miss).append(i)
         stages.append((w, len(starts), len(hit), miss))
         starts = hit
-    folded = _folded_rows(types, bundle, graph, start, starts, measure) if measure else None
-    if folded:
-        return {'status': 'query_limit', 'reason': folded}
+    refused, folded = _repeats(types, bundle, graph, start, starts, measure) if measure else (None, [])
+    if refused:
+        return {'status': 'query_limit', 'reason': refused}
     name = lambda field: field.partition('.')[2]
     kept = '、'.join(f'“{name(w["field"])}”为“{w["equals"]}”' for w in where)
     head = f'只看{kept}的{label(start)}' if kept else label(start)
@@ -279,15 +322,21 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     text = lambda node: '、'.join(str(v) for _, v in node[1])
 
     def removed_amount(gone):
-        """What the objects a filter removed would have added to the measure; absent when none of them reads as a number."""
-        read = [n for inst in gone for n in numbers(inst)[0]] if measure else []
+        """What the objects a filter removed would have added to the measure; absent when none of them reads as a number,
+        or when their values could not be added up through this object either."""
+        if not measure or _repeats(types, bundle, graph, start, gone, measure)[0]:
+            return {}
+        read = [n for inst in gone for n in numbers(inst)[0]]
         return {'removed_measure': int_if_whole(sum(read))} if read else {}
+    lookup = _identity_fields(types[start])   # looking one object up by its key: the others it passed over are no news
     filters = [{'field': name(w['field']), 'equals': w['equals'], 'before': before, 'after': after,
-                'examples': [text(i) for i in gone[:3]], **removed_amount(gone)} for w, before, after, gone in stages] if everyone else []
+                **({} if w['field'] in lookup else {'examples': [text(i) for i in gone[:3]], **removed_amount(gone)})}
+               for w, before, after, gone in stages] if everyone else []
 
-    def proved(result, merged=()):
+    def proved(result, merged=(), merged_total=0):
         """The check pack rides beside the answer, never inside it: acceptance compares `answer` between runs."""
-        pack = {**({'filters': filters} if filters else {}), **({'merged': merged} if merged else {})}
+        pack = {**({'filters': filters} if filters else {}), **({'folded': folded} if folded else {}),
+                **({'merged': merged} if merged else {}), **({'merged_total': merged_total} if merged_total > len(merged) else {})}
         return {**result, **({'evidence': pack} if pack else {})}
     if not starts:
         return proved({'status': 'no_data', 'reason': '数据里没有满足筛选条件的对象', 'path': path})
@@ -332,7 +381,10 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
                     steps = [(walked[via], walked)]
                 else:
                     known = max((p for p in walked if via[:len(p)] == p), key=len)   # continue from the longest path already walked
-                    steps = [(node, {**walked, via: node}) for node in reach(walked[known], via[len(known):])]
+                    chains = [walked]
+                    for k in range(len(known), len(via)):   # every object on the way is kept, so a shorter dimension after it reads the same one
+                        chains = [{**w, via[:k + 1]: n} for w in chains for n in neighbours[via[k]].get(w[via[:k]], ())]
+                    steps = [(w[via], w) for w in chains]
                 out += [(chosen + [v], nodes) for node, nodes in steps for v in sorted(values(node, d['field']))]
             states = out
         ends = sorted({tuple(d['via']) for d in dims if d['via']})   # the start itself never differs between chains
@@ -353,9 +405,11 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             members.setdefault(key, []).append(s)
             if len(chains) > 1:
                 merged.setdefault(key, []).append(chains)
-    chain_text = lambda chain: ' / '.join(map(text, chain))
-    evidence = [{'group': key, 'starts': len(per_start), 'objects': max(map(len, per_start)),
-                 'examples': list(dict.fromkeys(t for chains in per_start for t in sorted(map(chain_text, chains))))[:3]}
+    def differing(chains):
+        """The walked objects that tell one start's chains to a group apart; the ones all chains share are left out."""
+        return [n for k in range(len(next(iter(chains)))) for n in {c[k] for c in chains} if len({c[k] for c in chains}) > 1]
+    evidence = [{'group': key, 'starts': len(per_start), 'objects': max(len(differing(c)) for c in per_start),
+                 'examples': sorted({text(n) for c in per_start for n in differing(c)})[:3]}
                 for key, per_start in sorted(merged.items())[:MAX_MERGED]]
     unread = []
     if measure:
@@ -373,7 +427,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
                    'answer': {'groups': groups, 'total_groups': len(ranked), 'without_value': without,
                               **({'without_value_examples': left_out} if left_out else {}), **({'share': shown_share} if share else {}),
                               **({'unread_groups': {'count': len(unread), 'examples': unread[:3]}} if unread else {}),
-                              **({'measure': measured(starts)} if measure else {})}}, evidence)
+                              **({'measure': measured(starts)} if measure else {})}}, evidence, len(merged))
 
 
 def flag_unasked_filters(result: dict, question: str) -> dict:
@@ -383,8 +437,14 @@ def flag_unasked_filters(result: dict, question: str) -> dict:
     if not filters:
         return result
     squash = lambda value: (normalize_value(value) or '').replace(' ', '')
-    said = squash(question)
-    marked = [f if squash(f['equals']) and squash(f['equals']) in said else {**f, 'not_in_question': True} for f in filters]
+    said, words = squash(question), normalize_value(question) or ''
+
+    def named(value):
+        v = squash(value)
+        if len(v) < 3 and v.isascii():   # a short code such as N sits inside any word: it has to stand on its own
+            return bool(v) and re.search(rf'(?<![A-Z0-9]){re.escape(v)}(?![A-Z0-9])', words) is not None
+        return v in said
+    marked = [f if named(f['equals']) else {**f, 'not_in_question': True} for f in filters]
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
 
 
@@ -435,8 +495,11 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
             if formula is None or formula['label'] != wanted:
                 result = {'status': 'ontology_gap', 'reason': f'模型提出的指标算不成：{why or "查询用的指标名和提出的不一致"}'}
             else:
-                result = {'status': 'needs_derived', 'reason': f'要先确认“{formula["label"]} = {formula_text(formula)}”这个指标，才能回答',
-                          'derive': {**formula, 'formula': formula_text(formula), 'preview': derived_preview(ontology, bundle, formula, graph)}}
+                trial = run_query(ontology, bundle, query, graph, [*(derived or []), formula])
+                # a formula that reads fine but that this query could not add up: say so before anyone confirms it
+                result = trial if trial['status'] == 'query_limit' else {
+                    'status': 'needs_derived', 'reason': f'要先确认“{formula["label"]} = {formula_text(formula)}”这个指标，才能回答',
+                    'derive': {**formula, 'formula': formula_text(formula), 'preview': derived_preview(ontology, bundle, formula, graph)}}
         elif isinstance(query, dict):
             result = flag_unasked_filters(run_query(ontology, bundle, query, graph, derived), question or q['question'])
         else:
