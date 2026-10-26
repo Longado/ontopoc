@@ -53,5 +53,56 @@ class FanTrapTests(unittest.TestCase):
         self.assertEqual(answer['total_groups'], 3)
 
 
+# V1 经两行关系连到 P1、P2 两个对象，它们的名字相同（真实采购数据里同一母公司被登记成两个对象）；V3 也连 P1
+VENDORS = {
+    'schema': 'company_source_bundle.v1', 'decision': '看各最终母公司名下有多少供应商',
+    'file': {'name': 'vendors.csv', 'sha256': 'd' * 64, 'kind': 'table'},
+    'sources': {
+        'vendors': {'records': [{'vendor_id': 'V1', 'amount': '100'}, {'vendor_id': 'V2', 'amount': '30'}, {'vendor_id': 'V3', 'amount': '7'}], 'requests': []},
+        'links': {'records': [
+            {'vendor_id': 'V1', 'parent_id': 'P1', 'parent_name': 'GREENBERRY INDUSTRIAL LLC'},
+            {'vendor_id': 'V1', 'parent_id': 'P2', 'parent_name': 'GREENBERRY INDUSTRIAL LLC'},
+            {'vendor_id': 'V3', 'parent_id': 'P1', 'parent_name': 'GREENBERRY INDUSTRIAL LLC'},
+            {'vendor_id': 'V2', 'parent_id': 'P3', 'parent_name': 'OTHER CO'},
+        ], 'requests': []},
+    },
+}
+VENDOR_ONTOLOGY = {
+    'object_types': [
+        {'key': 'vendor', 'label': '供应商', 'populated_from': [{'source': 'vendors', 'identity': {'id': 'vendor_id'}},
+                                                          {'source': 'links', 'identity': {'id': 'vendor_id'}}],
+         'attributes': [{'source': 'vendors', 'path': 'amount'}]},
+        {'key': 'parent', 'label': '最终母公司', 'populated_from': [{'source': 'links', 'identity': {'id': 'parent_id'}}],
+         'attributes': [{'source': 'links', 'path': 'parent_name'}]},
+    ],
+    'relations': [{'key': 'vendor_parent', 'from': 'vendor', 'to': 'parent', 'source': 'links', 'meaning': '供应商属于最终母公司'}],
+    'ignored_fields': [],
+}
+BY_PARENT_NAME = {'via': ['vendor_parent'], 'field': 'links.parent_name'}
+GREENBERRY = 'GREENBERRY INDUSTRIAL LLC'
+
+
+class SameValueFromTwoObjectsTests(unittest.TestCase):
+    def test_a_start_object_counts_once_per_group_and_the_merge_is_shown_beside_the_answer(self):
+        result = run_query(VENDOR_ONTOLOGY, VENDORS, {'start': 'vendor', 'group_by': [BY_PARENT_NAME]})
+        self.assertEqual(result['answer']['groups'], [[GREENBERRY, 2], ['OTHER CO', 1]])   # V1 and V3, not V1 twice
+        self.assertEqual(result['evidence'], {'merged': [{'group': GREENBERRY, 'starts': 1, 'objects': 2, 'examples': ['P1', 'P2']}]})
+        self.assertNotIn('evidence', result['answer'])   # acceptance compares the answer between runs
+
+    def test_a_sum_and_a_share_read_each_start_object_once(self):
+        total = run_query(VENDOR_ONTOLOGY, VENDORS, {'start': 'vendor', 'group_by': [BY_PARENT_NAME],
+                                                      'measure': {'field': 'vendors.amount', 'op': 'sum'}})
+        self.assertEqual(total['answer']['groups'], [[GREENBERRY, 107, 2], ['OTHER CO', 30, 1]])   # V1's 100 once, not twice
+        self.assertEqual(total['evidence']['merged'][0]['group'], GREENBERRY)
+        share = run_query(VENDOR_ONTOLOGY, VENDORS, {'start': 'vendor', 'group_by': [BY_PARENT_NAME],
+                                                      'share': {'field': 'vendors.amount', 'equals': '100'}})
+        self.assertEqual(share['answer']['groups'], [[GREENBERRY, 1, 2], ['OTHER CO', 0, 1]])
+
+    def test_nothing_is_reported_when_no_start_object_reached_a_group_through_two_objects(self):
+        result = run_query(VENDOR_ONTOLOGY, VENDORS, {'start': 'vendor', 'group_by': [{'via': [], 'field': 'vendors.amount'}]})
+        self.assertEqual(result['status'], 'answered')
+        self.assertNotIn('evidence', result)
+
+
 if __name__ == '__main__':
     unittest.main()
