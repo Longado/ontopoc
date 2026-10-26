@@ -134,6 +134,11 @@ def record_confirmed(checked: dict, questions: set, file_sha: str, saved_as: str
     """Keep the answer a person agreed to, apart from every later rerun. It is the answer this check just gave to the
     questions accepted in this request, never what the page sent; a question that did not answer has nothing agreed."""
     at = datetime.now(timezone.utc).isoformat(timespec='seconds')
-    return {**checked, 'items': [{**i, 'confirmed': {'status': i['status'], 'answer': i.get('answer'), 'path': i.get('path'), 'at': at,
-                                                      'file': file_sha, 'saved_as': saved_as}}
-                                 if i['question'] in questions and i['status'] == 'answered' else i for i in checked['items']]}
+
+    def agreed(i):
+        confirmed = {'status': i['status'], 'answer': i.get('answer'), 'path': i.get('path'), 'at': at, 'file': file_sha, 'saved_as': saved_as}
+        # an answer agreed on again was compared before: from now on it reads against this agreement; a new one has nothing to compare yet
+        again = {'previous': {**{k: confirmed[k] for k in ('status', 'answer', 'path')}, 'confirmed_at': at, 'confirmed_file': file_sha},
+                 'changed': False} if i.get('previous') is not None else {}
+        return {**i, 'confirmed': confirmed, **again}
+    return {**checked, 'items': [agreed(i) if i['question'] in questions and i['status'] == 'answered' else i for i in checked['items']]}
