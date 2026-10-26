@@ -1,5 +1,6 @@
 import unittest
 
+from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT, run_query
 from tests.test_company_ontology import BUNDLE, PROPOSAL
 
@@ -46,6 +47,70 @@ class MeasureTests(unittest.TestCase):
     def test_the_prompt_moves_to_v5_and_describes_the_measure(self):
         self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v7')
         self.assertIn('"measure"', QUESTION_SYSTEM_PROMPT)
+
+
+# 发票表一行一张发票。客户 A 有三张（5、5、4），授信额度每行都抄一遍；客户从这张表里认出来，所以一个客户有好几行
+INVOICES = {
+    'schema': 'company_source_bundle.v1', 'decision': '看各客户的发票',
+    'file': {'name': 'invoices.csv', 'sha256': 'e' * 64, 'kind': 'table'},
+    'sources': {'invoices': {'records': [
+        {'invoice_id': 'I1', 'customer_id': 'A', 'amount': '5', 'credit_limit': '100'},
+        {'invoice_id': 'I2', 'customer_id': 'A', 'amount': '5', 'credit_limit': '100'},
+        {'invoice_id': 'I3', 'customer_id': 'A', 'amount': '4', 'credit_limit': '100'},
+        {'invoice_id': 'I4', 'customer_id': 'B', 'amount': '10', 'credit_limit': '50'},
+    ], 'requests': []}},
+}
+CUSTOMER = {'key': 'customer', 'label': '客户', 'populated_from': [{'source': 'invoices', 'identity': {'customer_id': 'customer_id'}}],
+            'attributes': [{'source': 'invoices', 'path': 'amount'}, {'source': 'invoices', 'path': 'credit_limit'}]}
+INVOICE = {'key': 'invoice', 'label': '发票', 'populated_from': [{'source': 'invoices', 'identity': {'invoice_id': 'invoice_id'}}],
+           'attributes': [{'source': 'invoices', 'path': 'amount'}]}
+WITH_INVOICE_TYPE = {'object_types': [CUSTOMER, INVOICE], 'ignored_fields': [],
+                     'relations': [{'key': 'invoice_customer', 'from': 'invoice', 'to': 'customer', 'source': 'invoices', 'meaning': '发票属于客户'}]}
+CUSTOMER_ONLY = {'object_types': [CUSTOMER], 'relations': [], 'ignored_fields': []}
+AMOUNT_SUM = {'field': 'invoices.amount', 'op': 'sum'}
+LIMIT = {'field': 'invoices.credit_limit', 'op': 'sum'}
+
+
+class RowsBehindOneObjectTests(unittest.TestCase):
+    def test_adding_a_per_row_value_by_an_object_that_owns_several_rows_is_refused_and_names_the_row_level_object(self):
+        result = run_query(WITH_INVOICE_TYPE, INVOICES, {'start': 'customer', 'measure': AMOUNT_SUM})
+        self.assertEqual(result['status'], 'query_limit')
+        self.assertNotIn('answer', result)
+        for said in ('一个客户', 'invoices', 'amount', '“发票”', '按客户分组'):
+            self.assertIn(said, result['reason'])
+
+    def test_starting_from_the_row_level_object_adds_every_row_and_can_group_by_the_customer(self):
+        total = run_query(WITH_INVOICE_TYPE, INVOICES, {'start': 'invoice', 'measure': AMOUNT_SUM})
+        self.assertEqual(total['answer']['measure'], {'field': 'amount', 'op': 'sum', 'value': 24, 'counted': 4, 'skipped': 0})
+        by_customer = run_query(WITH_INVOICE_TYPE, INVOICES, {'start': 'invoice', 'measure': AMOUNT_SUM,
+                                                              'group_by': [{'via': ['invoice_customer'], 'field': 'invoices.customer_id'}]})
+        self.assertEqual(by_customer['answer']['groups'], [['A', 14, 3], ['B', 10, 1]])   # 5 + 5 + 4: the repeated 5 is not lost
+
+    def test_rows_that_disagree_are_refused_even_when_no_object_reads_one_row_each(self):
+        result = run_query(CUSTOMER_ONLY, INVOICES, {'start': 'customer', 'measure': {**AMOUNT_SUM, 'op': 'average'}})
+        self.assertEqual(result['status'], 'query_limit')
+        self.assertIn('一个客户', result['reason'])
+        self.assertNotIn('请从', result['reason'])   # nothing to start from instead: do not point at an object that is not there
+
+    def test_a_value_copied_on_every_row_of_an_object_counts_once_for_that_object(self):
+        answer = run_query(CUSTOMER_ONLY, INVOICES, {'start': 'customer', 'measure': LIMIT})['answer']
+        self.assertEqual(answer['measure'], {'field': 'credit_limit', 'op': 'sum', 'value': 150, 'counted': 2, 'skipped': 0})
+
+    def test_a_derived_measure_reads_every_factor_field_the_same_way(self):
+        limit, why = parse_derived(WITH_INVOICE_TYPE, {'type': 'customer', 'label': '授信', 'terms': [{'sign': 1, 'factors': [{'field': 'credit_limit'}]}]})
+        self.assertIsNone(why)
+        query = {'start': 'customer', 'measure': {'derived': '授信', 'op': 'sum'}}
+        refused = run_query(WITH_INVOICE_TYPE, INVOICES, query, derived=[limit])
+        self.assertEqual(refused['status'], 'query_limit')
+        self.assertIn('“发票”', refused['reason'])
+        answered = run_query(CUSTOMER_ONLY, INVOICES, query, derived=[limit])   # without a row-level object the copy is one value
+        self.assertEqual(answered['answer']['measure']['value'], 150)
+
+    def test_an_identity_field_is_one_value_per_object_however_many_rows_it_has(self):
+        numbered = {**INVOICES, 'sources': {'invoices': {'records': [{**r, 'customer_id': {'A': '1', 'B': '2'}[r['customer_id']]}
+                                                                      for r in INVOICES['sources']['invoices']['records']], 'requests': []}}}
+        answer = run_query(WITH_INVOICE_TYPE, numbered, {'start': 'customer', 'measure': {'field': 'invoices.customer_id', 'op': 'sum'}})['answer']
+        self.assertEqual((answer['measure']['value'], answer['measure']['counted']), (3, 2))
 
 
 if __name__ == '__main__':
