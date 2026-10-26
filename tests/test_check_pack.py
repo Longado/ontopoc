@@ -3,10 +3,11 @@ shrank the result and which one the model added on its own. It rides in `evidenc
 import unittest
 
 from ontology_poc_generator.derived_measures import parse_derived
-from ontology_poc_generator.ontology_questions import ask_questions, run_query
+from ontology_poc_generator.ontology_questions import ask_questions, flag_unasked_filters, run_query
 from tests import test_ontology_questions as asked
 from tests.test_derived_measures import AMOUNT, ONTOLOGY as LINES, bundle as lines_bundle
 from tests.test_group_fan_trap import BY_PARENT_NAME, GREENBERRY, VENDOR_ONTOLOGY, VENDORS
+from tests.test_measure import AMOUNT_SUM, CUSTOMER, INVOICE, INVOICES, WITH_INVOICE_TYPE
 
 RECLAMATION = 'BUREAU OF RECLAMATION'
 OTHER = 'OTHER SUBAGENCY'
@@ -74,6 +75,18 @@ class FilterChainTests(unittest.TestCase):
         self.assertEqual(result['answer']['measure']['value'], 23)   # 20 + 3
         self.assertEqual(result['evidence']['filters'], [{'field': '折扣', 'equals': '0', 'before': 3, 'after': 2, 'examples': ['O1、P1'], 'removed_measure': 10}])
 
+    def test_looking_one_object_up_by_its_identity_names_no_other_objects(self):
+        result = run_query(ONTOLOGY, BUNDLE, {'start': 'award', 'where': [where('award_id', 'A2')], 'measure': TOTAL})
+        self.assertEqual(result['evidence']['filters'], [{'field': 'award_id', 'equals': 'A2', 'before': 9, 'after': 1}])
+
+    def test_removed_objects_whose_rows_cannot_be_added_report_no_removed_amount(self):
+        records = [{**r, 'region': 'N' if r['customer_id'] == 'A' else 'S'} for r in INVOICES['sources']['invoices']['records']]
+        regions = {**INVOICES, 'sources': {'invoices': {'records': records, 'requests': []}}}
+        ontology = {**WITH_INVOICE_TYPE, 'object_types': [{**CUSTOMER, 'attributes': [*CUSTOMER['attributes'], {'source': 'invoices', 'path': 'region'}]}, INVOICE]}
+        result = run_query(ontology, regions, {'start': 'customer', 'where': [{'field': 'invoices.region', 'equals': 'S'}], 'measure': AMOUNT_SUM})
+        self.assertEqual(result['answer']['measure']['value'], 10)
+        self.assertNotIn('removed_measure', result['evidence']['filters'][0])   # A's 5 + 5 + 4 cannot be read through 客户
+
 
 class NotInQuestionTests(unittest.TestCase):
     QUERY = {'start': 'award', 'where': THREE, 'measure': TOTAL}
@@ -104,6 +117,11 @@ class NotInQuestionTests(unittest.TestCase):
     def test_a_question_the_person_typed_is_what_the_filters_are_checked_against(self):
         item = self.ask('BUREAU OF RECLAMATION 1425 ACTIVE 合同合计', question='合同金额合计是多少？')   # the model's rewording says them all
         self.assertEqual(self.flags(item), [True, True, True])
+
+    def test_a_short_code_counts_only_as_a_word_of_its_own(self):
+        result = {'evidence': {'filters': [{'field': 'region', 'equals': 'N'}, {'field': 'zone', 'equals': 'S'}]}}
+        flagged = flag_unasked_filters(result, 'How many invoices in Nanjing, zone S?')
+        self.assertEqual([f.get('not_in_question') for f in flagged['evidence']['filters']], [True, None])
 
 
 if __name__ == '__main__':

@@ -61,6 +61,28 @@ class UnknownKeysTests(unittest.TestCase):
             with self.subTest(query=query):
                 self.assertEqual(run_query(PROPOSAL, BUNDLE, query)['status'], 'answered')
 
+    def test_a_group_or_a_measure_with_a_key_the_format_does_not_have_is_a_query_limit_that_names_it(self):
+        for query, key in (({'start': 'order', 'group_by': [{'via': [], 'field': '订单.金额', 'bucket': 'month'}]}, 'bucket'),
+                           ({'start': 'order', 'measure': {'field': '订单.金额', 'op': 'sum', 'where': {'field': '订单.金额', 'equals': '100'}}}, 'where')):
+            with self.subTest(key=key):
+                result = run_query(PROPOSAL, BUNDLE, query)
+                self.assertEqual(result['status'], 'query_limit')
+                self.assertIn(key, result['reason'])
+
+    def test_a_list_or_a_range_as_the_value_to_equal_is_a_query_limit(self):
+        for equals in (['100', '200'], {'from': '2026-01-01', 'to': '2026-02-01'}):
+            with self.subTest(equals=equals):
+                result = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'where': [{'field': '订单.金额', 'equals': equals}]})
+                self.assertEqual(result['status'], 'query_limit')
+
+    def test_an_extra_key_left_empty_says_nothing_and_is_ignored(self):
+        for query in ({'start': 'order', 'limit': None},
+                      {'start': 'order', 'where': [{'field': '订单.金额', 'equals': '100', 'note': ''}]},
+                      {'start': 'order', 'group_by': [{'via': [], 'field': '订单.金额', 'bucket': None}]},
+                      {'start': 'order', 'measure': {'field': '订单.金额', 'op': 'sum', 'derived': None, 'where': []}}):
+            with self.subTest(query=query):
+                self.assertEqual(run_query(PROPOSAL, BUNDLE, query)['status'], 'answered')
+
 
 if __name__ == '__main__':
     unittest.main()

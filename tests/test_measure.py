@@ -1,6 +1,8 @@
 import unittest
 
 from ontology_poc_generator.derived_measures import parse_derived
+from ontology_poc_generator.ontology_confirm import without_wrong
+from ontology_poc_generator.public_ontology import build_graph
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT, run_query
 from tests.test_company_ontology import BUNDLE, PROPOSAL
 
@@ -111,6 +113,52 @@ class RowsBehindOneObjectTests(unittest.TestCase):
                                                                       for r in INVOICES['sources']['invoices']['records']], 'requests': []}}}
         answer = run_query(WITH_INVOICE_TYPE, numbered, {'start': 'customer', 'measure': {'field': 'invoices.customer_id', 'op': 'sum'}})['answer']
         self.assertEqual((answer['measure']['value'], answer['measure']['counted']), (3, 2))
+
+
+# C1 两张发票都是 9.90：按客户把行并成一个值是 14.9，真实合计 24.8
+SAME_AMOUNTS = {**INVOICES, 'sources': {'invoices': {'records': [
+    {'invoice_id': 'I1', 'customer_id': 'C1', 'amount': '9.90', 'credit_limit': '100'},
+    {'invoice_id': 'I2', 'customer_id': 'C1', 'amount': '9.90', 'credit_limit': '100'},
+    {'invoice_id': 'I3', 'customer_id': 'C2', 'amount': '5.00', 'credit_limit': '50'}], 'requests': []}}}
+
+
+class RepeatedValuesTests(unittest.TestCase):
+    def test_equal_values_on_every_row_are_refused_when_the_row_level_object_carries_the_field(self):
+        result = run_query(WITH_INVOICE_TYPE, SAME_AMOUNTS, {'start': 'customer', 'measure': AMOUNT_SUM})
+        self.assertEqual(result['status'], 'query_limit')
+        for said in ('都一样', '“发票”', '按客户分组'):
+            self.assertIn(said, result['reason'])
+
+    def test_a_value_only_the_object_carries_is_a_copy_counted_once_and_the_fold_is_shown_beside_the_answer(self):
+        # 授信额度只挂在客户上，发票类型没有这个字段：它是抄在每行上的客户属性，改从发票加反而会加三遍
+        result = run_query(WITH_INVOICE_TYPE, INVOICES, {'start': 'customer', 'measure': LIMIT})
+        self.assertEqual(result['answer']['measure']['value'], 150)
+        self.assertEqual(result['evidence']['folded'], [{'field': 'credit_limit', 'table': 'invoices', 'objects': 1, 'examples': ['A']}])
+
+    def test_one_row_read_twice_by_the_same_object_is_one_row(self):
+        party = {'key': 'party', 'label': '往来方', 'attributes': [{'source': 'invoices', 'path': 'amount'}],
+                 'populated_from': [{'source': 'invoices', 'identity': {'id': 'customer_id'}}, {'source': 'invoices', 'identity': {'id': 'payer_id'}}]}
+        rows = {**INVOICES, 'sources': {'invoices': {'records': [{'invoice_id': 'I1', 'customer_id': 'A', 'payer_id': 'A', 'amount': '5'},
+                                                                  {'invoice_id': 'I2', 'customer_id': 'B', 'payer_id': 'B', 'amount': '7'}], 'requests': []}}}
+        result = run_query({'object_types': [party, INVOICE], 'relations': [], 'ignored_fields': []}, rows, {'start': 'party', 'measure': AMOUNT_SUM})
+        self.assertEqual(result['answer']['measure']['value'], 12)
+        self.assertNotIn('evidence', result)
+
+    def test_several_values_inside_one_row_are_refused(self):
+        orders = {**INVOICES, 'sources': {'orders': {'records': [{'oid': 'O1', 'lines': [{'qty': '2'}, {'qty': '2'}]},
+                                                                  {'oid': 'O2', 'lines': [{'qty': '3'}]}], 'requests': []}}}
+        ontology = {'object_types': [{'key': 'order', 'label': '订单', 'populated_from': [{'source': 'orders', 'identity': {'oid': 'oid'}}],
+                                      'attributes': [{'source': 'orders', 'path': 'lines[].qty'}]}], 'relations': [], 'ignored_fields': []}
+        result = run_query(ontology, orders, {'start': 'order', 'measure': {'field': 'orders.lines[].qty', 'op': 'sum'}})
+        self.assertEqual(result['status'], 'query_limit')   # 2 + 2 + 3 is 7; the distinct values give 5
+        self.assertIn('一个订单', result['reason'])
+
+    def test_a_row_level_object_a_person_rejected_is_neither_named_nor_a_crash(self):
+        limit, _ = parse_derived(WITH_INVOICE_TYPE, {'type': 'customer', 'label': '授信', 'terms': [{'sign': 1, 'factors': [{'field': 'credit_limit'}]}]})
+        reviewed = without_wrong(WITH_INVOICE_TYPE, {'types': {'invoice': {'verdict': 'wrong'}}})
+        graph = build_graph(WITH_INVOICE_TYPE, INVOICES)   # confirming a formula builds the graph from the ontology before review
+        result = run_query(reviewed, INVOICES, {'start': 'customer', 'measure': {'derived': '授信', 'op': 'sum'}}, graph, [limit])
+        self.assertEqual(result['answer']['measure']['value'], 150)
 
 
 if __name__ == '__main__':

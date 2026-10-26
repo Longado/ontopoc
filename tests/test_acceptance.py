@@ -81,6 +81,10 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(again['items'][0]['evidence']['filters'][0]['before'], 4)
         self.assertIs(again['items'][0]['changed'], False)
 
+    def test_a_rerun_still_marks_the_filter_the_question_never_named(self):
+        filtered = parse_acceptance([{'question': '订单有几个？', 'query': {'start': 'order', 'where': [{'field': '订单.金额', 'equals': '100'}]}}])
+        self.assertIs(check_acceptance(PROPOSAL, BUNDLE, filtered)['items'][0]['evidence']['filters'][0]['not_in_question'], True)
+
     def test_a_query_whose_field_is_gone_stops_and_names_the_break(self):
         renamed = {**PROPOSAL, 'object_types': [{**t, 'attributes': [a for a in t['attributes'] if a['path'] != '名称']} if t['key'] == 'customer' else t
                                                 for t in PROPOSAL['object_types']]}

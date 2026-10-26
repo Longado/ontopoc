@@ -52,6 +52,10 @@ class FanTrapTests(unittest.TestCase):
         self.assertEqual(sorted(g[0] for g in answer['groups']), ['乙公司 · 食品', '甲公司 · 烟草', '甲公司 · 食品'])
         self.assertEqual(answer['total_groups'], 3)
 
+    def test_the_longer_path_first_still_reads_one_chain(self):
+        answer = run_query(ONTOLOGY, BUNDLE, {'start': 'business', 'group_by': [BY_TYPE, BY_LICENSE]})['answer']
+        self.assertEqual(sorted(g[0] for g in answer['groups']), sorted(['食品 · L1', '烟草 · L2', '食品 · L3']))   # not 食品 · L2 or 烟草 · L1
+
 
 # V1 经两行关系连到 P1、P2 两个对象，它们的名字相同（真实采购数据里同一母公司被登记成两个对象）；V3 也连 P1
 VENDORS = {
@@ -102,6 +106,35 @@ class SameValueFromTwoObjectsTests(unittest.TestCase):
         result = run_query(VENDOR_ONTOLOGY, VENDORS, {'start': 'vendor', 'group_by': [{'via': [], 'field': 'vendors.amount'}]})
         self.assertEqual(result['status'], 'answered')
         self.assertNotIn('evidence', result)
+
+
+# 甲公司的三张执照都是食品，两个网点都在杭州：一组“食品 · 杭州”背后是 3 张执照和 2 个网点，不是 6 个对象
+BRANCHES = {
+    'schema': 'company_source_bundle.v1', 'decision': '看各类执照和网点城市',
+    'file': {'name': 'branches.csv', 'sha256': 'b' * 64, 'kind': 'table'},
+    'sources': {
+        'licences': {'records': [{'licence': f'L{i}', 'firm': 'E1', 'kind': '食品'} for i in (1, 2, 3)], 'requests': []},
+        'branches': {'records': [{'branch': f'B{i}', 'firm': 'E1', 'city': '杭州'} for i in (1, 2)], 'requests': []},
+    },
+}
+BRANCH_ONTOLOGY = {
+    'object_types': [
+        {'key': 'firm', 'label': '企业', 'populated_from': [{'source': 'licences', 'identity': {'id': 'firm'}}, {'source': 'branches', 'identity': {'id': 'firm'}}], 'attributes': []},
+        {'key': 'licence', 'label': '执照', 'populated_from': [{'source': 'licences', 'identity': {'id': 'licence'}}], 'attributes': [{'source': 'licences', 'path': 'kind'}]},
+        {'key': 'branch', 'label': '网点', 'populated_from': [{'source': 'branches', 'identity': {'id': 'branch'}}], 'attributes': [{'source': 'branches', 'path': 'city'}]},
+    ],
+    'relations': [{'key': 'holds', 'from': 'firm', 'to': 'licence', 'source': 'licences', 'meaning': '企业持有执照'},
+                  {'key': 'has_branch', 'from': 'firm', 'to': 'branch', 'source': 'branches', 'meaning': '企业有网点'}],
+    'ignored_fields': [],
+}
+
+
+class MergedObjectsTests(unittest.TestCase):
+    def test_the_objects_named_are_the_ones_that_differ_not_every_chain(self):
+        result = run_query(BRANCH_ONTOLOGY, BRANCHES, {'start': 'firm', 'group_by': [{'via': ['holds'], 'field': 'licences.kind'},
+                                                                                     {'via': ['has_branch'], 'field': 'branches.city'}]})
+        self.assertEqual(result['answer']['groups'], [['食品 · 杭州', 1]])
+        self.assertEqual(result['evidence']['merged'], [{'group': '食品 · 杭州', 'starts': 1, 'objects': 5, 'examples': ['B1', 'B2', 'L1']}])
 
 
 if __name__ == '__main__':
