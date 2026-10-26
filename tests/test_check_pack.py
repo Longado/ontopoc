@@ -87,7 +87,7 @@ class FilterChainTests(unittest.TestCase):
                     'relations': [], 'ignored_fields': []}
         result = run_query(ontology, lines, {'start': 'line', 'where': [{'field': 'lines.order_id', 'equals': 'O1'}], 'measure': {'field': 'lines.qty', 'op': 'sum'}})
         self.assertEqual(result['evidence']['filters'][0]['removed_measure'], 17)
-        self.assertEqual(result['evidence']['filters'][0]['examples'], ['O2 · 1', 'O3 · 1'])
+        self.assertEqual(result['evidence']['filters'][0]['examples'], ['1 · O2', '1 · O3'])   # key parts in the order of their names, as everywhere
 
     def test_removed_objects_whose_rows_cannot_be_added_report_no_removed_amount(self):
         records = [{**r, 'region': 'N' if r['customer_id'] == 'A' else 'S'} for r in INVOICES['sources']['invoices']['records']]
