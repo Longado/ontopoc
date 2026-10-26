@@ -90,7 +90,7 @@ class SameValueFromTwoObjectsTests(unittest.TestCase):
     def test_a_start_object_counts_once_per_group_and_the_merge_is_shown_beside_the_answer(self):
         result = run_query(VENDOR_ONTOLOGY, VENDORS, {'start': 'vendor', 'group_by': [BY_PARENT_NAME]})
         self.assertEqual(result['answer']['groups'], [[GREENBERRY, 2], ['OTHER CO', 1]])   # V1 and V3, not V1 twice
-        self.assertEqual(result['evidence'], {'merged': [{'group': GREENBERRY, 'starts': 1, 'objects': 2, 'examples': ['P1', 'P2']}]})
+        self.assertEqual(result['evidence'], {'merged': [{'group': GREENBERRY, 'starts': 1, 'objects': 2, 'start': '供应商', 'reached': '最终母公司', 'examples': ['P1', 'P2']}]})
         self.assertNotIn('evidence', result['answer'])   # acceptance compares the answer between runs
 
     def test_a_sum_and_a_share_read_each_start_object_once(self):
@@ -134,7 +134,7 @@ class MergedObjectsTests(unittest.TestCase):
         result = run_query(BRANCH_ONTOLOGY, BRANCHES, {'start': 'firm', 'group_by': [{'via': ['holds'], 'field': 'licences.kind'},
                                                                                      {'via': ['has_branch'], 'field': 'branches.city'}]})
         self.assertEqual(result['answer']['groups'], [['食品 · 杭州', 1]])
-        self.assertEqual(result['evidence']['merged'], [{'group': '食品 · 杭州', 'starts': 1, 'objects': 5, 'examples': ['B1', 'B2', 'L1']}])
+        self.assertEqual(result['evidence']['merged'], [{'group': '食品 · 杭州', 'starts': 1, 'objects': 5, 'start': '企业', 'reached': '网点、执照', 'examples': ['B1', 'B2', 'L1']}])
 
 
 if __name__ == '__main__':

@@ -133,7 +133,7 @@ class RepeatedValuesTests(unittest.TestCase):
         # 授信额度只挂在客户上，发票类型没有这个字段：它是抄在每行上的客户属性，改从发票加反而会加三遍
         result = run_query(WITH_INVOICE_TYPE, INVOICES, {'start': 'customer', 'measure': LIMIT})
         self.assertEqual(result['answer']['measure']['value'], 150)
-        self.assertEqual(result['evidence']['folded'], [{'field': 'credit_limit', 'table': 'invoices', 'objects': 1, 'examples': ['A']}])
+        self.assertEqual(result['evidence']['folded'], [{'field': 'credit_limit', 'table': 'invoices', 'start': '客户', 'objects': 1, 'examples': ['A']}])
 
     def test_one_row_read_twice_by_the_same_object_is_one_row(self):
         party = {'key': 'party', 'label': '往来方', 'attributes': [{'source': 'invoices', 'path': 'amount'}],

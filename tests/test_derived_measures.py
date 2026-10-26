@@ -148,7 +148,7 @@ class ServerTests(unittest.TestCase):
             _, confirmed = call(base, '/api/ontology/derived', {'saved_as': run['saved_as'], 'derive': item['derive']})
         [again] = confirmed['evaluation']['asked'][-1]['items']
         self.assertEqual(again['answer']['groups'], [['C1', 20, 1], ['C2', 3, 1]])
-        self.assertEqual(again['evidence']['filters'], [{'field': '折扣', 'equals': '0', 'before': 3, 'after': 2, 'examples': ['O1、P1'],
+        self.assertEqual(again['evidence']['filters'], [{'field': '折扣', 'equals': '0', 'before': 3, 'after': 2, 'examples': ['O1 · P1'],
                                                          'removed_measure': 10, 'not_in_question': True}])
 
     def test_a_formula_the_page_sends_is_checked_again(self):

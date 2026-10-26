@@ -66,14 +66,14 @@ class FilterChainTests(unittest.TestCase):
         self.assertEqual(result['answer']['groups'], [[GREENBERRY, 1]])
         self.assertEqual(result['evidence'], {
             'filters': [{'field': 'amount', 'equals': '100', 'before': 3, 'after': 1, 'examples': ['V2', 'V3']}],
-            'merged': [{'group': GREENBERRY, 'starts': 1, 'objects': 2, 'examples': ['P1', 'P2']}]})
+            'merged': [{'group': GREENBERRY, 'starts': 1, 'objects': 2, 'start': '供应商', 'reached': '最终母公司', 'examples': ['P1', 'P2']}]})
 
     def test_a_derived_measure_reports_what_the_removed_objects_would_have_added(self):
         derived, _ = parse_derived(LINES, AMOUNT)
         query = {'start': 'order_line', 'where': [{'field': 'lines.折扣', 'equals': '0'}], 'measure': {'derived': '金额', 'op': 'sum'}}
         result = run_query(LINES, lines_bundle(), query, derived=[derived])
         self.assertEqual(result['answer']['measure']['value'], 23)   # 20 + 3
-        self.assertEqual(result['evidence']['filters'], [{'field': '折扣', 'equals': '0', 'before': 3, 'after': 2, 'examples': ['O1、P1'], 'removed_measure': 10}])
+        self.assertEqual(result['evidence']['filters'], [{'field': '折扣', 'equals': '0', 'before': 3, 'after': 2, 'examples': ['O1 · P1'], 'removed_measure': 10}])
 
     def test_looking_one_object_up_by_its_identity_names_no_other_objects(self):
         result = run_query(ONTOLOGY, BUNDLE, {'start': 'award', 'where': [where('award_id', 'A2')], 'measure': TOTAL})
