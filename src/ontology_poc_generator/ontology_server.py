@@ -772,6 +772,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 items = parse_acceptance(payload.get('items')) if payload.get('items') else []
                 existing = {item['question']: item for item in (result['evaluation'].get('acceptance') or {}).get('items', [])}
+                # the file's line keeps one list: an older run opened from the library may hold an agreement made since replaced
+                shared_path = output_dir / 'acceptance' / f"{memory_key(result)}.json"
+                latest = {i['question']: i['confirmed'] for i in json.loads(shared_path.read_text(encoding='utf-8'))['items']
+                          if i.get('confirmed')} if shared_path.exists() else {}
                 accepted_now = set()   # what the person agrees to in this request; the rest of the list was agreed earlier
                 for item in items:
                     old = existing.get(item['question'])
@@ -783,8 +787,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     if same and old.get('snapshot') is not None:
                         # A list edit keeps server-held identity evidence; accepting a new query is a separate decision.
                         item.update({key: old.get(key) for key in ('snapshot', 'status', 'answer', 'path')})
-                    if same and old.get('confirmed'):
-                        item['confirmed'] = old['confirmed']   # the page never holds it: an edit gives back what was agreed
+                    # the line's list is written last by every save, so it wins a tie (agreements are stamped to the second)
+                    agreements = [c for c in (latest.get(item['question']), old.get('confirmed') if old else None) if c]
+                    if same and agreements:
+                        item['confirmed'] = max(agreements, key=lambda c: c['at'])   # the page never holds it: an edit gives back the latest agreement
                     elif not same:
                         accepted_now.add(item['question'])
             except (ValueError, UnicodeError) as exc:

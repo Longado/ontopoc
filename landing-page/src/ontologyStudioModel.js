@@ -128,12 +128,17 @@ const foldedLine = (f) => {
   return `“${f.field}”在 ${f.objects} 个${start}上各有好几行一样的值（${f.examples?.length ? `${shown(f.examples, f.objects)}，` : ""}${f.table} 表），每个${start}只算了一次`;
 };
 
-/** The check pack beside an answer: what each filter removed, values copied on several rows of one object, and groups
- *  where several objects fed one count. */
+const sharedLine = (r) => {
+  const start = r.start || "对象";
+  return `${r.table} 表有 ${r.rows} 行同时算进了不止一个${start}${r.examples?.length ? `（例如 ${r.examples[0]} 共用一行）` : ""}，每个${start}自己的数对，全部${start}的合计里这些行算了不止一次`;
+};
+
+/** The check pack beside an answer: what each filter removed, values copied on several rows of one object, rows
+ *  counted for several objects, and groups where several objects fed one count. */
 export function evidenceLines(item) {
   const e = item.evidence || {};
   const unlisted = (e.merged_total || 0) - (e.merged || []).length;
-  return [...(e.filters || []).map(filterLine), ...(e.folded || []).map(foldedLine), ...(e.merged || []).map(mergedLine),
+  return [...(e.filters || []).map(filterLine), ...(e.folded || []).map(foldedLine), ...(e.shared || []).map(sharedLine), ...(e.merged || []).map(mergedLine),
     ...(unlisted > 0 ? [`另有 ${unlisted} 组也是这样，没有列出`] : [])];
 }
 
@@ -147,6 +152,7 @@ export function evidenceTitle(item) {
     ...(unasked ? [`有${unasked === 1 ? "一个" : ` ${unasked} 个`}筛选条件问题里没提`] : []),
     ...(merged === 1 && one.reached ? [`“${one.group}”背后有 ${one.objects} 个${one.reached}`] : merged ? [`有 ${merged} 组背后不止一个对象`] : []),
     ...(e.folded?.length ? ["有重复行只算了一次"] : []),
+    ...(e.shared?.length ? [`有的行算进了不止一个${e.shared[0].start || "对象"}`] : []),
   ];
   return found.length ? `核对：${found.join("；")}` : "核对";
 }

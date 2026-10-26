@@ -149,6 +149,10 @@ def _shape_limit(query: dict) -> str | None:
     extra = _extra(query, QUERY_KEYS)
     if extra:
         return f'这道题用了 {"、".join(extra)}：查询语言还表达不了'
+    shapes = {'where': list, 'via': list, 'group_by': (list, str), 'share': dict, 'measure': dict}   # group_by as text: written by v3
+    odd = [k for k, kind in shapes.items() if query.get(k) not in (None, '', [], {}) and not isinstance(query[k], kind)]
+    if odd:
+        return f'这道题的 {"、".join(odd)} 写法查询语言读不了'
     conditions = [*(query.get('where') or []), *([query['share']] if query.get('share') else [])]
     reason = next(filter(None, map(_condition_limit, conditions)), None)
     if reason:
@@ -161,32 +165,40 @@ def _shape_limit(query: dict) -> str | None:
     return f'求和、求平均只能直接算一个字段，这道题用了 {"、".join(extra)}：查询语言还表达不了' if extra else None
 
 
-def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, measure: dict) -> tuple[str | None, list]:
-    """How the measure reads on objects that hold several values of it: (why it cannot be added up, the objects whose
-    values were one value repeated and count once). _values() keeps an object's distinct values, so an object owning
-    several rows of the measure's table, or a list in one row, would add each distinct value once and lose the repeats.
-    Refused when the values disagree or sit in one row's list, and when a type that reads the table a row each carries
-    the field too: that one is what to add up. A value only the start object carries is a copy on each of its rows."""
+def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, measure: dict) -> tuple[str | None, dict]:
+    """How the measure reads on the start objects: (why it cannot be added up, notes for the check pack). _values()
+    keeps an object's distinct values, so an object owning several rows of the measure's table, or a list in one row,
+    would add each distinct value once and lose the repeats; and a row read by two objects (payer and payee) goes into
+    the sum over both. Refused when the values disagree or sit in one row's list, and, for repeats or shared rows, when
+    a type that reads the table a row each carries the field too: that one is what to add up. Otherwise answered and
+    noted: a value only the start object carries is a copy on each of its rows (folded, counted once); a shared row is
+    right for each object that reads it and counts more than once in the sum over them (shared)."""
     label = lambda k: types[k].get('label') or k
     text = lambda inst: ' · '.join(str(v) for _, v in inst[1])   # one object's key parts, kept apart from the next example
     own = _identity_fields(types[start])   # an identity field is one value per object by definition
     rows = lambda entries, src: {i for s, i in entries if s == src}   # one row read twice (two roles, one table) is one row
-    what = '加' if measure['op'] == 'sum' else '求平均'
+    what, name = '加' if measure['op'] == 'sum' else '求平均', label(start)
     fields = [f['field'] for term in measure['derived']['terms'] for f in term['factors']] if measure.get('derived') else [measure['field']]
-    folded = []
+    notes = {'folded': [], 'shared': []}
     for field in dict.fromkeys(f for f in fields if f not in own):
         src, _, path = field.partition('.')
         records = bundle['sources'].get(src, {}).get('records', [])
-        read = lambda inst: [[str(v) for v in resolve(records[i], path) if v not in (None, '')] for i in sorted(rows(graph['records_of'].get(inst, []), src))]
-        several = [(inst, got) for inst, got in ((inst, read(inst)) for inst in objects) if sum(map(len, got)) > 1]
-        if not several:
+        valued = lambda i: [str(v) for v in resolve(records[i], path) if v not in (None, '')]
+        owned = {inst: sorted(rows(graph['records_of'].get(inst, []), src)) for inst in objects}
+        several = [(inst, got) for inst, got in ((inst, [valued(i) for i in owned[inst]]) for inst in objects) if sum(map(len, got)) > 1]
+        holders = {}   # row -> the start objects that read a value from it
+        for inst in objects:
+            for i in owned[inst]:
+                if valued(i):
+                    holders.setdefault(i, []).append(inst)
+        shared = [objs for _, objs in sorted(holders.items()) if len(objs) > 1]
+        if not several and not shared:
             continue
-        name = label(start)
         inside = next(((inst, got) for inst, got in several if any(len(g) > 1 for g in got)), None)
         if inside:
             shown = '、'.join([v for g in inside[1] for v in g][:3])
             return (f'“{path}”在一个{name}里有好几个值（例如 {text(inside[0])}：{shown}），按{name}{what}只会把不同的值各算一次；'
-                    f'查询还不能把一个对象里的一组值加起来，这道题现在算不了。'), []
+                    f'查询还不能把一个对象里的一组值加起来，这道题现在算不了。'), {}
         most = {}   # per other type still in the ontology: the most rows of src one of its objects owns
         for inst, entries in graph['records_of'].items():
             if inst[0] != start and inst[0] in types and rows(entries, src):
@@ -197,12 +209,18 @@ def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, 
         if differ:
             shown = '、'.join(list(dict.fromkeys(v for g in differ[1] for v in g))[:3])
             return (f'一个{name}在 {src} 表里对应好几个不同的“{path}”（例如 {text(differ[0])}：{shown}），按{name}{what}只会把每个不同的值算一次。'
-                    + (f'请从“{row}”出发，再按{name}分组。' if per_row else '本体里没有一行对应一个对象、又带这个字段的类型可以改从它出发，这道题现在算不了。')), []
-        if per_row:
+                    + (f'请从“{row}”出发，再按{name}分组。' if per_row else '本体里没有一行对应一个对象、又带这个字段的类型可以改从它出发，这道题现在算不了。')), {}
+        if several and per_row:
             return (f'有的{name}在 {src} 表里有好几行（例如 {text(several[0][0])}），“{path}”在这几行里都一样。如果它是每个“{row}”各自的数，请从“{row}”出发，再按{name}分组；'
-                    f'如果它是{name}自己的属性，请在本体里把它从“{row}”去掉。'), []
-        folded.append({'field': path, 'table': src, 'start': name, 'objects': len(several), 'examples': [text(i) for i, _ in several[:3]]})
-    return None, folded
+                    f'如果它是{name}自己的属性，请在本体里把它从“{row}”去掉。'), {}
+        if shared and per_row:
+            return (f'有的 {src} 行同时算进了好几个{name}（例如 {"、".join(map(text, shared[0]))} 共用一行），按{name}{what}会把这一行算好几次。'
+                    f'请从“{row}”出发，再按{name}分组。'), {}
+        if several:
+            notes['folded'].append({'field': path, 'table': src, 'start': name, 'objects': len(several), 'examples': [text(i) for i, _ in several[:3]]})
+        if shared and src not in {n['table'] for n in notes['shared']}:
+            notes['shared'].append({'field': path, 'table': src, 'start': name, 'rows': len(shared), 'examples': ['、'.join(map(text, objs)) for objs in shared[:3]]})
+    return None, notes
 
 
 def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None) -> dict:
@@ -286,7 +304,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             (hit if has(i, w) else miss).append(i)
         stages.append((w, len(starts), len(hit), miss))
         starts = hit
-    refused, folded = _repeats(types, bundle, graph, start, starts, measure) if measure else (None, [])
+    refused, notes = _repeats(types, bundle, graph, start, starts, measure) if measure else (None, {})
     if refused:
         return {'status': 'query_limit', 'reason': refused}
     name = lambda field: field.partition('.')[2]
@@ -329,14 +347,15 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             return {}
         read = [n for inst in gone for n in numbers(inst)[0]]
         return {'removed_measure': int_if_whole(sum(read))} if read else {}
-    lookup = _identity_fields(types[start])   # looking one object up by its key: the others it passed over are no news
+    # looking one object up by its whole key: the others it passed over are no news (one part of a key is a real filter)
+    lookup = _identity_fields(types[start]) if all(len(pop.get('identity') or {}) == 1 for pop in types[start].get('populated_from') or []) else {}
     filters = [{'field': name(w['field']), 'equals': w['equals'], 'before': before, 'after': after,
                 **({} if w['field'] in lookup else {'examples': [named(i) for i in gone[:3]], **removed_amount(gone)})}
                for w, before, after, gone in stages] if everyone else []
 
     def proved(result, merged=(), merged_total=0):
         """The check pack rides beside the answer, never inside it: acceptance compares `answer` between runs."""
-        pack = {**({'filters': filters} if filters else {}), **({'folded': folded} if folded else {}),
+        pack = {**({'filters': filters} if filters else {}), **{k: v for k, v in notes.items() if v},
                 **({'merged': merged} if merged else {}), **({'merged_total': merged_total} if merged_total > len(merged) else {})}
         return {**result, **({'evidence': pack} if pack else {})}
     if not starts:
@@ -443,8 +462,13 @@ def flag_unasked_filters(result: dict, question: str) -> dict:
 
     def named(value):
         v = squash(value)
-        if len(v) < 3 and v.isascii():   # a short code such as N sits inside any word: it has to stand on its own
-            return bool(v) and re.search(rf'(?<![A-Z0-9]){re.escape(v)}(?![A-Z0-9])', words) is not None
+        if len(v) < 3 and v.isascii():
+            # a short code such as N sits inside any word, and 0 inside 2026 or 0.5: it has to stand apart from letters
+            # where it is a letter and from digits where it is a digit, so Q1 still counts in 2026Q1
+            v = normalize_value(value) or ''
+            left, right = ('0-9' if v[:1].isdigit() else 'A-Z'), ('0-9' if v[-1:].isdigit() else 'A-Z')
+            decimal = r'(?!\.\d)' if v[-1:].isdigit() else ''
+            return bool(v) and re.search(rf'(?<![{left}]){re.escape(v)}(?![{right}]){decimal}', words) is not None
         return v in said
     marked = [f if named(f['equals']) else {**f, 'not_in_question': True} for f in filters]
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
