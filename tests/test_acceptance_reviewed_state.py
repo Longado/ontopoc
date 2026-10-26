@@ -31,6 +31,14 @@ class ReviewedAcceptanceTests(unittest.TestCase):
             self.assertEqual(saved['evaluation']['acceptance']['answered'], 0)
             self.assertEqual(saved['evaluation']['acceptance']['items'][0]['status'], 'broken')
 
+    def test_a_question_that_cannot_be_answered_when_accepted_has_nothing_agreed(self):
+        with server_helpers.OntologyServerTests().server(gateway=Model()) as (base, _):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            call(base, '/api/ontology/confirm', {'saved_as': run['saved_as'], 'decisions': decisions(run)})
+            _, saved = call(base, '/api/ontology/acceptance', {'saved_as': run['saved_as'], 'items': [ITEM]})
+            self.assertEqual(saved['evaluation']['acceptance']['items'][0]['status'], 'broken')
+            self.assertNotIn('confirmed', saved['evaluation']['acceptance']['items'][0])
+
     def test_confirmation_rechecks_existing_acceptance_and_persists_it(self):
         with server_helpers.OntologyServerTests().server(gateway=Model()) as (base, out):
             _, run = call(base, '/api/ontology/build', UPLOAD)
