@@ -86,6 +86,13 @@ test("the summary counts against the confirmation only when every compared quest
   assert.equal(acceptanceSummary({ total: 1, answered: 1, items: [item({ changed: null })] }), "1 道里能答 1 道，第一次执行");
 });
 
+test("a fixed question whose answer moved can be agreed on again as it reads now", () => {
+  assert.equal(acceptance.canReaccept(item({ changed: true, status: "answered", previous: agreed })), true);
+  assert.equal(acceptance.canReaccept(item({ changed: false, status: "answered", previous: agreed })), false);
+  assert.equal(acceptance.canReaccept(item({ changed: true, status: "broken", previous: agreed })), false);   // the query no longer runs: nothing to agree on
+  assert.equal(acceptance.canReaccept({ question: "q", query: null, status: "query_limit", changed: null }), false);
+});
+
 test("what the person agreed to is held by the service and is not sent back with the list", () => {
   const run = { evaluation: { acceptance: { items: [item({ answer: { total: 3 }, confirmed: { status: "answered", answer: { total: 2 }, at: agreed.confirmed_at, file: "sha-v1" }, previous: agreed, changed: true })] } } };
   const [saved] = savedAcceptance(run);

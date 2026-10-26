@@ -40,6 +40,9 @@ test("examples of the removed objects follow the count, and a filter that remove
 });
 
 test("an item with no check pack has no lines, and the title warns only when a filter was not in the question", () => {
+  assert.deepEqual(evidenceLines({ evidence: { folded: [{ field: "credit_limit", table: "invoices", objects: 2, examples: ["A", "C"] }] } }),
+    ["“credit_limit”在 2 个对象上各有好几个一样的值（invoices 表，例如 A、C），每个对象只算了一次"]);
+  assert.equal(evidenceLines({ evidence: { merged: [{ group: "G", starts: 1, objects: 2, examples: [] }], merged_total: 21 } }).at(-1), "另有 20 组也是这样，没有列出");
   assert.deepEqual(evidenceLines({ status: "answered", answer: { total: 3 } }), []);
   assert.deepEqual(evidenceLines({ evidence: { filters: [] } }), []);
   const f = (not_in_question) => ({ field: "a", equals: "1", before: 2, after: 1, examples: [], ...(not_in_question ? { not_in_question } : {}) });
