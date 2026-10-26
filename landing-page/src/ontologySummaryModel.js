@@ -1,6 +1,6 @@
 // A page the consultant can hand over: what was read, what the ontology says, what a person confirmed, what to check.
 // Only what is already on screen goes in here — no model prose, no internal keys, and no claim nobody has checked.
-import { ACCEPTANCE_LABELS } from "./ontologyAcceptanceModel.js";
+import { ACCEPTANCE_LABELS, changeLabel } from "./ontologyAcceptanceModel.js";
 import { CHECK_LABELS, answerLines, isDocument, localTime, typeLabel } from "./ontologyStudioModel.js";
 
 const name = (ontology, key) => typeLabel(ontology, key);
@@ -61,7 +61,7 @@ export function summaryMarkdown(run) {
     for (const item of acceptance.items) {
       out.push(`### ${item.question}`, "");
       if (item.note) out.push(`口径：${item.note}`, "");
-      out.push(`结果：${ACCEPTANCE_LABELS[item.status] || item.status}${item.changed === null ? "" : item.changed ? "，和上次不一样" : "，和上次一致"}`, "");
+      out.push(`结果：${ACCEPTANCE_LABELS[item.status] || item.status}${item.changed === null ? "" : `，${changeLabel(item, run)}`}`, "");
       const lines = answerLines(item);
       const listed = item.answer?.groups?.length || 0;   // group lines come first; what follows says what the figures leave out
       out.push(...lines.slice(0, Math.min(listed, SHOWN)).map((line) => `- ${line}`));

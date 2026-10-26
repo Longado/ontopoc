@@ -1,5 +1,5 @@
 // Acceptance questions: the few questions a person fixes for a file, so the next run is judged on the same questions.
-import { STATUS_LABELS } from "./ontologyStudioModel.js";
+import { STATUS_LABELS, localTime } from "./ontologyStudioModel.js";
 
 export const MAX_ACCEPTANCE = 3;
 export const ACCEPTANCE_LABELS = { ...STATUS_LABELS, broken: "查询失效" };
@@ -32,10 +32,24 @@ export function canAccept(run, item) {
 export const acceptItem = (saved, item, note) =>
   [...saved.filter((s) => s.question !== item.question), kept({ ...item, note: note.trim() })];
 
+// The service compares an item with the answer the person agreed to once it holds one (previous.confirmed_at), else with the last run.
+const compared = (acceptance) => acceptance.items.filter((i) => i.changed !== null);
+
+export function changeLabel(item, run) {
+  if (item.changed === null) return "";
+  if (!item.previous?.confirmed_at) return item.changed ? "和上次不一样" : "和上次一致";
+  const now = run?.file?.sha256;
+  const moved = Boolean(now && item.previous.confirmed_file && item.previous.confirmed_file !== now);   // not the file the person agreed on
+  return item.changed ? `和确认时不一样${moved ? "，数据已换版本" : ""}` : "和确认时一致";
+}
+
+export const previousTitle = (item) => (item.previous?.confirmed_at ? `确认时的答案（${localTime(item.previous.confirmed_at)}）` : "上次的答案");
+
 export function acceptanceSummary(acceptance) {
   const changed = acceptance.items.filter((i) => i.changed).length;
   const unmet = acceptance.items.filter((i) => !i.query).length;
-  const since = acceptance.items.some((i) => i.changed !== null) ? `${changed} 道和上次不一样` : "第一次执行";
+  const against = compared(acceptance).every((i) => i.previous?.confirmed_at) ? "确认时" : "上次";
+  const since = compared(acceptance).length ? `${changed} 道和${against}不一样` : "第一次执行";
   return `${acceptance.total} 道里能答 ${acceptance.answered} 道，${unmet ? `${unmet} 道现在还答不了，` : ""}${since}`;
 }
 
