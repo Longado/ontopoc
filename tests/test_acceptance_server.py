@@ -95,6 +95,16 @@ class ConfirmedAnswerTests(unittest.TestCase):
             _, back = call(base, '/api/ontology/build', upload(V1, previous=third['saved_as']))
             self.assertIs(back['evaluation']['acceptance']['items'][0]['changed'], False)
 
+    def test_confirming_the_ontology_rechecks_the_list_and_keeps_what_was_agreed(self):
+        with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
+            _, first = call(base, '/api/ontology/build', upload(V1))
+            [item] = accept(base, first, [COUNT_ORDERS])
+            decisions = {'types': {t['key']: {'verdict': 'ok'} for t in first['ontology']['object_types']}, 'relations': {}, 'added': []}
+            _, reviewed = call(base, '/api/ontology/confirm', {'saved_as': first['saved_as'], 'decisions': decisions})
+            self.assertEqual(reviewed['evaluation']['acceptance']['items'][0]['confirmed'], item['confirmed'])
+            stored = json.loads((out / 'acceptance' / f"{first['file']['sha256']}.json").read_text(encoding='utf-8'))
+            self.assertEqual(stored['items'][0]['confirmed'], item['confirmed'])
+
     def test_a_list_saved_before_confirmations_existed_is_compared_as_before_and_not_given_one(self):
         with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
             _, first = call(base, '/api/ontology/build', upload(V1))
