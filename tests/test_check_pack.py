@@ -79,6 +79,16 @@ class FilterChainTests(unittest.TestCase):
         result = run_query(ONTOLOGY, BUNDLE, {'start': 'award', 'where': [where('award_id', 'A2')], 'measure': TOTAL})
         self.assertEqual(result['evidence']['filters'], [{'field': 'award_id', 'equals': 'A2', 'before': 9, 'after': 1}])
 
+    def test_filtering_on_one_part_of_a_composite_key_still_names_what_it_removed(self):
+        lines = {**BUNDLE, 'sources': {'lines': {'records': [{'order_id': o, 'line_no': n, 'qty': q} for o, n, q in
+                                                             (('O1', '1', '2'), ('O1', '2', '3'), ('O2', '1', '10'), ('O3', '1', '7'))], 'requests': []}}}
+        ontology = {'object_types': [{'key': 'line', 'label': '订单行', 'attributes': [{'source': 'lines', 'path': 'qty'}],
+                                      'populated_from': [{'source': 'lines', 'identity': {'order_id': 'order_id', 'line_no': 'line_no'}}]}],
+                    'relations': [], 'ignored_fields': []}
+        result = run_query(ontology, lines, {'start': 'line', 'where': [{'field': 'lines.order_id', 'equals': 'O1'}], 'measure': {'field': 'lines.qty', 'op': 'sum'}})
+        self.assertEqual(result['evidence']['filters'][0]['removed_measure'], 17)
+        self.assertEqual(result['evidence']['filters'][0]['examples'], ['O2 · 1', 'O3 · 1'])
+
     def test_removed_objects_whose_rows_cannot_be_added_report_no_removed_amount(self):
         records = [{**r, 'region': 'N' if r['customer_id'] == 'A' else 'S'} for r in INVOICES['sources']['invoices']['records']]
         regions = {**INVOICES, 'sources': {'invoices': {'records': records, 'requests': []}}}
@@ -122,6 +132,11 @@ class NotInQuestionTests(unittest.TestCase):
         result = {'evidence': {'filters': [{'field': 'region', 'equals': 'N'}, {'field': 'zone', 'equals': 'S'}]}}
         flagged = flag_unasked_filters(result, 'How many invoices in Nanjing, zone S?')
         self.assertEqual([f.get('not_in_question') for f in flagged['evidence']['filters']], [True, None])
+        cases = (('Q1', '2026Q1的订单', None), ('N Y', 'orders in N Y last month', None), ('0', '折扣为0.5的订单', True), ('0', '折扣为0的订单', None), ('1', '2021 年的订单', True))
+        for value, question, flag in cases:
+            with self.subTest(value=value, question=question):
+                marked = flag_unasked_filters({'evidence': {'filters': [{'field': 'f', 'equals': value}]}}, question)
+                self.assertEqual(marked['evidence']['filters'][0].get('not_in_question'), flag)
 
 
 if __name__ == '__main__':

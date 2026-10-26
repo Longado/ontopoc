@@ -75,6 +75,13 @@ class UnknownKeysTests(unittest.TestCase):
                 result = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'where': [{'field': '订单.金额', 'equals': equals}]})
                 self.assertEqual(result['status'], 'query_limit')
 
+    def test_a_part_written_in_a_shape_the_format_does_not_have_is_a_query_limit(self):
+        for query in ({'start': 'order', 'measure': 'sum'}, {'start': 'order', 'group_by': {'via': [], 'field': '订单.金额'}},
+                      {'start': 'order', 'share': '订单.金额=100'}, {'start': 'order', 'where': 5}, {'start': 'order', 'via': 5},
+                      {'start': 'order', 'where': {'field': '订单.金额', 'equals': '100'}}):
+            with self.subTest(query=query):
+                self.assertEqual(run_query(PROPOSAL, BUNDLE, query)['status'], 'query_limit')
+
     def test_an_extra_key_left_empty_says_nothing_and_is_ignored(self):
         for query in ({'start': 'order', 'limit': None},
                       {'start': 'order', 'where': [{'field': '订单.金额', 'equals': '100', 'note': ''}]},

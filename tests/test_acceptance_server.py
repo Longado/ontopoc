@@ -78,6 +78,20 @@ class ConfirmedAnswerTests(unittest.TestCase):
             self.assertIs(again['changed'], False)
             self.assertEqual((again['previous']['answer'], again['previous']['confirmed_at']), ({'total': 3}, again['confirmed']['at']))
 
+    def test_editing_the_list_from_an_older_run_keeps_a_later_agreement(self):
+        with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
+            _, first = call(base, '/api/ontology/build', upload(V1))
+            accept(base, first, [COUNT_ORDERS, {**COUNT_ORDERS, 'question': '有几张订单？'}])
+            _, second = call(base, '/api/ontology/build', upload(V2, previous=first['saved_as']))
+            items = second['evaluation']['acceptance']['items']
+            [again, _] = accept(base, second, [page_shape(i) for i in items], replace_question=items[0]['question'])
+            # the first run opened again from the library, as it is on disk, and the second question taken off its list
+            old_copy = json.loads((out / first['saved_as']).read_text(encoding='utf-8'))['evaluation']['acceptance']['items']
+            [kept] = accept(base, first, [page_shape(old_copy[0])])
+            self.assertEqual(kept['confirmed'], again['confirmed'])
+            _, third = call(base, '/api/ontology/build', upload(V2, previous=second['saved_as']))
+            self.assertIs(third['evaluation']['acceptance']['items'][0]['changed'], False)
+
     def test_slow_drift_is_reported_on_every_rerun_against_what_the_person_agreed_to(self):
         with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
             _, first = call(base, '/api/ontology/build', upload(V1))

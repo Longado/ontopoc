@@ -43,6 +43,8 @@ test("an item with no check pack has no lines, and the title warns only when a f
   assert.deepEqual(evidenceLines({ evidence: { folded: [{ field: "credit_limit", table: "invoices", start: "客户", objects: 2, examples: ["A", "C"] }] } }),
     ["“credit_limit”在 2 个客户上各有好几行一样的值（A、C，invoices 表），每个客户只算了一次"]);
   assert.equal(evidenceLines({ evidence: { merged: [{ group: "G", starts: 1, objects: 2, examples: [] }], merged_total: 21 } }).at(-1), "另有 20 组也是这样，没有列出");
+  assert.deepEqual(evidenceLines({ evidence: { shared: [{ field: "amount", table: "transfers", start: "往来方", rows: 2, examples: ["A、B", "C、D"] }] } }),
+    ["transfers 表有 2 行同时算进了不止一个往来方（例如 A、B 共用一行），每个往来方自己的数对，全部往来方的合计里这些行算了不止一次"]);
   assert.deepEqual(evidenceLines({ status: "answered", answer: { total: 3 } }), []);
   assert.deepEqual(evidenceLines({ evidence: { filters: [] } }), []);
   const f = (not_in_question) => ({ field: "a", equals: "1", before: 2, after: 1, examples: [], ...(not_in_question ? { not_in_question } : {}) });
@@ -54,4 +56,5 @@ test("an item with no check pack has no lines, and the title warns only when a f
   assert.equal(evidenceTitle({ evidence: { merged: [merged, { ...merged, group: "H" }] } }), "核对：有 2 组背后不止一个对象");
   assert.equal(evidenceTitle({ evidence: { folded: [{ field: "x", table: "t", start: "客户", objects: 1, examples: [] }] } }), "核对：有重复行只算了一次");
   assert.equal(evidenceTitle({ evidence: { filters: [f(true)], merged: [merged] } }), "核对：有一个筛选条件问题里没提；“G”背后有 2 个最终母公司");
+  assert.equal(evidenceTitle({ evidence: { shared: [{ field: "x", table: "t", start: "往来方", rows: 2, examples: [] }] } }), "核对：有的行算进了不止一个往来方");
 });

@@ -169,5 +169,27 @@ class RepeatedValuesTests(unittest.TestCase):
         self.assertIn('“发票”', item['reason'])
 
 
+# 一笔转账既算付款方也算收款方：按往来方合计会把每笔算两次（真实合计 150）
+TRANSFERS = {**INVOICES, 'sources': {'transfers': {'records': [{'tid': 'T1', 'src': 'A', 'dst': 'B', 'amount': '100'},
+                                                                {'tid': 'T2', 'src': 'C', 'dst': 'D', 'amount': '50'}], 'requests': []}}}
+PARTY = {'key': 'party', 'label': '往来方', 'attributes': [{'source': 'transfers', 'path': 'amount'}],
+         'populated_from': [{'source': 'transfers', 'identity': {'id': 'src'}}, {'source': 'transfers', 'identity': {'id': 'dst'}}]}
+TRANSFER = {'key': 'transfer', 'label': '转账', 'attributes': [{'source': 'transfers', 'path': 'amount'}],
+            'populated_from': [{'source': 'transfers', 'identity': {'tid': 'tid'}}]}
+
+
+class SharedRowsTests(unittest.TestCase):
+    def test_a_row_counted_for_several_start_objects_is_refused_when_the_row_level_object_carries_the_field(self):
+        result = run_query({'object_types': [PARTY, TRANSFER], 'relations': [], 'ignored_fields': []}, TRANSFERS, {'start': 'party', 'measure': {'field': 'transfers.amount', 'op': 'sum'}})
+        self.assertEqual(result['status'], 'query_limit')
+        for said in ('好几个往来方', '“转账”'):
+            self.assertIn(said, result['reason'])
+
+    def test_without_a_row_level_object_the_rows_counted_more_than_once_are_shown_beside_the_answer(self):
+        result = run_query({'object_types': [PARTY], 'relations': [], 'ignored_fields': []}, TRANSFERS, {'start': 'party', 'measure': {'field': 'transfers.amount', 'op': 'sum'}})
+        self.assertEqual(result['answer']['measure']['value'], 300)   # each party's own total is right; the sum over parties counts each row twice
+        self.assertEqual(result['evidence']['shared'], [{'field': 'amount', 'table': 'transfers', 'start': '往来方', 'rows': 2, 'examples': ['A、B', 'C、D']}])
+
+
 if __name__ == '__main__':
     unittest.main()
