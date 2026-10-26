@@ -38,6 +38,16 @@ class CheckTests(unittest.TestCase):
         self.assertIs(moved['items'][0]['changed'], True)
         self.assertEqual(moved['items'][0]['previous']['answer'], again['items'][0]['answer'])
 
+    def test_the_check_pack_never_decides_whether_an_answer_changed(self):
+        filtered = parse_acceptance([{'question': '金额 100 的订单有几个？', 'query': {'start': 'order', 'where': [{'field': '订单.金额', 'equals': '100'}]}}])
+        first = check_acceptance(PROPOSAL, BUNDLE, filtered)
+        self.assertEqual(first['items'][0]['evidence']['filters'][0]['before'], 3)
+        extra = {'订单号': 'O4', '客户编号': 'C1', '金额': '55', '下单日期': '2026-01-05'}   # one more object the filter removes: the answer is the same
+        more = {**BUNDLE, 'sources': {**BUNDLE['sources'], '订单': {'records': [*BUNDLE['sources']['订单']['records'], extra], 'requests': []}}}
+        again = check_acceptance(PROPOSAL, more, first['items'])
+        self.assertEqual(again['items'][0]['evidence']['filters'][0]['before'], 4)
+        self.assertIs(again['items'][0]['changed'], False)
+
     def test_a_query_whose_field_is_gone_stops_and_names_the_break(self):
         renamed = {**PROPOSAL, 'object_types': [{**t, 'attributes': [a for a in t['attributes'] if a['path'] != '名称']} if t['key'] == 'customer' else t
                                                 for t in PROPOSAL['object_types']]}
