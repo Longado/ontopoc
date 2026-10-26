@@ -74,6 +74,9 @@ class ConfirmedAnswerTests(unittest.TestCase):
             # accepting the same question again is a new agreement, on the answer in front of the person now
             [again] = accept(base, second, [page_shape(kept, note='重新认可')], replace_question=kept['question'])
             self.assertEqual((again['confirmed']['answer'], again['confirmed']['file']), ({'total': 3}, second['file']['sha256']))
+            # and the page reads it against that agreement at once, not against the run before
+            self.assertIs(again['changed'], False)
+            self.assertEqual((again['previous']['answer'], again['previous']['confirmed_at']), ({'total': 3}, again['confirmed']['at']))
 
     def test_slow_drift_is_reported_on_every_rerun_against_what_the_person_agreed_to(self):
         with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
