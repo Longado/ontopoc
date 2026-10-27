@@ -64,7 +64,7 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 
 `unlinked` 的事答“数据没导全”（`incomplete`）时，服务会自动把另一端对象在卡上记成“只有一部分”（`partial`，格的答复里带着是哪件事记的）；这件事的答复改成别的，或不再是“数据没导全”，而那一格仍是这条答复记下的，服务就把它撤回。不用另发那一格。
 
-`run_overview`（和 `build_ontology` 返回的概况）里，`answered_items` 是已记下客户答复的事，`card` 是 `{cells, blank}`，`blank` 是还没说清的格数。`answered_items` 在服务是旧版本、没有“要确认的事”这条路由时为 `null`；`card` 只有在旧版服务没有口径卡这条路由时才是 `null`，没有数据行的运行（文档、没通过核验）给 `{cells: 0, blank: 0}`，文档运行不会去请求 `/card`。
+`run_overview`（和 `build_ontology` 返回的概况）里，`answered_items` 是已记下客户答复的事，`card` 是 `{cells, blank}`，`blank` 是还没说清的格数。`answered_items` 在服务是旧版本、没有“要确认的事”这条路由时为 `null`；`card` 只有在旧版服务没有口径卡这条路由时才是 `null`，没有数据行的运行（文档、没通过核验）给 `{cells: 0, blank: 0}`。文档运行没有要和客户确认的事：不会去请求 `/open-items` 和 `/card`，`open_items`、`answered_items` 直接给 `[]`（旧版服务对文档的这两个请求会回 404 或 400，整个概况就取不出来了）。
 
 问答照卡执行，全由代码完成：
 

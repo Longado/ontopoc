@@ -139,11 +139,14 @@ def _route(s, path: str):
 def _with_open_items(s, overview: dict) -> dict:
     """The overview and, from the service's own lists, what has to be settled with the client, what the client has
     already answered, and how many cells of the data-meaning card are still blank. A service that predates a route gives
-    null for it; without the open-items route there is also a note saying why. A document has no card and is not asked:
-    an older service answers a document's card with a 400, which would fail the whole overview."""
+    null for it; without the open-items route there is also a note saying why. A document has no rows, so no card and
+    nothing to settle: it is not asked, since an older service answers a document's card or list with a 400 or 404,
+    which would fail the whole overview."""
+    if overview['kind'] == 'document':
+        return {**overview, 'card': {'cells': 0, 'blank': 0}, 'open_items': [], 'answered_items': []}
     base = f"/api/ontology/runs/{quote(overview['saved_as'])}"
     listed = _route(s, base + '/open-items')
-    card = {'cells': 0, 'blank': 0} if overview['kind'] == 'document' else _route(s, base + '/card')
+    card = _route(s, base + '/card')
     shown = {**overview, 'card': None if card is None else {'cells': card['cells'], 'blank': card['blank']}}
     if listed is None:
         return {**shown, 'open_items': None, 'answered_items': None, 'note': OLD_SERVICE}
@@ -481,7 +484,7 @@ TOOLS = [
           'open_items 是要和客户确认的事（服务算好的清单，每项有 kind、ask、facts、from_model、target），先看它，是要带给人的事。'
           'answered_items 是已记下客户答复的事，card 是口径卡的格数 {cells, blank}（blank 是还没说清的格，看细节用 get_card）。'
           '服务是旧版本、没有这个清单时 open_items、answered_items 为 null，note 里说明；card 只有在旧版服务没有这条路由时才是 null，'
-          '没有数据行的运行（文档、没通过核验）给 {cells:0, blank:0}。', RUN, ('saved_as',)),
+          '没有数据行的运行（文档、没通过核验）给 {cells:0, blank:0}。文档运行没有要和客户确认的事，也不会去请求这份清单和口径卡：open_items、answered_items 直接给 []。', RUN, ('saved_as',)),
     _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。人判错的默认不给，列在 left_out 里；include_wrong=true 全给。', {**RUN, **WRONG}, ('saved_as',)),
     _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到数据平台时要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
     _tool(object_rows, '一个对象在数据里的每一个实例，一页 20 个；all=true 一次给全部。',
