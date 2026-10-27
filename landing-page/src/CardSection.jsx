@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { CARD_VOCAB, blankLine, cardEmptyText, changedCells, itemChoices, itemForm, itemProblem, saveProblem, stampLine, uniqueLine } from "./cardModel.js";
+import { CARD_VOCAB, blankLine, cardEmptyText, changedCells, itemChoices, itemForm, itemProblem, linkedHint, saveProblem, stampLine, uniqueLine } from "./cardModel.js";
 
 const count = (n) => n.toLocaleString("zh-CN");
 
@@ -9,6 +9,7 @@ export function AnswerForm({ item, answer = null, client, onDone }) {
   const [form, setForm] = useState(() => itemForm(answer));
   const choices = itemChoices(item);
   const problem = itemProblem(item, form, client.by);
+  const hint = linkedHint(item, form, answer);
   const set = (part) => setForm({ ...form, ...part });
   return <div className="os-add os-answer-form">
     {choices.length > 0 && <fieldset className="os-answer-choices"><legend>客户怎么答的</legend>
@@ -19,7 +20,7 @@ export function AnswerForm({ item, answer = null, client, onDone }) {
       <textarea rows={2} value={form.text} maxLength={300} onChange={(e) => set({ text: e.target.value })} /></label>
     <label>出处（选填，例如“10-27 会议”）<input value={form.basis} maxLength={200} onChange={(e) => set({ basis: e.target.value })} /></label>
     <label>答复人<input value={client.by} maxLength={40} onChange={(e) => client.setBy(e.target.value)} /></label>
-    {item.kind === "unlinked" && form.choice === "incomplete" && item.complete_id && <p className="pr-muted">另一端的对象会同时在口径卡上记成“数据里只有一部分”。</p>}
+    {hint && <p className="pr-muted">{hint}</p>}
     <div className="os-go">
       <button type="button" className="pr-primary" disabled={client.busy || Boolean(problem)} title={problem || undefined}
         onClick={async () => { if (await client.onSave(item, form)) onDone(); }}>{client.busy ? "保存中…" : "记下"}</button>
@@ -89,16 +90,16 @@ function TableCard({ table, draft, changed, onSet }) {
   </section>;
 }
 
-/** 口径卡: what code worked out for each table, and the cells only the client can answer. One save sends only what changed. */
-export function CardSection({ run, state, client, blocked }) {
-  const [draft, setDraft] = useState({});   // cell id -> the value set on this page and not saved yet
-  const [basis, setBasis] = useState("");
+/** 口径卡: what code worked out for each table, and the cells only the client can answer. One save sends only what changed.
+ *  `edit` holds what was set and not saved yet (cell id -> value, and the basis) above this page, so leaving it loses nothing. */
+export function CardSection({ run, state, client, blocked, edit }) {
+  const { cells: draft, basis } = edit;   // draft: cell id -> the value set on this page and not saved yet
   const card = state?.card;
   const cells = card ? changedCells(card, draft, basis) : [];
   const changed = new Set(cells.map((c) => c.id));
   const problem = saveProblem(client.by, cells, []) || blocked;
-  const onSet = (id, value) => setDraft((d) => ({ ...d, [id]: value }));
-  const save = async () => { if (await client.onSaveCells(cells)) { setDraft({}); setBasis(""); } };
+  const onSet = edit.setCell;
+  const save = async () => { if (await client.onSaveCells(cells)) edit.clear(); };
   return <>
     <section className="pr-card os-card">
       <div className="pr-card-head"><h2>口径卡</h2>{card?.cells > 0 && <span className="pr-muted">{blankLine(card)}</span>}</div>
@@ -109,7 +110,7 @@ export function CardSection({ run, state, client, blocked }) {
       {card && !card.tables.length && !card.objects.length && <p className="pr-muted">{cardEmptyText(run)}</p>}
       {card?.cells > 0 && <div className="os-card-who">
         <label>答复人<input value={client.by} maxLength={40} autoComplete="off" onChange={(e) => client.setBy(e.target.value)} /></label>
-        <label>出处（选填，这次保存的改动共用）<input value={basis} maxLength={200} autoComplete="off" onChange={(e) => setBasis(e.target.value)} /></label>
+        <label>出处（选填，这次保存的改动共用）<input value={basis} maxLength={200} autoComplete="off" onChange={(e) => edit.setBasis(e.target.value)} /></label>
         <button type="button" className="pr-primary" disabled={client.busy || Boolean(problem)} title={problem || undefined} onClick={save}>{client.busy ? "保存中…" : "保存口径卡"}</button>
         {cells.length > 0 && <span className="pr-muted">改了 {cells.length} 格，还没保存</span>}
       </div>}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
+import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, queryCanHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
 
 test("a reason the model wrote is said in one plain sentence, its words one click away", () => {
   const item = { status: "query_limit", reason: "要从 客户 经 下单 到 订单明细，再算 单价 × 数量 ×（1 − 折扣）", reason_from_model: true };
@@ -81,6 +81,20 @@ test("an answer with something to check says so in amber, and the plain ones kee
   assert.deepEqual(statusPill(paid({ evidence: {} }), labels), { cls: "answered", text: "能回答" });
   assert.deepEqual(statusPill({ status: "no_data" }, labels), { cls: "no_data", text: "数据里没有" });
   assert.deepEqual(statusPill({ status: "broken" }, labels), { cls: "ontology_gap", text: "查询失效" });
+});
+
+test("a question the card stopped is labelled as the card's doing, not as a way of asking that is not supported", () => {
+  const labels = { answered: "能回答", query_limit: "这种问法还不支持", broken: "查询失效" };
+  const refused = { status: "query_limit", reason: "「x」在口径卡里是“每次事件后的累计值”", refused_by_card: "amount:t.x" };
+  assert.deepEqual(statusPill(refused, labels), { cls: "query_limit", text: "口径卡拦下了" });
+  assert.deepEqual(statusPill({ status: "query_limit" }, labels), { cls: "query_limit", text: "这种问法还不支持" });
+  assert.deepEqual(statusPill({ ...refused, status: "broken" }, labels).text, "口径卡拦下了");   // a fixed question that the card now stops
+});
+
+test("the list of what a query can do is offered on a limit of the query language, never on a refusal by the card", () => {
+  assert.match(queryCanHint({ status: "query_limit" }), /还不能限定时间段/);
+  assert.equal(queryCanHint({ status: "query_limit", refused_by_card: "amount:t.x" }), undefined);
+  assert.equal(queryCanHint({ status: "no_data" }), undefined);
 });
 
 test("an answer worked again without a condition says which one went and that no model was called", () => {

@@ -37,6 +37,14 @@ test("an empty list does not read as nothing wrong when the ontology never passe
   assert.equal(openItemsEmpty(failed), "本体还没通过核验，代码先不列要确认的事。");
 });
 
+test("an empty list that the client has answered in full says so instead of that nothing was found", () => {
+  assert.equal(openItemsEmpty(run({}), 3), "要确认的事都已有客户答复（3 件，见下方）。");
+  assert.equal(openItemsEmpty(run({}), 0), "代码没有找到要和客户确认的事。");
+  assert.equal(openItemsEmpty(run({}), undefined), "代码没有找到要和客户确认的事。");
+  const failed = { ...run({}), ontology: { ...run({}).ontology, status: "needs_review" } };
+  assert.equal(openItemsEmpty(failed, 3), "本体还没通过核验，代码先不列要确认的事。");
+});
+
 test("a condition already dropped and worked out again has nothing left to drop, only the new answer to look at", () => {
   const asked = run({ asked: [{ items: [paid()] }] });
   assert.deepEqual(dropFor(asked, open), { field: "awarding_subagency", equals: "BUREAU OF RECLAMATION" });

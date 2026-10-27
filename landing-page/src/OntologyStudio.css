@@ -592,7 +592,7 @@ small.os-tone-warn { color: var(--amber); }
 .os-card-who .pr-primary { margin-top: 0; }
 .os-card-who input, .os-card-cell select, .os-card-range input, .os-add textarea { padding: 6px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; color: var(--ink); background: var(--surface); font: inherit; font-size: 13px; }
 .os-add textarea { resize: vertical; }
-.os-card-cell select { max-width: 24em; }
+.os-card-cell select { width: auto; max-width: 100%; }   /* as wide as the longest option, narrower only when the screen is */
 .os-card-cell select.is-changed, .os-card-range input.is-changed { border-color: var(--amber); background: var(--amber-soft); }
 .os-card-table, .os-card-objects { display: grid; gap: 8px; }
 .os-card-table h3 { margin: 8px 0 0; font-size: 14px; }
