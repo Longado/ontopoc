@@ -1121,8 +1121,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             evaluation = result['evaluation']
             accepted = (evaluation.get('acceptance') or {}).get('items') or []
+            # the questions asked one by one, newest first; then the model's own round, which the page offers this for too
             asked = [i for r in reversed(evaluation.get('asked') or []) for i in reversed(r['items']) if i['question'] == question]
-            candidates = asked + [i for i in accepted if i['question'] == question]
+            own_round = [i for i in (evaluation.get('questions') or {}).get('items') or [] if i['question'] == question]
+            candidates = asked + own_round + [i for i in accepted if i['question'] == question]
             if not candidates:
                 self.reply(404, {'error': '找不到这道题，可能已经被删掉了'})
                 return
