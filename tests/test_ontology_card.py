@@ -54,7 +54,7 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual([t['source'] for t in card['tables']], ['ledger', 'vendors', 'notes'])
         self.assertEqual((ledger['rows'], ledger['objects']), (4, [{'type': 'entry', 'label': '支出行', 'identity': ['batch', 'row_no']}]))
         # rows 2 and 3 carry the same key once spaces and case are folded the way the graph folds them: shown as first met
-        self.assertEqual(ledger['grain'], {'id': GRAIN, 'unique': {'fields': ['batch', 'row_no'], 'distinct': 3, 'duplicates': 1, 'examples': ['B1 · 2']},
+        self.assertEqual(ledger['grain'], {'id': GRAIN, 'unique': {'fields': ['batch', 'row_no'], 'distinct': 3, 'duplicates': 1, 'blank': 0, 'examples': ['B1 · 2']},
                                            'answer': None})
         self.assertEqual(ledger['dates'], [
             {'id': 'date:ledger.paid_on', 'range_id': 'range:ledger.paid_on', 'field': 'paid_on', 'type': 'DATE',
@@ -103,6 +103,33 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(oc.says('range:t.d', {'from': None, 'to': '2024-12-31'}), '声明覆盖到 2024-12-31')
         self.assertEqual(oc.says('range:t.d', {'from': '2024-10-01', 'to': None}), '声明从 2024-10-01 起')
 
+    def test_a_row_whose_identity_column_is_blank_is_still_one_key_and_is_counted_as_blank(self):
+        # row 2 twice with no batch, row 3 with the batch missing altogether: a blank part stays in the key as an empty string
+        rows = [LEDGER[0], {**LEDGER[1], 'batch': ''}, {**LEDGER[1], 'batch': ''}, {**LEDGER[3], 'batch': None}]
+        unique = oc.build_card(ONTOLOGY, bundle(rows))['tables'][0]['grain']['unique']
+        self.assertEqual(unique, {'fields': ['batch', 'row_no'], 'distinct': 3, 'duplicates': 1, 'blank': 3, 'examples': [' · 2']})
+        # every row is in exactly one key: distinct keys plus the rows the repeated keys carry beyond their first
+        self.assertEqual(unique['distinct'] + 1, len(rows))
+
+    def test_a_row_with_every_identity_column_filled_is_not_blank(self):
+        unique = oc.build_card(ONTOLOGY, bundle())['tables'][0]['grain']['unique']
+        self.assertEqual((unique['blank'], unique['distinct'], unique['duplicates']), (0, 3, 1))
+
+    def test_an_object_judged_wrong_has_no_complete_cell_but_its_table_keeps_the_others(self):
+        wrong = {'types': {'vendor': {'verdict': 'wrong'}}, 'relations': {}}
+        card = oc.build_card(ONTOLOGY, bundle(), decisions=wrong)
+        self.assertEqual([o['id'] for o in card['objects']], [ENTRY])
+        self.assertEqual((card['cells'], card['blank']), (9, 9))
+        vendors = card['tables'][1]
+        self.assertEqual((vendors['source'], vendors['grain']['id']), ('vendors', 'grain:vendors'))
+        self.assertEqual(oc.blank_by_table(card)[1], ('vendors', 1, []))   # the table's own row cell is still asked
+        for judged in (None, {'types': {'vendor': {'verdict': 'ok'}}}, {'types': {}}):   # not judged, or judged right: the cell stays
+            with self.subTest(decisions=judged):
+                self.assertEqual(len(oc.build_card(ONTOLOGY, bundle(), decisions=judged)['objects']), 2)
+        with self.assertRaises(oc.CardError) as caught:
+            oc.check_cells(card, [{'id': 'complete:vendors|uei', 'value': 'full'}], '张三', AT)
+        self.assertIn('没有这一格', str(caught.exception))
+
 
 class PostedCellTests(unittest.TestCase):
     CARD = oc.build_card(ONTOLOGY, bundle())
@@ -140,6 +167,13 @@ class PostedCellTests(unittest.TestCase):
             with self.subTest(cell=cell), self.assertRaises(oc.CardError) as caught:
                 self.check({'id': GRAIN, 'value': 'event'}, cell)
             self.assertIn(said_so, str(caught.exception))
+
+    def test_every_cell_must_say_its_value_and_clearing_is_a_null(self):
+        for cell in ({'id': GRAIN}, {'id': 'range:ledger.paid_on', 'note': '没写日期'}):
+            with self.subTest(cell=cell), self.assertRaises(oc.CardError) as caught:
+                self.check({'id': 'amount:ledger.paid', 'value': 'flow'}, cell)
+            self.assertEqual(str(caught.exception), '每一格都要写 value（清空就写 null）')
+        self.assertEqual(self.check({'id': GRAIN, 'value': None}), {GRAIN: None})
 
     def test_who_answered_is_required_and_short(self):
         for by in (None, '', '  ', 'x' * 41, 5):
@@ -215,7 +249,7 @@ class RunningTotalTests(unittest.TestCase):
 
 class PeriodToDateTests(unittest.TestCase):
     YTD = {'amount:ledger.ytd': said('period_to_date')}
-    REASON = '「ytd」在口径卡里是“期初到期末的累计值”：要先固定在一期上（按同一张表的一个日期列筛一个日期），才能相加。'
+    REASON = '「ytd」在口径卡里是“期初到期末的累计值”：要先固定在一期上（按同一张表里一个不是取数或录入时间的日期列，筛一个日期或按它分组），才能相加。'
 
     def refused(self, query):
         got = run_query(ONTOLOGY, QA, query, card=self.YTD)
@@ -239,6 +273,27 @@ class PeriodToDateTests(unittest.TestCase):
 
     def test_an_average_is_not_stopped(self):
         self.assertEqual(run_query(ONTOLOGY, QA, total('ytd', 'average'), card=self.YTD)['status'], 'answered')
+
+    def test_a_date_said_to_be_the_fetch_or_entry_time_does_not_fix_a_period(self):
+        for meaning in ('fetched', 'system'):
+            cells = {**self.YTD, 'date:ledger.paid_on': said(meaning)}
+            for query in (total('ytd', where=[on_day()]), total('ytd', group_by=[{'field': 'ledger.paid_on'}])):
+                with self.subTest(meaning=meaning, query=query):
+                    self.assertEqual(run_query(ONTOLOGY, QA, query, card=cells),
+                                     {'status': 'query_limit', 'reason': self.REASON, 'refused_by_card': 'amount:ledger.ytd'})
+
+    def test_another_date_column_of_the_table_still_fixes_it_on_a_period(self):
+        cells = {**self.YTD, 'date:ledger.paid_on': said('system')}
+        for query in (total('ytd', where=[on_day('2024-12-02 10:00:00', 'booked_at')]), total('ytd', group_by=[{'field': 'ledger.booked_at'}])):
+            with self.subTest(query=query):
+                self.assertEqual(run_query(ONTOLOGY, QA, query, card=cells)['status'], 'answered')
+
+    def test_a_date_not_answered_yet_or_answered_as_business_or_unsure_still_fixes_it(self):
+        for meaning in (None, 'business', 'unsure'):
+            cells = {**self.YTD, **({'date:ledger.paid_on': said(meaning)} if meaning else {})}
+            with self.subTest(meaning=meaning):
+                self.assertEqual(run_query(ONTOLOGY, QA, total('ytd', where=[on_day()]), card=cells)['status'], 'answered')
+                self.assertEqual(run_query(ONTOLOGY, QA, total('ytd', group_by=[{'field': 'ledger.paid_on'}]), card=cells)['status'], 'answered')
 
     def test_the_date_is_found_by_the_values_in_the_column_not_by_its_name(self):
         text_dates = [{**r, 'paid_on': 'soon' if r['row_no'] == '2' else r['paid_on']} for r in (LEDGER[0], LEDGER[1], LEDGER[3])]
@@ -300,6 +355,36 @@ class AnswerEvidenceTests(unittest.TestCase):
         got = run_query(ONTOLOGY, QA, total('paid', where=[on_day()]), card={'amount:ledger.paid': said('flow')})
         self.assertEqual([f['field'] for f in got['evidence']['filters']], ['paid_on'])
         self.assertIn('card', got['evidence'])
+
+
+class StaleCellTests(unittest.TestCase):
+    STORED = {GRAIN: said('event'), 'date:ledger.paid_on': said('business'), 'range:ledger.paid_on': said({'from': None, 'to': '2024-12-31'}),
+              'complete:vendors|uei': said('partial'),
+              'amount:ledger.gone': said('running'), 'range:ledger.gone': said({'from': '2024-10-01', 'to': None}),
+              'date:ledger.gone': said('business'), 'complete:gone|id': said('partial'), 'grain:gone': said('event')}
+
+    def test_only_the_cells_the_card_has_now_are_handed_on_and_the_file_keeps_the_rest(self):
+        stored = dict(self.STORED)
+        kept = oc.live_cells(stored, ONTOLOGY, bundle())
+        self.assertEqual(set(kept), {GRAIN, 'date:ledger.paid_on', 'range:ledger.paid_on', 'complete:vendors|uei'})
+        self.assertEqual(kept[GRAIN], said('event'))
+        self.assertEqual(stored, self.STORED)
+
+    def test_a_cell_of_an_object_judged_wrong_is_not_handed_on(self):
+        wrong = {'types': {'vendor': {'verdict': 'wrong'}}, 'relations': {}}
+        self.assertNotIn('complete:vendors|uei', oc.live_cells(self.STORED, ONTOLOGY, bundle(), wrong))
+        self.assertIn(GRAIN, oc.live_cells(self.STORED, ONTOLOGY, bundle(), wrong))
+
+    def test_the_counts_of_a_card_do_not_include_cells_it_no_longer_has(self):
+        card = oc.build_card(ONTOLOGY, bundle(), self.STORED)
+        self.assertEqual((card['cells'], card['blank']), (10, 7))   # grain, one date and the vendor object are answered; the rest are not on the card
+
+    def test_what_a_stale_cell_said_is_not_an_answer_the_question_sees(self):
+        stale = {'amount:ledger.gone': said('running'), 'range:ledger.gone': said({'from': None, 'to': '2024-12-31'})}
+        self.assertIn('card', run_query(ONTOLOGY, QA, total('paid'), card=stale)['evidence'])   # handed on as it is, a stale cell makes a card line
+        kept = oc.live_cells(stale, ONTOLOGY, QA)
+        self.assertEqual(kept, {})
+        self.assertNotIn('evidence', run_query(ONTOLOGY, QA, total('paid'), card=kept))
 
 
 class AcceptanceTests(unittest.TestCase):
