@@ -77,6 +77,31 @@ class OverviewTests(unittest.TestCase):
             with self.assertRaisesRegex(ToolError, '读不了这次运行'):
                 mcp_server.run_overview(LocalService(base), {'saved_as': 'exam.json'})
 
+    def test_a_404_that_says_the_run_is_missing_is_an_error_not_an_old_service(self):
+        for text in ('找不到这次运行，可能已经被删掉了', '找不到这次运行'):
+            with self.subTest(text=text), serving({RUN_PATH: (200, RUN), RUN_PATH + '/open-items': (404, {'error': text})}) as base:
+                with self.assertRaisesRegex(ToolError, text):
+                    mcp_server.run_overview(LocalService(base), {'saved_as': 'exam.json'})
+
+
+def asked(*rounds):
+    return {**RUN, 'evaluation': {**RUN['evaluation'], 'asked': [{'items': [{'question': q, 'status': s} for q, s in r]} for r in rounds]}}
+
+
+class QuestionCountTests(unittest.TestCase):
+    def test_a_question_asked_again_counts_once_at_its_latest_answer(self):
+        run = asked([('A', 'answered'), ('B', 'no_data')], [('A', 'answered')], [('B', 'answered')])   # the second and third rounds are drop_filter reruns
+        self.assertEqual(mcp_server._overview(run)['questions_answered'], '2 / 2')
+
+    def test_the_latest_ask_decides_even_when_it_is_the_worse_one(self):
+        self.assertEqual(mcp_server._overview(asked([('A', 'answered')], [('A', 'no_data')]))['questions_answered'], '0 / 1')
+
+    def test_the_models_own_round_still_counts_but_a_question_asked_by_a_person_is_not_counted_twice(self):
+        base = asked([('A', 'no_data'), ('B', 'answered')])
+        models = {'items': [{'question': 'A', 'status': 'answered'}, {'question': 'C', 'status': 'query_limit'}, {'question': 'D', 'status': 'answered'}]}
+        run = {**base, 'evaluation': {**base['evaluation'], 'questions': models}}
+        self.assertEqual(mcp_server._overview(run)['questions_answered'], '2 / 4')   # A (asked later: no_data), B, C, D
+
 
 class BuildTests(unittest.TestCase):
     def build(self, routes):

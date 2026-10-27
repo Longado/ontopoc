@@ -47,6 +47,11 @@ class ManifestTests(unittest.TestCase):
         self.assertIn('drop_filter', review)
         self.assertIn('fix_question', review)
 
+    def test_the_review_command_says_what_to_ask_about_an_item_that_was_asked_again_without_its_condition(self):
+        review = (ROOT / 'plugin' / 'commands' / 'ontopoc-review.md').read_text(encoding='utf-8')
+        self.assertIn('requeried', review)
+        self.assertIn('替换验收题', review)
+
 
 class LauncherTests(unittest.TestCase):
     def test_it_finds_python3_when_there_is_no_python(self):

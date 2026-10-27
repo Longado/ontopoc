@@ -71,6 +71,27 @@ class ProtocolTests(unittest.TestCase):
             for word in ('answered', 'no_data', 'query_limit', 'ontology_gap', 'needs_derived', 'filters', 'not_in_question', 'merged', 'found_elsewhere'):
                 self.assertIn(word, tools[name]['description'], f'{name}: {word}')
 
+    def test_query_limit_and_ontology_gap_are_the_models_word_only_when_reason_from_model_says_so(self):
+        text = handle(rpc('initialize', {'protocolVersion': '2025-06-18'}), None)['result']['instructions']
+        tools = {t['name']: t for t in handle(rpc('tools/list'), None)['result']['tools']}
+        self.assertIn('reason_from_model', text)
+        self.assertNotIn('query_limit、ontology_gap：是模型的判断', text)
+        for name in ('ask_question', 'list_questions'):
+            self.assertIn('reason_from_model', tools[name]['description'], name)
+            self.assertNotIn('这两种是模型的判断', tools[name]['description'], name)
+
+    def test_a_question_carries_whose_reason_it_is_when_the_service_says(self):
+        base = {'question': 'q', 'status': 'query_limit', 'reason': 'r'}
+        self.assertIs(mcp_server._question({**base, 'reason_from_model': True})['reason_from_model'], True)
+        self.assertIs(mcp_server._question({**base, 'reason_from_model': False})['reason_from_model'], False)
+        self.assertNotIn('reason_from_model', mcp_server._question(base))   # absent: the reason is the code's own
+
+    def test_the_handshake_says_what_to_ask_about_an_item_that_was_asked_again_without_its_condition(self):
+        text = handle(rpc('initialize', {'protocolVersion': '2025-06-18'}), None)['result']['instructions']
+        entry = next(e for e in text.split('\n- ') if 'requeried' in e)   # one entry of the manual, which may run over several lines
+        self.assertIn('drop_filter', entry)
+        self.assertIn('替换', entry)
+
     def test_unknown_methods_and_tools_are_refused_the_standard_way(self):
         self.assertEqual(handle(rpc('resources/list'), None)['error']['code'], -32601)
         self.assertEqual(handle(rpc('tools/call', {'name': 'nope', 'arguments': {}}), None)['error']['code'], -32602)
