@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   CARD_VOCAB, ITEM_CHOICES, answeredRows, blankLine, canAnswerItem, cardBody, cardCells, cardEmptyText, cardEvidence, changedCells, confirmedCells,
-  itemAnswer, itemChoices, itemForm, itemProblem, readAnswerer, rememberAnswerer, saveProblem, saysOf, stampLine, uniqueLine,
+  draftOf, editBasis, editCell, itemAnswer, itemChoices, itemForm, itemProblem, linkedHint, readAnswerer, rememberAnswerer, saveProblem, saysOf, stampLine, uniqueLine,
 } from "./cardModel.js";
 
 const at = new Date(2026, 9, 27, 12, 0).toISOString();   // local noon: the same day in every time zone
@@ -125,6 +126,38 @@ test("the code's facts about a table: whether the identity fields are unique, an
   assert.equal(uniqueLine(null, 40), "这张表上没有识别字段，看不出一行是不是唯一的");
 });
 
+test("rows whose identity fields are empty are counted in, said so, and a table with repeats never reads as having none", () => {
+  const unique = { fields: ["source_row", "submission_period"], distinct: 1921, duplicates: 0, blank: 2, examples: [] };
+  assert.equal(uniqueLine(unique, 1921), "source_row + submission_period：1,921 行，1,921 种不同的组合，其中 2 行识别字段是空的，没有重复");
+  assert.equal(uniqueLine({ ...unique, distinct: 1900, duplicates: 12, blank: 3, examples: ["7 · 2024Q4", " · 2024Q4"] }, 1921),
+    "source_row + submission_period：1,921 行，1,900 种不同的组合，其中 3 行识别字段是空的，有 12 个组合出现了不止一次（例如 7 · 2024Q4； · 2024Q4）");
+  assert.equal(uniqueLine({ ...unique, blank: 0 }, 1921), "source_row + submission_period：1,921 行，1,921 种不同的组合，没有重复");
+  assert.equal(uniqueLine({ ...unique, blank: undefined }, 1921), "source_row + submission_period：1,921 行，1,921 种不同的组合，没有重复");   // a service from before the count
+});
+
+test("edits not saved yet are kept for one run: another run starts blank, and an edit returns a new draft", () => {
+  assert.deepEqual(draftOf(null, "a.json"), { saved_as: "a.json", cells: {}, basis: "" });
+  const first = editCell(null, "a.json", DATE, "business");
+  assert.deepEqual(first, { saved_as: "a.json", cells: { [DATE]: "business" }, basis: "" });
+  const second = editCell(first, "a.json", AMOUNT, null);   // null is an edit too: it clears the cell
+  assert.deepEqual(second.cells, { [DATE]: "business", [AMOUNT]: null });
+  assert.deepEqual(first.cells, { [DATE]: "business" });   // the old draft is untouched
+  const written = editBasis(second, "a.json", "10-27 会议");
+  assert.deepEqual(written, { saved_as: "a.json", cells: second.cells, basis: "10-27 会议" });
+  assert.equal(draftOf(written, "a.json"), written);
+  assert.deepEqual(draftOf(written, "b.json"), { saved_as: "b.json", cells: {}, basis: "" });   // the draft was for the other run
+  assert.deepEqual(editCell(written, "b.json", DATE, "system"), { saved_as: "b.json", cells: { [DATE]: "system" }, basis: "" });
+  assert.deepEqual(draftOf(null, undefined), { saved_as: undefined, cells: {}, basis: "" });   // an example has no run to keep them for
+});
+
+test("the card's selects are as wide as their longest option, not cut at a fixed width", () => {
+  const css = readFileSync(new URL("./OntologyStudio.css", import.meta.url), "utf8");
+  const rule = css.split("\n").find((line) => line.startsWith(".os-card-cell select {"));
+  assert.ok(rule, "the rule for the card's selects is there");
+  assert.match(rule, /max-width: 100%/);
+  assert.doesNotMatch(rule, /max-width: \d+(\.\d+)?(em|px|rem|ch)/);
+});
+
 test("the card says how many cells are still unclear, and what an empty card means", () => {
   assert.equal(blankLine(card()), "共 4 格，还有 4 格没说清");
   assert.equal(blankLine(card({ blank: 0 })), "共 4 格，都答过了");
@@ -159,6 +192,21 @@ test("choosing that the data was not all imported sends the item alone: the serv
   assert.deepEqual(itemAnswer(item, { choice: "incomplete", text: "合同授标只导了 FY25Q1 的", basis: "10-27 会议" }), {
     items: [{ id: item.id, choice: "incomplete", text: "合同授标只导了 FY25Q1 的", basis: "10-27 会议" }] });
   assert.deepEqual(itemAnswer(item, { choice: "expected", text: "", basis: "" }), { items: [{ id: item.id, choice: "expected" }] });
+});
+
+test("the form says what saving will also do on the card: mark the other end as partly there, or take that back", () => {
+  const item = { id: "unlinked:a", kind: "unlinked", complete_id: "complete:contract_awards|award_id" };
+  const marks = "另一端的对象会同时在口径卡上记成“数据里只有一部分”。";
+  assert.equal(linkedHint(item, { choice: "incomplete", text: "", basis: "" }), marks);
+  assert.equal(linkedHint(item, { choice: "expected", text: "", basis: "" }), "");   // a first answer that is not 数据没导全 changes nothing on the card
+  assert.equal(linkedHint(item, { choice: "incomplete", text: "", basis: "" }, { choice: "incomplete" }), marks);
+  const gone = "口径卡上那一格如果是这条答复记的，会一起清掉。";
+  assert.equal(linkedHint(item, { choice: "expected", text: "", basis: "" }, { choice: "incomplete" }), gone);
+  assert.equal(linkedHint(item, { choice: "", text: "客户另有说法", basis: "" }, { choice: "incomplete" }), gone);
+  assert.equal(linkedHint(item, { choice: "incomplete", text: "", basis: "" }, { choice: "expected" }), marks);
+  assert.equal(linkedHint(item, { choice: "same", text: "", basis: "" }, { choice: "distinct" }), "");
+  assert.equal(linkedHint({ ...item, kind: "same_name" }, { choice: "incomplete", text: "", basis: "" }), "");
+  assert.equal(linkedHint({ ...item, complete_id: undefined }, { choice: "incomplete", text: "", basis: "" }), "");   // nothing on the card to mark
 });
 
 test("an answer is not ready until it says something and says who", () => {
@@ -201,6 +249,17 @@ test("an answer given with the card says which table was used, how far its data 
     incomplete: ["合同授标在数据里只有一部分：只导了 FY25Q1", "供应商在数据里只有一部分"] });
 });
 
+test("an object already warned about as only partly there is not also listed among the meanings followed", () => {
+  const partly = { id: "complete:contract_awards|award_id", field: "合同授标", says: "数据里只有一部分", by: "张三", basis: "10-27 会议", at };
+  const evidence = { card: { tables: [{ source: "contract_awards", rows: 365 }],
+    lines: [{ id: AMOUNT, field: "gross", says: "期初到期末的累计值", by: "张三", at }, partly, { id: COMPLETE, field: "财务支出行", says: "数据里是全的", by: "李四", at }],
+    incomplete: [{ type: "contract", label: "合同授标", note: "只导了 FY25Q1", by: "张三" }] } };
+  const shown = cardEvidence({ evidence });
+  assert.deepEqual(shown.lines, ["按口径：「gross」是期初到期末的累计值（张三 答复）", "按口径：「财务支出行」是数据里是全的（李四 答复）"]);
+  assert.deepEqual(shown.incomplete, ["合同授标在数据里只有一部分：只导了 FY25Q1"]);
+  assert.equal(cardEvidence({ evidence: { card: { ...evidence.card, incomplete: [] } } }).lines.length, 3);   // no warning, so the line stays
+});
+
 test("the data line says only what is known, and an answer without the card's evidence has nothing to add", () => {
   const evidence = { card: { tables: [{ source: "a", rows: 3 }, { source: "b", rows: 1200, through: "2024-12-31" }], lines: [], incomplete: [] } };
   assert.equal(cardEvidence({ evidence }).data, "用的数据：a（3 行）；b（1,200 行，数据到 2024-12-31）");
@@ -224,4 +283,11 @@ test("the minutes list the meanings the client agreed to by table, leaving out w
     { name: "财务支出行", says: "数据里只有一部分", by: "李四", basis: "邮件", note: "" }] }]);
   assert.deepEqual(confirmedCells(card()), []);
   assert.deepEqual(confirmedCells(null), []);
+});
+
+test("a cell's note comes with its line in the minutes", () => {
+  const filled = card();
+  filled.objects[0].answer = { value: "partial", says: "数据里只有一部分", note: "合同授标只导了 FY25Q1 签的", by: "测试人", basis: "10-27 会议", at };
+  assert.deepEqual(confirmedCells(filled)[0].lines, [
+    { name: "财务支出行", says: "数据里只有一部分", by: "测试人", basis: "10-27 会议", note: "合同授标只导了 FY25Q1 签的" }]);
 });

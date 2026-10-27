@@ -168,6 +168,22 @@ test("the meanings agreed with the client are listed by table as column, what it
   assert.doesNotMatch(md, /## 客户已答复的事/);
 });
 
+test("when the client has answered everything the minutes say so, not that nothing was found", () => {
+  const md = summaryMarkdown(run(), [], { answered });
+  assert.match(md, /## 要和客户确认的事（0 件）\n\n要确认的事都已有客户答复（2 件，见下方）。\n\n## 客户已答复的事（2 件）/);
+  assert.doesNotMatch(md, /代码没有找到要和客户确认的事/);
+});
+
+test("a cell's note follows what it says in the agreed meanings", () => {
+  const card = filledCard();
+  card.objects[0].answer = { value: "partial", says: "数据里只有一部分", note: "合同授标只导了 FY25Q1 签的", by: "测试人", basis: "10-27 会议", at: answeredAt };
+  card.tables[0].amounts[0].answer = { ...card.tables[0].amounts[0].answer, note: "按季度末的值" };
+  const md = summaryMarkdown(run(), [], { answered: [], card });
+  assert.match(md, /- 财务支出行：数据里只有一部分，合同授标只导了 FY25Q1 签的（测试人，出处：10-27 会议）\n/);
+  assert.match(md, /- gross：期初到期末的累计值，按季度末的值（张三，出处：10-27 会议）\n/);
+  assert.match(md, /- 一行是什么：一行是一次事件或一次修改（同一个东西有多行）（张三）\n/);   // no note, nothing added
+});
+
 test("neither section is there when nothing was answered, whatever else was fetched", () => {
   for (const md of [summaryMarkdown(run(), []), summaryMarkdown(run(), [], {}), summaryMarkdown(run(), [], { answered: [], card: null }),
     summaryMarkdown(run(), [], { answered: [], card: { cells: 1, blank: 1, tables: [], objects: [{ id: "complete:a|b", label: "x", answer: null }] } })]) {
