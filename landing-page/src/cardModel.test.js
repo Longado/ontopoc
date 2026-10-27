@@ -315,12 +315,12 @@ test("the pipeline requirements export has one name, one hint and one address, a
   assert.equal(CARD_PIPELINE_NOTE, "填好的答复会写进编排需求单（页头 ⤓ 编排需求单）");
 });
 
-test("the export sits beside 表单 for a saved table run only, and the card page shows the noise line and points at the export", () => {
+test("the export sits beside 表单 for a saved table run that passed verification only, and the card page shows the noise line and points at the export", () => {
   const studio = readFileSync(new URL("./OntologyStudio.jsx", import.meta.url), "utf8");
   const section = readFileSync(new URL("./CardSection.jsx", import.meta.url), "utf8");
   const link = studio.split("\n").find((line) => line.includes("pipelineUrl("));
   assert.ok(link, "the header links the export");
-  assert.match(link, /run\.saved_as && !isDocument\(run\)/);   // the same condition as ⤓ 表单
+  assert.match(link, /run\.saved_as && !isDocument\(run\) && run\.ontology\.status === "auto_built_verified"/);   // ⤓ 表单's condition, and the one the card and open items are fetched under: the route answers 400 for the rest, which a download link cannot show
   assert.match(link, /PIPELINE_EXPORT\.title/);
   assert.ok(studio.indexOf("export/forms") < studio.indexOf("pipelineUrl(") && studio.indexOf("pipelineUrl(") < studio.indexOf("export/ttl"));
   assert.match(section, /noiseLine\(a\.noise\)/);

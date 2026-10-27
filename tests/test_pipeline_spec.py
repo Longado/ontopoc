@@ -434,9 +434,10 @@ class RelationTests(unittest.TestCase):
                 'from_identity': {'code': 'dept_code'}, 'to_identity': {'pid': 'project_id'}}
         spec = make_spec(ontology={**ONTOLOGY, 'relations': [link]}, items={}, confirmation=None)
         [e] = spec['relations']
-        for said_so in ('ledger.dept_code 对 depts.code', 'ledger.project_id 对 projects.pid', 'ledger 6 行', 'depts 3 行', 'projects 2 行',
-                        '连上 4 行（两头都连上才算）', '2 行连不上'):
-            self.assertIn(said_so, e['text'])
+        for said_so in ('ledger.dept_code 对 depts.code：ledger 6 行，depts 3 行，连上 4 行；2 行连不上',
+                        'ledger.project_id 对 projects.pid：ledger 6 行，projects 2 行，连上 5 行；1 行连不上'):
+            self.assertIn(said_so, e['text'])   # each pair has the counts of its own two tables
+        self.assertNotIn('两头都连上才算', e['text'])
 
     def test_the_counts_are_for_the_two_tables_named_not_for_any_table_that_reads_the_object(self):
         [e] = make_spec(ontology=READ_TWICE, items={}, confirmation=None)['relations']
