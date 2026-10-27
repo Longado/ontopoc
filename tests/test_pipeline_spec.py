@@ -434,42 +434,40 @@ class RelationTests(unittest.TestCase):
                 'from_identity': {'code': 'dept_code'}, 'to_identity': {'pid': 'project_id'}}
         spec = make_spec(ontology={**ONTOLOGY, 'relations': [link]}, items={}, confirmation=None)
         [e] = spec['relations']
-        for said_so in ('ledger.dept_code 对 depts.code：ledger 6 行，depts 3 行，连上 4 行；2 行连不上',
-                        'ledger.project_id 对 projects.pid：ledger 6 行，projects 2 行，连上 5 行；1 行连不上'):
-            self.assertIn(said_so, e['text'])   # each pair has the counts of its own two tables
-        self.assertNotIn('两头都连上才算', e['text'])
+        # a row links when both its department and its project are there, as the data check counts it; each end then
+        # says how many rows name one its table does not have
+        self.assertIn('ledger.dept_code 对 depts.code，ledger.project_id 对 projects.pid：ledger 6 行，depts 3 行，projects 2 行，'
+                      '连上 4 行；2 行连不上；2 行的部门在 depts 里找不到；1 行的项目在 projects 里找不到', e['text'])
 
-    def test_the_counts_are_for_the_two_tables_named_not_for_any_table_that_reads_the_object(self):
+    def test_rows_naming_an_object_its_table_lacks_are_counted_besides_what_the_data_check_links(self):
         [e] = make_spec(ontology=READ_TWICE, items={}, confirmation=None)['relations']
-        for said_so in ('ledger.vendor_uei 对 vendors.uei', 'ledger 6 行', 'vendors 3 行', '连上 4 行', '2 行连不上', '1 行用来连的编号是空的'):
-            self.assertIn(said_so, e['text'])
-        self.assertNotIn('连上 5 行', e['text'])   # V9 is named on the ledger only: reading it there does not put it in the vendors table
+        # V9 is read from the ledger as a vendor, so the data check links its row; the vendors table has no V9
+        self.assertIn('ledger.vendor_uei 对 vendors.uei：ledger 6 行，vendors 3 行，连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）；'
+                      '1 行的供应商在 vendors 里找不到', e['text'])
         self.assertEqual((e['source'], e['refs']), ('code', ['unlinked:entry_vendor']))
 
-    def test_an_answer_about_the_rows_that_did_not_link_goes_with_the_counts_of_the_pair(self):
+    def test_an_answer_about_the_rows_that_did_not_link_goes_with_the_counts_of_the_data_check(self):
         e = make_spec(ontology=READ_TWICE, confirmation=None)['relations'][0]
         self.assertEqual((e['source'], e['by'], e['refs']), ('client', '王五', ['unlinked:entry_vendor']))
-        self.assertIn('2 行连不上', e['text'])
+        self.assertIn('1 行连不上', e['text'])
         self.assertIn('左关联', e['text'])
 
-    def test_rows_the_pair_cannot_link_are_counted_even_when_the_data_check_found_nothing_to_ask(self):
+    def test_rows_that_all_link_but_name_an_object_its_table_lacks_do_not_say_every_row_links(self):
         rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
         rows[5] = {**rows[5], 'vendor_uei': 'V1'}   # every row names a vendor, so the data check sees every row linked
         bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
         spec = make_spec(ontology=READ_TWICE, bundle=bundle, items={}, confirmation=None)
         [e] = spec['relations']
-        self.assertIn('连上 5 行', e['text'])
-        self.assertIn('1 行连不上', e['text'])
-        self.assertIn('连不上的行怎么处理还没说清', e['text'])
-        self.assertEqual((e['source'], e['refs']), ('code', []))   # there is no item to point at: nobody was asked
-        [unasked] = [o for o in spec['open'] if 'ledger.vendor_uei' in o['text']]   # so it is among what is not settled
-        self.assertIn('1 行', unasked['text'])
-        self.assertIn(f'{len(spec["open"])} 条还没说清', pipeline_markdown(spec))
+        self.assertIn('连上 6 行；1 行的供应商在 vendors 里找不到', e['text'])
+        for left_out in ('每一行都连上了', '连不上', '还没说清'):
+            self.assertNotIn(left_out, e['text'])
+        self.assertEqual((e['source'], e['refs']), ('code', []))
 
-    def test_a_value_inside_a_list_is_read_one_per_element_and_a_row_links_when_every_value_does(self):
+    def test_a_value_inside_a_list_is_read_one_per_element(self):
         [e] = make_spec(ontology=LINES_ONTOLOGY, bundle=LINES_BUNDLE, items={}, confirmation=None)['relations']
-        for said_so in ('orders.lines[].sku 对 skus.sku', 'orders 5 行', 'skus 2 行', '连上 2 行', '3 行连不上', '2 行用来连的编号是空的', '每个值都对上才算连上'):
-            self.assertIn(said_so, e['text'])   # O1 links (S1 and s2), O2 does not (S9), O3 has no line and O4 a blank one, O5 links
+        # O1 (S1, s2), O2 (S1, S9) and O5 (S2) link; O3 has no line and O4 a blank one; S9 is in no row of skus
+        self.assertIn('orders.lines[].sku 对 skus.sku：orders 5 行，skus 2 行，连上 3 行；2 行连不上（其中 2 行用来连的编号是空的）；'
+                      '1 行的货品在 skus 里找不到', e['text'])
 
     def test_the_object_the_table_is_about_is_not_the_one_joined_whichever_way_the_relation_is_written(self):
         for ends in ({'from': 'entry', 'to': 'vendor'}, {'from': 'vendor', 'to': 'entry'}):
@@ -491,16 +489,16 @@ class RelationTests(unittest.TestCase):
                   'populated_from': [{'source': 'vendors', 'identity': {'uei': 'uei'}}, {'source': 'suppliers', 'identity': {'uei': 'sid'}}]}
         ontology = {**ONTOLOGY, 'object_types': [ENTRY, vendor], 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': []}
         [e] = make_spec(ontology=ontology, bundle=bundle, items={}, confirmation=None)['relations']
-        for said_so in ('ledger.vendor_uei 对 vendors.uei 或 suppliers.sid', 'vendors 3 行', 'suppliers 1 行', '连上 5 行；1 行连不上',
-                        '1 行用来连的编号是空的'):
-            self.assertIn(said_so, e['text'])
+        self.assertIn('ledger.vendor_uei 对 vendors.uei 或 suppliers.sid：ledger 6 行，vendors 3 行，suppliers 1 行，'
+                      '连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）。', e['text'])
 
     def test_a_row_naming_an_object_its_table_leaves_out_by_a_condition_does_not_link(self):
         vendor = {'key': 'vendor', 'label': '供应商', 'attributes': [],
                   'populated_from': [{'source': 'vendors', 'identity': {'uei': 'uei'}, 'where': [{'path': 'name', 'equals': 'Acme'}]}]}
         ontology = {**ONTOLOGY, 'object_types': [ENTRY, vendor], 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': []}
         [e] = make_spec(ontology=ontology, items={}, confirmation=None)['relations']
-        self.assertIn('连上 3 行；3 行连不上', e['text'])   # V2 is Bolt, which the vendors table does not count as a vendor
+        # V2 is Bolt, which the vendors table does not count as a vendor
+        self.assertIn('连上 3 行；3 行连不上（其中 1 行用来连的编号是空的）；2 行的供应商在 vendors 里找不到', e['text'])
 
     def test_values_split_by_commas_link_one_by_one(self):
         rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
@@ -508,22 +506,60 @@ class RelationTests(unittest.TestCase):
         bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
         split = {**VENDOR_TWICE, 'populated_from': [VENDOR_TWICE['populated_from'][0], {**VENDOR_TWICE['populated_from'][1], 'transform': 'split_comma'}]}
         [e] = make_spec(ontology={**READ_TWICE, 'object_types': [ENTRY, split, PROJECT_TWICE]}, bundle=bundle, items={}, confirmation=None)['relations']
-        self.assertIn('连上 4 行；2 行连不上', e['text'])   # V1 and V2 are both vendors; V9 is not, and one row names none
+        # V1 and V2 are both in the vendors table; V9 is not
+        self.assertIn('连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）；1 行的供应商在 vendors 里找不到', e['text'])
 
     def test_a_value_a_person_mapped_to_another_links_as_that_one(self):
         alias = {'type': 'vendor', 'source': 'ledger', 'value': 'V9', 'target_source': 'vendors', 'target_value': 'V1'}
         ontology = {**ONTOLOGY, 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': [alias]}
         [e] = make_spec(ontology=ontology, items={}, confirmation=None)['relations']
-        self.assertIn('连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）', e['text'])
+        self.assertIn('连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）。', e['text'])
 
-    def test_a_row_whose_own_object_is_not_made_out_does_not_link_and_says_so(self):
+    def test_a_row_whose_own_number_is_blank_does_not_link_and_counts_as_blank(self):
         rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
         rows[0] = {**rows[0], 'row_no': ''}
         bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
         ontology = {**ONTOLOGY, 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': []}
         [e] = make_spec(ontology=ontology, bundle=bundle, items={}, confirmation=None)['relations']
-        self.assertIn('连上 3 行；3 行连不上（其中 1 行用来连的编号是空的，1 行认不出是哪一个支出行）', e['text'])
+        self.assertIn('连上 3 行；3 行连不上（其中 2 行用来连的编号是空的）；1 行的供应商在 vendors 里找不到', e['text'])
         self.assertEqual(e['refs'], ['unlinked:entry_vendor'])   # the same rows the open item counts
+
+    def test_a_blank_on_an_end_read_from_this_table_alone_still_counts(self):
+        project = {'key': 'project', 'label': '项目', 'attributes': [], 'populated_from': [{'source': 'ledger', 'identity': {'pid': 'project_id'}}]}
+        rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
+        rows[1], rows[2] = {**rows[1], 'project_id': ''}, {**rows[2], 'project_id': ''}
+        bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
+        link = {'key': 'vendor_project', 'from': 'vendor', 'to': 'project', 'source': 'ledger',
+                'from_identity': {'uei': 'vendor_uei'}, 'to_identity': {'pid': 'project_id'}}
+        ontology = {**ONTOLOGY, 'object_types': [ENTRY, ONTOLOGY['object_types'][1], project], 'relations': [link], 'value_aliases': []}
+        [e] = make_spec(ontology=ontology, bundle=bundle, items={}, confirmation=None)['relations']
+        self.assertIn('ledger.vendor_uei 对 vendors.uei：ledger 6 行，vendors 3 行，连上 2 行；4 行连不上（其中 3 行用来连的编号是空的）', e['text'])
+        self.assertEqual(e['refs'], ['unlinked:vendor_project'])
+
+    def test_a_relation_of_one_object_to_itself_counts_a_row_naming_one_object_as_not_linked(self):
+        bundle = {**BUNDLE, 'sources': {'staff': {'records': [{'id': 'E1', 'boss': ''}, {'id': 'E2', 'boss': 'E1'}, {'id': 'E3', 'boss': 'E1'},
+                                                              {'id': 'E4', 'boss': 'E4'}], 'requests': []}}}
+        person = {'key': 'person', 'label': '员工', 'attributes': [], 'populated_from': [{'source': 'staff', 'identity': {'id': 'id'}}]}
+        ontology = {'status': 'auto_built_verified', 'value_aliases': [], 'ignored_fields': [], 'object_types': [person],
+                    'relations': [{'key': 'reports_to', 'from': 'person', 'to': 'person', 'source': 'staff',
+                                   'from_identity': {'id': 'id'}, 'to_identity': {'id': 'boss'}}]}
+        [e] = make_spec(ontology=ontology, bundle=bundle, cells={}, items={}, derived=(), rules=(), confirmation=None)['relations']
+        # E1 names no boss, and E4 names itself, which says nothing about who it reports to
+        self.assertIn('staff.id 和 staff.boss（对象读自同一张表，不用另外关联）：staff 4 行，连上 2 行；2 行连不上（其中 1 行用来连的编号是空的）', e['text'])
+
+    def test_an_object_read_from_two_columns_of_the_table_is_named_by_both(self):
+        bundle = {**BUNDLE, 'sources': {'tickets': {'records': [{'no': 'T1', 'assignee': '', 'reporter': 'U1'}, {'no': 'T2', 'assignee': '', 'reporter': 'U1'},
+                                                                {'no': 'T3', 'assignee': 'U9', 'reporter': 'U1'}, {'no': 'T4', 'assignee': 'U1', 'reporter': ''}],
+                                                    'requests': []},
+                                        'users': {'records': [{'id': 'U1'}], 'requests': []}}}
+        ticket = {'key': 'ticket', 'label': '工单', 'attributes': [], 'populated_from': [{'source': 'tickets', 'identity': {'no': 'no'}}]}
+        person = {'key': 'person', 'label': '人员', 'attributes': [],
+                  'populated_from': [{'source': 'users', 'identity': {'id': 'id'}}, {'source': 'tickets', 'identity': {'id': 'assignee'}},
+                                     {'source': 'tickets', 'identity': {'id': 'reporter'}}]}
+        ontology = {'status': 'auto_built_verified', 'value_aliases': [], 'ignored_fields': [], 'object_types': [ticket, person],
+                    'relations': [{'key': 'ticket_person', 'from': 'ticket', 'to': 'person', 'source': 'tickets'}]}
+        [e] = make_spec(ontology=ontology, bundle=bundle, cells={}, items={}, derived=(), rules=(), confirmation=None)['relations']
+        self.assertIn('tickets.assignee 或 tickets.reporter 对 users.id：tickets 4 行，users 1 行，连上 4 行；1 行的人员在 users 里找不到', e['text'])
 
     def test_two_objects_as_many_in_the_table_join_the_one_read_from_another_table_whichever_way_written(self):
         bundle = {**BUNDLE, 'sources': {'ledger': {'records': [{'no': '1', 'vid': 'V1'}, {'no': '2', 'vid': 'V2'}, {'no': '3', 'vid': 'V3'}], 'requests': []},
@@ -536,7 +572,7 @@ class RelationTests(unittest.TestCase):
                 ontology = {'status': 'auto_built_verified', 'value_aliases': [], 'ignored_fields': [], 'object_types': [entry, vendor],
                             'relations': [{'key': 'entry_vendor', 'source': 'ledger', **ends}]}
                 [e] = make_spec(ontology=ontology, bundle=bundle, cells={}, items={}, derived=(), rules=(), confirmation=None)['relations']
-                self.assertIn('ledger.vid 对 vendors.id：ledger 3 行，vendors 2 行，连上 2 行；1 行连不上', e['text'])
+                self.assertIn('ledger.vid 对 vendors.id：ledger 3 行，vendors 2 行，连上 3 行；1 行的供应商在 vendors 里找不到', e['text'])
                 self.assertNotIn('同一张表', e['text'])
 
     def test_a_relation_judged_wrong_is_not_a_requirement(self):
