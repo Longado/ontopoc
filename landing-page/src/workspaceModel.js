@@ -3,7 +3,7 @@
 import { formOf as formOfRun } from "./ontologyHandoverModel.js";
 import { isDocument, typeLabel } from "./ontologyStudioModel.js";
 
-const SECTIONS = [["data", "数据接入"], ["objects", "本体管理"], ["graph", "本体关系"], ["qa", "智能问答"], ["check", "数据体检"]];
+const SECTIONS = [["overview", "要确认的事"], ["data", "数据接入"], ["objects", "本体管理"], ["graph", "本体关系"], ["qa", "智能问答"], ["check", "数据体检"]];
 
 /** The modules a run can show: a document has no rows to lay out or to answer questions from. */
 export function sectionsFor(run) {

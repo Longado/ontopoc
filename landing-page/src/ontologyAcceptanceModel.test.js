@@ -99,3 +99,30 @@ test("what the person agreed to is held by the service and is not sent back with
   assert.equal(Object.hasOwn(saved, "confirmed"), false);
   assert.equal(Object.hasOwn(saved, "previous"), false);
 });
+
+test("a fixed question can be replaced by the answer of a different query, whatever the cap says", () => {
+  const run = (items) => ({ saved_as: "x.json", evaluation: { acceptance: { items } } });
+  const fixed = item({ note: "按订单号计数", query: { start: "order", where: [{ field: "区域", equals: "华东" }] } });
+  const without = item({ query: { start: "order", where: [] } });
+  assert.equal(acceptance.canAccept(run([fixed]), without), "");
+  assert.equal(acceptance.replacesAccepted(run([fixed]), without), true);
+  assert.equal(acceptance.canAccept(run([fixed, item({ question: "二" }), item({ question: "三" })]), without), "");   // a replacement takes no new place
+  assert.equal(acceptance.canAccept(run([fixed, item({ question: "二" }), item({ question: "三" })]), item({ question: "四" })), "验收问题最多 3 道，先去掉一道");
+});
+
+test("the same query in another key order is the same query, and a new question is not a replacement", () => {
+  const run = (items) => ({ saved_as: "x.json", evaluation: { acceptance: { items } } });
+  const fixed = item({ query: { start: "order", where: [{ field: "区域", equals: "华东" }] } });
+  const reordered = item({ query: { where: [{ equals: "华东", field: "区域" }], start: "order" } });
+  assert.equal(acceptance.canAccept(run([fixed]), reordered), "这道已经是验收问题了");
+  assert.equal(acceptance.replacesAccepted(run([fixed]), reordered), false);
+  assert.equal(acceptance.replacesAccepted(run([fixed]), item({ question: "别的问题" })), false);
+  assert.equal(acceptance.replacesAccepted(run(), item()), false);
+});
+
+test("replacing swaps in the new query with the note written for it and leaves the other questions as they were", () => {
+  const run = { evaluation: { acceptance: { items: [item({ query: { start: "order", where: [{ field: "区域", equals: "华东" }] }, note: "旧口径" }), item({ question: "二" })] } } };
+  const next = item({ query: { start: "order", where: [] } });
+  assert.deepEqual(acceptance.acceptItem(savedAcceptance(run), next, "按订单号计数").map((s) => [s.question, s.query, s.note]),
+    [["二", { start: "order" }, undefined], [next.question, { start: "order", where: [] }, "按订单号计数"]]);
+});

@@ -4,6 +4,7 @@ import test from "node:test";
 import { transformSync } from "esbuild";
 
 import * as upload from "./ontologyUploadModel.js";
+import { serviceBlock } from "./ontologyStudioModel.js";
 
 // Execute the actual UploadTab with queued state updates, without a browser or model service.
 const source = readFileSync(new URL("./OntologyStudio.jsx", import.meta.url), "utf8");
@@ -19,7 +20,7 @@ function uploadInput(initial = []) {
   const pending = [];
   let stateIndex = 0;
   const useState = (value) => stateIndex++ === 0 ? [files, (update) => pending.push(update)] : [value, () => {}];
-  const dependencies = { ...upload, useState, useEffect: () => {}, element, fragment: "fragment",
+  const dependencies = { ...upload, serviceBlock, useState, useEffect: () => {}, element, fragment: "fragment",
     earlierVersionOf: () => null, EXAMPLE_QUESTIONS: [], SendPreview: "preview", Progress: "progress" };
   const UploadTab = new Function(...Object.keys(dependencies), `${compiled}\nreturn UploadTab;`)(...Object.values(dependencies));
   const tree = UploadTab({ health: "ready", busy: false, runs: [] });

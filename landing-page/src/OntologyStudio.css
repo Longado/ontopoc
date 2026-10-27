@@ -556,3 +556,30 @@ small.os-tone-warn { color: var(--amber); }
 .os-org-periods ul { list-style: none; margin: 6px 0 0; padding-left: 14px; border-left: 1px solid var(--edge); color: var(--ink); font-size: 13px; }
 .os-org-periods ul small { margin-left: 8px; color: var(--muted); }
 .os-chip-note.is-returned { color: var(--amber); }
+
+/* An answer with something to check: amber, straight under the question, never folded */
+.os-review { color: var(--amber); background: var(--amber-soft); }
+.os-notes { display: grid; gap: 6px; padding: 10px 12px; border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; background: var(--amber-soft); color: var(--ink); font-size: 13px; line-height: 1.6; }
+.os-notes-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; }
+.os-notes-line > span { min-width: 0; overflow-wrap: anywhere; }
+.os-add-question { margin: 0; font-size: 13px; color: var(--text-2); }
+.os-add-question b { color: var(--ink); }
+.os-question.is-flash { border-radius: 8px; outline: 2px solid var(--amber); outline-offset: 8px; background: var(--amber-soft); box-shadow: 0 0 0 8px var(--amber-soft); }
+
+/* 要确认的事: one numbered card per thing to settle */
+.os-open { display: grid; gap: 10px; }
+.os-open .pr-card-head h2 { margin: 0; }
+.os-open-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 10px; }
+.os-open-item { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding: 14px 16px; border: 1px solid var(--edge); border-radius: 10px; background: var(--canvas); }
+.os-open-no { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-ink); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.os-open-body { display: grid; gap: 6px; min-width: 0; }
+.os-open-ask { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
+.os-open-ask .os-chip-note { margin-left: 8px; white-space: nowrap; }
+.os-open-facts { margin: 0; padding-left: 18px; display: grid; gap: 2px; color: var(--text-2); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.os-open-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.os-open-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+.os-notes-line button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* The code's suggested relations on the graph: off until asked for */
+.og-hint-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; color: var(--text-2); font-size: 13px; cursor: pointer; }
+.og-hint-toggle input { accent-color: var(--primary); }
