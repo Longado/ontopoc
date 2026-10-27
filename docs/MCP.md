@@ -20,13 +20,13 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `list_runs` | 左下角的空间（运行记录） | 否 |
 | `preview_upload` | "看看会发给模型什么" | 否 |
 | `build_ontology` | 新建：上传并建本体，跑完才返回；给 `previous` 即作为那次运行的新版本 | 是 |
-| `run_overview` | 顶部的状态标签 | 否 |
+| `run_overview` | 顶部的状态标签，加“要确认的事”整张清单（`open_items`） | 否 |
 | `list_objects` | 本体管理 · 对象卡片（判错的默认不给，列在 left_out；`include_wrong` 全给） | 否 |
 | `object_fields` | 对象 · 属性 | 否 |
 | `draft_form` | 对象 · 属性：起草中文名、描述、展示字段 | 是 |
 | `save_form` | 对象 · 属性：保存 | 否 |
 | `object_rows` | 对象 · 数据（`all=true` 相当于下载 CSV） | 否 |
-| `list_relations` | 本体关系（同上） | 否 |
+| `list_relations` | 本体关系（同上）；基数带方向（`many_to_one` 等）和一句中文读法 | 否 |
 | `suggest_relations` | 本体关系 · 代码建议的关系（虚线） | 否 |
 | `find_instances` | 本体关系 · 实例图谱：找起点 | 否 |
 | `instance_neighbourhood` | 本体关系 · 实例图谱：展开一个对象 | 否 |
@@ -37,7 +37,8 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `ask_question` | 智能问答 · 提问 / 出一组题 | 是 |
 | `list_questions` | 智能问答 · 你问的、模型出的题、验收问题 | 否 |
 | `confirm_derived` | 答案里「确认这个指标」：人同意后存下派生指标并重算等它的题 | 否 |
-| `fix_question` | 存为验收问题 | 否 |
+| `drop_filter` | 答案卡上“去掉这个条件重算”：去掉模型自己加的一个条件，由代码重算 | 否 |
+| `fix_question` | 存为验收问题（答案里有模型自己加的条件时，要写口径说明才放行） | 否 |
 | `confirm_ontology` | 逐项确认 · 保存 | 否 |
 | `compare_reference` | 数据体检 · 对照标准 | 否 |
 | `find_name_variants` | 找出可能的对应 | 是 |
@@ -45,7 +46,11 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `export_ttl` | 右上角 ⤓ TTL：按 W3C 标准导出 OWL 本体、数据与 SHACL 规则 | 否 |
 | `export_mermaid` | 右上角 ⤓ 组织图：组织隶属与协作交接两张 Mermaid，可按年份段出图 | 否 |
 
-"下载纪要"没有单独的工具：纪要是页面把上面这些数据排版成的一页，要内容就调对应的工具。
+三个导出工具把文件写进文件夹，只返回路径和字节数，不把内容塞进回复（TTL 的数据文件可以有几百万字）。默认写到 `~/Downloads/OntoPoc/<运行名>/<forms|ttl|mermaid>/`，`out_dir` 可以指定别的绝对路径。
+
+连上时工具服务会给客户端一份简短的使用说明：先调什么，哪几个工具调模型、要花钱，每种答案状态该怎么办，哪些判断只归人。
+
+"下载纪要"没有单独的工具：纪要是页面把上面这些数据排版成的一页，开头就是 `run_overview` 里的 `open_items`。
 
 ## 护栏照旧
 
