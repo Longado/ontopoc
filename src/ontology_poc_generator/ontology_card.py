@@ -33,7 +33,6 @@ SAYS = {
     'complete': {'full': '数据里是全的', 'partial': '数据里只有一部分', 'unsure': '说不清'},
 }
 
-
 NO_CARD = {'tables': [], 'objects': [], 'cells': 0, 'blank': 0}   # a document, or an ontology that did not pass verification: nothing to ask
 
 

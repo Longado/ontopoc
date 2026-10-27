@@ -169,8 +169,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         return checked
 
     def card_run(name):
-        """(run, rows, graph) of a kept table run whose ontology passed verification; None for a document or one that did
-        not, which have no card; FileNotFoundError when there is no such run."""
+        """(run, rows, graph) as kept() gives them, for a table run whose ontology passed verification; None for a document
+        or one that did not, which have no card; FileNotFoundError when there is no such run."""
         path = output_dir / name
         if not SAVED_NAME.match(name) or not path.exists():
             raise FileNotFoundError(name)
