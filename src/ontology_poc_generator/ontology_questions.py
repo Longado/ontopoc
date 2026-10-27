@@ -10,7 +10,7 @@ from ontology_poc_generator.public_ontology import build_graph, linked, normaliz
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview
-from ontology_poc_generator.ontology_card import evidence as card_evidence, measure_fields, refusal as card_refusal
+from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 
 QUESTION_PROMPT_VERSION = 'company_questions.v7'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
@@ -309,6 +309,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     refused = card_refusal(card, bundle, measure, where, dims) if card and measure else None
     if refused:
         return refused
+    cumulative = is_period_to_date(card, measure)
     graph = graph or build_graph(ontology, bundle)
     neighbours = {}
     for key in {k for d in dims for k in d['via']} | set(query.get('via') or []):
@@ -368,8 +369,9 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
 
     def removed_amount(gone):
         """What the objects a filter removed would have added to the measure; absent when none of them reads as a number,
-        or when their values could not be added up through this object either."""
-        if not measure or _repeats(types, bundle, graph, start, gone, measure)[0]:
+        or when their values could not be added up through this object either, or when the card says the amount is a
+        period-to-date one: the rows removed may sit in other periods, and those figures are not added together."""
+        if not measure or cumulative or _repeats(types, bundle, graph, start, gone, measure)[0]:
             return {}
         read = [n for inst in gone for n in numbers(inst)[0]]
         return {'removed_measure': int_if_whole(sum(read))} if read else {}
@@ -480,7 +482,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
                    'answer': {'groups': groups, 'total_groups': len(ranked), 'without_value': without,
                               **({'without_value_examples': left_out} if left_out else {}), **({'share': shown_share} if share else {}),
                               **({'unread_groups': {'count': len(unread), 'examples': unread[:3]}} if unread else {}),
-                              **({'measure': measured(starts)} if measure else {})}}, evidence, len(merged))
+                              **({'measure': measured(starts)} if measure and not cumulative else {})}}, evidence, len(merged))   # not the periods added together
 
 
 def flag_unasked_filters(result: dict, question: str) -> dict:

@@ -256,6 +256,13 @@ def measure_fields(measure: dict) -> list:
     return [measure['field']]
 
 
+def is_period_to_date(cells: dict | None, measure: dict | None) -> bool:
+    """Whether the measure reads a column the card says is a period-to-date amount (any factor of a derived one). Each
+    period's figure already holds the ones before it, so a number that adds periods together means nothing: a total over
+    all the groups of an answer split by period, or the rows a filter removed."""
+    return bool(cells and measure) and any((cells.get(f'amount:{f}') or {}).get('value') == 'period_to_date' for f in measure_fields(measure))
+
+
 def _period_columns(cells: dict, bundle: dict, source: str) -> set:
     """The columns of a table that can fix a period: those with a date cell (every value in them is a DATE or DATETIME,
     as the card reads them), except one the card says is the time of fetching or entering. A date nobody has answered
