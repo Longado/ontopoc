@@ -22,6 +22,9 @@ export function dropFor(run, open) {
   return point?.drop ?? null;
 }
 
-/** What an empty list means: nothing found, or nothing looked for because the ontology never passed verification. */
-export const openItemsEmpty = (run) => (run.ontology.status === "auto_built_verified"
-  ? "代码没有找到要和客户确认的事。" : "本体还没通过核验，代码先不列要确认的事。");
+/** What an empty list means: nothing found, the client has answered all of it (`answered` things, listed below), or nothing
+ *  looked for because the ontology never passed verification. */
+export const openItemsEmpty = (run, answered = 0) => {
+  if (run.ontology.status !== "auto_built_verified") return "本体还没通过核验，代码先不列要确认的事。";
+  return answered > 0 ? `要确认的事都已有客户答复（${answered} 件，见下方）。` : "代码没有找到要和客户确认的事。";
+};

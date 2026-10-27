@@ -43,7 +43,7 @@ export function summaryMarkdown(run, openItems = null, client = {}) {
       out.push("## 要和客户确认的事", "", "这次没取到要确认的事清单：示例结果没有这份清单，本机建模服务没连上时也取不到。", "");
     } else {
       out.push(`## 要和客户确认的事（${openItems.length} 件）`, "");
-      if (!openItems.length) out.push(openItemsEmpty(run));
+      if (!openItems.length) out.push(openItemsEmpty(run, client.answered?.length));
       openItems.forEach((o, i) => out.push(`${i + 1}. ${o.ask}${o.from_model ? "（模型的说法）" : ""}`, ...(o.facts || []).map((f) => `   - ${f}`)));
       out.push("");
     }
@@ -56,7 +56,7 @@ export function summaryMarkdown(run, openItems = null, client = {}) {
     const agreed = confirmedCells(client.card);
     if (agreed.length) {
       out.push("## 已和客户确认的口径", "");
-      for (const t of agreed) out.push(`### ${t.source}`, "", ...t.lines.map((l) => `- ${l.name}：${l.says}（${[l.by, ...(l.basis ? [`出处：${l.basis}`] : [])].join("，")}）`), "");
+      for (const t of agreed) out.push(`### ${t.source}`, "", ...t.lines.map((l) => `- ${l.name}：${[l.says, l.note].filter(Boolean).join("，")}（${[l.by, ...(l.basis ? [`出处：${l.basis}`] : [])].join("，")}）`), "");
     }
   }
 

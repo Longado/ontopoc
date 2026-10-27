@@ -67,6 +67,15 @@ export function cardBody({ saved_as, by, cells = [], items = [] }) {
   return { saved_as, by: by.trim(), ...(cells.length ? { cells } : {}), ...(items.length ? { items } : {}) };
 }
 
+/** The edits on the card not saved yet. They are kept above the card's page, so a visit to another page does not lose
+ *  them, and they belong to one run: another run starts blank. */
+export const draftOf = (kept, saved_as) => (kept && kept.saved_as === saved_as ? kept : { saved_as, cells: {}, basis: "" });
+export const editCell = (kept, saved_as, id, value) => {
+  const draft = draftOf(kept, saved_as);
+  return { ...draft, cells: { ...draft.cells, [id]: value } };
+};
+export const editBasis = (kept, saved_as, basis) => ({ ...draftOf(kept, saved_as), basis });
+
 const byProblem = (by) => (!by.trim() ? "先填答复人" : by.trim().length > 40 ? "答复人最多 40 个字" : "");
 
 /** What stops the card from being saved, in words; "" when it can go. */
@@ -87,12 +96,14 @@ export function rememberAnswerer(storage, name) {
 export const stampParts = (answer) => (!answer ? [] : [answer.by, localTime(answer.at).slice(0, 5), ...(answer.basis ? [`出处：${answer.basis}`] : [])]);
 export const stampLine = (answer) => stampParts(answer).join(" · ");
 
-/** The code's fact about a table's identity fields: how many rows, how many distinct, which repeat. */
+/** The code's fact about a table's identity fields: how many rows, how many distinct (rows with an empty identity field
+ *  among them), which repeat. */
 export function uniqueLine(unique, rows) {
   if (!unique) return "这张表上没有识别字段，看不出一行是不是唯一的";
+  const blank = unique.blank ? `其中 ${count(unique.blank)} 行识别字段是空的，` : "";
   const repeats = unique.duplicates
     ? `有 ${unique.duplicates} 个组合出现了不止一次${unique.examples.length ? `（例如 ${unique.examples.join("；")}）` : ""}` : "没有重复";
-  return `${unique.fields.join(" + ")}：${count(rows)} 行，${count(unique.distinct)} 种不同的组合，${repeats}`;
+  return `${unique.fields.join(" + ")}：${count(rows)} 行，${count(unique.distinct)} 种不同的组合，${blank}${repeats}`;
 }
 
 export const blankLine = (card) => `共 ${card.cells} 格，${card.blank ? `还有 ${card.blank} 格没说清` : "都答过了"}`;
@@ -104,16 +115,21 @@ export const cardEmptyText = (run) => (run.ontology.status === "auto_built_verif
 export function confirmedCells(card) {
   const cells = cardCells(card).filter((c) => c.answer && c.answer.value != null && c.answer.value !== "unsure");
   return [...new Set(cells.map((c) => c.table))].map((source) => ({ source,
-    lines: cells.filter((c) => c.table === source).map((c) => ({ name: c.name, says: c.answer.says, by: c.answer.by, basis: c.answer.basis || "" })) }));
+    lines: cells.filter((c) => c.table === source).map((c) => ({ name: c.name, says: c.answer.says, by: c.answer.by, basis: c.answer.basis || "", note: c.answer.note || "" })) }));
 }
 
-/** What answering a thing to settle sends: the item's answer, and for an unlinked one the client says was not all imported,
- *  the other end's objects marked as only partly there — in the same request, with the same words. */
+/** What answering a thing to settle sends: the item's answer alone. For an unlinked one the client says was not all
+ *  imported, the service marks the other end's objects as only partly there, and takes that back if the answer changes. */
 export function itemAnswer(item, form) {
   const [text, basis] = [form.text.trim(), form.basis.trim()];
-  const entry = { id: item.id, ...(form.choice ? { choice: form.choice } : {}), ...(text ? { text } : {}), ...(basis ? { basis } : {}) };
-  const partial = item.kind === "unlinked" && form.choice === "incomplete" && item.complete_id;
-  return { items: [entry], cells: partial ? [{ id: item.complete_id, value: "partial", note: text, ...(basis ? { basis } : {}) }] : [] };
+  return { items: [{ id: item.id, ...(form.choice ? { choice: form.choice } : {}), ...(text ? { text } : {}), ...(basis ? { basis } : {}) }] };
+}
+
+/** What saving the answer will also do on the card, said beside the form: "" when it does nothing there. `answer` is the old one. */
+export function linkedHint(item, form, answer = null) {
+  if (item.kind !== "unlinked" || !item.complete_id) return "";
+  if (form.choice === "incomplete") return "另一端的对象会同时在口径卡上记成“数据里只有一部分”。";
+  return answer?.choice === "incomplete" ? "口径卡上那一格如果是这条答复记的，会一起清掉。" : "";
 }
 
 /** What stops an answer from being saved, in words; "" when it can go. */
@@ -136,9 +152,12 @@ export function cardEvidence(item) {
   const card = item.evidence?.card;
   if (!card) return null;
   const used = (card.tables || []).map((t) => `${t.source}（${count(t.rows)} 行${t.through ? `，数据到 ${t.through}` : ""}）`);
+  const name = (l) => l.field || l.label || l.id;
+  const warned = new Set((card.incomplete || []).map((i) => i.label));   // an object warned about below is not also listed as followed
   return {
     data: used.length ? `用的数据：${used.join("；")}` : "",
-    lines: (card.lines || []).map((l) => `按口径：「${l.field || l.label || l.id}」是${l.says}（${l.by} 答复${l.basis ? `，出处：${l.basis}` : ""}）`),
+    lines: (card.lines || []).filter((l) => !(l.id?.startsWith("complete:") && warned.has(name(l))))
+      .map((l) => `按口径：「${name(l)}」是${l.says}（${l.by} 答复${l.basis ? `，出处：${l.basis}` : ""}）`),
     incomplete: (card.incomplete || []).map((i) => `${i.label}在数据里只有一部分${i.note ? `：${i.note}` : ""}`),
   };
 }

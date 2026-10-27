@@ -19,8 +19,8 @@ import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
 import { InstanceGraph } from "./InstanceGraph.jsx";
 import { CardSection, AnswerForm } from "./CardSection.jsx";
-import { answeredRows, canAnswerItem, cardBody, cardEvidence, itemAnswer, readAnswerer, rememberAnswerer } from "./cardModel.js";
-import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
+import { answeredRows, canAnswerItem, cardBody, cardEvidence, draftOf, editBasis, editCell, itemAnswer, readAnswerer, rememberAnswerer } from "./cardModel.js";
+import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, queryCanHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
 import { dropFor, openItemsEmpty } from "./openItemsModel.js";
 import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
@@ -326,13 +326,11 @@ function Answer({ item, onPath, run, requery }) {
   </>;
 }
 
-const QUERY_CAN = "查询能数个数、算占比、求和求平均、按几样东西分组、对确认过的指标求和；还不能限定时间段、按数值条件筛选、一道题同时给两个数";
-
 function Reason({ item }) {
   const view = reasonView(item);
   if (!view) return null;
   return <div className="os-reason">
-    <p className="pr-muted" title={item.status === "query_limit" ? QUERY_CAN : undefined}>{view.line}</p>
+    <p className="pr-muted" title={queryCanHint(item)}>{view.line}</p>
     {view.detail && <details><summary>模型的说明</summary><p>{view.detail}</p></details>}
   </div>;
 }
@@ -840,7 +838,7 @@ function OverviewSection({ run, list, onGo, onDownload, requery, client }) {
     {!run.saved_as && <p className="pr-muted">示例结果没有这份清单，上传自己的文件后由本机服务算。</p>}
     {run.saved_as && !list && <p className="pr-muted">正在读取…</p>}
     {list?.error && <p role="alert" className="pr-error">{list.error}</p>}
-    {items && !items.length && <p className="pr-muted">{openItemsEmpty(run)}</p>}
+    {items && !items.length && <p className="pr-muted">{openItemsEmpty(run, list.answered?.length)}</p>}
     {items?.length > 0 && <ol className="os-open-list">{items.map((item, i) => <OpenItemCard key={item.id || i} index={i + 1} item={item} run={run} onGo={onGo} requery={requery} client={client} />)}</ol>}
     {list?.answered?.length > 0 && <AnsweredList list={list.answered} client={client} />}
   </section>;
@@ -864,6 +862,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const [hints, setHints] = useState(false);   // draw the relations code suggests on the graph
   const [openItems, setOpenItems] = useState(null);   // the list of things to settle with the client, and the ones answered, for one saved run
   const [cardState, setCardState] = useState(null);   // the data-meaning card of one saved run
+  const [cardDraft, setCardDraft] = useState(null);   // edits on the card not saved yet: kept here, so a visit to another page loses nothing
   const [answerer, setAnswerer] = useState(() => readAnswerer(storage()));   // who writes down the client's answers; kept across visits
   const [cardSaving, setCardSaving] = useState(false);
   const [cardSaveError, setCardSaveError] = useState(null);   // { key, text }: the card, or the item whose form is open
@@ -899,6 +898,9 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   }, [run]);
   const openList = openItems?.saved_as === run?.saved_as ? openItems : null;
   const cardList = cardState?.saved_as === run?.saved_as ? cardState : null;
+  useEffect(() => setCardDraft(null), [run?.saved_as]);   // another run starts with no edits
+  const cardEdit = { ...draftOf(cardDraft, run?.saved_as), setCell: (id, value) => setCardDraft((kept) => editCell(kept, run.saved_as, id, value)),
+    setBasis: (text) => setCardDraft((kept) => editBasis(kept, run.saved_as, text)), clear: () => setCardDraft(null) };
   useEffect(() => {
     if (!focused) return undefined;
     const el = [...document.querySelectorAll("[data-question]")].find((e) => e.dataset.question === focused.question);
@@ -1127,7 +1129,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
       {run && tab !== "upload" && !isDocument(run) && <VerificationIssues ontology={run.ontology} />}
       {tab === "upload" && <UploadTab runs={runs} health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "overview" && run && <OverviewSection run={run} list={openList} onGo={go} onDownload={downloadSummary} requery={requeryProps} client={client} />}
-      {tab === "card" && run && <CardSection key={run.saved_as} run={run} state={cardList} client={client} blocked={cardWhy} />}
+      {tab === "card" && run && <CardSection key={run.saved_as} run={run} state={cardList} client={client} blocked={cardWhy} edit={cardEdit} />}
       {tab === "objects" && run && (objectKey
         ? <ObjectDetail key={`${objectKey}-${objectSub.n}`} startAt={objectSub.sub} run={run} typeKey={objectKey} confirm={confirmProps} onBack={() => setObjectKey(null)} onOpen={setObjectKey} onSaveConfirm={goConfirm}
           form={isDocument(run) ? null : { canDraft: Boolean(run.saved_as) && !serviceBlock(health, true), draftWhy: serviceBlock(health, true), canSave: connected, saveWhy: serviceBlock(health, false), drafting, saving: savingForm, error: formError,

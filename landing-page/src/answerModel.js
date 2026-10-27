@@ -67,10 +67,18 @@ export function reviewPoints(item, ontology) {
   return [...filters, ...merged];
 }
 
-/** The label on an answer: amber when there is something left to check, else the status as it reads. */
+const QUERY_CAN = "查询能数个数、算占比、求和求平均、按几样东西分组、对确认过的指标求和；还不能限定时间段、按数值条件筛选、一道题同时给两个数";
+
+/** What a query can do, offered beside a way of asking it cannot do. A question the card stopped is not one of those:
+ *  the query could be written, the client's own answer on the card says it must not be added that way. */
+export const queryCanHint = (item) => (item.status === "query_limit" && !item.refused_by_card ? QUERY_CAN : undefined);
+
+/** The label on an answer: the card's refusal, amber when there is something left to check, else the status as it reads. */
 export function statusPill(item, labels) {
+  const cls = item.status === "broken" ? "ontology_gap" : item.status;
+  if (item.refused_by_card) return { cls, text: "口径卡拦下了" };
   if (reviewPoints(item).some((p) => !p.settled)) return { cls: "review", text: "能回答，要核对" };
-  return { cls: item.status === "broken" ? "ontology_gap" : item.status, text: labels[item.status] || item.status };
+  return { cls, text: labels[item.status] || item.status };
 }
 
 /** Said beside an answer worked out again without a condition: which one went, and that no model was asked. */
