@@ -85,6 +85,29 @@ RULES = [{'id': 'required:entry:paid', 'kind': 'required', 'type': 'entry', 'fie
          {'id': 'order:entry:paid_on:booked_at', 'kind': 'order', 'type': 'entry', 'before': 'paid_on', 'after': 'booked_at', 'holds': 5},
          {'id': 'required:entry:gone', 'kind': 'required', 'type': 'entry', 'field': 'gone', 'holds': 5},
          {'id': 'required:vanished:code', 'kind': 'required', 'type': 'vanished', 'field': 'code', 'holds': 5}]
+# a vendor and a project read from the ledger's own columns as well as from their tables: a vendor named only on the ledger
+# is an object of the graph, but no row of the vendors table
+VENDOR_TWICE = {'key': 'vendor', 'label': '供应商', 'attributes': [],
+                'populated_from': [{'source': 'vendors', 'identity': {'uei': 'uei'}}, {'source': 'ledger', 'identity': {'uei': 'vendor_uei'}}]}
+PROJECT_TWICE = {'key': 'project', 'label': '项目', 'attributes': [],
+                 'populated_from': [{'source': 'projects', 'identity': {'pid': 'pid'}}, {'source': 'ledger', 'identity': {'pid': 'project_id'}}]}
+READ_TWICE = {**ONTOLOGY, 'object_types': [ENTRY, VENDOR_TWICE, PROJECT_TWICE], 'value_aliases': [],
+              'relations': [{'key': 'entry_vendor', 'from': 'entry', 'to': 'vendor', 'source': 'ledger'}]}
+# orders with lines; the sku of a line is an object read from the orders and from the sku list
+LINES_BUNDLE = {
+    'schema': 'company_source_bundle.v1', 'decision': '看订单', 'file': {'name': 'orders.xlsx', 'sha256': 'b' * 64, 'kind': 'table'},
+    'sources': {'orders': {'records': [{'order_no': 'O1', 'lines': [{'sku': 'S1'}, {'sku': 's2'}]},
+                                       {'order_no': 'O2', 'lines': [{'sku': 'S1'}, {'sku': 'S9'}]},
+                                       {'order_no': 'O3', 'lines': []},
+                                       {'order_no': 'O4', 'lines': [{'sku': ''}]},
+                                       {'order_no': 'O5', 'lines': [{'sku': 'S2'}]}], 'requests': []},
+                'skus': {'records': [{'sku': 'S1'}, {'sku': 'S2'}], 'requests': []}}}
+LINES_ONTOLOGY = {
+    'status': 'auto_built_verified', 'value_aliases': [], 'ignored_fields': [],
+    'object_types': [{'key': 'order', 'label': '订单', 'attributes': [], 'populated_from': [{'source': 'orders', 'identity': {'order_no': 'order_no'}}]},
+                     {'key': 'sku', 'label': '货品', 'attributes': [],
+                      'populated_from': [{'source': 'skus', 'identity': {'sku': 'sku'}}, {'source': 'orders', 'identity': {'sku': 'lines[].sku'}}]}],
+    'relations': [{'key': 'order_sku', 'from': 'order', 'to': 'sku', 'source': 'orders'}]}
 
 
 def make_run(ontology=ONTOLOGY, bundle=BUNDLE, confirmation=CONFIRMATION):
@@ -415,6 +438,48 @@ class RelationTests(unittest.TestCase):
                         '连上 4 行（两头都连上才算）', '2 行连不上'):
             self.assertIn(said_so, e['text'])
 
+    def test_the_counts_are_for_the_two_tables_named_not_for_any_table_that_reads_the_object(self):
+        [e] = make_spec(ontology=READ_TWICE, items={}, confirmation=None)['relations']
+        for said_so in ('ledger.vendor_uei 对 vendors.uei', 'ledger 6 行', 'vendors 3 行', '连上 4 行', '2 行连不上', '1 行用来连的编号是空的'):
+            self.assertIn(said_so, e['text'])
+        self.assertNotIn('连上 5 行', e['text'])   # V9 is named on the ledger only: reading it there does not put it in the vendors table
+        self.assertEqual((e['source'], e['refs']), ('code', ['unlinked:entry_vendor']))
+
+    def test_an_answer_about_the_rows_that_did_not_link_goes_with_the_counts_of_the_pair(self):
+        e = make_spec(ontology=READ_TWICE, confirmation=None)['relations'][0]
+        self.assertEqual((e['source'], e['by'], e['refs']), ('client', '王五', ['unlinked:entry_vendor']))
+        self.assertIn('2 行连不上', e['text'])
+        self.assertIn('左关联', e['text'])
+
+    def test_rows_the_pair_cannot_link_are_counted_even_when_the_data_check_found_nothing_to_ask(self):
+        rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
+        rows[5] = {**rows[5], 'vendor_uei': 'V1'}   # every row names a vendor, so the data check sees every row linked
+        bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
+        [e] = make_spec(ontology=READ_TWICE, bundle=bundle, items={}, confirmation=None)['relations']
+        self.assertIn('连上 5 行', e['text'])
+        self.assertIn('1 行连不上', e['text'])
+        self.assertIn('连不上的行怎么处理还没说清', e['text'])
+        self.assertEqual((e['source'], e['refs']), ('code', []))   # there is no item to point at: nobody was asked
+
+    def test_a_value_inside_a_list_is_read_one_per_element_and_a_row_links_when_every_value_does(self):
+        [e] = make_spec(ontology=LINES_ONTOLOGY, bundle=LINES_BUNDLE, items={}, confirmation=None)['relations']
+        for said_so in ('orders.lines[].sku 对 skus.sku', 'orders 5 行', 'skus 2 行', '连上 2 行', '3 行连不上', '2 行用来连的编号是空的', '每个值都对上才算连上'):
+            self.assertIn(said_so, e['text'])   # O1 links (S1 and s2), O2 does not (S9), O3 has no line and O4 a blank one, O5 links
+
+    def test_the_object_the_table_is_about_is_not_the_one_joined_whichever_way_the_relation_is_written(self):
+        for ends in ({'from': 'entry', 'to': 'vendor'}, {'from': 'vendor', 'to': 'entry'}):
+            with self.subTest(**ends):
+                ontology = {**READ_TWICE, 'relations': [{'key': 'entry_vendor', 'source': 'ledger', **ends}]}
+                [e] = make_spec(ontology=ontology, items={}, confirmation=None)['relations']
+                self.assertIn('ledger.vendor_uei 对 vendors.uei', e['text'])   # the ledger is about entries: the vendor is what is joined
+                self.assertNotIn('batch', e['text'])
+
+    def test_a_table_about_a_third_object_joins_both_ends_even_when_it_reads_both(self):
+        ontology = {**READ_TWICE, 'relations': [{'key': 'vendor_project', 'from': 'vendor', 'to': 'project', 'source': 'ledger'}]}
+        [e] = make_spec(ontology=ontology, items={}, confirmation=None)['relations']
+        for said_so in ('ledger.vendor_uei 对 vendors.uei', 'ledger.project_id 对 projects.pid'):
+            self.assertIn(said_so, e['text'])
+
     def test_a_relation_judged_wrong_is_not_a_requirement(self):
         wrong = {**CONFIRMATION, 'decisions': {**CONFIRMATION['decisions'], 'relations': {'entry_dept': {'verdict': 'wrong'}}}}
         spec = make_spec(confirmation=wrong)
@@ -431,6 +496,16 @@ class DerivedRuleAndOpenTests(unittest.TestCase):
         self.assertNotIn('by', e)   # the file keeps when it was confirmed, not by whom
         for said_so in ('支出行', '净额', 'paid − tax', '计算列'):
             self.assertIn(said_so, e['text'])
+
+    def test_a_measure_over_a_column_this_version_no_longer_has_says_so(self):
+        rows = [{k: v for k, v in dict(zip(COLUMNS, row)).items() if k != 'tax'} for row in LEDGER_ROWS]   # the new version of the ledger has no tax
+        bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
+        entry_ = {**ENTRY, 'attributes': [a for a in ENTRY['attributes'] if a['path'] != 'tax']}
+        [e] = make_spec(ontology={**ONTOLOGY, 'object_types': [entry_, *ONTOLOGY['object_types'][1:]]}, bundle=bundle)['derived']
+        for said_so in ('净额', 'paid − tax', '这一版数据里没有「tax」，编排前先核对'):
+            self.assertIn(said_so, e['text'])
+        self.assertEqual((e['source'], e['at']), ('person', '2026-10-27T10:30:00+00:00'))   # still what a person confirmed
+        self.assertNotIn('没有', self.SPEC['derived'][0]['text'])   # nothing is said where every column is there
 
     def test_an_adopted_rule_is_a_check_after_the_pipeline_with_the_number_that_break_it_now(self):
         required, order, missing = self.SPEC['rules']   # the rule on an object the ontology no longer has is not a requirement
@@ -562,6 +637,19 @@ class ExportRouteTests(unittest.TestCase):
                     status, _, body = self.fetch(base, f"/api/ontology/runs/{run['saved_as']}/export/pipeline")
                     self.assertEqual(status, 400)
                     self.assertIn(reason, json.loads(body)['error'])
+
+    def test_a_run_that_did_not_pass_is_refused_even_when_its_proposal_names_a_table_the_data_does_not_have(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            path = out / run['saved_as']
+            saved = json.loads(path.read_text(encoding='utf-8'))
+            invented = json.loads(json.dumps(saved))
+            invented['ontology']['status'] = 'blocked'
+            invented['ontology']['object_types'][0]['populated_from'][0]['source'] = 'no_such_table'
+            path.write_text(json.dumps(invented, ensure_ascii=False), encoding='utf-8')
+            status, _, body = self.fetch(base, f"/api/ontology/runs/{run['saved_as']}/export/pipeline")
+            self.assertEqual(status, 400)
+            self.assertIn('核验', json.loads(body)['error'])
 
     def test_an_unknown_run_is_not_found(self):
         with OntologyServerTests().server(gateway=CardModel()) as (base, _):
