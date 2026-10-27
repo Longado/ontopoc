@@ -17,7 +17,7 @@ import re
 
 from ontology_poc_generator.handover_form import source_profile
 from ontology_poc_generator.ontology_confirm import without_wrong
-from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
+from ontology_poc_generator.public_ontology import _conditions, build_graph, normalize_proposal, normalize_value, resolve
 
 MAX_NOTE, MAX_BASIS, MAX_BY = 300, 200, 40
 HISTORY = 200      # changes kept in the file, the oldest dropped first
@@ -52,9 +52,11 @@ def says(cell_id: str, value) -> str:
 
 def complete_id(t: dict) -> str:
     """Whether an object is all in the data is asked by the table and the key it is read with, not by the type's key,
-    so an answer survives the model renaming the object."""
+    so an answer survives the model renaming the object. Two types can be read from one table by the same key and told
+    apart only by the conditions they keep rows with: those follow the key, so each type has its own cell."""
     pop = t['populated_from'][0]
-    return f"complete:{pop['source']}|{','.join(sorted(pop['identity'].values()))}"
+    where = ';'.join(sorted(f"{c['path']}={c['equals']}" for c in _conditions(pop)))
+    return f"complete:{pop['source']}|{','.join(sorted(pop['identity'].values()))}" + (f'|{where}' if where else '')
 
 
 def _view(cell_id: str, answer: dict | None) -> dict | None:
