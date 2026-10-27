@@ -227,7 +227,7 @@ class RunningTotalTests(unittest.TestCase):
         refused = run_query(ONTOLOGY, QA, total('running'), card=self.RUNNING)
         self.assertEqual(refused, {
             'status': 'query_limit', 'refused_by_card': 'amount:ledger.running',
-            'reason': '「running」在口径卡里是“每次事件后的累计值”：一行已经包含之前的数，跨行相加会重复。可以改问某一次的值，或每个对象最近一次的值。'})
+            'reason': '「running」在口径卡里是“每次事件后的累计值”：一行已经包含之前的数，跨行相加会重复。可以改问某一次（某个对象、某一天）的值。'})
         self.assertEqual(run_query(ONTOLOGY, QA, total('running'))['status'], 'answered')   # no card: as before
         self.assertEqual(run_query(ONTOLOGY, QA, total('running'), card={})['status'], 'answered')
 
