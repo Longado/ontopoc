@@ -308,7 +308,8 @@ class CheckFindingTests(unittest.TestCase):
                     decisions[part].update(verdicts)
                 [item] = [i for i in open_items(run({'data_fit': self.FIT}, confirmation={'decisions': decisions}), BUNDLE)
                           if '被别的表提到' in i['ask']]
-                self.assertEqual((item['ask'][:9], item['facts']), ('有 4 个对象被别的表提到', ['承包商在 vendors 表里缺 K1、K2、K3 等 4 个']))
+                self.assertTrue(item['ask'].startswith('有 4 个对象被别的表提到'), item['ask'])
+                self.assertEqual(item['facts'], ['承包商在 vendors 表里缺 K1、K2、K3 等 4 个'])
 
     def test_a_finding_lists_at_most_three_examples(self):
         many = {'unused_sources': [{'source': f's{n}', 'rows': n, 'fields': 1} for n in range(5)]}
