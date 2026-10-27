@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  CARD_VOCAB, ITEM_CHOICES, answeredRows, blankLine, canAnswerItem, cardBody, cardCells, cardEmptyText, cardEvidence, changedCells, confirmedCells,
-  draftOf, editBasis, editCell, itemAnswer, itemChoices, itemForm, itemProblem, linkedHint, readAnswerer, rememberAnswerer, saveProblem, saysOf, stampLine, uniqueLine,
+  CARD_PIPELINE_NOTE, CARD_VOCAB, ITEM_CHOICES, PIPELINE_EXPORT, answeredRows, blankLine, canAnswerItem, cardBody, cardCells, cardEmptyText, cardEvidence, changedCells,
+  confirmedCells, draftOf, editBasis, editCell, itemAnswer, itemChoices, itemForm, itemProblem, linkedHint, noiseLine, pipelineUrl, readAnswerer, rememberAnswerer,
+  saveProblem, saysOf, stampLine, uniqueLine,
 } from "./cardModel.js";
 
 const at = new Date(2026, 9, 27, 12, 0).toISOString();   // local noon: the same day in every time zone
@@ -297,4 +298,31 @@ test("a cell's note comes with its line in the minutes", () => {
   filled.objects[0].answer = { value: "partial", says: "数据里只有一部分", note: "合同授标只导了 FY25Q1 签的", by: "测试人", basis: "10-27 会议", at };
   assert.deepEqual(confirmedCells(filled)[0].lines, [
     { name: "财务支出行", says: "数据里只有一部分", by: "测试人", basis: "10-27 会议", note: "合同授标只导了 FY25Q1 签的" }]);
+});
+
+test("a number column written with thousands separators or placeholders says what the pipeline has to do to it", () => {
+  assert.equal(noiseLine({ thousands: 12, placeholders: { "n/a": 3, "-": 2 } }), "有千分位 12 个、占位符 “n/a” 3 个、“-” 2 个，编排时要转成数值");
+  assert.equal(noiseLine({ thousands: 1234, placeholders: {} }), "有千分位 1,234 个，编排时要转成数值");
+  assert.equal(noiseLine({ thousands: 0, placeholders: { "--": 4 } }), "有占位符 “--” 4 个，编排时要转成数值");
+  assert.equal(noiseLine({ thousands: 0, placeholders: {} }), "");
+  assert.equal(noiseLine(undefined), "");   // a strict number column carries no noise
+});
+
+test("the pipeline requirements export has one name, one hint and one address, and the card page points at it by that name", () => {
+  assert.equal(PIPELINE_EXPORT.label, "⤓ 编排需求单");
+  assert.equal(PIPELINE_EXPORT.title, "交给搭数据管道的人：每张表要做的清洗、关联、按期取数和校验，来自体检和客户答复");
+  assert.equal(pipelineUrl("20261027-ab12"), "/api/ontology/runs/20261027-ab12/export/pipeline");
+  assert.equal(CARD_PIPELINE_NOTE, "填好的答复会写进编排需求单（页头 ⤓ 编排需求单）");
+});
+
+test("the export sits beside 表单 for a saved table run only, and the card page shows the noise line and points at the export", () => {
+  const studio = readFileSync(new URL("./OntologyStudio.jsx", import.meta.url), "utf8");
+  const section = readFileSync(new URL("./CardSection.jsx", import.meta.url), "utf8");
+  const link = studio.split("\n").find((line) => line.includes("pipelineUrl("));
+  assert.ok(link, "the header links the export");
+  assert.match(link, /run\.saved_as && !isDocument\(run\)/);   // the same condition as ⤓ 表单
+  assert.match(link, /PIPELINE_EXPORT\.title/);
+  assert.ok(studio.indexOf("export/forms") < studio.indexOf("pipelineUrl(") && studio.indexOf("pipelineUrl(") < studio.indexOf("export/ttl"));
+  assert.match(section, /noiseLine\(a\.noise\)/);
+  assert.match(section, /CARD_PIPELINE_NOTE/);
 });

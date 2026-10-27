@@ -42,6 +42,15 @@ test("the measure of an answer is its own, else the question's when the answer i
   assert.equal(measureOf({ query: periods.query, answer: { groups: [], measure: measure() } }).value, 4631003200);
 });
 
+test("a measure read from the question names its column without the table, as the answer's own measure does", () => {
+  const asked = (field) => ({ query: { measure: { field, op: "sum" } }, answer: { groups: [] } });
+  assert.deepEqual(measureOf(asked("financial_rows.gross_outlay")), { field: "gross_outlay", op: "sum" });
+  assert.deepEqual(measureOf(asked("gross_outlay")), { field: "gross_outlay", op: "sum" });
+  assert.equal(measureOf(asked("awards.items[].price")).field, "items[].price");   // only the table is dropped from a path inside a list
+  assert.equal(measureOf(asked("items[].price")).field, "items[].price");   // a bare path inside a list has no table to drop
+  assert.equal(measureOf({ query: { measure: { derived: "含税.金额", op: "sum" } }, answer: { groups: [] } }).field, "含税.金额");   // a derived measure's name is its own
+});
+
 test("the figure beside a bar is a share with its denominator, a measure with its values, or the count", () => {
   assert.equal(groupFigure({ status: "answered", ...periods }, periods.answer.groups[0]), "144,393,033.61（1213 个值）");
   assert.equal(groupFigure({ answer: { groups: [], measure: measure() } }, ["USA", 523.06]), "523.06");
