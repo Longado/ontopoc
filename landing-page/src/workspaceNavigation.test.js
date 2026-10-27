@@ -55,5 +55,5 @@ test("an opened table enables its modules and keeps their existing navigation", 
 
 test("document workspaces keep only their supported modules", () => {
   assert.deepEqual(shell({ file: { name: "policy.md", kind: "document" } }).buttons.map(content),
-    ["本体库", "要确认的事", "本体管理", "本体关系", "数据体检"]);
+    ["本体库", "本体管理", "本体关系", "数据体检"]);
 });

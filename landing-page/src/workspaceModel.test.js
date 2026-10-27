@@ -20,12 +20,12 @@ const run = (extra = {}) => ({
 
 test("an organisation run offers the organisation module and leaves out data and questions", () => {
   const org = { ...run(), mode: "org", file: { name: "palantir.md", kind: "document" } };
-  assert.deepEqual(sectionsFor(org).map(([key]) => key), ["overview", "objects", "org", "graph", "check"]);
+  assert.deepEqual(sectionsFor(org).map(([key]) => key), ["objects", "org", "graph", "check"]);
 });
 
 test("the sidebar offers every module for a table run, and leaves out data and questions for a document", () => {
   assert.deepEqual(sectionsFor(run()).map(([key]) => key), ["overview", "data", "objects", "graph", "qa", "check"]);
-  assert.deepEqual(sectionsFor(run({ file: { name: "制度.md", kind: "document" } })).map(([key]) => key), ["overview", "objects", "graph", "check"]);
+  assert.deepEqual(sectionsFor(run({ file: { name: "制度.md", kind: "document" } })).map(([key]) => key), ["objects", "graph", "check"]);   // the list is code counting rows: a document has none
   assert.deepEqual(sectionsFor(null).map(([key]) => key), ["overview", "data", "objects", "graph", "qa", "check"]);
   assert.deepEqual(sectionsFor(run())[0], ["overview", "要确认的事"]);
 });
