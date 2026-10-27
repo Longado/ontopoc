@@ -25,6 +25,8 @@ KEPT = ('question', 'query', 'note', 'snapshot', 'answer', 'status', 'path', 're
 UNMET = ('query_limit', 'ontology_gap')
 CARDINALITY = {'one_to_one': '一对一', 'one_to_many': '一对多', 'many_to_one': '多对一', 'many_to_many': '多对多'}
 OLD_SERVICE = '本机建模服务是旧版本，还没有“要确认的事”这一项；更新代码并重启服务后再看。'
+NO_SUCH_ROUTE = 'Unknown ontology endpoint'   # what the service's router says for a path it does not have
+EXPORT_MANIFEST = '.ontopoc-export.json'   # in the export folder: the names each kind of export last wrote there
 INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判断它对不对、能不能拿去用。
 模型只提议，代码核验，判断只归人。
 调用顺序
@@ -39,9 +41,11 @@ INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判
 - answered：先看 evidence.filters。有 not_in_question 的条件，是模型自己加的、题目里没提：
   告诉人模型加了什么、筛掉多少（before、after 是筛前筛后的个数）；人要去掉就用 drop_filter 去掉重算（不调模型）；
   人定之前不要 fix_question。
+- open_items 里 model_filter 项带 requeried: true：已经去掉条件重算过，验收题里存的还是旧答案；
+  要问人的是“要不要用新答案替换验收题”（同意了用 fix_question），不要再 drop_filter。
 - answered 且 evidence.merged：告诉人哪几个对象被算成了一个。
 - no_data 且 evidence.found_elsewhere：这个值在别的对象里，建议人换那个对象再问。
-- query_limit、ontology_gap：是模型的判断，换个说法最多再问一次；人要的话用 fix_question 记成必答题。
+- query_limit、ontology_gap：看 reason_from_model。为 true 是模型的判断，换个说法最多再问一次；否则是代码查出来的原因，照 reason 告诉人。人要的话用 fix_question 记成必答题。
 - needs_derived：把公式和试算给人看，人同意后才 confirm_derived。
 判断只归人
 - confirm_ontology、fix_question、set_rules、confirm_derived、save_form 只在人明确说了之后调用，不替人编判断。
@@ -105,7 +109,9 @@ def _upload(files, purpose, previous=None, mode=None) -> dict:
 def _overview(run: dict) -> dict:
     ontology, ev = run['ontology'], run['evaluation']
     fit = ev.get('data_fit') or ev.get('document_fit') or {}
-    items = [i for r in ev.get('asked', []) for i in r.get('items', [])] + (ev.get('questions') or {}).get('items', [])
+    asks = [*(ev.get('questions') or {}).get('items', []), *(i for r in ev.get('asked', []) for i in r.get('items', []))]
+    latest = {i['question']: i for i in asks if i.get('question')}   # each question once, at its latest ask: a rerun without a condition is the same question
+    items = [*latest.values(), *(i for i in asks if not i.get('question'))]
     return {'saved_as': run.get('saved_as'), 'file': run['file']['name'], 'kind': run['file'].get('kind'), 'purpose': run.get('purpose'),
             'status': ontology['status'], 'objects': len(ontology['object_types']), 'relations': len(ontology['relations']),
             'checks_passed': f"{sum(c['passed'] for c in fit.get('checks', []))} / {len(fit.get('checks', []))}",
@@ -120,7 +126,7 @@ def _with_open_items(s, overview: dict) -> dict:
     try:
         items = s.request(f"/api/ontology/runs/{quote(overview['saved_as'])}/open-items")['items']
     except ToolError as exc:
-        if exc.status != 404:
+        if exc.status != 404 or str(exc) != NO_SUCH_ROUTE:   # any other 404 is about the run, not the route
             raise
         return {**overview, 'open_items': None, 'note': OLD_SERVICE}
     return {**overview, 'open_items': items}
@@ -128,7 +134,7 @@ def _with_open_items(s, overview: dict) -> dict:
 
 def _question(item: dict) -> dict:
     return {**{k: item.get(k) for k in ('question', 'status', 'answer', 'path', 'reason', 'query')},
-            **{k: item[k] for k in ('derive', 'evidence', 'edited') if k in item}}
+            **{k: item[k] for k in ('derive', 'evidence', 'edited', 'reason_from_model') if k in item}}
 
 
 def _added_conditions(item: dict) -> list[dict]:
@@ -151,22 +157,46 @@ def _cardinality(labels: dict, r: dict, card: dict) -> dict:
     return {'cardinality': kind, 'reads': f'{CARDINALITY[kind]}：{first}，{second}'}
 
 
+def _plain(name) -> bool:
+    """A file name and nothing more: no folder part, not empty, not . or .."""
+    return isinstance(name, str) and name not in ('', '.', '..') and Path(name).name == name and '\\' not in name
+
+
+def _manifest(out: Path) -> dict:
+    try:
+        listed = json.loads((out / EXPORT_MANIFEST).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    return listed if isinstance(listed, dict) else {}
+
+
 def _export(s, a, kind: str, query: str = '') -> dict:
     """Write an export the service hands over as {'files': {name: text}} into a folder, and return where it went: a
-    Turtle export of a real run is millions of characters."""
+    Turtle export of a real run is millions of characters. The names come from the service (for a form, from the run's
+    own keys), so every one is checked before anything is written. A manifest in the folder lists what this kind of
+    export wrote, and the next one clears what it listed and no longer has; nothing else in the folder is touched."""
     saved_as, chosen = _text(a.get('saved_as'), 'saved_as'), a.get('out_dir')
     out = Path(_text(chosen, 'out_dir')) if chosen is not None else None
     if out is not None and not out.is_absolute():
         raise ToolError('out_dir 要写绝对路径')
     files = s.request(f'/api/ontology/runs/{quote(saved_as)}/export/{kind}?format=json{query}')['files']
+    bad = [name for name in files if not _plain(name)]
+    if bad:
+        raise ToolError(f'导出的文件名不是单纯的文件名（不能带文件夹、不能是空的或 . ..），整次导出没有写任何文件：{"、".join(map(repr, bad))}')
     out = out or Path('~/Downloads/OntoPoc').expanduser() / saved_as.removesuffix('.json') / kind
     out.mkdir(parents=True, exist_ok=True)
+    before = _manifest(out)
+    last = before.get(kind) if isinstance(before.get(kind), list) else []
     written = []
     for name, text in files.items():
         data = text.encode('utf-8')
         (out / name).write_bytes(data)
         written.append({'name': name, 'path': str(out / name), 'bytes': len(data)})
-    return {'dir': str(out), 'files': written, 'total_bytes': sum(w['bytes'] for w in written)}
+    removed = sorted(name for name in last if _plain(name) and name not in files and (out / name).is_file())
+    for name in removed:
+        (out / name).unlink()
+    (out / EXPORT_MANIFEST).write_text(json.dumps({**before, kind: list(files)}, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+    return {'dir': str(out), 'files': written, 'total_bytes': sum(w['bytes'] for w in written), 'removed': removed}
 
 
 # ---- the tools: one per feature ----
@@ -394,9 +424,11 @@ WRONG = {'include_wrong': {'type': 'boolean', 'description': '连人判错的也
 RUN = {'saved_as': {'type': 'string', 'description': '运行的保存名，来自 list_runs 或 build_ontology'}}
 TYPE = {'type': {'type': 'string', 'description': '对象的 key，来自 list_objects'}}
 OUT_DIR = {'out_dir': {'type': 'string', 'description': '导出文件写到哪个文件夹，必须是绝对路径；不写就是 ~/Downloads/OntoPoc/<运行保存名去掉 .json>/<forms|ttl|mermaid>/'}}
-EXPORTED = '文件写到本机的一个文件夹（out_dir，默认在下载文件夹里），同名覆盖，只返回文件的路径和字节数 {dir, files: [{name, path, bytes}], total_bytes}，不返回文件内容。'
+EXPORTED = ('文件写到本机的一个文件夹（out_dir，默认在下载文件夹里），同名覆盖，只返回文件的路径和字节数 {dir, files: [{name, path, bytes}], total_bytes, removed}，不返回文件内容。'
+            f'文件夹里会留一份清单 {EXPORT_MANIFEST}，记着这一类导出这次写了哪些文件；再导出到同一个文件夹时，上次清单里有、这次没有的文件会被删掉（removed 是删掉的文件名），'
+            '清单以外的文件不碰。文件名必须是单纯的文件名，否则整次导出报错、一个文件也不写。')
 STATES = ('每道题有 status：answered 答出来了；no_data 数据里没有满足条件的对象；query_limit 查询写不出来、ontology_gap 本体缺回答它要的东西'
-          '（这两种是模型的判断）；needs_derived 要一个派生指标，derive 里是公式和试算，人同意后才 confirm_derived。'
+          '（reason_from_model 为 true 时是模型的判断；否则是代码查出来的原因，照 reason 告诉人）；needs_derived 要一个派生指标，derive 里是公式和试算，人同意后才 confirm_derived。'
           'evidence 是代码给的核对依据：filters 是查询里的筛选条件（before、after 是筛前筛后的对象数，removed_measure 是筛掉的那部分的合计），'
           '其中 not_in_question 的是模型自己加的、题目没提，该不该加由人定，不加用 drop_filter 去掉重算；'
           'merged 是被算成同一个的对象组（同一个名字下有几个不同的识别值）；found_elsewhere 是 no_data 时，这个值在别的对象里能找到的地方。')
@@ -459,11 +491,11 @@ TOOLS = [
           {**RUN, 'question': {'type': 'string', 'description': '题目原文，来自 list_questions 或 ask_question'},
            'note': {'type': 'string', 'description': '口径说明，例如"按订单号计数"'}}, ('saved_as', 'question')),
     _tool(drop_filter, '去掉模型自己加在一道题上的一个条件，用本机代码重算，不调模型；新答案作为这道题新的一次追加到记录里并返回，想固定它再用 fix_question。'
-          '用在人同意去掉模型自己加的条件之后（evidence.filters 里 not_in_question 的那些）。field、equals 要和这道题 query.where 里那一条原样一致'
-          '（query.where 里的 field 带来源表前缀，如 payments.awarding_subagency；evidence.filters 里的 field 没有前缀）。',
+          '用在人同意去掉模型自己加的条件之后（evidence.filters 里 not_in_question 的那些）。field、equals 两种写法都认：照 evidence.filters 里那一条写（字段不带表名），'
+          '或照这道题 query.where 里那一条原样写（字段带不带表名以查询为准）。',
           {**RUN, 'question': {'type': 'string', 'description': '题目原文，来自 list_questions 或 ask_question'},
-           'field': {'type': 'string', 'description': '要去掉的条件的字段，照 query.where 里那一条原样写'},
-           'equals': {'type': ['string', 'number', 'boolean'], 'description': '要去掉的条件的取值，照 query.where 里那一条原样写'}},
+           'field': {'type': 'string', 'description': '要去掉的条件的字段：照 evidence.filters 里那一条写（不带表名），或照 query.where 里那一条原样写'},
+           'equals': {'type': ['string', 'number', 'boolean'], 'description': '要去掉的条件的取值，和 evidence.filters 或 query.where 里那一条的取值一致，类型照原样'}},
           ('saved_as', 'question', 'field', 'equals')),
     _tool(confirm_ontology, '保存人对本体的逐项判断，成为这个文件的参考本体并马上对照。decisions 形如 '
           '{"types": {"<对象key>": {"verdict": "ok"|"wrong", "label": "改名（可选）"}}, "relations": {"<关系key>": {"verdict": "ok"|"wrong"}}, "added": ["漏掉的对象名"]}。',

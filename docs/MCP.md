@@ -37,7 +37,7 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `ask_question` | 智能问答 · 提问 / 出一组题 | 是 |
 | `list_questions` | 智能问答 · 你问的、模型出的题、验收问题 | 否 |
 | `confirm_derived` | 答案里「确认这个指标」：人同意后存下派生指标并重算等它的题 | 否 |
-| `drop_filter` | 答案卡上“去掉这个条件重算”：去掉模型自己加的一个条件，由代码重算 | 否 |
+| `drop_filter` | 答案卡上“去掉这个条件重算”：去掉模型自己加的一个条件，由代码重算；条件可以照 `evidence.filters`（字段不带表名）写，也可以照 `query.where` 原样写 | 否 |
 | `fix_question` | 存为验收问题（答案里有模型自己加的条件时，要写口径说明才放行） | 否 |
 | `confirm_ontology` | 逐项确认 · 保存 | 否 |
 | `compare_reference` | 数据体检 · 对照标准 | 否 |
@@ -48,7 +48,9 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 
 三个导出工具把文件写进文件夹，只返回路径和字节数，不把内容塞进回复（TTL 的数据文件可以有几百万字）。默认写到 `~/Downloads/OntoPoc/<运行名>/<forms|ttl|mermaid>/`，`out_dir` 可以指定别的绝对路径。
 
-连上时工具服务会给客户端一份简短的使用说明：先调什么，哪几个工具调模型、要花钱，每种答案状态该怎么办，哪些判断只归人。
+写之前先检查全部文件名：必须是单纯的文件名（不带文件夹，不是空的、`.`、`..`），有一个不合格就整次报错、一个文件也不写，所以文件不会落到 `out_dir` 外面。文件夹里会留一份清单 `.ontopoc-export.json`，按导出类型记着这次写了哪些文件；再导出到同一个文件夹时，上次清单里有、这次没有的文件会被删掉（比如人后来判错的对象的 CSV、撤掉规则后的旧 `shapes.ttl`），返回里的 `removed` 是删掉的文件名。清单以外的文件一律不碰。
+
+连上时工具服务会给客户端一份简短的使用说明：先调什么，哪几个工具调模型、要花钱，每种答案状态该怎么办，哪些判断只归人。`query_limit`、`ontology_gap` 要看题目里的 `reason_from_model`：为 true 是模型的判断，否则是代码查出来的原因（比如字段不存在、算法不支持）。`open_items` 里带 `requeried: true` 的条件项，是已经去掉条件重算过、验收题还是旧答案，要问的是换不换成新答案。
 
 "下载纪要"没有单独的工具：纪要是页面把上面这些数据排版成的一页，开头就是 `run_overview` 里的 `open_items`。
 
