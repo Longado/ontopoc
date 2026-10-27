@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import json
 import re
 
-from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
+from ontology_poc_generator.public_ontology import build_graph, linked, normalize_proposal, normalize_value, resolve
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview
@@ -223,6 +223,25 @@ def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, 
     return None, notes
 
 
+def _found_elsewhere(types: dict, graph: dict, start: str, wanted: list) -> list:
+    """For each filter value the start objects do not have: which other kinds of object carry it in their number (the
+    whole number or one part of it, so 4732|GS03F102CA carries GS03F102CA), how many, and how many start objects are
+    directly connected to them. A question about a framework contract asked of its awards is answered "not in the data"
+    and the contract is right there as the parent."""
+    parts = lambda value: {normalize_value(value), *(normalize_value(part) for part in str(value).split('|'))}
+    out = []
+    for field, equals in wanted:
+        target = normalize_value(equals)
+        found = {}
+        for inst in graph['sources_of']:
+            if inst[0] != start and any(target in parts(value) for _, value in inst[1]):
+                found.setdefault(inst[0], []).append(inst)
+        for key in (k for k in types if k in found):   # in the ontology's order
+            out.append({'type': key, 'field': field, 'equals': equals, 'count': len(found[key]),
+                        'linked': len(set().union(*(linked(graph, inst, start) for inst in found[key])))})
+    return out
+
+
 def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None) -> dict:
     p = normalize_proposal(ontology)
     types, relations = _types(p), {r['key']: r for r in p['relations']}
@@ -353,13 +372,17 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
                 **({} if w['field'] in lookup else {'examples': [named(i) for i in gone[:3]], **removed_amount(gone)})}
                for w, before, after, gone in stages] if everyone else []
 
-    def proved(result, merged=(), merged_total=0):
+    def proved(result, merged=(), merged_total=0, elsewhere=()):
         """The check pack rides beside the answer, never inside it: acceptance compares `answer` between runs."""
         pack = {**({'filters': filters} if filters else {}), **{k: v for k, v in notes.items() if v},
-                **({'merged': merged} if merged else {}), **({'merged_total': merged_total} if merged_total > len(merged) else {})}
+                **({'merged': merged} if merged else {}), **({'merged_total': merged_total} if merged_total > len(merged) else {}),
+                **({'found_elsewhere': elsewhere} if elsewhere else {})}
         return {**result, **({'evidence': pack} if pack else {})}
     if not starts:
-        return proved({'status': 'no_data', 'reason': '数据里没有满足筛选条件的对象', 'path': path})
+        # a value no start object has may be the number of some other kind of object: the question was put to the wrong one
+        lacking = [(name(w['field']), w['equals']) for w in where if normalize_value(w['equals']) and not any(has(i, w) for i in everyone)]
+        return proved({'status': 'no_data', 'reason': '数据里没有满足筛选条件的对象', 'path': path},
+                      elsewhere=_found_elsewhere(types, graph, start, lacking))
 
     def reach(inst, via):
         frontier = {inst}
@@ -474,6 +497,18 @@ def flag_unasked_filters(result: dict, question: str) -> dict:
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
 
 
+def _in_names(ontology: dict, result: dict) -> dict:
+    """The reason of an answer that did not succeed, written in the names a person reads instead of the ontology's keys."""
+    if result['status'] != 'answered' and result.get('reason'):
+        return {**result, 'reason': plain_reason(ontology, result['reason'])}
+    return result
+
+
+def answer_query(ontology: dict, bundle: dict, query: dict, question: str, graph: dict | None = None, derived: list | None = None) -> dict:
+    """One question's query run and read for a person: the filters the question never says are marked, and a reason is in names."""
+    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived), question))
+
+
 def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
     p = normalize_proposal(ontology)
     values = categorical_values(ontology, bundle)
@@ -526,13 +561,12 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
                 result = trial if trial['status'] == 'query_limit' else {
                     'status': 'needs_derived', 'reason': f'要先确认“{formula["label"]} = {formula_text(formula)}”这个指标，才能回答',
                     'derive': {**formula, 'formula': formula_text(formula), 'preview': derived_preview(ontology, bundle, formula, graph)}}
+            result = _in_names(ontology, result)
         elif isinstance(query, dict):
-            result = flag_unasked_filters(run_query(ontology, bundle, query, graph, derived), question or q['question'])
+            result = answer_query(ontology, bundle, query, question or q['question'], graph, derived)
         else:
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
-            result = {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True}
-        if result['status'] != 'answered' and result.get('reason'):
-            result = {**result, 'reason': plain_reason(ontology, result['reason'])}
+            result = _in_names(ontology, {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True})
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
                              **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])

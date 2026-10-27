@@ -45,12 +45,17 @@ def node_id(inst: tuple) -> str:
     return f"{inst[0]}:{'|'.join(str(v) for _, v in inst[1])}"
 
 
+def _display(t: dict) -> str | None:
+    """The name-like attribute an object is shown by, when it has one."""
+    return next((a.get('path') for a in t['attributes'] if any(w in str(a.get('path', '')).lower() for w in NAME_LIKE)), None)
+
+
 def _labeller(t: dict, bundle: dict, records_of: dict):
     """An object's number as it is written, and a name-like field when it has one as a second line. The number leads:
     on Northwind an order's name-like field is its ship name, and an order labelled by it read like a customer."""
     read = _read(t)
     identity = list(dict.fromkeys(p for pop in t['populated_from'] for p in pop['identity'].values()))
-    display = next((a.get('path') for a in t['attributes'] if any(w in str(a.get('path', '')).lower() for w in NAME_LIKE)), None)
+    display = _display(t)
 
     def label(inst):
         row = _row(bundle, records_of, read, inst)
