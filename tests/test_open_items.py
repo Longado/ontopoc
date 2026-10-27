@@ -30,6 +30,11 @@ def vendors(*rows):
                         'vendors': {'records': [{'uei': uei, 'vendor_name': name} for uei, name in rows]}}}
 
 
+def padded(count, *rows):
+    """Vendors that share a name only in `rows`, among `count` vendors in all: the rest each have a name of their own."""
+    return vendors(*rows, *((f'U{n}', f'Unique {n}') for n in range(count - len(rows))))
+
+
 BUNDLE = vendors(('K1', 'Acme'), ('K2', 'Bolt'))
 
 
@@ -190,7 +195,7 @@ class UnlinkedTests(unittest.TestCase):
 
 class SameNameTests(unittest.TestCase):
     def test_objects_sharing_a_name_but_not_a_number_are_asked_one_item_per_type(self):
-        bundle = vendors(('K1', 'Stantec'), ('K2', 'STANTEC '), ('K3', 'Acme'), ('K4', 'Zed'), ('K5', 'zed'), ('K6', 'Zed'))
+        bundle = padded(60, ('K1', 'Stantec'), ('K2', 'STANTEC '), ('K3', 'Acme'), ('K4', 'Zed'), ('K5', 'zed'), ('K6', 'Zed'))
         [item] = open_items(run(), bundle)
         self.assertEqual(item, {
             'kind': 'same_name', 'from_model': False,
@@ -199,7 +204,7 @@ class SameNameTests(unittest.TestCase):
 
     def test_at_most_five_groups_are_listed_but_all_are_counted(self):
         pairs = [(f'{n}A', f'Name{n}') for n in range(7)] + [(f'{n}B', f'name{n}') for n in range(7)]
-        [item] = open_items(run(), vendors(*pairs))
+        [item] = open_items(run(), padded(300, *pairs))
         self.assertTrue(item['ask'].startswith('承包商里有 7 组名字相同'))
         self.assertEqual(len(item['facts']), 5)
 
@@ -208,7 +213,8 @@ class SameNameTests(unittest.TestCase):
         ontology['object_types'].append({'key': 'region', 'label': '区域', 'populated_from': [
             {'source': 'regions', 'identity': {'name': 'name', 'code': 'code'}}], 'attributes': [{'source': 'regions', 'path': 'name'}]})
         bundle = vendors(('K1', 'Acme'))
-        bundle['sources']['regions'] = {'records': [{'name': 'North', 'code': '1'}, {'name': 'North', 'code': '2'}]}
+        bundle['sources']['regions'] = {'records': [{'name': 'North', 'code': '1'}, {'name': 'North', 'code': '2'},
+                                                    *({'name': f'R{n}', 'code': f'C{n}'} for n in range(30))]}
         self.assertEqual(open_items(run(ontology=ontology, confirmation={'decisions': {
             'types': {t['key']: {'verdict': 'ok'} for t in ontology['object_types']},
             'relations': DECIDED['decisions']['relations']}}), bundle), [])
@@ -217,7 +223,7 @@ class SameNameTests(unittest.TestCase):
     def test_a_type_judged_wrong_is_not_asked(self):
         decided = copy.deepcopy(DECIDED)
         decided['decisions']['types']['vendor'] = {'verdict': 'wrong'}
-        self.assertEqual(open_items(run(confirmation=decided), vendors(('K1', 'Stantec'), ('K2', 'Stantec'))), [])
+        self.assertEqual(open_items(run(confirmation=decided), padded(60, ('K1', 'Stantec'), ('K2', 'Stantec'))), [])
 
 
 class UnstableTests(unittest.TestCase):
@@ -298,7 +304,7 @@ class UnansweredTests(unittest.TestCase):
         items = asked(
             self.stuck('甲', 'query_limit', reason='很长的模型说明', reason_from_model=True),
             self.stuck('乙', 'ontology_gap', reason='很长的模型说明', reason_from_model=True),
-            self.stuck('丙', 'ontology_gap', reason='本体里没有对象类型 invoice'),
+            self.stuck('丙', 'ontology_gap', reason='本体里没有对象类型 invoice', query={'start': 'invoice'}),
             self.stuck('丁', 'no_data', reason='数据里没有满足筛选条件的对象'),
             self.stuck('戊', 'no_data', evidence={'found_elsewhere': [{'type': 'vehicle', 'field': 'f', 'equals': 'x', 'count': 1, 'linked': 1}]},
                        query={'start': 'contract'}),
@@ -312,7 +318,8 @@ class UnansweredTests(unittest.TestCase):
             'target': {'tab': 'qa', 'place': 'ask'}})
 
     def test_the_item_is_not_from_the_model_when_every_reason_was_written_by_code(self):
-        items = asked(self.stuck('甲', 'query_limit', reason='这道题用了 having：查询语言还表达不了'), self.stuck('乙', 'no_data'))
+        items = asked(self.stuck('甲', 'query_limit', reason='这道题用了 having：查询语言还表达不了', query={'start': 'spend', 'having': {}}),
+                      self.stuck('乙', 'no_data'))
         [item] = open_items(run({'asked': items}), BUNDLE)
         self.assertIs(item['from_model'], False)
         self.assertEqual(item['facts'], ['「甲」：这道题用了 having：查询语言还表达不了', '「乙」：数据里没有'])
@@ -354,7 +361,7 @@ class WholeRunTests(unittest.TestCase):
             'asked': asked(stuck, found, answered(PAID, {'filters': [ADDED], 'merged': [MergedAndElsewhereTests.GROUP]})),
             'data_fit': {**UnlinkedTests.FIT, 'unused_sources': [{'source': 'notes', 'rows': 1, 'fields': 1}]},
             'stability': UnstableTests.STABILITY}
-        bundle = vendors(('K1', 'Acme'), ('K2', 'ACME'))
+        bundle = padded(30, ('K1', 'Acme'), ('K2', 'ACME'))
         out = open_items(run(evaluation, ontology={**ONTOLOGY, 'data_gaps': ['缺口']}, confirmation=None), bundle)
         self.assertEqual(set(kinds(out)), set(KINDS))
         self.assertEqual(kinds(out), sorted(kinds(out), key=KINDS.index))
