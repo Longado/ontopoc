@@ -23,10 +23,37 @@ from ontology_poc_generator.ontology_confirm import without_wrong
 PROTOCOL_VERSIONS = ('2025-06-18', '2025-03-26', '2024-11-05')
 KEPT = ('question', 'query', 'note', 'snapshot', 'answer', 'status', 'path', 'reason')   # what an acceptance question carries
 UNMET = ('query_limit', 'ontology_gap')
+CARDINALITY = {'one_to_one': '一对一', 'one_to_many': '一对多', 'many_to_one': '多对一', 'many_to_many': '多对多'}
+OLD_SERVICE = '本机建模服务是旧版本，还没有“要确认的事”这一项；更新代码并重启服务后再看。'
+INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判断它对不对、能不能拿去用。
+模型只提议，代码核验，判断只归人。
+调用顺序
+1. health 看服务和模型凭据；list_runs 看已有的运行，没有就 build_ontology 上传文件新建。
+2. run_overview，先看 open_items：那是要带给人的事，逐条讲给人听，别自己替他定。
+3. 再按需看细节：list_objects、list_relations、data_check、list_questions、object_rows 等。
+花钱的工具
+- build_ontology、ask_question、draft_form、find_name_variants 会调模型，慢且花钱；其余工具都是本机代码在算，不花钱。
+- build_ontology 要等模型跑完，常常半分钟到几分钟，先跟人说一声。
+- 导出（export_forms、export_ttl、export_mermaid）写成文件，只返回路径。
+每种答案怎么办
+- answered：先看 evidence.filters。有 not_in_question 的条件，是模型自己加的、题目里没提：
+  告诉人模型加了什么、筛掉多少（before、after 是筛前筛后的个数）；人要去掉就用 drop_filter 去掉重算（不调模型）；
+  人定之前不要 fix_question。
+- answered 且 evidence.merged：告诉人哪几个对象被算成了一个。
+- no_data 且 evidence.found_elsewhere：这个值在别的对象里，建议人换那个对象再问。
+- query_limit、ontology_gap：是模型的判断，换个说法最多再问一次；人要的话用 fix_question 记成必答题。
+- needs_derived：把公式和试算给人看，人同意后才 confirm_derived。
+判断只归人
+- confirm_ontology、fix_question、set_rules、confirm_derived、save_form 只在人明确说了之后调用，不替人编判断。
+- 拿不准的事写成问题交给人，不要当成结论。"""
 
 
 class ToolError(Exception):
-    """What a tool reports back to the client as its error text."""
+    """What a tool reports back to the client as its error text; status is the service's HTTP status when it refused."""
+
+    def __init__(self, text: str, status: int | None = None):
+        super().__init__(text)
+        self.status = status
 
 
 class LocalService:
@@ -42,9 +69,9 @@ class LocalService:
                 return json.load(response)
         except HTTPError as exc:
             try:
-                raise ToolError(json.load(exc).get('error') or f'服务返回 {exc.code}') from None
+                raise ToolError(json.load(exc).get('error') or f'服务返回 {exc.code}', exc.code) from None
             except ValueError:
-                raise ToolError(f'服务返回 {exc.code}') from None
+                raise ToolError(f'服务返回 {exc.code}', exc.code) from None
         except URLError as exc:
             raise ToolError(f'连不上本机建模服务 {self.base}（{exc.reason}）。先启动 ontology_server。') from None
 
@@ -87,9 +114,59 @@ def _overview(run: dict) -> dict:
             'confirmed': bool(run.get('confirmation')), 'acceptance': bool(ev.get('acceptance'))}
 
 
+def _with_open_items(s, overview: dict) -> dict:
+    """The overview and, from the service's own list, what has to be settled with the client. A service that predates the
+    route answers 404: no list, and a note saying why."""
+    try:
+        items = s.request(f"/api/ontology/runs/{quote(overview['saved_as'])}/open-items")['items']
+    except ToolError as exc:
+        if exc.status != 404:
+            raise
+        return {**overview, 'open_items': None, 'note': OLD_SERVICE}
+    return {**overview, 'open_items': items}
+
+
 def _question(item: dict) -> dict:
     return {**{k: item.get(k) for k in ('question', 'status', 'answer', 'path', 'reason', 'query')},
-            **{k: item[k] for k in ('derive', 'evidence') if k in item}}
+            **{k: item[k] for k in ('derive', 'evidence', 'edited') if k in item}}
+
+
+def _added_conditions(item: dict) -> list[dict]:
+    """The conditions the model put on the query that the question never names and that took objects out."""
+    return [f for f in (item.get('evidence') or {}).get('filters') or [] if f.get('not_in_question') and f['after'] < f['before']]
+
+
+def _cardinality(labels: dict, r: dict, card: dict) -> dict:
+    """The page's reading: most_from is how many "to" objects one "from" object has, most_to how many "from" objects one
+    "to" object has, so many "from" objects on one "to" object is 多对一."""
+    most_from, most_to = card.get('most_from'), card.get('most_to')
+    if most_from is None or most_to is None:
+        return {'cardinality': None, 'reads': None}
+    if not most_from and not most_to:
+        return {'cardinality': None, 'reads': '没有连上'}
+    kind = 'many_to_many' if most_from > 1 and most_to > 1 else 'many_to_one' if most_to > 1 else 'one_to_many' if most_from > 1 else 'one_to_one'
+    a, b = labels[r['from']], labels[r['to']]
+    side = lambda x, y, n: f'一个{x}最多对应 {n} 个{y}' if n > 1 else f'一个{x}只对应一个{y}'
+    first, second = (side(b, a, most_to), side(a, b, most_from)) if kind == 'many_to_one' else (side(a, b, most_from), side(b, a, most_to))
+    return {'cardinality': kind, 'reads': f'{CARDINALITY[kind]}：{first}，{second}'}
+
+
+def _export(s, a, kind: str, query: str = '') -> dict:
+    """Write an export the service hands over as {'files': {name: text}} into a folder, and return where it went: a
+    Turtle export of a real run is millions of characters."""
+    saved_as, chosen = _text(a.get('saved_as'), 'saved_as'), a.get('out_dir')
+    out = Path(_text(chosen, 'out_dir')) if chosen is not None else None
+    if out is not None and not out.is_absolute():
+        raise ToolError('out_dir 要写绝对路径')
+    files = s.request(f'/api/ontology/runs/{quote(saved_as)}/export/{kind}?format=json{query}')['files']
+    out = out or Path('~/Downloads/OntoPoc').expanduser() / saved_as.removesuffix('.json') / kind
+    out.mkdir(parents=True, exist_ok=True)
+    written = []
+    for name, text in files.items():
+        data = text.encode('utf-8')
+        (out / name).write_bytes(data)
+        written.append({'name': name, 'path': str(out / name), 'bytes': len(data)})
+    return {'dir': str(out), 'files': written, 'total_bytes': sum(w['bytes'] for w in written)}
 
 
 # ---- the tools: one per feature ----
@@ -112,14 +189,14 @@ def build_ontology(s, a):
     while True:   # the job always ends as done, failed or interrupted; a dead service raises in request()
         state = s.request(f'/api/ontology/jobs/{job}')
         if state['state'] == 'done':
-            return _overview(state['result'])
+            return _with_open_items(s, _overview(state['result']))
         if state['state'] != 'running':
             raise ToolError(state.get('error') or '建模失败')
         time.sleep(s.poll_seconds)
 
 
 def run_overview(s, a):
-    return _overview(s.run(a.get('saved_as')))
+    return _with_open_items(s, _overview(s.run(a.get('saved_as'))))
 
 
 def _kept(run: dict, a: dict) -> tuple[dict, dict]:
@@ -170,9 +247,11 @@ def list_relations(s, a):
     verdicts = decisions.get('relations', {})
     cards = {c['key']: c for c in (run['evaluation'].get('handover') or {}).get('relations', [])}
     shown = {r['key'] for r in ontology['relations']}
+    labels = {t['key']: t.get('label') or t['key'] for t in run['ontology']['object_types']}
     return {'relations': [{**{k: r.get(k) for k in ('key', 'from', 'to', 'label', 'meaning', 'source')},
                            **{k: r[k] for k in ('from_identity', 'to_identity') if k in r},
-                           **{k: cards.get(r['key'], {}).get(k) for k in ('cardinality', 'most_from', 'most_to')},
+                           **{k: cards.get(r['key'], {}).get(k) for k in ('most_from', 'most_to')},
+                           **_cardinality(labels, r, cards.get(r['key'], {})),
                            'verdict': verdicts.get(r['key'], {}).get('verdict'),
                            'last_time': last.get('relations', {}).get(r['key'], {}).get('verdict')} for r in ontology['relations']],
             'left_out': [{'key': r['key'], 'from': r['from'], 'to': r['to'], 'reason': '判错了' if verdicts.get(r['key'], {}).get('verdict') == 'wrong' else '一端的对象判错了'}
@@ -185,7 +264,8 @@ def suggest_relations(s, a):
 
 def find_instances(s, a):
     key = quote(_text(a.get('type'), 'type'))
-    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/instances/{key}?q={quote(str(a.get('query') or ''))}")
+    found = s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/instances/{key}?q={quote(str(a.get('query') or ''))}")
+    return {**found, 'items': [{**i, 'name': i.get('name') or i['label']} for i in found['items']]}   # no name field: the identifying value
 
 
 def instance_neighbourhood(s, a):
@@ -213,17 +293,16 @@ def save_form(s, a):
 
 
 def export_forms(s, a):
-    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/forms?format=json")
+    return _export(s, a, 'forms')
 
 
 def export_mermaid(s, a):
     years = a.get('years')
-    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/mermaid?format=json"
-                     + (f"&years={quote(_text(years, 'years'))}" if years is not None else ''))
+    return _export(s, a, 'mermaid', f"&years={quote(_text(years, 'years'))}" if years is not None else '')
 
 
 def export_ttl(s, a):
-    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/export/ttl?format=json")
+    return _export(s, a, 'ttl')
 
 
 def data_layout(s, a):
@@ -276,10 +355,22 @@ def fix_question(s, a):
         raise ToolError('这份运行里没有问过这道题：先用 ask_question 问它')
     if item.get('status') != 'answered' and item.get('status') not in UNMET:
         raise ToolError('只有答出来的题，或问过但现在还答不了的题，才能固定为验收问题')
+    note, added = str(a.get('note') or '').strip(), _added_conditions(item)
+    if added and not note:
+        said = '、'.join(f"“{f['field']} = {f['equals']}”（筛掉 {f['before'] - f['after']:,} 个）" for f in added)
+        raise ToolError(f'这道题的答案里模型自己加了条件{said}。先问人：不该加就用 drop_filter 去掉重算；该加就在 note 里写明口径再固定。')
     kept = [{k: i.get(k) for k in KEPT} for i in (ev.get('acceptance') or {}).get('items', []) if i.get('question') != question]
-    new = {**{k: item.get(k) for k in KEPT}, 'note': str(a.get('note') or '').strip()}
+    new = {**{k: item.get(k) for k in KEPT}, 'note': note}
     result = s.request('/api/ontology/acceptance', {'saved_as': run['saved_as'], 'items': kept + [new], 'replace_question': question})
     return {'acceptance': result['evaluation']['acceptance']}
+
+
+def drop_filter(s, a):
+    if a.get('equals') is None:
+        raise ToolError('缺少参数 equals')
+    drop = {'field': _text(a.get('field'), 'field'), 'equals': a['equals']}
+    run = s.request('/api/ontology/requery', {'saved_as': _text(a.get('saved_as'), 'saved_as'), 'question': _text(a.get('question'), 'question'), 'drop': drop})
+    return {'item': _question(run['evaluation']['asked'][-1]['items'][0])}
 
 
 def confirm_ontology(s, a):
@@ -302,6 +393,13 @@ def find_name_variants(s, a):
 WRONG = {'include_wrong': {'type': 'boolean', 'description': '连人判错的也给（默认不给）'}}
 RUN = {'saved_as': {'type': 'string', 'description': '运行的保存名，来自 list_runs 或 build_ontology'}}
 TYPE = {'type': {'type': 'string', 'description': '对象的 key，来自 list_objects'}}
+OUT_DIR = {'out_dir': {'type': 'string', 'description': '导出文件写到哪个文件夹，必须是绝对路径；不写就是 ~/Downloads/OntoPoc/<运行保存名去掉 .json>/<forms|ttl|mermaid>/'}}
+EXPORTED = '文件写到本机的一个文件夹（out_dir，默认在下载文件夹里），同名覆盖，只返回文件的路径和字节数 {dir, files: [{name, path, bytes}], total_bytes}，不返回文件内容。'
+STATES = ('每道题有 status：answered 答出来了；no_data 数据里没有满足条件的对象；query_limit 查询写不出来、ontology_gap 本体缺回答它要的东西'
+          '（这两种是模型的判断）；needs_derived 要一个派生指标，derive 里是公式和试算，人同意后才 confirm_derived。'
+          'evidence 是代码给的核对依据：filters 是查询里的筛选条件（before、after 是筛前筛后的对象数，removed_measure 是筛掉的那部分的合计），'
+          '其中 not_in_question 的是模型自己加的、题目没提，该不该加由人定，不加用 drop_filter 去掉重算；'
+          'merged 是被算成同一个的对象组（同一个名字下有几个不同的识别值）；found_elsewhere 是 no_data 时，这个值在别的对象里能找到的地方。')
 FILES = {'files': {'type': 'array', 'items': {'type': 'string'}, 'description': '本机文件路径：一份或几份数据表（.csv .xlsx），或一份文档（.md .txt .docx .pdf）'},
          'purpose': {'type': 'string', 'description': '建模目的：这份本体要帮你回答什么问题'}}
 
@@ -313,48 +411,67 @@ def _tool(fn, description, properties=None, required=()):
 
 TOOLS = [
     _tool(health, '本机建模服务是否在跑、有没有模型凭据、是否在跑旧代码。'),
-    _tool(list_runs, '本机保存过的运行，新的在前。', {'limit': {'type': 'integer', 'minimum': 1}}),
+    _tool(list_runs, '本机保存过的运行，新的在前。', {'limit': {'type': 'integer', 'minimum': 1, 'description': '最多给几次，默认 20'}}),
     _tool(preview_upload, '不调用模型：看这几份文件会发给模型什么（字段名和示例值）。', FILES, ('files',)),
-    _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、建三次比稳定性，并回答 purpose 里写的问题。给 previous 表示这是那次运行的新版本，沿用它的确认、验收问题和规则。会调用模型，等它跑完才返回。',
+    _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、建三次比稳定性，并回答 purpose 里写的问题。给 previous 表示这是那次运行的新版本，沿用它的确认、验收问题和规则。会调用模型，等它跑完才返回；返回的概况同 run_overview，也带 open_items。',
           {**FILES, 'previous': {'type': 'string', 'description': '上一版本的运行保存名（来自 list_runs）；不是新版本就不写'},
            'mode': {'type': 'string', 'enum': ['org'], 'description': '写 org 就按组织架构梳理一份文档：组织单元、岗位、人、工作环节及其关系'}}, ('files',)),
-    _tool(run_overview, '一次运行的概况：对象和关系数、体检通过几项、问答能答几道、稳定性、是否确认过。', RUN, ('saved_as',)),
+    _tool(run_overview, '一次运行的概况：对象和关系数、体检通过几项、问答能答几道、稳定性、是否确认过；'
+          'open_items 是要和客户确认的事（服务算好的清单，每项有 kind、ask、facts、from_model、target），先看它，是要带给人的事。'
+          '服务是旧版本、没有这个清单时 open_items 为 null，note 里说明。', RUN, ('saved_as',)),
     _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。人判错的默认不给，列在 left_out 里；include_wrong=true 全给。', {**RUN, **WRONG}, ('saved_as',)),
     _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到数据平台时要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
-    _tool(object_rows, '一个对象在数据里的每一个实例，一页 20 个；all=true 一次给全部。', {**RUN, **TYPE, 'page': {'type': 'integer', 'minimum': 1}, 'all': {'type': 'boolean'}}, ('saved_as', 'type')),
-    _tool(list_relations, '本体里的关系：两端、含义、来源表、一对一/一对多/多对多、人的判断。判错的、或一端对象判错的默认不给，列在 left_out 里；include_wrong=true 全给。', {**RUN, **WRONG}, ('saved_as',)),
+    _tool(object_rows, '一个对象在数据里的每一个实例，一页 20 个；all=true 一次给全部。',
+          {**RUN, **TYPE, 'page': {'type': 'integer', 'minimum': 1, 'description': '第几页，从 1 起'}, 'all': {'type': 'boolean', 'description': 'true 一次给全部，不分页'}}, ('saved_as', 'type')),
+    _tool(list_relations, '本体里的关系：两端、含义、来源表、基数、人的判断。cardinality 是 one_to_one / one_to_many / many_to_one / many_to_many，方向是 from 到 to；'
+          'reads 用两端对象的名字把它读成一句中文，most_from 是一个 from 对象最多对应几个 to，most_to 是一个 to 对象最多对应几个 from。'
+          '判错的、或一端对象判错的默认不给，列在 left_out 里；include_wrong=true 全给。', {**RUN, **WRONG}, ('saved_as',)),
     _tool(suggest_relations, '代码在数据里看到、本体里没有的关系，只作建议：同一行上的两个对象没连起来；某列写的是别的对象的名称（且指向的不是本行已连着的那个）；或某列按名字和取值指向别的对象的编号。', RUN, ('saved_as',)),
-    _tool(find_instances, '按名称或编号找数据里的某个对象（实例图谱的起点），给出节点 id。', {**RUN, **TYPE, 'query': {'type': 'string'}}, ('saved_as', 'type')),
+    _tool(find_instances, '按名称或编号找数据里的某个对象（实例图谱的起点），给出节点 id；对象类型没有名称字段时 name 就是识别值。',
+          {**RUN, **TYPE, 'query': {'type': 'string', 'description': '名称或编号里含有的字，不分大小写；不写就列前 20 个'}}, ('saved_as', 'type')),
     _tool(instance_neighbourhood, '实例图谱：一个对象的字段，和数据里与它相连的对象；每条关系先给 20 个，其余计数。',
           {**RUN, 'node': {'type': 'string', 'description': '节点 id，来自 find_instances 或上一次的结果'}}, ('saved_as', 'node')),
     _tool(list_rules, '代码在数据里找到的规则（某字段每个对象都有值；两个日期总是先后有序）和人采纳的规则，采纳的带本次数据里的违反数和例子。', RUN, ('saved_as',)),
     _tool(set_rules, '采纳或不要规则：adopted、declined 各写完整的规则 id 列表（id 来自 list_rules）。采纳的规则以后每次重跑都会检查。',
-          {**RUN, 'adopted': {'type': 'array', 'items': {'type': 'string'}}, 'declined': {'type': 'array', 'items': {'type': 'string'}}}, ('saved_as', 'adopted')),
+          {**RUN, 'adopted': {'type': 'array', 'items': {'type': 'string'}, 'description': '采纳的规则 id，来自 list_rules；不采纳任何就写 []'},
+           'declined': {'type': 'array', 'items': {'type': 'string'}, 'description': '不要的规则 id，来自 list_rules'}}, ('saved_as', 'adopted')),
     _tool(draft_form, '让字段释义员起草对象表单里只有人能写的列：每个对象和字段的中文名、一句话描述、展示字段。一次模型调用；人写过的不会被覆盖。', RUN, ('saved_as',)),
     _tool(save_form, '保存对象表单。form 形如 {"types": {"<对象key>": {"label": "中文名", "description": "描述", "display_field": "字段", '
           '"drafted": false, "fields": {"<字段>": {"label": "…", "description": "…", "drafted": false}}}}}；drafted=false 表示人写的。',
-          {**RUN, 'form': {'type': 'object'}}, ('saved_as', 'form')),
-    _tool(export_forms, '按对象表单导出：每个对象一张 CSV（主键、展示、中文名称、英文名称、描述、类型、长度、属性类型）和一份说明。导入契约还没实测，说明里写着导入前要测。', RUN, ('saved_as',)),
+          {**RUN, 'form': {'type': 'object', 'description': '整份对象表单，形状见上面；人写过的内容要原样带上'}}, ('saved_as', 'form')),
+    _tool(export_forms, '按对象表单导出：每个对象一张 CSV（主键、展示、中文名称、英文名称、描述、类型、长度、属性类型）和一份说明。导入契约还没实测，说明里写着导入前要测。' + EXPORTED,
+          {**RUN, **OUT_DIR}, ('saved_as',)),
     _tool(export_mermaid, '组织架构模式的运行导出组织图（Mermaid）：组织隶属.mmd（隶属、汇报、担任）和协作交接.mmd（协作、交接及交接内容）。'
-          'years 写 2016-2022 只画这段时间的关系，没写时间的关系每段都画；判错的不画。',
-          {**RUN, 'years': {'type': 'string', 'pattern': '^[0-9]{4}-[0-9]{4}$'}}, ('saved_as',)),
+          'years 写 2016-2022 只画这段时间的关系，没写时间的关系每段都画；判错的不画。' + EXPORTED,
+          {**RUN, 'years': {'type': 'string', 'pattern': '^[0-9]{4}-[0-9]{4}$', 'description': '只画这段年份的关系，如 2016-2022；不写就每段都画'}, **OUT_DIR}, ('saved_as',)),
     _tool(export_ttl, '按 W3C 标准导出 Turtle：ontology.ttl（OWL 类、字段、关系、识别键）、data.ttl（每个对象按识别值命名，同一对象跨表跨版本同名）、'
-          'shapes.ttl（采纳的规则写成 SHACL，有规则时才有）。判错的对象和关系不导出。', RUN, ('saved_as',)),
+          'shapes.ttl（采纳的规则写成 SHACL，有规则时才有）。判错的对象和关系不导出。' + EXPORTED, {**RUN, **OUT_DIR}, ('saved_as',)),
     _tool(data_layout, '上传的每张表：行数、跳过的标题行、每列类型长度空值；表没连上时，能把它们连起来的列。', RUN, ('saved_as',)),
     _tool(data_check, '数据体检：七项检查是否通过，以及每类发现的数量和前几个例子。全部由代码算。', RUN, ('saved_as',)),
-    _tool(ask_question, '用数据回答一个业务问题：模型把问题写成查询，代码在数据上算答案。不给 question 就让模型出一组题。会调用模型。',
-          {**RUN, 'question': {'type': 'string', 'maxLength': 300}}, ('saved_as',)),
-    _tool(list_questions, '这次运行里模型出的题、人问过的题和固定的验收问题，带答案和查询路径。', RUN, ('saved_as',)),
+    _tool(ask_question, '用数据回答一个业务问题：模型把问题写成查询，代码在数据上算答案。不给 question 就让模型出一组题。会调用模型，慢且花钱。' + STATES,
+          {**RUN, 'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题；不写就让模型出一组题'}}, ('saved_as',)),
+    _tool(list_questions, '这次运行里模型出的题（model_round）、人问过的题（asked）和固定的验收问题（acceptance），带答案和查询路径。' + STATES, RUN, ('saved_as',)),
     _tool(confirm_derived, '确认一个派生指标（例如 金额 = 单价 × 数量 ×（1 − 折扣））：服务再核一遍公式，存下后重算等它的题。'
           '只在人看过公式和试算结果、同意之后调用；derive 用那道题返回的 derive 原样传。',
           {**RUN, 'derive': {'type': 'object', 'description': '{type, label, terms}，来自那道题的 derive'}}, ('saved_as', 'derive')),
-    _tool(fix_question, '把问过的一道题固定为验收问题：以后重传同一份文件，用同一个查询再算一次。',
-          {**RUN, 'question': {'type': 'string'}, 'note': {'type': 'string', 'description': '口径说明，例如"按订单号计数"'}}, ('saved_as', 'question')),
+    _tool(fix_question, '把问过的一道题固定为验收问题：以后重传同一份文件，用同一个查询再算一次。只在人明确说了之后调用。'
+          '这道题的答案里有模型自己加的条件（evidence.filters 里 not_in_question、且筛掉了对象）时，note 不写就报错：先问人，不该加用 drop_filter 去掉重算，该加就在 note 里写明口径。',
+          {**RUN, 'question': {'type': 'string', 'description': '题目原文，来自 list_questions 或 ask_question'},
+           'note': {'type': 'string', 'description': '口径说明，例如"按订单号计数"'}}, ('saved_as', 'question')),
+    _tool(drop_filter, '去掉模型自己加在一道题上的一个条件，用本机代码重算，不调模型；新答案作为这道题新的一次追加到记录里并返回，想固定它再用 fix_question。'
+          '用在人同意去掉模型自己加的条件之后（evidence.filters 里 not_in_question 的那些）。field、equals 要和这道题 query.where 里那一条原样一致'
+          '（query.where 里的 field 带来源表前缀，如 payments.awarding_subagency；evidence.filters 里的 field 没有前缀）。',
+          {**RUN, 'question': {'type': 'string', 'description': '题目原文，来自 list_questions 或 ask_question'},
+           'field': {'type': 'string', 'description': '要去掉的条件的字段，照 query.where 里那一条原样写'},
+           'equals': {'type': ['string', 'number', 'boolean'], 'description': '要去掉的条件的取值，照 query.where 里那一条原样写'}},
+          ('saved_as', 'question', 'field', 'equals')),
     _tool(confirm_ontology, '保存人对本体的逐项判断，成为这个文件的参考本体并马上对照。decisions 形如 '
           '{"types": {"<对象key>": {"verdict": "ok"|"wrong", "label": "改名（可选）"}}, "relations": {"<关系key>": {"verdict": "ok"|"wrong"}}, "added": ["漏掉的对象名"]}。',
-          {**RUN, 'decisions': {'type': 'object'}, 'confirmed_by': {'type': 'string', 'maxLength': 40}}, ('saved_as', 'decisions')),
+          {**RUN, 'decisions': {'type': 'object', 'description': '人对每个对象、每条关系的判断，形状见上面；只写人说了的'},
+           'confirmed_by': {'type': 'string', 'maxLength': 40, 'description': '确认人的名字（可不写）'}}, ('saved_as', 'decisions')),
     _tool(compare_reference, '拿一份人写的参考本体（JSON）和这次的本体对照：哪些对象、关系对上了，哪些多了、少了。',
-          {**RUN, 'reference': {'type': 'object'}, 'reference_name': {'type': 'string'}}, ('saved_as', 'reference')),
+          {**RUN, 'reference': {'type': 'object', 'description': '参考本体的 JSON'}, 'reference_name': {'type': 'string', 'description': '参考本体的名字，默认"参考本体"'}},
+          ('saved_as', 'reference')),
     _tool(find_name_variants, '找出同一类对象里可能是同一个东西的不同写法，只给建议、不合并。会调用模型。', RUN, ('saved_as',)),
 ]
 BY_NAME = {t['name']: t for t in TOOLS}
@@ -372,7 +489,7 @@ def handle(message: dict, service) -> dict | None:
         return reply({'protocolVersion': asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
                       'capabilities': {'tools': {'listChanged': False}},
                       'serverInfo': {'name': 'ontopoc', 'version': '0.1.0'},
-                      'instructions': '本机 OntoPoc：上传业务表建本体，代码核验，体检、问答、确认。先 health，再 list_runs 或 build_ontology。'})
+                      'instructions': INSTRUCTIONS})
     if method == 'ping':
         return reply({})
     if method == 'tools/list':
