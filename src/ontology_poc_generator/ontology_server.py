@@ -23,6 +23,7 @@ from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
+from ontology_poc_generator.open_items import open_items
 from ontology_poc_generator.public_ontology import build_graph
 from ontology_poc_generator.relation_suggestions import suggest_relations
 from ontology_poc_generator.rule_discovery import check_rules, discover_rules
@@ -367,6 +368,23 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     z.writestr(file_name, text.encode('utf-8'))
             self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-组织图{('-' + span) if span else ''}.zip")
 
+        def open_items_page(self, name):
+            """/api/ontology/runs/<run>/open-items: what is still to be settled with the client, from the kept run."""
+            path = output_dir / name
+            if not SAVED_NAME.match(name) or not path.exists():
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            run = json.loads(path.read_text(encoding='utf-8'))
+            if run['ontology']['status'] != 'auto_built_verified' or run['file'].get('kind') == 'document':
+                self.reply(200, {'items': []})   # nothing built yet, or no rows: the graph is not built for these
+                return
+            try:
+                result, bundle, graph = kept(name)
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            self.reply(200, {'items': open_items(result, bundle, graph)})
+
         def reply_file(self, body: bytes, content_type: str, filename: str):
             self.send_response(200)
             self.send_header('Content-Type', content_type)
@@ -451,6 +469,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             query = parse_qs(url.query)
             if tail == 'export/mermaid':   # an organisation map is a document: no rows, so not through kept()
                 self.org_diagrams(name, query)
+                return
+            if tail == 'open-items':
+                self.open_items_page(name)
                 return
             try:
                 result, bundle, graph = kept(name)
