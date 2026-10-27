@@ -149,19 +149,16 @@ test("the choices an item offers are the contract's, and the rest are answered i
 
 test("an answer to an item carries what the person chose and wrote, and leaves out what they did not", () => {
   const form = { choice: "", text: "客户说另一个系统还有", basis: "" };
-  assert.deepEqual(itemAnswer({ id: "data_gaps", kind: "data_gaps" }, form), { items: [{ id: "data_gaps", text: "客户说另一个系统还有" }], cells: [] });
+  assert.deepEqual(itemAnswer({ id: "data_gaps", kind: "data_gaps" }, form), { items: [{ id: "data_gaps", text: "客户说另一个系统还有" }] });
   assert.deepEqual(itemAnswer({ id: "same_name:customer", kind: "same_name" }, { choice: "distinct", text: " ", basis: " 10-27 会议 " }),
-    { items: [{ id: "same_name:customer", choice: "distinct", basis: "10-27 会议" }], cells: [] });
+    { items: [{ id: "same_name:customer", choice: "distinct", basis: "10-27 会议" }] });
 });
 
-test("choosing that the data was not all imported also marks the other end's objects as only partly there, in the same request", () => {
+test("choosing that the data was not all imported sends the item alone: the service marks the other end's objects as only partly there", () => {
   const item = { id: "unlinked:financial_row_corresponds_to_contract", kind: "unlinked", complete_id: "complete:contract_awards|award_id" };
   assert.deepEqual(itemAnswer(item, { choice: "incomplete", text: "合同授标只导了 FY25Q1 的", basis: "10-27 会议" }), {
-    items: [{ id: item.id, choice: "incomplete", text: "合同授标只导了 FY25Q1 的", basis: "10-27 会议" }],
-    cells: [{ id: "complete:contract_awards|award_id", value: "partial", note: "合同授标只导了 FY25Q1 的", basis: "10-27 会议" }] });
-  assert.deepEqual(itemAnswer(item, { choice: "incomplete", text: "", basis: "" }).cells, [{ id: "complete:contract_awards|award_id", value: "partial", note: "" }]);
-  assert.deepEqual(itemAnswer(item, { choice: "expected", text: "", basis: "" }).cells, []);   // a normal gap says nothing about the data
-  assert.deepEqual(itemAnswer({ ...item, complete_id: undefined }, { choice: "incomplete", text: "", basis: "" }).cells, []);
+    items: [{ id: item.id, choice: "incomplete", text: "合同授标只导了 FY25Q1 的", basis: "10-27 会议" }] });
+  assert.deepEqual(itemAnswer(item, { choice: "expected", text: "", basis: "" }), { items: [{ id: item.id, choice: "expected" }] });
 });
 
 test("an answer is not ready until it says something and says who", () => {
@@ -221,10 +218,10 @@ test("the minutes list the meanings the client agreed to by table, leaving out w
   t.amounts[0].answer = said("unsure", { says: "说不清" });
   filled.objects[0].answer = { value: "partial", says: "数据里只有一部分", by: "李四", basis: "邮件", at };
   assert.deepEqual(confirmedCells(filled), [{ source: "financial_rows", lines: [
-    { name: "一行是什么", says: "一行是一次事件或一次修改（同一个东西有多行）", by: "张三", basis: "10-27 会议" },
-    { name: "period_end_date", says: "业务发生的日期", by: "张三", basis: "" },
-    { name: "period_end_date", says: "声明覆盖 2024-10-01 至 2024-12-31", by: "张三", basis: "" },
-    { name: "财务支出行", says: "数据里只有一部分", by: "李四", basis: "邮件" }] }]);
+    { name: "一行是什么", says: "一行是一次事件或一次修改（同一个东西有多行）", by: "张三", basis: "10-27 会议", note: "" },
+    { name: "period_end_date", says: "业务发生的日期", by: "张三", basis: "", note: "" },
+    { name: "period_end_date", says: "声明覆盖 2024-10-01 至 2024-12-31", by: "张三", basis: "", note: "" },
+    { name: "财务支出行", says: "数据里只有一部分", by: "李四", basis: "邮件", note: "" }] }]);
   assert.deepEqual(confirmedCells(card()), []);
   assert.deepEqual(confirmedCells(null), []);
 });
