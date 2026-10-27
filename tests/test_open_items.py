@@ -105,6 +105,17 @@ class ModelFilterTests(unittest.TestCase):
         self.assertEqual(open_items(run(evaluation), BUNDLE), [])
 
 
+    def test_an_accepted_question_already_asked_again_without_the_condition_asks_to_replace_it(self):
+        accepted = answered(PAID, {'filters': [ADDED]}, note='')
+        again = answered(PAID, {'filters': []}, query={'start': 'spend', 'where': []},
+                         edited={'dropped': [{'field': 'spend.subagency', 'equals': 'BUREAU OF RECLAMATION'}]})
+        [item] = open_items(run({'asked': asked(again), 'acceptance': {'items': [accepted]}}), BUNDLE)
+        self.assertEqual(item['kind'], 'model_filter')
+        self.assertEqual(item['ask'], f'「{PAID}」去掉模型加的条件“subagency = BUREAU OF RECLAMATION”重算过了，'
+                                      '验收题里存的还是带这个条件的答案。要换成新答案吗？')
+        self.assertEqual(item['target'], {'tab': 'qa', 'place': 'ask', 'question': PAID})
+
+
 class MergedAndElsewhereTests(unittest.TestCase):
     GROUP = {'group': 'GREENBERRY INDUSTRIAL LLC', 'starts': 1, 'objects': 2, 'start': '承包商', 'reached': '最终母公司',
              'examples': ['PRRXANJSLS26', 'ZZ3GL25MGJH2']}
@@ -170,6 +181,13 @@ class UnlinkedTests(unittest.TestCase):
         self.assertIn('“支出行 spend_contract 合同授标”', item['ask'])
 
 
+    def test_a_relation_judged_wrong_or_with_a_wrong_end_is_not_asked(self):
+        decided = copy.deepcopy(DECIDED)
+        decided['decisions']['relations']['spend_contract'] = {'verdict': 'wrong'}
+        decided['decisions']['types']['vehicle'] = {'verdict': 'wrong'}
+        self.assertEqual(open_items(run({'data_fit': self.FIT}, confirmation=decided), BUNDLE), [])
+
+
 class SameNameTests(unittest.TestCase):
     def test_objects_sharing_a_name_but_not_a_number_are_asked_one_item_per_type(self):
         bundle = vendors(('K1', 'Stantec'), ('K2', 'STANTEC '), ('K3', 'Acme'), ('K4', 'Zed'), ('K5', 'zed'), ('K6', 'Zed'))
@@ -194,6 +212,12 @@ class SameNameTests(unittest.TestCase):
         self.assertEqual(open_items(run(ontology=ontology, confirmation={'decisions': {
             'types': {t['key']: {'verdict': 'ok'} for t in ontology['object_types']},
             'relations': DECIDED['decisions']['relations']}}), bundle), [])
+
+
+    def test_a_type_judged_wrong_is_not_asked(self):
+        decided = copy.deepcopy(DECIDED)
+        decided['decisions']['types']['vendor'] = {'verdict': 'wrong'}
+        self.assertEqual(open_items(run(confirmation=decided), vendors(('K1', 'Stantec'), ('K2', 'Stantec'))), [])
 
 
 class UnstableTests(unittest.TestCase):

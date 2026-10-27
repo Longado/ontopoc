@@ -151,5 +151,30 @@ class RequeryTests(unittest.TestCase):
                 self.assertIn(message, body['error'])
 
 
+    def test_the_condition_can_be_named_the_way_the_check_pack_names_it(self):
+        # the model may write a field with its table in front; the check pack and the open items show it without
+        def with_table(run):
+            run['evaluation']['asked'][-1]['items'][0]['query']['where'] = [
+                {'field': 'orders.地区', 'equals': 'N'}, {'field': 'orders.客户编号', 'equals': 'C1'}]
+        with asked_run() as (base, out, saved_as):
+            change_run(out, saved_as, with_table)
+            status, run = requery(base, saved_as, field='客户编号', equals='C1')
+            self.assertEqual(status, 200, run)
+            [item] = run['evaluation']['asked'][-1]['items']
+            self.assertEqual(item['query']['where'], [{'field': 'orders.地区', 'equals': 'N'}])
+            self.assertEqual(item['answer']['measure']['value'], 150)
+
+    def test_the_accepted_version_still_holding_the_condition_can_be_asked_again_after_an_edit(self):
+        # the open items keep pointing at the accepted question until it is replaced; dropping from there must work
+        with asked_run() as (base, _, saved_as):
+            call(base, '/api/ontology/acceptance', {'saved_as': saved_as, 'items': [{'question': QUESTION, 'query': QUERY, 'note': ''}]})
+            requery(base, saved_as)
+            status, run = requery(base, saved_as)
+            self.assertEqual(status, 200, run)
+            [item] = run['evaluation']['asked'][-1]['items']
+            self.assertEqual((item['query']['where'], item['edited']['dropped']),
+                             ([{'field': '地区', 'equals': 'N'}], [{'field': '客户编号', 'equals': 'C1'}]))
+
+
 if __name__ == '__main__':
     unittest.main()

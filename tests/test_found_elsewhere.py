@@ -1,3 +1,4 @@
+import copy
 import unittest
 
 from ontology_poc_generator.ontology_questions import run_query
@@ -74,6 +75,18 @@ class FoundElsewhereTests(unittest.TestCase):
         self.assertEqual(result['evidence']['found_elsewhere'], [
             {'type': 'vehicle', 'field': 'piid', 'equals': 'GS03F102CA', 'count': 1, 'linked': 2},
             {'type': 'vendor', 'field': 'agency', 'equals': 'Acme', 'count': 1, 'linked': 0}])
+
+
+    def test_a_value_many_objects_share_in_their_numbers_points_to_the_one_it_names(self):
+        # each action's number carries its vehicle's piid: the value names the vehicle, the actions only refer to it
+        ontology = copy.deepcopy(ONTOLOGY)
+        ontology['object_types'].append({'key': 'action', 'label': '合同动作', 'populated_from': [
+            {'source': 'actions', 'identity': {'action_key': 'action_key'}}], 'attributes': []})
+        bundle = {'sources': {**BUNDLE['sources'], 'actions': {'records': [
+            {'action_key': 'A1|GS03F102CA'}, {'action_key': 'A2|GS03F102CA'}, {'action_key': 'A3|GS03F102CA'}]}}}
+        result = run_query(ontology, bundle, total_of('GS03F102CA'))
+        self.assertEqual(result['evidence']['found_elsewhere'],
+                         [{'type': 'vehicle', 'field': 'piid', 'equals': 'GS03F102CA', 'count': 1, 'linked': 2}])
 
 
 if __name__ == '__main__':
