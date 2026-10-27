@@ -20,7 +20,9 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `list_runs` | 左下角的空间（运行记录） | 否 |
 | `preview_upload` | "看看会发给模型什么" | 否 |
 | `build_ontology` | 新建：上传并建本体，跑完才返回；给 `previous` 即作为那次运行的新版本 | 是 |
-| `run_overview` | 顶部的状态标签，加“要确认的事”整张清单（`open_items`） | 否 |
+| `run_overview` | 顶部的状态标签，加“要确认的事”整张清单（`open_items`）、“客户已答复”（`answered_items`）和口径卡的格数（`card`） | 否 |
+| `get_card` | 口径卡页：每张表一行是什么、日期列、数值列、对象全不全，和已答复的格 | 否 |
+| `save_card` | 口径卡页「保存口径卡」；要确认的事「记下客户的回答」 | 否 |
 | `list_objects` | 本体管理 · 对象卡片（判错的默认不给，列在 left_out；`include_wrong` 全给） | 否 |
 | `object_fields` | 对象 · 属性 | 否 |
 | `draft_form` | 对象 · 属性：起草中文名、描述、展示字段 | 是 |
@@ -53,6 +55,20 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 连上时工具服务会给客户端一份简短的使用说明：先调什么，哪几个工具调模型、要花钱，每种答案状态该怎么办，哪些判断只归人。`query_limit`、`ontology_gap` 要看题目里的 `reason_from_model`：为 true 是模型的判断，否则是代码查出来的原因（比如字段不存在、算法不支持）。`open_items` 里带 `requeried: true` 的条件项，是已经去掉条件重算过、验收题还是旧答案，要问的是换不换成新答案。
 
 "下载纪要"没有单独的工具：纪要是页面把上面这些数据排版成的一页，开头就是 `run_overview` 里的 `open_items`。
+
+## 口径卡和客户的答复
+
+口径卡是每张上传的表一张：代码能算的先算好（一行按哪几列唯一、日期列的最早最晚和空值），只有人能答的留空，也就是一行是什么、日期列是什么时间、数值列能不能相加、对象在数据里全不全。`get_card` 读整张卡，每一格有稳定的 id，已答复的格带 `answer`（`value`、`says`、`by`、`basis`、`at`）。文档运行没有卡，返回空的 `tables`。
+
+`save_card` 记的是人说的客户答复：`by`（答复人）和 `basis`（出处）都来自人，不替人填，不替客户答，也不按列名猜。`cells` 记卡上的格（`value` 为 null 是清空），`items` 记“要确认的事”里能答复的事（`model_filter`、`unjudged`、`card_blank` 不能用答复关掉）。校验不过整次不写，服务的 400 说明作为工具错误原样返回；写完服务会按新卡重新核对这次运行的验收题。返回 `{card, items, answered}`。
+
+`run_overview`（和 `build_ontology` 返回的概况）里，`answered_items` 是已记下客户答复的事，`card` 是 `{cells, blank}`，`blank` 是还没说清的格数。服务是旧版本、没有这条路由时，对应的字段为 `null`。
+
+问答照卡执行，全由代码完成：
+
+- 数值列在卡上标成“每次事件后的累计值”，或标成“期初到期末的累计值”而问题没有固定在一期上，对它求和会被拒答：`status` 是 `query_limit`，`reason` 是代码给的原因（`reason_from_model` 不为 true），`refused_by_card` 是拒答的那一格的 id。照 `reason` 告诉人，这是口径卡上的规则，不要换问法绕过；平均不拦。
+- 对象在卡上标成“只有一部分”时，答案照常给，`evidence.card.incomplete` 写明哪个对象、备注是什么，要转告人。
+- 卡上至少有一格已答复时，`answered` 和 `no_data` 的答案带 `evidence.card`：`tables` 是用了哪张表、多少行、数据到哪天，`lines` 是答案按哪几条口径算的（谁答复、出处）。
 
 ## 护栏照旧
 

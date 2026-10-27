@@ -47,8 +47,13 @@ INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判
 - no_data 且 evidence.found_elsewhere：这个值在别的对象里，建议人换那个对象再问。
 - query_limit、ontology_gap：看 reason_from_model。为 true 是模型的判断，换个说法最多再问一次；否则是代码查出来的原因，照 reason 告诉人。人要的话用 fix_question 记成必答题。
 - needs_derived：把公式和试算给人看，人同意后才 confirm_derived。
+- refused_by_card：是口径卡上的规则拒答，照 reason 告诉人，别换问法绕过。
+- evidence.card 里有 incomplete：对象在数据里只有一部分，转告人；lines 是答案按哪几条口径算的。
+- open_items 里除 model_filter、unjudged、card_blank 外的事都能记客户的答复（answered_items 是已记下的）：
+  问人客户怎么答的，人说了再用 save_card 记；card_blank 用 get_card 看哪几格没说清。
 判断只归人
-- confirm_ontology、fix_question、set_rules、confirm_derived、save_form 只在人明确说了之后调用，不替人编判断。
+- confirm_ontology、fix_question、set_rules、confirm_derived、save_form、save_card 只在人明确说了之后调用，不替人编判断。
+- save_card 只记人说的客户答复：by、basis 都来自人，不替客户填格、不替他答。
 - 拿不准的事写成问题交给人，不要当成结论。"""
 
 
@@ -120,21 +125,31 @@ def _overview(run: dict) -> dict:
             'confirmed': bool(run.get('confirmation')), 'acceptance': bool(ev.get('acceptance'))}
 
 
-def _with_open_items(s, overview: dict) -> dict:
-    """The overview and, from the service's own list, what has to be settled with the client. A service that predates the
-    route answers 404: no list, and a note saying why."""
+def _route(s, path: str):
+    """What the service answers for a path, or None when it predates the route (404 from its router)."""
     try:
-        items = s.request(f"/api/ontology/runs/{quote(overview['saved_as'])}/open-items")['items']
+        return s.request(path)
     except ToolError as exc:
         if exc.status != 404 or str(exc) != NO_SUCH_ROUTE:   # any other 404 is about the run, not the route
             raise
-        return {**overview, 'open_items': None, 'note': OLD_SERVICE}
-    return {**overview, 'open_items': items}
+        return None
+
+
+def _with_open_items(s, overview: dict) -> dict:
+    """The overview and, from the service's own lists, what has to be settled with the client, what the client has
+    already answered, and how many cells of the data-meaning card are still blank. A service that predates a route gives
+    null for it; without the open-items route there is also a note saying why."""
+    base = f"/api/ontology/runs/{quote(overview['saved_as'])}"
+    listed, card = _route(s, base + '/open-items'), _route(s, base + '/card')
+    shown = {**overview, 'card': None if card is None else {'cells': card['cells'], 'blank': card['blank']}}
+    if listed is None:
+        return {**shown, 'open_items': None, 'answered_items': None, 'note': OLD_SERVICE}
+    return {**shown, 'open_items': listed['items'], 'answered_items': listed.get('answered', [])}   # the first shape of the list has no answered
 
 
 def _question(item: dict) -> dict:
     return {**{k: item.get(k) for k in ('question', 'status', 'answer', 'path', 'reason', 'query')},
-            **{k: item[k] for k in ('derive', 'evidence', 'edited', 'reason_from_model') if k in item}}
+            **{k: item[k] for k in ('derive', 'evidence', 'edited', 'reason_from_model', 'refused_by_card') if k in item}}
 
 
 def _added_conditions(item: dict) -> list[dict]:
@@ -416,6 +431,15 @@ def compare_reference(s, a):
     return s.request('/api/ontology/compare', payload)['evaluation']['reference']
 
 
+def get_card(s, a):
+    return s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/card")
+
+
+def save_card(s, a):
+    payload = {'saved_as': _text(a.get('saved_as'), 'saved_as'), 'by': _text(a.get('by'), 'by'), **{k: a[k] for k in ('cells', 'items') if a.get(k) is not None}}
+    return s.request('/api/ontology/card', payload)
+
+
 def find_name_variants(s, a):
     return s.request('/api/ontology/variants', {'saved_as': _text(a.get('saved_as'), 'saved_as')})['evaluation']['variants']
 
@@ -431,7 +455,9 @@ STATES = ('每道题有 status：answered 答出来了；no_data 数据里没有
           '（reason_from_model 为 true 时是模型的判断；否则是代码查出来的原因，照 reason 告诉人）；needs_derived 要一个派生指标，derive 里是公式和试算，人同意后才 confirm_derived。'
           'evidence 是代码给的核对依据：filters 是查询里的筛选条件（before、after 是筛前筛后的对象数，removed_measure 是筛掉的那部分的合计），'
           '其中 not_in_question 的是模型自己加的、题目没提，该不该加由人定，不加用 drop_filter 去掉重算；'
-          'merged 是被算成同一个的对象组（同一个名字下有几个不同的识别值）；found_elsewhere 是 no_data 时，这个值在别的对象里能找到的地方。')
+          'merged 是被算成同一个的对象组（同一个名字下有几个不同的识别值）；found_elsewhere 是 no_data 时，这个值在别的对象里能找到的地方。'
+          '口径卡：refused_by_card 是被卡上的哪一格拒答的（status 是 query_limit，reason 是代码给的），照 reason 告诉人，不要换问法绕过；'
+          'evidence.card 是答案用了哪张表、数据到哪天（tables）、按哪几条口径（lines），incomplete 是对象在数据里只有一部分，要转告人。')
 FILES = {'files': {'type': 'array', 'items': {'type': 'string'}, 'description': '本机文件路径：一份或几份数据表（.csv .xlsx），或一份文档（.md .txt .docx .pdf）'},
          'purpose': {'type': 'string', 'description': '建模目的：这份本体要帮你回答什么问题'}}
 
@@ -445,12 +471,13 @@ TOOLS = [
     _tool(health, '本机建模服务是否在跑、有没有模型凭据、是否在跑旧代码。'),
     _tool(list_runs, '本机保存过的运行，新的在前。', {'limit': {'type': 'integer', 'minimum': 1, 'description': '最多给几次，默认 20'}}),
     _tool(preview_upload, '不调用模型：看这几份文件会发给模型什么（字段名和示例值）。', FILES, ('files',)),
-    _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、建三次比稳定性，并回答 purpose 里写的问题。给 previous 表示这是那次运行的新版本，沿用它的确认、验收问题和规则。会调用模型，等它跑完才返回；返回的概况同 run_overview，也带 open_items。',
+    _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、建三次比稳定性，并回答 purpose 里写的问题。给 previous 表示这是那次运行的新版本，沿用它的确认、验收问题和规则。会调用模型，等它跑完才返回；返回的概况同 run_overview，也带 open_items、answered_items、card。',
           {**FILES, 'previous': {'type': 'string', 'description': '上一版本的运行保存名（来自 list_runs）；不是新版本就不写'},
            'mode': {'type': 'string', 'enum': ['org'], 'description': '写 org 就按组织架构梳理一份文档：组织单元、岗位、人、工作环节及其关系'}}, ('files',)),
     _tool(run_overview, '一次运行的概况：对象和关系数、体检通过几项、问答能答几道、稳定性、是否确认过；'
           'open_items 是要和客户确认的事（服务算好的清单，每项有 kind、ask、facts、from_model、target），先看它，是要带给人的事。'
-          '服务是旧版本、没有这个清单时 open_items 为 null，note 里说明。', RUN, ('saved_as',)),
+          'answered_items 是已记下客户答复的事，card 是口径卡的格数 {cells, blank}（blank 是还没说清的格，看细节用 get_card）。'
+          '服务是旧版本、没有这个清单时 open_items、answered_items 为 null，note 里说明；没有口径卡时 card 为 null。', RUN, ('saved_as',)),
     _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。人判错的默认不给，列在 left_out 里；include_wrong=true 全给。', {**RUN, **WRONG}, ('saved_as',)),
     _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到数据平台时要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
     _tool(object_rows, '一个对象在数据里的每一个实例，一页 20 个；all=true 一次给全部。',
@@ -504,6 +531,25 @@ TOOLS = [
     _tool(compare_reference, '拿一份人写的参考本体（JSON）和这次的本体对照：哪些对象、关系对上了，哪些多了、少了。',
           {**RUN, 'reference': {'type': 'object', 'description': '参考本体的 JSON'}, 'reference_name': {'type': 'string', 'description': '参考本体的名字，默认"参考本体"'}},
           ('saved_as', 'reference')),
+    _tool(get_card, '一次运行的口径卡（数据是什么意思）：每张表一行是什么、日期列的最早最晚和空值、数值列的类型，以及已答复的格（answer：value、says、by、basis、at）和对象全不全。'
+          '代码能算的已经算好，只有人能答的留空；blank 是还没说清的格数。文档运行没有卡，返回空的 tables。', RUN, ('saved_as',)),
+    _tool(save_card, '记下客户对口径卡的答复，也可以记下“要确认的事”里能答复的事的答复。只记人说的客户答复：by（答复人）和 basis（出处）都来自人，'
+          '不要自己填格，不要替客户答，不要按列名猜；只在人明确说了之后调用。校验不过整次不写，服务的说明原样返回。'
+          'cells 每项 {id, value, note?, basis?}：id 来自 get_card，value 是那一格可选的值，null 表示清空；日期范围格 range 的 value 写 {"from": "YYYY-MM-DD" 或 null, "to": "YYYY-MM-DD" 或 null}。'
+          'items 每项 {id, choice?, text?, basis?}：id 来自 run_overview 的 open_items，choice 的可选值看事的种类（unlinked：expected、incomplete；same_name、merged：distinct、same），没有 choice 时 text 必填。'
+          'cells 和 items 至少给一样。写完返回 {card, items, answered}。',
+          {**RUN, 'by': {'type': 'string', 'minLength': 1, 'maxLength': 40, 'description': '答复人，来自人，不要替人填'},
+           'cells': {'type': 'array', 'description': '口径卡上要记的格，形状见工具说明；只写人说了的',
+                     'items': {'type': 'object', 'properties': {'id': {'type': 'string', 'description': '格的 id，来自 get_card'},
+                                                                'value': {'description': '这一格的值；null 清空'},
+                                                                'note': {'type': 'string', 'maxLength': 300, 'description': '备注（可不写）'},
+                                                                'basis': {'type': 'string', 'maxLength': 200, 'description': '出处，来自人（可不写）'}}, 'required': ['id', 'value']}},
+           'items': {'type': 'array', 'description': '要确认的事的答复，形状见工具说明；只写人说了的',
+                     'items': {'type': 'object', 'properties': {'id': {'type': 'string', 'description': '事的 id，来自 open_items'},
+                                                                'choice': {'type': 'string', 'description': '可选的答复，看事的种类'},
+                                                                'text': {'type': 'string', 'maxLength': 300, 'description': '客户的答复原话；没有 choice 时必填'},
+                                                                'basis': {'type': 'string', 'maxLength': 200, 'description': '出处，来自人（可不写）'}}, 'required': ['id']}}},
+          ('saved_as', 'by')),
     _tool(find_name_variants, '找出同一类对象里可能是同一个东西的不同写法，只给建议、不合并。会调用模型。', RUN, ('saved_as',)),
 ]
 BY_NAME = {t['name']: t for t in TOOLS}
