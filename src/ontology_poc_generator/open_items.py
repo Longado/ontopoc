@@ -334,6 +334,24 @@ def check_answers(listed: list, raw, by, at: str) -> dict:
     return out
 
 
+def linked_cells(listed: list, answers: dict, stored: dict, at: str) -> dict:
+    """What an unlinked item's answer does to the card, as {cell id: answer, or None to clear it}. Answered "incomplete",
+    the other end's cell (`complete_id`) is set to "only partly in the data" with the answer's words, and carries the
+    item's id in `item`. Answered any other way, that cell is cleared, but only while it still is what this item wrote:
+    one a person has set since is theirs. `listed` is every item of the run, `stored` the cells kept for the file."""
+    by_id = {i['id']: i for i in listed}
+    out = {}
+    for item_id, answer in answers.items():
+        cell_id = by_id[item_id].get('complete_id')
+        if cell_id is None:
+            continue
+        if answer['choice'] == 'incomplete':
+            out[cell_id] = {'value': 'partial', 'note': answer['text'], 'by': answer['by'], 'basis': answer['basis'], 'at': at, 'item': item_id}
+        elif (stored.get(cell_id) or {}).get('value') == 'partial' and stored[cell_id].get('item') == item_id:
+            out[cell_id] = None
+    return out
+
+
 def split_answers(items: list, answers: dict) -> tuple[list, list]:
     """The items still open, and the ones the client has answered, each with its answer (and, for a choice, the words
     for it). An answer whose item is not on the list this time is in neither."""

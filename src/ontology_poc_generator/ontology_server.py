@@ -23,8 +23,8 @@ from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
-from ontology_poc_generator.open_items import check_answers, open_items, split_answers
-from ontology_poc_generator.ontology_card import NO_CARD, build_card, check_cells, with_changes
+from ontology_poc_generator.open_items import check_answers, linked_cells, open_items, split_answers
+from ontology_poc_generator.ontology_card import NO_CARD, build_card, check_cells, live_cells, with_changes
 from ontology_poc_generator.public_ontology import build_graph
 from ontology_poc_generator.relation_suggestions import suggest_relations
 from ontology_poc_generator.rule_discovery import check_rules, discover_rules
@@ -147,8 +147,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         path = output_dir / 'cards' / f'{key}.json'
         return json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'cells': {}, 'items': {}, 'history': []}
 
-    def card_cells(key):
-        return card_file(key)['cells']
+    def card_cells(result, bundle, graph=None, key=None):
+        """What the questions are given of this file's card: the answers it still has a place for (ontology_card.live_cells).
+        The file keeps the others. `key` names another line's card for a run that is not saved yet."""
+        return live_cells(card_file(key or memory_key(result))['cells'], result['ontology'], bundle,
+                          (result.get('confirmation') or {}).get('decisions'), graph)
 
     def reviewed_acceptance(result, bundle, items):
         # A rerun carries the previous human decisions as suggestions until reviewed again.
@@ -157,7 +160,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         if decisions is None:
             decisions = (result['evaluation'].get('reference') or {}).get('suggested')
         return check_acceptance(without_wrong(result['ontology'], decisions), bundle, items,
-                                derived=derived_of(memory_key(result)), snapshot_ontology=result['ontology'], card=card_cells(memory_key(result)))
+                                derived=derived_of(memory_key(result)), snapshot_ontology=result['ontology'], card=card_cells(result, bundle))
 
     def recheck_acceptance(result, bundle, now):
         """The run's fixed questions asked again of its data, kept in the file's own list; the checked list is returned."""
@@ -185,7 +188,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return NO_CARD, [], []
         result, bundle, graph = found
         stored = card_file(memory_key(result))
-        card = build_card(result['ontology'], bundle, stored['cells'], graph)
+        card = build_card(result['ontology'], bundle, stored['cells'], graph, (result.get('confirmation') or {}).get('decisions'))
         items, answered = split_answers(open_items(result, bundle, graph, card), stored['items'])
         return card, items, answered
 
@@ -300,7 +303,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                 'error': f'本次建模已用满 {MAX_MODELER_ATTEMPTS} 次调用，目的问题尚未回答。可在“智能问答”中单独提问。'}
                 else:
                     key = memory_key(json.loads((output_dir / previous).read_text(encoding='utf-8'))) if previous else bundle['file']['sha256']
-                    answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True, derived=derived_of(key), card=card_cells(key))
+                    answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True, derived=derived_of(key), card=card_cells(result, bundle, key=key))
                 if answered['items'] or answered['error']:
                     result['evaluation']['asked'] = [answered]
             if result['ontology']['status'] == 'auto_built_verified':
@@ -874,8 +877,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def save_card(self):
             """What the client said, written down by the consultant: answers on the data-meaning card and on the open items,
-            kept with the file. The run's fixed questions are then asked again of the data, since the card may stop one.
-            Nothing is written unless every answer in the request is valid."""
+            kept with the file. This run's own fixed questions are then asked again of the data, since the card may stop one;
+            the file's shared list, which the next upload inherits, is not touched. Nothing is written unless every answer
+            in the request is valid."""
             try:
                 payload = self.read_json()
                 if payload is None:
@@ -897,10 +901,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             result, bundle, graph = found   # a run with no card has no cell or item to answer: the checks above refused it
             key = memory_key(result)
-            (output_dir / 'cards').mkdir(parents=True, exist_ok=True)
-            (output_dir / 'cards' / f'{key}.json').write_text(json.dumps(with_changes(card_file(key), cells, answers, now), ensure_ascii=False, indent=1), encoding='utf-8')
+            stored = card_file(key)
+            # an unlinked item answered "incomplete" marks the other end's object as only partly in the data; a cell the request sets itself wins
+            cells = {**linked_cells([*items, *answered], answers, stored['cells'], now), **cells}
+            kept_card = output_dir / 'cards' / f'{key}.json'
+            kept_card.parent.mkdir(parents=True, exist_ok=True)
+            partial = kept_card.with_name(f'{key}.json.part')
+            partial.write_text(json.dumps(with_changes(stored, cells, answers, now), ensure_ascii=False, indent=1), encoding='utf-8')
+            partial.replace(kept_card)   # a reader never sees half a file
             if result['evaluation'].get('acceptance'):
-                checked = recheck_acceptance(result, bundle, now)
+                checked = reviewed_acceptance(result, bundle, result['evaluation']['acceptance']['items'])
                 result = {**result, 'evaluation': {**result['evaluation'], 'acceptance': checked}}
                 (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             card, items, answered = card_for((result, bundle, graph))
@@ -1077,13 +1087,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             bundle = json.loads((output_dir / result['saved_as'].replace('.json', '.bundle.json')).read_text(encoding='utf-8'))
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
             graph = build_graph(result['ontology'], bundle)
+            cells = card_cells(result, bundle, graph)
             rounds = [*(result['evaluation'].get('asked') or []), *([result['evaluation']['questions']] if result['evaluation'].get('questions') else [])]
             for answered in rounds:
                 for i, item in enumerate(answered.get('items') or []):
                     wanted = ((item.get('query') or {}).get('measure') or {}).get('derived') if isinstance(item.get('query'), dict) else None
                     if wanted != formula['label'] or item.get('query', {}).get('start') != formula['type']:
                         continue
-                    again = answer_query(reviewed, bundle, item['query'], item['question'], graph, measures, card_cells(key))
+                    again = answer_query(reviewed, bundle, item['query'], item['question'], graph, measures, cells)
                     answered['items'][i] = {**{k: v for k, v in item.items() if k not in ('derive', 'reason', 'answer', 'path', 'status')}, **again}
                 answered['answered'] = sum(x['status'] == 'answered' for x in answered.get('items') or [])
             result['evaluation']['derived'] = measures
@@ -1138,7 +1149,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             query = {**found['query'], 'where': [w for w in where_of(found) if not same(w)]}
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
             bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-            answer = answer_query(reviewed, bundle, query, question, derived=derived_of(memory_key(result)), card=card_cells(memory_key(result)))
+            answer = answer_query(reviewed, bundle, query, question, derived=derived_of(memory_key(result)), card=card_cells(result, bundle))
             dropped = [*((found.get('edited') or {}).get('dropped') or []), {'field': drop['field'], 'equals': drop['equals']}]
             evaluation.setdefault('asked', []).append({
                 'prompt_version': None, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
@@ -1179,7 +1190,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
             answered = ask_questions(reviewed, bundle, gateway, question.strip() if question else None, derived=derived_of(memory_key(result)),
-                                     card=card_cells(memory_key(result)))
+                                     card=card_cells(result, bundle))
             if answered['error'] and answered['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': answered['error']})
                 return
