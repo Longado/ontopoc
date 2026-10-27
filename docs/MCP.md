@@ -62,7 +62,9 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 
 `save_card` 记的是人说的客户答复：`by`（答复人）和 `basis`（出处）都来自人，不替人填，不替客户答，也不按列名猜。`cells` 记卡上的格（`value` 为 null 是清空），`items` 记“要确认的事”里能答复的事（`model_filter`、`unjudged`、`card_blank` 不能用答复关掉）。校验不过整次不写，服务的 400 说明作为工具错误原样返回；写完服务会按新卡重新核对这次运行的验收题。返回 `{card, items, answered}`。
 
-`run_overview`（和 `build_ontology` 返回的概况）里，`answered_items` 是已记下客户答复的事，`card` 是 `{cells, blank}`，`blank` 是还没说清的格数。服务是旧版本、没有这条路由时，对应的字段为 `null`。
+`unlinked` 的事答“数据没导全”（`incomplete`）时，服务会自动把另一端对象在卡上记成“只有一部分”（`partial`，格的答复里带着是哪件事记的）；这件事的答复改成别的，或不再是“数据没导全”，而那一格仍是这条答复记下的，服务就把它撤回。不用另发那一格。
+
+`run_overview`（和 `build_ontology` 返回的概况）里，`answered_items` 是已记下客户答复的事，`card` 是 `{cells, blank}`，`blank` 是还没说清的格数。`answered_items` 在服务是旧版本、没有“要确认的事”这条路由时为 `null`；`card` 只有在旧版服务没有口径卡这条路由时才是 `null`，没有数据行的运行（文档、没通过核验）给 `{cells: 0, blank: 0}`，文档运行不会去请求 `/card`。
 
 问答照卡执行，全由代码完成：
 

@@ -51,6 +51,7 @@ INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判
 - evidence.card 里有 incomplete：对象在数据里只有一部分，转告人；lines 是答案按哪几条口径算的。
 - open_items 里除 model_filter、unjudged、card_blank 外的事都能记客户的答复（answered_items 是已记下的）：
   问人客户怎么答的，人说了再用 save_card 记；card_blank 用 get_card 看哪几格没说清。
+  unlinked 答“数据没导全”，服务会把另一端对象在卡上自动记成“只有一部分”，改答复时撤回，不用另发那一格。
 判断只归人
 - confirm_ontology、fix_question、set_rules、confirm_derived、save_form、save_card 只在人明确说了之后调用，不替人编判断。
 - save_card 只记人说的客户答复：by、basis 都来自人，不替客户填格、不替他答。
@@ -138,9 +139,11 @@ def _route(s, path: str):
 def _with_open_items(s, overview: dict) -> dict:
     """The overview and, from the service's own lists, what has to be settled with the client, what the client has
     already answered, and how many cells of the data-meaning card are still blank. A service that predates a route gives
-    null for it; without the open-items route there is also a note saying why."""
+    null for it; without the open-items route there is also a note saying why. A document has no card and is not asked:
+    an older service answers a document's card with a 400, which would fail the whole overview."""
     base = f"/api/ontology/runs/{quote(overview['saved_as'])}"
-    listed, card = _route(s, base + '/open-items'), _route(s, base + '/card')
+    listed = _route(s, base + '/open-items')
+    card = {'cells': 0, 'blank': 0} if overview['kind'] == 'document' else _route(s, base + '/card')
     shown = {**overview, 'card': None if card is None else {'cells': card['cells'], 'blank': card['blank']}}
     if listed is None:
         return {**shown, 'open_items': None, 'answered_items': None, 'note': OLD_SERVICE}
@@ -477,7 +480,8 @@ TOOLS = [
     _tool(run_overview, '一次运行的概况：对象和关系数、体检通过几项、问答能答几道、稳定性、是否确认过；'
           'open_items 是要和客户确认的事（服务算好的清单，每项有 kind、ask、facts、from_model、target），先看它，是要带给人的事。'
           'answered_items 是已记下客户答复的事，card 是口径卡的格数 {cells, blank}（blank 是还没说清的格，看细节用 get_card）。'
-          '服务是旧版本、没有这个清单时 open_items、answered_items 为 null，note 里说明；没有口径卡时 card 为 null。', RUN, ('saved_as',)),
+          '服务是旧版本、没有这个清单时 open_items、answered_items 为 null，note 里说明；card 只有在旧版服务没有这条路由时才是 null，'
+          '没有数据行的运行（文档、没通过核验）给 {cells:0, blank:0}。', RUN, ('saved_as',)),
     _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。人判错的默认不给，列在 left_out 里；include_wrong=true 全给。', {**RUN, **WRONG}, ('saved_as',)),
     _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到数据平台时要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
     _tool(object_rows, '一个对象在数据里的每一个实例，一页 20 个；all=true 一次给全部。',
@@ -537,6 +541,7 @@ TOOLS = [
           '不要自己填格，不要替客户答，不要按列名猜；只在人明确说了之后调用。校验不过整次不写，服务的说明原样返回。'
           'cells 每项 {id, value, note?, basis?}：id 来自 get_card，value 是那一格可选的值，null 表示清空；日期范围格 range 的 value 写 {"from": "YYYY-MM-DD" 或 null, "to": "YYYY-MM-DD" 或 null}。'
           'items 每项 {id, choice?, text?, basis?}：id 来自 run_overview 的 open_items，choice 的可选值看事的种类（unlinked：expected、incomplete；same_name、merged：distinct、same），没有 choice 时 text 必填。'
+          'unlinked 答“数据没导全”（incomplete）时，服务会自动把另一端对象在卡上记成“只有一部分”，改答复时撤回，不用另发那一格。'
           'cells 和 items 至少给一样。写完返回 {card, items, answered}。',
           {**RUN, 'by': {'type': 'string', 'minLength': 1, 'maxLength': 40, 'description': '答复人，来自人，不要替人填'},
            'cells': {'type': 'array', 'description': '口径卡上要记的格，形状见工具说明；只写人说了的',

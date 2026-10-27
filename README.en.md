@@ -137,7 +137,7 @@ In a new session there are two commands: `/ontopoc:ontopoc-build` (upload files 
 
 ### Connect Claude Code or another MCP client
 
-Every feature on the page is a standard MCP tool (stdio, 28 tools) calling the same local service:
+Every feature on the page is a standard MCP tool (stdio, 31 tools) calling the same local service:
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -205,7 +205,7 @@ The design documents are in Chinese:
 |---|---|
 | [docs/PRODUCT.md](docs/PRODUCT.md) | What the product is and which layers it covers |
 | [docs/AGENTS.md](docs/AGENTS.md) | The 5 agents' definition cards and the call log |
-| [docs/MCP.md](docs/MCP.md) | The 27 MCP tools |
+| [docs/MCP.md](docs/MCP.md) | The 31 MCP tools |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | Data platform object forms, compared |
 | [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | The latest round's plan and record |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |
