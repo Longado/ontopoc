@@ -138,9 +138,11 @@ def _missing_across_sources(p: dict, graph: dict) -> list[dict]:
 
 
 def _relations(p: dict, bundle: dict, graph: dict) -> list[dict]:
+    # a column inside a list has one value per element: the row has no number there only when none of them is filled
+    empty = lambda record, path: all(normalize_value(v) is None for v in resolve(record, path) or [None])
     return [{'key': r['key'], 'source': r['source'], 'rows': len(bundle['sources'][r['source']]['records']),
              'linked_rows': len({ref for _, _, ref in graph['edges'][r['key']]}),
-             **({'empty_rows': sum(any(normalize_value(record.get(path)) is None for _, path in relation_fields([r]))
+             **({'empty_rows': sum(any(empty(record, path) for _, path in relation_fields([r]))
                                     for record in bundle['sources'][r['source']]['records'])}
                 if relation_fields([r]) else {})} for r in p['relations']]
 
