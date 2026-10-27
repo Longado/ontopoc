@@ -50,7 +50,7 @@ class ToolListTests(unittest.TestCase):
 
     def test_saving_says_it_records_only_what_the_client_answered_and_that_the_answerer_and_source_come_from_the_person(self):
         text = tools()['save_card']['description']
-        for said in ('客户', 'by', 'basis', '不替'):
+        for said in ('只记人说的客户答复', 'by', 'basis', '不要自己填格', '不要替客户答'):
             self.assertIn(said, text)
 
     def test_the_handshake_tells_the_agent_what_to_do_with_a_refusal_by_the_card_and_with_an_answerable_item(self):
