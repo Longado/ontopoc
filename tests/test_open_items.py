@@ -75,7 +75,7 @@ class ModelFilterTests(unittest.TestCase):
         items = open_items(run({'asked': asked(answered(PAID, {'filters': filters}))}), BUNDLE)
         self.assertEqual(kinds(items), ['model_filter'])
         self.assertEqual(items[0], {
-            'kind': 'model_filter', 'from_model': False, 'question': PAID,
+            'kind': 'model_filter', 'from_model': False, 'question': PAID, 'id': f'model_filter:{PAID}|subagency=BUREAU OF RECLAMATION',
             'ask': f'「{PAID}」的答案里，模型自己加了条件“subagency = BUREAU OF RECLAMATION”，问题里没提。'
                    '它筛掉了 11 个支出行，这些行的“amount”合计 4,176,392.96。这个条件该不该加？',
             'facts': ['筛选前 1,455 个支出行，筛选后 1,444 个', '被筛掉的有：4431 · P03、4948 · P03'],
@@ -141,7 +141,7 @@ class MergedAndElsewhereTests(unittest.TestCase):
         items = open_items(run({'asked': asked(answered(who, {'merged': groups}))}), BUNDLE)
         self.assertEqual(kinds(items), ['merged'] * 3)
         self.assertEqual(items[0], {
-            'kind': 'merged', 'from_model': False, 'question': who,
+            'kind': 'merged', 'from_model': False, 'question': who, 'id': f'merged:{who}|G0',
             'ask': f'「{who}」的答案里，“G0”这一组下有 2 个不同的最终母公司（PRRXANJSLS26、ZZ3GL25MGJH2），按同一个算了。它们是同一个吗？',
             'facts': ['1 个承包商落在“G0”这一组里'], 'target': {'tab': 'qa', 'place': 'ask', 'question': who}})
 
@@ -153,7 +153,7 @@ class MergedAndElsewhereTests(unittest.TestCase):
         items = open_items(run({'asked': asked(no_data)}), BUNDLE)
         self.assertEqual(kinds(items), ['found_elsewhere'])
         self.assertEqual(items[0], {
-            'kind': 'found_elsewhere', 'from_model': False, 'question': question,
+            'kind': 'found_elsewhere', 'from_model': False, 'question': question, 'id': f'found_elsewhere:{question}',
             'ask': f'「{question}」在合同授标里找不到“GS03F102CA”，但母合同里有，9 个合同授标连着它。这道题问的是不是母合同？',
             'facts': ['条件“piid = GS03F102CA”在合同授标里没有一个对象满足', '母合同里有 1 个对象的编号含“GS03F102CA”，其中连着 9 个合同授标'],
             'target': {'tab': 'qa', 'place': 'ask', 'question': question}})
@@ -180,7 +180,7 @@ class UnlinkedTests(unittest.TestCase):
         items = open_items(run({'data_fit': self.FIT}), BUNDLE)
         self.assertEqual(kinds(items), ['unlinked', 'unlinked'])
         self.assertEqual(items[0], {
-            'kind': 'unlinked', 'from_model': False, 'relation': 'spend_contract',
+            'kind': 'unlinked', 'from_model': False, 'relation': 'spend_contract', 'id': 'unlinked:spend_contract', 'complete_id': 'complete:contracts|award_key',
             'ask': '支出行（spend）1,921 行里有 1,308 行没连上“支出行 对应 合同授标”。是这些行本来就没有对应的合同授标，还是数据没导全？',
             'facts': ['没连上任何对象的支出行，例如 10071|FY2025P03、10078|FY2025P03', '其中 1,308 行用来连的编号是空的'],
             'target': {'tab': 'graph', 'relation': 'spend_contract'}})
@@ -208,7 +208,7 @@ class SameNameTests(unittest.TestCase):
         bundle = padded(60, ('K1', 'Stantec'), ('K2', 'STANTEC '), ('K3', 'Acme'), ('K4', 'Zed'), ('K5', 'zed'), ('K6', 'Zed'))
         [item] = open_items(run(), bundle)
         self.assertEqual(item, {
-            'kind': 'same_name', 'from_model': False,
+            'kind': 'same_name', 'from_model': False, 'id': 'same_name:vendor',
             'ask': '承包商里有 2 组名字相同、编号不同，例如 Stantec（K1 / K2）。它们是同一个承包商的不同主体，还是该合并？',
             'facts': ['Stantec：K1 / K2', 'Zed：K4 / K5 / K6'], 'target': {'tab': 'objects', 'object': 'vendor'}})
 
@@ -262,7 +262,7 @@ class UnstableTests(unittest.TestCase):
         self.assertEqual(kinds(items), ['unstable'] * 4)
         target = {'tab': 'objects', 'place': 'stability'}
         self.assertEqual(items[0], {
-            'kind': 'unstable', 'from_model': False, 'relation': 'contract_vendor',
+            'kind': 'unstable', 'from_model': False, 'relation': 'contract_vendor', 'id': 'unstable:relation:contract_vendor',
             'ask': '关系“合同授标 授予 承包商”在 3 次建模里只出现了 2 次。这条关系要保留吗？',
             'facts': ['共建模 3 次，这条关系出现了 2 次'], 'target': target})
         self.assertEqual(items[1]['ask'], '对象“承包商”在 3 次建模里只出现了 2 次。这类对象要保留吗？')
@@ -328,7 +328,7 @@ class DataGapTests(unittest.TestCase):
     def test_the_models_own_data_gaps_are_one_item_marked_as_the_models(self):
         gaps = ['财务行缺少稳定的交易主键。', '办公室只有编号和名称。']
         [item] = open_items(run(ontology={**ONTOLOGY, 'data_gaps': gaps}), BUNDLE)
-        self.assertEqual(item, {'kind': 'data_gaps', 'from_model': True, 'ask': '模型指出 2 处数据缺口（下面逐条）。客户那边有没有能补上的数据？',
+        self.assertEqual(item, {'kind': 'data_gaps', 'id': 'data_gaps', 'from_model': True, 'ask': '模型指出 2 处数据缺口（下面逐条）。客户那边有没有能补上的数据？',
                                 'facts': gaps, 'target': {'tab': 'objects', 'place': 'build'}})
 
 
@@ -349,7 +349,7 @@ class UnansweredTests(unittest.TestCase):
         out = open_items(run({'asked': items}), BUNDLE)
         self.assertEqual(kinds(out), ['found_elsewhere', 'unanswered'])
         self.assertEqual(out[1], {
-            'kind': 'unanswered', 'from_model': True, 'ask': '4 道问过的题现在答不了。这次 POC 要不要答它们？',
+            'kind': 'unanswered', 'id': 'unanswered', 'from_model': True, 'ask': '4 道问过的题现在答不了。这次 POC 要不要答它们？',
             'facts': ['「甲」：查询写不出来（模型的判断）', '「乙」：本体缺回答它要的东西（模型的判断）',
                       '「丙」：本体里没有对象类型 invoice', '「丁」：数据里没有'],
             'target': {'tab': 'qa', 'place': 'ask'}})
@@ -391,7 +391,7 @@ class UnansweredOriginTests(unittest.TestCase):
 class UnjudgedTests(unittest.TestCase):
     def test_everything_is_unjudged_when_nobody_has_confirmed(self):
         [item] = open_items(run(confirmation=None), BUNDLE)
-        self.assertEqual(item, {'kind': 'unjudged', 'from_model': False, 'ask': '4 个对象、3 条关系还没人判过对错。会上逐项过一遍？',
+        self.assertEqual(item, {'kind': 'unjudged', 'id': 'unjudged', 'from_model': False, 'ask': '4 个对象、3 条关系还没人判过对错。会上逐项过一遍？',
                                 'facts': [], 'target': {'tab': 'objects', 'place': 'confirm'}})
 
     def test_only_what_has_no_verdict_is_counted(self):
