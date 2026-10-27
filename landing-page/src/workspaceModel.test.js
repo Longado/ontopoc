@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { objectCards, objectRelations, sectionOfTile, sectionsFor } from "./workspaceModel.js";
+import { objectCards, objectRelations, opensAtTop, sectionOfTile, sectionsFor, startSection } from "./workspaceModel.js";
 
 const run = (extra = {}) => ({
   file: { name: "orders.csv", kind: "table" },
@@ -49,4 +49,19 @@ test("an object's relations read from its own side", () => {
 
 test("the status chips lead to the module that explains them", () => {
   assert.deepEqual(["ontology", "stability", "fit", "qa", "ref"].map(sectionOfTile), ["objects", "objects", "check", "qa", "check"]);
+});
+
+test("a run opens on its first module: the list to settle for a table, the objects for a document", () => {
+  assert.equal(startSection(null), "upload");
+  assert.equal(startSection(run()), "overview");
+  assert.equal(startSection(run({ file: { name: "制度.md", kind: "document" } })), "objects");
+  assert.equal(startSection({ ...run(), mode: "org", file: { name: "palantir.md", kind: "document" } }), "objects");
+});
+
+test("a jump opens its page at the top, except to a question, which is scrolled to", () => {
+  assert.equal(opensAtTop({ tab: "objects", place: "confirm" }), true);
+  assert.equal(opensAtTop({ tab: "graph", relation: "r1" }), true);
+  assert.equal(opensAtTop({ tab: "check" }), true);
+  assert.equal(opensAtTop({ tab: "qa", place: "ask" }), true);
+  assert.equal(opensAtTop({ tab: "qa", place: "ask", question: "累计付了多少钱？" }), false);
 });

@@ -125,3 +125,24 @@ test("the page and the files are named by the file's own name, never cut inside 
   assert.equal(downloadName(named("客户订单.xlsx"), "纪要.md"), "客户订单-纪要.md");
   assert.equal(downloadName(named("客户订单.xlsx"), "本体和评测.json"), "客户订单-本体和评测.json");
 });
+
+test("a document has no rows for code to check, so its minutes carry no list of things to settle with the client", () => {
+  const doc = run({ file: { name: "制度.md", kind: "document" }, sources: [{ name: "制度.md", paragraphs: 12, chars: 3400 }],
+    evaluation: { document_fit: { checks: [{ key: "quotes_found", passed: true }] } } });
+  for (const items of [null, [], [ask("不该出现", [])]]) {
+    const md = summaryMarkdown(doc, items);
+    assert.doesNotMatch(md, /要和客户确认的事|不该出现/);
+    assert.match(md, /## 读了什么\n\n- 制度.md（12 段 3400 字）/);
+  }
+});
+
+test("a fixed question whose basis is written down is said to be settled and no longer asked about", () => {
+  const item = { question: "累计付了多少钱？", note: "只算垦务局自己签的合同", status: "answered", changed: null, path: "财务支出行", answer: { total: 1444 },
+    query: { start: "financial", where: [{ field: "awarding_subagency", equals: "BUREAU OF RECLAMATION" }] },
+    evidence: { filters: [{ field: "awarding_subagency", equals: "BUREAU OF RECLAMATION", before: 1455, after: 1444, not_in_question: true }] } };
+  const ontology = { ...run().ontology, object_types: [{ key: "financial", label: "财务支出行" }] };
+  const md = summaryMarkdown(run({ ontology, evaluation: { ...run().evaluation, acceptance: { total: 1, answered: 1, items: [item] } } }));
+  assert.match(md, /口径：只算垦务局自己签的合同\n\n结果：能回答\n/);
+  assert.match(md, /口径里已写明：模型加了条件“awarding_subagency = BUREAU OF RECLAMATION”（筛掉 11 个财务支出行）。\n/);
+  assert.doesNotMatch(md, /要核对/);
+});

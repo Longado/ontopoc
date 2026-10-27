@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { askSuggestions, bridgeLines, layoutTables, latestAsked } from "./dataLayoutModel.js";
+import { askSuggestions, askedNow, bridgeLines, layoutTables, latestAsked } from "./dataLayoutModel.js";
 
 const bridge = { from_source: "tw_company_directors", from_field: "統一編號", to_source: "tw_company_registry", to_field: "統一編號", rows: 1573, linked_rows: 1573 };
 
@@ -55,4 +55,10 @@ test("the answer to show under the box is the last question asked", () => {
   asked.evaluation.asked.push({ items: [], error: "模型请求失败：timed out" });
   assert.deepEqual(latestAsked(asked), { error: "模型请求失败：timed out" });
   assert.equal(latestAsked(run()), null);
+});
+
+test("the questions asked are listed once each, as they stand after the last time they were asked or worked out", () => {
+  const asked = (rounds) => askedNow({ evaluation: { asked: rounds } }).map((i) => [i.question, i.total]);
+  assert.deepEqual(asked([{ items: [{ question: "甲", total: 1 }, { question: "乙", total: 2 }] }, { items: [{ question: "甲", total: 3 }] }, { error: "模型请求失败", items: [] }]), [["甲", 3], ["乙", 2]]);
+  assert.deepEqual(askedNow({ evaluation: {} }), []);
 });

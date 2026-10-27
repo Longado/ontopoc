@@ -23,3 +23,8 @@ test("智能问答 splits into asking, the fixed questions and the model's quest
   assert.deepEqual(qaNav(run()), [["ask", "提问", "1"], ["acceptance", "验收问题", "0"], ["model", "模型出的题", "1 / 2"]]);
   assert.deepEqual(qaNav(run({ evaluation: { acceptance: { items: [{}, {}] } } })).map((i) => i[2]), ["0", "2", "—"]);
 });
+
+test("提问 counts each question once, however many times it was worked out", () => {
+  const asked = [{ items: [{ question: "付了多少钱？", status: "answered" }, { question: "谁是母公司？", status: "no_data" }] }, { items: [{ question: "付了多少钱？", status: "answered" }] }];
+  assert.equal(qaNav(run({ evaluation: { asked } }))[0][2], "2");
+});

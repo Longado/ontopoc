@@ -126,3 +126,11 @@ test("replacing swaps in the new query with the note written for it and leaves t
   assert.deepEqual(acceptance.acceptItem(savedAcceptance(run), next, "按订单号计数").map((s) => [s.question, s.query, s.note]),
     [["二", { start: "order" }, undefined], [next.question, { start: "order", where: [] }, "按订单号计数"]]);
 });
+
+test("an answer that takes a fixed question's place does not inherit the words written for the old query", () => {
+  const run = { saved_as: "x.json", evaluation: { acceptance: { items: [item({ note: "含签约分局条件", query: { start: "order", where: [{ field: "分局", equals: "甲" }] } })] } } };
+  const without = item({ query: { start: "order", where: [] } });
+  assert.equal(acceptance.replacedNote(run, without), "含签约分局条件");   // shown beside the box, for reference
+  assert.equal(acceptance.replacedNote(run, item({ question: "别的问题" })), "");   // not a replacement
+  assert.equal(acceptance.replacedNote(run, item({ note: "含签约分局条件", query: { where: [{ field: "分局", equals: "甲" }], start: "order" } })), "");   // the same query
+});
