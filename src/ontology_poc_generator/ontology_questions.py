@@ -497,6 +497,18 @@ def flag_unasked_filters(result: dict, question: str) -> dict:
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
 
 
+def _in_names(ontology: dict, result: dict) -> dict:
+    """The reason of an answer that did not succeed, written in the names a person reads instead of the ontology's keys."""
+    if result['status'] != 'answered' and result.get('reason'):
+        return {**result, 'reason': plain_reason(ontology, result['reason'])}
+    return result
+
+
+def answer_query(ontology: dict, bundle: dict, query: dict, question: str, graph: dict | None = None, derived: list | None = None) -> dict:
+    """One question's query run and read for a person: the filters the question never says are marked, and a reason is in names."""
+    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived), question))
+
+
 def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
     p = normalize_proposal(ontology)
     values = categorical_values(ontology, bundle)
@@ -549,13 +561,12 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
                 result = trial if trial['status'] == 'query_limit' else {
                     'status': 'needs_derived', 'reason': f'要先确认“{formula["label"]} = {formula_text(formula)}”这个指标，才能回答',
                     'derive': {**formula, 'formula': formula_text(formula), 'preview': derived_preview(ontology, bundle, formula, graph)}}
+            result = _in_names(ontology, result)
         elif isinstance(query, dict):
-            result = flag_unasked_filters(run_query(ontology, bundle, query, graph, derived), question or q['question'])
+            result = answer_query(ontology, bundle, query, question or q['question'], graph, derived)
         else:
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
-            result = {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True}
-        if result['status'] != 'answered' and result.get('reason'):
-            result = {**result, 'reason': plain_reason(ontology, result['reason'])}
+            result = _in_names(ontology, {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True})
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
                              **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])

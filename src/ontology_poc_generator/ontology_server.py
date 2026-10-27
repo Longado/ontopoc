@@ -40,9 +40,9 @@ from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
-from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, ask_questions, flag_unasked_filters, run_query
+from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
-from ontology_poc_generator.derived_measures import parse_derived, plain_reason
+from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 
@@ -575,8 +575,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/ask':
                 self.ask()
                 return
-            # compare, confirm and acceptance read, change and write one run without a model call: they hold runs_lock
-            # throughout; ask and variants wait on the model first and take it only to write (see write_back)
+            # compare, confirm, acceptance and requery read, change and write one run without a model call: they hold
+            # runs_lock throughout; ask and variants wait on the model first and take it only to write (see write_back)
             if self.path == '/api/ontology/compare':
                 with runs_lock:
                     self.compare()
@@ -598,6 +598,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/derived':
                 with runs_lock:
                     self.confirm_derived()
+                return
+            if self.path == '/api/ontology/requery':
+                with runs_lock:
+                    self.requery()
                 return
             if self.path == '/api/ontology/rules':
                 with runs_lock:
@@ -1013,12 +1017,62 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     wanted = ((item.get('query') or {}).get('measure') or {}).get('derived') if isinstance(item.get('query'), dict) else None
                     if wanted != formula['label'] or item.get('query', {}).get('start') != formula['type']:
                         continue
-                    again = flag_unasked_filters(run_query(reviewed, bundle, item['query'], graph, measures), item['question'])
-                    if again['status'] != 'answered' and again.get('reason'):
-                        again = {**again, 'reason': plain_reason(reviewed, again['reason'])}
+                    again = answer_query(reviewed, bundle, item['query'], item['question'], graph, measures)
                     answered['items'][i] = {**{k: v for k, v in item.items() if k not in ('derive', 'reason', 'answer', 'path', 'status')}, **again}
                 answered['answered'] = sum(x['status'] == 'answered' for x in answered.get('items') or [])
             result['evaluation']['derived'] = measures
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
+        def requery(self):
+            """A question asked again with one of its conditions taken off, answered by code alone (so with no model key
+            too). The answer is kept as a new round beside the others; the page can accept it in place of the old one."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                result_path = self.load_run(payload)
+                question, drop = payload.get('question'), payload.get('drop')
+                if not isinstance(question, str) or not isinstance(drop, dict) or not {'field', 'equals'} <= drop.keys():
+                    raise ValueError('要写清题目原文，和要去掉的条件 {"field": …, "equals": …}')
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            bundle_path = output_dir / result_path.name.replace('.json', '.bundle.json')
+            if not result_path.exists() or not bundle_path.exists():
+                self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                return
+            result = json.loads(result_path.read_text(encoding='utf-8'))
+            if result['file'].get('kind') == 'document':
+                self.reply(400, {'error': '文档没有数据行可以查询；评测二只对数据表可用'})
+                return
+            if result['ontology']['status'] != 'auto_built_verified':
+                self.reply(400, {'error': '本体没有通过结构核验，不能出题'})
+                return
+            evaluation = result['evaluation']
+            accepted = (evaluation.get('acceptance') or {}).get('items') or []
+            found = next((i for r in reversed(evaluation.get('asked') or []) for i in reversed(r['items']) if i['question'] == question), None) \
+                or next((i for i in accepted if i['question'] == question), None)
+            if found is None:
+                self.reply(404, {'error': '找不到这道题，可能已经被删掉了'})
+                return
+            if not isinstance(found.get('query'), dict):
+                self.reply(400, {'error': '这道题没有查询，不能去掉条件重算'})
+                return
+            where = found['query'].get('where') if isinstance(found['query'].get('where'), list) else []
+            same = lambda w: isinstance(w, dict) and w.get('field') == drop['field'] and w.get('equals') == drop['equals']
+            if not any(map(same, where)):
+                self.reply(400, {'error': '这道题的查询里没有这个条件'})
+                return
+            query = {**found['query'], 'where': [w for w in where if not same(w)]}
+            reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
+            bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+            answer = answer_query(reviewed, bundle, query, question, derived=derived_of(memory_key(result)))
+            dropped = [*((found.get('edited') or {}).get('dropped') or []), {'field': drop['field'], 'equals': drop['equals']}]
+            evaluation.setdefault('asked', []).append({
+                'prompt_version': None, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                'items': [{'question': question, 'reasoning': '', 'query': query, **answer, 'asked': True, 'edited': {'dropped': dropped}}],
+                'answered': int(answer['status'] == 'answered'), 'total': 1, 'error': None})
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
