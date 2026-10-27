@@ -9,7 +9,7 @@ import re
 from ontology_poc_generator.public_ontology import build_graph, linked, normalize_proposal, normalize_value, resolve
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.recognition import model_failure_text
-from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview
+from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview, to_number
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 
 QUESTION_PROMPT_VERSION = 'company_questions.v7'
@@ -358,10 +358,11 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             return ([computed[inst]], 0) if inst in computed else ([], 1)
         read, skipped = [], 0
         for v in values(inst, measure['field']):
-            try:
-                read.append(float(str(v).replace(',', '')))
-            except ValueError:
+            number = to_number(v)
+            if number is None:
                 skipped += 1
+            else:
+                read.append(number)
         return read, skipped
     int_if_whole = lambda v: int(v) if float(v).is_integer() else v
     text = lambda node: '、'.join(str(v) for _, v in node[1])
