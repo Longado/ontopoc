@@ -4,13 +4,13 @@ import { formOf as formOfRun } from "./ontologyHandoverModel.js";
 import { askedNow } from "./dataLayoutModel.js";
 import { isDocument, typeLabel } from "./ontologyStudioModel.js";
 
-const SECTIONS = [["overview", "要确认的事"], ["data", "数据接入"], ["objects", "本体管理"], ["graph", "本体关系"], ["qa", "智能问答"], ["check", "数据体检"]];
+const SECTIONS = [["overview", "要确认的事"], ["card", "口径卡"], ["data", "数据接入"], ["objects", "本体管理"], ["graph", "本体关系"], ["qa", "智能问答"], ["check", "数据体检"]];
 
-/** The modules a run can show: a document has no rows to lay out, to count unlinked ones in, or to answer questions from. */
+/** The modules a run can show: a document has no rows to lay out, to count unlinked ones in, to put a card on, or to answer questions from. */
 export function sectionsFor(run) {
   if (!run) return SECTIONS;
   if (!isDocument(run)) return SECTIONS;
-  const doc = SECTIONS.filter(([key]) => !["overview", "data", "qa"].includes(key));
+  const doc = SECTIONS.filter(([key]) => !["overview", "card", "data", "qa"].includes(key));
   if (run.mode !== "org") return doc;
   return doc.flatMap((s) => (s[0] === "objects" ? [s, ["org", "组织架构"]] : [s]));
 }
