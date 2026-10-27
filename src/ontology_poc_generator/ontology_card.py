@@ -16,12 +16,14 @@ import itertools
 import re
 
 from ontology_poc_generator.handover_form import source_profile
+from ontology_poc_generator.ontology_confirm import without_wrong
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
 
 MAX_NOTE, MAX_BASIS, MAX_BY = 300, 200, 40
 HISTORY = 200      # changes kept in the file, the oldest dropped first
 EXAMPLES = 3       # duplicate keys named on a card
 DATES, AMOUNTS = ('DATE', 'DATETIME'), ('INTEGER', 'DECIMAL')
+NOT_BUSINESS_TIME = ('fetched', 'system')   # a date column answered like this says when the row was taken or entered: it cannot fix a period
 
 # the words a person reads for each value of each kind of cell: the page, the minutes and the MCP tools all use these
 SAYS = {
@@ -70,24 +72,29 @@ def _span(records: list, path: str) -> tuple:
 
 def _unique(records: list, fields: list) -> dict | None:
     """How many different keys the identity columns of the table give, and which keys more than one row carries. Keys
-    are folded the way the graph folds them, so two spellings of one number count as the same object."""
+    are folded the way the graph folds them, so two spellings of one number count as the same object. A row with a
+    blank identity column keeps the blank in its key as an empty string, so no row drops out; `blank` counts those rows."""
     if not fields:
         return None
-    seen, shown = Counter(), {}
+    seen, shown, blank = Counter(), {}, 0
     for r in records:
         parts = [[v for v in resolve(r, f) if normalize_value(v)] for f in fields]
-        for combo in itertools.product(*parts):   # a column inside a list gives one key per element, a flat column one per row
+        blank += not all(parts)
+        for combo in itertools.product(*(part or [''] for part in parts)):   # a column inside a list gives one key per element, a flat column one per row
             key = tuple(map(normalize_value, combo))
             seen[key] += 1
             shown.setdefault(key, ' · '.join(map(str, combo)))
     repeated = [key for key, n in seen.items() if n > 1]
-    return {'fields': fields, 'distinct': len(seen), 'duplicates': len(repeated), 'examples': [shown[k] for k in repeated[:EXAMPLES]]}
+    return {'fields': fields, 'distinct': len(seen), 'duplicates': len(repeated), 'blank': blank, 'examples': [shown[k] for k in repeated[:EXAMPLES]]}
 
 
-def build_card(ontology: dict, bundle: dict, cells: dict | None = None, graph: dict | None = None) -> dict:
-    """The card of a run: the code facts of every table, with the stored answers (`cells`) beside them."""
+def build_card(ontology: dict, bundle: dict, cells: dict | None = None, graph: dict | None = None, decisions: dict | None = None) -> dict:
+    """The card of a run: the code facts of every table, with the stored answers (`cells`) beside them. An object a
+    person judged wrong (`decisions`, as open items read them) has no cell asking whether it is all in the data; its
+    table keeps its own cells, since the table is still there."""
     cells = cells or {}
     p = normalize_proposal(ontology)
+    judged = {t['key'] for t in without_wrong(p, decisions)['object_types']}
     graph = graph or build_graph(ontology, bundle)
     identity = {}   # table -> object key -> the columns that identify it there
     for t in p['object_types']:
@@ -116,7 +123,7 @@ def build_card(ontology: dict, bundle: dict, cells: dict | None = None, graph: d
                        'dates': dates, 'amounts': amounts})
     counts = Counter(inst[0] for inst in graph['sources_of'])
     objects = [{'id': complete_id(t), 'type': t['key'], 'label': label[t['key']], 'count': counts[t['key']],
-                'answer': _view(complete_id(t), cells.get(complete_id(t)))} for t in p['object_types']]
+                'answer': _view(complete_id(t), cells.get(complete_id(t)))} for t in p['object_types'] if t['key'] in judged]
     counted = list(dict.fromkeys([*(t['grain']['id'] for t in tables), *(d['id'] for t in tables for d in t['dates']),
                                   *(a['id'] for t in tables for a in t['amounts']), *(o['id'] for o in objects)]))
     return {'tables': tables, 'objects': objects, 'cells': len(counted), 'blank': sum(_blank(cells.get(i)) for i in counted)}
@@ -134,6 +141,20 @@ def blank_by_table(card: dict) -> list[tuple]:
         if n:
             out.append((t['source'], n, columns))
     return out
+
+
+def card_ids(card: dict) -> set:
+    """Every cell the card has as it is laid out now, the optional range cells included."""
+    return {*(t['grain']['id'] for t in card['tables']), *(d[k] for t in card['tables'] for d in t['dates'] for k in ('id', 'range_id')),
+            *(a['id'] for t in card['tables'] for a in t['amounts']), *(o['id'] for o in card['objects'])}
+
+
+def live_cells(stored: dict, ontology: dict, bundle: dict, decisions: dict | None = None, graph: dict | None = None) -> dict:
+    """The stored answers (`stored`: {cell id: answer}) that sit on the card as it is laid out now, which is what the
+    questions are given. A column that went away, or an object judged wrong, leaves cells in the file that the card has
+    no place for: they say nothing about the data any more. The file keeps them, so an answer comes back with its column."""
+    on_card = card_ids(build_card(ontology, bundle, None, graph, decisions))
+    return {i: a for i, a in stored.items() if i in on_card}
 
 
 def check_by(by) -> str:
@@ -186,15 +207,17 @@ def check_cells(card: dict, raw, by, at: str) -> dict:
     by = check_by(by)
     if not isinstance(raw, list):
         raise CardError('cells 要写成列表')
-    on_card = {*(t['grain']['id'] for t in card['tables']), *(d[k] for t in card['tables'] for d in t['dates'] for k in ('id', 'range_id')),
-               *(a['id'] for t in card['tables'] for a in t['amounts']), *(o['id'] for o in card['objects'])}
+    on_card = card_ids(card)
     out = {}
     for entry in raw:
         if not isinstance(entry, dict):
             raise CardError('每一格的写法不对，要写成 {"id": …, "value": …}')
-        cell_id, value = entry.get('id'), entry.get('value')
+        cell_id = entry.get('id')
         if not isinstance(cell_id, str) or cell_id not in on_card:
             raise CardError(f'口径卡上没有这一格：{cell_id}')
+        if 'value' not in entry:
+            raise CardError('每一格都要写 value（清空就写 null）')
+        value = entry['value']
         kind = cell_id.partition(':')[0]
         if kind == 'range':
             value = _range(cell_id, value)
@@ -233,18 +256,21 @@ def measure_fields(measure: dict) -> list:
     return [measure['field']]
 
 
-def _date_columns(bundle: dict, source: str) -> set:
-    """The columns of a table that have a date cell: every value in them is a DATE or DATETIME, as the card reads them."""
+def _period_columns(cells: dict, bundle: dict, source: str) -> set:
+    """The columns of a table that can fix a period: those with a date cell (every value in them is a DATE or DATETIME,
+    as the card reads them), except one the card says is the time of fetching or entering. A date nobody has answered
+    yet still counts."""
     if source not in bundle['sources']:
         return set()
     [profile] = source_profile({'sources': {source: bundle['sources'][source]}})
-    return {f['path'] for f in profile['fields'] if f['type'] in DATES}
+    return {f['path'] for f in profile['fields'] if f['type'] in DATES
+            and (cells.get(f'date:{source}.{f["path"]}') or {}).get('value') not in NOT_BUSINESS_TIME}
 
 
-def _on_one_period(bundle: dict, field: str, where: list, dims: list) -> bool:
+def _on_one_period(cells: dict, bundle: dict, field: str, where: list, dims: list) -> bool:
     """A date of the amount's own table is fixed by a filter, or the answer is split by that date directly."""
     source = field.partition('.')[0]
-    dates = _date_columns(bundle, source)
+    dates = _period_columns(cells, bundle, source)
     dated = lambda f: f.partition('.')[0] == source and f.partition('.')[2] in dates
     return any(dated(w['field']) for w in where) or any(not d['via'] and dated(d['field']) for d in dims)
 
@@ -260,8 +286,9 @@ def refusal(cells: dict, bundle: dict, measure: dict, where: list, dims: list) -
         meaning = (cells.get(cell_id) or {}).get('value')
         if meaning == 'running':
             reason = f'「{column}」在口径卡里是“{SAYS["amount"]["running"]}”：一行已经包含之前的数，跨行相加会重复。可以改问某一次的值，或每个对象最近一次的值。'
-        elif meaning == 'period_to_date' and not _on_one_period(bundle, field, where, dims):
-            reason = f'「{column}」在口径卡里是“{SAYS["amount"]["period_to_date"]}”：要先固定在一期上（按同一张表的一个日期列筛一个日期），才能相加。'
+        elif meaning == 'period_to_date' and not _on_one_period(cells, bundle, field, where, dims):
+            reason = (f'「{column}」在口径卡里是“{SAYS["amount"]["period_to_date"]}”：要先固定在一期上'
+                      '（按同一张表里一个不是取数或录入时间的日期列，筛一个日期或按它分组），才能相加。')
         else:
             continue
         return {'status': 'query_limit', 'reason': reason, 'refused_by_card': cell_id}
