@@ -3,7 +3,9 @@ a model key for the card itself; the fake model only builds the ontology and wri
 import base64
 from datetime import datetime
 import json
+from pathlib import Path
 import unittest
+from unittest import mock
 
 from ontology_poc_generator.ontology_questions import QUESTION_SYSTEM_PROMPT
 from ontology_poc_generator.recognition import ModelCompletion
@@ -33,6 +35,9 @@ RUNNING = 'amount:orders.累计'
 GRAIN = 'grain:orders'
 CUSTOMER = 'complete:orders|客户编号'
 EMPTY = {'tables': [], 'objects': [], 'cells': 0, 'blank': 0}
+ITEM = 'unlinked:order_customer'
+STALE = {'range:orders.不存在': {'value': {'from': None, 'to': '2024-12-31'}, 'note': '', 'by': '张三', 'basis': '', 'at': '2026-10-27T09:00:00+00:00'}}   # no such column now
+WRONG_CUSTOMER = {'types': {'order': {'verdict': 'ok'}, 'customer': {'verdict': 'wrong'}}, 'relations': {}}
 
 
 class CardModel:
@@ -60,6 +65,16 @@ def mark(base, run, cell_id, value, **extra):
     return body
 
 
+def keep_cells(out, run, cells):
+    """Put these answers in the file's card file as they would be left by an earlier layout of the card."""
+    (out / 'cards').mkdir(exist_ok=True)
+    (out / 'cards' / f"{run['file']['sha256']}.json").write_text(json.dumps({'cells': cells, 'items': {}, 'history': []}, ensure_ascii=False), encoding='utf-8')
+
+
+def stored_card(out, run):
+    return json.loads((out / 'cards' / f"{run['file']['sha256']}.json").read_text(encoding='utf-8'))
+
+
 def cell_ids(card):
     return [*(t['grain']['id'] for t in card['tables']), *(d['id'] for t in card['tables'] for d in t['dates']),
             *(a['id'] for t in card['tables'] for a in t['amounts']), *(o['id'] for o in card['objects'])]
@@ -80,6 +95,12 @@ class ReadTests(unittest.TestCase):
         self.assertEqual([(o['id'], o['type'], o['count']) for o in card['objects']], [('complete:orders|订单号', 'order', 3), (CUSTOMER, 'customer', 2)])
         self.assertEqual((card['cells'], card['blank']), (6, 6))
         self.assertIsNone(table['grain']['answer'])
+
+    def test_an_order_with_no_customer_is_still_a_key_and_is_counted_as_blank(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, _):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            unique = card_of(base, run)['tables'][0]['grain']['unique']
+        self.assertEqual(unique, {'fields': ['客户编号', '订单号'], 'distinct': 3, 'duplicates': 0, 'blank': 1, 'examples': []})
 
     def test_a_run_that_is_unknown_is_not_found(self):
         with OntologyServerTests().server(gateway=CardModel()) as (base, _):
@@ -128,6 +149,28 @@ class SaveTests(unittest.TestCase):
                     self.assertEqual(status, 400, body)
                     self.assertIn(said_so, body['error'])
             self.assertFalse((out / 'cards').exists())   # not even the good cell next to the bad one
+
+    def test_a_cell_without_a_value_key_is_refused_and_nothing_is_written(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            status, body = save(base, run, [{'id': GRAIN, 'value': 'event'}, {'id': RUNNING, 'note': '忘了写 value'}])
+            self.assertEqual(status, 400, body)
+            self.assertEqual(body['error'], '每一格都要写 value（清空就写 null）')
+            self.assertFalse((out / 'cards').exists())
+
+    def test_the_card_file_is_written_beside_itself_and_moved_into_place(self):
+        moved, real = [], Path.replace
+
+        def spy(self, target):
+            moved.append((self.name, Path(target).name))
+            return real(self, target)
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            with mock.patch.object(Path, 'replace', spy):
+                mark(base, run, RUNNING, 'running')
+            name = f"{run['file']['sha256']}.json"
+            self.assertIn((f'{name}.part', name), moved)
+            self.assertEqual([p.name for p in (out / 'cards').iterdir()], [name])   # no half-written file is left beside it
 
     def test_an_answer_is_kept_with_who_said_it_and_where_from_and_read_back(self):
         with OntologyServerTests().server(gateway=CardModel()) as (base, out):
@@ -239,6 +282,115 @@ class QuestionsFollowTheCardTests(unittest.TestCase):
             self.assertEqual(rerun['evaluation']['acceptance']['items'][0]['refused_by_card'], RUNNING)
 
 
+    def test_saving_a_card_leaves_the_files_shared_questions_alone_even_on_an_older_run(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, older = call(base, '/api/ontology/build', UPLOAD)
+            item = self.asked(base, older)
+            query = {k: item['query'][k] for k in ('start', 'where', 'via', 'group_by', 'measure')}
+            first = {'question': item['question'], 'query': query, 'note': ''}
+            self.assertEqual(call(base, '/api/ontology/acceptance', {'saved_as': older['saved_as'], 'items': [first]})[0], 200)
+            _, newer = call(base, '/api/ontology/build', UPLOAD)   # it inherits the one question, and a person adds a second there
+            second = {'question': '再问一遍累计一共多少？', 'query': query, 'note': ''}
+            self.assertEqual(call(base, '/api/ontology/acceptance', {'saved_as': newer['saved_as'], 'items': [first, second]})[0], 200)
+            shared = out / 'acceptance' / f"{older['file']['sha256']}.json"
+            before = shared.read_text(encoding='utf-8')
+            self.assertEqual(len(json.loads(before)['items']), 2)
+            mark(base, older, RUNNING, 'running')   # the older run holds one question: it must not replace the file's two
+            self.assertEqual(shared.read_text(encoding='utf-8'), before)
+            _, reopened = fetch(base, f"/api/ontology/runs/{older['saved_as']}")
+            self.assertEqual(reopened['evaluation']['acceptance']['items'][0]['refused_by_card'], RUNNING)   # its own question was asked again
+
+
+class StaleCellTests(unittest.TestCase):
+    """What an earlier layout of the card left in the file is not an answer on the card now: no path to the questions hands it on."""
+    def asked(self, base, run, question='累计一共多少？'):
+        status, body = call(base, '/api/ontology/ask', {'saved_as': run['saved_as'], 'question': question})
+        self.assertEqual(status, 200, body)
+        return body['evaluation']['asked'][-1]['items'][0]
+
+    def no_card(self, item):
+        self.assertNotIn('card', item.get('evidence') or {})
+
+    def test_the_card_does_not_count_them_and_asking_carries_no_card(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            keep_cells(out, run, STALE)
+            card = card_of(base, run)
+            self.assertEqual((card['cells'], card['blank']), (6, 6))
+            item = self.asked(base, run)
+            self.assertEqual(item['status'], 'answered')
+            self.no_card(item)
+            self.assertEqual(stored_card(out, run)['cells'], STALE)   # the file still holds them: the column may come back
+
+    def test_asking_again_without_a_condition_carries_no_card(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            self.asked(base, run)
+            keep_cells(out, run, STALE)
+            status, body = call(base, '/api/ontology/requery', {'saved_as': run['saved_as'], 'question': '累计一共多少？', 'drop': {'field': '金额', 'equals': '100'}})
+            self.assertEqual(status, 200, body)
+            self.no_card(body['evaluation']['asked'][-1]['items'][0])
+
+    def test_confirming_a_derived_amount_carries_no_card(self):
+        with OntologyServerTests().server(gateway=CardModel(DERIVED_QUESTION)) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            waiting = self.asked(base, run, '金额乘累计一共多少？')
+            keep_cells(out, run, STALE)
+            status, body = call(base, '/api/ontology/derived', {'saved_as': run['saved_as'], 'derive': waiting['derive']})
+            self.assertEqual(status, 200, body)
+            [again] = body['evaluation']['asked'][-1]['items']
+            self.assertEqual(again['status'], 'answered')
+            self.no_card(again)
+
+    def test_the_fixed_questions_carry_no_card_when_saved_or_asked_again_after_a_confirmation(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            item = self.asked(base, run)
+            query = {k: item['query'][k] for k in ('start', 'where', 'via', 'group_by', 'measure')}
+            keep_cells(out, run, STALE)
+            status, body = call(base, '/api/ontology/acceptance', {'saved_as': run['saved_as'], 'items': [{'question': item['question'], 'query': query, 'note': ''}]})
+            self.assertEqual(status, 200, body)
+            [saved] = body['evaluation']['acceptance']['items']
+            self.assertEqual(saved['status'], 'answered')
+            self.no_card(saved)
+            decisions = {'types': {'order': {'verdict': 'ok'}, 'customer': {'verdict': 'ok'}}, 'relations': {}}
+            status, body = call(base, '/api/ontology/confirm', {'saved_as': run['saved_as'], 'decisions': decisions})
+            self.assertEqual(status, 200, body)
+            self.no_card(body['evaluation']['acceptance']['items'][0])
+
+    def test_the_questions_an_upload_answers_carry_no_card(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, first = call(base, '/api/ontology/build', UPLOAD)
+            keep_cells(out, first, STALE)
+            status, run = call(base, '/api/ontology/build', {**UPLOAD, 'purpose': '看累计'})
+            self.assertEqual(status, 200, run)
+            [item] = run['evaluation']['asked'][0]['items']
+            self.assertEqual(item['status'], 'answered')
+            self.no_card(item)
+
+
+class WrongObjectTests(unittest.TestCase):
+    def test_an_object_judged_wrong_leaves_the_card_and_what_was_said_on_it_is_no_longer_heard(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            mark(base, run, CUSTOMER, 'partial', note='只导了一部分')
+            self.assertEqual(call(base, '/api/ontology/confirm', {'saved_as': run['saved_as'], 'decisions': WRONG_CUSTOMER})[0], 200)
+            card = card_of(base, run)
+            self.assertEqual([o['id'] for o in card['objects']], ['complete:orders|订单号'])
+            self.assertEqual((card['cells'], card['blank']), (5, 5))
+            self.assertEqual(card['tables'][0]['grain']['id'], GRAIN)   # the table is still there with its own cells
+            self.assertEqual(len(card['tables'][0]['amounts']), 2)
+            status, body = save(base, run, [{'id': CUSTOMER, 'value': 'full'}])
+            self.assertEqual(status, 400, body)
+            self.assertIn('没有这一格', body['error'])
+            status, listed = fetch(base, f"/api/ontology/runs/{run['saved_as']}/open-items")
+            [blank] = [i for i in listed['items'] if i['kind'] == 'card_blank']
+            self.assertIn('还有 5 格没说清', blank['ask'])
+            status, asked = call(base, '/api/ontology/ask', {'saved_as': run['saved_as'], 'question': '累计一共多少？'})
+            self.assertNotIn('card', asked['evaluation']['asked'][-1]['items'][0].get('evidence') or {})
+            self.assertEqual(stored_card(out, run)['cells'][CUSTOMER]['value'], 'partial')   # the file keeps it, for a judgement taken back
+
+
 class OpenItemTests(unittest.TestCase):
     def listing(self, base, run):
         status, body = fetch(base, f"/api/ontology/runs/{run['saved_as']}/open-items")
@@ -297,6 +449,100 @@ class OpenItemTests(unittest.TestCase):
             self.assertEqual(full['card']['blank'], 0)
             self.assertNotIn('card_blank', [i['kind'] for i in full['items']])
             self.assertNotIn('card_blank', [i['kind'] for i in self.listing(base, run)['items']])
+
+
+class LinkedCellTests(unittest.TestCase):
+    """An unlinked item answered "the data was not all imported" marks the other end as only partly in the data, here on the
+    server: the page sends the item alone."""
+    @staticmethod
+    def customer(body):
+        return next(o for o in body['card']['objects'] if o['id'] == CUSTOMER)['answer']
+
+    @staticmethod
+    def incomplete(text='客户表只导了一部分', **extra):
+        return {'id': ITEM, 'choice': 'incomplete', 'text': text, 'basis': '10-27 会议', **extra}
+
+    def test_answering_incomplete_marks_the_other_end_as_partly_in_the_data_and_says_which_item_did(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            status, saved = save(base, run, items=[self.incomplete()])
+            self.assertEqual(status, 200, saved)
+            answer = self.customer(saved)
+            self.assertEqual({k: v for k, v in answer.items() if k != 'at'},
+                             {'value': 'partial', 'says': '数据里只有一部分', 'note': '客户表只导了一部分', 'by': '张三', 'basis': '10-27 会议', 'item': ITEM})
+            self.assertEqual(card_of(base, run), saved['card'])
+            self.assertEqual(sorted(h['id'] for h in stored_card(out, run)['history']), sorted([CUSTOMER, ITEM]))   # both writes are in the history
+            self.assertEqual(saved['card']['blank'], 5)
+
+    def test_answering_incomplete_again_keeps_it_partial_and_the_same_words_are_no_change(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            save(base, run, items=[self.incomplete('先这么记')])
+            written = len(stored_card(out, run)['history'])
+            _, same = save(base, run, items=[self.incomplete('先这么记')])
+            self.assertEqual(len(stored_card(out, run)['history']), written)
+            self.assertEqual((self.customer(same)['value'], self.customer(same)['item']), ('partial', ITEM))
+            _, again = save(base, run, items=[self.incomplete('改了说法：只有 FY25Q1')], by='李四')
+            answer = self.customer(again)
+            self.assertEqual((answer['value'], answer['note'], answer['by'], answer['item']), ('partial', '改了说法：只有 FY25Q1', '李四', ITEM))
+
+    def test_an_answer_that_is_not_incomplete_writes_no_cell(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            _, saved = save(base, run, items=[{'id': ITEM, 'choice': 'expected', 'text': '本来就没有'}])
+            self.assertIsNone(self.customer(saved))
+            self.assertEqual(stored_card(out, run)['cells'], {})
+
+    def test_changing_the_answer_away_takes_back_the_cell_it_wrote(self):
+        for away in ({'choice': 'expected', 'text': '本来就没有对应'}, {'text': '再核实一下'}):
+            with self.subTest(away=away), OntologyServerTests().server(gateway=CardModel()) as (base, out):
+                _, run = call(base, '/api/ontology/build', UPLOAD)
+                save(base, run, items=[self.incomplete()])
+                _, saved = save(base, run, items=[{'id': ITEM, **away}])
+                self.assertIsNone(self.customer(saved))
+                stored = stored_card(out, run)
+                self.assertNotIn(CUSTOMER, stored['cells'])
+                cleared = [h for h in stored['history'] if h['id'] == CUSTOMER]
+                self.assertEqual([(h['old'] and h['old']['value'], h['new'] and h['new']['value']) for h in cleared], [(None, 'partial'), ('partial', None)])
+                self.assertEqual(saved['card']['blank'], 6)
+
+    def test_changing_the_answer_away_leaves_a_cell_that_is_no_longer_what_it_wrote(self):
+        away = {'id': ITEM, 'choice': 'expected', 'text': '本来就没有对应'}
+        with OntologyServerTests().server(gateway=CardModel()) as (base, _):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            save(base, run, items=[self.incomplete()])
+            mark(base, run, CUSTOMER, 'full')   # a person set the cell on the card afterwards
+            _, saved = save(base, run, items=[away])
+            self.assertEqual(self.customer(saved)['value'], 'full')
+        with OntologyServerTests().server(gateway=CardModel()) as (base, _):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            mark(base, run, CUSTOMER, 'partial', note='我自己记的')   # partial, but not written by the item
+            _, saved = save(base, run, items=[away])
+            self.assertEqual((self.customer(saved)['value'], self.customer(saved)['note']), ('partial', '我自己记的'))
+        with OntologyServerTests().server(gateway=CardModel()) as (base, _):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            save(base, run, items=[self.incomplete()])
+            mark(base, run, CUSTOMER, 'partial', note='改成我自己的话')   # the same value, said again by a person: it is theirs now
+            _, saved = save(base, run, items=[away])
+            self.assertEqual((self.customer(saved)['value'], self.customer(saved)['note']), ('partial', '改成我自己的话'))
+            self.assertNotIn('item', self.customer(saved))
+
+    def test_a_request_that_sets_the_cell_itself_wins_over_what_the_item_would_do(self):
+        with OntologyServerTests().server(gateway=CardModel()) as (base, _):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            _, saved = save(base, run, [{'id': CUSTOMER, 'value': 'full', 'note': '其实是全的'}], [self.incomplete()])
+            answer = self.customer(saved)
+            self.assertEqual((answer['value'], answer['note']), ('full', '其实是全的'))
+            self.assertNotIn('item', answer)
+            _, cleared = save(base, run, [{'id': CUSTOMER, 'value': None}], [self.incomplete()])
+            self.assertIsNone(self.customer(cleared))
+        with OntologyServerTests().server(gateway=CardModel()) as (base, _):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            save(base, run, items=[self.incomplete()])
+            _, kept = save(base, run, [{'id': CUSTOMER, 'value': 'partial', 'note': '换个说法'}], [{'id': ITEM, 'choice': 'expected', 'text': '本来就没有对应'}])
+            answer = self.customer(kept)
+            self.assertEqual((answer['value'], answer['note']), ('partial', '换个说法'))
+            self.assertNotIn('item', answer)
 
 
 if __name__ == '__main__':
