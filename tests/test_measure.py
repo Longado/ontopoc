@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from ontology_poc_generator.derived_measures import parse_derived
@@ -28,6 +29,26 @@ class MeasureTests(unittest.TestCase):
         bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], '订单': {'records': records, 'requests': []}}}
         measure = run_query(PROPOSAL, bundle, {**SUM, 'measure': {'field': '订单.金额', 'op': 'average'}})['answer']['measure']
         self.assertEqual((measure['value'], measure['counted'], measure['skipped']), (70, 1, 2))
+
+    def test_nan_and_infinity_are_not_numbers_even_though_float_reads_them(self):
+        for word in ('nan', 'NaN', 'inf', '-inf', 'Infinity', '1e999'):
+            with self.subTest(word=word):
+                records = [{**r} for r in BUNDLE['sources']['订单']['records']]
+                records[0]['金额'] = word
+                bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], '订单': {'records': records, 'requests': []}}}
+                got = run_query(PROPOSAL, bundle, SUM)
+                self.assertEqual((got['answer']['measure']['value'], got['answer']['measure']['counted'], got['answer']['measure']['skipped']), (120, 2, 1))
+                json.dumps(got, allow_nan=False)   # the reply is JSON a browser can read
+                grouped = run_query(PROPOSAL, bundle, {**SUM, 'group_by': [BY_CUSTOMER]})
+                json.dumps(grouped, allow_nan=False)
+                self.assertEqual(grouped['answer']['groups'], [['乙', 50, 1]])
+                self.assertEqual(grouped['answer']['unread_groups']['count'], 1)
+
+    def test_a_column_of_nothing_but_nan_has_no_total(self):
+        records = [{**r, '金额': 'nan'} for r in BUNDLE['sources']['订单']['records']]
+        bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], '订单': {'records': records, 'requests': []}}}
+        got = run_query(PROPOSAL, bundle, SUM)
+        self.assertEqual((got['status'], got['answer']['measure']['value'], got['answer']['measure']['skipped']), ('no_data', None, 3))
 
     def test_a_total_per_group_ranks_by_the_total(self):
         answer = run_query(PROPOSAL, BUNDLE, {**SUM, 'group_by': [BY_CUSTOMER]})['answer']

@@ -92,6 +92,24 @@ class ConfirmedAnswerTests(unittest.TestCase):
             _, third = call(base, '/api/ontology/build', upload(V2, previous=second['saved_as']))
             self.assertIs(third['evaluation']['acceptance']['items'][0]['changed'], False)
 
+    def test_editing_a_note_on_an_older_run_never_takes_an_agreement_made_for_another_query(self):
+        with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
+            _, first = call(base, '/api/ontology/build', upload(V1))
+            [on_a] = accept(base, first, [COUNT_ORDERS])   # query A: every order, 2 of them
+            self.assertEqual(on_a['confirmed']['answer'], {'total': 2})
+            _, second = call(base, '/api/ontology/build', upload(V1))   # inherits the question; a person replaces its query and agrees to that
+            query_b = {**COUNT_ORDERS['query'], 'where': [{'field': '金额', 'equals': '100'}]}   # query B: the orders of 100, 1 of them
+            [on_b] = accept(base, second, [{**COUNT_ORDERS, 'query': query_b}], replace_question=COUNT_ORDERS['question'])
+            self.assertEqual(on_b['confirmed']['answer'], {'total': 1})
+            shared = out / 'acceptance' / f"{first['file']['sha256']}.json"
+            self.assertEqual(json.loads(shared.read_text(encoding='utf-8'))['items'][0]['confirmed'], on_b['confirmed'])
+            # the first run opened again, only the note of its question edited: the question there is still on query A
+            own = json.loads((out / first['saved_as']).read_text(encoding='utf-8'))['evaluation']['acceptance']['items'][0]
+            self.assertEqual(own['query'], on_a['query'])
+            [kept] = accept(base, first, [page_shape(own, note='只是改个备注')])
+            self.assertEqual(kept['confirmed'], on_a['confirmed'])   # its own agreement, never B's
+            self.assertEqual((kept['confirmed']['answer'], kept['changed']), ({'total': 2}, False))
+
     def test_slow_drift_is_reported_on_every_rerun_against_what_the_person_agreed_to(self):
         with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
             _, first = call(base, '/api/ontology/build', upload(V1))
@@ -121,6 +139,25 @@ class ConfirmedAnswerTests(unittest.TestCase):
             self.assertEqual(reviewed['evaluation']['acceptance']['items'][0]['confirmed'], item['confirmed'])
             stored = json.loads((out / 'acceptance' / f"{first['file']['sha256']}.json").read_text(encoding='utf-8'))
             self.assertEqual(stored['items'][0]['confirmed'], item['confirmed'])
+
+    def test_confirming_on_an_older_run_checks_its_own_questions_and_leaves_the_files_shared_list_alone(self):
+        with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
+            _, older = call(base, '/api/ontology/build', upload(V1))
+            via_customer = {'question': '哪个客户订单最多？', 'note': '', 'query': {'start': 'order', 'where': [], 'via': ['order_customer'], 'group_by': None}}
+            [first] = accept(base, older, [via_customer])
+            _, newer = call(base, '/api/ontology/build', upload(V1))   # it inherits the question, and a person adds a second one there
+            extra = {**COUNT_ORDERS, 'question': '有几张订单？'}
+            accept(base, newer, [page_shape(first), extra])
+            shared = out / 'acceptance' / f"{older['file']['sha256']}.json"
+            before = shared.read_text(encoding='utf-8')
+            self.assertEqual(len(json.loads(before)['items']), 2)
+            decisions = {'types': {t['key']: {'verdict': 'ok'} for t in older['ontology']['object_types']}, 'relations': {'order_customer': {'verdict': 'wrong'}}, 'added': []}
+            status, reviewed = call(base, '/api/ontology/confirm', {'saved_as': older['saved_as'], 'decisions': decisions})
+            self.assertEqual(status, 200, reviewed)
+            [checked] = reviewed['evaluation']['acceptance']['items']   # the older run holds one question, asked again of its data
+            self.assertEqual(checked['status'], 'broken')
+            self.assertEqual(json.loads((out / older['saved_as']).read_text(encoding='utf-8'))['evaluation']['acceptance']['items'][0]['status'], 'broken')
+            self.assertEqual(shared.read_text(encoding='utf-8'), before)   # the file's two questions and their agreements are not replaced by it
 
     def test_a_list_saved_before_confirmations_existed_is_compared_as_before_and_not_given_one(self):
         with OntologyServerTests().server(gateway=QuestionModel()) as (base, out):
