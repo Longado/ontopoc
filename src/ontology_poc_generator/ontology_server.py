@@ -184,10 +184,18 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         items, answered = split_answers(open_items(result, bundle, graph, card), stored['items'])
         return card, items, answered
 
-    def pipeline_for(result, bundle, graph):
-        """The pipeline requirements of a kept table run whose ontology passed verification; ValueError says why there are none."""
-        if result['ontology']['status'] != 'auto_built_verified':
+    def pipeline_for(name):
+        """The pipeline requirements of a kept table run whose ontology passed verification; ValueError says why there are none.
+        The status comes first: a run that did not pass may name a table the data does not have, which its graph cannot be built from."""
+        path = output_dir / name
+        if not SAVED_NAME.match(name) or not path.exists():
+            raise FileNotFoundError(name)
+        saved = json.loads(path.read_text(encoding='utf-8'))
+        if saved['file'].get('kind') == 'document':
+            raise ValueError('文档没有数据行，没有编排需求单')
+        if saved['ontology']['status'] != 'auto_built_verified':
             raise ValueError('本体没有通过结构核验，没有编排需求单；先看退回的原因')
+        result, bundle, graph = kept(name)
         key = memory_key(result)
         stored = card_file(key)
         card = build_card(result['ontology'], bundle, stored['cells'], graph, (result.get('confirmation') or {}).get('decisions'))
@@ -522,6 +530,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.card_page(name, tail)
                 return
             try:
+                if tail == 'export/pipeline':
+                    self.reply_files(pipeline_files(pipeline_for(name)), query, name, '编排需求单')
+                    return
                 result, bundle, graph = kept(name)
                 if tail.startswith('objects/'):
                     type_key = unquote(tail[len('objects/'):])
@@ -544,8 +555,6 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         files, zip_name = ttl_files(reviewed, bundle, handover, form, decisions,
                                                     rules_state(result, bundle, graph)['adopted'], f'urn:ontopoc:{memory_key(result)}/', graph), 'TTL'
                     self.reply_files(files, query, name, zip_name)
-                elif tail == 'export/pipeline':
-                    self.reply_files(pipeline_files(pipeline_for(result, bundle, graph)), query, name, '编排需求单')
                 elif tail == 'rules':
                     self.reply(200, rules_state(result, bundle, graph))
                 elif tail == 'suggestions':
