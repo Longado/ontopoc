@@ -162,15 +162,6 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         return check_acceptance(without_wrong(result['ontology'], decisions), bundle, items,
                                 derived=derived_of(memory_key(result)), snapshot_ontology=result['ontology'], card=card_cells(result, bundle))
 
-    def recheck_acceptance(result, bundle, now):
-        """The run's fixed questions asked again of its data, kept in the file's own list; the checked list is returned."""
-        checked = reviewed_acceptance(result, bundle, result['evaluation']['acceptance']['items'])
-        accepted = output_dir / 'acceptance' / f"{memory_key(result)}.json"
-        accepted.parent.mkdir(parents=True, exist_ok=True)
-        accepted.write_text(json.dumps({'saved_at': now, 'file': result['file'], 'purpose': result.get('purpose'), 'items': checked['items']},
-                                       ensure_ascii=False, indent=1), encoding='utf-8')
-        return checked
-
     def card_run(name):
         """(run, rows, graph) as kept() gives them, for a table run whose ontology passed verification; None for a document
         or one that did not, which have no card; FileNotFoundError when there is no such run."""
@@ -838,8 +829,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 existing = {item['question']: item for item in (result['evaluation'].get('acceptance') or {}).get('items', [])}
                 # the file's line keeps one list: an older run opened from the library may hold an agreement made since replaced
                 shared_path = output_dir / 'acceptance' / f"{memory_key(result)}.json"
-                latest = {i['question']: i['confirmed'] for i in json.loads(shared_path.read_text(encoding='utf-8'))['items']
-                          if i.get('confirmed')} if shared_path.exists() else {}
+                latest = {i['question']: i for i in json.loads(shared_path.read_text(encoding='utf-8'))['items']} if shared_path.exists() else {}
                 accepted_now = set()   # what the person agrees to in this request; the rest of the list was agreed earlier
                 for item in items:
                     old = existing.get(item['question'])
@@ -851,8 +841,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     if same and old.get('snapshot') is not None:
                         # A list edit keeps server-held identity evidence; accepting a new query is a separate decision.
                         item.update({key: old.get(key) for key in ('snapshot', 'status', 'answer', 'path')})
-                    # the line's list is written last by every save, so it wins a tie (agreements are stamped to the second)
-                    agreements = [c for c in (latest.get(item['question']), old.get('confirmed') if old else None) if c]
+                    # the line's list is written last by every save, so it wins a tie (agreements are stamped to the second); an
+                    # agreement is made for one query, so it lends its own only when it holds this question on the same query
+                    lent = latest.get(item['question']) or {}
+                    agreements = [c for c in (lent.get('confirmed') if lent.get('query') == item['query'] else None, old.get('confirmed') if old else None) if c]
                     if same and agreements:
                         item['confirmed'] = max(agreements, key=lambda c: c['at'])   # the page never holds it: an edit gives back the latest agreement
                     elif not same:
@@ -1055,7 +1047,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             bundle_path = output_dir / result['saved_as'].replace('.json', '.bundle.json')
             if acceptance and result['file'].get('kind') != 'document' and bundle_path.exists():
                 bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-                result['evaluation']['acceptance'] = recheck_acceptance(result, bundle, now)
+                # only this run's own copy: the file's shared list may be newer than this run, and the next upload inherits it as it is
+                result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, acceptance['items'])
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
@@ -1128,8 +1121,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             evaluation = result['evaluation']
             accepted = (evaluation.get('acceptance') or {}).get('items') or []
+            # the questions asked one by one, newest first; then the model's own round, which the page offers this for too
             asked = [i for r in reversed(evaluation.get('asked') or []) for i in reversed(r['items']) if i['question'] == question]
-            candidates = asked + [i for i in accepted if i['question'] == question]
+            own_round = [i for i in (evaluation.get('questions') or {}).get('items') or [] if i['question'] == question]
+            candidates = asked + own_round + [i for i in accepted if i['question'] == question]
             if not candidates:
                 self.reply(404, {'error': '找不到这道题，可能已经被删掉了'})
                 return

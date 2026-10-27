@@ -74,6 +74,20 @@ class RequeryTests(unittest.TestCase):
             self.assertEqual(item['edited'], {'dropped': [{'field': '客户编号', 'equals': 'C1'}]})
             self.assertEqual(json.loads((out / saved_as).read_text(encoding='utf-8'))['evaluation']['asked'], rounds)
 
+    def test_a_question_of_the_models_own_round_can_be_asked_again_too(self):
+        with OntologyServerTests().server(gateway=Model()) as (base, out):
+            _, run = call(base, '/api/ontology/build', UPLOAD)
+            status, run = call(base, '/api/ontology/ask', {'saved_as': run['saved_as']})   # no question: the model writes its own round
+            self.assertEqual(status, 200, run)
+            self.assertNotIn('asked', run['evaluation'])
+            self.assertEqual(run['evaluation']['questions']['items'][0]['question'], QUESTION)
+            status, run = requery(base, run['saved_as'])
+            self.assertEqual(status, 200, run)
+            [item] = run['evaluation']['asked'][-1]['items']
+            self.assertEqual(item['query']['where'], [{'field': '地区', 'equals': 'N'}])
+            self.assertEqual((item['status'], item['answer']['measure']['value']), ('answered', 150))
+            self.assertEqual(item['edited'], {'dropped': [{'field': '客户编号', 'equals': 'C1'}]})
+
     def test_a_question_that_was_already_edited_collects_the_dropped_conditions(self):
         with asked_run() as (base, _, saved_as):
             requery(base, saved_as)

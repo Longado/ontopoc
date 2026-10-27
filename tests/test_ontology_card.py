@@ -83,6 +83,19 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(oc.build_card(renamed, bundle())['objects'][0]['id'], ENTRY)
         self.assertEqual(oc.complete_id(ONTOLOGY['object_types'][0]), ENTRY)
 
+    def test_two_objects_read_from_one_table_by_the_same_key_are_told_apart_by_their_conditions(self):
+        read = lambda key, where: {'key': key, 'label': key, 'attributes': [], 'populated_from': [
+            {'source': 'ledger', 'identity': {'row_no': 'row_no', 'batch': 'batch'}, **({'where': where} if where else {})}]}
+        ontology = {**ONTOLOGY, 'object_types': [
+            read('open_entry', {'path': 'status', 'equals': 'OPEN'}),            # one condition written as an object
+            read('closed_entry', [{'path': 'status', 'equals': 'CLOSED'}]),
+            read('b1_open', [{'path': 'status', 'equals': 'OPEN'}, {'path': 'batch', 'equals': 'B1'}]),   # several: sorted, joined by ;
+            read('every_entry', None)]}
+        ids = [o['id'] for o in oc.build_card(ontology, bundle())['objects']]
+        self.assertEqual(ids, ['complete:ledger|batch,row_no|status=OPEN', 'complete:ledger|batch,row_no|status=CLOSED',
+                               'complete:ledger|batch,row_no|batch=B1;status=OPEN', ENTRY])   # without a condition the id is what it always was
+        self.assertEqual(len(set(ids)), 4)
+
     def test_answers_sit_beside_the_facts_with_the_words_a_person_reads(self):
         cells = {GRAIN: said('event'), 'amount:ledger.running': said('running'), 'date:ledger.paid_on': said('business'),
                  'range:ledger.paid_on': said({'from': '2024-10-01', 'to': '2024-12-31'}), ENTRY: said('partial', note='只导了 Q4')}
@@ -214,7 +227,7 @@ class RunningTotalTests(unittest.TestCase):
         refused = run_query(ONTOLOGY, QA, total('running'), card=self.RUNNING)
         self.assertEqual(refused, {
             'status': 'query_limit', 'refused_by_card': 'amount:ledger.running',
-            'reason': '「running」在口径卡里是“每次事件后的累计值”：一行已经包含之前的数，跨行相加会重复。可以改问某一次的值，或每个对象最近一次的值。'})
+            'reason': '「running」在口径卡里是“每次事件后的累计值”：一行已经包含之前的数，跨行相加会重复。可以改问某一次（某个对象、某一天）的值。'})
         self.assertEqual(run_query(ONTOLOGY, QA, total('running'))['status'], 'answered')   # no card: as before
         self.assertEqual(run_query(ONTOLOGY, QA, total('running'), card={})['status'], 'answered')
 
@@ -299,6 +312,34 @@ class PeriodToDateTests(unittest.TestCase):
         text_dates = [{**r, 'paid_on': 'soon' if r['row_no'] == '2' else r['paid_on']} for r in (LEDGER[0], LEDGER[1], LEDGER[3])]
         got = run_query(ONTOLOGY, bundle(text_dates), total('ytd', where=[on_day('soon')]), card=self.YTD)
         self.assertEqual(got['refused_by_card'], 'amount:ledger.ytd')
+
+    def test_a_grouped_answer_has_no_total_over_all_the_periods(self):
+        query = total('ytd', group_by=[{'field': 'ledger.paid_on'}])
+        got = run_query(ONTOLOGY, QA, query, card=self.YTD)
+        self.assertEqual((got['status'], got['answer']['groups']), ('answered', [['2024-12-31', 520, 1], ['2024-11-30', 500, 1]]))
+        self.assertNotIn('measure', got['answer'])   # 1020 is two periods added together
+        self.assertEqual(got['answer']['total_groups'], 2)   # the rest of the answer stays
+        self.assertEqual(got['answer']['unread_groups'], {'count': 1, 'examples': ['2024-12-15']})
+        without = run_query(ONTOLOGY, QA, query)   # no card: as before
+        self.assertEqual(without['answer']['measure']['value'], 1020)
+        flow = run_query(ONTOLOGY, QA, total('paid', group_by=[{'field': 'ledger.paid_on'}]), card={**self.YTD, 'amount:ledger.paid': said('flow')})
+        self.assertIn('measure', flow['answer'])   # another column on the same card keeps its total
+
+    def test_a_derived_amount_with_a_period_to_date_factor_has_no_total_either(self):
+        formula, _ = parse_derived(ONTOLOGY, {'type': 'entry', 'label': '合计', 'terms': [{'sign': 1, 'factors': [{'field': 'paid'}, {'field': 'ytd'}]}]})
+        query = {'start': 'entry', 'measure': {'derived': '合计', 'op': 'sum'}, 'group_by': [{'field': 'ledger.paid_on'}]}
+        got = run_query(ONTOLOGY, QA, query, derived=[formula], card=self.YTD)
+        self.assertEqual(got['status'], 'answered')
+        self.assertNotIn('measure', got['answer'])
+        self.assertEqual(got['answer']['groups'], [['2024-11-30', 50250, 1], ['2024-12-31', 10400, 1]])
+
+    def test_the_rows_a_filter_removed_are_not_added_up_across_periods(self):
+        got = run_query(ONTOLOGY, QA, total('ytd', where=[on_day()]), card=self.YTD)
+        [dropped] = got['evidence']['filters']
+        self.assertEqual((dropped['field'], dropped['before'], dropped['after']), ('paid_on', 3, 1))
+        self.assertNotIn('removed_measure', dropped)   # 500 is another period's running figure
+        self.assertEqual(got['answer']['measure']['value'], 520)   # one period: its own total stays
+        self.assertEqual(run_query(ONTOLOGY, QA, total('ytd', where=[on_day()]))['evidence']['filters'][0]['removed_measure'], 500)
 
 
 class AnswerEvidenceTests(unittest.TestCase):

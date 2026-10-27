@@ -17,7 +17,7 @@ import re
 
 from ontology_poc_generator.handover_form import source_profile
 from ontology_poc_generator.ontology_confirm import without_wrong
-from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
+from ontology_poc_generator.public_ontology import _conditions, build_graph, normalize_proposal, normalize_value, resolve
 
 MAX_NOTE, MAX_BASIS, MAX_BY = 300, 200, 40
 HISTORY = 200      # changes kept in the file, the oldest dropped first
@@ -52,9 +52,11 @@ def says(cell_id: str, value) -> str:
 
 def complete_id(t: dict) -> str:
     """Whether an object is all in the data is asked by the table and the key it is read with, not by the type's key,
-    so an answer survives the model renaming the object."""
+    so an answer survives the model renaming the object. Two types can be read from one table by the same key and told
+    apart only by the conditions they keep rows with: those follow the key, so each type has its own cell."""
     pop = t['populated_from'][0]
-    return f"complete:{pop['source']}|{','.join(sorted(pop['identity'].values()))}"
+    where = ';'.join(sorted(f"{c['path']}={c['equals']}" for c in _conditions(pop)))
+    return f"complete:{pop['source']}|{','.join(sorted(pop['identity'].values()))}" + (f'|{where}' if where else '')
 
 
 def _view(cell_id: str, answer: dict | None) -> dict | None:
@@ -256,6 +258,13 @@ def measure_fields(measure: dict) -> list:
     return [measure['field']]
 
 
+def is_period_to_date(cells: dict | None, measure: dict | None) -> bool:
+    """Whether the measure reads a column the card says is a period-to-date amount (any factor of a derived one). Each
+    period's figure already holds the ones before it, so a number that adds periods together means nothing: a total over
+    all the groups of an answer split by period, or the rows a filter removed."""
+    return bool(cells and measure) and any((cells.get(f'amount:{f}') or {}).get('value') == 'period_to_date' for f in measure_fields(measure))
+
+
 def _period_columns(cells: dict, bundle: dict, source: str) -> set:
     """The columns of a table that can fix a period: those with a date cell (every value in them is a DATE or DATETIME,
     as the card reads them), except one the card says is the time of fetching or entering. A date nobody has answered
@@ -285,7 +294,7 @@ def refusal(cells: dict, bundle: dict, measure: dict, where: list, dims: list) -
         cell_id, column = f'amount:{field}', field.partition('.')[2]
         meaning = (cells.get(cell_id) or {}).get('value')
         if meaning == 'running':
-            reason = f'「{column}」在口径卡里是“{SAYS["amount"]["running"]}”：一行已经包含之前的数，跨行相加会重复。可以改问某一次的值，或每个对象最近一次的值。'
+            reason = f'「{column}」在口径卡里是“{SAYS["amount"]["running"]}”：一行已经包含之前的数，跨行相加会重复。可以改问某一次（某个对象、某一天）的值。'
         elif meaning == 'period_to_date' and not _on_one_period(cells, bundle, field, where, dims):
             reason = (f'「{column}」在口径卡里是“{SAYS["amount"]["period_to_date"]}”：要先固定在一期上'
                       '（按同一张表里一个不是取数或录入时间的日期列，筛一个日期或按它分组），才能相加。')

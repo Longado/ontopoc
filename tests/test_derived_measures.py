@@ -64,6 +64,14 @@ class FormulaTests(unittest.TestCase):
         self.assertEqual(sorted(got['values'].values()), [3.0, 10.0, 20.0])
         self.assertIn('abc', got['skipped_examples'][0])
 
+    def test_nan_and_infinity_in_a_field_are_not_numbers(self):
+        rows = CSV.decode() + 'O3,P3,C2,nan,1,0\nO4,P4,C2,inf,1,0\nO5,P5,C2,3,1,-inf\nO6,P6,C2,1e999,1,0\n'
+        derived, _ = parse_derived(ONTOLOGY, AMOUNT)
+        got = compute(ONTOLOGY, bundle(rows.encode()), derived)
+        self.assertEqual((got['counted'], got['skipped']), (3, 4))
+        self.assertEqual(sorted(got['values'].values()), [3.0, 10.0, 20.0])
+        self.assertIn('nan 不是数字', got['skipped_examples'][0])
+
 
 class QueryTests(unittest.TestCase):
     def test_once_confirmed_the_amount_is_summed_per_customer(self):
