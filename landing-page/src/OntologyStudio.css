@@ -613,3 +613,5 @@ small.os-tone-warn { color: var(--amber); }
 .os-answer-choices { display: grid; gap: 4px; margin: 0; padding: 0; border: 0; color: var(--text-2); font-size: 13px; }
 .os-answer-choices legend { padding: 0; margin-bottom: 4px; }
 .os-answer-choice { display: flex !important; flex-direction: row; align-items: center; gap: 8px !important; color: var(--ink) !important; }
+/* .os-add input stretches text boxes; a radio keeps its own size beside its words */
+.os-answer-choice input { flex: none; width: auto; margin: 0; padding: 0; }
