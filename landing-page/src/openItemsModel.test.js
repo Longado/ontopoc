@@ -36,3 +36,9 @@ test("an empty list does not read as nothing wrong when the ontology never passe
   const failed = { ...run({}), ontology: { ...run({}).ontology, status: "needs_review" } };
   assert.equal(openItemsEmpty(failed), "本体还没通过核验，代码先不列要确认的事。");
 });
+
+test("a condition already dropped and worked out again has nothing left to drop, only the new answer to look at", () => {
+  const asked = run({ asked: [{ items: [paid()] }] });
+  assert.deepEqual(dropFor(asked, open), { field: "awarding_subagency", equals: "BUREAU OF RECLAMATION" });
+  assert.equal(dropFor(asked, { ...open, requeried: true }), null);
+});

@@ -33,9 +33,11 @@ const money = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
 const shown = (examples, all) => (examples?.length ? `${all > examples.length ? "例如 " : ""}${examples.join("、")}` : "");
 
 /** What an answer that was given still leaves for a person to look at: conditions the model added that took rows away
- *  (each with the query's own entry to drop it by) and groups several objects were counted into as one. */
+ *  (each with the query's own entry to drop it by) and groups several objects were counted into as one. A fixed
+ *  question whose basis a person wrote down has had its conditions settled: they are said, not asked about. */
 export function reviewPoints(item, ontology) {
   if (item.status !== "answered") return [];
+  const settled = Boolean(item.note?.trim());
   const e = item.evidence || {};
   const where = item.query?.where || [];
   const noun = ontology && item.query?.start ? typeLabel(ontology, item.query.start) : "对象";
@@ -50,8 +52,10 @@ export function reviewPoints(item, ontology) {
   const filters = (e.filters || []).flatMap((f, i) => {
     if (!f.not_in_question || !(f.after < f.before)) return [];
     const lost = f.removed_measure !== undefined && measure ? `，按“${measure}”合计 ${money.format(f.removed_measure)}` : "";
+    const cut = `筛掉 ${money.format(f.before - f.after)} 个${noun}${lost}`;
+    if (settled) return [{ kind: "filter", field: f.field, equals: f.equals, settled, drop: null, line: `口径里已写明：模型加了条件“${f.field} = ${f.equals}”（${cut}）。` }];
     return [{ kind: "filter", field: f.field, equals: f.equals, drop: entries[i] ? { field: entries[i].field, equals: entries[i].equals } : null,
-      line: `模型自己加了条件“${f.field} = ${f.equals}”，问题里没提：筛掉 ${money.format(f.before - f.after)} 个${noun}${lost}。` }];
+      line: `模型自己加了条件“${f.field} = ${f.equals}”，问题里没提：${cut}。` }];
   });
   const merged = (e.merged || []).map((m) => {
     const [start, reached] = [m.start || "对象", m.reached || "对象"];   // results saved before the type labels were kept say 对象
@@ -63,9 +67,9 @@ export function reviewPoints(item, ontology) {
   return [...filters, ...merged];
 }
 
-/** The label on an answer: amber when there is something to check, else the status as it reads. */
+/** The label on an answer: amber when there is something left to check, else the status as it reads. */
 export function statusPill(item, labels) {
-  if (reviewPoints(item).length) return { cls: "review", text: "能回答，要核对" };
+  if (reviewPoints(item).some((p) => !p.settled)) return { cls: "review", text: "能回答，要核对" };
   return { cls: item.status === "broken" ? "ontology_gap" : item.status, text: labels[item.status] || item.status };
 }
 
@@ -87,6 +91,9 @@ export function elsewhereLine(item, ontology) {
   const there = found.map((f, i) => `${names[i]}里有${f.linked ? `（${f.linked} 个${start}连着它）` : ""}`).join("；");
   return `${start}里没有“${value}”；${there}。这道题问的可能是${names.join("或")}。`;
 }
+
+/** Whether fixing this answer waits for a line on why the client stands behind it: something to check, and none written. */
+export const mustExplain = (item, note) => !note?.trim() && reviewPoints(item).length > 0;
 
 /** What the person is told to do before fixing an answer that has something to check. */
 export function noteHint(points) {

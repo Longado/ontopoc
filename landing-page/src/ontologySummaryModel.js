@@ -28,20 +28,23 @@ function clipped(text, room) {
   return `${text.slice(0, at || room - 1).replace(/[\s_\-.、，,（）()·]+$/, "")}…`;
 }
 
-/** The meeting minutes. `openItems` is the service's list of things to settle with the client; null when it could not be had. */
+/** The meeting minutes. `openItems` is the service's list of things to settle with the client; null when it could not be had.
+ *  A document has no such list (code counts rows, and it has none), so its minutes do not carry the section. */
 export function summaryMarkdown(run, openItems = null) {
   const { ontology, evaluation } = run;
   const fit = evaluation.data_fit || evaluation.document_fit;
   const confirmed = run.confirmation;
   const out = [`# ${runName(run)} 本体摸底会议纪要`, "", `建模目的：${run.purpose}`, `建模时间：${localTime(run.started_at)}`, ""];
 
-  if (!openItems) {
-    out.push("## 要和客户确认的事", "", "这次没取到要确认的事清单：示例结果没有这份清单，本机建模服务没连上时也取不到。", "");
-  } else {
-    out.push(`## 要和客户确认的事（${openItems.length} 件）`, "");
-    if (!openItems.length) out.push(openItemsEmpty(run));
-    openItems.forEach((o, i) => out.push(`${i + 1}. ${o.ask}${o.from_model ? "（模型的说法）" : ""}`, ...(o.facts || []).map((f) => `   - ${f}`)));
-    out.push("");
+  if (!isDocument(run)) {
+    if (!openItems) {
+      out.push("## 要和客户确认的事", "", "这次没取到要确认的事清单：示例结果没有这份清单，本机建模服务没连上时也取不到。", "");
+    } else {
+      out.push(`## 要和客户确认的事（${openItems.length} 件）`, "");
+      if (!openItems.length) out.push(openItemsEmpty(run));
+      openItems.forEach((o, i) => out.push(`${i + 1}. ${o.ask}${o.from_model ? "（模型的说法）" : ""}`, ...(o.facts || []).map((f) => `   - ${f}`)));
+      out.push("");
+    }
   }
 
   out.push("## 读了什么", "");
@@ -103,7 +106,7 @@ export function summaryMarkdown(run, openItems = null) {
       out.push(`### ${item.question}`, "");
       if (item.note) out.push(`口径：${item.note}`, "");
       out.push(`结果：${statusPill(item, ACCEPTANCE_LABELS).text}${item.changed === null ? "" : `，${changeLabel(item, run)}`}`, "");
-      out.push(...reviewPoints(item, ontology).flatMap((p) => [`要核对：${p.line}`, ""]));
+      out.push(...reviewPoints(item, ontology).flatMap((p) => [p.settled ? p.line : `要核对：${p.line}`, ""]));
       if (editedLabel(item)) out.push(editedLabel(item), "");
       const lines = answerLines(item);
       const listed = item.answer?.groups?.length || 0;   // group lines come first; what follows says what the figures leave out

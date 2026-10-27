@@ -13,3 +13,13 @@ test("the questions tile counts the questions people asked, not only the model's
   assert.equal(qa.tone, "warn");
   assert.equal(qa.hint, "1 题答不了，点开看原因");
 });
+
+test("a question asked again or worked out again counts once, by its latest answer", () => {
+  const item = (question, status) => ({ question, status });
+  const run = { file: { kind: "table" }, saved_as: "x.json", ontology: { object_types: [], relations: [] },
+    evaluation: { data_fit: null, questions: { answered: 6, total: 6, items: Array(6).fill({ status: "answered" }) },
+      asked: [{ items: [item("付了多少钱？", "answered"), item("谁是母公司？", "ontology_gap")] }, { items: [item("付了多少钱？", "answered")] }, { items: [item("谁是母公司？", "no_data")] }] } };
+  assert.equal(overviewTiles(run).find((t) => t.key === "qa").value, "能回答 7 / 8");
+  const worse = { ...run, evaluation: { ...run.evaluation, asked: [{ items: [item("付了多少钱？", "answered")] }, { items: [item("付了多少钱？", "no_data")] }] } };
+  assert.equal(overviewTiles(worse).find((t) => t.key === "qa").value, "能回答 6 / 7");
+});

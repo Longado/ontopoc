@@ -1,18 +1,25 @@
 /** The workspace laid out as a data platform: modules in the sidebar, one card per object, and an object's own
  *  page. A run plays the part of a workspace. */
 import { formOf as formOfRun } from "./ontologyHandoverModel.js";
+import { askedNow } from "./dataLayoutModel.js";
 import { isDocument, typeLabel } from "./ontologyStudioModel.js";
 
 const SECTIONS = [["overview", "要确认的事"], ["data", "数据接入"], ["objects", "本体管理"], ["graph", "本体关系"], ["qa", "智能问答"], ["check", "数据体检"]];
 
-/** The modules a run can show: a document has no rows to lay out or to answer questions from. */
+/** The modules a run can show: a document has no rows to lay out, to count unlinked ones in, or to answer questions from. */
 export function sectionsFor(run) {
   if (!run) return SECTIONS;
   if (!isDocument(run)) return SECTIONS;
-  const doc = SECTIONS.filter(([key]) => key !== "data" && key !== "qa");
+  const doc = SECTIONS.filter(([key]) => !["overview", "data", "qa"].includes(key));
   if (run.mode !== "org") return doc;
   return doc.flatMap((s) => (s[0] === "objects" ? [s, ["org", "组织架构"]] : [s]));
 }
+
+/** Where a run opens: its first module, or the upload page when there is no run. */
+export const startSection = (run) => (run ? sectionsFor(run)[0][0] : "upload");
+
+/** Where a jump lands: a question is scrolled to, any other page opens at its top. */
+export const opensAtTop = (target) => !(target.tab === "qa" && target.question);
 
 /** One card per object: what it is called, a line about it, where it is read from and how it connects. */
 export function objectCards(run, decisions) {
@@ -66,7 +73,7 @@ export function qaPlaceFor(run) {
 /** 智能问答's places: asking, the questions fixed with the business, the model's round. */
 export function qaNav(run) {
   const { evaluation } = run;
-  const mine = (evaluation.asked || []).reduce((n, r) => n + (r.items?.length || 0), 0);
+  const mine = askedNow(run).length;
   const round = evaluation.questions;
   const answered = round?.items?.filter((i) => i.status === "answered").length;
   return [

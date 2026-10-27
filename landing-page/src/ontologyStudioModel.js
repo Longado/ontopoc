@@ -212,6 +212,9 @@ export function serviceBlock(health, needsModel) {
   return health === "no-key" ? "本机服务没有配模型 key，这一步要调用模型" : "连不上本机建模服务";
 }
 
+/** Whether a step on a saved run can go ahead now: the service is there, and the key too when the step calls the model. */
+export const serviceReady = (run, health, needsModel) => Boolean(run?.saved_as) && !serviceBlock(health, needsModel);
+
 /** What to tell the user when the local service answers with an error. A 404 means the running service predates this page. */
 export function serviceError(status, data) {
   if (status === 404) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";

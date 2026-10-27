@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { derivedCard, editedLabel, elsewhereLine, noteHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
+import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
 
 test("a reason the model wrote is said in one plain sentence, its words one click away", () => {
   const item = { status: "query_limit", reason: "要从 客户 经 下单 到 订单明细，再算 单价 × 数量 ×（1 − 折扣）", reason_from_model: true };
@@ -106,4 +106,30 @@ test("the note a person must write before fixing such an answer says which condi
   assert.equal(noteHint([{ kind: "merged", line: "…" }]), "有 1 组把几个不同的对象算成了一个，客户认可这样算，就在口径里写一句为什么。");
   assert.equal(noteHint([one, { kind: "merged", line: "…" }]).endsWith("另外有 1 组把几个不同的对象算成了一个，客户认可这样算，也在口径里写一句为什么。"), true);
   assert.equal(noteHint([]), "");
+});
+
+// A fixed question carries the note its basis was written in; the same answer asked in the box has none.
+const fixed = (note, over = {}) => paid({ note, ...over });
+const labels = { answered: "能回答", no_data: "数据里没有", broken: "查询失效", ontology_gap: "本体缺这一块" };
+const groups = { merged: [{ group: "GREENBERRY INDUSTRIAL LLC", starts: 1, objects: 2, start: "承包商", reached: "最终母公司", examples: ["PRRXANJSLS26", "ZZ3GL25MGJH2"] }] };
+
+test("a fixed question whose basis is written down says the model's condition is settled, with nothing left to drop", () => {
+  assert.deepEqual(reviewPoints(fixed("只算垦务局自己签的合同"), ontology), [{ kind: "filter", field: "awarding_subagency", equals: "BUREAU OF RECLAMATION", settled: true, drop: null,
+    line: "口径里已写明：模型加了条件“awarding_subagency = BUREAU OF RECLAMATION”（筛掉 11 个财务支出行，按“gross_outlay_fyb_to_period_end”合计 4,176,392.96）。" }]);
+  assert.equal(reviewPoints(fixed("  "), ontology)[0].settled, undefined);   // a blank note writes nothing down
+  assert.equal(reviewPoints(paid(), ontology)[0].settled, undefined);   // the same answer asked in the box is not settled
+});
+
+test("a fixed question with its basis written down carries the plain label, but a merged group still asks to be looked at", () => {
+  assert.deepEqual(statusPill(fixed("只算垦务局自己签的合同"), labels), { cls: "answered", text: "能回答" });
+  assert.deepEqual(statusPill(fixed(""), labels), { cls: "review", text: "能回答，要核对" });
+  assert.deepEqual(statusPill(fixed("只算垦务局自己签的合同", { evidence: { ...paid().evidence, ...groups } }), labels), { cls: "review", text: "能回答，要核对" });
+});
+
+test("whichever button fixes an answer with something to check, it cannot go without a line on why", () => {
+  assert.equal(mustExplain(paid(), ""), true);
+  assert.equal(mustExplain(paid(), "  "), true);
+  assert.equal(mustExplain(paid(), "客户只要垦务局签的"), false);
+  assert.equal(mustExplain(paid({ evidence: {} }), ""), false);
+  assert.equal(mustExplain(paid({ status: "no_data" }), ""), false);
 });

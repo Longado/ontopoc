@@ -4,27 +4,27 @@ import { SearchDialog } from "./SearchDialog.jsx";
 import { askSuggestions, bridgeLines, latestAsked, layoutTables } from "./dataLayoutModel.js";
 import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, evidenceLines, evidenceTitle,
-  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, sharePercent, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
+  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, serviceReady, sharePercent, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
 import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js";
 import { downloadName, summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
-import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, canReaccept, changeLabel, previousTitle, purposeNote, replacesAccepted, savedAcceptance } from "./ontologyAcceptanceModel.js";
+import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, canReaccept, changeLabel, previousTitle, purposeNote, replacedNote, replacesAccepted, savedAcceptance } from "./ontologyAcceptanceModel.js";
 import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload, removeAdded, renameType, returnedNote, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverModel.js";
 import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
 import { InstanceGraph } from "./InstanceGraph.jsx";
-import { derivedCard, editedLabel, elsewhereLine, noteHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
+import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
 import { dropFor, openItemsEmpty } from "./openItemsModel.js";
 import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
 import { earlierVersionOf, versionRows } from "./versionModel.js";
 import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
-import { objectsNav, qaNav, sectionsFor } from "./workspaceModel.js";
+import { objectsNav, opensAtTop, qaNav, sectionsFor, startSection } from "./workspaceModel.js";
 import { DomainReference } from "./DomainReference.jsx";
 import "./PublicRecallReview.css";
 import "./OntologyStudio.css";
@@ -226,6 +226,11 @@ const SHOWN_GROUPS = 10;   // one screen of bars; the rest open on request
 
 function AcceptanceSection({ run, acceptance, onSave, onPath, busy, error, adding, setAdding, requery }) {
   const saved = savedAcceptance(run);
+  const again = (item) => {   // agreeing on the answer as it reads now still needs the line on why when it has something to check
+    if (!mustExplain(item, item.note)) return onSave(saved, item.question);
+    setAdding({ item, note: "", again: true });
+    setTimeout(() => document.getElementById("os-note")?.focus(), 50);
+  };
   return <section className="pr-card os-acceptance" id="os-acceptance">
     <div className="pr-card-head"><h2>验收问题</h2>{acceptance && <span className="pr-muted">{acceptanceSummary(acceptance)}</span>}</div>
     <Hint>模型每次出的题都不一样，所以"能答几题"没法比较。把你和客户说定的 1–3 道问题固定下来：存的是你已经看过、认可口径的那个查询。同一份文件以后再上传，代码用同样的查询再算一次，只告诉你哪道的答案或口径变了；查询用到的字段没了，就停下来指出断点，不去猜新含义。</Hint>
@@ -240,7 +245,7 @@ function AcceptanceSection({ run, acceptance, onSave, onPath, busy, error, addin
       {!item.query && <p className="pr-muted">这道还没有能执行的查询，所以每次重跑都算作答不了。在下面的问答里再问一次，答出来并认可口径后，存为验收问题就会替换它。</p>}
       {item.status === "broken" && <p className="pr-error">这道题的查询在这一版本体上走不通：{item.reason}。要么改本体，要么重新出题并重新认可口径。</p>}
       {item.changed && item.previous?.answer && <details className="os-how"><summary>{previousTitle(item)}</summary><Answer item={item.previous} /></details>}
-      {canReaccept(item) && <button type="button" className="pr-link" disabled={busy} onClick={() => onSave(saved, item.question)} title="以后的重跑和现在这个答案比">按现在的答案重新认可</button>}
+      {canReaccept(item) && <button type="button" className="pr-link" disabled={busy} onClick={() => again(item)} title="以后的重跑和现在这个答案比">按现在的答案重新认可</button>}
       <button type="button" className="pr-link" disabled={busy} onClick={() => onSave(saved.filter((s) => s.question !== item.question))}>去掉这道</button>
     </li>; })}</ul>}
     {adding && <AcceptForm run={run} adding={adding} setAdding={setAdding} saved={saved} busy={busy} onSave={onSave} requery={requery} />}
@@ -252,13 +257,15 @@ function AcceptanceSection({ run, acceptance, onSave, onPath, busy, error, addin
 function AcceptForm({ run, adding, setAdding, saved, busy, onSave, requery }) {
   const { item, note } = adding;
   const points = reviewPoints(item, run.ontology);
-  const replacing = replacesAccepted(run, item);
-  const missing = points.length > 0 && !note.trim();
+  const replacing = adding.again || replacesAccepted(run, item);
+  const missing = mustExplain(item, note);
+  const was = replacedNote(run, item);
   return <div className="os-add">
-    <p className="os-add-question">{replacing ? "用这个答案替换验收题：" : "存为验收问题："}<b>{item.question}</b></p>
+    <p className="os-add-question">{adding.again ? "按现在的答案重新认可：" : replacing ? "用这个答案替换验收题：" : "存为验收问题："}<b>{item.question}</b></p>
     <ReviewNotes item={item} points={points} elsewhere="" requery={requery} />
     <label htmlFor="os-note">{points.length ? "口径说明（必填：写清客户认可的是什么）" : item.query ? '口径说明（可选，写清按什么算，例如"按订单号计数，不是按订单行"）' : "这道现在还答不了。先记下来，它会一直留在验收问题里、算进总数，不会被其他题的通过盖住。备注（可选，例如谁点名要的、要补什么数据）"}
       <input id="os-note" value={note} maxLength={200} required={points.length > 0} onChange={(e) => setAdding({ ...adding, note: e.target.value })} /></label>
+    {was && <p className="pr-muted">原来的口径：{was}</p>}
     {points.length > 0 && <p className="pr-muted">{noteHint(points)}</p>}
     <div className="os-go">
       <button type="button" className="pr-primary" disabled={busy || missing} title={missing ? noteHint(points) : undefined}
@@ -270,15 +277,20 @@ function AcceptForm({ run, adding, setAdding, saved, busy, onSave, requery }) {
 
 /** What to check about an answer, straight under the question: not folded, each with the button that works it out again. */
 function ReviewNotes({ item, points, elsewhere, requery }) {
+  const open = points.filter((p) => !p.settled);
+  const settled = points.filter((p) => p.settled);
   if (!points.length && !elsewhere) return null;
   const mine = requery?.question === item.question;
-  return <div className="os-notes" role="group" aria-label="要核对的地方">
-    {points.map((p) => <p key={p.line} className="os-notes-line"><span>{p.line}</span>
-      {p.drop && requery && <button type="button" className="os-graph-link" disabled={!requery.can || requery.busy} title={requery.can ? "不再加这个条件，由代码重算这道题，不调模型" : requery.why}
-        onClick={() => requery.onRequery(item, p.drop)}>{requery.busy && mine ? "重算中…" : "去掉这个条件重算"}</button>}</p>)}
-    {elsewhere && <p className="os-notes-line"><span>{elsewhere}</span></p>}
-    {requery?.error && mine && <p role="alert" className="pr-error">{requery.error}</p>}
-  </div>;
+  return <>
+    {(open.length > 0 || elsewhere) && <div className="os-notes" role="group" aria-label="要核对的地方">
+      {open.map((p) => <p key={p.line} className="os-notes-line"><span>{p.line}</span>
+        {p.drop && requery && <button type="button" className="os-graph-link" disabled={!requery.can || requery.busy} title={requery.can ? "不再加这个条件，由代码重算这道题，不调模型" : requery.why}
+          onClick={() => requery.onRequery(item, p.drop)}>{requery.busy && mine ? "重算中…" : "去掉这个条件重算"}</button>}</p>)}
+      {elsewhere && <p className="os-notes-line"><span>{elsewhere}</span></p>}
+      {requery?.error && mine && <p role="alert" className="pr-error">{requery.error}</p>}
+    </div>}
+    {settled.map((p) => <p key={p.line} className="pr-muted">{p.line}</p>)}
+  </>;
 }
 
 function Answer({ item, onPath, run, requery }) {
@@ -346,8 +358,8 @@ function QuestionItem({ item, onPath, run, onAccept, derive, requery, anchor }) 
 
 const QUESTION_FILTERS = [["all", "全部"], ["answered", "能回答"], ["unanswered", "答不了"]];
 
-function QuestionsSection({ run, canAsk, busy, error, onAsk, onPath, onUpload, onAccept, part, onDerive, deriving, deriveError, requery, health }) {
-  const derive = { onDerive: canAsk ? onDerive : null, busy: deriving, error: deriveError };
+function QuestionsSection({ run, canAsk, canDerive, busy, error, onAsk, onPath, onUpload, onAccept, part, onDerive, deriving, deriveError, requery, health }) {
+  const derive = { onDerive: canDerive ? onDerive : null, busy: deriving, error: deriveError };
   const example = !run.saved_as;
   const round = run.evaluation.questions;
   const asked = run.evaluation.asked || [];
@@ -753,7 +765,7 @@ function QaSection({ run, questions, onPath, askRef, place }) {
   const [adding, setAdding] = useState(null);   // the answered question being fixed, with the note being written
   useEffect(() => setAdding(null), [run]);   // the answers behind the form may have just been worked out again
   const onAccept = (item) => {
-    setAdding({ item, note: replacesAccepted(run, item) ? savedAcceptance(run).find((s) => s.question === item.question)?.note || "" : "" });   // a replacement keeps the words already agreed on
+    setAdding({ item, note: "" });   // a replacement starts blank: the old words described the old query, and show beside the box
     setTimeout(() => document.getElementById("os-note")?.focus(), 50);
   };
   return <>
@@ -801,7 +813,7 @@ function OverviewSection({ run, list, onGo, onDownload, requery }) {
 
 export function OntologyStudio({ request = null, runs = null, section = null, nav = 0, onSection = () => {}, onRunsChanged = () => {}, onCurrent = () => {} } = {}) {
   const [run, setRun] = useState(() => loadLocal());
-  const tab = section || (run ? "overview" : "upload");
+  const tab = section || startSection(run);
   const setTab = onSection;
   const [objectKey, setObjectKey] = useState(null);   // the object whose own page is open under 本体管理
   const [objPlace, setObjPlace] = useState("objects");   // which of 本体管理's places is shown
@@ -827,7 +839,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
       .then((b) => setSuggestions(b.suggestions || []), () => setSuggestions([]));   // suggestions are extra: without them the page still works
   }, [run?.saved_as]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {   // asked again whenever the run changes, since every answer, save or confirmation can move what is open
-    if (!run?.saved_as) return undefined;
+    if (!run?.saved_as || isDocument(run)) return undefined;   // a document has no rows to count, so no list
     let live = true;
     const done = (items, error) => live && setOpenItems({ saved_as: run.saved_as, items, error });
     const unreachable = "连不上本机建模服务，清单出不来";   // no answer, or a proxy's page instead of the service's JSON
@@ -890,6 +902,11 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   }, [open]);
   function go(target) {
     setSearching(false);
+    if (opensAtTop(target)) {   // the page opens at its title, not where the last one was left: the box scrolls on a wide screen, the window on a narrow one
+      const area = root.current?.closest(".app-main");
+      if (area) area.scrollTop = 0;
+      window.scrollTo(0, 0);
+    }
     if (target.tab === "objects") { setObjectSub((o) => ({ sub: target.sub || null, n: o.n + 1 })); setObjectKey(target.object || null); if (target.place) setObjPlace(target.place); }
     if (target.tab === "graph") { setPath(null); setSelected({ kind: "edge", key: target.relation }); setView("graph"); setReveal((n) => n + 1); }
     if (target.tab === "data") setDataPlace(target.table);
@@ -897,6 +914,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     if (target.tab === "check") setEvalView("fit");
     setTab(target.tab);
   }
+  const root = useRef(null);   // the page itself, to find the box that scrolls it
   const following = useRef(null);
   const askRef = useRef(null);
 
@@ -909,7 +927,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   }, []);
 
   const keep = (valid) => setStorageWarning(saveResult(storage(), valid));
-  function show(result) { const valid = validateRun(result); setRun(valid); keep(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setObjectKey(null); setObjPlace("objects"); setQaPlace("ask"); setDataPlace(null); setTab("overview"); onCurrent(valid); onRunsChanged(); }
+  function show(result) { const valid = validateRun(result); setRun(valid); keep(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setObjectKey(null); setObjPlace("objects"); setQaPlace("ask"); setDataPlace(null); setTab(startSection(valid)); onCurrent(valid); onRunsChanged(); }
   function update(result) { const valid = validateRun(result); setRun(valid); keep(valid); onRunsChanged(); }
   useEffect(() => { onCurrent(run && tab !== "upload" ? run : null); }, [run, tab]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {   // the sidebar asked for new work, or for a run kept on this machine
@@ -1011,9 +1029,9 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const download = () => save(JSON.stringify(run, null, 2), "application/json", "本体和评测.json");
   const downloadSummary = () => save(summaryMarkdown(run, openList?.items ?? null), "text/markdown;charset=utf-8", "纪要.md");
 
-  const connected = Boolean(run?.saved_as) && !serviceBlock(health, false);
+  const connected = serviceReady(run, health, false);
   const requeryProps = { can: connected, why: run?.saved_as ? serviceBlock(health, false) : "示例结果不能重算，上传自己的文件后可以", busy: requerying, error: requeryError, question: requeryFor, onRequery: requery };
-  const questions = { canAsk: Boolean(run?.saved_as) && !serviceBlock(health, true), canCompare: connected, health, requery: requeryProps, busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpdate: update, onUpload: () => setTab("upload"),
+  const questions = { canAsk: serviceReady(run, health, true), canDerive: connected, canCompare: connected, health, requery: requeryProps, busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpdate: update, onUpload: () => setTab("upload"),
     onAccept: (items, again) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items, ...(again ? { replace_question: again } : {}) }, setAccepting, setAcceptError), accepting, acceptError, onGoConfirm: goConfirm,
     onDerive: (item) => post("/api/ontology/derived", { saved_as: run.saved_as, derive: item.derive }, setDeriving, setDeriveError), deriving, deriveError };
   const inDetail = tab === "objects" && objectKey;
@@ -1021,7 +1039,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const crumb = !run ? [] : [sectionsFor(run).find(([k]) => k === tab)?.[1] || "",
     tab === "org" ? placeOf(orgPlaces(run), orgPlace) : tab === "objects" ? placeOf(objectsNav(run, decisions), objPlace) : tab === "qa" ? placeOf(qaNav(run), qaPlace)
       : tab === "data" ? (dataPlace || run.sources[0]?.name) : tab === "graph" ? placeOf(VIEWS, view) : tab === "check" ? ({ ref: "对照标准", rules: "规则" }[evalView] || "体检") : ""].filter(Boolean);
-  return <section className={`pr-page${open ? "" : " is-start"}${inDetail ? " is-object" : ""}`} aria-labelledby="os-title">
+  return <section ref={root} className={`pr-page${open ? "" : " is-start"}${inDetail ? " is-object" : ""}`} aria-labelledby="os-title">
     {stale && <p role="alert" className="pr-note os-stale">{stale}</p>}
     {storageWarning && <p role="alert" className="pr-note os-storage">{storageWarning}</p>}
     {open && !inDetail && <header className="pr-head">
