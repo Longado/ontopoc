@@ -14,8 +14,9 @@ from ontology_poc_generator.derived_measures import formula_text
 from ontology_poc_generator.handover_form import source_profile
 from ontology_poc_generator.ontology_card import NOT_BUSINESS_TIME, _blank, is_padded_number
 from ontology_poc_generator.ontology_confirm import without_wrong
+from ontology_poc_generator.ontology_eval import _row_owners
 from ontology_poc_generator.open_items import CHOICES, _num, open_items, split_answers
-from ontology_poc_generator.public_ontology import normalize_proposal, resolve
+from ontology_poc_generator.public_ontology import normalize_proposal, normalize_value, resolve
 
 ISO = 'YYYY-MM-DD'
 # the ways a date is written that a pipeline is asked to put right, besides ISO itself: name, pattern, the groups holding year, month, day
@@ -241,35 +242,53 @@ def _reference(table: str, columns: list) -> str:
     return f'{table}.{"+".join(columns)}'
 
 
-def _joins(reviewed: dict, bundle: dict, fit: dict, answers: dict) -> list:
+def _keys(record: dict, columns: list) -> list:
+    """What a row names in these columns, folded as the graph folds it: one key (a tuple, None for a part left empty) per
+    element when a column sits inside a list, else one."""
+    parts = [[normalize_value(v) for v in resolve(record, c)] or [None] for c in columns]
+    return [tuple(p[i] if len(p) > 1 else p[0] for p in parts) for i in range(max(map(len, parts)))]
+
+
+def _sentence(bundle: dict, a: tuple, b: tuple) -> tuple[str, int]:
+    """How the rows of table a name the objects defined in table b (each a (table, columns)), counted from those two
+    tables alone, and how many rows of a do not link. A row links when every key it names is found among b's identity
+    values, so one with several values (a column inside a list) needs all of them; a row naming no key has no number to
+    link by."""
+    rows = bundle['sources'][a[0]]['records']
+    present = {k for record in bundle['sources'][b[0]]['records'] for k in _keys(record, b[1]) if None not in k}
+    named = [[k for k in _keys(record, a[1]) if None not in k] for record in rows]
+    linked, empty = sum(bool(keys) and all(k in present for k in keys) for keys in named), sum(not keys for keys in named)
+    left = len(rows) - linked
+    counts = '，'.join(f'{name} {_num(len(bundle["sources"][name]["records"]))} 行' for name in dict.fromkeys((a[0], b[0])))
+    said = f'{_reference(*a)} 对 {_reference(*b)}' if a != b else f'{_reference(*a)}（对象读自同一张表，不用另外关联）'
+    facts = f'连上 {_num(linked)} 行' + (f'；{_num(left)} 行连不上' + (f'（其中 {_num(empty)} 行用来连的编号是空的）' if empty else '') if left else '，每一行都连上了')
+    inside = '；这一列在列表里，一行有多个值时，每个值都对上才算连上' if any('[].' in column for column in a[1]) else ''
+    return f'{said}：{counts}，{facts}{inside}', left
+
+
+def _joins(reviewed: dict, bundle: dict, graph: dict, answers: dict, listed: set) -> list:
     types = {t['key']: t for t in reviewed['object_types']}
-    stats = {s['key']: s for s in fit.get('relations') or []}
+    owners = _row_owners(reviewed, graph)
     out = []
     for r in reviewed['relations']:
-        stat = stats.get(r['key'])
-        if stat is None:
-            continue
-        # the object the relation's table is about is not joined to anything: the other end is. A table that holds neither end joins both.
-        owner = next((k for k in (r['from'], r['to']) if any(p['source'] == r['source'] for p in types[k]['populated_from'])), None)
-        ends = ('from', 'to') if owner is None or r['from'] == r['to'] else ('to',) if owner == r['from'] else ('from',)
+        # the object the table is about is not joined to anything: the other end is. A table about neither end joins both.
+        about = next((k for k in (r['from'], r['to']) if k in owners.get(r['source'], ())), None)
+        ends = ('from', 'to') if about is None or r['from'] == r['to'] else ('to',) if about == r['from'] else ('from',)
         pairs = [p for p in (_pair(r, end, types) for end in ends) if p]
         if not pairs:
             continue
-        said = '；'.join(f'{_reference(*a)} 对 {_reference(*b)}' if a != b else f'{_reference(*a)}（对象读自同一张表，不用另外关联）' for a, b in pairs)
-        tables = dict.fromkeys([stat['source'], *(b[0] for _, b in pairs)])
-        counts = '，'.join(f'{name} {_num(len(bundle["sources"][name]["records"]))} 行' for name in tables)
-        left, item_id = stat['rows'] - stat['linked_rows'], f'unlinked:{r["key"]}'
-        facts = f'{counts}，连上 {_num(stat["linked_rows"])} 行' + ('（两头都连上才算）' if len(pairs) > 1 else '')
-        if not left:
-            out.append(_code('join', f'{said}：{facts}，每一行都连上了'))
+        sentences, lefts = zip(*(_sentence(bundle, a, b) for a, b in pairs))
+        text, item_id = '。'.join(sentences), f'unlinked:{r["key"]}'
+        if not any(lefts):
+            out.append(_code('join', text))
             continue
-        facts += f'；{_num(left)} 行连不上' + (f'（其中 {_num(stat["empty_rows"])} 行用来连的编号是空的）' if stat.get('empty_rows') else '')
-        answer = answers.get(item_id)
+        refs = [item_id] if item_id in listed else []   # the data check may have found nothing to ask where this pair finds rows
+        answer = answers.get(item_id) if refs else None
         if answer is None:
-            out.append(_code('join', f'{said}：{facts}。连不上的行怎么处理还没说清', [item_id]))
+            out.append(_code('join', f'{text}。连不上的行怎么处理还没说清', refs))
             continue
         reply = REPLIES[answer['choice']] + (f'（{answer["text"]}）' if answer['text'] else '') if answer['choice'] else f'客户答复：{answer["text"]}'
-        out.append(_client('join', f'{said}：{facts}。{reply}', [answer], [item_id]))
+        out.append(_client('join', f'{text}。{reply}', [answer], refs))
     return out
 
 
@@ -315,10 +334,11 @@ def pipeline_spec(run: dict, bundle: dict, graph: dict, card: dict, stored: dict
     fit = (run.get('evaluation') or {}).get('data_fit') or {}
     profiles = {p['name']: p for p in source_profile(bundle)}
     objects = list({o['id']: o for o in card['objects']}.values())
-    open_, _ = split_answers(open_items(run, bundle, graph, card), stored['items'])
+    listed = open_items(run, bundle, graph, card)
+    open_, _ = split_answers(listed, stored['items'])
     return {'file': run['file']['name'], 'saved_as': run['saved_as'], 'generated_at': at,
             'tables': [_table(t, profiles[t['source']], bundle['sources'][t['source']]['records'], kept, objects, fit, run) for t in card['tables']],
-            'relations': _joins(reviewed, bundle, fit, stored['items']),
+            'relations': _joins(reviewed, bundle, graph, stored['items'], {i['id'] for i in listed}),
             'derived': _computed(derived, kept), 'rules': _checks(rules, kept),
             'open': [*_blank_cells(card), *(_code('open_item', i['ask'], [i['id']]) for i in open_ if i['kind'] in CHOICES)]}
 
