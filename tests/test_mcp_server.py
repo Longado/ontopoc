@@ -55,6 +55,16 @@ class ProtocolTests(unittest.TestCase):
         for meaning in ('not_in_question', 'merged', 'found_elsewhere', 'query_limit', 'ontology_gap', 'needs_derived', 'answered', 'no_data'):
             self.assertIn(meaning, text)
 
+    def test_the_pipeline_spec_is_an_export_for_whoever_builds_the_pipeline_and_changes_no_data(self):
+        text = handle(rpc('initialize', {'protocolVersion': '2025-06-18'}), None)['result']['instructions']
+        entry = next(e for e in text.split('\n- ') if 'export_forms' in e)   # the manual's line about the exports
+        self.assertIn('export_pipeline_spec', entry)
+        tool = next(t for t in handle(rpc('tools/list'), None)['result']['tools'] if t['name'] == 'export_pipeline_spec')
+        for words in ('编排需求单', '搭管道', '不执行加工', '不调用模型'):
+            self.assertIn(words, tool['description'])
+        self.assertEqual(tool['inputSchema']['required'], ['saved_as'])
+        self.assertEqual(sorted(tool['inputSchema']['properties']), ['out_dir', 'saved_as'])
+
     def test_every_parameter_says_what_it_is_and_where_to_get_it(self):
         tools = {t['name']: t for t in handle(rpc('tools/list'), None)['result']['tools']}
         for name, tool in tools.items():

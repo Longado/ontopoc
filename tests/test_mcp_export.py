@@ -149,6 +149,14 @@ class StaleFileTests(unittest.TestCase):
             self.assertEqual(self.export(tmp, {'a.csv': 'A'})['removed'], [])
             self.assertTrue((Path(tmp) / 'sub').is_dir())
 
+    def test_the_pipeline_spec_and_the_forms_exported_to_one_folder_do_not_remove_each_other(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.export(tmp, {'order.csv': 'O', '说明.txt': 'S'}, 'export_forms')
+            self.export(tmp, {'编排需求单.md': 'M', '编排需求单.json': 'J'}, 'export_pipeline_spec')
+            again = self.export(tmp, {'编排需求单.md': 'M2'}, 'export_pipeline_spec')
+            self.assertEqual(again['removed'], ['编排需求单.json'])
+            self.assertEqual(names_in(tmp), ['order.csv', '编排需求单.md', '说明.txt'])
+
     def test_the_export_tools_say_that_files_from_the_last_export_are_cleared(self):
         tools = {t['name']: t for t in handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None)['result']['tools']}
         for tool, _ in TOOLS:
