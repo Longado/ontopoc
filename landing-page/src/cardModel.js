@@ -97,6 +97,18 @@ export function rememberAnswerer(storage, name) {
 export const stampParts = (answer) => (!answer ? [] : [answer.by, localTime(answer.at).slice(0, 5), ...(answer.basis ? [`出处：${answer.basis}`] : [])]);
 export const stampLine = (answer) => stampParts(answer).join(" · ");
 
+/** What the pipeline must do to a number column written with thousands separators or placeholders ("" for a strict number column). */
+export function noiseLine(noise) {
+  const holders = Object.entries(noise?.placeholders || {}).map(([text, n]) => `“${text}” ${count(n)} 个`);
+  const parts = [...(noise?.thousands ? [`千分位 ${count(noise.thousands)} 个`] : []), ...(holders.length ? [`占位符 ${holders.join("、")}`] : [])];
+  return parts.length ? `有${parts.join("、")}，编排时要转成数值` : "";
+}
+
+// the 编排需求单: what each table needs done before it is used, for whoever builds the data pipeline. The header links it, the card page points at it.
+export const PIPELINE_EXPORT = { label: "⤓ 编排需求单", title: "交给搭数据管道的人：每张表要做的清洗、关联、按期取数和校验，来自体检和客户答复" };
+export const CARD_PIPELINE_NOTE = `填好的答复会写进编排需求单（页头 ${PIPELINE_EXPORT.label}）`;
+export const pipelineUrl = (saved_as) => `/api/ontology/runs/${saved_as}/export/pipeline`;
+
 /** The code's fact about a table's identity fields: how many rows, how many distinct (rows with an empty identity field
  *  among them), which repeat. */
 export function uniqueLine(unique, rows) {

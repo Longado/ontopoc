@@ -1,6 +1,8 @@
 import { useState } from "react";
 
-import { CARD_VOCAB, blankLine, cardEmptyText, changedCells, itemChoices, itemForm, itemProblem, linkedHint, saveProblem, stampLine, uniqueLine } from "./cardModel.js";
+import {
+  CARD_PIPELINE_NOTE, CARD_VOCAB, blankLine, cardEmptyText, changedCells, itemChoices, itemForm, itemProblem, linkedHint, noiseLine, saveProblem, stampLine, uniqueLine,
+} from "./cardModel.js";
 
 const count = (n) => n.toLocaleString("zh-CN");
 
@@ -82,7 +84,7 @@ function TableCard({ table, draft, changed, onSet }) {
       <div className="os-table-scroll"><table className="os-fields">
         <thead><tr><th scope="col">数值列</th><th scope="col">空值</th><th scope="col">能不能加</th></tr></thead>
         <tbody>{table.amounts.map((a) => <tr key={a.id}>
-          <td>{a.field}</td><td>{count(a.empty)}</td>
+          <td>{a.field}{a.noise && <small className="os-card-noise">{noiseLine(a.noise)}</small>}</td><td>{count(a.empty)}</td>
           <td><Choose kind="amount" cell={a} label={`${a.field} 能不能加`} {...pick} /></td>
         </tr>)}</tbody>
       </table></div>
@@ -103,7 +105,7 @@ export function CardSection({ run, state, client, blocked, edit }) {
   return <>
     <section className="pr-card os-card">
       <div className="pr-card-head"><h2>口径卡</h2>{card?.cells > 0 && <span className="pr-muted">{blankLine(card)}</span>}</div>
-      <p className="pr-muted">每张表一张。代码能算的已经算好；只有客户答得了的，会上问了，记在这里。问答会照这里的答复算，保存不需要模型 key。</p>
+      <p className="pr-muted">每张表一张。代码能算的已经算好；只有客户答得了的，会上问了，记在这里。问答会照这里的答复算，保存不需要模型 key。{CARD_PIPELINE_NOTE}。</p>
       {!run.saved_as && <p className="pr-muted">示例结果没有口径卡，上传自己的文件后由本机服务算。</p>}
       {run.saved_as && !state && <p className="pr-muted">正在读取…</p>}
       {state?.error && <p role="alert" className="pr-error">{state.error}</p>}
