@@ -61,7 +61,18 @@ class ToolListTests(unittest.TestCase):
         self.assertIn('转告', entry('incomplete'))
         self.assertIn('save_card', entry('answered_items'))
         self.assertIn('get_card', entry('card_blank'))
+        self.assertIn('不用另发', entry('card_blank'))   # saying 数据没导全 on an unlinked item already records the other end as partial
         self.assertIn('save_card', entry('confirm_ontology'))   # one of the person's own judgements
+
+
+    def test_the_tool_descriptions_say_what_a_null_card_means_and_that_an_unlinked_answer_carries_the_partial_cell(self):
+        overview = tools()['run_overview']['description']
+        for said in ('旧版服务没有这条路由', '没有数据行的运行', '文档', '没通过核验', '{cells:0, blank:0}'):
+            self.assertIn(said, overview)
+        self.assertNotIn('没有口径卡时 card 为 null', overview)
+        save = tools()['save_card']['description']
+        for said in ('数据没导全', '只有一部分', '撤回', '不用另发'):
+            self.assertIn(said, save)
 
 
 class CardToolTests(unittest.TestCase):
@@ -129,6 +140,24 @@ class OverviewTests(unittest.TestCase):
         service = Service({RUN_PATH: RUN, RUN_PATH + '/open-items': {'items': []}, RUN_PATH + '/card': ToolError('找不到这次运行', 404)})
         with self.assertRaisesRegex(ToolError, '找不到这次运行'):
             mcp_server.run_overview(service, {'saved_as': 'exam.json'})
+
+    def test_a_document_run_does_not_ask_for_the_card_and_has_no_cells(self):
+        document = {**RUN, 'file': {'name': 'brief.md', 'kind': 'document'}}
+        for answers in ({RUN_PATH + '/open-items': {'items': ITEMS, 'answered': ANSWERED}},   # an older service refuses a document's card with a 400
+                        {RUN_PATH + '/open-items': {'items': ITEMS, 'answered': ANSWERED}, RUN_PATH + '/card': ToolError('文档没有口径卡', 400)}):
+            service = Service({RUN_PATH: document, **answers})
+            out = mcp_server.run_overview(service, {'saved_as': 'exam.json'})
+            self.assertEqual(out['card'], {'cells': 0, 'blank': 0})
+            self.assertEqual((out['open_items'], out['answered_items']), (ITEMS, ANSWERED))
+            self.assertNotIn(RUN_PATH + '/card', [path for path, _ in service.seen])
+
+    def test_a_finished_document_build_does_not_ask_for_the_card_either(self):
+        document = {**RUN, 'file': {'name': 'brief.md', 'kind': 'document'}}
+        service = Service({'/api/ontology/jobs': {'job_id': 'j1'}, '/api/ontology/jobs/j1': {'state': 'done', 'result': document},
+                           RUN_PATH + '/open-items': {'items': ITEMS, 'answered': []}, RUN_PATH + '/card': ToolError('文档没有口径卡', 400)})
+        out = mcp_server.build_ontology(service, {'files': [__file__]})
+        self.assertEqual(out['card'], {'cells': 0, 'blank': 0})
+        self.assertNotIn(RUN_PATH + '/card', [path for path, _ in service.seen])
 
     def test_a_finished_build_brings_them_too(self):
         service = Service({'/api/ontology/jobs': {'job_id': 'j1'}, '/api/ontology/jobs/j1': {'state': 'done', 'result': RUN},
