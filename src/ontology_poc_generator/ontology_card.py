@@ -94,7 +94,7 @@ def build_card(ontology: dict, bundle: dict, cells: dict | None = None, graph: d
     table keeps its own cells, since the table is still there."""
     cells = cells or {}
     p = normalize_proposal(ontology)
-    judged = {t['key'] for t in without_wrong(p, decisions)['object_types']}
+    kept = {t['key'] for t in without_wrong(p, decisions)['object_types']}
     graph = graph or build_graph(ontology, bundle)
     identity = {}   # table -> object key -> the columns that identify it there
     for t in p['object_types']:
@@ -123,7 +123,7 @@ def build_card(ontology: dict, bundle: dict, cells: dict | None = None, graph: d
                        'dates': dates, 'amounts': amounts})
     counts = Counter(inst[0] for inst in graph['sources_of'])
     objects = [{'id': complete_id(t), 'type': t['key'], 'label': label[t['key']], 'count': counts[t['key']],
-                'answer': _view(complete_id(t), cells.get(complete_id(t)))} for t in p['object_types'] if t['key'] in judged]
+                'answer': _view(complete_id(t), cells.get(complete_id(t)))} for t in p['object_types'] if t['key'] in kept]
     counted = list(dict.fromkeys([*(t['grain']['id'] for t in tables), *(d['id'] for t in tables for d in t['dates']),
                                   *(a['id'] for t in tables for a in t['amounts']), *(o['id'] for o in objects)]))
     return {'tables': tables, 'objects': objects, 'cells': len(counted), 'blank': sum(_blank(cells.get(i)) for i in counted)}
