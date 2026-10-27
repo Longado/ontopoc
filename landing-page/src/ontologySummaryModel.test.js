@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { summaryMarkdown } from "./ontologySummaryModel.js";
+import { downloadName, runName, summaryMarkdown } from "./ontologySummaryModel.js";
 
 const run = (extra = {}) => ({
   file: { name: "客户订单.xlsx", kind: "table" }, purpose: "哪些客户经常延期交货？",
@@ -63,4 +63,65 @@ test("a fixed question says it is compared with the answer agreed to, and when t
   assert.match(md([item(agreed, true)], "sha-v1"), /结果：能回答，和认可时不一样\n/);
   assert.match(md([item(agreed, false)], "sha-v2"), /结果：能回答，和认可时一致/);
   assert.match(md([item({ status: "answered", answer: { total: 2 } }, true)], "sha-v2"), /结果：能回答，和上次不一样\n/);
+});
+
+const ask = (ask, facts = [], fromModel = false) => ({ kind: "unlinked", ask, facts, from_model: fromModel, target: { tab: "check" } });
+
+test("the first section is what to settle with the client, numbered, with each ask's facts beneath it and the model's words marked", () => {
+  const md = summaryMarkdown(run(), [
+    ask("财务支出行（financial_rows）1,921 行里有 1,308 行没连上“财务支出行 对应 合同授标”。是这些行本来就没有对应的合同授标，还是数据没导全？", ["例如 1425|F1", "例如 1425|F2"]),
+    ask("模型指出 2 处数据缺口（下面逐条）。客户那边有没有能补上的数据？", ["缺少实际交货日期", "缺少客户等级"], true)]);
+  assert.equal(md.split("\n## ")[1].split("\n")[0], "要和客户确认的事（2 件）");
+  assert.match(md, /## 要和客户确认的事（2 件）\n\n1\. 财务支出行（financial_rows）1,921 行里有 1,308 行没连上.*数据没导全？\n {3}- 例如 1425\|F1\n {3}- 例如 1425\|F2\n2\. 模型指出 2 处数据缺口（下面逐条）。客户那边有没有能补上的数据？（模型的说法）\n {3}- 缺少实际交货日期\n {3}- 缺少客户等级\n/);
+});
+
+test("a list that could not be fetched is said so in one sentence, and an empty one says nothing was found", () => {
+  assert.match(summaryMarkdown(run(), null), /## 要和客户确认的事\n\n这次没取到要确认的事清单：示例结果没有这份清单，本机建模服务没连上时也取不到。\n/);
+  assert.match(summaryMarkdown(run()), /这次没取到要确认的事清单/);
+  assert.match(summaryMarkdown(run(), []), /## 要和客户确认的事（0 件）\n\n代码没有找到要和客户确认的事。\n/);
+});
+
+test("the data check counts what passed and names each relation that does not reach every row", () => {
+  const ontology = { ...run().ontology, object_types: [{ key: "financial", label: "财务支出行" }, { key: "contract", label: "合同授标" }, { key: "office", label: "合同办公室" }],
+    relations: [{ key: "r1", from: "financial", to: "contract", label: "对应" }, { key: "r2", from: "contract", to: "office", label: "由…签" }] };
+  const base = run().evaluation.data_fit;
+  const md = summaryMarkdown(run({ ontology, evaluation: { data_fit: { ...base, checks: [{ key: "fields_accounted", passed: true }, { key: "relations_link", passed: true }],
+    relations: [{ key: "r1", source: "financial_rows", rows: 1921, linked_rows: 613, empty_rows: 1308 }, { key: "r2", source: "contracts", rows: 365, linked_rows: 365, empty_rows: 0 }] } } }));
+  assert.match(md, /2 \/ 2 项检查通过。/);
+  assert.doesNotMatch(md, /全部通过/);
+  assert.match(md, /- 关系“财务支出行 对应 合同授标”：financial_rows 1,921 行里 1,308 行没连上\n/);
+  assert.doesNotMatch(md, /关系“合同授标 由…签 合同办公室”/);
+  assert.match(summaryMarkdown(run()), /1 \/ 2 项检查通过。/);
+});
+
+test("a fixed question carries what to check about its answer and that it was worked again without a condition", () => {
+  const item = { question: "累计付了多少钱？", note: "", status: "answered", changed: null, path: "财务支出行", answer: { total: 1444 },
+    query: { start: "financial", where: [{ field: "awarding_subagency", equals: "BUREAU OF RECLAMATION" }] },
+    evidence: { filters: [{ field: "awarding_subagency", equals: "BUREAU OF RECLAMATION", before: 1455, after: 1444, removed_measure: 4176392.96, not_in_question: true }] },
+    edited: { dropped: [{ field: "award_agency_id", equals: "1425" }] } };
+  const ontology = { ...run().ontology, object_types: [{ key: "financial", label: "财务支出行" }] };
+  const md = summaryMarkdown(run({ ontology, evaluation: { ...run().evaluation, acceptance: { total: 1, answered: 1, items: [item] } } }));
+  assert.match(md, /结果：能回答，要核对\n/);
+  assert.match(md, /要核对：模型自己加了条件“awarding_subagency = BUREAU OF RECLAMATION”，问题里没提：筛掉 11 个财务支出行。\n/);
+  assert.match(md, /去掉了条件“award_agency_id = 1425”后重算，没调模型\n/);
+});
+
+test("without a confirmation the last section says the objects and relations are the model's draft to go through in the meeting", () => {
+  assert.match(summaryMarkdown(run()), /还没有人逐项确认：对象和关系都是模型提出的草稿，要在会上逐项确认。/);
+});
+
+test("the page and the files are named by the file's own name, never cut inside a word", () => {
+  const named = (name, files) => ({ file: { name, kind: "table", ...(files ? { files: files.map((f) => ({ name: f })) } : {}) } });
+  assert.equal(runName(named("客户订单.xlsx")), "客户订单");
+  assert.equal(runName(named("contract_actions.csv、contracts.csv、vendors.csv", ["contract_actions.csv", "contracts.csv", "vendors.csv"])), "contract_actions 等 3 个文件");
+  assert.equal(runName(named("contract_actions.csv、contracts.csv")), "contract_actions 等 2 个文件");   // runs saved before the file list was kept
+  const long = "customer_orders_with_returns_and_regional_discounts_2026";
+  for (const run of [named(`${long}.csv`), named(`${long}.csv、b.csv`)]) {
+    const name = runName(run), cut = name.split("…")[0];
+    assert.ok(name.length <= 40, name);
+    assert.ok(name.includes("…") && long.startsWith(cut) && long[cut.length] === "_", name);
+  }
+  assert.equal(runName(named(`${long}.csv、b.csv`)).endsWith(" 等 2 个文件"), true);
+  assert.equal(downloadName(named("客户订单.xlsx"), "纪要.md"), "客户订单-纪要.md");
+  assert.equal(downloadName(named("客户订单.xlsx"), "本体和评测.json"), "客户订单-本体和评测.json");
 });
