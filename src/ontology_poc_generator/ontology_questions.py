@@ -236,7 +236,10 @@ def _found_elsewhere(types: dict, graph: dict, start: str, wanted: list) -> list
         for inst in graph['sources_of']:
             if inst[0] != start and any(target in parts(value) for _, value in inst[1]):
                 found.setdefault(inst[0], []).append(inst)
-        for key in (k for k in types if k in found):   # in the ontology's order
+        # a value many objects carry is one they all refer to (each action's number holds its vehicle's piid): the kind
+        # with the fewest is the one the value names
+        fewest = min((len(v) for v in found.values()), default=0)
+        for key in (k for k in types if k in found and len(found[k]) == fewest):   # in the ontology's order
             out.append({'type': key, 'field': field, 'equals': equals, 'count': len(found[key]),
                         'linked': len(set().union(*(linked(graph, inst, start) for inst in found[key])))})
     return out

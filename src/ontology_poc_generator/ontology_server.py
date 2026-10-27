@@ -1051,20 +1051,25 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             evaluation = result['evaluation']
             accepted = (evaluation.get('acceptance') or {}).get('items') or []
-            found = next((i for r in reversed(evaluation.get('asked') or []) for i in reversed(r['items']) if i['question'] == question), None) \
-                or next((i for i in accepted if i['question'] == question), None)
-            if found is None:
+            asked = [i for r in reversed(evaluation.get('asked') or []) for i in reversed(r['items']) if i['question'] == question]
+            candidates = asked + [i for i in accepted if i['question'] == question]
+            if not candidates:
                 self.reply(404, {'error': '找不到这道题，可能已经被删掉了'})
                 return
-            if not isinstance(found.get('query'), dict):
+            queried = [i for i in candidates if isinstance(i.get('query'), dict)]
+            if not queried:
                 self.reply(400, {'error': '这道题没有查询，不能去掉条件重算'})
                 return
-            where = found['query'].get('where') if isinstance(found['query'].get('where'), list) else []
-            same = lambda w: isinstance(w, dict) and w.get('field') == drop['field'] and w.get('equals') == drop['equals']
-            if not any(map(same, where)):
+            where_of = lambda i: i['query'].get('where') if isinstance(i['query'].get('where'), list) else []
+            # the check pack names a field without its table, the query may carry it ("orders.地区")
+            same = lambda w: isinstance(w, dict) and drop['field'] in (w.get('field'), str(w.get('field')).partition('.')[2]) \
+                and w.get('equals') == drop['equals']
+            # the latest version still holding the condition: an accepted question keeps it after the ask was edited
+            found = next((i for i in queried if any(map(same, where_of(i)))), None)
+            if found is None:
                 self.reply(400, {'error': '这道题的查询里没有这个条件'})
                 return
-            query = {**found['query'], 'where': [w for w in where if not same(w)]}
+            query = {**found['query'], 'where': [w for w in where_of(found) if not same(w)]}
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
             bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
             answer = answer_query(reviewed, bundle, query, question, derived=derived_of(memory_key(result)))

@@ -5,6 +5,7 @@ where in the product the answer is to be looked at or given."""
 from __future__ import annotations
 
 from ontology_poc_generator.object_rows import _display, _labeller
+from ontology_poc_generator.ontology_confirm import without_wrong
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value
 
 MAX_MERGED = 3      # groups of an answer listed; the rest is in the check pack
@@ -23,10 +24,10 @@ def _item(kind: str, ask: str, target: dict, facts=(), from_model: bool = False,
     return {'kind': kind, 'ask': ask, 'facts': list(facts), 'from_model': from_model, 'target': target, **extra}
 
 
-def _questions(evaluation: dict) -> tuple[dict, set]:
+def _questions(evaluation: dict) -> tuple[dict, dict]:
     """Each question once, as (item, where it sits): the accepted version when there is one, else the latest ask. The
-    model's own round of questions is not the client's and is left out. Also the questions whose latest ask gave its
-    reason from the model, since an accepted question that nothing can answer does not keep that mark."""
+    model's own round of questions is not the client's and is left out. Also each question's latest ask: an accepted
+    question that nothing can answer does not keep where its reason came from, and one asked again shows the edit."""
     asked = {}
     for ask_round in evaluation.get('asked') or []:
         for item in ask_round.get('items') or []:
@@ -34,7 +35,7 @@ def _questions(evaluation: dict) -> tuple[dict, set]:
     questions = {q: (item, 'ask') for q, item in asked.items()}
     for item in (evaluation.get('acceptance') or {}).get('items') or []:
         questions[item['question']] = (item, 'acceptance')
-    return questions, {q for q, item in asked.items() if item.get('reason_from_model')}
+    return questions, asked
 
 
 def _found_elsewhere(item: dict) -> list:
@@ -45,9 +46,15 @@ def _qa_target(place: str, question: str) -> dict:
     return {'tab': 'qa', 'place': place, 'question': question}
 
 
-def _model_filters(questions: dict, label) -> list:
+def _bare(field) -> str:
+    """A field as the check pack names it: the query may put its table in front ("orders.地区")."""
+    return str(field).partition('.')[2] or str(field)
+
+
+def _model_filters(questions: dict, asked: dict, label) -> list:
     out = []
     for question, (item, place) in questions.items():
+        dropped = ((asked.get(question) or {}).get('edited') or {}).get('dropped') or [] if place == 'acceptance' else []
         if item['status'] != 'answered' or (place == 'acceptance' and item.get('note')):
             continue   # a person who wrote the basis down has already settled what the question means
         start = label(item['query']['start'])
@@ -57,11 +64,15 @@ def _model_filters(questions: dict, label) -> list:
             if not f.get('not_in_question') or removed <= 0:
                 continue
             amount = f'，这些行的“{measure}”合计 {_num(f["removed_measure"])}' if measure and 'removed_measure' in f else ''
-            ask = (f'「{question}」的答案里，模型自己加了条件“{f["field"]} = {f["equals"]}”，问题里没提。'
-                   f'它筛掉了 {_num(removed)} 个{start}{amount}。这个条件该不该加？')
+            ask, here = (f'「{question}」的答案里，模型自己加了条件“{f["field"]} = {f["equals"]}”，问题里没提。'
+                         f'它筛掉了 {_num(removed)} 个{start}{amount}。这个条件该不该加？'), place
+            if any(_bare(d['field']) == _bare(f['field']) and d['equals'] == f['equals'] for d in dropped):
+                # already asked again without it: what is left is whether the new answer takes the accepted one's place
+                ask, here = (f'「{question}」去掉模型加的条件“{f["field"]} = {f["equals"]}”重算过了，'
+                             '验收题里存的还是带这个条件的答案。要换成新答案吗？'), 'ask'
             facts = [f'筛选前 {_num(f["before"])} 个{start}，筛选后 {_num(f["after"])} 个',
                      *([f'被筛掉的有：{"、".join(f["examples"])}'] if f.get('examples') else [])]
-            out.append(_item('model_filter', ask, _qa_target(place, question), facts, question=question,
+            out.append(_item('model_filter', ask, _qa_target(here, question), facts, question=question,
                              filter={k: f[k] for k in ('field', 'equals', 'before', 'after', 'removed_measure') if k in f}))
     return out
 
@@ -106,12 +117,12 @@ def _elsewhere(questions: dict, label) -> list:
     return out
 
 
-def _unlinked(fit: dict, types: dict, relations: dict, label, relation_name) -> list:
+def _unlinked(fit: dict, types: dict, relations: dict, kept: dict, label, relation_name) -> list:
     orphans = {o['type']: o for o in fit.get('orphans') or []}
     out = []
     for stat in fit.get('relations') or []:
         left = stat['rows'] - stat['linked_rows']
-        if left <= 0:
+        if left <= 0 or stat['key'] not in kept['relations']:
             continue
         r = relations[stat['key']]
         owner = next((k for k in (r['from'], r['to'], *types)
@@ -127,9 +138,9 @@ def _unlinked(fit: dict, types: dict, relations: dict, label, relation_name) -> 
     return out
 
 
-def _same_name(p: dict, bundle: dict, graph: dict, label) -> list:
+def _same_name(p: dict, bundle: dict, graph: dict, kept: dict, label) -> list:
     out = []
-    for t in p['object_types']:
+    for t in (t for t in p['object_types'] if t['key'] in kept['types']):
         display = _display(t)
         if display is None or display in {path for pop in t['populated_from'] for path in pop['identity'].values()}:
             continue   # shown by a part of its own number: the same name cannot come with another number
@@ -153,16 +164,16 @@ def _same_name(p: dict, bundle: dict, graph: dict, label) -> list:
     return out
 
 
-def _unstable(stability: dict, relations: dict, label, relation_name) -> list:
+def _unstable(stability: dict, relations: dict, kept: dict, label, relation_name) -> list:
     runs = stability.get('runs')
     target = {'tab': 'objects', 'place': 'stability'}
     out = []
     for key, seen in (stability.get('relations') or {}).items():
-        if seen < runs:
+        if seen < runs and key in kept['relations']:
             out.append(_item('unstable', f'关系“{relation_name(relations[key])}”在 {runs} 次建模里只出现了 {seen} 次。这条关系要保留吗？',
                              target, [f'共建模 {runs} 次，这条关系出现了 {seen} 次'], relation=key))
     for key, seen in (stability.get('types') or {}).items():
-        if seen < runs:
+        if seen < runs and key in kept['types']:
             out.append(_item('unstable', f'对象“{label(key)}”在 {runs} 次建模里只出现了 {seen} 次。这类对象要保留吗？',
                              target, [f'共建模 {runs} 次，这类对象出现了 {seen} 次']))
     elsewhere = stability.get('elsewhere') or {}
@@ -173,7 +184,7 @@ def _unstable(stability: dict, relations: dict, label, relation_name) -> list:
     return out
 
 
-def _check_findings(fit: dict, label, relations: dict) -> list:
+def _check_findings(fit: dict, kept: dict, label, relations: dict) -> list:
     quote = lambda v: f'“{v}”'
 
     def missing(x):
@@ -198,7 +209,7 @@ def _check_findings(fit: dict, label, relations: dict) -> list:
          lambda x: f'“{x["source"]}”表：{_num(x["rows"])} 行、{_num(x["fields"])} 个字段'))
     out = []
     for key, count, said, question, line in specs:
-        found = fit.get(key) or []
+        found = [x for x in fit.get(key) or [] if 'type' not in x or x['type'] in kept['types']]   # unused tables have no type
         if found:
             lines = [line(x) for x in found[:MAX_EXAMPLES]]
             out.append(_item('check_finding', f'有 {_num(count(found))} {said}，例如{lines[0]}。{question}', {'tab': 'check'}, lines))
@@ -211,7 +222,7 @@ def _data_gaps(ontology: dict) -> list:
                   {'tab': 'objects', 'place': 'build'}, gaps, from_model=True)] if gaps else []
 
 
-def _unanswered(questions: dict, modelled: set) -> list:
+def _unanswered(questions: dict, asked: dict) -> list:
     stuck = [(q, item) for q, (item, _) in questions.items()
              if item['status'] in UNANSWERED or (item['status'] == 'no_data' and not _found_elsewhere(item))]
     if not stuck:
@@ -220,7 +231,7 @@ def _unanswered(questions: dict, modelled: set) -> list:
     for question, item in stuck:
         if item['status'] == 'no_data':
             why = '数据里没有'
-        elif question in modelled or item.get('reason_from_model'):
+        elif (asked.get(question) or {}).get('reason_from_model') or item.get('reason_from_model'):
             from_model = True
             why = '查询写不出来（模型的判断）' if item['status'] == 'query_limit' else '本体缺回答它要的东西（模型的判断）'
         else:
@@ -250,11 +261,14 @@ def open_items(run: dict, bundle: dict, graph: dict | None = None) -> list:
     types, relations = {t['key']: t for t in p['object_types']}, {r['key']: r for r in p['relations']}
     label = lambda key: (types.get(key) or {}).get('label') or key
     relation_name = lambda r: f'{label(r["from"])} {r.get("label") or r["key"]} {label(r["to"])}'
-    questions, modelled = _questions(evaluation)
+    questions, asked = _questions(evaluation)
     fit = evaluation.get('data_fit') or {}
-    return [*_model_filters(questions, label), *_merged(questions), *_elsewhere(questions, label),
-            *_unlinked(fit, types, relations, label, relation_name),
-            *_same_name(p, bundle, graph or build_graph(ontology, bundle), label),
-            *_unstable(evaluation.get('stability') or {}, relations, label, relation_name),
-            *_check_findings(fit, label, relations), *_data_gaps(ontology),
-            *_unanswered(questions, modelled), *_unjudged(run, p)]
+    # what a person judged wrong (or a relation with a wrong end) has been settled: nothing about it is asked again
+    judged = without_wrong(ontology, (run.get('confirmation') or {}).get('decisions'))
+    kept = {'types': {t['key'] for t in judged['object_types']}, 'relations': {r['key'] for r in judged['relations']}}
+    return [*_model_filters(questions, asked, label), *_merged(questions), *_elsewhere(questions, label),
+            *_unlinked(fit, types, relations, kept, label, relation_name),
+            *_same_name(p, bundle, graph or build_graph(ontology, bundle), kept, label),
+            *_unstable(evaluation.get('stability') or {}, relations, kept, label, relation_name),
+            *_check_findings(fit, kept, label, relations), *_data_gaps(ontology),
+            *_unanswered(questions, asked), *_unjudged(run, p)]
