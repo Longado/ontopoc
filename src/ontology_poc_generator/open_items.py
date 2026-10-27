@@ -303,7 +303,7 @@ def open_items(run: dict, bundle: dict, graph: dict | None = None, card: dict | 
     kept = {'types': {t['key'] for t in judged['object_types']}, 'relations': {r['key'] for r in judged['relations']}}
     graph = graph or build_graph(ontology, bundle)
     return [*_model_filters(questions, asked, label), *_merged(questions), *_elsewhere(questions, label),
-            *_unlinked(fit, types, relations, kept, label, relation_name, _row_owners(p, graph)),
+            *_unlinked(fit, types, relations, kept, label, relation_name, _row_owners(judged, graph)),
             *_same_name(p, bundle, graph, kept, label),
             *_unstable(evaluation.get('stability') or {}, relations, kept, label, relation_name),
             *_check_findings(fit, kept, label, relations), *_card_blank(card), *_data_gaps(ontology),

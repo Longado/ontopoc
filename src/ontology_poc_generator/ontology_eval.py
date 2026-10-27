@@ -86,9 +86,13 @@ def _unused_sources(p: dict, bundle: dict) -> list[dict]:
 
 def _row_owners(p: dict, graph: dict) -> dict[str, set]:
     """Per table, the object type its rows are about: the one with the most distinct objects there. A results table
-    that repeats the hospital's name on every row is still about results, so it does not describe hospitals."""
+    that repeats the hospital's name on every row is still about results, so it does not describe hospitals. Only the
+    types of `p` count: one a person judged wrong is about no table."""
+    keys = {t['key'] for t in p['object_types']}
     counts: dict[str, dict[str, int]] = {}
     for inst, sources in graph['sources_of'].items():
+        if inst[0] not in keys:
+            continue
         for src in sources:
             counts.setdefault(src, {}).setdefault(inst[0], 0)
             counts[src][inst[0]] += 1
