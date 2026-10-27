@@ -17,7 +17,7 @@ const run = (extra = {}) => ({
 
 test("the summary is for the people in the room: what was read, what it says, what to check", () => {
   const md = summaryMarkdown(run({ confirmation: { confirmed_at: "2026-09-16T03:00:00+00:00", confirmed_by: "信息部 王工", decisions: { types: { customer: { verdict: "ok", label: "客户主体" } }, relations: { r1: { verdict: "ok" } }, added: ["售后工程师"] } } }));
-  assert.match(md, /^# 客户订单\.xlsx 本体摸底纪要/);
+  assert.match(md, /^# 客户订单 本体摸底会议纪要/);
   assert.match(md, /哪些客户经常延期交货？/);
   assert.match(md, /客户（26 行 4 列）/);
   assert.match(md, /订单 属于 客户/);

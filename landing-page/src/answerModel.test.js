@@ -5,8 +5,8 @@ import { derivedCard, editedLabel, elsewhereLine, noteHint, reasonView, reviewPo
 
 test("a reason the model wrote is said in one plain sentence, its words one click away", () => {
   const item = { status: "query_limit", reason: "要从 客户 经 下单 到 订单明细，再算 单价 × 数量 ×（1 − 折扣）", reason_from_model: true };
-  assert.deepEqual(reasonView(item), { line: "本体里需要的都有，但现在的查询还算不了这种问法。", detail: item.reason });
-  assert.deepEqual(reasonView({ ...item, status: "ontology_gap" }), { line: "回答它需要的对象、关系或字段，本体里还没有。", detail: item.reason });
+  assert.deepEqual(reasonView(item), { line: "模型说现在的查询写不出这道题。这是模型的判断，代码没有核对过。", detail: item.reason });
+  assert.deepEqual(reasonView({ ...item, status: "ontology_gap" }), { line: "模型说本体里缺回答它要的对象、关系或字段。这是模型的判断，代码没有核对过。", detail: item.reason });
 });
 
 test("a reason code found is short and stands as it is", () => {

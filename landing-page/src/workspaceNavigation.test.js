@@ -29,12 +29,12 @@ function shell(open = null) {
   return { tree, updates, buttons, button: (name) => buttons.find((node) => content(node) === name) };
 }
 
-test("an empty workspace keeps all five modules visible and explains how to activate them", () => {
+test("an empty workspace keeps all six modules visible and explains how to activate them", () => {
   const s = shell();
-  assert.deepEqual(s.buttons.map(content), ["本体库", "数据接入", "本体管理", "本体关系", "智能问答", "数据体检"]);
+  assert.deepEqual(s.buttons.map(content), ["本体库", "要确认的事", "数据接入", "本体管理", "本体关系", "智能问答", "数据体检"]);
   assert.notEqual(s.button("本体库").props.disabled, true);
   assert.notEqual(s.button("数据接入").props.disabled, true);
-  for (const name of ["本体管理", "本体关系", "智能问答", "数据体检"]) assert.equal(s.button(name).props.disabled, true);
+  for (const name of ["要确认的事", "本体管理", "本体关系", "智能问答", "数据体检"]) assert.equal(s.button(name).props.disabled, true);
   assert.match(content(s.tree), /上传文件.*空间.*已有运行/);
 });
 
@@ -47,7 +47,7 @@ test("data access without a workspace opens the upload flow rather than an empty
 
 test("an opened table enables its modules and keeps their existing navigation", () => {
   const s = shell({ saved_as: "run.json", file: { name: "orders.csv", kind: "table" } });
-  assert.equal(s.buttons.length, 6);
+  assert.equal(s.buttons.length, 7);
   assert.ok(s.buttons.every((button) => !button.props.disabled));
   s.button("本体管理").props.onClick();
   assert.equal(s.updates.find((change) => change.key === 5)?.value, "objects");
@@ -55,5 +55,5 @@ test("an opened table enables its modules and keeps their existing navigation", 
 
 test("document workspaces keep only their supported modules", () => {
   assert.deepEqual(shell({ file: { name: "policy.md", kind: "document" } }).buttons.map(content),
-    ["本体库", "本体管理", "本体关系", "数据体检"]);
+    ["本体库", "要确认的事", "本体管理", "本体关系", "数据体检"]);
 });
