@@ -8,6 +8,7 @@ from __future__ import annotations
 from ontology_poc_generator.object_rows import _display, _labeller
 from ontology_poc_generator.ontology_card import MAX_BASIS, MAX_NOTE, CardError, blank_by_table, check_by, clean_text, complete_id
 from ontology_poc_generator.ontology_confirm import without_wrong
+from ontology_poc_generator.ontology_eval import _row_owners
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value
 
 MAX_MERGED = 3      # groups of an answer listed; the rest is in the check pack
@@ -130,7 +131,7 @@ def _elsewhere(questions: dict, label) -> list:
     return out
 
 
-def _unlinked(fit: dict, types: dict, relations: dict, kept: dict, label, relation_name) -> list:
+def _unlinked(fit: dict, types: dict, relations: dict, kept: dict, label, relation_name, owners: dict) -> list:
     orphans = {o['type']: o for o in fit.get('orphans') or []}
     out = []
     for stat in fit.get('relations') or []:
@@ -138,8 +139,9 @@ def _unlinked(fit: dict, types: dict, relations: dict, kept: dict, label, relati
         if left <= 0 or stat['key'] not in kept['relations']:
             continue
         r = relations[stat['key']]
-        owner = next((k for k in (r['from'], r['to'], *types)
-                      if any(pop['source'] == stat['source'] for pop in types[k]['populated_from'])), None)
+        # the end the table is about (an order table read for its customer too is still about orders), else the first read there
+        reads = [k for k in (r['from'], r['to'], *types) if any(pop['source'] == stat['source'] for pop in types[k]['populated_from'])]
+        owner = next((k for k in reads if k in owners.get(stat['source'], ())), reads[0] if reads else None)
         table = f'{label(owner)}（{stat["source"]}）' if owner else f'{stat["source"]} '
         other = r['from'] if owner == r['to'] else r['to']
         ask = (f'{table}{_num(stat["rows"])} 行里有 {_num(left)} 行没连上“{relation_name(r)}”。'
@@ -299,9 +301,10 @@ def open_items(run: dict, bundle: dict, graph: dict | None = None, card: dict | 
     # what a person judged wrong (or a relation with a wrong end) has been settled: nothing about it is asked again
     judged = without_wrong(ontology, (run.get('confirmation') or {}).get('decisions'))
     kept = {'types': {t['key'] for t in judged['object_types']}, 'relations': {r['key'] for r in judged['relations']}}
+    graph = graph or build_graph(ontology, bundle)
     return [*_model_filters(questions, asked, label), *_merged(questions), *_elsewhere(questions, label),
-            *_unlinked(fit, types, relations, kept, label, relation_name),
-            *_same_name(p, bundle, graph or build_graph(ontology, bundle), kept, label),
+            *_unlinked(fit, types, relations, kept, label, relation_name, _row_owners(p, graph)),
+            *_same_name(p, bundle, graph, kept, label),
             *_unstable(evaluation.get('stability') or {}, relations, kept, label, relation_name),
             *_check_findings(fit, kept, label, relations), *_card_blank(card), *_data_gaps(ontology),
             *_unanswered(questions), *_unjudged(run, p)]
