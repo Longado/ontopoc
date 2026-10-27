@@ -92,7 +92,8 @@ export function measureOf(item) {
   const a = item.answer;
   if (a?.measure) return a.measure;
   const asked = a?.groups ? item.query?.measure : null;
-  return asked ? { field: asked.field ?? asked.derived, op: asked.op } : null;
+  // the question names the column "table.column"; the answer's own measure has the table dropped, so this one does too
+  return asked ? { field: asked.field != null ? String(asked.field).replace(/^[^.[\]]+\./, "") : asked.derived, op: asked.op } : null;
 }
 
 /** The figure beside one group's bar: a share with its denominator, a measure with the values it was computed from, else the count. */
