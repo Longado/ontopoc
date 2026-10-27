@@ -19,7 +19,7 @@ import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
 import { InstanceGraph } from "./InstanceGraph.jsx";
 import { CardSection, AnswerForm } from "./CardSection.jsx";
-import { answeredRows, canAnswerItem, cardBody, cardEvidence, draftOf, editBasis, editCell, itemAnswer, readAnswerer, rememberAnswerer } from "./cardModel.js";
+import { PIPELINE_EXPORT, answeredRows, canAnswerItem, cardBody, cardEvidence, draftOf, editBasis, editCell, itemAnswer, pipelineUrl, readAnswerer, rememberAnswerer } from "./cardModel.js";
 import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, queryCanHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
 import { dropFor, openItemsEmpty } from "./openItemsModel.js";
 import { RulesView } from "./RulesView.jsx";
@@ -1121,6 +1121,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
           <button className="os-icon-btn" onClick={downloadSummary} title="下载纪要：一页 Markdown，给会上的人看">⤓ 纪要</button>
           <button className="os-icon-btn" onClick={download} title="下载本体和评测：一个 JSON 文件">⤓ JSON</button>
           {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/forms`} download title="按对象表单导出：每个对象一张 CSV，导入目标平台前请先实测">⤓ 表单</a>}
+          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={pipelineUrl(run.saved_as)} download title={PIPELINE_EXPORT.title}>{PIPELINE_EXPORT.label}</a>}
           {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/ttl`} download title="按 W3C 标准导出：OWL 本体、数据、SHACL 规则（Turtle）">⤓ TTL</a>}
           {run.saved_as && isOrg(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/mermaid`} download title="导出组织图（Mermaid）：组织隶属与协作交接各一张，可直接放进出图流程">⤓ 组织图</a>}</div>
       </div>

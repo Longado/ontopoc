@@ -599,6 +599,7 @@ small.os-tone-warn { color: var(--amber); }
 .os-card-fact { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .os-card-cell { display: grid; gap: 4px; justify-items: start; }
 .os-card-stamp { color: var(--text-2); font-size: 12px; white-space: normal; }
+.os-card-noise { display: block; margin-top: 2px; color: var(--text-2); font-size: 12px; font-weight: 400; }
 .os-card-range { display: flex; align-items: center; gap: 6px; }
 .os-card-range i { color: var(--text-2); font-style: normal; font-size: 13px; }
 .os-card-evidence { display: grid; gap: 4px; }
