@@ -197,7 +197,9 @@ class RealServiceTests(unittest.TestCase):
             self.assertEqual(sorted(f['name'] for f in forms['files']), ['customer.csv', 'order.csv', '说明.txt'])
             ttl = mcp_server.export_ttl(service, {'saved_as': run['saved_as'], 'out_dir': f'{tmp}/ttl'})
             self.assertEqual(sorted(f['name'] for f in ttl['files']), ['data.ttl', 'ontology.ttl'])
-            for out in (forms, ttl):
+            pipeline = mcp_server.export_pipeline_spec(service, {'saved_as': run['saved_as'], 'out_dir': f'{tmp}/pipeline'})
+            self.assertEqual(sorted(f['name'] for f in pipeline['files']), ['编排需求单.json', '编排需求单.md'])
+            for out in (forms, ttl, pipeline):
                 for f in out['files']:
                     self.assertEqual(Path(f['path']).stat().st_size, f['bytes'])
                     self.assertGreater(f['bytes'], 0)
