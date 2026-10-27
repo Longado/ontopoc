@@ -137,7 +137,7 @@ claude plugin install ontopoc@ontopoc
 
 ### 接入 Claude Code 或其他 MCP 客户端
 
-页面上的每项功能都有对应的 MCP 工具，共 28 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
+页面上的每项功能都有对应的 MCP 工具，共 31 个。这些工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用：
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -206,7 +206,7 @@ PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合�
 | [docs/PRODUCT.md](docs/PRODUCT.md) | 产品定位与范围 |
 | [docs/PLAYGROUND_INTERNALIZATION.md](docs/PLAYGROUND_INTERNALIZATION.md) | 本体库来源、RDF/XML 导入边界与后续轮次 |
 | [docs/AGENTS.md](docs/AGENTS.md) | 6 个 Agent 的定义与调用记录 |
-| [docs/MCP.md](docs/MCP.md) | 28 个 MCP 工具 |
+| [docs/MCP.md](docs/MCP.md) | 31 个 MCP 工具 |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | 数据平台对象表单对照 |
 | [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | 最近一轮迭代的计划与执行记录 |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 开发红线与待触发的方向 |
