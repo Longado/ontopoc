@@ -93,7 +93,7 @@ def remap_query(query: dict, snapshot: dict, ontology: dict) -> tuple[dict | Non
 
 
 def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: list | None = None,
-                     snapshot_ontology: dict | None = None) -> dict:
+                     snapshot_ontology: dict | None = None, card: dict | None = None) -> dict:
     """Run every saved query on this run's ontology and data; keep the previous answer beside the new one."""
     checked = []
     for item in items:
@@ -118,7 +118,7 @@ def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: l
                         if entry['key'] not in {saved['key'] for saved in snapshot.get(kind, [])})]
                         for kind in ('types', 'relations')}
         query, problem = remap_query(item['query'], snapshot, identities) if snapshot is not None else (item['query'], '')
-        result = {'status': 'broken', 'reason': problem} if problem else flag_unasked_filters(run_query(ontology, bundle, query, derived=derived), item['question'])
+        result = {'status': 'broken', 'reason': problem} if problem else flag_unasked_filters(run_query(ontology, bundle, query, derived=derived, card=card), item['question'])
         if result['status'] == 'ontology_gap':
             # the query a person agreed with no longer fits this ontology: stop here instead of guessing a new meaning
             result = {'status': 'broken', 'reason': result['reason']}
