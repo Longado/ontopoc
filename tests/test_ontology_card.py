@@ -54,7 +54,7 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual([t['source'] for t in card['tables']], ['ledger', 'vendors', 'notes'])
         self.assertEqual((ledger['rows'], ledger['objects']), (4, [{'type': 'entry', 'label': '支出行', 'identity': ['batch', 'row_no']}]))
         # rows 2 and 3 carry the same key once spaces and case are folded the way the graph folds them: shown as first met
-        self.assertEqual(ledger['grain'], {'id': GRAIN, 'unique': {'fields': ['batch', 'row_no'], 'distinct': 3, 'duplicates': 1, 'examples': ['B1 · 2']},
+        self.assertEqual(ledger['grain'], {'id': GRAIN, 'unique': {'fields': ['batch', 'row_no'], 'distinct': 3, 'duplicates': 1, 'blank': 0, 'examples': ['B1 · 2']},
                                            'answer': None})
         self.assertEqual(ledger['dates'], [
             {'id': 'date:ledger.paid_on', 'range_id': 'range:ledger.paid_on', 'field': 'paid_on', 'type': 'DATE',
@@ -215,7 +215,7 @@ class RunningTotalTests(unittest.TestCase):
 
 class PeriodToDateTests(unittest.TestCase):
     YTD = {'amount:ledger.ytd': said('period_to_date')}
-    REASON = '「ytd」在口径卡里是“期初到期末的累计值”：要先固定在一期上（按同一张表的一个日期列筛一个日期），才能相加。'
+    REASON = '「ytd」在口径卡里是“期初到期末的累计值”：要先固定在一期上（按同一张表里一个不是取数或录入时间的日期列，筛一个日期或按它分组），才能相加。'
 
     def refused(self, query):
         got = run_query(ONTOLOGY, QA, query, card=self.YTD)

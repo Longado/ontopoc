@@ -234,7 +234,7 @@ class QuestionsFollowTheCardTests(unittest.TestCase):
             self.assertEqual((checked['status'], checked['refused_by_card'], checked['changed']), ('query_limit', RUNNING, True))
             self.assertEqual(reopened['evaluation']['acceptance']['answered'], 0)
             stored = json.loads((out / 'acceptance' / f"{run['file']['sha256']}.json").read_text(encoding='utf-8'))
-            self.assertEqual(stored['items'][0]['status'], 'query_limit')
+            self.assertEqual(stored['items'][0]['status'], 'answered')   # the file's shared list is what the next upload inherits: saving a card does not rewrite it
             _, rerun = call(base, '/api/ontology/build', UPLOAD)   # and the next upload of the file is judged by the same card
             self.assertEqual(rerun['evaluation']['acceptance']['items'][0]['refused_by_card'], RUNNING)
 
