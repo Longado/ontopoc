@@ -1,7 +1,6 @@
 """The pipeline requirements (编排需求单): what the data check, the open items, the data-meaning card, the derived measures
 and the adopted rules already say about how the data has to be prepared, gathered into one document for whoever builds
 the data pipeline. Code only: no model is called, and every entry says where it comes from."""
-import base64
 import io
 import json
 import unittest
@@ -61,7 +60,8 @@ ONTOLOGY = {
 GRAIN, ENTRY_COMPLETE = 'grain:ledger', 'complete:ledger|batch,row_no'
 CONFIRMATION = {'confirmed_at': '2026-10-27T10:00:00+00:00', 'confirmed_by': '李四', 'decisions': {
     'types': {k: {'verdict': 'ok'} for k in ('entry', 'vendor', 'dept', 'project', 'office')}, 'relations': {},
-    'variants': [{'type': 'vendor', 'values': ['ACME Corp', 'Acme']}]}}
+    'variants': [{'type': 'vendor', 'values': ['ACME Corp', 'Acme']}]},
+    'reference': {'name_variants': [{'type': 'vendor', 'values': ['ACME Corp', 'Acme']}]}}
 
 
 def said(value, note='', basis='10-27 会议', by='张三', at=AT):
@@ -304,8 +304,8 @@ class TableEntryTests(unittest.TestCase):
         self.assertEqual(entries(self.SPEC, 'depts', 'complete'), [])   # nobody answered
 
     def test_an_object_judged_wrong_leaves_nothing_behind_in_its_table(self):
-        wrong = {**CONFIRMATION, 'decisions': {**CONFIRMATION['decisions'], 'types': {**CONFIRMATION['decisions']['types'], 'vendor': {'verdict': 'wrong'}},
-                                              'variants': []}}
+        wrong = {**CONFIRMATION, 'decisions': {**CONFIRMATION['decisions'], 'types': {**CONFIRMATION['decisions']['types'], 'vendor': {'verdict': 'wrong'}}},
+                 'reference': {'name_variants': []}}   # a type judged wrong cannot hold confirmed spellings
         spec = make_spec(confirmation=wrong)
         [vendors] = [t for t in spec['tables'] if t['source'] == 'vendors']
         self.assertEqual(vendors['objects'], [])
@@ -397,6 +397,15 @@ class RelationTests(unittest.TestCase):
         self.assertIn('ledger.vendor_uei', e['text'])
         self.assertNotIn('ledger.vendor_uei 对 ledger.vendor_uei', e['text'])
         self.assertIn('5 行', e['text'])   # five of six rows name a vendor
+
+    def test_a_table_that_holds_neither_end_joins_both(self):
+        link = {'key': 'dept_project', 'from': 'dept', 'to': 'project', 'source': 'ledger',
+                'from_identity': {'code': 'dept_code'}, 'to_identity': {'pid': 'project_id'}}
+        spec = make_spec(ontology={**ONTOLOGY, 'relations': [link]}, items={}, confirmation=None)
+        [e] = spec['relations']
+        for said_so in ('ledger.dept_code 对 depts.code', 'ledger.project_id 对 projects.pid', 'ledger 6 行', 'depts 3 行', 'projects 2 行',
+                        '连上 4 行（两头都连上才算）', '2 行连不上'):
+            self.assertIn(said_so, e['text'])
 
     def test_a_relation_judged_wrong_is_not_a_requirement(self):
         wrong = {**CONFIRMATION, 'decisions': {**CONFIRMATION['decisions'], 'relations': {'entry_dept': {'verdict': 'wrong'}}}}
