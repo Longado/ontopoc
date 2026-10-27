@@ -242,7 +242,7 @@ class CheckFindingTests(unittest.TestCase):
             '有 1 组编号只差前面的 0，目前算成了不同对象，例如承包商：00106 / 106。它们是同一个吗？',
             '有 6 个对象被别的表提到，却不在描述它们的表里，例如承包商在 vendors 表里缺 K1、K2、K3 等 4 个。这些数据能补上吗？',
             '有 1 类对象只靠名称一类的字段识别，例如承包商：只靠“vendor_name”识别。改名或写法一变就会被当成另一个对象，有没有编号可用？',
-            '有 1 张上传的表没被本体读取，例如 notes：12 行、3 个字段。是漏了还是确实用不上？'])
+            '有 1 张上传的表没被本体读取，例如“notes”表：12 行、3 个字段。是漏了还是确实用不上？'])
         self.assertEqual(items[3]['facts'], ['承包商在 vendors 表里缺 K1、K2、K3 等 4 个',
                                              '承包商在 contracts 表里被“授予”引用却不存在：X1、X2，共 2 个'])
 
@@ -250,7 +250,7 @@ class CheckFindingTests(unittest.TestCase):
         many = {'unused_sources': [{'source': f's{n}', 'rows': n, 'fields': 1} for n in range(5)]}
         [item] = open_items(run({'data_fit': many}), BUNDLE)
         self.assertTrue(item['ask'].startswith('有 5 张上传的表没被本体读取'))
-        self.assertEqual(item['facts'], ['s0：0 行、1 个字段', 's1：1 行、1 个字段', 's2：2 行、1 个字段'])
+        self.assertEqual(item['facts'], ['“s0”表：0 行、1 个字段', '“s1”表：1 行、1 个字段', '“s2”表：2 行、1 个字段'])
 
     def test_findings_that_are_empty_ask_nothing(self):
         empty = {k: [] for k in self.FIT}
