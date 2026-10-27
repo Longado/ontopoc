@@ -310,8 +310,7 @@ def _identities(record: dict, pop: dict) -> list[tuple]:
 
 
 def build_graph(proposal: dict, bundle: dict) -> dict:
-    """Instances are (type_key, ((logical_key, value), ...)); edges remember the record that shows them, and
-    relation_ends[key][row] the objects each end of that row names (ones that exist; the rest are missing_references)."""
+    """Instances are (type_key, ((logical_key, value), ...)); edges remember the record that shows them."""
     p = normalize_proposal(proposal)
     aliases = _alias_map(proposal)
     aliased = set()
@@ -344,7 +343,6 @@ def build_graph(proposal: dict, bundle: dict) -> dict:
                     records_of[inst].append((src, index))
                 per_record[(src, index)].setdefault(t['key'], []).extend(found)
     edges = {r['key']: set() for r in p['relations']}
-    relation_ends = {r['key']: [] for r in p['relations']}
     adjacent = defaultdict(set)
     missing_references = []
     for r in p['relations']:
@@ -366,7 +364,6 @@ def build_graph(proposal: dict, bundle: dict) -> dict:
                     else:
                         missing_references.append({'relation': r['key'], 'endpoint': end, 'type': r[end],
                                                    'source': src, 'record': index, 'identity': ident})
-            relation_ends[r['key']].append(ends)
             for a in ends['from']:
                 for b in ends['to']:
                     if a == b:   # a row naming one stop does not say that stop belongs to itself
@@ -375,7 +372,7 @@ def build_graph(proposal: dict, bundle: dict) -> dict:
                     adjacent[a].add(b)
                     adjacent[b].add(a)
     return {'sources_of': dict(sources_of), 'records_of': dict(records_of), 'part_of': part_of,
-            'edges': edges, 'relation_ends': relation_ends, 'adjacent': dict(adjacent), 'per_record': dict(per_record), 'aliased': aliased,
+            'edges': edges, 'adjacent': dict(adjacent), 'per_record': dict(per_record), 'aliased': aliased,
             'missing_references': missing_references}
 
 

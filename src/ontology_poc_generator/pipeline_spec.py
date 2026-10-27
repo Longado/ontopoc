@@ -227,84 +227,87 @@ def _columns(pop: dict) -> list:
     return [pop['identity'][k] for k in sorted(pop['identity'])]
 
 
-def _pair(r: dict, end: str, types: dict) -> tuple | None:
-    """How one end of a relation is joined: (the relation's own table with the columns that name the object there,
-    every other table the object is read from with its identity columns — none when it is read from this table alone).
-    None when the data gives no such columns."""
-    pops = types[r[end]]['populated_from']
+def _named_by(r: dict, end: str, types: dict) -> list:
+    """The column lists that name one end of a relation in the relation's own table: its binding, else the identity
+    columns of each population of that object read from the table."""
     binding = r.get(f'{end}_identity')
-    own = next((p for p in pops if p['source'] == r['source']), None)
-    named = [binding[k] for k in sorted(binding)] if isinstance(binding, dict) else _columns(own) if own else None
-    others = list({p['source']: (p['source'], _columns(p)) for p in pops if p['source'] != r['source']}.values())
-    return ((r['source'], named), others) if named else None
+    if isinstance(binding, dict):
+        return [[binding[k] for k in sorted(binding)]]
+    return [_columns(p) for p in types[r[end]]['populated_from'] if p['source'] == r['source']]
 
 
 def _reference(table: str, columns: list) -> str:
     return f'{table}.{"+".join(columns)}'
 
 
-def _keys(record: dict, columns: list) -> list:
-    """What a row names in these columns, folded as the graph folds it: one key (a tuple, None for a part left empty) per
-    element when a column sits inside a list, else one."""
-    parts = [[normalize_value(v) for v in resolve(record, c)] or [None] for c in columns]
-    return [tuple(p[i] if len(p) > 1 else p[0] for p in parts) for i in range(max(map(len, parts)))]
+def _unfilled(record: dict, column: str) -> bool:
+    # a column inside a list has one value per element: the row has no number there only when none of them is filled
+    return all(normalize_value(v) is None for v in resolve(record, column) or [None])
 
 
-def _sentence(bundle: dict, graph: dict, r: dict, end: str, a: tuple, others: list, own: str | None) -> tuple[str, int]:
-    """How the rows of the relation's table (a: that table with the columns naming this end) link to the objects of this
-    end, and how many do not. Counted from what the graph made of each row, so conditions, split values and the values a
-    person mapped count as in the data check: a row links when it names at least one such object, every one it names
-    exists and, when the object is also read from `others`, is in one of them. `own` is the label of the object the
-    table is about when the other end is that object: a row whose own object is not made out does not link either."""
-    rows, tables = bundle['sources'][a[0]]['records'], [t for t, _ in others]
-    missing = {m['record'] for m in graph['missing_references'] if m['relation'] == r['key'] and m['endpoint'] == end}
-    found = lambda inst: not tables or graph['sources_of'][inst].intersection(tables)
-    ends = graph['relation_ends'][r['key']]
-    named = [bool(e[end]) and i not in missing and all(map(found, e[end])) for i, e in enumerate(ends)]
-    unknown = [own is not None and not e['to' if end == 'from' else 'from'] for e in ends]
-    linked = sum(n and not u for n, u in zip(named, unknown))
+def _sentence(r: dict, ends: tuple, types: dict, bundle: dict, graph: dict) -> tuple[str, int]:
+    """One relation as a join, and how many rows do not link. Rows are counted as the data check counts them (a row
+    links when the graph joins its two ends), so the counts are the open item's. Each joined object that is also read
+    from other tables says how many rows name one those tables do not have: what a join on the columns misses even
+    where the data check links the row, because the object is read from this table too."""
+    src, edges = r['source'], graph['edges'][r['key']]
+    rows = bundle['sources'][src]['records']
+    linked = len({ref for _, _, ref in edges})
+    named = [lists for lists in (_named_by(r, end, types) for end in ('from', 'to')) if lists]
+    # a row has no number for an end when every column list naming it has a blank
+    empty = sum(any(all(any(_unfilled(record, c) for c in cols) for cols in lists) for lists in named) for record in rows)
+    said, tables, missed = [], [], []
+    for key in dict.fromkeys(r[end] for end in ends):
+        mine = [end for end in ends if r[end] == key]
+        defined = list({p['source']: (p['source'], _columns(p)) for p in types[key]['populated_from'] if p['source'] != src}.values())
+        if not defined:
+            continue
+        there = {t for t, _ in defined}
+        own = dict.fromkeys(_reference(src, cols) for end in mine for cols in _named_by(r, end, types))
+        said.append(f'{" 或 ".join(own)} 对 {" 或 ".join(_reference(*d) for d in defined)}')
+        tables += [t for t, _ in defined]
+        sides = [0 if end == 'from' else 1 for end in mine]
+        out = {m['record'] for m in graph['missing_references'] if m['relation'] == r['key'] and m['endpoint'] in mine}
+        out |= {ref[1] for *pair, ref in edges for side in sides if not graph['sources_of'][pair[side]] & there}
+        if out:
+            missed.append(f'{_num(len(out))} 行的{types[key].get("label") or key}在 {"、".join(t for t, _ in defined)} 里找不到')
+    if not said:
+        own = dict.fromkeys(_reference(src, cols) for end in ends for cols in _named_by(r, end, types))
+        said = [f'{" 和 ".join(own)}（对象读自同一张表，不用另外关联）']
     left = len(rows) - linked
-    empty = sum(not [k for k in _keys(record, a[1]) if None not in k] for record in rows)
-    lost = sum(n and u for n, u in zip(named, unknown))
-    why = [f'{_num(empty)} 行用来连的编号是空的'] * bool(empty) + [f'{_num(lost)} 行认不出是哪一个{own}'] * bool(lost)
-    counts = '，'.join(f'{name} {_num(len(bundle["sources"][name]["records"]))} 行' for name in (a[0], *tables))
-    said = f'{_reference(*a)} 对 {" 或 ".join(_reference(*b) for b in others)}' if others else f'{_reference(*a)}（对象读自同一张表，不用另外关联）'
-    facts = f'连上 {_num(linked)} 行' + (f'；{_num(left)} 行连不上' + (f'（其中 {"，".join(why)}）' if why else '') if left else '，每一行都连上了')
-    inside = '；这一列在列表里，一行有多个值时，每个值都对上才算连上' if any('[].' in column for column in a[1]) else ''
-    return f'{said}：{counts}，{facts}{inside}', left
+    counts = '，'.join(f'{name} {_num(len(bundle["sources"][name]["records"]))} 行' for name in dict.fromkeys((src, *tables)))
+    facts = f'连上 {_num(linked)} 行'
+    if left:
+        facts += f'；{_num(left)} 行连不上' + (f'（其中 {_num(empty)} 行用来连的编号是空的）' if empty else '')
+    if missed:
+        facts += ''.join(f'；{m}' for m in missed)
+    elif not left:
+        facts += '，每一行都连上了'
+    return f'{"，".join(said)}：{counts}，{facts}', left
 
 
-def _joins(reviewed: dict, bundle: dict, graph: dict, answers: dict, listed: set) -> tuple[list, list]:
-    """The join entries, and the open entries for rows that do not link where the open items ask nothing about them."""
+def _joins(reviewed: dict, bundle: dict, graph: dict, answers: dict, listed: set) -> list:
     types = {t['key']: t for t in reviewed['object_types']}
     owners = _row_owners(reviewed, graph)
-    out, unasked = [], []
+    out = []
     for r in reviewed['relations']:
         # the object the table is about is not joined to anything: the other end is. A table about neither end, or about
-        # both alike, joins both, and there an end read from this table alone has nothing to join while the other has.
+        # both alike, joins both.
         about = [k for k in (r['from'], r['to']) if k in owners.get(r['source'], ())]
         ends = ('to',) if about == [r['from']] else ('from',) if about == [r['to']] else ('from', 'to')
-        pairs = [(end, *p) for end in ends if (p := _pair(r, end, types))]
-        pairs = [p for p in pairs if p[2]] or pairs
-        if not pairs:
-            continue
-        own = (types[about[0]].get('label') or about[0]) if len(ends) == 1 else None
-        sentences, lefts = zip(*(_sentence(bundle, graph, r, end, a, others, own) for end, a, others in pairs))
-        text, item_id = '。'.join(sentences), f'unlinked:{r["key"]}'
-        if not any(lefts):
+        text, left = _sentence(r, ends, types, bundle, graph)
+        item_id = f'unlinked:{r["key"]}'
+        if not left:
             out.append(_code('join', text))
             continue
-        refs = [item_id] if item_id in listed else []   # the data check may have found nothing to ask where this pair finds rows
+        refs = [item_id] if item_id in listed else []
         answer = answers.get(item_id) if refs else None
         if answer is None:
             out.append(_code('join', f'{text}。连不上的行怎么处理还没说清', refs))
-            if not refs:
-                said = '。'.join(s for s, left in zip(sentences, lefts) if left)
-                unasked.append(_code('unasked_join', f'{said}。清单里没有问到这些行：要问客户是本来就没有对应，还是数据没导全'))
             continue
         reply = REPLIES[answer['choice']] + (f'（{answer["text"]}）' if answer['text'] else '') if answer['choice'] else f'客户答复：{answer["text"]}'
         out.append(_client('join', f'{text}。{reply}', [answer], refs))
-    return out, unasked
+    return out
 
 
 def _missing_columns(d: dict, bundle: dict) -> list:
@@ -368,11 +371,11 @@ def pipeline_spec(run: dict, bundle: dict, graph: dict, card: dict, stored: dict
     objects = list({o['id']: o for o in card['objects']}.values())
     listed = open_items(run, bundle, graph, card)
     open_, _ = split_answers(listed, stored['items'])
-    joins, unasked = _joins(reviewed, bundle, graph, stored['items'], {i['id'] for i in listed})
     return {'file': run['file']['name'], 'saved_as': run['saved_as'], 'generated_at': at,
             'tables': [_table(t, profiles[t['source']], bundle['sources'][t['source']]['records'], kept, objects, fit, run) for t in card['tables']],
-            'relations': joins, 'derived': _computed(derived, kept, bundle), 'rules': _checks(rules, kept),
-            'open': [*_blank_cells(card), *(_code('open_item', i['ask'], [i['id']]) for i in open_ if i['kind'] in CHOICES), *unasked]}
+            'relations': _joins(reviewed, bundle, graph, stored['items'], {i['id'] for i in listed}),
+            'derived': _computed(derived, kept, bundle), 'rules': _checks(rules, kept),
+            'open': [*_blank_cells(card), *(_code('open_item', i['ask'], [i['id']]) for i in open_ if i['kind'] in CHOICES)]}
 
 
 def _origin(e: dict) -> str:
