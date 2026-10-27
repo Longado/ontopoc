@@ -188,6 +188,22 @@ class UnlinkedTests(unittest.TestCase):
         self.assertEqual(items[1]['ask'], '合同授标（contracts）365 行里有 207 行没连上“合同授标 属于 母合同”。是这些行本来就没有对应的母合同，还是数据没导全？')
         self.assertEqual(items[1]['facts'], ['其中 207 行用来连的编号是空的'])
 
+    def test_a_relation_written_parent_to_child_is_asked_about_the_rows_of_the_table_it_is_read_from(self):
+        ontology = copy.deepcopy(ONTOLOGY)
+        ontology['object_types'][1]['populated_from'].append({'source': 'spend', 'identity': {'award_key': 'award_key'}})
+        ontology['relations'] = [{'key': 'contract_spend', 'from': 'contract', 'to': 'spend', 'label': '包含', 'source': 'spend'}]
+        bundle = {'sources': {'spend': {'records': [{'row_id': '1', 'award_key': 'A1'}, {'row_id': '2', 'award_key': 'A1'},
+                                                    {'row_id': '3', 'award_key': 'A2'}]},
+                              'contracts': {'records': [{'award_key': 'A1'}]}, 'vehicles': {'records': []}, 'vendors': {'records': []}}}
+        fit = {'relations': [{'key': 'contract_spend', 'source': 'spend', 'rows': 3, 'linked_rows': 2, 'empty_rows': 0}], 'orphans': []}
+        decided = {'decisions': {'types': {t['key']: {'verdict': 'ok'} for t in ontology['object_types']},
+                                 'relations': {'contract_spend': {'verdict': 'ok'}}}}
+        [item] = open_items(run({'data_fit': fit}, ontology, confirmation=decided), bundle)
+        # the spend table is about spend rows, so its rows are what is left over, and the contract is what may be missing
+        self.assertTrue(item['ask'].startswith('支出行（spend）3 行里有 1 行没连上'), item['ask'])
+        self.assertIn('本来就没有对应的合同授标', item['ask'])
+        self.assertEqual(item['complete_id'], 'complete:contracts|award_key')
+
     def test_a_relation_without_a_label_is_named_by_its_key(self):
         ontology = copy.deepcopy(ONTOLOGY)
         ontology['relations'][0].pop('label')
