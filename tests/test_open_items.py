@@ -120,6 +120,14 @@ class ModelFilterTests(unittest.TestCase):
                                       '验收题里存的还是带这个条件的答案。要换成新答案吗？')
         self.assertEqual(item['target'], {'tab': 'qa', 'place': 'ask', 'question': PAID})
 
+    def test_only_the_item_for_a_condition_already_asked_again_says_so(self):
+        [plain] = open_items(run({'asked': asked(answered(PAID, {'filters': [ADDED]}))}), BUNDLE)
+        self.assertNotIn('requeried', plain)
+        accepted = answered(PAID, {'filters': [ADDED]}, note='')
+        again = answered(PAID, {'filters': []}, edited={'dropped': [{'field': 'spend.subagency', 'equals': 'BUREAU OF RECLAMATION'}]})
+        [replaced] = open_items(run({'asked': asked(again), 'acceptance': {'items': [accepted]}}), BUNDLE)
+        self.assertIs(replaced['requeried'], True)
+
 
 class MergedAndElsewhereTests(unittest.TestCase):
     GROUP = {'group': 'GREENBERRY INDUSTRIAL LLC', 'starts': 1, 'objects': 2, 'start': '承包商', 'reached': '最终母公司',
@@ -220,6 +228,22 @@ class SameNameTests(unittest.TestCase):
             'relations': DECIDED['decisions']['relations']}}), bundle), [])
 
 
+    def test_a_name_that_many_objects_share_is_not_the_objects_own_name_and_asks_nothing(self):
+        # orders carry the receiver's name: 5 names shared by 10 of 20 orders
+        names = ['A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', *'FGHIJKLMNO']
+        self.assertEqual(open_items(run(), vendors(*((f'K{n}', name) for n, name in enumerate(names)))), [])
+
+    def test_a_tenth_of_the_named_objects_sharing_names_is_still_asked_and_just_over_is_not(self):
+        shared = [('K1', 'Zed'), ('K2', 'Zed')]
+        [item] = open_items(run(), padded(20, *shared))   # 2 of 20
+        self.assertEqual(item['kind'], 'same_name')
+        self.assertEqual(open_items(run(), padded(19, *shared)), [])   # 2 of 19
+
+    def test_objects_without_a_name_are_not_counted_among_the_named(self):
+        # 2 of 20 objects share a name, but only 15 have one: 2 of 15 is over a tenth
+        rows = [('K1', 'Zed'), ('K2', 'zed'), *((f'U{n}', f'Unique {n}') for n in range(13)), *((f'B{n}', '') for n in range(5))]
+        self.assertEqual(open_items(run(), vendors(*rows)), [])
+
     def test_a_type_judged_wrong_is_not_asked(self):
         decided = copy.deepcopy(DECIDED)
         decided['decisions']['types']['vendor'] = {'verdict': 'wrong'}
@@ -275,6 +299,16 @@ class CheckFindingTests(unittest.TestCase):
             '有 1 张上传的表没被本体读取，例如“notes”表：12 行、3 个字段。是漏了还是确实用不上？'])
         self.assertEqual(items[3]['facts'], ['承包商在 vendors 表里缺 K1、K2、K3 等 4 个',
                                              '承包商在 contracts 表里被“授予”引用却不存在：X1、X2，共 2 个'])
+
+    def test_an_object_missing_from_a_table_that_refers_to_it_by_a_relation_judged_wrong_is_not_listed(self):
+        for wrong in ({'relations': {'contract_vendor': {'verdict': 'wrong'}}}, {'types': {'contract': {'verdict': 'wrong'}}}):
+            with self.subTest(wrong=wrong):
+                decisions = copy.deepcopy(DECIDED['decisions'])
+                for part, verdicts in wrong.items():
+                    decisions[part].update(verdicts)
+                [item] = [i for i in open_items(run({'data_fit': self.FIT}, confirmation={'decisions': decisions}), BUNDLE)
+                          if '被别的表提到' in i['ask']]
+                self.assertEqual((item['ask'][:9], item['facts']), ('有 4 个对象被别的表提到', ['承包商在 vendors 表里缺 K1、K2、K3 等 4 个']))
 
     def test_a_finding_lists_at_most_three_examples(self):
         many = {'unused_sources': [{'source': f's{n}', 'rows': n, 'fields': 1} for n in range(5)]}
@@ -333,6 +367,22 @@ class UnansweredTests(unittest.TestCase):
         evaluation = {'asked': asked(self.stuck('甲', 'query_limit', reason='很长的模型说明', reason_from_model=True)), 'acceptance': {'items': [accepted]}}
         [item] = open_items(run(evaluation), BUNDLE)
         self.assertEqual((item['from_model'], item['facts']), (True, ['「甲」：查询写不出来（模型的判断）']))
+
+
+class UnansweredOriginTests(unittest.TestCase):
+    def test_an_accepted_question_without_a_query_is_the_models_reason_even_when_nothing_else_remembers_it(self):
+        accepted = [{'question': '甲', 'status': 'query_limit', 'reason': '很长的模型说明', 'query': None, 'note': ''},
+                    {'question': '乙', 'status': 'ontology_gap', 'reason': '很长的模型说明', 'query': None, 'note': ''}]
+        [item] = open_items(run({'acceptance': {'items': accepted}}), BUNDLE)
+        self.assertIs(item['from_model'], True)
+        self.assertEqual(item['facts'], ['「甲」：查询写不出来（模型的判断）', '「乙」：本体缺回答它要的东西（模型的判断）'])
+
+    def test_an_accepted_question_whose_query_exists_keeps_the_reason_code_gave(self):
+        accepted = [{'question': '甲', 'status': 'query_limit', 'reason': '这道题用了 having：查询语言还表达不了',
+                     'query': {'start': 'spend', 'having': {}}, 'note': ''}]
+        [item] = open_items(run({'acceptance': {'items': accepted}}), BUNDLE)
+        self.assertIs(item['from_model'], False)
+        self.assertEqual(item['facts'], ['「甲」：这道题用了 having：查询语言还表达不了'])
 
 
 class UnjudgedTests(unittest.TestCase):
