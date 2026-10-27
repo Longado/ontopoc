@@ -97,6 +97,15 @@ class DropFilterTests(unittest.TestCase):
         self.assertTrue(reply['isError'])
         self.assertIn('equals', reply['content'][0]['text'])
 
+    def test_the_description_says_both_spellings_of_the_field_are_taken(self):
+        tools = {t['name']: t for t in handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None)['result']['tools']}
+        tool = tools['drop_filter']
+        self.assertNotIn('带来源表前缀', tool['description'])   # the exam data's query.where has no table in front of the field
+        self.assertNotIn('payments.awarding_subagency', tool['description'])
+        for text in (tool['description'], tool['inputSchema']['properties']['field']['description']):
+            self.assertIn('query.where', text)
+            self.assertIn('evidence.filters', text)
+
     def test_the_edit_that_was_made_shows_up_in_the_questions_an_agent_reads(self):
         self.assertEqual(mcp_server._question(self.NEW)['edited'], self.NEW['edited'])
 
