@@ -215,9 +215,12 @@ export function serviceBlock(health, needsModel) {
 /** Whether a step on a saved run can go ahead now: the service is there, and the key too when the step calls the model. */
 export const serviceReady = (run, health, needsModel) => Boolean(run?.saved_as) && !serviceBlock(health, needsModel);
 
-/** What to tell the user when the local service answers with an error. A 404 means the running service predates this page. */
+const NO_SUCH_ROUTE = "Unknown ontology endpoint";   // what the service's router says for a path it does not have
+
+/** What to tell the user when the local service answers with an error. The router's 404 (or a 404 that says nothing) means
+ *  the running service predates this page; any other 404 is about the run or the item, and says so in its own words. */
 export function serviceError(status, data) {
-  if (status === 404) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
+  if (status === 404 && (!data?.error || data.error === NO_SUCH_ROUTE)) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
   return data?.error || `服务返回 ${status}`;
 }
 
