@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import json
 import re
 
-from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value, resolve
+from ontology_poc_generator.public_ontology import build_graph, linked, normalize_proposal, normalize_value, resolve
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview
@@ -223,6 +223,25 @@ def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, 
     return None, notes
 
 
+def _found_elsewhere(types: dict, graph: dict, start: str, wanted: list) -> list:
+    """For each filter value the start objects do not have: which other kinds of object carry it in their number (the
+    whole number or one part of it, so 4732|GS03F102CA carries GS03F102CA), how many, and how many start objects are
+    directly connected to them. A question about a framework contract asked of its awards is answered "not in the data"
+    and the contract is right there as the parent."""
+    parts = lambda value: {normalize_value(value), *(normalize_value(part) for part in str(value).split('|'))}
+    out = []
+    for field, equals in wanted:
+        target = normalize_value(equals)
+        found = {}
+        for inst in graph['sources_of']:
+            if inst[0] != start and any(target in parts(value) for _, value in inst[1]):
+                found.setdefault(inst[0], []).append(inst)
+        for key in (k for k in types if k in found):   # in the ontology's order
+            out.append({'type': key, 'field': field, 'equals': equals, 'count': len(found[key]),
+                        'linked': len(set().union(*(linked(graph, inst, start) for inst in found[key])))})
+    return out
+
+
 def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None) -> dict:
     p = normalize_proposal(ontology)
     types, relations = _types(p), {r['key']: r for r in p['relations']}
@@ -353,13 +372,17 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
                 **({} if w['field'] in lookup else {'examples': [named(i) for i in gone[:3]], **removed_amount(gone)})}
                for w, before, after, gone in stages] if everyone else []
 
-    def proved(result, merged=(), merged_total=0):
+    def proved(result, merged=(), merged_total=0, elsewhere=()):
         """The check pack rides beside the answer, never inside it: acceptance compares `answer` between runs."""
         pack = {**({'filters': filters} if filters else {}), **{k: v for k, v in notes.items() if v},
-                **({'merged': merged} if merged else {}), **({'merged_total': merged_total} if merged_total > len(merged) else {})}
+                **({'merged': merged} if merged else {}), **({'merged_total': merged_total} if merged_total > len(merged) else {}),
+                **({'found_elsewhere': elsewhere} if elsewhere else {})}
         return {**result, **({'evidence': pack} if pack else {})}
     if not starts:
-        return proved({'status': 'no_data', 'reason': '数据里没有满足筛选条件的对象', 'path': path})
+        # a value no start object has may be the number of some other kind of object: the question was put to the wrong one
+        lacking = [(name(w['field']), w['equals']) for w in where if normalize_value(w['equals']) and not any(has(i, w) for i in everyone)]
+        return proved({'status': 'no_data', 'reason': '数据里没有满足筛选条件的对象', 'path': path},
+                      elsewhere=_found_elsewhere(types, graph, start, lacking))
 
     def reach(inst, via):
         frontier = {inst}
