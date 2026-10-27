@@ -15,8 +15,9 @@ export function sectionsFor(run) {
   return doc.flatMap((s) => (s[0] === "objects" ? [s, ["org", "组织架构"]] : [s]));
 }
 
-/** Where a run opens: its first module, or the upload page when there is no run. */
-export const startSection = (run) => (run ? sectionsFor(run)[0][0] : "upload");
+/** Where a run opens: its first module, or the upload page when there is no run. An example result is not on the service
+ *  and has no list to settle, so it opens on the objects. */
+export const startSection = (run) => (!run ? "upload" : run.saved_as ? sectionsFor(run)[0][0] : "objects");
 
 /** Where a jump lands: a question is scrolled to, any other page opens at its top. */
 export const opensAtTop = (target) => !(target.tab === "qa" && target.question);
