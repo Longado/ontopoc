@@ -122,7 +122,12 @@ def _amounts(t: dict) -> list:
     date_ids = [d['id'] for d in business]
     mine = lambda *values: [a for a in t['amounts'] if (a['answer'] or {}).get('value') in values]
     out = []
+    one_row_each = (t['grain']['answer'] or {}).get('value') == 'one_object'
     for a in mine('running', 'latest'):
+        if one_row_each and a['answer']['value'] == 'latest':   # each row is already its object's latest value
+            out.append(_client('latest', f'{quote(a["field"])}是{a["answer"]["says"]}：这张表一行一个对象，可以按对象直接相加；'
+                                         '不要再和明细表里同一对象的数重复相加', [a['answer']], [a['id']]))
+            continue
         sort = f'排序用业务日期列{dates}' if business else '排序列待定'
         out.append(_client('latest', f'{quote(a["field"])}是{a["answer"]["says"]}：汇总前先按它所属的对象保留最新一行再加总，不能跨行相加。{sort}；按哪个对象保留，编排时定',
                            [a['answer']], [a['id'], *date_ids]))
