@@ -199,6 +199,14 @@ class TableEntryTests(unittest.TestCase):
                 self.assertIn(said_so, e['text'])
         self.assertEqual(len(entries(self.SPEC, 'ledger', 'latest')), 2)
 
+    def test_a_latest_figure_on_a_table_with_one_row_per_object_is_added_up_across_objects(self):
+        spec = make_spec(cells={**CELLS, GRAIN: said('one_object')})
+        latest, running = entry(spec, 'ledger', 'latest', 'balance'), entry(spec, 'ledger', 'latest', 'running')
+        for said_so in ('截至最近一次的值', '一行一个对象', '按对象直接相加'):
+            self.assertIn(said_so, latest['text'])
+        self.assertNotIn('保留最新一行', latest['text'])
+        self.assertIn('保留最新一行', running['text'])   # a running total is still not added row by row
+
     def test_without_a_business_date_column_the_sort_column_is_left_open(self):
         spec = make_spec(cells={k: v for k, v in CELLS.items() if k not in ('date:ledger.paid_on',)})
         e = entry(spec, 'ledger', 'latest', 'running')
