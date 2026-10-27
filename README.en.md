@@ -193,7 +193,7 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (962)
-npm --prefix landing-page run test:unit                       # page tests (321)
+npm --prefix landing-page run test:unit                       # page tests (322)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook
