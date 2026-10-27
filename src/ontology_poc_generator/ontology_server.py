@@ -162,15 +162,6 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         return check_acceptance(without_wrong(result['ontology'], decisions), bundle, items,
                                 derived=derived_of(memory_key(result)), snapshot_ontology=result['ontology'], card=card_cells(result, bundle))
 
-    def recheck_acceptance(result, bundle, now):
-        """The run's fixed questions asked again of its data, kept in the file's own list; the checked list is returned."""
-        checked = reviewed_acceptance(result, bundle, result['evaluation']['acceptance']['items'])
-        accepted = output_dir / 'acceptance' / f"{memory_key(result)}.json"
-        accepted.parent.mkdir(parents=True, exist_ok=True)
-        accepted.write_text(json.dumps({'saved_at': now, 'file': result['file'], 'purpose': result.get('purpose'), 'items': checked['items']},
-                                       ensure_ascii=False, indent=1), encoding='utf-8')
-        return checked
-
     def card_run(name):
         """(run, rows, graph) as kept() gives them, for a table run whose ontology passed verification; None for a document
         or one that did not, which have no card; FileNotFoundError when there is no such run."""
@@ -1056,7 +1047,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             bundle_path = output_dir / result['saved_as'].replace('.json', '.bundle.json')
             if acceptance and result['file'].get('kind') != 'document' and bundle_path.exists():
                 bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-                result['evaluation']['acceptance'] = recheck_acceptance(result, bundle, now)
+                # only this run's own copy: the file's shared list may be newer than this run, and the next upload inherits it as it is
+                result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, acceptance['items'])
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
