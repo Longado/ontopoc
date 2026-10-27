@@ -146,3 +146,37 @@ test("a fixed question whose basis is written down is said to be settled and no 
   assert.match(md, /口径里已写明：模型加了条件“awarding_subagency = BUREAU OF RECLAMATION”（筛掉 11 个财务支出行）。\n/);
   assert.doesNotMatch(md, /要核对/);
 });
+
+const answeredAt = new Date(2026, 9, 27, 12, 0).toISOString();   // local noon: the same day in every time zone
+const answered = [
+  { id: "unlinked:a", kind: "unlinked", ask: "现在的问法", answer: { choice: "incomplete", says: "数据没导全", text: "合同授标只导了 FY25Q1 的", by: "张三", basis: "10-27 会议", at: answeredAt, asked: "财务支出行有 1,308 行没连上合同授标，是本来就没有，还是数据没导全？" } },
+  { id: "data_gaps", kind: "data_gaps", ask: "客户那边有没有能补上的数据？", answer: { says: "", text: "另一个系统还有", by: "李四", at: answeredAt } }];
+const filledCard = () => ({ cells: 3, blank: 1, objects: [{ id: "complete:financial_rows|source_row", label: "财务支出行", answer: { value: "partial", says: "数据里只有一部分", by: "李四", basis: "邮件", at: answeredAt } }],
+  tables: [{ source: "financial_rows", rows: 1921, grain: { id: "grain:financial_rows", answer: { value: "event", says: "一行是一次事件或一次修改（同一个东西有多行）", by: "张三", at: answeredAt } },
+    dates: [], amounts: [{ id: "amount:financial_rows.gross", field: "gross", answer: { value: "period_to_date", says: "期初到期末的累计值", by: "张三", basis: "10-27 会议", at: answeredAt } }] }] });
+
+test("what the client answered goes in the minutes right after what was still to ask: the question as it was asked, the answer, who, which day and the basis", () => {
+  const md = summaryMarkdown(run(), [ask("还没答的事", [])], { answered });
+  assert.match(md, /## 要和客户确认的事（1 件）\n\n1\. 还没答的事\n\n## 客户已答复的事（2 件）\n\n/);
+  assert.match(md, /1\. 财务支出行有 1,308 行没连上合同授标，是本来就没有，还是数据没导全？\n {3}- 答复：数据没导全：合同授标只导了 FY25Q1 的（张三，10-27，出处：10-27 会议）\n/);
+  assert.match(md, /2\. 客户那边有没有能补上的数据？\n {3}- 答复：另一个系统还有（李四，10-27）\n\n## 读了什么/);
+});
+
+test("the meanings agreed with the client are listed by table as column, what it means, who and the basis", () => {
+  const md = summaryMarkdown(run(), [], { answered: [], card: filledCard() });
+  assert.match(md, /## 已和客户确认的口径\n\n### financial_rows\n\n- 一行是什么：一行是一次事件或一次修改（同一个东西有多行）（张三）\n- gross：期初到期末的累计值（张三，出处：10-27 会议）\n- 财务支出行：数据里只有一部分（李四，出处：邮件）\n\n## 读了什么/);
+  assert.doesNotMatch(md, /## 客户已答复的事/);
+});
+
+test("neither section is there when nothing was answered, whatever else was fetched", () => {
+  for (const md of [summaryMarkdown(run(), []), summaryMarkdown(run(), [], {}), summaryMarkdown(run(), [], { answered: [], card: null }),
+    summaryMarkdown(run(), [], { answered: [], card: { cells: 1, blank: 1, tables: [], objects: [{ id: "complete:a|b", label: "x", answer: null }] } })]) {
+    assert.doesNotMatch(md, /客户已答复的事|已和客户确认的口径/);
+  }
+});
+
+test("a document's minutes carry neither section", () => {
+  const doc = run({ file: { name: "制度.md", kind: "document" }, sources: [{ name: "制度.md", paragraphs: 12, chars: 3400 }],
+    evaluation: { document_fit: { checks: [{ key: "quotes_found", passed: true }] } } });
+  assert.doesNotMatch(summaryMarkdown(doc, [], { answered, card: filledCard() }), /客户已答复的事|已和客户确认的口径/);
+});
