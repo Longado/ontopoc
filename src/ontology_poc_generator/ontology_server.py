@@ -32,6 +32,7 @@ from ontology_poc_generator.versions import version_diff
 from ontology_poc_generator.field_descriptions import MAX_DESCRIPTION, MAX_LABEL, draft_descriptions
 from ontology_poc_generator.handover_form import handover_form
 from ontology_poc_generator.object_forms import form_files
+from ontology_poc_generator.pipeline_spec import pipeline_files, pipeline_spec
 from ontology_poc_generator.ttl_export import ttl_files
 import io
 import zipfile
@@ -182,6 +183,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         card = build_card(result['ontology'], bundle, stored['cells'], graph, (result.get('confirmation') or {}).get('decisions'))
         items, answered = split_answers(open_items(result, bundle, graph, card), stored['items'])
         return card, items, answered
+
+    def pipeline_for(result, bundle, graph):
+        """The pipeline requirements of a kept table run whose ontology passed verification; ValueError says why there are none."""
+        if result['ontology']['status'] != 'auto_built_verified':
+            raise ValueError('本体没有通过结构核验，没有编排需求单；先看退回的原因')
+        key = memory_key(result)
+        stored = card_file(key)
+        card = build_card(result['ontology'], bundle, stored['cells'], graph, (result.get('confirmation') or {}).get('decisions'))
+        return pipeline_spec(result, bundle, graph, card, stored, derived_of(key), rules_state(result, bundle, graph)['adopted'],
+                             datetime.now(timezone.utc).isoformat(timespec='seconds'))
 
     def rules_state(result, bundle, graph=None):
         """The rules offered for this file and the ones a person adopted, checked against this run's data."""
@@ -411,6 +422,17 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, {'items': items, 'answered': answered} if tail == 'open-items' else card)
 
+        def reply_files(self, files, query, name, zip_name):
+            """The files of an export as a zip to download, or as JSON with ?format=json."""
+            if (query.get('format') or [''])[0] == 'json':
+                self.reply(200, {'files': files})
+                return
+            packed = io.BytesIO()
+            with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as z:
+                for file_name, text in files.items():
+                    z.writestr(file_name, text.encode('utf-8'))
+            self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-{zip_name}.zip")
+
         def reply_file(self, body: bytes, content_type: str, filename: str):
             self.send_response(200)
             self.send_header('Content-Type', content_type)
@@ -521,14 +543,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     else:
                         files, zip_name = ttl_files(reviewed, bundle, handover, form, decisions,
                                                     rules_state(result, bundle, graph)['adopted'], f'urn:ontopoc:{memory_key(result)}/', graph), 'TTL'
-                    if (query.get('format') or [''])[0] == 'json':
-                        self.reply(200, {'files': files})
-                    else:
-                        packed = io.BytesIO()
-                        with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as z:
-                            for file_name, text in files.items():
-                                z.writestr(file_name, text.encode('utf-8'))
-                        self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-{zip_name}.zip")
+                    self.reply_files(files, query, name, zip_name)
+                elif tail == 'export/pipeline':
+                    self.reply_files(pipeline_files(pipeline_for(result, bundle, graph)), query, name, '编排需求单')
                 elif tail == 'rules':
                     self.reply(200, rules_state(result, bundle, graph))
                 elif tail == 'suggestions':
