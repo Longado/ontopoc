@@ -3,8 +3,8 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { SearchDialog } from "./SearchDialog.jsx";
 import { askSuggestions, bridgeLines, latestAsked, layoutTables } from "./dataLayoutModel.js";
 import {
-  ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, evidenceLines, evidenceTitle,
-  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, serviceReady, sharePercent, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
+  ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, evidenceLines, evidenceTitle, groupFigure, measureOf,
+  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, serviceReady, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
@@ -302,6 +302,7 @@ function Answer({ item, onPath, run, requery }) {
   const goCard = useContext(GoCard);
   const onCard = cardEvidence(item);
   const a = item.answer;
+  const measure = measureOf(item);
   const note = run && item.query ? conflictNote(run, pathOf(run.ontology, item.query)?.nodes || []) : "";
   const max = a?.groups?.length ? Math.max(...a.groups.map(([, n]) => n)) : 0;
   const width = ([, n, all]) => (a.share ? (n / all) * 100 : (n / max) * 100);   // a measure ranks by its own value, so max covers it too
@@ -309,8 +310,8 @@ function Answer({ item, onPath, run, requery }) {
   const pack = evidenceLines(item);
   return <>
     <ReviewNotes item={item} points={reviewPoints(item, run?.ontology)} elsewhere={elsewhereLine(item, run?.ontology)} requery={requery} />
-    {answerTags(item).length > 0 && <p className="os-answer-tags" title={a.share ? "分母小的组比例容易偏高，请一起看分母" : a.measure?.op === "average" ? "只有一两个值的组，别当成规律" : undefined}>{answerTags(item).map((t) => <span key={t}>{t}</span>)}</p>}
-    {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{a.share ? `${g[1]} / ${g[2]}（${sharePercent(g[1], g[2])}%）` : a.measure ? `${g[1].toLocaleString("zh-CN", { maximumFractionDigits: 2 })}${g[2] === undefined ? "" : `（${g[2]} 个值）`}` : g[1]}</b></li>)}</ul>}
+    {answerTags(item).length > 0 && <p className="os-answer-tags" title={a.share ? "分母小的组比例容易偏高，请一起看分母" : measure?.op === "average" ? "只有一两个值的组，别当成规律" : undefined}>{answerTags(item).map((t) => <span key={t}>{t}</span>)}</p>}
+    {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{groupFigure(item, g)}</b></li>)}</ul>}
     {a?.groups?.length > SHOWN_GROUPS && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? "只看前 10 组" : `展开其余 ${a.groups.length - SHOWN_GROUPS} 组`}</button>}
     {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}

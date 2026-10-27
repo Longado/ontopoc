@@ -18,6 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import ProxyHandler, Request, build_opener
 
+from ontology_poc_generator.ontology_card import SAYS
 from ontology_poc_generator.ontology_confirm import without_wrong
 
 PROTOCOL_VERSIONS = ('2025-06-18', '2025-03-26', '2024-11-05')
@@ -139,11 +140,14 @@ def _route(s, path: str):
 def _with_open_items(s, overview: dict) -> dict:
     """The overview and, from the service's own lists, what has to be settled with the client, what the client has
     already answered, and how many cells of the data-meaning card are still blank. A service that predates a route gives
-    null for it; without the open-items route there is also a note saying why. A document has no card and is not asked:
-    an older service answers a document's card with a 400, which would fail the whole overview."""
+    null for it; without the open-items route there is also a note saying why. A document has no rows, so no card and
+    nothing to settle: it is not asked, since an older service answers a document's card or list with a 400 or 404,
+    which would fail the whole overview."""
+    if overview['kind'] == 'document':
+        return {**overview, 'card': {'cells': 0, 'blank': 0}, 'open_items': [], 'answered_items': []}
     base = f"/api/ontology/runs/{quote(overview['saved_as'])}"
     listed = _route(s, base + '/open-items')
-    card = {'cells': 0, 'blank': 0} if overview['kind'] == 'document' else _route(s, base + '/card')
+    card = _route(s, base + '/card')
     shown = {**overview, 'card': None if card is None else {'cells': card['cells'], 'blank': card['blank']}}
     if listed is None:
         return {**shown, 'open_items': None, 'answered_items': None, 'note': OLD_SERVICE}
@@ -461,6 +465,11 @@ STATES = ('每道题有 status：answered 答出来了；no_data 数据里没有
           'merged 是被算成同一个的对象组（同一个名字下有几个不同的识别值）；found_elsewhere 是 no_data 时，这个值在别的对象里能找到的地方。'
           '口径卡：refused_by_card 是被卡上的哪一格拒答的（status 是 query_limit，reason 是代码给的），照 reason 告诉人，不要换问法绕过；'
           'evidence.card 是答案用了哪张表、数据到哪天（tables）、按哪几条口径（lines），incomplete 是对象在数据里只有一部分，要转告人。')
+CELL_KINDS = {'grain': '一行是什么', 'date': '日期列是什么时间', 'amount': '数值列能不能加', 'complete': '对象全不全'}   # a cell's kind is the front of its id
+# what a value of each kind means, in the card's own words, so an agent can map what the client said ("这是累计数") onto a value
+CELL_VALUES = ('格的 value 只能是下面的值，种类看 id 冒号前的那段，等号后是意思：'
+               + '；'.join(f'{kind}（{CELL_KINDS[kind]}）：' + '、'.join(f'{value}={meaning}' for value, meaning in values.items()) for kind, values in SAYS.items())
+               + '。日期范围格 range 的 value 写 {"from": "YYYY-MM-DD" 或 null, "to": "YYYY-MM-DD" 或 null}。')
 FILES = {'files': {'type': 'array', 'items': {'type': 'string'}, 'description': '本机文件路径：一份或几份数据表（.csv .xlsx），或一份文档（.md .txt .docx .pdf）'},
          'purpose': {'type': 'string', 'description': '建模目的：这份本体要帮你回答什么问题'}}
 
@@ -481,7 +490,7 @@ TOOLS = [
           'open_items 是要和客户确认的事（服务算好的清单，每项有 kind、ask、facts、from_model、target），先看它，是要带给人的事。'
           'answered_items 是已记下客户答复的事，card 是口径卡的格数 {cells, blank}（blank 是还没说清的格，看细节用 get_card）。'
           '服务是旧版本、没有这个清单时 open_items、answered_items 为 null，note 里说明；card 只有在旧版服务没有这条路由时才是 null，'
-          '没有数据行的运行（文档、没通过核验）给 {cells:0, blank:0}。', RUN, ('saved_as',)),
+          '没有数据行的运行（文档、没通过核验）给 {cells:0, blank:0}。文档运行没有要和客户确认的事，也不会去请求这份清单和口径卡：open_items、answered_items 直接给 []。', RUN, ('saved_as',)),
     _tool(list_objects, '本体里的对象：名称、说明、来自哪些表、识别字段、数据里有多少个、几条关系、人的判断。人判错的默认不给，列在 left_out 里；include_wrong=true 全给。', {**RUN, **WRONG}, ('saved_as',)),
     _tool(object_fields, '一个对象的属性：每个字段的类型、长度、空值和来源表（交接到数据平台时要填的列）。', {**RUN, **TYPE}, ('saved_as', 'type')),
     _tool(object_rows, '一个对象在数据里的每一个实例，一页 20 个；all=true 一次给全部。',
@@ -536,10 +545,10 @@ TOOLS = [
           {**RUN, 'reference': {'type': 'object', 'description': '参考本体的 JSON'}, 'reference_name': {'type': 'string', 'description': '参考本体的名字，默认"参考本体"'}},
           ('saved_as', 'reference')),
     _tool(get_card, '一次运行的口径卡（数据是什么意思）：每张表一行是什么、日期列的最早最晚和空值、数值列的类型，以及已答复的格（answer：value、says、by、basis、at）和对象全不全。'
-          '代码能算的已经算好，只有人能答的留空；blank 是还没说清的格数。文档运行没有卡，返回空的 tables。', RUN, ('saved_as',)),
+          '代码能算的已经算好，只有人能答的留空；blank 是还没说清的格数。文档运行没有卡，返回空的 tables。' + CELL_VALUES, RUN, ('saved_as',)),
     _tool(save_card, '记下客户对口径卡的答复，也可以记下“要确认的事”里能答复的事的答复。只记人说的客户答复：by（答复人）和 basis（出处）都来自人，'
           '不要自己填格，不要替客户答，不要按列名猜；只在人明确说了之后调用。校验不过整次不写，服务的说明原样返回。'
-          'cells 每项 {id, value, note?, basis?}：id 来自 get_card，value 是那一格可选的值，null 表示清空；日期范围格 range 的 value 写 {"from": "YYYY-MM-DD" 或 null, "to": "YYYY-MM-DD" 或 null}。'
+          'cells 每项 {id, value, note?, basis?}：id 来自 get_card，value 是那一格可选的值，null 表示清空。' + CELL_VALUES +
           'items 每项 {id, choice?, text?, basis?}：id 来自 run_overview 的 open_items，choice 的可选值看事的种类（unlinked：expected、incomplete；same_name、merged：distinct、same），没有 choice 时 text 必填。'
           'unlinked 答“数据没导全”（incomplete）时，服务会自动把另一端对象在卡上记成“只有一部分”，改答复时撤回，不用另发那一格。'
           'cells 和 items 至少给一样。写完返回 {card, items, answered}。',

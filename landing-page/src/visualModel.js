@@ -1,5 +1,5 @@
 /** Numbers shaped for drawing and narrowing: bars, dots, tags and filters instead of sentences. */
-import { typeLabel } from "./ontologyStudioModel.js";
+import { measureOf, typeLabel } from "./ontologyStudioModel.js";
 
 /** How full a column is: the share of rows with a value, for a bar. null when no rows were read. */
 export function filled(field, rows) {
@@ -39,7 +39,8 @@ export function filterQuestions(items, which) {
 /** What an answer counted, as short tags. */
 export function answerTags(item) {
   const a = item.answer || {};
-  if (a.measure) return [`${a.measure.op === "sum" ? "合计" : "平均"} · ${a.measure.field}`, `读到 ${a.measure.counted} 个值`, ...(a.measure.skipped ? [`跳过 ${a.measure.skipped} 个`] : [])];
+  const m = measureOf(item);   // a grouped answer with no overall figure has no count of values read, only the groups' own
+  if (m) return [`${m.op === "sum" ? "合计" : "平均"} · ${m.field}`, ...(m.counted === undefined ? [] : [`读到 ${m.counted} 个值`]), ...(m.skipped ? [`跳过 ${m.skipped} 个`] : [])];
   if (a.share) return [`占比 · ${a.share.field} = ${a.share.equals}`];
   return [];
 }

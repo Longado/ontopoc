@@ -196,3 +196,13 @@ test("a document's minutes carry neither section", () => {
     evaluation: { document_fit: { checks: [{ key: "quotes_found", passed: true }] } } });
   assert.doesNotMatch(summaryMarkdown(doc, [], { answered, card: filledCard() }), /客户已答复的事|已和客户确认的口径/);
 });
+
+test("a period-to-date total grouped by its period has no whole in the minutes", () => {
+  const md = summaryMarkdown(run({ evaluation: { ...run().evaluation,
+    acceptance: { total: 1, answered: 1, items: [{ question: "每期累计付了多少钱？", note: "", status: "answered", changed: null, path: "财务支出行",
+      query: { start: "customer", group_by: ["期末日期"], measure: { field: "累计支出", op: "sum" } },
+      answer: { groups: [["2024-12-31", 144393033.61, 1213], ["2024-11-30", 24998153.82, 190]], total_groups: 2, without_value: 0 } }] } } }));
+  assert.match(md, /- 2024-12-31：144,393,033.61（1213 个值）/);
+  assert.match(md, /- 2024-11-30：24,998,153.82（190 个值）/);
+  assert.doesNotMatch(md, /全部合计|169,391,187/);
+});

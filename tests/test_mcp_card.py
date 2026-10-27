@@ -5,6 +5,7 @@ import unittest
 
 from ontology_poc_generator import mcp_server
 from ontology_poc_generator.mcp_server import NO_SUCH_ROUTE, LocalService, ToolError, handle
+from ontology_poc_generator.ontology_card import SAYS
 from tests.test_mcp_open_items import ITEMS, RUN, RUN_PATH, serving
 
 CARD = {'tables': [{'source': 'financial_rows', 'rows': 1921, 'objects': [], 'grain': {'id': 'grain:financial_rows', 'unique': None, 'answer': None},
@@ -75,6 +76,19 @@ class ToolListTests(unittest.TestCase):
             self.assertIn(said, save)
 
 
+class CellValueTests(unittest.TestCase):
+    def test_reading_and_saving_the_card_list_each_kind_of_cells_values_with_what_they_mean(self):
+        for name in ('get_card', 'save_card'):
+            text = tools()[name]['description']
+            for kind, values in SAYS.items():
+                self.assertIn(kind, text)
+                for value, meaning in values.items():
+                    self.assertIn(f'{value}={meaning}', text, f'{name}: {kind} {value}')
+            # the two an agent must tell apart when the client says "这是累计数"
+            self.assertIn('running=每次事件后的累计值', text)
+            self.assertIn('period_to_date=期初到期末的累计值', text)
+
+
 class CardToolTests(unittest.TestCase):
     def test_get_card_reads_the_runs_card(self):
         service = Service({'/api/ontology/runs/exam.json/card': CARD})
@@ -141,15 +155,24 @@ class OverviewTests(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, '找不到这次运行'):
             mcp_server.run_overview(service, {'saved_as': 'exam.json'})
 
-    def test_a_document_run_does_not_ask_for_the_card_and_has_no_cells(self):
+    def test_a_document_run_asks_for_neither_the_card_nor_the_open_items_and_has_nothing_to_settle(self):
         document = {**RUN, 'file': {'name': 'brief.md', 'kind': 'document'}}
         for answers in ({RUN_PATH + '/open-items': {'items': ITEMS, 'answered': ANSWERED}},   # an older service refuses a document's card with a 400
                         {RUN_PATH + '/open-items': {'items': ITEMS, 'answered': ANSWERED}, RUN_PATH + '/card': ToolError('文档没有口径卡', 400)}):
             service = Service({RUN_PATH: document, **answers})
             out = mcp_server.run_overview(service, {'saved_as': 'exam.json'})
             self.assertEqual(out['card'], {'cells': 0, 'blank': 0})
-            self.assertEqual((out['open_items'], out['answered_items']), (ITEMS, ANSWERED))
-            self.assertNotIn(RUN_PATH + '/card', [path for path, _ in service.seen])
+            self.assertEqual((out['open_items'], out['answered_items']), ([], []))   # a document has no rows to count, so nothing to ask the client
+            self.assertEqual([path for path, _ in service.seen], [RUN_PATH])
+
+    def test_an_older_service_that_refuses_a_documents_lists_does_not_fail_the_overview(self):
+        document = {**RUN, 'file': {'name': 'brief.md', 'kind': 'document'}}
+        for refusal in (ToolError('文档没有这份清单', 400), ToolError('文档没有这份清单', 404), ToolError(NO_SUCH_ROUTE, 404)):
+            service = Service({RUN_PATH: document, RUN_PATH + '/open-items': refusal, RUN_PATH + '/card': refusal})
+            out = mcp_server.run_overview(service, {'saved_as': 'exam.json'})
+            self.assertEqual((out['open_items'], out['answered_items'], out['card']), ([], [], {'cells': 0, 'blank': 0}))
+            self.assertNotIn('note', out)   # a document is not an old service: it has nothing to settle
+            self.assertEqual([path for path, _ in service.seen], [RUN_PATH])
 
     def test_a_finished_document_build_does_not_ask_for_the_card_either(self):
         document = {**RUN, 'file': {'name': 'brief.md', 'kind': 'document'}}

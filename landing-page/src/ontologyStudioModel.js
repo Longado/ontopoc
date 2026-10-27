@@ -86,15 +86,31 @@ function measureLine(m, whole) {
 /** A share as a figure, never rounded up into something it is not: 2 in 300 is 0.67%, not 1%. */
 export const sharePercent = (matched, all) => (all ? (matched / all) * 100 : 0).toLocaleString("zh-CN", { maximumSignificantDigits: 2, useGrouping: false });
 
+/** What an answer adds up or averages: its own measure, else — for a grouped answer, which carries no overall figure when
+ *  its groups must not be added together (a period-to-date column grouped by its period) — the one the question asked for. */
+export function measureOf(item) {
+  const a = item.answer;
+  if (a?.measure) return a.measure;
+  const asked = a?.groups ? item.query?.measure : null;
+  return asked ? { field: asked.field ?? asked.derived, op: asked.op } : null;
+}
+
+/** The figure beside one group's bar: a share with its denominator, a measure with the values it was computed from, else the count. */
+export function groupFigure(item, [, n, all]) {
+  if (item.answer.share) return `${n} / ${all}（${sharePercent(n, all)}%）`;
+  if (measureOf(item)) return `${n.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}${all === undefined ? "" : `（${all} 个值）`}`;
+  return n;
+}
+
 export function answerLines(item) {
   const a = item.answer;
   if (!a) return [];
-  if (a.measure && a.groups) {
+  if (a.groups && measureOf(item)) {
     return [...a.groups.map(([value, n, read]) => `${value}：${NUMBER.format(n)}${read === undefined ? "" : `（${read} 个值）`}`),
       ...(a.total_groups > a.groups.length ? [`另有 ${a.total_groups - a.groups.length} 组未列出`] : []),
       ...(a.unread_groups ? [`另有 ${a.unread_groups.count} 组一个能读成数字的值都没有，不算作 0，没有排进来（例如 ${a.unread_groups.examples.join("、")}）`] : []),
       ...(a.without_value ? [`${a.without_value} 个没有这个值${a.without_value_examples?.length ? `（例如 ${a.without_value_examples.join("、")}）` : ""}`] : []),
-      measureLine(a.measure, true)];
+      ...(a.measure ? [measureLine(a.measure, true)] : [])];
   }
   if (a.measure) return [measureLine(a.measure)];
   if (a.total !== undefined) return [a.share ? `共 ${a.total} 个，其中 ${a.matched} 个“${a.share.field}”为“${a.share.equals}”（${sharePercent(a.matched, a.total)}%）` : `共 ${a.total} 个`];
@@ -215,9 +231,12 @@ export function serviceBlock(health, needsModel) {
 /** Whether a step on a saved run can go ahead now: the service is there, and the key too when the step calls the model. */
 export const serviceReady = (run, health, needsModel) => Boolean(run?.saved_as) && !serviceBlock(health, needsModel);
 
-/** What to tell the user when the local service answers with an error. A 404 means the running service predates this page. */
+const NO_SUCH_ROUTE = "Unknown ontology endpoint";   // what the service's router says for a path it does not have
+
+/** What to tell the user when the local service answers with an error. The router's 404 (or a 404 that says nothing) means
+ *  the running service predates this page; any other 404 is about the run or the item, and says so in its own words. */
 export function serviceError(status, data) {
-  if (status === 404) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
+  if (status === 404 && (!data?.error || data.error === NO_SUCH_ROUTE)) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
   return data?.error || `服务返回 ${status}`;
 }
 

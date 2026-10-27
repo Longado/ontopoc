@@ -9,6 +9,14 @@ test("an outdated local service is told apart from other failures", () => {
   assert.equal(serviceError(500, null), "服务返回 500");
 });
 
+test("a 404 about a run that is gone says so in the service's own words; only the router's 404 means an old service", () => {
+  assert.equal(serviceError(404, { error: "找不到这次运行，可能已经被删掉了" }), "找不到这次运行，可能已经被删掉了");
+  assert.equal(serviceError(404, { error: "本体库里没有这一项。" }), "本体库里没有这一项。");
+  assert.match(serviceError(404, { error: "Unknown ontology endpoint" }), /重启建模服务/);
+  assert.match(serviceError(404, null), /重启建模服务/);   // nothing was said about a run: the old-service sentence stays
+  assert.match(serviceError(404, {}), /重启建模服务/);
+});
+
 test("a step that only saves needs the service, a step that calls the model also needs the key, and each says which is missing", () => {
   assert.equal(serviceBlock("ready", false), "");
   assert.equal(serviceBlock("ready", true), "");
