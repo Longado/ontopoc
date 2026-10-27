@@ -12,9 +12,10 @@ export function askedItem(run, question) {
   return null;
 }
 
-/** The entry of the question's own query that a model-filter item is about, in the words the service looks it up by. */
+/** The entry of the question's own query that a model-filter item is about, in the words the service looks it up by.
+ *  None once it was dropped and worked out again: what is left to look at is the new answer. */
 export function dropFor(run, open) {
-  if (open.kind !== "model_filter" || !open.question || !open.filter) return null;
+  if (open.kind !== "model_filter" || !open.question || !open.filter || open.requeried) return null;
   const item = askedItem(run, open.question);
   if (!item) return null;
   const point = reviewPoints(item, run.ontology).find((p) => p.kind === "filter" && p.field === open.filter.field && p.equals === open.filter.equals);

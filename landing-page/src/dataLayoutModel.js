@@ -24,6 +24,14 @@ export function askSuggestions(run) {
   return (run.evaluation?.questions?.items || []).filter((i) => i.status === "answered").slice(0, 3);
 }
 
+/** The questions asked in the box, each once as it stands now: asking again or working out again adds a round, and only
+ *  the last answer to a question counts. */
+export function askedNow(run) {
+  const latest = new Map();
+  for (const round of run.evaluation?.asked || []) for (const item of round.items || []) latest.set(item.question ?? item, item);
+  return [...latest.values()];
+}
+
 /** The last question asked in the box, or the error it ended with. */
 export function latestAsked(run) {
   const last = (run.evaluation?.asked || []).at(-1);

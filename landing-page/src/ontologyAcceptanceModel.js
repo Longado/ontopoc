@@ -25,6 +25,9 @@ export function replacesAccepted(run, item) {
   return Boolean(same?.query && item.query && !sameQuery(same.query, item.query));
 }
 
+/** The words written for the query a new answer is about to replace: for the person to read, not to fill in for the new one. */
+export const replacedNote = (run, item) => (replacesAccepted(run, item) ? savedAcceptance(run).find((s) => s.question === item.question)?.note || "" : "");
+
 /** "" when this question can be fixed as an acceptance question, else why not. A question nothing can answer yet
  *  can be fixed too: otherwise the ones that pass hide the one the client actually asked for. */
 export function canAccept(run, item) {
