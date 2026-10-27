@@ -96,7 +96,7 @@ function Inspector({ run, selected, findings, confirm }) {
   </div>;
 }
 
-export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelected, path, onClearPath, reveal, confirm, suggestions = [] }) {
+export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelected, path, onClearPath, reveal, confirm, suggestions = [], showHints = false, onShowHints = () => {} }) {
   const { ontology } = run;
   const definition = run.schema === "ontology_definition.v1";
   const findings = findingsByType(run.evaluation.data_fit);
@@ -122,7 +122,7 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
     return { key: r.key, from: r.from, to: r.to, ...edgePath(at[r.from], at[r.to], twin) };
   });
   const pairs = (a, b) => lines.filter((l) => (l.from === a && l.to === b) || (l.from === b && l.to === a)).length;   // bow a suggestion off a relation it shares a pair with
-  const hinted = suggestions.filter((x) => at[x.from] && at[x.to]).map((x, i) => ({ key: `hint-${i}`, hint: x, ...edgePath(at[x.from], at[x.to], pairs(x.from, x.to) + 1) }));
+  const hinted = (showHints ? suggestions : []).filter((x) => at[x.from] && at[x.to]).map((x, i) => ({ key: `hint-${i}`, hint: x, ...edgePath(at[x.from], at[x.to], pairs(x.from, x.to) + 1) }));
   const focus = path ? { nodes: new Set(path.nodes), edges: new Set(path.edges) }
     : focusing || selected !== chosen ? null : edge ? { nodes: new Set([edge.from, edge.to]), edges: new Set([edge.key]) } : neighboursOf(ontology, selected.key);
   const dim = (kind, key) => focus && (kind === "node" ? !focus.nodes.has(key) : !focus.edges.has(key)) ? " is-dim" : "";
@@ -141,7 +141,8 @@ export function OntologyGraph({ run, onAsk, selected: chosen, onSelect: setSelec
   const isSelected = (kind, key) => selected.kind === kind && selected.key === key;
   return <div className="og-wrap" ref={wrap}>
     <div className="og-canvas" ref={canvas}>
-      <div className="og-bar"><span>{ontology.object_types.length} 个对象 · {ontology.relations.length} 条关系{!focusing && ontology.object_types.length > 2 && <button type="button" className="pr-link og-focus-link" onClick={() => setMode("focus")}>只看选中的周围</button>}</span>
+      <div className="og-bar"><span>{ontology.object_types.length} 个对象 · {ontology.relations.length} 条关系{!focusing && ontology.object_types.length > 2 && <button type="button" className="pr-link og-focus-link" onClick={() => setMode("focus")}>只看选中的周围</button>}
+          {suggestions.length > 0 && <label className="og-hint-toggle"><input type="checkbox" checked={showHints} onChange={(e) => onShowHints(e.target.checked)} />显示代码建议的关系（{suggestions.length}）</label>}</span>
         <span>{definition ? "定义图，不含实例数据" : run.evaluation.data_fit ? `数据检查：${problemCount} 处问题${noteCount ? `，${noteCount} 处提示` : ""}` : run.evaluation.document_fit ? `${run.evaluation.document_fit.kept} 项都有原文引用` : "未评测"}</span></div>
       {focusing && <div className="og-focusbar">
         <span>{path ? "只显示查询经过的对象" : <>只显示“{typeLabel(ontology, center)}”和相连的 {graph.nodes.length - 1} 个</>}</span>
