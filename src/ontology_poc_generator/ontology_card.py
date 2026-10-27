@@ -292,7 +292,7 @@ def refusal(cells: dict, bundle: dict, measure: dict, where: list, dims: list) -
         cell_id, column = f'amount:{field}', field.partition('.')[2]
         meaning = (cells.get(cell_id) or {}).get('value')
         if meaning == 'running':
-            reason = f'「{column}」在口径卡里是“{SAYS["amount"]["running"]}”：一行已经包含之前的数，跨行相加会重复。可以改问某一次的值，或每个对象最近一次的值。'
+            reason = f'「{column}」在口径卡里是“{SAYS["amount"]["running"]}”：一行已经包含之前的数，跨行相加会重复。可以改问某一次（某个对象、某一天）的值。'
         elif meaning == 'period_to_date' and not _on_one_period(cells, bundle, field, where, dims):
             reason = (f'「{column}」在口径卡里是“{SAYS["amount"]["period_to_date"]}”：要先固定在一期上'
                       '（按同一张表里一个不是取数或录入时间的日期列，筛一个日期或按它分组），才能相加。')
