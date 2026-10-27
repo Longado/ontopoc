@@ -3,6 +3,7 @@
 import { editedLabel, reviewPoints, statusPill } from "./answerModel.js";
 import { ACCEPTANCE_LABELS, changeLabel } from "./ontologyAcceptanceModel.js";
 import { openItemsEmpty } from "./openItemsModel.js";
+import { answeredRows, confirmedCells, stampParts } from "./cardModel.js";
 import { CHECK_LABELS, answerLines, isDocument, localTime, typeLabel } from "./ontologyStudioModel.js";
 
 const name = (ontology, key) => typeLabel(ontology, key);
@@ -29,8 +30,9 @@ function clipped(text, room) {
 }
 
 /** The meeting minutes. `openItems` is the service's list of things to settle with the client; null when it could not be had.
- *  A document has no such list (code counts rows, and it has none), so its minutes do not carry the section. */
-export function summaryMarkdown(run, openItems = null) {
+ *  `client` is what the client has answered: the items answered and the data-meaning card; each section is left out when empty.
+ *  A document has none of this (code counts rows, and it has none), so its minutes do not carry the sections. */
+export function summaryMarkdown(run, openItems = null, client = {}) {
   const { ontology, evaluation } = run;
   const fit = evaluation.data_fit || evaluation.document_fit;
   const confirmed = run.confirmation;
@@ -44,6 +46,17 @@ export function summaryMarkdown(run, openItems = null) {
       if (!openItems.length) out.push(openItemsEmpty(run));
       openItems.forEach((o, i) => out.push(`${i + 1}. ${o.ask}${o.from_model ? "（模型的说法）" : ""}`, ...(o.facts || []).map((f) => `   - ${f}`)));
       out.push("");
+    }
+    const answered = answeredRows(client.answered || []);
+    if (answered.length) {
+      out.push(`## 客户已答复的事（${answered.length} 件）`, "");
+      answered.forEach((r, i) => out.push(`${i + 1}. ${r.asked}`, `   - 答复：${r.says}（${stampParts(r.item.answer).join("，")}）`));
+      out.push("");
+    }
+    const agreed = confirmedCells(client.card);
+    if (agreed.length) {
+      out.push("## 已和客户确认的口径", "");
+      for (const t of agreed) out.push(`### ${t.source}`, "", ...t.lines.map((l) => `- ${l.name}：${l.says}（${[l.by, ...(l.basis ? [`出处：${l.basis}`] : [])].join("，")}）`), "");
     }
   }
 

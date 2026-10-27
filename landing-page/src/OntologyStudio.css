@@ -583,3 +583,33 @@ small.os-tone-warn { color: var(--amber); }
 /* The code's suggested relations on the graph: off until asked for */
 .og-hint-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; color: var(--text-2); font-size: 13px; cursor: pointer; }
 .og-hint-toggle input { accent-color: var(--primary); }
+
+/* 口径卡: one card per table, the code's facts first, then the cells only the client can answer */
+.os-card { display: grid; gap: 10px; }
+.os-card .pr-card-head h2, .os-card-table .pr-card-head h2, .os-card-objects .pr-card-head h2 { margin: 0; }
+.os-card-who { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 16px; }
+.os-card-who label { display: grid; gap: 4px; color: var(--text-2); font-size: 13px; }
+.os-card-who .pr-primary { margin-top: 0; }
+.os-card-who input, .os-card-cell select, .os-card-range input, .os-add textarea { padding: 6px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; color: var(--ink); background: var(--surface); font: inherit; font-size: 13px; }
+.os-add textarea { resize: vertical; }
+.os-card-cell select { max-width: 24em; }
+.os-card-cell select.is-changed, .os-card-range input.is-changed { border-color: var(--amber); background: var(--amber-soft); }
+.os-card-table, .os-card-objects { display: grid; gap: 8px; }
+.os-card-table h3 { margin: 8px 0 0; font-size: 14px; }
+.os-card-fact { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.os-card-cell { display: grid; gap: 4px; justify-items: start; }
+.os-card-stamp { color: var(--text-2); font-size: 12px; white-space: normal; }
+.os-card-range { display: flex; align-items: center; gap: 6px; }
+.os-card-range i { color: var(--text-2); font-style: normal; font-size: 13px; }
+.os-card-evidence { display: grid; gap: 4px; }
+.os-card-evidence p { margin: 0; font-size: 13px; }
+.os-card-link { justify-self: start; }
+
+/* 客户已答复: folded below the list of things still to settle */
+.os-answered summary { cursor: pointer; font-weight: 700; }
+.os-answered-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.os-answered-list .os-open-item { grid-template-columns: minmax(0, 1fr); }
+.os-answered-says { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0; overflow-wrap: anywhere; }
+.os-answer-choices { display: grid; gap: 4px; margin: 0; padding: 0; border: 0; color: var(--text-2); font-size: 13px; }
+.os-answer-choices legend { padding: 0; margin-bottom: 4px; }
+.os-answer-choice { display: flex !important; flex-direction: row; align-items: center; gap: 8px !important; color: var(--ink) !important; }

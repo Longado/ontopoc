@@ -24,10 +24,11 @@ test("an organisation run offers the organisation module and leaves out data and
 });
 
 test("the sidebar offers every module for a table run, and leaves out data and questions for a document", () => {
-  assert.deepEqual(sectionsFor(run()).map(([key]) => key), ["overview", "data", "objects", "graph", "qa", "check"]);
-  assert.deepEqual(sectionsFor(run({ file: { name: "制度.md", kind: "document" } })).map(([key]) => key), ["objects", "graph", "check"]);   // the list is code counting rows: a document has none
-  assert.deepEqual(sectionsFor(null).map(([key]) => key), ["overview", "data", "objects", "graph", "qa", "check"]);
+  assert.deepEqual(sectionsFor(run()).map(([key]) => key), ["overview", "card", "data", "objects", "graph", "qa", "check"]);
+  assert.deepEqual(sectionsFor(run({ file: { name: "制度.md", kind: "document" } })).map(([key]) => key), ["objects", "graph", "check"]);   // the list and the card are code counting rows: a document has none
+  assert.deepEqual(sectionsFor(null).map(([key]) => key), ["overview", "card", "data", "objects", "graph", "qa", "check"]);
   assert.deepEqual(sectionsFor(run())[0], ["overview", "要确认的事"]);
+  assert.deepEqual(sectionsFor(run())[1], ["card", "口径卡"]);   // right after the list of things to settle: the card is where most of them are answered
 });
 
 test("each object is a card: its name, a line about it, the tables it comes from, how many there are and how it connects", () => {
