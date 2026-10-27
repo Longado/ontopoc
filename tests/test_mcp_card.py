@@ -155,15 +155,15 @@ class OverviewTests(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, '找不到这次运行'):
             mcp_server.run_overview(service, {'saved_as': 'exam.json'})
 
-    def test_a_document_run_does_not_ask_for_the_card_and_has_no_cells(self):
+    def test_a_document_run_asks_for_neither_the_card_nor_the_open_items_and_has_nothing_to_settle(self):
         document = {**RUN, 'file': {'name': 'brief.md', 'kind': 'document'}}
         for answers in ({RUN_PATH + '/open-items': {'items': ITEMS, 'answered': ANSWERED}},   # an older service refuses a document's card with a 400
                         {RUN_PATH + '/open-items': {'items': ITEMS, 'answered': ANSWERED}, RUN_PATH + '/card': ToolError('文档没有口径卡', 400)}):
             service = Service({RUN_PATH: document, **answers})
             out = mcp_server.run_overview(service, {'saved_as': 'exam.json'})
             self.assertEqual(out['card'], {'cells': 0, 'blank': 0})
-            self.assertEqual((out['open_items'], out['answered_items']), (ITEMS, ANSWERED))
-            self.assertNotIn(RUN_PATH + '/card', [path for path, _ in service.seen])
+            self.assertEqual((out['open_items'], out['answered_items']), ([], []))   # a document has no rows to count, so nothing to ask the client
+            self.assertEqual([path for path, _ in service.seen], [RUN_PATH])
 
     def test_an_older_service_that_refuses_a_documents_lists_does_not_fail_the_overview(self):
         document = {**RUN, 'file': {'name': 'brief.md', 'kind': 'document'}}

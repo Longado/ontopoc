@@ -52,9 +52,9 @@ test("the status chips lead to the module that explains them", () => {
   assert.deepEqual(["ontology", "stability", "fit", "qa", "ref"].map(sectionOfTile), ["objects", "objects", "check", "qa", "check"]);
 });
 
-test("a run opens on its first module: the list to settle for a table, the objects for a document", () => {
+test("a run on the service opens on its first module: the list to settle for a table, the objects for a document", () => {
   assert.equal(startSection(null), "upload");
-  assert.equal(startSection(run()), "overview");
+  assert.equal(startSection({ ...run(), saved_as: "orders.json" }), "overview");   // the list is the service's: only a saved run has one
   assert.equal(startSection(run({ file: { name: "制度.md", kind: "document" } })), "objects");
   assert.equal(startSection({ ...run(), mode: "org", file: { name: "palantir.md", kind: "document" } }), "objects");
 });
