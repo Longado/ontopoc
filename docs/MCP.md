@@ -76,4 +76,4 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 
 ## 护栏照旧
 
-这些是入口，不是新的 Agent：模型调用仍然只经过 `agent_harness.ask_model` 的四个 Agent，每个用户动作最多三次模型调用，答案由代码在数据上算。工具不改数据、不合并对象；确认和验收问题要调用方明确传入。只连本机。
+这些是入口，不是新的 Agent：模型调用仍然只经过 `agent_harness.ask_model` 的六个 Agent，每个用户动作最多三次模型调用，答案由代码在数据上算。工具不改数据、不合并对象；确认和验收问题要调用方明确传入。只连本机。
