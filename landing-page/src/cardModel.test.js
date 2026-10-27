@@ -174,9 +174,9 @@ test("an answer is not ready until it says something and says who", () => {
 });
 
 test("changing an answer starts from the old one", () => {
-  assert.deepEqual(itemForm({ kind: "unlinked" }, null), { choice: "", text: "", basis: "" });
-  assert.deepEqual(itemForm({ kind: "unlinked" }, { choice: "incomplete", text: "只导了一季", basis: "会议" }), { choice: "incomplete", text: "只导了一季", basis: "会议" });
-  assert.deepEqual(itemForm({ kind: "data_gaps" }, { says: "", text: "有别的系统", by: "张三" }), { choice: "", text: "有别的系统", basis: "" });
+  assert.deepEqual(itemForm(null), { choice: "", text: "", basis: "" });
+  assert.deepEqual(itemForm({ choice: "incomplete", text: "只导了一季", basis: "会议" }), { choice: "incomplete", text: "只导了一季", basis: "会议" });
+  assert.deepEqual(itemForm({ says: "", text: "有别的系统", by: "张三" }), { choice: "", text: "有别的系统", basis: "" });
 });
 
 test("what the client answered is listed with the question as it was asked then, the answer, who, which day and the basis", () => {
