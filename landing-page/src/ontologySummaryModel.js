@@ -81,7 +81,8 @@ export function summaryMarkdown(run, openItems = null) {
     }
     const loose = (fit.relations || []).filter((r) => r.linked_rows < r.rows);
     if (loose.length) {
-      out.push("", "这些关系没有在所有行上连上：", "");
+      if (out[out.length - 1] !== "") out.push("");   // after the bullets above; straight after the count there is already a gap
+      out.push("这些关系没有在所有行上连上：", "");
       out.push(...loose.map((r) => {
         const rel = ontology.relations.find((x) => x.key === r.key);
         return `- 关系“${rel ? `${name(ontology, rel.from)} ${rel.label || "→"} ${name(ontology, rel.to)}` : r.key}”：${r.source} ${count(r.rows)} 行里 ${count(r.rows - r.linked_rows)} 行没连上`;
