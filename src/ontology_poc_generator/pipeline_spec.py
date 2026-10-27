@@ -16,7 +16,7 @@ from ontology_poc_generator.ontology_card import NOT_BUSINESS_TIME, _blank, is_p
 from ontology_poc_generator.ontology_confirm import without_wrong
 from ontology_poc_generator.ontology_eval import _row_owners
 from ontology_poc_generator.open_items import CHOICES, _num, open_items, split_answers
-from ontology_poc_generator.public_ontology import normalize_proposal, normalize_value, resolve
+from ontology_poc_generator.public_ontology import _path_exists, normalize_proposal, normalize_value, resolve
 
 ISO = 'YYYY-MM-DD'
 # the ways a date is written that a pipeline is asked to put right, besides ISO itself: name, pattern, the groups holding year, month, day
@@ -292,9 +292,26 @@ def _joins(reviewed: dict, bundle: dict, graph: dict, answers: dict, listed: set
     return out
 
 
-def _computed(derived: list, kept: dict) -> list:
-    return [_person('computed', f'在{kept[d["type"]].get("label") or d["type"]}上加计算列{quote(d["label"])} = {formula_text(d)}', None, d.get('confirmed_at'))
-            for d in derived if d['type'] in kept]
+def _missing_columns(d: dict, bundle: dict) -> list:
+    """The columns a measure is written over that the data of this version does not have."""
+    out = []
+    for field in dict.fromkeys(f['field'] for term in d['terms'] for f in term['factors']):
+        source, _, path = field.partition('.')
+        if not _path_exists(bundle['sources'].get(source, {}).get('records', []), path):
+            out.append(path)
+    return out
+
+
+def _computed(derived: list, kept: dict, bundle: dict) -> list:
+    out = []
+    for d in derived:
+        if d['type'] not in kept:
+            continue
+        gone = _missing_columns(d, bundle)
+        note = f'；这一版数据里没有{"、".join(map(quote, gone))}，编排前先核对' if gone else ''
+        out.append(_person('computed', f'在{kept[d["type"]].get("label") or d["type"]}上加计算列{quote(d["label"])} = {formula_text(d)}{note}',
+                           None, d.get('confirmed_at')))
+    return out
 
 
 def _checks(rules: list, kept: dict) -> list:
@@ -339,7 +356,7 @@ def pipeline_spec(run: dict, bundle: dict, graph: dict, card: dict, stored: dict
     return {'file': run['file']['name'], 'saved_as': run['saved_as'], 'generated_at': at,
             'tables': [_table(t, profiles[t['source']], bundle['sources'][t['source']]['records'], kept, objects, fit, run) for t in card['tables']],
             'relations': _joins(reviewed, bundle, graph, stored['items'], {i['id'] for i in listed}),
-            'derived': _computed(derived, kept), 'rules': _checks(rules, kept),
+            'derived': _computed(derived, kept, bundle), 'rules': _checks(rules, kept),
             'open': [*_blank_cells(card), *(_code('open_item', i['ask'], [i['id']]) for i in open_ if i['kind'] in CHOICES)]}
 
 
