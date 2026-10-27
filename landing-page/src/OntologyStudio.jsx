@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import { SearchDialog } from "./SearchDialog.jsx";
 import { askSuggestions, bridgeLines, latestAsked, layoutTables } from "./dataLayoutModel.js";
@@ -18,6 +18,8 @@ import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverMod
 import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
 import { InstanceGraph } from "./InstanceGraph.jsx";
+import { CardSection, AnswerForm } from "./CardSection.jsx";
+import { answeredRows, canAnswerItem, cardBody, cardEvidence, itemAnswer, readAnswerer, rememberAnswerer } from "./cardModel.js";
 import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
 import { dropFor, openItemsEmpty } from "./openItemsModel.js";
 import { RulesView } from "./RulesView.jsx";
@@ -293,8 +295,12 @@ function ReviewNotes({ item, points, elsewhere, requery }) {
   </>;
 }
 
+const GoCard = createContext(null);   // opens the 口径卡 page, for the answers that point at it
+
 function Answer({ item, onPath, run, requery }) {
   const [all, setAll] = useState(false);
+  const goCard = useContext(GoCard);
+  const onCard = cardEvidence(item);
   const a = item.answer;
   const note = run && item.query ? conflictNote(run, pathOf(run.ontology, item.query)?.nodes || []) : "";
   const max = a?.groups?.length ? Math.max(...a.groups.map(([, n]) => n)) : 0;
@@ -308,9 +314,15 @@ function Answer({ item, onPath, run, requery }) {
     {a?.groups?.length > SHOWN_GROUPS && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? "只看前 10 组" : `展开其余 ${a.groups.length - SHOWN_GROUPS} 组`}</button>}
     {note && <p className="pr-muted">{note}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
+    {onCard && <div className="os-card-evidence">
+      {onCard.data && <p className="pr-muted">{onCard.data}</p>}
+      {onCard.lines.map((l, i) => <p key={i} className="pr-muted">{l}</p>)}
+      {onCard.incomplete.length > 0 && <div className="os-notes" role="group" aria-label="数据只有一部分">{onCard.incomplete.map((l, i) => <p key={i} className="os-notes-line"><span>{l}</span></p>)}</div>}
+    </div>}
     {pack.length > 0 && <details className="os-how"><summary>{evidenceTitle(item)}</summary><ul className="os-answer">{pack.map((l) => <li key={l}>{l}</li>)}</ul></details>}
     {item.path && <p className="os-path-line" title="怎么查的"><span aria-hidden="true">↳</span><span className="sr-only">怎么查的：</span>{item.path}{item.query && onPath && <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看</button>}</p>}
     {item.status !== "needs_derived" && <Reason item={item} />}
+    {item.refused_by_card && goCard && <button type="button" className="os-graph-link os-card-link" onClick={goCard}>看口径卡 →</button>}
   </>;
 }
 
@@ -777,8 +789,9 @@ function QaSection({ run, questions, onPath, askRef, place }) {
 }
 
 /** 要确认的事: what the service found that only the client can settle, each with the way to its evidence. */
-function OpenItemCard({ index, item, run, onGo, requery }) {
+function OpenItemCard({ index, item, run, onGo, requery, client }) {
   const [facts, toggle] = useFirst(item.facts || [], 5);
+  const [answering, setAnswering] = useState(false);
   const drop = dropFor(run, item);
   const mine = requery.question === item.question;
   return <li className="os-open-item">
@@ -791,13 +804,34 @@ function OpenItemCard({ index, item, run, onGo, requery }) {
         <button type="button" className="os-graph-link" onClick={() => onGo(item.target)}>看依据 →</button>
         {drop && <button type="button" className="os-graph-link" disabled={!requery.can || requery.busy} title={requery.can ? "不再加这个条件，由代码重算这道题，不调模型" : requery.why}
           onClick={() => requery.onRequery({ question: item.question }, drop)}>{requery.busy && mine ? "重算中…" : "去掉这个条件重算"}</button>}
+        {canAnswerItem(item) && !answering && <button type="button" className="os-graph-link" disabled={!client.can} title={client.can ? undefined : client.why} onClick={() => setAnswering(true)}>记下客户的回答</button>}
       </div>
+      {answering && <AnswerForm item={item} client={client} onDone={() => setAnswering(false)} />}
       {requery.error && mine && <p role="alert" className="pr-error">{requery.error}</p>}
     </div>
   </li>;
 }
 
-function OverviewSection({ run, list, onGo, onDownload, requery }) {
+/** 客户已答复: the things the client has answered, folded away from the list but one click off, each changeable. */
+function AnsweredList({ list, client }) {
+  const [changing, setChanging] = useState(null);
+  const rows = answeredRows(list);
+  if (!rows.length) return null;
+  return <details className="os-answered">
+    <summary>客户已答复（{rows.length}）</summary>
+    <ul className="os-answered-list">{rows.map((r) => <li key={r.id} className="os-open-item">
+      <div className="os-open-body">
+        <p className="os-open-ask">{r.asked}</p>
+        <p className="os-answered-says"><b>{r.says}</b><small className="pr-muted">{r.stamp}</small></p>
+        {changing === r.id
+          ? <AnswerForm item={r.item} answer={r.item.answer} client={client} onDone={() => setChanging(null)} />
+          : <div className="os-open-actions"><button type="button" className="os-graph-link" disabled={!client.can} title={client.can ? undefined : client.why} onClick={() => setChanging(r.id)}>改答复</button></div>}
+      </div>
+    </li>)}</ul>
+  </details>;
+}
+
+function OverviewSection({ run, list, onGo, onDownload, requery, client }) {
   const items = list?.items;
   return <section className="pr-card os-open">
     <div className="pr-card-head"><h2>{items ? `${items.length} 件要和客户确认的事` : "要和客户确认的事"}</h2>
@@ -807,7 +841,8 @@ function OverviewSection({ run, list, onGo, onDownload, requery }) {
     {run.saved_as && !list && <p className="pr-muted">正在读取…</p>}
     {list?.error && <p role="alert" className="pr-error">{list.error}</p>}
     {items && !items.length && <p className="pr-muted">{openItemsEmpty(run)}</p>}
-    {items?.length > 0 && <ol className="os-open-list">{items.map((item, i) => <OpenItemCard key={i} index={i + 1} item={item} run={run} onGo={onGo} requery={requery} />)}</ol>}
+    {items?.length > 0 && <ol className="os-open-list">{items.map((item, i) => <OpenItemCard key={item.id || i} index={i + 1} item={item} run={run} onGo={onGo} requery={requery} client={client} />)}</ol>}
+    {list?.answered?.length > 0 && <AnsweredList list={list.answered} client={client} />}
   </section>;
 }
 
@@ -827,7 +862,11 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const [rulesError, setRulesError] = useState("");
   const [suggestions, setSuggestions] = useState([]);   // relations code sees in the data and the ontology lacks
   const [hints, setHints] = useState(false);   // draw the relations code suggests on the graph
-  const [openItems, setOpenItems] = useState(null);   // the list of things to settle with the client, for one saved run
+  const [openItems, setOpenItems] = useState(null);   // the list of things to settle with the client, and the ones answered, for one saved run
+  const [cardState, setCardState] = useState(null);   // the data-meaning card of one saved run
+  const [answerer, setAnswerer] = useState(() => readAnswerer(storage()));   // who writes down the client's answers; kept across visits
+  const [cardSaving, setCardSaving] = useState(false);
+  const [cardSaveError, setCardSaveError] = useState(null);   // { key, text }: the card, or the item whose form is open
   const [focused, setFocused] = useState(null);   // a question to scroll to and light up once its place is shown
   const [requerying, setRequerying] = useState(false);
   const [requeryError, setRequeryError] = useState("");
@@ -839,21 +878,27 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
       .then((b) => setSuggestions(b.suggestions || []), () => setSuggestions([]));   // suggestions are extra: without them the page still works
   }, [run?.saved_as]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {   // asked again whenever the run changes, since every answer, save or confirmation can move what is open
-    if (!run?.saved_as || isDocument(run)) return undefined;   // a document has no rows to count, so no list
+    if (!run?.saved_as || isDocument(run)) return undefined;   // a document has no rows to count, so no list and no card
     let live = true;
-    const done = (items, error) => live && setOpenItems({ saved_as: run.saved_as, items, error });
-    const unreachable = "连不上本机建模服务，清单出不来";   // no answer, or a proxy's page instead of the service's JSON
-    fetch(`/api/ontology/runs/${run.saved_as}/open-items`, { cache: "no-store" }).then(
-      async (r) => {
-        const body = await r.json().catch(() => null);
-        if (!body) done(null, unreachable);
-        else if (r.ok && Array.isArray(body.items)) done(body.items, "");
-        else done(null, `清单出不来：${serviceError(r.status, body)}`);
-      },
-      () => done(null, unreachable));
+    const read = (what, path, valid, set) => {
+      const unreachable = `连不上本机建模服务，${what}出不来`;   // no answer, or a proxy's page instead of the service's JSON
+      return fetch(`/api/ontology/runs/${run.saved_as}/${path}`, { cache: "no-store" }).then(
+        async (r) => {
+          const body = await r.json().catch(() => null);
+          if (!body) set(null, unreachable);
+          else if (r.ok && valid(body)) set(body, "");
+          else set(null, `${what}出不来：${serviceError(r.status, body)}`);
+        },
+        () => set(null, unreachable));
+    };
+    read("清单", "open-items", (b) => Array.isArray(b.items),
+      (body, error) => live && setOpenItems({ saved_as: run.saved_as, items: body?.items ?? null, answered: Array.isArray(body?.answered) ? body.answered : [], error }));
+    read("口径卡", "card", (b) => Array.isArray(b.tables),
+      (body, error) => live && setCardState({ saved_as: run.saved_as, card: body, error }));
     return () => { live = false; };
   }, [run]);
   const openList = openItems?.saved_as === run?.saved_as ? openItems : null;
+  const cardList = cardState?.saved_as === run?.saved_as ? cardState : null;
   useEffect(() => {
     if (!focused) return undefined;
     const el = [...document.querySelectorAll("[data-question]")].find((e) => e.dataset.question === focused.question);
@@ -1000,6 +1045,27 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     setRequeryFor(item.question);
     if (await post("/api/ontology/requery", { saved_as: run.saved_as, question: item.question, drop }, setRequerying, setRequeryError)) go({ tab: "qa", place: "ask", question: item.question });
   }
+  function changeAnswerer(name) { setAnswerer(name); rememberAnswerer(storage(), name); }
+  /** Records what the client answered: cells of the card and items of the list in one request. The service answers with the
+   *  new card and lists; the run is read again too, since a card can change which of the fixed questions still hold. */
+  async function saveClient({ cells = [], items = [] }, key) {
+    setCardSaving(true); setCardSaveError(null);
+    try {
+      const response = await fetch("/api/ontology/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cardBody({ saved_as: run.saved_as, by: answerer, cells, items })) });
+      const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
+      if (!response.ok) throw new Error(serviceError(response.status, data));
+      setOpenItems({ saved_as: run.saved_as, items: data.items, answered: data.answered, error: "" });
+      setCardState({ saved_as: run.saved_as, card: data.card, error: "" });
+      const fresh = await fetch(`/api/ontology/runs/${run.saved_as}`, { cache: "no-store" });
+      const body = await fresh.json().catch(() => ({}));
+      if (!fresh.ok) throw new Error(`已记下，但没能读到最新的运行结果，验收题可能还没更新：${serviceError(fresh.status, body)}`);
+      update(body);
+      return true;
+    } catch (e) {
+      setCardSaveError({ key, text: e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message });
+      return false;
+    } finally { setCardSaving(false); }
+  }
   function askOntology() { setQaPlace("ask"); setTab("qa"); setTimeout(() => askRef.current?.focus(), 50); }
   const goConfirm = () => { setObjectKey(null); setObjPlace("confirm"); setTab("objects"); };
   function showOnGraph(type) { if (!type) return; setPath(null); setSelected({ kind: "node", key: type }); setView("graph"); setTab("graph"); setReveal((n) => n + 1); }
@@ -1027,13 +1093,16 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const download = () => save(JSON.stringify(run, null, 2), "application/json", "本体和评测.json");
-  const downloadSummary = () => save(summaryMarkdown(run, openList?.items ?? null), "text/markdown;charset=utf-8", "纪要.md");
+  const downloadSummary = () => save(summaryMarkdown(run, openList?.items ?? null, { answered: openList?.answered, card: cardList?.card }), "text/markdown;charset=utf-8", "纪要.md");
 
   const connected = serviceReady(run, health, false);
   const requeryProps = { can: connected, why: run?.saved_as ? serviceBlock(health, false) : "示例结果不能重算，上传自己的文件后可以", busy: requerying, error: requeryError, question: requeryFor, onRequery: requery };
   const questions = { canAsk: serviceReady(run, health, true), canDerive: connected, canCompare: connected, health, requery: requeryProps, busy: asking, error: askError, onAsk: ask, onCompare: compare, comparing, compareError, onUpdate: update, onUpload: () => setTab("upload"),
     onAccept: (items, again) => post("/api/ontology/acceptance", { saved_as: run.saved_as, items, ...(again ? { replace_question: again } : {}) }, setAccepting, setAcceptError), accepting, acceptError, onGoConfirm: goConfirm,
     onDerive: (item) => post("/api/ontology/derived", { saved_as: run.saved_as, derive: item.derive }, setDeriving, setDeriveError), deriving, deriveError };
+  const cardWhy = run?.saved_as ? serviceBlock(health, false) : "示例结果不能保存";   // saving a card needs the service, not the model's key
+  const client = { by: answerer, setBy: changeAnswerer, busy: cardSaving, error: cardSaveError, can: !cardWhy, why: cardWhy,
+    onSave: (item, form) => saveClient(itemAnswer(item, form), item.id), onSaveCells: (cells) => saveClient({ cells }, "card") };
   const inDetail = tab === "objects" && objectKey;
   const placeOf = (items, key) => items.find(([k]) => k === key)?.[1];
   const crumb = !run ? [] : [sectionsFor(run).find(([k]) => k === tab)?.[1] || "",
@@ -1054,10 +1123,11 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
       </div>
     </header>}
     {inDetail && <h1 id="os-title" className="sr-only">{folderLabel(run.file.name)}</h1>}
-    <div className="pr-panel os-panel">
+    <GoCard.Provider value={() => go({ tab: "card" })}><div className="pr-panel os-panel">
       {run && tab !== "upload" && !isDocument(run) && <VerificationIssues ontology={run.ontology} />}
       {tab === "upload" && <UploadTab runs={runs} health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
-      {tab === "overview" && run && <OverviewSection run={run} list={openList} onGo={go} onDownload={downloadSummary} requery={requeryProps} />}
+      {tab === "overview" && run && <OverviewSection run={run} list={openList} onGo={go} onDownload={downloadSummary} requery={requeryProps} client={client} />}
+      {tab === "card" && run && <CardSection key={run.saved_as} run={run} state={cardList} client={client} blocked={cardWhy} />}
       {tab === "objects" && run && (objectKey
         ? <ObjectDetail key={`${objectKey}-${objectSub.n}`} startAt={objectSub.sub} run={run} typeKey={objectKey} confirm={confirmProps} onBack={() => setObjectKey(null)} onOpen={setObjectKey} onSaveConfirm={goConfirm}
           form={isDocument(run) ? null : { canDraft: Boolean(run.saved_as) && !serviceBlock(health, true), draftWhy: serviceBlock(health, true), canSave: connected, saveWhy: serviceBlock(health, false), drafting, saving: savingForm, error: formError,
@@ -1076,7 +1146,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
         <OrgSection run={run} place={orgPlace} onShow={showOnGraph} /></SubLayout>}
       {run && <div hidden={tab !== "check"}><CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions}
         rules={{ canSave: connected, busy: savingRules, error: rulesError, onSave: (next) => post("/api/ontology/rules", { saved_as: run.saved_as, ...next }, setSavingRules, setRulesError) }} /></div>}
-    </div>
+    </div></GoCard.Provider>
     {searching && open && <SearchDialog run={run} decisions={decisions} onGo={go} onClose={() => setSearching(false)} />}
   </section>;
 }

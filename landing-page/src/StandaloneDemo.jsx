@@ -23,6 +23,7 @@ const copy = {
 
 const ICONS = {   // one stroke each, drawn on a 24 grid, like the platform's own sidebar
   overview: <><path d="M10 6h10M10 12h10M10 18h10" /><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M3.5 18l1.5 1.5 2.5-2.5" /></>,
+  card: <><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 10h16M9 10v9M12.5 14.5h4" /></>,
   data: <><path d="M12 15V4" /><path d="m7 9 5-5 5 5" /><path d="M5 15v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4" /></>,
   objects: <><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z" /><path d="M13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z" /></>,
   graph: <><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="8" r="2.5" /><circle cx="10" cy="18" r="2.5" /><path d="m8.3 7 7.4 1M7 8.3l2 7.4M16.5 10l-5 6" /></>,
