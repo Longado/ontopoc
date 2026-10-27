@@ -409,7 +409,7 @@ class RelationTests(unittest.TestCase):
         e = self.join('project_id')
         self.assertEqual((e['source'], e['refs']), ('code', ['unlinked:entry_project']))
         self.assertTrue(not {'by', 'basis', 'at'} & set(e))
-        self.assertIn('连不上的行怎么处理还没说清', e['text'])
+        self.assertIn('连不上的 1 行怎么处理还没说清', e['text'])
         self.assertIn('1 行连不上', e['text'])
 
     def test_a_relation_that_links_every_row_has_nothing_to_settle(self):
@@ -437,13 +437,13 @@ class RelationTests(unittest.TestCase):
         # a row links when both its department and its project are there, as the data check counts it; joined on the
         # columns, each end then misses the rows that name one its table does not have
         self.assertIn('ledger.dept_code 对 depts.code，ledger.project_id 对 projects.pid：ledger 6 行，depts 3 行，projects 2 行，'
-                      '连上 4 行；2 行连不上。连不上的行怎么处理还没说清。按这几列直接关联，2 行的部门在 depts 里找不到，1 行的项目在 projects 里找不到', e['text'])
+                      '连上 4 行；2 行连不上。按这几列直接关联，2 行的部门在 depts 里找不到，1 行的项目在 projects 里找不到。连不上的 2 行怎么处理还没说清', e['text'])
 
     def test_rows_naming_an_object_its_table_lacks_are_counted_besides_what_the_data_check_links(self):
         [e] = make_spec(ontology=READ_TWICE, items={}, confirmation=None)['relations']
         # V9 is read from the ledger as a vendor, so the data check links its row; the vendors table has no V9
-        self.assertIn('ledger.vendor_uei 对 vendors.uei：ledger 6 行，vendors 3 行，连上 5 行；1 行连不上。连不上的行怎么处理还没说清。'
-                      '按这几列直接关联，1 行的供应商在 vendors 里找不到', e['text'])
+        self.assertIn('ledger.vendor_uei 对 vendors.uei：ledger 6 行，vendors 3 行，连上 5 行；1 行连不上。'
+                      '按这几列直接关联，1 行的供应商在 vendors 里找不到（其中 1 行已算在连上的行里）。连不上的 1 行怎么处理还没说清', e['text'])
         self.assertEqual((e['source'], e['refs']), ('code', ['unlinked:entry_vendor']))
 
     def test_an_answer_about_the_rows_that_did_not_link_goes_with_the_counts_of_the_data_check(self):
@@ -451,8 +451,8 @@ class RelationTests(unittest.TestCase):
         self.assertEqual((e['source'], e['by'], e['refs']), ('client', '王五', ['unlinked:entry_vendor']))
         self.assertIn('1 行连不上', e['text'])
         self.assertIn('左关联', e['text'])
-        # the answer is about the rows that did not link: it comes before the rows a join on the columns misses
-        self.assertLess(e['text'].index('左关联'), e['text'].index('按这几列直接关联'))
+        # the answer is about the rows that did not link, says so, and comes last, next to whose answer it is
+        self.assertTrue(e['text'].endswith('连不上的 1 行，客户答复本来就没有对应：用左关联，保留没对上的行'), e['text'])
 
     def test_rows_that_all_link_but_name_an_object_its_table_lacks_do_not_say_every_row_links(self):
         rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
@@ -460,7 +460,7 @@ class RelationTests(unittest.TestCase):
         bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
         spec = make_spec(ontology=READ_TWICE, bundle=bundle, items={}, confirmation=None)
         [e] = spec['relations']
-        self.assertIn('连上 6 行。按这几列直接关联，1 行的供应商在 vendors 里找不到', e['text'])
+        self.assertIn('连上 6 行。按这几列直接关联，1 行的供应商在 vendors 里找不到（其中 1 行已算在连上的行里）', e['text'])
         for left_out in ('每一行都连上了', '连不上', '还没说清'):
             self.assertNotIn(left_out, e['text'])
         self.assertEqual((e['source'], e['refs']), ('code', []))
@@ -468,8 +468,8 @@ class RelationTests(unittest.TestCase):
     def test_a_value_inside_a_list_is_read_one_per_element(self):
         [e] = make_spec(ontology=LINES_ONTOLOGY, bundle=LINES_BUNDLE, items={}, confirmation=None)['relations']
         # O1 (S1, s2), O2 (S1, S9) and O5 (S2) link; O3 has no line and O4 a blank one; S9 is in no row of skus
-        self.assertIn('orders.lines[].sku 对 skus.sku：orders 5 行，skus 2 行，连上 3 行；2 行连不上。连不上的行怎么处理还没说清。'
-                      '按这几列直接关联，1 行的货品在 skus 里找不到', e['text'])
+        self.assertIn('orders.lines[].sku 对 skus.sku：orders 5 行，skus 2 行，连上 3 行；2 行连不上。'
+                      '按这几列直接关联，1 行的货品在 skus 里找不到（其中 1 行已算在连上的行里）。连不上的 2 行怎么处理还没说清', e['text'])
 
     def test_the_object_the_table_is_about_is_not_the_one_joined_whichever_way_the_relation_is_written(self):
         for ends in ({'from': 'entry', 'to': 'vendor'}, {'from': 'vendor', 'to': 'entry'}):
@@ -492,7 +492,7 @@ class RelationTests(unittest.TestCase):
         ontology = {**ONTOLOGY, 'object_types': [ENTRY, vendor], 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': []}
         [e] = make_spec(ontology=ontology, bundle=bundle, items={}, confirmation=None)['relations']
         self.assertIn('ledger.vendor_uei 对 vendors.uei 或 suppliers.sid：ledger 6 行，vendors 3 行，suppliers 1 行，'
-                      '连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）。', e['text'])
+                      '连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）。连不上的 1 行怎么处理还没说清', e['text'])
         self.assertNotIn('找不到', e['text'])
 
     def test_a_row_naming_an_object_its_table_leaves_out_by_a_condition_does_not_link(self):
@@ -501,7 +501,7 @@ class RelationTests(unittest.TestCase):
         ontology = {**ONTOLOGY, 'object_types': [ENTRY, vendor], 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': []}
         [e] = make_spec(ontology=ontology, items={}, confirmation=None)['relations']
         # V2 is Bolt, which the vendors table does not count as a vendor
-        self.assertIn('连上 3 行；3 行连不上（其中 1 行用来连的编号是空的）。连不上的行怎么处理还没说清。按这几列直接关联，2 行的供应商在 vendors 里找不到', e['text'])
+        self.assertIn('连上 3 行；3 行连不上（其中 1 行用来连的编号是空的）。按这几列直接关联，2 行的供应商在 vendors 里找不到。连不上的 3 行怎么处理还没说清', e['text'])
 
     def test_values_split_by_commas_link_one_by_one(self):
         rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
@@ -510,13 +510,13 @@ class RelationTests(unittest.TestCase):
         split = {**VENDOR_TWICE, 'populated_from': [VENDOR_TWICE['populated_from'][0], {**VENDOR_TWICE['populated_from'][1], 'transform': 'split_comma'}]}
         [e] = make_spec(ontology={**READ_TWICE, 'object_types': [ENTRY, split, PROJECT_TWICE]}, bundle=bundle, items={}, confirmation=None)['relations']
         # V1 and V2 are both in the vendors table; V9 is not
-        self.assertIn('连上 5 行；1 行连不上。连不上的行怎么处理还没说清。按这几列直接关联，1 行的供应商在 vendors 里找不到', e['text'])
+        self.assertIn('连上 5 行；1 行连不上。按这几列直接关联，1 行的供应商在 vendors 里找不到（其中 1 行已算在连上的行里）。连不上的 1 行怎么处理还没说清', e['text'])
 
     def test_a_value_a_person_mapped_to_another_links_as_that_one(self):
         alias = {'type': 'vendor', 'source': 'ledger', 'value': 'V9', 'target_source': 'vendors', 'target_value': 'V1'}
         ontology = {**ONTOLOGY, 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': [alias]}
         [e] = make_spec(ontology=ontology, items={}, confirmation=None)['relations']
-        self.assertIn('连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）。', e['text'])
+        self.assertIn('连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）。连不上的 1 行怎么处理还没说清', e['text'])
         self.assertNotIn('找不到', e['text'])
 
     def test_a_row_whose_own_number_is_blank_does_not_link_and_still_names_what_a_join_misses(self):
@@ -529,7 +529,7 @@ class RelationTests(unittest.TestCase):
         [e] = make_spec(ontology=ontology, bundle=bundle, items={}, confirmation=None)['relations']
         # the counts and the blank rows are the data check's, as in the open item; both rows naming V9 miss in a join
         self.assertEqual((stat['rows'] - stat['linked_rows'], stat['empty_rows']), (3, 1))
-        self.assertIn('连上 3 行；3 行连不上（其中 1 行用来连的编号是空的）。连不上的行怎么处理还没说清。按这几列直接关联，2 行的供应商在 vendors 里找不到', e['text'])
+        self.assertIn('连上 3 行；3 行连不上（其中 1 行用来连的编号是空的）。按这几列直接关联，2 行的供应商在 vendors 里找不到。连不上的 3 行怎么处理还没说清', e['text'])
         self.assertEqual(e['refs'], ['unlinked:entry_vendor'])
 
     def test_a_blank_on_an_end_read_from_this_table_alone_still_counts(self):
@@ -567,7 +567,7 @@ class RelationTests(unittest.TestCase):
         ontology = {'status': 'auto_built_verified', 'value_aliases': [], 'ignored_fields': [], 'object_types': [ticket, person],
                     'relations': [{'key': 'ticket_person', 'from': 'ticket', 'to': 'person', 'source': 'tickets'}]}
         [e] = make_spec(ontology=ontology, bundle=bundle, cells={}, items={}, derived=(), rules=(), confirmation=None)['relations']
-        self.assertIn('tickets.assignee 或 tickets.reporter 对 users.id：tickets 4 行，users 1 行，连上 4 行。按这几列直接关联，1 行的人员在 users 里找不到', e['text'])
+        self.assertIn('tickets.assignee 或 tickets.reporter 对 users.id：tickets 4 行，users 1 行，连上 4 行。按这几列直接关联，1 行的人员在 users 里找不到（其中 1 行已算在连上的行里）', e['text'])
 
     def test_two_objects_as_many_in_the_table_join_the_one_read_from_another_table_whichever_way_written(self):
         bundle = {**BUNDLE, 'sources': {'ledger': {'records': [{'no': '1', 'vid': 'V1'}, {'no': '2', 'vid': 'V2'}, {'no': '3', 'vid': 'V3'}], 'requests': []},
@@ -580,8 +580,14 @@ class RelationTests(unittest.TestCase):
                 ontology = {'status': 'auto_built_verified', 'value_aliases': [], 'ignored_fields': [], 'object_types': [entry, vendor],
                             'relations': [{'key': 'entry_vendor', 'source': 'ledger', **ends}]}
                 [e] = make_spec(ontology=ontology, bundle=bundle, cells={}, items={}, derived=(), rules=(), confirmation=None)['relations']
-                self.assertIn('ledger.vid 对 vendors.id：ledger 3 行，vendors 2 行，连上 3 行。按这几列直接关联，1 行的供应商在 vendors 里找不到', e['text'])
+                self.assertIn('ledger.vid 对 vendors.id：ledger 3 行，vendors 2 行，连上 3 行。按这几列直接关联，1 行的供应商在 vendors 里找不到（其中 1 行已算在连上的行里）', e['text'])
                 self.assertNotIn('同一张表', e['text'])
+
+    def test_an_answer_in_the_clients_words_keeps_its_own_full_stop(self):
+        said_so = {'unlinked:entry_vendor': {'choice': None, 'text': '数据下周补上。', 'by': '王五', 'basis': '周会', 'at': AT, 'asked': 'x'}}
+        [e] = make_spec(ontology=READ_TWICE, items=said_so, confirmation=None)['relations']
+        self.assertTrue(e['text'].endswith('连不上的 1 行，客户答复：数据下周补上。'), e['text'])
+        self.assertNotIn('。。', e['text'])
 
     def test_a_relation_judged_wrong_is_not_a_requirement(self):
         wrong = {**CONFIRMATION, 'decisions': {**CONFIRMATION['decisions'], 'relations': {'entry_dept': {'verdict': 'wrong'}}}}
