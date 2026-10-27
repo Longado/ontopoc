@@ -254,6 +254,7 @@ def _join(r: dict, ends: tuple, types: dict, bundle: dict, graph: dict, aliases:
     object is read from this table too."""
     src = r['source']
     records = bundle['sources'][src]['records']
+    links = {ref[1] for _, _, ref in graph['edges'][r['key']]}
     said, tables, misses = [], [], []
     for key in dict.fromkeys(r[end] for end in ends):
         mine = [end for end in ends if r[end] == key]
@@ -264,11 +265,13 @@ def _join(r: dict, ends: tuple, types: dict, bundle: dict, graph: dict, aliases:
         columns = dict.fromkeys(_reference(src, cols) for end in mine for cols in _named_by(r, end, types))
         said.append(f'{" 或 ".join(columns)} 对 {" 或 ".join(_reference(*d) for d in defined)}')
         tables += there
-        missed = sum(any(not graph['sources_of'].get(inst, set()).intersection(there)
-                         for end in mine for inst in _named_objects(r, end, index, record, graph, aliases))
-                     for index, record in enumerate(records))
+        missed = [index for index, record in enumerate(records)
+                  if any(not graph['sources_of'].get(inst, set()).intersection(there)
+                         for end in mine for inst in _named_objects(r, end, index, record, graph, aliases))]
         if missed:
-            misses.append(f'{_num(missed)} 行的{types[key].get("label") or key}在 {"、".join(there)} 里找不到')
+            linked_too = sum(index in links for index in missed)
+            misses.append(f'{_num(len(missed))} 行的{types[key].get("label") or key}在 {"、".join(there)} 里找不到'
+                          + (f'（其中 {_num(linked_too)} 行已算在连上的行里）' if linked_too else ''))
     if not said:
         columns = dict.fromkeys(_reference(src, cols) for end in ends for cols in _named_by(r, end, types))
         said = [f'{" 和 ".join(columns)}（对象读自同一张表，不用另外关联）']
@@ -292,17 +295,18 @@ def _joins(reviewed: dict, bundle: dict, graph: dict, aliases: dict, stats: dict
         about = [k for k in (r['from'], r['to']) if k in owners.get(r['source'], ())]
         ends = ('to',) if about == [r['from']] else ('from',) if about == [r['to']] else ('from', 'to')
         text, left, misses = _join(r, ends, types, bundle, graph, aliases, stats[r['key']])
-        tail = f'。{misses}' if misses else ''
+        text = f'{text}。{misses}' if misses else text
         item_id = f'unlinked:{r["key"]}'
         refs = [item_id] if left and item_id in listed else []
         answer = answers.get(item_id) if refs else None
+        # what is settled about the rows that did not link comes last, so the origin the Markdown adds is next to it
         if not left:
-            out.append(_code('join', text + tail))
+            out.append(_code('join', text))
         elif answer is None:
-            out.append(_code('join', f'{text}。连不上的行怎么处理还没说清{tail}', refs))
+            out.append(_code('join', f'{text}。连不上的 {_num(left)} 行怎么处理还没说清', refs))
         else:
             reply = REPLIES[answer['choice']] + (f'（{answer["text"]}）' if answer['text'] else '') if answer['choice'] else f'客户答复：{answer["text"]}'
-            out.append(_client('join', f'{text}。{reply}{tail}', [answer], refs))
+            out.append(_client('join', f'{text}。连不上的 {_num(left)} 行，{reply}', [answer], refs))
     return out
 
 
