@@ -88,6 +88,18 @@ class FoundElsewhereTests(unittest.TestCase):
         self.assertEqual(result['evidence']['found_elsewhere'],
                          [{'type': 'vehicle', 'field': 'piid', 'equals': 'GS03F102CA', 'count': 1, 'linked': 2}])
 
+    def test_a_part_of_the_numbers_of_many_objects_names_none_of_them_and_is_not_reported(self):
+        # 1425 is the agency code at the front of the vehicles' and the actions' numbers alike
+        ontology = copy.deepcopy(ONTOLOGY)
+        ontology['object_types'].append({'key': 'action', 'label': '合同动作', 'populated_from': [
+            {'source': 'actions', 'identity': {'action_key': 'action_key'}}], 'attributes': []})
+        bundle = {'sources': {**BUNDLE['sources'],
+                              'vehicles': {'records': [{'vehicle_key': '1425|GS03F102CA'}, {'vehicle_key': '1425|OTHER'}]},
+                              'actions': {'records': [{'action_key': '1425|A1'}, {'action_key': '1425|A2'}, {'action_key': '1425|A3'}]}}}
+        result = run_query(ontology, bundle, total_of('1425'))
+        self.assertEqual(result['status'], 'no_data')
+        self.assertNotIn('found_elsewhere', result['evidence'])
+
 
 if __name__ == '__main__':
     unittest.main()

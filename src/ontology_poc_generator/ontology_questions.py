@@ -224,10 +224,11 @@ def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, 
 
 
 def _found_elsewhere(types: dict, graph: dict, start: str, wanted: list) -> list:
-    """For each filter value the start objects do not have: which other kinds of object carry it in their number (the
-    whole number or one part of it, so 4732|GS03F102CA carries GS03F102CA), how many, and how many start objects are
-    directly connected to them. A question about a framework contract asked of its awards is answered "not in the data"
-    and the contract is right there as the parent."""
+    """For each filter value the start objects do not have: the other kinds of object that exactly one object of them
+    carries in its number (the whole number or one part of it, so 4732|GS03F102CA carries GS03F102CA), and how many
+    start objects are directly connected to it. A question about a framework contract asked of its awards is answered
+    "not in the data" and the contract is right there as the parent. A value more objects of a kind carry, such as the
+    agency code 1425 in the numbers of 58 vehicles and 407 actions, names none of them and is not reported."""
     parts = lambda value: {normalize_value(value), *(normalize_value(part) for part in str(value).split('|'))}
     out = []
     for field, equals in wanted:
@@ -236,12 +237,10 @@ def _found_elsewhere(types: dict, graph: dict, start: str, wanted: list) -> list
         for inst in graph['sources_of']:
             if inst[0] != start and any(target in parts(value) for _, value in inst[1]):
                 found.setdefault(inst[0], []).append(inst)
-        # a value many objects carry is one they all refer to (each action's number holds its vehicle's piid): the kind
-        # with the fewest is the one the value names
-        fewest = min((len(v) for v in found.values()), default=0)
-        for key in (k for k in types if k in found and len(found[k]) == fewest):   # in the ontology's order
-            out.append({'type': key, 'field': field, 'equals': equals, 'count': len(found[key]),
-                        'linked': len(set().union(*(linked(graph, inst, start) for inst in found[key])))})
+        # a value many objects carry is one they refer to (each action's number holds its vehicle's piid) or one they
+        # share (the agency code): only a value that picks out a single object can say what the question may be about
+        for key in (k for k in types if len(found.get(k, ())) == 1):   # in the ontology's order
+            out.append({'type': key, 'field': field, 'equals': equals, 'count': 1, 'linked': len(linked(graph, found[key][0], start))})
     return out
 
 
