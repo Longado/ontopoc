@@ -285,6 +285,13 @@ test("the minutes list the meanings the client agreed to by table, leaving out w
   assert.deepEqual(confirmedCells(null), []);
 });
 
+test("an object told apart by where-conditions goes under its own table in the minutes", () => {
+  const filled = card();
+  filled.objects = [{ id: "complete:financial_rows|source_row,submission_period|status=OPEN", type: "open_row", label: "未结分录", count: 3,
+    answer: { value: "partial", says: "数据里只有一部分", by: "李四", basis: "", at } }];
+  assert.deepEqual(confirmedCells(filled).map((g) => g.source), ["financial_rows"]);
+});
+
 test("a cell's note comes with its line in the minutes", () => {
   const filled = card();
   filled.objects[0].answer = { value: "partial", says: "数据里只有一部分", note: "合同授标只导了 FY25Q1 签的", by: "测试人", basis: "10-27 会议", at };
