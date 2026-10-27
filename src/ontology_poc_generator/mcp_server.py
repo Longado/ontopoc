@@ -37,7 +37,7 @@ INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判
 花钱的工具
 - build_ontology、ask_question、draft_form、find_name_variants 会调模型，慢且花钱；其余工具都是本机代码在算，不花钱。
 - build_ontology 要等模型跑完，常常半分钟到几分钟，先跟人说一声。
-- 导出（export_forms、export_ttl、export_mermaid）写成文件，只返回路径。
+- 导出（export_forms、export_ttl、export_mermaid、export_pipeline_spec）写成文件，只返回路径；export_pipeline_spec 的编排需求单交给搭管道的人，只描述要做什么，不执行加工。
 每种答案怎么办
 - answered：先看 evidence.filters。有 not_in_question 的条件，是模型自己加的、题目里没提：
   告诉人模型加了什么、筛掉多少（before、after 是筛前筛后的个数）；人要去掉就用 drop_filter 去掉重算（不调模型）；
@@ -357,6 +357,10 @@ def export_ttl(s, a):
     return _export(s, a, 'ttl')
 
 
+def export_pipeline_spec(s, a):
+    return _export(s, a, 'pipeline')
+
+
 def data_layout(s, a):
     ev = s.run(a.get('saved_as'))['evaluation']
     fit = ev.get('data_fit') or {}
@@ -454,7 +458,7 @@ def find_name_variants(s, a):
 WRONG = {'include_wrong': {'type': 'boolean', 'description': '连人判错的也给（默认不给）'}}
 RUN = {'saved_as': {'type': 'string', 'description': '运行的保存名，来自 list_runs 或 build_ontology'}}
 TYPE = {'type': {'type': 'string', 'description': '对象的 key，来自 list_objects'}}
-OUT_DIR = {'out_dir': {'type': 'string', 'description': '导出文件写到哪个文件夹，必须是绝对路径；不写就是 ~/Downloads/OntoPoc/<运行保存名去掉 .json>/<forms|ttl|mermaid>/'}}
+OUT_DIR = {'out_dir': {'type': 'string', 'description': '导出文件写到哪个文件夹，必须是绝对路径；不写就是 ~/Downloads/OntoPoc/<运行保存名去掉 .json>/<forms|ttl|mermaid|pipeline>/'}}
 EXPORTED = ('文件写到本机的一个文件夹（out_dir，默认在下载文件夹里），同名覆盖，只返回文件的路径和字节数 {dir, files: [{name, path, bytes}], total_bytes, removed}，不返回文件内容。'
             f'文件夹里会留一份清单 {EXPORT_MANIFEST}，记着这一类导出这次写了哪些文件；再导出到同一个文件夹时，上次清单里有、这次没有的文件会被删掉（removed 是删掉的文件名），'
             '清单以外的文件不碰。文件名必须是单纯的文件名，否则整次导出报错、一个文件也不写。')
@@ -518,6 +522,10 @@ TOOLS = [
           {**RUN, 'years': {'type': 'string', 'pattern': '^[0-9]{4}-[0-9]{4}$', 'description': '只画这段年份的关系，如 2016-2022；不写就每段都画'}, **OUT_DIR}, ('saved_as',)),
     _tool(export_ttl, '按 W3C 标准导出 Turtle：ontology.ttl（OWL 类、字段、关系、识别键）、data.ttl（每个对象按识别值命名，同一对象跨表跨版本同名）、'
           'shapes.ttl（采纳的规则写成 SHACL，有规则时才有）。判错的对象和关系不导出。' + EXPORTED, {**RUN, **OUT_DIR}, ('saved_as',)),
+    _tool(export_pipeline_spec, '生成编排需求单，交给搭管道的人：把体检、要确认的事、口径卡、派生指标和采纳的规则里已经说了的“这份数据要怎么加工才能算对”合成一份清单——'
+          '每张表要做的清洗、表之间怎么关联、按期取数、计算列、编排后的校验、还没说清的；每条写明来源（代码查出、客户答复、人确认）。写出 编排需求单.md 和 编排需求单.json。'
+          '只描述要做什么，不执行加工，不调用模型，没有模型 key 也能导出。文档运行和没通过核验的运行没有需求单，服务的说明作为工具错误原样返回。' + EXPORTED,
+          {**RUN, **OUT_DIR}, ('saved_as',)),
     _tool(data_layout, '上传的每张表：行数、跳过的标题行、每列类型长度空值；表没连上时，能把它们连起来的列。', RUN, ('saved_as',)),
     _tool(data_check, '数据体检：七项检查是否通过，以及每类发现的数量和前几个例子。全部由代码算。', RUN, ('saved_as',)),
     _tool(ask_question, '用数据回答一个业务问题：模型把问题写成查询，代码在数据上算答案。不给 question 就让模型出一组题。会调用模型，慢且花钱。' + STATES,
