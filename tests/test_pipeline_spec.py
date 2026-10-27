@@ -456,11 +456,15 @@ class RelationTests(unittest.TestCase):
         rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
         rows[5] = {**rows[5], 'vendor_uei': 'V1'}   # every row names a vendor, so the data check sees every row linked
         bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
-        [e] = make_spec(ontology=READ_TWICE, bundle=bundle, items={}, confirmation=None)['relations']
+        spec = make_spec(ontology=READ_TWICE, bundle=bundle, items={}, confirmation=None)
+        [e] = spec['relations']
         self.assertIn('连上 5 行', e['text'])
         self.assertIn('1 行连不上', e['text'])
         self.assertIn('连不上的行怎么处理还没说清', e['text'])
         self.assertEqual((e['source'], e['refs']), ('code', []))   # there is no item to point at: nobody was asked
+        [unasked] = [o for o in spec['open'] if 'ledger.vendor_uei' in o['text']]   # so it is among what is not settled
+        self.assertIn('1 行', unasked['text'])
+        self.assertIn(f'{len(spec["open"])} 条还没说清', pipeline_markdown(spec))
 
     def test_a_value_inside_a_list_is_read_one_per_element_and_a_row_links_when_every_value_does(self):
         [e] = make_spec(ontology=LINES_ONTOLOGY, bundle=LINES_BUNDLE, items={}, confirmation=None)['relations']
@@ -480,6 +484,60 @@ class RelationTests(unittest.TestCase):
         [e] = make_spec(ontology=ontology, items={}, confirmation=None)['relations']
         for said_so in ('ledger.vendor_uei 对 vendors.uei', 'ledger.project_id 对 projects.pid'):
             self.assertIn(said_so, e['text'])
+
+    def test_an_object_read_from_two_other_tables_links_a_row_found_in_either(self):
+        bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'suppliers': {'records': [{'sid': 'V9'}], 'requests': []}}}
+        vendor = {'key': 'vendor', 'label': '供应商', 'attributes': [],
+                  'populated_from': [{'source': 'vendors', 'identity': {'uei': 'uei'}}, {'source': 'suppliers', 'identity': {'uei': 'sid'}}]}
+        ontology = {**ONTOLOGY, 'object_types': [ENTRY, vendor], 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': []}
+        [e] = make_spec(ontology=ontology, bundle=bundle, items={}, confirmation=None)['relations']
+        for said_so in ('ledger.vendor_uei 对 vendors.uei 或 suppliers.sid', 'vendors 3 行', 'suppliers 1 行', '连上 5 行；1 行连不上',
+                        '1 行用来连的编号是空的'):
+            self.assertIn(said_so, e['text'])
+
+    def test_a_row_naming_an_object_its_table_leaves_out_by_a_condition_does_not_link(self):
+        vendor = {'key': 'vendor', 'label': '供应商', 'attributes': [],
+                  'populated_from': [{'source': 'vendors', 'identity': {'uei': 'uei'}, 'where': [{'path': 'name', 'equals': 'Acme'}]}]}
+        ontology = {**ONTOLOGY, 'object_types': [ENTRY, vendor], 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': []}
+        [e] = make_spec(ontology=ontology, items={}, confirmation=None)['relations']
+        self.assertIn('连上 3 行；3 行连不上', e['text'])   # V2 is Bolt, which the vendors table does not count as a vendor
+
+    def test_values_split_by_commas_link_one_by_one(self):
+        rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
+        rows[0] = {**rows[0], 'vendor_uei': 'V1, V2'}
+        bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
+        split = {**VENDOR_TWICE, 'populated_from': [VENDOR_TWICE['populated_from'][0], {**VENDOR_TWICE['populated_from'][1], 'transform': 'split_comma'}]}
+        [e] = make_spec(ontology={**READ_TWICE, 'object_types': [ENTRY, split, PROJECT_TWICE]}, bundle=bundle, items={}, confirmation=None)['relations']
+        self.assertIn('连上 4 行；2 行连不上', e['text'])   # V1 and V2 are both vendors; V9 is not, and one row names none
+
+    def test_a_value_a_person_mapped_to_another_links_as_that_one(self):
+        alias = {'type': 'vendor', 'source': 'ledger', 'value': 'V9', 'target_source': 'vendors', 'target_value': 'V1'}
+        ontology = {**ONTOLOGY, 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': [alias]}
+        [e] = make_spec(ontology=ontology, items={}, confirmation=None)['relations']
+        self.assertIn('连上 5 行；1 行连不上（其中 1 行用来连的编号是空的）', e['text'])
+
+    def test_a_row_whose_own_object_is_not_made_out_does_not_link_and_says_so(self):
+        rows = [dict(zip(COLUMNS, row)) for row in LEDGER_ROWS]
+        rows[0] = {**rows[0], 'row_no': ''}
+        bundle = {**BUNDLE, 'sources': {**BUNDLE['sources'], 'ledger': {**BUNDLE['sources']['ledger'], 'records': rows}}}
+        ontology = {**ONTOLOGY, 'relations': [ONTOLOGY['relations'][0]], 'value_aliases': []}
+        [e] = make_spec(ontology=ontology, bundle=bundle, items={}, confirmation=None)['relations']
+        self.assertIn('连上 3 行；3 行连不上（其中 1 行用来连的编号是空的，1 行认不出是哪一个支出行）', e['text'])
+        self.assertEqual(e['refs'], ['unlinked:entry_vendor'])   # the same rows the open item counts
+
+    def test_two_objects_as_many_in_the_table_join_the_one_read_from_another_table_whichever_way_written(self):
+        bundle = {**BUNDLE, 'sources': {'ledger': {'records': [{'no': '1', 'vid': 'V1'}, {'no': '2', 'vid': 'V2'}, {'no': '3', 'vid': 'V3'}], 'requests': []},
+                                        'vendors': {'records': [{'id': 'V1'}, {'id': 'V2'}], 'requests': []}}}
+        entry = {'key': 'entry', 'label': '支出行', 'attributes': [], 'populated_from': [{'source': 'ledger', 'identity': {'no': 'no'}}]}
+        vendor = {'key': 'vendor', 'label': '供应商', 'attributes': [],
+                  'populated_from': [{'source': 'vendors', 'identity': {'id': 'id'}}, {'source': 'ledger', 'identity': {'id': 'vid'}}]}
+        for ends in ({'from': 'entry', 'to': 'vendor'}, {'from': 'vendor', 'to': 'entry'}):
+            with self.subTest(**ends):
+                ontology = {'status': 'auto_built_verified', 'value_aliases': [], 'ignored_fields': [], 'object_types': [entry, vendor],
+                            'relations': [{'key': 'entry_vendor', 'source': 'ledger', **ends}]}
+                [e] = make_spec(ontology=ontology, bundle=bundle, cells={}, items={}, derived=(), rules=(), confirmation=None)['relations']
+                self.assertIn('ledger.vid 对 vendors.id：ledger 3 行，vendors 2 行，连上 2 行；1 行连不上', e['text'])
+                self.assertNotIn('同一张表', e['text'])
 
     def test_a_relation_judged_wrong_is_not_a_requirement(self):
         wrong = {**CONFIRMATION, 'decisions': {**CONFIRMATION['decisions'], 'relations': {'entry_dept': {'verdict': 'wrong'}}}}

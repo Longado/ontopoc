@@ -204,6 +204,22 @@ class UnlinkedTests(unittest.TestCase):
         self.assertIn('本来就没有对应的合同授标', item['ask'])
         self.assertEqual(item['complete_id'], 'complete:contracts|award_key')
 
+    def test_an_object_judged_wrong_is_not_what_a_table_is_about(self):
+        ontology = copy.deepcopy(ONTOLOGY)
+        ontology['object_types'][1]['populated_from'].append({'source': 'spend', 'identity': {'award_key': 'award_key'}})
+        ontology['object_types'].append({'key': 'line', 'label': '明细行', 'attributes': [],
+                                         'populated_from': [{'source': 'spend', 'identity': {'line_no': 'line_no'}, 'transform': 'split_comma'}]})
+        ontology['relations'] = [{'key': 'contract_spend', 'from': 'contract', 'to': 'spend', 'label': '包含', 'source': 'spend'}]
+        bundle = {'sources': {'spend': {'records': [{'row_id': '1', 'award_key': 'A1', 'line_no': 'L1,L2'}, {'row_id': '2', 'award_key': 'A1', 'line_no': 'L3'},
+                                                    {'row_id': '3', 'award_key': 'A2', 'line_no': 'L4'}]},
+                              'contracts': {'records': [{'award_key': 'A1'}]}, 'vehicles': {'records': []}, 'vendors': {'records': []}}}
+        fit = {'relations': [{'key': 'contract_spend', 'source': 'spend', 'rows': 3, 'linked_rows': 2, 'empty_rows': 0}], 'orphans': []}
+        decided = {'decisions': {'types': {**{t['key']: {'verdict': 'ok'} for t in ontology['object_types']}, 'line': {'verdict': 'wrong'}},
+                                 'relations': {'contract_spend': {'verdict': 'ok'}}}}
+        [item] = open_items(run({'data_fit': fit}, ontology, confirmation=decided), bundle)
+        # four lines outnumber three spend rows, but a person said lines are not objects: the table is about spend rows
+        self.assertTrue(item['ask'].startswith('支出行（spend）3 行里有 1 行没连上'), item['ask'])
+
     def test_a_relation_without_a_label_is_named_by_its_key(self):
         ontology = copy.deepcopy(ONTOLOGY)
         ontology['relations'][0].pop('label')
