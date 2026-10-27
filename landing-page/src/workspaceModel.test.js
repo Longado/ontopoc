@@ -59,6 +59,11 @@ test("a run opens on its first module: the list to settle for a table, the objec
   assert.equal(startSection({ ...run(), mode: "org", file: { name: "palantir.md", kind: "document" } }), "objects");
 });
 
+test("an example result is not on the service, so it opens on the objects and not on a list that is never there", () => {
+  assert.equal(startSection(run()), "objects");   // run() has no saved_as
+  assert.equal(startSection({ ...run(), saved_as: "orders.json", file: { name: "制度.md", kind: "document" } }), "objects");
+});
+
 test("a jump opens its page at the top, except to a question, which is scrolled to", () => {
   assert.equal(opensAtTop({ tab: "objects", place: "confirm" }), true);
   assert.equal(opensAtTop({ tab: "graph", relation: "r1" }), true);

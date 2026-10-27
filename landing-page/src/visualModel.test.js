@@ -47,6 +47,13 @@ test("what an answer counted is said in a few tags, not a paragraph", () => {
   assert.deepEqual(answerTags({ answer: { total: 3 } }), []);
 });
 
+test("a grouped total with no overall figure is tagged from the question's measure, without a count it does not have", () => {
+  const query = { measure: { field: "gross_outlay", op: "sum" } };
+  assert.deepEqual(answerTags({ query, answer: { groups: [["2024-12-31", 144393033.61, 1213]] } }), ["合计 · gross_outlay"]);
+  assert.deepEqual(answerTags({ query: { measure: { derived: "金额", op: "average" } }, answer: { groups: [] } }), ["平均 · 金额"]);
+  assert.deepEqual(answerTags({ query, answer: null }), []);
+});
+
 test("rows become a CSV a spreadsheet opens, quoting what needs it", () => {
   assert.equal(rowsCsv(["編號", "名稱"], [{ 編號: "03795904", 名稱: "台灣電力, 股份" }, { 編號: "2" }]),
     '﻿編號,名稱\r\n03795904,"台灣電力, 股份"\r\n2,\r\n');
