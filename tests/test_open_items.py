@@ -1,7 +1,9 @@
 import copy
 import unittest
 
-from ontology_poc_generator.open_items import open_items
+from ontology_poc_generator import ontology_card
+from ontology_poc_generator.open_items import check_answers, open_items, split_answers
+from tests.test_ontology_card import ONTOLOGY as LEDGER_ONTOLOGY, bundle as ledger_bundle
 
 KINDS = ['model_filter', 'merged', 'found_elsewhere', 'unlinked', 'same_name', 'unstable', 'check_finding',
          'data_gaps', 'unanswered', 'unjudged']
@@ -73,7 +75,7 @@ class ModelFilterTests(unittest.TestCase):
         items = open_items(run({'asked': asked(answered(PAID, {'filters': filters}))}), BUNDLE)
         self.assertEqual(kinds(items), ['model_filter'])
         self.assertEqual(items[0], {
-            'kind': 'model_filter', 'from_model': False, 'question': PAID,
+            'kind': 'model_filter', 'from_model': False, 'question': PAID, 'id': f'model_filter:{PAID}|subagency=BUREAU OF RECLAMATION',
             'ask': f'「{PAID}」的答案里，模型自己加了条件“subagency = BUREAU OF RECLAMATION”，问题里没提。'
                    '它筛掉了 11 个支出行，这些行的“amount”合计 4,176,392.96。这个条件该不该加？',
             'facts': ['筛选前 1,455 个支出行，筛选后 1,444 个', '被筛掉的有：4431 · P03、4948 · P03'],
@@ -139,7 +141,7 @@ class MergedAndElsewhereTests(unittest.TestCase):
         items = open_items(run({'asked': asked(answered(who, {'merged': groups}))}), BUNDLE)
         self.assertEqual(kinds(items), ['merged'] * 3)
         self.assertEqual(items[0], {
-            'kind': 'merged', 'from_model': False, 'question': who,
+            'kind': 'merged', 'from_model': False, 'question': who, 'id': f'merged:{who}|G0',
             'ask': f'「{who}」的答案里，“G0”这一组下有 2 个不同的最终母公司（PRRXANJSLS26、ZZ3GL25MGJH2），按同一个算了。它们是同一个吗？',
             'facts': ['1 个承包商落在“G0”这一组里'], 'target': {'tab': 'qa', 'place': 'ask', 'question': who}})
 
@@ -151,7 +153,7 @@ class MergedAndElsewhereTests(unittest.TestCase):
         items = open_items(run({'asked': asked(no_data)}), BUNDLE)
         self.assertEqual(kinds(items), ['found_elsewhere'])
         self.assertEqual(items[0], {
-            'kind': 'found_elsewhere', 'from_model': False, 'question': question,
+            'kind': 'found_elsewhere', 'from_model': False, 'question': question, 'id': f'found_elsewhere:{question}',
             'ask': f'「{question}」在合同授标里找不到“GS03F102CA”，但母合同里有，9 个合同授标连着它。这道题问的是不是母合同？',
             'facts': ['条件“piid = GS03F102CA”在合同授标里没有一个对象满足', '母合同里有 1 个对象的编号含“GS03F102CA”，其中连着 9 个合同授标'],
             'target': {'tab': 'qa', 'place': 'ask', 'question': question}})
@@ -178,7 +180,7 @@ class UnlinkedTests(unittest.TestCase):
         items = open_items(run({'data_fit': self.FIT}), BUNDLE)
         self.assertEqual(kinds(items), ['unlinked', 'unlinked'])
         self.assertEqual(items[0], {
-            'kind': 'unlinked', 'from_model': False, 'relation': 'spend_contract',
+            'kind': 'unlinked', 'from_model': False, 'relation': 'spend_contract', 'id': 'unlinked:spend_contract', 'complete_id': 'complete:contracts|award_key',
             'ask': '支出行（spend）1,921 行里有 1,308 行没连上“支出行 对应 合同授标”。是这些行本来就没有对应的合同授标，还是数据没导全？',
             'facts': ['没连上任何对象的支出行，例如 10071|FY2025P03、10078|FY2025P03', '其中 1,308 行用来连的编号是空的'],
             'target': {'tab': 'graph', 'relation': 'spend_contract'}})
@@ -206,7 +208,7 @@ class SameNameTests(unittest.TestCase):
         bundle = padded(60, ('K1', 'Stantec'), ('K2', 'STANTEC '), ('K3', 'Acme'), ('K4', 'Zed'), ('K5', 'zed'), ('K6', 'Zed'))
         [item] = open_items(run(), bundle)
         self.assertEqual(item, {
-            'kind': 'same_name', 'from_model': False,
+            'kind': 'same_name', 'from_model': False, 'id': 'same_name:vendor',
             'ask': '承包商里有 2 组名字相同、编号不同，例如 Stantec（K1 / K2）。它们是同一个承包商的不同主体，还是该合并？',
             'facts': ['Stantec：K1 / K2', 'Zed：K4 / K5 / K6'], 'target': {'tab': 'objects', 'object': 'vendor'}})
 
@@ -260,7 +262,7 @@ class UnstableTests(unittest.TestCase):
         self.assertEqual(kinds(items), ['unstable'] * 4)
         target = {'tab': 'objects', 'place': 'stability'}
         self.assertEqual(items[0], {
-            'kind': 'unstable', 'from_model': False, 'relation': 'contract_vendor',
+            'kind': 'unstable', 'from_model': False, 'relation': 'contract_vendor', 'id': 'unstable:relation:contract_vendor',
             'ask': '关系“合同授标 授予 承包商”在 3 次建模里只出现了 2 次。这条关系要保留吗？',
             'facts': ['共建模 3 次，这条关系出现了 2 次'], 'target': target})
         self.assertEqual(items[1]['ask'], '对象“承包商”在 3 次建模里只出现了 2 次。这类对象要保留吗？')
@@ -326,7 +328,7 @@ class DataGapTests(unittest.TestCase):
     def test_the_models_own_data_gaps_are_one_item_marked_as_the_models(self):
         gaps = ['财务行缺少稳定的交易主键。', '办公室只有编号和名称。']
         [item] = open_items(run(ontology={**ONTOLOGY, 'data_gaps': gaps}), BUNDLE)
-        self.assertEqual(item, {'kind': 'data_gaps', 'from_model': True, 'ask': '模型指出 2 处数据缺口（下面逐条）。客户那边有没有能补上的数据？',
+        self.assertEqual(item, {'kind': 'data_gaps', 'id': 'data_gaps', 'from_model': True, 'ask': '模型指出 2 处数据缺口（下面逐条）。客户那边有没有能补上的数据？',
                                 'facts': gaps, 'target': {'tab': 'objects', 'place': 'build'}})
 
 
@@ -347,7 +349,7 @@ class UnansweredTests(unittest.TestCase):
         out = open_items(run({'asked': items}), BUNDLE)
         self.assertEqual(kinds(out), ['found_elsewhere', 'unanswered'])
         self.assertEqual(out[1], {
-            'kind': 'unanswered', 'from_model': True, 'ask': '4 道问过的题现在答不了。这次 POC 要不要答它们？',
+            'kind': 'unanswered', 'id': 'unanswered', 'from_model': True, 'ask': '4 道问过的题现在答不了。这次 POC 要不要答它们？',
             'facts': ['「甲」：查询写不出来（模型的判断）', '「乙」：本体缺回答它要的东西（模型的判断）',
                       '「丙」：本体里没有对象类型 invoice', '「丁」：数据里没有'],
             'target': {'tab': 'qa', 'place': 'ask'}})
@@ -389,7 +391,7 @@ class UnansweredOriginTests(unittest.TestCase):
 class UnjudgedTests(unittest.TestCase):
     def test_everything_is_unjudged_when_nobody_has_confirmed(self):
         [item] = open_items(run(confirmation=None), BUNDLE)
-        self.assertEqual(item, {'kind': 'unjudged', 'from_model': False, 'ask': '4 个对象、3 条关系还没人判过对错。会上逐项过一遍？',
+        self.assertEqual(item, {'kind': 'unjudged', 'id': 'unjudged', 'from_model': False, 'ask': '4 个对象、3 条关系还没人判过对错。会上逐项过一遍？',
                                 'facts': [], 'target': {'tab': 'objects', 'place': 'confirm'}})
 
     def test_only_what_has_no_verdict_is_counted(self):
@@ -420,6 +422,182 @@ class WholeRunTests(unittest.TestCase):
     def test_a_run_that_did_not_pass_verification_has_nothing_to_confirm(self):
         failed = {**ONTOLOGY, 'status': 'rejected', 'data_gaps': ['缺口']}
         self.assertEqual(open_items(run(ontology=failed, confirmation=None), BUNDLE), [])
+
+
+AT = '2026-10-27T09:00:00+00:00'
+EVERYTHING = {
+    'asked': asked({'question': '丁', 'status': 'query_limit', 'reason': '原因'},
+                   {'question': '丙', 'status': 'no_data', 'query': {'start': 'contract'},
+                    'evidence': {'found_elsewhere': [{'type': 'vehicle', 'field': 'f', 'equals': 'x', 'count': 1, 'linked': 1}]}},
+                   answered(PAID, {'filters': [ADDED], 'merged': [MergedAndElsewhereTests.GROUP]})),
+    'data_fit': {**UnlinkedTests.FIT, 'unused_sources': [{'source': 'notes', 'rows': 1, 'fields': 1}]},
+    'stability': UnstableTests.STABILITY}
+
+
+def everything():
+    return open_items(run(EVERYTHING, ontology={**ONTOLOGY, 'data_gaps': ['缺口']}, confirmation=None), padded(30, ('K1', 'Acme'), ('K2', 'ACME')))
+
+
+class ItemIdTests(unittest.TestCase):
+    def test_every_item_has_an_id_made_from_the_thing_itself(self):
+        self.assertEqual([i['id'] for i in everything()], [
+            f'model_filter:{PAID}|subagency=BUREAU OF RECLAMATION', f'merged:{PAID}|GREENBERRY INDUSTRIAL LLC', 'found_elsewhere:丙',
+            'unlinked:spend_contract', 'unlinked:contract_vehicle', 'same_name:vendor',
+            'unstable:relation:contract_vendor', 'unstable:type:vendor', 'unstable:new:relations:合同动作 — 最终母公司', 'unstable:new:types:仓库',
+            'check_finding:unused_sources', 'data_gaps', 'unanswered', 'unjudged'])
+
+    def test_the_ids_are_the_same_on_the_next_call_and_never_repeat_within_a_list(self):
+        first, second = [i['id'] for i in everything()], [i['id'] for i in everything()]
+        self.assertEqual(first, second)
+        self.assertEqual(len(set(first)), len(first))
+
+    def test_each_kind_of_finding_has_its_own_id(self):
+        fit = {k: v for k, v in CheckFindingTests.FIT.items()}
+        self.assertEqual([i['id'] for i in open_items(run({'data_fit': fit}), BUNDLE)],
+                         [f'check_finding:{k}' for k in ('identity_conflicts', 'identity_spellings', 'suspected_duplicates',
+                                                          'missing_across_sources', 'identity_risks', 'unused_sources')])
+
+    def test_an_unlinked_item_names_the_complete_cell_of_the_end_that_may_be_missing(self):
+        items = [i for i in everything() if i['kind'] == 'unlinked']
+        # spend rows that find no contract: the contracts may not all be there; contract rows that find no vehicle: the vehicles
+        self.assertEqual([(i['relation'], i['complete_id']) for i in items],
+                         [('spend_contract', 'complete:contracts|award_key'), ('contract_vehicle', 'complete:vehicles|vehicle_key')])
+        self.assertTrue(all('complete_id' not in i for i in everything() if i['kind'] != 'unlinked'))
+
+
+class CardBlankTests(unittest.TestCase):
+    def card(self, cells=None, ontology=ONTOLOGY, bundle=BUNDLE):
+        return ontology_card.build_card(ontology, bundle, cells)
+
+    @staticmethod
+    def cell_ids(card):
+        return [*(t['grain']['id'] for t in card['tables']), *(d['id'] for t in card['tables'] for d in t['dates']),
+                *(a['id'] for t in card['tables'] for a in t['amounts']), *(o['id'] for o in card['objects'])]
+
+    @staticmethod
+    def blank_item(items):
+        return next((i for i in items if i['kind'] == 'card_blank'), None)
+
+    def test_a_card_with_cells_nobody_has_answered_is_one_item_with_a_line_per_table(self):
+        self.assertEqual(open_items(run(), BUNDLE, card=self.card()), [{
+            'kind': 'card_blank', 'id': 'card_blank', 'from_model': False,
+            'ask': '口径卡还有 8 格没说清（4 张表）：数值列能不能相加、日期列是什么时间、一行是什么、对象全不全。会上逐张过一遍？',
+            'facts': ['spend：2 格', 'contracts：2 格', 'vehicles：2 格', 'vendors：2 格'], 'target': {'tab': 'card'}}])
+
+    def test_the_columns_waiting_for_an_answer_are_named_up_to_five(self):
+        ledger = {**LEDGER_ONTOLOGY, 'status': 'auto_built_verified', 'data_gaps': []}
+        bundle = ledger_bundle()
+        item = self.blank_item(open_items(run(ontology=ledger, confirmation=None), bundle, card=self.card(ontology=ledger, bundle=bundle)))
+        self.assertEqual(item['facts'], ['ledger：7 格（paid_on、booked_at、paid、running、ytd）', 'vendors：2 格', 'notes：1 格'])
+        wide = ledger_bundle([{**r, **{f'x{n}': '1' for n in range(3)}} for r in bundle['sources']['ledger']['records']])
+        item = self.blank_item(open_items(run(ontology=ledger, confirmation=None), wide, card=self.card(ontology=ledger, bundle=wide)))
+        self.assertEqual(item['facts'][0], 'ledger：10 格（paid_on、booked_at、paid、running、ytd等）')
+
+    def test_the_object_cell_is_counted_under_the_first_table_that_object_is_read_from(self):
+        ontology = copy.deepcopy(ONTOLOGY)
+        ontology['object_types'][3]['populated_from'].append({'source': 'spend', 'identity': {'uei': 'uei'}})
+        item = self.blank_item(open_items(run(ontology=ontology), BUNDLE, card=self.card(ontology=ontology)))
+        self.assertEqual(item['facts'], ['spend：2 格', 'contracts：2 格', 'vehicles：2 格', 'vendors：2 格'])
+
+    def test_answered_cells_come_off_the_count_and_a_table_filled_in_drops_out(self):
+        card = self.card()
+        ids = self.cell_ids(card)
+        answer = {'value': 'full', 'note': '', 'by': '张三', 'basis': '', 'at': AT}
+        item = self.blank_item(open_items(run(), BUNDLE, card=self.card({'grain:spend': answer, 'complete:spend|row_id': answer, 'grain:vendors': answer})))
+        self.assertEqual(item['facts'], ['contracts：2 格', 'vehicles：2 格', 'vendors：1 格'])
+        self.assertTrue(item['ask'].startswith('口径卡还有 5 格没说清（3 张表）'))
+        self.assertIn('complete:spend|row_id', ids)
+
+    def test_unsure_still_counts_and_the_item_is_gone_when_every_cell_is_answered(self):
+        ids = self.cell_ids(self.card())
+        unsure = self.card({i: {'value': 'unsure', 'note': '', 'by': '张三', 'basis': '', 'at': AT} for i in ids})
+        self.assertEqual(self.blank_item(open_items(run(), BUNDLE, card=unsure))['ask'][:12], '口径卡还有 8 格没说清')
+        full = self.card({i: {'value': 'full', 'note': '', 'by': '张三', 'basis': '', 'at': AT} for i in ids})
+        self.assertEqual(open_items(run(), BUNDLE, card=full), [])
+
+    def test_it_sits_after_the_check_findings_and_before_the_data_gaps(self):
+        evaluation = {'data_fit': {'unused_sources': [{'source': 'notes', 'rows': 1, 'fields': 1}]}}
+        items = open_items(run(evaluation, ontology={**ONTOLOGY, 'data_gaps': ['缺口']}, confirmation=None), BUNDLE, card=self.card())
+        self.assertEqual(kinds(items), ['check_finding', 'card_blank', 'data_gaps', 'unjudged'])
+
+    def test_without_a_card_there_is_nothing_to_say(self):
+        self.assertEqual(open_items(run(), BUNDLE), [])
+
+
+class AnswerTests(unittest.TestCase):
+    RUN = run({'data_fit': UnlinkedTests.FIT}, ontology={**ONTOLOGY, 'data_gaps': ['缺口']}, confirmation=None)
+    LISTED = open_items(RUN, BUNDLE)   # spend_contract, contract_vehicle, data_gaps, unjudged
+
+    def check(self, *items, by='张三'):
+        return check_answers(self.LISTED, list(items), by, AT)
+
+    def test_a_choice_and_a_few_words_are_kept_with_the_ask_they_answered(self):
+        got = self.check({'id': 'unlinked:spend_contract', 'choice': 'incomplete', 'text': ' 合同授标只导了 FY25Q1 的 ', 'basis': '10-27 会议'})
+        self.assertEqual(got, {'unlinked:spend_contract': {
+            'choice': 'incomplete', 'text': '合同授标只导了 FY25Q1 的', 'by': '张三', 'basis': '10-27 会议', 'at': AT, 'asked': self.LISTED[0]['ask']}})
+
+    def test_a_choice_alone_is_enough_and_so_are_words_alone_where_there_is_no_choice(self):
+        got = self.check({'id': 'unlinked:contract_vehicle', 'choice': 'expected'}, {'id': 'data_gaps', 'text': '客户下周补'})
+        self.assertEqual((got['unlinked:contract_vehicle']['choice'], got['unlinked:contract_vehicle']['text']), ('expected', ''))
+        self.assertEqual((got['data_gaps']['choice'], got['data_gaps']['text']), (None, '客户下周补'))
+
+    def test_what_is_wrong_is_named(self):
+        for item, said_so in (
+                ({'id': 'unlinked:gone', 'choice': 'expected'}, '这件事已经不在清单上了'),
+                ({'id': 'unjudged', 'text': '好'}, '逐项判对错'),
+                ({'id': 'card_blank', 'text': '好'}, '不在清单上'),   # this list has no card item
+                ({'id': 'unlinked:spend_contract', 'choice': 'same'}, '只能'),
+                ({'id': 'data_gaps', 'choice': 'expected', 'text': '好'}, '只能'),
+                ({'id': 'unlinked:spend_contract'}, '选一个'),
+                ({'id': 'data_gaps', 'text': '  '}, '选一个'),
+                ({'id': 'data_gaps', 'text': 'x' * 301}, '最多'),
+                ({'id': 'data_gaps', 'text': '好', 'basis': 'x' * 201}, '出处'),
+                ({'text': '好'}, '不在清单上'),
+                ('not an object', '写法')):
+            with self.subTest(item=item), self.assertRaises(ontology_card.CardError) as caught:
+                self.check({'id': 'data_gaps', 'text': '好'}, item)
+            self.assertIn(said_so, str(caught.exception))
+
+    def test_a_card_blank_or_a_model_filter_cannot_be_closed_by_an_answer(self):
+        listed = [{'kind': 'card_blank', 'id': 'card_blank', 'ask': 'a'}, {'kind': 'model_filter', 'id': 'model_filter:q|f=1', 'ask': 'b'}]
+        for item_id, said_so in (('card_blank', '把口径卡填完'), ('model_filter:q|f=1', '去掉条件')):
+            with self.subTest(item_id=item_id), self.assertRaises(ontology_card.CardError) as caught:
+                check_answers(listed, [{'id': item_id, 'text': '好'}], '张三', AT)
+            self.assertIn(said_so, str(caught.exception))
+
+    def test_answered_items_move_to_their_own_list_with_the_answer_and_its_words(self):
+        stored = {'unlinked:spend_contract': {'choice': 'incomplete', 'text': '只导了一部分', 'by': '张三', 'basis': '会议', 'at': AT, 'asked': '当时的问法'},
+                  'data_gaps': {'choice': None, 'text': '客户下周补', 'by': '李四', 'basis': '', 'at': AT, 'asked': '缺口怎么办？'}}
+        listed, answered = split_answers(self.LISTED, stored)
+        self.assertEqual([i['id'] for i in listed], ['unlinked:contract_vehicle', 'unjudged'])
+        self.assertEqual([i['id'] for i in answered], ['unlinked:spend_contract', 'data_gaps'])
+        self.assertEqual(answered[0]['answer'], {**stored['unlinked:spend_contract'], 'says': '数据没导全'})
+        self.assertEqual(answered[0]['ask'], self.LISTED[0]['ask'])   # the item as it is now; the ask it answered is inside the answer
+        self.assertEqual(answered[1]['answer'], stored['data_gaps'])    # no choice, nothing to say about it
+
+    def test_an_answer_whose_item_was_not_listed_this_time_is_in_neither_list(self):
+        stored = {'unlinked:long_gone': {'choice': 'expected', 'text': '', 'by': '张三', 'basis': '', 'at': AT, 'asked': 'x'}}
+        self.assertEqual(split_answers(self.LISTED, stored), (self.LISTED, []))
+
+    def test_every_choice_has_its_words(self):
+        words = {'expected': '本来就没有对应，属正常', 'incomplete': '数据没导全', 'distinct': '是不同的对象', 'same': '是同一个'}
+        for choice, said_so in words.items():
+            _, answered = split_answers(self.LISTED[:1], {'unlinked:spend_contract': {'choice': choice, 'text': '', 'by': '张三', 'basis': '', 'at': AT, 'asked': 'x'}})
+            self.assertEqual(answered[0]['answer']['says'], said_so)
+
+    def test_the_choices_each_kind_takes(self):
+        table = {'unlinked': ('expected', 'incomplete'), 'same_name': ('distinct', 'same'), 'merged': ('distinct', 'same')}
+        for kind, choices in table.items():
+            listed = [{'kind': kind, 'id': f'{kind}:x', 'ask': 'a'}]
+            for choice in (*choices, None):
+                with self.subTest(kind=kind, choice=choice):
+                    got = check_answers(listed, [{'id': f'{kind}:x', 'choice': choice, 'text': '好'}], '张三', AT)
+                    self.assertEqual(got[f'{kind}:x']['choice'], choice)
+        for kind in ('found_elsewhere', 'unstable', 'check_finding', 'data_gaps', 'unanswered'):
+            listed = [{'kind': kind, 'id': f'{kind}:x', 'ask': 'a'}]
+            with self.subTest(kind=kind), self.assertRaises(ontology_card.CardError):
+                check_answers(listed, [{'id': f'{kind}:x', 'choice': 'same', 'text': '好'}], '张三', AT)
+            self.assertIn(f'{kind}:x', check_answers(listed, [{'id': f'{kind}:x', 'text': '好'}], '张三', AT))
 
 
 if __name__ == '__main__':

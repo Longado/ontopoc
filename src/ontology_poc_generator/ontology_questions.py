@@ -10,6 +10,7 @@ from ontology_poc_generator.public_ontology import build_graph, linked, normaliz
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview
+from ontology_poc_generator.ontology_card import evidence as card_evidence, measure_fields, refusal as card_refusal
 
 QUESTION_PROMPT_VERSION = 'company_questions.v7'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
@@ -178,9 +179,8 @@ def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, 
     own = _identity_fields(types[start])   # an identity field is one value per object by definition
     rows = lambda entries, src: {i for s, i in entries if s == src}   # one row read twice (two roles, one table) is one row
     what, name = '加' if measure['op'] == 'sum' else '求平均', label(start)
-    fields = [f['field'] for term in measure['derived']['terms'] for f in term['factors']] if measure.get('derived') else [measure['field']]
     notes = {'folded': [], 'shared': []}
-    for field in dict.fromkeys(f for f in fields if f not in own):
+    for field in dict.fromkeys(f for f in measure_fields(measure) if f not in own):
         src, _, path = field.partition('.')
         records = bundle['sources'].get(src, {}).get('records', [])
         valued = lambda i: [str(v) for v in resolve(records[i], path) if v not in (None, '')]
@@ -244,7 +244,9 @@ def _found_elsewhere(types: dict, graph: dict, start: str, wanted: list) -> list
     return out
 
 
-def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None) -> dict:
+def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None, card: dict | None = None) -> dict:
+    """`card` is the answers kept on the data-meaning card ({cell id: answer}): a column marked there as not addable stops
+    the question before anything is computed, and what the card says rides beside the answer in `evidence`."""
     p = normalize_proposal(ontology)
     types, relations = _types(p), {r['key']: r for r in p['relations']}
     label = lambda k: types[k].get('label') or k
@@ -304,6 +306,9 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     seen = [(tuple(d['via']), d['field']) for d in dims]
     if len(set(seen)) < len(seen):   # "which X go together": one dimension cannot pair two different values of itself
         return {'status': 'query_limit', 'reason': '同一个字段沿同一条路径分了两次组，这是在问哪些值常在一起出现；查询只会把每个值和它自己配成一对，这种问法还不支持'}
+    refused = card_refusal(card, bundle, measure, where, dims) if card and measure else None
+    if refused:
+        return refused
     graph = graph or build_graph(ontology, bundle)
     neighbours = {}
     for key in {k for d in dims for k in d['via']} | set(query.get('via') or []):
@@ -374,11 +379,13 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
                 **({} if w['field'] in lookup else {'examples': [named(i) for i in gone[:3]], **removed_amount(gone)})}
                for w, before, after, gone in stages] if everyone else []
 
+    from_card = card_evidence(card, bundle, types[start], measure, where)
+
     def proved(result, merged=(), merged_total=0, elsewhere=()):
         """The check pack rides beside the answer, never inside it: acceptance compares `answer` between runs."""
         pack = {**({'filters': filters} if filters else {}), **{k: v for k, v in notes.items() if v},
                 **({'merged': merged} if merged else {}), **({'merged_total': merged_total} if merged_total > len(merged) else {}),
-                **({'found_elsewhere': elsewhere} if elsewhere else {})}
+                **({'found_elsewhere': elsewhere} if elsewhere else {}), **({'card': from_card} if from_card else {})}
         return {**result, **({'evidence': pack} if pack else {})}
     if not starts:
         # a value no start object has may be the number of some other kind of object: the question was put to the wrong one
@@ -501,14 +508,15 @@ def flag_unasked_filters(result: dict, question: str) -> dict:
 
 def _in_names(ontology: dict, result: dict) -> dict:
     """The reason of an answer that did not succeed, written in the names a person reads instead of the ontology's keys."""
-    if result['status'] != 'answered' and result.get('reason'):
+    if result['status'] != 'answered' and result.get('reason') and 'refused_by_card' not in result:   # the card's reason names a column, not an object
         return {**result, 'reason': plain_reason(ontology, result['reason'])}
     return result
 
 
-def answer_query(ontology: dict, bundle: dict, query: dict, question: str, graph: dict | None = None, derived: list | None = None) -> dict:
+def answer_query(ontology: dict, bundle: dict, query: dict, question: str, graph: dict | None = None, derived: list | None = None,
+                 card: dict | None = None) -> dict:
     """One question's query run and read for a person: the filters the question never says are marked, and a reason is in names."""
-    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived), question))
+    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived, card), question))
 
 
 def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
@@ -525,7 +533,7 @@ def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
 
 
 def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = None, purpose_only: bool = False,
-                  derived: list | None = None) -> dict:
+                  derived: list | None = None, card: dict | None = None) -> dict:
     """One call. With question: that question. With purpose_only: the questions the person wrote as the purpose, which
     an upload answers. With neither: the model's own round, asked for on the questions page."""
     request = {'purpose': bundle['decision'], 'ontology': _catalog(ontology, bundle, derived)}
@@ -558,14 +566,14 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
             if formula is None or formula['label'] != wanted:
                 result = {'status': 'ontology_gap', 'reason': f'模型提出的指标算不成：{why or "查询用的指标名和提出的不一致"}'}
             else:
-                trial = run_query(ontology, bundle, query, graph, [*(derived or []), formula])
+                trial = run_query(ontology, bundle, query, graph, [*(derived or []), formula], card)
                 # a formula that reads fine but that this query could not add up: say so before anyone confirms it
                 result = trial if trial['status'] == 'query_limit' else {
                     'status': 'needs_derived', 'reason': f'要先确认“{formula["label"]} = {formula_text(formula)}”这个指标，才能回答',
                     'derive': {**formula, 'formula': formula_text(formula), 'preview': derived_preview(ontology, bundle, formula, graph)}}
             result = _in_names(ontology, result)
         elif isinstance(query, dict):
-            result = answer_query(ontology, bundle, query, question or q['question'], graph, derived)
+            result = answer_query(ontology, bundle, query, question or q['question'], graph, derived, card)
         else:
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
             result = _in_names(ontology, {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True})

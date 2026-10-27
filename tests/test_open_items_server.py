@@ -24,15 +24,18 @@ class OpenItemsRouteTests(unittest.TestCase):
             _, run = call(base, '/api/ontology/build', UPLOAD)
             status, body = fetch(base, f"/api/ontology/runs/{run['saved_as']}/open-items")
             self.assertEqual(status, 200, body)
+            self.assertEqual(body['answered'], [])
             self.assertEqual([(i['kind'], i['ask']) for i in body['items']],
-                             [('unjudged', '2 个对象、1 条关系还没人判过对错。会上逐项过一遍？')])
+                             [('card_blank', '口径卡还有 4 格没说清（1 张表）：数值列能不能相加、日期列是什么时间、一行是什么、对象全不全。会上逐张过一遍？'),
+                              ('unjudged', '2 个对象、1 条关系还没人判过对错。会上逐项过一遍？')])
 
     def test_judging_every_object_and_relation_empties_the_list(self):
         with OntologyServerTests().server() as (base, _):
             _, run = call(base, '/api/ontology/build', UPLOAD)
             decisions = {'types': {'order': {'verdict': 'ok'}, 'customer': {'verdict': 'ok'}}, 'relations': {'order_customer': {'verdict': 'ok'}}}
             call(base, '/api/ontology/confirm', {'saved_as': run['saved_as'], 'decisions': decisions})
-            self.assertEqual(fetch(base, f"/api/ontology/runs/{run['saved_as']}/open-items"), (200, {'items': []}))
+            status, body = fetch(base, f"/api/ontology/runs/{run['saved_as']}/open-items")
+            self.assertEqual((status, [i['kind'] for i in body['items']], body['answered']), (200, ['card_blank'], []))   # the card is still to fill in
 
     def test_an_unknown_run_is_not_found(self):
         with OntologyServerTests().server() as (base, _):
@@ -49,7 +52,7 @@ class OpenItemsRouteTests(unittest.TestCase):
             saved = json.loads(path.read_text(encoding='utf-8'))
             saved['ontology']['status'] = 'rejected'
             path.write_text(json.dumps(saved, ensure_ascii=False), encoding='utf-8')
-            self.assertEqual(fetch(base, f"/api/ontology/runs/{run['saved_as']}/open-items"), (200, {'items': []}))
+            self.assertEqual(fetch(base, f"/api/ontology/runs/{run['saved_as']}/open-items"), (200, {'items': [], 'answered': []}))
 
 
 if __name__ == '__main__':
