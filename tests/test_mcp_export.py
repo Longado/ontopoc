@@ -12,7 +12,7 @@ from ontology_poc_generator.mcp_server import LocalService, ToolError, handle
 from tests.test_ontology_server import CSV, OntologyServerTests
 
 FILES = {'order.csv': 'ROW-ONE-MARKER,100\n', '说明.txt': '中文说明-MARKER\n'}
-TOOLS = (('export_forms', 'forms'), ('export_ttl', 'ttl'), ('export_mermaid', 'mermaid'))
+TOOLS = (('export_forms', 'forms'), ('export_ttl', 'ttl'), ('export_mermaid', 'mermaid'), ('export_pipeline_spec', 'pipeline'))
 
 
 class Service(LocalService):
