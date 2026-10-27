@@ -15,12 +15,23 @@ export const savedAcceptance = (run) => (run.evaluation.acceptance?.items || [])
     .filter((field) => Object.hasOwn(item, field)).map((field) => [field, item[field]])) : {}),
 }));
 
+const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v && typeof v === "object"
+  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
+const sameQuery = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+
+/** A question already fixed, answered again by a different query (a condition dropped, say): fixing it takes the old one's place. */
+export function replacesAccepted(run, item) {
+  const same = savedAcceptance(run).find((s) => s.question === item.question);
+  return Boolean(same?.query && item.query && !sameQuery(same.query, item.query));
+}
+
 /** "" when this question can be fixed as an acceptance question, else why not. A question nothing can answer yet
  *  can be fixed too: otherwise the ones that pass hide the one the client actually asked for. */
 export function canAccept(run, item) {
   if (!run.saved_as) return "这是示例结果，上传自己的文件后可以存";
   const unmet = !item.query && UNMET.includes(item.status) && Boolean(item.reason);
   if (!unmet && (item.status !== "answered" || !item.query)) return "只能把已经答出来的问题存为验收问题";
+  if (replacesAccepted(run, item)) return "";
   const saved = savedAcceptance(run);
   const same = saved.find((s) => s.question === item.question);
   if (same && (same.query || unmet)) return "这道已经是验收问题了";
