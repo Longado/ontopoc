@@ -435,7 +435,8 @@ class OpenItemTests(unittest.TestCase):
             [answered] = saved['answered']
             self.assertEqual((answered['answer']['choice'], answered['answer']['says'], answered['answer']['by']), ('expected', '本来就没有对应，属正常', '李四'))
             stored = json.loads((out / 'cards' / f"{run['file']['sha256']}.json").read_text(encoding='utf-8'))
-            self.assertEqual([(h['old'] and h['old']['choice'], h['new']['choice']) for h in stored['history']], [(None, 'incomplete'), ('incomplete', 'expected')])
+            about_item = [h for h in stored['history'] if h['id'] == item]   # the cell the first answer set is in the history too
+            self.assertEqual([(h['old'] and h['old']['choice'], h['new']['choice']) for h in about_item], [(None, 'incomplete'), ('incomplete', 'expected')])
 
     def test_the_card_item_goes_when_every_cell_has_an_answer_and_unsure_does_not_count(self):
         with OntologyServerTests().server(gateway=CardModel()) as (base, _):
