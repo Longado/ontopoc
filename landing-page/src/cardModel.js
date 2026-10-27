@@ -29,7 +29,8 @@ const ANSWERABLE = [...Object.keys(ITEM_CHOICES), ...WORDS_ONLY];
 export const itemChoices = (item) => ITEM_CHOICES[item.kind] || [];
 export const canAnswerItem = (item) => Boolean(item.id) && ANSWERABLE.includes(item.kind);
 
-const sourceOfComplete = (id) => id.slice("complete:".length, id.lastIndexOf("|"));
+// complete:{table}|{key columns}[|{where conditions}]: the table is what comes before the first bar
+const sourceOfComplete = (id) => id.slice("complete:".length).split("|")[0];
 
 /** Every cell on the card in the order the page shows them: each table's, then the objects'.
  *  `table` is the table the cell is about, `name` what the person reads beside it. */
