@@ -1,6 +1,7 @@
 """The data-meaning card (口径卡): what code can say about each uploaded table, the cells only a person can fill, the
 checks on what a person posts, and the questions that follow the card: a running total is not added up, a
 period-to-date amount is added up only on one period, a partly imported object says so beside the answer."""
+from collections import Counter
 import unittest
 
 from ontology_poc_generator import ontology_card as oc
@@ -142,6 +143,86 @@ class LayoutTests(unittest.TestCase):
         with self.assertRaises(oc.CardError) as caught:
             oc.check_cells(card, [{'id': 'complete:vendors|uei', 'value': 'full'}], '张三', AT)
         self.assertIn('没有这一格', str(caught.exception))
+
+
+SALES = [   # fee: thousands commas and a placeholder; stock: placeholders only; rate: a placeholder in capitals; grade and note: real words
+    {'id': '1', 'day': '2024-12-01', 'fee': '1,200', 'stock': '5', 'rate': '10', 'grade': 'A', 'note': '5', 'zip': '02134', 'plain': '1', 'dash': '-'},
+    {'id': '2', 'day': '2024-12-02', 'fee': '980.5', 'stock': 'n/a', 'rate': '12', 'grade': 'B', 'note': 'see memo', 'zip': '90210', 'plain': '2', 'dash': '-'},
+    {'id': '3', 'day': '2024-12-02', 'fee': '12,345,678', 'stock': ' - ', 'rate': 'N/A', 'grade': 'high', 'note': '7', 'zip': '', 'plain': '3', 'dash': ''},
+    {'id': '4', 'day': '2024-12-03', 'fee': 'n/a', 'stock': '7', 'rate': '14', 'grade': 'low', 'note': '', 'zip': '10001', 'plain': '4', 'dash': '-'},
+]
+SALE = {'key': 'sale', 'label': '销售', 'populated_from': [{'source': 'sales', 'identity': {'id': 'id'}}],
+        'attributes': [{'source': 'sales', 'path': p} for p in ('day', 'fee', 'stock', 'rate', 'grade', 'note', 'zip', 'plain', 'dash')]}
+SALES_ONTOLOGY = {'object_types': [SALE], 'relations': [], 'ignored_fields': []}
+
+
+def sales_bundle(rows=SALES):
+    return {'schema': 'company_source_bundle.v1', 'decision': '看销售', 'file': {'name': 'sales.csv', 'sha256': 'b' * 64, 'kind': 'table'},
+            'sources': {'sales': {'records': rows, 'requests': []}}}
+
+
+class NoisyAmountTests(unittest.TestCase):
+    """A column that is figures with thousands commas and placeholders written in is a column of figures to the card: the
+    questions read it with the same to_number, so the rules that stop a running or period-to-date sum must reach it."""
+    def amounts(self, rows=SALES):
+        return {a['field']: a for a in oc.build_card(SALES_ONTOLOGY, sales_bundle(rows))['tables'][0]['amounts']}
+
+    def kept(self, stored):
+        """What the questions are given of the stored answers: only the cells the card has a place for."""
+        return oc.live_cells(stored, SALES_ONTOLOGY, sales_bundle())
+
+    def test_thousands_commas_and_placeholders_make_an_amount_cell_that_says_how_much_noise_there_is(self):
+        amounts = self.amounts()
+        self.assertEqual(amounts['fee'], {'id': 'amount:sales.fee', 'field': 'fee', 'type': 'VARCHAR', 'empty': 0, 'answer': None,
+                                          'noise': {'thousands': 2, 'placeholders': {'n/a': 1}}})
+        # placeholders are stripped and compared without case; a column of placeholders and figures only has no thousands
+        self.assertEqual(amounts['stock']['noise'], {'thousands': 0, 'placeholders': {'n/a': 1, '-': 1}})
+        self.assertEqual(amounts['rate']['noise'], {'thousands': 0, 'placeholders': {'n/a': 1}})
+
+    def test_a_column_with_a_real_word_in_it_is_not_an_amount(self):
+        self.assertEqual(set(self.amounts()), {'fee', 'stock', 'rate', 'plain'})   # grade and note hold words; dash holds no figure; zip is an id with leading zeros
+
+    def test_a_strict_number_column_has_no_noise_and_keeps_its_type(self):
+        self.assertEqual(self.amounts()['plain'], {'id': 'amount:sales.plain', 'field': 'plain', 'type': 'INTEGER', 'empty': 0, 'answer': None})
+
+    def test_every_placeholder_the_card_knows_is_one(self):
+        for placeholder in ('-', '--', '—', '/', 'n/a', 'NA', 'Null', 'NONE', 'nan'):
+            rows = [{**r, 'fee': placeholder if r['id'] == '2' else r['fee']} for r in SALES]
+            with self.subTest(placeholder=placeholder):
+                self.assertEqual(self.amounts(rows)['fee']['noise']['placeholders'], dict(Counter([placeholder.lower(), 'n/a'])))
+        rows = [{**r, 'fee': 'n.a.' if r['id'] == '2' else r['fee']} for r in SALES]
+        self.assertNotIn('fee', self.amounts(rows))   # not on the list: a word
+
+    def test_an_identity_column_is_not_an_amount_however_it_is_written(self):
+        keyed = {'object_types': [{**SALE, 'populated_from': [{'source': 'sales', 'identity': {'fee': 'fee'}}]}], 'relations': [], 'ignored_fields': []}
+        self.assertNotIn('fee', {a['field'] for a in oc.build_card(keyed, sales_bundle())['tables'][0]['amounts']})
+
+    def test_a_column_of_figures_with_no_noise_in_it_that_is_text_only_because_of_leading_zeros_is_not_an_amount(self):
+        self.assertNotIn('zip', self.amounts())
+        padded = [{**r, 'fee': '0012' if r['id'] == '1' else r['fee']} for r in SALES]
+        self.assertNotIn('fee', self.amounts(padded))   # an id with a leading zero among the figures: the column is codes
+
+    def test_the_noisy_column_is_a_cell_a_person_can_answer_and_counts_as_blank_until_then(self):
+        card = oc.build_card(SALES_ONTOLOGY, sales_bundle())
+        cells = {'amount:sales.fee': said('flow')}
+        self.assertEqual(oc.check_cells(card, [{'id': 'amount:sales.fee', 'value': 'running'}], '张三', AT)['amount:sales.fee']['value'], 'running')
+        answered = oc.build_card(SALES_ONTOLOGY, sales_bundle(), cells)
+        self.assertEqual(answered['tables'][0]['amounts'][0]['answer']['says'], '每行是这一笔自己的数，可以跨行相加')
+        self.assertEqual(card['blank'] - answered['blank'], 1)
+
+    def test_a_running_column_with_noise_is_not_added_up(self):
+        refused = run_query(SALES_ONTOLOGY, sales_bundle(), {'start': 'sale', 'measure': {'field': 'sales.fee', 'op': 'sum'}},
+                            card=self.kept({'amount:sales.fee': said('running')}))
+        self.assertEqual((refused['status'], refused['refused_by_card']), ('query_limit', 'amount:sales.fee'))
+        self.assertIn('「fee」', refused['reason'])
+
+    def test_a_period_to_date_column_with_noise_is_added_up_on_one_period_only(self):
+        cells = self.kept({'amount:sales.fee': said('period_to_date')})
+        loose = {'start': 'sale', 'measure': {'field': 'sales.fee', 'op': 'sum'}}
+        pinned = {**loose, 'where': [{'field': 'sales.day', 'equals': '2024-12-02'}]}
+        self.assertEqual(run_query(SALES_ONTOLOGY, sales_bundle(), loose, card=cells)['refused_by_card'], 'amount:sales.fee')
+        got = run_query(SALES_ONTOLOGY, sales_bundle(), pinned, card=cells)
+        self.assertEqual((got['status'], got['answer']['measure']['value']), ('answered', 12346658.5))   # the commas are read, as before
 
 
 class PostedCellTests(unittest.TestCase):

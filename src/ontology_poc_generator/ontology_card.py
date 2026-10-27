@@ -15,7 +15,8 @@ from datetime import date
 import itertools
 import re
 
-from ontology_poc_generator.handover_form import source_profile
+from ontology_poc_generator.derived_measures import to_number
+from ontology_poc_generator.handover_form import _PADDED, source_profile
 from ontology_poc_generator.ontology_confirm import without_wrong
 from ontology_poc_generator.public_ontology import _conditions, build_graph, normalize_proposal, normalize_value, resolve
 
@@ -23,6 +24,7 @@ MAX_NOTE, MAX_BASIS, MAX_BY = 300, 200, 40
 HISTORY = 200      # changes kept in the file, the oldest dropped first
 EXAMPLES = 3       # duplicate keys named on a card
 DATES, AMOUNTS = ('DATE', 'DATETIME'), ('INTEGER', 'DECIMAL')
+PLACEHOLDERS = ('-', '--', '—', '/', 'n/a', 'na', 'null', 'none', 'nan')   # what a figure column holds where there is no figure, compared lower-cased
 NOT_BUSINESS_TIME = ('fetched', 'system')   # a date column answered like this says when the row was taken or entered: it cannot fix a period
 
 # the words a person reads for each value of each kind of cell: the page, the minutes and the MCP tools all use these
@@ -72,6 +74,33 @@ def _span(records: list, path: str) -> tuple:
     return (min(days), max(days)) if days else (None, None)
 
 
+def is_padded_number(text: str) -> bool:
+    """03795904: it reads as a number, but the zero belongs to the id and any number type would drop it."""
+    return bool(_PADDED.match(text)) and to_number(text) is not None
+
+
+def _noise(records: list, path: str) -> dict | None:
+    """What a text column of figures carries besides the figures: values with a thousands comma and the placeholders
+    written where there is no figure. None when the column is not that: a word that is no placeholder, an id with a
+    leading zero, no figure at all, or nothing but clean figures (those are typed as numbers already)."""
+    thousands, held, figures = 0, Counter(), 0
+    for r in records:
+        for v in resolve(r, path):
+            text = '' if v is None else str(v).strip()
+            if not text:
+                continue
+            if to_number(text) is not None:   # the same reading the questions use
+                if is_padded_number(text):
+                    return None
+                figures += 1
+                thousands += ',' in text
+            elif text.lower() in PLACEHOLDERS:
+                held[text.lower()] += 1
+            else:
+                return None
+    return {'thousands': thousands, 'placeholders': dict(held)} if figures and (thousands or held) else None
+
+
 def _unique(records: list, fields: list) -> dict | None:
     """How many different keys the identity columns of the table give, and which keys more than one row carries. Keys
     are folded the way the graph folds them, so two spellings of one number count as the same object. A row with a
@@ -116,9 +145,11 @@ def build_card(ontology: dict, bundle: dict, cells: dict | None = None, graph: d
                 dates.append({'id': f'date:{cell}', 'range_id': f'range:{cell}', 'field': f['path'], 'type': f['type'], 'min': low, 'max': high,
                               'empty': f['empty'], 'answer': _view(f'date:{cell}', cells.get(f'date:{cell}')),
                               'declared': _view(f'range:{cell}', cells.get(f'range:{cell}'))})
-            elif f['type'] in AMOUNTS and f['path'] not in key_columns:
-                amounts.append({'id': f'amount:{cell}', 'field': f['path'], 'type': f['type'], 'empty': f['empty'],
-                                'answer': _view(f'amount:{cell}', cells.get(f'amount:{cell}'))})
+            elif f['path'] not in key_columns:
+                noise = _noise(records, f['path']) if f['type'] == 'VARCHAR' else None
+                if f['type'] in AMOUNTS or noise:
+                    amounts.append({'id': f'amount:{cell}', 'field': f['path'], 'type': f['type'], 'empty': f['empty'],
+                                    'answer': _view(f'amount:{cell}', cells.get(f'amount:{cell}')), **({'noise': noise} if noise else {})})
         tables.append({'source': name, 'rows': len(records),
                        'objects': [{'type': k, 'label': label[k], 'identity': sorted(paths)} for k, paths in keys.items()],
                        'grain': {'id': f'grain:{name}', 'unique': _unique(records, key_columns), 'answer': _view(f'grain:{name}', cells.get(f'grain:{name}'))},
