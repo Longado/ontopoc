@@ -7,7 +7,7 @@ import {
   COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, serviceReady, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
-import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
+import { batchProblem, batchSummary, isDoc, previewFactText, previewKeysText, previewLinkText, sizeText, uploadPayload } from "./ontologyUploadModel.js";
 import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js";
 import { downloadName, summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
@@ -90,12 +90,15 @@ function SendPreview({ file }) {
     {state.status === "error" && <p className="pr-error">{state.error}</p>}
     {d?.kind === "document" && <p>文档的正文会按段发给模型：共 {d.paragraphs} 段、{d.chars} 字，分成 {d.chunks_total} 块，这次会发 {d.chunks_sent} 块{d.chunks_sent < d.chunks_total ? "（太长，后面的不处理）" : ""}。</p>}
     {d?.kind === "table" && <>
-      <p>只发下面这些：每列的字段名和最多 3 个示例值；出题时，取值不超过 12 种的列会发全部取值。其余的行不会离开本机，数据体检和答题都在本机算。</p>
+      <p>只发下面这些：每列的字段名、最多 3 个示例值，和代码在全部行上数出的计数；每张表哪些列每行都不同、哪些列的值能在别的列里找到。取值不超过 12 种的列，出题时发全部取值；其中像类别那样反复出现的，建模时也发。其余的行不会离开本机，数据体检和答题都在本机算。</p>
       {d.sources.map((src) => <div key={src.name} className="pr-table-wrap"><table className="pr-table">
         <caption>{src.name}（{src.record_count} 行）</caption>
-        <thead><tr><th>字段</th><th>示例值</th><th>出题时发送的全部取值</th></tr></thead>
-        <tbody>{src.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td>{f.examples.join("、")}</td><td>{f.values ? f.values.join("、") : "—"}</td></tr>)}</tbody>
-      </table></div>)}
+        <thead><tr><th>字段</th><th>示例值</th><th>计数</th><th>会发送的全部取值</th></tr></thead>
+        <tbody>{src.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td>{f.examples.join("、")}</td><td>{previewFactText(f)}</td><td>{f.values ? f.values.join("、") : "—"}</td></tr>)}</tbody>
+      </table>
+      {previewKeysText(src) && <p className="pr-muted">{previewKeysText(src)}</p>}
+      {src.links?.length > 0 && <ul className="pr-muted">{src.links.map((l) => <li key={`${l.field}-${l.to_table}-${l.to_field}`}>可能的连接：{previewLinkText(l)}</li>)}</ul>}
+      </div>)}
     </>}
   </details>;
 }

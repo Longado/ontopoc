@@ -40,4 +40,20 @@ export function uploadPayload(files, purpose, contents, mode = null) {
   return { files: files.map((f, i) => ({ filename: f.name, content_base64: base64(i) })), purpose, ...extra };
 }
 
+// The preview of what goes to the model: the counts code took on every row, read as plain sentences.
+export function previewFactText(f) {
+  if (!f.filled) return "全空";
+  if (f.distinct === 1 && f.filled > 1) return `${f.filled} 个有值 · 全是同一个值`;
+  return `${f.filled} 个有值 · ${f.distinct} 种${f.unique ? "，各不相同" : ""}`;
+}
+
+export function previewKeysText(src) {
+  if (src.unique_columns?.length) return `每行都不同的列：${src.unique_columns.join("、")}`;
+  if (src.unique_pairs?.length) return `没有一列每行都不同；两列合起来每行都不同的有：${src.unique_pairs.map((p) => p.join(" + ")).join("、")}`;
+  if (src.unique_pairs) return "没有一列每行都不同，任意两列合起来也有重复的行";
+  return src.unique_columns ? "没有一列每行都不同" : null;
+}
+
+export const previewLinkText = (l) => `${l.field} 的 ${l.of} 个不同值里，有 ${l.found} 个在 ${l.to_table}.${l.to_field}`;
+
 export { ACCEPT };

@@ -63,7 +63,7 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 
 | Action | What the system does |
 |---|---|
-| Upload tables and write the question you want answered | The model sees only each column's name and up to 3 example values, and proposes objects, identity fields and relations; code checks 17 kinds of error and sends it back to redo, up to 3 drafts |
+| Upload tables and write the question you want answered | Code first counts every row: how many distinct values each column has, which columns differ on every row, which columns point into another table. The model sees each column's name, up to 3 example values and these counts, and proposes objects, identity fields and relations; code checks 17 kinds of error and sends it back to redo, up to 3 drafts |
 | Wait for the build | Builds the same file 3 times at once and marks where the 3 disagree (where the model is unsure and you should decide); if your purpose asks a question, it is answered from the data too, ready to keep as an acceptance question |
 | Open the data check (数据体检) | Code computes 7 checks row by row, e.g. whether one number carries conflicting details, whether every uploaded table is used |
 | Ask a question (智能问答) | The model writes a structured query and code computes the answer on the data; when it cannot, it says whether the ontology lacks something, the data lacks it, or the question is beyond the query. An amount that needs a formula (unit price × quantity × (1 − discount)) is proposed by the model, tried by code on every row, and once you confirm it the question is recomputed and answered. The model can also write a round of 6 questions on request |
@@ -161,7 +161,7 @@ There is also an example use of the same method on vehicle recall scope (NHTSA p
 ## Privacy
 
 - Uploaded files and all results stay on this machine, in `output/ontology-runs/`.
-- Sent to the model (DeepSeek): each column's name and up to 3 example values; when writing questions, every value of columns with at most 12 distinct values; for documents, the text, at most 12 chunks per upload. The upload page shows exactly what will be sent, column by column.
+- Sent to the model (DeepSeek): each column's name, up to 3 example values, the counts code took (values present, distinct values, whether all differ) and likely links; every value of a category-like column; when writing questions, every value of columns with at most 12 distinct values; for documents, the text, at most 12 chunks per upload. The upload page shows exactly what will be sent, column by column.
 - Each model call leaves one line in `output/ontology-runs/model_calls.jsonl` (which agent, how long, success or failure), never the content.
 - The page accepts requests from this machine only.
 
@@ -192,7 +192,7 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1048)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1058)
 npm --prefix landing-page run test:unit                       # page tests (327)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
