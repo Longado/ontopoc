@@ -7,7 +7,7 @@ import {
   COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, serviceReady, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
-import { batchProblem, batchSummary, isDoc, sizeText, uploadPayload } from "./ontologyUploadModel.js";
+import { batchProblem, batchSummary, isDoc, previewFactText, previewKeysText, previewLinkText, sizeText, uploadPayload } from "./ontologyUploadModel.js";
 import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js";
 import { downloadName, summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
@@ -70,14 +70,15 @@ function Progress({ events, kind, elapsed, lost }) {
   </div>;
 }
 
-function SendPreview({ file }) {
+function SendPreview({ files }) {
   const [state, setState] = useState({ status: "idle" });
   async function load() {
-    if (state.status !== "idle") return;
+    if (state.status === "loading" || state.status === "ready") return;   // after an error, reopening tries again
     setState({ status: "loading" });
     try {
+      const contents = await Promise.all(files.map(toBase64));
       const response = await fetch("/api/ontology/preview", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, content_base64: await toBase64(file) }) });
+        body: JSON.stringify(uploadPayload(files, "", contents)) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(serviceError(response.status, data));
       setState({ status: "ready", data });
@@ -87,15 +88,18 @@ function SendPreview({ file }) {
   return <details className="os-how os-preview" onToggle={(e) => { if (e.currentTarget.open) load(); }}>
     <summary>看看会发给模型什么</summary>
     {state.status === "loading" && <p>正在读取文件…</p>}
-    {state.status === "error" && <p className="pr-error">{state.error}</p>}
+    {state.status === "error" && <><p className="pr-error">{state.error}</p><p className="pr-muted">收起再展开可以重试。</p></>}
     {d?.kind === "document" && <p>文档的正文会按段发给模型：共 {d.paragraphs} 段、{d.chars} 字，分成 {d.chunks_total} 块，这次会发 {d.chunks_sent} 块{d.chunks_sent < d.chunks_total ? "（太长，后面的不处理）" : ""}。</p>}
     {d?.kind === "table" && <>
-      <p>只发下面这些：每列的字段名和最多 3 个示例值；出题时，取值不超过 12 种的列会发全部取值。其余的行不会离开本机，数据体检和答题都在本机算。</p>
+      <p>只发下面这些：每列的字段名、最多 3 个示例值，和代码在全部行上数出的计数；每张表哪些列每行都不同、哪些列的值能在别的列里找到。取值不超过 12 种的列，出题时发全部取值；其中像类别那样反复出现的，建模时也发。其余的行不会离开本机，数据体检和答题都在本机算。</p>
       {d.sources.map((src) => <div key={src.name} className="pr-table-wrap"><table className="pr-table">
         <caption>{src.name}（{src.record_count} 行）</caption>
-        <thead><tr><th>字段</th><th>示例值</th><th>出题时发送的全部取值</th></tr></thead>
-        <tbody>{src.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td>{f.examples.join("、")}</td><td>{f.values ? f.values.join("、") : "—"}</td></tr>)}</tbody>
-      </table></div>)}
+        <thead><tr><th>字段</th><th>示例值</th><th>计数</th><th>会发送的全部取值</th></tr></thead>
+        <tbody>{src.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td>{f.examples.join("、")}</td><td>{previewFactText(f)}</td><td>{f.values ? f.values.join("、") : "—"}</td></tr>)}</tbody>
+      </table>
+      {previewKeysText(src) && <p className="pr-muted">{previewKeysText(src)}</p>}
+      {src.links?.length > 0 && <ul className="pr-muted">{src.links.map((l) => <li key={`${l.field}-${l.to_table}-${l.to_field}`}>可能的连接：{previewLinkText(l)}</li>)}</ul>}
+      </div>)}
     </>}
   </details>;
 }
@@ -153,7 +157,7 @@ function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo
           <button type="button" onClick={onDocDemo}>打开示例文档</button></>}
         {files.length > 0 && !purpose && EXAMPLE_QUESTIONS.map((q) => <button key={q} type="button" onClick={() => setPurpose(q)}>{q}</button>)}
       </div>
-      {files.length === 1 && !problem && !offline && <SendPreview key={`${files[0].name}-${files[0].size}-${files[0].lastModified}`} file={files[0]} />}
+      {files.length > 0 && !problem && !offline && <SendPreview key={files.map((f) => `${f.name}-${f.size}-${f.lastModified}`).join("|")} files={files} />}
     </>}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {offline && <div className="pr-note"><p>本机的建模服务没有启动。在仓库根目录运行（需要本机 DeepSeek 凭据）：</p><code className="os-cmd">{START}</code></div>}

@@ -60,24 +60,160 @@ def field_paths(records: list[dict]) -> list[str]:
     return list(paths)
 
 
+CATEGORY_LIMIT = 12   # a field with at most this many distinct values goes to the question round with all of them
+PAIR_LIMIT = 5        # pairs of columns that tell rows apart, listed when no single column does
+PAIR_BUDGET = 5_000_000   # rows looked at in the pair search; past it the table lists only the pairs already found
+LINK_SHARE = 0.5      # a column links when at least half its distinct values sit in another column's unique values
+LONG_TEXT = 60        # a value this long is text to read, not a key
+_PLAIN_NUMBER = re.compile(r'-?\d+(\.\d+)?')
+_DECIMAL = re.compile(r'[-+(]?[¥￥$€£]? ?[-+]?[\d,]*\.\d+\)?[-%]?')   # 75.50, ¥1,200.50, (120.50), 4528.82-, 12.50%
+_WHOLE_FLOAT = re.compile(r'-?\d+\.0')   # 1001.0: a whole number a spreadsheet wrote as a float
+_KEY_WORD = re.compile(r'(ID|KEY|NO|NUM|NUMBER|CODE|编号|代码|编码|号)$')
+# a column name ending in a key word: account_code, GLCode, FNumber, OrderNO, customerID, 科目编码. id, key and num
+# only as a word of their own, so paid, Bid, Valid, PAID and per_annum are not keys
+_KEY_NAME = re.compile(r'((^|[\s_\-./])(?i:id|key|num)|(?<=[a-z0-9])ID|(?<=[A-Za-z0-9])(Id|Key|Num)|(?i:code|number|no))\.?$'
+                       r'|(编号|代码|编码|号)$')
+_MONTHS = ('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC')
+_MONTH = (r'(?P<mon>JAN(UARY)?|FEB(RUARY)?|MAR(CH)?|APR(IL)?|MAY|JUNE?|JULY?|AUG(UST)?|SEP(T(EMBER)?)?|OCT(OBER)?'
+          r'|NOV(EMBER)?|DEC(EMBER)?)\.?')
+_TIME = r'([T ]?(上午|下午)?\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?( ?[AP]\.?M\.?)?( ?(Z|[A-Z]{3}([+-]\d{1,2})?|[+-]\d{2}(:?\d{2})?))?)?'
+_DATES = [re.compile(day + _TIME, re.IGNORECASE) for day in (
+    r'(?P<y>\d{4})[-/.](?P<m>\d{1,2})[-/.](?P<d>\d{1,2})',
+    r'(?P<d>\d{1,2})[-/.](?P<m>\d{1,2})[-/.](?P<y>\d{4})',
+    r'(?P<d>\d{1,2})/(?P<m>\d{1,2})/(?P<y>\d{2})',
+    rf'(?P<d>\d{{1,2}})[- /]{_MONTH}[- /,]+(?P<y>\d{{4}}|\d{{2}})',
+    rf'{_MONTH} (?P<d>\d{{1,2}}),? (?P<y>\d{{4}})',
+    r'(?P<y>\d{4})年(?P<m>\d{1,2})月((?P<d>\d{1,2})[日号])?',
+)]
+
+
 def field_catalog(bundle: dict, examples: int = 3, width: int = 140) -> dict:
-    """What the modeler sees: field names with a few example values, never the full records."""
-    catalog = {}
+    """What the modeler sees: field names with a few example values, never the full records, and what code counted on
+    every row (see _facts, _unique_keys, _links). Values are folded as identities are (normalize_value), so a count
+    here is the count the object graph will see."""
+    catalog, columns = {}, {}
     for name, source in bundle['sources'].items():
         records = source['records']
-        fields = {}
+        fields, facts, keyish = {}, {}, set()
         for path in field_paths(records):
-            seen: list[str] = []
-            for record in records:
-                for value in resolve(record, path):
-                    text = str(value)[:width]
-                    if value not in (None, '') and text not in seen:
-                        seen.append(text)
-                if len(seen) >= examples:
-                    break
-            fields[path] = seen[:examples]
-        catalog[name] = {'record_count': len(records), 'fields': fields}
+            values = [v for record in records for v in resolve(record, path) if normalize_value(v)]
+            fields[path] = list(dict.fromkeys(str(v)[:width] for v in values))[:examples]
+            keys = {normalize_value(v) for v in values}
+            facts[path] = _facts(values, keys, width)
+            columns[name, path] = keys
+            if keys and _keyish(path, keys):
+                keyish.add(path)
+        catalog[name] = {'record_count': len(records), 'fields': fields, 'facts': facts, **_unique_keys(records, facts, keyish)}
+    for (name, path), links in _links(catalog, columns).items():
+        catalog[name].setdefault('links', []).extend(links)
     return catalog
+
+
+def _is_date(text: str) -> bool:
+    """A value spelt as a calendar date with a year from 1900 to 2100 (2024-01-05, 1/25/24, 05-Jan-2024, 2024年1月5日),
+    with or without a time. Codes shaped like dates fall outside the ranges: 1001.01.01, 8501.10.00, 12-JUN-0045."""
+    for pattern in _DATES:
+        m = pattern.fullmatch(text)
+        if not m:
+            continue
+        g = m.groupdict()
+        if len(g['y']) == 4 and not 1900 <= int(g['y']) <= 2100:
+            continue
+        month = _MONTHS.index(g['mon'][:3].upper()) + 1 if g.get('mon') else int(g['m'])
+        day = int(g['d'] or 1)
+        if 1 <= month <= 12 and 1 <= day <= 31 or not g.get('mon') and 1 <= day <= 12 and 1 <= month <= 31:   # 1/25/2024
+            return True
+    return False
+
+
+def _keyish(path: str, keys: set) -> bool:
+    """Whether a column may hold an identity. Not when any value is a date or a decimal: those are times and measures,
+    different on every row by chance (100.00 next to 75.50 is an amount). Not when most values are long text. A name
+    that says key or code keeps it (科目编码 1001.01), and whole numbers written as floats (1001.0) are numbers."""
+    if _KEY_NAME.search(path) or all(_WHOLE_FLOAT.fullmatch(k) for k in keys):
+        return True
+    return not any(_is_date(k) or _DECIMAL.fullmatch(k) for k in keys) and sum(len(k) > LONG_TEXT for k in keys) * 2 <= len(keys)
+
+
+def _facts(values: list, keys: set, width: int) -> dict:
+    fact = {'filled': len(values), 'distinct': len(keys)}
+    if len(values) >= 2 and len(keys) == len(values):
+        fact['unique'] = True
+    spellings = sorted({str(v)[:width] for v in values})
+    if 0 < len(spellings) <= CATEGORY_LIMIT and len(keys) * 2 <= len(values):   # a category: values come back row after row
+        fact['values'] = spellings   # a few values each on one row would send a small table whole
+    return fact
+
+
+def _unique_keys(records: list, facts: dict, keyish: set) -> dict:
+    """The columns that hold a different value on every row: where an identity for what one row describes can come
+    from. Dates, decimals and long text are left out (see _keyish). With no such column, the pairs of columns that do together (Auto-BI and HoPF start
+    from the same unique combinations); an empty list says no pair of fully filled columns does. A one-row table says
+    nothing; a search cut short lists the pairs it found and never claims there are none."""
+    n = len(records)
+    if n < 2:
+        return {}
+    full = [p for p, f in facts.items() if '[].' not in p and f['filled'] == n and p in keyish]
+    single = [p for p in full if facts[p].get('unique')]
+    if single:
+        return {'unique_columns': single}
+    pairs, budget = [], PAIR_BUDGET
+    for i, a in enumerate(full):
+        for b in full[i + 1:]:
+            if facts[a]['distinct'] * facts[b]['distinct'] < n:
+                continue
+            if budget < n:
+                return {'unique_columns': [], **({'unique_pairs': pairs} if pairs else {})}
+            seen = set()
+            for record in records:
+                key = (normalize_value(record[a]), normalize_value(record[b]))
+                if key in seen:
+                    break
+                seen.add(key)
+            budget -= len(seen)
+            if len(seen) == n:
+                pairs.append([a, b])
+                if len(pairs) == PAIR_LIMIT:
+                    return {'unique_columns': [], 'unique_pairs': pairs}
+    return {'unique_columns': [], 'unique_pairs': pairs}
+
+
+def _core(name: str) -> str:
+    """A column name without separators and its trailing key word: customer_id -> CUSTOMER; a bare id -> ''."""
+    return _KEY_WORD.sub('', re.sub(r'[\s\-_.\[\]]', '', name).upper())
+
+
+def _named_alike(field: str, to_field: str, to_table: str) -> bool:
+    """customer_id and customers.id, or productID and productID; a bare id says nothing about which table it means."""
+    a, b, table = _core(field), _core(to_field), _core(to_table).removesuffix('S')
+    return bool(a) and ((min(len(a), len(b)) >= 2 and (a in b or b in a)) or (len(table) >= 2 and table in a))
+
+
+def _links(catalog: dict, columns: dict) -> dict:
+    """Columns most of whose values sit in a column of unique values, here or in another table: the evidence a foreign
+    key leaves (inclusion plus a unique target, as in Auto-BI, Fast-FK and LLM-FK). Values alone are not enough when
+    the shared ones are plain numbers: small numbers land inside any list of ids numbered from 1 (Northwind's shipVia
+    1-3 in productID), so plain numbers also need the names to agree. Shared dates are left out: two timestamp columns
+    of one table share days without pointing at each other. A link is offered to the model as evidence only."""
+    targets = [(name, path, columns[name, path]) for name, entry in catalog.items()
+               for path, fact in entry['facts'].items() if fact.get('unique') and '[].' not in path]
+    out = {}
+    for (name, path), keys in columns.items():
+        if len(keys) < 2:
+            continue
+        found = []
+        for to_table, to_field, to_keys in targets:
+            shared = keys & to_keys
+            if (to_table, to_field) == (name, path) or len(shared) < 2 or len(shared) < LINK_SHARE * len(keys):
+                continue
+            if all(_is_date(k) for k in shared):
+                continue
+            if all(_PLAIN_NUMBER.fullmatch(k) for k in shared) and not _named_alike(path, to_field, to_table):
+                continue
+            found.append({'field': path, 'to_table': to_table, 'to_field': to_field, 'found': len(shared), 'of': len(keys)})
+        if found:
+            out[name, path] = sorted(found, key=lambda l: -l['found'])[:2]
+    return out
 
 
 def _has_value(records, path):
@@ -99,17 +235,24 @@ def _structure_errors(proposal) -> list[dict]:
         if not isinstance(t, dict) or not isinstance(t.get('key'), str) or \
                 not isinstance(t.get('populated_from'), list) or \
                 any(not isinstance(p, dict) or not isinstance(p.get('identity'), dict) or
-                    any(not isinstance(v, str) for v in p['identity'].values())
+                    any(not isinstance(v, str) for v in p['identity'].values()) or
+                    not isinstance(p.get('source'), (str, type(None)))
                     for p in t['populated_from']) or \
-                any(not isinstance(a, dict) for a in t.get('attributes') or []) or \
-                ('time_field' in t and not isinstance(t['time_field'], dict)):
+                not isinstance(t.get('attributes') or [], list) or \
+                any(not _field_ref(a) for a in t.get('attributes') or []) or \
+                ('time_field' in t and not _field_ref(t['time_field'])):
             errors.append(_error('invalid_response', f'malformed object type: {str(t)[:80]}'))
     for r in relations:
         if not isinstance(r, dict) or any(not isinstance(r.get(k), str) for k in ('key', 'from', 'to', 'source')):
             errors.append(_error('invalid_response', f'malformed relation: {str(r)[:80]}'))
-    if any(not isinstance(f, dict) for f in proposal.get('ignored_fields') or []):
-        errors.append(_error('invalid_response', 'ignored_fields entries must be objects'))
+    ignored = proposal.get('ignored_fields') or []
+    if not isinstance(ignored, list) or any(not _field_ref(f) for f in ignored):
+        errors.append(_error('invalid_response', 'ignored_fields must be a list of objects with a text source and path'))
     return errors
+
+
+def _field_ref(ref) -> bool:
+    return isinstance(ref, dict) and all(isinstance(ref.get(k), (str, type(None))) for k in ('source', 'path'))
 
 
 def normalize_proposal(proposal: dict) -> dict:
@@ -198,6 +341,7 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
             if not ident:
                 errors.append(_error('invalid_response', f'{key}/{src}: identity is empty'))
                 continue
+            before = len(errors)   # a filter is checked only on an identity with nothing wrong, which it reads row by row
             if pop['transform'] not in TRANSFORMS:
                 errors.append(_error('invalid_response', f'{key}/{src}: unknown transform {pop["transform"]!r}'))
             elif pop['transform'] != 'none' and len(ident) != 1:
@@ -210,7 +354,7 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
                     errors.append(_error('unknown_field', f'{key}/{src}: field {path!r} does not exist'))
                 elif not _has_value(sources[src], path):
                     errors.append(_error('empty_field', f'{key}/{src}: field {path!r} has no values'))
-            if pop.get('where') is not None:
+            if pop.get('where') is not None and len(errors) == before:
                 errors += _where_errors(key, src, pop, sources[src])
             if logical is None:
                 logical = set(ident)
@@ -235,6 +379,9 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
             for path in pop['identity'].values()}
     used |= {(a.get('source'), a.get('path')) for t in types.values() for a in t['attributes']}
     used |= {(f.get('source'), f.get('path')) for f in p['ignored_fields']}
+    used |= {(t['time_field']['source'], t['time_field']['path']) for t in types.values()   # as data_fit counts it;
+             if isinstance(t.get('time_field'), dict)                                       # _clean keeps it as an
+             and isinstance(t['time_field'].get('source'), str) and isinstance(t['time_field'].get('path'), str)}   # attribute too
     used |= relation_fields(p['relations'])
     for src, records in sources.items():
         for path in field_paths(records):
@@ -443,7 +590,21 @@ def verify_proposal(proposal: dict, bundle: dict, profile: Profile | None = None
 
 # ---- automatic construction: one model judgement per attempt, code decides everything else ----
 
-MODELER_PROMPT_VERSION = 'public_ontology_modeler.v3'
+# Shared by the table modelers: what the counts in the field list mean and how far they go.
+FACTS_RULES = '''- Code counted every row before you. Per field: filled = values present; distinct = different values, with case and
+  spacing folded as identities are matched; unique = no value repeats; values = every value of a category (at most 12
+  values, at least two rows per value on average). unique_columns: columns filled on every row whose value differs on
+  every row, leaving out columns with any date or decimal and columns mostly of long text, unless the name ends in a
+  word such as id, code, no, 编号 or 编码; whole numbers written as 1001.0 count as numbers. unique_pairs, given when there is no such column: up to 5 pairs of such
+  columns that differ together (empty: no pair does; a key may still need three columns, or a column with blanks; on a
+  large table the search may stop early, listing fewer pairs or leaving unique_pairs out). links: a column, "found"
+  of whose "of" distinct values appear in to_table.to_field, a column whose values are unique; it may be the same table.
+- These counts are evidence, not instructions. What one row of a table describes is usually identified by a unique
+  column or pair. A column whose values repeat cannot tell rows apart on its own: it may name a thing many rows share,
+  belong to a key with other columns, or be an attribute such as a status. Keep a link only when the names and meaning
+  agree.
+'''
+MODELER_PROMPT_VERSION = 'public_ontology_modeler.v4'
 # Contract rule: at most three chained model calls per user action; the no-progress stop still applies first.
 MAX_MODELER_ATTEMPTS = 3
 MODELER_SYSTEM_PROMPT = '''You design an ontology for one business decision from the data sources described by the user.
@@ -494,7 +655,7 @@ Rules:
 - Every field in the field list must appear in an identity, in attributes, or in ignored_fields.
   Keep descriptive text fields (defect descriptions, complaint narratives) as attributes of their object type.
 - Do not invent fields, sources, values or join keys.
-'''
+''' + FACTS_RULES
 RECALL_PROFILE = Profile(schema='public_ontology.v1', evidence_scope='public_data', prompt=MODELER_SYSTEM_PROMPT,
                          prompt_version=MODELER_PROMPT_VERSION, roles=ROLES, role_pairs=_ROLE_PAIRS,
                          shared_roles=('affected_object', 'mechanism'))
@@ -514,6 +675,11 @@ def _clean(proposal: dict) -> tuple[list, list]:
     p = normalize_proposal(proposal)
     fields = ('key', 'label', 'role', 'populated_from', 'attributes', 'rationale', 'time_field')
     types = [{f: t.get(f) for f in fields} for t in p['object_types']]
+    for t in types:   # a time field is also a date the questions filter on
+        tf = t['time_field'] or {}
+        if isinstance(tf.get('source'), str) and isinstance(tf.get('path'), str) and \
+                (tf['source'], tf['path']) not in {(a.get('source'), a.get('path')) for a in t['attributes']}:
+            t['attributes'] = [*t['attributes'], {'source': tf['source'], 'path': tf['path']}]
     relations = [{f: r.get(f) for f in ('key', 'from', 'to', 'source', 'meaning', 'label', 'from_identity', 'to_identity')
                   if f not in ('label', 'from_identity', 'to_identity') or (r.get(f) if f == 'label' else f in r)}
                  for r in p['relations']]
@@ -550,6 +716,7 @@ def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, p
         request = {'decision': bundle['decision'], 'sources': catalog,
                    'previous_proposal': candidate, 'errors_found_by_code': result['errors']}
     types, relations = _clean(proposal) if proposal is not None else ([], [])
+    gaps = (proposal or {}).get('open_questions')   # a bare sentence is one gap; it never sends a sound draft back
     return {
         'schema': profile.schema,
         'evidence_scope': profile.evidence_scope,
@@ -562,7 +729,7 @@ def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, p
         'object_types': types,
         'relations': relations,
         'ignored_fields': normalize_proposal(proposal)['ignored_fields'] if proposal else [],
-        'data_gaps': [q for q in (proposal or {}).get('open_questions') or [] if isinstance(q, str)],
+        'data_gaps': [gaps] if isinstance(gaps, str) and gaps.strip() else [q for q in gaps if isinstance(q, str)] if isinstance(gaps, list) else [],
         'model_reasoning': (proposal or {}).get('reasoning') if isinstance((proposal or {}).get('reasoning'), str) else None,
         'verification': result,
         'attempts': attempts,

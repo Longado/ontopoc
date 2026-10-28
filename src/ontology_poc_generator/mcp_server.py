@@ -486,7 +486,7 @@ def _tool(fn, description, properties=None, required=()):
 TOOLS = [
     _tool(health, '本机建模服务是否在跑、有没有模型凭据、是否在跑旧代码。'),
     _tool(list_runs, '本机保存过的运行，新的在前。', {'limit': {'type': 'integer', 'minimum': 1, 'description': '最多给几次，默认 20'}}),
-    _tool(preview_upload, '不调用模型：看这几份文件会发给模型什么（字段名和示例值）。', FILES, ('files',)),
+    _tool(preview_upload, '不调用模型：看这几份文件会发给模型什么（字段名、示例值、代码在全部行上数出的计数、每行都不同的列和可能的连接）。', FILES, ('files',)),
     _tool(build_ontology, '上传文件并建本体：模型提出、代码核验、数据体检、建三次比稳定性，并回答 purpose 里写的问题。给 previous 表示这是那次运行的新版本，沿用它的确认、验收问题和规则。会调用模型，等它跑完才返回；返回的概况同 run_overview，也带 open_items、answered_items、card。',
           {**FILES, 'previous': {'type': 'string', 'description': '上一版本的运行保存名（来自 list_runs）；不是新版本就不写'},
            'mode': {'type': 'string', 'enum': ['org'], 'description': '写 org 就按组织架构梳理一份文档：组织单元、岗位、人、工作环节及其关系'}}, ('files',)),
