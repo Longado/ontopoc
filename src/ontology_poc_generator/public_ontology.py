@@ -248,8 +248,6 @@ def _structure_errors(proposal) -> list[dict]:
     ignored = proposal.get('ignored_fields') or []
     if not isinstance(ignored, list) or any(not _field_ref(f) for f in ignored):
         errors.append(_error('invalid_response', 'ignored_fields must be a list of objects with a text source and path'))
-    if not isinstance(proposal.get('open_questions') or [], list):
-        errors.append(_error('invalid_response', 'open_questions must be a list of strings'))
     return errors
 
 
@@ -718,6 +716,7 @@ def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, p
         request = {'decision': bundle['decision'], 'sources': catalog,
                    'previous_proposal': candidate, 'errors_found_by_code': result['errors']}
     types, relations = _clean(proposal) if proposal is not None else ([], [])
+    gaps = (proposal or {}).get('open_questions')   # a bare sentence is one gap; it never sends a sound draft back
     return {
         'schema': profile.schema,
         'evidence_scope': profile.evidence_scope,
@@ -730,7 +729,7 @@ def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, p
         'object_types': types,
         'relations': relations,
         'ignored_fields': normalize_proposal(proposal)['ignored_fields'] if proposal else [],
-        'data_gaps': [q for q in (proposal or {}).get('open_questions') or [] if isinstance(q, str)],
+        'data_gaps': [gaps] if isinstance(gaps, str) else [q for q in gaps if isinstance(q, str)] if isinstance(gaps, list) else [],
         'model_reasoning': (proposal or {}).get('reasoning') if isinstance((proposal or {}).get('reasoning'), str) else None,
         'verification': result,
         'attempts': attempts,
