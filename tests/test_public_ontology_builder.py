@@ -191,7 +191,7 @@ class CatalogFactsTests(unittest.TestCase):
                      lambda d: f'1/{d}/2024 3:00 p.m.', lambda d: f'2024-01-0{d} 10:00 CST', lambda d: f'2024年1月{d}号 上午10:00',
                      lambda d: f'0{d}-Jan-2024', lambda d: f'Jan {d}, 2024']
         for spell in spellings:
-            text = '编号,开始,结束\n' + ''.join(f'V{d},{spell(d)},{spell(d + 1)}\n' for d in range(1, 6))
+            text = '编号,开始,结束\n' + ''.join(f'V{d},"{spell(d)}","{spell(d + 1)}"\n' for d in range(1, 6))
             self.assertNotIn('links', field_catalog(load_table_file('events.csv', text.encode('utf-8')))['events'], spell(1))
 
     def test_structured_codes_are_keys_and_links_not_dates(self):
