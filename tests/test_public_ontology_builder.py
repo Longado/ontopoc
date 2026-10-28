@@ -338,9 +338,15 @@ class TimeFieldTests(unittest.TestCase):
         for bad in [{**EVENT, 'object_types': [{**t, 'populated_from': [{**t['populated_from'][0], 'source': ['events']}]}]},
                     {**EVENT, 'object_types': [{**t, 'populated_from': [{**t['populated_from'][0], 'source': {'name': 'events'}}]}]},
                     {**EVENT, 'object_types': [{**t, 'attributes': 5}]},
-                    {**EVENT, 'ignored_fields': 5}, {**EVENT, 'open_questions': 5}, {**EVENT, 'open_questions': '订单没有日期'}]:
+                    {**EVENT, 'ignored_fields': 5}]:
             codes = {e['code'] for e in verify_company_proposal(bad, self.bundle())['errors']}
             self.assertIn('invalid_response', codes)
+
+    def test_open_questions_of_another_shape_do_not_stop_the_build(self):
+        from ontology_poc_generator.company_ontology import build_company_ontology
+        for gaps, expected in [('订单没有日期', ['订单没有日期']), (5, []), (['缺付款日期', 3], ['缺付款日期'])]:
+            o = build_company_ontology(self.bundle(), FakeGateway([{**EVENT, 'open_questions': gaps}]))
+            self.assertEqual((o['status'], o['data_gaps']), ('auto_built_verified', expected), gaps)
 
     def test_a_filter_on_an_identity_already_wrong_is_sent_back_not_a_crash(self):
         from ontology_poc_generator.company_ontology import verify_company_proposal
