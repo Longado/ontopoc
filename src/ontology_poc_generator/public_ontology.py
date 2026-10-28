@@ -318,6 +318,8 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
             for path in pop['identity'].values()}
     used |= {(a.get('source'), a.get('path')) for t in types.values() for a in t['attributes']}
     used |= {(f.get('source'), f.get('path')) for f in p['ignored_fields']}
+    used |= {(t['time_field'].get('source'), t['time_field'].get('path')) for t in types.values()
+             if isinstance(t.get('time_field'), dict)}   # as data_fit counts it; _clean keeps it as an attribute too
     used |= relation_fields(p['relations'])
     for src, records in sources.items():
         for path in field_paths(records):
@@ -607,6 +609,10 @@ def _clean(proposal: dict) -> tuple[list, list]:
     p = normalize_proposal(proposal)
     fields = ('key', 'label', 'role', 'populated_from', 'attributes', 'rationale', 'time_field')
     types = [{f: t.get(f) for f in fields} for t in p['object_types']]
+    for t in types:   # a time field is also a date the questions filter on
+        tf = t['time_field'] or {}
+        if tf.get('source') and tf.get('path') and (tf['source'], tf['path']) not in {(a.get('source'), a.get('path')) for a in t['attributes']}:
+            t['attributes'] = [*t['attributes'], {'source': tf['source'], 'path': tf['path']}]
     relations = [{f: r.get(f) for f in ('key', 'from', 'to', 'source', 'meaning', 'label', 'from_identity', 'to_identity')
                   if f not in ('label', 'from_identity', 'to_identity') or (r.get(f) if f == 'label' else f in r)}
                  for r in p['relations']]
