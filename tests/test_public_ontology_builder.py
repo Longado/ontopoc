@@ -344,7 +344,7 @@ class TimeFieldTests(unittest.TestCase):
 
     def test_open_questions_of_another_shape_do_not_stop_the_build(self):
         from ontology_poc_generator.company_ontology import build_company_ontology
-        for gaps, expected in [('订单没有日期', ['订单没有日期']), (5, []), (['缺付款日期', 3], ['缺付款日期'])]:
+        for gaps, expected in [('订单没有日期', ['订单没有日期']), ('', []), ('  ', []), (5, []), (['缺付款日期', 3], ['缺付款日期'])]:
             o = build_company_ontology(self.bundle(), FakeGateway([{**EVENT, 'open_questions': gaps}]))
             self.assertEqual((o['status'], o['data_gaps']), ('auto_built_verified', expected), gaps)
 
