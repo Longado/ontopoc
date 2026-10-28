@@ -173,6 +173,41 @@ class CatalogFactsTests(unittest.TestCase):
         for text in (rows, zoned):
             self.assertNotIn('links', field_catalog(load_table_file('events.csv', text.encode('utf-8')))['events'])
 
+    def test_version_and_outline_numbers_are_keys_not_dates(self):
+        from ontology_poc_generator.company_sources import load_table_files
+        from ontology_poc_generator.public_ontology import field_catalog
+        versions = [f'1.{i // 4}.{i % 4}' for i in range(12)]
+        catalog = field_catalog(load_table_files([
+            ('releases.csv', ('版本,发布人\n' + ''.join(f'{v},P{i % 3}\n' for i, v in enumerate(versions))).encode('utf-8')),
+            ('issues.csv', ('问题,发现版本\n' + ''.join(f'I{i},{versions[i % 12]}\n' for i in range(30))).encode('utf-8'))]))
+        self.assertEqual(catalog['releases']['unique_columns'], ['版本'])
+        self.assertIn({'field': '发现版本', 'to_table': 'releases', 'to_field': '版本', 'found': 12, 'of': 12}, catalog['issues']['links'])
+
+    def test_more_date_spellings_are_not_a_link(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        from ontology_poc_generator.public_ontology import field_catalog
+        spellings = [lambda d: f'1/{d}/2024 12:00:00 AM', lambda d: f'2024-01-0{d} 10:00:00 +08:00',
+                     lambda d: f'2024-01-0{d} 10:00:00 UTC', lambda d: f'2024年1月{d}日']
+        for spell in spellings:
+            text = '编号,开始,结束\n' + ''.join(f'V{d},{spell(d)},{spell(d + 1)}\n' for d in range(1, 6))
+            self.assertNotIn('links', field_catalog(load_table_file('events.csv', text.encode('utf-8')))['events'], spell(1))
+
+    def test_one_long_name_or_a_float_written_id_still_tells_rows_apart(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        from ontology_poc_generator.public_ontology import field_catalog
+        long = 'Department of Strategic Planning and International Cooperation Affairs (Shanghai Branch)'
+        text = '部门,编号,科目代码\n' + ''.join(f'{long if i == 0 else f"D{i}"},{1000 + i}.0,{1000 + i}.0{i + 1}\n' for i in range(6))
+        self.assertEqual(field_catalog(load_table_file('dept.csv', text.encode('utf-8')))['dept']['unique_columns'],
+                         ['部门', '编号', '科目代码'])
+
+    def test_a_category_with_more_than_twelve_spellings_is_not_sent_whole(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        from ontology_poc_generator.public_ontology import field_catalog
+        states = [w for s in ['Open', 'Closed', 'Done', 'New', 'Held', 'Lost', 'Won'] for w in (s, s.upper())]
+        text = '编号,状态\n' + ''.join(f'T{i},{states[i % 14]}\n' for i in range(28))
+        fact = field_catalog(load_table_file('t.csv', text.encode('utf-8')))['t']['facts']['状态']
+        self.assertEqual(fact, {'filled': 28, 'distinct': 7})   # the preview lists at most 12, so the modeler does too
+
     def test_counts_fold_case_and_spaces_as_identities_do(self):
         from ontology_poc_generator.company_sources import load_table_file
         from ontology_poc_generator.public_ontology import field_catalog
@@ -193,6 +228,17 @@ class CatalogFactsTests(unittest.TestCase):
         entry = field_catalog(load_table_file('one.csv', b'a,b\n1,2\n'))['one']
         self.assertNotIn('unique_columns', entry)
         self.assertNotIn('unique_pairs', entry)
+
+    def test_a_pair_search_cut_short_keeps_the_pairs_it_found(self):
+        from ontology_poc_generator import public_ontology
+        from ontology_poc_generator.company_sources import load_table_file
+        text = 'a,b,c,d,e\n' + '\n'.join(f'{i % 8},{i % 9},{i % 2},x{i % 3},y{i % 5}' for i in range(40)) + '\n'
+        old, public_ontology.PAIR_BUDGET = public_ontology.PAIR_BUDGET, 45
+        try:
+            entry = public_ontology.field_catalog(load_table_file('t.csv', text.encode('utf-8')))['t']
+        finally:
+            public_ontology.PAIR_BUDGET = old
+        self.assertEqual(entry['unique_pairs'], [['a', 'b']])
 
     def test_a_pair_search_cut_short_claims_no_pairs(self):
         from ontology_poc_generator import public_ontology
@@ -240,11 +286,14 @@ class TimeFieldTests(unittest.TestCase):
         errors = verify_company_proposal(EVENT, self.bundle())['errors']
         self.assertEqual([e for e in errors if e['code'] == 'field_unaccounted'], [])
 
-    def test_a_time_field_with_a_list_for_its_path_is_sent_back_not_a_crash(self):
+    def test_a_list_where_a_field_name_goes_is_sent_back_not_a_crash(self):
         from ontology_poc_generator.company_ontology import verify_company_proposal
-        bad = {**EVENT, 'object_types': [{**EVENT['object_types'][0], 'time_field': {'source': 'events', 'path': ['创建时间']}}]}
-        codes = {e['code'] for e in verify_company_proposal(bad, self.bundle())['errors']}
-        self.assertIn('time_field_invalid', codes)
+        t = EVENT['object_types'][0]
+        for bad in [{**EVENT, 'object_types': [{**t, 'time_field': {'source': 'events', 'path': ['创建时间']}}]},
+                    {**EVENT, 'object_types': [{**t, 'attributes': [{'source': ['events'], 'path': '创建时间'}]}]},
+                    {**EVENT, 'ignored_fields': [{'source': ['events'], 'path': '创建时间', 'reason': 'x'}]}]:
+            codes = {e['code'] for e in verify_company_proposal(bad, self.bundle())['errors']}
+            self.assertIn('invalid_response', codes)
 
     def test_the_built_ontology_keeps_the_time_field_as_an_attribute(self):
         from ontology_poc_generator.company_ontology import build_company_ontology
