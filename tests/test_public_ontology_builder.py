@@ -164,5 +164,32 @@ class CatalogFactsTests(unittest.TestCase):
         self.assertEqual(sent['orders']['facts']['订单号']['distinct'], 4)
 
 
+EVENT = {'object_types': [{'key': 'event', 'label': '事件', 'rationale': '一行一个事件',
+                           'populated_from': [{'source': 'events', 'identity': {'id': '编号'}}],
+                           'time_field': {'source': 'events', 'path': '创建时间'},
+                           'attributes': [{'source': 'events', 'path': '修改时间'}]}],
+         'relations': [], 'ignored_fields': []}
+
+
+class TimeFieldTests(unittest.TestCase):
+    """A date named as an object's time field is a use of that column, as the data check already counts it. The built
+    ontology keeps it as an attribute too, so questions can still filter on it."""
+
+    def bundle(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        return load_table_file('events.csv', TABLES['events.csv'].encode('utf-8'))
+
+    def test_a_time_field_counts_as_using_its_column(self):
+        from ontology_poc_generator.company_ontology import verify_company_proposal
+        errors = verify_company_proposal(EVENT, self.bundle())['errors']
+        self.assertEqual([e for e in errors if e['code'] == 'field_unaccounted'], [])
+
+    def test_the_built_ontology_keeps_the_time_field_as_an_attribute(self):
+        from ontology_poc_generator.company_ontology import build_company_ontology
+        o = build_company_ontology(self.bundle(), FakeGateway([EVENT]))
+        self.assertEqual(o['status'], 'auto_built_verified')
+        self.assertIn({'source': 'events', 'path': '创建时间'}, o['object_types'][0]['attributes'])
+
+
 if __name__ == '__main__':
     unittest.main()
