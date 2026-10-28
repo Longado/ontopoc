@@ -8,12 +8,24 @@ query cannot answer yet, and says so.
 """
 from __future__ import annotations
 
+import math
 import re
 
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 
 MAX_LABEL, MAX_TERMS, MAX_FACTORS = 20, 4, 4   # what a person reads as one formula on one line
 EXAMPLES = 3
+
+
+def to_number(raw) -> float | None:
+    """A cell read as an amount, thousands commas taken out; None when it is not a number. float() also accepts nan, inf
+    and anything that overflows to inf (1e999): a sum with one of those is NaN or infinite and the reply is no longer
+    JSON, so none of them is an amount."""
+    try:
+        number = float(str(raw).replace(',', ''))
+    except ValueError:
+        return None
+    return number if math.isfinite(number) else None
 
 
 def parse_derived(ontology: dict, raw) -> tuple[dict | None, str | None]:
@@ -91,9 +103,8 @@ def compute(ontology: dict, bundle: dict, derived: dict, graph: dict | None = No
                     problem = f'{name}：{field} {"没有值" if not found else f"有 {len(found)} 个不同的值"}'
                     break
                 raw = next(iter(found))
-                try:
-                    number = float(raw.replace(',', ''))
-                except ValueError:
+                number = to_number(raw)
+                if number is None:
                     problem = f'{name}：{field} = {raw} 不是数字'
                     break
                 product *= (1 - number) if f['complement'] else number

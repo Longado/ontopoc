@@ -1,5 +1,5 @@
 // Acceptance questions: the few questions a person fixes for a file, so the next run is judged on the same questions.
-import { STATUS_LABELS } from "./ontologyStudioModel.js";
+import { STATUS_LABELS, localTime } from "./ontologyStudioModel.js";
 
 export const MAX_ACCEPTANCE = 3;
 export const ACCEPTANCE_LABELS = { ...STATUS_LABELS, broken: "查询失效" };
@@ -15,12 +15,26 @@ export const savedAcceptance = (run) => (run.evaluation.acceptance?.items || [])
     .filter((field) => Object.hasOwn(item, field)).map((field) => [field, item[field]])) : {}),
 }));
 
+const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v && typeof v === "object"
+  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
+const sameQuery = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+
+/** A question already fixed, answered again by a different query (a condition dropped, say): fixing it takes the old one's place. */
+export function replacesAccepted(run, item) {
+  const same = savedAcceptance(run).find((s) => s.question === item.question);
+  return Boolean(same?.query && item.query && !sameQuery(same.query, item.query));
+}
+
+/** The words written for the query a new answer is about to replace: for the person to read, not to fill in for the new one. */
+export const replacedNote = (run, item) => (replacesAccepted(run, item) ? savedAcceptance(run).find((s) => s.question === item.question)?.note || "" : "");
+
 /** "" when this question can be fixed as an acceptance question, else why not. A question nothing can answer yet
  *  can be fixed too: otherwise the ones that pass hide the one the client actually asked for. */
 export function canAccept(run, item) {
   if (!run.saved_as) return "这是示例结果，上传自己的文件后可以存";
   const unmet = !item.query && UNMET.includes(item.status) && Boolean(item.reason);
   if (!unmet && (item.status !== "answered" || !item.query)) return "只能把已经答出来的问题存为验收问题";
+  if (replacesAccepted(run, item)) return "";
   const saved = savedAcceptance(run);
   const same = saved.find((s) => s.question === item.question);
   if (same && (same.query || unmet)) return "这道已经是验收问题了";
@@ -32,10 +46,27 @@ export function canAccept(run, item) {
 export const acceptItem = (saved, item, note) =>
   [...saved.filter((s) => s.question !== item.question), kept({ ...item, note: note.trim() })];
 
+// The service compares an item with the answer the person agreed to once it holds one (previous.confirmed_at), else with the last run.
+const compared = (acceptance) => acceptance.items.filter((i) => i.changed !== null);
+
+export function changeLabel(item, run) {
+  if (item.changed === null) return "";
+  if (!item.previous?.confirmed_at) return item.changed ? "和上次不一样" : "和上次一致";
+  const now = run?.file?.sha256;
+  const moved = Boolean(now && item.previous.confirmed_file && item.previous.confirmed_file !== now);   // not the file the person agreed on
+  return item.changed ? `和认可时不一样${moved ? "，数据已换版本" : ""}` : "和认可时一致";
+}
+
+/** A moved answer can be agreed on again as it reads now; a query that no longer runs has nothing to agree on. */
+export const canReaccept = (item) => Boolean(item.query && item.changed && item.status === "answered");
+
+export const previousTitle = (item) => (item.previous?.confirmed_at ? `认可时的答案（${localTime(item.previous.confirmed_at)}）` : "上次的答案");
+
 export function acceptanceSummary(acceptance) {
   const changed = acceptance.items.filter((i) => i.changed).length;
   const unmet = acceptance.items.filter((i) => !i.query).length;
-  const since = acceptance.items.some((i) => i.changed !== null) ? `${changed} 道和上次不一样` : "第一次执行";
+  const against = compared(acceptance).every((i) => i.previous?.confirmed_at) ? "认可时" : "上次";
+  const since = compared(acceptance).length ? `${changed} 道和${against}不一样` : "第一次执行";
   return `${acceptance.total} 道里能答 ${acceptance.answered} 道，${unmet ? `${unmet} 道现在还答不了，` : ""}${since}`;
 }
 

@@ -1,16 +1,64 @@
 // A page the consultant can hand over: what was read, what the ontology says, what a person confirmed, what to check.
 // Only what is already on screen goes in here — no model prose, no internal keys, and no claim nobody has checked.
-import { ACCEPTANCE_LABELS } from "./ontologyAcceptanceModel.js";
+import { editedLabel, reviewPoints, statusPill } from "./answerModel.js";
+import { ACCEPTANCE_LABELS, changeLabel } from "./ontologyAcceptanceModel.js";
+import { openItemsEmpty } from "./openItemsModel.js";
+import { answeredRows, confirmedCells, stampParts } from "./cardModel.js";
 import { CHECK_LABELS, answerLines, isDocument, localTime, typeLabel } from "./ontologyStudioModel.js";
 
 const name = (ontology, key) => typeLabel(ontology, key);
 const SHOWN = 10;   // a handover page, not a data dump: the rest is in the JSON beside it
+const NAME_ROOM = 40;
+const count = (n) => n.toLocaleString("zh-CN");
 
-export function summaryMarkdown(run) {
+/** The run's name for a title or a file: the file without its extension, or the first of several and how many there were,
+ *  in at most 40 characters and never cut inside a word. */
+export function runName(run) {
+  const names = run.file.files?.length ? run.file.files.map((f) => f.name) : run.file.name.split("、");
+  const tail = names.length > 1 ? ` 等 ${names.length} 个文件` : "";
+  return `${clipped(names[0].replace(/\.[^./\\]+$/, ""), NAME_ROOM - tail.length)}${tail}`;
+}
+
+export const downloadName = (run, suffix) => `${runName(run)}-${suffix}`;
+
+function clipped(text, room) {
+  if (text.length <= room) return text;
+  const cuts = [...text.matchAll(/[\s_\-.、，,（）()·]+/g)].map((m) => m.index);
+  if (typeof Intl.Segmenter === "function") for (const s of new Intl.Segmenter("zh", { granularity: "word" }).segment(text)) cuts.push(s.index);
+  const at = Math.max(0, ...cuts.filter((i) => i < room));   // the cut leaves one place for the …
+  return `${text.slice(0, at || room - 1).replace(/[\s_\-.、，,（）()·]+$/, "")}…`;
+}
+
+/** The meeting minutes. `openItems` is the service's list of things to settle with the client; null when it could not be had.
+ *  `client` is what the client has answered: the items answered and the data-meaning card; each section is left out when empty.
+ *  A document has none of this (code counts rows, and it has none), so its minutes do not carry the sections. */
+export function summaryMarkdown(run, openItems = null, client = {}) {
   const { ontology, evaluation } = run;
   const fit = evaluation.data_fit || evaluation.document_fit;
   const confirmed = run.confirmation;
-  const out = [`# ${run.file.name} 本体摸底纪要`, "", `建模目的：${run.purpose}`, `建模时间：${localTime(run.started_at)}`, ""];
+  const out = [`# ${runName(run)} 本体摸底会议纪要`, "", `建模目的：${run.purpose}`, `建模时间：${localTime(run.started_at)}`, ""];
+
+  if (!isDocument(run)) {
+    if (!openItems) {
+      out.push("## 要和客户确认的事", "", "这次没取到要确认的事清单：示例结果没有这份清单，本机建模服务没连上时也取不到。", "");
+    } else {
+      out.push(`## 要和客户确认的事（${openItems.length} 件）`, "");
+      if (!openItems.length) out.push(openItemsEmpty(run, client.answered?.length));
+      openItems.forEach((o, i) => out.push(`${i + 1}. ${o.ask}${o.from_model ? "（模型的说法）" : ""}`, ...(o.facts || []).map((f) => `   - ${f}`)));
+      out.push("");
+    }
+    const answered = answeredRows(client.answered || []);
+    if (answered.length) {
+      out.push(`## 客户已答复的事（${answered.length} 件）`, "");
+      answered.forEach((r, i) => out.push(`${i + 1}. ${r.asked}`, `   - 答复：${r.says}（${stampParts(r.item.answer).join("，")}）`));
+      out.push("");
+    }
+    const agreed = confirmedCells(client.card);
+    if (agreed.length) {
+      out.push("## 已和客户确认的口径", "");
+      for (const t of agreed) out.push(`### ${t.source}`, "", ...t.lines.map((l) => `- ${l.name}：${[l.says, l.note].filter(Boolean).join("，")}（${[l.by, ...(l.basis ? [`出处：${l.basis}`] : [])].join("，")}）`), "");
+    }
+  }
 
   out.push("## 读了什么", "");
   out.push(...run.sources.map((s) => (s.paragraphs !== undefined ? `- ${s.name}（${s.paragraphs} 段 ${s.chars} 字）` : `- ${s.name}（${s.rows} 行 ${s.fields} 列）`)), "");
@@ -39,13 +87,22 @@ export function summaryMarkdown(run) {
 
   if (fit) {
     const failed = fit.checks.filter((c) => !c.passed);
-    out.push("## 数据体检", "", "以下由代码在上传的数据上逐行算，不经过模型。", "", failed.length ? `${fit.checks.length} 项检查里 ${failed.length} 项没通过：` : `${fit.checks.length} 项检查全部通过。`, "");
+    out.push("## 数据体检", "", "以下由代码在上传的数据上逐行算，不经过模型。", "", `${fit.checks.length - failed.length} / ${fit.checks.length} 项检查通过。`, "");
     out.push(...failed.map((c) => `- 未通过：${CHECK_LABELS[c.key] || c.key}`));
     for (const c of (fit.identity_conflicts || []).slice(0, 5)) {
       out.push(`- ${name(ontology, c.type)} ${c.identity} 的“${c.field}”在不同行里写了 ${c.values.join(" / ")}`);
     }
     for (const m of fit.missing_across_sources || []) {
       out.push(`- ${name(ontology, m.type)}：${m.count} 个被引用但在“${m.source}”里找不到，例如 ${m.examples.join("、")}`);
+    }
+    const loose = (fit.relations || []).filter((r) => r.linked_rows < r.rows);
+    if (loose.length) {
+      if (out[out.length - 1] !== "") out.push("");   // after the bullets above; straight after the count there is already a gap
+      out.push("这些关系没有在所有行上连上：", "");
+      out.push(...loose.map((r) => {
+        const rel = ontology.relations.find((x) => x.key === r.key);
+        return `- 关系“${rel ? `${name(ontology, rel.from)} ${rel.label || "→"} ${name(ontology, rel.to)}` : r.key}”：${r.source} ${count(r.rows)} 行里 ${count(r.rows - r.linked_rows)} 行没连上`;
+      }));
     }
     const idOnly = fit.id_only || [];
     if (idOnly.length) {
@@ -61,7 +118,9 @@ export function summaryMarkdown(run) {
     for (const item of acceptance.items) {
       out.push(`### ${item.question}`, "");
       if (item.note) out.push(`口径：${item.note}`, "");
-      out.push(`结果：${ACCEPTANCE_LABELS[item.status] || item.status}${item.changed === null ? "" : item.changed ? "，和上次不一样" : "，和上次一致"}`, "");
+      out.push(`结果：${statusPill(item, ACCEPTANCE_LABELS).text}${item.changed === null ? "" : `，${changeLabel(item, run)}`}`, "");
+      out.push(...reviewPoints(item, ontology).flatMap((p) => [p.settled ? p.line : `要核对：${p.line}`, ""]));
+      if (editedLabel(item)) out.push(editedLabel(item), "");
       const lines = answerLines(item);
       const listed = item.answer?.groups?.length || 0;   // group lines come first; what follows says what the figures leave out
       out.push(...lines.slice(0, Math.min(listed, SHOWN)).map((line) => `- ${line}`));
@@ -74,7 +133,7 @@ export function summaryMarkdown(run) {
 
   out.push("## 谁确认过", "");
   if (!confirmed) {
-    out.push("还没有人逐项确认，以上都是模型的草稿，不能当结论。", "");
+    out.push("还没有人逐项确认：对象和关系都是模型提出的草稿，要在会上逐项确认。", "");
   } else {
     const verdicts = (kind) => Object.values(confirmed.decisions[kind]).filter((d) => d.verdict === "ok").length;
     const wrong = [...Object.values(confirmed.decisions.types), ...Object.values(confirmed.decisions.relations)].filter((d) => d.verdict === "wrong").length;

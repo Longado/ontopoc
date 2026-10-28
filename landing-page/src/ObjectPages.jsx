@@ -98,8 +98,8 @@ function FieldsTable({ run, type, form }) {
   return <section className="pr-card os-form-card">
     <div className="pr-card-head"><h3>属性列表 <small>{fields.length}</small></h3>
       {form && <div className="os-toolbar">
-        <button type="button" className="pr-link" disabled={!form.canDraft || form.drafting} onClick={form.onDraft} title="一次模型调用，起草中文名、描述和展示字段；你改过的不会被覆盖">{form.drafting ? "起草中…" : "✦ 起草"}</button>
-        <button type="button" className="pr-primary os-save-form" disabled={!form.canSave || !dirty || form.saving} onClick={() => form.onSave(type.key, draft)}>{form.saving ? "保存中…" : "保存"}</button>
+        <button type="button" className="pr-link" disabled={!form.canDraft || form.drafting} onClick={form.onDraft} title={form.canDraft ? "一次模型调用，起草中文名、描述和展示字段；你改过的不会被覆盖" : form.draftWhy || "示例结果不能起草，上传自己的文件后可以"}>{form.drafting ? "起草中…" : "✦ 起草"}</button>
+        <button type="button" className="pr-primary os-save-form" disabled={!form.canSave || !dirty || form.saving} title={form.canSave ? undefined : form.saveWhy || "示例结果不能保存，上传自己的文件后可以"} onClick={() => form.onSave(type.key, draft)}>{form.saving ? "保存中…" : "保存"}</button>
       </div>}</div>
     {form?.error && <p role="alert" className="pr-error">{form.error}</p>}
     <div className="os-form-head">

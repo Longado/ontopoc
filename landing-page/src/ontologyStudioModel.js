@@ -86,15 +86,32 @@ function measureLine(m, whole) {
 /** A share as a figure, never rounded up into something it is not: 2 in 300 is 0.67%, not 1%. */
 export const sharePercent = (matched, all) => (all ? (matched / all) * 100 : 0).toLocaleString("zh-CN", { maximumSignificantDigits: 2, useGrouping: false });
 
+/** What an answer adds up or averages: its own measure, else — for a grouped answer, which carries no overall figure when
+ *  its groups must not be added together (a period-to-date column grouped by its period) — the one the question asked for. */
+export function measureOf(item) {
+  const a = item.answer;
+  if (a?.measure) return a.measure;
+  const asked = a?.groups ? item.query?.measure : null;
+  // the question names the column "table.column"; the answer's own measure has the table dropped, so this one does too
+  return asked ? { field: asked.field != null ? String(asked.field).replace(/^[^.[\]]+\./, "") : asked.derived, op: asked.op } : null;
+}
+
+/** The figure beside one group's bar: a share with its denominator, a measure with the values it was computed from, else the count. */
+export function groupFigure(item, [, n, all]) {
+  if (item.answer.share) return `${n} / ${all}（${sharePercent(n, all)}%）`;
+  if (measureOf(item)) return `${n.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}${all === undefined ? "" : `（${all} 个值）`}`;
+  return n;
+}
+
 export function answerLines(item) {
   const a = item.answer;
   if (!a) return [];
-  if (a.measure && a.groups) {
+  if (a.groups && measureOf(item)) {
     return [...a.groups.map(([value, n, read]) => `${value}：${NUMBER.format(n)}${read === undefined ? "" : `（${read} 个值）`}`),
       ...(a.total_groups > a.groups.length ? [`另有 ${a.total_groups - a.groups.length} 组未列出`] : []),
       ...(a.unread_groups ? [`另有 ${a.unread_groups.count} 组一个能读成数字的值都没有，不算作 0，没有排进来（例如 ${a.unread_groups.examples.join("、")}）`] : []),
       ...(a.without_value ? [`${a.without_value} 个没有这个值${a.without_value_examples?.length ? `（例如 ${a.without_value_examples.join("、")}）` : ""}`] : []),
-      measureLine(a.measure, true)];
+      ...(a.measure ? [measureLine(a.measure, true)] : [])];
   }
   if (a.measure) return [measureLine(a.measure)];
   if (a.total !== undefined) return [a.share ? `共 ${a.total} 个，其中 ${a.matched} 个“${a.share.field}”为“${a.share.equals}”（${sharePercent(a.matched, a.total)}%）` : `共 ${a.total} 个`];
@@ -102,6 +119,59 @@ export function answerLines(item) {
   if (a.total_groups > a.groups.length) lines.push(`另有 ${a.total_groups - a.groups.length} 组未列出`);
   if (a.without_value) lines.push(`${a.without_value} 个没有这个值${a.without_value_examples?.length ? `（例如 ${a.without_value_examples.join("、")}）` : ""}`);
   return lines;
+}
+
+const filterLine = (f) => {
+  const removed = f.before - f.after;
+  const named = `按“${f.field}”=“${f.equals}”`;
+  const flag = f.not_in_question ? "；问题原文里没有这个条件，是模型加的，请核对" : "";
+  if (!removed) return `${named}一个也没筛掉${flag}`;
+  const lost = f.removed_measure === undefined ? "" : `，合计 ${NUMBER.format(f.removed_measure)} 没算进去`;
+  return `${named}筛掉 ${NUMBER.format(removed)} 个（${NUMBER.format(f.before)} → ${NUMBER.format(f.after)}）${f.examples?.length ? `（例如 ${f.examples.join("、")}）` : ""}${lost}${flag}`;
+};
+
+// "例如" only when the examples are not all of them
+const shown = (examples, all) => (examples?.length ? `${all > examples.length ? "例如 " : ""}${examples.join("、")}` : "");
+
+// results saved before the type labels were kept say 对象
+const mergedLine = (m) => {
+  const [start, reached] = [m.start || "对象", m.reached || "对象"];
+  const who = m.starts === 1 ? `有 1 个${start}连到 ${m.objects} 个不同的${reached}` : `有 ${m.starts} 个${start}各连到不止一个不同的${reached}，最多 ${m.objects} 个`;
+  return `“${m.group}”这一组里，${who}${m.examples?.length ? `（${shown(m.examples, m.objects)}）` : ""}，只数了一次`;
+};
+
+const foldedLine = (f) => {
+  const start = f.start || "对象";
+  return `“${f.field}”在 ${f.objects} 个${start}上各有好几行一样的值（${f.examples?.length ? `${shown(f.examples, f.objects)}，` : ""}${f.table} 表），每个${start}只算了一次`;
+};
+
+const sharedLine = (r) => {
+  const start = r.start || "对象";
+  return `${r.table} 表有 ${r.rows} 行同时算进了不止一个${start}${r.examples?.length ? `（例如 ${r.examples[0]} 共用一行）` : ""}，每个${start}自己的数对，全部${start}的合计里这些行算了不止一次`;
+};
+
+/** The check pack beside an answer: what each filter removed, values copied on several rows of one object, rows
+ *  counted for several objects, and groups where several objects fed one count. */
+export function evidenceLines(item) {
+  const e = item.evidence || {};
+  const unlisted = (e.merged_total || 0) - (e.merged || []).length;
+  return [...(e.filters || []).map(filterLine), ...(e.folded || []).map(foldedLine), ...(e.shared || []).map(sharedLine), ...(e.merged || []).map(mergedLine),
+    ...(unlisted > 0 ? [`另有 ${unlisted} 组也是这样，没有列出`] : [])];
+}
+
+/** The fold's title says what the check pack found, so it is seen without opening it. */
+export function evidenceTitle(item) {
+  const e = item.evidence || {};
+  const unasked = (e.filters || []).filter((f) => f.not_in_question).length;
+  const merged = Math.max(e.merged_total || 0, (e.merged || []).length);
+  const [one] = e.merged || [];
+  const found = [
+    ...(unasked ? [`有${unasked === 1 ? "一个" : ` ${unasked} 个`}筛选条件问题里没提`] : []),
+    ...(merged === 1 && one.reached ? [`“${one.group}”背后有 ${one.objects} 个${one.reached}`] : merged ? [`有 ${merged} 组背后不止一个对象`] : []),
+    ...(e.folded?.length ? ["有重复行只算了一次"] : []),
+    ...(e.shared?.length ? [`有的行算进了不止一个${e.shared[0].start || "对象"}`] : []),
+  ];
+  return found.length ? `核对：${found.join("；")}` : "核对";
 }
 
 export const questionSummary = (round) => (round ? `能回答 ${round.answered} / ${round.total} 题` : null);
@@ -152,9 +222,22 @@ export function progressSteps(events, kind) {
   return steps;
 }
 
-/** What to tell the user when the local service answers with an error. A 404 means the running service predates this page. */
+/** What stops a step right now, in words; "" when it can go ahead. Saving needs only the service; a step that
+ *  calls the model needs its key as well. */
+export function serviceBlock(health, needsModel) {
+  if (health === "ready" || (health === "no-key" && !needsModel)) return "";
+  return health === "no-key" ? "本机服务没有配模型 key，这一步要调用模型" : "连不上本机建模服务";
+}
+
+/** Whether a step on a saved run can go ahead now: the service is there, and the key too when the step calls the model. */
+export const serviceReady = (run, health, needsModel) => Boolean(run?.saved_as) && !serviceBlock(health, needsModel);
+
+const NO_SUCH_ROUTE = "Unknown ontology endpoint";   // what the service's router says for a path it does not have
+
+/** What to tell the user when the local service answers with an error. The router's 404 (or a 404 that says nothing) means
+ *  the running service predates this page; any other 404 is about the run or the item, and says so in its own words. */
 export function serviceError(status, data) {
-  if (status === 404) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
+  if (status === 404 && (!data?.error || data.error === NO_SUCH_ROUTE)) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
   return data?.error || `服务返回 ${status}`;
 }
 

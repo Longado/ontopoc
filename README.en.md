@@ -137,7 +137,7 @@ In a new session there are two commands: `/ontopoc:ontopoc-build` (upload files 
 
 ### Connect Claude Code or another MCP client
 
-Every feature on the page is a standard MCP tool (stdio, 28 tools) calling the same local service:
+Every feature on the page is a standard MCP tool (stdio, 32 tools) calling the same local service:
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -192,8 +192,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (589)
-npm --prefix landing-page run test:unit                       # page tests (210)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1048)
+npm --prefix landing-page run test:unit                       # page tests (327)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook
@@ -204,8 +204,8 @@ The design documents are in Chinese:
 | Document | About |
 |---|---|
 | [docs/PRODUCT.md](docs/PRODUCT.md) | What the product is and which layers it covers |
-| [docs/AGENTS.md](docs/AGENTS.md) | The 5 agents' definition cards and the call log |
-| [docs/MCP.md](docs/MCP.md) | The 27 MCP tools |
+| [docs/AGENTS.md](docs/AGENTS.md) | The 6 agents' definition cards and the call log |
+| [docs/MCP.md](docs/MCP.md) | The 32 MCP tools |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | Data platform object forms, compared |
 | [docs/PRD_ITERATION_7.md](docs/PRD_ITERATION_7.md) | The latest round's plan and record |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |

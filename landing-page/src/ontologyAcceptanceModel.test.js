@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, savedAcceptance } from "./ontologyAcceptanceModel.js";
+import * as acceptance from "./ontologyAcceptanceModel.js";
+import { localTime } from "./ontologyStudioModel.js";
 
 const item = (over = {}) => ({ question: "每个客户有多少订单？", query: { start: "order" }, status: "answered", ...over });
 
@@ -54,4 +56,81 @@ test("removing another question keeps a broken query's original identity evidenc
     .filter((s) => s.question !== "去掉这道");
   assert.deepEqual(saved, [{ question: broken.question, query: broken.query, note: broken.note,
     snapshot: bindingSnapshot, answer: null, status: "broken", path: "订单 → 客户" }]);
+});
+
+// The service records what the person agreed to; an item compared with it says so in previous.
+const agreed = { status: "answered", answer: { total: 2 }, confirmed_at: "2026-10-01T08:00:00.000Z", confirmed_file: "sha-v1" };
+const here = (sha) => ({ file: { sha256: sha } });
+
+test("without a confirmation the page still compares with the last run, in the old words", () => {
+  const last = { status: "answered", answer: { total: 2 } };
+  assert.equal(acceptance.changeLabel(item({ changed: false, previous: last }), here("sha-v1")), "和上次一致");
+  assert.equal(acceptance.changeLabel(item({ changed: true, previous: last }), here("sha-v1")), "和上次不一样");
+  assert.equal(acceptance.changeLabel(item({ changed: null, previous: null }), here("sha-v1")), "");
+  assert.equal(acceptance.previousTitle(item({ changed: true, previous: last })), "上次的答案");
+});
+
+test("with a confirmation it says it is compared with what the person agreed to, and when the data is another version", () => {
+  assert.equal(acceptance.changeLabel(item({ changed: false, previous: agreed }), here("sha-v1")), "和认可时一致");
+  assert.equal(acceptance.changeLabel(item({ changed: true, previous: agreed }), here("sha-v1")), "和认可时不一样");
+  assert.equal(acceptance.changeLabel(item({ changed: true, previous: agreed }), here("sha-v2")), "和认可时不一样，数据已换版本");
+  assert.equal(acceptance.changeLabel(item({ changed: false, previous: agreed }), here("sha-v2")), "和认可时一致");
+  assert.equal(acceptance.previousTitle(item({ changed: true, previous: agreed })), `认可时的答案（${localTime(agreed.confirmed_at)}）`);
+});
+
+test("the summary counts against the confirmation only when every compared question has one", () => {
+  const withAgreement = (changed) => item({ changed, previous: agreed });
+  assert.equal(acceptanceSummary({ total: 2, answered: 2, items: [withAgreement(true), withAgreement(false)] }), "2 道里能答 2 道，1 道和认可时不一样");
+  assert.equal(acceptanceSummary({ total: 2, answered: 2, items: [withAgreement(true), item({ changed: true, previous: { status: "answered" } })] }), "2 道里能答 2 道，2 道和上次不一样");
+  assert.equal(acceptanceSummary({ total: 2, answered: 2, items: [withAgreement(true), item({ changed: null })] }), "2 道里能答 2 道，1 道和认可时不一样");
+  assert.equal(acceptanceSummary({ total: 1, answered: 1, items: [item({ changed: null })] }), "1 道里能答 1 道，第一次执行");
+});
+
+test("a fixed question whose answer moved can be agreed on again as it reads now", () => {
+  assert.equal(acceptance.canReaccept(item({ changed: true, status: "answered", previous: agreed })), true);
+  assert.equal(acceptance.canReaccept(item({ changed: false, status: "answered", previous: agreed })), false);
+  assert.equal(acceptance.canReaccept(item({ changed: true, status: "broken", previous: agreed })), false);   // the query no longer runs: nothing to agree on
+  assert.equal(acceptance.canReaccept({ question: "q", query: null, status: "query_limit", changed: null }), false);
+});
+
+test("what the person agreed to is held by the service and is not sent back with the list", () => {
+  const run = { evaluation: { acceptance: { items: [item({ answer: { total: 3 }, confirmed: { status: "answered", answer: { total: 2 }, at: agreed.confirmed_at, file: "sha-v1" }, previous: agreed, changed: true })] } } };
+  const [saved] = savedAcceptance(run);
+  assert.equal(Object.hasOwn(saved, "confirmed"), false);
+  assert.equal(Object.hasOwn(saved, "previous"), false);
+});
+
+test("a fixed question can be replaced by the answer of a different query, whatever the cap says", () => {
+  const run = (items) => ({ saved_as: "x.json", evaluation: { acceptance: { items } } });
+  const fixed = item({ note: "按订单号计数", query: { start: "order", where: [{ field: "区域", equals: "华东" }] } });
+  const without = item({ query: { start: "order", where: [] } });
+  assert.equal(acceptance.canAccept(run([fixed]), without), "");
+  assert.equal(acceptance.replacesAccepted(run([fixed]), without), true);
+  assert.equal(acceptance.canAccept(run([fixed, item({ question: "二" }), item({ question: "三" })]), without), "");   // a replacement takes no new place
+  assert.equal(acceptance.canAccept(run([fixed, item({ question: "二" }), item({ question: "三" })]), item({ question: "四" })), "验收问题最多 3 道，先去掉一道");
+});
+
+test("the same query in another key order is the same query, and a new question is not a replacement", () => {
+  const run = (items) => ({ saved_as: "x.json", evaluation: { acceptance: { items } } });
+  const fixed = item({ query: { start: "order", where: [{ field: "区域", equals: "华东" }] } });
+  const reordered = item({ query: { where: [{ equals: "华东", field: "区域" }], start: "order" } });
+  assert.equal(acceptance.canAccept(run([fixed]), reordered), "这道已经是验收问题了");
+  assert.equal(acceptance.replacesAccepted(run([fixed]), reordered), false);
+  assert.equal(acceptance.replacesAccepted(run([fixed]), item({ question: "别的问题" })), false);
+  assert.equal(acceptance.replacesAccepted(run(), item()), false);
+});
+
+test("replacing swaps in the new query with the note written for it and leaves the other questions as they were", () => {
+  const run = { evaluation: { acceptance: { items: [item({ query: { start: "order", where: [{ field: "区域", equals: "华东" }] }, note: "旧口径" }), item({ question: "二" })] } } };
+  const next = item({ query: { start: "order", where: [] } });
+  assert.deepEqual(acceptance.acceptItem(savedAcceptance(run), next, "按订单号计数").map((s) => [s.question, s.query, s.note]),
+    [["二", { start: "order" }, undefined], [next.question, { start: "order", where: [] }, "按订单号计数"]]);
+});
+
+test("an answer that takes a fixed question's place does not inherit the words written for the old query", () => {
+  const run = { saved_as: "x.json", evaluation: { acceptance: { items: [item({ note: "含签约分局条件", query: { start: "order", where: [{ field: "分局", equals: "甲" }] } })] } } };
+  const without = item({ query: { start: "order", where: [] } });
+  assert.equal(acceptance.replacedNote(run, without), "含签约分局条件");   // shown beside the box, for reference
+  assert.equal(acceptance.replacedNote(run, item({ question: "别的问题" })), "");   // not a replacement
+  assert.equal(acceptance.replacedNote(run, item({ note: "含签约分局条件", query: { where: [{ field: "分局", equals: "甲" }], start: "order" } })), "");   // the same query
 });

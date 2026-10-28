@@ -356,9 +356,7 @@ def build_graph(proposal: dict, bundle: dict) -> dict:
                     ends[end] = by_type.get(r[end], [])
                     continue
                 ends[end] = []
-                for ident in _identities(record, {'identity': binding, 'transform': 'none'}):
-                    target = aliases.get((r[end], src, ident[0][1])) if len(ident) == 1 else None
-                    inst = (r[end], ((ident[0][0], target),)) if target else (r[end], ident)
+                for ident, inst in bound_instances(r, end, record, aliases):
                     if inst in sources_of:
                         ends[end].append(inst)
                     else:
@@ -374,6 +372,16 @@ def build_graph(proposal: dict, bundle: dict) -> dict:
     return {'sources_of': dict(sources_of), 'records_of': dict(records_of), 'part_of': part_of,
             'edges': edges, 'adjacent': dict(adjacent), 'per_record': dict(per_record), 'aliased': aliased,
             'missing_references': missing_references}
+
+
+def bound_instances(r: dict, end: str, record: dict, aliases: dict) -> list[tuple]:
+    """(identity as the row writes it, the object it names) for one end of a relation with an explicit binding; a value
+    a person mapped names the object it was mapped to. The object may not exist: build_graph keeps those as missing."""
+    out = []
+    for ident in _identities(record, {'identity': r[f'{end}_identity'], 'transform': 'none'}):
+        target = aliases.get((r[end], r['source'], ident[0][1])) if len(ident) == 1 else None
+        out.append((ident, (r[end], ((ident[0][0], target),)) if target else (r[end], ident)))
+    return out
 
 
 def _alias_map(ontology: dict) -> dict:

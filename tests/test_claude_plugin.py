@@ -39,6 +39,19 @@ class ManifestTests(unittest.TestCase):
         self.assertIn('confirm_ontology', text)
         self.assertIn('不要替', text)
 
+    def test_the_commands_send_the_open_items_to_the_person_and_leave_the_condition_calls_to_them(self):
+        build = (ROOT / 'plugin' / 'commands' / 'ontopoc-build.md').read_text(encoding='utf-8')
+        review = (ROOT / 'plugin' / 'commands' / 'ontopoc-review.md').read_text(encoding='utf-8')
+        self.assertIn('open_items', build)
+        self.assertIn('open_items', review)
+        self.assertIn('drop_filter', review)
+        self.assertIn('fix_question', review)
+
+    def test_the_review_command_says_what_to_ask_about_an_item_that_was_asked_again_without_its_condition(self):
+        review = (ROOT / 'plugin' / 'commands' / 'ontopoc-review.md').read_text(encoding='utf-8')
+        self.assertIn('requeried', review)
+        self.assertIn('替换验收题', review)
+
 
 class LauncherTests(unittest.TestCase):
     def test_it_finds_python3_when_there_is_no_python(self):

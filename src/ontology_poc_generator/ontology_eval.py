@@ -86,9 +86,13 @@ def _unused_sources(p: dict, bundle: dict) -> list[dict]:
 
 def _row_owners(p: dict, graph: dict) -> dict[str, set]:
     """Per table, the object type its rows are about: the one with the most distinct objects there. A results table
-    that repeats the hospital's name on every row is still about results, so it does not describe hospitals."""
+    that repeats the hospital's name on every row is still about results, so it does not describe hospitals. Only the
+    types of `p` count: one a person judged wrong is about no table."""
+    keys = {t['key'] for t in p['object_types']}
     counts: dict[str, dict[str, int]] = {}
     for inst, sources in graph['sources_of'].items():
+        if inst[0] not in keys:
+            continue
         for src in sources:
             counts.setdefault(src, {}).setdefault(inst[0], 0)
             counts[src][inst[0]] += 1
@@ -138,9 +142,11 @@ def _missing_across_sources(p: dict, graph: dict) -> list[dict]:
 
 
 def _relations(p: dict, bundle: dict, graph: dict) -> list[dict]:
+    # a column inside a list has one value per element: the row has no number there only when none of them is filled
+    empty = lambda record, path: all(normalize_value(v) is None for v in resolve(record, path) or [None])
     return [{'key': r['key'], 'source': r['source'], 'rows': len(bundle['sources'][r['source']]['records']),
              'linked_rows': len({ref for _, _, ref in graph['edges'][r['key']]}),
-             **({'empty_rows': sum(any(normalize_value(record.get(path)) is None for _, path in relation_fields([r]))
+             **({'empty_rows': sum(any(empty(record, path) for _, path in relation_fields([r]))
                                     for record in bundle['sources'][r['source']]['records'])}
                 if relation_fields([r]) else {})} for r in p['relations']]
 

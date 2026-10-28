@@ -23,6 +23,8 @@ from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
+from ontology_poc_generator.open_items import check_answers, linked_cells, open_items, split_answers
+from ontology_poc_generator.ontology_card import NO_CARD, build_card, check_cells, live_cells, with_changes
 from ontology_poc_generator.public_ontology import build_graph
 from ontology_poc_generator.relation_suggestions import suggest_relations
 from ontology_poc_generator.rule_discovery import check_rules, discover_rules
@@ -30,18 +32,19 @@ from ontology_poc_generator.versions import version_diff
 from ontology_poc_generator.field_descriptions import MAX_DESCRIPTION, MAX_LABEL, draft_descriptions
 from ontology_poc_generator.handover_form import handover_form
 from ontology_poc_generator.object_forms import form_files
+from ontology_poc_generator.pipeline_spec import pipeline_files, pipeline_spec
 from ontology_poc_generator.ttl_export import ttl_files
 import io
 import zipfile
 from urllib.parse import quote as url_quote
-from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance
+from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance, record_confirmed
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
 from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
-from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, ask_questions, run_query
+from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
-from ontology_poc_generator.derived_measures import parse_derived, plain_reason
+from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 
@@ -140,6 +143,17 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         path = output_dir / 'derived' / f'{key}.json'
         return json.loads(path.read_text(encoding='utf-8'))['measures'] if path.exists() else []
 
+    def card_file(key):
+        """What was said on this file's data-meaning card and on its open items: {cells, items, history}."""
+        path = output_dir / 'cards' / f'{key}.json'
+        return json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'cells': {}, 'items': {}, 'history': []}
+
+    def card_cells(result, bundle, graph=None, key=None):
+        """What the questions are given of this file's card: the answers it still has a place for (ontology_card.live_cells).
+        The file keeps the others. `key` names another line's card for a run that is not saved yet."""
+        return live_cells(card_file(key or memory_key(result))['cells'], result['ontology'], bundle,
+                          (result.get('confirmation') or {}).get('decisions'), graph)
+
     def reviewed_acceptance(result, bundle, items):
         # A rerun carries the previous human decisions as suggestions until reviewed again.
         # Those rejected objects/relations must not silently become passing acceptance paths.
@@ -147,7 +161,46 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         if decisions is None:
             decisions = (result['evaluation'].get('reference') or {}).get('suggested')
         return check_acceptance(without_wrong(result['ontology'], decisions), bundle, items,
-                                derived=derived_of(memory_key(result)), snapshot_ontology=result['ontology'])
+                                derived=derived_of(memory_key(result)), snapshot_ontology=result['ontology'], card=card_cells(result, bundle))
+
+    def card_run(name):
+        """(run, rows, graph) as kept() gives them, for a table run whose ontology passed verification; None for a document
+        or one that did not, which have no card; FileNotFoundError when there is no such run."""
+        path = output_dir / name
+        if not SAVED_NAME.match(name) or not path.exists():
+            raise FileNotFoundError(name)
+        run = json.loads(path.read_text(encoding='utf-8'))
+        if run['ontology']['status'] != 'auto_built_verified' or run['file'].get('kind') == 'document':
+            return None
+        return kept(name)
+
+    def card_for(found):
+        """The card of a kept run (see card_run) with what was said on it, the items still open and the ones answered."""
+        if found is None:
+            return NO_CARD, [], []
+        result, bundle, graph = found
+        stored = card_file(memory_key(result))
+        card = build_card(result['ontology'], bundle, stored['cells'], graph, (result.get('confirmation') or {}).get('decisions'))
+        items, answered = split_answers(open_items(result, bundle, graph, card), stored['items'])
+        return card, items, answered
+
+    def pipeline_for(name):
+        """The pipeline requirements of a kept table run whose ontology passed verification; ValueError says why there are none.
+        The status comes first: a run that did not pass may name a table the data does not have, which its graph cannot be built from."""
+        path = output_dir / name
+        if not SAVED_NAME.match(name) or not path.exists():
+            raise FileNotFoundError(name)
+        saved = json.loads(path.read_text(encoding='utf-8'))
+        if saved['file'].get('kind') == 'document':
+            raise ValueError('文档没有数据行，没有编排需求单')
+        if saved['ontology']['status'] != 'auto_built_verified':
+            raise ValueError('本体没有通过结构核验，没有编排需求单；先看退回的原因')
+        result, bundle, graph = kept(name)
+        key = memory_key(result)
+        stored = card_file(key)
+        card = build_card(result['ontology'], bundle, stored['cells'], graph, (result.get('confirmation') or {}).get('decisions'))
+        return pipeline_spec(result, bundle, graph, card, stored, derived_of(key), rules_state(result, bundle, graph)['adopted'],
+                             datetime.now(timezone.utc).isoformat(timespec='seconds'))
 
     def rules_state(result, bundle, graph=None):
         """The rules offered for this file and the ones a person adopted, checked against this run's data."""
@@ -260,7 +313,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                 'error': f'本次建模已用满 {MAX_MODELER_ATTEMPTS} 次调用，目的问题尚未回答。可在“智能问答”中单独提问。'}
                 else:
                     key = memory_key(json.loads((output_dir / previous).read_text(encoding='utf-8'))) if previous else bundle['file']['sha256']
-                    answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True, derived=derived_of(key))
+                    answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True, derived=derived_of(key), card=card_cells(result, bundle, key=key))
                 if answered['items'] or answered['error']:
                     result['evaluation']['asked'] = [answered]
             if result['ontology']['status'] == 'auto_built_verified':
@@ -367,6 +420,27 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     z.writestr(file_name, text.encode('utf-8'))
             self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-组织图{('-' + span) if span else ''}.zip")
 
+        def card_page(self, name, tail):
+            """/api/ontology/runs/<run>/open-items: what is still to be settled with the client, and what the client has
+            answered; /card: the data-meaning card. Both from the kept run; a run with no rows to read has neither."""
+            try:
+                card, items, answered = card_for(card_run(name))
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            self.reply(200, {'items': items, 'answered': answered} if tail == 'open-items' else card)
+
+        def reply_files(self, files, query, name, zip_name):
+            """The files of an export as a zip to download, or as JSON with ?format=json."""
+            if (query.get('format') or [''])[0] == 'json':
+                self.reply(200, {'files': files})
+                return
+            packed = io.BytesIO()
+            with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as z:
+                for file_name, text in files.items():
+                    z.writestr(file_name, text.encode('utf-8'))
+            self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-{zip_name}.zip")
+
         def reply_file(self, body: bytes, content_type: str, filename: str):
             self.send_response(200)
             self.send_header('Content-Type', content_type)
@@ -452,7 +526,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if tail == 'export/mermaid':   # an organisation map is a document: no rows, so not through kept()
                 self.org_diagrams(name, query)
                 return
+            if tail in ('open-items', 'card'):
+                self.card_page(name, tail)
+                return
             try:
+                if tail == 'export/pipeline':
+                    self.reply_files(pipeline_files(pipeline_for(name)), query, name, '编排需求单')
+                    return
                 result, bundle, graph = kept(name)
                 if tail.startswith('objects/'):
                     type_key = unquote(tail[len('objects/'):])
@@ -474,14 +554,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     else:
                         files, zip_name = ttl_files(reviewed, bundle, handover, form, decisions,
                                                     rules_state(result, bundle, graph)['adopted'], f'urn:ontopoc:{memory_key(result)}/', graph), 'TTL'
-                    if (query.get('format') or [''])[0] == 'json':
-                        self.reply(200, {'files': files})
-                    else:
-                        packed = io.BytesIO()
-                        with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as z:
-                            for file_name, text in files.items():
-                                z.writestr(file_name, text.encode('utf-8'))
-                        self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-{zip_name}.zip")
+                    self.reply_files(files, query, name, zip_name)
                 elif tail == 'rules':
                     self.reply(200, rules_state(result, bundle, graph))
                 elif tail == 'suggestions':
@@ -554,8 +627,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/ask':
                 self.ask()
                 return
-            # compare, confirm and acceptance read, change and write one run without a model call: they hold runs_lock
-            # throughout; ask and variants wait on the model first and take it only to write (see write_back)
+            # compare, confirm, acceptance and requery read, change and write one run without a model call: they hold
+            # runs_lock throughout; ask and variants wait on the model first and take it only to write (see write_back)
             if self.path == '/api/ontology/compare':
                 with runs_lock:
                     self.compare()
@@ -574,9 +647,17 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 with runs_lock:
                     self.acceptance()
                 return
+            if self.path == '/api/ontology/card':
+                with runs_lock:
+                    self.save_card()
+                return
             if self.path == '/api/ontology/derived':
                 with runs_lock:
                     self.confirm_derived()
+                return
+            if self.path == '/api/ontology/requery':
+                with runs_lock:
+                    self.requery()
                 return
             if self.path == '/api/ontology/rules':
                 with runs_lock:
@@ -772,13 +853,28 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 items = parse_acceptance(payload.get('items')) if payload.get('items') else []
                 existing = {item['question']: item for item in (result['evaluation'].get('acceptance') or {}).get('items', [])}
+                # the file's line keeps one list: an older run opened from the library may hold an agreement made since replaced
+                shared_path = output_dir / 'acceptance' / f"{memory_key(result)}.json"
+                latest = {i['question']: i for i in json.loads(shared_path.read_text(encoding='utf-8'))['items']} if shared_path.exists() else {}
+                accepted_now = set()   # what the person agrees to in this request; the rest of the list was agreed earlier
                 for item in items:
                     old = existing.get(item['question'])
+                    same = isinstance(item.get('query'), dict) and old and item['query'] == old.get('query')
                     if item['question'] == payload.get('replace_question'):
                         item['snapshot'] = None   # explicitly accepting this query again uses the current ontology
-                    elif isinstance(item.get('query'), dict) and old and item['query'] == old.get('query') and old.get('snapshot') is not None:
+                        accepted_now.add(item['question'])   # and is a new agreement, on the answer in front of the person now
+                        continue
+                    if same and old.get('snapshot') is not None:
                         # A list edit keeps server-held identity evidence; accepting a new query is a separate decision.
                         item.update({key: old.get(key) for key in ('snapshot', 'status', 'answer', 'path')})
+                    # the line's list is written last by every save, so it wins a tie (agreements are stamped to the second); an
+                    # agreement is made for one query, so it lends its own only when it holds this question on the same query
+                    lent = latest.get(item['question']) or {}
+                    agreements = [c for c in (lent.get('confirmed') if lent.get('query') == item['query'] else None, old.get('confirmed') if old else None) if c]
+                    if same and agreements:
+                        item['confirmed'] = max(agreements, key=lambda c: c['at'])   # the page never holds it: an edit gives back the latest agreement
+                    elif not same:
+                        accepted_now.add(item['question'])
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
@@ -788,13 +884,55 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 stored.unlink(missing_ok=True)
             else:
                 bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-                result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, items)
+                result['evaluation']['acceptance'] = record_confirmed(reviewed_acceptance(result, bundle, items), accepted_now,
+                                                                      result['file']['sha256'], result['saved_as'])
                 saved = {'saved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'file': result['file'],
                          'purpose': result.get('purpose'), 'items': result['evaluation']['acceptance']['items']}
                 stored.parent.mkdir(parents=True, exist_ok=True)
                 stored.write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
+
+        def save_card(self):
+            """What the client said, written down by the consultant: answers on the data-meaning card and on the open items,
+            kept with the file. This run's own fixed questions are then asked again of the data, since the card may stop one;
+            the file's shared list, which the next upload inherits, is not touched. Nothing is written unless every answer
+            in the request is valid."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = str(payload.get('saved_as') or '')
+                found = card_run(name)
+                card, items, answered = card_for(found)
+                cells_raw, items_raw = payload.get('cells') or [], payload.get('items') or []
+                if not cells_raw and not items_raw:
+                    raise ValueError('cells、items 至少要给一样')
+                now = datetime.now(timezone.utc).isoformat(timespec='seconds')
+                cells = check_cells(card, cells_raw, payload.get('by'), now)
+                answers = check_answers([*items, *answered], items_raw, payload.get('by'), now)
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            result, bundle, graph = found   # a run with no card has no cell or item to answer: the checks above refused it
+            key = memory_key(result)
+            stored = card_file(key)
+            # an unlinked item answered "incomplete" marks the other end's object as only partly in the data; a cell the request sets itself wins
+            cells = {**linked_cells([*items, *answered], answers, stored['cells'], now), **cells}
+            kept_card = output_dir / 'cards' / f'{key}.json'
+            kept_card.parent.mkdir(parents=True, exist_ok=True)
+            partial = kept_card.with_name(f'{key}.json.part')
+            partial.write_text(json.dumps(with_changes(stored, cells, answers, now), ensure_ascii=False, indent=1), encoding='utf-8')
+            partial.replace(kept_card)   # a reader never sees half a file
+            if result['evaluation'].get('acceptance'):
+                checked = reviewed_acceptance(result, bundle, result['evaluation']['acceptance']['items'])
+                result = {**result, 'evaluation': {**result['evaluation'], 'acceptance': checked}}
+                (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            card, items, answered = card_for((result, bundle, graph))
+            self.reply(200, {'card': card, 'items': items, 'answered': answered})
 
         def draft_form(self):
             """One call to the 字段释义员; what a person already wrote is kept."""
@@ -935,11 +1073,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             bundle_path = output_dir / result['saved_as'].replace('.json', '.bundle.json')
             if acceptance and result['file'].get('kind') != 'document' and bundle_path.exists():
                 bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+                # only this run's own copy: the file's shared list may be newer than this run, and the next upload inherits it as it is
                 result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, acceptance['items'])
-                accepted = output_dir / 'acceptance' / f"{memory_key(result)}.json"
-                accepted.parent.mkdir(parents=True, exist_ok=True)
-                accepted.write_text(json.dumps({'saved_at': now, 'file': result['file'], 'purpose': result.get('purpose'),
-                                               'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
@@ -971,18 +1106,76 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             bundle = json.loads((output_dir / result['saved_as'].replace('.json', '.bundle.json')).read_text(encoding='utf-8'))
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
             graph = build_graph(result['ontology'], bundle)
+            cells = card_cells(result, bundle, graph)
             rounds = [*(result['evaluation'].get('asked') or []), *([result['evaluation']['questions']] if result['evaluation'].get('questions') else [])]
             for answered in rounds:
                 for i, item in enumerate(answered.get('items') or []):
                     wanted = ((item.get('query') or {}).get('measure') or {}).get('derived') if isinstance(item.get('query'), dict) else None
                     if wanted != formula['label'] or item.get('query', {}).get('start') != formula['type']:
                         continue
-                    again = run_query(reviewed, bundle, item['query'], graph, measures)
-                    if again['status'] != 'answered' and again.get('reason'):
-                        again = {**again, 'reason': plain_reason(reviewed, again['reason'])}
+                    again = answer_query(reviewed, bundle, item['query'], item['question'], graph, measures, cells)
                     answered['items'][i] = {**{k: v for k, v in item.items() if k not in ('derive', 'reason', 'answer', 'path', 'status')}, **again}
                 answered['answered'] = sum(x['status'] == 'answered' for x in answered.get('items') or [])
             result['evaluation']['derived'] = measures
+            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            self.reply(200, result)
+
+        def requery(self):
+            """A question asked again with one of its conditions taken off, answered by code alone (so with no model key
+            too). The answer is kept as a new round beside the others; the page can accept it in place of the old one."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                result_path = self.load_run(payload)
+                question, drop = payload.get('question'), payload.get('drop')
+                if not isinstance(question, str) or not isinstance(drop, dict) or not {'field', 'equals'} <= drop.keys():
+                    raise ValueError('要写清题目原文，和要去掉的条件 {"field": …, "equals": …}')
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            bundle_path = output_dir / result_path.name.replace('.json', '.bundle.json')
+            if not result_path.exists() or not bundle_path.exists():
+                self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                return
+            result = json.loads(result_path.read_text(encoding='utf-8'))
+            if result['file'].get('kind') == 'document':
+                self.reply(400, {'error': '文档没有数据行可以查询；评测二只对数据表可用'})
+                return
+            if result['ontology']['status'] != 'auto_built_verified':
+                self.reply(400, {'error': '本体没有通过结构核验，不能出题'})
+                return
+            evaluation = result['evaluation']
+            accepted = (evaluation.get('acceptance') or {}).get('items') or []
+            # the questions asked one by one, newest first; then the model's own round, which the page offers this for too
+            asked = [i for r in reversed(evaluation.get('asked') or []) for i in reversed(r['items']) if i['question'] == question]
+            own_round = [i for i in (evaluation.get('questions') or {}).get('items') or [] if i['question'] == question]
+            candidates = asked + own_round + [i for i in accepted if i['question'] == question]
+            if not candidates:
+                self.reply(404, {'error': '找不到这道题，可能已经被删掉了'})
+                return
+            queried = [i for i in candidates if isinstance(i.get('query'), dict)]
+            if not queried:
+                self.reply(400, {'error': '这道题没有查询，不能去掉条件重算'})
+                return
+            where_of = lambda i: i['query'].get('where') if isinstance(i['query'].get('where'), list) else []
+            # the check pack names a field without its table, the query may carry it ("orders.地区")
+            same = lambda w: isinstance(w, dict) and drop['field'] in (w.get('field'), str(w.get('field')).partition('.')[2]) \
+                and w.get('equals') == drop['equals']
+            # the latest version still holding the condition: an accepted question keeps it after the ask was edited
+            found = next((i for i in queried if any(map(same, where_of(i)))), None)
+            if found is None:
+                self.reply(400, {'error': '这道题的查询里没有这个条件'})
+                return
+            query = {**found['query'], 'where': [w for w in where_of(found) if not same(w)]}
+            reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
+            bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+            answer = answer_query(reviewed, bundle, query, question, derived=derived_of(memory_key(result)), card=card_cells(result, bundle))
+            dropped = [*((found.get('edited') or {}).get('dropped') or []), {'field': drop['field'], 'equals': drop['equals']}]
+            evaluation.setdefault('asked', []).append({
+                'prompt_version': None, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                'items': [{'question': question, 'reasoning': '', 'query': query, **answer, 'asked': True, 'edited': {'dropped': dropped}}],
+                'answered': int(answer['status'] == 'answered'), 'total': 1, 'error': None})
             result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
             self.reply(200, result)
 
@@ -1017,7 +1210,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
-            answered = ask_questions(reviewed, bundle, gateway, question.strip() if question else None, derived=derived_of(memory_key(result)))
+            answered = ask_questions(reviewed, bundle, gateway, question.strip() if question else None, derived=derived_of(memory_key(result)),
+                                     card=card_cells(result, bundle))
             if answered['error'] and answered['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': answered['error']})
                 return

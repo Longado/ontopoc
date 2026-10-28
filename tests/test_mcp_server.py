@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from ontology_poc_generator import mcp_server
 from ontology_poc_generator.mcp_server import LocalService, handle
 from tests.test_ontology_ask_server import QuestionModel
 from tests.test_ontology_server import CSV, OntologyServerTests
@@ -39,9 +40,83 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual(t['inputSchema']['type'], 'object', t['name'])
             self.assertTrue(t['description'], t['name'])
 
+    def test_the_handshake_is_a_short_manual_that_says_what_costs_money_and_what_only_a_person_may_decide(self):
+        text = handle(rpc('initialize', {'protocolVersion': '2025-06-18'}), None)['result']['instructions']
+        self.assertTrue(20 <= len(text.strip().splitlines()) <= 30, len(text.splitlines()))
+        self.assertLess(text.index('health'), text.index('list_runs'))
+        self.assertLess(text.index('list_runs'), text.index('run_overview'))
+        self.assertLess(text.index('run_overview'), text.index('open_items'))
+        self.assertIn('不花钱', text)
+        for tool in ('build_ontology', 'ask_question', 'draft_form', 'find_name_variants',     # call the model: slow and paid
+                     'confirm_ontology', 'fix_question', 'set_rules', 'confirm_derived', 'save_form',   # the person's judgements
+                     'drop_filter'):
+            self.assertIn(tool, mcp_server.BY_NAME)
+            self.assertIn(tool, text)
+        for meaning in ('not_in_question', 'merged', 'found_elsewhere', 'query_limit', 'ontology_gap', 'needs_derived', 'answered', 'no_data'):
+            self.assertIn(meaning, text)
+
+    def test_the_pipeline_spec_is_an_export_for_whoever_builds_the_pipeline_and_changes_no_data(self):
+        text = handle(rpc('initialize', {'protocolVersion': '2025-06-18'}), None)['result']['instructions']
+        entry = next(e for e in text.split('\n- ') if 'export_forms' in e)   # the manual's line about the exports
+        self.assertIn('export_pipeline_spec', entry)
+        tool = next(t for t in handle(rpc('tools/list'), None)['result']['tools'] if t['name'] == 'export_pipeline_spec')
+        for words in ('编排需求单', '搭管道', '不执行加工', '不调用模型'):
+            self.assertIn(words, tool['description'])
+        self.assertEqual(tool['inputSchema']['required'], ['saved_as'])
+        self.assertEqual(sorted(tool['inputSchema']['properties']), ['out_dir', 'saved_as'])
+
+    def test_every_parameter_says_what_it_is_and_where_to_get_it(self):
+        tools = {t['name']: t for t in handle(rpc('tools/list'), None)['result']['tools']}
+        for name, tool in tools.items():
+            for key, spec in tool['inputSchema']['properties'].items():
+                self.assertTrue(spec.get('description'), f'{name}.{key}')
+        props = tools['object_rows']['inputSchema']['properties']
+        self.assertIn('list_runs', props['saved_as']['description'])
+        self.assertIn('list_objects', props['type']['description'])
+        self.assertIn('drop_filter', tools)
+
+    def test_the_question_tools_explain_the_states_and_the_evidence(self):
+        tools = {t['name']: t for t in handle(rpc('tools/list'), None)['result']['tools']}
+        for name in ('ask_question', 'list_questions'):
+            for word in ('answered', 'no_data', 'query_limit', 'ontology_gap', 'needs_derived', 'filters', 'not_in_question', 'merged', 'found_elsewhere'):
+                self.assertIn(word, tools[name]['description'], f'{name}: {word}')
+
+    def test_query_limit_and_ontology_gap_are_the_models_word_only_when_reason_from_model_says_so(self):
+        text = handle(rpc('initialize', {'protocolVersion': '2025-06-18'}), None)['result']['instructions']
+        tools = {t['name']: t for t in handle(rpc('tools/list'), None)['result']['tools']}
+        self.assertIn('reason_from_model', text)
+        self.assertNotIn('query_limit、ontology_gap：是模型的判断', text)
+        for name in ('ask_question', 'list_questions'):
+            self.assertIn('reason_from_model', tools[name]['description'], name)
+            self.assertNotIn('这两种是模型的判断', tools[name]['description'], name)
+
+    def test_a_question_carries_whose_reason_it_is_when_the_service_says(self):
+        base = {'question': 'q', 'status': 'query_limit', 'reason': 'r'}
+        self.assertIs(mcp_server._question({**base, 'reason_from_model': True})['reason_from_model'], True)
+        self.assertIs(mcp_server._question({**base, 'reason_from_model': False})['reason_from_model'], False)
+        self.assertNotIn('reason_from_model', mcp_server._question(base))   # absent: the reason is the code's own
+
+    def test_the_handshake_says_what_to_ask_about_an_item_that_was_asked_again_without_its_condition(self):
+        text = handle(rpc('initialize', {'protocolVersion': '2025-06-18'}), None)['result']['instructions']
+        entry = next(e for e in text.split('\n- ') if 'requeried' in e)   # one entry of the manual, which may run over several lines
+        self.assertIn('drop_filter', entry)
+        self.assertIn('替换', entry)
+
     def test_unknown_methods_and_tools_are_refused_the_standard_way(self):
         self.assertEqual(handle(rpc('resources/list'), None)['error']['code'], -32601)
         self.assertEqual(handle(rpc('tools/call', {'name': 'nope', 'arguments': {}}), None)['error']['code'], -32602)
+
+
+class InstanceNameTests(unittest.TestCase):
+    def test_an_object_without_a_name_field_is_found_under_its_identifying_value(self):
+        class Service(LocalService):
+            def request(self, path, payload=None):
+                return {'type': 'contractor', 'total': 2, 'items': [{'id': 'contractor:E3FHA9RLL6B1', 'label': 'E3FHA9RLL6B1', 'name': None},
+                                                                  {'id': 'contractor:X1', 'label': 'X1', 'name': 'Stantec'}]}
+        out = mcp_server.find_instances(Service('http://x'), {'saved_as': 'r.json', 'type': 'contractor', 'query': 'e3f'})
+        self.assertEqual([(i['id'], i['label'], i['name']) for i in out['items']],
+                         [('contractor:E3FHA9RLL6B1', 'E3FHA9RLL6B1', 'E3FHA9RLL6B1'), ('contractor:X1', 'X1', 'Stantec')])
+        self.assertEqual((out['type'], out['total']), ('contractor', 2))
 
 
 class EndToEndTests(unittest.TestCase):

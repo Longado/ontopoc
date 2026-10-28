@@ -64,6 +64,14 @@ class FormulaTests(unittest.TestCase):
         self.assertEqual(sorted(got['values'].values()), [3.0, 10.0, 20.0])
         self.assertIn('abc', got['skipped_examples'][0])
 
+    def test_nan_and_infinity_in_a_field_are_not_numbers(self):
+        rows = CSV.decode() + 'O3,P3,C2,nan,1,0\nO4,P4,C2,inf,1,0\nO5,P5,C2,3,1,-inf\nO6,P6,C2,1e999,1,0\n'
+        derived, _ = parse_derived(ONTOLOGY, AMOUNT)
+        got = compute(ONTOLOGY, bundle(rows.encode()), derived)
+        self.assertEqual((got['counted'], got['skipped']), (3, 4))
+        self.assertEqual(sorted(got['values'].values()), [3.0, 10.0, 20.0])
+        self.assertIn('nan 不是数字', got['skipped_examples'][0])
+
 
 class QueryTests(unittest.TestCase):
     def test_once_confirmed_the_amount_is_summed_per_customer(self):
@@ -106,6 +114,16 @@ class Model:
         return ModelCompletion(provider='fake', model='deepseek-flash', content=json.dumps(content))
 
 
+class FilteredModel(Model):
+    """Writes the same question with a filter the person's words never name."""
+    def complete_json(self, *, system_prompt, user_prompt):
+        done = super().complete_json(system_prompt=system_prompt, user_prompt=user_prompt)
+        if system_prompt != QUESTION_SYSTEM_PROMPT:
+            return done
+        query = {**BY_CUSTOMER, 'where': [{'field': '折扣', 'equals': '0'}]}
+        return ModelCompletion(provider='fake', model='deepseek-flash', content=json.dumps({'questions': [{**REPLY['questions'][0], 'query': query}]}))
+
+
 class ServerTests(unittest.TestCase):
     def test_propose_try_confirm_and_the_question_is_answered(self):
         model = Model()
@@ -128,6 +146,18 @@ class ServerTests(unittest.TestCase):
         catalog = model.asked[-1]['ontology']['object_types']
         line = next(t for t in catalog if t['key'] == 'order_line')
         self.assertEqual(line['derived'], [{'name': '金额', 'formula': '单价 × 数量 ×（1 − 折扣）'}])
+
+    def test_the_filter_the_question_never_named_stays_marked_when_the_confirmed_formula_reruns_it(self):
+        upload = {'filename': 'lines.csv', 'content_base64': base64.b64encode(CSV).decode()}
+        with OntologyServerTests().server(gateway=FilteredModel()) as (base, _):
+            _, run = call(base, '/api/ontology/build', upload)
+            _, asked = call(base, '/api/ontology/ask', {'saved_as': run['saved_as'], 'question': '每个客户买了多少钱？'})
+            [item] = asked['evaluation']['asked'][-1]['items']
+            _, confirmed = call(base, '/api/ontology/derived', {'saved_as': run['saved_as'], 'derive': item['derive']})
+        [again] = confirmed['evaluation']['asked'][-1]['items']
+        self.assertEqual(again['answer']['groups'], [['C1', 20, 1], ['C2', 3, 1]])
+        self.assertEqual(again['evidence']['filters'], [{'field': '折扣', 'equals': '0', 'before': 3, 'after': 2, 'examples': ['O1 · P1'],
+                                                         'removed_measure': 10, 'not_in_question': True}])
 
     def test_a_formula_the_page_sends_is_checked_again(self):
         upload = {'filename': 'lines.csv', 'content_base64': base64.b64encode(CSV).decode()}

@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ontology_poc_generator.ontology_compare import match_types, relation_matches
-from ontology_poc_generator.ontology_questions import run_query
+from ontology_poc_generator.ontology_questions import flag_unasked_filters, run_query
 
 MAX_ACCEPTANCE = 3   # ponytail: a short list a consultant can agree with a client; the model's own round still asks more
 MAX_NOTE = 200
@@ -93,7 +93,7 @@ def remap_query(query: dict, snapshot: dict, ontology: dict) -> tuple[dict | Non
 
 
 def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: list | None = None,
-                     snapshot_ontology: dict | None = None) -> dict:
+                     snapshot_ontology: dict | None = None, card: dict | None = None) -> dict:
     """Run every saved query on this run's ontology and data; keep the previous answer beside the new one."""
     checked = []
     for item in items:
@@ -102,7 +102,11 @@ def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: l
             checked.append({'question': item['question'], 'note': item['note'], 'query': None, 'snapshot': None,
                             'status': item['status'], 'reason': item['reason'], 'previous': None, 'changed': None})
             continue
-        previous ={k: item.get(k) for k in ('status', 'answer', 'path')} if item.get('status') else None
+        confirmed = item.get('confirmed')
+        if confirmed:   # judged against what the person agreed to, not the last rerun: a slow drift over several reruns still shows
+            previous = {**{k: confirmed.get(k) for k in ('status', 'answer', 'path')}, 'confirmed_at': confirmed['at'], 'confirmed_file': confirmed['file']}
+        else:
+            previous = {k: item.get(k) for k in ('status', 'answer', 'path')} if item.get('status') else None
         # Human rejection affects execution, not the saved identity of the query's objects.
         identities = snapshot_ontology if snapshot_ontology is not None else ontology
         snapshot = item.get('snapshot')
@@ -114,13 +118,27 @@ def check_acceptance(ontology: dict, bundle: dict, items: list[dict], derived: l
                         if entry['key'] not in {saved['key'] for saved in snapshot.get(kind, [])})]
                         for kind in ('types', 'relations')}
         query, problem = remap_query(item['query'], snapshot, identities) if snapshot is not None else (item['query'], '')
-        result = {'status': 'broken', 'reason': problem} if problem else run_query(ontology, bundle, query, derived=derived)
+        result = {'status': 'broken', 'reason': problem} if problem else flag_unasked_filters(run_query(ontology, bundle, query, derived=derived, card=card), item['question'])
         if result['status'] == 'ontology_gap':
             # the query a person agreed with no longer fits this ontology: stop here instead of guessing a new meaning
             result = {'status': 'broken', 'reason': result['reason']}
         checked.append({'question': item['question'], 'note': item['note'], 'query': query if not problem else item['query'],
                         'snapshot': snapshot_of(identities, query) if not problem else snapshot, **result,
-                        'previous': previous,
+                        **({'confirmed': confirmed} if confirmed else {}), 'previous': previous,
                         'changed': None if previous is None else (result.get('answer') != previous['answer'] or result['status'] != previous['status'])})
     return {'checked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'items': checked,
             'answered': sum(i['status'] == 'answered' for i in checked), 'total': len(checked)}
+
+
+def record_confirmed(checked: dict, questions: set, file_sha: str, saved_as: str) -> dict:
+    """Keep the answer a person agreed to, apart from every later rerun. It is the answer this check just gave to the
+    questions accepted in this request, never what the page sent; a question that did not answer has nothing agreed."""
+    at = datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+    def agreed(i):
+        confirmed = {'status': i['status'], 'answer': i.get('answer'), 'path': i.get('path'), 'at': at, 'file': file_sha, 'saved_as': saved_as}
+        # an answer agreed on again was compared before: from now on it reads against this agreement; a new one has nothing to compare yet
+        again = {'previous': {**{k: confirmed[k] for k in ('status', 'answer', 'path')}, 'confirmed_at': at, 'confirmed_file': file_sha},
+                 'changed': False} if i.get('previous') is not None else {}
+        return {**i, 'confirmed': confirmed, **again}
+    return {**checked, 'items': [agreed(i) if i['question'] in questions and i['status'] == 'answered' else i for i in checked['items']]}

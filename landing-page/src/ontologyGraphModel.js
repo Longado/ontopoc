@@ -1,5 +1,6 @@
 // Layered left-to-right layout for a company ontology: relations point from the referencing thing to the referenced one.
 // ponytail: fixed layout for the 4–15 types an upload produces; switch to a graph library if ontologies grow past that.
+import { askedNow } from "./dataLayoutModel.js";
 export const NODE = { w: 184, h: 64 };
 const GAP = { x: 112, y: 32 };
 const PAD = 24;
@@ -105,7 +106,7 @@ export function overviewTiles(run) {
   const passed = fit ? fit.checks.filter((c) => c.passed).length : 0;
   const diffCount = (d) => d.types.only_reference.length + d.types.only_ours.length + d.relations.only_reference.length + d.relations.only_ours.length;
   const ref = evaluation.reference?.diff.counts.types;
-  const asked = (evaluation.asked || []).flatMap((r) => r.items || []);
+  const asked = askedNow(run);
   const round = evaluation.questions?.total ? evaluation.questions : { answered: 0, total: 0 };
   const q = round.total + asked.length ? { answered: round.answered + asked.filter((i) => i.status === "answered").length, total: round.total + asked.length } : null;
   const changes = run.previous ? diffCount(run.previous.diff) : null;

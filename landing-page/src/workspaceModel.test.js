@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { objectCards, objectRelations, sectionOfTile, sectionsFor } from "./workspaceModel.js";
+import { objectCards, objectRelations, opensAtTop, sectionOfTile, sectionsFor, startSection } from "./workspaceModel.js";
 
 const run = (extra = {}) => ({
   file: { name: "orders.csv", kind: "table" },
@@ -24,9 +24,11 @@ test("an organisation run offers the organisation module and leaves out data and
 });
 
 test("the sidebar offers every module for a table run, and leaves out data and questions for a document", () => {
-  assert.deepEqual(sectionsFor(run()).map(([key]) => key), ["data", "objects", "graph", "qa", "check"]);
-  assert.deepEqual(sectionsFor(run({ file: { name: "制度.md", kind: "document" } })).map(([key]) => key), ["objects", "graph", "check"]);
-  assert.deepEqual(sectionsFor(null).map(([key]) => key), ["data", "objects", "graph", "qa", "check"]);
+  assert.deepEqual(sectionsFor(run()).map(([key]) => key), ["overview", "card", "data", "objects", "graph", "qa", "check"]);
+  assert.deepEqual(sectionsFor(run({ file: { name: "制度.md", kind: "document" } })).map(([key]) => key), ["objects", "graph", "check"]);   // the list and the card are code counting rows: a document has none
+  assert.deepEqual(sectionsFor(null).map(([key]) => key), ["overview", "card", "data", "objects", "graph", "qa", "check"]);
+  assert.deepEqual(sectionsFor(run())[0], ["overview", "要确认的事"]);
+  assert.deepEqual(sectionsFor(run())[1], ["card", "口径卡"]);   // right after the list of things to settle: the card is where most of them are answered
 });
 
 test("each object is a card: its name, a line about it, the tables it comes from, how many there are and how it connects", () => {
@@ -48,4 +50,24 @@ test("an object's relations read from its own side", () => {
 
 test("the status chips lead to the module that explains them", () => {
   assert.deepEqual(["ontology", "stability", "fit", "qa", "ref"].map(sectionOfTile), ["objects", "objects", "check", "qa", "check"]);
+});
+
+test("a run on the service opens on its first module: the list to settle for a table, the objects for a document", () => {
+  assert.equal(startSection(null), "upload");
+  assert.equal(startSection({ ...run(), saved_as: "orders.json" }), "overview");   // the list is the service's: only a saved run has one
+  assert.equal(startSection(run({ file: { name: "制度.md", kind: "document" } })), "objects");
+  assert.equal(startSection({ ...run(), mode: "org", file: { name: "palantir.md", kind: "document" } }), "objects");
+});
+
+test("an example result is not on the service, so it opens on the objects and not on a list that is never there", () => {
+  assert.equal(startSection(run()), "objects");   // run() has no saved_as
+  assert.equal(startSection({ ...run(), saved_as: "orders.json", file: { name: "制度.md", kind: "document" } }), "objects");
+});
+
+test("a jump opens its page at the top, except to a question, which is scrolled to", () => {
+  assert.equal(opensAtTop({ tab: "objects", place: "confirm" }), true);
+  assert.equal(opensAtTop({ tab: "graph", relation: "r1" }), true);
+  assert.equal(opensAtTop({ tab: "check" }), true);
+  assert.equal(opensAtTop({ tab: "qa", place: "ask" }), true);
+  assert.equal(opensAtTop({ tab: "qa", place: "ask", question: "累计付了多少钱？" }), false);
 });
