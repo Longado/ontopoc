@@ -48,11 +48,13 @@ export function previewFactText(f) {
   return `${f.filled} 个有值 · ${f.distinct} 种${f.unique ? "，各不相同" : ""}`;
 }
 
+const LEFT_OUT = "（不算日期、小数和长文本）";   // the counts column may still say such a column differs on every row
+
 export function previewKeysText(src) {
-  if (src.unique_columns?.length) return `每行都不同的列：${src.unique_columns.join("、")}`;
-  if (src.unique_pairs?.length) return `没有一列每行都不同；两列合起来每行都不同的有：${src.unique_pairs.map((p) => p.join(" + ")).join("、")}`;
-  if (src.unique_pairs) return "每行都有值的列里，没有一列或两列合起来每行都不同";
-  return src.unique_columns ? "没有一列每行都不同" : null;   // nothing at all: a one-row table
+  if (src.unique_columns?.length) return `每行都不同的列${LEFT_OUT}：${src.unique_columns.join("、")}`;
+  if (src.unique_pairs?.length) return `没有一列每行都不同${LEFT_OUT}；两列合起来每行都不同的有：${src.unique_pairs.map((p) => p.join(" + ")).join("、")}`;
+  if (src.unique_pairs) return `每行都有值的列里${LEFT_OUT}，没有一列或两列合起来每行都不同`;
+  return src.unique_columns ? `没有一列每行都不同${LEFT_OUT}` : null;   // nothing at all: a one-row table
 }
 
 export const previewLinkText = (l) => `${l.field} 的 ${l.of} 个不同值里，有 ${l.found} 个在 ${l.to_table}.${l.to_field}`;

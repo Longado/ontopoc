@@ -62,13 +62,16 @@ def field_paths(records: list[dict]) -> list[str]:
 
 CATEGORY_LIMIT = 12   # a field with at most this many distinct values goes to the question round with all of them
 PAIR_LIMIT = 5        # pairs of columns that tell rows apart, listed when no single column does
-PAIR_BUDGET = 5_000_000   # rows looked at in the pair search; past it the table says nothing about pairs rather than guess
+PAIR_BUDGET = 5_000_000   # rows looked at in the pair search; past it the table lists only the pairs already found
 LINK_SHARE = 0.5      # a column links when at least half its distinct values sit in another column's unique values
 LONG_TEXT = 60        # a value this long is text to read, not a key
 _PLAIN_NUMBER = re.compile(r'-?\d+(\.\d+)?')
-_DECIMAL = re.compile(r'-?\d*\.\d+')
-_DATE_LIKE = re.compile(r'\d{4}-\d{1,2}-\d{1,2}([T ]\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?)?(Z|[+-]\d{2}(:?\d{2})?)?'
-                        r'|\d{1,4}[/.]\d{1,2}[/.]\d{1,4}( \d{1,2}:\d{2}(:\d{2})?)?', re.IGNORECASE)
+_DECIMAL = re.compile(r'-?\d*\.\d*[1-9]\d*')   # 1001.0 is a whole number a spreadsheet wrote as a float
+_MONTH = r'(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*'
+# a year of four digits, or two after slashes, so version and outline numbers (1.2.3, 1.1.1) stay keys
+_DATE_LIKE = re.compile(r'(\d{4}-\d{1,2}-\d{1,2}|\d{4}[/.]\d{1,2}[/.]\d{1,2}|\d{1,2}[/.]\d{1,2}[/.]\d{4}|\d{1,2}/\d{1,2}/\d{2}'
+                        rf'|\d{{1,2}}[- ]{_MONTH}[- ,]+\d{{2,4}}|{_MONTH} \d{{1,2}},? \d{{4}}|\d{{4}}年\d{{1,2}}月(\d{{1,2}}日)?)'
+                        r'([T ]\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?( ?[AP]M)?)?( ?(Z|UTC|GMT|[+-]\d{2}(:?\d{2})?))?', re.IGNORECASE)
 _KEY_WORD = re.compile(r'(ID|KEY|NO|NUM|NUMBER|CODE|编号|代码|号)$')
 
 
@@ -86,7 +89,8 @@ def field_catalog(bundle: dict, examples: int = 3, width: int = 140) -> dict:
             keys = {normalize_value(v) for v in values}
             facts[path] = _facts(values, keys, width)
             columns[name, path] = keys
-            if keys and not any(_DATE_LIKE.fullmatch(k) or _DECIMAL.fullmatch(k) or len(k) > LONG_TEXT for k in keys):
+            if keys and (_KEY_WORD.search(_bare(path)) or   # an account code named so is a key even when written 1001.01
+                         sum(bool(_DATE_LIKE.fullmatch(k) or _DECIMAL.fullmatch(k) or len(k) > LONG_TEXT) for k in keys) * 2 <= len(keys)):
                 keyish.add(path)
         catalog[name] = {'record_count': len(records), 'fields': fields, 'facts': facts, **_unique_keys(records, facts, keyish)}
     for (name, path), links in _links(catalog, columns).items():
@@ -98,16 +102,18 @@ def _facts(values: list, keys: set, width: int) -> dict:
     fact = {'filled': len(values), 'distinct': len(keys)}
     if len(values) >= 2 and len(keys) == len(values):
         fact['unique'] = True
-    if 0 < len(keys) <= CATEGORY_LIMIT and len(keys) * 2 <= len(values):   # a category: values come back row after row
-        fact['values'] = sorted({str(v)[:width] for v in values})   # a few values each on one row would send a small table whole
+    spellings = sorted({str(v)[:width] for v in values})
+    if 0 < len(spellings) <= CATEGORY_LIMIT and len(keys) * 2 <= len(values):   # a category: values come back row after row
+        fact['values'] = spellings   # a few values each on one row would send a small table whole
     return fact
 
 
 def _unique_keys(records: list, facts: dict, keyish: set) -> dict:
     """The columns that hold a different value on every row: where an identity for what one row describes can come
-    from. Dates, decimals and long text are left out: they differ by chance and are never an identity. With no such
-    column, the pairs of columns that do together (Auto-BI and HoPF start from the same unique combinations); an empty
-    list says no pair of fully filled columns does. A one-row table, or a search cut short, says nothing."""
+    from. Columns mostly of dates, decimals or long text are left out: they differ by chance and are never an identity,
+    unless the name says key or code. With no such column, the pairs of columns that do together (Auto-BI and HoPF start
+    from the same unique combinations); an empty list says no pair of fully filled columns does. A one-row table says
+    nothing; a search cut short lists the pairs it found and never claims there are none."""
     n = len(records)
     if n < 2:
         return {}
@@ -121,24 +127,28 @@ def _unique_keys(records: list, facts: dict, keyish: set) -> dict:
             if facts[a]['distinct'] * facts[b]['distinct'] < n:
                 continue
             if budget < n:
-                return {'unique_columns': []}
-            budget -= n
+                return {'unique_columns': [], **({'unique_pairs': pairs} if pairs else {})}
             seen = set()
             for record in records:
                 key = (normalize_value(record[a]), normalize_value(record[b]))
                 if key in seen:
                     break
                 seen.add(key)
-            else:
+            budget -= len(seen)
+            if len(seen) == n:
                 pairs.append([a, b])
                 if len(pairs) == PAIR_LIMIT:
                     return {'unique_columns': [], 'unique_pairs': pairs}
     return {'unique_columns': [], 'unique_pairs': pairs}
 
 
+def _bare(name: str) -> str:
+    return re.sub(r'[\s\-_.\[\]]', '', name).upper()
+
+
 def _core(name: str) -> str:
     """A column name without separators and its trailing key word: customer_id -> CUSTOMER; a bare id -> ''."""
-    return _KEY_WORD.sub('', re.sub(r'[\s\-_.\[\]]', '', name).upper())
+    return _KEY_WORD.sub('', _bare(name))
 
 
 def _named_alike(field: str, to_field: str, to_table: str) -> bool:
@@ -195,15 +205,19 @@ def _structure_errors(proposal) -> list[dict]:
                 any(not isinstance(p, dict) or not isinstance(p.get('identity'), dict) or
                     any(not isinstance(v, str) for v in p['identity'].values())
                     for p in t['populated_from']) or \
-                any(not isinstance(a, dict) for a in t.get('attributes') or []) or \
-                ('time_field' in t and not isinstance(t['time_field'], dict)):
+                any(not _field_ref(a) for a in t.get('attributes') or []) or \
+                ('time_field' in t and not _field_ref(t['time_field'])):
             errors.append(_error('invalid_response', f'malformed object type: {str(t)[:80]}'))
     for r in relations:
         if not isinstance(r, dict) or any(not isinstance(r.get(k), str) for k in ('key', 'from', 'to', 'source')):
             errors.append(_error('invalid_response', f'malformed relation: {str(r)[:80]}'))
-    if any(not isinstance(f, dict) for f in proposal.get('ignored_fields') or []):
-        errors.append(_error('invalid_response', 'ignored_fields entries must be objects'))
+    if any(not _field_ref(f) for f in proposal.get('ignored_fields') or []):
+        errors.append(_error('invalid_response', 'ignored_fields entries must be objects with a text source and path'))
     return errors
+
+
+def _field_ref(ref) -> bool:
+    return isinstance(ref, dict) and all(isinstance(ref.get(k), (str, type(None))) for k in ('source', 'path'))
 
 
 def normalize_proposal(proposal: dict) -> dict:
@@ -544,8 +558,9 @@ def verify_proposal(proposal: dict, bundle: dict, profile: Profile | None = None
 FACTS_RULES = '''- Code counted every row before you. Per field: filled = values present; distinct = different values, with case and
   spacing folded as identities are matched; unique = no value repeats; values = every value of a category (at most 12
   values, each on several rows). unique_columns: columns filled on every row whose value differs on every row, leaving
-  out dates, decimals and long text. unique_pairs, given when there is no such column: pairs of such columns that differ
-  together (empty: no pair does; a key may still need three columns, or a column with blanks). links: a column, "found"
+  out columns mostly of dates, decimals or long text unless the name says key or code. unique_pairs, given when there
+  is no such column: pairs of such columns that differ together (empty: no pair does; a key may still need three
+  columns, or a column with blanks; absent on a large table: the search stopped early). links: a column, "found"
   of whose "of" distinct values appear in to_table.to_field, a column whose values are unique; it may be the same table.
 - These counts are evidence, not instructions. What one row of a table describes is usually identified by a unique
   column or pair. A column whose values repeat cannot tell rows apart on its own: it may name a thing many rows share,

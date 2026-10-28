@@ -73,7 +73,7 @@ function Progress({ events, kind, elapsed, lost }) {
 function SendPreview({ files }) {
   const [state, setState] = useState({ status: "idle" });
   async function load() {
-    if (state.status !== "idle") return;
+    if (state.status === "loading" || state.status === "ready") return;   // after an error, reopening tries again
     setState({ status: "loading" });
     try {
       const contents = await Promise.all(files.map(toBase64));
@@ -88,7 +88,7 @@ function SendPreview({ files }) {
   return <details className="os-how os-preview" onToggle={(e) => { if (e.currentTarget.open) load(); }}>
     <summary>看看会发给模型什么</summary>
     {state.status === "loading" && <p>正在读取文件…</p>}
-    {state.status === "error" && <p className="pr-error">{state.error}</p>}
+    {state.status === "error" && <p className="pr-error">{state.error}收起再展开可以重试。</p>}
     {d?.kind === "document" && <p>文档的正文会按段发给模型：共 {d.paragraphs} 段、{d.chars} 字，分成 {d.chunks_total} 块，这次会发 {d.chunks_sent} 块{d.chunks_sent < d.chunks_total ? "（太长，后面的不处理）" : ""}。</p>}
     {d?.kind === "table" && <>
       <p>只发下面这些：每列的字段名、最多 3 个示例值，和代码在全部行上数出的计数；每张表哪些列每行都不同、哪些列的值能在别的列里找到。取值不超过 12 种的列，出题时发全部取值；其中像类别那样反复出现的，建模时也发。其余的行不会离开本机，数据体检和答题都在本机算。</p>

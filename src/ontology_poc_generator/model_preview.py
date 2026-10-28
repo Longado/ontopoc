@@ -18,8 +18,9 @@ def model_preview(bundle: dict) -> dict:
             counts = {k: v for k, v in entry['facts'][path].items() if k != 'values'}
             # the question round lists every value of a field with few of them (see categorical_values); the modeler
             # gets the values of the category-like ones among them, so this list covers both
-            values = {str(v) for r in records for v in resolve(r, path) if v not in (None, '')}
-            fields.append({'path': path, 'examples': examples, **counts, **({'values': sorted(values)} if 0 < len(values) <= CATEGORY_LIMIT else {})})
+            raw = sorted({str(v) for r in records for v in resolve(r, path) if v not in (None, '')})
+            values = entry['facts'][path].get('values') or (raw if 0 < len(raw) <= CATEGORY_LIMIT else None)
+            fields.append({'path': path, 'examples': examples, **counts, **({'values': values} if values else {})})
         sources.append({'name': name, 'record_count': entry['record_count'], 'fields': fields,
                         **{k: entry[k] for k in ('unique_columns', 'unique_pairs', 'links') if k in entry}})
     return {'kind': 'table', 'sources': sources}
