@@ -187,10 +187,43 @@ class CatalogFactsTests(unittest.TestCase):
         from ontology_poc_generator.company_sources import load_table_file
         from ontology_poc_generator.public_ontology import field_catalog
         spellings = [lambda d: f'1/{d}/2024 12:00:00 AM', lambda d: f'2024-01-0{d} 10:00:00 +08:00',
-                     lambda d: f'2024-01-0{d} 10:00:00 UTC', lambda d: f'2024年1月{d}日']
+                     lambda d: f'2024-01-0{d} 10:00:00 UTC', lambda d: f'2024年1月{d}日', lambda d: f'0{d}-01-2024',
+                     lambda d: f'1/{d}/2024 3:00 p.m.', lambda d: f'2024-01-0{d} 10:00 CST', lambda d: f'2024年1月{d}号 上午10:00',
+                     lambda d: f'0{d}-Jan-2024', lambda d: f'Jan {d}, 2024']
         for spell in spellings:
             text = '编号,开始,结束\n' + ''.join(f'V{d},{spell(d)},{spell(d + 1)}\n' for d in range(1, 6))
             self.assertNotIn('links', field_catalog(load_table_file('events.csv', text.encode('utf-8')))['events'], spell(1))
+
+    def test_structured_codes_are_keys_and_links_not_dates(self):
+        from ontology_poc_generator.company_sources import load_table_files
+        from ontology_poc_generator.public_ontology import field_catalog
+        for codes in [[f'1001.0{i % 3 + 1}.0{i // 3 + 1}' for i in range(12)], [f'01.0{i % 3 + 1}.000{i // 3 + 1}' for i in range(12)],
+                      [f'8501.{10 + i}.00' for i in range(12)], [f'2024-05-10-000{i}' for i in range(10)],
+                      [f'{10 + i}-JUN-0045' for i in range(12)], [f'6001-01-{10 + i}' for i in range(12)]]:
+            catalog = field_catalog(load_table_files([
+                ('master.csv', ('编码,名称\n' + ''.join(f'{c},N{i}\n' for i, c in enumerate(codes))).encode('utf-8')),
+                ('lines.csv', ('单据,编码\n' + ''.join(f'L{i},{codes[i % len(codes)]}\n' for i in range(30))).encode('utf-8'))]))
+            self.assertEqual(catalog['master']['unique_columns'], ['编码', '名称'], codes[0])
+            self.assertIn({'field': '编码', 'to_table': 'master', 'to_field': '编码', 'found': len(codes), 'of': len(codes)},
+                          catalog['lines']['links'], codes[0])
+
+    def test_amounts_hide_no_key_whatever_the_column_is_called(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        from ontology_poc_generator.public_ontology import field_catalog
+        amounts = [['100.00', '250.00', '1200.00', '75.50', '300.00', '410.00'], ['100', '250', '1200', '75.5', '300', '410'],
+                   ['¥1,200.50', '¥980.00', '¥45.10', '¥3,000.00', '¥12.80', '¥640.00']]
+        for name in ['amount', 'amount_paid', 'Bid', 'Valid', '实付金额']:
+            for values in amounts:
+                text = f'order_no,line_no,{name}\n' + ''.join(f'O{i // 2},{i % 2 + 1},{v}\n' for i, v in enumerate(values))
+                entry = field_catalog(load_table_file('lines.csv', text.encode('utf-8')))['lines']
+                self.assertEqual((entry['unique_columns'], entry.get('unique_pairs')), ([], [['order_no', 'line_no']]), (name, values[0]))
+
+    def test_a_code_named_so_stays_a_key_in_either_language(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        from ontology_poc_generator.public_ontology import field_catalog
+        for name in ['科目编码', '科目代码', 'account_code', 'AccountNo', 'acct id']:
+            text = f'{name},科目名称\n' + ''.join(f'{1001 + i}.0{i % 9 + 1},科目{i}\n' for i in range(8))
+            self.assertIn(name, field_catalog(load_table_file('accounts.csv', text.encode('utf-8')))['accounts']['unique_columns'], name)
 
     def test_one_long_name_or_a_float_written_id_still_tells_rows_apart(self):
         from ontology_poc_generator.company_sources import load_table_file
@@ -292,6 +325,16 @@ class TimeFieldTests(unittest.TestCase):
         for bad in [{**EVENT, 'object_types': [{**t, 'time_field': {'source': 'events', 'path': ['创建时间']}}]},
                     {**EVENT, 'object_types': [{**t, 'attributes': [{'source': ['events'], 'path': '创建时间'}]}]},
                     {**EVENT, 'ignored_fields': [{'source': ['events'], 'path': '创建时间', 'reason': 'x'}]}]:
+            codes = {e['code'] for e in verify_company_proposal(bad, self.bundle())['errors']}
+            self.assertIn('invalid_response', codes)
+
+    def test_a_malformed_source_or_list_is_sent_back_not_a_crash(self):
+        from ontology_poc_generator.company_ontology import verify_company_proposal
+        t = EVENT['object_types'][0]
+        for bad in [{**EVENT, 'object_types': [{**t, 'populated_from': [{**t['populated_from'][0], 'source': ['events']}]}]},
+                    {**EVENT, 'object_types': [{**t, 'populated_from': [{**t['populated_from'][0], 'source': {'name': 'events'}}]}]},
+                    {**EVENT, 'object_types': [{**t, 'attributes': 5}]},
+                    {**EVENT, 'ignored_fields': 5}]:
             codes = {e['code'] for e in verify_company_proposal(bad, self.bundle())['errors']}
             self.assertIn('invalid_response', codes)
 
