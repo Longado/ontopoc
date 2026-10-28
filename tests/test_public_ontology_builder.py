@@ -189,7 +189,8 @@ class CatalogFactsTests(unittest.TestCase):
         spellings = [lambda d: f'1/{d}/2024 12:00:00 AM', lambda d: f'2024-01-0{d} 10:00:00 +08:00',
                      lambda d: f'2024-01-0{d} 10:00:00 UTC', lambda d: f'2024年1月{d}日', lambda d: f'0{d}-01-2024',
                      lambda d: f'1/{d}/2024 3:00 p.m.', lambda d: f'2024-01-0{d} 10:00 CST', lambda d: f'2024年1月{d}号 上午10:00',
-                     lambda d: f'0{d}-Jan-2024', lambda d: f'Jan {d}, 2024']
+                     lambda d: f'0{d}-Jan-2024', lambda d: f'Jan {d}, 2024', lambda d: f'2024-01-0{d} 10:00:00+00',
+                     lambda d: f'2024-01-0{d} 10:00:00.123456-05']
         for spell in spellings:
             text = '编号,开始,结束\n' + ''.join(f'V{d},"{spell(d)}","{spell(d + 1)}"\n' for d in range(1, 6))
             self.assertNotIn('links', field_catalog(load_table_file('events.csv', text.encode('utf-8')))['events'], spell(1))
@@ -211,8 +212,10 @@ class CatalogFactsTests(unittest.TestCase):
         from ontology_poc_generator.company_sources import load_table_file
         from ontology_poc_generator.public_ontology import field_catalog
         amounts = [['100.00', '250.00', '1200.00', '75.50', '300.00', '410.00'], ['100', '250', '1200', '75.5', '300', '410'],
-                   ['¥1,200.50', '¥980.00', '¥45.10', '¥3,000.00', '¥12.80', '¥640.00']]
-        for name in ['amount', 'amount_paid', 'Bid', 'Valid', '实付金额']:
+                   ['¥1,200.50', '¥980.00', '¥45.10', '¥3,000.00', '¥12.80', '¥640.00'],
+                   ['12.50%', '8.25%', '3.10%', '45.29%', '0.75%', '9.99%'],
+                   ['￥4,528.82', '(120.50)', '4528.82-', '$ 12.80', '￥64.10', '(3.30)']]
+        for name in ['amount', 'amount_paid', 'Bid', 'Valid', 'PAID', 'rate_per_annum', '实付金额']:
             for values in amounts:
                 text = f'order_no,line_no,{name}\n' + ''.join(f'O{i // 2},{i % 2 + 1},{v}\n' for i, v in enumerate(values))
                 entry = field_catalog(load_table_file('lines.csv', text.encode('utf-8')))['lines']
@@ -221,7 +224,8 @@ class CatalogFactsTests(unittest.TestCase):
     def test_a_code_named_so_stays_a_key_in_either_language(self):
         from ontology_poc_generator.company_sources import load_table_file
         from ontology_poc_generator.public_ontology import field_catalog
-        for name in ['科目编码', '科目代码', 'account_code', 'AccountNo', 'acct id']:
+        for name in ['科目编码', '科目代码', 'account_code', 'AccountNo', 'acct id', 'FNumber', 'GLCode', 'PONumber', 'OrderNO',
+                     'batchno', 'acctcode', 'customerID', 'Order No.']:
             text = f'{name},科目名称\n' + ''.join(f'{1001 + i}.0{i % 9 + 1},科目{i}\n' for i in range(8))
             self.assertIn(name, field_catalog(load_table_file('accounts.csv', text.encode('utf-8')))['accounts']['unique_columns'], name)
 
@@ -334,9 +338,18 @@ class TimeFieldTests(unittest.TestCase):
         for bad in [{**EVENT, 'object_types': [{**t, 'populated_from': [{**t['populated_from'][0], 'source': ['events']}]}]},
                     {**EVENT, 'object_types': [{**t, 'populated_from': [{**t['populated_from'][0], 'source': {'name': 'events'}}]}]},
                     {**EVENT, 'object_types': [{**t, 'attributes': 5}]},
-                    {**EVENT, 'ignored_fields': 5}]:
+                    {**EVENT, 'ignored_fields': 5}, {**EVENT, 'open_questions': 5}, {**EVENT, 'open_questions': '订单没有日期'}]:
             codes = {e['code'] for e in verify_company_proposal(bad, self.bundle())['errors']}
             self.assertIn('invalid_response', codes)
+
+    def test_a_filter_on_an_identity_already_wrong_is_sent_back_not_a_crash(self):
+        from ontology_poc_generator.company_ontology import verify_company_proposal
+        t, where = EVENT['object_types'][0], [{'path': '修改时间', 'equals': '2024-01-02'}]
+        for pop, code in [({'source': 'events', 'identity': {'id': '编号', 't': '创建时间'}, 'transform': 'split_comma', 'where': where},
+                           'transform_needs_single_field'),
+                          ({'source': 'events', 'identity': {'a': 'x[].p', 'b': 'y[].q'}, 'where': where}, 'mixed_list_identity')]:
+            bad = {**EVENT, 'object_types': [{**t, 'populated_from': [pop]}]}
+            self.assertIn(code, {e['code'] for e in verify_company_proposal(bad, self.bundle())['errors']})
 
     def test_the_built_ontology_keeps_the_time_field_as_an_attribute(self):
         from ontology_poc_generator.company_ontology import build_company_ontology
