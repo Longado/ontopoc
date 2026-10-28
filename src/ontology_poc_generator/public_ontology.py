@@ -66,13 +66,24 @@ PAIR_BUDGET = 5_000_000   # rows looked at in the pair search; past it the table
 LINK_SHARE = 0.5      # a column links when at least half its distinct values sit in another column's unique values
 LONG_TEXT = 60        # a value this long is text to read, not a key
 _PLAIN_NUMBER = re.compile(r'-?\d+(\.\d+)?')
-_DECIMAL = re.compile(r'-?\d*\.\d*[1-9]\d*')   # 1001.0 is a whole number a spreadsheet wrote as a float
-_MONTH = r'(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*'
-# a year of four digits, or two after slashes, so version and outline numbers (1.2.3, 1.1.1) stay keys
-_DATE_LIKE = re.compile(r'(\d{4}-\d{1,2}-\d{1,2}|\d{4}[/.]\d{1,2}[/.]\d{1,2}|\d{1,2}[/.]\d{1,2}[/.]\d{4}|\d{1,2}/\d{1,2}/\d{2}'
-                        rf'|\d{{1,2}}[- ]{_MONTH}[- ,]+\d{{2,4}}|{_MONTH} \d{{1,2}},? \d{{4}}|\d{{4}}年\d{{1,2}}月(\d{{1,2}}日)?)'
-                        r'([T ]\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?( ?[AP]M)?)?( ?(Z|UTC|GMT|[+-]\d{2}(:?\d{2})?))?', re.IGNORECASE)
-_KEY_WORD = re.compile(r'(ID|KEY|NO|NUM|NUMBER|CODE|编号|代码|号)$')
+_DECIMAL = re.compile(r'[-+]?[¥$€£]?[\d,]*\.\d+')   # 75.50, ¥1,200.50
+_WHOLE_FLOAT = re.compile(r'-?\d+\.0')   # 1001.0: a whole number a spreadsheet wrote as a float
+_KEY_WORD = re.compile(r'(ID|KEY|NO|NUM|NUMBER|CODE|编号|代码|编码|号)$')
+# the same words as a column name's last word: account_code, AccountNo, 科目编码; not paid, Bid or Valid
+_KEY_NAME = re.compile(r'((^|[\s_\-./])(?i:id|key|no|num|number|code)|(?<=[a-z0-9])(ID|Id|Key|No|Num|Number|Code))\.?$'
+                       r'|(编号|代码|编码|号)$')
+_MONTHS = ('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC')
+_MONTH = (r'(?P<mon>JAN(UARY)?|FEB(RUARY)?|MAR(CH)?|APR(IL)?|MAY|JUNE?|JULY?|AUG(UST)?|SEP(T(EMBER)?)?|OCT(OBER)?'
+          r'|NOV(EMBER)?|DEC(EMBER)?)\.?')
+_TIME = r'([T ]?(上午|下午)?\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?( ?[AP]\.?M\.?)?( ?(Z|[A-Z]{3}([+-]\d{1,2})?|[+-]\d{2}:?\d{2}))?)?'
+_DATES = [re.compile(day + _TIME, re.IGNORECASE) for day in (
+    r'(?P<y>\d{4})[-/.](?P<m>\d{1,2})[-/.](?P<d>\d{1,2})',
+    r'(?P<d>\d{1,2})[-/.](?P<m>\d{1,2})[-/.](?P<y>\d{4})',
+    r'(?P<d>\d{1,2})/(?P<m>\d{1,2})/(?P<y>\d{2})',
+    rf'(?P<d>\d{{1,2}})[- /]{_MONTH}[- /,]+(?P<y>\d{{4}}|\d{{2}})',
+    rf'{_MONTH} (?P<d>\d{{1,2}}),? (?P<y>\d{{4}})',
+    r'(?P<y>\d{4})年(?P<m>\d{1,2})月((?P<d>\d{1,2})[日号])?',
+)]
 
 
 def field_catalog(bundle: dict, examples: int = 3, width: int = 140) -> dict:
@@ -89,13 +100,38 @@ def field_catalog(bundle: dict, examples: int = 3, width: int = 140) -> dict:
             keys = {normalize_value(v) for v in values}
             facts[path] = _facts(values, keys, width)
             columns[name, path] = keys
-            if keys and (_KEY_WORD.search(_bare(path)) or   # an account code named so is a key even when written 1001.01
-                         sum(bool(_DATE_LIKE.fullmatch(k) or _DECIMAL.fullmatch(k) or len(k) > LONG_TEXT) for k in keys) * 2 <= len(keys)):
+            if keys and _keyish(path, keys):
                 keyish.add(path)
         catalog[name] = {'record_count': len(records), 'fields': fields, 'facts': facts, **_unique_keys(records, facts, keyish)}
     for (name, path), links in _links(catalog, columns).items():
         catalog[name].setdefault('links', []).extend(links)
     return catalog
+
+
+def _is_date(text: str) -> bool:
+    """A value spelt as a calendar date with a year from 1900 to 2100 (2024-01-05, 1/25/24, 05-Jan-2024, 2024年1月5日),
+    with or without a time. Codes shaped like dates fall outside the ranges: 1001.01.01, 8501.10.00, 12-JUN-0045."""
+    for pattern in _DATES:
+        m = pattern.fullmatch(text)
+        if not m:
+            continue
+        g = m.groupdict()
+        if len(g['y']) == 4 and not 1900 <= int(g['y']) <= 2100:
+            continue
+        month = _MONTHS.index(g['mon'][:3].upper()) + 1 if g.get('mon') else int(g['m'])
+        day = int(g['d'] or 1)
+        if 1 <= month <= 12 and 1 <= day <= 31 or not g.get('mon') and 1 <= day <= 12 and 1 <= month <= 31:   # 1/25/2024
+            return True
+    return False
+
+
+def _keyish(path: str, keys: set) -> bool:
+    """Whether a column may hold an identity. Not when any value is a date or a decimal: those are times and measures,
+    different on every row by chance (100.00 next to 75.50 is an amount). Not when most values are long text. A name
+    that says key or code keeps it (科目编码 1001.01), and whole numbers written as floats (1001.0) are numbers."""
+    if _KEY_NAME.search(path) or all(_WHOLE_FLOAT.fullmatch(k) for k in keys):
+        return True
+    return not any(_is_date(k) or _DECIMAL.fullmatch(k) for k in keys) and sum(len(k) > LONG_TEXT for k in keys) * 2 <= len(keys)
 
 
 def _facts(values: list, keys: set, width: int) -> dict:
@@ -110,8 +146,7 @@ def _facts(values: list, keys: set, width: int) -> dict:
 
 def _unique_keys(records: list, facts: dict, keyish: set) -> dict:
     """The columns that hold a different value on every row: where an identity for what one row describes can come
-    from. Columns mostly of dates, decimals or long text are left out: they differ by chance and are never an identity,
-    unless the name says key or code. With no such column, the pairs of columns that do together (Auto-BI and HoPF start
+    from. Dates, decimals and long text are left out (see _keyish). With no such column, the pairs of columns that do together (Auto-BI and HoPF start
     from the same unique combinations); an empty list says no pair of fully filled columns does. A one-row table says
     nothing; a search cut short lists the pairs it found and never claims there are none."""
     n = len(records)
@@ -142,13 +177,9 @@ def _unique_keys(records: list, facts: dict, keyish: set) -> dict:
     return {'unique_columns': [], 'unique_pairs': pairs}
 
 
-def _bare(name: str) -> str:
-    return re.sub(r'[\s\-_.\[\]]', '', name).upper()
-
-
 def _core(name: str) -> str:
     """A column name without separators and its trailing key word: customer_id -> CUSTOMER; a bare id -> ''."""
-    return _KEY_WORD.sub('', _bare(name))
+    return _KEY_WORD.sub('', re.sub(r'[\s\-_.\[\]]', '', name).upper())
 
 
 def _named_alike(field: str, to_field: str, to_table: str) -> bool:
@@ -174,7 +205,7 @@ def _links(catalog: dict, columns: dict) -> dict:
             shared = keys & to_keys
             if (to_table, to_field) == (name, path) or len(shared) < 2 or len(shared) < LINK_SHARE * len(keys):
                 continue
-            if all(_DATE_LIKE.fullmatch(k) for k in shared):
+            if all(_is_date(k) for k in shared):
                 continue
             if all(_PLAIN_NUMBER.fullmatch(k) for k in shared) and not _named_alike(path, to_field, to_table):
                 continue
@@ -203,16 +234,19 @@ def _structure_errors(proposal) -> list[dict]:
         if not isinstance(t, dict) or not isinstance(t.get('key'), str) or \
                 not isinstance(t.get('populated_from'), list) or \
                 any(not isinstance(p, dict) or not isinstance(p.get('identity'), dict) or
-                    any(not isinstance(v, str) for v in p['identity'].values())
+                    any(not isinstance(v, str) for v in p['identity'].values()) or
+                    not isinstance(p.get('source'), (str, type(None)))
                     for p in t['populated_from']) or \
+                not isinstance(t.get('attributes') or [], list) or \
                 any(not _field_ref(a) for a in t.get('attributes') or []) or \
                 ('time_field' in t and not _field_ref(t['time_field'])):
             errors.append(_error('invalid_response', f'malformed object type: {str(t)[:80]}'))
     for r in relations:
         if not isinstance(r, dict) or any(not isinstance(r.get(k), str) for k in ('key', 'from', 'to', 'source')):
             errors.append(_error('invalid_response', f'malformed relation: {str(r)[:80]}'))
-    if any(not _field_ref(f) for f in proposal.get('ignored_fields') or []):
-        errors.append(_error('invalid_response', 'ignored_fields entries must be objects with a text source and path'))
+    ignored = proposal.get('ignored_fields') or []
+    if not isinstance(ignored, list) or any(not _field_ref(f) for f in ignored):
+        errors.append(_error('invalid_response', 'ignored_fields must be a list of objects with a text source and path'))
     return errors
 
 
@@ -557,10 +591,11 @@ def verify_proposal(proposal: dict, bundle: dict, profile: Profile | None = None
 # Shared by the table modelers: what the counts in the field list mean and how far they go.
 FACTS_RULES = '''- Code counted every row before you. Per field: filled = values present; distinct = different values, with case and
   spacing folded as identities are matched; unique = no value repeats; values = every value of a category (at most 12
-  values, each on several rows). unique_columns: columns filled on every row whose value differs on every row, leaving
-  out columns mostly of dates, decimals or long text unless the name says key or code. unique_pairs, given when there
-  is no such column: pairs of such columns that differ together (empty: no pair does; a key may still need three
-  columns, or a column with blanks; absent on a large table: the search stopped early). links: a column, "found"
+  values, at least two rows per value on average). unique_columns: columns filled on every row whose value differs on
+  every row, leaving out columns with any date or decimal and columns mostly of long text, unless the name ends in a
+  word such as id, code, no, 编号 or 编码. unique_pairs, given when there is no such column: up to 5 pairs of such
+  columns that differ together (empty: no pair does; a key may still need three columns, or a column with blanks; on a
+  large table the search may stop early, listing fewer pairs or leaving unique_pairs out). links: a column, "found"
   of whose "of" distinct values appear in to_table.to_field, a column whose values are unique; it may be the same table.
 - These counts are evidence, not instructions. What one row of a table describes is usually identified by a unique
   column or pair. A column whose values repeat cannot tell rows apart on its own: it may name a thing many rows share,

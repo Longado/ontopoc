@@ -16,10 +16,10 @@ def model_preview(bundle: dict) -> dict:
         fields = []
         for path, examples in entry['fields'].items():
             counts = {k: v for k, v in entry['facts'][path].items() if k != 'values'}
-            # the question round lists every value of a field with few of them (see categorical_values); the modeler
-            # gets the values of the category-like ones among them, so this list covers both
+            # the question round lists every value, whole, of a field with few of them (see categorical_values); the
+            # modeler gets the category-like ones cut at 140 characters. Whichever list is sent covers the other
             raw = sorted({str(v) for r in records for v in resolve(r, path) if v not in (None, '')})
-            values = entry['facts'][path].get('values') or (raw if 0 < len(raw) <= CATEGORY_LIMIT else None)
+            values = raw if 0 < len(raw) <= CATEGORY_LIMIT else entry['facts'][path].get('values')
             fields.append({'path': path, 'examples': examples, **counts, **({'values': values} if values else {})})
         sources.append({'name': name, 'record_count': entry['record_count'], 'fields': fields,
                         **{k: entry[k] for k in ('unique_columns', 'unique_pairs', 'links') if k in entry}})
