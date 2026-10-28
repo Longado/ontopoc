@@ -729,7 +729,7 @@ def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, p
         'object_types': types,
         'relations': relations,
         'ignored_fields': normalize_proposal(proposal)['ignored_fields'] if proposal else [],
-        'data_gaps': [gaps] if isinstance(gaps, str) else [q for q in gaps if isinstance(q, str)] if isinstance(gaps, list) else [],
+        'data_gaps': [gaps] if isinstance(gaps, str) and gaps.strip() else [q for q in gaps if isinstance(q, str)] if isinstance(gaps, list) else [],
         'model_reasoning': (proposal or {}).get('reasoning') if isinstance((proposal or {}).get('reasoning'), str) else None,
         'verification': result,
         'attempts': attempts,
