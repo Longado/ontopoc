@@ -62,7 +62,7 @@
 | 操作 | 系统行为 |
 |---|---|
 | 打开左侧“本体库” | 搜索、按领域浏览 12 份 Playground 参考本体，在图上查看对象、属性和关系；也可导入 RDF/XML 格式的 `.rdf/.owl`。这里只看定义，导入不调用模型，刷新后需重新选文件 |
-| 上传数据表并填写建模目的 | 代码先在全部行上数出每列有几种值、哪些列每行都不同、哪些列能连到别的表；模型读取每列字段名、至多 3 个示例值和这些计数，提出对象、识别字段与关系；代码按 17 类错误校验，不通过则退回修改，至多 3 轮 |
+| 上传数据表并填写建模目的 | 代码先在全部行上数出每列有几种值、哪些列每行都不同、哪些列的值能在别的列里找到；模型读取每列字段名、至多 3 个示例值和这些计数，提出对象、识别字段与关系；代码按 17 类错误校验，不通过则退回修改，至多 3 轮 |
 | 建模完成 | 同一文件并行建模 3 次，标出三次结果不一致之处，即模型不确定、需人工判断的部分；建模目的里写了问题的，一并用数据算出答案，可直接存为验收问题 |
 | 打开"数据体检" | 代码逐行执行 7 项检查，例如同一编号的属性是否冲突、每张上传的表是否均被使用 |
 | 智能问答 | 模型将问题转写为结构化查询，由代码基于数据计算答案；无法回答时说明原因：本体缺失、数据缺失或查询不支持。需要按公式算的金额（单价 × 数量 ×（1 − 折扣））由模型提出公式，代码在每一行上试算，确认后原题重算并答出。也可以让模型按需出一组 6 道题 |
@@ -161,7 +161,7 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 ## 隐私
 
 - 上传的文件及全部结果仅保存在本机 `output/ontology-runs/` 目录。
-- 发送给模型（DeepSeek）的内容仅包括：各列字段名、至多 3 个示例值、代码数出的计数（有值个数、不同值个数、是否各不相同）和可能的连接；像类别那样反复出现的列的全部取值；生成问题时，取值不超过 12 种的列的全部取值；文档则为正文，每次至多 12 段。上传前可在页面逐列查看将发送的内容。
+- 发送给模型（DeepSeek）的内容仅包括：各列字段名、至多 3 个示例值、代码数出的计数（有值个数、不同值个数、是否各不相同）、每张表每行都不同的列或两列组合、可能的连接（包括指向本表的）；像类别那样反复出现的列的全部取值；生成问题时，取值不超过 12 种的列的全部取值；文档则为正文，每次至多 12 段。上传前可在页面逐列查看将发送的内容。
 - 每次模型调用在本机 `output/ontology-runs/model_calls.jsonl` 记录一行（Agent、耗时、成功与否），不记录调用内容。
 - 服务仅接受本机请求。
 
@@ -194,8 +194,8 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（1060 个）
-npm --prefix landing-page run test:unit                       # 前端测试（327 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（1068 个）
+npm --prefix landing-page run test:unit                       # 前端测试（330 个）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录，不动已有运行
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合成示例工作簿

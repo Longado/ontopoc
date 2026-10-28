@@ -70,14 +70,15 @@ function Progress({ events, kind, elapsed, lost }) {
   </div>;
 }
 
-function SendPreview({ file }) {
+function SendPreview({ files }) {
   const [state, setState] = useState({ status: "idle" });
   async function load() {
     if (state.status !== "idle") return;
     setState({ status: "loading" });
     try {
+      const contents = await Promise.all(files.map(toBase64));
       const response = await fetch("/api/ontology/preview", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, content_base64: await toBase64(file) }) });
+        body: JSON.stringify(uploadPayload(files, "", contents)) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(serviceError(response.status, data));
       setState({ status: "ready", data });
@@ -156,7 +157,7 @@ function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo
           <button type="button" onClick={onDocDemo}>打开示例文档</button></>}
         {files.length > 0 && !purpose && EXAMPLE_QUESTIONS.map((q) => <button key={q} type="button" onClick={() => setPurpose(q)}>{q}</button>)}
       </div>
-      {files.length === 1 && !problem && !offline && <SendPreview key={`${files[0].name}-${files[0].size}-${files[0].lastModified}`} file={files[0]} />}
+      {files.length > 0 && !problem && !offline && <SendPreview key={files.map((f) => `${f.name}-${f.size}-${f.lastModified}`).join("|")} files={files} />}
     </>}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {offline && <div className="pr-note"><p>本机的建模服务没有启动。在仓库根目录运行（需要本机 DeepSeek 凭据）：</p><code className="os-cmd">{START}</code></div>}

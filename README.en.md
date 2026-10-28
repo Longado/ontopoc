@@ -161,7 +161,7 @@ There is also an example use of the same method on vehicle recall scope (NHTSA p
 ## Privacy
 
 - Uploaded files and all results stay on this machine, in `output/ontology-runs/`.
-- Sent to the model (DeepSeek): each column's name, up to 3 example values, the counts code took (values present, distinct values, whether all differ) and likely links; every value of a category-like column; when writing questions, every value of columns with at most 12 distinct values; for documents, the text, at most 12 chunks per upload. The upload page shows exactly what will be sent, column by column.
+- Sent to the model (DeepSeek): each column's name, up to 3 example values, the counts code took (values present, distinct values, whether all differ), the columns or column pairs that differ on every row, and likely links (including into the same table); every value of a category-like column; when writing questions, every value of columns with at most 12 distinct values; for documents, the text, at most 12 chunks per upload. The upload page shows exactly what will be sent, column by column.
 - Each model call leaves one line in `output/ontology-runs/model_calls.jsonl` (which agent, how long, success or failure), never the content.
 - The page accepts requests from this machine only.
 
@@ -192,8 +192,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1060)
-npm --prefix landing-page run test:unit                       # page tests (327)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1068)
+npm --prefix landing-page run test:unit                       # page tests (330)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook

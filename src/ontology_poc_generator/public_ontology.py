@@ -64,56 +64,68 @@ CATEGORY_LIMIT = 12   # a field with at most this many distinct values goes to t
 PAIR_LIMIT = 5        # pairs of columns that tell rows apart, listed when no single column does
 PAIR_BUDGET = 5_000_000   # rows looked at in the pair search; past it the table says nothing about pairs rather than guess
 LINK_SHARE = 0.5      # a column links when at least half its distinct values sit in another column's unique values
+LONG_TEXT = 60        # a value this long is text to read, not a key
 _PLAIN_NUMBER = re.compile(r'-?\d+(\.\d+)?')
+_DECIMAL = re.compile(r'-?\d*\.\d+')
+_DATE_LIKE = re.compile(r'\d{4}-\d{1,2}-\d{1,2}([T ]\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?)?(Z|[+-]\d{2}(:?\d{2})?)?'
+                        r'|\d{1,4}[/.]\d{1,2}[/.]\d{1,4}( \d{1,2}:\d{2}(:\d{2})?)?', re.IGNORECASE)
 _KEY_WORD = re.compile(r'(ID|KEY|NO|NUM|NUMBER|CODE|编号|代码|号)$')
 
 
 def field_catalog(bundle: dict, examples: int = 3, width: int = 140) -> dict:
     """What the modeler sees: field names with a few example values, never the full records, and what code counted on
-    every row (see _facts, _unique_keys, _links)."""
+    every row (see _facts, _unique_keys, _links). Values are folded as identities are (normalize_value), so a count
+    here is the count the object graph will see."""
     catalog, columns = {}, {}
     for name, source in bundle['sources'].items():
         records = source['records']
-        fields, facts = {}, {}
+        fields, facts, keyish = {}, {}, set()
         for path in field_paths(records):
-            values = [v for record in records for v in resolve(record, path) if v not in (None, '')]
+            values = [v for record in records for v in resolve(record, path) if normalize_value(v)]
             fields[path] = list(dict.fromkeys(str(v)[:width] for v in values))[:examples]
-            facts[path] = _facts(values, width)
-            columns[name, path] = {k for k in map(normalize_value, values) if k}
-        catalog[name] = {'record_count': len(records), 'fields': fields, 'facts': facts, **_unique_keys(records, facts)}
+            keys = {normalize_value(v) for v in values}
+            facts[path] = _facts(values, keys, width)
+            columns[name, path] = keys
+            if keys and not any(_DATE_LIKE.fullmatch(k) or _DECIMAL.fullmatch(k) or len(k) > LONG_TEXT for k in keys):
+                keyish.add(path)
+        catalog[name] = {'record_count': len(records), 'fields': fields, 'facts': facts, **_unique_keys(records, facts, keyish)}
     for (name, path), links in _links(catalog, columns).items():
         catalog[name].setdefault('links', []).extend(links)
     return catalog
 
 
-def _facts(values: list, width: int) -> dict:
-    texts = {str(v) for v in values}
-    fact = {'filled': len(values), 'distinct': len(texts)}
-    if len(values) >= 2 and len(texts) == len(values):
+def _facts(values: list, keys: set, width: int) -> dict:
+    fact = {'filled': len(values), 'distinct': len(keys)}
+    if len(values) >= 2 and len(keys) == len(values):
         fact['unique'] = True
-    if 0 < len(texts) <= CATEGORY_LIMIT and len(texts) * 2 <= len(values):   # a category: values come back row after row
-        fact['values'] = sorted(t[:width] for t in texts)   # a few values each on one row would send a small table whole
+    if 0 < len(keys) <= CATEGORY_LIMIT and len(keys) * 2 <= len(values):   # a category: values come back row after row
+        fact['values'] = sorted({str(v)[:width] for v in values})   # a few values each on one row would send a small table whole
     return fact
 
 
-def _unique_keys(records: list, facts: dict) -> dict:
+def _unique_keys(records: list, facts: dict, keyish: set) -> dict:
     """The columns that hold a different value on every row: where an identity for what one row describes can come
-    from. With none, the pairs of columns that do together (Auto-BI and HoPF start from the same unique combinations);
-    an empty list says no pair does, which is itself a gap to report."""
+    from. Dates, decimals and long text are left out: they differ by chance and are never an identity. With no such
+    column, the pairs of columns that do together (Auto-BI and HoPF start from the same unique combinations); an empty
+    list says no pair of fully filled columns does. A one-row table, or a search cut short, says nothing."""
     n = len(records)
-    full = [p for p, f in facts.items() if '[].' not in p and f['filled'] == n >= 2]
+    if n < 2:
+        return {}
+    full = [p for p, f in facts.items() if '[].' not in p and f['filled'] == n and p in keyish]
     single = [p for p in full if facts[p].get('unique')]
-    if single or n < 2:
+    if single:
         return {'unique_columns': single}
     pairs, budget = [], PAIR_BUDGET
     for i, a in enumerate(full):
         for b in full[i + 1:]:
             if facts[a]['distinct'] * facts[b]['distinct'] < n:
                 continue
+            if budget < n:
+                return {'unique_columns': []}
+            budget -= n
             seen = set()
             for record in records:
-                budget -= 1
-                key = (str(record[a]), str(record[b]))
+                key = (normalize_value(record[a]), normalize_value(record[b]))
                 if key in seen:
                     break
                 seen.add(key)
@@ -121,43 +133,42 @@ def _unique_keys(records: list, facts: dict) -> dict:
                 pairs.append([a, b])
                 if len(pairs) == PAIR_LIMIT:
                     return {'unique_columns': [], 'unique_pairs': pairs}
-            if budget <= 0:
-                return {'unique_columns': [], **({'unique_pairs': pairs} if pairs else {})}
     return {'unique_columns': [], 'unique_pairs': pairs}
 
 
 def _core(name: str) -> str:
-    loose = re.sub(r'[\s\-_.\[\]]', '', name).upper()
-    return _KEY_WORD.sub('', loose) or loose
+    """A column name without separators and its trailing key word: customer_id -> CUSTOMER; a bare id -> ''."""
+    return _KEY_WORD.sub('', re.sub(r'[\s\-_.\[\]]', '', name).upper())
 
 
 def _named_alike(field: str, to_field: str, to_table: str) -> bool:
+    """customer_id and customers.id, or productID and productID; a bare id says nothing about which table it means."""
     a, b, table = _core(field), _core(to_field), _core(to_table).removesuffix('S')
-    return (min(len(a), len(b)) >= 2 and (a in b or b in a)) or (len(table) >= 2 and table in a)
+    return bool(a) and ((min(len(a), len(b)) >= 2 and (a in b or b in a)) or (len(table) >= 2 and table in a))
 
 
 def _links(catalog: dict, columns: dict) -> dict:
     """Columns most of whose values sit in a column of unique values, here or in another table: the evidence a foreign
     key leaves (inclusion plus a unique target, as in Auto-BI, Fast-FK and LLM-FK). Values alone are not enough when
-    they are plain numbers: small numbers land inside any list of ids numbered from 1 (Northwind's shipVia 1-3 in
-    productID), so plain numbers also need the names to agree. Dates are left out: two timestamp columns of one table
-    share days without pointing at each other. A link is offered to the model as evidence only."""
-    dates = {column for column, keys in columns.items() if keys and all(_ISO_DATE.match(k) for k in keys)}
+    the shared ones are plain numbers: small numbers land inside any list of ids numbered from 1 (Northwind's shipVia
+    1-3 in productID), so plain numbers also need the names to agree. Shared dates are left out: two timestamp columns
+    of one table share days without pointing at each other. A link is offered to the model as evidence only."""
     targets = [(name, path, columns[name, path]) for name, entry in catalog.items()
-               for path, fact in entry['facts'].items() if fact.get('unique') and '[].' not in path and (name, path) not in dates]
+               for path, fact in entry['facts'].items() if fact.get('unique') and '[].' not in path]
     out = {}
     for (name, path), keys in columns.items():
-        if len(keys) < 2 or (name, path) in dates:
+        if len(keys) < 2:
             continue
-        numbers = all(_PLAIN_NUMBER.fullmatch(k) for k in keys)
         found = []
         for to_table, to_field, to_keys in targets:
-            shared = len(keys & to_keys)
-            if (to_table, to_field) == (name, path) or shared < 2 or shared < LINK_SHARE * len(keys):
+            shared = keys & to_keys
+            if (to_table, to_field) == (name, path) or len(shared) < 2 or len(shared) < LINK_SHARE * len(keys):
                 continue
-            if numbers and not _named_alike(path, to_field, to_table):
+            if all(_DATE_LIKE.fullmatch(k) for k in shared):
                 continue
-            found.append({'field': path, 'to_table': to_table, 'to_field': to_field, 'found': shared, 'of': len(keys)})
+            if all(_PLAIN_NUMBER.fullmatch(k) for k in shared) and not _named_alike(path, to_field, to_table):
+                continue
+            found.append({'field': path, 'to_table': to_table, 'to_field': to_field, 'found': len(shared), 'of': len(keys)})
         if found:
             out[name, path] = sorted(found, key=lambda l: -l['found'])[:2]
     return out
@@ -318,8 +329,9 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
             for path in pop['identity'].values()}
     used |= {(a.get('source'), a.get('path')) for t in types.values() for a in t['attributes']}
     used |= {(f.get('source'), f.get('path')) for f in p['ignored_fields']}
-    used |= {(t['time_field'].get('source'), t['time_field'].get('path')) for t in types.values()
-             if isinstance(t.get('time_field'), dict)}   # as data_fit counts it; _clean keeps it as an attribute too
+    used |= {(t['time_field']['source'], t['time_field']['path']) for t in types.values()   # as data_fit counts it;
+             if isinstance(t.get('time_field'), dict)                                       # _clean keeps it as an
+             and isinstance(t['time_field'].get('source'), str) and isinstance(t['time_field'].get('path'), str)}   # attribute too
     used |= relation_fields(p['relations'])
     for src, records in sources.items():
         for path in field_paths(records):
@@ -529,14 +541,16 @@ def verify_proposal(proposal: dict, bundle: dict, profile: Profile | None = None
 # ---- automatic construction: one model judgement per attempt, code decides everything else ----
 
 # Shared by the table modelers: what the counts in the field list mean and how far they go.
-FACTS_RULES = '''- Code counted every row before you. Per field: filled = values present, distinct = different values,
-  unique = no value repeats, values = every value when there are few. unique_columns are the columns whose value
-  differs on every row; when there is none, unique_pairs lists pairs of columns that differ together (empty: no pair
-  does). links lists columns most of whose distinct values appear in another column whose values are unique
-  (found of of).
-- Use these facts. What one row of a table describes is identified by a unique column or pair. A column whose values
-  repeat names something many rows share. A column with the same value on every row describes the whole table and is
-  never an identity. A link is evidence of a reference, not an instruction: keep it only when the names and meaning agree.
+FACTS_RULES = '''- Code counted every row before you. Per field: filled = values present; distinct = different values, with case and
+  spacing folded as identities are matched; unique = no value repeats; values = every value of a category (at most 12
+  values, each on several rows). unique_columns: columns filled on every row whose value differs on every row, leaving
+  out dates, decimals and long text. unique_pairs, given when there is no such column: pairs of such columns that differ
+  together (empty: no pair does; a key may still need three columns, or a column with blanks). links: a column, "found"
+  of whose "of" distinct values appear in to_table.to_field, a column whose values are unique; it may be the same table.
+- These counts are evidence, not instructions. What one row of a table describes is usually identified by a unique
+  column or pair. A column whose values repeat cannot tell rows apart on its own: it may name a thing many rows share,
+  belong to a key with other columns, or be an attribute such as a status. Keep a link only when the names and meaning
+  agree.
 '''
 MODELER_PROMPT_VERSION = 'public_ontology_modeler.v4'
 # Contract rule: at most three chained model calls per user action; the no-progress stop still applies first.
@@ -611,7 +625,8 @@ def _clean(proposal: dict) -> tuple[list, list]:
     types = [{f: t.get(f) for f in fields} for t in p['object_types']]
     for t in types:   # a time field is also a date the questions filter on
         tf = t['time_field'] or {}
-        if tf.get('source') and tf.get('path') and (tf['source'], tf['path']) not in {(a.get('source'), a.get('path')) for a in t['attributes']}:
+        if isinstance(tf.get('source'), str) and isinstance(tf.get('path'), str) and \
+                (tf['source'], tf['path']) not in {(a.get('source'), a.get('path')) for a in t['attributes']}:
             t['attributes'] = [*t['attributes'], {'source': tf['source'], 'path': tf['path']}]
     relations = [{f: r.get(f) for f in ('key', 'from', 'to', 'source', 'meaning', 'label', 'from_identity', 'to_identity')
                   if f not in ('label', 'from_identity', 'to_identity') or (r.get(f) if f == 'label' else f in r)}
