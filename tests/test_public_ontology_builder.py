@@ -149,6 +149,62 @@ class CatalogFactsTests(unittest.TestCase):
     def test_dates_that_happen_to_match_are_not_a_link(self):
         self.assertNotIn('links', self.catalog()['events'])   # 修改时间 shares two days with 创建时间
 
+    def test_tables_whose_keys_are_all_called_id_do_not_link_to_each_other(self):
+        from ontology_poc_generator.company_sources import load_table_files
+        from ontology_poc_generator.public_ontology import field_catalog
+        catalog = field_catalog(load_table_files([
+            ('customers.csv', b'id,name\n1,A\n2,B\n3,C\n4,D\n'), ('products.csv', b'id,title\n1,x\n2,y\n3,z\n'),
+            ('orders.csv', b'id,customer_id,product_id\n1,1,2\n2,2,3\n3,3,1\n4,1,1\n')]))
+        links = [(name, l['field'], l['to_table'], l['to_field']) for name, e in catalog.items() for l in e.get('links', [])]
+        self.assertEqual(sorted(links), [('orders', 'customer_id', 'customers', 'id'), ('orders', 'product_id', 'products', 'id')])
+
+    def test_a_stray_word_among_numbers_does_not_make_them_a_link(self):
+        from ontology_poc_generator.company_sources import load_table_files
+        from ontology_poc_generator.public_ontology import field_catalog
+        catalog = field_catalog(load_table_files([('products.csv', TABLES['products.csv'].encode('utf-8')),
+                                                  ('lines.csv', '订单号,数量\nO1,1\nO2,2\nO3,3\nO4,待定\n'.encode('utf-8'))]))
+        self.assertNotIn('links', catalog['lines'])   # the numbers it shares with 产品编号 are still plain numbers
+
+    def test_dates_with_a_zone_or_slashes_are_not_a_link_either(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        from ontology_poc_generator.public_ontology import field_catalog
+        rows = '编号,开始,结束\n' + '\n'.join(f'V{i},{i}/5/2024,{i + 1}/5/2024' for i in range(1, 6)) + '\n'
+        zoned = '编号,创建,修改\n' + '\n'.join(f'V{i},2024-01-0{i}T10:00:00Z,2024-01-0{i + 1}T10:00:00Z' for i in range(1, 6)) + '\n'
+        for text in (rows, zoned):
+            self.assertNotIn('links', field_catalog(load_table_file('events.csv', text.encode('utf-8')))['events'])
+
+    def test_counts_fold_case_and_spaces_as_identities_do(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        from ontology_poc_generator.public_ontology import field_catalog
+        facts = field_catalog(load_table_file('t.csv', 'k,v\nO1,1\no1,2\nO2,3\n'.encode('utf-8')))['t']['facts']
+        self.assertEqual(facts['k'], {'filled': 3, 'distinct': 2})
+
+    def test_amounts_dates_and_long_text_do_not_count_as_telling_rows_apart(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        from ontology_poc_generator.public_ontology import field_catalog
+        text = '订单号,行号,金额,日期\nO1,1,10.5,2024-01-01\nO1,2,20.25,2024-01-02\nO2,1,30.75,2024-01-03\n'
+        entry = field_catalog(load_table_file('lines.csv', text.encode('utf-8')))['lines']
+        self.assertEqual(entry['unique_columns'], [])
+        self.assertEqual(entry['unique_pairs'], [['订单号', '行号']])
+
+    def test_a_one_row_table_says_nothing_about_telling_rows_apart(self):
+        from ontology_poc_generator.company_sources import load_table_file
+        from ontology_poc_generator.public_ontology import field_catalog
+        entry = field_catalog(load_table_file('one.csv', b'a,b\n1,2\n'))['one']
+        self.assertNotIn('unique_columns', entry)
+        self.assertNotIn('unique_pairs', entry)
+
+    def test_a_pair_search_cut_short_claims_no_pairs(self):
+        from ontology_poc_generator import public_ontology
+        from ontology_poc_generator.company_sources import load_table_file
+        text = 'a,b,c,d\n' + '\n'.join(f'{i % 8},{i % 9},{i % 2},x{i % 3}' for i in range(40)) + '\n'   # only a+b tells rows apart
+        old, public_ontology.PAIR_BUDGET = public_ontology.PAIR_BUDGET, 10
+        try:
+            entry = public_ontology.field_catalog(load_table_file('t.csv', text.encode('utf-8')))['t']
+        finally:
+            public_ontology.PAIR_BUDGET = old
+        self.assertNotIn('unique_pairs', entry)
+
     def test_a_column_pointing_into_its_own_table_is_a_link_too(self):
         self.assertIn({'field': '上级', 'to_table': 'staff', 'to_field': '员工号', 'found': 2, 'of': 2},
                       self.catalog()['staff']['links'])
@@ -183,6 +239,12 @@ class TimeFieldTests(unittest.TestCase):
         from ontology_poc_generator.company_ontology import verify_company_proposal
         errors = verify_company_proposal(EVENT, self.bundle())['errors']
         self.assertEqual([e for e in errors if e['code'] == 'field_unaccounted'], [])
+
+    def test_a_time_field_with_a_list_for_its_path_is_sent_back_not_a_crash(self):
+        from ontology_poc_generator.company_ontology import verify_company_proposal
+        bad = {**EVENT, 'object_types': [{**EVENT['object_types'][0], 'time_field': {'source': 'events', 'path': ['创建时间']}}]}
+        codes = {e['code'] for e in verify_company_proposal(bad, self.bundle())['errors']}
+        self.assertIn('time_field_invalid', codes)
 
     def test_the_built_ontology_keeps_the_time_field_as_an_attribute(self):
         from ontology_poc_generator.company_ontology import build_company_ontology
