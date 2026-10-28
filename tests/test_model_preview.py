@@ -25,6 +25,18 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual(values['状态'], ['延期', '按时'])
         self.assertIsNone(values['备注'])   # 20 distinct values: only the three examples can be sent
 
+    def test_the_preview_shows_the_counts_keys_and_links_the_modeler_gets(self):
+        from tests.test_public_ontology_builder import TABLES
+        from ontology_poc_generator.company_sources import load_table_files
+        bundle = load_table_files([(name, text.encode('utf-8')) for name, text in TABLES.items()])
+        catalog = field_catalog(bundle)
+        lines = next(s for s in model_preview(bundle)['sources'] if s['name'] == 'lines')
+        self.assertEqual(lines['unique_columns'], catalog['lines']['unique_columns'])
+        self.assertEqual(lines['unique_pairs'], catalog['lines']['unique_pairs'])
+        self.assertEqual(lines['links'], catalog['lines']['links'])
+        fields = {f['path']: f for f in lines['fields']}
+        self.assertEqual((fields['订单号']['filled'], fields['订单号']['distinct'], fields['订单号'].get('unique')), (4, 3, None))
+
     def test_a_document_preview_says_the_text_is_sent_in_parts(self):
         from ontology_poc_generator.company_documents import load_document_file
         preview = model_preview(load_document_file('流程.md', TEXT.encode('utf-8')))

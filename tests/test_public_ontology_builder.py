@@ -91,5 +91,73 @@ class AutoBuildOntologyTests(unittest.TestCase):
         self.assertEqual(o['status'], 'auto_built_verified')
 
 
+TABLES = {
+    'orders.csv': '订单号,客户,状态,金额\nO1,C1,已发货,10\nO2,C2,已发货,20\nO3,C1,待发货,30\nO4,,已发货,40\n',
+    'customers.csv': '客户编号,名称\nC1,甲\nC2,乙\nC3,丙\n',
+    'lines.csv': '订单号,行号,数量,产品编号\nO1,1,2,1\nO1,2,1,2\nO2,1,3,1\nO3,1,1,3\n',
+    'products.csv': '产品编号,品名\n1,螺丝\n2,螺母\n3,垫片\n4,弹簧\n',
+    'staff.csv': '员工号,姓名,上级\nE1,张,\nE2,李,E1\nE3,王,E1\nE4,赵,E2\n',
+    'invoices.csv': '发票,商品,数量\nA,x,1\nA,x,1\nB,y,2\n',
+}
+
+
+class CatalogFactsTests(unittest.TestCase):
+    """What code works out on every row before the model drafts: counts per column, the columns that tell rows
+    apart, and the columns whose values turn up in another column's unique values."""
+
+    def catalog(self):
+        from ontology_poc_generator.company_sources import load_table_files
+        from ontology_poc_generator.public_ontology import field_catalog
+        return field_catalog(load_table_files([(name, text.encode('utf-8')) for name, text in TABLES.items()]))
+
+    def test_each_column_carries_its_counts_and_the_values_of_a_small_column(self):
+        facts = self.catalog()['orders']['facts']
+        self.assertEqual(facts['订单号'], {'filled': 4, 'distinct': 4, 'unique': True, 'values': ['O1', 'O2', 'O3', 'O4']})
+        self.assertEqual(facts['客户'], {'filled': 3, 'distinct': 2, 'values': ['C1', 'C2']})
+        self.assertEqual(facts['状态'], {'filled': 4, 'distinct': 2, 'values': ['已发货', '待发货']})
+
+    def test_examples_stay_what_they_were(self):
+        self.assertEqual(self.catalog()['orders']['fields']['订单号'], ['O1', 'O2', 'O3'])
+
+    def test_a_table_lists_the_columns_that_tell_its_rows_apart(self):
+        catalog = self.catalog()
+        self.assertEqual(catalog['customers']['unique_columns'], ['客户编号', '名称'])
+        self.assertNotIn('unique_pairs', catalog['customers'])
+        self.assertEqual(catalog['orders']['unique_columns'], ['订单号', '金额'])   # 客户 has a blank row
+
+    def test_without_such_a_column_it_lists_pairs_or_says_there_are_none(self):
+        catalog = self.catalog()
+        self.assertEqual(catalog['lines']['unique_columns'], [])
+        self.assertIn(['订单号', '行号'], catalog['lines']['unique_pairs'])
+        self.assertLessEqual(len(catalog['lines']['unique_pairs']), 5)
+        self.assertEqual(catalog['invoices']['unique_pairs'], [])
+
+    def test_a_column_whose_values_sit_in_another_columns_unique_values_is_a_likely_link(self):
+        links = self.catalog()['lines']['links']
+        self.assertIn({'field': '订单号', 'to_table': 'orders', 'to_field': '订单号', 'found': 3, 'of': 3}, links)
+        self.assertIn({'field': '产品编号', 'to_table': 'products', 'to_field': '产品编号', 'found': 3, 'of': 3}, links)
+        self.assertIn({'field': '客户', 'to_table': 'customers', 'to_field': '客户编号', 'found': 2, 'of': 2},
+                      self.catalog()['orders']['links'])
+
+    def test_small_numbers_under_unrelated_names_are_not_a_link(self):
+        linked = {l['field'] for l in self.catalog()['lines']['links']}
+        self.assertNotIn('数量', linked)   # 1-3 sit inside 产品编号 1-4 by chance
+        self.assertNotIn('行号', linked)
+
+    def test_a_column_pointing_into_its_own_table_is_a_link_too(self):
+        self.assertIn({'field': '上级', 'to_table': 'staff', 'to_field': '员工号', 'found': 2, 'of': 2},
+                      self.catalog()['staff']['links'])
+
+    def test_the_first_request_to_the_modeler_carries_the_facts(self):
+        from ontology_poc_generator.company_ontology import build_company_ontology
+        from ontology_poc_generator.company_sources import load_table_files
+        gw = FakeGateway(['not json', 'still not json'])
+        build_company_ontology(load_table_files([(name, text.encode('utf-8')) for name, text in TABLES.items()]), gw)
+        sent = json.loads(gw.calls[0]['user'])['sources']
+        self.assertEqual(sent['lines']['unique_columns'], [])
+        self.assertIn('links', sent['lines'])
+        self.assertEqual(sent['orders']['facts']['订单号']['distinct'], 4)
+
+
 if __name__ == '__main__':
     unittest.main()
