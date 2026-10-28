@@ -110,11 +110,12 @@ class CatalogFactsTests(unittest.TestCase):
         from ontology_poc_generator.public_ontology import field_catalog
         return field_catalog(load_table_files([(name, text.encode('utf-8')) for name, text in TABLES.items()]))
 
-    def test_each_column_carries_its_counts_and_the_values_of_a_small_column(self):
+    def test_each_column_carries_its_counts_and_a_category_its_values(self):
         facts = self.catalog()['orders']['facts']
-        self.assertEqual(facts['订单号'], {'filled': 4, 'distinct': 4, 'unique': True, 'values': ['O1', 'O2', 'O3', 'O4']})
-        self.assertEqual(facts['客户'], {'filled': 3, 'distinct': 2, 'values': ['C1', 'C2']})
         self.assertEqual(facts['状态'], {'filled': 4, 'distinct': 2, 'values': ['已发货', '待发货']})
+        # few values, but not a category: listing them would send a small table whole
+        self.assertEqual(facts['订单号'], {'filled': 4, 'distinct': 4, 'unique': True})
+        self.assertEqual(facts['客户'], {'filled': 3, 'distinct': 2})
 
     def test_examples_stay_what_they_were(self):
         self.assertEqual(self.catalog()['orders']['fields']['订单号'], ['O1', 'O2', 'O3'])
