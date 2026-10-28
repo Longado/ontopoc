@@ -66,16 +66,17 @@ PAIR_BUDGET = 5_000_000   # rows looked at in the pair search; past it the table
 LINK_SHARE = 0.5      # a column links when at least half its distinct values sit in another column's unique values
 LONG_TEXT = 60        # a value this long is text to read, not a key
 _PLAIN_NUMBER = re.compile(r'-?\d+(\.\d+)?')
-_DECIMAL = re.compile(r'[-+]?[¥$€£]?[\d,]*\.\d+')   # 75.50, ¥1,200.50
+_DECIMAL = re.compile(r'[-+(]?[¥￥$€£]? ?[-+]?[\d,]*\.\d+\)?[-%]?')   # 75.50, ¥1,200.50, (120.50), 4528.82-, 12.50%
 _WHOLE_FLOAT = re.compile(r'-?\d+\.0')   # 1001.0: a whole number a spreadsheet wrote as a float
 _KEY_WORD = re.compile(r'(ID|KEY|NO|NUM|NUMBER|CODE|编号|代码|编码|号)$')
-# the same words as a column name's last word: account_code, AccountNo, 科目编码; not paid, Bid or Valid
-_KEY_NAME = re.compile(r'((^|[\s_\-./])(?i:id|key|no|num|number|code)|(?<=[a-z0-9])(ID|Id|Key|No|Num|Number|Code))\.?$'
+# a column name ending in a key word: account_code, GLCode, FNumber, OrderNO, customerID, 科目编码. id, key and num
+# only as a word of their own, so paid, Bid, Valid, PAID and per_annum are not keys
+_KEY_NAME = re.compile(r'((^|[\s_\-./])(?i:id|key|num)|(?<=[a-z0-9])ID|(?<=[A-Za-z0-9])(Id|Key|Num)|(?i:code|number|no))\.?$'
                        r'|(编号|代码|编码|号)$')
 _MONTHS = ('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC')
 _MONTH = (r'(?P<mon>JAN(UARY)?|FEB(RUARY)?|MAR(CH)?|APR(IL)?|MAY|JUNE?|JULY?|AUG(UST)?|SEP(T(EMBER)?)?|OCT(OBER)?'
           r'|NOV(EMBER)?|DEC(EMBER)?)\.?')
-_TIME = r'([T ]?(上午|下午)?\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?( ?[AP]\.?M\.?)?( ?(Z|[A-Z]{3}([+-]\d{1,2})?|[+-]\d{2}:?\d{2}))?)?'
+_TIME = r'([T ]?(上午|下午)?\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?( ?[AP]\.?M\.?)?( ?(Z|[A-Z]{3}([+-]\d{1,2})?|[+-]\d{2}(:?\d{2})?))?)?'
 _DATES = [re.compile(day + _TIME, re.IGNORECASE) for day in (
     r'(?P<y>\d{4})[-/.](?P<m>\d{1,2})[-/.](?P<d>\d{1,2})',
     r'(?P<d>\d{1,2})[-/.](?P<m>\d{1,2})[-/.](?P<y>\d{4})',
@@ -247,6 +248,8 @@ def _structure_errors(proposal) -> list[dict]:
     ignored = proposal.get('ignored_fields') or []
     if not isinstance(ignored, list) or any(not _field_ref(f) for f in ignored):
         errors.append(_error('invalid_response', 'ignored_fields must be a list of objects with a text source and path'))
+    if not isinstance(proposal.get('open_questions') or [], list):
+        errors.append(_error('invalid_response', 'open_questions must be a list of strings'))
     return errors
 
 
@@ -340,6 +343,7 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
             if not ident:
                 errors.append(_error('invalid_response', f'{key}/{src}: identity is empty'))
                 continue
+            before = len(errors)   # a filter is checked only on an identity with nothing wrong, which it reads row by row
             if pop['transform'] not in TRANSFORMS:
                 errors.append(_error('invalid_response', f'{key}/{src}: unknown transform {pop["transform"]!r}'))
             elif pop['transform'] != 'none' and len(ident) != 1:
@@ -352,7 +356,7 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
                     errors.append(_error('unknown_field', f'{key}/{src}: field {path!r} does not exist'))
                 elif not _has_value(sources[src], path):
                     errors.append(_error('empty_field', f'{key}/{src}: field {path!r} has no values'))
-            if pop.get('where') is not None:
+            if pop.get('where') is not None and len(errors) == before:
                 errors += _where_errors(key, src, pop, sources[src])
             if logical is None:
                 logical = set(ident)
@@ -593,7 +597,7 @@ FACTS_RULES = '''- Code counted every row before you. Per field: filled = values
   spacing folded as identities are matched; unique = no value repeats; values = every value of a category (at most 12
   values, at least two rows per value on average). unique_columns: columns filled on every row whose value differs on
   every row, leaving out columns with any date or decimal and columns mostly of long text, unless the name ends in a
-  word such as id, code, no, 编号 or 编码. unique_pairs, given when there is no such column: up to 5 pairs of such
+  word such as id, code, no, 编号 or 编码; whole numbers written as 1001.0 count as numbers. unique_pairs, given when there is no such column: up to 5 pairs of such
   columns that differ together (empty: no pair does; a key may still need three columns, or a column with blanks; on a
   large table the search may stop early, listing fewer pairs or leaving unique_pairs out). links: a column, "found"
   of whose "of" distinct values appear in to_table.to_field, a column whose values are unique; it may be the same table.
