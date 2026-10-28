@@ -98,6 +98,7 @@ TABLES = {
     'products.csv': '产品编号,品名\n1,螺丝\n2,螺母\n3,垫片\n4,弹簧\n',
     'staff.csv': '员工号,姓名,上级\nE1,张,\nE2,李,E1\nE3,王,E1\nE4,赵,E2\n',
     'invoices.csv': '发票,商品,数量\nA,x,1\nA,x,1\nB,y,2\n',
+    'events.csv': '编号,创建时间,修改时间\nV1,2024-01-01,2024-01-02\nV2,2024-01-02,2024-01-03\nV3,2024-01-03,2024-01-04\n',
 }
 
 
@@ -144,6 +145,9 @@ class CatalogFactsTests(unittest.TestCase):
         linked = {l['field'] for l in self.catalog()['lines']['links']}
         self.assertNotIn('数量', linked)   # 1-3 sit inside 产品编号 1-4 by chance
         self.assertNotIn('行号', linked)
+
+    def test_dates_that_happen_to_match_are_not_a_link(self):
+        self.assertNotIn('links', self.catalog()['events'])   # 修改时间 shares two days with 创建时间
 
     def test_a_column_pointing_into_its_own_table_is_a_link_too(self):
         self.assertIn({'field': '上级', 'to_table': 'staff', 'to_field': '员工号', 'found': 2, 'of': 2},
