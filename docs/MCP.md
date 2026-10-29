@@ -1,6 +1,6 @@
 # OntoPoc 的 MCP 工具
 
-页面上的每个功能都有一个同名的 MCP 工具，任何支持 MCP 的客户端（Claude Code、Claude Desktop、Cursor、DSH 这类 agent）都能直接调用。工具走 stdio，调用的是本机正在运行的建模服务，和页面用同一套接口：核验、计数、确认记录只有一份。
+页面上的主要功能都有对应的 MCP 工具（本体库、⌘K 搜索和纪要、JSON 下载除外），任何支持 MCP 的客户端（Claude Code、Claude Desktop、Cursor、DSH 这类 agent）都能直接调用。工具走 stdio，调用的是本机正在运行的建模服务，和页面用同一套接口：核验、计数、确认记录只有一份。
 
 ## 接上
 
@@ -19,8 +19,8 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `health` | 服务状态、旧代码提示 | 否 |
 | `list_runs` | 左下角的空间（运行记录） | 否 |
 | `preview_upload` | "看看会发给模型什么" | 否 |
-| `build_ontology` | 新建：上传并建本体，跑完才返回；给 `previous` 即作为那次运行的新版本 | 是 |
-| `run_overview` | 顶部的状态标签，加“要确认的事”整张清单（`open_items`）、“客户已答复”（`answered_items`）和口径卡的格数（`card`） | 否 |
+| `build_ontology` | 新建：上传并建本体，跑完才返回；`purpose` 是建模目的，给 `previous` 即作为那次运行的新版本，`mode: "org"` 按组织架构梳理一份文档 | 是 |
+| `run_overview` | 运行概况：对象和关系数、体检通过几项、问答能答几道、稳定性，加“要确认的事”整张清单（`open_items`）、“客户已答复”（`answered_items`）和口径卡的格数（`card`） | 否 |
 | `get_card` | 口径卡页：每张表一行是什么、日期列、数值列、对象全不全，和已答复的格 | 否 |
 | `save_card` | 口径卡页「保存口径卡」；要确认的事「记下客户的回答」 | 否 |
 | `list_objects` | 本体管理 · 对象卡片（判错的默认不给，列在 left_out；`include_wrong` 全给） | 否 |

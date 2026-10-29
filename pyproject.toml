@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ontopoc"
 version = "0.1.0"
-description = "Recall scope review over public data: auto-built ontology, code-verified, human-reviewed"
+description = "An ontology draft from business tables or a document: the model proposes, code checks every row, a person confirms"
 requires-python = ">=3.11"
 dependencies = ["openpyxl>=3.1"]
 
