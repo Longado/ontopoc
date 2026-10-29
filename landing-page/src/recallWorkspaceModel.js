@@ -2,10 +2,12 @@ export function editQuery(state, field, value) {
   return { ...state, query: { ...state.query, [field]: value }, result: null, review: null, error: '' };
 }
 
+export const NOT_RUNNING = '本地核对服务没有启动：在仓库根目录运行 PYTHONPATH=src python3 -m ontology_poc_generator.recall_server。';
+
 export async function readRecallResponse(response) {
   let data;
   try { data = await response.json(); }
-  catch { throw new Error('本地核对服务没有启动：在仓库根目录运行 PYTHONPATH=src python3 -m ontology_poc_generator.recall_server，再点“重新连接”。'); }
+  catch { throw new Error(NOT_RUNNING); }
   if (!response.ok) throw new Error(data.error || '本地核对服务暂时不可用。');
   return data;
 }

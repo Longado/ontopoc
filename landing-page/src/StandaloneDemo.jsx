@@ -57,7 +57,7 @@ export function StandaloneDemo() {
     <i aria-hidden="true" /><span>{t.tabs[key]}<small>{t.hints[key]}</small></span>
   </button>;
 
-  const zhOnly = language === "en" && <p className="pr-note app-zh-only" lang="en">The workbench is in Chinese only for now; the sidebar and the product home are in English.</p>;
+  const zhOnly = language === "en" && <p className="pr-note app-zh-only" lang="en">The workbench is in Chinese only for now; only the sidebar is in English.</p>;
 
   return <main className="app-shell">
     <aside className="app-side">
@@ -100,7 +100,7 @@ export function StandaloneDemo() {
       <button type="button" className="app-lang" onClick={() => setLanguage(language === "zh" ? "en" : "zh")}>{t.lang}</button>
     </aside>
     <section className="app-main" aria-label={scenario === "studio" ? "OntoPoc" : scenario === "library" ? "本体库" : t.tabs[scenario]}>
-      <div hidden={scenario !== "library"}>{zhOnly}<OntologyLibrary active={scenario === "library"} /></div>
+      <div className="app-lib-pane" hidden={scenario !== "library"}>{zhOnly}<OntologyLibrary active={scenario === "library"} /></div>
       <div hidden={scenario === "library"}>
         {scenario === "studio" && zhOnly}
         {scenario === "studio" || scenario === "library" ? <OntologyStudio request={request} runs={runs} section={section} nav={nav} onSection={setSection} onRunsChanged={refresh} onCurrent={setOpen} />
