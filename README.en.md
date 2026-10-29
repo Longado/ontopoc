@@ -6,8 +6,8 @@
 </p>
 
 <h1 align="center">OntoPoc</h1>
-<p align="center"><strong>Generates a draft ontology from business data, with verifiable evidence for every element.</strong></p>
-<p align="center">For data platform implementation consultants mapping the business objects and relationships in a client's data for the first time.</p>
+<p align="center"><strong>A direction still in development: draft an ontology from business data, check it against the data with code, confirm it item by item.</strong></p>
+<p align="center">The imagined user is a data platform implementation consultant mapping the business objects and relationships in a client's data for the first time.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="MIT"></a>
@@ -29,21 +29,19 @@
 </p>
 <p align="center"><sub>Concept illustration · <a href="docs/media/ontopoc-poster.png">Still image</a> · <a href="docs/media/ontopoc-motion.mp4">MP4</a></sub></p>
 
-A common approach is to let a language model generate the ontology directly, which leaves its correctness hard to judge. OntoPoc restricts the model to proposing: every element is verified by code against every row, then confirmed by a person.
-
-**Your files stay on your machine** · **All figures are computed by code** · **Source data is never modified**
+OntoPoc is a direction still in development, not a finished product. What it tries: draft an ontology from a few business tables or a document, have code check the draft against the data, and have a person confirm it item by item and keep the result. Nobody but the author uses it now, and it has not been compared with doing the same thing directly in a general-purpose coding assistant (for example Claude Code with pandas or DuckDB).
 
 The workbench interface is in Chinese only; the landing page has an English version. This page describes the workbench in English and gives the Chinese label in parentheses the first time it names a screen, tab or button.
 
 ## Overview
 
-Upload a few business tables (Excel, CSV) or a process document, and OntoPoc drafts an ontology: which objects the business has, what tells each one apart, and how they relate. Code then checks it against every row: do the fields exist, do the identity fields have values, do the relations actually connect in the data. It runs data quality checks and answers business questions from the data. A document can also be read as an organisation: units, roles, people and work steps, and who belongs to, works with or hands over to whom, each item with a quote from the text. You judge each part right or wrong; your judgement is kept, and the next upload of the same file, or a new version of it, is compared against it.
+Upload a few business tables (Excel, CSV) or a process document, and OntoPoc drafts an ontology: which objects the business has, what tells each one apart, and how they relate. To draft, code first counts over every row (how many distinct values each column has, which columns differ on every row, which columns have values found in another column); the model drafts from the field names, up to 3 example values and these counts. Code then checks the draft for 14 kinds of error, for example whether a field exists, whether an identity field has values, whether a relation connects any rows, and sends it back if it fails, up to 3 rounds. It runs data quality checks and answers business questions from the data. A document can also be read as an organisation: units, roles, people and work steps, and who belongs to, works with or hands over to whom, each item with a quote from the text. You judge each part right or wrong; your judgement is kept, and the next upload of the same file, or a new version of it, is compared against it.
 
 Some things the data cannot settle and only the client can. Code gathers them into one list, Items to confirm (要确认的事), each with its basis and a sentence you can ask the client directly. Each table also gets a definition card (口径卡) that says what one row is, what time a date refers to, and whether a number can be added up. You record the client's answers in the meeting, and the questions are then computed with those answers.
 
 The result can be exported in the shape of a data platform's object form; as a pipeline requirements sheet (编排需求单) for whoever builds the data pipeline, and a one-page meeting note; or as W3C Turtle (OWL and SHACL). The main features are also MCP tools other agents can call.
 
-> **Early version.** Everything has been checked on public and synthetic data only (US federal procurement, Chicago city contracts, Northwind, BART transit, the Taiwan company registry, CMS hospitals and more). Nobody but the author has yet used it end to end on their own. The page has been used on macOS only. Batch import has not been tested on any data platform. See [Known issues](#known-issues).
+> **Early version.** It has been tried on public and synthetic data only (US federal procurement, Chicago city contracts, Northwind, BART transit, the Taiwan company registry, CMS hospitals and more). Nobody but the author has yet used it end to end on their own, and it has not been compared with doing the same thing directly in a general-purpose coding assistant. The page has been used on macOS only. Batch import has not been tested on any data platform. An uploaded file may be at most 10 MB; the model is reached only through DeepSeek's hosted API, with no local-model option. See [Known issues](#known-issues).
 
 ## Screenshots
 
@@ -63,7 +61,7 @@ The result can be exported in the shape of a data platform's object form; as a p
 <p align="center"><sub>Questions (智能问答): the model writes the question as a query; code computes the numbers on the uploaded data and says how many values it read.</sub></p>
 
 <p align="center"><img src="docs/images/readme-check.png" alt="Data check: 7 checks" width="880"></p>
-<p align="center"><sub>Data check (数据体检): 5 of 7 checks pass; the 2 that fail are the problems planted in the sample, with the objects involved listed below.</sub></p>
+<p align="center"><sub>Data check (数据体检): on this sample, 5 of 7 checks pass; the 2 that fail are problems planted in the sample, with the objects involved listed below.</sub></p>
 
 All screenshots come from the synthetic sample in the repository, `examples/company/demo_company.xlsx`, rendered off-screen by a headless browser.
 
@@ -73,10 +71,10 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 |---|---|
 | Open the ontology library (本体库) in the left sidebar | Search and browse 12 Playground reference ontologies by domain, and see objects, properties and relations on a graph. You can also import `.rdf/.owl` files in RDF/XML format. This is for reading definitions only: import calls no model, and you must pick the file again after a refresh |
 | Upload tables and write the question you want answered | Code first counts every row: how many distinct values each column has, which columns differ on every row, which columns point into another table. The model sees each column's name, up to 3 example values and these counts, and proposes objects, identity fields and relations; code checks 14 kinds of error and sends it back to redo, up to 3 rounds |
-| Wait for the build | Builds the same file 3 times at once and marks where the 3 disagree (where the model is unsure and you should decide); if your purpose asks a question, it is answered from the data too, ready to keep as an acceptance question |
+| Wait for the build | Builds the same file 3 times at once and marks where the 3 disagree, for you to decide; only objects and relations are compared, not properties or identity fields; if your purpose asks a question, it is answered from the data too, ready to keep as an acceptance question |
 | Open Items to confirm (要确认的事) | Code gathers what to confirm with the client from the data, the questions and the confirmation record, for example rows whose relations do not connect, objects with the same name but different numbers, and filters the model added by itself in a question. Each item has its basis and a sentence you can ask the client directly. In the meeting, click "记下客户的回答" (record the client's answer); the answers are saved with the run |
 | Open Definition cards (口径卡) | One per table: what one row is, what time a date column refers to, whether a numeric column can be added up. Code fills in what it can work out; only the cells the client can answer are left for the meeting. The answers you fill in are used when questions are computed, and are written into the pipeline requirements sheet |
-| Open the data check (数据体检) | Code computes 7 checks row by row, e.g. whether one number carries conflicting details, whether every uploaded table is used |
+| Open the data check (数据体检) | Code runs 7 checks on the data, e.g. whether one number carries conflicting details, whether every uploaded table is used. The relation check only requires each relation to connect at least one row; the page states how many rows connect |
 | Ask a question (智能问答) | The model writes a structured query and code computes the answer on the data; when it cannot, it says whether the ontology lacks something, the data lacks it, or the question is beyond the query. An amount that needs a formula (unit price × quantity × (1 − discount)) is proposed by the model, tried by code on every row, and once you confirm it the question is recomputed and answered. If an answer carries a filter the model added by itself, the filter is listed separately and you can drop it and recompute. The model can also write a round of 6 questions on request |
 | Look at a relation's binding | Shows the source table and the two end ID columns, e.g. `EmployeeId → ReportsTo`. An endpoint reference connects only to objects that exist and never writes a subordinate's attributes onto the superior. When verification fails, it shows where, why and what to change |
 | Judge each part, rename, add what is missing | Saved as this file's reference ontology; the next upload is compared against it and prefilled |
@@ -189,6 +187,7 @@ Under "More examples" (更多示例) in the sidebar there are two more example u
 - **Questions about a relation between objects of the same kind have no direction yet.** Relations such as employee reports-to or parent-child organisation can be modelled, verified and exported; but a question cannot say superior or subordinate, so it states the limit and stops.
 - **The model builds differently each time.** Three builds of one file often differ, now mainly in the relations: in one measurement on Northwind on 10-28 (8 kinds of object, 7 relations), 4 relations differed across the 3 builds, nearly all because the same relation ran the other way (order → customer / customer → order). The page marks where they disagree for you to decide.
 - **A new version may come with a different way of telling objects apart.** Once, Chicago's contracts went from "number + revision" to number alone; then only counts can be compared, not objects one by one, and the page says so ("识别方式已变更", identification changed).
+- **The relation check only requires one connected row.** In the data check, a relation passes as soon as it connects one row, even if the share of rows that connect is very low; the page states how many rows connect, so look at that number.
 - **Code finds only some missing relations.** Removing each relation in turn on 17 saved runs (public and synthetic data), it found 24 of 33 again; on complete ontologies it has not suggested a false one.
 - **Queries cannot yet** filter by a numeric condition, limit to a time range, give two numbers in one question, or say which things tend to appear together. It says so when asked.
 - **Batch import is untested.** The exported form columns follow what data platforms usually ask for; import format, key rules and how relations are expressed differ by platform and have not been tested on any, so no relation table is exported.
@@ -223,7 +222,7 @@ The design documents are in Chinese:
 
 | Document | About |
 |---|---|
-| [docs/PRODUCT.md](docs/PRODUCT.md) | Product positioning and scope |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | Direction and boundaries |
 | [docs/PLAYGROUND_INTERNALIZATION.md](docs/PLAYGROUND_INTERNALIZATION.md) | Where the ontology library comes from, the limits of the RDF/XML import, and later rounds |
 | [docs/AGENTS.md](docs/AGENTS.md) | The 6 agents' definition cards and the call log |
 | [docs/MCP.md](docs/MCP.md) | The 32 MCP tools |

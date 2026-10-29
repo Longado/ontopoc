@@ -6,7 +6,7 @@ export const CHECK_LABELS = {
   fields_accounted: "每个字段都有去处（用上或写明不用）",
   identity_consistent: "同一个对象在不同行里的信息不打架",
   identity_spelling: "同一个编号只有一种写法（不混用大小写、空格）",
-  relations_link: "每条关系都在数据里真的连上了",
+  relations_link: "每条关系在数据里至少连上了一行",
   references_resolve: "引用的对象都能在它所属的表里找到",
   sources_connected: "所有表通过共同的对象连成一片",
   sources_used: "每张传上来的表都被本体用上了",
