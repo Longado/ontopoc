@@ -29,7 +29,9 @@ def relation_matches(reference: dict, ours: dict, mapping: dict, *, directed: bo
     ends = (mapping.get(reference['from']), mapping.get(reference['to']))
     if None in ends:
         return False
-    bound = any(f'{end}_identity' in r for r in (reference, ours) for end in ('from', 'to'))
+    # bindings tell two relations between the same objects apart only when both sides name them; a hand-written
+    # reference or a run from before bindings matches on its ends
+    bound = all(any(f'{end}_identity' in r for end in ('from', 'to')) for r in (reference, ours))
     if bound:
         return ends == (ours['from'], ours['to']) and all(reference.get(f) == ours.get(f)
                      for f in ('source', 'from_identity', 'to_identity'))
