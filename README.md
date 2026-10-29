@@ -45,8 +45,14 @@
 
 ## 界面预览
 
+<p align="center"><img src="docs/images/readme-confirm.png" alt="要确认的事：代码汇总、可以直接问客户的事" width="880"></p>
+<p align="center"><sub>要确认的事：示例工作簿上汇总出 8 件，每件附依据和一句可以直接问客户的话，会上点“记下客户的回答”。</sub></p>
+
+<p align="center"><img src="docs/images/readme-card.png" alt="口径卡：每张表一张" width="880"></p>
+<p align="center"><sub>口径卡：代码已算出每张表按哪几列唯一；一行是什么、数值能不能相加，留给客户答。</sub></p>
+
 <p align="center"><img src="docs/images/readme-objects.png" alt="本体管理：业务对象卡片" width="880"></p>
-<p align="center"><sub>本体管理：示例工作簿生成的 4 个业务对象，顶部为数据体检、问答与稳定性状态。</sub></p>
+<p align="center"><sub>本体管理：示例工作簿生成的 4 个业务对象；左侧为逐项确认、稳定性、和上次比与建模记录。</sub></p>
 
 <p align="center"><img src="docs/images/readme-instances.png" alt="实例图谱：由客户展开至订单与产品" width="880"></p>
 <p align="center"><sub>实例图谱：由客户 KH001 展开至其订单，再由订单展开至产品；右侧为所选订单的原始字段值。</sub></p>
@@ -54,8 +60,8 @@
 <p align="center"><img src="docs/images/readme-ask.png" alt="智能问答：答案由代码基于数据计算" width="880"></p>
 <p align="center"><sub>智能问答：模型将问题转写为结构化查询，数值由代码基于上传数据计算，并注明参与计算的值数。</sub></p>
 
-<p align="center"><img src="docs/images/readme-rules.png" alt="数据规则：从数据中发现，采纳后每次运行均会校验" width="880"></p>
-<p align="center"><sub>数据规则：代码从数据中发现候选规则，采纳后每次重新运行均会校验。</sub></p>
+<p align="center"><img src="docs/images/readme-check.png" alt="数据体检：7 项检查" width="880"></p>
+<p align="center"><sub>数据体检：7 项检查通过 5 项，没通过的 2 项正是示例里预置的问题，下方列出出问题的对象。</sub></p>
 
 以上截图均基于仓库内置的合成示例 `examples/company/demo_company.xlsx`，由无头浏览器离屏渲染。
 

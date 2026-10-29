@@ -47,17 +47,23 @@ The result can be exported in the shape of a data platform's object form; as a p
 
 ## Screenshots
 
+<p align="center"><img src="docs/images/readme-confirm.png" alt="Items to confirm: what code gathered for the client" width="880"></p>
+<p align="center"><sub>Items to confirm (要确认的事): 8 items on the sample workbook, each with its basis and a sentence you can ask the client; click "记下客户的回答" in the meeting.</sub></p>
+
+<p align="center"><img src="docs/images/readme-card.png" alt="Definition cards: one per table" width="880"></p>
+<p align="center"><sub>Definition cards (口径卡): code has already worked out which columns tell each table's rows apart; what one row is and whether a number can be added up are left for the client.</sub></p>
+
 <p align="center"><img src="docs/images/readme-objects.png" alt="Ontology: one card per business object" width="880"></p>
-<p align="center"><sub>Ontology (本体管理): the 4 objects built from the sample workbook, with check, question and stability status on top.</sub></p>
+<p align="center"><sub>Ontology (本体管理): the 4 business objects built from the sample workbook; on the left, item-by-item confirmation, stability, last-run comparison and build record.</sub></p>
 
 <p align="center"><img src="docs/images/readme-instances.png" alt="Instance graph: one customer opened out to its orders and products" width="880"></p>
-<p align="center"><sub>Instance graph: customer KH001 opened out to its orders, then an order to its product; on the right, the selected order's fields as written.</sub></p>
+<p align="center"><sub>Instance graph (实例图谱): customer KH001 opened out to its orders, and one order to its product; on the right, the selected order's raw fields.</sub></p>
 
 <p align="center"><img src="docs/images/readme-ask.png" alt="Questions: the answer is computed by code on the data" width="880"></p>
 <p align="center"><sub>Questions (智能问答): the model writes the question as a query; code computes the numbers on the uploaded data and says how many values it read.</sub></p>
 
-<p align="center"><img src="docs/images/readme-rules.png" alt="Rules found in the data, checked on every rerun once adopted" width="880"></p>
-<p align="center"><sub>Data rules (数据规则): code finds candidate rules in the data; adopted ones are checked on every rerun.</sub></p>
+<p align="center"><img src="docs/images/readme-check.png" alt="Data check: 7 checks" width="880"></p>
+<p align="center"><sub>Data check (数据体检): 5 of 7 checks pass; the 2 that fail are the problems planted in the sample, with the objects involved listed below.</sub></p>
 
 All screenshots come from the synthetic sample in the repository, `examples/company/demo_company.xlsx`, rendered off-screen by a headless browser.
 
