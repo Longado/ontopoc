@@ -463,7 +463,7 @@ function ReferenceSection({ run, canCompare, health, onCompare, busy, error, onU
   const ref = run.evaluation.reference;
   const own = ref?.confirmed && run.confirmation ? splitExtras(run.ontology, run.confirmation.decisions, ref.diff) : null;
   return <><DomainReference key={run.saved_as || "example"} run={run} onUpdate={onUpdate} />
-    <details className="dr-legacy"><summary>已确认本体 / JSON 标准答案</summary><section className="pr-card">
+    <details className="dr-legacy" open={ref ? true : undefined}><summary>已确认本体 / JSON 标准答案</summary><section className="pr-card">
     <div className="pr-card-head"><h2>{ref?.confirmed ? "对照你确认过的本体" : "对照标准答案"}</h2>{ref && <span className="pr-muted">{referenceCounts(ref.diff)}</span>}</div>
     <Hint>标准答案有两种来源：在“本体管理”里逐项确认（最常用，确认后自动对照，同一份文件以后再上传也会自动对照）；或者上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按“读同一张表、用同样的识别字段”来对应对象，名字不同也能对上；关系两端都对上才算命中。</Hint>
     {onGoConfirm && <button type="button" className="pr-link os-go-confirm" onClick={onGoConfirm}>去逐项确认本体 →</button>}
