@@ -14,5 +14,5 @@ test("the recall examples sit under 'more examples', not beside the main entry",
 test("the tagline speaks for the ontology tool", async () => {
   const landing = await read("./App.jsx");
   assert.doesNotMatch(landing, /Trace scope/);
-  assert.match(landing, /Draft the ontology\. Show the evidence\./);
+  assert.match(landing, /Draft the ontology\. Check it against the data\./);
 });

@@ -1,5 +1,5 @@
 ---
-description: 用 OntoPoc 把业务表格或一份文档建成本体草案（模型提出，代码逐行核验）
+description: 用 OntoPoc 把业务表格或一份文档建成本体草案（模型提出，代码对照数据检查）
 argument-hint: "[文件路径…] [想弄清的问题]"
 ---
 
