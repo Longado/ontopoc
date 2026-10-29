@@ -120,6 +120,17 @@ class RelationBindingTests(unittest.TestCase):
         self.assertEqual(prefill_from_reference(turned, reference)['relations'], {})
         self.assertEqual(stability_of(PROPOSAL, [{**turned, 'status': 'auto_built_verified'}])['relations']['reports_to'], 1)
 
+    def test_a_confirmation_without_bindings_judges_neither_of_two_roles_between_the_same_objects(self):
+        from ontology_poc_generator.ontology_confirm import prefill_from_reference
+        reference = {'object_types': PROPOSAL['object_types'],
+                     'relations': [{'key': 'r1', 'from': 'employee', 'to': 'employee'}]}
+        self.assertEqual(prefill_from_reference(PROPOSAL, reference)['relations'], {'reports_to': {'verdict': 'ok'}})
+        two = copy.deepcopy(PROPOSAL)
+        two['relations'].append({**two['relations'][0], 'key': 'mentors', 'label': '带教',
+                                 'to_identity': {'id': 'MentorId'}})
+        self.assertEqual(prefill_from_reference(two, reference)['relations'], {})
+        self.assertEqual(prefill_from_reference(two, {**reference, 'relations': [], 'rejected_relations': reference['relations']})['relations'], {})
+
     def test_comparison_does_not_call_changed_bindings_the_same_relation(self):
         from ontology_poc_generator.ontology_compare import compare_ontologies
         changed = copy.deepcopy(PROPOSAL)

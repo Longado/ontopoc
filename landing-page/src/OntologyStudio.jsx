@@ -6,7 +6,7 @@ import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, evidenceLines, evidenceTitle, groupFigure, measureOf,
   COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, serviceReady, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
-import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
+import { consensusLines, overviewTiles, pathOf, questionPanelCount } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, previewFactText, previewKeysText, previewLinkText, sizeText, uploadPayload } from "./ontologyUploadModel.js";
 import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js";
 import { downloadName, summaryMarkdown } from "./ontologySummaryModel.js";
@@ -141,6 +141,7 @@ function UploadTab({ health, busy, events, elapsed, lost, error, onBuild, onDemo
           <button type="button" className="os-composer-go" disabled={Boolean(blocked)} title={blocked || "生成本体并评测"} aria-label="生成本体并评测" onClick={go}>➤</button>
         </div>
       </div>
+      {health === "no-key" && <p className="pr-note">本机服务没有配模型 key，建不了新本体：设置 DEEPSEEK_API_KEY 后重启建模服务。</p>}
       {oneDoc && <div className="os-version-ask" role="group" aria-label="这份文档怎么读">
         <span>这份文档怎么读？</span>
         <button type="button" aria-pressed={mode === null} onClick={() => setMode(null)} title="读出它讲的业务对象和关系">业务本体</button>
@@ -183,7 +184,7 @@ function Conflicts({ fit, ontology, onShow }) {
     <p className="pr-muted">同一个编号在不同行里，某个字段写了不同的值。也可能不是数据错了，而是这里本来就是一对多（例如一张订单分三次交付，三个交付日期挂在了订单上）：那要把它拆成单独的对象，而不是回去改数据。{fit.identity_conflicts.length > SHOWN_GROUPS ? "如果一类对象大量打架，常见原因是识别字段不够区分：同一个编号其实是好几样东西（例如缺了行号）。" : ""}</p>
     {groups.length > 1 && <ul className="os-list">{groups.map((g) => <li key={`${g.type}/${g.field}`}>{typeLabel(ontology, g.type)}的“{g.field}”：{g.count} 个编号</li>)}</ul>}
     <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>对象</th><th>表</th><th>编号</th><th>字段</th><th>不同的值</th><th></th></tr></thead>
-      <tbody>{rows.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td>{c.values.join(" / ")}</td><td><ShowOnGraph type={c.type} onShow={onShow} /></td></tr>)}</tbody></table></div>
+      <tbody>{rows.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td className="os-wrap">{c.values.join(" / ")}</td><td><ShowOnGraph type={c.type} onShow={onShow} /></td></tr>)}</tbody></table></div>
     {toggle}
   </section>;
 }
@@ -220,7 +221,7 @@ function Variants({ run, variants, onShow }) {
     </li>)}</ul>}
     {note?.dropped.length > 0 && <details className="os-how"><summary>代码丢掉的 {note.dropped.length} 组</summary>
       <ul>{note.dropped.map((d) => <li key={d}>{d}</li>)}</ul></details>}
-    {accepted.length > 0 && <p className="pr-note">采纳的 {accepted.length} 组要到“本体管理”底部的逐项确认里保存才算数：保存后它们进你确认过的本体，下次上传同一份文件自动带回来。</p>}
+    {accepted.length > 0 && <p className="pr-note">采纳的 {accepted.length} 组要到“本体管理 › 逐项确认”点“保存确认”才算数：保存后它们进你确认过的本体，下次上传同一份文件自动带回来。</p>}
   </section>;
 }
 
@@ -239,8 +240,8 @@ function AcceptanceSection({ run, acceptance, onSave, onPath, busy, error, addin
   };
   return <section className="pr-card os-acceptance" id="os-acceptance">
     <div className="pr-card-head"><h2>验收问题</h2>{acceptance && <span className="pr-muted">{acceptanceSummary(acceptance)}</span>}</div>
-    <Hint>模型每次出的题都不一样，所以"能答几题"没法比较。把你和客户说定的 1–3 道问题固定下来：存的是你已经看过、认可口径的那个查询。同一份文件以后再上传，代码用同样的查询再算一次，只告诉你哪道的答案或口径变了；查询用到的字段没了，就停下来指出断点，不去猜新含义。</Hint>
-    {!acceptance && <p className="pr-muted">还没有。答出来的题旁点"存为验收问题"。</p>}
+    <Hint>模型每次出的题都不一样，所以“能答几题”没法比较。把你和客户说定的 1–3 道问题固定下来：存的是你已经看过、认可口径的那个查询。同一份文件以后再上传，代码用同样的查询再算一次，只告诉你哪道的答案或口径变了；查询用到的字段没了，就停下来指出断点，不去猜新含义。</Hint>
+    {!acceptance && <p className="pr-muted">还没有。答出来的题旁点“存为验收问题”，答不了的题旁点“记为必答题”。</p>}
     {error && <p role="alert" className="pr-error">{error}</p>}
     {acceptance && <ul className="os-questions">{acceptance.items.map((item, i) => { const pill = statusPill(item, ACCEPTANCE_LABELS); return <li key={i} className="os-question" data-question={item.question}>
       <div className="os-question-head"><span className={`os-pill os-${pill.cls}`}>{pill.text}</span><b>{item.question}</b>
@@ -269,7 +270,7 @@ function AcceptForm({ run, adding, setAdding, saved, busy, onSave, requery }) {
   return <div className="os-add">
     <p className="os-add-question">{adding.again ? "按现在的答案重新认可：" : replacing ? "用这个答案替换验收题：" : "存为验收问题："}<b>{item.question}</b></p>
     <ReviewNotes item={item} points={points} elsewhere="" requery={requery} />
-    <label htmlFor="os-note">{points.length ? "口径说明（必填：写清客户认可的是什么）" : item.query ? '口径说明（可选，写清按什么算，例如"按订单号计数，不是按订单行"）' : "这道现在还答不了。先记下来，它会一直留在验收问题里、算进总数，不会被其他题的通过盖住。备注（可选，例如谁点名要的、要补什么数据）"}
+    <label htmlFor="os-note">{points.length ? "口径说明（必填：写清客户认可的是什么）" : item.query ? '口径说明（可选，写清按什么算，例如“按订单号计数，不是按订单行”）' : "这道现在还答不了。先记下来，它会一直留在验收问题里、算进总数，不会被其他题的通过盖住。备注（可选，例如谁点名要的、要补什么数据）"}
       <input id="os-note" value={note} maxLength={200} required={points.length > 0} onChange={(e) => setAdding({ ...adding, note: e.target.value })} /></label>
     {was && <p className="pr-muted">原来的口径：{was}</p>}
     {points.length > 0 && <p className="pr-muted">{noteHint(points)}</p>}
@@ -384,7 +385,7 @@ function QuestionsSection({ run, canAsk, canDerive, busy, error, onAsk, onPath, 
   const shownRound = round && !round.error ? filterQuestions(round.items, which) : [];
   return <section className="pr-card">
     <div className="pr-card-head"><h2 title={part === "model" && round ? `出题模型 ${round.model}，提示词 ${round.prompt_version}` : undefined}>{part === "mine" ? "你问的" : "模型出的题"}</h2>
-      <div className="os-toolbar"><span className="pr-muted">{overviewTiles(run).find((t) => t.key === "qa").value}</span>
+      <div className="os-toolbar"><span className="pr-muted">{questionPanelCount(run, part)}</span>
         <div className="og-toggle" role="group" aria-label="按能不能回答筛选">{QUESTION_FILTERS.map(([k, t]) => <button key={k} type="button" aria-pressed={which === k} onClick={() => setWhich(k)}>{t}</button>)}</div>
         {canAsk && part === "model" && <button type="button" className="pr-link" disabled={busy} onClick={() => onAsk(null)}>{busy ? "出题中…" : round ? "↻ 重新出一组" : "出一组题"}</button>}</div></div>
     <Hint>模型只负责把问题写成查询（一次调用）；答案由代码在上传的数据上算出来。答不了时写明是本体缺了哪一块、数据里没有，还是这种问法还不支持。</Hint>
@@ -462,9 +463,9 @@ function ReferenceSection({ run, canCompare, health, onCompare, busy, error, onU
   const ref = run.evaluation.reference;
   const own = ref?.confirmed && run.confirmation ? splitExtras(run.ontology, run.confirmation.decisions, ref.diff) : null;
   return <><DomainReference key={run.saved_as || "example"} run={run} onUpdate={onUpdate} />
-    <details className="dr-legacy"><summary>已确认本体 / JSON 标准答案</summary><section className="pr-card">
+    <details className="dr-legacy" open={ref ? true : undefined}><summary>已确认本体 / JSON 标准答案</summary><section className="pr-card">
     <div className="pr-card-head"><h2>{ref?.confirmed ? "对照你确认过的本体" : "对照标准答案"}</h2>{ref && <span className="pr-muted">{referenceCounts(ref.diff)}</span>}</div>
-    <Hint>标准答案有两种来源：在"本体管理"里逐项确认（最常用，确认后自动对照，同一份文件以后再上传也会自动对照）；或者上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按"读同一张表、用同样的识别字段"来对应对象，名字不同也能对上；关系两端都对上才算命中。</Hint>
+    <Hint>标准答案有两种来源：在“本体管理”里逐项确认（最常用，确认后自动对照，同一份文件以后再上传也会自动对照）；或者上传一份人写的参考本体（JSON：对象的 label，最好带来自哪张表、按哪个字段识别；关系写两端的对象）。代码按“读同一张表、用同样的识别字段”来对应对象，名字不同也能对上；关系两端都对上才算命中。</Hint>
     {onGoConfirm && <button type="button" className="pr-link os-go-confirm" onClick={onGoConfirm}>去逐项确认本体 →</button>}
     {canCompare && <div className="os-upload">
       <input id="os-reference" className="sr-only" type="file" accept=".json,application/json" disabled={!canCompare || busy}
@@ -518,10 +519,11 @@ function ConfirmCard({ run, confirm }) {
         <label htmlFor="os-signer" className="sr-only">确认人</label>
         <input id="os-signer" value={signer} maxLength={40} placeholder="确认人（可选）" onChange={(e) => setSigner(e.target.value)} />
         <button type="button" className="pr-primary" disabled={!canSave || saving || !(progress.ok || progress.added)} onClick={() => confirm.onSave(signer)}
-          title={!canSave ? (run.saved_as ? confirm.why : "示例结果不能保存") : !(progress.ok || progress.added) ? '至少判一个"对"，或补一个对象' : "存成这个文件的参考本体，并马上对照"}>{saving ? "保存中…" : saved ? "更新确认" : "保存确认"}</button>
+          title={!canSave ? (run.saved_as ? confirm.why : "示例结果不能保存") : !(progress.ok || progress.added) ? '至少判一个“对”，或补一个对象' : "存成这个文件的参考本体，并马上对照"}>{saving ? "保存中…" : saved ? "更新确认" : "保存确认"}</button>
       </div>
+      {canSave && progress.wrong > 0 && !(progress.ok || progress.added) && <p className="pr-note">至少判一个“对”，或补一个对象，才能保存。</p>}
     </div>
-    <p className="pr-muted">判"对"的意思是业务上成立，不等于建模目的已能回答。</p>
+    <p className="pr-muted">判“对”的意思是业务上成立，不等于建模目的已能回答。</p>
     {error && <p role="alert" className="pr-error">{error}</p>}
     {purposeNote(run) && !saved && <p role="status" className="pr-note os-tone-warn">{purposeNote(run)}</p>}
     <div className="os-board-grid">
@@ -557,15 +559,16 @@ function RelationsView({ run, confirm, suggestions = [] }) {
   const { ontology } = run;
   const cards = Object.fromEntries((formOf(run)?.relations || []).map((r) => [r.key, r]));
   if (!ontology.relations.length && !suggestions.length) return <p className="pr-muted">没有关系。</p>;
+  const doc = isDocument(run);
   return <div className="os-list-view">
     {suggestions.length > 0 && <div className="os-suggest-list"><h3>代码建议 <small>{suggestions.length}</small></h3>
       <ul>{suggestions.map((x, i) => <li key={i}><em className="os-chip-note">建议</em><b>{typeLabel(ontology, x.from)} — {typeLabel(ontology, x.to)}</b>
         <span className="pr-muted" title={{ same_row: "两者出现在同一张表的同一行，本体里却没把它们连起来", alternate_key: `这一列写的是${typeLabel(ontology, x.to)}的名称（对上「${x.key?.field}」），指向的不是本行已经连着的那个`, pointer: "这一列按名字和取值都指向对方的编号" }[x.kind]}>{x.via.source} ·「{x.via.field}」· {x.linked.toLocaleString("zh-CN")} / {(x.filled ?? x.rows).toLocaleString("zh-CN")} 行{x.loose ? " · 编号写法有差别" : ""}</span></li>)}</ul></div>}
     <div className="pr-table-wrap"><table className="pr-table os-form-table">
-    <thead><tr><th>关系</th><th>对应关系</th><th>含义</th><th>来自表</th></tr></thead>
+    <thead><tr><th>关系</th>{!doc && <th>对应关系</th>}<th>含义</th><th>{doc ? "来自文档" : "来自表"}</th></tr></thead>
     <tbody>{ontology.relations.map((r) => { const c = cards[r.key]; return <tr key={r.key}>
       <td><b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><Verdict confirm={confirm} kind="relations" item={r} /></td>
-      <td>{c ? <><b>{cardinalityLabel(c)}</b><br /><small className="pr-muted">{cardinalityLine(ontology, c)}</small></> : "—"}</td>
+      {!doc && <td>{c ? <><b>{cardinalityLabel(c)}</b><br /><small className="pr-muted">{cardinalityLine(ontology, c)}</small></> : "—"}</td>}
       <td>{r.meaning}</td><td><code>{r.source}</code>{relationBindingLine(r) && <p className="pr-muted">{relationBindingLine(r)}</p>}</td>
     </tr>; })}</tbody>
   </table></div></div>;
@@ -622,7 +625,7 @@ function ObjectsPlace({ run, confirm, place }) {
         <span>{r.label}</span><small>{r.kind}{r.here ? "" : " · 这次没有"}</small></li>)}</ul>
     </section>}
     {place === "history" && run.previous && <section className="pr-card">
-      <div className="pr-card-head"><h2>和上一次比</h2><span className={`os-diff-count${stabilityLines(run.previous.diff).length ? " is-changed" : ""}`}>{stabilityLines(run.previous.diff).length ? `${stabilityLines(run.previous.diff).length} 处不同` : "完全一致"}</span></div>
+      <div className="pr-card-head"><h2>和上次比</h2><span className={`os-diff-count${stabilityLines(run.previous.diff).length ? " is-changed" : ""}`}>{stabilityLines(run.previous.diff).length ? `${stabilityLines(run.previous.diff).length} 处不同` : "完全一致"}</span></div>
       <p className="pr-muted">{previousLine(run.previous)}{run.previous.purpose && run.previous.purpose !== run.purpose ? " · 两次目的不同" : ""}</p>
       {stabilityLines(run.previous.diff).length > 0 && <ul className="os-list">{stabilityLines(run.previous.diff).map((l) => <li key={l}>{l}</li>)}</ul>}
     </section>}
@@ -636,7 +639,7 @@ function ObjectsPlace({ run, confirm, place }) {
       <p className="pr-muted">{sourceLine(run)}{doc ? ` · 被剔除 ${ontology.rejected.length} 项` : attempts.passed ? ` · ${retries ? `模型改了 ${retries} 次后通过核验（${retries > 1 ? "前几版" : "第 1 版"}：${attempts.rejected.map(([code]) => ERROR_LABELS[code] || code).join("、")}）` : "第一版就通过核验"}` : ""}</p>
       {run.sources.some((s) => s.skipped_rows) && <p className="pr-muted">表头上方的标题行已跳过：{run.sources.filter((s) => s.skipped_rows).map((s) => `${s.name}（${s.skipped_rows.join("；")}）`).join("、")}</p>}
       <div className="os-how">
-        {!doc && <p>"结构已通过核验"只说明本体里的字段、识别字段和关系都能在数据里对上；数据本身干不干净看"数据体检"。</p>}
+        {!doc && <p>“结构已通过核验”只说明本体里的字段、识别字段和关系都能在数据里对上；数据本身干不干净看“数据体检”。</p>}
         {doc ? <p>文档分 {ontology.chunks_processed} 段交给模型{ontology.chunks_total > ontology.chunks_processed ? `（共 ${ontology.chunks_total} 段，文档太长，后面的没有处理）` : ""}；被剔除的项是引用在原文里找不到，或两端不是已核实的概念。</p>
           : attempts.rejected.length > 0 && <p>前面被代码退回的原因：{attempts.rejected.map(([code, n]) => `${ERROR_LABELS[code] || code} ${n} 处`).join("、")}。</p>}
         <p>模型 {ontology.model}，提示词 {ontology.prompt_version}。建模目的会作为提示的一部分交给模型。</p>
@@ -659,7 +662,7 @@ function Checks({ fit, title, note }) {
 function DataFit({ run, onShow, variants }) {
   const fit = run.evaluation.data_fit;
   const { ontology } = run;
-  if (!fit) return <section className="pr-card"><p className="pr-error">本体没有通过核验，无法评测。先看"本体管理"底部"这次是怎么建出来的"里被退回的原因。</p></section>;
+  if (!fit) return <section className="pr-card"><p className="pr-error">本体没有通过核验，无法评测。先看“本体管理 › 建模记录”里“这次是怎么建出来的”中被退回的原因。</p></section>;
   return <>
     <Checks fit={fit} title="数据体检：本体和数据对得上吗" note="全部由代码拿上传的每一行计算，不经过模型。每个问题都可以点“在图上看”，回到关系图里对应的对象。" />
     {fit.identity_conflicts.length > 0 && <Conflicts fit={fit} ontology={ontology} onShow={onShow} />}
@@ -672,7 +675,7 @@ function DataFit({ run, onShow, variants }) {
     </section>}
     {fit.identity_risks?.length > 0 && <section className="pr-card">
       <h2>识别字段可能不稳（{fit.identity_risks.length}）</h2>
-      <p className="pr-muted">这是提示，不是不通过：代码只看了识别字段的名字像不像"名称"一类会被改写的字段。</p>
+      <p className="pr-muted">这是提示，不是不通过：代码只看了识别字段的名字像不像“名称”一类会被改写的字段。</p>
       <ul className="pr-rows">{fit.identity_risks.map((r) => <li key={r.type}><b>{typeLabel(ontology, r.type)}：按 {r.fields.join("、")} 识别</b><span>{r.reason}</span><ShowOnGraph type={r.type} onShow={onShow} /></li>)}</ul>
     </section>}
     {fit.suspected_duplicates?.length > 0 && <section className="pr-card">
@@ -700,7 +703,7 @@ function DataFit({ run, onShow, variants }) {
 
 function DocumentFitView({ run, onShow }) {
   const fit = run.evaluation.document_fit;
-  if (!fit) return <section className="pr-card"><p className="pr-error">没有提取出可核实的概念，无法评测。先看"本体管理"底部"这次是怎么建出来的"里被剔除的原因。</p></section>;
+  if (!fit) return <section className="pr-card"><p className="pr-error">没有提取出可核实的概念，无法评测。先看“本体管理 › 建模记录”里“这次是怎么建出来的”中被剔除的原因。</p></section>;
   const keyOf = (label) => run.ontology.object_types.find((t) => t.label === label)?.key;
   return <>
     <Checks fit={fit} title="文档检查：每一项都能回到原文吗" note={`由代码逐项核对模型给的引用是否真在原文里，不经过模型。模型共提出 ${fit.proposed} 项，保留 ${fit.kept} 项，剔除 ${fit.rejected} 项。${fit.cut ? "文档太长，只处理了前面的部分。" : ""}`} />
@@ -838,7 +841,7 @@ function OverviewSection({ run, list, onGo, onDownload, requery, client }) {
   const items = list?.items;
   return <section className="pr-card os-open">
     <div className="pr-card-head"><h2>{items ? `${items.length} 件要和客户确认的事` : "要和客户确认的事"}</h2>
-      <button type="button" className="os-icon-btn" onClick={onDownload} title="下载会议纪要：一页 Markdown，要确认的事排在最前面">⤓ 下载会议纪要</button></div>
+      <button type="button" className="os-icon-btn" onClick={onDownload} title="下载会议纪要：一页 Markdown，要确认的事排在最前面">⤓ 下载纪要</button></div>
     <p className="pr-muted">由代码从这次的数据、问答和确认记录里汇总；标着“模型的说法”的是模型说的，代码没核对过。</p>
     {!run.saved_as && <p className="pr-muted">示例结果没有这份清单，上传自己的文件后由本机服务算。</p>}
     {run.saved_as && !list && <p className="pr-muted">正在读取…</p>}
@@ -1122,11 +1125,11 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
       <div className="os-overview">
         <div className="os-overview-file"><h1 id="os-title" className="os-crumb" title={`${run.file.name}${run.purpose ? `\n${run.purpose}` : ""}`}>{crumb.map((c, i) => <span key={c}>{i > 0 && <i aria-hidden="true">/</i>}{c}</span>)}</h1>
           <button className="os-icon-btn" onClick={() => setSearching(true)} title="搜索对象、字段、关系和表（⌘K）">⌕ 搜索</button>
-          <button className="os-icon-btn" onClick={downloadSummary} title="下载纪要：一页 Markdown，给会上的人看">⤓ 纪要</button>
+          <button className="os-icon-btn" onClick={downloadSummary} title="下载会议纪要：一页 Markdown，要确认的事排在最前面">⤓ 纪要</button>
           <button className="os-icon-btn" onClick={download} title="下载本体和评测：一个 JSON 文件">⤓ JSON</button>
           {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/forms`} download title="按对象表单导出：每个对象一张 CSV，导入目标平台前请先实测">⤓ 表单</a>}
           {run.saved_as && !isDocument(run) && run.ontology.status === "auto_built_verified" && <a className="os-icon-btn" href={pipelineUrl(run.saved_as)} download title={PIPELINE_EXPORT.title}>{PIPELINE_EXPORT.label}</a>}
-          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/ttl`} download title="按 W3C 标准导出：OWL 本体、数据、SHACL 规则（Turtle）">⤓ TTL</a>}
+          {run.saved_as && !isDocument(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/ttl`} download title="按 W3C 标准导出 Turtle：OWL 本体和数据；采纳过规则时另含 SHACL 规则">⤓ TTL</a>}
           {run.saved_as && isOrg(run) && <a className="os-icon-btn" href={`/api/ontology/runs/${run.saved_as}/export/mermaid`} download title="导出组织图（Mermaid）：组织隶属与协作交接各一张，可直接放进出图流程">⤓ 组织图</a>}</div>
       </div>
     </header>}

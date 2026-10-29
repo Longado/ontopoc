@@ -14,7 +14,7 @@ test("long explanations sit behind a hint, so a card opens on its result", () =>
 });
 
 test("a sentence that stops a misreading stays on the card", () => {
-  assert.match(before("判\"对\"的意思是"), /<p className="pr-muted">$/);
+  assert.match(before("判“对”的意思是"), /<p className="pr-muted">$/);
 });
 
 test("the data check is a grid of cells, not a list of sentences", () => {

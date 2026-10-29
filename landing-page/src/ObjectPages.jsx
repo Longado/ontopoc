@@ -79,7 +79,7 @@ export function ObjectDetail({ run, typeKey, startAt = null, confirm, onBack, on
         {confirm ? <><Verdict confirm={confirm} kind="types" item={type} />
           {relations.length > 0 && <><h3>它的关系</h3><ul className="os-list">{relations.map((r) => { const rel = run.ontology.relations.find((x) => x.key === r.key);
             return <li key={r.key} className="os-object-relation"><span>{r.text}</span><Verdict confirm={confirm} kind="relations" item={rel} /></li>; })}</ul></>}
-          <p className="pr-muted">判断先记在这一页上，回到"本体管理"首页底部一起保存。<button type="button" className="pr-link" onClick={onSaveConfirm}>去保存</button></p></>
+          <p className="pr-muted">判断先记在这一页上，到“本体管理 › 逐项确认”顶部点“保存确认”一起保存。<button type="button" className="pr-link" onClick={onSaveConfirm}>去保存</button></p></>
           : <p className="pr-muted">这份结果不能确认。</p>}
       </section>}
     </div>

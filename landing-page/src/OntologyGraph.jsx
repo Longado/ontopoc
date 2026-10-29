@@ -82,7 +82,7 @@ function Inspector({ run, selected, findings, confirm }) {
       {t.attributes.length > 0 && <div><dt>属性</dt><dd>{t.attributes.map((a) => a.path).join("、")}</dd></div>}
       {t.time_field && <div><dt>时间</dt><dd>{t.time_field.path}</dd></div>}
       {stability && stability.types[t.key] !== undefined && <div><dt>{stability.runs} 次建模</dt><dd className={unsteady(stability, "types", t.key) ? "og-warn" : ""}>{unsteady(stability, "types", t.key) ? `只有 ${stability.types[t.key]} 次有它：模型对要不要单独建这个对象拿不准，可以按你的业务决定` : "每次都有"}</dd></div>}
-      {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]} 个（按编号去重）{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key]} 个在多张表里出现` : ""}{(fit?.missing_across_sources || []).filter((m) => m.type === t.key).map((m) => `；${m.count} 个只在别的表里被引用、在“${m.source}”表里找不到`).join("")}</dd></div>}
+      {metrics && <div><dt>对象数</dt><dd>{metrics.instances[t.key]?.toLocaleString("zh-CN")} 个（按编号去重）{metrics.shared_across_sources[t.key] ? `，其中 ${metrics.shared_across_sources[t.key].toLocaleString("zh-CN")} 个在多张表里出现` : ""}{(fit?.missing_across_sources || []).filter((m) => m.type === t.key).map((m) => `；${m.count} 个只在别的表里被引用、在“${m.source}”表里找不到`).join("")}</dd></div>}
     </dl>
     {definition && <dl className="ol-fields">{t.attributes.map(({ definition: p }) => <div key={p.id}>
       <dt>{p.name}{p.isIdentifier ? " · 标识字段" : ""}</dt>

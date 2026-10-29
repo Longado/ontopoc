@@ -34,6 +34,14 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(diff['counts'], {'types': {'reference': 3, 'ours': 3, 'matched': 2},
                                           'relations': {'reference': 2, 'ours': 2, 'matched': 1}})
 
+    def test_a_relation_with_role_bindings_matches_one_written_without_them(self):
+        bound = {**OURS, 'relations': [
+            {**OURS['relations'][0], 'from_identity': {'order_id': '订单号'}, 'to_identity': {'customer_id': '客户编号'}},
+            {**OURS['relations'][1], 'from_identity': {'order_id': '订单号'}, 'to_identity': {'product_id': '产品编号'}}]}
+        self.assertEqual(compare_ontologies(THEIRS, bound)['relations']['matched'], [['客户资料 — 订单', '订单 — 客户']])
+        self.assertEqual(compare_ontologies(OURS, bound)['counts']['relations']['matched'], 2)
+        self.assertEqual(compare_ontologies(bound, OURS)['counts']['relations']['matched'], 2)
+
     def test_identical_ontologies_have_no_differences(self):
         diff = compare_ontologies(OURS, OURS)
         self.assertEqual((diff['types']['only_reference'], diff['types']['only_ours'], diff['relations']['only_ours']), ([], [], []))

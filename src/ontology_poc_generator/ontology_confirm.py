@@ -134,12 +134,14 @@ def prefill_from_reference(ontology: dict, reference: dict) -> dict:
     for ref_key, our_key in mapping.items():
         label = next(t['label'] for t in ref_types if t['key'] == ref_key)
         types[our_key] = {'verdict': 'ok', **({'label': label} if label != (ours[our_key].get('label') or our_key) else {})}
-    # the same two objects the other way round is another relation (a customer's orders is not an order's customer)
-    relations = {r['key']: {'verdict': 'ok'} for r in ontology['relations']
-                 if any(relation_matches(ref, r, mapping, directed=True) for ref in reference['relations'])}
-    relations.update({r['key']: {'verdict': 'wrong'} for r in ontology['relations']
-                      if any(relation_matches(ref, r, {**mapping, **thrown}, directed=True)
-                             for ref in reference.get('rejected_relations') or [])})
+    # the same two objects the other way round is another relation (a customer's orders is not an order's customer);
+    # a judgement that fits two of this run's relations (one saved before role bindings) is left to the person
+    def judged(refs: list, types: dict) -> list:
+        hits = [[r['key'] for r in ontology['relations'] if relation_matches(ref, r, types, directed=True)] for ref in refs]
+        return [keys[0] for keys in hits if len(keys) == 1]
+    relations = {key: {'verdict': 'ok'} for key in judged(reference['relations'], mapping)}
+    relations.update({key: {'verdict': 'wrong'}
+                      for key in judged(reference.get('rejected_relations') or [], {**mapping, **thrown})})
     returned = [t['label'] for t in (reference.get('rejected_types') or []) if t['key'] in thrown]
     added = [t['label'] for t in ref_types if t['key'].startswith('added_') and t['key'] not in mapping]
     groups = reference.get('name_variants')   # the stored file can have been hand-edited: anything unreadable is left out

@@ -19,7 +19,7 @@ export const CHECK_LABELS = {
 export const COVERAGE_NOTE = "所有结论只覆盖这一次上传的文件；别的系统里有没有、别的表里记没记，这里看不到。";
 
 export const isDocument = (run) => run.file?.kind === "document";
-export const sourceLine = (run) => run.sources.map((s) => (s.paragraphs !== undefined ? `${s.name} ${s.paragraphs} 段 ${s.chars} 字` : `${s.name} ${s.rows} 行 ${s.fields} 列`)).join(" · ");
+export const sourceLine = (run) => run.sources.map((s) => (s.paragraphs !== undefined ? `${s.name} ${s.paragraphs} 段 ${s.chars} 字` : `${s.name} ${s.rows?.toLocaleString("zh-CN")} 行 ${s.fields} 列`)).join(" · ");
 
 export const ERROR_LABELS = {
   relation_binding_invalid: "关系端点绑定不正确",
@@ -55,7 +55,7 @@ export const relationBindingLine = (r) => r.from_identity || r.to_identity
   ? `${r.source}：${Object.values(r.from_identity || {}).join(" + ") || "按对象识别"} → ${Object.values(r.to_identity || {}).join(" + ") || "按对象识别"}` : "";
 
 export function missingReferenceFeedback(ontology, m) {
-  if (!m.relation) return { key: `${m.type}/${m.source}`, title: `${typeLabel(ontology, m.type)}：${m.count} 个不在"${m.source}"表里` };
+  if (!m.relation) return { key: `${m.type}/${m.source}`, title: `${typeLabel(ontology, m.type)}：${m.count} 个不在“${m.source}”表里` };
   const relation = (ontology.relations || []).find((r) => r.key === m.relation);
   const fields = m.fields || Object.values(relation?.[`${m.endpoint}_identity`] || {});
   return { key: `${m.type}/${m.source}/${m.relation}/${m.endpoint}`,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BOUNDARY, DRAFT_KEY, fields, statuses, newDraft, newRow, parseRows, changeRow, recordReview, restoreDraft, saveDraft, summarize, readRecallResponse, checkRows } from './recallWorkspaceModel.js';
+import { BOUNDARY, DRAFT_KEY, fields, statuses, newDraft, newRow, parseRows, changeRow, recordReview, restoreDraft, saveDraft, summarize, readRecallResponse, checkRows, NOT_RUNNING } from './recallWorkspaceModel.js';
 import './RecallWorkspace.css';
 
 const labels = { product: '产品名称或公告产品编号', lot: '包装批号', upc: 'UPC（可选，12 位）', label_date: 'Use/Sell By 标签日期（可选）' };
@@ -43,7 +43,7 @@ export function RecallWorkspace({ language = 'zh', onBusyChange }) {
         setStorageBlocked(true); setDraft(null);
         setNotice('本机草稿无法读取或版本不支持，原草稿未覆盖。可先下载原始草稿，再明确重置。');
       }
-    }).catch((e) => { if (active) setLoadError(`${e.message} 请检查本地核对服务。`); });
+    }).catch((e) => { if (active) setLoadError(e instanceof TypeError ? NOT_RUNNING : e.message); });   // fetch itself failing: nothing answered
     return () => { active = false; };
   }, [reload]);
 

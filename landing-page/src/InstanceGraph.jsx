@@ -67,12 +67,12 @@ export function InstanceGraph({ run }) {
       <label htmlFor="ig-q" className="sr-only">按名称或编号找</label>
       <input id="ig-q" value={query} placeholder="名称或编号" onChange={(e) => setQuery(e.target.value)} />
       {found && <p className="ig-count">{found.total.toLocaleString("zh-CN")} 个{found.total > found.items.length ? `，显示前 ${found.items.length}` : ""}</p>}
-      <ul className="ig-results">{found?.items.map((i) => <li key={i.id}><button type="button" aria-pressed={selected === i.id} onClick={() => open(i.id, true)}>
-        <i className={colour[type]} />{i.name ? <>{i.name}<small>{i.label}</small></> : i.label}</button></li>)}</ul>
+      <ul className="ig-results">{found?.items.map((i) => <li key={i.id}><button type="button" title={i.name ? `${i.name} ${i.label}` : i.label} aria-pressed={selected === i.id} onClick={() => open(i.id, true)}>
+        <i className={colour[type]} /><span className="ig-hit">{i.name ? <>{i.name}<small>{i.label}</small></> : i.label}</span></button></li>)}</ul>
     </aside>
     <div className="ig-canvas">
       {error && <p role="alert" className="pr-error">{error}</p>}
-      {!nodes.length ? <div className="ig-empty" aria-label="还没有选对象"><span aria-hidden="true">◎</span></div>
+      {!nodes.length ? <div className="ig-empty"><span aria-hidden="true">◎</span><p>从左边选一个对象，看它连着哪些对象。</p></div>
         : <PanZoom width={graph.width} height={graph.height} label="实例图谱" resetKey={nodes[0]?.id} onNodeDrag={(id, dx, dy) => setPlaced((g) => moveNode(g || layout, id, dx, dy))}>
           {edges.filter((e) => at[e.from] && at[e.to]).map((e, i) => { const p = edgePath(at[e.from], at[e.to], 0);
             return <g key={`${e.from}>${e.to}>${e.relation}>${i}`} className={`ig-edge${e.more ? " is-more" : ""}`}><path d={p.path} />{e.label && <text x={p.lx} y={p.ly} textAnchor="middle">{e.label}</text>}</g>; })}
@@ -90,7 +90,7 @@ export function InstanceGraph({ run }) {
     <aside className="ig-detail" aria-label="选中的对象">
       {sel && fields[sel.id] ? <><p className="ig-detail-type"><i className={colour[sel.type]} />{typeLabel(ontology, sel.type)}</p><h3>{sel.label}</h3>{sel.name && <p className="ig-detail-name">{sel.name}</p>}
         <dl className="os-facts">{Object.entries(fields[sel.id]).map(([k, v]) => <div key={k} className="ig-fact"><dt>{k}</dt><dd>{v}</dd></div>)}</dl></>
-        : <p className="ig-detail-empty" aria-hidden="true">—</p>}
+        : <p className="ig-detail-empty">选中对象后，这里显示它的原始字段。</p>}
     </aside>
   </div>;
 }

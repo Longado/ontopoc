@@ -217,8 +217,9 @@ def _day(value) -> bool:
     return True
 
 
-def _range(cell_id: str, value) -> dict | None:
-    """The covered period a person declared: either end may be left open, both left open says nothing."""
+def _range(cell_id: str, value, where: str) -> dict | None:
+    """The covered period a person declared: either end may be left open, both left open says nothing. `where` names the
+    column the way the page shows it, for the one mistake the page lets a person make (an end before the start)."""
     bad = CardError(f'「{cell_id}」的时段要写成 {{"from": 日期, "to": 日期}}，日期写 YYYY-MM-DD，可以只写一头')
     if value is None:
         return None
@@ -230,7 +231,7 @@ def _range(cell_id: str, value) -> dict | None:
     if start is None and end is None:
         return None
     if start and end and start > end:
-        raise CardError(f'「{cell_id}」的起始日期晚于结束日期')
+        raise CardError(f'{where}声明的覆盖时段，起始日期晚于结束日期')
     return {'from': start, 'to': end}
 
 
@@ -253,7 +254,8 @@ def check_cells(card: dict, raw, by, at: str) -> dict:
         value = entry['value']
         kind = cell_id.partition(':')[0]
         if kind == 'range':
-            value = _range(cell_id, value)
+            where = next(f"{t['source']} 的 {d['field']} " for t in card['tables'] for d in t['dates'] if d['range_id'] == cell_id)
+            value = _range(cell_id, value, where)
         elif value is not None and not (isinstance(value, str) and value in SAYS[kind]):
             raise CardError(f'「{cell_id}」的答复只能是：{"、".join(SAYS[kind])}')
         note, basis = clean_text(entry.get('note'), MAX_NOTE, f'「{cell_id}」的备注'), clean_text(entry.get('basis'), MAX_BASIS, f'「{cell_id}」的出处')
