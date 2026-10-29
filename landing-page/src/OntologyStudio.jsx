@@ -6,7 +6,7 @@ import {
   ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, evidenceLines, evidenceTitle, groupFigure, measureOf,
   COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, serviceReady, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
-import { consensusLines, overviewTiles, pathOf } from "./ontologyGraphModel.js";
+import { consensusLines, overviewTiles, pathOf, questionPanelCount } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, previewFactText, previewKeysText, previewLinkText, sizeText, uploadPayload } from "./ontologyUploadModel.js";
 import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js";
 import { downloadName, summaryMarkdown } from "./ontologySummaryModel.js";
@@ -384,7 +384,7 @@ function QuestionsSection({ run, canAsk, canDerive, busy, error, onAsk, onPath, 
   const shownRound = round && !round.error ? filterQuestions(round.items, which) : [];
   return <section className="pr-card">
     <div className="pr-card-head"><h2 title={part === "model" && round ? `出题模型 ${round.model}，提示词 ${round.prompt_version}` : undefined}>{part === "mine" ? "你问的" : "模型出的题"}</h2>
-      <div className="os-toolbar"><span className="pr-muted">{overviewTiles(run).find((t) => t.key === "qa").value}</span>
+      <div className="os-toolbar"><span className="pr-muted">{questionPanelCount(run, part)}</span>
         <div className="og-toggle" role="group" aria-label="按能不能回答筛选">{QUESTION_FILTERS.map(([k, t]) => <button key={k} type="button" aria-pressed={which === k} onClick={() => setWhich(k)}>{t}</button>)}</div>
         {canAsk && part === "model" && <button type="button" className="pr-link" disabled={busy} onClick={() => onAsk(null)}>{busy ? "出题中…" : round ? "↻ 重新出一组" : "出一组题"}</button>}</div></div>
     <Hint>模型只负责把问题写成查询（一次调用）；答案由代码在上传的数据上算出来。答不了时写明是本体缺了哪一块、数据里没有，还是这种问法还不支持。</Hint>

@@ -99,6 +99,16 @@ export function pathOf(ontology, query) {
   return { walks, nodes: [...new Set(walks.flatMap((w) => w.nodes))], edges: [...new Set(walks.flatMap((w) => w.edges))] };
 }
 
+/** The count in a questions panel's header: "mine" counts the questions people asked, "model" the model's round. */
+export function questionPanelCount(run, part) {
+  if (part === "mine") {
+    const asked = askedNow(run);
+    return asked.length ? `能回答 ${asked.filter((i) => i.status === "answered").length} / ${asked.length}` : null;
+  }
+  const round = run.evaluation.questions;
+  return round?.total ? `能回答 ${round.answered} / ${round.total}` : "还没出题";
+}
+
 export function overviewTiles(run) {
   const { ontology, evaluation } = run;
   const doc = run.file?.kind === "document";
