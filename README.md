@@ -210,7 +210,7 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（1082 个；先 pip install -e ".[check]"，否则 TTL 校验的 9 个跳过）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（1083 个；先 pip install -e ".[check]"，否则 TTL 校验的 9 个跳过）
 npm --prefix landing-page run test:unit                       # 前端测试（331 个）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录，不动已有运行

@@ -212,7 +212,7 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1082; install ".[check]" first, or 9 TTL checks are skipped)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1083; install ".[check]" first, or 9 TTL checks are skipped)
 npm --prefix landing-page run test:unit                       # page tests (331)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
