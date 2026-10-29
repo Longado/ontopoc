@@ -66,13 +66,11 @@
 .ol-info-body .ol-raw pre { max-height: none; }
 @media (max-width: 1100px) { .is-definition .og-wrap { grid-template-columns: minmax(0, 1fr) 260px; } }
 @media (max-width: 760px) {
-  .app-shell:has(.ol-page.is-definition) { height: 100dvh; min-height: 0; }
-  .app-main:has(.ol-page.is-definition) { overflow: hidden; }
   .ol-page.is-definition { padding: 10px 16px; gap: 8px; }
   .ol-detail-title { flex-basis: 100%; }
   .ol-detail-tools { gap: 6px; }
   .ol-detail-tools .ol-object select { width: 130px; }
   .ol-detail-tools .ol-import { padding: 6px 10px; font-size: 12px; }
   .ol-info-button { padding: 6px 10px; font-size: 12px; }
-  .is-definition .og-wrap { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 0.8fr); }
+  .is-definition .og-wrap { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(360px, 60vh) auto; }
 }

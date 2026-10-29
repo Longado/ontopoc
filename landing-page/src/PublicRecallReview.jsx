@@ -290,7 +290,7 @@ export function PublicRecallReview({ language = "zh" }) {
         <section className="pr-card">
           <div className="pr-buckets" role="group" aria-label="候选分类">{Object.entries(BUCKETS).map(([key, label]) => <button key={key} aria-pressed={bucket === key} onClick={() => setBucket(key)}>{label}<b>{recall.counts[key]}</b>{recall.text_checked && <small>模型判是 {verdictSplit(visibleCandidates(recall, key)).yes}</small>}</button>)}
             {(conflictIds.size > 0 || onlyConflicts) && <button className="pr-filter" aria-pressed={onlyConflicts} onClick={() => setOnlyConflicts((v) => !v)}>只看各召回初判不同的<b>{conflictIds.size}</b></button>}</div>
-          <p className="pr-muted">分类只按车型年款和部件划分，不代表同一故障已确认；每类旁边是模型判"是"的条数，其余是"不是""说不清"或没有初判。</p>
+          <p className="pr-muted">分类只按车型年款和部件划分，不代表同一故障已确认；每类旁边是模型判“是”的条数，其余是“不是”"说不清"或没有初判。</p>
           <p className="pr-muted">排序：召回后提交的在前，其次是起火、碰撞，再按提交日期由新到旧。{storageNote} 本召回已复核 {stats.reviewed}/{stats.total}。</p>
           {!state.confirmed_at && <p className="pr-note">先在“口径”里核对，才能复核。</p>}
           {error && <p role="alert" className="pr-error">{error}</p>}

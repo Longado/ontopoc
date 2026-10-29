@@ -57,6 +57,8 @@ export function StandaloneDemo() {
     <i aria-hidden="true" /><span>{t.tabs[key]}<small>{t.hints[key]}</small></span>
   </button>;
 
+  const zhOnly = language === "en" && <p className="pr-note app-zh-only" lang="en">The workbench is in Chinese only for now; the sidebar and the product home are in English.</p>;
+
   return <main className="app-shell">
     <aside className="app-side">
       <a className="app-brand" href="/landing" aria-label="OntoPoc product home">
@@ -75,14 +77,14 @@ export function StandaloneDemo() {
         {!open && <p className="app-empty">{t.needRun}</p>}
       </nav>
       <nav className="app-nav" aria-label={t.nav}>
-        <details className="app-more" open={scenario !== "studio" || undefined}>
+        <details className="app-more" open={scenario === "public" || scenario === "recall" || undefined}>
           <summary>{t.more}</summary>
           {entry("public")}
           {entry("recall")}
         </details>
         <a href="/landing"><i aria-hidden="true" /><span>{t.landing}</span></a>
       </nav>
-      <details className="app-space" open={!open || undefined}>
+      <details className="app-space">
         <summary><span className="app-label">{t.space}</span><b title={open?.file.name}>{open ? folderLabel(open.file.name) : t.pick}</b>{open?.purpose && <small>{open.purpose}</small>}</summary>
         <div className="app-library" role="navigation" aria-label={t.library}>
           {runs === "offline" && <p className="app-empty">{t.offline}</p>}
@@ -98,8 +100,9 @@ export function StandaloneDemo() {
       <button type="button" className="app-lang" onClick={() => setLanguage(language === "zh" ? "en" : "zh")}>{t.lang}</button>
     </aside>
     <section className="app-main" aria-label={scenario === "studio" ? "OntoPoc" : scenario === "library" ? "本体库" : t.tabs[scenario]}>
-      <div hidden={scenario !== "library"}><OntologyLibrary active={scenario === "library"} /></div>
+      <div hidden={scenario !== "library"}>{zhOnly}<OntologyLibrary active={scenario === "library"} /></div>
       <div hidden={scenario === "library"}>
+        {scenario === "studio" && zhOnly}
         {scenario === "studio" || scenario === "library" ? <OntologyStudio request={request} runs={runs} section={section} nav={nav} onSection={setSection} onRunsChanged={refresh} onCurrent={setOpen} />
           : scenario === "public" ? <PublicRecallReview language={language} /> : <RecallWorkspace language={language} onBusyChange={setRecallBusy} />}
       </div>

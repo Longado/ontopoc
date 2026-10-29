@@ -93,6 +93,7 @@ section[id] { scroll-margin-top: 78px; }
 .app-lang { align-self: flex-start; padding: 5px 10px; border: 1px solid var(--edge-strong); border-radius: 6px; color: var(--text-2); background: var(--surface); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
 .app-main { min-width: 0; min-height: 0; overflow-y: auto; display: flex; }
 .app-main > * { flex: 1; }
+.app-zh-only { margin: 16px 32px 0; }
 
 @media (max-width: 760px) {
   .app-shell { height: auto; min-height: 100vh; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }

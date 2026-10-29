@@ -43,7 +43,7 @@ export function RecallWorkspace({ language = 'zh', onBusyChange }) {
         setStorageBlocked(true); setDraft(null);
         setNotice('本机草稿无法读取或版本不支持，原草稿未覆盖。可先下载原始草稿，再明确重置。');
       }
-    }).catch((e) => { if (active) setLoadError(`${e.message} 请检查本地核对服务。`); });
+    }).catch((e) => { if (active) setLoadError(e.message); });
     return () => { active = false; };
   }, [reload]);
 
