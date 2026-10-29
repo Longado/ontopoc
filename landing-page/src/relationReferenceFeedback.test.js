@@ -17,5 +17,5 @@ test('legacy missing-source findings keep the original source wording', () => {
   assert.equal(typeof model.missingReferenceFeedback, 'function');
   const ontology = { object_types: [{ key: 'employee', label: '员工' }] };
   const feedback = model.missingReferenceFeedback(ontology, { type: 'employee', source: 'Employee', count: 2 });
-  assert.equal(feedback.title, '员工：2 个不在"Employee"表里');
+  assert.equal(feedback.title, '员工：2 个不在“Employee”表里');
 });
