@@ -262,6 +262,12 @@ class PostedCellTests(unittest.TestCase):
                 self.check({'id': GRAIN, 'value': 'event'}, cell)
             self.assertIn(said_so, str(caught.exception))
 
+    def test_a_reversed_period_names_the_column_a_person_sees(self):
+        with self.assertRaises(oc.CardError) as caught:
+            self.check({'id': 'range:ledger.paid_on', 'value': {'from': '2024-12-31', 'to': '2024-10-01'}})
+        self.assertIn('ledger 的 paid_on', str(caught.exception))
+        self.assertNotIn('range:', str(caught.exception))
+
     def test_every_cell_must_say_its_value_and_clearing_is_a_null(self):
         for cell in ({'id': GRAIN}, {'id': 'range:ledger.paid_on', 'note': '没写日期'}):
             with self.subTest(cell=cell), self.assertRaises(oc.CardError) as caught:
