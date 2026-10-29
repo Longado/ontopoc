@@ -1,6 +1,6 @@
 # OntoPoc 的 MCP 工具
 
-页面上的主要功能都有对应的 MCP 工具（本体库、⌘K 搜索和纪要、JSON 下载除外），任何支持 MCP 的客户端（Claude Code、Claude Desktop、Cursor、DSH 这类 agent）都能直接调用。工具走 stdio，调用的是本机正在运行的建模服务，和页面用同一套接口：核验、计数、确认记录只有一份。
+页面上的主要功能都有对应的 MCP 工具（本体库、⌘K 搜索和纪要、JSON 下载、新版本与“和上次比”的对比、建模记录除外；稳定性只给到对象，不稳的关系在 open_items 里），任何支持 MCP 的客户端（Claude Code、Claude Desktop、Cursor、DSH 这类 agent）都能直接调用。工具走 stdio，调用的是本机正在运行的建模服务，和页面用同一套接口：核验、计数、确认记录只有一份。
 
 ## 接上
 

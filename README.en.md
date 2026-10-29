@@ -54,7 +54,7 @@ The result can be exported in the shape of a data platform's object form; as a p
 <p align="center"><sub>Definition cards (口径卡): code has already worked out which columns tell each table's rows apart; what one row is and whether a number can be added up are left for the client.</sub></p>
 
 <p align="center"><img src="docs/images/readme-objects.png" alt="Ontology: one card per business object" width="880"></p>
-<p align="center"><sub>Ontology (本体管理): the 4 business objects built from the sample workbook; on the left, item-by-item confirmation, stability, last-run comparison and build record.</sub></p>
+<p align="center"><sub>Ontology (本体管理): the 4 business objects built from the sample workbook; on the left, item-by-item confirmation (逐项确认), stability (稳定性), last-run comparison (和上次比) and build record (建模记录).</sub></p>
 
 <p align="center"><img src="docs/images/readme-instances.png" alt="Instance graph: one customer opened out to its orders and products" width="880"></p>
 <p align="center"><sub>Instance graph (实例图谱): customer KH001 opened out to its orders, and one order to its product; on the right, the selected order's raw fields.</sub></p>
@@ -80,7 +80,7 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 | Ask a question (智能问答) | The model writes a structured query and code computes the answer on the data; when it cannot, it says whether the ontology lacks something, the data lacks it, or the question is beyond the query. An amount that needs a formula (unit price × quantity × (1 − discount)) is proposed by the model, tried by code on every row, and once you confirm it the question is recomputed and answered. If an answer carries a filter the model added by itself, the filter is listed separately and you can drop it and recompute. The model can also write a round of 6 questions on request |
 | Look at a relation's binding | Shows the source table and the two end ID columns, e.g. `EmployeeId → ReportsTo`. An endpoint reference connects only to objects that exist and never writes a subordinate's attributes onto the superior. When verification fails, it shows where, why and what to change |
 | Judge each part, rename, add what is missing | Saved as this file's reference ontology; the next upload is compared against it and prefilled |
-| Fix up to 3 questions as acceptance questions | Every rerun computes them with the same query and tells you which changed |
+| Fix up to 3 questions as acceptance questions (验收问题) | Every rerun computes them with the same query and tells you which changed |
 | Adopt rules found in the data | Every rerun checks them and lists the objects that break them |
 | Mark an uploaded file as a new version (新版本) | Last time's confirmations (including what you judged wrong), acceptance questions and rules carry over, with how many of each object came and went. An object the model proposes again after you judged it wrong is flagged on its own |
 | Draft the object form | One model call drafts Chinese names, descriptions and display fields; what you edited is never overwritten by a redraft |
@@ -99,7 +99,7 @@ Once installed (see [Quick start](#quick-start)), with the synthetic sample in t
 |---|---|
 | Without the modelling service, click "Open sample tables" (打开示例数据表) | A bundled result: 4 objects, 3 relations |
 | Upload `examples/company/demo_company.xlsx` with "哪些客户的售后问题最多？" (which customers have the most after-sales problems?) as the purpose | After about half a minute to a minute, 4 objects: customer, product, order, after-sales ticket; data check 5 / 7 passed, the 2 that fail being the problems planted in the sample; in Questions (智能问答) › Ask (提问), this question is already answered from the data |
-| Open Items to confirm (要确认的事) | 8 items to confirm with the client, two of them the planted problems: customer KH012 has different cities on two rows, and the orders refer to KH099, who is not in the customer table |
+| Open Items to confirm (要确认的事) | In the built-in demo, 8 items to confirm with the client (the count changes with whether the three builds agree), including the planted problems: customer KH012 has different cities on two rows, and the orders refer to KH099, who is not in the customer table |
 | In Questions (智能问答), ask "每个客户的订单总金额是多少？" (total order amount per customer) | Totals per customer, highest 241,420, from 160 values read |
 | Relations (本体关系) → Instance graph (实例图谱), pick a customer | The customer and its orders as a graph; click an order to open its product |
 | Click "⤓ 表单" at the top right | A zip: 4 object-form CSVs and an import note |
@@ -173,21 +173,21 @@ The tool list is in [docs/MCP.md](docs/MCP.md).
 | Relations (本体关系) | A graph that lays itself out (drag, zoom), the instance graph, the relation list; relations code sees in the data but the ontology lacks are drawn as dashed suggestions |
 | Organisation (组织架构) | Choose "组织架构" when uploading a public study: the organisation tree, collaboration and handover (the arrow says what is handed over), a role table, periods, and what the material does not state; export Mermaid organisation charts, one chart per year range |
 | Questions (智能问答) | Ask, acceptance questions, the model's questions (filter by answered) |
-| Data check (数据体检) | 7 checks, rules, comparison with a reference ontology |
+| Data check (数据体检) | 7 checks, rules (规则), comparison with a reference ontology (对照标准) |
 
 Under "More examples" (更多示例) in the sidebar there are two more example uses of the same method: vehicle recall scope (NHTSA public data, no local service needed), and product and lot matching for food recall event 95876 (openFDA, which needs a separate local recall service started). See [docs/RECALL_EXAMPLE.md](docs/RECALL_EXAMPLE.md). OntoPoc is not affiliated with NHTSA or any carmaker, and its candidates are not defect findings.
 
 ## Privacy
 
 - Uploaded files and all results stay on this machine, in `output/ontology-runs/`.
-- Sent to the model (DeepSeek): the modelling purpose; for each table its row count, each column's name, up to 3 example values, the counts code took (values present, distinct values, whether all differ), the columns or column pairs that differ on every row, and likely links (including into the same table); every value of a category-like column; when writing questions, every value of columns with at most 12 distinct values; when you click "找出可能的对应" (find possible matches), for objects identified by a single field with 2 to 200 values, all identity values and how many rows each appears in; for documents, the text, at most 12 chunks per upload. The upload page shows exactly what will be sent for modelling, column by column.
+- Sent to the model (DeepSeek): the modelling purpose; for each table its row count, each column's name, up to 3 example values, the counts code took (values present, distinct values, whether all differ), the columns or column pairs that differ on every row, and likely links (including into the same table); every value of a category-like column; when writing questions, every value of columns with at most 12 distinct values, and any question you type in 智能问答 (Q&A) as written; when you click "起草" (draft) for field descriptions, each field's type and maximum length; when you click "找出可能的对应" (find possible matches), for objects identified by a single field with 2 to 200 values, all identity values and how many rows each appears in; for documents, the text, at most 12 chunks per upload. The upload page shows exactly what will be sent for modelling, column by column.
 - Each model call leaves one line in `output/ontology-runs/model_calls.jsonl` (which agent, how long, success or failure), never the content.
 - The service accepts requests from this machine only.
 
 ## Known issues
 
 - **Questions about a relation between objects of the same kind have no direction yet.** Relations such as employee reports-to or parent-child organisation can be modelled, verified and exported; but a question cannot say superior or subordinate, so it states the limit and stops.
-- **The model builds differently each time.** Three builds of one file often differ, now mainly in the relations: on Northwind (current prompt), all 8 objects appeared in all 3 builds, but only 3 of 7 relations did. The page marks where they disagree for you to decide.
+- **The model builds differently each time.** Three builds of one file often differ, now mainly in the relations: in one measurement on Northwind on 10-28 (8 kinds of object, 7 relations), 4 relations differed across the 3 builds, nearly all because the same relation ran the other way (order → customer / customer → order). The page marks where they disagree for you to decide.
 - **A new version may come with a different way of telling objects apart.** Once, Chicago's contracts went from "number + revision" to number alone; then only counts can be compared, not objects one by one, and the page says so ("识别方式已变更", identification changed).
 - **Code finds only some missing relations.** Removing each relation in turn on 17 saved runs (public and synthetic data), it found 24 of 33 again; on complete ontologies it has not suggested a false one.
 - **Queries cannot yet** filter by a numeric condition, limit to a time range, give two numbers in one question, or say which things tend to appear together. It says so when asked.
@@ -212,7 +212,7 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1082)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1082; install ".[check]" first, or 9 TTL checks are skipped)
 npm --prefix landing-page run test:unit                       # page tests (331)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
