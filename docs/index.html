@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OntoPoc — Ontology engineering from business tables</title>
+  <meta name="description" content="OntoPoc: ontology engineering for implementation consultants. LLM drafts an ontology from business tables or docs; code validates against data; a human confirms item by item. MCP tools and Claude Code plugin included.">
+  <meta name="keywords" content="ontology, ontology engineering, ontology mcp, knowledge graph, semantic layer, OWL, SHACL, Claude, MCP">
+  <link rel="canonical" href="https://longado.github.io/ontopoc/">
+  <meta name="robots" content="index,follow">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="OntoPoc">
+  <meta property="og:title" content="OntoPoc — Ontology engineering from business tables">
+  <meta property="og:description" content="Draft ontologies from business tables or docs. Code checks against data. Humans confirm item by item. MCP + Claude Code plugin.">
+  <meta property="og:url" content="https://longado.github.io/ontopoc/">
+  <meta property="og:image" content="https://longado.github.io/ontopoc/media/ontopoc-poster.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="OntoPoc — Ontology engineering from business tables">
+  <meta name="twitter:description" content="Ontology engineering: draft from tables/docs, validate with code, confirm with a human. MCP tools for agents.">
+  <meta name="twitter:image" content="https://longado.github.io/ontopoc/media/ontopoc-poster.png">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="icon" type="image/png" href="assets/ontopoc-logo.png">
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121a2b;
+      --panel-2: #182234;
+      --text: #e8eefc;
+      --muted: #9aa8c7;
+      --line: #243149;
+      --accent: #6ea8ff;
+      --accent-2: #8b5cf6;
+      --ok: #34d399;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #1a2744 0%, transparent 55%),
+                  radial-gradient(900px 500px at 100% 0%, #2a1b4a 0%, transparent 50%),
+                  var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { width: min(980px, calc(100% - 2rem)); margin: 0 auto; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.25rem 0; gap: 1rem; flex-wrap: wrap;
+    }
+    .brand { display: flex; align-items: center; gap: .75rem; }
+    .brand img { height: 28px; width: auto; }
+    nav { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .95rem; color: var(--muted); }
+    nav a { color: var(--muted); }
+    nav a:hover { color: var(--text); }
+    .hero {
+      padding: 2.5rem 0 1.5rem;
+      display: grid; gap: 1.25rem;
+    }
+    .badge {
+      display: inline-flex; gap: .5rem; align-items: center;
+      padding: .35rem .7rem; border-radius: 999px;
+      border: 1px solid var(--line); background: rgba(255,255,255,.03);
+      color: var(--muted); font-size: .85rem; width: fit-content;
+    }
+    .badge strong { color: var(--ok); font-weight: 600; }
+    h1 {
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      line-height: 1.2; margin: 0; letter-spacing: -0.02em;
+    }
+    .lede { color: var(--muted); font-size: 1.08rem; max-width: 46rem; margin: 0; }
+    .actions { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: .25rem; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: .7rem 1rem; border-radius: .7rem; font-weight: 600;
+      border: 1px solid transparent;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0b1220; }
+    .btn-primary:hover { text-decoration: none; filter: brightness(1.05); }
+    .btn-ghost { background: transparent; color: var(--text); border-color: var(--line); }
+    .btn-ghost:hover { text-decoration: none; border-color: var(--accent); }
+    .grid {
+      display: grid; gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin: 1.5rem 0 2rem;
+    }
+    .card {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--line); border-radius: 1rem; padding: 1.1rem 1.15rem;
+    }
+    .card h3 { margin: 0 0 .4rem; font-size: 1.05rem; }
+    .card p { margin: 0; color: var(--muted); font-size: .95rem; }
+    section { margin: 2.25rem 0; }
+    section h2 { margin: 0 0 .85rem; font-size: 1.35rem; letter-spacing: -0.01em; }
+    .faq details {
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: .85rem; padding: .9rem 1rem; margin: .65rem 0;
+    }
+    .faq summary { cursor: pointer; font-weight: 600; }
+    .faq details p { color: var(--muted); margin: .65rem 0 0; }
+    .code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #0a101c; border: 1px solid var(--line); border-radius: .75rem;
+      padding: .9rem 1rem; overflow-x: auto; font-size: .9rem; color: #d7e3ff;
+    }
+    footer {
+      border-top: 1px solid var(--line); margin-top: 2.5rem;
+      padding: 1.4rem 0 2.5rem; color: var(--muted); font-size: .9rem;
+    }
+    .note { font-size: .9rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <img src="assets/ontopoc-logo.png" alt="OntoPoc">
+      </div>
+      <nav>
+        <a href="https://github.com/Longado/ontopoc">GitHub</a>
+        <a href="https://github.com/Longado/ontopoc/blob/main/README.en.md#ontology-faq">Ontology FAQ</a>
+        <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">MCP docs</a>
+        <a href="https://x.com/linyutai120479">X</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="badge"><strong>Alpha</strong> · ontology engineering · MCP · human-in-the-loop</div>
+        <h1>From business tables to a checked ontology draft</h1>
+        <p class="lede">
+          OntoPoc is an ontology engineering direction still in development:
+          an LLM drafts objects, identity fields and relations from business tables or a document;
+          code validates the draft against the data; a person confirms item by item.
+          Main features are also available as <strong>ontology MCP</strong> tools and a Claude Code plugin.
+        </p>
+        <div class="actions">
+          <a class="btn btn-primary" href="https://github.com/Longado/ontopoc">Open on GitHub</a>
+          <a class="btn btn-ghost" href="https://github.com/Longado/ontopoc#use-with-mcp--claude">Use with MCP / Claude</a>
+        </div>
+      </div>
+
+      <div class="grid">
+        <article class="card">
+          <h3>Ontology engineering</h3>
+          <p>Turn business objects and relations into definitions you can check—not only a slide or a verbal agreement.</p>
+        </article>
+        <article class="card">
+          <h3>Not a knowledge graph platform</h3>
+          <p>Focus is the ontology (schema). OntoPoc is not a knowledge-graph platform and has no durable instance store.</p>
+        </article>
+        <article class="card">
+          <h3>Upstream of a semantic layer</h3>
+          <p>Sort objects, identity fields and definitions the first time client data arrives; export forms, pipeline notes, OWL/SHACL.</p>
+        </article>
+        <article class="card">
+          <h3>Ontology MCP</h3>
+          <p>32 MCP tools share the local modelling service with the UI. Claude Code plugin commands: build and review.</p>
+        </article>
+      </div>
+
+      <section id="mcp">
+        <h2>Use with MCP / Claude</h2>
+        <p class="note">Start the local modelling service first, then connect a client. Commands match the repository README.</p>
+        <pre class="code"># Claude Code plugin
+claude plugin marketplace add Longado/ontopoc
+claude plugin install ontopoc@ontopoc
+
+# Or add as an MCP server (from the repo root)
+claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server</pre>
+        <p class="note">Tool list: <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">docs/MCP.md</a>. Plugin commands: <code>/ontopoc:ontopoc-build</code>, <code>/ontopoc:ontopoc-review</code>.</p>
+      </section>
+
+      <section class="faq" id="faq">
+        <h2>Ontology FAQ</h2>
+        <details open>
+          <summary>What is ontology engineering here?</summary>
+          <p>Writing checkable definitions for business objects, how they are identified, and allowed relations. OntoPoc drafts from tables or a document, validates with code, then lets a person confirm.</p>
+        </details>
+        <details>
+          <summary>Ontology vs knowledge graph?</summary>
+          <p>An ontology states the types and allowed relations; a knowledge graph usually also holds concrete instances and their links. OntoPoc focuses on the ontology side for one upload at a time.</p>
+        </details>
+        <details>
+          <summary>How does this relate to a semantic layer?</summary>
+          <p>A semantic layer often defines business meaning on a warehouse or metrics platform. OntoPoc sits earlier: first-pass object and definition work before platform import (import itself is not yet tested).</p>
+        </details>
+        <details>
+          <summary>What is ontology MCP in OntoPoc?</summary>
+          <p>Calling ontology-related features through the Model Context Protocol. OntoPoc exposes 32 local MCP tools for Claude Code, Claude Desktop, Cursor and similar clients.</p>
+        </details>
+      </section>
+
+      <section>
+        <h2>Status</h2>
+        <p class="note">
+          Early version. Tried on public and synthetic datasets only. No user outside the author has completed the full flow independently.
+          UI exercised on macOS. Follow progress on
+          <a href="https://x.com/linyutai120479">@linyutai120479</a>.
+          Full Chinese / English docs live in the
+          <a href="https://github.com/Longado/ontopoc">GitHub README</a>.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <div>OntoPoc · MIT · <a href="https://github.com/Longado/ontopoc">github.com/Longado/ontopoc</a></div>
+      <div>Canonical docs site: <a href="https://longado.github.io/ontopoc/">longado.github.io/ontopoc</a></div>
+    </footer>
+  </div>
+</body>
+</html>
