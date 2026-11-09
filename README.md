@@ -24,6 +24,8 @@
   <a href="#参与共建">参与共建</a>
 </p>
 
+<p align="center"><sub>Ontology engineering · 在 X 跟进：<a href="https://x.com/linyutai120479">@linyutai120479</a></sub></p>
+
 <p align="center">
   <img src="docs/media/ontopoc-hero.gif" alt="OntoPoc 蓝色角色将业务表格连接为等待确认的本体关系草案" width="960">
 </p>

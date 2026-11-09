@@ -24,6 +24,8 @@
   <a href="#contributing">Contributing</a>
 </p>
 
+<p align="center"><sub>Ontology engineering · Follow on X: <a href="https://x.com/linyutai120479">@linyutai120479</a></sub></p>
+
 <p align="center">
   <img src="docs/media/ontopoc-hero.gif" alt="OntoPoc companion connects business tables into a draft ontology for review" width="960">
 </p>
