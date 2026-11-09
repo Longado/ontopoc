@@ -21,6 +21,8 @@
   <a href="README.md">中文</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#try-it">Try it</a> ·
+  <a href="#use-with-mcp--claude">MCP / Claude</a> ·
+  <a href="#ontology-faq">Ontology FAQ</a> ·
   <a href="#contributing">Contributing</a>
 </p>
 
@@ -140,6 +142,10 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 Open `http://127.0.0.1:5178`. The bundled samples open without a key. After changing backend code, restart the modelling service; the page says so when it finds the service running old code.
 
+## Use with MCP / Claude
+
+The main features are exposed as 32 MCP tools, and the repository is also a Claude Code plugin. The tools share the local modelling service with the page: start the service first, then connect a client.
+
 ### Install as a Claude Code plugin
 
 The repository is itself a Claude Code plugin. Once installed you can build and confirm ontologies from Claude Code; modelling, checking and the confirmation record still happen in the local OntoPoc service, so start it first (see above).
@@ -176,6 +182,28 @@ The tool list is in [docs/MCP.md](docs/MCP.md).
 | Data check (数据体检) | 7 checks, rules (规则), comparison with a reference ontology (对照标准) |
 
 Under "More examples" (更多示例) in the sidebar there are two more example uses of the same method: vehicle recall scope (NHTSA public data, no local service needed), and product and lot matching for food recall event 95876 (openFDA, which needs a separate local recall service started). See [docs/RECALL_EXAMPLE.md](docs/RECALL_EXAMPLE.md). OntoPoc is not affiliated with NHTSA or any carmaker, and its candidates are not defect findings.
+
+## Ontology FAQ
+
+### What is ontology engineering?
+
+Here, ontology engineering means turning business objects, how they are identified, and the relations between them into definitions you can check. OntoPoc is trying a concrete path: draft an ontology from a few business tables or one document, let code check the draft against the data, then have a person confirm item by item and save the result.
+
+### How is an ontology different from a knowledge graph?
+
+An ontology first states which objects exist, how they are identified, and which relations are allowed. A knowledge graph usually also contains specific instances and their relations. OntoPoc focuses on the former: drafting and checking definitions, then running checks and Q&A on the data you uploaded this time. It is not a knowledge-graph platform and does not provide a durable instance store or online object query.
+
+### How does this relate to a semantic layer?
+
+A semantic layer often sits on a warehouse or metrics platform and defines business meaning (objects, measures, definitions) for reuse in queries. OntoPoc sits one step earlier: the first time you receive a client's tables or a document, it helps sort objects, identity fields, relations, and the definitions that still need the client's answer. You can export object forms, a pipeline requirements sheet, and Turtle (OWL / SHACL) for later platform or pipeline work. Import into any specific platform has not been tested yet.
+
+### What is an ontology MCP, and how do I use it here?
+
+Here, ontology MCP means calling ontology-related functions through MCP tools. OntoPoc exposes the main page features as MCP tools (32 in all) for clients such as Claude Code, Claude Desktop, and Cursor. The tools use local stdio and talk to the modelling service already running on this machine. Claude Code can also install the repository as a plugin and use `/ontopoc:ontopoc-build` and `/ontopoc:ontopoc-review`. Setup is under [Use with MCP / Claude](#use-with-mcp--claude); the tool list is in [docs/MCP.md](docs/MCP.md).
+
+### Who is OntoPoc for today?
+
+The intended user is an implementation consultant on a data platform, sorting business objects and relations the first time client data arrives. No one outside the author has completed the full flow independently yet; the UI has only been used on macOS. See [Known issues](#known-issues) for current limits.
 
 ## Privacy
 

@@ -21,6 +21,8 @@
   <a href="README.en.md">English</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#快速体验">快速体验</a> ·
+  <a href="#用-mcp--claude-接入">MCP / Claude</a> ·
+  <a href="#本体-faq">本体 FAQ</a> ·
   <a href="#参与共建">参与共建</a>
 </p>
 
@@ -138,6 +140,10 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 访问 `http://127.0.0.1:5178`。未配置 key 时仍可查看内置示例。修改后端代码后需重启建模服务，页面检测到服务运行旧代码时会提示。
 
+## 用 MCP / Claude 接入
+
+OntoPoc 的主要功能已封装为 32 个 MCP 工具，也可作为 Claude Code 插件安装。工具与页面共用本机建模服务：先启动服务，再接入客户端。
+
 ### 作为 Claude Code 插件安装
 
 仓库本身就是一个 Claude Code 插件。安装后可在 Claude Code 里直接建本体、逐项确认；建模、核验和确认记录仍在本机 OntoPoc 服务里完成，使用前需要先启动它（见上文）。
@@ -174,6 +180,28 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
 | 数据体检 | 7 项数据检查、数据规则、与参考本体比对 |
 
 侧边栏“更多示例”里另有两个应用示例：用同一方法研判汽车召回范围（NHTSA 公开数据，不需要本机服务），以及食品召回事件 95876 的产品与批号匹配（openFDA，需另启本机召回服务），说明见 [docs/RECALL_EXAMPLE.md](docs/RECALL_EXAMPLE.md)。OntoPoc 与 NHTSA 及任何汽车厂商无关联，候选结果不构成缺陷认定。
+
+## 本体 FAQ
+
+### 什么是 ontology engineering（本体工程）？
+
+在这里，本体工程（ontology engineering）是把业务里的对象、识别方式和对象之间的关系写成可检查的定义。OntoPoc 在试的做法是：从几张业务表或一份文档起草本体草案，由代码对照数据检查，再由人逐项确认后存下来。
+
+### Ontology 和 knowledge graph（知识图谱）有什么不同？
+
+Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什么关系」；knowledge graph 通常还包含具体的实例及其关系。OntoPoc 侧重前者：起草并核对定义，并在本次上传的数据上做检查与问答。它不是知识图谱平台，也不提供持久实例库或线上对象查询。
+
+### 这和 semantic layer（语义层）是什么关系？
+
+语义层常指在数仓或指标平台上，定义业务含义（对象、指标、口径）供查询复用。OntoPoc 做的是更靠前的一步：第一次拿到客户表或文档时，整理对象、识别字段、关系，以及需要和客户确认的口径；可导出对象表单、编排需求单和 Turtle（OWL / SHACL），交给后续的数据平台或管道工作。是否导入某个具体平台，目前尚未实测。
+
+### 什么是 ontology MCP？可以怎么用？
+
+这里的 ontology MCP 指通过 MCP 工具调用本体相关功能。OntoPoc 把页面上的主要能力做成 MCP 工具（共 32 个），供 Claude Code、Claude Desktop、Cursor 等支持 MCP 的客户端调用。工具走本机 stdio，调用的是本机正在运行的建模服务。Claude Code 也可直接装仓库插件后使用 `/ontopoc:ontopoc-build` 与 `/ontopoc:ontopoc-review`。接法见[用 MCP / Claude 接入](#用-mcp--claude-接入)，工具清单见 [docs/MCP.md](docs/MCP.md)。
+
+### OntoPoc 现在适合谁用？
+
+设想中的使用者是数据平台的实施顾问：第一次拿到客户数据时，用它梳理业务对象及其关系。现在没有作者以外的用户独立完成全流程；页面仅在 macOS 上实际用过。更多边界见[已知问题](#已知问题)。
 
 ## 隐私
 
