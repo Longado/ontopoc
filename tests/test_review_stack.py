@@ -8,7 +8,7 @@ import unittest
 
 from ontology_poc_generator.ontology_card import CardError
 from ontology_poc_generator.open_items import check_answers, linked_cells, split_answers
-from ontology_poc_generator.review_stack import anchor_changes, menu
+from ontology_poc_generator.review_stack import anchor_changes, anchor_of, menu
 from tests.test_open_items import AT, AnswerTests
 from tests.test_open_items_server import fetch
 from tests.test_ontology_server import OntologyServerTests
@@ -126,10 +126,14 @@ class ReturnTests(unittest.TestCase):
         open_, _ = split_answers([self.listed(anchor={'members': ['0', '1', '2', '9']})], {self.ITEM['id']: old})
         self.assertEqual(open_, [])
 
-    def test_an_item_with_no_anchor_of_its_own_is_held_to_its_facts(self):
-        was = {'noun': '内容', 'members': ['A：1 行']}
-        self.assertEqual(anchor_changes(was, {'noun': '内容', 'members': ['A：1 行', 'B：2 行']}), ['多了内容：B：2 行'])
-        self.assertEqual(anchor_changes(was, was), [])
+    def test_an_item_with_nothing_structured_keeps_no_anchor_and_never_comes_back_whatever_its_facts_say(self):
+        """Facts are sentences with counts in them, capped at three: another card's decision rewrites them, a count 100 to 96 changes them."""
+        item = {'id': 'data_gap:x', 'kind': 'data_gap', 'ask': '问', 'facts': ['产品 CP01：100 行']}
+        self.assertIsNone(anchor_of(item))
+        kept = check_answers([item], [{'id': item['id'], 'reply': 'exception', 'text': '知道'}], '王工', '2026-11-13T00:00:00+00:00')
+        self.assertNotIn('anchor', kept[item['id']])
+        open_, answered = split_answers([{**item, 'facts': ['产品 CP01：96 行', '产品 CP02：3 行']}], kept)
+        self.assertEqual((open_, len(answered)), ([], 1))
 
 
 class StackRouteTests(unittest.TestCase):
@@ -202,6 +206,68 @@ class StackRouteTests(unittest.TestCase):
             self.assertNotIn(self.ITEM, {i['id'] for i in body['answered']})
         self.run_with(check)
 
+    def test_an_item_with_choices_of_its_own_says_it_can_also_be_answered_in_words_alone_and_that_is_kept(self):
+        def check(base, out, name):
+            items = {i['id']: i for i in self.listed(base, name)['items']}
+            calc = items['name_vs_calc:交付统计.交付天数P50']
+            self.assertTrue(calc['free_text'])
+            self.assertFalse(any(items[i].get('free_text') for i in (self.ITEM, 'check_finding:identity_conflicts')))
+            status, body = call(base, '/api/ontology/card', {'saved_as': name, 'by': '王工', 'items': [{'id': calc['id'], 'text': '客户说是平均数，下周给口径'}]})
+            self.assertEqual(status, 200, body)
+            [done] = [i for i in body['answered'] if i['id'] == calc['id']]
+            self.assertEqual((done['answer']['text'], done['answer']['choice']), ('客户说是平均数，下周给口径', None))
+        self.run_with(check)
+
+    def test_what_was_decided_through_the_code_and_repeat_endpoints_can_be_taken_back_and_the_card_is_in_the_stack_again(self):
+        def check(base, out, name):
+            code, other, repeat = 'code_meaning:订单.状态码', 'code_meaning:客户.客户等级', self.ITEM
+            call(base, '/api/ontology/code-meanings', {'saved_as': name, 'id': code, 'confirmed_by': '王工',
+                                                                       'values': [{'value': '0', 'label': '新建'}, {'value': '1', 'label': '已发货'}, {'value': '2', 'label': '已取消'}]})
+            call(base, '/api/ontology/code-meanings/dismiss', {'saved_as': name, 'id': other, 'confirmed_by': '王工'})
+            call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': repeat, 'rule': 'keep_both', 'confirmed_by': '王工'})
+            settled = {s['id'] for s in self.listed(base, name)['settled']}
+            self.assertTrue({code, other, repeat} <= settled, settled)
+            self.assertNotIn(code, {i['id'] for i in self.listed(base, name)['items']})
+            for take_back in (('/api/ontology/code-meanings/withdraw', {'id': code}), ('/api/ontology/code-meanings/withdraw', {'id': other}), ('/api/ontology/repeat-rules', {'id': repeat, 'rule': None})):
+                status, body = call(base, take_back[0], {'saved_as': name, 'confirmed_by': '王工', **take_back[1]})
+                self.assertEqual(status, 200, body)
+            listed = self.listed(base, name)
+            self.assertTrue({code, other, repeat} <= {i['id'] for i in listed['items']})
+            self.assertFalse({code, other, repeat} & {s['id'] for s in listed['settled']})
+            self.assertEqual(call(base, '/api/ontology/code-meanings/withdraw', {'saved_as': name, 'id': code})[0], 400)   # nothing left to take back
+        self.run_with(check)
+
+    def test_an_old_run_refuses_replies_and_reopening_so_the_newest_runs_decision_stays(self):
+        def check(base, out, name):
+            from tests.test_workspace_store import planted_bundle
+            records = planted_bundle()['sources']['客户']['records']
+            lines = [','.join(records[0]), *(','.join(r[c] or '' for c in records[0]) for r in records), ','.join(records[2][c] if c != '城市' else '成都' for c in records[0])]
+            files = [f for f in self.files if not f['filename'].startswith('客户')] + [{'filename': '客户.csv', 'content_base64': base64.b64encode('\n'.join(lines).encode('utf-8')).decode()}]
+            _, newer = call(base, '/api/ontology/build', {'files': files, 'previous': name})
+            conflicts = 'check_finding:identity_conflicts'
+            status, _ = call(base, '/api/ontology/card', {'saved_as': newer['saved_as'], 'by': '王工', 'items': [{'id': conflicts, 'reply': 'exception', 'text': '已知'}]})
+            self.assertEqual(status, 200)
+            for reply in ({'reply': 'reopen'}, {'reply': 'not_applicable'}, {'reply': 'exception', 'text': '又一个'}):
+                status, body = call(base, '/api/ontology/card', {'saved_as': name, 'by': '李工', 'items': [{'id': conflicts, **reply}]})
+                self.assertEqual(status, 400, (reply, body))
+                self.assertIn('有更新的版本', body['error'])
+            self.assertIn(conflicts, {i['id'] for i in self.listed(base, newer['saved_as'])['answered']})
+        self.run_with(check)
+
+    def test_another_cards_decision_does_not_bring_a_settled_card_back_because_its_facts_were_reworded(self):
+        """The reviewer's repro: an exception on the 129-conflicts card, then 每一行都留 on the customer repeat card."""
+        def check(base, out, name):
+            conflicts = 'check_finding:identity_conflicts'
+            status, body = call(base, '/api/ontology/card', {'saved_as': name, 'by': '王工', 'items': [{'id': conflicts, 'reply': 'exception', 'text': '已知，按最新的算'}]})
+            self.assertEqual(status, 200, body)
+            self.assertNotIn('anchor', next(i for i in body['answered'] if i['id'] == conflicts)['answer'])   # nothing structured to hold it to
+            status, body = call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': self.ITEM, 'rule': 'keep_both', 'confirmed_by': '王工'})
+            self.assertEqual(status, 200, body)
+            listed = self.listed(base, name)
+            self.assertIn(conflicts, {i['id'] for i in listed['answered']})
+            self.assertNotIn(conflicts, {i['id'] for i in listed['items']})
+        self.run_with(check)
+
     def test_a_key_that_repeats_for_the_first_time_after_an_exception_asks_again(self):
         def check(base, out, name):
             call(base, '/api/ontology/card', {'saved_as': name, 'by': '王工', 'items': [{'id': self.ITEM, 'reply': 'exception', 'text': '同一个客户'}]})
@@ -244,7 +310,7 @@ from ontology_poc_generator.review_stack import relation_band   # noqa: E402
 class BandTests(unittest.TestCase):
     """What code verifies completely, and nothing a person has to judge."""
     SIDE = {'end': 'to', 'object': 'customer', 'other': 'order', 'lookup': '客户', 'rows': 160, 'matched': 160, 'fanout': {'keys': 0}}
-    RELATION = {'key': 'oc', 'from': 'order', 'to': 'customer', 'own_ends': ['from'], 'sides': [SIDE],
+    RELATION = {'key': 'oc', 'from': 'order', 'to': 'customer', 'own_ends': ['from'], 'own_blank': {'from': 0}, 'sides': [SIDE],
                 'cardinality': {'declared': 'many_to_one', 'observed': 'many_to_one', 'holds': True}}
     DECIDED = {'types': {'order': {'verdict': 'ok'}, 'customer': {'verdict': 'ok'}}, 'relations': {}}
     NAMES = {'order': '订单', 'customer': '客户'}
@@ -268,6 +334,7 @@ class BandTests(unittest.TestCase):
     def test_a_declared_cardinality_that_fails_or_says_nothing_is_never_in_it(self):
         self.assertEqual(self.band({'cardinality': {'declared': 'one_to_one', 'observed': 'many_to_one', 'holds': False}}), [])
         self.assertEqual(self.band({'cardinality': {'declared': 'many_to_many', 'observed': 'many_to_many', 'holds': True}}), [])
+        self.assertEqual(self.band({'cardinality': {'declared': 'one_to_many', 'observed': 'one_to_many', 'holds': True}}), [])   # holding is not the same as safe to walk
 
     def test_a_row_left_a_fan_out_an_empty_table_or_no_check_is_never_in_it(self):
         for name, over in (('unmatched row', {'sides': [{**self.SIDE, 'matched': 157}]}), ('fan-out', {'sides': [{**self.SIDE, 'fanout': {'keys': 1}}]}),
@@ -278,6 +345,8 @@ class BandTests(unittest.TestCase):
     def test_both_ends_must_be_verified_one_as_a_side_and_the_other_as_the_relations_own_table_or_both_as_sides(self):
         self.assertEqual(self.band({'own_ends': []}), [])   # nothing was looked up for the `from` end
         self.assertEqual(self.band({'own_ends': None}), [])
+        self.assertEqual(self.band({'own_blank': {'from': 4}}), [], '4 of 10 rows with no order number must not read as every row connecting')
+        self.assertEqual(self.band({'own_blank': {}}), [])   # a run kept before the check counted them
         relation = {k: v for k, v in self.RELATION.items() if k != 'own_ends'}
         self.assertEqual(relation_band([relation], self.DECIDED, lambda k: k, lambda r: r['key']), [])   # a run kept before the check said so
         both = {'own_ends': [], 'sides': [self.SIDE, {**self.SIDE, 'end': 'from', 'object': 'order', 'other': 'customer', 'lookup': '订单'}]}
@@ -416,6 +485,7 @@ class BulkApproveRouteTests(unittest.TestCase):
             self.assertEqual(status, 400)
             self.assertIn('有 8 件', body['error'])
             self.assertEqual(body['error'].count('relation:r'), 5)   # the first five are named, not all
+            self.assertLess(len(self.approve(base, name, ['relation:' + 'x' * 100_000])[1]['error']), 300)   # nor is one long id echoed whole
             self.assertEqual(self.approve(base, '20260101T000000Z-deadbeef.json', ['x'])[0], 404)
             self.assertEqual(self.rows(out, 'relation:%'), [])
         self.with_run(check)
@@ -433,6 +503,23 @@ class BulkApproveRouteTests(unittest.TestCase):
             self.assertIn('有更新的版本', body['error'])
             self.assertEqual(self.listed(base, name)['bulk'], [])
             self.assertEqual(self.rows(out, 'relation:%order_product'), [])
+        self.with_run(check)
+
+    def test_a_normal_confirm_that_read_the_run_before_a_bulk_approval_landed_writes_nothing_instead_of_taking_the_relation_back(self):
+        from unittest import mock
+        import ontology_poc_generator.ontology_server as server
+        def check(base, out, name):
+            real = server.element_changes
+            def after_the_bulk_approval(*args):   # the confirm has read the run; a bulk approval lands before it takes the lock
+                self.assertEqual(self.approve(base, name, ['relation:order_product'])[0], 200)
+                return real(*args)
+            with mock.patch.object(server, 'element_changes', after_the_bulk_approval):
+                status, body = call(base, '/api/ontology/confirm', {'saved_as': name, 'decisions': {'types': self.types, 'relations': {}}, 'confirmed_by': '赵工'})
+            self.assertEqual(status, 409, body)
+            self.assertIn('刷新', body['error'])
+            self.assertEqual(json.loads((out / name).read_text(encoding='utf-8'))['confirmation']['decisions']['relations'], {'order_product': {'verdict': 'ok'}})
+            self.assertEqual([r[1:3] for r in self.rows(out, 'relation:%')], [('confirmed', '王工')])
+            self.assertEqual({r[2] for r in self.rows(out, 'object_type:%')}, {'李工'})
         self.with_run(check)
 
     def test_a_band_that_changed_between_the_check_and_the_write_writes_nothing(self):

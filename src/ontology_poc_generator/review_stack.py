@@ -75,10 +75,12 @@ def card_replies(kind: str) -> tuple:
     return tuple(m['id'] for m in menu(kind) if m['id'] in REPLY_SAYS)
 
 
-def anchor_of(item: dict) -> dict:
-    """What the item is about, as a decision about it keeps it: {'noun', 'members' (what it names: values, keys, lines of facts),
-    'counts' ({what counted: how many}) and 'total' (of how many rows)}. An item that did not work its own out is about its facts."""
-    return item.get('anchor') or {'noun': '内容', 'members': list(item.get('facts') or [])}
+def anchor_of(item: dict) -> dict | None:
+    """What the item is about, as a decision about it keeps it: {'noun', 'members' (what it names: values, keys),
+    'counts' ({what counted: how many}) and 'total' (of how many rows)}. None for an item that has nothing structured: its facts are
+    sentences with counts in them, capped at three, and they change when another card's decision does, so they are no anchor
+    and a decision about such an item never comes back by itself."""
+    return item.get('anchor')
 
 
 def anchor_changes(was: dict, now: dict) -> list[str]:
@@ -130,12 +132,13 @@ CARDINALITY_SAYS = {'one_to_one': '一对一', 'many_to_one': '多对一', 'one_
 
 
 def cardinality_line(cardinality: dict, source: str, target: str) -> str | None:
-    """Why the relation's cardinality is no reason to look at it, in words; None when it is. Either it was declared and the data holds to it
-    (a declared many-to-many holds to anything: it says nothing), or it was not declared and the data is computed one-to-one or
-    many-to-one: one `source` reaches at most one `target`, so walking the relation never multiplies rows."""
+    """Why the relation's cardinality is no reason to look at it, in words; None when it is. Either it was declared one-to-one or
+    many-to-one and the data holds to it (a declared many-to-many holds to anything, and a one-to-many multiplies the rows of what
+    it is walked from: neither says "safe"), or it was not declared and the data is computed one-to-one or many-to-one: one `source`
+    reaches at most one `target`, so walking the relation never multiplies rows."""
     declared, observed = cardinality.get('declared'), cardinality.get('observed')
     if declared:
-        return f'声明为{CARDINALITY_SAYS[declared]}，数据里成立' if declared in CARDINALITY_SAYS and cardinality.get('holds') is True else None
+        return f'声明为{CARDINALITY_SAYS[declared]}，数据里成立' if declared in ('one_to_one', 'many_to_one') and cardinality.get('holds') is True else None
     return f'没有声明，按数据算是{CARDINALITY_SAYS[observed]}：每个{source}只对一个{target}' if observed in ('one_to_one', 'many_to_one') else None
 
 
@@ -154,6 +157,8 @@ def relation_band(relations: list[dict], decisions: dict | None, label, relation
         sides = r['sides']
         if not sides or {s['end'] for s in sides} | set(r.get('own_ends') or []) != {'from', 'to'}:
             continue   # an end that nothing was looked up against is not verified
+        if any((r.get('own_blank') or {}).get(end) != 0 for end in r.get('own_ends') or []):
+            continue   # rows that name no object at their own end: "every row connects" would count them as rows of that object
         if any(not s['rows'] or s['matched'] != s['rows'] or s['fanout']['keys'] for s in sides):
             continue
         how = cardinality_line(r['cardinality'], label(r['from']), label(r['to']))

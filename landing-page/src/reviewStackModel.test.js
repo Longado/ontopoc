@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bulkLabel, bulkProblem, bulkSummary, cardEntry, decidedHow, isTyping, movedIndex, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
+import { TEXT_REPLY, bulkLabel, bulkProblem, bulkSummary, cardEntry, decidedHow, draftKey, isTyping, leftCount, movedIndex, prefillFor, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
 
 const reply = (id, needs_text = false) => ({ id, label: id, needs_text });
 const unlinked = { id: "unlinked:a", kind: "unlinked", replies: [reply("expected"), reply("incomplete"), reply("not_applicable"), reply("exception", true)] };
@@ -15,6 +15,29 @@ test("the progress line says what is left and what is decided, and when everythi
   assert.equal(stackLine(1, 0), "还剩 1 件，已定 0 件");
   assert.equal(stackLine(0, 5), "都定了，共 5 件");
   assert.equal(stackLine(0, 0), "");
+});
+
+test("the cards that cannot be answered on a card (the data card to fill in, objects to judge) are not counted as left", () => {
+  assert.equal(leftCount([unlinked, repeated, { kind: "card_blank" }, { kind: "unjudged" }]), 2);
+  assert.equal(leftCount([{ kind: "card_blank" }]), 0);
+});
+
+test("each reply keeps its own words: a reason typed for an exception is not the note of a not-applicable", () => {
+  assert.notEqual(draftKey("unlinked:a", "exception"), draftKey("unlinked:a", "not_applicable"));
+  assert.notEqual(draftKey("unlinked:a", "exception"), draftKey("repeated_key:c", "exception"));
+  assert.equal(draftKey("unlinked:a", null), draftKey("unlinked:a", undefined));
+});
+
+test("words alone are sent as text with no choice or reply, and need to be written", () => {
+  assert.deepEqual(cardEntry(unlinked, TEXT_REPLY, form({ text: " 客户说晚点答 ", basis: "10-27 会议" })), { id: "unlinked:a", text: "客户说晚点答", basis: "10-27 会议" });
+  assert.deepEqual(replyAsks(unlinked, TEXT_REPLY), { label: "客户怎么答的", required: true });
+  assert.equal(replyProblem(unlinked, TEXT_REPLY, form(), "王工"), "先写客户怎么答的");
+});
+
+test("an answer taken back to be changed starts the form with its reply and words: a choice, a general reply, or words alone", () => {
+  assert.deepEqual(prefillFor({ id: "u", answer: { choice: "incomplete", text: "只导了一季", basis: "会议" } }), { id: "u", reply: "incomplete", text: "只导了一季", basis: "会议" });
+  assert.deepEqual(prefillFor({ id: "u", answer: { reply: "exception", text: "测试单" } }), { id: "u", reply: "exception", text: "测试单", basis: "" });
+  assert.deepEqual(prefillFor({ id: "u", free_text: true, answer: { text: "晚点答" } }), { id: "u", reply: "text", text: "晚点答", basis: "" });
 });
 
 test("keys 1 to 4 pick the reply in that place on this card and no other key picks one", () => {

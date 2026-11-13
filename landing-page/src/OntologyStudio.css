@@ -613,6 +613,8 @@ small.os-tone-warn { color: var(--amber); }
 .os-reply[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-ink); }
 .os-reply:disabled { opacity: 0.45; cursor: not-allowed; }
 .os-reply-form { display: grid; gap: 8px; max-width: 560px; }
+.os-reply-why { font-size: 13px; }
+.os-free-text { justify-self: start; padding: 0; font-size: 13px; }
 .os-reply-form label { display: grid; gap: 4px; color: var(--text-2); font-size: 13px; }
 .os-open-item { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid var(--edge); border-radius: 10px; background: var(--canvas); }
 .os-open-body { display: grid; gap: 6px; min-width: 0; }

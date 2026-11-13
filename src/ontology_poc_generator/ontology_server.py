@@ -67,8 +67,8 @@ MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus t
 MAX_BULK = 200   # relations approved in one request: far above what a run has
 
 
-class BandChanged(ValueError):
-    """The clean band is no longer what the person was shown; the message says so and nothing was written."""
+class RunChanged(ValueError):
+    """What the person was shown (the clean band, the run's confirmations) changed under them before the write; nothing was written."""
 
 
 SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
@@ -1238,6 +1238,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/code-meanings/dismiss':
                 self.dismiss_code_column()
                 return
+            if self.path == '/api/ontology/code-meanings/withdraw':
+                self.withdraw_code_decision()
+                return
             if self.path == '/api/ontology/bulk-approve':
                 self.bulk_approve()
                 return
@@ -1514,6 +1517,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 cells_raw, items_raw = payload.get('cells') or [], payload.get('items') or []
                 if not cells_raw and not items_raw:
                     raise ValueError('cells、items 至少要给一样')
+                if items_raw:
+                    stale_check(found[0])   # an answer keeps what the item was about on these rows: not older ones, and a reopen must not wipe the newest run's
                 now = datetime.now(timezone.utc).isoformat(timespec='seconds')
                 cells = check_cells(card, cells_raw, payload.get('by'), now)
                 answers = check_answers([*items, *answered], items_raw, payload.get('by'), now)
@@ -1794,6 +1799,38 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.keep_code_state(found, (f'property:{memory_key(found[0])}:{profile["field"]}', 'rejected', f'open_item:{profile["id"]}', signer, {'mode': check_mode(payload)}), '“不是代码”',
                                  f'「{profile["column"]}」被说成不是代码列')
 
+        def withdraw_code_decision(self):
+            """{"saved_as", "id": "code_meaning:<table>.<column>", "confirmed_by"}: take back what was decided about a code column, whether its
+            meanings were confirmed or it was said not to be a code; the column is a question again. Answers with the lists as they now stand."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                found = workspace_run(str(payload.get('saved_as') or ''))
+                if found is None:
+                    raise ValueError('这份运行没有数据表，没有代码列')
+                signer = payload.get('confirmed_by')
+                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
+                    raise ValueError('确认人最多写 40 个字')
+                stale_check(found[0])
+                prefix = f'property:{memory_key(found[0])}:'
+                field = str(payload.get('id') or '').removeprefix('code_meaning:')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    decided = {*element_contents(conn, prefix), *element_rejected(conn, prefix)}
+                finally:
+                    conn.close()
+                if field not in decided:
+                    raise ValueError('这一列没有定过什么，没有可收回的')
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            column = field.partition('.')[2]
+            self.keep_code_state(found, (f'{prefix}{field}', 'proposed', None, (signer or '').strip() or None), '收回', f'「{column}」的判断已收回')
+
         def bulk_approve(self):
             """{"saved_as", "ids", "confirmed_by"}: approve together what is in the clean band (review_stack.relation_band): relations code
             verifies completely. The band is worked out again from the stored run, and once more inside the write; an id that is not in it
@@ -1808,6 +1845,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 found = workspace_run(name)
                 if found is None:
                     raise ValueError('这份运行没有数据表')
+                if payload.get('mode', 'bulk') != 'bulk':
+                    raise ValueError('一起通过的 mode 只能是 bulk')
                 signer = payload.get('confirmed_by')
                 if not isinstance(signer, str) or not signer.strip() or len(signer.strip()) > 40:
                     raise ValueError('要写确认人，最多 40 个字')
@@ -1820,7 +1859,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 in_band = {b['id'] for b in bulk_band_of(found[0], None)}
                 outside = [i for i in ids if i not in in_band]
                 if outside:
-                    raise ValueError(f'有 {len(outside)} 件不在可以一起通过的范围里（有检查没通过、依据不够强，或已经定了）：{"、".join(outside[:5])}{"等" if len(outside) > 5 else ""}')
+                    raise ValueError(f'有 {len(outside)} 件不在可以一起通过的范围里（有检查没通过，或已经定了）：{"、".join(i[:60] for i in outside[:5])}{"等" if len(outside) > 5 else ""}')
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
                 return
@@ -1830,7 +1869,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             try:
                 self.keep_bulk_relations(name, [i.partition(':')[2] for i in ids], ids, signer)
                 found = workspace_run(name)   # read again: what was kept is part of what every reader sees
-            except BandChanged as exc:
+            except RunChanged as exc:
                 self.reply(409, {'error': str(exc)})
                 return
             except Exception as exc:
@@ -1853,7 +1892,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 with element_state_writes(conn, changes) as rows:
                     result = json.loads(path.read_text(encoding='utf-8'))   # as it is now, with the write lock held
                     if newer_run(result) or not set(ids) <= {b['id'] for b in bulk_band_of(result, None)}:
-                        raise BandChanged('这期间清单变了，什么都没有通过；请再看一遍清单')
+                        raise RunChanged('这期间清单变了，什么都没有通过；请再看一遍清单')
                     confirmation = result['confirmation']
                     decisions = {**confirmation['decisions'], 'relations': {**(confirmation['decisions'].get('relations') or {}), **{k: {'verdict': 'ok'} for k in keys}}}
                     reference = confirmed_reference(result['ontology'], decisions)
@@ -2037,11 +2076,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         if kind == 'relations' and change[1] == 'confirmed' and rkey in seen:
                             changes[name] = (*change, None, stored_anchors(relation_anchor(seen[rkey])))
                     with element_state_writes(conn, list(changes.values())) as rows:
+                        if json.loads(result_path.read_text(encoding='utf-8')).get('confirmation') != result.get('confirmation'):   # read again with the write lock held
+                            raise RunChanged('这期间这次运行的确认有了变化（比如别人批量通过了关系），什么都没有保存；请刷新页面后再确认')
                         result = self.keep_confirmation(result, result_path, payload, reference, signer, rules, {
                             name: {k: rows[change[0]][k] for k in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
                             for name, change in changes.items()})
                 finally:
                     conn.close()
+            except RunChanged as exc:
+                self.reply(409, {'error': str(exc)})
+                return
             except Exception as exc:   # whatever failed, the person is told and nothing of the confirmation is kept
                 self.reply(500, {'error': f'确认没有保存：{type(exc).__name__}: {exc}'[:300]})
                 return

@@ -511,9 +511,9 @@ def open_items(run: dict, bundle: dict, graph: dict | None = None, card: dict | 
 
 def with_replies(items: list, bundle: dict | None = None) -> list:
     """Each item as the review stack shows it: with the replies its kind offers (review_stack.menu) and, for a code column, one
-    row for each of its first values from the stored table. Done where the lists are served, not in open_items, which the
+    row for each of its first values from the stored table; `free_text` where a person can answer in words without picking a choice. Done where the lists are served, not in open_items, which the
     minutes and the MCP tools read as well."""
-    return [{**i, 'replies': menu(i['kind']),
+    return [{**i, 'replies': menu(i['kind']), **({'free_text': True} if CHOICES.get(i['kind']) else {}),   # an item with choices of its own can also be answered in words alone
              **({'examples': e} if i['kind'] == 'code_meaning' and bundle and (e := code_examples(i, bundle)) else {})} for i in items]
 
 
@@ -559,7 +559,7 @@ def check_answers(listed: list, raw, by, at: str) -> dict:
         if choice is None and reply is None and not text:
             raise CardError('要选一个答复，或写几个字')
         out[item['id']] = {'choice': choice, 'text': text, 'by': by, 'basis': basis, 'at': at, 'asked': item['ask'], 'mode': mode,
-                           **({'reply': reply} if reply else {}), **({'anchor': anchor_of(item)} if reply in RECORDED else {})}
+                           **({'reply': reply} if reply else {}), **({'anchor': anchor} if reply in RECORDED and (anchor := anchor_of(item)) else {})}
     return out
 
 

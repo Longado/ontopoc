@@ -90,7 +90,7 @@ def _side_numbers(conn, s_table: str, d_table: str, mine: list[str], d_cols: lis
 def check_relations(conn, ontology: dict, datasets: dict[str, dict]) -> list[dict]:
     """One entry per relation that can be checked: {'key', 'from', 'to', 'source', 'dataset_id', 'version', 'sides': [one per end
     with a describing table], 'own_ends': the ends whose describing table is the relation's own table read by its own key (nothing
-    to look up), 'cardinality'}. See the top of the file for what each holds."""
+    to look up), 'own_blank' (for each of them, the rows whose key there is blank), 'cardinality'}. See the top of the file for what each holds."""
     p = normalize_proposal(ontology)
     own = describes_rows(ontology)
     columns = lambda d: {r[0] for r in conn.execute('SELECT name FROM "column" WHERE dataset_id = ?', (d['id'],))}
@@ -106,7 +106,7 @@ def check_relations(conn, ontology: dict, datasets: dict[str, dict]) -> list[dic
         if not all(set(c) <= known for c in cols.values()):
             continue
         s_table = _quote(source['table_name'])
-        sides, own_ends = [], []
+        sides, own_ends, own_blank = [], [], {}
         for end, other in (('to', 'from'), ('from', 'to')):
             pop = _describing(p, own, r[end], set(binds[end]))
             d = datasets.get(pop['source']) if pop else None
@@ -115,6 +115,7 @@ def check_relations(conn, ontology: dict, datasets: dict[str, dict]) -> list[dic
             d_cols = [pop['identity'][k] for k in logical[end]]
             if d['id'] == source['id'] and d_cols == cols[end]:   # a table's own key matches itself: nothing to check, and nothing missing
                 own_ends.append(end)
+                own_blank[end] = conn.execute(f'SELECT COUNT(*) FROM {s_table} s WHERE NOT ({_filled("s", cols[end])})').fetchone()[0]   # rows that name no object at this end
                 continue
             if not set(d_cols) <= columns(d):
                 continue
@@ -147,7 +148,7 @@ def check_relations(conn, ontology: dict, datasets: dict[str, dict]) -> list[dic
                                                 source['rows_stored'], 0 if holds in (None, True) else 1, 0, cardinality,
                                                 'skipped' if declared is None else 'passed' if holds else 'failed')
         out.append({'key': r['key'], 'from': r['from'], 'to': r['to'], 'source': r['source'], 'dataset_id': source['id'], 'version': source['version'],
-                    'sides': sides, 'own_ends': own_ends, 'cardinality': cardinality})
+                    'sides': sides, 'own_ends': own_ends, 'own_blank': own_blank, 'cardinality': cardinality})
     return out
 
 

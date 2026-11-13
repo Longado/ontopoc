@@ -29,7 +29,7 @@ import { pipelineSources, pipelineTables, storedPipelineTables } from "./pipelin
 import { CodeMeanings } from "./CodeMeaningForm.jsx";
 import { BulkApprove } from "./BulkApprove.jsx";
 import { ReviewStack } from "./ReviewStack.jsx";
-import { decidedHow } from "./reviewStackModel.js";
+import { decidedHow, prefillFor } from "./reviewStackModel.js";
 import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
 import { earlierVersionOf, versionRows } from "./versionModel.js";
@@ -829,7 +829,8 @@ function QaSection({ run, questions, onPath, askRef, place }) {
 }
 
 /** 已定: what has been decided, folded away from the stack but one click off. A decision a person made on a card can be taken back,
- *  and then its card is in the stack again. Those made where a definition is changed (meanings, a repeat rule) are listed only. */
+ *  and then its card is in the stack again with the answer in the form to change. What was decided where a definition is made (a code
+ *  column's meanings or "not a code", a repeat rule) is taken back here too; a bulk-approved relation is only listed. */
 function AnsweredList({ list, client }) {
   const rows = [...answeredRows(list.answered || []).map((r) => ({ ...r, back: true })), ...answeredRows(list.settled || [])];
   if (!rows.length) return null;
@@ -839,8 +840,11 @@ function AnsweredList({ list, client }) {
       <div className="os-open-body">
         <p className="os-open-ask">{r.asked}</p>
         <p className="os-answered-says"><b>{r.says}</b><small className="pr-muted">{[r.stamp, decidedHow(r.item.answer)].filter(Boolean).join(" · ")}</small></p>
-        {r.back && <div className="os-open-actions"><button type="button" className="os-graph-link" disabled={!client.can || client.busy} title={client.can ? "收回这个答复，它回到待确认的事里" : client.why}
-          onClick={() => client.onReply({ id: r.id, reply: "reopen" })}>重新判断</button></div>}
+        {r.back && <div className="os-open-actions"><button type="button" className="os-graph-link" disabled={!client.can || client.busy} title={client.can ? "收回这个答复，它回到待确认的事里，原来写的字留在表单里，可以改" : client.why}
+          onClick={async () => { if (await client.onReply({ id: r.id, reply: "reopen" })) client.setPrefill(prefillFor(r.item)); }}>重新判断</button></div>}
+        {!r.back && ["code_meaning", "repeated_key"].includes(r.item.kind) && !client.newer && <div className="os-open-actions"><button type="button" className="os-graph-link" disabled={!client.can || client.busy}
+          title={client.can ? "收回这个决定，它回到待确认的事里" : client.why} onClick={() => client.onWithdraw(r.item)}>重新判断</button></div>}
+        {client.error?.key === r.id && <p role="alert" className="pr-error">{client.error.text}</p>}
       </div>
     </li>)}</ul>
   </details>;
@@ -909,6 +913,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   const [openItems, setOpenItems] = useState(null);   // the list of things to settle with the client, and the ones answered, for one saved run
   const [cardState, setCardState] = useState(null);   // the data-meaning card of one saved run
   const [cardDraft, setCardDraft] = useState(null);   // edits on the card not saved yet: kept here, so a visit to another page loses nothing
+  const [prefill, setPrefill] = useState(null);   // a taken-back answer whose words the card's form starts with
   const [answerer, setAnswerer] = useState(() => readAnswerer(storage()));   // who writes down the client's answers; kept across visits
   const [cardSaving, setCardSaving] = useState(false);
   const [cardSaveError, setCardSaveError] = useState(null);   // { key, text }: the card, or the item whose form is open
@@ -1168,7 +1173,10 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     onReply: (entry) => saveClient({ items: [entry] }, entry.id), onSaveCells: (cells) => saveClient({ cells }, "card"),
     onSaveCodes: (item, values) => postCodes("/api/ontology/code-meanings", { id: item.id, values, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
     onSaveRepeat: (item, rule) => postCodes("/api/ontology/repeat-rules", { id: item.id, ...rule, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
-    onBulkApprove: (ids) => postCodes("/api/ontology/bulk-approve", { ids, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, "bulk"),
+    onWithdraw: (item) => item.kind === "code_meaning" ? postCodes("/api/ontology/code-meanings/withdraw", { id: item.id, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id)
+      : postCodes("/api/ontology/repeat-rules", { id: item.id, rule: null, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
+    prefill, setPrefill,
+    onBulkApprove: (ids) => postCodes("/api/ontology/bulk-approve", { ids, mode: "bulk", ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, "bulk"),
     newer: openList?.newer ?? null,
     onOpenRun: (name) => fetch(`/api/ontology/runs/${name}`, { cache: "no-store" })
       .then(async (r) => { const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(serviceError(r.status, body)); show(body); setTab("overview"); })

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { linkedHint } from "./cardModel.js";
 import { CodeValues, NewerLink } from "./CodeMeaningForm.jsx";
 import { REPEAT_CHOICES, codeBody, codeProblem, codeStart, dropFor, repeatBody } from "./openItemsModel.js";
-import { cardEntry, isTyping, movedIndex, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
+import { TEXT_REPLY, cardEntry, draftKey, isTyping, leftCount, movedIndex, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
 
 const REPEAT_HINT = Object.fromEntries(REPEAT_CHOICES.map(([rule, , hint]) => [rule, hint]));
 const SHOWN_FACTS = 5;
@@ -28,13 +28,13 @@ function Facts({ facts }) {
 }
 
 /** The form under the reply bar: what the picked reply still needs (a column, words) and the button that sends it. */
-function ReplyForm({ item, reply, draft, setDraft, client, onSend, onCancel }) {
+function ReplyForm({ item, reply, draft, setDraft, client, poke, onSend, onCancel }) {
   const ref = useRef(null);
   const asks = replyAsks(item, reply);
   const route = replyRoute(item, reply);
   const problem = replyProblem(item, reply, draft, client.by) || (route === "code" && reply.id === "confirm" ? codeProblem(item, draft.codes) : "");
   const hint = linkedHint(item, { choice: reply.id, text: draft.text, basis: draft.basis });
-  useEffect(() => { ref.current?.querySelector(asks?.required ? "textarea" : "select, button[type=submit]")?.focus(); }, [reply.id]);   // words that are required first; else the button, so Enter sends
+  useEffect(() => { ref.current?.querySelector(asks?.required ? "textarea" : "select, button[type=submit]")?.focus(); }, [reply.id, poke]);   // words that are required first; else the button, so Enter sends; a poke (the reply key again, Enter in the name box) brings the focus back
   return <form ref={ref} className="os-reply-form" onSubmit={(e) => { e.preventDefault(); if (!problem && !client.busy) onSend(); }}
     onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel(); } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !problem && !client.busy) onSend(); }}>
     {reply.id === "keep_latest" && <label>按哪一列定最新
@@ -47,16 +47,17 @@ function ReplyForm({ item, reply, draft, setDraft, client, onSend, onCancel }) {
     {REPEAT_HINT[reply.id] && <p className="pr-muted">{REPEAT_HINT[reply.id]}</p>}
     {hint && <p className="pr-muted">{hint}</p>}
     <div className="os-go">
-      <button type="submit" className="pr-primary" disabled={client.busy || Boolean(problem)} title={problem || undefined}>{client.busy ? "保存中…" : `记下“${reply.label}”`}</button>
+      <button type="submit" className="pr-primary" disabled={client.busy || Boolean(problem)}>{client.busy ? "保存中…" : `记下“${reply.label}”`}</button>
       <button type="button" className="pr-link" onClick={onCancel}>取消</button>
+      {problem && <span className="os-reply-why pr-muted" role="status">{problem}</span>}
     </div>
   </form>;
 }
 
-function StackCard({ item, run, onGo, requery, client, picked, setPicked, draft, setDraft }) {
+function StackCard({ item, run, onGo, requery, client, picked, setPicked, draft, setDraft, poke }) {
   const mine = requery.question === item.question;
   const drop = dropFor(run, item);
-  const reply = item.replies?.find((r) => r.id === picked) ?? null;
+  const reply = item.replies?.find((r) => r.id === picked) ?? (picked === TEXT_REPLY.id && item.free_text ? TEXT_REPLY : null);
   const frozen = client.newer && ["code_meaning", "repeated_key"].includes(item.kind);   // definitions are changed on the newer run
   const send = async () => {
     const route = replyRoute(item, reply);
@@ -76,7 +77,9 @@ function StackCard({ item, run, onGo, requery, client, picked, setPicked, draft,
         disabled={!client.can || client.busy} title={client.can ? REPEAT_HINT[r.id] : client.why} onClick={() => setPicked(picked === r.id ? null : r.id)}>
         <kbd>{i + 1}</kbd>{r.label}</button>)}</div>
       : <p className="pr-muted">这件事要照它的要求去做，做完它就从这里消失，不用在这里答复。</p>}
-    {reply && !frozen && <ReplyForm item={item} reply={reply} draft={draft} setDraft={setDraft} client={client} onSend={send} onCancel={() => setPicked(null)} />}
+    {item.free_text && !frozen && <button type="button" className="pr-link os-free-text" aria-pressed={picked === TEXT_REPLY.id} disabled={!client.can || client.busy}
+      onClick={() => setPicked(picked === TEXT_REPLY.id ? null : TEXT_REPLY.id)}>都不是，只写几句话</button>}
+    {reply && !frozen && <ReplyForm item={item} reply={reply} draft={draft} setDraft={setDraft} client={client} poke={poke} onSend={send} onCancel={() => setPicked(null)} />}
     <div className="os-open-actions">
       <button type="button" className="os-graph-link" onClick={() => onGo(item.target)}>看依据 →</button>
       {drop && <button type="button" className="os-graph-link" disabled={!requery.can || requery.busy} title={requery.can ? "不再加这个条件，由代码重算这道题，不调模型" : requery.why}
@@ -92,12 +95,27 @@ function StackCard({ item, run, onGo, requery, client, picked, setPicked, draft,
 export function ReviewStack({ run, items, decided, onGo, requery, client }) {
   const [at, setAt] = useState(0);
   const [picked, setPicked] = useState(null);
-  const [drafts, setDrafts] = useState({});
+  const [drafts, setDrafts] = useState({});   // words per card and reply (draftKey); the labels typed for a code column per card, whatever reply is picked
+  const [poke, setPoke] = useState(0);
   const index = Math.min(at, items.length - 1);
   const item = items[index];
-  const draftOf = (it) => ({ text: "", basis: "", column: "", codes: it.kind === "code_meaning" ? codeStart(it) : null, ...drafts[it.id] });
-  const setDraft = (part) => setDrafts((was) => ({ ...was, [item.id]: { ...draftOf(item), ...part } }));
+  const draftOf = (it, replyId) => ({ text: "", basis: "", column: "", ...drafts[draftKey(it.id, replyId)], codes: it.kind === "code_meaning" ? drafts[it.id]?.codes ?? codeStart(it) : null });
+  const setDraft = (part) => setDrafts((was) => {
+    const { codes, ...words } = part;
+    const key = draftKey(item.id, picked);
+    return { ...was, ...(codes !== undefined ? { [item.id]: { codes } } : {}), ...(Object.keys(words).length ? { [key]: { ...was[key], ...words } } : {}) };
+  });
   const go = (key) => { setAt(movedIndex(index, key, items.length)); setPicked(null); };
+  useEffect(() => {   // an answer taken back to be changed: its card in front, the same reply picked, its words in the form
+    const p = client.prefill;
+    const i = p ? items.findIndex((x) => x.id === p.id) : -1;
+    if (i < 0) return;
+    setAt(i);
+    setPicked(p.reply);
+    if (p.reply) setDrafts((was) => ({ ...was, [draftKey(p.id, p.reply)]: { text: p.text, basis: p.basis } }));
+    setPoke((n) => n + 1);
+    client.setPrefill(null);
+  }, [client.prefill, items]);
   useEffect(() => {
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -105,7 +123,7 @@ export function ReviewStack({ run, items, decided, onGo, requery, client }) {
       if (isTyping(e.target)) return;
       if (e.key === "j" || e.key === "k") { e.preventDefault(); go(e.key); return; }
       const reply = replyForKey(item, e.key);
-      if (reply && client.can && !client.busy && !(client.newer && ["code_meaning", "repeated_key"].includes(item.kind))) { e.preventDefault(); setPicked(reply.id); }
+      if (reply && client.can && !client.busy && !(client.newer && ["code_meaning", "repeated_key"].includes(item.kind))) { e.preventDefault(); setPicked(reply.id); setPoke((n) => n + 1); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -113,14 +131,14 @@ export function ReviewStack({ run, items, decided, onGo, requery, client }) {
   const shown = { ...item, number: index + 1 };
   return <section className="os-stack" aria-label="要确认的事">
     <div className="os-stack-head">
-      <p className="os-stack-line" aria-live="polite"><b>{stackLine(items.length, decided)}</b></p>
-      <label className="os-stack-who">确认人<input value={client.by} maxLength={40} onChange={(e) => client.setBy(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }} /></label>
+      <p className="os-stack-line" aria-live="polite"><b>{stackLine(leftCount(items), decided)}</b></p>
+      <label className="os-stack-who">确认人<input value={client.by} maxLength={40} onChange={(e) => client.setBy(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.target.blur(); setPoke((n) => n + 1); } }} /></label>
       <span className="os-stack-nav">
         <button type="button" className="os-graph-link" disabled={index === 0} onClick={() => go("k")} title="上一件（K）">上一件</button>
         <span>{index + 1} / {items.length}</span>
         <button type="button" className="os-graph-link" disabled={index === items.length - 1} onClick={() => go("j")} title="下一件（J）">下一件</button>
       </span>
     </div>
-    <StackCard key={item.id} item={shown} run={run} onGo={onGo} requery={requery} client={client} picked={picked} setPicked={setPicked} draft={draftOf(item)} setDraft={setDraft} />
+    <StackCard key={item.id} item={shown} run={run} onGo={onGo} requery={requery} client={client} picked={picked} setPicked={setPicked} draft={draftOf(item, picked)} setDraft={setDraft} poke={poke} />
   </section>;
 }

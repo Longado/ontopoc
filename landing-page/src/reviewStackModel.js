@@ -4,6 +4,17 @@ import { itemChoices } from "./cardModel.js";
 
 export const MODE_SAYS = { single: "逐件判断", bulk: "批量确认" };
 
+// These two cannot be answered on a card (the card is filled in, objects are judged one by one elsewhere): they stay in the stack to be
+// found, but are not counted as "left" - they would never go down by replying.
+const UNCOUNTED = ["card_blank", "unjudged"];
+export const leftCount = (items) => items.filter((i) => !UNCOUNTED.includes(i.kind)).length;
+
+/** The reply that is no choice of the kind's: only words, for an item that has choices of its own but whose answer is none of them. */
+export const TEXT_REPLY = { id: "text", label: "只记下这几句话", needs_text: true };
+
+/** The key a reply's own draft is kept under: words typed for one reply (a reason for an exception) are not the next reply's. */
+export const draftKey = (itemId, replyId) => `${itemId}|${replyId ?? ""}`;
+
 /** "还剩 7 件，已定 4 件"; when nothing is left, how many were decided. Empty when there was nothing to decide. */
 export function stackLine(open, decided) {
   if (open) return `还剩 ${open} 件，已定 ${decided} 件`;
@@ -53,11 +64,18 @@ export function replyProblem(item, reply, form, by) {
 export function cardEntry(item, reply, form) {
   const [text, basis] = [form.text.trim(), form.basis.trim()];
   const own = itemChoices(item).some(([value]) => value === reply.id);
+  if (reply.id === TEXT_REPLY.id) return { id: item.id, text, ...(basis ? { basis } : {}) };
   return { id: item.id, ...(own ? { choice: reply.id } : { reply: reply.id }), ...(text ? { text } : {}), ...(basis ? { basis } : {}) };
 }
 
 /** What a reply says it did, for the list of decisions: who, how it was decided, and the reason. */
 export const decidedHow = (answer) => MODE_SAYS[answer?.mode] || "";
+
+/** What an answer that is being changed starts the form with: the reply it was (a choice, a general reply, or only words) and its words. */
+export function prefillFor(item) {
+  const a = item.answer || {};
+  return { id: item.id, reply: a.reply || a.choice || (item.free_text ? TEXT_REPLY.id : null), text: a.text || "", basis: a.basis || "" };
+}
 
 /** An old decision brought back by a change in the data, in the words under the card's title. */
 export function reopenedLine(reopened) {
