@@ -20,6 +20,7 @@ changes (sync_views); what the page and the readers of rows read each time is th
 connection (read_views), so listing views never needs the write lock."""
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from ontology_poc_generator.anchors import stored, view_anchor
@@ -367,13 +368,25 @@ def check_definition(posted, tables: dict, enums: dict, reserved: set) -> tuple[
     return name, {'kind': kind, 'base': source, 'key': keys, 'order': order}
 
 
-def definition_change(key: str, name: str, content: dict | None, signer: str | None, anchors: dict | None = None) -> tuple:
-    """The element_state change for one view: confirmed with who defined it and what it was defined on, or taken back (content None)."""
+def definition_change(key: str, name: str, content: dict | None, signer: str | None, anchors: dict | None = None, state: str = 'confirmed',
+                      author: str | None = None) -> tuple:
+    """The element_state change for one view: confirmed with who defined it and what it was defined on, or taken back (content None), or put
+    forward for another person to confirm (state 'proposed'). `author` is whose own definition it is; a confirmation of a proposal leaves it
+    out and the proposer on file stays."""
     element = f'view:{key}:{name}'
     if content is None:
         return (element, 'proposed', None, signer)
     evidence = f'element:property:{key}:{content["base"]}.{content["column"]}' if content['kind'] == 'filter' else None
-    return (element, 'confirmed', evidence, signer, content, stored(anchors))
+    return (element, state, evidence, signer, content, stored(anchors), author)
+
+
+def proposed_views(conn, key: str) -> list[dict]:
+    """The views put forward and waiting for another person: [{'name', 'definition', 'proposed_by', 'proposed_at'}]."""
+    prefix = f'view:{key}:'
+    return [{'name': element_id[len(prefix):], 'definition': json.loads(content), 'proposed_by': by, 'proposed_at': at}
+            for element_id, content, by, at in conn.execute(
+                "SELECT element_id, content_json, proposed_by, confirmed_at FROM element_state WHERE substr(element_id, 1, ?) = ? "
+                "AND state = 'proposed' AND content_json IS NOT NULL ORDER BY element_id", (len(prefix), prefix))]
 
 
 def view_anchor_now(conn, key: str, run_id: str, ontology: dict, tables: dict, name: str, content: dict, versions: dict) -> dict:
@@ -389,10 +402,18 @@ def view_anchor_now(conn, key: str, run_id: str, ontology: dict, tables: dict, n
     return view_anchor(rows, tables[content['base']]['rows'], content['base'], versions.get(content['base']))
 
 
-def save_definition(conn, key: str, posted, tables: dict, ontology: dict, signer: str | None, run_id: str = 'anchored', versions: dict | None = None) -> str:
+def save_definition(conn, key: str, posted, tables: dict, ontology: dict, signer: str | None, run_id: str = 'anchored', versions: dict | None = None,
+                    propose: bool = False) -> str:
     """Keep or take back a person's named view; returns the sentence saying what happened. ValueError says why not. `versions`:
-    {table: the dataset version it is stored as}, kept in the view's anchor."""
+    {table: the dataset version it is stored as}, kept in the view's anchor. `propose`: put it forward for another person instead of confirming
+    it ({"confirm": name} in `posted` is that other person confirming it, checked against the data as it is now)."""
     enums = element_contents(conn, f'property:{key}:')
+    confirming = isinstance(posted, dict) and isinstance(posted.get('confirm'), str)
+    if confirming:
+        waiting = {v['name']: v for v in proposed_views(conn, key)}.get(posted['confirm'])
+        if waiting is None:
+            raise ValueError(f'没有等着确认的视图「{posted["confirm"]}」')
+        posted = {**waiting['definition'], 'name': posted['confirm']}
     if isinstance(posted, dict) and posted.get('remove') is True:
         name = posted.get('name')
         if name not in element_contents(conn, f'view:{key}:'):
@@ -403,5 +424,9 @@ def save_definition(conn, key: str, posted, tables: dict, ontology: dict, signer
     reserved = set(tables) | {f'{s}_当前' for s in tables}
     name = posted.get('name').strip() if isinstance(posted, dict) and isinstance(posted.get('name'), str) else ''
     name, content = check_definition(posted, tables, enums, reserved | others(name))
-    set_element_states(conn, [definition_change(key, name, content, signer, view_anchor_now(conn, key, run_id, ontology, tables, name, content, versions or {}))])
+    anchor = view_anchor_now(conn, key, run_id, ontology, tables, name, content, versions or {})   # a view that cannot be read on the data as it is now is refused either way
+    if propose and not confirming:
+        set_element_states(conn, [definition_change(key, name, content, signer, state='proposed', author=signer)])
+        return f'视图「{name}」已提交，等另一位确认'
+    set_element_states(conn, [definition_change(key, name, content, signer, anchor, author=None if confirming else signer)])
     return f'视图「{name}」已确认'

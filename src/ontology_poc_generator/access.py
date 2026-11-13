@@ -36,6 +36,8 @@ ROUTES: list[tuple[str, str, str]] = [
     # people and settings
     ('GET', r'/api/users', 'admin'),
     ('POST', r'/api/users(/(update|disable|reset-password))?', 'admin'),
+    ('GET', r'/api/settings', 'admin'),
+    ('POST', r'/api/settings', 'admin'),
 ]
 _COMPILED = [(method, re.compile(pattern), role) for method, pattern, role in ROUTES]
 

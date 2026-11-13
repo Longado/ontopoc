@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS user (
 CREATE TABLE IF NOT EXISTS session (
     token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES user(id), created_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
     expires_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS setting (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS api_token (
     id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES user(id), label TEXT NOT NULL,
     created_at TEXT NOT NULL, last_used_at TEXT, revoked_at TEXT);
@@ -347,6 +348,25 @@ def end_session(conn, token: str | None) -> None:
 
 def end_sessions(conn, user_id: int, except_token: str | None = None) -> None:
     conn.execute('DELETE FROM session WHERE user_id = ? AND token_hash != ?', (user_id, _digest(except_token) if except_token else ''))
+
+
+# settings
+
+def two_person(conn) -> dict:
+    """{'enabled': the switch, 'builders': people who can confirm, 'active': whether a confirmer must differ from the proposer now}. The rule
+    switches itself off while the workspace has one person who can confirm: two people cannot check each other when there is one."""
+    row = conn.execute("SELECT value FROM setting WHERE key = 'two_person'").fetchone()
+    enabled = row is None or row[0] != 'off'   # on unless someone turned it off
+    builders = conn.execute("SELECT COUNT(*) FROM user WHERE disabled = 0 AND role IN ('builder', 'admin')").fetchone()[0]
+    return {'enabled': enabled, 'builders': builders, 'active': enabled and builders >= 2}
+
+
+def set_two_person(conn, enabled, by: str) -> dict:
+    if not isinstance(enabled, bool):
+        raise AccountError('two_person 要写 true 或 false')
+    conn.execute("INSERT OR REPLACE INTO setting(key, value) VALUES ('two_person', ?)", ('on' if enabled else 'off',))
+    _log(conn, by, 'setting:two_person', 'setting_changed', {'two_person': enabled})
+    return two_person(conn)
 
 
 # API tokens

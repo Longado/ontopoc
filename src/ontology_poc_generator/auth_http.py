@@ -11,6 +11,7 @@ from http.cookies import CookieError, SimpleCookie
 from urllib.parse import urlsplit
 
 from ontology_poc_generator import accounts
+from ontology_poc_generator.actor import set_actor
 from ontology_poc_generator.access import PUBLIC, allows, required_role
 from ontology_poc_generator.workspace_store import open_workspace
 
@@ -83,6 +84,7 @@ class Gate:
     def admit(self, h, method: str) -> bool:
         """Sets h.user (None for a stranger on a public route) and h.session_token; replies and returns False when the request is refused."""
         h.user, h.session_token = None, None
+        set_actor(None)   # this thread served another request before: nothing of that one stays
         if self.no_auth:
             h.user = LOCAL_USER
             return h.local_request()
@@ -102,6 +104,7 @@ class Gate:
         finally:
             conn.close()
         h.user, h.session_token = user, None if bearer else cookie
+        set_actor(user)
         if empty and not path.startswith('/api/auth/') and path != '/api/ontology/health':
             h.reply(503, {'error': '还没有账号。请在服务所在的机器上运行：python -m ontology_poc_generator.accounts create-admin', 'setup': True})
             return False
@@ -124,7 +127,7 @@ class Gate:
     def handle(self, h, method: str) -> bool:
         """The account routes; True when the request was one of them (and has been answered)."""
         path = urlsplit(h.path).path
-        if not (path.startswith('/api/auth/') or path == '/api/users' or path.startswith('/api/users/')):
+        if not (path.startswith('/api/auth/') or path == '/api/users' or path.startswith('/api/users/') or path == '/api/settings'):
             return False
         if self.no_auth:
             if path == '/api/auth/me':
@@ -182,6 +185,13 @@ class Gate:
             with transaction(conn):
                 made = accounts.create_user(conn, payload.get('username'), payload.get('display_name'), payload.get('role'), payload.get('password'), user['username'])
             h.reply(200, {'user': made})
+        elif path == '/api/settings' and method == 'GET':
+            h.reply(200, {'two_person': accounts.two_person(conn)})
+        elif path == '/api/settings':
+            if 'two_person' not in payload:
+                raise accounts.AccountError('要写明改什么（two_person）')
+            with transaction(conn):
+                h.reply(200, {'two_person': accounts.set_two_person(conn, payload['two_person'], user['username'])})
         elif path in ('/api/users/update', '/api/users/disable', '/api/users/reset-password'):
             with transaction(conn):
                 h.reply(200, {'user': self._change(conn, user, path, payload)})

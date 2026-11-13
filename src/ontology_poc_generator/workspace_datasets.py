@@ -12,6 +12,7 @@ import io
 import json
 from pathlib import PurePath
 
+from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.company_sources import TABLE_SUFFIXES, SourceFileError, load_table_file
 from ontology_poc_generator.workspace_store import DELETED, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, now_text as _now_text, plan_upload
 
@@ -267,9 +268,9 @@ def delete_dataset(conn, name: str, who: str | None, readers: list[dict]) -> dic
             conn.execute('DELETE FROM dataset WHERE id = ?', (v['id'],))
         conn.execute('DELETE FROM current_dataset WHERE name = ?', (name,))
         conn.execute('UPDATE log SET element_id = ? WHERE element_id = ?', (f'deleted:{name}@{stamp}', f'dataset:{name}'))
-        conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json) VALUES (?, ?, ?, ?, ?, NULL)',
+        conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id) VALUES (?, ?, ?, ?, ?, NULL, ?)',
                      (stamp, signer, f'deleted:{name}@{stamp}', DELETED,
-                      json.dumps({'versions': len(versions), 'rows': max(v['rows_stored'] for v in versions)}, ensure_ascii=False)))
+                      json.dumps({'versions': len(versions), 'rows': max(v['rows_stored'] for v in versions)}, ensure_ascii=False), actor_id_for(signer)))
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')

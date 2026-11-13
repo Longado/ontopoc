@@ -15,7 +15,8 @@ import os
 import re
 import sqlite3
 
-from ontology_poc_generator.accounts import SCHEMA as ACCOUNTS_SCHEMA
+from ontology_poc_generator.accounts import SCHEMA as ACCOUNTS_SCHEMA, two_person
+from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.public_ontology import normalize_proposal
 
 VALUE_COUNT_LIMIT = 20   # a column with more distinct values than this keeps no value counts
@@ -52,6 +53,10 @@ CREATE TABLE IF NOT EXISTS log (
 '''
 
 
+class SelfConfirmation(ValueError):
+    """A definition cannot be confirmed by the person who proposed it while two-person confirmation is on; the message is shown to the person."""
+
+
 class RowCountMismatch(RuntimeError):
     """The rows written are not the rows received; the message names the table and is shown to the person."""
 
@@ -74,9 +79,10 @@ def open_workspace(path) -> sqlite3.Connection:
     if str(path) != ':memory:':
         os.chmod(path, 0o600)   # the file holds password hashes and sessions: this account only
     for table, column in (('dataset', 'dropped_json'), ('dataset', 'who'), ('dataset', 'mode'), ('dataset', 'changes_json'), ('check_result', 'dataset_id'), ('check_result', 'null_key_rows'),
-                          ('element_state', 'content_json'), ('element_state', 'anchors_json')):
+                          ('element_state', 'content_json'), ('element_state', 'anchors_json'), ('element_state', 'proposed_by'),
+                          ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
-            conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows") else "TEXT"}')
+            conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows") or column.endswith("user_id") else "TEXT"}')
     conn.execute('INSERT OR IGNORE INTO current_dataset SELECT name, id FROM dataset WHERE version = '
                  '(SELECT MAX(version) FROM dataset d WHERE d.name = dataset.name)')
     return conn
@@ -130,9 +136,9 @@ def _describe(values: list[str | None]) -> dict:
 
 
 def _log(conn, who: str, element_id: str | None, change: str, before=None, after=None) -> None:
-    conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)',
+    conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
                  (_now(), who, element_id, change, None if before is None else json.dumps(before, ensure_ascii=False),
-                  None if after is None else json.dumps(after, ensure_ascii=False)))
+                  None if after is None else json.dumps(after, ensure_ascii=False), actor_id_for(who)))
 
 
 def _logged(row: dict) -> dict:
@@ -158,16 +164,19 @@ def element_state_writes(conn, changes: list[tuple]):
     """Record what a person decided about definitions, all or none, and hold the transaction open for the caller: the
     rows are written but only kept when the block ends without an error, so whatever else must be saved with them (the
     run file) can fail first and take the rows back. Each change is (element_id, state, evidence_ref, confirmed_by) and
-    optionally a fifth, the definition confirmed (a dict kept as JSON: the meanings of a code column) and a sixth, what it was
-    confirmed on and what has changed since (anchors.stored: kept as JSON beside it). state is checked when the data it was
+    optionally a fifth, the definition confirmed (a dict kept as JSON: the meanings of a code column), a sixth, what it was
+    confirmed on and what has changed since (anchors.stored: kept as JSON beside it) and a seventh, `author`: the person whose own definition
+    it is (a view), kept as proposed_by next to confirmed_by; a model suggestion a person accepts has none. While two-person confirmation is
+    active a definition is never confirmed by its author; when it is off the log marks a self-confirmation. state is checked when the data it was
     confirmed on no longer looks the same: the definition is kept but is not confirmed until a person looks again. state is
-    confirmed, rejected, or proposed (taken back); evidence_ref names what backed it ('check_result:12,check_result:13',
+    confirmed, rejected, or proposed (taken back, or a definition put forward for another person to confirm); evidence_ref names what backed it ('check_result:12,check_result:13',
     or 'open_item:<id>'); confirmed_by is the person (None when they did not sign). version counts real
     changes: the same state, person, definition and evidence (compared by what the checks found, not by their ids) leaves the row,
     its time and its version as they were. Evidence from an older run never replaces newer evidence already kept.
     Yields each element's row as it stands."""
     conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
     try:
+        two = two_person(conn)
         for element_id, state, evidence_ref, confirmed_by, *rest in changes:
             content = json.dumps(rest[0], ensure_ascii=False, sort_keys=True) if rest and rest[0] is not None else None
             anchors = json.dumps(rest[1], ensure_ascii=False, sort_keys=True) if len(rest) > 1 and rest[1] is not None else None
@@ -181,11 +190,20 @@ def element_state_writes(conn, changes: list[tuple]):
                     evidence_ref, given = before['evidence_ref'], kept   # this run is older than the evidence on file
                 if (before['state'], before['confirmed_by'], before['content_json'], before['anchors_json'], kept) == (state, confirmed_by, content, anchors, given):
                     continue
+            author = rest[2] if len(rest) > 2 else None
+            carried = before is not None and author is None and state in ('confirmed', 'checked')   # a confirmation keeps who proposed what it confirms
+            proposed_by = before['proposed_by'] if carried else author
+            proposer_id = before['proposed_by_user_id'] if carried else actor_id_for(author)
+            self_confirmed = state == 'confirmed' and proposer_id is not None and proposer_id == actor_id_for(confirmed_by)
+            if self_confirmed and two['active']:
+                raise SelfConfirmation('这一条是你自己提的，要另一位来确认')
             after = {'state': state, 'evidence_ref': evidence_ref, 'confirmed_by': confirmed_by, 'confirmed_at': _now(),
                      'version': before['version'] + 1 if before else 1, 'content_json': content, 'anchors_json': anchors}
-            conn.execute('INSERT OR REPLACE INTO element_state(element_id, state, evidence_ref, confirmed_by, confirmed_at, version, content_json, anchors_json)'
-                         ' VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (element_id, *after.values()))
-            _log(conn, confirmed_by or '未署名', element_id, state, before=before and _logged({k: before[k] for k in after}), after=_logged(after))
+            conn.execute('INSERT OR REPLACE INTO element_state(element_id, state, evidence_ref, confirmed_by, confirmed_at, version, content_json, anchors_json,'
+                         ' proposed_by, confirmed_by_user_id, proposed_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                         (element_id, *after.values(), proposed_by, actor_id_for(confirmed_by), proposer_id))
+            _log(conn, confirmed_by or '未署名', element_id, state, before=before and _logged({k: before[k] for k in after}),
+                 after={**_logged(after), **({'self_confirmed': True} if self_confirmed else {})})
         rows = {}
         for element_id, *_ in changes:
             cursor = conn.execute('SELECT * FROM element_state WHERE element_id = ?', (element_id,))
@@ -296,10 +314,10 @@ def import_records(conn, name: str, records, origin: str, file_sha256: str, who:
     conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
     try:
         version = (conn.execute('SELECT COALESCE(MAX(version), 0) FROM dataset WHERE name = ?', (name,)).fetchone()[0]) + 1
-        dataset_id = conn.execute('INSERT INTO dataset(name, version, origin, file_sha256, rows_in, rows_stored, table_name, imported_at, dropped_json, who, mode, changes_json)'
-                                  " VALUES (?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?)",
+        dataset_id = conn.execute('INSERT INTO dataset(name, version, origin, file_sha256, rows_in, rows_stored, table_name, imported_at, dropped_json, who, mode, changes_json, who_user_id)'
+                                  " VALUES (?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?, ?)",
                                   (name, version, origin, file_sha256, rows_in, _now(), json.dumps(dropped) if dropped else None, who, mode,
-                                   None if changes is None else json.dumps(changes, ensure_ascii=False))).lastrowid
+                                   None if changes is None else json.dumps(changes, ensure_ascii=False), actor_id_for(who))).lastrowid
         table = f'ds_{dataset_id}'
         conn.execute(f'CREATE TABLE {_quote(table)} ({", ".join(_quote(n) + " TEXT" for n in names)})')
         conn.executemany(f'INSERT INTO {_quote(table)} VALUES ({", ".join("?" * len(names))})',

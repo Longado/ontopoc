@@ -21,7 +21,8 @@ from ontology_poc_generator.org_documents import build_and_evaluate_org, org_mer
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
 from ontology_poc_generator.code_meanings import check_enum, code_columns, draft_meanings, meanings_of, merge_enum
 from ontology_poc_generator.answer_checks import choose_rows, definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
-from ontology_poc_generator.named_views import compiled_views, definitions_signature, drop_views_except, name_views, read_views, save_definition, sync_views, table_columns, view_anchor_now, view_rowids, views_of_run
+from ontology_poc_generator.accounts import two_person
+from ontology_poc_generator.named_views import proposed_views, compiled_views, definitions_signature, drop_views_except, name_views, read_views, save_definition, sync_views, table_columns, view_anchor_now, view_rowids, views_of_run
 from ontology_poc_generator.pipelines import ROW_CAP, run_pipeline, workspace_datasets, workspace_views
 from ontology_poc_generator.anchors import check_code, check_relation, check_view, code_anchor, relation_anchor, review_items, view_anchor, stored as stored_anchors, waiting as waiting_change
 from ontology_poc_generator.repeated_keys import check_rule, repeated_keys, settled_by_latest, unmet
@@ -329,9 +330,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         file; with the reason when they could not be read (the page shows that beside the lists, the rest still works)."""
         try:
             context = view_context(result)
-            return {'views': context['views'], 'view_tables': context['view_tables']}
+            conn = readonly_workspace()
+            try:
+                waiting = proposed_views(conn, memory_key(result))
+            finally:
+                conn.close()
+            return {'views': context['views'], 'view_tables': context['view_tables'], 'proposed_views': waiting}
         except Exception as exc:
-            return {'views': [], 'view_tables': [], 'views_error': f'视图没有读出来：{type(exc).__name__}: {exc}'[:300]}
+            return {'views': [], 'view_tables': [], 'proposed_views': [], 'views_error': f'视图没有读出来：{type(exc).__name__}: {exc}'[:300]}
 
     def rows_kept(result, context, view):
         """The positions of the rows a view keeps in its table, read once per version of the definitions."""
@@ -1109,7 +1115,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 with runs_lock:
                     conn = open_workspace(output_dir / 'workspace.sqlite')
                     try:
-                        results = upload_datasets(conn, parts, payload.get('who'))
+                        results = upload_datasets(conn, parts, self.signer(payload, 'who'))
                     finally:
                         conn.close()
             except UploadRefused as exc:
@@ -1134,7 +1140,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     try:
                         readers = dataset_readers(conn, [p for p in output_dir.glob('*.json') if SAVED_NAME.match(p.name)], name)
                         try:
-                            deleted = delete_dataset(conn, name, payload.get('who'), readers)
+                            deleted = delete_dataset(conn, name, self.signer(payload, 'who'), readers)
                         except KeyError:
                             self.reply(404, {'error': '没有这个数据集'})
                             return
@@ -1287,6 +1293,22 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(404, {'error': '找不到这次运行，请重新打开。'})
             except ValueError as exc:
                 self.reply(400, {'error': str(exc)})
+
+        def signer(self, payload, field='confirmed_by', required=False, raw=False):
+            """Who a write is signed by. A signed-in person: their display name, whatever the request says in `field` (a name typed into a request
+            is a claim, not an identity). With --no-auth, what the request says: at most 40 characters, None when it says nothing (the three
+            routes that need a name refuse then); `raw` leaves it exactly as sent, for the one route that checks it itself."""
+            if self.user['id'] is not None:
+                return self.user['display_name']
+            value = payload.get(field)
+            if raw:
+                return value
+            if required:
+                if not isinstance(value, str) or not value.strip() or len(value.strip()) > 40:
+                    raise ValueError('要写确认人，最多 40 个字')
+            elif value is not None and (not isinstance(value, str) or len(value.strip()) > 40):
+                raise ValueError('确认人最多写 40 个字')
+            return (value or '').strip() or None
 
         def read_json(self):
             length = int(self.headers.get('Content-Length', '0'))
@@ -1644,8 +1666,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if items_raw:
                     stale_check(found[0])   # an answer keeps what the item was about on these rows: not older ones, and a reopen must not wipe the newest run's
                 now = datetime.now(timezone.utc).isoformat(timespec='seconds')
-                cells = check_cells(card, cells_raw, payload.get('by'), now)
-                answers = check_answers([*items, *answered], items_raw, payload.get('by'), now)
+                by = self.signer(payload, 'by', raw=True)
+                cells = check_cells(card, cells_raw, by, now)
+                answers = check_answers([*items, *answered], items_raw, by, now)
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
                 return
@@ -1682,11 +1705,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 profile = next((p for p in profiles if p['id'] == payload.get('id')), None)
                 if profile is None:
                     raise ValueError('这一列已经不在清单上了')
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
+                signer = self.signer(payload)
                 check_mode(payload)
-                return found, profile, enums, (signer or '').strip() or None, payload
+                return found, profile, enums, signer, payload
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
             except (ValueError, UnicodeError) as exc:
@@ -1748,10 +1769,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 group = next((g for g in repeated_keys(result['ontology'], bundle, graph) if g['id'] == payload.get('id')), None)
                 if group is None:
                     raise ValueError('这个重复的编号已经不在清单上了')
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
-                signer = (signer or '').strip() or None
+                signer = self.signer(payload)
                 element = f'repeat_rule:{memory_key(result)}:{group["rule_key"]}'
                 stale_check(result)
                 if 'rule' in payload and payload['rule'] is None:
@@ -1792,10 +1810,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
                     raise ValueError('这份运行没有数据表')
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
-                signer = (signer or '').strip() or None
+                signer = self.signer(payload)
                 asked = re.fullmatch(r'review:(property|repeat_rule|view|relation):(.+)', str(payload.get('id') or ''), re.S)
                 if asked is None:
                     raise ValueError('这一项不在“需要再看一眼”的清单上')
@@ -1851,15 +1866,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
                     raise ValueError('这份运行没有数据表')
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
+                signer = self.signer(payload)
                 stale_check(found[0])
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
                     versions = {t['dataset']: t['version'] for t in (found[0].get('data_checks') or {}).get('tables', []) if t.get('status') == 'ok'}
-                    message = save_definition(conn, memory_key(found[0]), payload, stored_tables(conn, found[0]), found[0]['ontology'], (signer or '').strip() or None,
-                                              run_id(found[0]['saved_as']), versions)
+                    message = save_definition(conn, memory_key(found[0]), payload, stored_tables(conn, found[0]), found[0]['ontology'], signer,
+                                              run_id(found[0]['saved_as']), versions,
+                                              propose=self.user['id'] is not None and two_person(conn)['active'])   # a person's own view waits for a second person
                 finally:
                     conn.close()
             except FileNotFoundError:
@@ -1933,9 +1947,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
                     raise ValueError('这份运行没有数据表，没有代码列')
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
+                signer = self.signer(payload)
                 stale_check(found[0])
                 prefix = f'property:{memory_key(found[0])}:'
                 field = str(payload.get('id') or '').removeprefix('code_meaning:')
@@ -1953,7 +1965,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             column = field.partition('.')[2]
-            self.keep_code_state(found, (f'{prefix}{field}', 'proposed', None, (signer or '').strip() or None), '收回', f'「{column}」的判断已收回')
+            self.keep_code_state(found, (f'{prefix}{field}', 'proposed', None, signer), '收回', f'「{column}」的判断已收回')
 
         def bulk_approve(self):
             """{"saved_as", "ids", "confirmed_by"}: approve together what is in the clean band (review_stack.relation_band): relations code
@@ -1971,10 +1983,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     raise ValueError('这份运行没有数据表')
                 if payload.get('mode', 'bulk') != 'bulk':
                     raise ValueError('一起通过的 mode 只能是 bulk')
-                signer = payload.get('confirmed_by')
-                if not isinstance(signer, str) or not signer.strip() or len(signer.strip()) > 40:
-                    raise ValueError('要写确认人，最多 40 个字')
-                signer = signer.strip()
+                signer = self.signer(payload, required=True)
                 ids = payload.get('ids')
                 if not isinstance(ids, list) or not ids or len(ids) > MAX_BULK or not all(isinstance(i, str) for i in ids):
                     raise ValueError(f'ids 要写成列表，至少一项，最多 {MAX_BULK} 项')
@@ -2175,10 +2184,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 result = json.loads(result_path.read_text(encoding='utf-8'))
                 reference = confirmed_reference(result['ontology'], payload.get('decisions'))
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
-                signer = (signer or '').strip() or None
+                signer = self.signer(payload)
                 if payload['decisions'].get('relations'):   # a relation judged right keeps what its check found: only the newest run's
                     stale_check(result)
                 cleared = payload.get('cleared') or []   # relations the page held a verdict on (as kept) and clicked off: a verdict taken back, not silence

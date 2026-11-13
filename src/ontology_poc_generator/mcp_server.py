@@ -4,7 +4,8 @@ Each tool calls the local modelling service (ontology_server, the one the page c
 counts and records whichever way a person or an agent comes in. The protocol part is the few JSON-RPC methods a tool
 server needs — initialize, ping, tools/list, tools/call — written out here rather than adding a dependency.
 
-Run: PYTHONPATH=src python -m ontology_poc_generator.mcp_server   (ONTOPOC_URL defaults to http://127.0.0.1:8767)
+Run: PYTHONPATH=src python -m ontology_poc_generator.mcp_server   (ONTOPOC_URL defaults to http://127.0.0.1:8767;
+ONTOPOC_TOKEN is a personal token from the account page: the service then signs what this server does with the token owner's name)
 """
 from __future__ import annotations
 
@@ -68,13 +69,16 @@ class ToolError(Exception):
 
 
 class LocalService:
-    def __init__(self, base: str, poll_seconds: float = 2.0):
-        self.base, self.poll_seconds = base.rstrip('/'), poll_seconds
+    def __init__(self, base: str, poll_seconds: float = 2.0, token: str | None = None):
+        self.base, self.poll_seconds, self.token = base.rstrip('/'), poll_seconds, token
         self._open = build_opener(ProxyHandler({})).open   # a system proxy must not carry calls to this machine
 
     def request(self, path: str, payload: dict | None = None):
         data = None if payload is None else json.dumps(payload).encode()
-        req = Request(self.base + path, data=data, headers={'Content-Type': 'application/json'} if data else {})
+        headers = {'Content-Type': 'application/json'} if data else {}
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'   # the service signs what this server does with its owner's name
+        req = Request(self.base + path, data=data, headers=headers)
         try:
             with self._open(req, timeout=600) as response:
                 return json.load(response)
@@ -625,7 +629,7 @@ def main():
     if sys.argv[1:] == ['--check']:
         check(base)
         return
-    service = LocalService(base)
+    service = LocalService(base, token=os.environ.get('ONTOPOC_TOKEN'))
     for line in sys.stdin:
         if not line.strip():
             continue

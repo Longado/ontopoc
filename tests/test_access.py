@@ -104,10 +104,10 @@ class GateTestCase(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     @contextmanager
-    def service(self, first_admin=True, **more):
+    def service(self, first_admin=True, gateway=None, **more):
         with tempfile.TemporaryDirectory() as out:
             out = Path(out)
-            server = ontology_server.make_server(port=0, gateway=None, output_dir=out, **more)
+            server = ontology_server.make_server(port=0, gateway=gateway, output_dir=out, **more)
             if first_admin:
                 conn = open_workspace(out / 'workspace.sqlite')
                 accounts.create_user(conn, 'root', '管理员', 'admin', GOOD, 'host', must_change=False)
