@@ -222,6 +222,32 @@ class WorkspaceStoreTests(unittest.TestCase):
             self.addCleanup(again.close)
             self.assertEqual(again.execute('SELECT name, rows_stored FROM dataset').fetchall(), [('a', 1)])
 
+    def test_a_file_made_before_ids_were_never_reused_is_rebuilt_and_loses_no_row_but_the_orphans(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as out:
+            path = Path(out) / 'workspace.sqlite'
+            conn = open_workspace(path)
+            a = import_records(conn, 'a', [{'x': '1'}], 't', 'sha-a')
+            check_key(conn, a['id'], ['x'])
+            conn.execute("INSERT INTO check_result(element_id, check_type, query, status, dataset_id) VALUES ('key:gone(x)', 'key_unique', 'q', 'passed', 99)")
+            conn.execute('DROP TABLE dataset')   # the tables as an older build made them: no AUTOINCREMENT
+            conn.execute('DROP TABLE check_result')
+            conn.execute('CREATE TABLE dataset (id INTEGER PRIMARY KEY, name TEXT NOT NULL, version INTEGER NOT NULL, origin TEXT, file_sha256 TEXT NOT NULL, rows_in INTEGER NOT NULL,'
+                         ' rows_stored INTEGER NOT NULL, table_name TEXT NOT NULL, imported_at TEXT NOT NULL, dropped_json TEXT, who TEXT, mode TEXT, changes_json TEXT, UNIQUE (name, version))')
+            conn.execute('CREATE TABLE check_result (id INTEGER PRIMARY KEY, element_id TEXT NOT NULL, check_type TEXT NOT NULL, query TEXT NOT NULL, rows_checked INTEGER, violations INTEGER,'
+                         " samples_json TEXT, dataset_id INTEGER, null_key_rows INTEGER, status TEXT NOT NULL, checked_at TEXT NOT NULL DEFAULT '')")
+            conn.execute("INSERT INTO dataset(id, name, version, file_sha256, rows_in, rows_stored, table_name, imported_at) VALUES (5, 'a', 1, 's', 1, 1, 'ds_1', 'now')")
+            conn.execute("INSERT INTO check_result(element_id, check_type, query, status, dataset_id) VALUES ('key:a(x)', 'key_unique', 'q', 'passed', 5)")
+            conn.execute("INSERT INTO check_result(element_id, check_type, query, status, dataset_id) VALUES ('key:gone(x)', 'key_unique', 'q', 'passed', 99)")
+            conn.close()
+            again = open_workspace(path)
+            self.addCleanup(again.close)
+            self.assertEqual(again.execute('SELECT id, name FROM dataset').fetchall(), [(5, 'a')])
+            self.assertEqual(again.execute('SELECT element_id FROM check_result').fetchall(), [('key:a(x)',)])   # the one whose dataset is gone is dropped
+            again.execute("DELETE FROM dataset WHERE id = 5")
+            self.assertEqual(import_records(again, 'b', [{'x': '1'}], 't', 'sha-b')['id'], 6)   # 5 is never given out again
+            open_workspace(path).close()   # a rebuilt file opens again without another rebuild
+
 
 class ElementStateTests(unittest.TestCase):
     def setUp(self):

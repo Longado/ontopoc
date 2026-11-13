@@ -31,7 +31,7 @@ _ISO_DATETIME = re.compile(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?', re.ASCI
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS dataset (
-    id INTEGER PRIMARY KEY, name TEXT NOT NULL, version INTEGER NOT NULL, origin TEXT, file_sha256 TEXT NOT NULL,
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, version INTEGER NOT NULL, origin TEXT, file_sha256 TEXT NOT NULL,
     rows_in INTEGER NOT NULL, rows_stored INTEGER NOT NULL, table_name TEXT NOT NULL, imported_at TEXT NOT NULL,
     dropped_json TEXT, who TEXT, mode TEXT, changes_json TEXT, UNIQUE (name, version));
 CREATE TABLE IF NOT EXISTS current_dataset (name TEXT PRIMARY KEY, dataset_id INTEGER NOT NULL REFERENCES dataset(id));
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS element_state (
     state TEXT NOT NULL CHECK (state IN ('proposed', 'checked', 'confirmed', 'rejected')),
     evidence_ref TEXT, confirmed_by TEXT, confirmed_at TEXT, version INTEGER NOT NULL, content_json TEXT, anchors_json TEXT);
 CREATE TABLE IF NOT EXISTS check_result (
-    id INTEGER PRIMARY KEY, element_id TEXT NOT NULL, check_type TEXT NOT NULL, query TEXT NOT NULL,
+    id INTEGER PRIMARY KEY AUTOINCREMENT, element_id TEXT NOT NULL, check_type TEXT NOT NULL, query TEXT NOT NULL,
     rows_checked INTEGER, violations INTEGER, samples_json TEXT, dataset_id INTEGER, null_key_rows INTEGER,
     status TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'error', 'skipped')),
     checked_at TEXT NOT NULL DEFAULT '');
@@ -83,9 +83,35 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows") or column.endswith("user_id") else "TEXT"}')
+    _never_reuse_ids(conn)
     conn.execute('INSERT OR IGNORE INTO current_dataset SELECT name, id FROM dataset WHERE version = '
                  '(SELECT MAX(version) FROM dataset d WHERE d.name = dataset.name)')
     return conn
+
+
+def _never_reuse_ids(conn) -> None:
+    """A file made before dataset and check_result ids were AUTOINCREMENT: rebuild the two tables so an id, once used, is never given out again
+    (a deleted dataset's id, taken by a later one, would show the old one's checks; a check id is what an evidence reference names). Check
+    results that belong to no dataset any more are dropped. The counters start at the highest id still there: an id freed before this
+    cannot be known."""
+    old = {name: conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone()[0] for name in ('dataset', 'check_result')}
+    todo = {name: sql for name, sql in old.items() if 'AUTOINCREMENT' not in sql}
+    if not todo:
+        return
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        conn.execute('DELETE FROM check_result WHERE dataset_id IS NOT NULL AND dataset_id NOT IN (SELECT id FROM dataset)')
+        for name, sql in todo.items():
+            rebuilt = re.sub(r'\bid INTEGER PRIMARY KEY\b', 'id INTEGER PRIMARY KEY AUTOINCREMENT', sql, count=1)
+            assert rebuilt != sql, f'{name}: its id column is not the plain INTEGER PRIMARY KEY this migration knows'
+            conn.execute(re.sub(r'^CREATE TABLE (IF NOT EXISTS )?"?\w+"?', f'CREATE TABLE {name}_rebuilt', rebuilt, count=1))
+            conn.execute(f'INSERT INTO {name}_rebuilt SELECT * FROM {name}')
+            conn.execute(f'DROP TABLE {name}')
+            conn.execute(f'ALTER TABLE {name}_rebuilt RENAME TO {name}')
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
 
 
 def records_sha256(records: list[dict]) -> str:
@@ -310,6 +336,8 @@ def import_records(conn, name: str, records, origin: str, file_sha256: str, who:
     names = _unique_names(records)
     if not names:
         raise ValueError(f'{name}: no columns to store')
+    if mode is None and keeps_current and not current_dataset(conn, name):
+        mode = 'new'   # the first version of a name, made by the old screen: a new dataset like any other, so it shows in Tasks
     originals = list(dict.fromkeys(k for r in records for k in r))
     conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
     try:

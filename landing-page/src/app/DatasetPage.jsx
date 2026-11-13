@@ -25,7 +25,7 @@ function Fields({ page }) {
                 <td>{c.name}</td>
                 <td>{typeLabel(c.type)}</td>
                 <td className="num" title={c.missing ? `缺 ${c.missing} 行` : undefined}>{percentText(c.fill_rate)}</td>
-                <td className={c.key_check?.status === "failed" || (c.near_key && !c.possible_key) ? "bad" : c.possible_key || c.key_check ? "" : "muted"}>{keyText(c)}</td>
+                <td className={c.key_check?.status === "failed" ? "bad" : c.possible_key || c.key_check || c.near_key ? "" : "muted"}>{keyText(c)}</td>
               </tr>
             ))}
           </tbody>
@@ -60,6 +60,7 @@ function Preview({ page, name }) {
           第 {(preview.page - 1) * preview.limit + (preview.total ? 1 : 0)}–{Math.min(preview.page * preview.limit, preview.total)} 行，共 {preview.total} 行
         </span>
         <a className="download" href={csvHref(name, page.version === page.current_version ? null : page.version)} download>下载 CSV</a>
+        <span className="muted">以 = + - @ 开头的文字，下载时前面会多一个 '</span>
       </div>
       <div className="table-wrap tall">
         <table>

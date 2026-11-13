@@ -48,5 +48,7 @@ test("a column's key cell reads the recorded check first, then the stored counts
   const near = { repeated_values: 1, repeated_rows: 2, missing: 0, samples: [{ value: "KH012", rows: 2 }] };
   assert.equal(keyText({ possible_key: false, key_check: null, near_key: near }), "重复 1 个值（KH012，2 行）");
   assert.equal(keyText({ possible_key: false, key_check: null, near_key: { ...near, repeated_values: 5, missing: 2 } }), "重复 5 个值（KH012，2 行 等），空 2 行");
+  const failed = { status: "failed", violations: 1, null_key_rows: 0 };
+  assert.equal(keyText({ key_check: failed, near_key: near }), "主键检查没通过：重复 1 行；重复 1 个值（KH012，2 行）");   // a recorded check does not hide which values repeat
   assert.equal(keyText({ possible_key: false, key_check: null, near_key: { repeated_values: 0, repeated_rows: 0, missing: 3, samples: [] } }), "空 3 行");
 });

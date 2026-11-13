@@ -19,7 +19,7 @@ from ontology_poc_generator.pipelines import workspace_datasets
 from ontology_poc_generator.dataset_readers import dataset_readers
 from ontology_poc_generator.relation_checks import check_relations
 from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload
-from ontology_poc_generator.workspace_store import check_bundle, current_dataset, dataset_records, merge_by_key, open_workspace, set_element_states
+from ontology_poc_generator.workspace_store import check_bundle, current_dataset, import_records, dataset_records, merge_by_key, open_workspace, set_element_states
 from ontology_poc_generator.workspace_tasks import upload_tasks
 from tests.test_workspace_store import planted_bundle
 from tests.test_ontology_server import OntologyServerTests
@@ -395,6 +395,33 @@ class DatasetPageTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             delete_dataset(self.conn, '客户', '小林', [])
         self.assertEqual(upload(self.conn, [planted('客户')], '小林')[0]['version'], 1)   # the name is free again, with a clean history
+
+    def test_a_deleted_dataset_leaves_no_key_checks_and_its_id_is_not_given_to_the_next_one(self):
+        one = [part('x.csv', table_csv([order('A1')]), name='新表')]
+        upload(self.conn, one, '小林')
+        update = [part('x.csv', table_csv([order('A2')]), target='新表', mode='update_by_key', key_columns=['订单号'])]
+        upload(self.conn, update, '小林')   # v2 records a key check
+        old = [r[0] for r in self.conn.execute("SELECT id FROM dataset WHERE name = '新表'")]
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM check_result WHERE dataset_id IN (?, ?)', old).fetchone()[0], 1)
+        delete_dataset(self.conn, '新表', '小林', [])
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM check_result WHERE dataset_id IN (?, ?)', old).fetchone()[0], 0)
+        upload(self.conn, one, '小林')
+        upload(self.conn, [part('x.csv', table_csv([order('A1'), order('A1')]), target='新表', mode='overwrite')], '小林')
+        again = dataset_detail(self.conn, '新表')
+        self.assertEqual(again['key_checks'], [])
+        self.assertFalse(set(old) & {r[0] for r in self.conn.execute("SELECT id FROM dataset WHERE name = '新表'")})
+        self.assertIsNone([c for c in again['columns'] if c['name'] == '订单号'][0]['key_check'])
+
+    def test_the_csv_does_not_hand_excel_a_formula_but_leaves_numbers_alone(self):
+        cells = ['=HYPERLINK("http://x")', '+SUM(A1)', '-2+3', '@SUM(A1)', '-5', '+3', '12.5', '=1+1']
+        rows = [order(f'F{i}', customer=c) for i, c in enumerate(cells)]
+        upload(self.conn, [part('f.csv', table_csv(rows), name='公式')], '小林')
+        _, body = dataset_csv(self.conn, '公式')
+        written = [r[1] for r in list(csv.reader(io.StringIO(body.decode('utf-8-sig'))))[1:]]
+        self.assertEqual(written, ["'=HYPERLINK(\"http://x\")", "'+SUM(A1)", "'-2+3", "'@SUM(A1)", '-5', '+3', '12.5', "'=1+1"])
+        import_records(self.conn, '控制符', [{'a': '\tx', 'b': '\rx'}], 'upload', 'sha-ctl')   # a tab or CR is a cell Excel treats alike, though the file readers trim them
+        _, body = dataset_csv(self.conn, '控制符')
+        self.assertEqual(list(csv.reader(io.StringIO(body.decode('utf-8-sig'), newline='')))[1], ["'\tx", "'\rx"])
 
     def test_readers_are_the_runs_relations_views_and_definitions_that_name_the_dataset(self):
         self.assertEqual(dataset_readers(self.conn, [], '订单'), [])

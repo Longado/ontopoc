@@ -69,6 +69,14 @@ class UploadTaskTests(unittest.TestCase):
         self.assertEqual(sorted(t['version'] for t in tasks if t['created_version']), [1, 2])
         self.assertNotIn('旧', {t['title'] for t in tasks})
 
+    def test_a_name_the_old_screen_creates_first_is_a_new_dataset_in_tasks(self):
+        from ontology_poc_generator.workspace_store import check_bundle
+        conn = open_workspace(':memory:')
+        self.addCleanup(conn.close)
+        check_bundle(conn, {'object_types': []}, {'sources': {'新表': {'records': [{'a': '1'}], 'rows_read': 1, 'dropped_rows': {}}}}, '建模运行', relations=False)
+        tasks, _ = list_tasks(conn, Path('/no/such/dir'), set())
+        self.assertEqual([(t['title'], t['mode'], t['version']) for t in tasks], [('新表', 'new', 1)])
+
 
 class TaskEndpointTests(unittest.TestCase):
     def test_a_modelling_job_and_an_upload_appear_in_one_list(self):
@@ -79,8 +87,8 @@ class TaskEndpointTests(unittest.TestCase):
             self.assertEqual(status, 200, body)
             with urlopen(base + '/api/workspace/tasks') as response:
                 tasks = json.load(response)['tasks']
-        by_kind = {t['kind']: t for t in tasks}   # both land in the same second, so their order is not asserted here
-        self.assertEqual(sorted((t['kind'], t['title'], t['state']) for t in tasks), [('draft', 'orders.csv', 'done'), ('upload', '客户', 'done')])
+        by_kind = {t['kind']: t for t in tasks if t['title'] != 'orders' or t['kind'] == 'draft'}   # all land in the same second, so their order is not asserted here
+        self.assertEqual(sorted((t['kind'], t['title'], t['state']) for t in tasks), [('draft', 'orders.csv', 'done'), ('upload', 'orders', 'done'), ('upload', '客户', 'done')])   # orders: the dataset the job's build made first
         self.assertEqual((by_kind['upload']['who'], by_kind['draft']['id']), ('小林', started['job_id']))
 
 

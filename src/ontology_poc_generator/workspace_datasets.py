@@ -10,6 +10,7 @@ import binascii
 import csv
 import io
 import json
+import re
 from pathlib import PurePath
 
 from ontology_poc_generator.actor import actor_id_for
@@ -20,6 +21,17 @@ PREVIEW_ROWS = 50   # rows on one page of the preview
 MAX_NAME = 100
 NEAR_KEY_SHARE = 0.95   # a text or integer column with this share of its filled cells distinct reads as meant to be a key
 NEAR_KEY_TYPES = ('text', 'integer')
+_NUMBER = re.compile(r'[+-]?\d+(\.\d+)?', re.ASCII)
+
+
+def _csv_cell(value):
+    """A cell as the CSV file holds it. Excel runs a cell that starts with = + - @ (or a tab or CR) as a formula, and cells come from customers' files, so
+    one is written with a ' in front; a plain number such as -5 or +3 is left alone."""
+    if value is None:
+        return ''
+    if isinstance(value, str) and value[:1] in ('=', '+', '-', '@', '\t', '\r') and not _NUMBER.fullmatch(value):
+        return "'" + value
+    return value
 
 
 def _quote(name: str) -> str:
@@ -134,8 +146,8 @@ def dataset_csv(conn, name: str, version: int | None = None) -> tuple[str, bytes
     cursor = conn.execute(f'SELECT * FROM {_quote(shown["table_name"])} ORDER BY rowid')
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow([c[0] for c in cursor.description])
-    writer.writerows(('' if v is None else v for v in row) for row in cursor)
+    writer.writerow(_csv_cell(c[0]) for c in cursor.description)
+    writer.writerows(map(_csv_cell, row) for row in cursor)
     return f'{name}-第{shown["version"]}版.csv', out.getvalue().encode('utf-8-sig')
 
 
@@ -252,7 +264,7 @@ def upload(conn, parts: list, who: str | None) -> list[dict]:
 def delete_dataset(conn, name: str, who: str | None, readers: list[dict]) -> dict:
     """Remove a dataset with all of its versions and their rows. Refused (ValueError naming each reader) while anything reads it: `readers`
     is what dataset_readers found. The log keeps what was removed, under a name of its own, so a dataset made later under the same name
-    starts with a clean history. Returns {'name', 'versions', 'rows'}."""
+    starts with a clean history; its key checks are deleted, and its id is never given out again. Returns {'name', 'versions', 'rows'}."""
     versions = _rows(conn, 'SELECT * FROM dataset WHERE name = ?', (name,))
     if not versions:
         raise KeyError(name)
@@ -266,6 +278,7 @@ def delete_dataset(conn, name: str, who: str | None, readers: list[dict]) -> dic
             conn.execute(f'DROP TABLE IF EXISTS {_quote(v["table_name"])}')
             conn.execute('DELETE FROM "column" WHERE dataset_id = ?', (v['id'],))
             conn.execute('DELETE FROM dataset WHERE id = ?', (v['id'],))
+            conn.execute('DELETE FROM check_result WHERE dataset_id = ?', (v['id'],))   # the key checks recorded on it go with it
         conn.execute('DELETE FROM current_dataset WHERE name = ?', (name,))
         conn.execute('UPDATE log SET element_id = ? WHERE element_id = ?', (f'deleted:{name}@{stamp}', f'dataset:{name}'))
         conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id) VALUES (?, ?, ?, ?, ?, NULL, ?)',

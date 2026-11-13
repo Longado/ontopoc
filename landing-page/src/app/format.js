@@ -25,7 +25,9 @@ export function keyText(column) {
   const check = column.key_check;
   if (check) {
     const parts = [check.violations ? `重复 ${check.violations} 行` : "", check.null_key_rows ? `空 ${check.null_key_rows} 行` : ""].filter(Boolean);
-    return check.status === "passed" ? "唯一，没有空值" : `主键检查没通过：${parts.join("，") || "没有结果"}`;
+    if (check.status === "passed") return "唯一，没有空值";
+    const failed = `主键检查没通过：${parts.join("，") || "没有结果"}`;
+    return column.near_key ? `${failed}；${nearKeyText(column.near_key)}` : failed;   // which values repeat, beside the check
   }
   if (column.possible_key) return "唯一，没有空值";
   return column.near_key ? nearKeyText(column.near_key) : "—";
