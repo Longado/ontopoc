@@ -5,6 +5,9 @@ import { isAdmin, roleLabel } from "./authModel.js";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
 import { TasksPage } from "./TasksPage.jsx";
+import { TypeForm } from "./TypeForm.jsx";
+import { TypePage } from "./TypePage.jsx";
+import { TypesPage } from "./TypesPage.jsx";
 import { UsersPage } from "./UsersPage.jsx";
 import { ADMIN_NAV, NAV, PLANNED, navKeyOf, parseRoute } from "./routeModel.js";
 
@@ -83,7 +86,7 @@ export function Shell() {
     window.scrollTo(0, 0);
     if (first.current) first.current = false;
     else document.querySelector("main h1")?.focus({ preventScroll: true });   // a followed link puts the reader at the new page's heading
-  }, [route.page, route.name, route.key]);
+  }, [route.page, route.name, route.key, route.id]);
 
   return (
     <div className="shell">
@@ -97,10 +100,14 @@ export function Shell() {
       {route.page === "datasets" && <DatasetList />}
       {route.page === "dataset" && <DatasetPage route={route} />}
       {route.page === "tasks" && <TasksPage />}
+      {route.page === "types" && <TypesPage />}
+      {route.page === "type" && <TypePage route={route} />}
+      {route.page === "typenew" && <TypeForm key="new" />}
+      {route.page === "typeedit" && <TypeForm key={route.id} id={route.id} />}
       {route.page === "account" && <AccountPage />}
       {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
       {route.page === "planned" && <Planned route={route} />}
-      {!["datasets", "dataset", "tasks", "account", "users", "planned"].includes(route.page) && <NotFound />}
+      {!["datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "account", "users", "planned"].includes(route.page) && <NotFound />}
     </div>
   );
 }

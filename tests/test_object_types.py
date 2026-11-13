@@ -112,6 +112,7 @@ class ObjectTypeTests(SigningTestCase):
                              [('0', '已交付', 96, None), ('1', '生产中', 48, 96), ('2', '已取消', 16, 48), ('3', '', None, 16)])
             self.assertEqual(detail['state'], 'needs_look')   # the type reads its meanings: it moves with them
             self.assertIn('需要再看', detail['reason'])
+            self.assertEqual(detail['can_confirm'], False)   # not until its meanings are looked at again
             self.assertEqual(detail['confirmed_by'], 'Bob')   # who confirmed it before is still there, beside the reason
             log = bob.get('/api/workspace/types/order/log')[1]['log']
             moved = next(e for e in log if e['element'] == 'meaning' and e['to'] == 'needs_look')

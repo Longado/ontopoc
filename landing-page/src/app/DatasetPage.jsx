@@ -165,6 +165,7 @@ export function DatasetPage({ route }) {
             <span>第 {page.version} 版</span>
             <span>{page.version === page.current_version ? `更新于 ${timeText(page.updated_at)}` : `这一版导入于 ${timeText(page.version_at)}`}</span>
             <span>来源 {originText(page.origin)}</span>
+            {page.readers.length > 0 && <span>被 {page.readers.map((r) => r.name).join("、")} 用到</span>}
           </p>
           {page.version !== page.current_version && (
             <p className="viewing">正在看第 {page.version} 版，当前是第 {page.current_version} 版。 <a href={hrefFor({ page: "dataset", name, tab, version: null })}>回到当前版本</a></p>

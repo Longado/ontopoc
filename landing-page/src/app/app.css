@@ -151,6 +151,28 @@ h2.section { margin: 32px 0 12px; }
 .token { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; max-width: 560px; }
 .token .caption { font-size: var(--small); color: var(--muted); }
 
+/* object types */
+.id { font-variant-numeric: tabular-nums; }
+.small { font-size: var(--small); }
+a.button { display: inline-block; border-radius: var(--radius); padding: 7px 16px; text-decoration: none; }
+a.button.primary { background: var(--accent); color: #fff; }
+a.button.primary:hover { filter: brightness(0.92); }
+a.button.secondary { background: #fff; color: var(--ink); border: 0.5px solid var(--faint); padding: 6px 14px; }
+a.button.secondary:hover { background: var(--side); }
+.state { font-size: var(--small); font-weight: 600; color: var(--muted); white-space: nowrap; }
+.state-confirmed { color: #2b7a4b; }
+.state-needs_look { color: #a35f00; }
+.reason { margin: 12px 0; max-width: 640px; }
+.reason p { margin-top: 4px; color: var(--ink); }
+.warn { color: #a35f00; }
+.stack.wide { max-width: 760px; }
+.stack.wide .field { max-width: 480px; }
+table.props td { vertical-align: middle; }
+table.log td { white-space: normal; }
+table.log td.keep { white-space: nowrap; }
+table input[type="text"] { min-width: 160px; }
+td input[type="checkbox"] { margin: 0; }
+
 /* narrow screens: the menu folds under the name */
 @media (max-width: 760px) {
   .shell { grid-template-columns: minmax(0, 1fr); align-content: start; }

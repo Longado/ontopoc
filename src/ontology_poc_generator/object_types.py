@@ -396,7 +396,7 @@ def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list
              after={'state': 'needs_look', 'reason': reason, 'caused_by': caused_by}, user_id=None)
     moved.append(element_id)
     for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
-        _flag(conn, reader, f'它用的{_label(conn, element_id)}需要再看：{reason}', caused_by, moved)
+        _flag(conn, reader, f'它用的{_label(conn, element_id)}需要再看（原因见那一组含义）', caused_by, moved)
 
 
 def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) -> list[str]:
@@ -502,10 +502,12 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
     """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look."""
     waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith(TYPE_PREFIX))
     can, others = _confirmers(conn, row, user)
+    blocked = row['state'] == 'needs_look' and conn.execute(
+        "SELECT 1 FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND s.state = 'needs_look'", (row['element_id'],)).fetchone()
     last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json, evidence_ref FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1',
                         (row['element_id'],)).fetchone()
     return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'reason': row['reason'] if row['state'] == 'needs_look' else None,
-            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can, 'confirmers': others if waiting else [],
+            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked, 'confirmers': others if waiting and not blocked else [],
             'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None,
             'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at']}
 

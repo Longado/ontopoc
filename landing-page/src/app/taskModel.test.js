@@ -38,3 +38,9 @@ test("the list keeps refreshing only while something is running", () => {
   assert.equal(anyRunning([draft(), upload()]), false);
   assert.equal(anyRunning([draft({ state: "running" })]), true);
 });
+
+test("a suggestion task lists what the model proposed and what the checks dropped, and fails with the model's reason", () => {
+  const done = taskRow({ kind: "suggest", id: "task:suggest:x", title: "订单、客户", state: "done", at: "2026-11-14T10:00:00+00:00", who: "Ann", proposed: [{ id: "order", name: "订单" }], rejected: [{ name: "客户", reason: "主键重复" }] });
+  assert.deepEqual([done.kind, done.href, done.text], ["建议对象类型", "#/types", "提议了 订单，都是模型草稿；没通过检查的：客户"]);
+  assert.equal(taskRow({ kind: "suggest", id: "y", title: "订单", state: "failed", at: "2026-11-14T10:00:00+00:00", error: "模型请求失败" }).text, "模型请求失败");
+});

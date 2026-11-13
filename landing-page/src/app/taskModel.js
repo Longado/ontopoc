@@ -3,7 +3,7 @@ import { hrefFor } from "./routeModel.js";
 import { modeLabel, versionChangeText } from "./versionText.js";
 
 export const STATE_LABEL = { running: "进行中", done: "完成", failed: "失败", interrupted: "中断" };
-export const KIND_LABEL = { draft: "起草本体", upload: "上传数据集" };
+export const KIND_LABEL = { draft: "起草本体", upload: "上传数据集", suggest: "建议对象类型" };
 
 /** "1 分 30 秒", "45 秒"; "" when either time is missing or unreadable. */
 export function durationText(from, to) {
@@ -26,6 +26,12 @@ function draftText(t) {
   return "";
 }
 
+function suggestText(t) {
+  if (t.state === "failed") return t.error || "没有说明原因";
+  const made = t.proposed.length ? `提议了 ${t.proposed.map((p) => p.name).join("、")}，都是模型草稿` : "没有提议能保存的对象类型";
+  return t.rejected.length ? `${made}；没通过检查的：${t.rejected.map((r) => r.name).join("、")}` : made;
+}
+
 /** One task as a row: what it is, what it is called, its state (bad: shown as a problem), and a sentence about it. */
 export function taskRow(t) {
   return {
@@ -34,11 +40,11 @@ export function taskRow(t) {
     kind: KIND_LABEL[t.kind] ?? t.kind,
     title: t.title,
     // an upload opens its dataset's versions; a modelling job opens the old workbench, where its run is kept (it has no page of its own yet)
-    href: t.mode === "deleted" ? null : t.kind === "upload" ? hrefFor({ page: "dataset", name: t.title, tab: "versions" }) : "/legacy.html",   // a deleted dataset has no page
+    href: t.mode === "deleted" ? null : t.kind === "upload" ? hrefFor({ page: "dataset", name: t.title, tab: "versions" }) : t.kind === "suggest" ? hrefFor({ page: "types" }) : "/legacy.html",   // a deleted dataset has no page
     state: STATE_LABEL[t.state] ?? t.state,
     bad: t.state === "failed" || t.state === "interrupted",
     who: t.who ?? "",
-    text: t.kind === "upload" ? uploadText(t) : draftText(t),
+    text: t.kind === "upload" ? uploadText(t) : t.kind === "suggest" ? suggestText(t) : draftText(t),
   };
 }
 

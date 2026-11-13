@@ -1,6 +1,8 @@
 // The app's addresses (#/datasets/订单/preview?v=2&p=3, #/account, #/users) and its left navigation, as plain data so both can be tested without a browser.
 export const TABS = ["fields", "preview", "versions"];
 export const TAB_LABEL = { fields: "字段", preview: "预览", versions: "版本" };
+export const TYPE_TABS = ["props", "objects", "log"];
+export const TYPE_TAB_LABEL = { props: "属性", objects: "对象", log: "日志" };
 
 const decode = (part) => decodeURIComponent(part);
 
@@ -18,6 +20,15 @@ export function parseRoute(hash) {
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
   if ((parts[0] === "account" || parts[0] === "users") && parts.length === 1) return { page: parts[0] };
   if (parts.length === 1 && Object.hasOwn(PLANNED, parts[0])) return { page: "planned", key: parts[0] };
+  if (parts[0] === "types") {
+    if (parts.length === 1) return { page: "types" };
+    if (parts.length === 2 && parts[1] === "new") return { page: "typenew" };   // the service refuses a type called new, so this address is never a type
+    if (parts.length === 3 && parts[2] === "edit") return { page: "typeedit", id: parts[1] };
+    const tab = parts[2] ?? "props";
+    const p = new URLSearchParams(query).get("p");
+    if (parts.length <= 3 && TYPE_TABS.includes(tab)) return { page: "type", id: parts[1], tab, pageNo: /^[1-9]\d*$/.test(p ?? "") ? Number(p) : 1 };
+    return { page: "notfound" };
+  }
   if (parts[0] === "datasets" && parts.length <= 3) {
     const tab = parts[2] ?? "fields";
     if (!TABS.includes(tab)) return { page: "notfound" };
@@ -32,6 +43,10 @@ export function parseRoute(hash) {
 export function hrefFor(route) {
   if (route.page === "tasks" || route.page === "account" || route.page === "users") return `#/${route.page}`;
   if (route.page === "planned") return `#/${route.key}`;
+  if (route.page === "types") return "#/types";
+  if (route.page === "typenew") return "#/types/new";
+  if (route.page === "typeedit") return `#/types/${encodeURIComponent(route.id)}/edit`;
+  if (route.page === "type") return `#/types/${encodeURIComponent(route.id)}/${route.tab ?? "props"}${route.pageNo > 1 ? `?p=${route.pageNo}` : ""}`;
   if (route.page === "dataset") {
     const base = `#/datasets/${encodeURIComponent(route.name)}/${route.tab ?? "fields"}`;
     const query = [route.version ? `v=${route.version}` : "", route.pageNo > 1 ? `p=${route.pageNo}` : ""].filter(Boolean).join("&");
@@ -45,7 +60,6 @@ export const PLANNED = {
   home: ["首页", "一个提问框和最近的任务，还没做"],
   pipelines: ["管道", "把数据集连接、清洗成新的数据集，每一步看得到行数，还没做"],
   sources: ["数据源", "连接 MySQL、PostgreSQL，把库里的表读成数据集，还没做"],
-  types: ["对象类型", "从数据集建对象类型，还没做"],
   relations: ["关系", "定义对象类型之间的关系，看每条关系连上了多少行，还没做"],
   confirm: ["待确认", "逐条看模型的提议和数据检查，确认或退回，还没做"],
   qa: ["问答", "用已确认的定义回答业务问题，每个答案写明读了哪个版本，还没做"],
@@ -54,7 +68,7 @@ export const PLANNED = {
   lineage: ["血缘", "从数据源到应用，看每一步用了什么，还没做"],
 };
 
-const BUILT = { tasks: "#/tasks", datasets: "#/datasets", users: "#/users" };
+const BUILT = { tasks: "#/tasks", datasets: "#/datasets", types: "#/types", users: "#/users" };
 const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT });
 
 export const NAV = [
@@ -69,4 +83,5 @@ export const NAV = [
 export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户")] }];
 
 /** Which navigation item a route lives under. */
-export const navKeyOf = (route) => (route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : route.page === "account" ? null : route.page);
+export const navKeyOf = (route) =>
+  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit"].includes(route.page) ? "types" : route.page === "account" ? null : route.page;

@@ -17,7 +17,7 @@ async function request(path, options = {}) {
   if (response.status === 401 && path !== "/api/auth/login") onSignedOut();   // the session ended (or never was): back to the sign-in form
   if (!response.ok) {
     throw Object.assign(new Error(body?.error || `服务返回了 ${response.status}`), {
-      code: response.status, files: body?.files, readers: body?.readers, setup: body?.setup, mustChange: body?.must_change,
+      code: response.status, files: body?.files, readers: body?.readers, setup: body?.setup, mustChange: body?.must_change, keyCheck: body?.key_check,
     });
   }
   return body;
@@ -62,6 +62,21 @@ export const deleteDataset = (name, who) =>
 
 export const uploadDatasets = (payload) =>
   request("/api/workspace/datasets/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then((b) => b.results);
+
+// object types
+const typePath = (id, tail = "") => `/api/workspace/types/${encodeURIComponent(id)}${tail}`;
+export const getTypes = () => request("/api/workspace/types").then((b) => b.types);
+export const getType = (id) => request(typePath(id));
+export const getTypeObjects = (id, page = 1) => request(typePath(id, `/objects${page > 1 ? `?page=${page}` : ""}`));
+export const getTypeLog = (id) => request(typePath(id, "/log")).then((b) => b.log);
+/** Checks a key before anything is saved: {rows_checked, warnings}; a key that repeats is refused with `keyCheck` (the repeated values) on the error. */
+export const checkTypeKey = (dataset, key) => send("/api/workspace/types/key-check", { dataset, key });
+export const createType = (payload) => send("/api/workspace/types", payload);
+export const updateType = (payload) => send("/api/workspace/types/update", payload);
+export const proposeMeanings = (id, column, values) => send("/api/workspace/types/meanings", { id, column, values });
+/** Confirms the type (without `column`) or the meanings of one code column, as the version the person saw. */
+export const confirmType = (id, version, column = null) => send("/api/workspace/types/confirm", { id, version, ...(column ? { column } : {}) });
+export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
 
 /** A file's bytes as base64, which is how the service takes them. */
 export async function fileToBase64(file) {
