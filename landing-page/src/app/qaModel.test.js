@@ -30,6 +30,7 @@ test("a definition links to its own page and a refusal says where it stands", ()
   assert.equal(definitionHref("enum:order:状态码"), "#/types/order");
   assert.equal(definitionHref("objtype:order"), "#/types/order");
   assert.equal(definitionHref("relation:order_customer"), "#/relations/order_customer");
+  assert.equal(definitionHref("objview:有效订单", "order"), "#/types/order/views");
   assert.equal(standingText({ state: "needs_look", reason: "取值变了" }), "取值变了");
   assert.equal(standingText({ state: "checked", proposed_by: "Ann" }), "Ann 提出，还没有另一位确认");
   assert.equal(scopeText({ types: [1, 2, 3] }), "范围：3 个已确认的对象类型");

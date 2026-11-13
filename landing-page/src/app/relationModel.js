@@ -46,6 +46,7 @@ export function relationProblem(form, editing) {
 /** The page an item of the queue leads to. */
 export function itemHref(item) {
   if (item.kind === "relation") return hrefFor({ page: "relation", id: item.id });
+  if (item.kind === "view") return hrefFor({ page: "type", id: item.id, tab: "views" });
   return hrefFor({ page: "type", id: item.id, tab: "props" });
 }
 

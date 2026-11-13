@@ -123,7 +123,7 @@ def _definition_line(conn, row: dict, user: dict | None) -> dict:
     kind, name = _kind_and_name(conn, row)
     _, confirmers = _confirmers(conn, row, user)
     return {'id': row['element_id'], 'kind': kind, 'name': name, 'state': row['state'], 'reason': row['reason'] if row['state'] in ('needs_look', 'rejected') else None,
-            'proposed_by': row['proposed_by'], 'who_can_confirm': confirmers}
+            'proposed_by': row['proposed_by'], 'who_can_confirm': confirmers, **({'type': _content(row)['type']} if kind == 'view' else {})}
 
 
 def _causes(conn, row: dict, user: dict | None) -> list[dict]:
@@ -307,7 +307,8 @@ def _used_definitions(conn, sc: dict, parts: dict, read: list[str], walked: list
         row = element_row(conn, element_id)
         who, at = _confirmation(conn, element_id)
         kind, name = _kind_and_name(conn, row)
-        lines.append({'id': element_id, 'kind': kind, 'name': name, 'state': row['state'], 'version': row['version'], 'confirmed_by': who, 'confirmed_at': at})
+        lines.append({'id': element_id, 'kind': kind, 'name': name, 'state': row['state'], 'version': row['version'], 'confirmed_by': who, 'confirmed_at': at,
+                      **({'type': _content(row)['type']} if kind == 'view' else {})})   # a view's page is on its type
     return lines, [{'id': k, 'name': sc['types'][k]['content']['name']} for k in read], {sc['types'][k]['dataset']['name']: sc['types'][k]['dataset']['version'] for k in read}
 
 

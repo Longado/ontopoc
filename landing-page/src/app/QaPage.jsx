@@ -7,7 +7,7 @@ import { answerView, definitionHref, isAnswer, readText, scopeText, staleLines, 
 import { State } from "./TypesPage.jsx";
 import { useLoad } from "./useLoad.js";
 
-const KIND = { type: "对象类型", meaning: "含义", relation: "关系" };
+const KIND = { type: "对象类型", meaning: "含义", relation: "关系", view: "视图" };
 
 /** The definitions a refusal names, bottom of the chain first: what it is, where it stands and why, who could confirm it. */
 function Named({ list, mayBuild }) {
@@ -16,7 +16,7 @@ function Named({ list, mayBuild }) {
       {list.map((d) => (
         <li key={d.id}>
           <p>
-            <span className="muted">{KIND[d.kind]}</span> <a href={definitionHref(d.id)}>{d.name}</a> <State item={d} />
+            <span className="muted">{KIND[d.kind]}</span> <a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} />
           </p>
           <p className="muted">{standingText(d)}</p>
           {d.who_can_confirm?.length > 0 && <p className="muted small">可以确认的人：{d.who_can_confirm.join("、")}</p>}
@@ -106,7 +106,7 @@ function Basis({ record }) {
             <dd>
               {record.definitions.map((d) => (
                 <span className="block" key={d.id}>
-                  {KIND[d.kind]} <a href={definitionHref(d.id)}>{d.name}</a> <span className="muted">{d.confirmed_by ? `${d.confirmed_by} 于 ${timeText(d.confirmed_at)} 确认` : ""}</span>
+                  {KIND[d.kind]} <a href={definitionHref(d.id, d.type)}>{d.name}</a> <span className="muted">{d.confirmed_by ? `${d.confirmed_by} 于 ${timeText(d.confirmed_at)} 确认` : ""}</span>
                 </span>
               ))}
             </dd>
@@ -192,11 +192,12 @@ export function QaPage({ route }) {
             <details className="scope">
               <summary>{scopeText(scope)}</summary>
               <p className="muted">{scope.types.length ? scope.types.map((t) => t.name).join("、") : "还没有已确认的对象类型：先到对象类型页确认"}</p>
+              {scope.views?.length > 0 && <p className="muted">视图：{scope.views.map((v) => v.name).join("、")}</p>}
               {scope.left_out.length > 0 && (
                 <>
                   <p className="muted" style={{ marginTop: 8 }}>不在范围里：</p>
                   <ul className="named">
-                    {scope.left_out.map((d) => <li key={d.id}><a href={definitionHref(d.id)}>{d.name}</a> <State item={d} /></li>)}
+                    {scope.left_out.map((d) => <li key={d.id}><a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} /></li>)}
                   </ul>
                 </>
               )}

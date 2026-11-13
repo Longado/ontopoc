@@ -6,6 +6,7 @@ import { timeText, typeLabel } from "./format.js";
 import { waitingText } from "./relationModel.js";
 import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
+import { TypeViews } from "./TypeViews.jsx";
 import { codeCell, confirmersText, logText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
@@ -243,6 +244,7 @@ export function TypePage({ route }) {
             ))}
           </nav>
           {tab === "props" && <Properties type={t} mayBuild={mayBuild} reload={reload} />}
+          {tab === "views" && <TypeViews type={t} mayBuild={mayBuild} />}
           {tab === "objects" && <Objects id={id} pageNo={pageNo} />}
           {tab === "log" && <Log id={id} />}
         </>

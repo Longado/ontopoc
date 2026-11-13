@@ -1,8 +1,8 @@
 // The app's addresses (#/datasets/订单/preview?v=2&p=3, #/account, #/users) and its left navigation, as plain data so both can be tested without a browser.
 export const TABS = ["fields", "preview", "versions"];
 export const TAB_LABEL = { fields: "字段", preview: "预览", versions: "版本" };
-export const TYPE_TABS = ["props", "objects", "log"];
-export const TYPE_TAB_LABEL = { props: "属性", objects: "对象", log: "日志" };
+export const TYPE_TABS = ["props", "views", "objects", "log"];
+export const TYPE_TAB_LABEL = { props: "属性", views: "视图", objects: "对象", log: "日志" };
 
 const decode = (part) => decodeURIComponent(part);
 

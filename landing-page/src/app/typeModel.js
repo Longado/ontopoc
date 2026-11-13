@@ -36,7 +36,7 @@ const DATASET_LINE = [
 
 /** One line of the log as a sentence: {who, text}. */
 export function logText(e) {
-  const what = e.element === "meaning" ? `“${e.column}”的含义` : e.element === "relation" ? "关系" : "对象类型";
+  const what = e.element === "meaning" ? `“${e.column}”的含义` : e.element === "relation" ? "关系" : e.element === "view" ? "视图" : "对象类型";
   if (e.element === "dataset") {
     const hit = DATASET_LINE.map(([re, say]) => [re.exec(e.change), say]).find(([m]) => m);
     return { who: e.who, text: hit ? hit[1](hit[0]) : e.change };
