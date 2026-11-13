@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { getDataset } from "./api.js";
-import { isNumeric, keyText, percentText, timeText, typeLabel } from "./format.js";
+import { isNumeric, keyText, originText, percentText, timeText, typeLabel } from "./format.js";
 import { Select } from "./Select.jsx";
 import { TABS, TAB_LABEL, hrefFor } from "./routeModel.js";
 import { UploadDialog } from "./UploadDialog.jsx";
 import { useLoad } from "./useLoad.js";
-import { modeLabel, noChangeText, timeline, versionChangeText } from "./versionText.js";
+import { keyListText, modeLabel, noChangeText, timeline, versionChangeText } from "./versionText.js";
 
 function Fields({ page }) {
   const multi = page.key_checks.filter((c) => c.columns.length > 1);
@@ -83,9 +83,9 @@ function Versions({ page, name }) {
           <tr><th>版本</th><th>时间</th><th>操作人</th><th>方式</th><th>变化</th><th></th></tr>
         </thead>
         <tbody>
-          {rows.map((r) =>
+          {rows.map((r, i) =>
             r.type === "no_change" ? (
-              <tr key={`skip-${r.at}`} className="note">
+              <tr key={`skip-${i}`} className="note">
                 <td></td>
                 <td>{timeText(r.at)}</td>
                 <td className="keep">{r.who}</td>
@@ -97,7 +97,16 @@ function Versions({ page, name }) {
                 <td>{timeText(r.at)}</td>
                 <td className="keep">{r.who ?? <span className="faint">—</span>}</td>
                 <td className="keep">{modeLabel(r.mode)}</td>
-                <td>{versionChangeText(r)}</td>
+                <td>
+                  {versionChangeText(r)}
+                  {(r.changed_keys.length > 0 || r.added_keys.length > 0) && (
+                    <details className="which">
+                      <summary>看是哪些行</summary>
+                      {r.changed_keys.length > 0 && <p>改的行：{keyListText(r.changed_keys, r.changed)}</p>}
+                      {r.added_keys.length > 0 && <p>增的行：{keyListText(r.added_keys, r.added)}</p>}
+                    </details>
+                  )}
+                </td>
                 <td className="keep"><a href={hrefFor({ page: "dataset", name, tab: "preview", version: r.current ? null : r.version })}>预览</a></td>
               </tr>
             ),
@@ -132,18 +141,17 @@ export function DatasetPage({ route }) {
             <span>{page.rows} 行</span>
             <span>{page.columns.length} 列</span>
             <span>第 {page.version} 版</span>
-            <span>更新于 {timeText(page.updated_at)}</span>
-            <span>来源 {page.origin === "upload" ? "上传" : page.origin}</span>
-            <span>被使用 {page.used_by} 处</span>
+            <span>{page.version === page.current_version ? `更新于 ${timeText(page.updated_at)}` : `这一版导入于 ${timeText(page.version_at)}`}</span>
+            <span>来源 {originText(page.origin)}</span>
           </p>
           {page.version !== page.current_version && (
             <p className="viewing">正在看第 {page.version} 版，当前是第 {page.current_version} 版。 <a href={hrefFor({ page: "dataset", name, tab, version: null })}>回到当前版本</a></p>
           )}
-          <div className="tabs" role="tablist">
+          <nav className="tabs" aria-label="数据集的页面">
             {TABS.map((t) => (
-              <a key={t} href={at(t)} role="tab" aria-selected={t === tab} className={t === tab ? "active" : ""}>{TAB_LABEL[t]}</a>
+              <a key={t} href={at(t)} aria-current={t === tab ? "page" : undefined} className={t === tab ? "active" : ""}>{TAB_LABEL[t]}</a>
             ))}
-          </div>
+          </nav>
           {tab === "fields" && <Fields page={page} />}
           {tab === "preview" && <Preview page={page} name={name} />}
           {tab === "versions" && <Versions page={page} name={name} />}

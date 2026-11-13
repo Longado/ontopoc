@@ -43,11 +43,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .menu-button { display: none; }
 .nav-group { padding-bottom: 20px; }
 .nav-heading { font-size: var(--small); color: var(--muted); padding: 0 12px 4px; }
-.nav a, .nav .off { display: block; padding: 6px 12px; border-radius: var(--radius); }
+.nav a { display: block; padding: 6px 12px; border-radius: var(--radius); }
 .nav a { color: var(--ink); }
 .nav a:hover { background: var(--hover); text-decoration: none; }
 .nav a.active { color: var(--accent); background: var(--hover); font-weight: 600; }
-.nav .off { color: var(--faint); cursor: default; }
+.nav a.off { color: var(--faint); }
+.nav a.off.active { font-weight: 400; background: var(--hover); }
+h1:focus { outline: none; }
 
 .page { padding: 32px 40px 64px; min-width: 0; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
@@ -83,6 +85,9 @@ th { font-size: var(--small); font-weight: 600; color: var(--muted); background:
 th.num, td.num { padding-right: 24px; }
 td.cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 tr.note td { color: var(--muted); }
+.which { margin-top: 4px; }
+.which summary { cursor: pointer; color: var(--accent); }
+.which p { margin-top: 4px; white-space: normal; max-width: 420px; color: var(--muted); }
 .here { color: var(--accent); }
 .toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
 .checks { list-style: none; margin: 16px 0 0; padding: 0; }
@@ -116,6 +121,7 @@ input[aria-invalid="true"] { border-color: var(--bad); }
 .keys .hint { flex-basis: 100%; }
 .actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 12px 24px 20px; border-top: 0.5px solid var(--line); flex: none; }
 .actions > span { margin-right: auto; font-size: var(--small); }
+.refusal { margin-top: 8px; }
 .results { margin: 0; padding-left: 18px; }
 .results li { padding: 2px 0; }
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { NAV, hrefFor, navKeyOf, parseRoute } from "./routeModel.js";
+import { NAV, PLANNED, hrefFor, navKeyOf, parseRoute } from "./routeModel.js";
 
 test("an empty address and the list address both mean the dataset list", () => {
   assert.deepEqual(parseRoute(""), { page: "datasets" });
@@ -17,7 +17,7 @@ test("a dataset opens on its fields; the tab and the version come from the addre
 });
 
 test("addresses that mean nothing are not found, including a broken escape", () => {
-  for (const hash of ["#/pipelines", "#/datasets/x/nope", "#/datasets/x/preview/extra", "#/datasets/%E0%A4%A"]) assert.deepEqual(parseRoute(hash), { page: "notfound" }, hash);
+  for (const hash of ["#/constructor", "#/nothing", "#/pipelines/x", "#/datasets/x/nope", "#/datasets/x/preview/extra", "#/datasets/%E0%A4%A"]) assert.deepEqual(parseRoute(hash), { page: "notfound" }, hash);
   assert.deepEqual(parseRoute("#/tasks"), { page: "tasks" });
   assert.deepEqual(parseRoute("#/tasks/x"), { page: "notfound" });
 });
@@ -28,9 +28,17 @@ test("hrefFor is the inverse of parseRoute", () => {
   }
 });
 
-test("the sidebar groups what the product has, and only built pages have an address", () => {
+test("a page not built yet has an address of its own and says what it will do", () => {
+  assert.deepEqual(parseRoute("#/types"), { page: "planned", key: "types" });
+  assert.equal(hrefFor({ page: "planned", key: "lineage" }), "#/lineage");
+  assert.equal(PLANNED.types[1], "从数据集建对象类型，还没做");
+  assert.equal(navKeyOf({ page: "planned", key: "qa" }), "qa");
+  for (const { items } of NAV) for (const i of items) assert.ok(i.built || i.key in PLANNED, i.key);   // nothing in the sidebar leads nowhere
+});
+
+test("the sidebar groups what the product has, and marks what is built", () => {
   assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "数据", "本体", "应用", null]);
   assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "任务", "数据集", "管道", "数据源", "对象类型", "关系", "待确认", "问答", "智能体", "看板", "血缘"]);
-  assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => i.href).map((i) => i.key), ["tasks", "datasets"]);
+  assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => i.built).map((i) => i.key), ["tasks", "datasets"]);
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
 });

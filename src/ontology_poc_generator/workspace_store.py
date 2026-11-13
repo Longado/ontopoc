@@ -353,7 +353,7 @@ def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[st
     A row of the new file whose key is already there replaces the values it carries; a key that is not there is appended after
     the existing rows; a row of the current data that the file does not mention stays, because an update never deletes. Keys are
     matched in their plain form (1.0 is 1). A blank cell in the file leaves the stored value as it is and is not a change
-    ('blank_kept' counts the cells that kept a value); columns the file does not carry keep their values; columns only the file
+    ('blank_kept' counts the cells that kept a value; 'changed_keys' and 'added_keys' name the first KEY_LIST_LIMIT rows of each); columns the file does not carry keep their values; columns only the file
     carries are added (empty for rows it does not touch).
     Raises ValueError, with the reason in plain Chinese, when a key cannot be matched without guessing."""
     if not key_columns:
@@ -383,12 +383,14 @@ def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[st
     columns = here + [c for c in there if c not in here]
     rows = [{c: r.get(c) for c in columns} for r in current]
     changed = added = blank_kept = 0
+    changed_keys, added_keys = [], []
     for r in incoming:
         found = where.get(_key_of(r, key_columns))
         merged = {c: r.get(c) for c in columns}
         if found is None:
             rows.append(merged)
             added += 1
+            added_keys.append(_shown(tuple(r.get(c) for c in key_columns)))
             continue
         stored = rows[found[0]]
         given = {c: r[c] for c in there if c not in key_columns and r.get(c) not in (None, '')}   # a key is what matched: its stored spelling stays
@@ -397,10 +399,13 @@ def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[st
         if taken != stored:
             rows[found[0]] = taken
             changed += 1
-    return rows, {'changed': changed, 'added': added, 'unchanged': len(seen) - changed - added, 'blank_kept': blank_kept}
+            changed_keys.append(_shown(tuple(stored.get(c) for c in key_columns)))
+    return rows, {'changed': changed, 'added': added, 'unchanged': len(seen) - changed - added, 'blank_kept': blank_kept,
+                  'changed_keys': changed_keys[:KEY_LIST_LIMIT], 'added_keys': added_keys[:KEY_LIST_LIMIT]}
 
 
 UPLOAD_MODES = ('update_by_key', 'overwrite')
+KEY_LIST_LIMIT = 50   # keys of changed and added rows kept with a version, so its page can say which rows
 NO_CHANGE = 'update_by_key: no change'   # the log line of an update that matched every row and changed none
 
 

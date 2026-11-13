@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { keyText, percentText, typeLabel } from "./format.js";
-import { modeLabel, noChangeText, timeline, versionChangeText } from "./versionText.js";
+import { keyListText, modeLabel, noChangeText, timeline, versionChangeText } from "./versionText.js";
 
 test("each version says what it did in its own mode", () => {
   assert.equal(versionChangeText({ mode: "new", rows: 160 }), "160 行");
@@ -11,6 +11,11 @@ test("each version says what it did in its own mode", () => {
   assert.equal(versionChangeText({ mode: "overwrite", replaced_rows: 160, rows: 2 }), "原 160 行，现 2 行");
   assert.equal(versionChangeText({ mode: "upload", rows: 31 }), "31 行");
   assert.deepEqual(["new", "update_by_key", "overwrite", "upload", "x"].map(modeLabel), ["新建", "按主键更新", "覆盖", "导入", "导入"]);
+});
+
+test("a list of keys says how many more there were than were kept", () => {
+  assert.equal(keyListText(["A1", "A2"], 2), "A1、A2");
+  assert.equal(keyListText(["A1", "A2"], 55), "A1、A2 等 55 行");
 });
 
 test("an update that changed nothing is one plain sentence", () => {

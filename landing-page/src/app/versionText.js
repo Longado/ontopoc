@@ -10,6 +10,9 @@ export function versionChangeText(v) {
   return `${v.rows} 行`;
 }
 
+/** The keys of the rows an update changed or added: the ones kept, and "等 N 行" when there are more than were kept. */
+export const keyListText = (keys, total) => keys.join("、") + (total > keys.length ? ` 等 ${total} 行` : "");
+
 /** An update that matched every row and changed none: one plain sentence. */
 export const noChangeText = (u) => `按主键更新（${u.key_columns.join("、")}）：没有变化，没有新版本${u.blank_kept ? `（${u.blank_kept} 个空格子保留原值）` : ""}`;
 

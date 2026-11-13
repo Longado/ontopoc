@@ -47,7 +47,7 @@ def _version_row(row: dict, current_id: int) -> dict:
     changes = json.loads(row['changes_json']) if row['changes_json'] else {}
     return {'version': row['version'], 'who': row['who'], 'at': row['imported_at'], 'mode': row['mode'] or 'upload', 'rows': row['rows_stored'],
             'changed': changes.get('changed'), 'added': changes.get('added'), 'unchanged': changes.get('unchanged'),
-            'blank_kept': changes.get('blank_kept'), 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'),
+            'blank_kept': changes.get('blank_kept'), 'changed_keys': changes.get('changed_keys') or [], 'added_keys': changes.get('added_keys') or [], 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'),
             'current': row['id'] == current_id}
 
 
@@ -95,7 +95,7 @@ def dataset_detail(conn, name: str, version: int | None = None) -> dict | None:
     cursor = conn.execute(f'SELECT {cols} FROM {_quote(shown["table_name"])} ORDER BY rowid LIMIT {PREVIEW_ROWS}')
     versions = _rows(conn, 'SELECT * FROM dataset WHERE name = ? ORDER BY version DESC', (name,))
     skipped = _rows(conn, 'SELECT time, who, after_json FROM log WHERE element_id = ? AND change = ? ORDER BY time DESC', (f'dataset:{name}', NO_CHANGE))
-    return {'name': name, 'origin': shown['origin'], 'version': shown['version'], 'current_version': current['version'],
+    return {'name': name, 'origin': shown['origin'], 'version': shown['version'], 'version_at': shown['imported_at'], 'current_version': current['version'],
             'rows': total, 'updated_at': _updated_at(conn, name, current['imported_at']), 'who': shown['who'], 'used_by': 0,
             'dropped': json.loads(shown['dropped_json'] or '{}'), 'columns': columns, 'key_checks': checks,
             'versions': [_version_row(v, current['id']) for v in versions],
@@ -123,50 +123,74 @@ def _name(value) -> str:
     return text
 
 
-def _jobs(conn, parts: list) -> list[dict]:
-    """Each uploaded file as the writes it asks for, checked as a whole before anything is written: [{'file', 'plan'}].
-    A part is {'filename', 'content_base64'} and, to update a dataset that exists, 'target' (its name), 'mode' and for update_by_key
-    'key_columns'; 'name' picks the name of a new dataset (the file's name otherwise). A name that is taken is never decided by
-    guessing: without a target and a mode the request is refused, naming the dataset."""
-    jobs, taken = [], {}
-    for part in parts:
-        if not isinstance(part, dict):
-            raise ValueError('每个文件要写成 {"filename": …, "content_base64": …}')
-        filename, data = _decode(part)
-        label = PurePath(filename).name
-        mode, target = part.get('mode') or None, part.get('target') or None
-        if mode and mode not in UPLOAD_MODES:
-            raise ValueError(f'{label}：导入方式只有按主键更新（update_by_key）和覆盖（overwrite）两种')
-        for field in ('target', 'name', 'mode'):
-            if part.get(field) is not None and not isinstance(part[field], str):
-                raise ValueError(f'{label}：{field} 要写成文字')
-        keys = part.get('key_columns')
-        if keys is not None and not (isinstance(keys, list) and keys and all(isinstance(c, str) and c for c in keys)):
-            raise ValueError(f'{label}：主键列（key_columns）要写成列名的列表，例如 ["订单号"]')
-        if bool(mode) != bool(target):
-            raise ValueError(f'{label}：要更新已有的数据集，数据集（target）和方式（mode）要一起写；不要靠文件名猜')
-        if mode == 'update_by_key' and not part.get('key_columns'):
-            raise ValueError(f'{label}：按主键更新要先选出主键列（key_columns）')
+class UploadRefused(ValueError):
+    """An upload nothing of which was written. str() is the whole message; `files` has the problem of each file that has one, by its position
+    in the request, without the file's name (the page shows it on that file's row)."""
+
+    def __init__(self, message: str, files: dict[int, str]):
+        super().__init__(message)
+        self.files = files
+
+
+def _part_jobs(conn, part, taken: dict) -> list[dict]:
+    """One uploaded file as the writes it asks for: [{'file', 'plan'}], one per sheet. A part is {'filename', 'content_base64'} and, to update
+    a dataset that exists, 'target' (its name), 'mode' and for update_by_key 'key_columns'; 'name' picks the name of a new dataset (the file's
+    name otherwise). A name that is taken is never decided by guessing: without a target and a mode it is refused, naming the dataset.
+    Every message starts with the file's name."""
+    if not isinstance(part, dict):
+        raise ValueError('每个文件要写成 {"filename": …, "content_base64": …}')
+    filename, data = _decode(part)
+    label = PurePath(filename).name
+    mode, target = part.get('mode') or None, part.get('target') or None
+    if mode and mode not in UPLOAD_MODES:
+        raise ValueError(f'{label}：导入方式只有按主键更新（update_by_key）和覆盖（overwrite）两种')
+    for field in ('target', 'name', 'mode'):
+        if part.get(field) is not None and not isinstance(part[field], str):
+            raise ValueError(f'{label}：{field} 要写成文字')
+    keys = part.get('key_columns')
+    if keys is not None and not (isinstance(keys, list) and keys and all(isinstance(c, str) and c for c in keys)):
+        raise ValueError(f'{label}：主键列（key_columns）要写成列名的列表，例如 ["订单号"]')
+    if bool(mode) != bool(target):
+        raise ValueError(f'{label}：要更新已有的数据集，数据集（target）和方式（mode）要一起写；不要靠文件名猜')
+    if mode == 'update_by_key' and not part.get('key_columns'):
+        raise ValueError(f'{label}：按主键更新要先选出主键列（key_columns）')
+    try:
+        sources = load_table_file(filename, data)['sources']
+    except SourceFileError as exc:
+        raise ValueError(f'{label}：{exc}') from None
+    if not sources:
+        raise ValueError(f'{label}：文件里没有数据行：第一行应是表头，下面是数据')
+    if len(sources) > 1 and (target or part.get('name')):
+        raise ValueError(f'{label}：文件里有 {len(sources)} 个工作表（{"、".join(sources)}），更新或改名只能用于只有一个工作表的文件')
+    jobs = []
+    for sheet, source in sources.items():
+        name = _name(target or (part.get('name') if len(sources) == 1 and part.get('name') else None)
+                     or (PurePath(filename).stem if len(sources) == 1 else sheet))
+        if name in taken:
+            raise ValueError(f'{label}：和“{taken[name]}”都要写入数据集“{name}”，一次上传里一个数据集只能写一次')
         try:
-            sources = load_table_file(filename, data)['sources']
-        except SourceFileError as exc:
+            plan = plan_upload(conn, name, source['records'], mode=mode, key_columns=part.get('key_columns'),
+                               rows_in=source.get('rows_read'), dropped=source.get('dropped_rows'))
+        except ValueError as exc:
             raise ValueError(f'{label}：{exc}') from None
-        if not sources:
-            raise ValueError(f'{label}：文件里没有数据行：第一行应是表头，下面是数据')
-        if len(sources) > 1 and (target or part.get('name')):
-            raise ValueError(f'{label}：文件里有 {len(sources)} 个工作表（{"、".join(sources)}），更新或改名只能用于只有一个工作表的文件')
-        for sheet, source in sources.items():
-            name = _name(target or (part.get('name') if len(sources) == 1 and part.get('name') else None)
-                         or (PurePath(filename).stem if len(sources) == 1 else sheet))
-            if name in taken:
-                raise ValueError(f'{label}：和“{taken[name]}”都要写入数据集“{name}”，一次上传里一个数据集只能写一次')
-            taken[name] = label
-            try:
-                plan = plan_upload(conn, name, source['records'], mode=mode, key_columns=part.get('key_columns'),
-                                   rows_in=source.get('rows_read'), dropped=source.get('dropped_rows'))
-            except ValueError as exc:
-                raise ValueError(f'{label}：{exc}') from None
-            jobs.append({'file': label, 'plan': plan})
+        taken[name] = label   # only a write that will happen takes the name
+        jobs.append({'file': label, 'plan': plan})
+    return jobs
+
+
+def _jobs(conn, parts: list) -> list[dict]:
+    """Every uploaded file as the writes it asks for, all checked before anything is written. UploadRefused names what is wrong with each
+    file that has a problem, not only the first."""
+    jobs, taken, problems = [], {}, {}
+    for i, part in enumerate(parts):
+        try:
+            jobs += _part_jobs(conn, part, taken)
+        except ValueError as exc:
+            label = PurePath(str(part.get('filename') or '')).name if isinstance(part, dict) else ''
+            problems[i] = str(exc).removeprefix(f'{label}：')
+    if problems:
+        names = [PurePath(str(p.get('filename') or '')).name if isinstance(p, dict) else '' for p in parts]
+        raise UploadRefused('；'.join(f'{names[i]}：{m}' if names[i] else m for i, m in problems.items()), problems)
     return jobs
 
 

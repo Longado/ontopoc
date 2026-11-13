@@ -17,7 +17,7 @@ from ontology_poc_generator.code_meanings import code_columns
 from ontology_poc_generator.named_views import save_definition, views_of_run
 from ontology_poc_generator.pipelines import workspace_datasets
 from ontology_poc_generator.relation_checks import check_relations
-from ontology_poc_generator.workspace_datasets import dataset_detail, list_datasets, upload
+from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_detail, list_datasets, upload
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records, merge_by_key, open_workspace, set_element_states
 from tests.test_ontology_server import OntologyServerTests
 from tests.test_relation_checks import DRAFT
@@ -55,19 +55,19 @@ class MergeByKeyTests(unittest.TestCase):
 
     def test_changes_additions_and_untouched_rows_are_counted_and_nothing_is_deleted(self):
         rows, counts = merge_by_key(self.CURRENT, [{'id': 'a', 'v': '1'}, {'id': 'b', 'v': '9'}, {'id': 'd', 'v': '4'}], ['id'])
-        self.assertEqual(counts, {'changed': 1, 'added': 1, 'unchanged': 1, 'blank_kept': 0})
+        self.assertEqual(counts, {'changed': 1, 'added': 1, 'unchanged': 1, 'blank_kept': 0, 'changed_keys': ['b'], 'added_keys': ['d']})
         self.assertEqual([(r['id'], r['v']) for r in rows], [('a', '1'), ('b', '9'), ('c', '3'), ('d', '4')])
         self.assertEqual(self.CURRENT[1], {'id': 'b', 'v': '2'})   # the input is not changed
 
     def test_a_column_only_the_file_has_is_added_and_one_it_lacks_keeps_its_values(self):
         rows, counts = merge_by_key(self.CURRENT, [{'id': 'a', 'note': 'x'}], ['id'])
-        self.assertEqual(counts, {'changed': 1, 'added': 0, 'unchanged': 0, 'blank_kept': 0})
+        self.assertEqual(counts, {'changed': 1, 'added': 0, 'unchanged': 0, 'blank_kept': 0, 'changed_keys': ['a'], 'added_keys': []})
         self.assertEqual(rows[0], {'id': 'a', 'v': '1', 'note': 'x'})
         self.assertEqual(rows[1], {'id': 'b', 'v': '2', 'note': None})
 
     def test_a_blank_cell_keeps_the_stored_value_and_is_not_a_change(self):
         rows, counts = merge_by_key(self.CURRENT, [{'id': 'c', 'v': ''}, {'id': 'b', 'v': None}, {'id': 'a', 'v': '5'}], ['id'])
-        self.assertEqual(counts, {'changed': 1, 'added': 0, 'unchanged': 2, 'blank_kept': 2})
+        self.assertEqual({k: counts[k] for k in ('changed', 'added', 'unchanged', 'blank_kept')}, {'changed': 1, 'added': 0, 'unchanged': 2, 'blank_kept': 2})
         self.assertEqual([r['v'] for r in rows], ['5', '2', '3'])
         _, added = merge_by_key(self.CURRENT, [{'id': 'z', 'v': ''}], ['id'])   # a new row's blank is just blank
         self.assertEqual((added['added'], added['blank_kept']), (1, 0))
@@ -261,6 +261,34 @@ class UpdateDetailsTests(unittest.TestCase):
             with self.subTest(more), self.assertRaisesRegex(ValueError, words):
                 upload(self.conn, [part('x.csv', '编号,值\n1,a\n'.encode(), **{'target': 'k', 'mode': 'update_by_key', **more})], '小王')
 
+    def test_every_refused_file_is_named_with_its_own_problem_and_nothing_is_written(self):
+        upload(self.conn, [part('k2.csv', '编号,值\n1,a\n'.encode())], '小林')
+        parts = [part('ok.csv', '编号\n9\n'.encode()),
+                 part('a.csv', '编号,值\n1,b\n1,c\n'.encode(), target='k', mode='update_by_key', key_columns=['编号']),
+                 part('b.csv', '编号\n1\n'.encode()),   # a taken name, no way chosen
+                 part('c.csv', '值\n1\n'.encode(), target='k', mode='update_by_key', key_columns=['编号'])]
+        parts[2]['filename'] = 'k2.csv'
+        with self.assertRaises(UploadRefused) as caught:
+            upload(self.conn, parts, '小王')
+        self.assertEqual(sorted(caught.exception.files), [1, 2, 3])
+        self.assertIn('出现了 2 行', caught.exception.files[1])
+        self.assertIn('已经有叫“k2”的数据集', caught.exception.files[2])
+        self.assertIn('没有主键列“编号”', caught.exception.files[3])
+        self.assertNotIn('a.csv：', caught.exception.files[1])
+        self.assertIn('a.csv：', str(caught.exception))
+        self.assertEqual([d['name'] for d in list_datasets(self.conn)], ['k', 'k2'])   # ok.csv was not written either
+
+    def test_a_version_names_the_first_fifty_rows_it_changed_and_added(self):
+        from tests.test_workspace_datasets import order as make_order
+        upload(self.conn, [planted('订单')], '小林')
+        rows = [make_order(f'DD2026{n:04d}', amount='1') for n in range(1, 56)] + [make_order('NEW1'), make_order('NEW2')]
+        upload(self.conn, [part('x.csv', table_csv(rows), target='订单', mode='update_by_key', key_columns=['订单号'])], '小王')
+        page = dataset_detail(self.conn, '订单')
+        newest = page['versions'][0]
+        self.assertEqual((newest['changed'], newest['added']), (55, 2))
+        self.assertEqual((len(newest['changed_keys']), newest['changed_keys'][:2], newest['added_keys']), (50, ['DD20260001', 'DD20260002'], ['NEW1', 'NEW2']))
+        self.assertEqual(dataset_detail(self.conn, '订单', 1)['version_at'], page['versions'][1]['at'])
+
     def test_a_file_with_no_data_rows_is_refused(self):
         for name, data in [('h.csv', '编号,值\n'.encode()), ('b.xlsx', small_xlsx([[None, None]]))]:
             with self.subTest(name), self.assertRaisesRegex(ValueError, '没有数据行'):
@@ -336,6 +364,9 @@ class DatasetApiTests(unittest.TestCase):
             self.assertEqual(self.call(base, f'/api/workspace/datasets/{quote("没有")}')[0], 404)
             for bad in ('x', '²', '99999999999999999999', '-1'):
                 self.assertEqual(self.call(base, f'/api/workspace/datasets/{quote("订单")}?version={quote(bad)}')[0], 400, bad)
+            status, body = self.call(base, '/api/workspace/datasets/upload', {'files': [planted('订单'), part('x.csv', table_csv([order('A')]), target='订单', mode='overwrite'),
+                                                                                       part('y.csv', table_csv([order('A')]), target='没有这个', mode='overwrite')]})
+            self.assertEqual((status, sorted(body['files'])), (400, ['0', '2']))   # 订单 as a new name is taken, 没有这个 is not a dataset, the overwrite of 订单 is fine
             for bad in (5, 'id', None):
                 status, body = self.call(base, '/api/workspace/datasets/upload', {'files': [part('x.csv', table_csv([order('A')]), target='订单', mode='update_by_key', key_columns=bad)]})
                 self.assertEqual(status, 400, bad)

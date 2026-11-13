@@ -59,7 +59,7 @@ from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
-from ontology_poc_generator.workspace_datasets import dataset_detail, list_datasets, upload as upload_datasets
+from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_detail, list_datasets, upload as upload_datasets
 from ontology_poc_generator.workspace_tasks import list_tasks
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1092,6 +1092,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         results = upload_datasets(conn, parts, payload.get('who'))
                     finally:
                         conn.close()
+            except UploadRefused as exc:
+                self.reply(400, {'error': str(exc), 'files': {str(i): m for i, m in exc.files.items()}})
+                return
             except (ValueError, UnicodeError, RowCountMismatch) as exc:
                 self.reply(400, {'error': str(exc)})
                 return

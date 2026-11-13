@@ -12,7 +12,7 @@ export function DatasetList() {
   return (
     <main className="page">
       <div className="page-head">
-        <h1>数据集</h1>
+        <h1 tabIndex={-1}>数据集</h1>
         <button className="primary" onClick={() => setUploading(true)}>上传</button>
       </div>
       {state.status === "error" && (

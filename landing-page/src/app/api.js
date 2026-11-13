@@ -7,7 +7,7 @@ async function request(path, options = {}) {
     throw new Error("连不上本机服务，请确认服务已经启动后再试");
   }
   const body = await response.json().catch(() => null);
-  if (!response.ok) throw Object.assign(new Error(body?.error || `服务返回了 ${response.status}`), { code: response.status });
+  if (!response.ok) throw Object.assign(new Error(body?.error || `服务返回了 ${response.status}`), { code: response.status, files: body?.files });
   return body;
 }
 

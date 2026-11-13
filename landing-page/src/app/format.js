@@ -9,6 +9,9 @@ export function percentText(rate) {
   return rate >= 1 ? "100%" : `${Math.floor(rate * 1000) / 10}%`;
 }
 
+/** Where a dataset came from, in words: an upload, or (anything else) a modelling run. */
+export const originText = (origin) => (origin === "upload" ? "上传" : "建模运行");
+
 /** An ISO time as the local "2026-11-13 14:05". */
 export function timeText(iso) {
   const d = new Date(iso);

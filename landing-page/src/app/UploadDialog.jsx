@@ -6,10 +6,10 @@ import { ACCEPT, firstChoice, sizeText, uploadPayload, uploadProblem, withKeyCol
 const WAYS = [["new", "新数据集"], ["update_by_key", "按主键更新"], ["overwrite", "覆盖"]];
 const WHO_KEY = "ontopoc.who";
 
-function FileChoice({ file, choice, names, columns, onChange, onRemove }) {
+function FileChoice({ file, choice, names, columns, refused, onChange, onRemove }) {
   const taken = choice.kind === "new" && names.includes(choice.name.trim());
   return (
-    <section className="file">
+    <section className={`file${refused ? " refused" : ""}`}>
       <div className="file-head">
         <strong>{file.name}</strong>
         <span className="muted">{sizeText(file.size)}</span>
@@ -52,6 +52,7 @@ function FileChoice({ file, choice, names, columns, onChange, onRemove }) {
         </fieldset>
       )}
       {choice.kind === "overwrite" && choice.target && <p className="hint">整表换成新文件，写成新的一版，旧版本还在版本页。</p>}
+      {refused && <p className="error refusal">{refused}</p>}
     </section>
   );
 }
@@ -67,6 +68,7 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
   const [phase, setPhase] = useState("pick");   // pick, sending, done
   const [results, setResults] = useState([]);
   const [error, setError] = useState("");
+  const [refused, setRefused] = useState({});   // the service's problem with each file, by its position
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -83,16 +85,24 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
     }
   }, [wanted.join("\u0000")]);
 
+  const settle = () => {
+    setError("");
+    setRefused({});
+  };
   const add = (picked) => {
     const fresh = [...picked];
     setFiles((old) => [...old, ...fresh]);
     setChoices((old) => [...old, ...fresh.map((f) => firstChoice(f.name, names, presetTarget))]);
-    setError("");
+    settle();
   };
   const remove = (i) => {
     setFiles(files.filter((_, j) => j !== i));
     setChoices(choices.filter((_, j) => j !== i));
+    settle();
   };
+  useEffect(() => {
+    ref.current?.querySelector(".file.refused")?.scrollIntoView({ block: "nearest" });   // the refused file may be below the fold
+  }, [refused]);
   const problem = loaded ? uploadProblem(files, choices, names) : "";
   const close = () => {
     ref.current.close();
@@ -111,6 +121,7 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
       setPhase("done");
     } catch (e) {
       setError(e.message);
+      setRefused(e.files ?? {});
       setPhase("pick");
     }
   };
@@ -133,16 +144,15 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
           </div>
           {files.map((f, i) => (
             <FileChoice key={`${f.name}-${i}`} file={f} choice={choices[i]} names={names} columns={columnsOf[choices[i].target]}
-              onChange={(c) => setChoices(choices.map((x, j) => (j === i ? c : x)))} onRemove={() => remove(i)} />
+              refused={refused[i]} onChange={(c) => { setChoices(choices.map((x, j) => (j === i ? c : x))); settle(); }} onRemove={() => remove(i)} />
           ))}
-          {error && <p className="error">{error}</p>}
         </>
       )}
       {phase === "done" && <ul className="results">{results.map((r) => <li key={r.name}>{resultLine(r)}</li>)}</ul>}
       </div>
       {phase !== "done" ? (
         <div className="actions">
-          <span className="muted">{files.length ? problem : ""}</span>
+          {error ? <span className="error">{error}</span> : <span className="muted">{files.length ? problem : ""}</span>}
           <button className="plain" onClick={close}>取消</button>
           <button className="primary" onClick={send} disabled={!files.length || !!problem || phase === "sending"}>{phase === "sending" ? "上传中" : "上传"}</button>
         </div>

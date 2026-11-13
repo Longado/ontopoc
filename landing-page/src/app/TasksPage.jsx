@@ -18,7 +18,7 @@ export function TasksPage() {
   return (
     <main className="page">
       <div className="page-head">
-        <h1>任务</h1>
+        <h1 tabIndex={-1}>任务</h1>
         <button className="secondary" onClick={reload}>刷新</button>
       </div>
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
