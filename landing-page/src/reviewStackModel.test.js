@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { TEXT_REPLY, bulkLabel, bulkProblem, bulkSummary, cardEntry, decidedHow, draftKey, isTyping, leftCount, movedIndex, prefillFor, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
+import { TEXT_REPLY, bulkLabel, elsewhereCount, isFrozen, bulkProblem, bulkSummary, cardEntry, decidedHow, draftKey, isTyping, leftCount, movedIndex, prefillFor, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
 
 const reply = (id, needs_text = false) => ({ id, label: id, needs_text });
 const unlinked = { id: "unlinked:a", kind: "unlinked", replies: [reply("expected"), reply("incomplete"), reply("not_applicable"), reply("exception", true)] };
@@ -15,6 +15,20 @@ test("the progress line says what is left and what is decided, and when everythi
   assert.equal(stackLine(1, 0), "还剩 1 件，已定 0 件");
   assert.equal(stackLine(0, 5), "都定了，共 5 件");
   assert.equal(stackLine(0, 0), "");
+});
+
+test("while cards that cannot be answered here are shown the line does not say everything is decided, and says how many are elsewhere", () => {
+  assert.equal(stackLine(7, 4, 2), "还剩 7 件，已定 4 件；另有 2 张要去别处做");
+  assert.equal(stackLine(0, 5, 2), "这里能答复的都定了，共 5 件；另有 2 张要去别处做");
+  assert.equal(stackLine(0, 0, 2), "这里没有要答复的；另有 2 张要去别处做");
+  assert.equal(elsewhereCount([unlinked, { kind: "card_blank" }, { kind: "unjudged" }]), 2);
+});
+
+test("on an older version every card that takes a reply is frozen, and one done by doing something is not", () => {
+  assert.equal(isFrozen(unlinked, "20261113-new.json"), true);
+  assert.equal(isFrozen(gaps, "20261113-new.json"), true);
+  assert.equal(isFrozen(unlinked, null), false);
+  assert.equal(isFrozen({ kind: "card_blank", replies: [] }, "20261113-new.json"), false);
 });
 
 test("the cards that cannot be answered on a card (the data card to fill in, objects to judge) are not counted as left", () => {

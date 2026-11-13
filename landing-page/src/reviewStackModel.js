@@ -9,16 +9,25 @@ export const MODE_SAYS = { single: "逐件判断", bulk: "批量确认" };
 const UNCOUNTED = ["card_blank", "unjudged"];
 export const leftCount = (items) => items.filter((i) => !UNCOUNTED.includes(i.kind)).length;
 
+/** Cards that stay in front of a person but are done somewhere else, not by a reply. */
+export const elsewhereCount = (items) => items.length - leftCount(items);
+
+/** On an older version of the file nothing is answered: definitions and answers are made on the newer one. Cards with no replies (done by doing something) stay as they are. */
+export const isFrozen = (item, newer) => Boolean(newer) && (item.replies?.length ?? 0) > 0;
+
 /** The reply that is no choice of the kind's: only words, for an item that has choices of its own but whose answer is none of them. */
 export const TEXT_REPLY = { id: "text", label: "只记下这几句话", needs_text: true };
 
 /** The key a reply's own draft is kept under: words typed for one reply (a reason for an exception) are not the next reply's. */
 export const draftKey = (itemId, replyId) => `${itemId}|${replyId ?? ""}`;
 
-/** "还剩 7 件，已定 4 件"; when nothing is left, how many were decided. Empty when there was nothing to decide. */
-export function stackLine(open, decided) {
-  if (open) return `还剩 ${open} 件，已定 ${decided} 件`;
-  return decided ? `都定了，共 ${decided} 件` : "";
+/** "还剩 7 件，已定 4 件"; when nothing is left, how many were decided. `elsewhere` cards are still shown but cannot be answered here: they are
+ *  said apart, and while any is shown the line does not say everything is decided. Empty when there was nothing at all. */
+export function stackLine(open, decided, elsewhere = 0) {
+  const away = elsewhere ? `；另有 ${elsewhere} 张要去别处做` : "";
+  if (open) return `还剩 ${open} 件，已定 ${decided} 件${away}`;
+  if (decided) return `${elsewhere ? "这里能答复的都定了" : "都定了"}，共 ${decided} 件${away}`;
+  return elsewhere ? `这里没有要答复的${away}` : "";
 }
 
 /** The reply a key picks on this card (1 to 4, in the order the service lists them); null for a key with no reply. */

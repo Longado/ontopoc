@@ -15,7 +15,7 @@ from ontology_poc_generator.ontology_confirm import without_wrong
 from ontology_poc_generator.ontology_eval import _row_owners
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value
 from ontology_poc_generator.repeated_keys import EXAMPLES as REPEAT_EXAMPLES, applicable, repeated_keys, unmet
-from ontology_poc_generator.review_stack import MODES, REPLY_SAYS, RECORDED, anchor_changes, anchor_of, card_replies, code_check, code_examples, example_rows, menu
+from ontology_poc_generator.review_stack import REPLY_SAYS, RECORDED, anchor_changes, anchor_of, card_replies, code_check, code_examples, example_rows, menu
 
 MAX_MERGED = 3      # groups of an answer listed; the rest is in the check pack
 MAX_SAME_NAME = 5   # groups of one type listed; all of them are counted
@@ -44,6 +44,12 @@ def _num(value) -> str:
 
 def _item(kind: str, ask: str, target: dict, facts=(), from_model: bool = False, **extra) -> dict:
     return {'kind': kind, 'ask': ask, 'facts': list(facts), 'from_model': from_model, 'target': target, **extra}
+
+
+def _counted(unit: str, **counts: int) -> dict:
+    """The anchor of an item that is about how many: {'noun', 'members': [], 'counts': {what: how many}, 'unit'}. It comes back when a count
+    has grown to more than twice or fallen below half, by at least five (anchors.moved with nothing to measure it against)."""
+    return {'noun': '内容', 'members': [], 'counts': dict(counts), 'unit': unit}
 
 
 def _questions(evaluation: dict) -> tuple[dict, dict]:
@@ -112,7 +118,8 @@ def _merged(questions: dict) -> list:
             ask = (f'「{question}」的答案里，“{g["group"]}”这一组下有 {_num(g["objects"])} 个不同的{g["reached"]}'
                    f'（{"、".join(g["examples"])}{more}），按同一个算了。它们是同一个吗？')
             out.append(_item('merged', ask, _qa_target(place, question),
-                             [f'{_num(g["starts"])} 个{g["start"]}落在“{g["group"]}”这一组里'], question=question, id=f'merged:{question}|{g["group"]}'))
+                             [f'{_num(g["starts"])} 个{g["start"]}落在“{g["group"]}”这一组里'], question=question, id=f'merged:{question}|{g["group"]}',
+                             anchor=_counted('个', **{f'一组里不同的{g["reached"]}': g['objects']})))
     return out
 
 
@@ -138,7 +145,8 @@ def _elsewhere(questions: dict, label) -> list:
                       + (f'其中连着 {_num(e["linked"])} 个{start}' if e['linked'] else f'没有{start}连着它们') for e in es]
         asked_about = '、'.join(dict.fromkeys(label(e['type']) for e in found))
         out.append(_item('found_elsewhere', f'「{question}」在{start}里{said}。这道题问的是不是{asked_about}？',
-                         _qa_target(place, question), facts, question=question, id=f'found_elsewhere:{question}'))
+                         _qa_target(place, question), facts, question=question, id=f'found_elsewhere:{question}',
+                         anchor=_counted('个', **{'编号含这个值的对象': sum(e['count'] for e in found)})))
     return out
 
 
@@ -189,7 +197,7 @@ def _same_name(p: dict, bundle: dict, graph: dict, kept: dict, label) -> list:
         ask = (f'{name}里有 {_num(len(same))} 组名字相同、编号不同，例如 {same[0][0][0]}（{numbers(same[0])}）。'
                f'它们是同一个{name}的不同主体，还是该合并？')
         out.append(_item('same_name', ask, {'tab': 'objects', 'object': t['key']},
-                         [f'{g[0][0]}：{numbers(g)}' for g in same[:MAX_SAME_NAME]], id=f'same_name:{t["key"]}'))
+                         [f'{g[0][0]}：{numbers(g)}' for g in same[:MAX_SAME_NAME]], id=f'same_name:{t["key"]}', anchor=_counted('组', **{'名字相同的组': len(same)})))
     return out
 
 
@@ -200,16 +208,19 @@ def _unstable(stability: dict, relations: dict, kept: dict, label, relation_name
     for key, seen in (stability.get('relations') or {}).items():
         if seen < runs and key in kept['relations']:
             out.append(_item('unstable', f'关系“{relation_name(relations[key])}”在 {runs} 次建模里只出现了 {seen} 次。这条关系要保留吗？',
-                             target, [f'共建模 {runs} 次，这条关系出现了 {seen} 次'], relation=key, id=f'unstable:relation:{key}'))
+                             target, [f'共建模 {runs} 次，这条关系出现了 {seen} 次'], relation=key, id=f'unstable:relation:{key}',
+                             anchor={**_counted('次', 出现次数=seen), 'total': runs}))
     for key, seen in (stability.get('types') or {}).items():
         if seen < runs and key in kept['types']:
             out.append(_item('unstable', f'对象“{label(key)}”在 {runs} 次建模里只出现了 {seen} 次。这类对象要保留吗？',
-                             target, [f'共建模 {runs} 次，这类对象出现了 {seen} 次'], id=f'unstable:type:{key}'))
+                             target, [f'共建模 {runs} 次，这类对象出现了 {seen} 次'], id=f'unstable:type:{key}',
+                             anchor={**_counted('次', 出现次数=seen), 'total': runs}))
     elsewhere = stability.get('elsewhere') or {}
     for kind, word in (('relations', '关系'), ('types', '对象')):
         for found in elsewhere.get(kind) or []:
             out.append(_item('unstable', f'另外 {found["count"]} 次建模里出现过{word}“{found["label"]}”，这次的本体里没有。要不要加？',
-                             target, [f'共建模 {runs} 次，另外 {found["count"]} 次出现了它'], id=f'unstable:new:{kind}:{found["label"]}'))
+                             target, [f'共建模 {runs} 次，另外 {found["count"]} 次出现了它'], id=f'unstable:new:{kind}:{found["label"]}',
+                             anchor={**_counted('次', 另外出现的次数=found['count']), 'total': runs}))
     return out
 
 
@@ -236,6 +247,8 @@ def _check_findings(fit: dict, kept: dict, label, relations: dict, settled: froz
          lambda x: f'{label(x["type"])}：只靠{"、".join(map(quote, x["fields"]))}识别'),
         ('unused_sources', len, '张上传的表没被本体读取', '是漏了还是确实用不上？',
          lambda x: f'“{x["source"]}”表：{_num(x["rows"])} 行、{_num(x["fields"])} 个字段'))
+    counted = {'identity_conflicts': ('处', '取值不一样的地方'), 'identity_spellings': ('个', '写法不止一种的对象'), 'suspected_duplicates': ('组', '只差前面 0 的编号'),
+               'missing_across_sources': ('个', '被提到却缺的对象'), 'identity_risks': ('类', '只靠名称识别的对象'), 'unused_sources': ('张', '没被读取的表')}
     out = []
     for key, count, said, question, line in specs:
         # unused tables have no type; a missing object found through a relation goes with the relation
@@ -244,7 +257,8 @@ def _check_findings(fit: dict, kept: dict, label, relations: dict, settled: froz
                  and not (key == 'identity_conflicts' and (x['type'], x['source'], x['identity']) in settled)]
         if found:
             lines = [line(x) for x in found[:MAX_EXAMPLES]]
-            out.append(_item('check_finding', f'有 {_num(count(found))} {said}，例如{lines[0]}。{question}', {'tab': 'check'}, lines, id=f'check_finding:{key}'))
+            out.append(_item('check_finding', f'有 {_num(count(found))} {said}，例如{lines[0]}。{question}', {'tab': 'check'}, lines, id=f'check_finding:{key}',
+                             anchor=_counted(counted[key][0], **{counted[key][1]: count(found)})))
     return out
 
 
@@ -344,7 +358,7 @@ def _data_gaps(tied: dict, plain: list, bundle: dict, coded: frozenset) -> list:
                          {'tab': 'data', 'table': tables[0]}, [_column_facts(bundle, t, column) for t in tables], from_model=True, id=f'data_gap:{column}'))
     if plain:
         out.append(_item('data_gaps', f'模型指出 {_num(len(plain))} 处数据缺口（下面逐条）。客户那边有没有能补上的数据？',
-                         {'tab': 'objects', 'place': 'build'}, plain, from_model=True, id='data_gaps'))
+                         {'tab': 'objects', 'place': 'build'}, plain, from_model=True, id='data_gaps', anchor=_counted('处', 数据缺口=len(plain))))
     return out
 
 
@@ -365,7 +379,7 @@ def _unanswered(questions: dict) -> list:
             why = item['reason']
         facts.append(f'「{question}」：{why}')
     return [_item('unanswered', f'{_num(len(stuck))} 道问过的题现在答不了。这次 POC 要不要答它们？',
-                  {'tab': 'qa', 'place': 'ask'}, facts, from_model, id='unanswered')]
+                  {'tab': 'qa', 'place': 'ask'}, facts, from_model, id='unanswered', anchor=_counted('道', 答不了的题=len(stuck)))]
 
 
 def _card_blank(card: dict | None) -> list:
@@ -450,7 +464,8 @@ def _name_vs_calc(ontology: dict, bundle: dict) -> list:
         elif f['view']:
             out.append(_item('name_by_view', f'「{f["table"]}」的「{f["column"]}」不是用「{f["source"]}」的全部行算的{says}，是按「{f["view"]}」算的{says}。名字要不要写明？',
                              target, [f'{f["compared"]} 行全部和按「{f["view"]}」重算的{says}对得上，按全部行算有 {_num(f["mismatched"])} 行对不上', *notes],
-                             id=f'name_by_view:{f["table"]}.{f["column"]}', column={**head, 'view': f['view']}))
+                             id=f'name_by_view:{f["table"]}.{f["column"]}', column={**head, 'view': f['view']},
+                             anchor={'noun': '内容', 'members': [], 'counts': {'按全部行对不上的行': f['mismatched']}, 'total': f['compared']}))
         elif f['mismatched']:
             actual = f'，这些行算出来都是{STAT_WORDS[f["actual"]]}' if f['actual'] else ''
             ask = (f'「{f["table"]}」的「{f["column"]}」名字说是{says}，用「{f["source"]}」的「{f["source_column"]}」按{"、".join(f["by"])}重算，'
@@ -467,7 +482,8 @@ def _name_vs_calc(ontology: dict, bundle: dict) -> list:
         elif written_bad:
             out.append(_item('name_values', f'「{f["table"]}」的「{f["column"]}」名字说是{says}，其余的行和重算对得上，但有 {_num(f["written_unreadable"])} 个值不是数字'
                              f'（如{"、".join(f["written_unreadable_shown"])}），没法比。是漏填，还是写法要改？',
-                             target, notes, id=f'name_values:{f["table"]}.{f["column"]}', column=head))
+                             target, notes, id=f'name_values:{f["table"]}.{f["column"]}', column=head,
+                             anchor=_counted('个', 不是数字的值=f['written_unreadable'])))
     return out
 
 
@@ -546,8 +562,8 @@ def check_answers(listed: list, raw, by, at: str) -> dict:
         kind, choice, reply, mode = item['kind'], entry.get('choice'), entry.get('reply'), entry.get('mode', 'single')
         if kind not in CHOICES and reply not in card_replies(kind):
             raise CardError(f'这件事不能用答复来关掉：{BY_DOING.get(kind, "要照它的要求去做")}')
-        if mode not in MODES:
-            raise CardError('mode 只能是 single 或 bulk')
+        if mode != 'single':
+            raise CardError('mode 只能是 single；批量通过只能走“一起通过”')
         if reply is not None and (choice is not None or reply not in card_replies(kind)):
             raise CardError('这件事的 reply 只能是：' + '、'.join(card_replies(kind)) + '，且不能和 choice 一起给' if card_replies(kind) else '这件事没有可选的 reply')
         if choice is not None and choice not in CHOICES.get(kind, ()):
@@ -588,7 +604,8 @@ def split_answers(items: list, answers: dict) -> tuple[list, list]:
     open_, answered = [], []
     for item in items:
         got = answers.get(item['id'])
-        changes = anchor_changes(got['anchor'], anchor_of(item)) if got and got.get('anchor') else []
+        now = anchor_of(item)   # None for an item with nothing structured (an answer kept on its facts by an earlier version of the service holds nothing to compare)
+        changes = anchor_changes(got['anchor'], now) if got and got.get('anchor') and now else []
         if got is None:
             open_.append(item)
         elif changes:

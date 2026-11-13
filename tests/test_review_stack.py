@@ -59,11 +59,13 @@ class ReplyTests(unittest.TestCase):
             self.check({'id': 'unlinked:spend_contract', 'reply': 'exception'})
 
     def test_not_applicable_needs_no_words_and_bulk_is_recorded_as_bulk(self):
-        got = self.check({'id': 'data_gaps', 'reply': 'not_applicable', 'mode': 'bulk'})['data_gaps']
-        self.assertEqual((got['reply'], got['text'], got['mode']), ('not_applicable', '', 'bulk'))
+        got = self.check({'id': 'data_gaps', 'reply': 'not_applicable'})['data_gaps']
+        self.assertEqual((got['reply'], got['text'], got['mode']), ('not_applicable', '', 'single'))
+        with self.assertRaises(CardError):   # only the bulk approval can say bulk
+            self.check({'id': 'data_gaps', 'reply': 'not_applicable', 'mode': 'bulk'})
 
     def test_a_mode_that_is_neither_is_refused(self):
-        with self.assertRaisesRegex(CardError, 'single 或 bulk'):
+        with self.assertRaisesRegex(CardError, 'mode 只能是 single'):
             self.check({'id': 'data_gaps', 'reply': 'not_applicable', 'mode': 'many'})
 
     def test_a_reply_the_kind_does_not_offer_is_refused(self):
@@ -136,6 +138,40 @@ class ReturnTests(unittest.TestCase):
         self.assertEqual((open_, len(answered)), ([], 1))
 
 
+class CountedAnchorTests(unittest.TestCase):
+    """An item that is about how many (conflicts, unmatched rows, a model's gaps) keeps the count and comes back when it has grown or shrunk by as
+    much as a confirmed definition's count does, never for a few more; one with nothing countable keeps nothing."""
+    ITEM = {'id': 'check_finding:identity_conflicts', 'kind': 'check_finding', 'ask': '问', 'facts': ['x'],
+            'anchor': {'noun': '内容', 'members': [], 'counts': {'取值不一样的地方': 129}, 'unit': '处'}}
+
+    def kept(self):
+        return check_answers([self.ITEM], [{'id': self.ITEM['id'], 'reply': 'exception', 'text': '已知'}], '王工', '2026-11-13T00:00:00+00:00')
+
+    def now(self, count):
+        return {**self.ITEM, 'anchor': {**self.ITEM['anchor'], 'counts': {'取值不一样的地方': count}}}
+
+    def test_a_few_more_or_fewer_is_not_a_change_and_more_than_twice_or_less_than_half_is(self):
+        kept = self.kept()
+        for count in (129, 140, 100, 250):
+            open_, answered = split_answers([self.now(count)], kept)
+            self.assertEqual((open_, len(answered)), ([], 1), count)
+        [back], _ = split_answers([self.now(300)], kept)
+        self.assertEqual(back['reopened']['changes'], ['取值不一样的地方：上次 129 处，现在 300 处'])
+        [back], _ = split_answers([self.now(40)], kept)
+        self.assertEqual(back['reopened']['changes'], ['取值不一样的地方：上次 129 处，现在 40 处'])
+
+    def test_a_count_measured_against_a_total_is_judged_by_its_share(self):
+        was = {'noun': '内容', 'members': [], 'counts': {'出现次数': 2}, 'total': 3, 'unit': '次'}
+        self.assertEqual(anchor_changes(was, {**was, 'counts': {'出现次数': 4}, 'total': 6}), [])
+        self.assertEqual(anchor_changes(was, {**was, 'counts': {'出现次数': 4}, 'total': 20}), ['出现次数：上次 2 次（共 3 次），现在 4 次（共 20 次）'])
+
+    def test_an_answer_kept_on_facts_by_an_earlier_version_does_not_break_the_list(self):
+        item = {'id': 'data_gap:x', 'kind': 'data_gap', 'ask': '问', 'facts': ['产品 CP01：96 行']}
+        old = {'choice': None, 'text': '知道', 'by': '王工', 'basis': '', 'at': 'x', 'asked': '问', 'mode': 'single', 'reply': 'exception', 'anchor': {'noun': '内容', 'members': ['产品 CP01：100 行']}}
+        open_, answered = split_answers([item], {item['id']: old})
+        self.assertEqual((open_, len(answered)), ([], 1))
+
+
 class StackRouteTests(unittest.TestCase):
     """The planted upload over HTTP: the repeated customer key is a card with the rows it is about; an exception on it is kept and
     survives the next upload."""
@@ -186,13 +222,13 @@ class StackRouteTests(unittest.TestCase):
 
     def test_what_was_decided_through_the_code_and_repeat_endpoints_counts_as_decided_and_says_how(self):
         def check(base, out, name):
-            call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': self.ITEM, 'rule': 'keep_both', 'confirmed_by': '王工', 'mode': 'bulk'})
+            call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': self.ITEM, 'rule': 'keep_both', 'confirmed_by': '王工'})
             call(base, '/api/ontology/code-meanings', {'saved_as': name, 'id': 'code_meaning:订单.状态码', 'confirmed_by': '李工',
                                                        'values': [{'value': '0', 'label': '新建'}, {'value': '1', 'label': '已发货'}, {'value': '2', 'label': '已取消'}]})
             call(base, '/api/ontology/code-meanings/dismiss', {'saved_as': name, 'id': 'code_meaning:客户.客户等级', 'confirmed_by': '李工'})
             settled = {s['id']: s['answer'] for s in self.listed(base, name)['settled']}
             self.assertEqual(settled[self.ITEM]['says'], '每一行都留')
-            self.assertEqual((settled[self.ITEM]['by'], settled[self.ITEM]['mode']), ('王工', 'bulk'))
+            self.assertEqual((settled[self.ITEM]['by'], settled[self.ITEM]['mode']), ('王工', 'single'))
             self.assertEqual((settled['code_meaning:订单.状态码']['says'], settled['code_meaning:订单.状态码']['text']), ('含义已确认', '0 = 新建、1 = 已发货、2 = 已取消'))
             self.assertEqual((settled['code_meaning:客户.客户等级']['says'], settled['code_meaning:客户.客户等级']['mode']), ('不是代码', 'single'))
         self.run_with(check)
@@ -260,7 +296,7 @@ class StackRouteTests(unittest.TestCase):
             conflicts = 'check_finding:identity_conflicts'
             status, body = call(base, '/api/ontology/card', {'saved_as': name, 'by': '王工', 'items': [{'id': conflicts, 'reply': 'exception', 'text': '已知，按最新的算'}]})
             self.assertEqual(status, 200, body)
-            self.assertNotIn('anchor', next(i for i in body['answered'] if i['id'] == conflicts)['answer'])   # nothing structured to hold it to
+            self.assertEqual(next(i for i in body['answered'] if i['id'] == conflicts)['answer']['anchor'], {'noun': '内容', 'members': [], 'counts': {'取值不一样的地方': 129}, 'unit': '处'})   # a count, not the sentences
             status, body = call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': self.ITEM, 'rule': 'keep_both', 'confirmed_by': '王工'})
             self.assertEqual(status, 200, body)
             listed = self.listed(base, name)
@@ -285,7 +321,7 @@ class StackRouteTests(unittest.TestCase):
 
     def test_the_repeat_rule_and_the_code_meaning_remember_how_they_were_decided(self):
         def check(base, out, name):
-            call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': self.ITEM, 'rule': 'keep_both', 'confirmed_by': '王工', 'mode': 'bulk'})
+            call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': self.ITEM, 'rule': 'keep_both', 'confirmed_by': '王工'})
             status, body = call(base, '/api/ontology/code-meanings', {'saved_as': name, 'id': 'code_meaning:订单.状态码', 'confirmed_by': '王工',
                                                                       'values': [{'value': '2', 'label': '已取消'}]})
             self.assertEqual(status, 200, body)
@@ -295,7 +331,10 @@ class StackRouteTests(unittest.TestCase):
                 modes = dict(conn.execute("SELECT substr(element_id, 1, instr(element_id, ':') - 1), json_extract(content_json, '$.mode') FROM element_state WHERE state = 'confirmed'").fetchall())
             finally:
                 conn.close()
-            self.assertEqual(modes, {'repeat_rule': 'bulk', 'property': 'single'})
+            self.assertEqual(modes, {'repeat_rule': 'single', 'property': 'single'})
+            for url in ('/api/ontology/repeat-rules', '/api/ontology/code-meanings', '/api/ontology/code-meanings/dismiss', '/api/ontology/card'):   # no one but the bulk approval can say bulk
+                status, body = call(base, url, {'saved_as': name, 'id': self.ITEM, 'rule': 'keep_both', 'mode': 'bulk', 'items': [{'id': self.ITEM, 'reply': 'exception', 'text': 'x', 'mode': 'bulk'}], 'values': []})
+                self.assertEqual(status, 400, (url, body))
             status, body = call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': self.ITEM, 'rule': 'keep_both', 'mode': 'sometimes'})
             self.assertEqual(status, 400)
         self.run_with(check)
@@ -503,6 +542,24 @@ class BulkApproveRouteTests(unittest.TestCase):
             self.assertIn('有更新的版本', body['error'])
             self.assertEqual(self.listed(base, name)['bulk'], [])
             self.assertEqual(self.rows(out, 'relation:%order_product'), [])
+        self.with_run(check)
+
+    def test_saving_again_from_a_page_that_loaded_before_the_bulk_approval_does_not_take_the_relation_back(self):
+        """The reviewer's repro: confirm the types, bulk-approve order_product, then the page posts its own (older) decisions again."""
+        def check(base, out, name):
+            self.assertEqual(self.approve(base, name, ['relation:order_product'])[0], 200)
+            before = self.rows(out, 'relation:%')
+            status, body = call(base, '/api/ontology/confirm', {'saved_as': name, 'decisions': {'types': self.types, 'relations': {}}, 'confirmed_by': '赵工'})
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body['confirmation']['decisions']['relations'], {'order_product': {'verdict': 'ok'}})
+            self.assertEqual(self.rows(out, 'relation:%'), before)   # the same signer, time, version and mark
+            self.assertEqual(self.rows(out, 'relation:%')[0][1:3] + self.rows(out, 'relation:%')[0][5:], ('confirmed', '王工', 'bulk'))
+            self.assertEqual({r[2] for r in self.rows(out, 'object_type:%')}, {'赵工'})   # what the page did say is its own judgement
+            listed = self.listed(base, name)
+            self.assertEqual(listed['bulk'], [])
+            self.assertEqual([s['answer']['by'] for s in listed['settled'] if s['kind'] == 'relation'], ['王工'])
+            status, body = call(base, '/api/ontology/confirm', {'saved_as': name, 'decisions': {'types': self.types, 'relations': {'order_product': {'verdict': 'wrong'}}}, 'confirmed_by': '赵工'})
+            self.assertEqual(self.rows(out, 'relation:%')[0][1], 'rejected')   # a verdict the page does give is honoured
         self.with_run(check)
 
     def test_a_normal_confirm_that_read_the_run_before_a_bulk_approval_landed_writes_nothing_instead_of_taking_the_relation_back(self):

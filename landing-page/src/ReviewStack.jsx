@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { linkedHint } from "./cardModel.js";
 import { CodeValues, NewerLink } from "./CodeMeaningForm.jsx";
 import { REPEAT_CHOICES, codeBody, codeProblem, codeStart, dropFor, repeatBody } from "./openItemsModel.js";
-import { TEXT_REPLY, cardEntry, draftKey, isTyping, leftCount, movedIndex, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
+import { TEXT_REPLY, cardEntry, draftKey, elsewhereCount, isFrozen, isTyping, leftCount, movedIndex, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
 
 const REPEAT_HINT = Object.fromEntries(REPEAT_CHOICES.map(([rule, , hint]) => [rule, hint]));
 const SHOWN_FACTS = 5;
@@ -58,7 +58,7 @@ function StackCard({ item, run, onGo, requery, client, picked, setPicked, draft,
   const mine = requery.question === item.question;
   const drop = dropFor(run, item);
   const reply = item.replies?.find((r) => r.id === picked) ?? (picked === TEXT_REPLY.id && item.free_text ? TEXT_REPLY : null);
-  const frozen = client.newer && ["code_meaning", "repeated_key"].includes(item.kind);   // definitions are changed on the newer run
+  const frozen = isFrozen(item, client.newer);   // answers and definitions are made on the newer run
   const send = async () => {
     const route = replyRoute(item, reply);
     const done = route === "code" ? (reply.id === "confirm" ? await client.onSaveCodes(item, codeBody(item, draft.codes)) : await client.onDismissCodes(item))
@@ -123,7 +123,7 @@ export function ReviewStack({ run, items, decided, onGo, requery, client }) {
       if (isTyping(e.target)) return;
       if (e.key === "j" || e.key === "k") { e.preventDefault(); go(e.key); return; }
       const reply = replyForKey(item, e.key);
-      if (reply && client.can && !client.busy && !(client.newer && ["code_meaning", "repeated_key"].includes(item.kind))) { e.preventDefault(); setPicked(reply.id); setPoke((n) => n + 1); }
+      if (reply && client.can && !client.busy && !isFrozen(item, client.newer)) { e.preventDefault(); setPicked(reply.id); setPoke((n) => n + 1); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -131,7 +131,7 @@ export function ReviewStack({ run, items, decided, onGo, requery, client }) {
   const shown = { ...item, number: index + 1 };
   return <section className="os-stack" aria-label="要确认的事">
     <div className="os-stack-head">
-      <p className="os-stack-line" aria-live="polite"><b>{stackLine(leftCount(items), decided)}</b></p>
+      <p className="os-stack-line" aria-live="polite"><b>{stackLine(leftCount(items), decided, elsewhereCount(items))}</b></p>
       <label className="os-stack-who">确认人<input value={client.by} maxLength={40} onChange={(e) => client.setBy(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.target.blur(); setPoke((n) => n + 1); } }} /></label>
       <span className="os-stack-nav">
         <button type="button" className="os-graph-link" disabled={index === 0} onClick={() => go("k")} title="上一件（K）">上一件</button>

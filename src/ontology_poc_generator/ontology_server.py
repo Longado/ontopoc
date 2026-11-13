@@ -482,6 +482,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         relation_name = lambda r: next((f'{label(x["from"])} {x.get("label") or x["key"]} {label(x["to"])}' for x in p['relations'] if x['key'] == r['key']), r['key'])
         return relation_band((result.get('data_checks') or {}).get('relations') or [], (result.get('confirmation') or {}).get('decisions'), label, relation_name)
 
+    def bulk_judged(result):
+        """The relations of this run judged right in a bulk approval, as {key: the kept definition with who confirmed it}."""
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            kept = element_contents(conn, f'relation:{memory_key(result)}:')
+        finally:
+            conn.close()
+        here = {r['key'] for r in result['ontology'].get('relations') or []}
+        return {k: c for k, c in kept.items() if c.get('mode') == 'bulk' and k in here}
+
     def code_reply(found):
         """The open items and answered ones, with what each code column's values mean (the page shows them beside answers and fields),
         and the named views the confirmed definitions make."""
@@ -2057,6 +2067,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 signer = (signer or '').strip() or None
                 if payload['decisions'].get('relations'):   # a relation judged right keeps what its check found: only the newest run's
                     stale_check(result)
+                kept_bulk = bulk_judged(result)   # a page that loaded before a bulk approval does not have it: its silence about it is not a verdict
+                silent = {k for k in kept_bulk if not ((payload['decisions'].get('relations') or {}).get(k) or {}).get('verdict')}
+                if silent:
+                    payload = {**payload, 'decisions': {**payload['decisions'], 'relations': {**(payload['decisions'].get('relations') or {}), **{k: {'verdict': 'ok'} for k in silent}}}}
+                    reference = confirmed_reference(result['ontology'], payload['decisions'])
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
@@ -2075,6 +2090,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         kind, _, rkey = name.partition(':')
                         if kind == 'relations' and change[1] == 'confirmed' and rkey in seen:
                             changes[name] = (*change, None, stored_anchors(relation_anchor(seen[rkey])))
+                    for k in silent & seen.keys():   # the bulk approval stays as it was: its signer, its mark, its version
+                        changes[f'relations:{k}'] = (changes[f'relations:{k}'][0], 'confirmed', None, kept_bulk[k]['confirmed_by'], {'mode': 'bulk'}, stored_anchors(relation_anchor(seen[k])))
                     with element_state_writes(conn, list(changes.values())) as rows:
                         if json.loads(result_path.read_text(encoding='utf-8')).get('confirmation') != result.get('confirmation'):   # read again with the write lock held
                             raise RunChanged('这期间这次运行的确认有了变化（比如别人批量通过了关系），什么都没有保存；请刷新页面后再确认')

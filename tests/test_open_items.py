@@ -144,7 +144,8 @@ class MergedAndElsewhereTests(unittest.TestCase):
         self.assertEqual(items[0], {
             'kind': 'merged', 'from_model': False, 'question': who, 'id': f'merged:{who}|G0',
             'ask': f'「{who}」的答案里，“G0”这一组下有 2 个不同的最终母公司（PRRXANJSLS26、ZZ3GL25MGJH2），按同一个算了。它们是同一个吗？',
-            'facts': ['1 个承包商落在“G0”这一组里'], 'target': {'tab': 'qa', 'place': 'ask', 'question': who}})
+            'facts': ['1 个承包商落在“G0”这一组里'], 'target': {'tab': 'qa', 'place': 'ask', 'question': who},
+            'anchor': {'noun': '内容', 'members': [], 'counts': {'一组里不同的最终母公司': 2}, 'unit': '个'}})
 
     def test_a_value_missing_from_the_start_object_but_present_elsewhere_is_asked(self):
         question = '框架合同 GS03F102CA 的潜在合同总值是多少？'
@@ -157,7 +158,7 @@ class MergedAndElsewhereTests(unittest.TestCase):
             'kind': 'found_elsewhere', 'from_model': False, 'question': question, 'id': f'found_elsewhere:{question}',
             'ask': f'「{question}」在合同授标里找不到“GS03F102CA”，但母合同里有，9 个合同授标连着它。这道题问的是不是母合同？',
             'facts': ['条件“piid = GS03F102CA”在合同授标里没有一个对象满足', '母合同里有 1 个对象的编号含“GS03F102CA”，其中连着 9 个合同授标'],
-            'target': {'tab': 'qa', 'place': 'ask', 'question': question}})
+            'target': {'tab': 'qa', 'place': 'ask', 'question': question}, 'anchor': {'noun': '内容', 'members': [], 'counts': {'编号含这个值的对象': 1}, 'unit': '个'}})
 
     def test_several_types_and_several_objects_are_all_named(self):
         question = '编号 X1 的合同值是多少？'
@@ -244,7 +245,8 @@ class SameNameTests(unittest.TestCase):
         self.assertEqual(item, {
             'kind': 'same_name', 'from_model': False, 'id': 'same_name:vendor',
             'ask': '承包商里有 2 组名字相同、编号不同，例如 Stantec（K1 / K2）。它们是同一个承包商的不同主体，还是该合并？',
-            'facts': ['Stantec：K1 / K2', 'Zed：K4 / K5 / K6'], 'target': {'tab': 'objects', 'object': 'vendor'}})
+            'facts': ['Stantec：K1 / K2', 'Zed：K4 / K5 / K6'], 'target': {'tab': 'objects', 'object': 'vendor'},
+            'anchor': {'noun': '内容', 'members': [], 'counts': {'名字相同的组': 2}, 'unit': '组'}})
 
     def test_at_most_five_groups_are_listed_but_all_are_counted(self):
         pairs = [(f'{n}A', f'Name{n}') for n in range(7)] + [(f'{n}B', f'name{n}') for n in range(7)]
@@ -298,7 +300,8 @@ class UnstableTests(unittest.TestCase):
         self.assertEqual(items[0], {
             'kind': 'unstable', 'from_model': False, 'relation': 'contract_vendor', 'id': 'unstable:relation:contract_vendor',
             'ask': '关系“合同授标 授予 承包商”在 3 次建模里只出现了 2 次。这条关系要保留吗？',
-            'facts': ['共建模 3 次，这条关系出现了 2 次'], 'target': target})
+            'facts': ['共建模 3 次，这条关系出现了 2 次'], 'target': target,
+            'anchor': {'noun': '内容', 'members': [], 'counts': {'出现次数': 2}, 'unit': '次', 'total': 3}})
         self.assertEqual(items[1]['ask'], '对象“承包商”在 3 次建模里只出现了 2 次。这类对象要保留吗？')
         self.assertNotIn('relation', items[1])
         self.assertEqual(items[2]['ask'], '另外 1 次建模里出现过关系“合同动作 — 最终母公司”，这次的本体里没有。要不要加？')
@@ -363,7 +366,7 @@ class DataGapTests(unittest.TestCase):
         gaps = ['财务行缺少稳定的交易主键。', '办公室只有编号和名称。']
         [item] = open_items(run(ontology={**ONTOLOGY, 'data_gaps': gaps}), BUNDLE)
         self.assertEqual(item, {'kind': 'data_gaps', 'id': 'data_gaps', 'from_model': True, 'ask': '模型指出 2 处数据缺口（下面逐条）。客户那边有没有能补上的数据？',
-                                'facts': gaps, 'target': {'tab': 'objects', 'place': 'build'}})
+                                'facts': gaps, 'target': {'tab': 'objects', 'place': 'build'}, 'anchor': {'noun': '内容', 'members': [], 'counts': {'数据缺口': 2}, 'unit': '处'}})
 
 
 class RepeatedKeyTests(unittest.TestCase):
@@ -525,7 +528,7 @@ class UnansweredTests(unittest.TestCase):
             'kind': 'unanswered', 'id': 'unanswered', 'from_model': True, 'ask': '4 道问过的题现在答不了。这次 POC 要不要答它们？',
             'facts': ['「甲」：查询写不出来（模型的判断）', '「乙」：本体缺回答它要的东西（模型的判断）',
                       '「丙」：本体里没有对象类型 invoice', '「丁」：数据里没有'],
-            'target': {'tab': 'qa', 'place': 'ask'}})
+            'target': {'tab': 'qa', 'place': 'ask'}, 'anchor': {'noun': '内容', 'members': [], 'counts': {'答不了的题': 4}, 'unit': '道'}})
 
     def test_the_item_is_not_from_the_model_when_every_reason_was_written_by_code(self):
         items = asked(self.stuck('甲', 'query_limit', reason='这道题用了 having：查询语言还表达不了', query={'start': 'spend', 'having': {}}),

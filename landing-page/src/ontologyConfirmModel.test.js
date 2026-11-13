@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { addType, confirmProgress, decisionsOf, elementNote, removeAdded, renameType, setVerdict } from "./ontologyConfirmModel.js";
+import { addType, confirmProgress, decisionsOf, elementNote, removeAdded, renameType, savedDecisionsChanged, setVerdict } from "./ontologyConfirmModel.js";
 import { overviewTiles } from "./ontologyGraphModel.js";
 
 const ontology = { object_types: [{ key: "customer", label: "客户" }, { key: "order", label: "订单" }, { key: "product", label: "产品" }],
@@ -62,4 +62,13 @@ test("a saved element shows who confirmed it, when, which version, and the store
   assert.deepEqual(elementNote(savedRun, "types", "order"), { state: "rejected", who: null, at: "2026-11-12T10:00:00+00:00", version: 1, evidence: [] });
   assert.equal(elementNote(savedRun, "relations", "order_customer"), null);   // nothing saved for it
   assert.equal(elementNote({ ontology: savedRun.ontology }, "types", "customer"), null);   // a run saved before confirmations were recorded
+});
+
+test("a run whose kept decisions differ from the page's last copy says so: a bulk approval landed and the page must not save over it", () => {
+  const before = { confirmation: { decisions: { types: { a: { verdict: "ok" } }, relations: {} } } };
+  const after = { confirmation: { decisions: { types: { a: { verdict: "ok" } }, relations: { r: { verdict: "ok" } } } } };
+  assert.equal(savedDecisionsChanged(before, after), true);
+  assert.equal(savedDecisionsChanged(after, after), false);
+  assert.equal(savedDecisionsChanged({}, {}), false);
+  assert.equal(savedDecisionsChanged(null, before), true);
 });

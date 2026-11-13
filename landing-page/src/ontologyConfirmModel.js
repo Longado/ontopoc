@@ -8,6 +8,9 @@ export function decisionsOf(run) {
     : { types: {}, relations: {}, added: [], variants: [] };
 }
 
+/** Whether the confirmation kept with `after` differs from the one kept with `before`: the page's own copy of the decisions is then out of date. */
+export const savedDecisionsChanged = (before, after) => JSON.stringify(before?.confirmation?.decisions ?? null) !== JSON.stringify(after?.confirmation?.decisions ?? null);
+
 /** What was saved for one object ("types") or relation: the decision, who made it, when, which version, and the stored
  *  key checks it rests on as sentences. Null when nothing was saved for it (or the run was saved before this was kept). */
 export function elementNote(run, kind, key) {

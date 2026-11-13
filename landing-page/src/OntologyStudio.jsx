@@ -12,7 +12,7 @@ import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js
 import { downloadName, summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
 import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, canReaccept, changeLabel, previousTitle, purposeNote, replacedNote, replacesAccepted, savedAcceptance } from "./ontologyAcceptanceModel.js";
-import { addType, confirmProgress, decisionsOf, elementNote, otherRunTypes, referenceDownload, removeAdded, renameType, returnedNote, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
+import { addType, confirmProgress, decisionsOf, elementNote, savedDecisionsChanged, otherRunTypes, referenceDownload, removeAdded, renameType, returnedNote, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverModel.js";
 import { folderLabel } from "./runLibraryModel.js";
@@ -840,7 +840,7 @@ function AnsweredList({ list, client }) {
       <div className="os-open-body">
         <p className="os-open-ask">{r.asked}</p>
         <p className="os-answered-says"><b>{r.says}</b><small className="pr-muted">{[r.stamp, decidedHow(r.item.answer)].filter(Boolean).join(" · ")}</small></p>
-        {r.back && <div className="os-open-actions"><button type="button" className="os-graph-link" disabled={!client.can || client.busy} title={client.can ? "收回这个答复，它回到待确认的事里，原来写的字留在表单里，可以改" : client.why}
+        {r.back && <div className="os-open-actions"><button type="button" className="os-graph-link" disabled={!client.can || client.busy || Boolean(client.newer)} title={client.newer ? "有更新的版本，答复要在那一次里改" : client.can ? "收回这个答复，它回到待确认的事里，原来写的字留在表单里，可以改" : client.why}
           onClick={async () => { if (await client.onReply({ id: r.id, reply: "reopen" })) client.setPrefill(prefillFor(r.item)); }}>重新判断</button></div>}
         {!r.back && ["code_meaning", "repeated_key"].includes(r.item.kind) && !client.newer && <div className="os-open-actions"><button type="button" className="os-graph-link" disabled={!client.can || client.busy}
           title={client.can ? "收回这个决定，它回到待确认的事里" : client.why} onClick={() => client.onWithdraw(r.item)}>重新判断</button></div>}
@@ -1026,7 +1026,11 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
 
   const keep = (valid) => setStorageWarning(saveResult(storage(), valid));
   function show(result) { const valid = validateRun(result); setRun(valid); keep(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setObjectKey(null); setObjPlace("objects"); setQaPlace("ask"); setDataPlace(null); setTab(startSection(valid)); onCurrent(valid); onRunsChanged(); }
-  function update(result) { const valid = validateRun(result); setRun(valid); keep(valid); onRunsChanged(); }
+  function update(result) {
+    const valid = validateRun(result);
+    if (savedDecisionsChanged(run, valid)) setDecisions(decisionsOf(valid));   // what is kept changed under the page (a bulk approval): its copy would take it back on the next save
+    setRun(valid); keep(valid); onRunsChanged();
+  }
   useEffect(() => { onCurrent(run && tab !== "upload" ? run : null); }, [run, tab]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {   // the sidebar asked for new work, or for a run kept on this machine
     if (!request) return;

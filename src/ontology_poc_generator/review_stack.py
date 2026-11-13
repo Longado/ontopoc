@@ -8,7 +8,7 @@ choices (repeat rule options, "same or different"), and of the four general repl
   not_applicable  it does not apply here (the model read a column as a code, a table nobody needs)
   exception       it is true and known, left as it is for a reason that is written down
 
-A reply is kept with who gave it and whether it was decided one by one ('single') or with others in one action ('bulk').
+A reply is kept with who gave it and how it was decided: one by one ('single'). Only the bulk approval endpoint records 'bulk'; no other request can say it.
 "Not applicable" and "exception" are decisions that stay decided: they keep an anchor, what the item was about when it was
 decided (the values of a code column with their rows, the keys that repeated, the rows not linked). The same item on the
 next upload is not asked again unless an anchor breaks: something new is in it, or a count has moved by the same measure as
@@ -24,7 +24,6 @@ from ontology_poc_generator.anchors import moved
 
 REPLY_SAYS = {'confirm': '确认', 'wrong': '不对', 'not_applicable': '不适用', 'exception': '已知例外'}
 RECORDED = ('not_applicable', 'exception')   # decisions that stay decided and carry an anchor
-MODES = ('single', 'bulk')
 EXAMPLE_ROWS = 3
 EXAMPLE_COLUMNS = 6
 NEW_SHOWN = 3
@@ -61,10 +60,11 @@ def menu(kind: str) -> list[dict]:
 
 
 def check_mode(payload: dict) -> str:
-    """How a request says it was decided: 'single' when it does not say. Raises ValueError with the text the person reads."""
+    """How a request says it was decided: always 'single' here ('bulk' is the bulk approval's alone, which works it out itself). Raises ValueError
+    with the text the person reads when a request says anything else."""
     mode = payload.get('mode', 'single')
-    if mode not in MODES:
-        raise ValueError('mode 只能是 single 或 bulk')
+    if mode != 'single':
+        raise ValueError('mode 只能是 single；批量通过只能走“一起通过”')
     return mode
 
 
@@ -77,7 +77,8 @@ def card_replies(kind: str) -> tuple:
 
 def anchor_of(item: dict) -> dict | None:
     """What the item is about, as a decision about it keeps it: {'noun', 'members' (what it names: values, keys),
-    'counts' ({what counted: how many}) and 'total' (of how many rows)}. None for an item that has nothing structured: its facts are
+    'counts' ({what counted: how many}), 'total' (of how many rows; absent when a count has nothing to be measured against) and 'unit'
+    (what is counted, rows when absent)}. None for an item that has nothing structured: its facts are
     sentences with counts in them, capped at three, and they change when another card's decision does, so they are no anchor
     and a decision about such an item never comes back by itself."""
     return item.get('anchor')
@@ -90,10 +91,14 @@ def anchor_changes(was: dict, now: dict) -> list[str]:
     new = [m for m in now.get('members', []) if m not in set(was.get('members', []))]
     if new:
         changes.append(f'多了{now.get("noun", "内容")}：{"、".join(new[:NEW_SHOWN])}{"等" if len(new) > NEW_SHOWN else ""}')
+    unit = now.get('unit', '行')
     for name, count in (was.get('counts') or {}).items():
-        k, n = (now.get('counts') or {}).get(name, 0), now.get('total', 0)
-        if moved(count, was.get('total', 0), k, n):
-            changes.append(f'{name}：上次 {count} 行（共 {was["total"]} 行），现在 {k} 行（共 {n} 行）')
+        k, n = (now.get('counts') or {}).get(name, 0), now.get('total')
+        if was.get('total') is None or n is None:   # nothing to measure it against: the count itself, grown to more than twice or fallen below half
+            if moved(count, 1, k, 1):
+                changes.append(f'{name}：上次 {count} {unit}，现在 {k} {unit}')
+        elif moved(count, was['total'], k, n):
+            changes.append(f'{name}：上次 {count} {unit}（共 {was["total"]} {unit}），现在 {k} {unit}（共 {n} {unit}）')
     return changes
 
 
