@@ -19,7 +19,7 @@ import re
 
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
-from ontology_poc_generator.type_access import can_access, dataset_hidden, visible_to
+from ontology_poc_generator.type_access import can_access, dataset_hidden, hidden_values, visible_to
 from ontology_poc_generator.workspace_store import StaleElement, check_key, current_dataset, element_state_writes, log_line
 
 TYPE_PREFIX = 'objtype:'
@@ -704,7 +704,8 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     content = _content(row)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
-    props = [{**p, 'key': p['column'] in content['key'], 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
+    unsent = hidden_values(conn, row['element_id'])
+    props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'],
             'dataset_version': dataset['version'] if dataset else None, 'rows': dataset['rows_stored'] if dataset else None, 'seen': seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),
@@ -751,5 +752,6 @@ def log_entries(conn, ids: list[str]) -> list[dict]:
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
                     'caused_by': after.get('caused_by'), 'self_confirmed': bool(after.get('self_confirmed')),
                     'visible_to': after.get('visible_to') if change == 'access_changed' else None,
-                    'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(after['columns']) if change == 'meanings_retired' else None})
+                    'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(after['columns']) if change == 'meanings_retired'
+                    else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed' else None})
     return out

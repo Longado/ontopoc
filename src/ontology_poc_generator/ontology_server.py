@@ -57,6 +57,7 @@ from ontology_poc_generator.ontology_confirm import confirmed_reference, element
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
+from ontology_poc_generator.workspace_questions import QaRefused, ask as ask_workspace, history as question_history, reopen as reopen_question, scope_line
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
@@ -66,12 +67,12 @@ from ontology_poc_generator.auth_http import LOOPBACK, Gate
 from ontology_poc_generator.dataset_readers import dataset_readers
 from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
 from ontology_poc_generator.workspace_tasks import list_tasks
-from ontology_poc_generator.object_types import TypeRefused, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
+from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
 from ontology_poc_generator.object_relations import (
     confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
 from ontology_poc_generator.review_queue import confirm_item, queue, send_back
-from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, set_access
+from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, set_access, set_values_hidden
 
 ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
@@ -1257,6 +1258,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                 body = confirm_element(conn, payload, who, self.user)
                             elif route == '/key-check':
                                 body = key_preview(conn, payload.get('dataset'), payload.get('key'), self.user)
+                            elif route == '/privacy':
+                                _type_row(conn, payload.get('id'), self.user)   # a type this person may not see is not there for them
+                                body = set_values_hidden(conn, str(payload.get('id')), str(payload.get('column')), payload.get('hide_values'), who)
                             else:
                                 self.reply(404, {'error': 'Unknown workspace endpoint'})
                                 return
@@ -1270,6 +1274,42 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
+        def ask_get(self):
+            """/api/workspace/ask (the scope line and the person's own history), /api/workspace/ask/<id> (one saved answer as it stands now)."""
+            parts = [p for p in urlsplit(self.path).path[len('/api/workspace/ask'):].split('/') if p]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = {**scope_line(conn, self.user), 'history': question_history(conn, self.user), 'model_ready': gateway is not None}
+                elif len(parts) == 1 and parts[0].isdigit():
+                    body = reopen_question(conn, self.user, int(parts[0]))
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except QaRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def ask_post(self):
+            """POST /api/workspace/ask {question}: answered from the confirmed definitions this person may see, or refused with the reason (see workspace_questions.py).
+            The model is asked without the lock; the answer is kept under it."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    body = ask_workspace(conn, gateway, self.user, payload.get('question'))
+                finally:
+                    conn.close()
+            except QaRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
                 return
             self.reply(200, body)
 
@@ -1344,6 +1384,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_GET(self):
             if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
+                return
+            if self.path.split('?')[0] == '/api/workspace/ask' or self.path.startswith('/api/workspace/ask/'):
+                self.ask_get()
                 return
             if self.path.split('?')[0] in ('/api/workspace/relations', '/api/workspace/relation-form', '/api/workspace/queue', '/api/workspace/permissions') \
                     or self.path.startswith('/api/workspace/relations/'):
@@ -1545,6 +1588,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/types' or self.path.startswith('/api/workspace/types/'):
                 self.types_post()
+                return
+            if self.path == '/api/workspace/ask':
+                self.ask_post()
                 return
             if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
                              '/api/workspace/queue/send-back', '/api/workspace/permissions'):

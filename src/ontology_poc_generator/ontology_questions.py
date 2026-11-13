@@ -590,12 +590,12 @@ def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
 
 
 def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = None, purpose_only: bool = False,
-                  derived: list | None = None, card: dict | None = None, answerer=None, definitions: list | None = None) -> dict:
+                  derived: list | None = None, card: dict | None = None, answerer=None, definitions: list | None = None, catalog: dict | None = None) -> dict:
     """`answerer(query, question, used)` works out one question's answer in place of answer_query (the caller reads the rows its own
-    way; `used` is the model's `definitions_used`). `definitions` is what the person has confirmed, told to the model.
+    way; `used` is the model's `definitions_used`). `definitions` is what the person has confirmed, told to the model; `catalog` replaces the one built from the data.
     One call. With question: that question. With purpose_only: the questions the person wrote as the purpose, which
     an upload answers. With neither: the model's own round, asked for on the questions page."""
-    request = {'purpose': bundle['decision'], 'ontology': _catalog(ontology, bundle, derived)}
+    request = {'purpose': bundle['decision'], 'ontology': catalog or _catalog(ontology, bundle, derived)}   # `catalog`: what the caller lets the model see (the workspace hides values)
     if definitions:
         request['definitions'] = definitions
     if question:

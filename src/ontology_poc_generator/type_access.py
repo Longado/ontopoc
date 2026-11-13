@@ -100,6 +100,37 @@ def set_access(conn, english_name: str, visible_to, who: str | None) -> dict:
     return {'visible_to': 'everyone' if ids is None else _names(conn, ids)}
 
 
+def hidden_values(conn, type_element_id: str) -> set[str]:
+    """The columns of this type whose values are never sent to the model that reads a question (a builder's switch on the type page). Not part of what a
+    person confirms: flipping it leaves the state alone and goes to the log."""
+    return {c for (c,) in conn.execute('SELECT column_name FROM value_privacy WHERE type_id = ?', (type_element_id,))}
+
+
+def set_values_hidden(conn, english_name: str, column: str, hidden: bool, who: str | None) -> dict:
+    element_id = f'{TYPE_PREFIX}{english_name}'
+    row = conn.execute('SELECT content_json FROM element_state WHERE element_id = ?', (element_id,)).fetchone()
+    if row is None:
+        raise AccessRefused('没有这个对象类型', 404)
+    if column not in {p['column'] for p in json.loads(row[0])['properties']}:
+        raise AccessRefused(f'这个对象类型没有属性“{column}”')
+    if not isinstance(hidden, bool):
+        raise AccessRefused('hide_values 要写成 true 或 false')
+    if hidden == (column in hidden_values(conn, element_id)):
+        return {'hide_values': hidden}
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        if hidden:
+            conn.execute('INSERT OR IGNORE INTO value_privacy(type_id, column_name) VALUES (?, ?)', (element_id, column))
+        else:
+            conn.execute('DELETE FROM value_privacy WHERE type_id = ? AND column_name = ?', (element_id, column))
+        log_line(conn, who or '未署名', element_id, 'values_privacy_changed', after={'column': column, 'hide_values': hidden})
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    return {'hide_values': hidden}
+
+
 def access_table(conn) -> dict:
     """The admin's page: every type with who sees it, and the people (not disabled) a list can name."""
     people = [{'id': i, 'name': n, 'role': r} for i, n, r in conn.execute(
