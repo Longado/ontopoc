@@ -64,3 +64,15 @@ export function reopenedLine(reopened) {
   const said = `${reopened.by} 上次记为“${reopened.says}”${reopened.text ? `（${reopened.text}）` : ""}`;
   return `${said}，现在数据变了：${reopened.changes.join("；")}。`;
 }
+
+// The clean band: what can be approved together once the list is shown. The service works the band out; the page only lists it.
+export const BULK_KIND = { code_meaning: "代码含义", relation: "关系" };
+export const bulkSummary = (band) => `有 ${band.length} 件检查都过了、依据够强，可以一起通过`;
+export const bulkLabel = (count) => `一起通过 ${count} 件`;
+
+/** What stops a bulk approval, in words; "" when it can go. */
+export function bulkProblem(ids, by) {
+  if (!ids.length) return "先勾上要通过的";
+  if (!by.trim()) return "先填确认人";
+  return by.trim().length > 40 ? "确认人最多 40 个字" : "";
+}

@@ -584,6 +584,13 @@ small.os-tone-warn { color: var(--amber); }
 /* 要确认的事: one card at a time, replies on the keys 1 to 4 */
 .os-open { display: grid; gap: 10px; }
 .os-open .pr-card-head h2 { margin: 0; }
+.os-bulk { display: grid; gap: 10px; padding: 12px 16px; border-radius: 8px; background: var(--canvas); }
+.os-bulk summary { cursor: pointer; font-size: 15px; font-weight: 700; }
+.os-bulk[open] summary { margin-bottom: 4px; }
+.os-bulk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.os-bulk-list label { display: flex; align-items: baseline; gap: 8px; }
+.os-bulk-list input { flex: none; margin: 0; accent-color: var(--primary); }
+.os-bulk-list .os-open-facts { margin-top: 2px; padding-left: 26px; }
 .os-stack { display: grid; gap: 12px; margin-top: 4px; }
 .os-stack-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .os-stack-line { margin: 0; font-size: 15px; font-variant-numeric: tabular-nums; }

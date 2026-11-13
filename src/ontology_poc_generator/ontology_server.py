@@ -33,7 +33,7 @@ from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
-from ontology_poc_generator.review_stack import check_mode
+from ontology_poc_generator.review_stack import check_mode, code_band, relation_band
 from ontology_poc_generator.open_items import check_answers, code_meaning_items, linked_cells, open_items, split_answers, with_replies
 from ontology_poc_generator.ontology_card import NO_CARD, build_card, check_cells, live_cells, with_changes
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
@@ -457,16 +457,29 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         'answer': {'says': '不是代码', 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': (row['content'] or {}).get('mode')}})
         return out
 
+    def bulk_band_of(found, items, newer):
+        """What can be approved together (review_stack): nothing on a run that a newer version of the file has replaced, where definitions
+        are changed, and nothing on a draft that did not pass verification."""
+        if found is None or newer or found[0]['ontology']['status'] != 'auto_built_verified':
+            return []
+        result = found[0]
+        p = normalize_proposal(result['ontology'])
+        names = {t['key']: t.get('label') or t['key'] for t in p['object_types']}
+        label = lambda key: names.get(key, key)
+        relation_name = lambda r: next((f'{label(x["from"])} {x.get("label") or x["key"]} {label(x["to"])}' for x in p['relations'] if x['key'] == r['key']), r['key'])
+        return [*code_band(items), *relation_band((result.get('data_checks') or {}).get('relations') or [], (result.get('confirmation') or {}).get('decisions'), label, relation_name)]
+
     def code_reply(found):
         """The open items and answered ones, with what each code column's values mean (the page shows them beside answers and fields),
         and the named views the confirmed definitions make."""
         card, items, answered = card_for(found)
         if found is None:
-            return {'items': items, 'answered': answered, 'settled': [], 'meanings': {}, 'views': [], 'view_tables': [], 'row_cap': ROW_CAP, 'repeat_rules': {}, 'review': [], 'newer': None}
+            return {'items': items, 'answered': answered, 'settled': [], 'bulk': [], 'meanings': {}, 'views': [], 'view_tables': [], 'row_cap': ROW_CAP, 'repeat_rules': {}, 'review': [], 'newer': None}
         profiles, enums = code_state(found[0], found[1])
         newer = newer_run(found[0])   # the run of this line that is more recent than the one shown: definitions are changed there
         rules = repeat_rules(found[0])
         return {'items': items, 'answered': answered, 'settled': settled_definitions(found[0], profiles, enums, rules, {i['id'] for i in items}),
+                'bulk': bulk_band_of(found, items, newer),
                 'meanings': meanings_of(profiles, enums), 'row_cap': ROW_CAP, 'repeat_rules': rules,
                 'review': review_list(found[0], newer), 'newer': newer, **view_state(found[0])}
 
@@ -1212,6 +1225,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/code-meanings/dismiss':
                 self.dismiss_code_column()
                 return
+            if self.path == '/api/ontology/bulk-approve':
+                self.bulk_approve()
+                return
             if self.path == '/api/ontology/code-meanings/draft':
                 self.draft_code_meanings()
                 return
@@ -1765,6 +1781,68 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.keep_code_state(found, (f'property:{memory_key(found[0])}:{profile["field"]}', 'rejected', f'open_item:{profile["id"]}', signer, {'mode': check_mode(payload)}), '“不是代码”',
                                  f'「{profile["column"]}」被说成不是代码列')
 
+        def bulk_approve(self):
+            """{"saved_as", "ids", "confirmed_by"}: approve together what is in the clean band (review_stack): code columns whose every
+            suggestion the data backs, relations whose check found every row connected. The band is worked out again here from the stored run;
+            an id that is not in it (a check failed, a suggestion is weak, it is already decided) refuses the whole request. All or none is
+            kept, each marked as decided in bulk. Answers with the lists as they now stand."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = str(payload.get('saved_as') or '')
+                found = workspace_run(name)
+                if found is None:
+                    raise ValueError('这份运行没有数据表')
+                signer = payload.get('confirmed_by')
+                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
+                    raise ValueError('确认人最多写 40 个字')
+                signer = (signer or '').strip() or None
+                ids = payload.get('ids')
+                if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
+                    raise ValueError('ids 要写成列表，至少一项')
+                result, bundle, graph = found
+                stale_check(result)
+                _, items, _ = card_for(found)
+                band = {b['id']: b for b in bulk_band_of(found, items, None)}
+                outside = [i for i in dict.fromkeys(ids) if i not in band]
+                if outside:
+                    raise ValueError('不在可以一起通过的范围里（有检查没通过、依据不够强，或已经定了）：' + '、'.join(outside))
+                picked = [band[i] for i in dict.fromkeys(ids)]
+                profiles, enums = code_state(result, bundle)
+                by_id = {p['id']: p for p in profiles}
+                changes = []
+                for b in (b for b in picked if b['kind'] == 'code_meaning'):
+                    profile = by_id[b['id']]
+                    merged = merge_enum((enums.get(profile['field']) or {}).get('values') or [], check_enum(profile, b['posted']))
+                    anchors = stored_anchors(code_anchor(profile, bundle['sources'][profile['source']]['records'], key_columns(result['ontology'], profile['source'])))
+                    changes.append((f'property:{memory_key(result)}:{profile["field"]}', 'confirmed', f'open_item:{profile["id"]}', signer, {'values': merged, 'mode': 'bulk'}, anchors))
+                relations = [b['id'].partition(':')[2] for b in picked if b['kind'] == 'relation']
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            try:
+                if relations:
+                    earlier = (result.get('confirmation') or {}).get('decisions') or {}
+                    decisions = {**earlier, 'types': earlier.get('types') or {}, 'relations': {**(earlier.get('relations') or {}), **{k: {'verdict': 'ok'} for k in relations}}}
+                    decided = {'decisions': decisions}
+                    self.write_confirmation(result, output_dir / name, decided, confirmed_reference(result['ontology'], decisions), signer, changes, frozenset(relations))
+                else:
+                    conn = open_workspace(output_dir / 'workspace.sqlite')
+                    try:
+                        set_element_states(conn, changes)
+                    finally:
+                        conn.close()
+                found = workspace_run(name)   # read again: what was kept is part of what every reader sees
+            except Exception as exc:
+                self.reply(500, {'error': f'批量通过没有保存：{type(exc).__name__}: {exc}'[:300]})
+                return
+            warning = recompute_warning(name, f'批量通过了 {len(picked)} 件') or views_warning(sync_run_views(found[0]))
+            self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
+
         def draft_code_meanings(self):
             """One call to the 字段释义员 for the code columns whose meanings nobody confirmed. The guesses are kept with
             the file and shown with the open item, each marked as strong only when the data backs it."""
@@ -1920,27 +1998,34 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if earlier.get('decisions') == payload.get('decisions') and earlier.get('confirmed_by') == signer and 'elements' in earlier:
                 self.reply(200, result)   # the same judgement again (a retried call): nothing new to keep
                 return
-            try:   # the workspace rows are written first but kept only once the run files are written too: the two never disagree
-                rules = repeat_rules(result)   # read before the write below holds the workspace
-                conn = open_workspace(output_dir / 'workspace.sqlite')
-                try:
-                    on_file = element_ids(conn, 'object_type:') + element_ids(conn, 'relation:')
-                    changes = element_changes(memory_key(result), payload['decisions'], (result.get('data_checks') or {}).get('keys') or [], signer, on_file)
-                    seen = {r['key']: r for r in (result.get('data_checks') or {}).get('relations') or []}
-                    for name, change in list(changes.items()):   # a relation judged right keeps what the check found when it was judged
-                        kind, _, rkey = name.partition(':')
-                        if kind == 'relations' and change[1] == 'confirmed' and rkey in seen:
-                            changes[name] = (*change, None, stored_anchors(relation_anchor(seen[rkey])))
-                    with element_state_writes(conn, list(changes.values())) as rows:
-                        result = self.keep_confirmation(result, result_path, payload, reference, signer, rules, {
-                            name: {k: rows[change[0]][k] for k in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
-                            for name, change in changes.items()})
-                finally:
-                    conn.close()
+            try:
+                result = self.write_confirmation(result, result_path, payload, reference, signer)
             except Exception as exc:   # whatever failed, the person is told and nothing of the confirmation is kept
                 self.reply(500, {'error': f'确认没有保存：{type(exc).__name__}: {exc}'[:300]})
                 return
             self.reply(200, result)
+
+        def write_confirmation(self, result, result_path, payload, reference, signer, extra_changes=(), bulk=frozenset()):
+            """Keep a confirmation: the workspace rows are written first but kept only once the run files are written too, so the two
+            never disagree. `extra_changes` are element_state changes written in the same transaction (what a bulk approval confirms
+            beside its relations); `bulk` the relation keys judged right in one action with others, which keep that as their content.
+            Returns the run as it now stands; raises when nothing could be kept."""
+            rules = repeat_rules(result)   # read before the write below holds the workspace
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                on_file = element_ids(conn, 'object_type:') + element_ids(conn, 'relation:')
+                changes = element_changes(memory_key(result), payload['decisions'], (result.get('data_checks') or {}).get('keys') or [], signer, on_file)
+                seen = {r['key']: r for r in (result.get('data_checks') or {}).get('relations') or []}
+                for name, change in list(changes.items()):   # a relation judged right keeps what the check found when it was judged
+                    kind, _, rkey = name.partition(':')
+                    if kind == 'relations' and change[1] == 'confirmed' and rkey in seen:
+                        changes[name] = (*change, {'mode': 'bulk'} if rkey in bulk else None, stored_anchors(relation_anchor(seen[rkey])))
+                with element_state_writes(conn, [*changes.values(), *extra_changes]) as rows:
+                    return self.keep_confirmation(result, result_path, payload, reference, signer, rules, {
+                        name: {k: rows[change[0]][k] for k in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
+                        for name, change in changes.items()})
+            finally:
+                conn.close()
 
         def keep_confirmation(self, result, result_path, payload, reference, signer, rules, elements):
             """Write what a saved confirmation changes in the run files; returns the run as it now stands."""

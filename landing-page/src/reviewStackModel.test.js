@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { cardEntry, decidedHow, isTyping, movedIndex, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
+import { bulkLabel, bulkProblem, bulkSummary, cardEntry, decidedHow, isTyping, movedIndex, reopenedLine, replyAsks, replyForKey, replyProblem, replyRoute, stackLine } from "./reviewStackModel.js";
 
 const reply = (id, needs_text = false) => ({ id, label: id, needs_text });
 const unlinked = { id: "unlinked:a", kind: "unlinked", replies: [reply("expected"), reply("incomplete"), reply("not_applicable"), reply("exception", true)] };
@@ -96,4 +96,13 @@ test("an old decision brought back says who made it, what it was, and what chang
   assert.equal(reopenedLine({ by: "王工", says: "已知例外", text: "是测试单", changes: ["多了取值：9", "取值 2：上次 16 行（共 160 行），现在 80 行（共 224 行）"] }),
     "王工 上次记为“已知例外”（是测试单），现在数据变了：多了取值：9；取值 2：上次 16 行（共 160 行），现在 80 行（共 224 行）。");
   assert.equal(reopenedLine({ by: "王工", says: "不适用", text: "", changes: ["多了内容：x"] }), "王工 上次记为“不适用”，现在数据变了：多了内容：x。");
+});
+
+test("the bulk panel says how many and what stops an approval: nothing ticked, no confirmer, a name over 40 characters", () => {
+  assert.equal(bulkSummary([{}, {}, {}]), "有 3 件检查都过了、依据够强，可以一起通过");
+  assert.equal(bulkLabel(2), "一起通过 2 件");
+  assert.equal(bulkProblem([], "王工"), "先勾上要通过的");
+  assert.equal(bulkProblem(["relation:a"], " "), "先填确认人");
+  assert.equal(bulkProblem(["relation:a"], "王".repeat(41)), "确认人最多 40 个字");
+  assert.equal(bulkProblem(["relation:a"], "王工"), "");
 });

@@ -12,7 +12,11 @@ A reply is kept with who gave it and whether it was decided one by one ('single'
 "Not applicable" and "exception" are decisions that stay decided: they keep an anchor, what the item was about when it was
 decided (the values of a code column with their rows, the keys that repeated, the rows not linked). The same item on the
 next upload is not asked again unless an anchor breaks: something new is in it, or a count has moved by the same measure as
-for confirmed definitions (anchors.moved). Then it is asked again, with what changed beside the old decision."""
+for confirmed definitions (anchors.moved). Then it is asked again, with what changed beside the old decision.
+
+The clean band is what can be approved together in one action, after the list is shown: code columns whose every suggestion the data
+backs, and relations whose check found every row connected. Anything with a failed check or a weak suggestion is never in it; the service
+works the band out again when asked to approve, and refuses an id that is not in it. A bulk approval is recorded as 'bulk'."""
 from __future__ import annotations
 
 from ontology_poc_generator.anchors import moved
@@ -117,3 +121,41 @@ def code_check(values: list[dict]) -> dict | None:
     weak = [v for v in guessed if not v['recommendation']['strong']]
     return {'status': 'weak' if weak else 'passed',
             'text': (f'模型建议了 {len(guessed)} 个含义，其中 {len(weak)} 个数据没有支持' if weak else f'模型建议了 {len(guessed)} 个含义，数据都有支持')}
+
+
+# the clean band: what can be approved together, after the list is shown
+
+def code_band(items: list[dict]) -> list[dict]:
+    """The code columns whose every unconfirmed value has the model's suggestion and the data behind it (a pattern in another column,
+    enough rows: `recommendation.strong`) and nothing waiting for a second look. One value with no suggestion, or a suggestion the data
+    does not back, keeps the whole column out: it is a person's. Each: {'id', 'kind', 'title', 'lines', 'posted'} where `posted` is
+    what approving confirms, value by value."""
+    band = []
+    for item in items:
+        if item['kind'] != 'code_meaning' or item.get('reopened'):
+            continue
+        todo = [v for v in item['column']['values'] if not v['confirmed']]
+        if todo and all(v['preselected'] and v['recommendation'].get('label') and not v['waiting'] for v in todo):
+            column = item['column']
+            band.append({'id': item['id'], 'kind': 'code_meaning', 'title': f'「{column["source"]}」的「{column["column"]}」',
+                         'lines': [f'{v["value"]} = {v["recommendation"]["label"]}：{v["recommendation"].get("basis") or "数据有支持"}' for v in todo],
+                         'posted': [{'value': v['value'], 'label': v['recommendation']['label'], 'description': v['recommendation'].get('description') or ''} for v in todo]})
+    return band
+
+
+def relation_band(relations: list[dict], decisions: dict | None, label, relation_name) -> list[dict]:
+    """The relations nobody has judged whose check found every row connected on every side, no object reached through more than one, and
+    no declared cardinality broken, and whose two objects a person has already judged right (a relation counts only with both).
+    relations: the run's data_checks.relations; label gives an object's name and relation_name a relation's."""
+    types, judged = ((decisions or {}).get('types') or {}), ((decisions or {}).get('relations') or {})
+    band = []
+    for r in relations:
+        if (judged.get(r['key']) or {}).get('verdict') or not r['sides'] or r['cardinality'].get('holds') is False:
+            continue
+        if any((types.get(end) or {}).get('verdict') != 'ok' for end in (r['from'], r['to'])):
+            continue
+        if any(s['matched'] != s['rows'] or s['fanout']['keys'] for s in r['sides']):
+            continue
+        band.append({'id': f'relation:{r["key"]}', 'kind': 'relation', 'title': relation_name(r),
+                     'lines': [f'{s["rows"]} / {s["rows"]} 行{label(s["other"])}都找得到{label(s["object"])}，「{s["lookup"]}」表里没有重复的编号' for s in r['sides']]})
+    return band

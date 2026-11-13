@@ -3,6 +3,7 @@
 (tests/fixtures/planted): 客户 KH012 is on two rows (合肥 / 苏州), 订单.状态码 has 0, 1 and 2 on 96, 48 and 16 of 160 rows."""
 import base64
 import copy
+import json
 import unittest
 
 from ontology_poc_generator.ontology_card import CardError
@@ -234,5 +235,164 @@ class StackRouteTests(unittest.TestCase):
         self.run_with(check)
 
 
-if __name__ == '__main__':
+from ontology_poc_generator.code_meanings import DESCRIBE_CODES_SYSTEM_PROMPT   # noqa: E402
+from ontology_poc_generator.ontology_questions import QUESTION_SYSTEM_PROMPT   # noqa: E402
+from ontology_poc_generator.recognition import ModelCompletion   # noqa: E402
+from ontology_poc_generator.review_stack import code_band, relation_band   # noqa: E402
+
+
+def strong(value, label='已交付', **over):
+    return {'value': value, 'confirmed': None, 'waiting': None, 'preselected': True,
+            'recommendation': {'label': label, 'description': '', 'basis': '这 25 行的「交付天数」全是空的', 'strong': True, 'why_weak': None}, **over}
+
+
+def code_item(*values, **over):
+    return {'id': 'code_meaning:订单.状态', 'kind': 'code_meaning', 'column': {'source': '订单', 'column': '状态', 'values': list(values)}, **over}
+
+
+class BandTests(unittest.TestCase):
+    def test_a_code_column_whose_every_suggestion_the_data_backs_is_in_the_band_with_what_approving_confirms(self):
+        [one] = code_band([code_item(strong('A'), strong('B', '未交付'))])
+        self.assertEqual((one['id'], one['title']), ('code_meaning:订单.状态', '「订单」的「状态」'))
+        self.assertEqual(one['lines'], ['A = 已交付：这 25 行的「交付天数」全是空的', 'B = 未交付：这 25 行的「交付天数」全是空的'])
+        self.assertEqual(one['posted'], [{'value': 'A', 'label': '已交付', 'description': ''}, {'value': 'B', 'label': '未交付', 'description': ''}])
+
+    def test_one_weak_missing_or_waiting_value_keeps_the_whole_column_out(self):
+        weak = strong('B', preselected=False)
+        weak['recommendation'] = {**weak['recommendation'], 'strong': False, 'why_weak': 'no_pattern'}
+        for name, values, over in (('weak', [strong('A'), weak], {}), ('no suggestion', [strong('A'), strong('B', preselected=False, recommendation=None)], {}),
+                                   ('waiting', [strong('A'), strong('B', waiting={'label': '旧'})], {}), ('asked again', [strong('A')], {'reopened': {'reply': 'exception'}})):
+            with self.subTest(name):
+                self.assertEqual(code_band([code_item(*values, **over)]), [])
+
+    def test_a_value_already_confirmed_is_left_as_it_is_and_only_the_rest_is_approved(self):
+        [one] = code_band([code_item(strong('A', confirmed={'label': '已交付'}, preselected=False), strong('B', '未交付'))])
+        self.assertEqual([p['value'] for p in one['posted']], ['B'])
+
+    RELATION = {'key': 'oc', 'from': 'order', 'to': 'customer', 'cardinality': {'holds': True},
+                'sides': [{'object': 'customer', 'other': 'order', 'lookup': '客户', 'rows': 160, 'matched': 160, 'fanout': {'keys': 0}}]}
+    DECIDED = {'types': {'order': {'verdict': 'ok'}, 'customer': {'verdict': 'ok'}}, 'relations': {}}
+    NAMES = {'order': '订单', 'customer': '客户'}
+
+    def band(self, relation=None, decisions=None):
+        return relation_band([{**self.RELATION, **(relation or {})}], self.DECIDED if decisions is None else decisions, lambda k: self.NAMES[k], lambda r: r['key'])
+
+    def test_a_relation_with_every_row_connected_and_both_objects_judged_right_is_in_the_band(self):
+        [one] = self.band()
+        self.assertEqual((one['id'], one['lines']), ('relation:oc', ['160 / 160 行订单都找得到客户，「客户」表里没有重复的编号']))
+
+    def test_a_relation_with_a_row_left_a_fan_out_a_broken_cardinality_or_no_check_is_never_in_it(self):
+        side = self.RELATION['sides'][0]
+        for name, over in (('unmatched row', {'sides': [{**side, 'matched': 157}]}), ('fan-out', {'sides': [{**side, 'fanout': {'keys': 1}}]}),
+                           ('cardinality broken', {'cardinality': {'holds': False}}), ('no side checked', {'sides': []})):
+            with self.subTest(name):
+                self.assertEqual(self.band(over), [])
+
+    def test_a_relation_already_judged_or_whose_object_nobody_judged_right_is_not_offered(self):
+        self.assertEqual(self.band(decisions={**self.DECIDED, 'relations': {'oc': {'verdict': 'wrong'}}}), [])
+        self.assertEqual(self.band(decisions={'types': {'order': {'verdict': 'ok'}}, 'relations': {}}), [])
+        self.assertEqual(self.band(decisions={'types': {'order': {'verdict': 'ok'}, 'customer': {'verdict': 'wrong'}}, 'relations': {}}), [])
+        self.assertEqual(self.band(decisions={}), [])
+        self.assertEqual(relation_band([self.RELATION], None, lambda k: k, lambda r: r['key']), [])   # nothing judged at all
+
+
+class StrongCodeModel:
+    """Writes the upload's draft, and a meaning for every code of the two columns when asked: 状态 backed by the data, 等级 not."""
+    PROPOSAL = {'reasoning': 'r', 'object_types': [{'key': 'order', 'label': '订单', 'populated_from': [{'source': 'orders', 'identity': {'order_id': '订单号'}}],
+                                                    'attributes': [{'source': 'orders', 'path': p} for p in ('状态', '等级', '交付天数')]}],
+                'relations': [], 'ignored_fields': [], 'open_questions': []}
+
+    def complete_json(self, *, system_prompt, user_prompt):
+        if system_prompt == DESCRIBE_CODES_SYSTEM_PROMPT:
+            reply = {'columns': [
+                {'id': 'code_meaning:orders.状态', 'values': [{'value': 'A', 'label': '已交付', 'description': '', 'basis': '交付天数有值'},
+                                                             {'value': 'B', 'label': '未交付', 'description': '', 'basis': '交付天数全是空的'}]},
+                {'id': 'code_meaning:orders.等级', 'values': [{'value': 'X', 'label': '大客户', 'description': '', 'basis': '数据里没看出规律'},
+                                                             {'value': 'Y', 'label': '小客户', 'description': '', 'basis': '数据里没看出规律'}]}]}
+        elif system_prompt == QUESTION_SYSTEM_PROMPT:
+            reply = {'questions': []}
+        else:
+            reply = self.PROPOSAL
+        return ModelCompletion(provider='fake', model='deepseek-flash', content=json.dumps(reply, ensure_ascii=False))
+
+
+ORDERS = '订单号,状态,等级,交付天数\n' + '\n'.join(
+    f'O{i},{"A" if i < 25 else "B"},{"X" if i % 2 else "Y"},{"7" if i < 25 else ""}' for i in range(50))   # 25 delivered rows with days, 25 without
+CODE_UPLOAD = {'filename': 'orders.csv', 'content_base64': base64.b64encode(ORDERS.encode()).decode()}
+
+
+class BulkApproveRouteTests(unittest.TestCase):
+    def listed(self, base, name):
+        status, body = fetch(base, f'/api/ontology/runs/{name}/open-items')
+        self.assertEqual(status, 200, body)
+        return body
+
+    def approve(self, base, name, ids, by='王工'):
+        return call(base, '/api/ontology/bulk-approve', {'saved_as': name, 'ids': ids, 'confirmed_by': by})
+
+    def test_the_planted_relation_that_matches_every_row_is_offered_once_its_objects_are_judged_and_the_failing_one_never_is(self):
+        import copy
+        from tests.test_relation_checks import DRAFT
+        from tests.test_workspace_store import DraftsModel, ServerDataChecksTests
+        with OntologyServerTests().server(gateway=DraftsModel(copy.deepcopy(DRAFT))) as (base, out):
+            _, run = call(base, '/api/ontology/build', {'files': ServerDataChecksTests.files})
+            name = run['saved_as']
+            self.assertEqual(self.listed(base, name)['bulk'], [])   # nothing is judged yet: a relation counts only with both its objects
+            types = {k: {'verdict': 'ok'} for k in ('order', 'customer', 'product')}
+            status, _ = call(base, '/api/ontology/confirm', {'saved_as': name, 'decisions': {'types': types, 'relations': {}}, 'confirmed_by': '李工'})
+            self.assertEqual(status, 200)
+            band = self.listed(base, name)['bulk']
+            self.assertEqual([b['id'] for b in band], ['relation:order_product'])   # order_customer has 3 rows with no customer
+            self.assertEqual(band[0]['lines'], ['160 / 160 行订单都找得到产品，「产品」表里没有重复的编号'])
+            status, body = self.approve(base, name, ['relation:order_customer'])
+            self.assertEqual(status, 400)
+            self.assertIn('relation:order_customer', body['error'])
+            status, body = self.approve(base, name, ['relation:order_product', 'relation:order_customer'])
+            self.assertEqual(status, 400, '一个不在范围里，整次都不通过')
+            status, body = self.approve(base, name, ['relation:order_product'])
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body['bulk'], [])
+            from ontology_poc_generator.workspace_store import open_workspace
+            conn = open_workspace(out / 'workspace.sqlite')
+            try:
+                [row] = conn.execute("SELECT state, confirmed_by, json_extract(content_json, '$.mode') FROM element_state WHERE element_id LIKE 'relation:%:order_product'").fetchall()
+                rejected = conn.execute("SELECT COUNT(*) FROM element_state WHERE element_id LIKE 'relation:%:order_customer'").fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual(row, ('confirmed', '王工', 'bulk'))
+            self.assertEqual(rejected, 0)   # the one that failed was not touched
+            saved = json.loads((out / name).read_text(encoding='utf-8'))
+            self.assertEqual(saved['confirmation']['decisions']['types'], types)   # what was judged before stays
+            self.assertEqual(saved['confirmation']['decisions']['relations'], {'order_product': {'verdict': 'ok'}})
+
+    def test_code_columns_the_data_backs_are_approved_together_as_bulk_and_the_one_it_does_not_back_stays_with_the_person(self):
+        with OntologyServerTests().server(gateway=StrongCodeModel()) as (base, out):
+            status, run = call(base, '/api/ontology/build', CODE_UPLOAD)
+            self.assertEqual(status, 200, run)
+            name = run['saved_as']
+            status, body = call(base, '/api/ontology/code-meanings/draft', {'saved_as': name})
+            self.assertEqual(status, 200, body)
+            band = self.listed(base, name)['bulk']
+            self.assertEqual([b['id'] for b in band], ['code_meaning:orders.状态'])   # 等级: the suggestion has nothing behind it
+            self.assertEqual(band[0]['lines'], ['A = 已交付：交付天数有值', 'B = 未交付：交付天数全是空的'])
+            status, body = self.approve(base, name, ['code_meaning:orders.等级'])
+            self.assertEqual(status, 400, body)
+            self.assertNotIn('code_meaning:orders.状态', {i['id'] for i in self.listed(base, name)['settled']})   # the refusal wrote nothing
+            status, body = self.approve(base, name, ['code_meaning:orders.状态'])
+            self.assertEqual(status, 200, body)
+            self.assertEqual([i['id'] for i in body['items'] if i['kind'] == 'code_meaning'], ['code_meaning:orders.等级'])
+            self.assertEqual(body['bulk'], [])
+            [done] = [s for s in body['settled'] if s['id'] == 'code_meaning:orders.状态']
+            self.assertEqual((done['answer']['by'], done['answer']['mode'], done['answer']['text']), ('王工', 'bulk', 'A = 已交付、B = 未交付'))
+            self.assertEqual(body['meanings']['orders.状态']['labels'], {'A': '已交付', 'B': '未交付'})
+
+    def test_a_request_without_ids_or_with_a_name_over_forty_characters_or_for_an_unknown_run_is_refused(self):
+        with OntologyServerTests().server(gateway=StrongCodeModel()) as (base, out):
+            _, run = call(base, '/api/ontology/build', CODE_UPLOAD)
+            self.assertEqual(self.approve(base, run['saved_as'], [])[0], 400)
+            self.assertEqual(self.approve(base, run['saved_as'], ['code_meaning:orders.状态'], by='王' * 41)[0], 400)
+            self.assertEqual(self.approve(base, '20260101T000000Z-deadbeef.json', ['x'])[0], 404)
+
+
+if __name__ == '__main__':   # noqa: E305
     unittest.main()

@@ -401,7 +401,7 @@ class OpenItemTests(unittest.TestCase):
         with OntologyServerTests().server(gateway=CardModel()) as (base, _):
             _, run = call(base, '/api/ontology/build', UPLOAD)
             body = self.listing(base, run)
-        self.assertEqual(set(body), {'items', 'answered', 'settled', 'meanings', 'views', 'view_tables', 'row_cap', 'repeat_rules', 'review', 'newer'})
+        self.assertEqual(set(body), {'items', 'answered', 'settled', 'bulk', 'meanings', 'views', 'view_tables', 'row_cap', 'repeat_rules', 'review', 'newer'})
         self.assertEqual(body['answered'], [])
         by_kind = {i['kind']: i for i in body['items']}
         self.assertEqual(by_kind['card_blank']['ask'], '口径卡还有 6 格没说清（1 张表）：数值列能不能相加、日期列是什么时间、一行是什么、对象全不全。会上逐张过一遍？')
@@ -422,7 +422,7 @@ class OpenItemTests(unittest.TestCase):
                              {'choice': 'incomplete', 'says': '数据没导全', 'text': '客户表只导了一部分', 'by': '张三', 'basis': '10-27 会议', 'asked': unlinked['ask'], 'mode': 'single'})
             customer = next(o for o in saved['card']['objects'] if o['id'] == CUSTOMER)
             self.assertEqual((customer['answer']['value'], customer['answer']['says']), ('partial', '数据里只有一部分'))
-            self.assertEqual({k: v for k, v in self.listing(base, run).items() if k not in ('settled', 'meanings', 'views', 'view_tables', 'row_cap', 'repeat_rules', 'review', 'newer')}, {'items': saved['items'], 'answered': saved['answered']})
+            self.assertEqual({k: v for k, v in self.listing(base, run).items() if k not in ('settled', 'bulk', 'meanings', 'views', 'view_tables', 'row_cap', 'repeat_rules', 'review', 'newer')}, {'items': saved['items'], 'answered': saved['answered']})
             _, rerun = call(base, '/api/ontology/build', UPLOAD)   # the same thing on the next upload is still answered
             self.assertEqual([i['id'] for i in self.listing(base, rerun)['answered']], [unlinked['id']])
 

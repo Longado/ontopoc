@@ -27,6 +27,7 @@ import { PipelineCard } from "./PipelineCard.jsx";
 import { ViewsCard } from "./ViewsCard.jsx";
 import { pipelineSources, pipelineTables, storedPipelineTables } from "./pipelineModel.js";
 import { CodeMeanings } from "./CodeMeaningForm.jsx";
+import { BulkApprove } from "./BulkApprove.jsx";
 import { ReviewStack } from "./ReviewStack.jsx";
 import { decidedHow } from "./reviewStackModel.js";
 import { RulesView } from "./RulesView.jsx";
@@ -883,6 +884,7 @@ function OverviewSection({ run, list, onGo, onDownload, requery, client }) {
     {list?.error && <p role="alert" className="pr-error">{list.error}</p>}
     <ReviewList review={list?.review} onGo={onGo} client={client} />
     {items && !items.length && <p className="pr-muted">{openItemsEmpty(run, decided)}</p>}
+    {list?.bulk?.length > 0 && <BulkApprove key={list.bulk.map((b) => b.id).join("|")} band={list.bulk} client={client} />}
     {items?.length > 0 && <ReviewStack run={run} items={items} decided={decided} onGo={onGo} requery={requery} client={client} />}
     {list && decided > 0 && <AnsweredList list={list} client={client} />}
   </section>;
@@ -935,7 +937,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
         () => set(null, unreachable));
     };
     read("清单", "open-items", (b) => Array.isArray(b.items),
-      (body, error) => live && setOpenItems({ saved_as: run.saved_as, items: body?.items ?? null, answered: Array.isArray(body?.answered) ? body.answered : [], settled: Array.isArray(body?.settled) ? body.settled : [], meanings: body?.meanings ?? null, views: body?.views ?? [], viewTables: body?.view_tables ?? [], viewsError: body?.views_error || "", rowCap: body?.row_cap ?? null, repeatRules: body?.repeat_rules ?? {}, newer: body?.newer ?? null, review: Array.isArray(body?.review) ? body.review : [], error }));
+      (body, error) => live && setOpenItems({ saved_as: run.saved_as, items: body?.items ?? null, answered: Array.isArray(body?.answered) ? body.answered : [], settled: Array.isArray(body?.settled) ? body.settled : [], bulk: Array.isArray(body?.bulk) ? body.bulk : [], meanings: body?.meanings ?? null, views: body?.views ?? [], viewTables: body?.view_tables ?? [], viewsError: body?.views_error || "", rowCap: body?.row_cap ?? null, repeatRules: body?.repeat_rules ?? {}, newer: body?.newer ?? null, review: Array.isArray(body?.review) ? body.review : [], error }));
     read("口径卡", "card", (b) => Array.isArray(b.tables),
       (body, error) => live && setCardState({ saved_as: run.saved_as, card: body, error }));
     return () => { live = false; };
@@ -1097,7 +1099,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     setCardSaving(true); setCardSaveError(null);
     try {
       const { lists, run: again, warning } = await postAndReread({ url, body, runName: run.saved_as });
-      setOpenItems({ saved_as: run.saved_as, items: lists.items, answered: lists.answered, settled: lists.settled ?? [], meanings: lists.meanings ?? null, views: lists.views ?? [], viewTables: lists.view_tables ?? [], viewsError: lists.views_error || "", rowCap: lists.row_cap ?? null, repeatRules: lists.repeat_rules ?? {}, newer: lists.newer ?? null, review: lists.review ?? [], error: "" });
+      setOpenItems({ saved_as: run.saved_as, items: lists.items, answered: lists.answered, settled: lists.settled ?? [], bulk: lists.bulk ?? [], meanings: lists.meanings ?? null, views: lists.views ?? [], viewTables: lists.view_tables ?? [], viewsError: lists.views_error || "", rowCap: lists.row_cap ?? null, repeatRules: lists.repeat_rules ?? {}, newer: lists.newer ?? null, review: lists.review ?? [], error: "" });
       update(again);   // the answers were worked out again: show them
       if (warning) setCardSaveError({ key, text: warning });
       return true;
@@ -1166,6 +1168,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     onReply: (entry) => saveClient({ items: [entry] }, entry.id), onSaveCells: (cells) => saveClient({ cells }, "card"),
     onSaveCodes: (item, values) => postCodes("/api/ontology/code-meanings", { id: item.id, values, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
     onSaveRepeat: (item, rule) => postCodes("/api/ontology/repeat-rules", { id: item.id, ...rule, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
+    onBulkApprove: (ids) => postCodes("/api/ontology/bulk-approve", { ids, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, "bulk"),
     newer: openList?.newer ?? null,
     onOpenRun: (name) => fetch(`/api/ontology/runs/${name}`, { cache: "no-store" })
       .then(async (r) => { const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(serviceError(r.status, body)); show(body); setTab("overview"); })
