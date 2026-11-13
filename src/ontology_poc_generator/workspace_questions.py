@@ -16,9 +16,11 @@ from datetime import datetime, timezone
 import json
 import re
 
-from ontology_poc_generator.answer_checks import _uses, definition_catalog, definition_check, refusal
+from ontology_poc_generator.answer_checks import _uses, choose_rows, definition_catalog, definition_check, refusal
+from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import _relation_visible, check_relation
-from ontology_poc_generator.object_types import ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, _confirmers, _content, _visible, element_row, enum_id, type_id
+from ontology_poc_generator.object_types import ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, type_id
+from ontology_poc_generator.object_views import describe, kept_positions, view_visible
 from ontology_poc_generator.ontology_questions import _catalog, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
@@ -51,10 +53,11 @@ def _confirmation(conn, element_id: str) -> tuple:
 # --- the scope ------------------------------------------------------------------------------------------------------------------------------------
 
 def scope(conn, user: dict | None) -> dict:
-    """{'types': {english name: {'row', 'content', 'dataset'}}, 'meanings': {english name: {column: {'row', 'labels'}}}, 'relations': {english name: {'row', 'content'}}}:
-    the confirmed types this person may see (and whose dataset is still there), the confirmed meanings of their code columns, and the confirmed relations
-    whose two ends are among them."""
-    types, meanings, relations = {}, {}, {}
+    """{'types': {english name: {'row', 'content', 'dataset'}}, 'meanings': {english name: {column: {'row', 'labels'}}}, 'relations': {english name: {'row', 'content'}},
+    'views': {name: {'row', 'content'}}}: the confirmed types this person may see (and whose dataset is still there), the confirmed meanings of their code columns,
+    the confirmed relations whose two ends are among them, and the confirmed views of those types whose conditions stand on confirmed meanings (a view on a column
+    marked "don't send values" is left out: what it says would tell the model the meanings)."""
+    types, meanings, relations, views = {}, {}, {}, {}
     for name in visible_type_ids(conn, user, confirmed_only=True):
         row = element_row(conn, type_id(name))
         content = _content(row)
@@ -71,18 +74,26 @@ def scope(conn, user: dict | None) -> dict:
         content = _content(row)
         if content['from'] in types and content['to'] in types:
             relations[content['english_name']] = {'row': row, 'content': content}
-    return {'types': types, 'meanings': meanings, 'relations': relations}
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' AND state = 'confirmed' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        content = _content(row)
+        columns = {f['column'] for f in content['filters']}
+        if content['type'] in types and view_visible(conn, row, user) and columns <= set(meanings.get(content['type'], {})) \
+                and not columns & hidden_values(conn, type_id(content['type'])):
+            views[content['name']] = {'row': row, 'content': content}
+    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views}
 
 
 def _unsettled(conn, user: dict | None) -> list[dict]:
     """The types and relations this person may see that are not confirmed, with the state, the reason and who could confirm: what is outside the scope
     for a reason a builder can do something about. A viewer sees none (they see only confirmed ones)."""
     out = []
-    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' OR element_id LIKE 'relation:%' ORDER BY element_id").fetchall():
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
         if row['state'] == 'confirmed':
             continue
-        visible = _visible(conn, row, user) if element_id.startswith(TYPE_PREFIX) else _relation_visible(conn, row, user)
+        visible = (_visible(conn, row, user) if element_id.startswith(TYPE_PREFIX) else view_visible(conn, row, user) if element_id.startswith(VIEW_PREFIX)
+                   else _relation_visible(conn, row, user))
         if visible:
             out.append(_definition_line(conn, row, user))
     return out
@@ -93,6 +104,7 @@ def scope_line(conn, user: dict | None) -> dict:
     sc = scope(conn, user)
     return {'types': [{'id': k, 'name': v['content']['name']} for k, v in sc['types'].items()],
             'relations': [{'id': k, 'name': v['content']['name']} for k, v in sc['relations'].items()],
+            'views': [{'id': k, 'name': k, 'type': v['content']['type']} for k, v in sc['views'].items()],
             'left_out': _unsettled(conn, user)}
 
 
@@ -103,7 +115,7 @@ def _kind_and_name(conn, row: dict) -> tuple[str, str]:
     element_id = row['element_id']
     if element_id.startswith(ENUM_PREFIX):
         return 'meaning', f'{_content(element_row(conn, type_id(content["type"])))["name"]}.{content["column"]}'
-    return ('type' if element_id.startswith(TYPE_PREFIX) else 'relation'), content['name']
+    return ('type' if element_id.startswith(TYPE_PREFIX) else 'view' if element_id.startswith(VIEW_PREFIX) else 'relation'), content['name']
 
 
 def _definition_line(conn, row: dict, user: dict | None) -> dict:
@@ -115,8 +127,13 @@ def _definition_line(conn, row: dict, user: dict | None) -> dict:
 
 
 def _causes(conn, row: dict, user: dict | None) -> list[dict]:
-    """The definitions behind an unsettled one: for a type, its meanings that are not confirmed; for a relation, its end types that are not."""
-    if row['element_id'].startswith(TYPE_PREFIX):
+    """The definitions behind an unsettled one: for a type, its meanings that are not confirmed; for a relation, its end types that are not; for a view, its type
+    and the meanings its conditions use."""
+    if row['element_id'].startswith(VIEW_PREFIX):
+        content = _content(row)
+        found = [r['element_id'] for r in (element_row(conn, e) for e in (type_id(content['type']), *(enum_id(content['type'], c) for c in dict.fromkeys(f['column'] for f in content['filters']))))
+                 if r and r['state'] != 'confirmed']
+    elif row['element_id'].startswith(TYPE_PREFIX):
         found = [r['element_id'] for r in (element_row(conn, e) for (e,) in conn.execute("SELECT depends_on FROM element_dep WHERE element_id = ? AND depends_on LIKE 'enum:%'", (row['element_id'],)))
                  if r and r['state'] != 'confirmed']
     elif row['element_id'].startswith(RELATION_PREFIX):
@@ -143,6 +160,8 @@ def _blockers(conn, user: dict | None, question: str) -> list[dict]:
         content = _content(row)
         if line['kind'] == 'type':
             hit = _named(question, content['name']) or _named(question, content['english_name'])
+        elif line['kind'] == 'view':
+            hit = _named(question, content['name'])
         else:
             ends = [element_row(conn, type_id(content[e])) for e in ('from', 'to')]
             hit = all(r and (_named(question, _content(r)['name']) or _named(question, _content(r)['english_name'])) for r in ends)
@@ -167,7 +186,7 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
 
 
 def _kind_word(kind: str) -> str:
-    return {'type': '对象类型', 'relation': '关系', 'meaning': '含义'}[kind]
+    return {'type': '对象类型', 'relation': '关系', 'meaning': '含义', 'view': '视图'}[kind]
 
 
 # --- what the engine reads ----------------------------------------------------------------------------------------------------------------------------
@@ -197,7 +216,27 @@ def _inputs(conn, sc: dict) -> dict:
                for name, d in {t['dataset']['name']: t['dataset'] for t in sc['types'].values()}.items()}
     meanings = {f'{alias[sc["types"][k]["dataset"]["name"]]}.{column}': {'labels': m['labels']} for k, cols in sc['meanings'].items() for column, m in cols.items()}
     return {'ontology': {'object_types': object_types, 'relations': relations, 'ignored_fields': [], 'open_questions': []}, 'alias': alias, 'unusable': unusable,
-            'bundle': {'decision': '', 'sources': sources, 'meanings': meanings}}
+            'bundle': {'decision': '', 'sources': sources, 'meanings': meanings}, 'views': _engine_views(conn, sc, alias, sources)}
+
+
+def _engine_views(conn, sc: dict, alias: dict, sources: dict) -> list[dict]:
+    """The confirmed views in the shape answer_checks reads (see named_views.compile_views): `source` is the dataset's alias, `definition` says a single
+    condition in the words the check looks for ("a view that leaves a meaning out"), anything else is 'combined' and is only ever read by name; `positions` are
+    the rows (from 1) it keeps of the dataset as read now."""
+    out = []
+    for name, v in sc['views'].items():
+        content, t = v['content'], sc['types'][v['content']['type']]
+        source = alias[t['dataset']['name']]
+        kinds = {n: c['type'] for n, c in dataset_columns(conn, t['dataset']['id']).items()}
+        labels = {f['column']: sc['meanings'][content['type']][f['column']]['labels'] for f in content['filters']}
+        positions = kept_positions(sources[source]['records'], kinds, labels, content)
+        single = len(content['filters']) == 1 and not content['latest']
+        who, at = _confirmation(conn, v['row']['element_id'])
+        out.append({'name': name, 'sql_name': None, 'kind': 'filter' if not content['latest'] else 'latest' if not content['filters'] else 'combined', 'source': source, 'state': 'confirmed',
+                    'why': None, 'from': describe(content, t['content']['name']), 'confirmed_by': who, 'confirmed_at': at,
+                    'definition': {'kind': 'filter', **content['filters'][0]} if single else {'kind': 'combined'}, 'rows': len(positions), 'positions': positions,
+                    'element': v['row']['element_id']})
+    return out
 
 
 def _catalog_for_model(conn, sc: dict, parts: dict) -> tuple[dict, list[dict]]:
@@ -217,7 +256,7 @@ def _catalog_for_model(conn, sc: dict, parts: dict) -> tuple[dict, list[dict]]:
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in hidden or a['path'] in t['content']['key']:
                 a.pop('values', None)
                 a.pop('meanings', None)
-    return catalog, definition_catalog(sent, [])
+    return catalog, definition_catalog(sent, parts['views'])
 
 
 def _checked_relations(conn, sc: dict, parts: dict) -> list[dict]:
@@ -254,10 +293,11 @@ def _reads(sc: dict, parts: dict, query, used: list, spec) -> tuple[list[str], l
     return read, walked, fields
 
 
-def _used_definitions(conn, sc: dict, parts: dict, read: list[str], walked: list[str], fields: set) -> tuple[list[dict], list[dict], dict]:
+def _used_definitions(conn, sc: dict, parts: dict, read: list[str], walked: list[str], fields: set, views: list[dict]) -> tuple[list[dict], list[dict], dict]:
     """(the definitions the answer stood on with their version and who confirmed them, the types it read, {dataset: version} it read): the types, the
-    relations, and the meanings of the code columns the answer used."""
+    relations, the views whose rows it read, and the meanings of the code columns the answer used."""
     elements = [type_id(k) for k in read] + [f'{RELATION_PREFIX}{k}' for k in walked]
+    elements += [v['element'] for v in views]
     for k in read:
         for column, m in sc['meanings'].get(k, {}).items():
             if f'{parts["alias"][sc["types"][k]["dataset"]["name"]]}.{column}' in fields:
@@ -309,11 +349,25 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
     relations = _checked_relations(conn, sc, parts)
     graph = build_graph(ontology, bundle)
 
+    applied = []   # the views the last answer was worked out from, kept for the definitions it stood on
+
     def answer(query, asked, used=None, check=True, told=None):
-        checked = definition_check(asked, query, ontology, [], bundle['meanings'], used, told)
+        checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told)
         if checked['unmet']:
             return {**refusal(checked['unmet']), 'understood': checked['understood']}
-        now = with_relation_gaps(answer_query(ontology, bundle, query, asked, graph), query, ontology, relations)
+        reading, reading_graph = bundle, graph
+        if checked['apply']:   # the rows the views keep, in every table they are about (a row all of them keep)
+            kept = {}
+            for v in checked['apply']:
+                kept[v['source']] = set(v['positions']) if v['source'] not in kept else kept[v['source']] & set(v['positions'])
+            chosen = choose_rows(ontology, bundle, kept)
+            reading = {**bundle, 'sources': {**bundle['sources'], **{t: {**bundle['sources'][t], 'records': r} for t, r in chosen.items()}}}
+            reading_graph = build_graph(ontology, reading)
+        applied[:] = checked['apply']
+        now = name_views(with_relation_gaps(answer_query(ontology, reading, query, asked, reading_graph), query, ontology, relations), query, ontology, checked['apply'], None)
+        by = {v['name']: v['confirmed_by'] for v in checked['apply']}
+        if (now.get('evidence') or {}).get('views'):   # the answer says who stands behind each view it read
+            now = {**now, 'evidence': {**now['evidence'], 'views': [{**v, 'confirmed_by': by[v['name']]} for v in now['evidence']['views']]}}
         return {**now, 'understood': checked['understood']} if checked['understood'] else now
     spoken = {}   # what the model said the question asks of a relation, kept for the definitions an answer from the relation check stands on
 
@@ -327,7 +381,7 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
     item = asked['items'][0]
     query = item.get('query') if isinstance(item.get('query'), dict) and item['query'].get('start') in sc['types'] else None
     read, walked, fields = _reads(sc, parts, query, item.get('definitions_used') or [], spoken.get('spec')) if item['status'] in ('answered', 'no_data') else ([], [], set())
-    lines, types, datasets = _used_definitions(conn, sc, parts, read, walked, fields)
+    lines, types, datasets = _used_definitions(conn, sc, parts, read, walked, fields, applied if item['status'] in ('answered', 'no_data') else [])
     result = {key: item[key] for key in ('status', 'answer', 'path', 'reason', 'reasoning', 'query', 'evidence', 'understood', 'unmet', 'definitions_used') if key in item}
     if item['status'] in ('ontology_gap', 'query_limit') and not item.get('from_relation_check'):
         result['refusal'] = {'kind': 'not_in_scope', 'in_scope': [t['content']['name'] for t in sc['types'].values()], 'left_out': _unsettled(conn, user)}

@@ -6,7 +6,7 @@ import json
 from ontology_poc_generator.recognition import ModelCompletion
 from tests import test_workspace_store as planted
 from tests.test_object_relations import CUSTOMER, RELATION, customers_mended
-from tests.test_object_types import MEANINGS, ORDER, TABLES, shifted_orders_csv
+from tests.test_object_types import COMMIT, LATEST_COMMIT, LATEST_STOCK, MEANINGS, ORDER, STOCK, TABLES, VALID, shifted_orders_csv
 from tests.test_two_person import SigningTestCase
 
 ORDERS = planted.planted_bundle()['sources']['订单']['records']
@@ -14,6 +14,7 @@ CANCELLED = sum(1 for r in ORDERS if r['状态码'] == '2')
 QUESTION = '取消的订单有多少？'
 CANCELLED_QUERY = {'start': 'order', 'where': [{'field': '状态码', 'equals': '2'}], 'via': [], 'group_by': None, 'share': None, 'measure': None}
 USED = [{'id': '订单.状态码=已取消', 'direction': 'include', 'basis': '取消的订单'}]
+ALL_ORDERS = {'start': 'order', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}
 
 
 class AskModel:
@@ -100,6 +101,103 @@ class QuestionTests(SigningTestCase):
             self.assertEqual(scope['types'], [])   # nothing in scope: 订单 waits for another look
             self.assertEqual([d['name'] for d in scope['left_out']], ['订单'])
             self.assertEqual([h['question'] for h in scope['history']], [QUESTION, QUESTION])
+
+    def confirm_view(self, client, type_name, name):
+        shown = next(v for v in client.get(f'/api/workspace/types/{type_name}/views')[1]['views'] if v['name'] == name)
+        status, body = client.post('/api/workspace/types/views/confirm', {'id': name, 'version': shown['version'], 'seen': shown['seen']})
+        self.assertEqual(status, 200, body)
+
+    def test_a_confirmed_view_answers_valid_orders_naming_the_view_and_who_confirmed_it_and_the_question_is_refused_once_the_codes_shift(self):
+        model = AskModel(cancelled(query=ALL_ORDERS, used=[{'id': '有效订单', 'direction': 'include', 'basis': '有效订单'}]))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.confirmed_orders(team)
+            self.assertEqual(ann.post('/api/workspace/types/views', VALID)[0], 200)
+            # put forward and not yet confirmed: the question that names the view is refused before the model is asked, with its state and who could confirm
+            status, refused = self.ask(ann, '有效订单有多少？')
+            self.assertEqual((status, refused['status'], len(model.requests)), (200, 'refused', 0))
+            self.assertEqual([(d['kind'], d['name'], d['state'], d['who_can_confirm']) for d in refused['refusal']['definitions']], [('view', '有效订单', 'checked', ['Bob', '管理员'])])
+            self.assertIn('视图「有效订单」', refused['reason'])
+            self.confirm_view(bob, 'order', '有效订单')
+            status, body = self.ask(ann, '有效订单有多少？')
+            self.assertEqual((status, body['status'], body['answer']['total']), (200, 'answered', 144))
+            self.assertEqual((CANCELLED, len(ORDERS)), (16, 160))   # 160 planted orders, 16 cancelled: 144 are left
+            self.assertEqual([(d['kind'], d['name'], d['confirmed_by'], d['state']) for d in body['definitions']], [('type', '订单', 'Bob', 'confirmed'), ('view', '有效订单', 'Bob', 'confirmed')])
+            self.assertEqual(body['evidence']['views'], [{'name': '有效订单', 'kind': 'filter', 'source': '订单', 'rows': 144, 'from': '订单里只留 状态码 不是「已取消」 的行', 'confirmed_by': 'Bob'}])
+            self.assertEqual([u['how'] for u in body['understood']], ['读视图 有效订单'])
+            told = model.requests[0]['definitions']
+            self.assertIn({'id': '有效订单', 'name': '有效订单', 'kind': 'view', 'means': '订单里只留 状态码 不是「已取消」 的行'}, told)
+            self.assertEqual(vera.get('/api/workspace/ask')[1]['views'], [{'id': '有效订单', 'name': '有效订单', 'type': 'order'}])
+            # the model may also say the question leaves out the meaning: the view that leaves it out is read, and nothing else
+            model.item = cancelled(query=ALL_ORDERS, used=[{'id': '订单.状态码=已取消', 'direction': 'exclude', 'basis': '不算已取消'}])
+            status, body = self.ask(ann, '不算已取消的订单有多少？')
+            self.assertEqual((body['status'], body['answer']['total'], [u['how'] for u in body['understood']]), ('answered', 144, ['读视图 有效订单']))
+            self.assertEqual([d['name'] for d in body['definitions'] if d['kind'] == 'view'], ['有效订单'])
+            model.item = cancelled(query=ALL_ORDERS, used=[{'id': '有效订单', 'direction': 'include', 'basis': '有效订单'}])
+            saved = self.ask(ann, '有效订单有多少？')[1]['id']
+            # the codes shift: the meaning, the type and the view need a look; the question is refused naming all three and nobody is asked
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+            asked_before = len(model.requests)
+            status, refused = self.ask(ann, '有效订单有多少？')
+            self.assertEqual((status, refused['status'], len(model.requests)), (200, 'refused', asked_before))
+            self.assertEqual([(d['kind'], d['name'], d['state']) for d in refused['refusal']['definitions']],
+                             [('meaning', '订单.状态码', 'needs_look'), ('type', '订单', 'needs_look'), ('view', '有效订单', 'needs_look')])
+            self.assertIn('视图「有效订单」', refused['reason'])
+            reopened = ann.get(f'/api/workspace/ask/{saved}')[1]
+            self.assertEqual({(c['name'], c['state']) for c in reopened['changed']}, {('订单', 'needs_look'), ('有效订单', 'needs_look')})
+            self.assertEqual(reopened['answer']['total'], 144)   # what it said then
+            self.assertEqual(ann.get('/api/workspace/ask')[1]['views'], [])   # nothing in scope any more
+
+    def test_latest_views_answer_the_latest_snapshot_and_the_latest_commitment_and_the_numbers_are_those_counted_by_hand(self):
+        stock_query = {'start': 'stock', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '库存数量', 'op': 'sum'}}
+        commit_query = {'start': 'commit', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '承诺数量', 'op': 'sum'}}
+        model = AskModel(cancelled(query=stock_query, used=[{'id': '最新快照', 'direction': 'include', 'basis': '最新快照'}]))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            for t, view in ((STOCK, LATEST_STOCK), (COMMIT, LATEST_COMMIT)):
+                self.assertEqual(ann.post('/api/workspace/types', t)[0], 200)
+                self.confirm(bob, t['english_name'])
+                self.assertEqual(ann.post('/api/workspace/types/views', view)[0], 200)
+                self.confirm_view(bob, t['english_name'], view['name'])
+            # by hand from the planted rows: the greatest month of each product, and the greatest version of each order
+            snapshots = planted.planted_bundle()['sources']['库存快照']['records']
+            newest_month = {}
+            for r in snapshots:
+                newest_month[r['产品编号']] = max(newest_month.get(r['产品编号'], ''), r['快照月份'])
+            stock_now = sum(int(r['库存数量']) for r in snapshots if r['快照月份'] == newest_month[r['产品编号']])
+            commitments = planted.planted_bundle()['sources']['订单承诺']['records']
+            newest_version = {}
+            for r in commitments:
+                newest_version[r['订单号']] = max(newest_version.get(r['订单号'], 0), int(r['承诺版本']))
+            commit_now = sum(int(r['承诺数量']) for r in commitments if int(r['承诺版本']) == newest_version[r['订单号']])
+            self.assertEqual((stock_now, commit_now), (1115, 552))
+            status, body = self.ask(ann, '最新快照的库存数量一共多少？')
+            self.assertEqual((status, body['status'], body['answer']['measure']['value'], body['answer']['total']), (200, 'answered', 1115, 12), body)   # 1115 over 12 rows
+            self.assertEqual([(v['name'], v['rows']) for v in body['evidence']['views']], [('最新快照', 12)])
+            model.item = cancelled(query=commit_query, used=[{'id': '最新承诺', 'direction': 'include', 'basis': '最新承诺'}])
+            status, body = self.ask(ann, '最新承诺的承诺数量一共多少？')
+            self.assertEqual((body['status'], body['answer']['measure']['value'], body['answer']['total']), ('answered', 552, 60))
+            self.assertEqual([(v['name'], v['rows'], v['confirmed_by']) for v in body['evidence']['views']], [('最新承诺', 60, 'Bob')])
+            # the same measure without the view adds up every snapshot: the view is what makes it "latest"
+            model.item = cancelled(query=stock_query, used=[])
+            status, body = self.ask(ann, '库存数量一共多少？')
+            self.assertEqual((body['answer']['measure']['value'], body['answer']['total']), (sum(int(r['库存数量']) for r in snapshots), 72))
+            self.assertNotIn('views', body.get('evidence') or {})
+
+    def test_a_view_on_a_column_marked_not_to_send_values_is_not_offered_to_the_model(self):
+        model = AskModel(cancelled(query=ALL_ORDERS, used=[]))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.confirmed_orders(team)
+            self.assertEqual(ann.post('/api/workspace/types/views', VALID)[0], 200)
+            self.confirm_view(bob, 'order', '有效订单')
+            self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'order', 'column': '状态码', 'hide_values': True})[0], 200)
+            self.assertEqual(ann.get('/api/workspace/ask')[1]['views'], [])
+            self.ask(ann, '订单有多少？')
+            self.assertNotIn('definitions', model.requests[0])   # neither the meaning nor the view that would tell it
 
     def test_a_viewers_scope_leaves_out_unconfirmed_and_hidden_types_and_questions_are_each_persons_own(self):
         model = AskModel(cancelled())

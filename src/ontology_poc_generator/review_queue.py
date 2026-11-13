@@ -13,7 +13,8 @@ import json
 from ontology_poc_generator.object_relations import (
     _relation_visible, check_relation, confirm_relation, evidence_lines, relation_view)
 from ontology_poc_generator.object_types import (
-    ENUM_PREFIX, RELATION_PREFIX, STALE, TYPE_PREFIX, TypeRefused, _confirmers, _content, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
+    ENUM_PREFIX, RELATION_PREFIX, STALE, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
+from ontology_poc_generator.object_views import confirm_view, describe, seen_of_view, view_state, view_summary, view_visible
 from ontology_poc_generator.workspace_store import current_dataset, log_line
 
 IN_QUEUE = ('proposed', 'checked', 'needs_look')
@@ -52,6 +53,19 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
             result = check_relation(conn, content, record=False)
             base['lines'] = evidence_lines(result)
             view['seen'] = result.get('signature')   # what the person reads, which confirming has to quote
+    elif element_id.startswith(VIEW_PREFIX):
+        if not view_visible(conn, row, user):
+            return None
+        view = view_state(conn, row, user)
+        type_name = _content(element_row(conn, f'{TYPE_PREFIX}{content["type"]}'))['name']
+        base = {'kind': 'view', 'title': f'{content["name"]}（{type_name}的视图）', 'id': content['type'], 'view': content['name'], 'lines': []}
+        if not light:
+            summary = view_summary(conn, content)
+            base['lines'] = [{'ok': True, 'text': describe(content, type_name)},
+                             *([{'ok': False, 'text': p} for p in summary['problems']] if summary['problems']
+                               else [{'ok': True, 'text': f'{summary["dataset"]} 第 {summary["version"]} 版的 {summary["of"]} 行里，视图留下 {summary["rows"]} 行'}]),
+                             *[{'ok': w['state'] == 'confirmed', 'text': f'“{w["name"]}”{"已确认" if w["state"] == "confirmed" else "还没有确认"}'} for w in view['waiting_on']]]
+            view['seen'] = seen_of_view(summary)
     elif element_id.startswith(ENUM_PREFIX):
         type_row = element_row(conn, f'{TYPE_PREFIX}{content["type"]}')
         if type_row is None or not _visible(conn, type_row, user):
@@ -85,7 +99,7 @@ def queue(conn, user: dict | None, light: bool = False) -> dict:
     `light`: the count only, from the states (no relation check runs); items carry no evidence."""
     items = []
     for element_id, in conn.execute("SELECT element_id FROM element_state WHERE state IN ('proposed', 'checked', 'needs_look') AND "
-                                    "(element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' OR element_id LIKE 'relation:%') ORDER BY element_id").fetchall():
+                                    "(element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%') ORDER BY element_id").fetchall():
         item = _item(conn, element_row(conn, element_id), user, light)
         if item:
             items.append(item)
@@ -96,6 +110,8 @@ def queue(conn, user: dict | None, light: bool = False) -> dict:
 def _parse(element: str) -> tuple[str, dict]:
     if element.startswith(RELATION_PREFIX):
         return 'relation', {'id': element[len(RELATION_PREFIX):]}
+    if element.startswith(VIEW_PREFIX):
+        return 'view', {'id': element[len(VIEW_PREFIX):]}
     if element.startswith(ENUM_PREFIX):
         type_name, _, column = element[len(ENUM_PREFIX):].partition(':')
         return 'meaning', {'id': type_name, 'column': column}
@@ -119,6 +135,8 @@ def confirm_item(conn, payload: dict, who: str | None, user: dict | None) -> dic
     kind, ref = _parse(element)
     if kind == 'relation':
         return confirm_relation(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen')}, who, user)
+    if kind == 'view':
+        return confirm_view(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen')}, who, user)
     return confirm_element(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen')}, who, user)
 
 
@@ -134,7 +152,7 @@ def send_back(conn, payload: dict, who: str | None, user: dict | None) -> dict:
         raise TypeRefused('它在你看过之后被改了，请刷新后重新看一遍', 409)
     if row['state'] not in IN_QUEUE:
         raise TypeRefused('这一项不在待确认里了', 409)
-    if row['state'] == 'needs_look' and not element.startswith((TYPE_PREFIX, RELATION_PREFIX)):
+    if row['state'] == 'needs_look' and not element.startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX)):
         raise TypeRefused('这组含义需要再看：请按现在的数据重新提出含义，不用退回', 409)
     if not _confirmers(conn, row, user)[0]:   # who may judge it, whether or not it can be confirmed yet
         raise TypeRefused('你现在不能处理这一项：它要另一位构建者来看', 403)

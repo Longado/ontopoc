@@ -25,6 +25,7 @@ from ontology_poc_generator.workspace_store import StaleElement, check_key, curr
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
 RELATION_PREFIX = 'relation:'
+VIEW_PREFIX = 'objview:'
 ENGLISH_NAME = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,39}')
 MAX_NAME, MAX_DESCRIPTION = 40, 200
 OBJECT_PAGE = 50
@@ -456,7 +457,8 @@ def _enum_problems(conn, row: dict) -> list[str]:
 
 def _label(conn, element_id: str) -> str:
     content = _content(element_row(conn, element_id))
-    return f'“{content["name"]}”类型' if element_id.startswith(TYPE_PREFIX) else f'“{content["name"]}”关系' if element_id.startswith(RELATION_PREFIX) else f'“{content["column"]}”的含义'
+    return (f'“{content["name"]}”类型' if element_id.startswith(TYPE_PREFIX) else f'“{content["name"]}”关系' if element_id.startswith(RELATION_PREFIX)
+            else f'“{content["name"]}”视图' if element_id.startswith(VIEW_PREFIX) else f'“{content["column"]}”的含义')
 
 
 def _flag_readers(conn, element_id: str, reason: str, moved: list[str]) -> None:
@@ -512,8 +514,9 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
     needs_look with the reason, together with what reads it. Returns the ids of the elements that moved."""
     readers = _readers_of_dataset(conn, dataset_name)
     moved: list[str] = []
-    from ontology_poc_generator.object_relations import relation_problems   # object_relations reads this module: imported here, where it is used
-    order = lambda e: 0 if e.startswith(ENUM_PREFIX) else 2 if e.startswith(RELATION_PREFIX) else 1   # meanings, then types (which move with their meanings), then relations (which move with their types)
+    from ontology_poc_generator.object_relations import relation_problems   # object_relations and object_views read this module: imported here, where they are used
+    from ontology_poc_generator.object_views import view_problems
+    order = lambda e: 0 if e.startswith(ENUM_PREFIX) else 2 if e.startswith((RELATION_PREFIX, VIEW_PREFIX)) else 1   # meanings, then types (which move with their meanings), then relations and views (which move with their types)
     conn.execute('BEGIN IMMEDIATE')
     try:
         for element_id in sorted(readers, key=order):
@@ -521,7 +524,7 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
             if row is None or row['state'] != 'confirmed':
                 continue
             problems = (_enum_problems(conn, row) if element_id.startswith(ENUM_PREFIX) else relation_problems(conn, row) if element_id.startswith(RELATION_PREFIX)
-                        else _type_problems(conn, _content(row))[0])
+                        else view_problems(conn, row) if element_id.startswith(VIEW_PREFIX) else _type_problems(conn, _content(row))[0])
             if problems:
                 _flag(conn, element_id, '；'.join(problems), caused_by, moved)
         conn.execute('COMMIT')
@@ -640,7 +643,8 @@ def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
     rule = two_person(conn)
     excluded = row['proposed_by_user_id'] if rule['active'] else None
     content = _content(row) if row['content_json'] else {}
-    types = [type_id(content[e]) for e in ('from', 'to')] if row['element_id'].startswith(RELATION_PREFIX) else [type_id(content['type'])] if row['element_id'].startswith(ENUM_PREFIX) else [row['element_id']]
+    types = ([type_id(content[e]) for e in ('from', 'to')] if row['element_id'].startswith(RELATION_PREFIX) else [type_id(content['type'])] if row['element_id'].startswith((ENUM_PREFIX, VIEW_PREFIX))
+             else [row['element_id']])
     others = [name for person, name, role in conn.execute(   # only people who may see what it is about can be asked to confirm it
         "SELECT id, display_name, role FROM user WHERE disabled = 0 AND role IN ('builder', 'admin') AND (? IS NULL OR id != ?) ORDER BY display_name", (excluded, excluded))
         if all(can_access(conn, t, {'id': person, 'role': role}) for t in types)]
@@ -651,7 +655,7 @@ def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
 
 def _state_view(conn, row: dict, user: dict | None) -> dict:
     """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look."""
-    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX)))
+    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX)))
     can, others = _confirmers(conn, row, user)
     meanings = _unconfirmed_meanings(conn, row['element_id']) if row['element_id'].startswith(TYPE_PREFIX) and waiting else []   # a type waits for its meanings first
     blocked = meanings or (row['state'] == 'needs_look' and conn.execute(
@@ -738,7 +742,9 @@ def type_log(conn, english_name: str, user: dict | None) -> list[dict]:
     """What happened to a type, to the meanings of its code columns and to the dataset it reads, newest first: time, who, what, and for a move to
     needs_look the reason and whose upload it was."""
     detail = type_detail(conn, english_name, user)
-    return log_entries(conn, [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), f'dataset:{detail["dataset"]}'])
+    only_confirmed = " AND state = 'confirmed'" if user is not None and user['role'] == 'viewer' else ''   # a viewer reads nothing of a view nobody confirmed
+    views = [e for (e,) in conn.execute(f"SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' AND json_extract(content_json, '$.type') = ?{only_confirmed}", (english_name,))]
+    return log_entries(conn, [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), *views, f'dataset:{detail["dataset"]}'])
 
 
 def log_entries(conn, ids: list[str]) -> list[dict]:
@@ -747,7 +753,8 @@ def log_entries(conn, ids: list[str]) -> list[dict]:
     for at, who, element, change, before, after in conn.execute(
             f'SELECT time, who, element_id, change, before_json, after_json FROM log WHERE element_id IN ({",".join("?" * len(ids))}) ORDER BY time DESC, rowid DESC', ids):
         after = json.loads(after) if after else {}
-        kind = 'dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX) else 'type'
+        kind = ('dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX)
+                else 'view' if element.startswith(VIEW_PREFIX) else 'type')
         out.append({'at': at, 'who': who, 'element': kind, 'column': element.split(':', 2)[2] if kind == 'meaning' else None, 'change': change,
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
                     'caused_by': after.get('caused_by'), 'self_confirmed': bool(after.get('self_confirmed')),

@@ -30,7 +30,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/ask', 'viewer'),
     # change data, start model work, write definitions
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
-    ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest|privacy))?', 'builder'),
+    ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest|privacy|views(/(update|confirm))?))?', 'builder'),
     ('POST', r'/api/workspace/relations(/(update|confirm))?', 'builder'),
     ('POST', r'/api/workspace/queue/(confirm|send-back)', 'builder'),
     ('POST', r'/api/ontology/(build|jobs|preview|compare|variants|requery|library/import)', 'builder'),

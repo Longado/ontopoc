@@ -9,6 +9,7 @@ import sqlite3
 import unittest
 from urllib.parse import quote
 
+from ontology_poc_generator.object_views import kept_positions
 from ontology_poc_generator.recognition import ModelCompletion
 from ontology_poc_generator.workspace_store import open_workspace
 from tests import test_workspace_store as planted
@@ -18,6 +19,12 @@ TABLES = [{'filename': p.name, 'content_base64': base64.b64encode(p.read_bytes()
 MEANINGS = [{'value': '0', 'label': '已交付'}, {'value': '1', 'label': '生产中'}, {'value': '2', 'label': '已取消'}]
 ORDER = {'english_name': 'order', 'name': '订单', 'dataset': '订单', 'key': ['订单号'], 'description': '客户下的一张订单',
          'properties': [{'column': '订单号'}, {'column': '金额'}, {'column': '状态码', 'enum': True}], 'enums': {'状态码': MEANINGS}}
+STOCK = {'english_name': 'stock', 'name': '库存快照', 'dataset': '库存快照', 'key': ['快照月份', '产品编号'], 'properties': [{'column': '库存数量'}]}
+COMMIT = {'english_name': 'commit', 'name': '订单承诺', 'dataset': '订单承诺', 'key': ['订单号', '承诺版本'], 'properties': [{'column': '承诺数量'}]}
+VALID = {'name': '有效订单', 'type': 'order', 'filters': [{'column': '状态码', 'op': 'is_not', 'label': '已取消'}]}
+LATEST_STOCK = {'name': '最新快照', 'type': 'stock', 'latest': {'key': ['产品编号'], 'order': '快照月份'}}
+LATEST_COMMIT = {'name': '最新承诺', 'type': 'commit', 'latest': {'key': ['订单号'], 'order': '承诺版本'}}
+ORDERS = planted.planted_bundle()['sources']['订单']['records']
 SHIFTED = {'0': '1', '1': '2', '2': '3'}   # the same rows, each code one higher: 1/2/3 where the file had 0/1/2
 
 
@@ -429,6 +436,144 @@ class ObjectTypeTests(SigningTestCase):
         with self.service() as (base, _):   # no model configured
             ann = self.team(base, 'ann')['ann']
             self.assertEqual(ann.post('/api/workspace/types/suggest', {'datasets': ['订单'], 'purpose': 'x'})[0], 503)
+
+
+    # --- views: a type plus conditions on confirmed meanings and/or "latest per key" ---------------------------------------------------------------------
+
+    def make_view(self, client, view, expect=200):
+        status, body = client.post('/api/workspace/types/views', view)
+        self.assertEqual(status, expect, body)
+        return body
+
+    def view_of(self, client, type_name, name):
+        status, body = client.get(f'/api/workspace/types/{type_name}/views')
+        self.assertEqual(status, 200, body)
+        return next((v for v in body['views'] if v['name'] == name), None)
+
+    def confirm_view(self, client, type_name, name):
+        shown = self.view_of(client, type_name, name)
+        return client.post('/api/workspace/types/views/confirm', {'id': name, 'version': shown['version'], 'seen': shown['seen']})
+
+    def test_a_view_shows_how_many_rows_it_keeps_and_is_confirmed_by_the_other_builder_then_needs_a_look_when_the_codes_shift(self):
+        with self.service() as (base, out):
+            team = self.team(base, 'ann', 'bob', 'vera', roles={'vera': 'viewer'})
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.confirm_all(ann, bob)
+            kept = sum(1 for r in ORDERS if r['状态码'] != '2')   # counted from the planted rows: the 16 cancelled ones are not in it
+            body = self.make_view(ann, VALID)
+            self.assertEqual((body['rows'], body['of'], kept), (144, 160, 144))
+            mine, theirs = self.view_of(ann, 'order', '有效订单'), self.view_of(bob, 'order', '有效订单')
+            self.assertEqual((mine['state'], mine['rows'], mine['of'], mine['proposed_by'], mine['can_confirm'], theirs['can_confirm']), ('checked', 144, 160, 'Ann', False, True))
+            self.assertEqual(mine['says'], '订单里只留 状态码 不是「已取消」 的行')
+            form = bob.get('/api/workspace/types/order/views')[1]['form']
+            self.assertEqual(form['codes'], [{'column': '状态码', 'name': '状态码', 'labels': ['已交付', '已取消', '生产中']}])
+            self.assertEqual([c['name'] for c in form['columns'] if c['orderable']], ['数量', '金额', '下单日期', '状态码', '交付天数'])   # numbers and dates; the text columns are not
+            self.assertEqual(vera.get('/api/workspace/types/order/views')[1], {'views': [], 'form': None})   # a viewer reads confirmed views only
+            self.assertEqual(vera.post('/api/workspace/types/views', {**VALID, 'name': '另一个'})[0], 403)
+            # the same person cannot confirm it; a count that is not what the page showed is refused; the right one is taken
+            self.assertEqual(self.confirm_view(ann, 'order', '有效订单')[0], 403)
+            status, body = bob.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': theirs['version'], 'seen': {**theirs['seen'], 'rows': 143}})
+            self.assertEqual((status, '和你看到的不一样' in body['error']), (409, True))
+            self.assertEqual(self.confirm_view(bob, 'order', '有效订单')[0], 200)
+            shown = self.view_of(vera, 'order', '有效订单')
+            self.assertEqual((shown['state'], shown['confirmed_by'], shown['confirmed_on'], shown['rows']), ('confirmed', 'Bob', {'订单': 1}, 144))
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            self.assertEqual(conn.execute("SELECT confirmed_by, proposed_by, dataset_versions_json FROM confirmation WHERE element_id = 'objview:有效订单'").fetchall(), [('Bob', 'Ann', '{"订单": 1}')])
+            self.assertEqual(set(conn.execute("SELECT depends_on FROM element_dep WHERE element_id = 'objview:有效订单'").fetchall()),
+                             {('objtype:order',), ('dataset:订单',), ('enum:order:状态码',)})
+            conn.close()
+            # what cannot be a view
+            self.assertIn('不是“状态码”已写的含义', self.make_view(ann, {**VALID, 'name': 'x', 'filters': [{'column': '状态码', 'op': 'is_not', 'label': '作废'}]}, 400)['error'])
+            self.assertIn('不是“订单”的代码列', self.make_view(ann, {**VALID, 'name': 'x', 'filters': [{'column': '金额', 'op': 'is', 'label': '1'}]}, 400)['error'])
+            self.assertIn('至少一个条件', self.make_view(ann, {'name': 'x', 'type': 'order'}, 400)['error'])
+            self.assertIn('“订单”', self.make_view(ann, {**VALID, 'name': '订单'}, 409)['error'])   # a question names a type or a view, not both
+            self.assertEqual(self.make_view(ann, {**VALID, 'name': '有效订单'}, 409)['error'], '已经有叫“有效订单”的视图')
+            self.assertEqual(self.make_view(ann, {**VALID, 'type': 'nothing'}, 404)['error'], '没有这个对象类型')
+            # a new version with every code one higher: the meaning needs a look, the type under it, and so the view, with the reason
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+            moved = self.view_of(bob, 'order', '有效订单')
+            self.assertEqual(moved['state'], 'needs_look')
+            self.assertIn('需要再看', moved['reason'])
+            self.assertEqual((moved['confirmed_by'], moved['can_confirm']), ('Bob', False))   # not until the type and the meaning are looked at again
+            self.assertEqual(vera.get('/api/workspace/types/order/views')[0], 404)   # the type is not confirmed now, so a viewer is not shown it, nor what stands on it
+            queue = bob.get('/api/workspace/queue')[1]['items']
+            self.assertIn(('view', 'objview:有效订单', 'needs_look'), [(i['kind'], i['element'], i['state']) for i in queue])
+            log = bob.get('/api/workspace/types/order/log')[1]['log']
+            self.assertTrue(any(e['element'] == 'view' and e['to'] == 'needs_look' and e['who'] == 'system' for e in log))
+            new = [{'value': '0', 'label': ''}, {'value': '1', 'label': '已交付'}, {'value': '2', 'label': '生产中'}, {'value': '3', 'label': '已取消'}]
+            self.assertEqual(bob.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': new})[1], {'changed': True})
+            self.assertEqual(self.confirm(ann, '状态码')[0], 200)
+            self.assertEqual(self.view_of(bob, 'order', '有效订单')['waiting_on'][0]['name'], '订单')   # the type is not confirmed yet
+            self.assertEqual(self.confirm(bob)[0], 200)
+            back = self.view_of(bob, 'order', '有效订单')
+            self.assertEqual((back['state'], back['can_confirm'], back['rows'], back['dataset_version']), ('needs_look', True, 144, 2))
+            self.assertEqual(self.confirm_view(bob, 'order', '有效订单')[0], 200)
+            self.assertEqual(self.view_of(bob, 'order', '有效订单')['confirmed_on'], {'订单': 2})
+
+    def test_new_rows_that_change_how_many_a_view_keeps_send_it_back_without_touching_the_type(self):
+        with self.service() as (base, _):
+            team = self.team(base, 'ann', 'bob')
+            ann, bob = team['ann'], team['bob']
+            self.confirm_all(ann, bob)
+            self.make_view(ann, VALID)
+            self.assertEqual(self.confirm_view(bob, 'order', '有效订单')[0], 200)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(lambda r, i: {**r, '状态码': '2'} if i == 0 else r)]})[0], 200)   # the first order is cancelled now
+            self.assertEqual(self.detail(bob)['state'], 'confirmed')   # no code is new, no key repeats: the type stands
+            moved = self.view_of(bob, 'order', '有效订单')
+            self.assertEqual((moved['state'], moved['rows'], moved['of']), ('needs_look', 143, 160))
+            self.assertIn('确认时 144 / 160 行，现在 143 / 160 行', moved['reason'])
+            self.assertEqual(self.confirm_view(bob, 'order', '有效订单')[0], 200)   # looked at again: 143 is what the page shows
+
+    def test_a_latest_view_keeps_one_row_per_key_and_refuses_a_column_that_cannot_be_put_in_order(self):
+        with self.service() as (base, _):
+            team = self.team(base, 'ann', 'bob')
+            ann, bob = team['ann'], team['bob']
+            for t in (STOCK, COMMIT):
+                self.assertEqual(ann.post('/api/workspace/types', t)[0], 200)
+                self.assertEqual(self.confirm(bob, None, t['english_name'])[0], 200)
+            snapshots = planted.planted_bundle()['sources']['库存快照']['records']
+            latest = {}
+            for r in snapshots:   # by hand: per product the greatest month (months are written year first)
+                if r['产品编号'] not in latest or r['快照月份'] > latest[r['产品编号']]['快照月份']:
+                    latest[r['产品编号']] = r
+            body = self.make_view(ann, LATEST_STOCK)
+            self.assertEqual((body['rows'], body['of'], len(latest), len(snapshots)), (12, 72, 12, 72))
+            commitments = planted.planted_bundle()['sources']['订单承诺']['records']
+            newest = {}
+            for r in commitments:
+                if r['订单号'] not in newest or int(r['承诺版本']) > int(newest[r['订单号']]['承诺版本']):
+                    newest[r['订单号']] = r
+            body = self.make_view(ann, LATEST_COMMIT)
+            self.assertEqual((body['rows'], body['of'], len(newest), len(commitments)), (60, 121, 60, 121))
+            self.assertIn('排不出先后', self.make_view(ann, {**LATEST_STOCK, 'name': 'x', 'latest': {'key': ['快照月份'], 'order': '产品编号'}}, 400)['error'])
+            self.assertIn('不能是编号列', self.make_view(ann, {**LATEST_STOCK, 'name': 'x', 'latest': {'key': ['快照月份'], 'order': '快照月份'}}, 400)['error'])
+            self.assertIn('编号要选', self.make_view(ann, {**LATEST_STOCK, 'name': 'x', 'latest': {'key': ['没有这列'], 'order': '快照月份'}}, 400)['error'])
+            self.assertEqual(self.confirm_view(bob, 'stock', '最新快照')[0], 200)
+            self.assertEqual(self.view_of(bob, 'stock', '最新快照')['says'], '库存快照里每个「产品编号」只留「快照月份」最新的一行')
+
+    def test_which_rows_a_definition_keeps_latest_first_then_the_conditions_later_row_wins_a_tie_and_a_row_without_a_key_stays(self):
+        records = [{'k': 'a', 'v': '1', 's': '1'}, {'k': 'a', 'v': '3', 's': '2'}, {'k': 'b', 'v': '2', 's': '1'}, {'k': 'b', 'v': '2', 's': '2'},
+                   {'k': '', 'v': '1', 's': '1'}, {'k': 'c', 'v': '', 's': '1'}, {'k': 'c', 'v': '5', 's': '1'}]
+        kinds, labels = {'k': 'text', 'v': 'integer', 's': 'integer'}, {'s': {'1': '开', '2': '关'}}
+        latest = {'key': ['k'], 'order': 'v'}
+        self.assertEqual(kept_positions(records, kinds, labels, {'filters': [], 'latest': latest}), [2, 4, 5, 7])   # a: v=3; b: tie, the later; no key: stays; c: the filled one
+        self.assertEqual(kept_positions(records, kinds, labels, {'filters': [{'column': 's', 'op': 'is', 'label': '开'}], 'latest': latest}), [5, 7])   # a's latest is 关: it is gone, not its earlier row
+        self.assertEqual(kept_positions(records, kinds, labels, {'filters': [{'column': 's', 'op': 'is_not', 'label': '开'}], 'latest': None}), [2, 4])
+
+    def test_a_views_visibility_follows_its_type_and_the_queue_lists_it_for_the_builder_who_can_confirm(self):
+        with self.service() as (base, _):
+            team = self.team(base, 'ann', 'bob')
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.confirm_all(ann, bob)
+            self.make_view(ann, VALID)
+            item = next(i for i in bob.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'view')
+            self.assertEqual((item['title'], item['can_confirm']), ('有效订单（订单的视图）', True))
+            self.assertIn('视图留下 144 行', ' '.join(l['text'] for l in item['lines']))
+            self.assertEqual(bob.post('/api/workspace/queue/confirm', {'element': item['element'], 'version': item['version'], 'seen': item['seen']})[0], 200)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [3]})[0], 200)   # only Bob
+            self.assertEqual(ann.get('/api/workspace/types/order/views')[0], 404)
+            self.assertEqual(ann.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': 1, 'seen': {}})[0], 404)
+            self.assertEqual(self.view_of(bob, 'order', '有效订单')['state'], 'confirmed')
 
 
 class OlderFileTests(unittest.TestCase):

@@ -69,6 +69,7 @@ from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv
 from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
+from ontology_poc_generator.object_views import confirm_view, create_view, list_views, update_view, view_form
 from ontology_poc_generator.object_relations import (
     confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
 from ontology_poc_generator.review_queue import confirm_item, queue, send_back
@@ -1219,6 +1220,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     body = type_objects(conn, parts[0], int(page), self.user)
                 elif len(parts) == 2 and parts[1] == 'log':
                     body = {'log': type_log(conn, parts[0], self.user)}
+                elif len(parts) == 2 and parts[1] == 'views':   # the views of this type and, for a builder, what a form for a new one offers
+                    body = {'views': list_views(conn, parts[0], self.user), 'form': None if self.user is not None and self.user['role'] == 'viewer' else view_form(conn, parts[0], self.user)}
                 else:
                     self.reply(404, {'error': 'Unknown workspace endpoint'})
                     return
@@ -1230,7 +1233,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.reply(200, body)
 
         def types_post(self):
-            """POST /api/workspace/types (create), /types/update, /types/meanings, /types/confirm, /types/key-check, /types/suggest: see object_types.py. A refusal
+            """POST /api/workspace/types (create), /types/update, /types/meanings, /types/confirm, /types/key-check, /types/suggest, /types/views (+ /update, /confirm):
+            see object_types.py and object_views.py. A refusal
             of who (confirming one's own proposal) is a 403, a stale version a 409, the rest a 400 that says what is wrong."""
             route = self.path[len('/api/workspace/types'):]
             try:
@@ -1256,6 +1260,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                 body = propose_meanings(conn, payload, who, self.user)
                             elif route == '/confirm':
                                 body = confirm_element(conn, payload, who, self.user)
+                            elif route == '/views':
+                                body = create_view(conn, payload, who, self.user)
+                            elif route == '/views/update':
+                                body = update_view(conn, payload, who, self.user)
+                            elif route == '/views/confirm':
+                                body = confirm_view(conn, payload, who, self.user)
                             elif route == '/key-check':
                                 body = key_preview(conn, payload.get('dataset'), payload.get('key'), self.user)
                             elif route == '/privacy':
