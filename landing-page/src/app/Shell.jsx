@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
+import { TasksPage } from "./TasksPage.jsx";
 import { NAV, navKeyOf, parseRoute } from "./routeModel.js";
 
 function Navigation({ active, open, onPick }) {
@@ -59,7 +60,8 @@ export function Shell() {
       </aside>
       {route.page === "datasets" && <DatasetList />}
       {route.page === "dataset" && <DatasetPage route={route} />}
-      {!["datasets", "dataset"].includes(route.page) && <NotFound />}
+      {route.page === "tasks" && <TasksPage />}
+      {!["datasets", "dataset", "tasks"].includes(route.page) && <NotFound />}
     </div>
   );
 }

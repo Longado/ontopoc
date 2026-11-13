@@ -44,6 +44,6 @@ test("landing page leads with upload-to-ontology and auto evaluation, recall as 
 
 test("main selects the landing page only for the landing surface", async () => {
   const source = await readFile(new URL("./main.jsx", import.meta.url), "utf8");
-  assert.match(source, /resolveAppSurface\(window\.location\.pathname\)/);
+  assert.match(source, /resolveAppSurface\(.*has\("landing"\) \? "\/landing" : window\.location\.pathname\)/);   // legacy.html?landing is the old landing text
   assert.match(source, /surface === "landing" \? <App \/> : <StandaloneDemo \/>/);
 });

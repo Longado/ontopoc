@@ -13,6 +13,8 @@ async function request(path, options = {}) {
 
 export const getDatasets = () => request("/api/workspace/datasets").then((b) => b.datasets);
 
+export const getTasks = () => request("/api/workspace/tasks").then((b) => b.tasks);
+
 export const getDataset = (name, version = null) =>
   request(`/api/workspace/datasets/${encodeURIComponent(name)}${version ? `?version=${version}` : ""}`);
 

@@ -9,7 +9,7 @@ export default defineConfig({
   build: {
     outDir: "dist/client",
     rollupOptions: {
-      input: { main: resolve(import.meta.dirname, "index.html"), app: resolve(import.meta.dirname, "app.html") },
+      input: { main: resolve(import.meta.dirname, "index.html"), legacy: resolve(import.meta.dirname, "legacy.html") },
     },
   },
   optimizeDeps: {

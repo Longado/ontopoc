@@ -60,6 +60,7 @@ from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
 from ontology_poc_generator.workspace_datasets import dataset_detail, list_datasets, upload as upload_datasets
+from ontology_poc_generator.workspace_tasks import list_tasks
 
 ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
@@ -1051,12 +1052,18 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return False
 
         def workspace_get(self):
-            """/api/workspace/datasets, /api/workspace/datasets/<name>?version=N: the workspace's datasets, which belong to no run."""
+            """/api/workspace/datasets, /api/workspace/datasets/<name>?version=N: the workspace's datasets, which belong to no run;
+            /api/workspace/tasks: modelling jobs and dataset uploads, newest first."""
             url = urlsplit(self.path)
             conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
                 if url.path == '/api/workspace/datasets':
                     self.reply(200, {'datasets': list_datasets(conn)})
+                    return
+                if url.path == '/api/workspace/tasks':
+                    with jobs_lock:
+                        running = {job_id for job_id, job in jobs.items() if job['state'] == 'running'}
+                    self.reply(200, {'tasks': list_tasks(conn, jobs_dir, running)})
                     return
                 if url.path.startswith('/api/workspace/datasets/'):
                     version = (parse_qs(url.query).get('version') or [None])[0]

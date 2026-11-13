@@ -126,7 +126,7 @@ Install and run OntoPoc (https://github.com/Longado/ontopoc) on this machine:
 4. Ask me for a DeepSeek API key and put it only in this terminal's DEEPSEEK_API_KEY; do not write it to any file.
 5. From the repository root, start the modelling service: PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 6. In another terminal, start the page: cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
-7. Open http://127.0.0.1:5178, upload examples/company/demo_company.xlsx, and tell me how many checks passed in the data check (数据体检).
+7. Open http://127.0.0.1:5178/legacy.html, upload examples/company/demo_company.xlsx, and tell me how many checks passed in the data check (数据体检).
 ```
 
 ### Option B: install it yourself
@@ -144,7 +144,11 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-Open `http://127.0.0.1:5178`. The bundled samples open without a key. After changing backend code, restart the modelling service; the page says so when it finds the service running old code.
+Open `http://127.0.0.1:5178/legacy.html` (the screen organised around runs, which the quick start above uses). The bundled samples open without a key. After changing backend code, restart the modelling service; the page says so when it finds the service running old code.
+
+### Page layout (being rebuilt)
+
+`http://127.0.0.1:5178/` is the new screen, built around one workspace with no runs: the left navigation is grouped as Home, Tasks, Data, Ontology, Apps and Lineage. What works today is Datasets (upload, update by key or overwrite, fields, preview, versions) and Tasks (modelling jobs and upload records); the rest is greyed out. The new screen lives in `landing-page/src/app/`, reads only the workspace API `/api/workspace/*` and never imports the old code. The old screen is all in `landing-page/src/legacy/` (entry `legacy.html`; the old landing text is `legacy.html?landing`), and each old piece goes once the new page that replaces it works.
 
 ## Use with MCP / Claude
 

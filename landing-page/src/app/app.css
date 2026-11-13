@@ -122,6 +122,10 @@ input[aria-invalid="true"] { border-color: var(--bad); }
 /* narrow screens: the menu folds under the name */
 @media (max-width: 760px) {
   .shell { grid-template-columns: minmax(0, 1fr); align-content: start; }
+  table.tasks thead { display: none; }
+  table.tasks tr { display: flex; flex-wrap: wrap; gap: 2px 12px; padding: 10px 0; border-bottom: 0.5px solid var(--line); }
+  table.tasks td { display: block; padding: 0; border: 0; white-space: normal; }
+  table.tasks td.text { flex-basis: 100%; color: var(--muted); }
   table.wraps td { white-space: normal; padding-right: 8px; }
   table.wraps th { padding-right: 8px; }
   table.wraps .keep { white-space: nowrap; }

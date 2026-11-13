@@ -37,7 +37,7 @@ export function hrefFor(route) {
 
 // What is not built yet has no address: the sidebar shows it as plain grey text.
 export const NAV = [
-  { items: [{ key: "home", label: "首页" }, { key: "tasks", label: "任务" }] },
+  { items: [{ key: "home", label: "首页" }, { key: "tasks", label: "任务", href: "#/tasks" }] },
   { label: "数据", items: [{ key: "datasets", label: "数据集", href: "#/datasets" }, { key: "pipelines", label: "管道" }, { key: "sources", label: "数据源" }] },
   { label: "本体", items: [{ key: "types", label: "对象类型" }, { key: "relations", label: "关系" }, { key: "confirm", label: "待确认" }] },
   { label: "应用", items: [{ key: "qa", label: "问答" }, { key: "agents", label: "智能体" }, { key: "boards", label: "看板" }] },

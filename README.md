@@ -124,7 +124,7 @@ OntoPoc 是一个还在开发中的方向，不是成品。在试的是：从几
 4. 向我索取 DeepSeek API key，仅写入当前终端的环境变量 DEEPSEEK_API_KEY，不要写入任何文件。
 5. 在仓库根目录启动建模服务：PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 6. 另开一个终端启动页面：cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
-7. 打开 http://127.0.0.1:5178，上传 examples/company/demo_company.xlsx，告诉我"数据体检"通过了几项。
+7. 打开 http://127.0.0.1:5178/legacy.html，上传 examples/company/demo_company.xlsx，告诉我"数据体检"通过了几项。
 ```
 
 ### 方式 B：手动安装
@@ -142,7 +142,11 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-访问 `http://127.0.0.1:5178`。未配置 key 时仍可查看内置示例。修改后端代码后需重启建模服务，页面检测到服务运行旧代码时会提示。
+访问 `http://127.0.0.1:5178/legacy.html`（按“运行”操作的界面，上面的快速开始用的就是它）。未配置 key 时仍可查看内置示例。修改后端代码后需重启建模服务，页面检测到服务运行旧代码时会提示。
+
+### 页面布局（重建中）
+
+`http://127.0.0.1:5178/` 是按“一个工作空间、没有运行”重做的新界面：左侧按首页、任务、数据、本体、应用、血缘分组。目前能用的是数据集（上传、按主键更新或覆盖、字段、预览、版本）和任务（建模作业与上传记录），其余是灰色占位。新界面在 `landing-page/src/app/`，只读工作空间接口 `/api/workspace/*`，不引用旧代码；旧界面整体在 `landing-page/src/legacy/`（入口 `legacy.html`，旧首页文字是 `legacy.html?landing`），新界面里对应的页面做完一块，就删旧的一块。
 
 ## 用 MCP / Claude 接入
 
