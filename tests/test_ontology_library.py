@@ -42,7 +42,7 @@ class OntologyLibraryTests(unittest.TestCase):
     def server(self):
         with tempfile.TemporaryDirectory() as out:
             server = make_server(port=0, gateway=NoModelCalls(), output_dir=Path(out))
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
             thread.start()
             try:
                 yield f'http://127.0.0.1:{server.server_port}', Path(out)

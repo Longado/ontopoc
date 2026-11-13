@@ -10,7 +10,7 @@ import json
 
 
 def local_schema(run: dict) -> dict:
-    shapes = {(s['name'], f['path']): f for s in run.get('evaluation', {}).get('handover', {}).get('sources', [])
+    shapes = {(s['name'], f['path']): f for s in (run.get('evaluation', {}).get('handover') or {}).get('sources', [])   # a blocked draft stores handover as null
               for f in s.get('fields', [])}
     objects = []
     for obj in run['ontology']['object_types']:

@@ -119,7 +119,7 @@ class RequeryTests(unittest.TestCase):
         from ontology_poc_generator.ontology_server import make_server
         with asked_run() as (_, out, saved_as):
             server = make_server(port=0, gateway=None, output_dir=out)
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
             thread.start()
             try:
                 status, run = requery(f'http://127.0.0.1:{server.server_port}', saved_as)

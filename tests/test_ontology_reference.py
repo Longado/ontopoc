@@ -127,13 +127,14 @@ class ReferenceApiTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.out = Path(self.tmp.name)
         _, self.run, _ = example()
+        self.run['ontology']['status'] = 'auto_built_verified'   # the example is a hand-built ontology; real runs always carry a status
         self.path = self.out / self.run['saved_as']
         self.path.write_text(json.dumps(self.run))
         class NoModel:
             def complete_json(self, **kwargs):
                 raise AssertionError('domain comparison must not call the model')
         self.server = make_server(port=0, gateway=NoModel(), output_dir=self.out)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=lambda: self.server.serve_forever(poll_interval=0.01), daemon=True)
         self.thread.start()
         self.base = f'http://127.0.0.1:{self.server.server_port}'
 
