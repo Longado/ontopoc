@@ -146,7 +146,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 ### 页面布局（重建中）
 
-`http://127.0.0.1:5178/` 是按“一个工作空间、没有运行”重做的新界面：左侧按首页、任务、数据、本体、应用、血缘分组。目前能用的是数据集（上传、按主键更新或覆盖、字段、预览、版本）和任务（建模作业与上传记录），其余是灰色占位。新界面在 `landing-page/src/app/`，只读工作空间接口 `/api/workspace/*`，不引用旧代码；旧界面整体在 `landing-page/src/legacy/`（入口 `legacy.html`，旧首页文字是 `legacy.html?landing`），新界面里对应的页面做完一块，就删旧的一块。
+`http://127.0.0.1:5178/` 是按“一个工作空间、没有运行”重做的新界面：左侧按首页、任务、数据、本体、应用、血缘分组。目前能用的是数据集（上传、按主键更新或覆盖、字段、预览、版本）和任务（建模作业与上传记录），其余是灰色占位。新界面在 `landing-page/src/app/`，只读工作空间接口 `/api/workspace/*`，不引用旧代码；旧界面整体在 `landing-page/src/legacy/`（入口 `legacy.html`，旧首页文字是 `legacy.html?landing`），新界面里对应的页面做完一块，就删旧的一块。部署时注意：原来的 `/landing` 现在要写成 `legacy.html?landing`，站点配置没有改。
 
 ## 用 MCP / Claude 接入
 
