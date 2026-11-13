@@ -84,6 +84,17 @@ class CreateTests(AccountTestCase):
             self.assertIn(text, str(caught.exception), args)
         self.assertEqual(len(accounts.list_users(self.conn)), 1)
 
+    def test_a_display_name_names_one_person_and_a_rename_is_logged(self):
+        ann = accounts.create_user(self.conn, 'ann', 'Ann', 'builder', GOOD, 'root')
+        for name, text in (('ann', '别人的显示名'), ('ANN', '别人的显示名'), ('管理员', '别人的显示名'), ('system', '服务自己用'), ('x' * 41, '最多 40')):
+            with self.assertRaises(AccountError) as caught:
+                accounts.create_user(self.conn, 'other', name, 'builder', GOOD, 'root')
+            self.assertIn(text, str(caught.exception), name)
+        accounts.set_display_name(self.conn, self.admin, ann['id'], 'Annie')
+        with self.assertRaises(AccountError):
+            accounts.set_display_name(self.conn, self.admin, ann['id'], '管理员')
+        self.assertEqual(json.loads(self.conn.execute("SELECT after_json FROM log WHERE change = 'display_name_changed'").fetchone()[0]), {'from': 'Ann', 'to': 'Annie'})
+
     def test_a_company_sign_on_user_has_no_password_and_cannot_sign_in_with_one(self):
         accounts.create_user(self.conn, 'sso-user', 'x', 'viewer', None, 'root', provider='oidc')
         self.assertEqual(self.conn.execute("SELECT password_hash, provider FROM user WHERE username = 'sso-user'").fetchone(), (None, 'oidc'))

@@ -259,6 +259,17 @@ class ElementStateTests(unittest.TestCase):
         found = cursor.fetchone()
         return dict(zip([c[0] for c in cursor.description], found)) if found else None
 
+    def test_a_recheck_by_someone_else_leaves_whose_confirmation_it_was(self):
+        from ontology_poc_generator.actor import set_actor
+        self.addCleanup(set_actor, None)
+        set_actor({'id': 3, 'display_name': 'Bob'})
+        set_element_states(self.conn, [('view:k:v', 'confirmed', None, 'Bob', {'kind': 'filter'})])
+        set_actor({'id': 2, 'display_name': 'Ann'})   # Ann's upload moves the data: the view is checked again, still Bob's confirmation
+        set_element_states(self.conn, [('view:k:v', 'checked', None, 'Bob', {'kind': 'filter'})])
+        row = self.row('view:k:v')
+        self.assertEqual((row['state'], row['confirmed_by'], row['confirmed_by_user_id']), ('checked', 'Bob', 3))
+        self.assertEqual(self.conn.execute("SELECT user_id FROM log WHERE element_id = 'view:k:v' ORDER BY rowid DESC").fetchone()[0], 3)
+
     def test_a_confirmation_keeps_state_evidence_person_time_and_version(self):
         set_element_states(self.conn, [('object_type:k:customer', 'confirmed', 'check_result:3', '王工')])
         row = self.row('object_type:k:customer')

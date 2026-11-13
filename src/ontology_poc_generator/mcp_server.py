@@ -16,8 +16,8 @@ from pathlib import Path
 import sys
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.parse import quote, urlsplit
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from ontology_poc_generator.ontology_card import SAYS
 from ontology_poc_generator.ontology_confirm import without_wrong
@@ -55,7 +55,8 @@ INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判
   问人客户怎么答的，人说了再用 save_card 记；card_blank 用 get_card 看哪几格没说清。
   unlinked 答“数据没导全”，服务会把另一端对象在卡上自动记成“只有一部分”，改答复时撤回，不用另发那一格。
 判断只归人
-- confirm_ontology、fix_question、set_rules、confirm_derived、save_form、save_card 只在人明确说了之后调用，不替人编判断。
+- confirm_ontology、fix_question、set_rules、confirm_derived、save_form、save_card、confirm_proposed_view 只在人明确说了之后调用，不替人编判断。
+- confirm_proposed_view 确认的是另一个人提出的视图，要带上 list_proposed_views 里那条的 version；提出的人自己确认会被拒绝（403），定义在你看过之后被改了会被拒绝（409）。
 - save_card 只记人说的客户答复：by、basis 都来自人，不替客户填格、不替他答。
 - 拿不准的事写成问题交给人，不要当成结论。"""
 
@@ -68,10 +69,18 @@ class ToolError(Exception):
         self.status = status
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None   # a redirect would carry the token to wherever it points
+
+
 class LocalService:
     def __init__(self, base: str, poll_seconds: float = 2.0, token: str | None = None):
         self.base, self.poll_seconds, self.token = base.rstrip('/'), poll_seconds, token
-        self._open = build_opener(ProxyHandler({})).open   # a system proxy must not carry calls to this machine
+        where = urlsplit(self.base)
+        if token and where.scheme != 'https' and where.hostname not in ('127.0.0.1', 'localhost', '::1'):
+            raise ValueError(f'{self.base} 不是本机，也不是 https：令牌不能走明文')
+        self._open = build_opener(ProxyHandler({}), _NoRedirect).open   # a system proxy must not carry calls to this machine
 
     def request(self, path: str, payload: dict | None = None):
         data = None if payload is None else json.dumps(payload).encode()
@@ -455,6 +464,19 @@ def save_card(s, a):
     return s.request('/api/ontology/card', payload)
 
 
+def list_proposed_views(s, a):
+    waiting = s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/open-items").get('proposed_views')
+    return {'proposed_views': waiting or []}
+
+
+def confirm_proposed_view(s, a):
+    version = a.get('version')
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise ToolError('version 要写成整数：用 list_proposed_views 里这条的 version')
+    reply = s.request('/api/ontology/views', {'saved_as': _text(a.get('saved_as'), 'saved_as'), 'confirm': _text(a.get('name'), 'name'), 'version': version})
+    return {'message': reply['message'], 'proposed_views': reply.get('proposed_views', [])}
+
+
 def find_name_variants(s, a):
     return s.request('/api/ontology/variants', {'saved_as': _text(a.get('saved_as'), 'saved_as')})['evaluation']['variants']
 
@@ -576,6 +598,11 @@ TOOLS = [
                                                                 'text': {'type': 'string', 'maxLength': 300, 'description': '客户的答复原话；没有 choice 时必填'},
                                                                 'basis': {'type': 'string', 'maxLength': 200, 'description': '出处，来自人（可不写）'}}, 'required': ['id']}}},
           ('saved_as', 'by')),
+    _tool(list_proposed_views, '别人提出、等另一个人确认的视图：{name, definition, proposed_by, proposed_at, version}。definition 是要确认的内容，version 是确认时要带回的版本。', RUN, ('saved_as',)),
+    _tool(confirm_proposed_view, '确认别人提出的一个视图：带上你看过的那一版（version）。提出的人自己不能确认（403）；这一条在你看过之后被改了（409）要重新看一遍。'
+          '只在人看过 definition、明确说了之后调用。确认人是令牌的主人。',
+          {**RUN, 'name': {'type': 'string', 'description': '视图的名字，来自 list_proposed_views'},
+           'version': {'type': 'integer', 'minimum': 1, 'description': '你看过的那一版，来自 list_proposed_views 里这条的 version'}}, ('saved_as', 'name', 'version')),
     _tool(find_name_variants, '找出同一类对象里可能是同一个东西的不同写法，只给建议、不合并。会调用模型。', RUN, ('saved_as',)),
 ]
 BY_NAME = {t['name']: t for t in TOOLS}
@@ -629,7 +656,10 @@ def main():
     if sys.argv[1:] == ['--check']:
         check(base)
         return
-    service = LocalService(base, token=os.environ.get('ONTOPOC_TOKEN'))
+    try:
+        service = LocalService(base, token=os.environ.get('ONTOPOC_TOKEN'))
+    except ValueError as exc:
+        sys.exit(str(exc))
     for line in sys.stdin:
         if not line.strip():
             continue

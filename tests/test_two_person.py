@@ -57,15 +57,43 @@ class WhoComesFromTheSessionTests(SigningTestCase):
             self.assertEqual(set(rows), {('Ann', ann_id)})
             conn.close()
 
-    def test_the_card_is_signed_by_the_session_too(self):
-        with self.service(gateway=CardModel()) as (base, _):
+    def test_the_card_keeps_who_answered_apart_from_the_account_that_wrote_it_down(self):
+        with self.service(gateway=CardModel()) as (base, out):
             ann = self.people(base, 'ann')['ann']
             status, run = ann.post('/api/ontology/build', UPLOAD)
             self.assertEqual(status, 200, run)
-            status, saved = ann.post('/api/ontology/card', {'saved_as': run['saved_as'], 'by': 'root', 'items': [], 'cells': [{'id': CUSTOMER, 'value': 'partial', 'note': '只导了一部分'}]})
+            status, saved = ann.post('/api/ontology/card', {'saved_as': run['saved_as'], 'by': '客户的王经理', 'items': [], 'cells': [{'id': CUSTOMER, 'value': 'partial', 'note': '只导了一部分'}]})
             self.assertEqual(status, 200, saved)
             customer = next(o for o in saved['card']['objects'] if o['id'] == CUSTOMER)
-            self.assertEqual(customer['answer']['by'], 'Ann')
+            self.assertEqual(customer['answer']['by'], '客户的王经理')   # who gave the answer: data the person writing it down supplied, not a signature
+            self.assertEqual((customer['answer']['recorded_by'], customer['answer']['recorded_by_id']), ('Ann', 2))
+            conn = self.db(out)
+            self.assertEqual(conn.execute("SELECT who, user_id FROM log WHERE element_id = 'write:card'").fetchall(), [('Ann', 2)])
+            conn.close()
+
+    def test_a_build_signs_its_datasets_with_the_person_who_started_it_even_as_a_background_job(self):
+        import time
+        with self.service(gateway=planted.PlantedDraftModel()) as (base, out):
+            team = self.people(base, 'ann', 'bob')
+            self.build(team['ann'])
+            status, started = team['bob'].post('/api/ontology/jobs', {'files': [*planted.ServerDataChecksTests.files, {'filename': 'extra.csv', 'content_base64': table_part()['content_base64']}]})
+            self.assertEqual(status, 202, started)
+            for _ in range(200):
+                if team['bob'].get(f'/api/ontology/jobs/{started["job_id"]}')[1]['state'] != 'running':
+                    break
+                time.sleep(0.1)
+            ids = {name: i for i, name in self.db(out).execute('SELECT id, display_name FROM user')}
+            rows = self.db(out).execute("SELECT name, who, who_user_id FROM dataset WHERE origin != 'upload' ORDER BY id").fetchall()
+            self.assertEqual({(who, uid) for _, who, uid in rows}, {('Ann', ids['Ann']), ('Bob', ids['Bob'])})   # the first build is Ann's; extra.csv is a new name only Bob's job made
+            self.assertIn(('extra', 'Bob', ids['Bob']), rows)
+
+    def test_a_write_kept_in_a_file_of_its_own_leaves_a_line_naming_the_account(self):
+        with self.service(gateway=planted.PlantedDraftModel()) as (base, out):
+            team = self.people(base, 'ann')
+            run = self.build(team['ann'])
+            status, body = team['ann'].post('/api/ontology/rules', {'saved_as': run['saved_as'], 'adopted': [], 'declined': [], 'who': 'root'})
+            self.assertEqual(status, 200, body)
+            self.assertEqual(self.db(out).execute("SELECT who, user_id, after_json FROM log WHERE element_id = 'write:rules'").fetchall(), [('Ann', 2, json.dumps({'saved_as': run['saved_as']}, ensure_ascii=False))])
 
     def test_the_old_free_text_signatures_stay_as_history_with_no_account(self):
         with self.service(gateway=planted.PlantedDraftModel(), no_auth=True) as (base, out):
@@ -96,9 +124,10 @@ class TwoPersonTests(SigningTestCase):
             self.assertEqual((status, body['message']), (200, '视图「有效订单」已提交，等另一位确认'))
             self.assertEqual([v['name'] for v in body['views']], ['订单'])   # nothing reads it yet
             self.assertEqual([(v['name'], v['proposed_by']) for v in body['proposed_views']], [('有效订单', 'Ann')])
-            status, body = team['ann'].post('/api/ontology/views', {'saved_as': run['saved_as'], 'confirm': '有效订单'})
-            self.assertEqual((status, body['error']), (400, '这一条是你自己提的，要另一位来确认'))
-            status, body = team['bob'].post('/api/ontology/views', {'saved_as': run['saved_as'], 'confirm': '有效订单', 'confirmed_by': 'Ann'})
+            version = body['proposed_views'][0]['version']
+            status, body = team['ann'].post('/api/ontology/views', {'saved_as': run['saved_as'], 'confirm': '有效订单', 'version': version})
+            self.assertEqual((status, body['error']), (403, '这一条是你自己提的，要另一位来确认'))   # a refusal of who may, not of what was asked
+            status, body = team['bob'].post('/api/ontology/views', {'saved_as': run['saved_as'], 'confirm': '有效订单', 'version': version, 'confirmed_by': 'Ann'})
             self.assertEqual((status, body['message']), (200, '视图「有效订单」已确认'))
             kept = {v['name']: v for v in body['views']}['有效订单']
             self.assertEqual((kept['rows'], kept['confirmed_by']), (144, 'Bob'))
@@ -111,18 +140,74 @@ class TwoPersonTests(SigningTestCase):
             self.assertEqual(marks, [None])   # nobody confirmed their own
             conn.close()
 
+    def test_an_agent_with_a_token_lists_and_confirms_proposals_as_the_token_owner(self):
+        from ontology_poc_generator.mcp_server import LocalService, handle
+        with self.service(gateway=planted.PlantedDraftModel()) as (base, out):
+            team, run = self.prepared(base)
+            self.view(team['ann'], run)
+
+            def tool(person, name, arguments):
+                _, made = person.post('/api/auth/tokens', {'label': 'mcp'})
+                reply = handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': name, 'arguments': arguments}}, LocalService(base, token=made['token']))['result']
+                return reply['isError'], reply['content'][0]['text']
+            failed, text = tool(team['bob'], 'list_proposed_views', {'saved_as': run['saved_as']})
+            waiting = json.loads(text)['proposed_views']
+            self.assertEqual((failed, [(v['name'], v['proposed_by']) for v in waiting]), (False, [('有效订单', 'Ann')]))
+            confirm = {'saved_as': run['saved_as'], 'name': '有效订单', 'version': waiting[0]['version']}
+            failed, text = tool(team['ann'], 'confirm_proposed_view', confirm)
+            self.assertEqual((failed, text), (True, '这一条是你自己提的，要另一位来确认'))
+            failed, text = tool(team['bob'], 'confirm_proposed_view', {**confirm, 'version': waiting[0]['version'] + 5})
+            self.assertTrue(failed)
+            failed, text = tool(team['bob'], 'confirm_proposed_view', confirm)
+            self.assertEqual((failed, json.loads(text)['message']), (False, '视图「有效订单」已确认'))
+            conn = self.db(out)
+            self.assertEqual(conn.execute("SELECT confirmed_by, proposed_by FROM element_state WHERE element_id LIKE 'view:%'").fetchall(), [('Bob', 'Ann')])
+            conn.close()
+
     def test_something_nobody_put_forward_cannot_be_confirmed(self):
         with self.service(gateway=planted.PlantedDraftModel()) as (base, _):
             team, run = self.prepared(base)
-            status, body = team['bob'].post('/api/ontology/views', {'saved_as': run['saved_as'], 'confirm': '没有这个'})
+            status, body = team['bob'].post('/api/ontology/views', {'saved_as': run['saved_as'], 'confirm': '没有这个', 'version': 1})
             self.assertEqual((status, '等着确认' in body['error']), (400, True))
 
     def test_a_viewer_cannot_confirm_and_a_proposal_changed_by_someone_else_needs_a_second_look(self):
         with self.service(gateway=planted.PlantedDraftModel()) as (base, _):
             team, run = self.prepared(base, ('ann', 'bob'))
             self.view(team['ann'], run)
-            self.assertEqual(self.view(team['bob'], run, **{**VIEW, 'label': '进行中'})[1]['proposed_views'][0]['proposed_by'], 'Bob')   # Bob edited it: now it is Bob's
-            self.assertEqual(team['ann'].post('/api/ontology/views', {'saved_as': run['saved_as'], 'confirm': '有效订单'})[1]['message'], '视图「有效订单」已确认')
+            edited = self.view(team['bob'], run, **{**VIEW, 'label': '进行中'})[1]['proposed_views'][0]
+            self.assertEqual(edited['proposed_by'], 'Bob')   # Bob edited it: now it is Bob's
+            self.assertEqual(team['ann'].post('/api/ontology/views', {'saved_as': run['saved_as'], 'confirm': '有效订单', 'version': edited['version']})[1]['message'], '视图「有效订单」已确认')
+
+    def test_a_confirmation_names_the_version_it_reviewed_and_a_changed_proposal_is_refused_with_409(self):
+        with self.service(gateway=planted.PlantedDraftModel()) as (base, out):
+            team, run = self.prepared(base)
+            reviewed = self.view(team['ann'], run)[1]['proposed_views'][0]
+            changed = self.view(team['ann'], run, **{**VIEW, 'op': 'is'})[1]['proposed_views'][0]   # the proposer turns it round after Bob has looked
+            self.assertGreater(changed['version'], reviewed['version'])
+            confirm = {'saved_as': run['saved_as'], 'confirm': '有效订单'}
+            status, body = team['bob'].post('/api/ontology/views', {**confirm, 'version': reviewed['version']})
+            self.assertEqual(status, 409)
+            self.assertIn('在你看过之后被改了', body['error'])
+            self.assertEqual(team['bob'].post('/api/ontology/views', confirm)[0], 400)   # no version at all
+            conn = self.db(out)
+            self.assertEqual(conn.execute("SELECT state FROM element_state WHERE element_id LIKE 'view:%'").fetchall(), [('proposed',)])   # nothing was confirmed
+            conn.close()
+            status, body = team['bob'].post('/api/ontology/views', {**confirm, 'version': changed['version']})
+            self.assertEqual((status, body['message']), (200, '视图「有效订单」已确认'))
+
+    def test_refusing_the_proposer_a_second_look_is_a_403_not_a_500(self):
+        with self.service(gateway=planted.PlantedDraftModel()) as (base, out):
+            team, run = self.prepared(base)
+            self.view(team['ann'], run)
+            version = team['bob'].get(f'/api/ontology/runs/{run["saved_as"]}/open-items')[1]['proposed_views'][0]['version']
+            team['bob'].post('/api/ontology/views', {'saved_as': run['saved_as'], 'confirm': '有效订单', 'version': version})
+            conn = self.db(out)
+            conn.execute("UPDATE element_state SET state = 'checked' WHERE element_id LIKE 'view:%'")   # as if the data had moved since
+            conn.commit()
+            conn.close()
+            status, body = team['ann'].post('/api/ontology/review/confirm', {'saved_as': run['saved_as'], 'id': 'review:view:有效订单'})
+            self.assertEqual((status, body['error']), (403, '这一条是你自己提的，要另一位来确认'))
+            self.assertEqual(team['bob'].post('/api/ontology/review/confirm', {'saved_as': run['saved_as'], 'id': 'review:view:有效订单'})[0], 200)
 
     def test_with_one_person_who_can_confirm_the_rule_is_off_and_the_log_says_who_confirmed_their_own(self):
         with self.service(gateway=planted.PlantedDraftModel()) as (base, out):

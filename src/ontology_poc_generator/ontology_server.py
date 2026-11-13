@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import sys
 import threading
 from urllib.parse import parse_qs, unquote, urlsplit
 import uuid
@@ -22,12 +23,13 @@ from ontology_poc_generator.company_ontology import build_and_evaluate, build_co
 from ontology_poc_generator.code_meanings import check_enum, code_columns, draft_meanings, meanings_of, merge_enum
 from ontology_poc_generator.answer_checks import choose_rows, definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
 from ontology_poc_generator.accounts import two_person
-from ontology_poc_generator.named_views import proposed_views, compiled_views, definitions_signature, drop_views_except, name_views, read_views, save_definition, sync_views, table_columns, view_anchor_now, view_rowids, views_of_run
+from ontology_poc_generator.actor import set_actor
+from ontology_poc_generator.named_views import StaleProposal, proposed_views, compiled_views, definitions_signature, drop_views_except, name_views, read_views, save_definition, sync_views, table_columns, view_anchor_now, view_rowids, views_of_run
 from ontology_poc_generator.pipelines import ROW_CAP, run_pipeline, workspace_datasets, workspace_views
 from ontology_poc_generator.anchors import check_code, check_relation, check_view, code_anchor, relation_anchor, review_items, view_anchor, stored as stored_anchors, waiting as waiting_change
 from ontology_poc_generator.repeated_keys import check_rule, repeated_keys, settled_by_latest, unmet
 from ontology_poc_generator.workspace_store import (
-    RowCountMismatch, check_bundle, describes_rows, element_contents, element_ids, element_rejected, element_rows, element_state_writes, open_workspace, set_element_states, store_anchors)
+    RowCountMismatch, SelfConfirmation, check_bundle, describes_rows, element_contents, element_ids, element_rejected, element_rows, element_state_writes, log_write, open_workspace, set_element_states, store_anchors)
 from ontology_poc_generator.company_sources import DEFAULT_PURPOSE, MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
@@ -69,6 +71,8 @@ ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
 KEPT_RUNS_IN_MEMORY = 8   # runs whose rows and graph stay in memory; the least recently used is dropped and read again when asked for
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
+LOGGED_WRITES = {'/api/ontology/acceptance': 'acceptance', '/api/ontology/rules': 'rules', '/api/ontology/form': 'form', '/api/ontology/derived': 'derived',
+                 '/api/ontology/reference/confirm': 'reference', '/api/ontology/card': 'card'}   # library/import only reads a file and keeps nothing
 SECURITY_HEADERS = (('X-Content-Type-Options', 'nosniff'), ('Referrer-Policy', 'no-referrer'),
                     ('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'"))   # the service answers JSON and downloads, never a page
 MAX_BULK = 200   # relations approved in one request: far above what a run has
@@ -810,11 +814,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return earlier
         return None
 
-    def finish_build(bundle, is_document, progress=None, previous=None):
+    def finish_build(bundle, is_document, progress=None, previous=None, starter=None):
+        """starter: the signed-in person who started the build; the datasets it stores are signed by them."""
         if bundle.get('mode') == 'org':
-            return save_build(bundle, build_and_evaluate_org(bundle, gateway, progress), progress, previous)
+            return save_build(bundle, build_and_evaluate_org(bundle, gateway, progress), progress, previous, starter)
         if is_document:
-            return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress, previous)
+            return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress, previous, starter)
         # the extra runs start together with the shown one, so three runs take about as long as one
         with ThreadPoolExecutor(max_workers=STABILITY_RUNS - 1) as pool:
             extra = [pool.submit(build_company_ontology, bundle, gateway, None, False) for _ in range(STABILITY_RUNS - 1)]
@@ -847,7 +852,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if progress:
                     progress('stability', {'total': STABILITY_RUNS - 1})
                 result['evaluation']['stability'] = stability_of(result['ontology'], [extra_result(f) for f in extra])
-        return save_build(bundle, result, progress, previous)
+        return save_build(bundle, result, progress, previous, starter)
 
     def extra_result(future):
         try:
@@ -855,20 +860,22 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         except Exception as exc:   # an extra run is evidence, not the answer: its failure is counted, the upload goes on
             return {'status': 'failed', 'error': f'{type(exc).__name__}: {exc}'[:200]}
 
-    def data_checks(ontology, bundle):
+    def data_checks(ontology, bundle, starter=None):
         """Every source table goes into the workspace file beside the runs, and each drafted identity is checked over the
         stored rows. A failed check stays in the result as failed; a check that cannot run is returned as an error the
         person sees, and the upload goes on."""
         try:
+            set_actor(starter)   # a build runs in the starter's name even on a job's own thread, which has no request behind it
+            who = starter['display_name'] if starter and starter['id'] is not None else 'system'
             conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
-                return check_bundle(conn, ontology, bundle, bundle['file']['name'])
+                return check_bundle(conn, ontology, bundle, bundle['file']['name'], who=who)
             finally:
                 conn.close()
         except Exception as exc:   # the checks are evidence on top of the build: their failure is shown, not fatal
             return {'tables': [], 'keys': [], 'error': f'{type(exc).__name__}: {exc}'[:300]}
 
-    def save_build(bundle, result, progress=None, previous_name=None):
+    def save_build(bundle, result, progress=None, previous_name=None, starter=None):
         outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
         if result['ontology']['status'] != 'auto_built_verified' and outage:
             return 502, {'error': model_failure_text(outage[-1])}
@@ -904,7 +911,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, saved['items'])
                 accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
         if result['file'].get('kind') != 'document':
-            result['data_checks'] = data_checks(result['ontology'], bundle)   # also for a draft that failed the model checks
+            result['data_checks'] = data_checks(result['ontology'], bundle, starter)   # also for a draft that failed the model checks
             if previous_name and result['data_checks'].get('tables'):
                 waiting_relations = recheck_workspace_anchors(result, name, result['lineage'], earlier_of(previous_name))
                 suggested = (result['evaluation'].get('reference') or {}).get('suggested')
@@ -999,6 +1006,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             super().end_headers()
 
         def reply(self, status, payload, headers=None):
+            if status < 300 and self.command == 'POST' and self.path in LOGGED_WRITES:
+                self.note_write()   # before the answer goes out: whoever sees it saved can find its line
             body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
             self.send_response(status)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -1336,9 +1345,28 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 raise ValueError('请求的嵌套层数太多') from None
             if not isinstance(payload, dict):
                 raise ValueError('请求必须是 JSON 对象')
+            self.payload = payload
             return payload
 
         def do_POST(self):
+            self.payload = None
+            self.post_route()
+
+        def note_write(self):
+            """A write that keeps its data in a file of its own (a rule, a form, a derived measure, an acceptance question, a reference,
+            a card) leaves a line in the log: the signed-in person, what, and which run it was about."""
+            what = LOGGED_WRITES[self.path]
+            run = (self.payload or {}).get('saved_as')
+            try:
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    log_write(conn, self.user['display_name'], f'write:{what}', 'saved', {'saved_as': run[:80]} if isinstance(run, str) else None)
+                finally:
+                    conn.close()
+            except sqlite3.Error as exc:   # the answer has gone out; the failure is not lost
+                print(f'log line for {what} not written: {exc}', file=sys.stderr, flush=True)
+
+        def post_route(self):
             if not gate.admit(self, 'POST') or gate.handle(self, 'POST'):
                 return
             if self.path == '/api/workspace/datasets/upload':
@@ -1450,7 +1478,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if gateway is None:
                 self.reply(503, {'error': NO_KEY})
                 return
-            self.reply(*finish_build(bundle, is_document, None, previous))
+            self.reply(*finish_build(bundle, is_document, None, previous, self.user))
 
         def preview(self):
             try:
@@ -1488,10 +1516,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                           'at': datetime.now(timezone.utc).isoformat(timespec='seconds')})
                     keep_job(job_id, job)
             report('read', {'file': bundle['file']['name'], 'kind': bundle['file']['kind']})
+            starter = self.user
 
             def run():
                 try:
-                    status, body = finish_build(bundle, is_document, report, previous)
+                    status, body = finish_build(bundle, is_document, report, previous, starter)
                 except Exception as exc:  # the job must end in a state the page can show; the server log keeps the rest
                     status, body = 500, {'error': f'建模时出错：{exc}'}
                 report('done' if status == 200 else 'failed', {})
@@ -1678,7 +1707,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if items_raw:
                     stale_check(found[0])   # an answer keeps what the item was about on these rows: not older ones, and a reopen must not wipe the newest run's
                 now = datetime.now(timezone.utc).isoformat(timespec='seconds')
-                by = self.signer(payload, 'by', raw=True)
+                by = payload.get('by')   # who gave the answer: the client or whoever spoke to them, said by the person writing it down; data, not a signature
                 cells = check_cells(card, cells_raw, by, now)
                 answers = check_answers([*items, *answered], items_raw, by, now)
             except FileNotFoundError:
@@ -1691,7 +1720,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             key = memory_key(result)
             stored = card_file(key)
             # an unlinked item answered "incomplete" marks the other end's object as only partly in the data; a cell the request sets itself wins
-            cells = {**linked_cells([*items, *answered], answers, stored['cells'], now), **cells}
+            cells = self.recorded({**linked_cells([*items, *answered], answers, stored['cells'], now), **cells})
+            answers = self.recorded(answers)
             kept_card = output_dir / 'cards' / f'{key}.json'
             kept_card.parent.mkdir(parents=True, exist_ok=True)
             partial = kept_card.with_name(f'{key}.json.part')
@@ -1703,6 +1733,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 write_run((output_dir / name), result)
             card, items, answered = card_for((result, bundle, graph))
             self.reply(200, {'card': card, 'items': items, 'answered': answered})
+
+        def recorded(self, entries):
+            """Answers as they are kept: `by` stays whoever gave the answer, and who wrote it down, the signed-in account, goes in `recorded_by`
+            (and `recorded_by_id`). With --no-auth there is no account and nothing is added."""
+            if self.user['id'] is None:
+                return entries
+            return {k: v and {**v, 'recorded_by': self.user['display_name'], 'recorded_by_id': self.user['id']} for k, v in entries.items()}
 
         def code_column_request(self):
             """The run, the code column and the signer a code-meanings request is about; replies and returns None when it cannot be read."""
@@ -1734,6 +1771,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     set_element_states(conn, [change])
                 finally:
                     conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
             except Exception as exc:
                 self.reply(500, {'error': f'{what}没有保存：{type(exc).__name__}: {exc}'[:300]})
                 return
@@ -1804,6 +1844,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 finally:
                     conn.close()
                 found = card_run(name)   # read again: the rule is part of what every reader of the rows sees
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
             except Exception as exc:
                 self.reply(500, {'error': f'处理办法没有保存：{type(exc).__name__}: {exc}'[:300]})
                 return
@@ -1890,6 +1933,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     conn.close()
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except StaleProposal as exc:
+                self.reply(409, {'error': str(exc)})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
@@ -2016,6 +2065,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 found = workspace_run(name)   # read again: what was kept is part of what every reader sees
             except RunChanged as exc:
                 self.reply(409, {'error': str(exc)})
+                return
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
                 self.reply(500, {'error': f'批量通过没有保存：{type(exc).__name__}: {exc}'[:300]})
@@ -2237,6 +2289,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     conn.close()
             except RunChanged as exc:
                 self.reply(409, {'error': str(exc)})
+                return
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:   # whatever failed, the person is told and nothing of the confirmation is kept
                 self.reply(500, {'error': f'确认没有保存：{type(exc).__name__}: {exc}'[:300]})

@@ -292,20 +292,33 @@ def _active_admins(conn) -> int:
     return conn.execute("SELECT COUNT(*) FROM user WHERE role = 'admin' AND disabled = 0").fetchone()[0]
 
 
-def _name(value, what: str) -> str:
+MAX_DISPLAY = 40   # what a signature may be anywhere a name is kept (a client's answer, a confirmer)
+RESERVED_NAMES = ('system', '本机', '未署名', 'host')   # signatures the service writes itself
+
+
+def _name(value, what: str, limit: int = 64) -> str:
     if not isinstance(value, str) or not value.strip():
         raise AccountError(f'要写{what}')
     value = value.strip()
-    if len(value) > 64 or not value.isprintable():
-        raise AccountError(f'{what}最多 64 个字，不能有换行和控制字符')
+    if len(value) > limit or not value.isprintable():
+        raise AccountError(f'{what}最多 {limit} 个字，不能有换行和控制字符')
     return value
+
+
+def _display_name(conn, value, owner: int | None) -> str:
+    """A display name is what every signature shows, so it must name one person: not another's (case aside) and not one the service signs with."""
+    name = _name(value, '显示名', MAX_DISPLAY)
+    taken = [fold(r[0]) for r in conn.execute('SELECT display_name FROM user WHERE id IS NOT ?', (owner,))] + [fold(n) for n in RESERVED_NAMES]
+    if fold(name) in taken:
+        raise AccountError(f'“{name}”已经是别人的显示名，或是服务自己用的名字，换一个', 409)
+    return name
 
 
 def create_user(conn, username, display_name, role, password, by: str, must_change: bool = True, provider: str = 'local') -> dict:
     username = fold(_name(username, '账号'))
     if not USERNAME.fullmatch(username):
         raise AccountError('账号只能用字母、数字、汉字和 . _ @ + -')
-    display_name = _name(display_name or username, '显示名')
+    display_name = _display_name(conn, display_name or username, None)
     if role not in ROLES:
         raise AccountError('角色要从 查看、建设、管理员 里选')
     if provider == 'local':
@@ -402,7 +415,9 @@ def set_role(conn, actor: dict, user_id, role) -> dict:
 
 def set_display_name(conn, actor: dict, user_id, display_name) -> dict:
     target = _target(conn, user_id)
-    conn.execute('UPDATE user SET display_name = ? WHERE id = ?', (_name(display_name, '显示名'), target['id']))
+    name = _display_name(conn, display_name, target['id'])
+    conn.execute('UPDATE user SET display_name = ? WHERE id = ?', (name, target['id']))
+    _log(conn, actor['username'], f'user:{target["id"]}', 'display_name_changed', {'from': target['display_name'], 'to': name})   # past signatures keep the old name
     return get_user(conn, target['id'])
 
 

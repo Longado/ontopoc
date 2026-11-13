@@ -39,6 +39,10 @@ MAX_NAME = 30
 SUFFIX_LENGTH = 8
 
 
+class StaleProposal(ValueError):
+    """A confirmation names a version of the proposal that is no longer the one on file; the message is shown to the person (HTTP 409)."""
+
+
 def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
@@ -381,11 +385,12 @@ def definition_change(key: str, name: str, content: dict | None, signer: str | N
 
 
 def proposed_views(conn, key: str) -> list[dict]:
-    """The views put forward and waiting for another person: [{'name', 'definition', 'proposed_by', 'proposed_at'}]."""
+    """The views put forward and waiting for another person: [{'name', 'definition', 'proposed_by', 'proposed_at', 'version'}]. `version` is what
+    a confirmation must carry back: it moves whenever the definition on file changes."""
     prefix = f'view:{key}:'
-    return [{'name': element_id[len(prefix):], 'definition': json.loads(content), 'proposed_by': by, 'proposed_at': at}
-            for element_id, content, by, at in conn.execute(
-                "SELECT element_id, content_json, proposed_by, confirmed_at FROM element_state WHERE substr(element_id, 1, ?) = ? "
+    return [{'name': element_id[len(prefix):], 'definition': json.loads(content), 'proposed_by': by, 'proposed_at': at, 'version': version}
+            for element_id, content, by, at, version in conn.execute(
+                "SELECT element_id, content_json, proposed_by, confirmed_at, version FROM element_state WHERE substr(element_id, 1, ?) = ? "
                 "AND state = 'proposed' AND content_json IS NOT NULL ORDER BY element_id", (len(prefix), prefix))]
 
 
@@ -406,13 +411,19 @@ def save_definition(conn, key: str, posted, tables: dict, ontology: dict, signer
                     propose: bool = False) -> str:
     """Keep or take back a person's named view; returns the sentence saying what happened. ValueError says why not. `versions`:
     {table: the dataset version it is stored as}, kept in the view's anchor. `propose`: put it forward for another person instead of confirming
-    it ({"confirm": name} in `posted` is that other person confirming it, checked against the data as it is now)."""
+    it ({"confirm": name, "version": N} in `posted` is that other person confirming the version of the proposal they looked at: StaleProposal when
+    it has changed since, so a confirmation never lands on a definition nobody reviewed; checked against the data as it is now)."""
     enums = element_contents(conn, f'property:{key}:')
     confirming = isinstance(posted, dict) and isinstance(posted.get('confirm'), str)
     if confirming:
         waiting = {v['name']: v for v in proposed_views(conn, key)}.get(posted['confirm'])
         if waiting is None:
             raise ValueError(f'没有等着确认的视图「{posted["confirm"]}」')
+        seen = posted.get('version')
+        if not isinstance(seen, int) or isinstance(seen, bool):
+            raise ValueError('确认要带上你看到的那一版（version，在待确认的列表里）')
+        if seen != waiting['version']:
+            raise StaleProposal(f'视图「{posted["confirm"]}」在你看过之后被改了（你看的是第 {seen} 版，现在是第 {waiting["version"]} 版），请重新看一遍再确认')
         posted = {**waiting['definition'], 'name': posted['confirm']}
     if isinstance(posted, dict) and posted.get('remove') is True:
         name = posted.get('name')

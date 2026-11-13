@@ -163,10 +163,19 @@ def _describe(values: list[str | None]) -> dict:
             if len(counts) <= VALUE_COUNT_LIMIT else None}
 
 
-def _log(conn, who: str, element_id: str | None, change: str, before=None, after=None) -> None:
+_ACTOR = object()
+
+
+def _log(conn, who: str, element_id: str | None, change: str, before=None, after=None, user_id=_ACTOR) -> None:
+    """One line of the log. user_id: the account behind `who`; by default the actor's own when `who` is their name."""
     conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
                  (_now(), who, element_id, change, None if before is None else json.dumps(before, ensure_ascii=False),
-                  None if after is None else json.dumps(after, ensure_ascii=False), actor_id_for(who)))
+                  None if after is None else json.dumps(after, ensure_ascii=False), actor_id_for(who) if user_id is _ACTOR else user_id))
+
+
+def log_write(conn, who: str, element_id: str, change: str, after=None) -> None:
+    """The trace of a write that keeps its data in a file of its own (a rule, a form, a card): who did it, under what, when."""
+    _log(conn, who, element_id, change, after=after)
 
 
 def _logged(row: dict) -> dict:
@@ -222,16 +231,18 @@ def element_state_writes(conn, changes: list[tuple]):
             carried = before is not None and author is None and state in ('confirmed', 'checked')   # a confirmation keeps who proposed what it confirms
             proposed_by = before['proposed_by'] if carried else author
             proposer_id = before['proposed_by_user_id'] if carried else actor_id_for(author)
-            self_confirmed = state == 'confirmed' and proposer_id is not None and proposer_id == actor_id_for(confirmed_by)
+            actor_id = actor_id_for(confirmed_by)
+            confirmer_id = actor_id if actor_id is not None else before['confirmed_by_user_id'] if before and before['confirmed_by'] == confirmed_by else None   # a re-check by someone else leaves whose confirmation it was
+            self_confirmed = state == 'confirmed' and proposer_id is not None and proposer_id == actor_id
             if self_confirmed and two['active']:
                 raise SelfConfirmation('这一条是你自己提的，要另一位来确认')
             after = {'state': state, 'evidence_ref': evidence_ref, 'confirmed_by': confirmed_by, 'confirmed_at': _now(),
                      'version': before['version'] + 1 if before else 1, 'content_json': content, 'anchors_json': anchors}
             conn.execute('INSERT OR REPLACE INTO element_state(element_id, state, evidence_ref, confirmed_by, confirmed_at, version, content_json, anchors_json,'
                          ' proposed_by, confirmed_by_user_id, proposed_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                         (element_id, *after.values(), proposed_by, actor_id_for(confirmed_by), proposer_id))
+                         (element_id, *after.values(), proposed_by, confirmer_id, proposer_id))
             _log(conn, confirmed_by or '未署名', element_id, state, before=before and _logged({k: before[k] for k in after}),
-                 after={**_logged(after), **({'self_confirmed': True} if self_confirmed else {})})
+                 after={**_logged(after), **({'self_confirmed': True} if self_confirmed else {})}, user_id=confirmer_id)
         rows = {}
         for element_id, *_ in changes:
             cursor = conn.execute('SELECT * FROM element_state WHERE element_id = ?', (element_id,))
@@ -598,18 +609,18 @@ def _key_populations(ontology: dict) -> list[tuple[str, str, tuple[str, ...], bo
     return found
 
 
-def check_bundle(conn, ontology: dict, bundle: dict, origin: str, relations: bool = True) -> dict:
+def check_bundle(conn, ontology: dict, bundle: dict, origin: str, relations: bool = True, who: str = 'system') -> dict:
     """Import every source table of a bundle, then check each object type's identity columns as a key (or, for a
     reference column, as a list of values). 'tables': one entry per table with the rows in the file, rows stored and
     rows dropped; a table that cannot be stored says why and the others go on. 'keys': one entry per checked
     population; a failed check is reported as failed and nothing is fixed. 'relations': each relation checked against the stored
-    tables (relation_checks); `relations=False` leaves them out."""
+    tables (relation_checks); `relations=False` leaves them out. `who` signs the dataset versions it writes: the person who started the build."""
     tables, datasets = [], {}
     for name, s in bundle['sources'].items():
         read = s.get('rows_read')
         dropped = s.get('dropped_rows')
         try:
-            d = import_records(conn, name, s['records'], origin, records_sha256(s['records']), rows_in=read, dropped=dropped, keeps_current=True)
+            d = import_records(conn, name, s['records'], origin, records_sha256(s['records']), who, rows_in=read, dropped=dropped, keeps_current=True)
         except RowCountMismatch as exc:
             tables.append({'dataset': name, 'status': 'error', 'error': str(exc), 'rows_in': read if read is not None else len(s['records']),
                            'rows_stored': None, 'dropped': dropped or {}})
