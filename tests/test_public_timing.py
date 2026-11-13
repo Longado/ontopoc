@@ -48,6 +48,15 @@ class TimeFieldTests(unittest.TestCase):
         next(t for t in wrong_source['object_types'] if t['key'] == 'complaint')['time_field']['source'] = 'recalls'
         self.assertIn('time_field_invalid', self.codes(wrong_source))
 
+    def test_a_month_is_never_given_a_day_count(self):
+        from ontology_poc_generator.public_scope import _timing
+        self.assertEqual(_timing('2026-03', '2026-05'), {'event_date': '2026-03', 'signal_date': '2026-05', 'relation': 'after', 'days': None, 'months': 2})
+        self.assertEqual(_timing('2026-03-15', '2026-03')['relation'], 'same_month')      # not "14 days earlier"
+        self.assertEqual(_timing('2026-03-15', '2026-03')['days'], None)
+        self.assertEqual(_timing('2025-12', '2025-10')['months'], -2)
+        self.assertEqual(_timing('2026-03-01T09:00:00', '2026-03-05 10:00')['days'], 4)       # timestamps are their day
+        self.assertEqual(_timing('2026-03-10', '2026-03-10')['relation'], 'same_day')
+
     def run_scope(self, proposal, campaign):
         ontology = auto_build_ontology(self.bundle, Reply(proposal))
         self.assertEqual(ontology['status'], 'auto_built_verified')

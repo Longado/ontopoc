@@ -8,7 +8,7 @@ import sys
 
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.nhtsa_sources import PublicSourceError, bundle_content_hash, load_source_bundle
-from ontology_poc_generator.public_ontology import auto_build_ontology, propose_value_aliases
+from ontology_poc_generator.public_ontology import auto_build_ontology, kept_attempts, propose_value_aliases
 from ontology_poc_generator.public_scope import ScopeError, check_candidates, scope
 
 def main(argv=None):
@@ -57,7 +57,7 @@ def main(argv=None):
     print('building ontology ...', flush=True)
     report['ontology'] = ontology = auto_build_ontology(bundle, gateway)
     save()
-    print(f'ontology: {ontology["status"]} after {len(ontology["attempts"])} attempt(s)', flush=True)
+    print(f'ontology: {ontology["status"]} after {len(kept_attempts(ontology))} attempt(s)', flush=True)
     if ontology['status'] != 'auto_built_verified':
         report['errors'].append('ontology blocked; see ontology.verification.errors')
         save()

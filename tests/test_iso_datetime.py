@@ -18,6 +18,22 @@ class IsoDateTimeTests(unittest.TestCase):
                 errors = verify_proposal(PROPOSAL, with_dates(value), COMPANY_PROFILE)['errors']
                 self.assertEqual([e for e in errors if e['code'] == 'time_field_invalid'], [])
 
+    def test_a_month_is_a_date_a_snapshot_can_be_placed_by(self):
+        for value in ('2026-03', '2025-12'):
+            with self.subTest(value=value):
+                errors = verify_proposal(PROPOSAL, with_dates(value), COMPANY_PROFILE)['errors']
+                self.assertEqual([e for e in errors if e['code'] == 'time_field_invalid'], [])
+        for value in ('2026-13', '2026-00', '26-03'):
+            with self.subTest(value=value):
+                errors = verify_proposal(PROPOSAL, with_dates(value), COMPANY_PROFILE)['errors']
+                self.assertTrue([e for e in errors if e['code'] == 'time_field_invalid'], f'{value} is not a month')
+
+    def test_the_prompt_says_a_month_is_allowed(self):
+        from ontology_poc_generator.company_ontology import COMPANY_SYSTEM_PROMPT
+        from ontology_poc_generator.public_ontology import MODELER_SYSTEM_PROMPT
+        for prompt in (COMPANY_SYSTEM_PROMPT, MODELER_SYSTEM_PROMPT):
+            self.assertIn('YYYY-MM', prompt)
+
     def test_something_that_is_not_a_date_is_still_refused(self):
         for value in ('第一季度', '2026/08/01', ''):
             with self.subTest(value=value):

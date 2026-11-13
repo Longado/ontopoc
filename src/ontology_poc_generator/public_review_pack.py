@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import Counter
 
 from ontology_poc_generator.nhtsa_sources import dataset_id, dataset_label, referenced_campaigns
-from ontology_poc_generator.public_ontology import build_graph, linked, ontology_content_hash, resolve
+from ontology_poc_generator.public_ontology import build_graph, kept_attempts, linked, ontology_content_hash, resolve
 from ontology_poc_generator.public_scope import BOUNDARY, ScopeError, instance_date, require_matching_bundle, scope
 
 
@@ -44,9 +44,9 @@ def _ontology_summary(ontology: dict) -> dict:
         'status': ontology['status'],
         'human_review': ontology['human_review'],
         'hash': ontology_content_hash(ontology),
-        'attempts': len(ontology.get('attempts') or []),
+        'attempts': len(kept_attempts(ontology)),
         'attempt_errors': [[{'code': e['code'], 'message': e['message']} for e in a.get('errors') or []]
-                           for a in ontology.get('attempts') or []],
+                           for a in kept_attempts(ontology)],
         'object_types': [{
             'key': t['key'], 'label': t.get('label'), 'role': t['role'], 'rationale': t.get('rationale'),
             'time_field': t.get('time_field'),

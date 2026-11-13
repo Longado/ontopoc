@@ -19,7 +19,7 @@ TRANSFORMS = ('none', 'split_comma', 'colon_hierarchy')
 _ROLE_PAIRS = (('event', 'affected_object'), ('event', 'mechanism'),
                ('signal', 'affected_object'), ('signal', 'mechanism'))
 _KEY = re.compile(r'^[a-z][a-z0-9_]{0,40}$')
-_ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$')   # real exports write dates as timestamps
+_ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$|^\d{4}-(0[1-9]|1[0-2])$')   # real exports write dates as timestamps; a snapshot is dated by its month (2026-03)
 
 
 @dataclass(frozen=True)
@@ -371,7 +371,7 @@ def validate_proposal(proposal: dict, bundle: dict, roles: tuple = ROLES) -> lis
             if src not in {pop.get('source') for pop in t['populated_from']} or not values or \
                     any(not _ISO_DATE.match(str(v)) for v in values):
                 errors.append(_error('time_field_invalid',
-                                     f'{key}: time field {src}.{path} must be an ISO date field of this type\'s source'))
+                                     f'{key}: time field {src}.{path} must be an ISO date (or YYYY-MM month) field of this type\'s source'))
     for f in p['ignored_fields']:
         if f.get('source') not in sources or not _path_exists(sources[f['source']], str(f.get('path'))):
             errors.append(_error('unknown_field', f'ignored field {f.get("source")}.{f.get("path")} does not exist'))
@@ -456,8 +456,23 @@ def _identities(record: dict, pop: dict) -> list[tuple]:
     return out
 
 
-def build_graph(proposal: dict, bundle: dict) -> dict:
-    """Instances are (type_key, ((logical_key, value), ...)); edges remember the record that shows them."""
+def build_graph(proposal: dict, bundle: dict, whole: dict | None = None) -> dict:
+    """Instances are (type_key, ((logical_key, value), ...)); edges remember the record that shows them.
+
+    This is where rows are picked, and so the one place a person's choice for a repeated key is applied (see
+    repeated_keys): with "keep the latest" the older rows of the key do not describe the object, and nothing built from
+    the graph (lists, relations, questions, export) reads them. `records_all` then holds the rows as they were. `whole`
+    is this data's graph without any choice, when the caller already holds it: only the graph with the choice is built."""
+    if not any(r.get('rule') == 'keep_latest' for r in (bundle.get('repeat_rules') or {}).values()):
+        return whole or _build_graph(proposal, bundle, {})
+    from ontology_poc_generator.repeated_keys import rows_left_out   # repeated_keys reads the draft with this module
+    whole = whole or _build_graph(proposal, bundle, {})
+    left_out = rows_left_out(proposal, bundle, whole)
+    return {**_build_graph(proposal, bundle, left_out), 'records_all': whole['records_of']} if left_out else whole
+
+
+def _build_graph(proposal: dict, bundle: dict, left_out: dict) -> dict:
+    """The graph with the rows in `left_out` ((type, table, row) -> row kept instead) not describing that type."""
     p = normalize_proposal(proposal)
     aliases = _alias_map(proposal)
     aliased = set()
@@ -469,6 +484,8 @@ def build_graph(proposal: dict, bundle: dict) -> dict:
         for pop in t['populated_from']:
             src = pop['source']
             for index, record in enumerate(bundle['sources'][src]['records']):
+                if (t['key'], src, index) in left_out:
+                    continue
                 found = []
                 for ident in _identities(record, pop):
                     if pop['transform'] == 'colon_hierarchy':
@@ -498,6 +515,9 @@ def build_graph(proposal: dict, bundle: dict) -> dict:
             by_type = per_record.get((src, index), {})
             ends = {}
             for end in ('from', 'to'):
+                if (r[end], src, index) in left_out:
+                    ends[end] = []
+                    continue
                 binding = r.get(f'{end}_identity')
                 if binding is None:
                     ends[end] = by_type.get(r[end], [])
@@ -604,7 +624,7 @@ FACTS_RULES = '''- Code counted every row before you. Per field: filled = values
   belong to a key with other columns, or be an attribute such as a status. Keep a link only when the names and meaning
   agree.
 '''
-MODELER_PROMPT_VERSION = 'public_ontology_modeler.v4'
+MODELER_PROMPT_VERSION = 'public_ontology_modeler.v5'
 # Contract rule: at most three chained model calls per user action; the no-progress stop still applies first.
 MAX_MODELER_ATTEMPTS = 3
 MODELER_SYSTEM_PROMPT = '''You design an ontology for one business decision from the data sources described by the user.
@@ -650,7 +670,7 @@ Rules:
 - where keeps only records (or list elements of the identity's list) whose field equals the value;
   use it when a list mixes kinds of things, e.g. keep only vehicle entries.
 - time_field names the date that places an object in time. Give one for the event type (when it was issued)
-  and for the signal type (when it was reported). Date fields hold ISO dates.
+  and for the signal type (when it was reported). Date fields hold ISO dates or months written YYYY-MM.
 - Relations only connect object types that appear together in one record of the named source.
 - Every field in the field list must appear in an identity, in attributes, or in ignored_fields.
   Keep descriptive text fields (defect descriptions, complaint narratives) as attributes of their object type.
@@ -686,12 +706,62 @@ def _clean(proposal: dict) -> tuple[list, list]:
     return types, relations
 
 
-def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, progress=None) -> dict:
-    """Ask for a proposal, verify it in code, send the errors back; stop when a retry fixes none of the errors it was sent."""
+def kept_attempts(ontology: dict) -> list:
+    """The attempts whose draft was used or replaced by a later one; a data retry that was dropped changed nothing."""
+    return [a for a in ontology.get('attempts') or [] if not a.get('discarded')]
+
+
+_VERSION = re.compile(r'版本|version|\bver\b|revision|\brev\b|修订|v\d', re.I)
+
+
+def key_retry_problems(before: dict, after: dict, sources: dict[str, list[dict]]) -> list[str]:
+    """What a draft sent back for a repeated key did to get rid of the repeat, when that is the check and not the data being
+    fixed. Compared by source table, not by object type, so a rename (客户 -> customer_city) does not start a clean record:
+    a column that is not a time or a version in the identity of a table the earlier draft already read (客户编号 -> 客户编号 +
+    城市 makes the repeat disappear without the customer being any less repeated), a table the earlier draft read that no
+    object is read from any more, or a relation between two objects that both remain and is gone. [] when it did none."""
+    b, a = normalize_proposal(before), normalize_proposal(after)
+    problems = []
+
+    def identities(p):
+        out: dict[str, dict[str, set]] = {}
+        for t in p['object_types']:
+            for pop in t['populated_from']:
+                out.setdefault(pop['source'], {}).setdefault(t['key'], set()).update(pop['identity'].values())
+        return out
+    old, new = identities(b), identities(a)
+    labels = {t['key']: t.get('label') or t['key'] for t in b['object_types']}
+    for source, was in old.items():
+        if source not in new:
+            problems.append(f'{"、".join(labels[k] for k in was)}：「{source}」表不再用来建任何对象')
+    for source, now in new.items():
+        if source not in old:
+            continue
+        known = set().union(*old[source].values())
+        for key, columns in now.items():
+            for column in sorted(columns - known):
+                values = [v for r in sources.get(source, []) for v in resolve(r, column) if v not in (None, '')]
+                if not (values and all(_ISO_DATE.match(str(v)) for v in values)) and not _VERSION.search(column):
+                    problems.append(f'{key}：识别列加了「{column}」，它不是时间或版本列')
+    pair = lambda r: frozenset((r['from'], r['to']))
+    kept, after_pairs = {t['key'] for t in a['object_types']}, {pair(r) for r in a['relations']}
+    problems += [f'{r["from"]} 和 {r["to"]} 之间的关系「{r["key"]}」没有了' for r in b['relations'] if pair(r) not in after_pairs and {r['from'], r['to']} <= kept]
+    return problems
+
+
+def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, progress=None, data_errors=None) -> dict:
+    """Ask for a proposal, verify it in code, send the errors back; stop when a retry fixes none of the errors it was sent.
+    data_errors(proposal, bundle), when given, runs on a draft that passed verification and returns problems the data
+    shows (a key that repeats). They send the model back once at most, and never block: when they remain, or when the
+    retry's draft fails verification, the earlier verified draft stands and the problem is reported with the data checks.
+    The retry's attempt is marked data_retry; a retry whose draft was dropped (failed verification, left as many
+    key errors or more, or got rid of the repeat by a column that is not a time or a version in the identity or by losing a
+    relation: see key_retry_problems, said in discarded_because) is also marked discarded."""
     profile = profile or RECALL_PROFILE
     catalog = field_catalog(bundle)
     request = {'decision': bundle['decision'], 'sources': catalog}
-    attempts, proposal, model = [], None, None
+    attempts, proposal, model, verified, drafted, data_retry = [], None, None, None, None, False
+    unreadable = lambda: sum(1 for a in attempts if a.get('unreadable'))   # replies with no draft in them
     report = progress or (lambda stage, detail: None)
     while True:
         report('propose', {'attempt': len(attempts) + 1})
@@ -706,15 +776,34 @@ def auto_build_ontology(bundle: dict, gateway, profile: Profile | None = None, p
             result = verify_proposal(candidate, bundle, profile)
         if candidate is not None and not _structure_errors(candidate):
             proposal = candidate
-        attempts.append({'errors': result['errors'], 'model': model})
-        report('verify', {'attempt': len(attempts), 'errors': len(result['errors'])})
-        previous = attempts[-2]['errors'] if len(attempts) > 1 else None
-        seen = lambda errors: {(e['code'], e['message']) for e in errors}
-        if not result['errors'] or len(attempts) >= MAX_MODELER_ATTEMPTS or judgement.account_empty or \
-                (previous is not None and not seen(previous) - seen(result['errors'])):
+        from_data = data_errors(candidate, bundle) if data_errors and not result['errors'] and candidate is not None else []
+        to_fix = result['errors'] + from_data
+        attempts.append({'errors': to_fix, 'model': model, **({'data_retry': True} if data_retry else {}), **({'unreadable': True} if judgement.failure else {})})
+        report('verify', {'attempt': len(attempts), 'errors': len(to_fix)})
+        if not judgement.failure:
+            drafted = (candidate, result, model)
+        if not result['errors'] and candidate is not None and not data_retry:
+            verified = (candidate, result, model)
+        if judgement.account_empty or len(attempts) - min(unreadable(), 1) >= MAX_MODELER_ATTEMPTS:
             break
+        if judgement.failure:   # no draft in the reply (not JSON, request failed): asked again, unchanged, and not counted as a draft
+            if data_retry or (len(attempts) > 1 and attempts[-2].get('unreadable')):   # but not twice in a row, nor when only the data's retry was left
+                break
+            continue
+        previous = next((x['errors'] for x in reversed(attempts[:-1]) if not x.get('unreadable')), None)   # the last draft's errors
+        seen = lambda errors: {(e['code'], e['message']) for e in errors}
+        if not to_fix or data_retry or (previous is not None and not seen(previous) - seen(to_fix)):
+            break
+        data_retry = not result['errors']   # only the data is complaining: this retry is the one allowed
         request = {'decision': bundle['decision'], 'sources': catalog,
-                   'previous_proposal': candidate, 'errors_found_by_code': result['errors']}
+                   'previous_proposal': candidate, 'errors_found_by_code': to_fix}
+    if judgement.failure and drafted:   # it ended on a reply with no draft: the last draft's errors are the ones to show
+        proposal, result, model = drafted
+    gamed = key_retry_problems(verified[0], proposal, {n: s['records'] for n, s in bundle['sources'].items()}) if verified and data_retry and not result['errors'] else []
+    if verified and (result['errors'] or gamed or (data_retry and len(attempts[-1]['errors']) >= len(attempts[-2]['errors']))):
+        # the data-driven retry fails verification, does not leave fewer key errors, or only hides the repeat: the draft that passed first stands
+        attempts[-1] = {**attempts[-1], 'discarded': True, **({'discarded_because': gamed} if gamed else {})}
+        proposal, result, model = verified
     types, relations = _clean(proposal) if proposal is not None else ([], [])
     gaps = (proposal or {}).get('open_questions')   # a bare sentence is one gap; it never sends a sound draft back
     return {
