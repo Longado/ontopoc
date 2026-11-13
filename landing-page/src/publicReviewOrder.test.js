@@ -40,6 +40,19 @@ test("timing reads as plain words", () => {
   assert.equal(timingLabel(null), "");
 });
 
+test("a month against a date is the months apart or the same month, never a day count", () => {
+  const month = (relation, months) => ({ event_date: "2026-03", signal_date: "x", relation, days: null, months });
+  assert.equal(timingLabel(month("after", 2)), "召回后 2 个月");
+  assert.equal(timingLabel(month("before", -3)), "召回前 3 个月");
+  assert.equal(timingLabel(month("same_month", 0)), "与召回同月");
+  for (const label of [timingLabel(month("after", 2)), timingLabel(month("before", -3))]) assert.doesNotMatch(label, /null|天/);
+  const p = pack();
+  p.recalls[0].candidates = [{ ...p.recalls[0].candidates[0], timing: month("before", -1) }, { ...p.recalls[0].candidates[1], timing: month("same_month", 0) },
+    { ...p.recalls[0].candidates[2], timing: month("after", 1) }, { id: "C5", timing: { ...timing("same_day", 0) } }];
+  p.signals.C5 = signal("2020-01-01");
+  assert.deepEqual(orderCandidates(p.recalls[0].candidates, p.signals).map((c) => c.id), ["C3", "C5", "C2", "C1"]);   // after, same day, same month, before
+});
+
 test("a mark made under one recall of a series shows under the others", () => {
   const p = pack();
   const state = markCandidate(confirmOntology(emptyState(p), NOW), "A1", "C2", "same", NOW);

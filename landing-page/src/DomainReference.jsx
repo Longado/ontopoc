@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { OntologyGraph } from "./OntologyGraph.jsx";
+import { serviceError } from "./ontologyStudioModel.js";
 import { definitionRun, libraryEntries } from "./ontologyLibraryModel.js";
 import { graphSelection, mappingKey, referenceRevision, updateMapping } from "./ontologyReferenceModel.js";
 import "./DomainReference.css";
@@ -8,8 +9,9 @@ const KINDS = { object: "对象", relation: "关系", property: "属性" };
 const GROUPS = { mapped: "已对应", only_reference: "仅参考有", only_local: "仅本次有", different: "约束不同", unchecked: "当前无法检查", not_applicable: "本次不适用" };
 async function read(url, payload) {
   const response = await fetch(url, payload ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) } : { cache: "no-store" });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "读取失败，请重试。");
+  const body = await response.json().catch(() => null);   // a proxy or a crashed service answers with a body that is not JSON
+  if (!response.ok) throw new Error(serviceError(response.status, body));
+  if (!body) throw new Error("服务返回的内容读不出来，请重试。");
   return body;
 }
 
@@ -103,6 +105,7 @@ export function DomainReference({ run, onUpdate }) {
     {!run.saved_as ? <p className="pr-note">上传自己的文件后，可保存领域参考对应。</p> : <>
       {error && <p role="alert" className="pr-error">{error} <button type="button" className="pr-link" onClick={() => setRetry(n => n + 1)}>重新读取</button></p>}
       {context?.stale.map(text => <p key={text} role="alert" className="pr-note">{text} 旧对应已保留在运行记录；本页从空白对应重新核对。</p>)}
+      {context?.blocked ? <p role="alert" className="pr-note">{context.blocked}</p> : <>
       <div className="dr-picker">
         <input type="search" aria-label="搜索领域参考" placeholder="搜索领域或关键词" value={query} onChange={e => setQuery(e.target.value)} disabled={busy} />
         <select aria-label="选择领域参考" value={definition?.entry.id || ""} disabled={busy || !context} onChange={e => choose(e.target.value)}>
@@ -166,6 +169,7 @@ export function DomainReference({ run, onUpdate }) {
           {!review && <button type="button" className="pr-primary" disabled={busy} onClick={() => compare(false)}>预览差异</button>}
           {review && <button type="button" className="pr-primary" disabled={busy || !preview} onClick={() => compare(true)}>确认对应并保存</button>}
         </div>
+      </>}
       </>}
     </>}
     <dialog ref={dialog} className="dr-graph-dialog" aria-label="对应项关系图" onClose={() => setGraph(null)}>

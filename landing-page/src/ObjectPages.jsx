@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { CodeMeanings } from "./CodeMeaningForm.jsx";
+import { meaningNote } from "./openItemsModel.js";
 
 import { Verdict } from "./OntologyGraph.jsx";
 import { focusOntology, layoutGraph } from "./ontologyGraphModel.js";
 import { formOf as formOfRun } from "./ontologyHandoverModel.js";
 import { fieldsOf, objectCards, objectRelations } from "./workspaceModel.js";
 import { filled, filterCards, rowsCsv } from "./visualModel.js";
+import { objectCountLine, repeatLines, repeatMark } from "./dataLayoutModel.js";
 import { editForm, formOf } from "./formModel.js";
 
 const VERDICT_TEXT = { ok: "判对", wrong: "判错" };
@@ -49,6 +52,8 @@ export function ObjectDetail({ run, typeKey, startAt = null, confirm, onBack, on
   useEffect(() => setSub(startAt || "overview"), [typeKey]);   // eslint-disable-line react-hooks/exhaustive-deps
   const card = objectCards(run, confirm?.decisions).find((c) => c.key === typeKey);
   const type = run.ontology.object_types.find((t) => t.key === typeKey);
+  const meanings = useContext(CodeMeanings);
+  const codeNote = (t, path) => { const source = t?.attributes.find((a) => a.path === path)?.source; return source ? meaningNote(meanings, source, path) : ""; };
   if (!card) return <p className="pr-muted">这份本体里没有这个对象。<button type="button" className="pr-link" onClick={onBack}>返回</button></p>;
   const relations = objectRelations(run, typeKey);
   return <div className="os-object-page">
@@ -63,16 +68,16 @@ export function ObjectDetail({ run, typeKey, startAt = null, confirm, onBack, on
         <section className="pr-card"><h3>基本信息</h3><dl className="os-facts">
           <dt>来自表</dt><dd>{card.sources.join("、")}</dd>
           <dt>识别字段</dt><dd>{card.identity.join(" + ")}</dd>
-          {card.count !== null && <><dt>数据里有</dt><dd>{card.count.toLocaleString("zh-CN")} 个</dd></>}
+          {card.count !== null && <><dt title="一个编号算一个对象，别的表提到、描述它的表里却没有的也算；分表的数字在“数据”页">数据里有</dt><dd>{card.count.toLocaleString("zh-CN")} 个</dd></>}
           <dt>包含关系</dt><dd>{card.relations} 条</dd>
           <dt>你的判断</dt><dd>{card.verdict ? VERDICT_TEXT[card.verdict] : "还没判"}</dd>
         </dl></section>
         <section className="pr-card"><h3>本体关系 <small>({relations.length})</small></h3>
           {relations.length ? <MiniGraph run={run} typeKey={typeKey} onOpen={onOpen} /> : <p className="pr-muted">它和别的对象没有关系。</p>}</section>
         <section className="pr-card os-span"><div className="pr-card-head"><h3>属性 <small>({fieldsOf(run, type).length})</small></h3><button type="button" className="pr-link" onClick={() => setSub("fields")}>看全部</button></div>
-          <ul className="os-field-tags">{fieldsOf(run, type).slice(0, 8).map((f) => <li key={f.path}>{f.path}{f.identity && <em className="is-key">主键</em>}{f.type && <em>{f.type}</em>}</li>)}</ul></section>
+          <ul className="os-field-tags">{fieldsOf(run, type).slice(0, 8).map((f) => <li key={f.path}>{f.path}{f.identity && <em className="is-key">主键</em>}{f.type && <em>{f.type}</em>}{codeNote(type, f.path) && <em title={codeNote(type, f.path)}>代码</em>}</li>)}</ul></section>
       </div>}
-      {sub === "fields" && <FieldsTable run={run} type={type} form={form} />}
+      {sub === "fields" && <FieldsTable run={run} type={type} form={form} codeNote={codeNote} />}
       {sub === "rows" && <ObjectRows run={run} typeKey={typeKey} />}
       {sub === "confirm" && <section className="pr-card os-object-confirm">
         <h3>这个对象在业务上对不对</h3>
@@ -86,7 +91,7 @@ export function ObjectDetail({ run, typeKey, startAt = null, confirm, onBack, on
   </div>;
 }
 
-function FieldsTable({ run, type, form }) {
+function FieldsTable({ run, type, form, codeNote }) {
   const fields = fieldsOf(run, type);
   const [draft, setDraft] = useState(() => formOf(run, type.key));
   useEffect(() => setDraft(formOf(run, type.key)), [run, type.key]);
@@ -110,7 +115,7 @@ function FieldsTable({ run, type, form }) {
     <div className="os-table-scroll"><table className="os-fields os-form-fields">
       <thead><tr><th scope="col">字段</th><th scope="col">中文名</th><th scope="col">描述</th><th scope="col" title="展示给人看的字段，每个对象一个">展示</th>{profiled && <><th scope="col">类型</th><th scope="col">长度</th><th scope="col" title="有值的行占多少">填充</th></>}</tr></thead>
       <tbody>{fields.map((f) => { const x = draft.fields[f.path]; return <tr key={f.path}>
-        <td>{f.path}{f.identity && <em className="os-tag is-key">主键</em>}</td>
+        <td>{f.path}{f.identity && <em className="os-tag is-key">主键</em>}{codeNote(type, f.path) && <small className="os-code-note">代码：{codeNote(type, f.path)}</small>}</td>
         <td><span className="os-cell-edit"><input aria-label={`${f.path} 的中文名`} value={x?.label || ""} maxLength={40} onChange={(e) => set(f.path, "label", e.target.value)} />{mark(x)}</span></td>
         <td><input aria-label={`${f.path} 的描述`} className="os-desc-input" value={x?.description || ""} maxLength={200} onChange={(e) => set(f.path, "description", e.target.value)} /></td>
         <td><input type="radio" name={`display-${type.key}`} aria-label={`用 ${f.path} 展示`} checked={draft.display_field === f.path} onChange={() => set(null, "display_field", f.path)} /></td>
@@ -140,6 +145,7 @@ function ObjectRows({ run, typeKey }) {
   }, [run.saved_as, typeKey, page]);
   const d = state.data;
   const pages = d ? Math.max(1, Math.ceil(d.total / d.size)) : 1;
+  const marked = Boolean(d?.row_marks?.some(Boolean));
   const [saving, setSaving] = useState("");
   async function download() {
     setSaving("…");
@@ -153,14 +159,15 @@ function ObjectRows({ run, typeKey }) {
       setSaving("");
     } catch (e) { setSaving(e.message === "Failed to fetch" ? "连不上本机建模服务" : e.message); }
   }
-  return <section className="pr-card"><div className="pr-card-head"><h3 title="每行是本体在数据里认出的一个对象；同一个对象出现在几张表里时合成一行，写得不一样时显示先读到的那个">数据列表</h3>
-    <div className="os-toolbar">{d && <span className="pr-muted">共 {d.total.toLocaleString("zh-CN")} 个</span>}
+  return <section className="pr-card"><div className="pr-card-head"><h3 title="每行是本体在数据里认出的一个对象；同一个对象出现在几张表里时合成一行，写得不一样时显示先读到的那个。描述它的表里编号重复的行，在定下怎么算之前各占一行">数据列表</h3>
+    <div className="os-toolbar">{d && <span className="pr-muted">{objectCountLine(d)}</span>}
       <button type="button" className="pr-link os-download" disabled={!d || saving === "…"} onClick={download}>{saving === "…" ? "准备中…" : "下载 CSV"}</button>
       {saving && saving !== "…" && <span role="alert" className="pr-error">{saving}</span>}</div></div>
     {state.status === "error" && <p role="alert" className="pr-error">{state.error}</p>}
+    {d && repeatLines(d.identity_repeats).map((line) => <p key={line} className="pr-note os-repeat-note" title="这些行的识别字段相同；对象数按不同编号算，列出的行数按下面的处理办法算">{line}</p>)}
     {d && <div className={`os-table-scroll${state.status === "loading" ? " is-loading" : ""}`}><table className="os-fields">
-      <thead><tr><th scope="col">序号</th>{d.columns.map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
-      <tbody>{d.rows.map((row, i) => <tr key={i}><td>{(d.page - 1) * d.size + i + 1}</td>{d.columns.map((c) => <td key={c}>{row[c] ?? "—"}</td>)}</tr>)}</tbody>
+      <thead><tr><th scope="col">序号</th>{d.columns.map((c) => <th key={c} scope="col">{c}</th>)}{marked && <th scope="col">说明</th>}</tr></thead>
+      <tbody>{d.rows.map((row, i) => <tr key={i}><td>{(d.page - 1) * d.size + i + 1}</td>{d.columns.map((c) => <td key={c}>{row[c] ?? "—"}</td>)}{marked && <td className="os-repeat-note">{repeatMark(d.row_marks[i])}</td>}</tr>)}</tbody>
     </table></div>}
     {state.status === "loading" && !d && <p className="pr-muted">正在读取…</p>}
     {d && pages > 1 && <div className="os-pager"><button type="button" className="pr-link" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button>

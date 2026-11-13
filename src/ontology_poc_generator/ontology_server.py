@@ -2,6 +2,7 @@
 import argparse
 import base64
 import binascii
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import threading
 from urllib.parse import parse_qs, unquote, urlsplit
 import uuid
@@ -17,15 +19,23 @@ import uuid
 from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_and_evaluate_document, load_document_file
 from ontology_poc_generator.org_documents import build_and_evaluate_org, org_mermaid
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
+from ontology_poc_generator.code_meanings import check_enum, code_columns, draft_meanings, meanings_of, merge_enum
+from ontology_poc_generator.answer_checks import choose_rows, definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
+from ontology_poc_generator.named_views import compiled_views, definitions_signature, drop_views_except, name_views, read_views, save_definition, sync_views, table_columns, view_anchor_now, view_rowids, views_of_run
+from ontology_poc_generator.pipelines import ROW_CAP, run_pipeline, workspace_datasets, workspace_views
+from ontology_poc_generator.anchors import check_code, check_relation, check_view, code_anchor, relation_anchor, review_items, view_anchor, stored as stored_anchors, waiting as waiting_change
+from ontology_poc_generator.repeated_keys import check_rule, repeated_keys, settled_by_latest, unmet
+from ontology_poc_generator.workspace_store import (
+    check_bundle, describes_rows, element_contents, element_ids, element_rejected, element_rows, element_state_writes, open_workspace, set_element_states, store_anchors)
 from ontology_poc_generator.company_sources import DEFAULT_PURPOSE, MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
-from ontology_poc_generator.open_items import check_answers, linked_cells, open_items, split_answers
+from ontology_poc_generator.open_items import check_answers, code_meaning_items, linked_cells, open_items, split_answers
 from ontology_poc_generator.ontology_card import NO_CARD, build_card, check_cells, live_cells, with_changes
-from ontology_poc_generator.public_ontology import build_graph
+from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.relation_suggestions import suggest_relations
 from ontology_poc_generator.rule_discovery import check_rules, discover_rules
 from ontology_poc_generator.versions import version_diff
@@ -39,7 +49,7 @@ import zipfile
 from urllib.parse import quote as url_quote
 from ontology_poc_generator.ontology_acceptance import check_acceptance, parse_acceptance, record_confirmed
 from ontology_poc_generator.ontology_compare import ReferenceFileError, compare_ontologies, parse_reference
-from ontology_poc_generator.ontology_confirm import confirmed_reference, prefill_from_reference, without_wrong
+from ontology_poc_generator.ontology_confirm import confirmed_reference, element_changes, prefill_from_reference, without_wrong
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
@@ -47,8 +57,11 @@ from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
+from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
 
 ROOT = Path(__file__).resolve().parents[2]
+KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
+KEPT_RUNS_IN_MEMORY = 8   # runs whose rows and graph stay in memory; the least recently used is dropped and read again when asked for
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
 SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
 JOB_ID = re.compile(r'^[0-9a-f]{12}$')
@@ -74,6 +87,14 @@ def code_fingerprint(code_dir: Path) -> str:
     return digest.hexdigest()[:12]
 
 
+def write_run(path: Path, run: dict) -> None:
+    """A run file written whole or not at all: to a file of its own beside it, then renamed over it, so a reader of the
+    file (every page of the run) never meets half of it, and two saves never write into the same file."""
+    part = path.with_name(f'{path.name}.{uuid.uuid4().hex[:8]}.part')
+    part.write_text(json.dumps(run, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+    os.replace(part, path)
+
+
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent):
     running = code_fingerprint(code_dir)
     if gateway is not None:   # every model call, from any agent, leaves one line beside the runs
@@ -82,7 +103,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
     # one run file is read, changed and written back by several endpoints; this keeps two of them from overwriting each other
     runs_lock = threading.Lock()
     jobs_dir = output_dir / 'jobs'
-    graphs, graphs_lock = {}, threading.Lock()   # a kept run's graph, built once: the file and the ontology never change
+    graphs, graphs_lock = OrderedDict(), threading.Lock()   # the most recently used kept runs: rows, graph without a choice, and the graph for the repeated-key rules now chosen
 
     def memory_key(result):
         """Judgements are kept per file, or per line of versions once a person says a file is the next version of
@@ -174,14 +195,419 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return None
         return kept(name)
 
+    def workspace_run(name):
+        """(run, rows, graph) as card_run gives them; for a table run whose draft was blocked, its rows and no graph: its tables
+        are stored in the workspace all the same, so its code columns, their meanings and its views can be worked on. None for
+        a document or a run whose rows were not kept."""
+        found = card_run(name)
+        if found is not None or not (output_dir / name.replace('.json', '.bundle.json')).exists():
+            return found
+        result = json.loads((output_dir / name).read_text(encoding='utf-8'))
+        if result['file'].get('kind') == 'document' or not (result.get('data_checks') or {}).get('tables'):
+            return None
+        return result, with_meanings(result, json.loads((output_dir / name.replace('.json', '.bundle.json')).read_text(encoding='utf-8'))), None
+
+    def blocked_text(result, what):
+        """Why a draft that did not pass the checks cannot do `what`, with the checks it failed (the first two)."""
+        errors = [f'{e["code"]}: {e["message"]}' for e in (result['ontology'].get('verification') or {}).get('errors', [])[:2]]
+        return f'本体没有通过结构核验，{what}' + (f'。没通过的核验：{"；".join(errors)}' if errors else '')
+
+    code_cache, code_lock = {}, threading.Lock()   # a run's code columns are worked out once: its rows never change
+
+    def code_candidates(result, bundle):
+        """The columns of a run that look like code lists, leaving out the ones the draft uses to identify objects."""
+        identity = frozenset((pop['source'], path) for t in normalize_proposal(result['ontology'])['object_types']
+                             for pop in t['populated_from'] for path in pop['identity'].values())
+        if 'saved_as' not in result:   # a run being built: not kept yet, so nothing to cache it under
+            return code_columns(bundle, identity)
+        with code_lock:
+            if result['saved_as'] not in code_cache:
+                code_cache[result['saved_as']] = code_columns(bundle, identity)
+            return code_cache[result['saved_as']]
+
+    def code_state(result, bundle):
+        """(code columns still on offer, the meanings a person confirmed by field): a column a person said is not a code is gone."""
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            prefix = f'property:{memory_key(result)}:'
+            rejected = element_rejected(conn, prefix)
+            return [p for p in code_candidates(result, bundle) if p['field'] not in rejected], element_contents(conn, prefix)
+        finally:
+            conn.close()
+
+    def code_drafts(result):
+        """The model's guesses at what codes mean, kept with the file: {item id: {value: guess}}."""
+        path = output_dir / 'code_meanings' / f'{memory_key(result)}.json'
+        return json.loads(path.read_text(encoding='utf-8'))['columns'] if path.exists() else {}
+
+    def repeat_rules(result):
+        """How a person said the rows of a repeated key are read, by "<object type>.<table>"."""
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            return element_contents(conn, f'repeat_rule:{memory_key(result)}:')
+        finally:
+            conn.close()
+
+    def with_rules(result, bundle):
+        """The bundle as anything that picks rows should see it: with the rules chosen for repeated keys, which build_graph applies."""
+        return {**bundle, 'repeat_rules': repeat_rules(result)}
+
+    def code_waiting(result):
+        """{field: {'labels': {code: meaning}, 'values': {code: {'label', 'description'}}, 'changes': [what changed]}} for the code
+        meanings of this file that wait for a second look (anchors.py): kept, not counted as confirmed."""
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            rows = element_rows(conn, f'property:{memory_key(result)}:', 'checked')
+        finally:
+            conn.close()
+        out = {}
+        for field, row in rows.items():
+            values = {e['value']: {'label': e['label'], 'description': e.get('description') or ''} for e in (row['content'] or {}).get('values', []) if e.get('label')}
+            out[field] = {'labels': {v: x['label'] for v, x in values.items()}, 'values': values, 'changes': (row['review'] or {}).get('changes', [])}
+        return out
+
+    def with_meanings(result, bundle):
+        """The bundle as every reader of rows should see it: with the rules for repeated keys, and with what each code
+        column's values mean, confirmed or not (and which meanings wait for a second look)."""
+        profiles, enums = code_state(result, bundle)
+        return {**with_rules(result, bundle), 'meanings': meanings_of(profiles, enums), 'waiting': code_waiting(result)}
+
+    def stored_tables(conn, result):
+        """{table: {'table', 'rows', 'columns'}} of the dataset versions this run stored in the workspace."""
+        return workspace_datasets(conn, {t['dataset']: t['dataset_id'] for t in (result.get('data_checks') or {}).get('tables', []) if t.get('status') == 'ok'})
+
+    def run_id(name):
+        """What a run's views are named after in the workspace file: views belong to one run, not to the file's version line."""
+        return hashlib.sha1(name.encode()).hexdigest()[:8]
+
+    def readonly_workspace():
+        return sqlite3.connect(f'file:{output_dir / "workspace.sqlite"}?mode=ro', uri=True)   # reading views needs no write to the file
+
+    views_cache, views_cache_lock = OrderedDict(), threading.Lock()   # what was worked out from a run's views, kept until a definition or a table changes
+
+    def view_context(result):
+        """The run's views as a read of the workspace file sees them, with their row counts, and what was worked out from them
+        (the rows each view keeps, the graphs built from them): kept per run and per version of every definition and table,
+        so a read that finds nothing changed costs one small query. Raises when the workspace cannot be read."""
+        key, rid = memory_key(result), run_id(result['saved_as'])
+        conn = readonly_workspace()
+        try:
+            tables = stored_tables(conn, result)
+            signature = (rid, definitions_signature(conn, key), tuple(sorted((n, d['table']) for n, d in tables.items())))
+            with views_cache_lock:
+                if signature in views_cache:
+                    views_cache.move_to_end(signature)
+                    return views_cache[signature]
+            views = views_of_run(conn, key, rid, result['ontology'], tables)
+        finally:
+            conn.close()
+        context = {'signature': signature, 'views': views, 'view_tables': table_columns(tables), 'tables': tables, 'rowids': {}, 'graphs': {}}
+        with views_cache_lock:
+            views_cache[signature] = context
+            while len(views_cache) > KEPT_VIEW_CONTEXTS:
+                views_cache.popitem(last=False)
+        return context
+
+    def view_state(result):
+        """The run's confirmed definitions as views, each with its SQL and row count, read without writing to the workspace
+        file; with the reason when they could not be read (the page shows that beside the lists, the rest still works)."""
+        try:
+            context = view_context(result)
+            return {'views': context['views'], 'view_tables': context['view_tables']}
+        except Exception as exc:
+            return {'views': [], 'view_tables': [], 'views_error': f'视图没有读出来：{type(exc).__name__}: {exc}'[:300]}
+
+    def rows_kept(result, context, view):
+        """The positions of the rows a view keeps in its table, read once per version of the definitions."""
+        with views_cache_lock:
+            if view['name'] in context['rowids']:
+                return context['rowids'][view['name']]
+        conn = readonly_workspace()
+        try:
+            read_views(conn, run_id(result['saved_as']), context['views'])
+            rows = view_rowids(conn, view)
+        finally:
+            conn.close()
+        with views_cache_lock:
+            context['rowids'][view['name']] = rows
+        return rows
+
+    def views_signature(result):
+        """What the confirmed views and the stored tables of a run are at (None when they cannot be read): a result worked out
+        with the views is worked out again when it changes."""
+        try:
+            return view_context(result)['signature']
+        except Exception:
+            return None
+
+    def view_subsets(result, source):
+        """{view name: positions (from 1) of the rows the table's confirmed views keep}, for the name checks: which confirmed view a
+        statistic written in another table was worked out over. {} when the views cannot be read or the stored table is not this
+        run's rows (the name check then says what it found on the whole table)."""
+        try:
+            context = view_context(result)
+            return {v['name']: set(rows_kept(result, context, v)) for v in context['views']
+                    if v['state'] == 'confirmed' and v['source'] == source and v['kind'] != 'labels'}
+        except Exception:
+            return {}
+
+    def make_answerer(result, bundle, reviewed, derived, cells, graph=None):
+        """fn(query, question, used=None, check=True, told=None) -> answer, for this run, with `.definitions`: what a person confirmed, as the
+        model is told it. Each answer is worked out from the rows its definitions keep: a table with a "current" view (a confirmed
+        keep-latest rule) always, and a view a person named when the model says the question uses it; the answer says which views
+        it used. `used` is the model's `definitions_used`: a definition the question refers to that the query did not apply is
+        refused and says which (see answer_checks; `check=False` skips it, for a question a person changed by hand); a filter
+        that found nothing in a table that was damaged upstream says that and not "no data".
+        When the views cannot be read the tables' rows are used and every answer says so."""
+        meanings = bundle.get('meanings')
+        relations = [r for r in (result.get('data_checks') or {}).get('relations') or [] if r['key'] in {x['key'] for x in reviewed['relations']}]   # what the relation check found on the rows stored at upload, for the relations nobody judged wrong
+        meaning_key = json.dumps([meanings, bundle.get('repeat_rules')], sort_keys=True, ensure_ascii=False)
+        try:   # the workspace file is a second store: failing to read it must not stop an answer that the rows alone can give
+            context, unread = view_context(result), None
+        except Exception as exc:
+            context, unread = None, f'视图没有读出来，这次读的是原表的行：{type(exc).__name__}: {exc}'[:300]
+
+        def rows_of(applied):
+            """(bundle, graph) holding only the rows the views in `applied` keep, per table (a row all of them keep)."""
+            names = tuple(sorted(v['name'] for v in applied))
+            with views_cache_lock:
+                if (names, meaning_key) in context['graphs']:
+                    return context['graphs'][(names, meaning_key)]
+            kept_rows = {}
+            for v in applied:
+                rows = set(rows_kept(result, context, v))
+                kept_rows[v['source']] = rows if v['source'] not in kept_rows else kept_rows[v['source']] & rows
+            for table in kept_rows:
+                if len(bundle['sources'][table]['records']) != context['tables'][table]['rows']:
+                    raise ValueError(f'「{table}」表在工作区里是 {context["tables"][table]["rows"]} 行，这次运行的数据是 {len(bundle["sources"][table]["records"])} 行，对不上')
+            chosen = choose_rows(reviewed, bundle, kept_rows)
+            reading = {**bundle, 'sources': {**bundle['sources'], **{t: {**bundle['sources'][t], 'records': r} for t, r in chosen.items()}}}
+            built = (reading, build_graph(result['ontology'], reading))
+            with views_cache_lock:
+                context['graphs'][(names, meaning_key)] = built
+            return built
+
+        def answer(query, question, used=None, check=True, told=None):
+            problem = unread
+            views = context['views'] if context else []
+            checked = definition_check(question, query, reviewed, views, meanings, used, told, bundle.get('waiting')) if check and isinstance(query, dict) else {'unmet': [], 'apply': [], 'understood': []}
+            if checked['unmet']:
+                return {**refusal(checked['unmet']), 'understood': checked['understood']}
+            broken = [f'「{v["name"]}」{v["why"]}' for v in views if v['kind'] == 'current' and v['state'] != 'confirmed']
+            if broken and not problem:   # the rule still picks the rows (by its own code), but the view that should say so cannot be used
+                problem = f'视图用不了，这次读的是原表的行，由确认过的规则取最新：{"；".join(broken)}'[:300]
+            applied = [v for v in views if v['kind'] == 'current' and v['state'] == 'confirmed'] + checked['apply']
+            reading, reading_graph = bundle, graph
+            if applied:
+                try:
+                    reading, reading_graph = rows_of(applied)
+                except (sqlite3.Error, ValueError, KeyError) as exc:   # the views chose rows that this run's rows do not line up with
+                    applied, problem = [], f'视图没有用上，这次读的是原表的行：{exc}'[:300]
+            now = answer_query(reviewed, reading, query, question, reading_graph, derived, cells)
+            if now.get('status') == 'no_data':   # only a filter that found nothing is looked at, and rows are read only then
+                records = {t: v['records'] for t, v in bundle['sources'].items()}
+                now = with_upstream(now, upstream_problems(result.get('data_checks'), filter_conditions(reviewed, query, meanings), bundle.get('repeat_rules'), records))
+            now = name_views(now, query, reviewed, applied, problem)
+            now = with_relation_gaps(now, query, reviewed, relations)
+            return {**now, 'understood': checked['understood']} if checked['understood'] else now
+        answer.definitions = definition_catalog(meanings, context['views'] if context else [])
+        answer.unmatched = lambda key: unmatched_answer(reviewed, relations, key)
+        return answer
+
+    def sync_run_views(result):
+        """After a definition changed: the file's views for this run as the definitions now say, and no views of a run whose
+        file is gone. None when it worked, else what went wrong (the definition itself is kept)."""
+        try:
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                tables = stored_tables(conn, result)
+                refused = sync_views(conn, run_id(result['saved_as']), compiled_views(conn, memory_key(result), run_id(result['saved_as']), result['ontology'], tables))
+                drop_views_except(conn, {run_id(p.name) for p in output_dir.glob('*.json') if SAVED_NAME.match(p.name)})
+            finally:
+                conn.close()
+            return '；'.join(f'{n}：{e}' for n, e in refused.items()) or None
+        except Exception as exc:
+            return f'{type(exc).__name__}: {exc}'[:300]
+
+    views_warning = lambda problem: f'已记下，但工作区里的视图没有更新：{problem}' if problem else None
+
+    def code_reply(found):
+        """The open items and answered ones, with what each code column's values mean (the page shows them beside answers and fields),
+        and the named views the confirmed definitions make."""
+        card, items, answered = card_for(found)
+        if found is None:
+            return {'items': items, 'answered': answered, 'meanings': {}, 'views': [], 'view_tables': [], 'row_cap': ROW_CAP, 'repeat_rules': {}, 'review': [], 'newer': None}
+        profiles, enums = code_state(found[0], found[1])
+        newer = newer_run(found[0])   # the run of this line that is more recent than the one shown: definitions are changed there
+        return {'items': items, 'answered': answered, 'meanings': meanings_of(profiles, enums), 'row_cap': ROW_CAP, 'repeat_rules': repeat_rules(found[0]),
+                'review': review_list(found[0], newer), 'newer': newer, **view_state(found[0])}
+
+    def code_labels(row):
+        return {e['value']: e['label'] for e in (row['content'] or {}).get('values', []) if e.get('label')}
+
+    def key_columns(ontology, source):
+        """The identity columns of the type whose rows `source` describes: what tells one row of the table from another (None: none)."""
+        own = describes_rows(ontology)
+        for t in normalize_proposal(ontology)['object_types']:
+            for pop in t['populated_from']:
+                if pop['source'] == source and pop['transform'] == 'none' and not pop.get('where') and own(t['key'], source):
+                    return [pop['identity'][k] for k in sorted(pop['identity'])]
+        return None
+
+    def earlier_of(previous):
+        """(run, rows) of the kept table run a new version is the next of, for what confirmations made before anchors existed were most
+        likely confirmed on; None when there is none or its rows are not kept."""
+        if not previous:
+            return None
+        path = output_dir / previous.replace('.json', '.bundle.json')
+        run = json.loads((output_dir / previous).read_text(encoding='utf-8'))
+        if run['file'].get('kind') == 'document' or not path.exists():
+            return None
+        return {**run, 'saved_as': previous}, json.loads(path.read_text(encoding='utf-8'))
+
+    def recheck_data_anchors(result, bundle, key, earlier=None):
+        """A new version of a file whose definitions were confirmed on the one before: each code meaning and repeat rule is looked at
+        again on the rows that came in (anchors.py). One whose anchor is broken moves to "checked" with what changed, so that
+        nothing below (the questions of this upload included) reads it as confirmed. Run before the questions are answered. A
+        meaning confirmed before anchors existed has none: they are worked out from the earlier run's rows (`earlier`) and kept,
+        so that the next version is held against them too. A draft that did not pass verification has no repeated keys to look at;
+        its code meanings are looked at all the same."""
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            verified = result['ontology']['status'] == 'auto_built_verified'
+            codes, rules = element_rows(conn, f'property:{key}:', 'confirmed'), element_rows(conn, f'repeat_rule:{key}:', 'confirmed') if verified else {}
+            against, flips = bundle['file']['name'], []
+            if codes:
+                profiles = {p['field']: p for p in code_candidates(result, bundle)}
+                was = {p['field']: p for p in code_candidates(*earlier)} if earlier and any(r['anchors'] is None for r in codes.values()) else {}
+                for field, row in codes.items():
+                    table = field.partition('.')[0]
+                    legacy = row['anchors'] is None
+                    if table not in bundle['sources'] or (legacy and (field not in was or table not in earlier[1]['sources'])):
+                        continue
+                    if legacy:
+                        row = {**row, 'anchors': code_anchor(was[field], earlier[1]['sources'][table]['records'], key_columns(earlier[0]['ontology'], table))}
+                    changes = check_code(row['anchors'], code_labels(row), profiles.get(field), bundle['sources'][table]['records'])
+                    if changes:
+                        flips.append(waiting_change(row, changes, against))
+                    elif legacy:
+                        store_anchors(conn, row['element_id'], stored_anchors(row['anchors']))
+            if rules:
+                groups = {g['rule_key']: g for g in repeated_keys(result['ontology'], bundle, build_graph(result['ontology'], bundle))}
+                for name, row in rules.items():
+                    why = unmet(groups[name], row['content']) if name in groups else None
+                    if why:
+                        flips.append(waiting_change(row, [why], against))
+            if flips:
+                set_element_states(conn, flips)
+        finally:
+            conn.close()
+
+    def recheck_workspace_anchors(result, name, key, earlier=None):
+        """The same for what is only known once the new tables are stored: a named view (its rows against its table's rows) and a
+        relation judged right (how many rows found their object). Anchors missing from older confirmations are worked out from the
+        earlier run's stored tables and checks. A relation that waits no longer starts as right in this run."""
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            views, relations = element_rows(conn, f'view:{key}:', 'confirmed'), element_rows(conn, f'relation:{key}:', 'confirmed')
+            checks, against, flips = result['data_checks'], result['file']['name'], []
+            versions_of = lambda run: {t['dataset']: t['version'] for t in run['data_checks']['tables'] if t.get('status') == 'ok'}
+            if views:
+                tables = stored_tables(conn, result)
+                now = {v['name']: v for v in views_of_run(conn, key, run_id(name), result['ontology'], tables)}
+                before = None
+                for vname, row in views.items():
+                    v = now.get(vname)
+                    if not (v and v['state'] == 'confirmed' and v['source'] in tables):
+                        continue
+                    legacy = row['anchors'] is None
+                    if legacy:
+                        if before is None and earlier:
+                            old_tables = stored_tables(conn, earlier[0])
+                            before = ({x['name']: x for x in views_of_run(conn, key, run_id(earlier[0]['saved_as']), earlier[0]['ontology'], old_tables)}, old_tables, versions_of(earlier[0]))
+                        old = before[0].get(vname) if before else None
+                        if not (old and old['state'] == 'confirmed' and old['source'] in before[1]):
+                            continue
+                        row = {**row, 'anchors': view_anchor(old['rows'], before[1][old['source']]['rows'], old['source'], before[2].get(old['source']))}
+                    changes = check_view(row['anchors'], v['rows'], tables[v['source']]['rows'], versions_of(result).get(v['source']))
+                    if changes:
+                        flips.append(waiting_change(row, changes, against))
+                    elif legacy:
+                        store_anchors(conn, row['element_id'], stored_anchors(row['anchors']))
+            if relations:
+                found = {r['key']: r for r in checks.get('relations') or []}
+                was = {r['key']: r for r in ((earlier or ({},))[0].get('data_checks') or {}).get('relations') or []}
+                label = relation_labels(result['ontology'])
+                for rkey, row in relations.items():
+                    legacy = row['anchors'] is None
+                    if rkey not in found or (legacy and rkey not in was):
+                        continue
+                    if legacy:
+                        row = {**row, 'anchors': relation_anchor(was[rkey])}
+                    changes = check_relation(row['anchors'], found[rkey], label)
+                    if changes:
+                        flips.append(waiting_change(row, changes, against))
+                    elif legacy:
+                        store_anchors(conn, row['element_id'], stored_anchors(row['anchors']))
+            if flips:
+                set_element_states(conn, flips)
+            return set(element_rows(conn, f'relation:{key}:', 'checked'))
+        finally:
+            conn.close()
+
+    def newer_run(result):
+        """The newest run on this file's line of versions that read other rows than this one, else None (names begin with the time they were made)."""
+        key = memory_key(result)
+        for path in sorted(output_dir.glob('*.json'), reverse=True):
+            if path.name <= result['saved_as']:
+                break
+            if path.name.endswith('.bundle.json') or not SAVED_NAME.match(path.name):
+                continue
+            try:
+                run = json.loads(path.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                continue
+            if run['file'].get('kind') != 'document' and memory_key(run) == key and run['file']['sha256'] != result['file']['sha256']:   # the same file again is not a newer version
+                return path.name
+        return None
+
+    def stale_check(result):
+        """Raises ValueError when this is not the line's latest run: a definition is confirmed or changed on the newest rows, not on
+        older ones (an anchor taken from old rows would make the newer run read it as confirmed on its own)."""
+        newer = newer_run(result)
+        if newer:
+            raise ValueError(f'有更新的版本（{newer}）：定义请在那一次运行里确认或修改，这里的数据已经过时')
+
+    def relation_labels(ontology):
+        types = {t['key']: t.get('label') or t['key'] for t in normalize_proposal(ontology)['object_types']}
+        return lambda key: types.get(key, key)
+
+    def review_list(result, newer):
+        """What waits for a second look in this file's line of versions: each with what changed, who confirmed it and what depends on it."""
+        key = memory_key(result)
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            rows = {prefix: element_rows(conn, f'{prefix}:{key}:', 'checked') for prefix in ('property', 'repeat_rule', 'view', 'relation')}
+            named = element_contents(conn, f'view:{key}:')
+        finally:
+            conn.close()
+        types = {t['key']: t.get('label') or t['key'] for t in normalize_proposal(result['ontology'])['object_types']}
+        relations = {r['key']: f'{types.get(r["from"], r["from"])} {r.get("label") or r["key"]} {types.get(r["to"], r["to"])}' for r in normalize_proposal(result['ontology'])['relations']}
+        return review_items(rows, named, relations, newer)
+
     def card_for(found):
         """The card of a kept run (see card_run) with what was said on it, the items still open and the ones answered."""
         if found is None:
             return NO_CARD, [], []
         result, bundle, graph = found
         stored = card_file(memory_key(result))
+        if graph is None:   # a blocked draft's rows: no graph and no card, but the code columns of its stored tables can be given meanings
+            profiles, enums = code_state(result, bundle)
+            return NO_CARD, *split_answers(code_meaning_items({'profiles': profiles, 'enums': enums, 'drafts': code_drafts(result), 'waiting': code_waiting(result)}), stored['items'])
         card = build_card(result['ontology'], bundle, stored['cells'], graph, (result.get('confirmation') or {}).get('decisions'))
-        items, answered = split_answers(open_items(result, bundle, graph, card), stored['items'])
+        profiles, enums = code_state(result, bundle)
+        codes = {'profiles': profiles, 'enums': enums, 'drafts': code_drafts(result), 'waiting': code_waiting(result)}
+        items, answered = split_answers(open_items(result, bundle, graph, card, codes), stored['items'])
         return card, items, answered
 
     def pipeline_for(name):
@@ -194,7 +620,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         if saved['file'].get('kind') == 'document':
             raise ValueError('文档没有数据行，没有编排需求单')
         if saved['ontology']['status'] != 'auto_built_verified':
-            raise ValueError('本体没有通过结构核验，没有编排需求单；先看退回的原因')
+            raise ValueError(blocked_text(saved, '没有编排需求单；先看退回的原因'))
         result, bundle, graph = kept(name)
         key = memory_key(result)
         stored = card_file(key)
@@ -220,9 +646,19 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             raise ValueError('文档没有数据行')
         with graphs_lock:
             if name not in graphs:
-                bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-                graphs[name] = (bundle, build_graph(result['ontology'], bundle))
-        return (result, *graphs[name])
+                raw = json.loads(bundle_path.read_text(encoding='utf-8'))
+                graphs[name] = {'rows': raw, 'whole': build_graph(result['ontology'], raw), 'rules': None, 'graph': None, 'calc': {}}
+                while len(graphs) > KEPT_RUNS_IN_MEMORY:
+                    graphs.popitem(last=False)
+            graphs.move_to_end(name)
+            kept_run = graphs[name]
+            bundle = {**with_meanings(result, kept_run['rows']), 'calc_memo': kept_run['calc'], 'subsets': lambda source: view_subsets(result, source),
+                      'views_signature': lambda: views_signature(result)}
+            # the graph is where rows are picked, so it follows the rules chosen for repeated keys: built again when they change
+            rules = json.dumps(bundle['repeat_rules'], sort_keys=True)
+            if kept_run['rules'] != rules:
+                kept_run['rules'], kept_run['graph'] = rules, build_graph(result['ontology'], bundle, kept_run['whole'])
+        return result, bundle, kept_run['graph']
 
     def keep_job(job_id, job):
         """The job as it stands, on disk, so a restarted service can still say how it ended. Called under jobs_lock."""
@@ -300,20 +736,30 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress, previous)
         # the extra runs start together with the shown one, so three runs take about as long as one
         with ThreadPoolExecutor(max_workers=STABILITY_RUNS - 1) as pool:
-            extra = [pool.submit(build_company_ontology, bundle, gateway) for _ in range(STABILITY_RUNS - 1)]
+            extra = [pool.submit(build_company_ontology, bundle, gateway, None, False) for _ in range(STABILITY_RUNS - 1)]
             result = build_and_evaluate(bundle, gateway, progress)
+            if previous:
+                # the new version's rows are held against what each earlier confirmation was confirmed on, before any question is answered
+                recheck_data_anchors(result, bundle, memory_key(json.loads((output_dir / previous).read_text(encoding='utf-8'))), earlier_of(previous))
             if result['ontology']['status'] == 'auto_built_verified' and bundle['decision'] != DEFAULT_PURPOSE:
                 # the person's own question is answered with the draft; the model's round of questions is on request
                 if progress:
                     progress('questions', {})
-                if len(result['ontology']['attempts']) >= MAX_MODELER_ATTEMPTS:
+                calls = result['ontology']['attempts']
+                if len(calls) >= MAX_MODELER_ATTEMPTS:
+                    from_data = sum(1 for a in calls if a.get('data_retry'))
+                    used = f'本次建模已用满 {MAX_MODELER_ATTEMPTS} 次调用' if not from_data else \
+                        f'本次建模已调用模型 {len(calls)} 次（其中 {from_data} 次是按数据检查结果重试），已到 {MAX_MODELER_ATTEMPTS} 次上限'
                     answered = {'prompt_version': QUESTION_PROMPT_VERSION, 'model': None,
                                 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                 'items': [], 'answered': 0, 'total': 0,
-                                'error': f'本次建模已用满 {MAX_MODELER_ATTEMPTS} 次调用，目的问题尚未回答。可在“智能问答”中单独提问。'}
+                                'error': f'{used}，目的问题尚未回答。可在“智能问答”中单独提问。'}
                 else:
                     key = memory_key(json.loads((output_dir / previous).read_text(encoding='utf-8'))) if previous else bundle['file']['sha256']
-                    answered = ask_questions(result['ontology'], bundle, gateway, purpose_only=True, derived=derived_of(key), card=card_cells(result, bundle, key=key))
+                    # the person's own question is answered with what was already confirmed for this file: its codes' meanings and its repeated-key rules
+                    unsaved = {'file': bundle['file'], 'mode': bundle.get('mode'), 'lineage': key, 'ontology': result['ontology']}
+                    answered = ask_questions(result['ontology'], with_meanings(unsaved, bundle), gateway, purpose_only=True, derived=derived_of(key),
+                                             card=card_cells(result, bundle, key=key))
                 if answered['items'] or answered['error']:
                     result['evaluation']['asked'] = [answered]
             if result['ontology']['status'] == 'auto_built_verified':
@@ -327,6 +773,19 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return future.result()
         except Exception as exc:   # an extra run is evidence, not the answer: its failure is counted, the upload goes on
             return {'status': 'failed', 'error': f'{type(exc).__name__}: {exc}'[:200]}
+
+    def data_checks(ontology, bundle):
+        """Every source table goes into the workspace file beside the runs, and each drafted identity is checked over the
+        stored rows. A failed check stays in the result as failed; a check that cannot run is returned as an error the
+        person sees, and the upload goes on."""
+        try:
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                return check_bundle(conn, ontology, bundle, bundle['file']['name'])
+            finally:
+                conn.close()
+        except Exception as exc:   # the checks are evidence on top of the build: their failure is shown, not fatal
+            return {'tables': [], 'keys': [], 'error': f'{type(exc).__name__}: {exc}'[:300]}
 
     def save_build(bundle, result, progress=None, previous_name=None):
         outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
@@ -363,13 +822,20 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 saved = json.loads(accepted.read_text(encoding='utf-8'))
                 result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, saved['items'])
                 accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
+        if result['file'].get('kind') != 'document':
+            result['data_checks'] = data_checks(result['ontology'], bundle)   # also for a draft that failed the model checks
+            if previous_name and result['data_checks'].get('tables'):
+                waiting_relations = recheck_workspace_anchors(result, name, result['lineage'], earlier_of(previous_name))
+                suggested = (result['evaluation'].get('reference') or {}).get('suggested')
+                if suggested and waiting_relations:
+                    suggested['relations'] = {k: v for k, v in suggested['relations'].items() if k not in waiting_relations}
         if result['ontology']['status'] == 'auto_built_verified' and result['file'].get('kind') != 'document':
             result['evaluation']['rules'] = rules_state(result, bundle)
             result['evaluation']['derived'] = derived_of(memory_key(result))
             if form_state(result):
                 result['evaluation']['form'] = form_state(result)
         result['saved_as'] = name
-        (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+        write_run((output_dir / name), result)
         # the uploaded rows stay on this machine so later questions can be answered from them
         (output_dir / name.replace('.json', '.bundle.json')).write_text(json.dumps(bundle, ensure_ascii=False), encoding='utf-8')
         return 200, result
@@ -378,8 +844,62 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         with runs_lock:
             result = json.loads(path.read_text(encoding='utf-8'))
             change(result)
-            path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            write_run(path, result)
         return result
+
+    ANSWER_PARTS = ('derive', 'reason', 'answer', 'path', 'status', 'evidence', 'refused_by_card', 'reason_from_model', 'unmet', 'upstream', 'understood')   # what answering again replaces
+
+    def answers_again(name, because):
+        """After something an answer was worked out from has changed (a code's meaning confirmed, a rule chosen for a
+        repeated key), work out again, by code alone, every question of this run that has a query. An answer that comes
+        out differently is replaced and carries `rerun`: what changed and what it said before. One that comes out the
+        same is left alone. The check's finding that rows of a key disagree is marked settled where "keep the latest"
+        now leaves one row. Answers a person accepted as fixed questions are theirs and are not touched. An answer that
+        comes out as it first was says nothing of the change."""
+        result, bundle, graph = kept(name)
+        reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
+        derived, cells = derived_of(memory_key(result)), card_cells(result, bundle, graph)
+        settled = settled_by_latest(result['ontology'], bundle, graph)
+        answer_with = make_answerer(result, bundle, reviewed, derived, cells, graph)
+
+        def again(item):
+            if not isinstance(item.get('query'), dict) or item.get('status') == 'needs_derived':
+                return item
+            now = answer_with(item['query'], item['question'], item.get('definitions_used'), check=not item.get('edited'), told=item.get('definitions_told') or [])
+            said = lambda x: json.dumps([x.get(k) for k in ('status', 'answer', 'reason')], sort_keys=True, ensure_ascii=False)   # what a person reads as the answer
+            replaced = {**{k: v for k, v in item.items() if k not in (*ANSWER_PARTS, 'rerun')}, **now}
+            was = (item.get('rerun') or {}).get('was') or {k: item[k] for k in ('status', 'answer', 'reason') if k in item}
+            if said(now) == said(was):   # unchanged, or back to what it first said: the evidence is kept up to date and nothing is announced
+                return replaced if 'rerun' in item or json.dumps(now.get('evidence'), sort_keys=True) != json.dumps(item.get('evidence'), sort_keys=True) else item
+            reasons = list(dict.fromkeys([*(item.get('rerun') or {}).get('because', []), because]))
+            return {**replaced, 'rerun': {'because': reasons, 'was': was}}
+
+        def round_again(answered):
+            items = [again(i) for i in answered.get('items') or []]
+            return {**answered, 'items': items, 'answered': sum(i['status'] == 'answered' for i in items)}
+
+        def change(run):
+            evaluation = run['evaluation']
+            if evaluation.get('questions'):
+                evaluation['questions'] = round_again(evaluation['questions'])
+            if evaluation.get('asked'):
+                evaluation['asked'] = [round_again(r) for r in evaluation['asked']]
+            fit = evaluation.get('data_fit')
+            if fit and fit.get('identity_conflicts'):
+                fit['identity_conflicts'] = [{**{k: v for k, v in c.items() if k != 'settled'}, **({'settled': 'keep_latest'} if (c['type'], c['source'], c['identity']) in settled else {})}
+                                             for c in fit['identity_conflicts']]
+        return write_back(output_dir / name, change)
+
+    def recompute_warning(name, because):
+        """Work the answers out again after something was saved. What was saved stays saved whatever happens here: a failure
+        is returned as the words to show beside it, never as a failed save."""
+        try:
+            if json.loads((output_dir / name).read_text(encoding='utf-8'))['ontology']['status'] != 'auto_built_verified':
+                return None   # a blocked draft has no answers to work out again
+            answers_again(name, because)
+        except Exception as exc:
+            return f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {exc}'[:300]
+        return None
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -424,11 +944,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             """/api/ontology/runs/<run>/open-items: what is still to be settled with the client, and what the client has
             answered; /card: the data-meaning card. Both from the kept run; a run with no rows to read has neither."""
             try:
-                card, items, answered = card_for(card_run(name))
+                found = workspace_run(name) if tail == 'open-items' else card_run(name)
+                body = code_reply(found) if tail == 'open-items' else card_for(found)[0]
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
                 return
-            self.reply(200, {'items': items, 'answered': answered} if tail == 'open-items' else card)
+            self.reply(200, body)
 
         def reply_files(self, files, query, name, zip_name):
             """The files of an export as a zip to download, or as JSON with ?format=json."""
@@ -589,8 +1110,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         stale = stale_reasons(definition, result, record)
                     except (KeyError, ValueError, OSError):
                         stale = ['参考版本已不可用，请重新选择本体库参考。']
+                blocked = None if result['ontology']['status'] == 'auto_built_verified' else blocked_text(result, '不能对照领域参考')
                 self.reply(200, {'run_sha256': run_fingerprint(result), 'local': local_schema(result),
-                                 'record': record, 'definition': definition, 'stale': stale})
+                                 'record': record, 'definition': definition, 'stale': stale, 'blocked': blocked})
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，请重新打开。'})
             except ValueError as exc:
@@ -654,6 +1176,27 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/derived':
                 with runs_lock:
                     self.confirm_derived()
+                return
+            if self.path == '/api/ontology/code-meanings':
+                self.save_code_meanings()
+                return
+            if self.path == '/api/ontology/code-meanings/dismiss':
+                self.dismiss_code_column()
+                return
+            if self.path == '/api/ontology/code-meanings/draft':
+                self.draft_code_meanings()
+                return
+            if self.path == '/api/ontology/repeat-rules':
+                self.save_repeat_rule()
+                return
+            if self.path == '/api/ontology/review/confirm':
+                self.confirm_again()
+                return
+            if self.path == '/api/ontology/views':
+                self.save_view()
+                return
+            if self.path == '/api/ontology/pipelines/run':
+                self.run_pipeline_request()
                 return
             if self.path == '/api/ontology/requery':
                 with runs_lock:
@@ -769,11 +1312,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
                 return
             result = json.loads(result_path.read_text(encoding='utf-8'))
+            if result['ontology']['status'] != 'auto_built_verified':
+                self.reply(400, {'error': blocked_text(result, '不能对照参考本体')})
+                return
             result['evaluation']['reference'] = {
                 'name': str(payload.get('reference_name') or '参考本体')[:120],
                 'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 'diff': compare_ontologies(reference, result['ontology'])}
-            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            write_run(result_path, result)
             self.reply(200, result)
 
         def domain_reference(self, save):
@@ -783,6 +1329,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 path = self.load_run(payload)
                 result = json.loads(path.read_text(encoding='utf-8'))
+                if result['ontology']['status'] != 'auto_built_verified':
+                    raise ValueError(blocked_text(result, '不能对照领域参考'))
                 definition = library_definition(payload.get('reference_id'))
                 stale = stale_reasons(definition, result, payload)
                 if stale:
@@ -801,7 +1349,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     'source_commit': definition['entry']['commit'], 'run_sha256': run_fingerprint(result),
                     'mappings': mappings, 'diff': diff,
                     'confirmed_at': datetime.now(timezone.utc).isoformat(timespec='seconds')}
-                path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+                write_run(path, result)
                 self.reply(200, result)
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，请重新打开。'})
@@ -828,9 +1376,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             result = json.loads(result_path.read_text(encoding='utf-8'))
             if result['ontology']['status'] != 'auto_built_verified':
-                self.reply(400, {'error': '本体没有通过结构核验，先看退回的原因'})
+                self.reply(400, {'error': blocked_text(result, '先看退回的原因')})
                 return
-            bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+            bundle = with_rules(result, json.loads(bundle_path.read_text(encoding='utf-8')))
             found = propose_name_variants(result['ontology'], bundle, gateway)
             if found['error'] and found['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': found['error']})
@@ -883,14 +1431,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 result['evaluation'].pop('acceptance', None)
                 stored.unlink(missing_ok=True)
             else:
-                bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+                bundle = with_rules(result, json.loads(bundle_path.read_text(encoding='utf-8')))
                 result['evaluation']['acceptance'] = record_confirmed(reviewed_acceptance(result, bundle, items), accepted_now,
                                                                       result['file']['sha256'], result['saved_as'])
                 saved = {'saved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'file': result['file'],
                          'purpose': result.get('purpose'), 'items': result['evaluation']['acceptance']['items']}
                 stored.parent.mkdir(parents=True, exist_ok=True)
                 stored.write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
-            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            write_run(result_path, result)
             self.reply(200, result)
 
         def save_card(self):
@@ -930,9 +1478,294 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if result['evaluation'].get('acceptance'):
                 checked = reviewed_acceptance(result, bundle, result['evaluation']['acceptance']['items'])
                 result = {**result, 'evaluation': {**result['evaluation'], 'acceptance': checked}}
-                (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+                write_run((output_dir / name), result)
             card, items, answered = card_for((result, bundle, graph))
             self.reply(200, {'card': card, 'items': items, 'answered': answered})
+
+        def code_column_request(self):
+            """The run, the code column and the signer a code-meanings request is about; replies and returns None when it cannot be read."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return None
+                found = workspace_run(str(payload.get('saved_as') or ''))
+                if found is None:
+                    raise ValueError('这份运行没有数据表，没有代码列')
+                profiles, enums = code_state(found[0], found[1])
+                profile = next((p for p in profiles if p['id'] == payload.get('id')), None)
+                if profile is None:
+                    raise ValueError('这一列已经不在清单上了')
+                signer = payload.get('confirmed_by')
+                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
+                    raise ValueError('确认人最多写 40 个字')
+                return found, profile, enums, (signer or '').strip() or None, payload
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+            return None
+
+        def keep_code_state(self, found, change, what, because):
+            """Write one property's element_state, work the run's answers out again, and answer with the lists as they now stand."""
+            try:
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    set_element_states(conn, [change])
+                finally:
+                    conn.close()
+            except Exception as exc:
+                self.reply(500, {'error': f'{what}没有保存：{type(exc).__name__}: {exc}'[:300]})
+                return
+            warning = recompute_warning(found[0]['saved_as'], because) or views_warning(sync_run_views(found[0]))
+            self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
+
+        def save_code_meanings(self):
+            """A person says what some values of one code column mean: the labels are kept on the property (element_state,
+            confirmed, with the open item as its evidence) over what was kept before, and every place that shows the code
+            reads them from there. A blank label takes a value's meaning back; none left takes the whole confirmation back."""
+            request = self.code_column_request()
+            if request is None:
+                return
+            found, profile, enums, signer, payload = request
+            try:
+                stale_check(found[0])
+                posted = check_enum(profile, payload.get('values'))
+            except ValueError as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            merged = merge_enum((enums.get(profile['field']) or {}).get('values') or [], posted)
+            element = f'property:{memory_key(found[0])}:{profile["field"]}'
+            anchors = stored_anchors(code_anchor(profile, found[1]['sources'][profile['source']]['records'], key_columns(found[0]['ontology'], profile['source'])))   # what the person looked at: the next version is held against it
+            change = (element, 'confirmed', f'open_item:{profile["id"]}', signer, {'values': merged}, anchors) if merged else (element, 'proposed', None, signer)
+            given = [f'{e["value"]} = {e["label"]}' for e in posted if e['label']]
+            held = {e['value'] for e in (enums.get(profile['field']) or {}).get('values', []) if e['label']}
+            taken = [e['value'] for e in posted if not e['label'] and e['value'] in held]   # a blank for a value never confirmed takes nothing back
+            what = '，'.join([*([f'已确认（{"、".join(given)}）'] if given else []), *([f'已收回（{"、".join(taken)}）'] if taken else [])])
+            self.keep_code_state(found, change, '含义', f'「{profile["column"]}」的含义{what}')
+
+        def save_repeat_rule(self):
+            """A person says how the rows of a repeated key are read: both kept, the latest by a column, or a data error.
+            Kept as a confirmed element_state with the open item as its evidence and the person who chose; {"rule": null}
+            takes the choice back. Answers with the lists as they now stand."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = str(payload.get('saved_as') or '')
+                found = card_run(name)
+                if found is None:
+                    raise ValueError('这份运行没有数据表')
+                result, bundle, graph = found
+                names = {t['key']: t.get('label') or t['key'] for t in normalize_proposal(result['ontology'])['object_types']}
+                group = next((g for g in repeated_keys(result['ontology'], bundle, graph) if g['id'] == payload.get('id')), None)
+                if group is None:
+                    raise ValueError('这个重复的编号已经不在清单上了')
+                signer = payload.get('confirmed_by')
+                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
+                    raise ValueError('确认人最多写 40 个字')
+                signer = (signer or '').strip() or None
+                element = f'repeat_rule:{memory_key(result)}:{group["rule_key"]}'
+                stale_check(result)
+                if 'rule' in payload and payload['rule'] is None:
+                    change = (element, 'proposed', None, signer)
+                    because = f'{names[group["type"]]}（{group["source"]}表）重复编号的处理办法已收回'
+                else:
+                    change = (element, 'confirmed', f'open_item:{group["id"]}', signer, check_rule(group, payload))
+                    said = {'keep_both': '每一行都留', 'data_error': '当作数据错误', 'keep_latest': f'只留「{change[4].get("column")}」最新的一行'}[change[4]['rule']]
+                    because = f'{names[group["type"]]}（{group["source"]}表）重复的编号已选「{said}」'
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            try:
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    set_element_states(conn, [change])
+                finally:
+                    conn.close()
+                found = card_run(name)   # read again: the rule is part of what every reader of the rows sees
+            except Exception as exc:
+                self.reply(500, {'error': f'处理办法没有保存：{type(exc).__name__}: {exc}'[:300]})
+                return
+            warning = recompute_warning(name, because) or views_warning(sync_run_views(found[0]))
+            self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
+
+        def confirm_again(self):
+            """{"saved_as", "id": "review:<property|repeat_rule|view|relation>:<name>", "confirmed_by"}: a person looked again at a definition
+            that waited for a second look (anchors.py) and keeps it as it is. It is confirmed again, by them, on the rows of this run:
+            its anchors are taken from these rows now. A definition that cannot be kept as it is (its column is no longer a code, the
+            column it orders by is gone, a view that reads a meaning still waiting) is refused with the reason."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                found = workspace_run(str(payload.get('saved_as') or ''))
+                if found is None:
+                    raise ValueError('这份运行没有数据表')
+                signer = payload.get('confirmed_by')
+                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
+                    raise ValueError('确认人最多写 40 个字')
+                signer = (signer or '').strip() or None
+                asked = re.fullmatch(r'review:(property|repeat_rule|view|relation):(.+)', str(payload.get('id') or ''), re.S)
+                if asked is None:
+                    raise ValueError('这一项不在“需要再看一眼”的清单上')
+                prefix, name = asked.groups()
+                result, bundle, graph = found
+                stale_check(result)
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    row = element_rows(conn, f'{prefix}:{memory_key(result)}:', 'checked').get(name)
+                    if row is None:
+                        raise ValueError('这一项已经不在“需要再看一眼”的清单上了')
+                    content, anchors = row['content'], None
+                    if prefix == 'property':
+                        profile = next((p for p in code_candidates(result, bundle) if p['field'] == name), None)
+                        if profile is None:
+                            raise ValueError('这一列现在不再像一列代码，没法照旧确认；要改就去改它的含义')
+                        anchors = code_anchor(profile, bundle['sources'][profile['source']]['records'], key_columns(result['ontology'], profile['source']))
+                    elif prefix == 'repeat_rule':
+                        group = next((g for g in repeated_keys(result['ontology'], bundle, graph or build_graph(result['ontology'], bundle)) if g['rule_key'] == name), None)
+                        content = {**content, 'covers': sorted(o['identity'] for o in group['objects']) if group else []}
+                        why = unmet(group, content) if group else None
+                        if why:
+                            raise ValueError(f'{why}没法照旧确认，请重新选一种处理办法')
+                    elif prefix == 'view':
+                        versions = {t['dataset']: t['version'] for t in (result.get('data_checks') or {}).get('tables', []) if t.get('status') == 'ok'}
+                        anchors = view_anchor_now(conn, memory_key(result), run_id(result['saved_as']), result['ontology'], stored_tables(conn, result), name, content, versions)
+                    else:
+                        now = next((r for r in (result.get('data_checks') or {}).get('relations') or [] if r['key'] == name), None)
+                        if now is None:
+                            raise ValueError('这次的数据里查不出这条关系，没法照旧确认')
+                        anchors = relation_anchor(now)
+                finally:
+                    conn.close()
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            except sqlite3.Error as exc:
+                self.reply(500, {'error': f'再确认没有保存：{type(exc).__name__}: {exc}'[:300]})
+                return
+            self.keep_code_state(found, (row['element_id'], 'confirmed', row['evidence_ref'], signer, content, stored_anchors(anchors)), '再确认', f'「{name}」的定义照旧再确认了')
+
+        def save_view(self):
+            """A person defines a named view from confirmed meanings ("有效订单": 状态码 is not 已取消) or for the latest row per key
+            ("最新快照"), or takes one back ({"name", "remove": true}). Kept as a confirmed element_state with the person who
+            defined it; answers with the lists, the views among them, as they now stand."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                found = workspace_run(str(payload.get('saved_as') or ''))
+                if found is None:
+                    raise ValueError('这份运行没有数据表')
+                signer = payload.get('confirmed_by')
+                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
+                    raise ValueError('确认人最多写 40 个字')
+                stale_check(found[0])
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    versions = {t['dataset']: t['version'] for t in (found[0].get('data_checks') or {}).get('tables', []) if t.get('status') == 'ok'}
+                    message = save_definition(conn, memory_key(found[0]), payload, stored_tables(conn, found[0]), found[0]['ontology'], (signer or '').strip() or None,
+                                              run_id(found[0]['saved_as']), versions)
+                finally:
+                    conn.close()
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            except sqlite3.Error as exc:
+                self.reply(500, {'error': f'视图没有保存：{type(exc).__name__}: {exc}'[:300]})
+                return
+            warning = views_warning(sync_run_views(found[0]))
+            self.reply(200, {**code_reply(found), 'message': message, **({'warning': warning} if warning else {})})
+
+        def run_pipeline_request(self):
+            """{"saved_as", "pipeline": {"steps": [...]}}: the pipeline run on the tables this run stored and on its views
+            (an input may name either), read-only. Answers with each node's rows in and out and, for a join, what it did (see
+            pipelines.py). Nothing is written: not the workspace, not the run."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = str(payload.get('saved_as') or '')
+                if not SAVED_NAME.match(name) or not (output_dir / name).exists():
+                    raise FileNotFoundError(name)
+                result = json.loads((output_dir / name).read_text(encoding='utf-8'))
+                if not (result.get('data_checks') or {}).get('tables'):
+                    raise ValueError('这次运行没有存进工作区的表，没有数据可以编排')
+                found = card_run(name)   # None when the draft did not pass the checks: its tables are still stored and can be joined, but it has no definitions to read
+                listed, codes = [], frozenset()
+                if found is not None:
+                    profiles, enums = code_state(found[0], found[1])
+                    codes = {p['field'] for p in profiles} | set(enums)   # columns that are codes, confirmed or not: a sum of them means nothing
+                    listed = view_context(result)['views']
+                conn = readonly_workspace()   # read-only: a pipeline cannot change a table
+                try:
+                    tables = stored_tables(conn, result)
+                    read_views(conn, run_id(name), listed)
+                    reply = run_pipeline(conn, payload.get('pipeline'), tables, workspace_views(listed), codes)
+                finally:
+                    conn.close()
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, reply)
+
+        def dismiss_code_column(self):
+            """A person says this column is not a code list ("不是代码"): kept as rejected on the property, so it is not offered again."""
+            request = self.code_column_request()
+            if request is None:
+                return
+            found, profile, _, signer, _ = request
+            try:
+                stale_check(found[0])
+            except ValueError as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.keep_code_state(found, (f'property:{memory_key(found[0])}:{profile["field"]}', 'rejected', f'open_item:{profile["id"]}', signer), '“不是代码”',
+                                 f'「{profile["column"]}」被说成不是代码列')
+
+        def draft_code_meanings(self):
+            """One call to the 字段释义员 for the code columns whose meanings nobody confirmed. The guesses are kept with
+            the file and shown with the open item, each marked as strong only when the data backs it."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                found = workspace_run(str(payload.get('saved_as') or ''))
+                if found is None:
+                    raise ValueError('这份运行没有数据表，没有代码列')
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            if gateway is None:
+                self.reply(503, {'error': NO_KEY})
+                return
+            result, bundle, graph = found
+            profiles, enums = code_state(result, bundle)
+            open_columns = [p for p in profiles if any(v['value'] not in {e['value'] for e in (enums.get(p['field']) or {}).get('values', [])} for v in p['values'])]
+            drafted = draft_meanings(open_columns, gateway, result.get('purpose') or '')
+            if drafted['error']:
+                self.reply(502, {'error': drafted['error']})
+                return
+            path = output_dir / 'code_meanings' / f'{memory_key(result)}.json'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({'columns': {**code_drafts(result), **drafted['columns']}, 'model': drafted['model'],
+                                        'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds')}, ensure_ascii=False, indent=1), encoding='utf-8')
+            self.reply(200, {**code_reply(found), 'rejected': drafted['rejected']})
 
         def draft_form(self):
             """One call to the 字段释义员; what a person already wrote is kept."""
@@ -999,7 +1832,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             form_path(result).write_text(json.dumps(stored, ensure_ascii=False, indent=1), encoding='utf-8')
             result['evaluation'].setdefault('handover', handover)
             result['evaluation']['form'] = form_state(result)
-            (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            write_run((output_dir / name), result)
             self.reply(200, result)
 
         def rules(self):
@@ -1030,7 +1863,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             stored.write_text(json.dumps({'adopted': [known[x] for x in adopted], 'declined': sorted(set(declined) - set(adopted))},
                                          ensure_ascii=False, indent=1), encoding='utf-8')
             result['evaluation']['rules'] = rules_state(result, bundle, graph)
-            (output_dir / name).write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            write_run((output_dir / name), result)
             self.reply(200, result)
 
         def confirm(self):
@@ -1048,13 +1881,39 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
                     raise ValueError('确认人最多写 40 个字')
                 signer = (signer or '').strip() or None
+                if payload['decisions'].get('relations'):   # a relation judged right keeps what its check found: only the newest run's
+                    stale_check(result)
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             earlier = result.get('confirmation') or {}
-            if earlier.get('decisions') == payload.get('decisions') and earlier.get('confirmed_by') == signer:
+            if earlier.get('decisions') == payload.get('decisions') and earlier.get('confirmed_by') == signer and 'elements' in earlier:
                 self.reply(200, result)   # the same judgement again (a retried call): nothing new to keep
                 return
+            try:   # the workspace rows are written first but kept only once the run files are written too: the two never disagree
+                rules = repeat_rules(result)   # read before the write below holds the workspace
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    on_file = element_ids(conn, 'object_type:') + element_ids(conn, 'relation:')
+                    changes = element_changes(memory_key(result), payload['decisions'], (result.get('data_checks') or {}).get('keys') or [], signer, on_file)
+                    seen = {r['key']: r for r in (result.get('data_checks') or {}).get('relations') or []}
+                    for name, change in list(changes.items()):   # a relation judged right keeps what the check found when it was judged
+                        kind, _, rkey = name.partition(':')
+                        if kind == 'relations' and change[1] == 'confirmed' and rkey in seen:
+                            changes[name] = (*change, None, stored_anchors(relation_anchor(seen[rkey])))
+                    with element_state_writes(conn, list(changes.values())) as rows:
+                        result = self.keep_confirmation(result, result_path, payload, reference, signer, rules, {
+                            name: {k: rows[change[0]][k] for k in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
+                            for name, change in changes.items()})
+                finally:
+                    conn.close()
+            except Exception as exc:   # whatever failed, the person is told and nothing of the confirmation is kept
+                self.reply(500, {'error': f'确认没有保存：{type(exc).__name__}: {exc}'[:300]})
+                return
+            self.reply(200, result)
+
+        def keep_confirmation(self, result, result_path, payload, reference, signer, rules, elements):
+            """Write what a saved confirmation changes in the run files; returns the run as it now stands."""
             now = datetime.now(timezone.utc).isoformat(timespec='seconds')
             refs = output_dir / 'references'
             refs.mkdir(parents=True, exist_ok=True)
@@ -1066,17 +1925,17 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     json.dumps(old, ensure_ascii=False, indent=1), encoding='utf-8')
             stored.write_text(json.dumps(
                 {'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
-            result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference}
+            result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference, 'elements': elements}
             result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'compared_at': now,
                                                  'diff': compare_ontologies(parse_reference(reference), result['ontology'])}
             acceptance = result['evaluation'].get('acceptance')
             bundle_path = output_dir / result['saved_as'].replace('.json', '.bundle.json')
             if acceptance and result['file'].get('kind') != 'document' and bundle_path.exists():
-                bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+                bundle = {**json.loads(bundle_path.read_text(encoding='utf-8')), 'repeat_rules': rules}
                 # only this run's own copy: the file's shared list may be newer than this run, and the next upload inherits it as it is
                 result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, acceptance['items'])
-            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
-            self.reply(200, result)
+            write_run(result_path, result)
+            return result
 
         def confirm_derived(self):
             """A person confirms a derived measure: code checks the formula again, keeps it with the file, and answers
@@ -1103,21 +1962,22 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             measures = kept + [{**formula, 'confirmed_at': datetime.now(timezone.utc).isoformat(timespec='seconds')}]
             (output_dir / 'derived').mkdir(parents=True, exist_ok=True)
             (output_dir / 'derived' / f'{key}.json').write_text(json.dumps({'measures': measures}, ensure_ascii=False, indent=1), encoding='utf-8')
-            bundle = json.loads((output_dir / result['saved_as'].replace('.json', '.bundle.json')).read_text(encoding='utf-8'))
+            bundle = with_rules(result, json.loads((output_dir / result['saved_as'].replace('.json', '.bundle.json')).read_text(encoding='utf-8')))
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
             graph = build_graph(result['ontology'], bundle)
             cells = card_cells(result, bundle, graph)
+            answer_with = make_answerer(result, bundle, reviewed, measures, cells, graph)
             rounds = [*(result['evaluation'].get('asked') or []), *([result['evaluation']['questions']] if result['evaluation'].get('questions') else [])]
             for answered in rounds:
                 for i, item in enumerate(answered.get('items') or []):
                     wanted = ((item.get('query') or {}).get('measure') or {}).get('derived') if isinstance(item.get('query'), dict) else None
                     if wanted != formula['label'] or item.get('query', {}).get('start') != formula['type']:
                         continue
-                    again = answer_query(reviewed, bundle, item['query'], item['question'], graph, measures, cells)
-                    answered['items'][i] = {**{k: v for k, v in item.items() if k not in ('derive', 'reason', 'answer', 'path', 'status')}, **again}
+                    again = answer_with(item['query'], item['question'], item.get('definitions_used'), check=not item.get('edited'), told=item.get('definitions_told') or [])
+                    answered['items'][i] = {**{k: v for k, v in item.items() if k not in ('derive', 'reason', 'answer', 'path', 'status', 'evidence', 'unmet', 'upstream', 'understood')}, **again}
                 answered['answered'] = sum(x['status'] == 'answered' for x in answered.get('items') or [])
             result['evaluation']['derived'] = measures
-            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            write_run(result_path, result)
             self.reply(200, result)
 
         def requery(self):
@@ -1143,7 +2003,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': '文档没有数据行可以查询；评测二只对数据表可用'})
                 return
             if result['ontology']['status'] != 'auto_built_verified':
-                self.reply(400, {'error': '本体没有通过结构核验，不能出题'})
+                self.reply(400, {'error': blocked_text(result, '不能出题')})
                 return
             evaluation = result['evaluation']
             accepted = (evaluation.get('acceptance') or {}).get('items') or []
@@ -1169,14 +2029,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             query = {**found['query'], 'where': [w for w in where_of(found) if not same(w)]}
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
-            bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-            answer = answer_query(reviewed, bundle, query, question, derived=derived_of(memory_key(result)), card=card_cells(result, bundle))
+            bundle = with_meanings(result, json.loads(bundle_path.read_text(encoding='utf-8')))
+            answer = make_answerer(result, bundle, reviewed, derived_of(memory_key(result)), card_cells(result, bundle))(query, question, check=False)   # the person took a condition off on purpose
             dropped = [*((found.get('edited') or {}).get('dropped') or []), {'field': drop['field'], 'equals': drop['equals']}]
             evaluation.setdefault('asked', []).append({
                 'prompt_version': None, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 'items': [{'question': question, 'reasoning': '', 'query': query, **answer, 'asked': True, 'edited': {'dropped': dropped}}],
                 'answered': int(answer['status'] == 'answered'), 'total': 1, 'error': None})
-            result_path.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            write_run(result_path, result)
             self.reply(200, result)
 
         def ask(self):
@@ -1206,12 +2066,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': '文档没有数据行可以查询；评测二只对数据表可用'})
                 return
             if result['ontology']['status'] != 'auto_built_verified':
-                self.reply(400, {'error': '本体没有通过结构核验，不能出题'})
+                self.reply(400, {'error': blocked_text(result, '不能出题')})
                 return
-            bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+            bundle = with_meanings(result, json.loads(bundle_path.read_text(encoding='utf-8')))
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
-            answered = ask_questions(reviewed, bundle, gateway, question.strip() if question else None, derived=derived_of(memory_key(result)),
-                                     card=card_cells(result, bundle))
+            cells = card_cells(result, bundle)
+            answerer = make_answerer(result, bundle, reviewed, derived_of(memory_key(result)), cells)
+            answered = ask_questions(reviewed, bundle, gateway, question.strip() if question else None, derived=derived_of(memory_key(result)), card=cells,
+                                     answerer=answerer, definitions=answerer.definitions)
             if answered['error'] and answered['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': answered['error']})
                 return
@@ -1224,7 +2086,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     latest['evaluation'].setdefault('asked', []).append(answered)
                 else:
                     latest['evaluation']['questions'] = answered
-                result_path.write_text(json.dumps(latest, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+                write_run(result_path, latest)
             self.reply(200, latest)
 
     return ThreadingHTTPServer(('127.0.0.1', port), Handler)

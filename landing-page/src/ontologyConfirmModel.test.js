@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { addType, confirmProgress, decisionsOf, removeAdded, renameType, setVerdict } from "./ontologyConfirmModel.js";
+import { addType, confirmProgress, decisionsOf, elementNote, removeAdded, renameType, setVerdict } from "./ontologyConfirmModel.js";
 import { overviewTiles } from "./ontologyGraphModel.js";
 
 const ontology = { object_types: [{ key: "customer", label: "客户" }, { key: "order", label: "订单" }, { key: "product", label: "产品" }],
@@ -44,4 +44,22 @@ test("a confirmed reference names itself on the tile", () => {
   const tile = overviewTiles(run).find((t) => t.key === "ref");
   assert.equal(tile.value, "命中 2 / 3");
   assert.equal(tile.hint, "对照你确认过的本体：1 个对象没对上");
+});
+
+const savedRun = {
+  ontology: { object_types: [{ key: "customer", label: "客户" }, { key: "order", label: "订单" }] },
+  data_checks: { tables: [{ dataset: "客户", rows_in: 31, rows_stored: 31, dropped: {} }, { dataset: "订单", rows_in: 160, rows_stored: 160, dropped: {} }],
+    keys: [{ object_type: "customer", dataset: "客户", key_columns: ["客户编号"], check_type: "key_unique", status: "failed", violations: 1, null_key_rows: 0, check_id: 4, samples: [{ key: { 客户编号: "KH012" }, count: 2 }] },
+           { object_type: "order", dataset: "订单", key_columns: ["订单号"], check_type: "key_unique", status: "passed", violations: 0, null_key_rows: 0, check_id: 5, samples: [] }] },
+  confirmation: { elements: {
+    "types:customer": { state: "confirmed", evidence_ref: "check_result:4", confirmed_by: "王工", confirmed_at: "2026-11-12T10:00:00+00:00", version: 2 },
+    "types:order": { state: "rejected", evidence_ref: null, confirmed_by: null, confirmed_at: "2026-11-12T10:00:00+00:00", version: 1 } } },
+};
+
+test("a saved element shows who confirmed it, when, which version, and the stored check it rests on", () => {
+  assert.deepEqual(elementNote(savedRun, "types", "customer"),
+    { state: "confirmed", who: "王工", at: "2026-11-12T10:00:00+00:00", version: 2, evidence: ["客户（客户编号）：重复 1 行，如 KH012（2 行）"] });
+  assert.deepEqual(elementNote(savedRun, "types", "order"), { state: "rejected", who: null, at: "2026-11-12T10:00:00+00:00", version: 1, evidence: [] });
+  assert.equal(elementNote(savedRun, "relations", "order_customer"), null);   // nothing saved for it
+  assert.equal(elementNote({ ontology: savedRun.ontology }, "types", "customer"), null);   // a run saved before confirmations were recorded
 });

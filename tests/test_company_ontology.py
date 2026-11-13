@@ -36,13 +36,15 @@ PROPOSAL = {
 
 
 class Reply:
+    """Answers with each reply in turn and the last one again after that: the fixture's customer C2 appears twice, so a
+    draft that keys customers on 客户编号 is sent back once for its repeated key."""
     def __init__(self, *contents):
         self.contents = list(contents)
         self.prompts = []
 
     def complete_json(self, *, system_prompt, user_prompt):
         self.prompts.append((system_prompt, json.loads(user_prompt)))
-        return ModelCompletion(provider='fake', model='deepseek-flash', content=json.dumps(self.contents.pop(0)))
+        return ModelCompletion(provider='fake', model='deepseek-flash', content=json.dumps(self.contents.pop(0) if len(self.contents) > 1 else self.contents[0]))
 
 
 class CompanyOntologyTests(unittest.TestCase):
@@ -64,7 +66,8 @@ class CompanyOntologyTests(unittest.TestCase):
         self.assertEqual(ontology['status'], 'auto_built_verified')
         self.assertEqual(ontology['schema'], 'company_ontology.v1')
         self.assertEqual(ontology['prompt_version'], COMPANY_PROMPT_VERSION)
-        self.assertEqual(len(ontology['attempts']), 2)
+        self.assertEqual(len(ontology['attempts']), 3)   # fix the fields, then the repeated customer key the data shows, then no progress
+        self.assertEqual([e['code'] for e in ontology['attempts'][-1]['errors']], ['key_not_unique'])
         self.assertEqual(gateway.prompts[0][0], COMPANY_SYSTEM_PROMPT)
         self.assertIn('errors_found_by_code', gateway.prompts[1][1])
         self.assertEqual(ontology['data_gaps'], ['订单没有产品明细'])

@@ -38,9 +38,16 @@ def instance_date(ontology: dict, bundle: dict, graph: dict, inst: tuple) -> str
 
 
 def _timing(event_date, signal_date):
+    """How the signal sits against the event. When either date is only a month (2026-03) no day count is made up: the months
+    apart are given, and a date and a month in the same month are "same_month"."""
     if not event_date or not signal_date:
         return None
-    days = (date.fromisoformat(signal_date) - date.fromisoformat(event_date)).days
+    if len(event_date) == 7 or len(signal_date) == 7:
+        month = lambda value: int(value[:4]) * 12 + int(value[5:7])
+        months = month(signal_date) - month(event_date)
+        relation = 'after' if months > 0 else 'same_month' if months == 0 else 'before'
+        return {'event_date': event_date, 'signal_date': signal_date, 'relation': relation, 'days': None, 'months': months}
+    days = (date.fromisoformat(signal_date[:10]) - date.fromisoformat(event_date[:10])).days   # a timestamp is its day
     relation = 'after' if days > 0 else 'same_day' if days == 0 else 'before'
     return {'event_date': event_date, 'signal_date': signal_date, 'relation': relation, 'days': days}
 

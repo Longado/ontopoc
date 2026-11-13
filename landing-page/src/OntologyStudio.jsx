@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import { SearchDialog } from "./SearchDialog.jsx";
-import { askSuggestions, bridgeLines, latestAsked, layoutTables } from "./dataLayoutModel.js";
+import { askSuggestions, bridgeLines, latestAsked, layoutTables, nameNotes, relationLines } from "./dataLayoutModel.js";
 import {
-  ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, evidenceLines, evidenceTitle, groupFigure, measureOf,
-  COVERAGE_NOTE, conflictGroups, conflictNote, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, serviceReady, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
+  ACCEPT, CHECK_LABELS, DEMO_DOC_URL, DEMO_URL, ERROR_LABELS, isDocument, previousLine, sourceLine, RESULT_KEY, STATUS_LABELS, answerLines, attemptSummary, checkSummary, evidenceLines, evidenceTitle, understoodLine, groupFigure, measureOf,
+  COVERAGE_NOTE, SETTLED_BY_LATEST, conflictCount, conflictGroups, conflictNote, rerunLine, jobOutcome, jobStartedAt, localTime, memoryNote, missingReferenceFeedback, saveResult, progressSteps, referenceCounts, relationBindingLine, serviceBlock, serviceError, serviceReady, stabilityLines, staleNote, typeLabel, validateRun, verificationIssues,
 } from "./ontologyStudioModel.js";
 import { consensusLines, overviewTiles, pathOf, questionPanelCount } from "./ontologyGraphModel.js";
 import { batchProblem, batchSummary, isDoc, previewFactText, previewKeysText, previewLinkText, sizeText, uploadPayload } from "./ontologyUploadModel.js";
@@ -12,7 +12,7 @@ import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js
 import { downloadName, summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
 import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, canReaccept, changeLabel, previousTitle, purposeNote, replacedNote, replacesAccepted, savedAcceptance } from "./ontologyAcceptanceModel.js";
-import { addType, confirmProgress, decisionsOf, otherRunTypes, referenceDownload, removeAdded, renameType, returnedNote, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
+import { addType, confirmProgress, decisionsOf, elementNote, otherRunTypes, referenceDownload, removeAdded, renameType, returnedNote, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverModel.js";
 import { folderLabel } from "./runLibraryModel.js";
@@ -21,7 +21,13 @@ import { InstanceGraph } from "./InstanceGraph.jsx";
 import { CardSection, AnswerForm } from "./CardSection.jsx";
 import { PIPELINE_EXPORT, answeredRows, canAnswerItem, cardBody, cardEvidence, draftOf, editBasis, editCell, itemAnswer, pipelineUrl, readAnswerer, rememberAnswerer } from "./cardModel.js";
 import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, queryCanHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
-import { dropFor, openItemsEmpty } from "./openItemsModel.js";
+import { dropFor, openItemsEmpty, relabelGroups, reviewStamp } from "./openItemsModel.js";
+import { postAndReread } from "./codeSaveModel.js";
+import { PipelineCard } from "./PipelineCard.jsx";
+import { ViewsCard } from "./ViewsCard.jsx";
+import { pipelineSources, pipelineTables, storedPipelineTables } from "./pipelineModel.js";
+import { CodeMeaningForm, CodeMeanings } from "./CodeMeaningForm.jsx";
+import { RepeatRuleForm } from "./RepeatRuleForm.jsx";
 import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
 import { earlierVersionOf, versionRows } from "./versionModel.js";
@@ -180,11 +186,11 @@ function Conflicts({ fit, ontology, onShow }) {
   const [rows, toggle] = useFirst(fit.identity_conflicts);
   const groups = conflictGroups(fit);
   return <section className="pr-card">
-    <h2>同一对象信息打架（{fit.identity_conflicts.length}）</h2>
+    <h2>同一对象信息打架（{conflictCount(fit)}）</h2>
     <p className="pr-muted">同一个编号在不同行里，某个字段写了不同的值。也可能不是数据错了，而是这里本来就是一对多（例如一张订单分三次交付，三个交付日期挂在了订单上）：那要把它拆成单独的对象，而不是回去改数据。{fit.identity_conflicts.length > SHOWN_GROUPS ? "如果一类对象大量打架，常见原因是识别字段不够区分：同一个编号其实是好几样东西（例如缺了行号）。" : ""}</p>
-    {groups.length > 1 && <ul className="os-list">{groups.map((g) => <li key={`${g.type}/${g.field}`}>{typeLabel(ontology, g.type)}的“{g.field}”：{g.count} 个编号</li>)}</ul>}
+    {groups.length > 1 && <ul className="os-list">{groups.map((g) => <li key={`${g.type}/${g.field}`}>{typeLabel(ontology, g.type)}的“{g.field}”：{g.count} 个编号{g.settled ? `（${g.settled} 个${SETTLED_BY_LATEST}）` : ""}</li>)}</ul>}
     <div className="pr-table-wrap"><table className="pr-table"><thead><tr><th>对象</th><th>表</th><th>编号</th><th>字段</th><th>不同的值</th><th></th></tr></thead>
-      <tbody>{rows.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td className="os-wrap">{c.values.join(" / ")}</td><td><ShowOnGraph type={c.type} onShow={onShow} /></td></tr>)}</tbody></table></div>
+      <tbody>{rows.map((c, i) => <tr key={i}><td>{typeLabel(ontology, c.type)}</td><td>{c.source}</td><td>{c.identity}</td><td>{c.field}</td><td className="os-wrap">{c.values.join(" / ")}{c.settled && <em className="os-chip-note"> {SETTLED_BY_LATEST}</em>}</td><td><ShowOnGraph type={c.type} onShow={onShow} /></td></tr>)}</tbody></table></div>
     {toggle}
   </section>;
 }
@@ -305,26 +311,30 @@ const GoCard = createContext(null);   // opens the 口径卡 page, for the answe
 function Answer({ item, onPath, run, requery }) {
   const [all, setAll] = useState(false);
   const goCard = useContext(GoCard);
+  const meanings = useContext(CodeMeanings);
   const onCard = cardEvidence(item);
-  const a = item.answer;
+  const a = item.answer && item.answer.groups ? { ...item.answer, groups: relabelGroups(item, item.answer.groups, meanings) } : item.answer;   // codes read as their confirmed meanings
   const measure = measureOf(item);
   const note = run && item.query ? conflictNote(run, pathOf(run.ontology, item.query)?.nodes || []) : "";
   const max = a?.groups?.length ? Math.max(...a.groups.map(([, n]) => n)) : 0;
   const width = ([, n, all]) => (a.share ? (n / all) * 100 : (n / max) * 100);   // a measure ranks by its own value, so max covers it too
   const extra = answerLines(item).slice(a?.groups?.length || 0);   // group lines come first; the bars show those
   const pack = evidenceLines(item);
+  const understood = understoodLine(item);
   return <>
     <ReviewNotes item={item} points={reviewPoints(item, run?.ontology)} elsewhere={elsewhereLine(item, run?.ontology)} requery={requery} />
     {answerTags(item).length > 0 && <p className="os-answer-tags" title={a.share ? "分母小的组比例容易偏高，请一起看分母" : measure?.op === "average" ? "只有一两个值的组，别当成规律" : undefined}>{answerTags(item).map((t) => <span key={t}>{t}</span>)}</p>}
     {a?.groups?.length > 0 && <ul className="os-bars">{(all ? a.groups : a.groups.slice(0, SHOWN_GROUPS)).map((g) => <li key={g[0]}><span>{g[0]}</span><i style={{ width: `${Math.max(2, width(g))}%` }} /><b>{groupFigure(item, g)}</b></li>)}</ul>}
     {a?.groups?.length > SHOWN_GROUPS && <button type="button" className="pr-link os-more-groups" onClick={() => setAll(!all)}>{all ? "只看前 10 组" : `展开其余 ${a.groups.length - SHOWN_GROUPS} 组`}</button>}
     {note && <p className="pr-muted">{note}</p>}
+    {item.rerun && <p className="os-rerun pr-muted">{rerunLine(item)}</p>}
     {extra.length > 0 && <ul className="os-answer">{extra.map((l) => <li key={l}>{l}</li>)}</ul>}
     {onCard && <div className="os-card-evidence">
       {onCard.data && <p className="pr-muted">{onCard.data}</p>}
       {onCard.lines.map((l, i) => <p key={i} className="pr-muted">{l}</p>)}
       {onCard.incomplete.length > 0 && <div className="os-notes" role="group" aria-label="数据只有一部分">{onCard.incomplete.map((l, i) => <p key={i} className="os-notes-line"><span>{l}</span></p>)}</div>}
     </div>}
+    {understood && <p className="os-understood">{understood}</p>}
     {pack.length > 0 && <details className="os-how"><summary>{evidenceTitle(item)}</summary><ul className="os-answer">{pack.map((l) => <li key={l}>{l}</li>)}</ul></details>}
     {item.path && <p className="os-path-line" title="怎么查的"><span aria-hidden="true">↳</span><span className="sr-only">怎么查的：</span>{item.path}{item.query && onPath && <button type="button" className="os-graph-link" onClick={() => onPath(item.query, item.path)}>在图上看</button>}</p>}
     {item.status !== "needs_derived" && <Reason item={item} />}
@@ -424,11 +434,21 @@ function AskBar({ run, canAsk, busy, error, onAsk, askRef, onPath, requery, heal
   </section>;
 }
 
-function DataTab({ run, place }) {
+/** What the relation check found for one relation, beside the table its rows come from; amber lines are the problems. */
+function RelationCheck({ relation, name, ontology }) {
+  return <div className="os-relation-check">
+    <p className="pr-muted">关系「{name ? `${typeLabel(ontology, name.from)} ${name.label || "→"} ${typeLabel(ontology, name.to)}` : relation.key}」</p>
+    <ul className="os-list">{relation.lines.map((l) => <li key={l.text} className={l.warn ? "os-key-failed" : ""}>{l.text}</li>)}</ul>
+  </div>;
+}
+
+function DataTab({ run, place, list, client }) {
   const all = layoutTables(run);
   const tables = all.filter((t) => t.name === (place || all[0]?.name));
   const bridges = bridgeLines(run);
   const split = new Set(all.map((t) => t.group)).size > 1;
+  const notes = nameNotes(list?.items);
+  const joinable = pipelineTables(all).length >= 2 ? pipelineTables(all) : storedPipelineTables(list?.viewTables);
   return <>
     {split && <section className="pr-card os-bridge">
       <h2>有几张表没连上</h2>
@@ -436,15 +456,25 @@ function DataTab({ run, place }) {
       {bridges.length > 0 && <ul className="os-list">{bridges.map((l) => <li key={l}>{l}</li>)}</ul>}
       {bridges.length > 0 && <Hint>这只说明取值对得上，是不是同一个东西由你判断。是的话，重新上传时在建模目的里写上这两列是同一个编号，模型会按它建关系；代码照样会核验。</Hint>}
     </section>}
+    {run.data_checks?.error && <p role="alert" className="pr-error">数据检查没有跑完：{run.data_checks.error}</p>}
     {tables.map((t) => <section key={t.name} className="pr-card os-table-card">
       <div className="pr-card-head"><h2>{t.name}</h2><span className="os-stats"><b>{t.rows.toLocaleString("zh-CN")}</b> 行<b>{t.fields ? t.fields.length : t.fieldCount}</b> 列{split && <em className="os-group">第 {t.group + 1} 组</em>}</span></div>
+      {t.checks && <div className="os-table-checks">
+        {t.checks.error ? <p role="alert" className="pr-error">{t.checks.error}</p>
+          : <p className="pr-muted">文件 {t.checks.rowsIn.toLocaleString("zh-CN")} 行，存入 {t.checks.rowsStored.toLocaleString("zh-CN")} 行{t.checks.droppedCount > 0 && `，丢掉 ${t.checks.droppedCount} 行（${t.checks.dropped}）`}</p>}
+        {t.checks.keys.length > 0 && <ul className="os-list">{t.checks.keys.map((k) => <li key={`${k.type}/${k.columns}`} className={k.failed ? "os-key-failed" : ""}>
+          {k.type}按 {k.columns} 识别：{k.text}</li>)}</ul>}
+        {(relationLines(run, (r) => r.source === t.name, list?.repeatRules) || []).map((r) => <RelationCheck key={r.key} relation={r} name={run.ontology.relations.find((x) => x.key === r.key)} ontology={run.ontology} />)}
+      </div>}
       {t.fields && <div className="os-type-mix">{typeMix(t.fields).map(([type, n]) => <span key={type}><TypeChip type={type === "全空" ? null : type} />× {n}</span>)}</div>}
       {t.skipped.length > 0 && <p className="pr-muted" title="表头上方的标题行，读表时跳过了">跳过：{t.skipped.join("；")}</p>}
       {t.fields ? <div className="os-table-scroll"><table className="os-fields">
         <thead><tr><th scope="col">字段</th><th scope="col">类型</th><th scope="col">最长</th><th scope="col" title="有值的行占多少">填充</th></tr></thead>
-        <tbody>{t.fields.map((f) => <tr key={f.path}><td>{f.path}</td><td><TypeChip type={f.type} /></td><td>{f.length || "—"}</td><td><FillBar field={f} rows={t.rows} /></td></tr>)}</tbody>
+        <tbody>{t.fields.map((f) => <tr key={f.path}><td>{f.path}{notes[`${t.name}.${f.path}`] && <small className="os-key-failed os-name-note">{notes[`${t.name}.${f.path}`]}</small>}</td><td><TypeChip type={f.type} /></td><td>{f.length || "—"}</td><td><FillBar field={f} rows={t.rows} /></td></tr>)}</tbody>
       </table></div> : <p className="pr-muted">这次运行没有逐列记录，重新上传可看到。</p>}
     </section>)}
+    {run.saved_as && list && <ViewsCard key={`views-${run.saved_as}`} views={list.views} tables={list.viewTables} meanings={list.meanings} error={list.viewsError} client={client} />}
+    {run.saved_as && joinable.length >= 2 && <PipelineCard key={run.saved_as} runName={run.saved_as} sources={pipelineSources(joinable, list?.views)} rowCap={list?.rowCap} />}
   </>;
 }
 
@@ -555,9 +585,10 @@ function ConfirmCard({ run, confirm }) {
 
 const VIEWS = [["graph", "关系图"], ["instances", "实例图谱"], ["relations", "关系列表"]];   // objects have their own pages under 本体管理 under 本体管理
 
-function RelationsView({ run, confirm, suggestions = [] }) {
+function RelationsView({ run, confirm, suggestions = [], rules }) {
   const { ontology } = run;
   const cards = Object.fromEntries((formOf(run)?.relations || []).map((r) => [r.key, r]));
+  const checks = Object.fromEntries((relationLines(run, () => true, rules) || []).map((r) => [r.key, r.lines]));
   if (!ontology.relations.length && !suggestions.length) return <p className="pr-muted">没有关系。</p>;
   const doc = isDocument(run);
   return <div className="os-list-view">
@@ -569,12 +600,13 @@ function RelationsView({ run, confirm, suggestions = [] }) {
     <tbody>{ontology.relations.map((r) => { const c = cards[r.key]; return <tr key={r.key}>
       <td><b>{typeLabel(ontology, r.from)} {r.label || "→"} {typeLabel(ontology, r.to)}</b><Verdict confirm={confirm} kind="relations" item={r} /></td>
       {!doc && <td>{c ? <><b>{cardinalityLabel(c)}</b><br /><small className="pr-muted">{cardinalityLine(ontology, c)}</small></> : "—"}</td>}
-      <td>{r.meaning}</td><td><code>{r.source}</code>{relationBindingLine(r) && <p className="pr-muted">{relationBindingLine(r)}</p>}</td>
+      <td>{r.meaning}</td><td><code>{r.source}</code>{relationBindingLine(r) && <p className="pr-muted">{relationBindingLine(r)}</p>}
+        <ul className="os-list">{(checks[r.key] || []).map((l) => <li key={l.text} className={l.warn ? "os-key-failed" : "pr-muted"}>{l.text}</li>)}</ul></td>
     </tr>; })}</tbody>
   </table></div></div>;
 }
 
-function GraphSection({ run, view, setView, graphProps, confirm, suggestions }) {
+function GraphSection({ run, view, setView, graphProps, confirm, suggestions, rules }) {
   const doc = isDocument(run);
   const attempts = attemptSummary(run.ontology);
   return <section className="pr-card">
@@ -582,7 +614,7 @@ function GraphSection({ run, view, setView, graphProps, confirm, suggestions }) 
         <div className="og-toggle" role="group" aria-label="显示方式">{VIEWS.filter(([key]) => !(doc && key === "instances")).map(([key, text]) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}>{text}</button>)}</div></div>
       {view === "graph" && <OntologyGraph run={run} {...graphProps} confirm={confirm} onAsk={doc ? null : graphProps.onAsk} suggestions={suggestions} />}
       {view === "instances" && !doc && <InstanceGraph run={run} />}
-      {view === "relations" && <RelationsView run={run} confirm={confirm} suggestions={suggestions} />}
+      {view === "relations" && <RelationsView run={run} confirm={confirm} suggestions={suggestions} rules={rules} />}
     </section>;
 }
 
@@ -804,8 +836,10 @@ function OpenItemCard({ index, item, run, onGo, requery, client }) {
     <span className="os-open-no" aria-hidden="true">{index}</span>
     <div className="os-open-body">
       <p className="os-open-ask"><b>{item.ask}</b>{item.from_model && <em className="os-chip-note" title="这一条是模型说的，代码没有核对过">模型的说法</em>}</p>
-      {facts.length > 0 && <ul className="os-open-facts">{facts.map((f, i) => <li key={i}>{f}</li>)}</ul>}
-      {toggle}
+      {item.kind === "code_meaning" ? <CodeMeaningForm item={item} client={client} /> : <>
+        {facts.length > 0 && <ul className="os-open-facts">{facts.map((f, i) => <li key={i}>{f}</li>)}</ul>}
+        {toggle}
+        {item.kind === "repeated_key" && <RepeatRuleForm item={item} client={client} />}</>}
       <div className="os-open-actions">
         <button type="button" className="os-graph-link" onClick={() => onGo(item.target)}>看依据 →</button>
         {drop && <button type="button" className="os-graph-link" disabled={!requery.can || requery.busy} title={requery.can ? "不再加这个条件，由代码重算这道题，不调模型" : requery.why}
@@ -837,6 +871,32 @@ function AnsweredList({ list, client }) {
   </details>;
 }
 
+/** 需要再看一眼: definitions confirmed on the data of an earlier version that the new data no longer fits. Until a person keeps or
+ *  changes them nothing answers by them. Each says what changed, with one click to keep it as it is and one to go and edit. */
+function ReviewList({ review, onGo, client }) {
+  if (!review?.length) return null;
+  return <section className="os-recheck">
+    <h3>需要再看一眼（{review.length}）</h3>
+    <p className="pr-muted">换了新数据后，这些确认过的定义和数据对不上了。你看过之前，问答不会按它们回答。判断办法：占比翻倍或减半、至少差 5 行，出现新取值，或有含义的代码里至少 5 行、三成以上的行换成了另一个代码。依据取自上一次上传；上一次本身就错了的话查不出来。</p>
+    {client.error?.key === "review" && <p role="alert" className="pr-error">{client.error.text}</p>}
+    <label className="os-recheck-who">确认人<input value={client.by} maxLength={40} onChange={(e) => client.setBy(e.target.value)} /></label>
+    <ul className="os-answered-list">{review.map((r) => <li key={r.id} className="os-open-item">
+      <div className="os-open-body">
+        <p className="os-open-ask"><b>{r.title}</b><small className="pr-muted">{reviewStamp(r)}</small></p>
+        <ul className="os-open-facts">{[...r.changes, ...r.depends].map((c) => <li key={c}>{c}</li>)}</ul>
+        {r.newer
+          ? <div className="os-open-actions"><button type="button" className="os-graph-link" onClick={() => client.onOpenRun(r.newer)}>有更新的版本在等你看 →</button></div>
+          : <div className="os-open-actions">
+            <button type="button" className="pr-primary" disabled={client.busy || !client.can} title={client.can ? "照现在的数据重新存下它的依据，定义不变" : client.why}
+              onClick={() => client.onReconfirm(r)}>{client.busy ? "保存中…" : "照旧确认"}</button>
+            <button type="button" className="os-graph-link" onClick={() => onGo(r.target)}>改一改 →</button>
+          </div>}
+        {client.error?.key === r.id && <p role="alert" className="pr-error">{client.error.text}</p>}
+      </div>
+    </li>)}</ul>
+  </section>;
+}
+
 function OverviewSection({ run, list, onGo, onDownload, requery, client }) {
   const items = list?.items;
   return <section className="pr-card os-open">
@@ -846,6 +906,7 @@ function OverviewSection({ run, list, onGo, onDownload, requery, client }) {
     {!run.saved_as && <p className="pr-muted">示例结果没有这份清单，上传自己的文件后由本机服务算。</p>}
     {run.saved_as && !list && <p className="pr-muted">正在读取…</p>}
     {list?.error && <p role="alert" className="pr-error">{list.error}</p>}
+    <ReviewList review={list?.review} onGo={onGo} client={client} />
     {items && !items.length && <p className="pr-muted">{openItemsEmpty(run, list.answered?.length)}</p>}
     {items?.length > 0 && <ol className="os-open-list">{items.map((item, i) => <OpenItemCard key={item.id || i} index={i + 1} item={item} run={run} onGo={onGo} requery={requery} client={client} />)}</ol>}
     {list?.answered?.length > 0 && <AnsweredList list={list.answered} client={client} />}
@@ -899,7 +960,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
         () => set(null, unreachable));
     };
     read("清单", "open-items", (b) => Array.isArray(b.items),
-      (body, error) => live && setOpenItems({ saved_as: run.saved_as, items: body?.items ?? null, answered: Array.isArray(body?.answered) ? body.answered : [], error }));
+      (body, error) => live && setOpenItems({ saved_as: run.saved_as, items: body?.items ?? null, answered: Array.isArray(body?.answered) ? body.answered : [], meanings: body?.meanings ?? null, views: body?.views ?? [], viewTables: body?.view_tables ?? [], viewsError: body?.views_error || "", rowCap: body?.row_cap ?? null, repeatRules: body?.repeat_rules ?? {}, newer: body?.newer ?? null, review: Array.isArray(body?.review) ? body.review : [], error }));
     read("口径卡", "card", (b) => Array.isArray(b.tables),
       (body, error) => live && setCardState({ saved_as: run.saved_as, card: body, error }));
     return () => { live = false; };
@@ -1056,6 +1117,20 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     if (await post("/api/ontology/requery", { saved_as: run.saved_as, question: item.question, drop }, setRequerying, setRequeryError)) go({ tab: "qa", place: "ask", question: item.question });
   }
   function changeAnswerer(name) { setAnswerer(name); rememberAnswerer(storage(), name); }
+  /** What a person says about code columns (their meanings, or the model's guess at them): the service answers with the new list. */
+  async function postCodes(url, body, key) {
+    setCardSaving(true); setCardSaveError(null);
+    try {
+      const { lists, run: again, warning } = await postAndReread({ url, body, runName: run.saved_as });
+      setOpenItems({ saved_as: run.saved_as, items: lists.items, answered: lists.answered, meanings: lists.meanings ?? null, views: lists.views ?? [], viewTables: lists.view_tables ?? [], viewsError: lists.views_error || "", rowCap: lists.row_cap ?? null, repeatRules: lists.repeat_rules ?? {}, newer: lists.newer ?? null, review: lists.review ?? [], error: "" });
+      update(again);   // the answers were worked out again: show them
+      if (warning) setCardSaveError({ key, text: warning });
+      return true;
+    } catch (e) {
+      setCardSaveError({ key, text: e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message });
+      return false;
+    } finally { setCardSaving(false); }
+  }
   /** Records what the client answered: cells of the card and items of the list in one request. The service answers with the
    *  new card and lists; the run is read again too, since a card can change which of the fixed questions still hold. */
   async function saveClient({ cells = [], items = [] }, key) {
@@ -1064,7 +1139,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
       const response = await fetch("/api/ontology/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cardBody({ saved_as: run.saved_as, by: answerer, cells, items })) });
       const data = await response.json().catch(() => ({ error: `服务返回 ${response.status}` }));
       if (!response.ok) throw new Error(serviceError(response.status, data));
-      setOpenItems({ saved_as: run.saved_as, items: data.items, answered: data.answered, error: "" });
+      setOpenItems((was) => ({ ...was, saved_as: run.saved_as, items: data.items, answered: data.answered, error: "" }));
       setCardState({ saved_as: run.saved_as, card: data.card, error: "" });
       const fresh = await fetch(`/api/ontology/runs/${run.saved_as}`, { cache: "no-store" });
       const body = await fresh.json().catch(() => ({}));
@@ -1083,6 +1158,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   function demo(url = DEMO_URL) { setError(""); readText(url).then(show).catch((e) => setError(`示例读取失败：${e.message}`)); }
   const confirmProps = run && decisions && {
     decisions, saving, error: confirmError, canSave: Boolean(run.saved_as) && !serviceBlock(health, false), why: serviceBlock(health, false),
+    note: (kind, key) => elementNote(run, kind, key),
     onVerdict: (kind, key, verdict) => setDecisions((d) => setVerdict(run.ontology, d, kind, key, verdict)),
     onRename: (key, label) => setDecisions((d) => renameType(d, key, label)),
     onAdd: (label) => setDecisions((d) => addType(run.ontology, d, label)),
@@ -1112,7 +1188,17 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     onDerive: (item) => post("/api/ontology/derived", { saved_as: run.saved_as, derive: item.derive }, setDeriving, setDeriveError), deriving, deriveError };
   const cardWhy = run?.saved_as ? serviceBlock(health, false) : "示例结果不能保存";   // saving a card needs the service, not the model's key
   const client = { by: answerer, setBy: changeAnswerer, busy: cardSaving, error: cardSaveError, can: !cardWhy, why: cardWhy,
-    onSave: (item, form) => saveClient(itemAnswer(item, form), item.id), onSaveCells: (cells) => saveClient({ cells }, "card") };
+    onSave: (item, form) => saveClient(itemAnswer(item, form), item.id), onSaveCells: (cells) => saveClient({ cells }, "card"),
+    onSaveCodes: (item, values) => postCodes("/api/ontology/code-meanings", { id: item.id, values, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
+    onSaveRepeat: (item, rule) => postCodes("/api/ontology/repeat-rules", { id: item.id, ...rule, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
+    newer: openList?.newer ?? null,
+    onOpenRun: (name) => fetch(`/api/ontology/runs/${name}`, { cache: "no-store" })
+      .then(async (r) => { const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(serviceError(r.status, body)); show(body); setTab("overview"); })
+      .catch((e) => setCardSaveError({ key: "review", text: e.message === "Failed to fetch" ? "连不上本机建模服务，确认它还在运行。" : e.message })),
+    onReconfirm: (item) => postCodes("/api/ontology/review/confirm", { id: item.id, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
+    onSaveView: (body) => postCodes("/api/ontology/views", { ...body, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, "views"),
+    onDismissCodes: (item) => postCodes("/api/ontology/code-meanings/dismiss", { id: item.id, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
+    onDraftCodes: () => postCodes("/api/ontology/code-meanings/draft", {}, "codes"), canDraft: serviceReady(run, health, true), draftWhy: serviceBlock(health, true) };
   const inDetail = tab === "objects" && objectKey;
   const placeOf = (items, key) => items.find(([k]) => k === key)?.[1];
   const crumb = !run ? [] : [sectionsFor(run).find(([k]) => k === tab)?.[1] || "",
@@ -1134,7 +1220,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
       </div>
     </header>}
     {inDetail && <h1 id="os-title" className="sr-only">{folderLabel(run.file.name)}</h1>}
-    <GoCard.Provider value={() => go({ tab: "card" })}><div className="pr-panel os-panel">
+    <GoCard.Provider value={() => go({ tab: "card" })}><CodeMeanings.Provider value={openList?.meanings ?? null}><div className="pr-panel os-panel">
       {run && tab !== "upload" && !isDocument(run) && <VerificationIssues ontology={run.ontology} />}
       {tab === "upload" && <UploadTab runs={runs} health={health} busy={busy} events={events} elapsed={elapsed} lost={lost} error={error} onBuild={build} onDemo={() => demo(DEMO_URL)} onDocDemo={() => demo(DEMO_DOC_URL)} />}
       {tab === "overview" && run && <OverviewSection run={run} list={openList} onGo={go} onDownload={downloadSummary} requery={requeryProps} client={client} />}
@@ -1147,17 +1233,17 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
         : <SubLayout label="本体管理" items={objectsNav(run, decisions)} active={objPlace} onChange={setObjPlace}>
           {objPlace === "objects" ? <ObjectCards run={run} decisions={decisions} onOpen={setObjectKey} /> : <ObjectsPlace run={run} confirm={confirmProps} place={objPlace} />}
         </SubLayout>)}
-      {tab === "graph" && run && <GraphSection run={run} view={view} setView={setView} confirm={confirmProps} suggestions={suggestions}
+      {tab === "graph" && run && <GraphSection run={run} view={view} setView={setView} confirm={confirmProps} suggestions={suggestions} rules={openList?.repeatRules}
         graphProps={{ selected, onSelect: (s) => { setSelected(s); setPath(null); }, path, onClearPath: () => setPath(null), onAsk: askOntology, reveal, showHints: hints, onShowHints: setHints }} />}
       {tab === "data" && run && <SubLayout label="上传的表" items={run.sources.map((t) => [t.name, t.name, t.rows?.toLocaleString("zh-CN") ?? ""])} active={dataPlace || run.sources[0]?.name} onChange={setDataPlace}>
-        <DataTab run={run} place={dataPlace} /></SubLayout>}
+        <DataTab run={run} place={dataPlace} list={openList} client={client} /></SubLayout>}
       {tab === "qa" && run && <SubLayout label="智能问答" items={qaNav(run)} active={qaPlace} onChange={setQaPlace}>
         <QaSection run={run} questions={questions} onPath={showPath} askRef={askRef} place={qaPlace} /></SubLayout>}
       {tab === "org" && run && <SubLayout label="组织架构" items={orgPlaces(run)} active={orgPlace} onChange={setOrgPlace}>
         <OrgSection run={run} place={orgPlace} onShow={showOnGraph} /></SubLayout>}
       {run && <div hidden={tab !== "check"}><CheckSection run={run} evalView={evalView} setEvalView={setEvalView} onShow={showOnGraph} variants={variantProps} questions={questions}
         rules={{ canSave: connected, busy: savingRules, error: rulesError, onSave: (next) => post("/api/ontology/rules", { saved_as: run.saved_as, ...next }, setSavingRules, setRulesError) }} /></div>}
-    </div></GoCard.Provider>
+    </div></CodeMeanings.Provider></GoCard.Provider>
     {searching && open && <SearchDialog run={run} decisions={decisions} onGo={go} onClose={() => setSearching(false)} />}
   </section>;
 }

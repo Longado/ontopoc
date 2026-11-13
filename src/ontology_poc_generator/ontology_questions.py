@@ -7,12 +7,14 @@ import json
 import re
 
 from ontology_poc_generator.public_ontology import CATEGORY_LIMIT, build_graph, linked, normalize_proposal, normalize_value, resolve
+from ontology_poc_generator.repeated_keys import data_error_uses
 from ontology_poc_generator.agent_harness import ask_model
+from ontology_poc_generator.code_meanings import codes_for_label, shown, shown_codes
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview, to_number
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 
-QUESTION_PROMPT_VERSION = 'company_questions.v7'
+QUESTION_PROMPT_VERSION = 'company_questions.v13'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
 MAX_MERGED = 20             # groups named in `evidence`: a pointer to where to look, not the full list
@@ -36,7 +38,11 @@ Return ONLY a JSON object:
     "derive": {{"type": "<object type key>", "label": "<short Chinese name>",
                 "terms": [{{"sign": 1 | -1, "factors": [{{"field": "<attribute path of that type>", "complement": true | false}}]}}]}}
               (only when you propose a new derived measure),
-    "missing": "ontology" | "query_language"   (only when query is null)
+    "definitions_used": [{{"id": "<an id exactly as listed in `definitions`>", "direction": "include" | "exclude" | "mention",
+                         "basis": "<the words of the question that refer to it, in Chinese>"}}],
+    "missing": "ontology" | "query_language"   (only when query is null),
+    "unmatched_relation": {{"relation": "<relation key>", "direction": "many_without_one" | "one_without_many", "other_conditions": true | false}}
+                          (only for a question of the kind described below)
 }}]}}
 
 Meaning of a query: take the objects of `start` that match every `where`; then
@@ -56,14 +62,41 @@ the query from that object and use {{"derived": "<its label>"}} as the measure, 
 groups by. An object's `derived` list holds measures a person has already confirmed: use them by name, do not propose
 them again. In reasoning, call objects and relations by their Chinese labels.
 Use only type keys, relation keys and attribute paths listed in the ontology, and filter values from an attribute's
-`values` when it lists them. When a question cannot be written as one query, keep it, set "query" to null, say why in reasoning, and set
+`values` when it lists them (an attribute may also list `meanings`: what each code value stands for. The filter value is
+still the code, so for "cancelled orders" with {{"2": "已取消"}} write "equals": "2"). When a question cannot be written as one query, keep it, set "query" to null, say why in reasoning, and set
 "missing": "ontology" when the ontology lacks the objects, relations or attributes it needs, or "query_language" when the
 ontology has them but this query format cannot express it (for example time windows, filters on numeric ranges, or
 filters on objects other than start); in that case also add the simpler questions that together answer it.
+`definitions` (when present) lists what a person has confirmed: the meaning of a code (its `id` says which column, and `name`
+is what the code stands for) and views they named. In `definitions_used` list every one of them the question refers to, by
+its `id` copied exactly (never a name of your own, never the bare name: the same name in two columns is two definitions),
+each with a direction: "include" when the question wants those rows ("已取消的订单", "有没有已取消的"), "exclude" when it wants
+them left out ("不算已取消", "除已取消外", "未取消的"), "mention" when the question names it but does not select rows by it
+(a rate such as "已取消率", written as `share`, or a group_by on its column); code refuses a "mention" whose column the query
+does not use as a share or a group_by, so a question that leaves rows out or keeps only some by it is "exclude" or "include",
+never "mention"; [] when the question refers to none. Read the direction from the meaning of the question, not from its words. A query can only say "equals", so for an included meaning write its code in `where`; for an excluded one do not write
+a filter on that column at all, code will read a view that leaves it out when there is one and refuse otherwise.
+A question that asks how many (or which) objects of one type name a related object that does not exist ("有多少订单的客户在客户表里找不到")
+cannot be written as a query: set "query" to null, "missing": "query_language" and "unmatched_relation" to the relation it is about
+and which way it asks: "many_without_one" for the rows of the relation's source table whose key the other table does not have
+(orders whose customer is not in the customer table), "one_without_many" for the other way round (customers with no orders);
+"other_conditions" is true when the question also filters (已取消的订单里…). Code answers only many_without_one without other
+conditions, from the relation check on the stored tables, and says so for the rest.
 Write {QUESTION_COUNT} questions; if `purpose` contains a question, answer that first. If `asked` is present, write
 exactly one item for that question and nothing else. If `only_purpose` is true, write one item for each question the
 person wrote in `purpose`, in their words, and nothing else; if `purpose` asks no question, return {{"questions": []}}.
 '''
+
+
+def clean_used(used) -> list[dict]:
+    """The model's `definitions_used` as far as it is well formed: [{'id', 'direction': include|exclude|mention, 'basis'}]. An item
+    stored before ids existed has `name` (a label) in place of `id`; it is kept with 'legacy' set."""
+    if not isinstance(used, list):
+        return []
+    return [{'id': u['id'] if isinstance(u.get('id'), str) else u['name'], 'direction': u['direction'], 'basis': str(u.get('basis') or '')[:200],
+             **({} if isinstance(u.get('id'), str) else {'legacy': True})} for u in used
+            if isinstance(u, dict) and isinstance(u.get('id') if isinstance(u.get('id'), str) else u.get('name'), str)
+            and u.get('direction') in ('include', 'exclude', 'mention')]
 
 
 def _types(p: dict) -> dict:
@@ -256,12 +289,14 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     reason = _shape_limit(query)
     if reason:
         return {'status': 'query_limit', 'reason': reason}
+    meanings = bundle.get('meanings')   # the confirmed meanings of code columns: a question may say "已取消" for the code 2, and codes are shown with theirs
     where = []
     for w in query.get('where') or []:
         field = _resolve_field(types[start], w.get('field'))
         if field is None:
             return gap(f'本体里的 {label(start)} 没有属性 {w.get("field")}，无法按它筛选')
-        where.append({'field': field, 'equals': w.get('equals')})
+        codes = codes_for_label(meanings, field, w.get('equals'))
+        where.append({'field': field, 'equals': codes[0], **({'codes': codes} if len(codes) > 1 else {})})
     measure = query.get('measure') if isinstance(query.get('measure'), dict) else None
     if measure:
         if measure.get('op') not in ('sum', 'average'):
@@ -282,7 +317,8 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         field = _resolve_field(types[start], share.get('field'))
         if field is None:
             return gap(f'本体里的 {label(start)} 没有属性 {share.get("field")}，无法算它的占比')
-        share = {'field': field, 'equals': share.get('equals')}
+        codes = codes_for_label(meanings, field, share.get('equals'))
+        share = {'field': field, 'equals': codes[0], **({'codes': codes} if len(codes) > 1 else {})}
     top, reason = _walk(relations, start, query.get('via'), label)
     if reason:
         return gap(reason)
@@ -321,7 +357,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     def values(inst, field):   # identity fields read the object's own identity, so objects seen only in another table count too
         logical = identity.get((inst[0], field))
         return {str(v) for k, v in inst[1] if k == logical and v not in (None, '')} if logical else _values(bundle, graph, inst, field)
-    has = lambda inst, cond: normalize_value(cond['equals']) in {normalize_value(v) for v in values(inst, cond['field'])}
+    has = lambda inst, cond: bool({normalize_value(c) for c in cond.get('codes', [cond['equals']])} & {normalize_value(v) for v in values(inst, cond['field'])})
     everyone = [i for i in graph['sources_of'] if i[0] == start]
     starts, stages = everyone, []   # stages: (condition, objects before it, objects left, objects it removed), for the check pack
     for w in where:
@@ -330,11 +366,19 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             (hit if has(i, w) else miss).append(i)
         stages.append((w, len(starts), len(hit), miss))
         starts = hit
+    # the objects the answer read rows of: every start object (a filter reads them all) and the ones walked to from the ones left
+    used = set(everyone)
+    for via in paths:
+        frontier = set(starts)
+        for key in via:
+            frontier = {n for f in frontier for n in neighbours[key].get(f, ())}
+            used |= frontier
+    data_errors = data_error_uses(ontology, bundle, graph, used, label)
     refused, notes = _repeats(types, bundle, graph, start, starts, measure) if measure else (None, {})
     if refused:
         return {'status': 'query_limit', 'reason': refused}
     name = lambda field: field.partition('.')[2]
-    kept = '、'.join(f'“{name(w["field"])}”为“{w["equals"]}”' for w in where)
+    kept = '、'.join(f'“{name(w["field"])}”为“{shown_codes(meanings, w["field"], w.get("codes", [w["equals"]]))}”' for w in where)
     head = f'只看{kept}的{label(start)}' if kept else label(start)
     if len(dims) > 1:
         path = f'{head}：按' + '和'.join(f'“{name(d["field"])}”' + (f'（经 {" → ".join(label(k) for k in [start, *d["steps"]])}）' if d['steps'] else '')
@@ -377,7 +421,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         return {'removed_measure': int_if_whole(sum(read))} if read else {}
     # looking one object up by its whole key: the others it passed over are no news (one part of a key is a real filter)
     lookup = _identity_fields(types[start]) if all(len(pop.get('identity') or {}) == 1 for pop in types[start].get('populated_from') or []) else {}
-    filters = [{'field': name(w['field']), 'equals': w['equals'], 'before': before, 'after': after,
+    filters = [{'field': name(w['field']), 'equals': w['equals'], **({'codes': w['codes']} if 'codes' in w else {}), **_labels(meanings, w), 'before': before, 'after': after,
                 **({} if w['field'] in lookup else {'examples': [named(i) for i in gone[:3]], **removed_amount(gone)})}
                for w, before, after, gone in stages] if everyone else []
 
@@ -387,7 +431,8 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         """The check pack rides beside the answer, never inside it: acceptance compares `answer` between runs."""
         pack = {**({'filters': filters} if filters else {}), **{k: v for k, v in notes.items() if v},
                 **({'merged': merged} if merged else {}), **({'merged_total': merged_total} if merged_total > len(merged) else {}),
-                **({'found_elsewhere': elsewhere} if elsewhere else {}), **({'card': from_card} if from_card else {})}
+                **({'found_elsewhere': elsewhere} if elsewhere else {}), **({'card': from_card} if from_card else {}),
+                **({'data_error': data_errors} if data_errors else {})}
         return {**result, **({'evidence': pack} if pack else {})}
     if not starts:
         # a value no start object has may be the number of some other kind of object: the question was put to the wrong one
@@ -439,7 +484,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
                     for k in range(len(known), len(via)):   # every object on the way is kept, so a shorter dimension after it reads the same one
                         chains = [{**w, via[:k + 1]: n} for w in chains for n in neighbours[via[k]].get(w[via[:k]], ())]
                     steps = [(w[via], w) for w in chains]
-                out += [(chosen + [v], nodes) for node, nodes in steps for v in sorted(values(node, d['field']))]
+                out += [(chosen + [shown(meanings, d['field'], v)], nodes) for node, nodes in steps for v in sorted(values(node, d['field']))]
             states = out
         ends = sorted({tuple(d['via']) for d in dims if d['via']})   # the start itself never differs between chains
         return [(chosen, tuple(walked[via] for via in ends)) for chosen, walked in states]
@@ -485,6 +530,14 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
                               **({'measure': measured(starts)} if measure and not cumulative else {})}}, evidence, len(merged))   # not the periods added together
 
 
+def _labels(meanings: dict | None, where: dict) -> dict:
+    """The confirmed meanings of the codes a condition filters by ({'labels': ['已取消']}), so that a question which says
+    the meaning instead of the code is known to have said the condition."""
+    labels = ((meanings or {}).get(where['field']) or {}).get('labels') or {}
+    said = list(dict.fromkeys(labels[str(c)] for c in where.get('codes', [where['equals']]) if labels.get(str(c))))
+    return {'labels': said} if said else {}
+
+
 def flag_unasked_filters(result: dict, question: str) -> dict:
     """Mark the filters whose value the question never says: the model added them on its own. A hint for the person
     checking the answer, not a refusal. Compared upper-cased with spaces removed, and as a substring of the question."""
@@ -504,7 +557,7 @@ def flag_unasked_filters(result: dict, question: str) -> dict:
             decimal = r'(?!\.\d)' if v[-1:].isdigit() else ''
             return bool(v) and re.search(rf'(?<![{left}]){re.escape(v)}(?![{right}]){decimal}', words) is not None
         return v in said
-    marked = [f if named(f['equals']) else {**f, 'not_in_question': True} for f in filters]
+    marked = [f if named(f['equals']) or any(named(label) for label in f.get('labels', [])) else {**f, 'not_in_question': True} for f in filters]
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
 
 
@@ -524,21 +577,27 @@ def answer_query(ontology: dict, bundle: dict, query: dict, question: str, graph
 def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
     p = normalize_proposal(ontology)
     values = categorical_values(ontology, bundle)
+    confirmed_codes = {f: c['labels'] for f, c in (bundle.get('meanings') or {}).items()}   # what a person said each code means
     confirmed = lambda key: [{'name': d['label'], 'formula': formula_text(d)} for d in derived or [] if d['type'] == key]
     return {
         'object_types': [{'key': t['key'], 'label': t.get('label'), 'attributes': [
             {'path': f.partition('.')[2], **({'identity': True} if f in _identity_fields(t) and f not in {f'{a.get("source")}.{a.get("path")}' for a in t['attributes']} else {}),
-             **({'values': values[f]} if f in values else {})}
+             **({'values': values[f]} if f in values else {}),
+             **({'meanings': confirmed_codes[f]} if confirmed_codes.get(f) else {})}
             for f in _fields(t)], **({'derived': confirmed(t['key'])} if confirmed(t['key']) else {})} for t in p['object_types']],
         'relations': [{k: r.get(k) for k in ('key', 'from', 'to', 'label', 'meaning')} for r in p['relations']],
     }
 
 
 def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = None, purpose_only: bool = False,
-                  derived: list | None = None, card: dict | None = None) -> dict:
-    """One call. With question: that question. With purpose_only: the questions the person wrote as the purpose, which
+                  derived: list | None = None, card: dict | None = None, answerer=None, definitions: list | None = None) -> dict:
+    """`answerer(query, question, used)` works out one question's answer in place of answer_query (the caller reads the rows its own
+    way; `used` is the model's `definitions_used`). `definitions` is what the person has confirmed, told to the model.
+    One call. With question: that question. With purpose_only: the questions the person wrote as the purpose, which
     an upload answers. With neither: the model's own round, asked for on the questions page."""
     request = {'purpose': bundle['decision'], 'ontology': _catalog(ontology, bundle, derived)}
+    if definitions:
+        request['definitions'] = definitions
     if question:
         request['asked'] = question
     elif purpose_only:
@@ -560,6 +619,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         if not isinstance(q, dict) or not isinstance(q.get('question'), str):
             continue
         query = q.get('query')
+        used = clean_used(q.get('definitions_used'))
         wanted = (query.get('measure') or {}).get('derived') if isinstance(query, dict) and isinstance(query.get('measure'), dict) else None
         known = any(d['label'] == wanted for d in derived or [])
         if wanted is not None and not known and isinstance(q.get('derive'), dict):
@@ -575,12 +635,14 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
                     'derive': {**formula, 'formula': formula_text(formula), 'preview': derived_preview(ontology, bundle, formula, graph)}}
             result = _in_names(ontology, result)
         elif isinstance(query, dict):
-            result = answer_query(ontology, bundle, query, question or q['question'], graph, derived, card)
+            result = answerer(query, question or q['question'], used) if answerer else answer_query(ontology, bundle, query, question or q['question'], graph, derived, card)
         else:
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
-            result = _in_names(ontology, {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True})
+            unmatched = getattr(answerer, 'unmatched', None)   # the question the query language cannot say, answered from the relation check
+            result = unmatched(q.get('unmatched_relation')) if unmatched and status == 'query_limit' else None
+            result = result or _in_names(ontology, {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True})
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
-                             **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
+                             **({'definitions_used': used} if used else {}), **({'definitions_told': [d['id'] for d in definitions]} if definitions else {}), **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])
     out['total'] = len(out['items'])
     return out

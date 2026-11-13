@@ -122,7 +122,7 @@
 .pr-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
 .pr-badge { font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; color: var(--text-2); background: var(--canvas); }
 .pr-badge-after { color: var(--amber); background: var(--amber-soft); }
-.pr-badge-same_day { color: var(--amber); background: var(--amber-soft); }
+.pr-badge-same_day, .pr-badge-same_month { color: var(--amber); background: var(--amber-soft); }
 .pr-badge-flag { color: var(--red); background: var(--red-soft); }
 .pr-badge-earlier { color: var(--text-2); background: var(--canvas); border: 1px dashed var(--edge-strong); }
 .pr-badge-alias { color: var(--indigo); background: var(--indigo-soft); }

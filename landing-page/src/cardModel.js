@@ -21,9 +21,10 @@ export const ITEM_CHOICES = {
   unlinked: [["expected", "本来就没有对应，属正常"], ["incomplete", "数据没导全"]],
   same_name: SAME_OR_NOT,
   merged: SAME_OR_NOT,
+  name_vs_calc: [["rename", "名字说错了，按实际算法改名"], ["name_right", "名字是对的，是数据算得不对"]],
 };
-const WORDS_ONLY = ["found_elsewhere", "unstable", "check_finding", "data_gaps", "unanswered"];
-// model_filter is settled by dropping the condition, unjudged by judging each one, card_blank by filling the card
+const WORDS_ONLY = ["found_elsewhere", "unstable", "check_finding", "data_gap", "data_gaps", "unanswered", "name_source", "name_by_view", "name_values"];
+// model_filter is settled by dropping the condition, unjudged by judging each one, card_blank by filling the card, code_meaning by writing the meanings
 const ANSWERABLE = [...Object.keys(ITEM_CHOICES), ...WORDS_ONLY];
 
 export const itemChoices = (item) => ITEM_CHOICES[item.kind] || [];

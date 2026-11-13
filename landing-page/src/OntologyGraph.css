@@ -85,6 +85,8 @@
 .og-verdict button.og-v-ok[aria-pressed="true"] { border-color: var(--ok); background: var(--ok); color: #fff; }
 .og-verdict button.og-v-wrong[aria-pressed="true"] { border-color: var(--red); background: var(--red); color: #fff; }
 .og-verdict button:focus-visible, .og-verdict input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.og-saved { flex-basis: 100%; max-width: 400px; margin: 2px 0 0; white-space: normal; font-size: 12px; color: var(--text-2); }
+.og-saved span { display: block; overflow-wrap: anywhere; }
 .og-verdict input { flex: 1 1 120px; min-width: 0; padding: 3px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
 .og-mark { font-size: 11px; font-weight: 700; fill: var(--ok); }
 .og-node.is-wrong .og-mark { fill: var(--red); }

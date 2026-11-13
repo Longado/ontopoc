@@ -34,8 +34,8 @@ def _headers(row) -> list[str]:
     names, seen = [], {}
     for i, cell in enumerate(row, start=1):
         name = _cell(cell) or f'列{i}'
-        seen[name] = seen.get(name, 0) + 1
-        names.append(name if seen[name] == 1 else f'{name}_{seen[name]}')
+        seen[name.lower()] = seen.get(name.lower(), 0) + 1   # names that differ only in case are one name to the workspace store
+        names.append(name if seen[name.lower()] == 1 else f'{name}_{seen[name.lower()]}')
     return names
 
 
@@ -43,12 +43,14 @@ def _width(row) -> int:
     return sum(_cell(c) is not None for c in row)
 
 
-def _records(rows: list[list]) -> tuple[list[dict], list[str]]:
+def _records(all_rows: list[list]) -> tuple[list[dict], dict]:
     """Rows to records. Title lines above the real header (fewer filled cells than half the widest row) are skipped
-    and returned, so exports that start with a report title still read their real header."""
-    rows = [r for r in rows if _width(r) > 0]
+    so exports that start with a report title still read their real header. The second value says what was read:
+    'rows_read' (rows in the file apart from the header), 'dropped_rows' by reason ('blank', 'title') and the
+    text of the 'skipped_rows' title lines."""
+    rows = [r for r in all_rows if _width(r) > 0]
     if not rows:
-        return [], []
+        return [], {}
     widest = max(_width(r) for r in rows[:10])
     needed = max(2, (widest + 1) // 2) if widest >= 2 else 1
     start = next(i for i, r in enumerate(rows) if _width(r) >= needed)
@@ -59,7 +61,9 @@ def _records(rows: list[list]) -> tuple[list[dict], list[str]]:
             or any(i < len(r) and _cell(r[i]) is not None for r in data)]
     header = _headers([header_row[i] if i < len(header_row) else None for i in keep])
     records = [{name: _cell(row[i]) if i < len(row) else None for i, name in zip(keep, header)} for row in data]
-    return records, skipped
+    dropped = {'blank': len(all_rows) - len(rows), 'title': len(skipped)}
+    return records, {'rows_read': len(all_rows) - 1, **({'dropped_rows': {k: n for k, n in dropped.items() if n}} if any(dropped.values()) else {}),
+                     **({'skipped_rows': skipped} if skipped else {})}
 
 
 def _decode(data: bytes) -> str:
@@ -71,7 +75,7 @@ def _decode(data: bytes) -> str:
     raise SourceFileError('CSV 文件不是 UTF-8 或 GBK 编码，请另存为 UTF-8 后再上传')
 
 
-def _read_xlsx(data: bytes) -> dict[str, list[dict]]:
+def _read_xlsx(data: bytes) -> dict[str, tuple[list[dict], dict]]:
     from openpyxl import load_workbook
     try:
         book = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
@@ -109,8 +113,8 @@ def _bundle(sources: dict, file: dict, purpose: str | None) -> dict:
 def load_table_file(filename: str, data: bytes, purpose: str | None = None) -> dict:
     if len(data) > MAX_BYTES:
         raise SourceFileError(f'文件太大（{len(data) // 1024 // 1024} MB），上限 {MAX_BYTES // 1024 // 1024} MB')
-    sources = {name: {'records': records, 'requests': [], **({'skipped_rows': skipped} if skipped else {})}
-               for name, (records, skipped) in _sheets(filename, data).items() if records}
+    sources = {name: {'records': records, 'requests': [], **info}
+               for name, (records, info) in _sheets(filename, data).items() if records}
     return _bundle(sources, {'name': PurePath(filename).name, 'kind': 'table', 'sha256': hashlib.sha256(data).hexdigest()}, purpose)
 
 
@@ -131,7 +135,7 @@ def load_table_files(files: list[tuple[str, bytes]], purpose: str | None = None)
             sheets = _sheets(filename, data)
         except SourceFileError as exc:
             raise SourceFileError(f'{PurePath(filename).name}：{exc}') from None
-        for name, (records, skipped) in sheets.items():
+        for name, (records, info) in sheets.items():
             if not records:
                 continue
             key = name
@@ -140,7 +144,7 @@ def load_table_files(files: list[tuple[str, bytes]], purpose: str | None = None)
                 named = f'{name}（{stem}）'
                 key = named if stem != name and named not in sources else next(
                     f'{name}（{n}）' for n in range(2, 99) if f'{name}（{n}）' not in sources)
-            sources[key] = {'records': records, 'requests': [], **({'skipped_rows': skipped} if skipped else {})}
+            sources[key] = {'records': records, 'requests': [], **info}
     digests = sorted(hashlib.sha256(data).hexdigest() for _, data in files)
     file = {'name': '、'.join(PurePath(f).name for f, _ in files)[:200], 'kind': 'table',
             'sha256': hashlib.sha256(''.join(digests).encode()).hexdigest(),

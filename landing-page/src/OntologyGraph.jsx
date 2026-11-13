@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { edgeStats, findingsByType, focusOntology, neighboursOf, rankByDegree, unsteady } from "./ontologyGraphModel.js";
 import { edgePath, forceLayout, moveNode } from "./forceLayoutModel.js";
 import { PanZoom } from "./PanZoom.jsx";
-import { relationBindingLine, typeLabel, typeSources } from "./ontologyStudioModel.js";
+import { localTime, relationBindingLine, typeLabel, typeSources } from "./ontologyStudioModel.js";
 import { DEFINITION_CARDINALITIES, DEFINITION_TYPES } from "./ontologyLibraryModel.js";
 import "./OntologyGraph.css";
 
@@ -23,11 +23,15 @@ export function Verdict({ confirm, kind, item }) {
   if (!confirm) return null;
   const d = confirm.decisions[kind][item.key];
   const name = (item.label || item.key);
+  const saved = confirm.note?.(kind, item.key);
+  const kept = saved && d?.verdict === (saved.state === "confirmed" ? "ok" : "wrong") ? saved : null;   // only while the buttons still say what was saved
   return <div className="og-verdict" role="group" aria-label={`你的判断：${name}`}>
     <span>你的判断</span>
     {[["ok", "对"], ["wrong", "不对"]].map(([v, text]) => <button key={v} type="button" aria-pressed={d?.verdict === v} className={`og-v-${v}`} onClick={() => confirm.onVerdict(kind, item.key, v)}>{text}</button>)}
     {kind === "types" && d?.verdict === "ok" && <input aria-label={`${name} 改名为`} placeholder="改名（可选）" maxLength={40} defaultValue={d.label || ""} key={`${item.key}-${d.label || ""}`}
       onBlur={(e) => confirm.onRename(item.key, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />}
+    {kept && <p className="og-saved">{kept.state === "confirmed" ? "已确认" : "已判为不对"} · {kept.who || "未署名"} · {localTime(kept.at)}{kept.version > 1 ? ` · 第 ${kept.version} 版` : ""}
+      {kept.evidence.map((line) => <span key={line}>依据：数据检查 {line}</span>)}</p>}
   </div>;
 }
 

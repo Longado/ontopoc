@@ -26,6 +26,12 @@ test("a complaint filed after the recall but dated earlier elsewhere is flagged"
   assert.deepEqual(earlierDates(p, p.recalls[1].candidates[1]), []);
 });
 
+test("a complaint in the same month as the recall is held to the same check", () => {
+  const p = pack();
+  const same = { id: "A", timing: { ...timing("same_month", "2020-11"), days: null, months: 0 } };
+  assert.deepEqual(earlierDates(p, same), ["dateOfIncident"]);
+});
+
 test("the scope page counts how often the other date would flip the order", () => {
   assert.deepEqual(dateCaveat(pack()), { fields: ["dateOfIncident"], after: 3, earlier: 1 });
   assert.equal(dateCaveat({ ...pack(), source: {} }), null);
