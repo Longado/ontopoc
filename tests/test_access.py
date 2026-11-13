@@ -215,6 +215,14 @@ class GateTests(GateTestCase):
             self.assertEqual((status, body['error']), (403, '你的角色不能做这个'))
             self.assertEqual(team['builder'].post('/api/workspace/datasets/upload', upload)[0], 200)
             self.assertEqual(team['viewer'].get('/api/workspace/datasets')[1]['datasets'][0]['name'], 't')
+            # a viewer reads the list and the metadata of a dataset, never its rows, their values or a download of them (the route table is by path, so the service checks the role itself)
+            seen = team['viewer'].get('/api/workspace/datasets/t')
+            self.assertEqual(seen[0], 200)
+            self.assertEqual((seen[1]['rows_hidden'], seen[1]['preview']['rows'], seen[1]['preview']['total'], seen[1]['rows']), (True, [], seen[1]['rows'], seen[1]['rows']))
+            self.assertTrue(all(c['values'] is None and c['near_key'] is None and c['key_check'] is None for c in seen[1]['columns']))
+            self.assertEqual(team['viewer'].get('/api/workspace/datasets/t?format=csv')[0], 403)
+            shown = team['builder'].get('/api/workspace/datasets/t')[1]
+            self.assertTrue(shown['preview']['rows'] and 'rows_hidden' not in shown)
             for who in ('builder', 'viewer'):
                 self.assertEqual(team[who].get('/api/users')[0], 403, who)
                 self.assertEqual(team[who].post('/api/users', {'username': 'x', 'display_name': 'x', 'role': 'admin', 'password': GOOD})[0], 403, who)

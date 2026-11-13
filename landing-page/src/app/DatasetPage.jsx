@@ -89,7 +89,7 @@ function Preview({ page, name }) {
   );
 }
 
-function Versions({ page, name }) {
+function Versions({ page, name, mayRead }) {
   const rows = timeline(page.versions, page.no_change_updates);
   return (
     <div className="table-wrap">
@@ -122,7 +122,7 @@ function Versions({ page, name }) {
                     </details>
                   )}
                 </td>
-                <td className="keep"><a href={hrefFor({ page: "dataset", name, tab: "preview", version: r.current ? null : r.version })}>预览</a></td>
+                <td className="keep">{mayRead && <a href={hrefFor({ page: "dataset", name, tab: "preview", version: r.current ? null : r.version })}>预览</a>}</td>
               </tr>
             ),
           )}
@@ -171,13 +171,13 @@ export function DatasetPage({ route }) {
             <p className="viewing">正在看第 {page.version} 版，当前是第 {page.current_version} 版。 <a href={hrefFor({ page: "dataset", name, tab, version: null })}>回到当前版本</a></p>
           )}
           <nav className="tabs" aria-label="数据集的页面">
-            {TABS.map((t) => (
+            {TABS.filter((t) => mayBuild || t !== "preview").map((t) => (   // a viewer reads no rows of a dataset: the preview and the download are for builders
               <a key={t} href={at(t)} aria-current={t === tab ? "page" : undefined} className={t === tab ? "active" : ""}>{TAB_LABEL[t]}</a>
             ))}
           </nav>
-          {tab === "fields" && <Fields page={page} />}
-          {tab === "preview" && <Preview page={page} name={name} />}
-          {tab === "versions" && <Versions page={page} name={name} />}
+          {(tab === "fields" || (tab === "preview" && !mayBuild)) && <Fields page={page} />}
+          {tab === "preview" && mayBuild && <Preview page={page} name={name} />}
+          {tab === "versions" && <Versions page={page} name={name} mayRead={mayBuild} />}
         </>
       )}
       {deleting && <DeleteDialog name={name} page={page} onClose={() => setDeleting(false)} />}

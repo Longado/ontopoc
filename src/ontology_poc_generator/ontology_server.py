@@ -1127,6 +1127,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         return
                     name = unquote(url.path[len('/api/workspace/datasets/'):])
                     if (query.get('format') or [''])[0] == 'csv':
+                        if self.user['role'] == 'viewer':
+                            self.reply(403, {'error': '查看者读不到数据集的行：数据要通过你能看到的对象类型来读'})
+                            return
                         csv_file = dataset_csv(conn, name, int(version) if version else None)
                         if csv_file is None:
                             self.reply(404, {'error': '没有这个数据集或这个版本'})

@@ -130,13 +130,23 @@ def dataset_detail(conn, name: str, version: int | None = None, page: int = 1, u
     cursor = conn.execute(f'SELECT {cols} FROM {_quote(shown["table_name"])} ORDER BY rowid LIMIT {PREVIEW_ROWS} OFFSET {(page - 1) * PREVIEW_ROWS}')
     versions = _rows(conn, 'SELECT * FROM dataset WHERE name = ? ORDER BY version DESC', (name,))
     skipped = _rows(conn, 'SELECT time, who, after_json FROM log WHERE element_id = ? AND change = ? ORDER BY time DESC', (f'dataset:{name}', NO_CHANGE))
-    return {'name': name, 'origin': shown['origin'], 'version': shown['version'], 'version_at': shown['imported_at'], 'current_version': current['version'],
+    detail = {'name': name, 'origin': shown['origin'], 'version': shown['version'], 'version_at': shown['imported_at'], 'current_version': current['version'],
             'rows': total, 'updated_at': _updated_at(conn, name, current['imported_at']), 'who': shown['who'], 'readers': dataset_readers_of(conn, name, user, everyone=False),
             'dropped': json.loads(shown['dropped_json'] or '{}'), 'columns': columns, 'key_checks': checks,
             'versions': [_version_row(v, current['id']) for v in versions],
             'no_change_updates': [{'at': r['time'], 'who': r['who'], 'mode': 'update_by_key', **json.loads(r['after_json'])} for r in skipped],
             'preview': {'columns': [c['name'] for c in columns], 'rows': [list(r) for r in cursor], 'limit': PREVIEW_ROWS, 'total': total,
                         'page': page, 'pages': pages}}
+    return without_rows(detail) if user is not None and user['role'] == 'viewer' else detail
+
+
+def without_rows(detail: dict) -> dict:
+    """What a viewer reads of a dataset: its name, versions (who, when, how many rows) and its columns by name, type and fill rate. No row, and nothing
+    that quotes a value either (the values of a code column, the keys that repeat or changed): a viewer reads data through the object types they may see."""
+    return {**detail, 'rows_hidden': True, 'key_checks': [], 'no_change_updates': [],
+            'columns': [{**c, 'key_check': None, 'near_key': None, 'values': None} for c in detail['columns']],
+            'versions': [{**v, 'changed_keys': [], 'added_keys': []} for v in detail['versions']],
+            'preview': {'columns': [], 'rows': [], 'limit': detail['preview']['limit'], 'total': detail['preview']['total'], 'page': 1, 'pages': 1}}
 
 
 def dataset_csv(conn, name: str, version: int | None = None) -> tuple[str, bytes] | None:
