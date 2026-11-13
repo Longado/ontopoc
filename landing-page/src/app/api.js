@@ -88,6 +88,17 @@ export const createView = (payload) => send("/api/workspace/types/views", payloa
 export const confirmView = (id, version, seen) => send("/api/workspace/types/views/confirm", { id, version, seen });
 export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
 
+// actions: the definitions of one type with their parameters, one action with its records and log, submitting, approving
+const actionPath = (name, tail = "") => `/api/workspace/actions/${encodeURIComponent(name)}${tail}`;
+export const getActions = (type) => request(`/api/workspace/actions?type=${encodeURIComponent(type)}`);
+export const getAction = (name) => request(actionPath(name));
+export const createAction = (payload) => send("/api/workspace/actions", payload);
+export const confirmAction = (id, version) => send("/api/workspace/actions/confirm", { id, version });
+/** `key` {column: value} names the object, `params` {column: new value}. The record waits in 待确认 for another builder. */
+export const submitAction = (action, key, params, reason) => send("/api/workspace/actions/submit", { action, key, params, reason });
+export const decideRecord = (id, decision, note = "") => send("/api/workspace/actions/decide", { id, decision, note });
+export const withdrawRecord = (id) => send("/api/workspace/actions/withdraw", { id });
+
 // relations, the 待确认 queue, who sees which type
 const relationPath = (id, tail = "") => `/api/workspace/relations/${encodeURIComponent(id)}${tail}`;
 export const getRelations = () => request("/api/workspace/relations").then((b) => b.relations);
@@ -107,6 +118,8 @@ export const sendBack = (element, version, reason) => send("/api/workspace/queue
 export const getPermissions = () => request("/api/workspace/permissions");
 /** `visibleTo`: "everyone" or the ids of the people who may see the type. */
 export const setPermission = (type, visibleTo) => send("/api/workspace/permissions", { type, visible_to: visibleTo });
+/** `rules`: the whole list of one type, [{column, value, user_ids}]: these people see the rows where the property equals the value. */
+export const setRowRules = (type, rules) => send("/api/workspace/row-rules", { type, rules });
 
 // Q&A: the scope line with the person's own history, one saved answer as it stands now, a new question
 export const getAsk = () => request("/api/workspace/ask");

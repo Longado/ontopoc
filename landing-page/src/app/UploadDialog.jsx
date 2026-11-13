@@ -152,7 +152,8 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
           ))}
         </>
       )}
-      {phase === "done" && <ul className="results">{results.map((r) => <li key={r.name}>{resultLine(r)}{r.recheck_error && <span className="error"> 新版本已保存，但检查依赖它的定义时出错（{r.recheck_error}）；这些定义已标为需再看</span>}</li>)}</ul>}
+      {phase === "done" && <ul className="results">{results.map((r) => <li key={r.name}>{resultLine(r)}{r.recheck_error && <span className="error"> 新版本已保存，但检查依赖它的定义时出错（{r.recheck_error}）；这些定义已标为需再看</span>}
+        {r.overwrites_action_rows?.length > 0 && <span className="warn block"> 这一版改回了行为写过的值：{r.overwrites_action_rows.map((o) => `${o.key}${o.removed ? "（这一行没有了）" : `（${o.columns.join("、")}，行为“${o.action}”，${o.approved_by} 批准）`}`).join("；")}。已经保存，没有拦。</span>}</li>)}</ul>}
       </div>
       {phase !== "done" ? (
         <div className="actions">

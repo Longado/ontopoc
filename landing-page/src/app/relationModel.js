@@ -47,6 +47,7 @@ export function relationProblem(form, editing) {
 export function itemHref(item) {
   if (item.kind === "relation") return hrefFor({ page: "relation", id: item.id });
   if (item.kind === "view") return hrefFor({ page: "type", id: item.id, tab: "views" });
+  if (item.kind === "action" || item.kind === "approval") return hrefFor({ page: "type", id: item.id, tab: "actions" });
   return hrefFor({ page: "type", id: item.id, tab: "props" });
 }
 

@@ -115,6 +115,12 @@ function Basis({ record }) {
           </>
         )}
         {read.length > 0 && <><dt>读取的数据</dt><dd>{read.map((t) => <span className="block" key={t}>{t}</span>)}</dd></>}
+        {record.limited_by_rule?.length > 0 && (
+          <>
+            <dt>只算了你看得到的行</dt>
+            <dd>{record.limited_by_rule.map((l) => <span className="block" key={l.type}>{l.name}：行规则限制了行（{l.rule}），数是按这些行算的</span>)}</dd>
+          </>
+        )}
       </dl>
       {record.steps.length > 0 && (
         <details className="trace">

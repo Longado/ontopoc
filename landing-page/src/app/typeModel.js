@@ -36,11 +36,12 @@ const DATASET_LINE = [
 
 /** One line of the log as a sentence: {who, text}. */
 export function logText(e) {
-  const what = e.element === "meaning" ? `“${e.column}”的含义` : e.element === "relation" ? "关系" : e.element === "view" ? "视图" : "对象类型";
+  const what = e.element === "meaning" ? `“${e.column}”的含义` : e.element === "relation" ? "关系" : e.element === "view" ? "视图" : e.element === "action" ? "行为" : "对象类型";
   if (e.element === "dataset") {
     const hit = DATASET_LINE.map(([re, say]) => [re.exec(e.change), say]).find(([m]) => m);
     return { who: e.who, text: hit ? hit[1](hit[0]) : e.change };
   }
+  if (e.change.startsWith("action_") || e.change === "row_rules_changed") return { who: e.who, text: e.text };   // the service writes these lines as sentences
   if (e.change === "needs_look") return { who: "系统", text: `${what}需再看：${e.reason}${e.caused_by ? `（${e.caused_by} 的上传）` : ""}` };
   if (e.change === "confirmed") return { who: e.who, text: `确认了${what}${e.self_confirmed ? "（自己提的；只有一位构建者，两人确认没有生效）" : ""}` };
   if (e.change === "sent_back") return { who: e.who, text: `退回了${what}：${e.reason}` };

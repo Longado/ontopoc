@@ -4,7 +4,8 @@ export const MODE_LABEL = { new: "新建", update_by_key: "按主键更新", ove
 export const modeLabel = (mode) => MODE_LABEL[mode] ?? "导入";
 
 /** How a version was made: by the old screen's modelling run (it never moves the current version) or the way it was uploaded. */
-export const versionWay = (v) => (v.origin && v.origin !== "upload" ? "建模运行" : modeLabel(v.mode));
+export const versionWay = (v) =>
+  v.action ? `行为“${v.action.id}”（${v.action.submitted_by} 提交，${v.action.approved_by} 批准）` : v.origin && v.origin !== "upload" ? "建模运行" : modeLabel(v.mode);
 
 const sameAs = (v) => (v.same_as ? `，内容同第 ${v.same_as} 版` : "");
 
