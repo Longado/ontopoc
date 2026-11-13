@@ -15,6 +15,7 @@ from pathlib import PurePath
 
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.company_sources import TABLE_SUFFIXES, SourceFileError, load_table_file
+from ontology_poc_generator.object_types import dataset_readers_of, recheck_dependents
 from ontology_poc_generator.workspace_store import DELETED, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, now_text as _now_text, plan_upload
 
 PREVIEW_ROWS = 50   # rows on one page of the preview
@@ -57,7 +58,7 @@ def list_datasets(conn) -> list[dict]:
                        'FROM dataset d JOIN current_dataset c ON c.dataset_id = d.id ORDER BY d.name')
     return [{'name': r['name'], 'origin': r['origin'], 'rows': r['rows_stored'], 'columns': r['column_count'], 'version': r['version'],
              'versions': r['version_count'], 'updated_at': _updated_at(conn, r['name'], r['imported_at']), 'who': r['who'],
-             'used_by': 0} for r in rows]   # used_by: nothing reads a dataset yet; object types and pipelines will
+             'used_by': len(dataset_readers_of(conn, r['name']))} for r in rows]   # used_by: the object types that read it; pipelines will too
 
 
 def _version_row(row: dict, current_id: int) -> dict:
@@ -120,7 +121,8 @@ def dataset_detail(conn, name: str, version: int | None = None, page: int = 1) -
     columns = [{'name': c['name'], 'type': c['inferred_type'], 'distinct': c['distinct_count'], 'missing': c['missing_count'],
                 'fill_rate': (total - c['missing_count']) / total if total else None,
                 'possible_key': bool(total) and c['missing_count'] == 0 and c['distinct_count'] == total,
-                'key_check': single.get(c['name']), 'near_key': _near_key(conn, _quote(shown['table_name']), c, total)}
+                'key_check': single.get(c['name']), 'near_key': _near_key(conn, _quote(shown['table_name']), c, total),
+                'values': json.loads(c['value_counts_json']) if c['value_counts_json'] else None}   # the values and their rows, for a column with few of them
                for c in _rows(conn, 'SELECT * FROM "column" WHERE dataset_id = ? ORDER BY position', (shown['id'],))]
     cols = ', '.join(_quote(c['name']) for c in columns)
     pages = max(1, -(-total // PREVIEW_ROWS))
@@ -129,7 +131,7 @@ def dataset_detail(conn, name: str, version: int | None = None, page: int = 1) -
     versions = _rows(conn, 'SELECT * FROM dataset WHERE name = ? ORDER BY version DESC', (name,))
     skipped = _rows(conn, 'SELECT time, who, after_json FROM log WHERE element_id = ? AND change = ? ORDER BY time DESC', (f'dataset:{name}', NO_CHANGE))
     return {'name': name, 'origin': shown['origin'], 'version': shown['version'], 'version_at': shown['imported_at'], 'current_version': current['version'],
-            'rows': total, 'updated_at': _updated_at(conn, name, current['imported_at']), 'who': shown['who'], 'used_by': 0,
+            'rows': total, 'updated_at': _updated_at(conn, name, current['imported_at']), 'who': shown['who'], 'readers': dataset_readers_of(conn, name),
             'dropped': json.loads(shown['dropped_json'] or '{}'), 'columns': columns, 'key_checks': checks,
             'versions': [_version_row(v, current['id']) for v in versions],
             'no_change_updates': [{'at': r['time'], 'who': r['who'], 'mode': 'update_by_key', **json.loads(r['after_json'])} for r in skipped],
@@ -258,7 +260,13 @@ def upload(conn, parts: list, who: str | None) -> list[dict]:
         raise ValueError('没有选择文件')
     jobs = _jobs(conn, parts)
     signer = str(who or '').strip() or '未署名'
-    return [_outcome(job, apply_upload(conn, job['plan'], signer)) for job in jobs]
+    outcomes = []
+    for job in jobs:
+        done = apply_upload(conn, job['plan'], signer)
+        if done['created']:
+            recheck_dependents(conn, job['plan']['name'], signer)   # what was confirmed on the version before is checked against this one
+        outcomes.append(_outcome(job, done))
+    return outcomes
 
 
 def delete_dataset(conn, name: str, who: str | None, readers: list[dict]) -> dict:

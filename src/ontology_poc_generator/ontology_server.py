@@ -66,6 +66,8 @@ from ontology_poc_generator.auth_http import LOOPBACK, Gate
 from ontology_poc_generator.dataset_readers import dataset_readers
 from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
 from ontology_poc_generator.workspace_tasks import list_tasks
+from ontology_poc_generator.object_types import TypeRefused, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
+from ontology_poc_generator.object_type_suggest import suggest_types
 
 ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
@@ -1175,8 +1177,81 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, deleted)
 
+        def types_get(self):
+            """/api/workspace/types, /types/<id>, /types/<id>/objects?page=N, /types/<id>/log: the object types of the workspace (a viewer sees the confirmed ones)."""
+            url = urlsplit(self.path)
+            parts = [unquote(p) for p in url.path[len('/api/workspace/types'):].split('/') if p]
+            page = (parse_qs(url.query).get('page') or ['1'])[0]
+            if not re.fullmatch(r'[0-9]{1,9}', page):
+                self.reply(400, {'error': '页码要写成数字'})
+                return
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = {'types': list_types(conn, self.user)}
+                elif len(parts) == 1:
+                    body = type_detail(conn, parts[0], self.user)
+                elif len(parts) == 2 and parts[1] == 'objects':
+                    body = type_objects(conn, parts[0], int(page), self.user)
+                elif len(parts) == 2 and parts[1] == 'log':
+                    body = {'log': type_log(conn, parts[0], self.user)}
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def types_post(self):
+            """POST /api/workspace/types (create), /types/update, /types/meanings, /types/confirm, /types/key-check, /types/suggest: see object_types.py. A refusal
+            of who (confirming one's own proposal) is a 403, a stale version a 409, the rest a 400 that says what is wrong."""
+            route = self.path[len('/api/workspace/types'):]
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                who = self.signer(payload, 'who')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    if route == '':
+                        body = create_type(conn, payload, who)
+                    elif route == '/update':
+                        body = update_type(conn, payload, who)
+                    elif route == '/meanings':
+                        body = propose_meanings(conn, payload, who)
+                    elif route == '/confirm':
+                        body = confirm_element(conn, payload, who)
+                    elif route == '/key-check':
+                        body = key_preview(conn, payload.get('dataset'), payload.get('key'))
+                    elif route == '/suggest':
+                        if gateway is None:
+                            self.reply(503, {'error': NO_KEY})
+                            return
+                        body = suggest_types(conn, gateway, payload.get('datasets'), payload.get('purpose') or '', who, datetime.now(timezone.utc).isoformat(timespec='seconds'))
+                    else:
+                        self.reply(404, {'error': 'Unknown workspace endpoint'})
+                        return
+                finally:
+                    conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc), **(exc.detail or {})})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
         def do_GET(self):
             if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
+                return
+            if self.path == '/api/workspace/types' or self.path.startswith('/api/workspace/types/') or self.path.startswith('/api/workspace/types?'):
+                self.types_get()
                 return
             if self.path.startswith('/api/workspace/'):
                 self.workspace_get()
@@ -1368,6 +1443,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def post_route(self):
             if not gate.admit(self, 'POST') or gate.handle(self, 'POST'):
+                return
+            if self.path == '/api/workspace/types' or self.path.startswith('/api/workspace/types/'):
+                self.types_post()
                 return
             if self.path == '/api/workspace/datasets/upload':
                 self.workspace_upload()

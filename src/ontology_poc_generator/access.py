@@ -20,13 +20,14 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/auth/tokens', SESSION),
     ('POST', r'/api/auth/tokens(/revoke)?', SESSION),
     # read
-    ('GET', r'/api/workspace/(datasets|tasks)(/.+)?', 'viewer'),
+    ('GET', r'/api/workspace/(datasets|tasks|types)(/.+)?', 'viewer'),
     ('GET', _RUNS, 'viewer'),
     ('GET', r'/api/ontology/jobs/[^/]+', 'viewer'),
     ('GET', r'/api/ontology/library(/.+)?', 'viewer'),
     ('POST', r'/api/ontology/ask', 'viewer'),
     # change data, start model work, write definitions
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
+    ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest))?', 'builder'),
     ('POST', r'/api/ontology/(build|jobs|preview|compare|variants|requery|library/import)', 'builder'),
     ('POST', r'/api/ontology/reference/(preview|confirm)', 'builder'),
     ('POST', r'/api/ontology/(confirm|acceptance|card|derived|bulk-approve|repeat-rules|views|rules|form|pipelines/run)', 'builder'),

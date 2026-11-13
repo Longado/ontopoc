@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from ontology_poc_generator.object_types import dataset_readers_of
+
 
 def _run_readers(run_paths: list[Path], name: str) -> list[dict]:
     readers = []
@@ -45,4 +47,4 @@ def _definition_readers(conn, name: str) -> list[dict]:
 
 def dataset_readers(conn, run_paths: list[Path], name: str) -> list[dict]:
     """[{'kind', 'name'}] of everything that reads the dataset called `name`; empty when nothing does."""
-    return _run_readers(run_paths, name) + _definition_readers(conn, name)
+    return _run_readers(run_paths, name) + _definition_readers(conn, name) + dataset_readers_of(conn, name)

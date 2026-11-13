@@ -53,7 +53,17 @@ def upload_tasks(conn) -> list[dict]:
     return tasks
 
 
+def suggest_tasks(conn) -> list[dict]:
+    """The model's suggestions of object types: what was asked, the types it proposed, those the checks dropped and why (object_type_suggest)."""
+    tasks = []
+    for element_id, who, at, after in conn.execute('SELECT element_id, who, time, after_json FROM log WHERE change = ?', ('suggest',)):
+        task = json.loads(after)
+        tasks.append({'kind': 'suggest', 'id': element_id, 'title': '、'.join(task['datasets']), 'state': 'failed' if task['error'] else 'done', 'at': at, 'who': who,
+                      'error': task['error'], 'proposed': task['proposed'], 'rejected': task['rejected'], 'model': task['model']})
+    return tasks
+
+
 def list_tasks(conn, jobs_dir: Path, running: set[str]) -> tuple[list[dict], int]:
-    """(jobs and uploads together, newest first, at most LIMIT; the number of job files that could not be read)."""
+    """(jobs, uploads and suggestions together, newest first, at most LIMIT; the number of job files that could not be read)."""
     jobs, unreadable = job_tasks(jobs_dir, running)
-    return sorted(jobs + upload_tasks(conn), key=lambda t: t['at'], reverse=True)[:LIMIT], unreadable
+    return sorted(jobs + upload_tasks(conn) + suggest_tasks(conn), key=lambda t: t['at'], reverse=True)[:LIMIT], unreadable

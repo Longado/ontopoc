@@ -41,8 +41,13 @@ CREATE TABLE IF NOT EXISTS "column" (
     value_counts_json TEXT, PRIMARY KEY (dataset_id, name));
 CREATE TABLE IF NOT EXISTS element_state (
     element_id TEXT PRIMARY KEY,
-    state TEXT NOT NULL CHECK (state IN ('proposed', 'checked', 'confirmed', 'rejected')),
+    state TEXT NOT NULL CHECK (state IN ('proposed', 'checked', 'confirmed', 'needs_look', 'rejected')),
     evidence_ref TEXT, confirmed_by TEXT, confirmed_at TEXT, version INTEGER NOT NULL, content_json TEXT, anchors_json TEXT);
+CREATE TABLE IF NOT EXISTS element_dep (
+    element_id TEXT NOT NULL, depends_on TEXT NOT NULL, PRIMARY KEY (element_id, depends_on));
+CREATE TABLE IF NOT EXISTS confirmation (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, element_id TEXT NOT NULL, confirmed_by TEXT, confirmed_by_user_id INTEGER, proposed_by TEXT,
+    confirmed_at TEXT NOT NULL, content_json TEXT, evidence_ref TEXT, dataset_versions_json TEXT, self_confirmed INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS check_result (
     id INTEGER PRIMARY KEY AUTOINCREMENT, element_id TEXT NOT NULL, check_type TEXT NOT NULL, query TEXT NOT NULL,
     rows_checked INTEGER, violations INTEGER, samples_json TEXT, dataset_id INTEGER, null_key_rows INTEGER,
@@ -81,11 +86,12 @@ def open_workspace(path) -> sqlite3.Connection:
     if str(path) != ':memory:':
         os.chmod(path, 0o600)   # the file holds password hashes and sessions: this account only
     for table, column in (('dataset', 'dropped_json'), ('dataset', 'who'), ('dataset', 'mode'), ('dataset', 'changes_json'), ('check_result', 'dataset_id'), ('check_result', 'null_key_rows'),
-                          ('element_state', 'content_json'), ('element_state', 'anchors_json'), ('element_state', 'proposed_by'),
+                          ('element_state', 'content_json'), ('element_state', 'anchors_json'), ('element_state', 'proposed_by'), ('element_state', 'reason'),
                           ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows") or column.endswith("user_id") else "TEXT"}')
     _never_reuse_ids(conn)
+    _allow_needs_look(conn)
     conn.execute('INSERT OR IGNORE INTO current_dataset SELECT name, id FROM dataset WHERE version = '
                  '(SELECT MAX(version) FROM dataset d WHERE d.name = dataset.name)')
     return conn
@@ -110,6 +116,26 @@ def _never_reuse_ids(conn) -> None:
             conn.execute(f'INSERT INTO {name}_rebuilt SELECT * FROM {name}')
             conn.execute(f'DROP TABLE {name}')
             conn.execute(f'ALTER TABLE {name}_rebuilt RENAME TO {name}')
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+
+
+def _allow_needs_look(conn) -> None:
+    """A file made before the state 'needs_look' existed has a CHECK that refuses it: rebuild element_state with the same rows and the wider CHECK."""
+    sql = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'element_state'").fetchone()[0]
+    if 'CHECK' not in sql or 'needs_look' in sql:
+        return
+    rebuilt = sql.replace("'confirmed', 'rejected'", "'confirmed', 'needs_look', 'rejected'")
+    assert rebuilt != sql, 'element_state: its state CHECK is not the one this migration knows'
+    columns = ', '.join(r[1] for r in conn.execute('PRAGMA table_info(element_state)'))
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        conn.execute(re.sub(r'^CREATE TABLE (IF NOT EXISTS )?"?element_state"?', 'CREATE TABLE element_state_rebuilt', rebuilt, count=1))
+        conn.execute(f'INSERT INTO element_state_rebuilt({columns}) SELECT {columns} FROM element_state')
+        conn.execute('DROP TABLE element_state')
+        conn.execute('ALTER TABLE element_state_rebuilt RENAME TO element_state')
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
@@ -171,6 +197,9 @@ def _log(conn, who: str, element_id: str | None, change: str, before=None, after
     conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
                  (_now(), who, element_id, change, None if before is None else json.dumps(before, ensure_ascii=False),
                   None if after is None else json.dumps(after, ensure_ascii=False), actor_id_for(who) if user_id is _ACTOR else user_id))
+
+
+log_line = _log   # for the modules that also record what was before
 
 
 def log_write(conn, who: str, element_id: str, change: str, after=None) -> None:
