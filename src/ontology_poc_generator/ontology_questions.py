@@ -14,7 +14,7 @@ from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview, to_number
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 
-QUESTION_PROMPT_VERSION = 'company_questions.v13'
+QUESTION_PROMPT_VERSION = 'company_questions.v14'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
 MAX_MERGED = 20             # groups named in `evidence`: a pointer to where to look, not the full list
@@ -75,7 +75,9 @@ them left out ("不算已取消", "除已取消外", "未取消的"), "mention" 
 (a rate such as "已取消率", written as `share`, or a group_by on its column); code refuses a "mention" whose column the query
 does not use as a share or a group_by, so a question that leaves rows out or keeps only some by it is "exclude" or "include",
 never "mention"; [] when the question refers to none. Read the direction from the meaning of the question, not from its words. A query can only say "equals", so for an included meaning write its code in `where`; for an excluded one do not write
-a filter on that column at all, code will read a view that leaves it out when there is one and refuse otherwise.
+a filter on that column at all, code will read a view that leaves it out when there is one and refuse otherwise. A view you list with "include" is applied by code
+before the query runs: the query does not have to say what the view does (keep the latest row per key, leave a meaning out), so never set "query" to null for
+that reason; write the query for the rest of the question (start type, measure, group_by) as if the view's rows were the type's rows.
 A question that asks how many (or which) objects of one type name a related object that does not exist ("有多少订单的客户在客户表里找不到")
 cannot be written as a query: set "query" to null, "missing": "query_language" and "unmatched_relation" to the relation it is about
 and which way it asks: "many_without_one" for the rows of the relation's source table whose key the other table does not have
