@@ -2,11 +2,12 @@ import copy
 import unittest
 
 from ontology_poc_generator import ontology_card
+from ontology_poc_generator.code_meanings import code_columns
 from ontology_poc_generator.open_items import check_answers, open_items, split_answers
 from tests.test_ontology_card import ONTOLOGY as LEDGER_ONTOLOGY, bundle as ledger_bundle
 
-KINDS = ['model_filter', 'merged', 'found_elsewhere', 'unlinked', 'same_name', 'unstable', 'check_finding',
-         'data_gaps', 'unanswered', 'unjudged']
+KINDS = ['model_filter', 'merged', 'found_elsewhere', 'unlinked', 'same_name', 'unstable', 'check_finding', 'repeated_key',
+         'data_gap', 'data_gaps', 'unanswered', 'unjudged']
 
 ONTOLOGY = {
     'status': 'auto_built_verified', 'data_gaps': [],
@@ -198,7 +199,7 @@ class UnlinkedTests(unittest.TestCase):
         fit = {'relations': [{'key': 'contract_spend', 'source': 'spend', 'rows': 3, 'linked_rows': 2, 'empty_rows': 0}], 'orphans': []}
         decided = {'decisions': {'types': {t['key']: {'verdict': 'ok'} for t in ontology['object_types']},
                                  'relations': {'contract_spend': {'verdict': 'ok'}}}}
-        [item] = open_items(run({'data_fit': fit}, ontology, confirmation=decided), bundle)
+        [item] = [i for i in open_items(run({'data_fit': fit}, ontology, confirmation=decided), bundle) if i['kind'] == 'unlinked']
         # the spend table is about spend rows, so its rows are what is left over, and the contract is what may be missing
         self.assertTrue(item['ask'].startswith('支出行（spend）3 行里有 1 行没连上'), item['ask'])
         self.assertIn('本来就没有对应的合同授标', item['ask'])
@@ -216,7 +217,7 @@ class UnlinkedTests(unittest.TestCase):
         fit = {'relations': [{'key': 'contract_spend', 'source': 'spend', 'rows': 3, 'linked_rows': 2, 'empty_rows': 0}], 'orphans': []}
         decided = {'decisions': {'types': {**{t['key']: {'verdict': 'ok'} for t in ontology['object_types']}, 'line': {'verdict': 'wrong'}},
                                  'relations': {'contract_spend': {'verdict': 'ok'}}}}
-        [item] = open_items(run({'data_fit': fit}, ontology, confirmation=decided), bundle)
+        [item] = [i for i in open_items(run({'data_fit': fit}, ontology, confirmation=decided), bundle) if i['kind'] == 'unlinked']
         # four lines outnumber three spend rows, but a person said lines are not objects: the table is about spend rows
         self.assertTrue(item['ask'].startswith('支出行（spend）3 行里有 1 行没连上'), item['ask'])
 
@@ -364,6 +365,145 @@ class DataGapTests(unittest.TestCase):
                                 'facts': gaps, 'target': {'tab': 'objects', 'place': 'build'}})
 
 
+class RepeatedKeyTests(unittest.TestCase):
+    """A key that repeats in the table describing the object is an item with a rule to choose, until one is chosen."""
+    BUNDLE = {'sources': {**vendors(('K1', 'Acme'), ('K2', 'Bolt'))['sources'],
+                          'vendors': {'records': [{'uei': 'K1', 'vendor_name': 'Acme'}, {'uei': 'K1', 'vendor_name': 'Acme Corp'}, {'uei': 'K2', 'vendor_name': 'Bolt'}]}}}
+
+    def items(self, bundle=None, **over):
+        return [i for i in open_items(run(**over), bundle or self.BUNDLE) if i['kind'] == 'repeated_key']
+
+    def test_a_repeated_key_is_an_item_with_the_rows_and_what_differs(self):
+        [item] = self.items()
+        self.assertEqual((item['id'], item['target']), ('repeated_key:vendor.vendors', {'tab': 'objects', 'object': 'vendor'}))
+        self.assertIn('承包商', item['ask'])
+        self.assertIn('K1', item['ask'])
+        self.assertEqual(item['facts'], ['K1：2 行，vendor_name：Acme / Acme Corp'])
+        self.assertEqual(item['repeat'], {'type': 'vendor', 'source': 'vendors', 'identities': 1, 'rows': 2, 'columns': []})   # text has no order: nothing to offer for "latest"
+        self.assertFalse(item['from_model'])
+
+    def test_the_item_is_gone_once_a_rule_is_on_file_and_for_a_table_with_no_repeat(self):
+        self.assertEqual(self.items({**self.BUNDLE, 'repeat_rules': {'vendor.vendors': {'rule': 'keep_both'}}}), [])
+        self.assertEqual(self.items(BUNDLE), [])
+
+    def test_a_column_that_orders_the_rows_is_offered_for_latest_and_the_rest_are_not(self):
+        bundle = {'sources': {**self.BUNDLE['sources'], 'vendors': {'records': [
+            {'uei': 'K1', 'vendor_name': 'Acme', 'updated': '2026-01-01'}, {'uei': 'K1', 'vendor_name': 'Acme Corp', 'updated': '2026-02-01'},
+            {'uei': 'K2', 'vendor_name': 'Bolt', 'updated': '2026-01-01'}]}}}
+        [item] = self.items(bundle)
+        self.assertEqual(item['repeat']['columns'], ['updated'])
+
+    def test_a_choice_the_data_can_no_longer_carry_out_is_asked_again_and_says_why(self):
+        [item] = self.items({**self.BUNDLE, 'repeat_rules': {'vendor.vendors': {'rule': 'keep_latest', 'column': 'updated'}}})
+        self.assertTrue(item['ask'].startswith('上次选的是按「updated」只留最新的，但这一列现在不在表里或分不出先后。'), item['ask'])
+
+    def test_the_older_question_which_one_is_right_closes_with_the_choice(self):
+        fit = {'identity_conflicts': [{'type': 'vendor', 'source': 'vendors', 'identity': 'K1', 'field': 'vendor_name', 'values': ['Acme', 'Acme Corp']},
+                                      {'type': 'vendor', 'source': 'contracts', 'identity': 'K9', 'field': 'vendor_name', 'values': ['A', 'B']}]}
+        asked = lambda bundle: [i['id'] for i in open_items(run({'data_fit': fit}), bundle) if i['kind'] == 'check_finding']
+        self.assertEqual(asked(self.BUNDLE), ['check_finding:identity_conflicts'])
+        for rule in ({'rule': 'keep_both'}, {'rule': 'data_error'}):
+            chosen = {**self.BUNDLE, 'repeat_rules': {'vendor.vendors': rule}}
+            [only] = [i for i in open_items(run({'data_fit': fit}), chosen) if i['kind'] == 'check_finding']
+            self.assertEqual(only['facts'], ['承包商 K9 的“vendor_name”：A / B'])    # the conflict in another table is still open
+
+    def test_a_key_that_repeats_now_and_was_not_covered_by_the_choice_reopens_the_item(self):
+        [item] = self.items({**self.BUNDLE, 'repeat_rules': {'vendor.vendors': {'rule': 'keep_both', 'covers': ['K9']}}})
+        self.assertTrue(item['ask'].startswith('上次的选择只管到当时重复的编号，现在又有新的重复编号：K1。'), item['ask'])
+        self.assertEqual(self.items({**self.BUNDLE, 'repeat_rules': {'vendor.vendors': {'rule': 'keep_both', 'covers': ['K1']}}}), [])
+
+    def test_it_is_not_asked_about_an_object_a_person_judged_wrong(self):
+        wrong = {'decisions': {'types': {**DECIDED['decisions']['types'], 'vendor': {'verdict': 'wrong'}}, 'relations': DECIDED['decisions']['relations']}}
+        self.assertEqual(self.items(confirmation=wrong), [])
+
+    def test_it_cannot_be_closed_with_an_answer_only_by_choosing_the_rule(self):
+        [item] = self.items()
+        with self.assertRaises(ontology_card.CardError):
+            check_answers([item], [{'id': item['id'], 'text': '好'}], '张三', AT)
+
+
+class ColumnGapTests(unittest.TestCase):
+    """A data gap that names a column of an uploaded table is an item about that column; the rest stay together as text."""
+    @staticmethod
+    def items(gaps, bundle=BUNDLE):
+        return open_items(run(ontology={**ONTOLOGY, 'data_gaps': gaps}), bundle)
+
+    @staticmethod
+    def with_tables(tables):
+        return {'sources': {**BUNDLE['sources'], **tables}}
+
+    def test_a_sentence_that_names_a_column_becomes_an_item_tied_to_it_with_the_columns_counts(self):
+        bundle = vendors(('K1', 'Acme'), ('K2', ''), ('K3', 'Acme'))
+        sentence = 'vendor_name 里有空值，无法确认承包商名称。'
+        [item] = self.items([sentence], bundle)
+        self.assertEqual((item['kind'], item['id'], item['from_model'], item['target']), ('data_gap', 'data_gap:vendor_name', True, {'tab': 'data', 'table': 'vendors'}))
+        self.assertIn(sentence, item['ask'])
+        self.assertEqual(item['facts'], ['vendors：3 行，「vendor_name」1 行为空，1 个不同取值'])
+
+    def test_sentences_that_name_no_column_stay_together_as_the_old_item(self):
+        named, plain = 'vendor_name 里有空值。', '办公室只有编号和名称。'
+        listed = self.items([named, plain])
+        self.assertEqual([(i['kind'], i['facts'] if i['kind'] == 'data_gaps' else None) for i in listed], [('data_gap', None), ('data_gaps', [plain])])
+        self.assertIn('1 处', listed[1]['ask'])
+
+    def test_two_sentences_about_one_column_are_one_item(self):
+        [item] = self.items(['vendor_name 缺值。', '另外 vendor_name 有重名。'])
+        self.assertEqual(item['id'], 'data_gap:vendor_name')
+        self.assertIn('vendor_name 缺值。', item['ask'])
+        self.assertIn('另外 vendor_name 有重名。', item['ask'])
+
+    def test_the_longer_column_name_wins_and_a_table_named_in_the_sentence_narrows_the_columns(self):
+        bundle = self.with_tables({'订单': {'records': [{'订单号': 'O1', '单价': '1', '含税单价': '2'}]}, '发票': {'records': [{'发票号': 'F1', '单价': '3'}]}})
+        ids = lambda gap: [i['id'] for i in self.items([gap], bundle)]
+        self.assertEqual(ids('含税单价没有币种。'), ['data_gap:含税单价'])   # 单价 is inside it, and is not a second item
+        [item] = self.items(['发票的单价没有币种。'], bundle)
+        self.assertEqual((item['id'], item['target']), ('data_gap:单价', {'tab': 'data', 'table': '发票'}))
+        [both] = self.items(['单价没有币种。'], bundle)   # no table named: every table that has it is listed
+        self.assertEqual([f.split('：')[0] for f in both['facts']], ['订单', '发票'])
+
+    def test_a_one_character_column_name_is_not_found_in_a_sentence(self):
+        bundle = self.with_tables({'t': {'records': [{'数': '1', 'x': '2'}]}})
+        self.assertEqual([i['kind'] for i in self.items(['数据不全，x 也没有说明。'], bundle)], ['data_gaps'])
+
+    def test_a_generic_column_name_or_a_sentence_about_something_missing_is_not_asserted_to_be_about_the_column(self):
+        bundle = self.with_tables({'订单': {'records': [{'订单号': 'O1', '日期': '2026-01-01', '交付天数': '3'}]}})
+        for sentence in ('缺少付款日期，无法算账期。', '日期格式不统一。', '缺少时间维度，日期粒度不够。', '缺少交付天数的记录。'):
+            [item] = self.items([sentence], bundle)
+            self.assertEqual((item['kind'], item['facts'][0].startswith(sentence)), ('data_gaps', True), sentence)
+        [item] = self.items(['缺少付款日期，无法算账期。'], bundle)
+        self.assertEqual(item['facts'], ['缺少付款日期，无法算账期。（可能与「日期」有关）'])
+        self.assertEqual(self.items(['订单的交付天数有一半是空的。'], bundle)[0]['kind'], 'data_gap')   # a specific name, not said to be missing
+        self.assertEqual(self.items(['交付天数缺少说明。'], bundle)[0]['id'], 'data_gap:交付天数')   # the name comes before the missing word: it is about the column
+
+    def test_a_sentence_saying_a_columns_dictionary_is_missing_is_about_that_column_and_无_inside_a_word_is_not_a_missing_word(self):
+        bundle = self.with_tables({'订单': {'records': [{'订单号': 'O1', '状态码': '1', '交付天数': '3'}]}})
+        for sentence in ('订单表里没有状态码的字典。', '缺少状态码字典。', '缺少状态码的含义说明。', '状态码没有字典。'):
+            self.assertEqual([i['id'] for i in self.items([sentence], bundle)], ['data_gap:状态码'], sentence)
+        self.assertEqual([i['kind'] for i in self.items(['缺少状态码。'], bundle)], ['data_gaps'])   # the column itself is said to be absent
+        for sentence in ('无法统计交付天数。', '无需补交付天数。', '无效的交付天数占一半。'):
+            self.assertEqual([i['id'] for i in self.items([sentence], bundle)], ['data_gap:交付天数'], sentence)
+        self.assertEqual([i['kind'] for i in self.items(['无交付天数的订单。'], bundle)], ['data_gaps'])
+
+    def test_a_gap_about_a_code_column_with_an_open_item_goes_on_that_item_not_on_a_second_one(self):
+        bundle = self.with_tables({'订单': {'records': [{'订单号': f'O{i}', '状态码': str(i % 3)} for i in range(60)]}})
+        sentence = '订单的状态码没有字典，不知道 0、1、2 各是什么。'
+        codes = {'profiles': code_columns(bundle), 'enums': {}, 'drafts': {}}
+        listed = open_items(run(ontology={**ONTOLOGY, 'data_gaps': [sentence]}), bundle, codes=codes)
+        self.assertEqual([i['kind'] for i in listed if i['kind'].startswith('data_gap') or i['kind'] == 'code_meaning'], ['code_meaning'])
+        [item] = [i for i in listed if i['kind'] == 'code_meaning']
+        self.assertIn(f'模型指出：“{sentence}”（模型的说法）', item['facts'])
+        # once every value has its meaning the code item is gone, and the sentence is an item of its own again
+        enums = {'订单.状态码': {'values': [{'value': v, 'label': 'x', 'description': ''} for v in '012']}}
+        again = open_items(run(ontology={**ONTOLOGY, 'data_gaps': [sentence]}), bundle, codes={**codes, 'enums': enums})
+        self.assertEqual([i['id'] for i in again if i['kind'].startswith('data_gap')], ['data_gap:状态码'])
+
+    def test_a_column_gap_is_answered_in_words_only(self):
+        listed = [{'kind': 'data_gap', 'id': 'data_gap:vendor_name', 'ask': 'a'}]
+        self.assertIn('data_gap:vendor_name', check_answers(listed, [{'id': 'data_gap:vendor_name', 'text': '下周补'}], '张三', AT))
+        with self.assertRaises(ontology_card.CardError):
+            check_answers(listed, [{'id': 'data_gap:vendor_name', 'choice': 'same', 'text': '好'}], '张三', AT)
+
+
 class UnansweredTests(unittest.TestCase):
     @staticmethod
     def stuck(question, status, **over):
@@ -447,7 +587,8 @@ class WholeRunTests(unittest.TestCase):
             'data_fit': {**UnlinkedTests.FIT, 'unused_sources': [{'source': 'notes', 'rows': 1, 'fields': 1}]},
             'stability': UnstableTests.STABILITY}
         bundle = padded(30, ('K1', 'Acme'), ('K2', 'ACME'))
-        out = open_items(run(evaluation, ontology={**ONTOLOGY, 'data_gaps': ['缺口']}, confirmation=None), bundle)
+        bundle['sources']['vendors']['records'].append({'uei': 'K1', 'vendor_name': 'Acme Inc'})   # K1 on two rows
+        out = open_items(run(evaluation, ontology={**ONTOLOGY, 'data_gaps': ['缺口', 'vendor_name 缺值']}, confirmation=None), bundle)
         self.assertEqual(set(kinds(out)), set(KINDS))
         self.assertEqual(kinds(out), sorted(kinds(out), key=KINDS.index))
 

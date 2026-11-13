@@ -5,11 +5,16 @@ where in the product the answer is to be looked at or given. Each item has an id
 same thing has the same id on the next run; the client's answer to an item is kept under that id."""
 from __future__ import annotations
 
+import re
+
+from ontology_poc_generator.code_meanings import PATTERN_ROWS
+from ontology_poc_generator.name_checks import STAT_WORDS, name_vs_calculation
 from ontology_poc_generator.object_rows import _display, _labeller
 from ontology_poc_generator.ontology_card import MAX_BASIS, MAX_NOTE, CardError, blank_by_table, check_by, clean_text, complete_id
 from ontology_poc_generator.ontology_confirm import without_wrong
 from ontology_poc_generator.ontology_eval import _row_owners
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value
+from ontology_poc_generator.repeated_keys import EXAMPLES as REPEAT_EXAMPLES, applicable, repeated_keys, unmet
 
 MAX_MERGED = 3      # groups of an answer listed; the rest is in the check pack
 MAX_SAME_NAME = 5   # groups of one type listed; all of them are counted
@@ -21,13 +26,18 @@ COLUMNS_SHOWN = 5   # blank columns named on a table's line of the card item
 # what a client can say to close an item, per kind: the choices it offers (none: only words). The other kinds are settled
 # by doing something, and say what.
 CHOICES = {'unlinked': ('expected', 'incomplete'), 'same_name': ('distinct', 'same'), 'merged': ('distinct', 'same'),
-           'found_elsewhere': (), 'unstable': (), 'check_finding': (), 'data_gaps': (), 'unanswered': ()}
-BY_DOING = {'model_filter': '要去掉条件重算，或替换验收题', 'unjudged': '要逐项判对错', 'card_blank': '要把口径卡填完'}
-CHOICE_SAYS = {'expected': '本来就没有对应，属正常', 'incomplete': '数据没导全', 'distinct': '是不同的对象', 'same': '是同一个'}
+           'found_elsewhere': (), 'unstable': (), 'check_finding': (), 'data_gap': (), 'data_gaps': (), 'unanswered': (),
+           'name_vs_calc': ('rename', 'name_right'), 'name_source': (), 'name_by_view': (), 'name_values': ()}
+BY_DOING = {'model_filter': '要去掉条件重算，或替换验收题', 'unjudged': '要逐项判对错', 'card_blank': '要把口径卡填完',
+            'code_meaning': '要在这件事里逐个填上代码的含义，再点“确认含义”', 'repeated_key': '要选一种处理办法，再点“确认”'}
+CHOICE_SAYS = {'expected': '本来就没有对应，属正常', 'incomplete': '数据没导全', 'distinct': '是不同的对象', 'same': '是同一个',
+               'rename': '名字说错了，按实际算法改名', 'name_right': '名字是对的，是数据算得不对'}
 
 
 def _num(value) -> str:
     """Thousands separators and two decimals at most: 4176392.96 -> 4,176,392.96, 1308.0 -> 1,308."""
+    if abs(float(value)) >= 1e15:   # 1e308 is not printed as 309 digits
+        return f'{float(value):.4g}'
     return f'{int(value):,}' if float(value).is_integer() else f'{value:,.2f}'.rstrip('0').rstrip('.')
 
 
@@ -66,8 +76,8 @@ def _model_filters(questions: dict, asked: dict, label) -> list:
     out = []
     for question, (item, place) in questions.items():
         dropped = ((asked.get(question) or {}).get('edited') or {}).get('dropped') or [] if place == 'acceptance' else []
-        if item['status'] != 'answered' or (place == 'acceptance' and item.get('note')):
-            continue   # a person who wrote the basis down has already settled what the question means
+        if item['status'] != 'answered' or not isinstance(item.get('query'), dict) or (place == 'acceptance' and item.get('note')):
+            continue   # a person who wrote the basis down has already settled what the question means; an answer read from a relation check has no query to look at
         start = label(item['query']['start'])
         measure = ((item.get('answer') or {}).get('measure') or {}).get('field')
         for f in (item.get('evidence') or {}).get('filters') or []:
@@ -108,7 +118,7 @@ def _merged(questions: dict) -> list:
 def _elsewhere(questions: dict, label) -> list:
     out = []
     for question, (item, place) in questions.items():
-        found = _found_elsewhere(item) if item['status'] == 'no_data' else []
+        found = _found_elsewhere(item) if item['status'] == 'no_data' and isinstance(item.get('query'), dict) else []
         if not found:
             continue
         start = label(item['query']['start'])
@@ -201,7 +211,7 @@ def _unstable(stability: dict, relations: dict, kept: dict, label, relation_name
     return out
 
 
-def _check_findings(fit: dict, kept: dict, label, relations: dict) -> list:
+def _check_findings(fit: dict, kept: dict, label, relations: dict, settled: frozenset | set = frozenset()) -> list:
     quote = lambda v: f'“{v}”'
 
     def missing(x):
@@ -228,17 +238,108 @@ def _check_findings(fit: dict, kept: dict, label, relations: dict) -> list:
     for key, count, said, question, line in specs:
         # unused tables have no type; a missing object found through a relation goes with the relation
         found = [x for x in fit.get(key) or [] if ('type' not in x or x['type'] in kept['types'])
-                 and ('relation' not in x or x['relation'] in kept['relations'])]
+                 and ('relation' not in x or x['relation'] in kept['relations'])
+                 and not (key == 'identity_conflicts' and (x['type'], x['source'], x['identity']) in settled)]
         if found:
             lines = [line(x) for x in found[:MAX_EXAMPLES]]
             out.append(_item('check_finding', f'有 {_num(count(found))} {said}，例如{lines[0]}。{question}', {'tab': 'check'}, lines, id=f'check_finding:{key}'))
     return out
 
 
-def _data_gaps(ontology: dict) -> list:
-    gaps = ontology.get('data_gaps') or []
-    return [_item('data_gaps', f'模型指出 {_num(len(gaps))} 处数据缺口（下面逐条）。客户那边有没有能补上的数据？',
-                  {'tab': 'objects', 'place': 'build'}, gaps, from_model=True, id='data_gaps')] if gaps else []
+GENERIC_COLUMNS = frozenset({'日期', '时间', '金额', '名称', '名字', '数量', '编号', '类型', '状态', '备注'})   # a word any sentence about data uses
+MISSING = re.compile(r'(缺少|缺失|缺乏|没有|无(?![法需效]))[^，。,;；]*$')   # "缺少付款日期": what the sentence names is what is absent
+MEANING = re.compile(r'的?(字典|含义|说明|解释|释义|定义)')   # "没有状态码的字典": what is absent is the column's meaning, not the column
+
+
+def _repeated_keys(ontology: dict, bundle: dict, graph: dict, kept: dict, label) -> list:
+    """One item per (object type, table) whose key repeats in the table describing the object, until a person has chosen
+    how the rows are read (bundle['repeat_rules'], kept by the server). Each shows the first few identities with their
+    rows and the columns on which the rows differ."""
+    chosen = bundle.get('repeat_rules') or {}
+    out = []
+    for g in repeated_keys(ontology, bundle, graph):
+        if g['type'] not in kept['types'] or applicable(g, chosen.get(g['rule_key'])):
+            continue
+        shown = g['objects'][:REPEAT_EXAMPLES]
+        lines = [f'{o["identity"]}：{len(o["rows"])} 行' + ''.join(f'，{c}：{" / ".join(v)}' for c, v in o['differs']) for o in shown]
+        # a choice made before that this data no longer carries out (the column is gone, or a new key repeats) is asked again, and says so
+        again = unmet(g, chosen.get(g['rule_key'])) or ''
+        ask = (f'{again}{label(g["type"])}（{g["source"]}表）里有 {_num(len(g["objects"]))} 个编号出现在不止一行，共 {_num(g["rows"])} 行，'
+               f'例如 {shown[0]["identity"]}。这些行怎么算：每一行都留、只留最新的，还是当作数据错误？')
+        out.append(_item('repeated_key', ask, {'tab': 'objects', 'object': g['type']}, lines, id=g['id'],
+                         repeat={'type': g['type'], 'source': g['source'], 'identities': len(g['objects']), 'rows': g['rows'], 'columns': g['latest_columns']}))
+    return out
+
+
+def _settled_repeats(ontology: dict, bundle: dict, graph: dict) -> set:
+    """(object type, table, identity) of the keys on more than one row that a person has already decided about: the
+    check of the data found the rows disagreeing too, and asking "which one is right?" again would ask the same thing."""
+    chosen = bundle.get('repeat_rules') or {}
+    return {(g['type'], g['source'], o['identity']) for g in repeated_keys(ontology, bundle, graph)
+            if applicable(g, chosen.get(g['rule_key'])) for o in g['objects']}
+
+
+def _columns_named(sentence: str, bundle: dict) -> list[tuple[str, str]]:
+    """(table, column) for every column of an uploaded table the sentence names. A name of one character is too easily a
+    word in the sentence; a name inside a longer one that is also named ("金额" in "订单金额") is not a second column;
+    when the sentence names a table, only that table's columns count."""
+    pairs = [(s, c) for s, t in bundle['sources'].items() for c in dict.fromkeys(k for r in t['records'] for k in r) if len(c) >= 2 and c in sentence]
+    named = {c for _, c in pairs}
+    pairs = [(s, c) for s, c in pairs if not any(c != other and c in other for other in named)]
+    in_tables = [(s, c) for s, c in pairs if s in sentence]
+    return in_tables or pairs
+
+
+def _firm(sentence: str, column: str) -> bool:
+    """A name in a sentence says the sentence is about that column only when the name is not a word any sentence about
+    data uses (日期, 金额) and the sentence does not name it as the thing that is absent ("缺少付款日期"); a missing word
+    before the name is harmless when it is the column's dictionary or meaning that is said to be missing."""
+    end = sentence.index(column) + len(column)
+    return column not in GENERIC_COLUMNS and (bool(MEANING.match(sentence, end)) or not MISSING.search(sentence[:end]))
+
+
+def _column_facts(bundle: dict, table: str, column: str) -> str:
+    records = bundle['sources'][table]['records']
+    filled = [r[column] for r in records if r.get(column) not in (None, '')]
+    return f'{table}：{_num(len(records))} 行，「{column}」{_num(len(records) - len(filled))} 行为空，{_num(len(set(filled)))} 个不同取值'
+
+
+def _gap_ties(ontology: dict, bundle: dict) -> tuple[dict, list]:
+    """The model's data gaps sorted: {column: [(sentence, tables)]} for the sentences that firmly name a column of an
+    uploaded table, and the rest as text (a sentence that only weakly names one says "可能与「X」有关" and nothing more)."""
+    tied: dict[str, list] = {}
+    plain = []
+    for sentence in ontology.get('data_gaps') or []:
+        named = _columns_named(sentence, bundle)
+        firm = [(t, c) for t, c in named if _firm(sentence, c)]
+        for column in dict.fromkeys(c for _, c in firm):
+            tied.setdefault(column, []).append((sentence, [t for t, c in firm if c == column]))
+        if not firm:
+            weak = '、'.join(f'「{c}」' for c in dict.fromkeys(c for _, c in named))
+            plain.append(f'{sentence}（可能与{weak}有关）' if weak else sentence)
+    return tied, plain
+
+
+def _data_gaps(tied: dict, plain: list, bundle: dict, coded: frozenset) -> list:
+    """The model's data gaps. One that names a column of an uploaded table is an item about that column (several sentences
+    about one column are one item), with what the data says about the column beside it; the others stay together as text.
+    A column that has a code-meaning item has the sentence on that item (see _code_meanings), so it is left out here.
+    Matching a name in a sentence is code's; whether the gap is real is the model's word, and the item says so."""
+    out = []
+    for column, found in tied.items():
+        found = [(s, [t for t in ts if (t, column) not in coded]) for s, ts in found]
+        found = [(s, ts) for s, ts in found if ts]
+        if not found:
+            continue
+        tables = list(dict.fromkeys(t for _, ts in found for t in ts))
+        sentences = list(dict.fromkeys(s for s, _ in found))
+        said = '”“'.join(sentences)
+        out.append(_item('data_gap', f'模型指出“{said}”，说的是「{column}」这一列。客户那边有没有能补上的数据？',
+                         {'tab': 'data', 'table': tables[0]}, [_column_facts(bundle, t, column) for t in tables], from_model=True, id=f'data_gap:{column}'))
+    if plain:
+        out.append(_item('data_gaps', f'模型指出 {_num(len(plain))} 处数据缺口（下面逐条）。客户那边有没有能补上的数据？',
+                         {'tab': 'objects', 'place': 'build'}, plain, from_model=True, id='data_gaps'))
+    return out
 
 
 def _unanswered(questions: dict) -> list:
@@ -275,6 +376,91 @@ def _card_blank(card: dict | None) -> list:
     return [_item('card_blank', ask, {'tab': 'card'}, [line(*t) for t in tables], id='card_blank')]
 
 
+def _code_meanings(codes: dict | None, tied: dict | None = None) -> list:
+    """One item per code column that still has a value nobody gave a meaning. codes: {profiles: code_meanings.code_columns,
+    enums: the confirmed meanings by field, drafts: the model's guesses by item id}. Each value carries its counts and the
+    facts that set it against the other columns; a model's guess comes with whether the data backs it (strong: another
+    column tells this value's own rows from the other values' rows) and, when it does not, why (few_rows, no_pattern);
+    it is only pre-selected when it does. tied: the model's data-gap sentences by the column they firmly name; the ones about
+    this column are put among its facts, so the column is one item, not two."""
+    out = []
+    for profile in (codes or {}).get('profiles') or []:
+        confirmed = {e['value']: e for e in ((codes['enums'].get(profile['field']) or {}).get('values') or [])}
+        if all(v['value'] in confirmed for v in profile['values']):
+            continue
+        guesses = codes['drafts'].get(profile['id']) or {}
+        values = []
+        for v in profile['values']:
+            guess = guesses.get(v['value'])
+            strong = v['pattern']   # the pattern already needs enough rows under this value and under the others
+            rest = profile['rows'] - profile['blank'] - v['rows']
+            weak = None if strong else 'few_rows' if min(v['rows'], rest) < PATTERN_ROWS else 'no_pattern'
+            held = ((codes.get('waiting') or {}).get(profile['field']) or {}).get('values', {}).get(v['value'])   # confirmed before the data changed, waiting for a second look: starts in the box, not as confirmed
+            values.append({**v, 'confirmed': {k: confirmed[v['value']][k] for k in ('label', 'description')} if v['value'] in confirmed else None,
+                           'waiting': held,
+                           'recommendation': {**guess, 'strong': strong, 'why_weak': weak} if guess else None,
+                           'preselected': bool(guess) and strong and v['value'] not in confirmed})
+        shown = '、'.join(v['value'] for v in values)
+        said = [f'模型指出：“{sentence}”（模型的说法）' for sentence, tables in (tied or {}).get(profile['column'], []) if profile['source'] in tables]
+        facts = [f'取值 {v["value"]}：' + '；'.join(v['facts']) for v in values] + said
+        out.append(_item('code_meaning', f'「{profile["source"]}」的「{profile["column"]}」是代码，共 {_num(len(values))} 个取值（{shown}），'
+                         '数据里没有写它们是什么意思。每个代码指什么？',
+                         {'tab': 'data', 'table': profile['source']}, facts, from_model=False, id=profile['id'],
+                         column={'source': profile['source'], 'column': profile['column'], 'field': profile['field'], 'rows': profile['rows'],
+                                 'values': values}))
+    return out
+
+
+def _statistic(kind: str) -> str:
+    return STAT_WORDS.get(kind) or f'第 {kind[1:]} 百分位'
+
+
+def _how(kind: str) -> str | None:
+    """How a percentile other than the median is worked out, for the page that shows the evidence (not in the rows read aloud)."""
+    return f'第 {kind[1:]} 百分位按插值算；写成“最近秩”（取排在 {kind[1:]}% 位置上的那个数）的也算对' if kind.startswith('p') else None
+
+
+def _name_vs_calc(ontology: dict, bundle: dict) -> list:
+    """A column whose name claims a statistic (P50, 平均, 合计) that its source rows do not give: one item per column, with the row by
+    row comparison. Code does the comparison (see name_checks); whether the name or the numbers are wrong is the client's to say.
+    Three other things are asked rather than left unsaid: which table to work it out from when two have the column, what to
+    call a column that is right over a confirmed view (有效订单) and not over the whole table, and what a value that is not a
+    number (N/A) in the claiming column is."""
+    out = []
+    for f in name_vs_calculation(ontology, bundle):
+        says = _statistic(f['says'])
+        written_bad = ([f'「{f["table"]}」的「{f["column"]}」自己有 {_num(f["written_unreadable"])} 个值不是数字（如{"、".join(f["written_unreadable_shown"])}），没有和重算的{says}比']
+                       if f.get('written_unreadable') else [])
+        too_large = [f'{_num(f["too_large"])} 行的重算值大到不是数字，没有比'] if f.get('too_large') else []
+        notes = [*written_bad, *too_large]
+        head = {'source': f['table'], 'column': f['column'], 'says': f['says'], 'says_text': says}
+        target = {'tab': 'data', 'table': f['table']}
+        if f.get('candidates'):
+            names = '、'.join(f'「{c}」' for c in f['candidates'])
+            out.append(_item('name_source', f'「{f["table"]}」的「{f["column"]}」名字说是{says}，但{names}都有「{f["source_column"]}」，没法确定用哪一张重算。该用哪一张？',
+                             target, id=f'name_source:{f["table"]}.{f["column"]}', column={**head, 'candidates': f['candidates']}))
+        elif f['view']:
+            out.append(_item('name_by_view', f'「{f["table"]}」的「{f["column"]}」不是用「{f["source"]}」的全部行算的{says}，是按「{f["view"]}」算的{says}。名字要不要写明？',
+                             target, [f'{f["compared"]} 行全部和按「{f["view"]}」重算的{says}对得上，按全部行算有 {_num(f["mismatched"])} 行对不上', *notes],
+                             id=f'name_by_view:{f["table"]}.{f["column"]}', column={**head, 'view': f['view']}))
+        elif f['mismatched']:
+            actual = f'，这些行算出来都是{STAT_WORDS[f["actual"]]}' if f['actual'] else ''
+            ask = (f'「{f["table"]}」的「{f["column"]}」名字说是{says}，用「{f["source"]}」的「{f["source_column"]}」按{"、".join(f["by"])}重算，'
+                   f'{_num(f["compared"])} 行里有 {_num(f["mismatched"])} 行对不上{actual}。名字对，还是该改名？')
+            facts = [f'「{f["source"]}」的「{f["source_column"]}」有 {_num(f["unreadable"])} 个值不是数字（如{"、".join(f["unreadable_shown"])}），没有算进去'] if f['unreadable'] else []
+            facts += notes
+            facts += [f'{r["key"]}：写的是 {_num(r["written"])}，{says}应是 {_num(r["computed"][f["says"]])}'
+                      + (f'，{"、".join(STAT_WORDS[k] for k in r["agrees_with"])}是 {_num(r["computed"][r["agrees_with"][0]])}' if r['agrees_with'] and not r['agrees'] else '')
+                      for r in f['rows'] if not r['agrees']]
+            out.append(_item('name_vs_calc', ask, target, facts, id=f'name_vs_calc:{f["table"]}.{f["column"]}',
+                             column={**head, 'actual': f['actual'], 'actual_text': STAT_WORDS.get(f['actual']), 'how': _how(f['says'])}))
+        elif written_bad:
+            out.append(_item('name_values', f'「{f["table"]}」的「{f["column"]}」名字说是{says}，其余的行和重算对得上，但有 {_num(f["written_unreadable"])} 个值不是数字'
+                             f'（如{"、".join(f["written_unreadable_shown"])}），没法比。是漏填，还是写法要改？',
+                             target, notes, id=f'name_values:{f["table"]}.{f["column"]}', column=head))
+    return out
+
+
 def _unjudged(run: dict, p: dict) -> list:
     decisions = (run.get('confirmation') or {}).get('decisions') or {}
     objects = [t for t in p['object_types'] if not (decisions.get('types') or {}).get(t['key'], {}).get('verdict')]
@@ -283,11 +469,11 @@ def _unjudged(run: dict, p: dict) -> list:
     return [_item('unjudged', f'{said}还没人判过对错。会上逐项过一遍？', {'tab': 'objects', 'place': 'confirm'}, id='unjudged')] if said else []
 
 
-def open_items(run: dict, bundle: dict, graph: dict | None = None, card: dict | None = None) -> list:
+def open_items(run: dict, bundle: dict, graph: dict | None = None, card: dict | None = None, codes: dict | None = None) -> list:
     """The items for a kept table run, in the fixed order of their kinds (within a kind, in the order the data gives
     them). A run whose ontology did not pass verification has nothing to settle yet. `graph` is the run's own graph
     when the caller already holds it; `card` is its data-meaning card (ontology_card.build_card), without which there
-    is no item about the card."""
+    is no item about the card; `codes` (see _code_meanings) is what the code columns of the tables need."""
     ontology = run['ontology']
     if ontology['status'] != 'auto_built_verified':
         return []
@@ -302,12 +488,21 @@ def open_items(run: dict, bundle: dict, graph: dict | None = None, card: dict | 
     judged = without_wrong(ontology, (run.get('confirmation') or {}).get('decisions'))
     kept = {'types': {t['key'] for t in judged['object_types']}, 'relations': {r['key'] for r in judged['relations']}}
     graph = graph or build_graph(ontology, bundle)
+    tied, plain = _gap_ties(ontology, bundle)
+    coded = _code_meanings(codes, tied)
     return [*_model_filters(questions, asked, label), *_merged(questions), *_elsewhere(questions, label),
             *_unlinked(fit, types, relations, kept, label, relation_name, _row_owners(judged, graph)),
             *_same_name(p, bundle, graph, kept, label),
             *_unstable(evaluation.get('stability') or {}, relations, kept, label, relation_name),
-            *_check_findings(fit, kept, label, relations), *_card_blank(card), *_data_gaps(ontology),
+            *_check_findings(fit, kept, label, relations, _settled_repeats(ontology, bundle, graph)), *_repeated_keys(ontology, bundle, graph, kept, label), *_name_vs_calc(ontology, bundle), *coded, *_card_blank(card),
+            *_data_gaps(tied, plain, bundle, frozenset((c['column']['source'], c['column']['column']) for c in coded)),
             *_unanswered(questions), *_unjudged(run, p)]
+
+
+def code_meaning_items(codes: dict) -> list:
+    """Only the code-meaning items (see _code_meanings): the one kind of thing that can be settled on a run whose draft was
+    blocked, since it needs the stored tables and nothing from the ontology."""
+    return _code_meanings(codes)
 
 
 def check_answers(listed: list, raw, by, at: str) -> dict:
