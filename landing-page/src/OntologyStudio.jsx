@@ -12,7 +12,7 @@ import { handoffLines, isOrg, orgPlaces, orgTree, roleRows } from "./orgModel.js
 import { downloadName, summaryMarkdown } from "./ontologySummaryModel.js";
 import { OntologyGraph, Verdict } from "./OntologyGraph.jsx";
 import { ACCEPTANCE_LABELS, acceptItem, acceptanceSummary, canAccept, canReaccept, changeLabel, previousTitle, purposeNote, replacedNote, replacesAccepted, savedAcceptance } from "./ontologyAcceptanceModel.js";
-import { addType, confirmProgress, decisionsOf, elementNote, savedDecisionsChanged, otherRunTypes, referenceDownload, removeAdded, renameType, returnedNote, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
+import { addType, clearedRelations, confirmProgress, decisionsOf, elementNote, mergeDecisions, savedDecisionsChanged, otherRunTypes, referenceDownload, removeAdded, renameType, returnedNote, setVerdict, splitExtras } from "./ontologyConfirmModel.js";
 import { toggleVariant, variantNote, variantRows } from "./ontologyVariantsModel.js";
 import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverModel.js";
 import { folderLabel } from "./runLibraryModel.js";
@@ -1028,7 +1028,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
   function show(result) { const valid = validateRun(result); setRun(valid); keep(valid); setDecisions(decisionsOf(valid)); setConfirmError(""); setSelected(null); setPath(null); setEvalView("fit"); setObjectKey(null); setObjPlace("objects"); setQaPlace("ask"); setDataPlace(null); setTab(startSection(valid)); onCurrent(valid); onRunsChanged(); }
   function update(result) {
     const valid = validateRun(result);
-    if (savedDecisionsChanged(run, valid)) setDecisions(decisionsOf(valid));   // what is kept changed under the page (a bulk approval): its copy would take it back on the next save
+    if (run && savedDecisionsChanged(run, valid)) setDecisions((d) => (d ? mergeDecisions(d, decisionsOf(run), decisionsOf(valid)) : decisionsOf(valid)));   // what is kept changed under the page (a bulk approval): take it in, keep what the person has clicked since
     setRun(valid); keep(valid); onRunsChanged();
   }
   useEffect(() => { onCurrent(run && tab !== "upload" ? run : null); }, [run, tab]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -1149,7 +1149,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     onRename: (key, label) => setDecisions((d) => renameType(d, key, label)),
     onAdd: (label) => setDecisions((d) => addType(run.ontology, d, label)),
     onRemoveAdded: (label) => setDecisions((d) => removeAdded(d, label)),
-    onSave: (signer) => post("/api/ontology/confirm", { saved_as: run.saved_as, decisions, ...(signer.trim() ? { confirmed_by: signer.trim() } : {}) }, setSaving, setConfirmError),
+    onSave: (signer) => post("/api/ontology/confirm", { saved_as: run.saved_as, decisions, cleared: clearedRelations(run, decisions), ...(signer.trim() ? { confirmed_by: signer.trim() } : {}) }, setSaving, setConfirmError),
   };
   const variantProps = run && decisions && {
     decisions, busy: finding, error: findError, canFind: Boolean(run.saved_as) && !serviceBlock(health, true), why: serviceBlock(health, true),

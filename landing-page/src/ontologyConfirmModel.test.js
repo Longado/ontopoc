@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { addType, confirmProgress, decisionsOf, elementNote, removeAdded, renameType, savedDecisionsChanged, setVerdict } from "./ontologyConfirmModel.js";
+import { addType, confirmProgress, decisionsOf, elementNote, clearedRelations, mergeDecisions, removeAdded, renameType, savedDecisionsChanged, setVerdict } from "./ontologyConfirmModel.js";
 import { overviewTiles } from "./ontologyGraphModel.js";
 
 const ontology = { object_types: [{ key: "customer", label: "客户" }, { key: "order", label: "订单" }, { key: "product", label: "产品" }],
@@ -71,4 +71,30 @@ test("a run whose kept decisions differ from the page's last copy says so: a bul
   assert.equal(savedDecisionsChanged(after, after), false);
   assert.equal(savedDecisionsChanged({}, {}), false);
   assert.equal(savedDecisionsChanged(null, before), true);
+});
+
+const dec = (types = {}, relations = {}, added = [], variants = []) => ({ types, relations, added, variants });
+const ok = { verdict: "ok" };
+
+test("a bulk approval that lands takes in the relation and keeps what the person clicked since, without losing either", () => {
+  const base = dec({ a: ok }, {});
+  const server = dec({ a: ok }, { r: ok });
+  const local = dec({ a: ok, b: { verdict: "wrong" } }, {});   // b clicked on another tab, not saved
+  assert.deepEqual(mergeDecisions(local, base, server), dec({ a: ok, b: { verdict: "wrong" } }, { r: ok }));
+  assert.deepEqual(mergeDecisions(base, base, server), server);   // nothing touched: the server's
+});
+
+test("what the person touched wins over the server's value for the same item, and a verdict clicked off stays off", () => {
+  const base = dec({ a: ok }, { r: ok });
+  const server = dec({ a: ok }, { r: ok, s: ok });
+  assert.deepEqual(mergeDecisions(dec({ a: { verdict: "wrong" } }, { r: ok }), base, server), dec({ a: { verdict: "wrong" } }, { r: ok, s: ok }));
+  assert.deepEqual(mergeDecisions(dec({ a: ok }, {}), base, server), dec({ a: ok }, { s: ok }));   // r clicked off
+  assert.deepEqual(mergeDecisions(dec({ a: ok }, { r: ok }, ["新对象"]), base, server).added, ["新对象"]);
+});
+
+test("a relation the page held a verdict on and no longer judges is reported cleared; one the page never held is not", () => {
+  const run = { confirmation: { decisions: dec({}, { r: ok, s: { verdict: "wrong" } }) } };
+  assert.deepEqual(clearedRelations(run, dec({}, { s: { verdict: "wrong" } })), ["r"]);
+  assert.deepEqual(clearedRelations(run, dec({}, { r: ok, s: { verdict: "wrong" } })), []);
+  assert.deepEqual(clearedRelations({}, dec({}, {})), []);   // an older page that loaded before the relation was judged
 });

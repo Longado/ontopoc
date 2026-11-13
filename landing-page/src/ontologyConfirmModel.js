@@ -11,6 +11,27 @@ export function decisionsOf(run) {
 /** Whether the confirmation kept with `after` differs from the one kept with `before`: the page's own copy of the decisions is then out of date. */
 export const savedDecisionsChanged = (before, after) => JSON.stringify(before?.confirmation?.decisions ?? null) !== JSON.stringify(after?.confirmation?.decisions ?? null);
 
+/** The relations the run keeps a verdict for that the page's decisions no longer judge: clicked off, which the service reads as taking the verdict
+ *  back (a relation the page never held, because it loaded before it was judged, is not in this list). */
+export const clearedRelations = (run, decisions) => Object.entries(run.confirmation?.decisions?.relations ?? {})
+  .filter(([key, d]) => d?.verdict && !decisions.relations[key]?.verdict).map(([key]) => key);
+
+/** The page's decisions after what is kept changed under it (a bulk approval): what the person has touched since the page last had the kept ones
+ *  stays, everything else comes from the server. `base` is the kept decisions the page last had, `server` the ones that arrived. */
+export function mergeDecisions(local, base, server) {
+  const json = (v) => JSON.stringify(v ?? null);
+  const pick = (kind) => {
+    const out = {};
+    for (const key of new Set([...Object.keys(local[kind]), ...Object.keys(base[kind]), ...Object.keys(server[kind])])) {
+      const value = json(local[kind][key]) !== json(base[kind][key]) ? local[kind][key] : server[kind][key];
+      if (value !== undefined) out[key] = value;
+    }
+    return out;
+  };
+  const list = (field) => (json(local[field]) === json(base[field]) ? server[field] : local[field]);
+  return { ...server, types: pick("types"), relations: pick("relations"), added: list("added"), variants: list("variants") };
+}
+
 /** What was saved for one object ("types") or relation: the decision, who made it, when, which version, and the stored
  *  key checks it rests on as sentences. Null when nothing was saved for it (or the run was saved before this was kept). */
 export function elementNote(run, kind, key) {

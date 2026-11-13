@@ -304,6 +304,49 @@ class StackRouteTests(unittest.TestCase):
             self.assertNotIn(conflicts, {i['id'] for i in listed['items']})
         self.run_with(check)
 
+    def two_city_customers(self, extra=200):
+        """The upload with `extra` more customers each on two rows with two cities: the conflicts count moves from 129 to 129 + 2 * ... a lot."""
+        from tests.test_workspace_store import planted_bundle
+        records = planted_bundle()['sources']['客户']['records']
+        first, rows = records[0], [*records]
+        for n in range(extra):
+            rows += [{**first, '客户编号': f'KHX{n:03d}', '城市': city} for city in ('北京', '上海')]
+        lines = [','.join(first), *(','.join(r[c] or '' for c in first) for r in rows)]
+        return [f for f in self.files if not f['filename'].startswith('客户')] + [{'filename': '客户.csv', 'content_base64': base64.b64encode('\n'.join(lines).encode('utf-8')).decode()}]
+
+    def test_deciding_the_repeat_rule_that_settles_most_of_the_conflicts_does_not_reopen_their_exception(self):
+        """The reviewer's repro, where the count moves by far more than one: the anchor counts the data's conflicts, not what is left after a rule."""
+        with OntologyServerTests().server(gateway=self.model) as (base, out):
+            _, run = call(base, '/api/ontology/build', {'files': self.two_city_customers()})
+            name, conflicts = run['saved_as'], 'check_finding:identity_conflicts'
+            [item] = [i for i in self.listed(base, name)['items'] if i['id'] == conflicts]
+            self.assertGreater(item['anchor']['counts']['取值不一样的地方'], 300)
+            status, body = call(base, '/api/ontology/card', {'saved_as': name, 'by': '王工', 'items': [{'id': conflicts, 'reply': 'exception', 'text': '已知'}]})
+            self.assertEqual(status, 200, body)
+            status, body = call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': self.ITEM, 'rule': 'keep_both', 'confirmed_by': '王工'})
+            self.assertEqual(status, 200, body)
+            listed = self.listed(base, name)
+            self.assertIn(conflicts, {i['id'] for i in listed['answered']})
+            self.assertNotIn(conflicts, {i['id'] for i in listed['items']})
+
+    def test_no_decision_on_another_card_reopens_a_settled_exception_on_planted_data(self):
+        """For every item that keeps an anchor: an exception on it, then the decisions that change what the lists read (repeat rules on every key,
+        one object judged wrong, one right), and none of them comes back."""
+        def check(base, out, name):
+            anchored = [i for i in self.listed(base, name)['items'] if i.get('anchor') and i['kind'] not in ('code_meaning', 'repeated_key')]
+            self.assertGreaterEqual(len(anchored), 2)
+            entries = [{'id': i['id'], 'reply': 'exception', 'text': '已知'} for i in anchored]
+            self.assertEqual(call(base, '/api/ontology/card', {'saved_as': name, 'by': '王工', 'items': entries})[0], 200)
+            for repeat in [i['id'] for i in self.listed(base, name)['items'] if i['kind'] == 'repeated_key']:
+                self.assertEqual(call(base, '/api/ontology/repeat-rules', {'saved_as': name, 'id': repeat, 'rule': 'keep_both', 'confirmed_by': '王工'})[0], 200)
+            ontology = json.loads((out / name).read_text(encoding='utf-8'))['ontology']
+            wrong = {'types': {t['key']: {'verdict': 'wrong' if n == 0 else 'ok'} for n, t in enumerate(ontology['object_types'][:2])}, 'relations': {}}
+            status, body = call(base, '/api/ontology/confirm', {'saved_as': name, 'decisions': wrong, 'confirmed_by': '王工'})
+            self.assertEqual(status, 200, body)
+            listed = self.listed(base, name)
+            self.assertEqual([i['id'] for i in listed['items'] if i.get('reopened')], [])
+        self.run_with(check)
+
     def test_a_key_that_repeats_for_the_first_time_after_an_exception_asks_again(self):
         def check(base, out, name):
             call(base, '/api/ontology/card', {'saved_as': name, 'by': '王工', 'items': [{'id': self.ITEM, 'reply': 'exception', 'text': '同一个客户'}]})
@@ -560,6 +603,20 @@ class BulkApproveRouteTests(unittest.TestCase):
             self.assertEqual([s['answer']['by'] for s in listed['settled'] if s['kind'] == 'relation'], ['王工'])
             status, body = call(base, '/api/ontology/confirm', {'saved_as': name, 'decisions': {'types': self.types, 'relations': {'order_product': {'verdict': 'wrong'}}}, 'confirmed_by': '赵工'})
             self.assertEqual(self.rows(out, 'relation:%')[0][1], 'rejected')   # a verdict the page does give is honoured
+        self.with_run(check)
+
+    def test_a_verdict_the_page_clicked_off_is_taken_back_but_only_silence_from_an_older_page_is_not(self):
+        def check(base, out, name):
+            self.assertEqual(self.approve(base, name, ['relation:order_product'])[0], 200)
+            decisions = {'types': self.types, 'relations': {}}
+            self.assertEqual(call(base, '/api/ontology/confirm', {'saved_as': name, 'decisions': decisions, 'confirmed_by': '赵工', 'cleared': 'order_product'})[0], 400)   # not a list
+            status, body = call(base, '/api/ontology/confirm', {'saved_as': name, 'decisions': decisions, 'confirmed_by': '赵工', 'cleared': ['order_customer']})
+            self.assertEqual((status, body['confirmation']['decisions']['relations']), (200, {'order_product': {'verdict': 'ok'}}))   # clearing another relation says nothing of this one
+            status, body = call(base, '/api/ontology/confirm', {'saved_as': name, 'decisions': decisions, 'confirmed_by': '赵工', 'cleared': ['order_product']})
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body['confirmation']['decisions']['relations'], {})
+            self.assertEqual(self.rows(out, 'relation:%')[0][1], 'proposed')
+            self.assertEqual([b['id'] for b in self.listed(base, name)['bulk']], ['relation:order_product'])   # and it is in the band again
         self.with_run(check)
 
     def test_a_normal_confirm_that_read_the_run_before_a_bulk_approval_landed_writes_nothing_instead_of_taking_the_relation_back(self):

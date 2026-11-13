@@ -2067,8 +2067,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 signer = (signer or '').strip() or None
                 if payload['decisions'].get('relations'):   # a relation judged right keeps what its check found: only the newest run's
                     stale_check(result)
+                cleared = payload.get('cleared') or []   # relations the page held a verdict on (as kept) and clicked off: a verdict taken back, not silence
+                if not isinstance(cleared, list) or not all(isinstance(k, str) for k in cleared):
+                    raise ValueError('cleared 要写成关系编号的列表')
                 kept_bulk = bulk_judged(result)   # a page that loaded before a bulk approval does not have it: its silence about it is not a verdict
-                silent = {k for k in kept_bulk if not ((payload['decisions'].get('relations') or {}).get(k) or {}).get('verdict')}
+                silent = {k for k in kept_bulk if k not in cleared and not ((payload['decisions'].get('relations') or {}).get(k) or {}).get('verdict')}
                 if silent:
                     payload = {**payload, 'decisions': {**payload['decisions'], 'relations': {**(payload['decisions'].get('relations') or {}), **{k: {'verdict': 'ok'} for k in silent}}}}
                     reference = confirmed_reference(result['ontology'], payload['decisions'])

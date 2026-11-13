@@ -258,7 +258,7 @@ def _check_findings(fit: dict, kept: dict, label, relations: dict, settled: froz
         if found:
             lines = [line(x) for x in found[:MAX_EXAMPLES]]
             out.append(_item('check_finding', f'有 {_num(count(found))} {said}，例如{lines[0]}。{question}', {'tab': 'check'}, lines, id=f'check_finding:{key}',
-                             anchor=_counted(counted[key][0], **{counted[key][1]: count(found)})))
+                             anchor=_counted(counted[key][0], **{counted[key][1]: count(fit.get(key) or [])})))   # the data's count: not after what a person judged or settled took some away
     return out
 
 
