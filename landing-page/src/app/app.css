@@ -54,7 +54,7 @@ h1:focus { outline: none; }
 .page { padding: 32px 40px 64px; min-width: 0; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 12px; color: var(--muted); }
-.facts { display: flex; flex-wrap: wrap; gap: 4px 24px; color: var(--muted); margin-bottom: 20px; }
+.facts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 24px; color: var(--muted); margin-bottom: 20px; }
 .viewing { margin-bottom: 16px; }
 
 /* buttons */
@@ -129,6 +129,27 @@ input[aria-invalid="true"] { border-color: var(--bad); }
 .refusal { margin-top: 8px; }
 .results { margin: 0; padding-left: 18px; }
 .results li { padding: 2px 0; }
+
+/* sign-in, account, users */
+.login { max-width: 360px; margin: 0 auto; padding: 96px 24px 48px; display: flex; flex-direction: column; gap: 16px; }
+.login.wide { max-width: 440px; padding-top: 64px; }
+.login form, .stack { display: flex; flex-direction: column; max-width: 360px; }
+.page h1 + .facts { margin-top: 8px; }
+table.people td { vertical-align: middle; }
+.login .brand { padding: 0; }
+.login .primary { align-self: flex-start; }
+.login .facts { margin: 0; }
+.center { padding: 96px 24px; text-align: center; }
+input[type="password"] { font: inherit; border: 0.5px solid var(--faint); border-radius: var(--radius); padding: 6px 10px; width: 100%; }
+.nav-user { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 4px 12px 0; padding: 12px 0 0; border-top: 0.5px solid var(--line); font-size: var(--small); }
+.nav-user a { padding: 0; color: var(--ink); font-weight: 600; }
+.nav-user a:hover { background: none; text-decoration: underline; }
+.nav-user button { margin-left: auto; padding: 2px 6px; }
+h2.section { margin: 32px 0 12px; }
+.inline { display: flex; gap: 8px; align-items: center; margin: 12px 0; max-width: 480px; }
+.inline button { flex: none; white-space: nowrap; }
+.token { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; max-width: 560px; }
+.token .caption { font-size: var(--small); color: var(--muted); }
 
 /* narrow screens: the menu folds under the name */
 @media (max-width: 760px) {

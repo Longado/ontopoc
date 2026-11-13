@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { deleteDataset } from "./api.js";
+import { useAuth } from "./Auth.jsx";
 
 const WHO_KEY = "ontopoc.who";
 
 /** Asks before removing a dataset with all its versions; when something reads it, says what, and removes nothing. */
 export function DeleteDialog({ name, page, onClose }) {
   const ref = useRef(null);
+  const signedIn = useAuth().auth;
   const [who, setWho] = useState(() => window.localStorage.getItem(WHO_KEY) ?? "");
   const [error, setError] = useState("");
   const [readers, setReaders] = useState([]);
@@ -33,10 +35,12 @@ export function DeleteDialog({ name, page, onClose }) {
       <div className="dialog-body">
         <h2>删除“{name}”</h2>
         <p>它的 {page.versions.length} 个版本和全部 {page.rows} 行都会删掉，不能恢复。任务里会留一条“删除”的记录。</p>
-        <label className="field">
-          <span className="caption">你的名字</span>
-          <input type="text" value={who} placeholder="记在删除记录上" onChange={(e) => setWho(e.target.value)} />
-        </label>
+        {!signedIn && (
+          <label className="field">
+            <span className="caption">你的名字</span>
+            <input type="text" value={who} placeholder="记在删除记录上" onChange={(e) => setWho(e.target.value)} />
+          </label>
+        )}
         {readers.length > 0 && <ul className="readers error">{readers.map((r, i) => <li key={i}>{r.kind}「{r.name}」</li>)}</ul>}
       </div>
       <div className="actions">

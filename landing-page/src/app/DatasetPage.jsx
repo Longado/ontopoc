@@ -5,6 +5,8 @@ import { isNumeric, keyText, originText, percentText, timeText, typeLabel } from
 import { Select } from "./Select.jsx";
 import { TABS, TAB_LABEL, hrefFor } from "./routeModel.js";
 import { UploadDialog } from "./UploadDialog.jsx";
+import { useAuth } from "./Auth.jsx";
+import { canBuild } from "./authModel.js";
 import { useLoad } from "./useLoad.js";
 import { keyListText, noChangeText, timeline, versionChangeText, versionWay } from "./versionText.js";
 
@@ -134,6 +136,7 @@ export function DatasetPage({ route }) {
   const [state, reload] = useLoad(() => getDataset(name, version, pageNo), [name, version, pageNo]);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const mayBuild = canBuild(useAuth().user);
   const page = state.data;
   const at = (t) => hrefFor({ page: "dataset", name, tab: t, version });
   return (
@@ -144,7 +147,7 @@ export function DatasetPage({ route }) {
       </a>
       <div className="page-head">
         <h1 tabIndex={-1}>{name}</h1>
-        {page && (
+        {page && mayBuild && (
           <div className="head-actions">
             <button className="plain" onClick={() => setDeleting(true)}>删除</button>
             <button className="primary" onClick={() => setUploading(true)}>上传新版本</button>

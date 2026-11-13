@@ -247,6 +247,31 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 
 欢迎提交 issue 或 pull request。开发前请先阅读[开发规范](docs/DEVELOPMENT_GUARDRAILS.md)。
 
+### 登录与账号
+
+服务默认要登录，没有默认账号和默认密码。第一次用先在服务所在的机器上建管理员：
+
+```bash
+PYTHONPATH=src python3 -m ontology_poc_generator.accounts create-admin     # 问账号和密码（至少 12 个字符）；忘了密码用同一个工具的 reset-password
+PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http://127.0.0.1:5178   # --origin：页面所在的地址（这里是开发服务器）；可重复
+```
+
+管理员在页面“用户”里建其他人：**查看**只能看和提问，**建设**还能上传数据、改定义，**管理员**还能管人。新账号第一次登录必须先改掉管理员给的临时密码。每一次操作都记在登录的人名下，请求里自己写的名字会被忽略。脚本和 MCP 用“我的账号”里创建的令牌（给 MCP 设环境变量 `ONTOPOC_TOKEN`），权限和令牌主人的角色一样。
+
+**两人确认**：有两个以上的人能确认时，一个人提交的视图要另一个人确认才生效，提交的人自己不能确认；只有一个人能确认时自动不生效，日志里会标出自己确认自己的那几条。管理员可以在“用户”页关掉。目前只管视图，其余的确认还是一步完成。
+
+**给团队用**：服务本身只听本机，不处理 HTTPS。前面放一个做 HTTPS 的代理，例如 Caddy：
+
+```
+ontopoc.example.com {
+    reverse_proxy 127.0.0.1:8767
+}
+```
+
+服务启动时加 `--origin https://ontopoc.example.com`：这个地址才会被接受，登录 cookie 带 Secure，登录次数限制按代理看到的来访地址算。非本机的 http 地址会被拒绝。`workspace.sqlite` 里有密码的哈希和登录记录，文件权限是仅本人可读写，拷贝给别人等于把哈希给了别人。
+
+**只在自己机器上试**：`--no-auth` 关掉登录，所有请求都当作本机管理员，不要用在共用的机器上。
+
 ## 开发
 
 ```bash

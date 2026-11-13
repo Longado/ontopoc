@@ -105,7 +105,7 @@ class Gate:
             conn.close()
         h.user, h.session_token = user, None if bearer else cookie
         set_actor(user)
-        if empty and not path.startswith('/api/auth/') and path != '/api/ontology/health':
+        if empty and path != '/api/ontology/health':   # nothing to sign in to: the only way forward is on the machine
             h.reply(503, {'error': '还没有账号。请在服务所在的机器上运行：python -m ontology_poc_generator.accounts create-admin', 'setup': True})
             return False
         needed = required_role(method, path)

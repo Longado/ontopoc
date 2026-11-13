@@ -1,4 +1,4 @@
-// The app's addresses (#/datasets/订单/preview?v=2&p=3) and its left navigation, as plain data so both can be tested without a browser.
+// The app's addresses (#/datasets/订单/preview?v=2&p=3, #/account, #/users) and its left navigation, as plain data so both can be tested without a browser.
 export const TABS = ["fields", "preview", "versions"];
 export const TAB_LABEL = { fields: "字段", preview: "预览", versions: "版本" };
 
@@ -16,6 +16,7 @@ export function parseRoute(hash) {
   }
   if (!parts.length || (parts[0] === "datasets" && parts.length === 1)) return { page: "datasets" };
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
+  if ((parts[0] === "account" || parts[0] === "users") && parts.length === 1) return { page: parts[0] };
   if (parts.length === 1 && Object.hasOwn(PLANNED, parts[0])) return { page: "planned", key: parts[0] };
   if (parts[0] === "datasets" && parts.length <= 3) {
     const tab = parts[2] ?? "fields";
@@ -29,7 +30,7 @@ export function parseRoute(hash) {
 
 /** The address of a route; the inverse of parseRoute. */
 export function hrefFor(route) {
-  if (route.page === "tasks") return "#/tasks";
+  if (route.page === "tasks" || route.page === "account" || route.page === "users") return `#/${route.page}`;
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "dataset") {
     const base = `#/datasets/${encodeURIComponent(route.name)}/${route.tab ?? "fields"}`;
@@ -53,7 +54,7 @@ export const PLANNED = {
   lineage: ["血缘", "从数据源到应用，看每一步用了什么，还没做"],
 };
 
-const BUILT = { tasks: "#/tasks", datasets: "#/datasets" };
+const BUILT = { tasks: "#/tasks", datasets: "#/datasets", users: "#/users" };
 const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT });
 
 export const NAV = [
@@ -64,5 +65,8 @@ export const NAV = [
   { items: [item("lineage", "血缘")] },
 ];
 
+/** What only an admin sees. */
+export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户")] }];
+
 /** Which navigation item a route lives under. */
-export const navKeyOf = (route) => (route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : route.page);
+export const navKeyOf = (route) => (route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : route.page === "account" ? null : route.page);

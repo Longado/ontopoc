@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { NAV, PLANNED, hrefFor, navKeyOf, parseRoute } from "./routeModel.js";
+import { ADMIN_NAV, NAV, PLANNED, hrefFor, navKeyOf, parseRoute } from "./routeModel.js";
 
 test("an empty address and the list address both mean the dataset list", () => {
   assert.deepEqual(parseRoute(""), { page: "datasets" });
@@ -25,8 +25,17 @@ test("addresses that mean nothing are not found, including a broken escape", () 
   assert.deepEqual(parseRoute("#/tasks/x"), { page: "notfound" });
 });
 
+test("the account page and the users page have addresses; nothing hangs off them", () => {
+  assert.deepEqual(parseRoute("#/account"), { page: "account" });
+  assert.deepEqual(parseRoute("#/users"), { page: "users" });
+  assert.deepEqual(parseRoute("#/users/1"), { page: "notfound" });
+  assert.equal(navKeyOf({ page: "account" }), null);
+  assert.equal(navKeyOf({ page: "users" }), "users");
+  assert.deepEqual(ADMIN_NAV.flatMap((g) => g.items.map((i) => [g.label, i.label, i.built])), [["设置", "用户", true]]);
+});
+
 test("hrefFor is the inverse of parseRoute", () => {
-  for (const route of [{ page: "datasets" }, { page: "tasks" }, { page: "dataset", name: "订单 (试)", tab: "preview", version: 3, pageNo: 2 }, { page: "dataset", name: "a/b", tab: "versions", version: null, pageNo: 1 }]) {
+  for (const route of [{ page: "datasets" }, { page: "tasks" }, { page: "account" }, { page: "users" }, { page: "dataset", name: "订单 (试)", tab: "preview", version: 3, pageNo: 2 }, { page: "dataset", name: "a/b", tab: "versions", version: null, pageNo: 1 }]) {
     assert.deepEqual(parseRoute(hrefFor(route)), route);
   }
 });

@@ -155,7 +155,8 @@ class GateTests(GateTestCase):
             self.assertEqual((status, body['setup']), (503, True))
             self.assertIn('create-admin', body['error'])
             self.assertEqual(guest.get('/api/ontology/health'), (200, {'ok': True}))
-            self.assertEqual(guest.login('anyone', GOOD)[0], 401)   # there is no setup page to log into: the admin is made on the host
+            self.assertEqual(guest.login('anyone', GOOD)[0], 503)   # there is no setup page to sign in to: the admin is made on the host
+            self.assertEqual(guest.get('/api/auth/me')[1]['setup'], True)   # so the sign-in form can say so
 
     def test_signing_in_sets_a_cookie_that_javascript_cannot_read_and_other_sites_cannot_send(self):
         with self.service() as (base, out):

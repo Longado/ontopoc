@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { fileToBase64, getDataset, getDatasets, uploadDatasets } from "./api.js";
+import { useAuth } from "./Auth.jsx";
 import { Select } from "./Select.jsx";
 import { ACCEPT, firstChoice, sizeText, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget, resultLine } from "./uploadModel.js";
 
@@ -60,6 +61,7 @@ function FileChoice({ file, choice, names, columns, refused, onChange, onRemove 
 export function UploadDialog({ presetTarget, onClose, onDone }) {
   const ref = useRef(null);
   const input = useRef(null);
+  const signedIn = useAuth().auth;   // signed in: the service signs with the account's name; the name box is only for a service run without sign-in
   const [who, setWho] = useState(() => window.localStorage.getItem(WHO_KEY) ?? "");
   const [names, setNames] = useState([]);
   const [files, setFiles] = useState([]);
@@ -133,10 +135,12 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
       <h2>{presetTarget ? `上传新版本：${presetTarget}` : "上传数据集"}</h2>
       {phase !== "done" && (
         <>
-          <label className="field">
-            <span className="caption">你的名字</span>
-            <input type="text" value={who} placeholder="记在每个版本上" onChange={(e) => setWho(e.target.value)} />
-          </label>
+          {!signedIn && (
+            <label className="field">
+              <span className="caption">你的名字</span>
+              <input type="text" value={who} placeholder="记在每个版本上" onChange={(e) => setWho(e.target.value)} />
+            </label>
+          )}
           <div className="pick">
             <button className="secondary" onClick={() => input.current.click()} disabled={phase === "sending" || !loaded}>选择文件</button>
             <span className="muted">.xlsx 或 .csv，可以一次选几个，也可以拖进来；一次上传合计不超过 10 MB</span>

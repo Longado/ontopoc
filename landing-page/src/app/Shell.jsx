@@ -1,13 +1,30 @@
 import React, { useEffect, useRef, useState } from "react";
+import { AccountPage } from "./AccountPage.jsx";
+import { useAuth } from "./Auth.jsx";
+import { isAdmin, roleLabel } from "./authModel.js";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
 import { TasksPage } from "./TasksPage.jsx";
-import { NAV, PLANNED, navKeyOf, parseRoute } from "./routeModel.js";
+import { UsersPage } from "./UsersPage.jsx";
+import { ADMIN_NAV, NAV, PLANNED, navKeyOf, parseRoute } from "./routeModel.js";
+
+function UserBox({ onPick }) {
+  const { user, auth, signOut } = useAuth();
+  if (!auth) return <p className="nav-user muted">本机，没有登录</p>;
+  return (
+    <div className="nav-user">
+      <a href="#/account" onClick={onPick} title="我的账号">{user.display_name}</a>
+      <span className="muted">{roleLabel(user.role)}</span>
+      <button className="plain" onClick={signOut}>退出</button>
+    </div>
+  );
+}
 
 function Navigation({ active, open, onPick }) {
+  const { user } = useAuth();
   return (
     <nav className={`nav${open ? " open" : ""}`} aria-label="主导航">
-      {NAV.map((group, i) => (
+      {[...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])].map((group, i) => (
         <div className="nav-group" key={group.label ?? i}>
           {group.label && <p className="nav-heading">{group.label}</p>}
           {group.items.map((item) => (
@@ -18,6 +35,7 @@ function Navigation({ active, open, onPick }) {
           ))}
         </div>
       ))}
+      <UserBox onPick={onPick} />
     </nav>
   );
 }
@@ -32,6 +50,15 @@ function Planned({ route }) {
   );
 }
 
+function Forbidden() {
+  return (
+    <main className="page">
+      <h1 tabIndex={-1}>你的角色不能看这个页面</h1>
+      <p className="muted"><a href="#/datasets">回到数据集</a></p>
+    </main>
+  );
+}
+
 function NotFound() {
   return (
     <main className="page">
@@ -42,6 +69,7 @@ function NotFound() {
 }
 
 export function Shell() {
+  const { user } = useAuth();
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
   const [menu, setMenu] = useState(false);
   useEffect(() => {
@@ -69,8 +97,10 @@ export function Shell() {
       {route.page === "datasets" && <DatasetList />}
       {route.page === "dataset" && <DatasetPage route={route} />}
       {route.page === "tasks" && <TasksPage />}
+      {route.page === "account" && <AccountPage />}
+      {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
       {route.page === "planned" && <Planned route={route} />}
-      {!["datasets", "dataset", "tasks", "planned"].includes(route.page) && <NotFound />}
+      {!["datasets", "dataset", "tasks", "account", "users", "planned"].includes(route.page) && <NotFound />}
     </div>
   );
 }
