@@ -26,7 +26,7 @@ from ontology_poc_generator.pipelines import ROW_CAP, run_pipeline, workspace_da
 from ontology_poc_generator.anchors import check_code, check_relation, check_view, code_anchor, relation_anchor, review_items, view_anchor, stored as stored_anchors, waiting as waiting_change
 from ontology_poc_generator.repeated_keys import check_rule, repeated_keys, settled_by_latest, unmet
 from ontology_poc_generator.workspace_store import (
-    check_bundle, describes_rows, element_contents, element_ids, element_rejected, element_rows, element_state_writes, open_workspace, set_element_states, store_anchors)
+    RowCountMismatch, check_bundle, describes_rows, element_contents, element_ids, element_rejected, element_rows, element_state_writes, open_workspace, set_element_states, store_anchors)
 from ontology_poc_generator.company_sources import DEFAULT_PURPOSE, MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
@@ -59,6 +59,7 @@ from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
+from ontology_poc_generator.workspace_datasets import dataset_detail, list_datasets, upload as upload_datasets
 
 ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
@@ -1049,8 +1050,51 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': '仅允许本机请求。'})
                 return False
 
+        def workspace_get(self):
+            """/api/workspace/datasets, /api/workspace/datasets/<name>?version=N: the workspace's datasets, which belong to no run."""
+            url = urlsplit(self.path)
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if url.path == '/api/workspace/datasets':
+                    self.reply(200, {'datasets': list_datasets(conn)})
+                    return
+                if url.path.startswith('/api/workspace/datasets/'):
+                    version = (parse_qs(url.query).get('version') or [None])[0]
+                    if version is not None and not version.isdigit():
+                        self.reply(400, {'error': '版本要写成数字'})
+                        return
+                    found = dataset_detail(conn, unquote(url.path[len('/api/workspace/datasets/'):]), int(version) if version else None)
+                    self.reply(*((200, found) if found else (404, {'error': '没有这个数据集或这个版本'})))
+                    return
+            finally:
+                conn.close()
+            self.reply(404, {'error': 'Unknown workspace endpoint'})
+
+        def workspace_upload(self):
+            """POST /api/workspace/datasets/upload {who, files: [{filename, content_base64, target?, mode?, key_columns?, name?}]}."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                parts = payload.get('files')
+                if not isinstance(parts, list):
+                    raise ValueError('请求里要有 files 列表')
+                with runs_lock:
+                    conn = open_workspace(output_dir / 'workspace.sqlite')
+                    try:
+                        results = upload_datasets(conn, parts, payload.get('who'))
+                    finally:
+                        conn.close()
+            except (ValueError, UnicodeError, RowCountMismatch) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, {'results': results})
+
         def do_GET(self):
             if not self.local_request():
+                return
+            if self.path.startswith('/api/workspace/'):
+                self.workspace_get()
                 return
             if self.path == '/api/ontology/library' or self.path.startswith('/api/ontology/library/'):
                 try:
@@ -1198,6 +1242,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_POST(self):
             if not self.local_request():
+                return
+            if self.path == '/api/workspace/datasets/upload':
+                self.workspace_upload()
                 return
             if self.path in ('/api/ontology/reference/preview', '/api/ontology/reference/confirm'):
                 with runs_lock:

@@ -30,7 +30,7 @@ SCHEMA = '''
 CREATE TABLE IF NOT EXISTS dataset (
     id INTEGER PRIMARY KEY, name TEXT NOT NULL, version INTEGER NOT NULL, origin TEXT, file_sha256 TEXT NOT NULL,
     rows_in INTEGER NOT NULL, rows_stored INTEGER NOT NULL, table_name TEXT NOT NULL, imported_at TEXT NOT NULL,
-    dropped_json TEXT, UNIQUE (name, version));
+    dropped_json TEXT, who TEXT, mode TEXT, changes_json TEXT, UNIQUE (name, version));
 CREATE TABLE IF NOT EXISTS current_dataset (name TEXT PRIMARY KEY, dataset_id INTEGER NOT NULL REFERENCES dataset(id));
 CREATE TABLE IF NOT EXISTS "column" (
     dataset_id INTEGER NOT NULL REFERENCES dataset(id), name TEXT NOT NULL, position INTEGER NOT NULL,
@@ -66,7 +66,7 @@ def open_workspace(path) -> sqlite3.Connection:
     """Open (creating if needed) the workspace file; ':memory:' for a throwaway one. Transactions are explicit."""
     conn = sqlite3.connect(str(path), timeout=30, isolation_level=None)
     conn.executescript(SCHEMA)
-    for table, column in (('dataset', 'dropped_json'), ('check_result', 'dataset_id'), ('check_result', 'null_key_rows'),
+    for table, column in (('dataset', 'dropped_json'), ('dataset', 'who'), ('dataset', 'mode'), ('dataset', 'changes_json'), ('check_result', 'dataset_id'), ('check_result', 'null_key_rows'),
                           ('element_state', 'content_json'), ('element_state', 'anchors_json')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows") else "TEXT"}')
@@ -263,10 +263,11 @@ def _unique_names(records) -> list[str]:
 
 
 def import_records(conn, name: str, records, origin: str, file_sha256: str, who: str = 'system',
-                   rows_in: int | None = None, dropped: dict | None = None) -> dict:
+                   rows_in: int | None = None, dropped: dict | None = None, mode: str | None = None, changes: dict | None = None) -> dict:
     """Store every record as a row of a new dataset version, or return the version already holding this content;
     either way that version becomes the current one. rows_in is the number of data rows in the file and dropped says
     how many of them the reader left out and why ({'blank': 2, 'title': 1}); without them the records are all there was.
+    mode ('new', 'update_by_key', 'overwrite') and changes ({'changed', 'added', 'unchanged', ...}) are kept on the version beside who.
     Raises RowCountMismatch, writing nothing, when the rows do not add up or what was stored is not what was received."""
     dropped = {k: n for k, n in (dropped or {}).items() if n}
     expected = len(records)
@@ -284,9 +285,10 @@ def import_records(conn, name: str, records, origin: str, file_sha256: str, who:
     conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
     try:
         version = (conn.execute('SELECT COALESCE(MAX(version), 0) FROM dataset WHERE name = ?', (name,)).fetchone()[0]) + 1
-        dataset_id = conn.execute('INSERT INTO dataset(name, version, origin, file_sha256, rows_in, rows_stored, table_name, imported_at, dropped_json)'
-                                  " VALUES (?, ?, ?, ?, ?, 0, '', ?, ?)",
-                                  (name, version, origin, file_sha256, rows_in, _now(), json.dumps(dropped) if dropped else None)).lastrowid
+        dataset_id = conn.execute('INSERT INTO dataset(name, version, origin, file_sha256, rows_in, rows_stored, table_name, imported_at, dropped_json, who, mode, changes_json)'
+                                  " VALUES (?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?)",
+                                  (name, version, origin, file_sha256, rows_in, _now(), json.dumps(dropped) if dropped else None, who, mode,
+                                   None if changes is None else json.dumps(changes, ensure_ascii=False))).lastrowid
         table = f'ds_{dataset_id}'
         conn.execute(f'CREATE TABLE {_quote(table)} ({", ".join(_quote(n) + " TEXT" for n in names)})')
         conn.executemany(f'INSERT INTO {_quote(table)} VALUES ({", ".join("?" * len(names))})',
@@ -316,6 +318,110 @@ def _set_current(conn, who: str, dataset: dict) -> None:
         conn.execute('INSERT OR REPLACE INTO current_dataset(name, dataset_id) VALUES (?, ?)', (dataset['name'], dataset['id']))
         _log(conn, who, f'dataset:{dataset["name"]}', f'v{dataset["version"]} is current again',
              before={'dataset_id': before[0] if before else None}, after={'dataset_id': dataset['id']})
+
+
+def dataset_records(conn, dataset: dict) -> list[dict]:
+    """Every row of one stored dataset version, in the order it was stored, as {column: text or None}."""
+    cursor = conn.execute(f'SELECT * FROM {_quote(dataset["table_name"])} ORDER BY rowid')
+    names = [c[0] for c in cursor.description]
+    return [dict(zip(names, row)) for row in cursor]
+
+
+def _key_of(row: dict, columns: list[str]) -> tuple:
+    return tuple(row.get(c) for c in columns)
+
+
+def _shown(key: tuple) -> str:
+    return ' + '.join(str(v) for v in key)
+
+
+def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[str]) -> tuple[list[dict], dict]:
+    """The rows of a dataset after an update by key, and what the update did: {'changed', 'added', 'unchanged'}.
+    A row of the new file whose key is already there replaces the values it carries; a key that is not there is appended after
+    the existing rows; a row of the current data that the file does not mention stays, because an update never deletes. Columns the file
+    does not carry keep their values; columns only the file carries are added (empty for rows it does not touch).
+    Raises ValueError, with the reason in plain Chinese, when a key cannot be matched without guessing."""
+    if not key_columns:
+        raise ValueError('按主键更新要先选出主键列')
+    here = list(dict.fromkeys(k for r in current for k in r))
+    there = list(dict.fromkeys(k for r in incoming for k in r))
+    for column in key_columns:
+        if column not in there:
+            raise ValueError(f'新文件里没有主键列“{column}”，没法按它更新')
+        if column not in here:
+            raise ValueError(f'现有数据里没有“{column}”这一列，没法按它更新')
+    empty = sum(1 for r in incoming if any(r.get(c) in (None, '') for c in key_columns))
+    if empty:
+        raise ValueError(f'新文件里有 {empty} 行的主键是空的，对不上现有的行，请先补上或删掉这些行')
+    seen: dict[tuple, int] = {}
+    for r in incoming:
+        seen[_key_of(r, key_columns)] = seen.get(_key_of(r, key_columns), 0) + 1
+    repeated = [k for k, n in seen.items() if n > 1]
+    if repeated:
+        raise ValueError(f'新文件里主键“{_shown(repeated[0])}”出现了 {seen[repeated[0]]} 行（共 {len(repeated)} 个主键重复），不知道取哪一行')
+    where: dict[tuple, list[int]] = {}
+    for i, r in enumerate(current):
+        where.setdefault(_key_of(r, key_columns), []).append(i)
+    clash = [k for k in seen if len(where.get(k, ())) > 1]
+    if clash:
+        raise ValueError(f'现有数据里主键“{_shown(clash[0])}”有 {len(where[clash[0]])} 行（共 {len(clash)} 个主键），按主键更新会分不清改哪一行')
+    columns = here + [c for c in there if c not in here]
+    rows = [{c: r.get(c) for c in columns} for r in current]
+    changed = added = 0
+    for r in incoming:
+        found = where.get(_key_of(r, key_columns))
+        merged = {c: r.get(c) for c in columns}
+        if found is None:
+            rows.append(merged)
+            added += 1
+            continue
+        taken = {**rows[found[0]], **{c: r.get(c) for c in there}}
+        if taken != rows[found[0]]:
+            rows[found[0]] = taken
+            changed += 1
+    return rows, {'changed': changed, 'added': added, 'unchanged': len(seen) - changed - added}
+
+
+UPLOAD_MODES = ('update_by_key', 'overwrite')
+
+
+def plan_upload(conn, name: str, records: list[dict], *, mode: str | None = None, key_columns: list[str] | None = None,
+                rows_in: int | None = None, dropped: dict | None = None) -> dict:
+    """What saving this file under `name` would do, decided without writing: the records the new version holds, its mode and the
+    counts. No mode means a new dataset: refused when the name is taken, because which one is meant is the person's to say.
+    Raises ValueError (plain Chinese) for anything that cannot be done without guessing."""
+    current = current_dataset(conn, name)
+    if mode not in (None, *UPLOAD_MODES):
+        raise ValueError('导入方式只有按主键更新（update_by_key）和覆盖（overwrite）两种')
+    if mode is None:
+        if current:
+            raise ValueError(f'已经有叫“{name}”的数据集。要更新它，请指定数据集和方式：按主键更新或覆盖；要新建，请换一个名字')
+        return {'name': name, 'mode': 'new', 'records': records, 'rows_in': rows_in, 'dropped': dropped, 'unchanged': False,
+                'changes': {'changed': 0, 'added': len(records), 'unchanged': 0}}
+    if current is None:
+        raise ValueError(f'没有叫“{name}”的数据集，不能{"按主键更新" if mode == "update_by_key" else "覆盖"}它')
+    if mode == 'overwrite':
+        return {'name': name, 'mode': mode, 'records': records, 'rows_in': rows_in, 'dropped': dropped, 'unchanged': False,
+                'changes': {'replaced_rows': current['rows_stored']}}
+    merged, counts = merge_by_key(dataset_records(conn, current), records, list(key_columns or []))
+    file_rows = len(records) + sum((dropped or {}).values())
+    return {'name': name, 'mode': mode, 'records': merged, 'rows_in': None, 'dropped': None, 'key_columns': list(key_columns),
+            'unchanged': not (counts['changed'] or counts['added']), 'current': current,
+            'changes': {**counts, 'file_rows': rows_in if rows_in is not None else file_rows, 'key_columns': list(key_columns)}}
+
+
+def apply_upload(conn, plan: dict, who: str, origin: str = 'upload') -> dict:
+    """Write what plan_upload decided as the next version of the dataset, recording who and the counts with it. An update that
+    changes and adds nothing writes nothing: {'created': False}. Otherwise {'created': True, 'dataset': the version, 'key_check': ...}
+    where key_check is the key check of an update's key columns on the rows now stored."""
+    if plan['unchanged']:
+        return {'created': False, 'dataset': plan['current'], 'mode': plan['mode'], 'changes': plan['changes'], 'reused': False}
+    records = plan['records']
+    dataset = import_records(conn, plan['name'], records, origin, records_sha256(records), who, plan['rows_in'], plan['dropped'],
+                             mode=plan['mode'], changes=plan['changes'])
+    key_check = check_key(conn, dataset['id'], plan['key_columns']) if plan.get('key_columns') else None
+    return {'created': not dataset['reused'], 'dataset': dataset, 'mode': plan['mode'], 'changes': plan['changes'],
+            'reused': dataset['reused'], 'key_check': key_check}
 
 
 def _key_context(conn, dataset_id: int, columns: list[str]):
