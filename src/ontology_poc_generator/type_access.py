@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from ontology_poc_generator.row_rules import has_rules, rules_of
+from ontology_poc_generator.row_rules import has_rules, holds_all_rows, rules_of
 from ontology_poc_generator.workspace_store import log_line
 
 TYPE_PREFIX = 'objtype:'
@@ -48,7 +48,7 @@ def dataset_hidden(conn, name: str, user: dict | None) -> bool:
     admins' too: the dataset holds the rows a rule keeps from them."""
     if user is None or user['role'] == 'admin':
         return False
-    return any(not can_access(conn, element_id, user) or has_rules(conn, element_id) for (element_id,) in conn.execute(   # a row-ruled type's dataset holds rows they may not see
+    return any(not can_access(conn, element_id, user) or (has_rules(conn, element_id) and not holds_all_rows(conn, element_id, user)) for (element_id,) in conn.execute(   # a row-ruled type's dataset holds rows they may not see
         "SELECT element_id FROM element_dep WHERE depends_on = ? AND element_id LIKE 'objtype:%'", (f'dataset:{name}',)))
 
 

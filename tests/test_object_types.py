@@ -752,6 +752,24 @@ class ActionTests(SigningTestCase):
     def rule(self, admin, *usernames, value='KH001'):
         return admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': value, 'user_ids': [self.user_id(admin, u) for u in usernames]}] if usernames else []})
 
+    def test_a_rule_with_no_condition_gives_all_rows_and_opens_the_dataset_of_a_row_ruled_type_to_that_builder_only(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            rules = [{'column': '客户编号', 'value': 'KH001', 'user_ids': [self.user_id(admin, 'vera')]}, {'user_ids': [self.user_id(admin, 'ann')]}]
+            status, body = admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': rules})
+            self.assertEqual(status, 200, body)
+            self.assertEqual([(r['column'], r['value']) for r in body['rules']], [('客户编号', 'KH001'), ('', '')])
+            self.assertEqual(ann.get('/api/workspace/types/order/objects')[1]['total'], 160)   # all rows
+            self.assertEqual(vera.get('/api/workspace/types/order/objects')[1]['total'], 5)
+            self.assertEqual(bob.get('/api/workspace/types/order/objects')[1]['total'], 0)
+            self.assertEqual(ann.get(DATASET_URL)[0], 200)
+            self.assertEqual((bob.get(DATASET_URL)[0], vera.get(DATASET_URL)[0]), (404, 404))
+            by_key = orders_upload(lambda r, i: {**r, '金额': '1'} if i == 0 else r, target='订单', mode='update_by_key', key_columns=['订单号'])
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [by_key]})[0], 200)
+            self.assertEqual(bob.post('/api/workspace/datasets/upload', {'files': [by_key]})[0], 400)   # no dataset of that name for him
+            self.assertEqual(bob.post('/api/workspace/datasets/delete', {'name': '订单'})[0], 404)
+
     def test_an_action_that_writes_a_property_a_row_rule_reads_is_refused_in_both_orders_and_a_changed_meaning_sends_the_action_to_needs_look(self):
         with self.service() as (base, out):
             team = self.team(base)

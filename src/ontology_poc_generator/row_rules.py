@@ -36,15 +36,21 @@ def has_rules(conn, type_element_id: str) -> bool:
 
 
 def columns_ruled(conn, type_element_id: str) -> set[str]:
-    return {c for (c,) in conn.execute('SELECT column_name FROM row_rule WHERE type_id = ?', (type_element_id,))}
+    return {c for (c,) in conn.execute("SELECT column_name FROM row_rule WHERE type_id = ? AND column_name != ''", (type_element_id,))}
+
+
+def holds_all_rows(conn, type_element_id: str, user: dict | None) -> bool:
+    """Whether this person is named by an all-rows rule (a rule with no condition: column and value empty) on the type."""
+    return user is None or user['role'] == 'admin' or any(r['column'] == '' and user['id'] in r['user_ids'] for r in rules_of(conn, type_element_id))
 
 
 def restriction(conn, type_element_id: str, user: dict | None) -> list[tuple[str, str]] | None:
-    """None when this person sees every row of the type; else the (column, value) pairs a row must match one of (an empty list: no row)."""
+    """None when this person sees every row of the type (no rules, an admin, or an all-rows rule names them); else the (column, value) pairs a row must match
+    one of (an empty list: no row)."""
     if user is None or user['role'] == 'admin':
         return None
     rules = rules_of(conn, type_element_id)
-    if not rules:
+    if not rules or holds_all_rows(conn, type_element_id, user):
         return None
     return [(r['column'], r['value']) for r in rules if user['id'] in r['user_ids']]
 
@@ -94,11 +100,15 @@ def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
     clean = []
     for r in rules:
         column, value, ids = r.get('column'), r.get('value'), r.get('user_ids')
-        if column not in columns:
-            raise RuleRefused(f'“{column}”不是这个对象类型的属性')
-        value = value.strip() if isinstance(value, str) else ''
-        if not value or len(value) > MAX_VALUE or '\n' in value:
-            raise RuleRefused(f'取值要写 1 到 {MAX_VALUE} 个字，不能换行')
+        everything = column in (None, '') and value in (None, '')   # no condition: these people see all rows
+        if everything:
+            column, value = '', ''
+        else:
+            if column not in columns:
+                raise RuleRefused(f'“{column}”不是这个对象类型的属性')
+            value = value.strip() if isinstance(value, str) else ''
+            if not value or len(value) > MAX_VALUE or '\n' in value:
+                raise RuleRefused(f'取值要写 1 到 {MAX_VALUE} 个字，不能换行')
         if not isinstance(ids, list) or not ids or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
             raise RuleRefused('每条规则要点名至少一个人')
         ids = sorted(set(ids))
@@ -120,7 +130,7 @@ def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
                          [(element_id, r['column'], r['value'], json.dumps(r['user_ids'])) for r in clean])
         names = lambda ids: [n for (n,) in conn.execute(f'SELECT display_name FROM user WHERE id IN ({",".join("?" * len(ids))}) ORDER BY display_name', ids)]
         say = lambda rs: [{'column': r['column'], 'value': r['value'], 'users': names(r['user_ids'])} for r in rs]
-        summary = '；'.join(f'{"、".join(r["users"])} 看 {r["column"]} = {r["value"]} 的行' for r in say(clean)) or '行规则全部去掉了'
+        summary = '；'.join(f"{'、'.join(r['users'])} 看{(' ' + r['column'] + ' = ' + r['value'] + ' 的行') if r['column'] else '全部行'}" for r in say(clean)) or '行规则全部去掉了'
         log_line(conn, who or '未署名', element_id, 'row_rules_changed', before={'rules': say(before)}, after={'rules': say(clean), 'summary': f'行规则：{summary}'})
         conn.execute('COMMIT')
     except BaseException:
