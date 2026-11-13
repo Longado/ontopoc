@@ -1,5 +1,6 @@
 """Accounts: passwords, sign-in limits, sessions, API tokens and the safeguards on roles. Counts and times are set by hand."""
 from datetime import datetime, timedelta, timezone
+import json
 import unittest
 from unittest import mock
 
@@ -40,11 +41,11 @@ class AccountTestCase(unittest.TestCase):
 class PasswordTests(AccountTestCase):
     def test_a_hash_names_its_cost_and_checks_in_both_directions(self):
         stored = accounts.hash_password(GOOD)
-        self.assertRegex(stored, r'^scrypt\$1024\$8\$1\$[0-9a-f]{32}\$[0-9a-f]{64}$')
+        self.assertRegex(stored, r'^scrypt\$1024\$8\$3\$[0-9a-f]{32}\$[0-9a-f]{64}$')
         self.assertTrue(accounts.verify_password(GOOD, stored))
         self.assertFalse(accounts.verify_password(GOOD + 'x', stored))
         self.assertNotEqual(stored, accounts.hash_password(GOOD))   # a fresh salt each time
-        for broken in ('', 'scrypt$x', 'bcrypt$1$1$1$00$00', 'scrypt$1024$8$1$zz$00'):
+        for broken in ('', 'scrypt$x', 'bcrypt$1$1$1$00$00', 'scrypt$1024$8$3$zz$00'):
             self.assertFalse(accounts.verify_password(GOOD, broken), broken)
 
     def test_a_hash_made_with_other_cost_still_checks(self):
@@ -59,6 +60,8 @@ class PasswordTests(AccountTestCase):
         self.assertIn('和账号一样', accounts.password_problem('Longname12345', 'longname12345'))
         self.assertIsNotNone(accounts.password_problem(None, 'x'))
         self.assertIsNone(accounts.password_problem('密码密码密码密码密码密码', 'x'))   # characters, not bytes
+        for weak in ('            ', 'Password1234', 'aaaaaaaaaaaaaa', '   short   pw  '):
+            self.assertIsNotNone(accounts.password_problem(weak, 'x'), weak)
 
     def test_a_composed_and_a_decomposed_accent_are_the_same_password(self):
         stored = accounts.hash_password('café-café-café')
@@ -73,7 +76,7 @@ class CreateTests(AccountTestCase):
         self.assertNotIn(GOOD, stored)
 
     def test_what_cannot_be_made(self):
-        for args, text in ((('Root', 'x', 'viewer', GOOD), '已经有叫“Root”的账号'), (('a\nb', 'x', 'viewer', GOOD), '换行'),
+        for args, text in ((('Root', 'x', 'viewer', GOOD), '已经有叫“root”的账号'), (('a\nb', 'x', 'viewer', GOOD), '换行'),
                            (('', 'x', 'viewer', GOOD), '要写账号'), (('ok', 'x', 'owner', GOOD), '角色'), (('ok', 'x', 'viewer', 'short'), '至少 12'),
                            (('ok', 'a\nb', 'viewer', GOOD), '显示名')):
             with self.assertRaises(AccountError) as caught:
@@ -123,10 +126,88 @@ class SignInTests(AccountTestCase):
         waits = []
         for _ in range(9):
             with self.assertRaises(AccountError):
-                self.sign_in('root', 'wrong password!', client=f'c{len(waits)}')
-            waits.append(self.limiter.wait('root', 'x'))
+                self.sign_in('root', 'wrong password!')
+            waits.append(self.limiter.wait(self.conn, 'root', '10.0.0.1'))
             self.limiter._clock.now += waits[-1]
         self.assertEqual(waits, [0, 0, 0, 0, 60, 120, 240, 480, 900])
+
+    def test_a_lock_is_on_the_account_and_address_together_so_a_stranger_cannot_lock_the_owner_out(self):
+        for _ in range(5):
+            with self.assertRaises(AccountError):
+                self.sign_in('root', 'wrong password!', client='6.6.6.6')
+        with self.assertRaises(AccountError) as caught:
+            self.sign_in('root', GOOD, client='6.6.6.6')
+        self.assertEqual(caught.exception.status, 429)
+        self.assertEqual(self.sign_in('root', GOOD, client='10.0.0.1')['username'], 'root')   # the owner, from somewhere else, gets in
+
+    def test_guessing_spread_over_many_addresses_stops_at_a_ceiling_on_the_account(self):
+        for i in range(accounts.LoginLimiter.ACCOUNT_CEILING):
+            with self.assertRaises(AccountError) as caught:
+                self.sign_in('root', 'wrong password!', client=f'10.9.{i // 200}.{i % 200}')
+            self.assertEqual(caught.exception.status, 401)
+        with self.assertRaises(AccountError) as caught:
+            self.sign_in('root', GOOD, client='10.8.8.8')
+        self.assertEqual(caught.exception.status, 429)
+
+    def test_the_hosts_password_reset_lifts_the_lock(self):
+        for _ in range(5):
+            with self.assertRaises(AccountError):
+                self.sign_in('root', 'wrong password!')
+        accounts.reset_password(self.conn, 'host', self.admin['id'], 'a brand new password')
+        self.assertEqual(self.sign_in('root', 'a brand new password')['username'], 'root')
+
+    def test_parallel_tries_cannot_all_pass_the_check_before_any_is_counted(self):
+        import tempfile
+        from concurrent.futures import ThreadPoolExecutor
+        with tempfile.TemporaryDirectory() as out:
+            path = f'{out}/workspace.sqlite'
+            open_workspace(path).close()
+            limiter = LoginLimiter()
+
+            def attempt(i):
+                conn = open_workspace(path)
+                try:
+                    return limiter.begin(conn, 'root', '1.2.3.4')
+                finally:
+                    conn.close()
+            with ThreadPoolExecutor(40) as pool:
+                allowed = sum(1 for seconds in pool.map(attempt, range(40)) if seconds == 0)
+        self.assertEqual(allowed, 5)
+
+    def test_a_right_password_gives_its_try_back_and_a_busy_service_does_not_count_either(self):
+        for _ in range(4):
+            with self.assertRaises(AccountError):
+                self.sign_in('root', 'wrong password!')
+        for _ in range(10):
+            self.sign_in('root')
+        with mock.patch.object(accounts, '_scrypt', side_effect=accounts.Busy('busy', 503)), self.assertRaises(accounts.Busy):
+            self.sign_in('root')
+        with self.assertRaises(AccountError) as caught:
+            self.sign_in('root', 'wrong password!')
+        self.assertEqual(caught.exception.status, 401)   # four earlier failures and this one: the fifth, not yet locked
+
+    def test_only_a_few_passwords_are_hashed_at_once_and_the_rest_are_told_the_service_is_busy(self):
+        held = [accounts._hashing.acquire() for _ in range(accounts.HASHING_AT_ONCE)]
+        self.addCleanup(lambda: [accounts._hashing.release() for _ in held])
+        with mock.patch.object(accounts, 'HASHING_WAIT', 0.05), self.assertRaises(accounts.Busy) as caught:
+            self.sign_in('root')
+        self.assertEqual(caught.exception.status, 503)
+
+    def test_a_hash_made_with_less_cost_is_made_again_at_the_next_sign_in(self):
+        with mock.patch.object(accounts, 'SCRYPT_N', 2 ** 9):
+            weak = accounts.hash_password(GOOD)
+        self.conn.execute('UPDATE user SET password_hash = ? WHERE id = ?', (weak, self.admin['id']))
+        self.sign_in('root')
+        stored = self.conn.execute('SELECT password_hash FROM user WHERE id = ?', (self.admin['id'],)).fetchone()[0]
+        self.assertFalse(accounts.needs_rehash(stored))
+        self.assertTrue(accounts.verify_password(GOOD, stored))
+
+    def test_look_alike_forms_of_a_name_are_one_account(self):
+        self.make('kelvin')
+        with self.assertRaises(AccountError) as caught:
+            self.make('\u212aelvin')   # the Kelvin sign
+        self.assertEqual(caught.exception.status, 409)
+        self.assertEqual(self.sign_in('\u212aELVIN')['username'], 'kelvin')
 
     def test_an_unknown_name_is_limited_like_a_known_one(self):
         for _ in range(5):
@@ -153,7 +234,8 @@ class SignInTests(AccountTestCase):
             self.sign_in('x\nINJECT', 'wrong password!')
         self.sign_in('root')
         rows = self.conn.execute("SELECT who, change FROM log WHERE change IN ('login', 'login_failed') ORDER BY rowid").fetchall()
-        self.assertEqual(rows, [('x\ninject', 'login_failed'), ('root', 'login')])
+        self.assertEqual(rows, [('(sign-in)', 'login_failed'), ('root', 'login')])   # a stranger's text is never the signature
+        self.assertEqual(json.loads(self.conn.execute("SELECT after_json FROM log WHERE change = 'login_failed'").fetchone()[0])['name'], 'xinject')   # kept as data, without the control characters
 
     def test_a_huge_password_is_refused_before_it_is_hashed(self):
         with mock.patch.object(accounts, '_scrypt') as work, self.assertRaises(AccountError):
@@ -162,6 +244,11 @@ class SignInTests(AccountTestCase):
 
 
 class SessionTests(AccountTestCase):
+    def test_a_person_keeps_their_newest_ten_sessions(self):
+        tokens = [accounts.start_session(self.conn, self.admin['id'], T0) for _ in range(accounts.MAX_SESSIONS + 2)]
+        alive = [t for t in tokens if accounts.session_user(self.conn, t, T0)]
+        self.assertEqual(alive, tokens[2:])
+
     def test_only_the_hash_of_a_token_is_stored(self):
         token = accounts.start_session(self.conn, self.admin['id'], T0)
         self.assertGreaterEqual(len(token), 43)   # 256 bits
@@ -196,10 +283,21 @@ class SessionTests(AccountTestCase):
 
     def test_a_password_change_signs_the_other_sessions_out_but_not_this_one(self):
         mine, other = (accounts.start_session(self.conn, self.admin['id'], T0) for _ in range(2))
+        _, token = accounts.create_token(self.conn, self.admin, 'script', T0)
         accounts.change_password(self.conn, self.admin, GOOD, 'another long password', keep_token=mine)
         self.assertIsNotNone(accounts.session_user(self.conn, mine, T0))
         self.assertIsNone(accounts.session_user(self.conn, other, T0))
+        self.assertIsNone(accounts.token_user(self.conn, token, T0))   # a token stolen with the old password dies with it
         self.assertEqual(self.sign_in('root', 'another long password')['username'], 'root')
+
+    def test_guessing_the_current_password_is_limited_and_does_not_reach_the_sign_in_count(self):
+        for _ in range(5):
+            with self.assertRaises(AccountError) as caught:
+                accounts.change_password(self.conn, self.admin, 'not it at all!', 'another long password', limiter=self.limiter, client='1.1.1.1')
+            self.assertEqual(caught.exception.status, 403)
+        with self.assertRaises(AccountError) as caught:
+            accounts.change_password(self.conn, self.admin, GOOD, 'another long password', limiter=self.limiter, client='1.1.1.1')
+        self.assertEqual(caught.exception.status, 429)
 
     def test_a_wrong_current_password_changes_nothing(self):
         with self.assertRaises(AccountError) as caught:
@@ -212,9 +310,11 @@ class SessionTests(AccountTestCase):
     def test_an_admin_reset_signs_the_person_out_and_asks_for_a_new_password(self):
         other = self.make('xiaoli', must_change=False)
         session = accounts.start_session(self.conn, other['id'], T0)
+        _, token = accounts.create_token(self.conn, other, 'script', T0)
         reset = accounts.reset_password(self.conn, 'root', other['id'], 'a temporary password')
         self.assertTrue(reset['must_change'])
         self.assertIsNone(accounts.session_user(self.conn, session, T0))
+        self.assertIsNone(accounts.token_user(self.conn, token, T0))
         self.assertEqual(self.sign_in('xiaoli', 'a temporary password')['username'], 'xiaoli')
         with self.assertRaises(AccountError):
             self.sign_in('xiaoli', GOOD)
@@ -227,10 +327,16 @@ class TokenTests(AccountTestCase):
         self.assertTrue(token.startswith('otp_'))
         self.assertNotIn(token, str(self.conn.execute('SELECT * FROM api_token').fetchall()))
         self.assertEqual(accounts.token_user(self.conn, token, T0)['role'], 'builder')
-        accounts.set_role(self.conn, self.admin, other['id'], 'viewer')
-        self.assertEqual(accounts.token_user(self.conn, token, T0)['role'], 'viewer')   # never more than its owner
         self.assertEqual([(t['label'], t['revoked']) for t in accounts.list_tokens(self.conn, other['id'])], [('脚本', False)])
         accounts.revoke_token(self.conn, other, record['id'])
+        self.assertIsNone(accounts.token_user(self.conn, token, T0))
+
+    def test_a_role_change_ends_the_sessions_and_revokes_the_tokens(self):
+        other = self.make('xiaoli')
+        session = accounts.start_session(self.conn, other['id'], T0)
+        _, token = accounts.create_token(self.conn, other, 'script', T0)
+        accounts.set_role(self.conn, self.admin, other['id'], 'viewer')
+        self.assertIsNone(accounts.session_user(self.conn, session, T0))
         self.assertIsNone(accounts.token_user(self.conn, token, T0))
 
     def test_a_token_is_not_a_session_and_a_session_is_not_a_token(self):

@@ -270,9 +270,9 @@ ontopoc.example.com {
 }
 ```
 
-Start the service with `--origin https://ontopoc.example.com`: only that address is accepted, the sign-in cookie is Secure, and the sign-in attempt limit counts the address the proxy saw. A non-local http address is refused. `workspace.sqlite` holds password hashes and sign-in records; it is readable by its owner only, and copying it to someone shares the hashes.
+Start the service with `--origin https://ontopoc.example.com`: only that address is accepted, the sign-in cookie is Secure, and the sign-in attempt limit counts the address the proxy saw. A non-local http address is refused. `workspace.sqlite` holds password hashes and sign-in records; it is readable by its owner only, and copying it to someone shares the hashes. The proxy must put the address it saw into X-Forwarded-For (nginx: `proxy_set_header X-Forwarded-For $remote_addr;`); the service believes only the last address in that header, and only from the proxies named with `--trusted-proxy` (by default this machine once an https `--origin` is set).
 
-**Trying it on your own machine**: `--no-auth` turns sign-in off and treats every request as the local admin. Do not use it on a shared machine.
+**Trying it on your own machine**: `--no-auth` turns sign-in off and treats every request as the local admin. Do not use it on a shared machine. It needs the environment variable `ONTOPOC_DEV=1`, is refused together with `--origin`, and refuses any request that carries a proxy header (X-Forwarded-For and the like).
 
 ## Development
 

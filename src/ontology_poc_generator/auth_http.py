@@ -6,11 +6,12 @@ and every request is the built-in local admin: for trials and tests on one's own
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+import os
 from http.cookies import CookieError, SimpleCookie
 from urllib.parse import urlsplit
 
 from ontology_poc_generator import accounts
+from ontology_poc_generator.accounts import transaction
 from ontology_poc_generator.actor import set_actor
 from ontology_poc_generator.access import PUBLIC, allows, required_role
 from ontology_poc_generator.workspace_store import open_workspace
@@ -19,26 +20,24 @@ COOKIE = 'ontopoc_session'
 LOCAL_USER = {'id': None, 'username': '本机', 'display_name': '本机', 'role': 'admin', 'disabled': False, 'must_change': False,
               'created_at': None, 'last_login_at': None, 'provider': 'local'}
 LOOPBACK = ('127.0.0.1', 'localhost')
+LOOPBACK_ADDRESSES = ('127.0.0.1', '::1')   # the peer a proxy on this machine connects from
+PROXY_HEADERS = ('X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'Forwarded', 'X-Real-IP', 'Via')   # a client that reaches the service itself sends none of these
+AUTH_BODY = 4096   # the biggest body any /api/auth/* or /api/users* request needs, read before anyone is signed in
 STILL_NEEDED = ('/api/auth/me', '/api/auth/logout', '/api/auth/password')   # what a person who must change their password may still do
 NOT_HERE = '这个服务没有开登录（--no-auth），没有账号可管理'
 NO_TOKEN = '这个操作要用登录后的页面做，不能用令牌'
 
 
-@contextmanager
-def transaction(conn):
-    conn.execute('BEGIN IMMEDIATE')
-    try:
-        yield
-        conn.execute('COMMIT')
-    except BaseException:
-        conn.execute('ROLLBACK')
-        raise
-
-
 class Gate:
-    def __init__(self, db_path, port: int, origins=(), no_auth: bool = False):
+    def __init__(self, db_path, port: int, origins=(), no_auth: bool = False, trusted_proxies=None):
         """origins: the extra addresses people reach the service at, e.g. https://ontopoc.example.com (the proxy that terminates TLS) or a
-        dev server; the service's own http://127.0.0.1:<port> and http://localhost:<port> are always allowed."""
+        dev server; the service's own http://127.0.0.1:<port> and http://localhost:<port> are always allowed. trusted_proxies: the peer
+        addresses whose X-Forwarded-For is believed (by default this machine, once an https origin is configured: the proxy in front).
+        no_auth is refused unless ONTOPOC_DEV=1 and when any origin is configured: a service with a proxy in front is a shared one."""
+        if no_auth and os.environ.get('ONTOPOC_DEV') != '1':
+            raise ValueError('--no-auth 只用于开发：先设置环境变量 ONTOPOC_DEV=1，再用它。有人要登录的服务不能关登录')
+        if no_auth and origins:
+            raise ValueError('--no-auth 不能和 --origin 一起用：前面有代理的服务是给别人用的，不能关登录')
         self.db_path, self.no_auth, self.limiter = db_path, no_auth, accounts.LoginLimiter()
         extra = [o.rstrip('/') for o in origins]
         for origin in extra:
@@ -51,6 +50,10 @@ class Gate:
         self.hosts = set(LOOPBACK) | {urlsplit(o).hostname for o in extra}
         # a cookie is Secure as soon as the service is reached over https; the proxy in front is then the one we trust to say who is calling
         self.secure = any(o.startswith('https://') for o in extra)
+        self.proxies = set(trusted_proxies) if trusted_proxies is not None else set(LOOPBACK_ADDRESSES) if self.secure else set()
+        self.cookie = ('__Host-' if self.secure else '') + COOKIE   # the prefix makes a browser refuse a cookie that is not Secure, for this exact host, at /
+        if not no_auth:
+            accounts.dummy_hash()   # made now, not by the first stranger who tries an unknown name
 
     def connect(self):
         return open_workspace(self.db_path)
@@ -65,10 +68,12 @@ class Gate:
     # who is calling
 
     def client(self, h) -> str:
+        """The caller's address: the peer, or, when the peer is a proxy we trust, the last address in the forwarded header. The proxy appends the
+        address it saw (as a new header line or onto the last one); what came before is the caller's own claim."""
         peer = h.client_address[0]
-        if self.secure:
-            forwarded = [a.strip() for a in h.headers.get('X-Forwarded-For', '').split(',') if a.strip()]
-            return forwarded[-1] if forwarded else peer   # the proxy appends the address it saw; what came before it is the caller's claim
+        if peer in self.proxies:
+            forwarded = [a.strip() for a in ','.join(h.headers.get_all('X-Forwarded-For') or []).split(',') if a.strip()]
+            return forwarded[-1] if forwarded else peer
         return peer
 
     def _credentials(self, h) -> tuple[str | None, str | None]:
@@ -76,7 +81,7 @@ class Gate:
         header = h.headers.get('Authorization', '')
         bearer = header[7:].strip() if header[:7].lower() == 'bearer ' else None
         try:
-            cookie = SimpleCookie(h.headers.get('Cookie', '')).get(COOKIE)
+            cookie = SimpleCookie(h.headers.get('Cookie', '')).get(self.cookie)
         except CookieError:
             cookie = None
         return bearer, cookie.value if cookie else None
@@ -86,6 +91,9 @@ class Gate:
         h.user, h.session_token = None, None
         set_actor(None)   # this thread served another request before: nothing of that one stays
         if self.no_auth:
+            if any(h.headers.get(name) is not None for name in PROXY_HEADERS):   # a request that came through a proxy is not from this machine, whatever its Host says
+                h.reply(403, {'error': '没开登录的服务不接受经过代理的请求。'})
+                return False
             h.user = LOCAL_USER
             return h.local_request()
         path = urlsplit(h.path).path
@@ -136,7 +144,7 @@ class Gate:
                 h.reply(400, {'error': NOT_HERE})
             return True
         try:
-            payload = h.read_json() if method == 'POST' else {}
+            payload = h.read_json(AUTH_BODY) if method == 'POST' else {}
             if payload is None:
                 return True
             if path not in ('/api/auth/login', '/api/auth/me') and h.session_token is None:
@@ -153,12 +161,13 @@ class Gate:
         return True
 
     def _cookie(self, token: str, max_age: int) -> dict:
-        return {'Set-Cookie': f'{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={max_age}' + ('; Secure' if self.secure else '')}
+        return {'Set-Cookie': f'{self.cookie}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={max_age}' + ('; Secure' if self.secure else '')}
 
     def _route(self, h, conn, method: str, path: str, payload: dict) -> None:
         user, me = h.user, {'auth': True}   # me: what every account answer carries, so a page can tell the service has sign-in
         if path == '/api/auth/login':
             found = accounts.authenticate(conn, self.limiter, payload.get('username'), payload.get('password'), self.client(h))   # not in a transaction: a failure's log line must stay
+            accounts.end_session(conn, h.session_token)   # signing in again ends the session this browser already had
             token = accounts.start_session(conn, found['id'])
             h.reply(200, {'user': found, **me}, self._cookie(token, int(accounts.ABSOLUTE.total_seconds())))
         elif path == '/api/auth/me':
@@ -167,8 +176,8 @@ class Gate:
             accounts.end_session(conn, h.session_token)
             h.reply(200, {'ok': True}, self._cookie('', 0))
         elif path == '/api/auth/password':
-            with transaction(conn):
-                accounts.change_password(conn, user, payload.get('current'), payload.get('new'), keep_token=h.session_token)
+            accounts.change_password(conn, user, payload.get('current'), payload.get('new'), keep_token=h.session_token,
+                                     limiter=self.limiter, client=self.client(h))
             h.reply(200, {'user': accounts.get_user(conn, user['id']), **me})
         elif path == '/api/auth/tokens' and method == 'GET':
             h.reply(200, {'tokens': accounts.list_tokens(conn, user['id'])})
@@ -204,6 +213,8 @@ class Gate:
         if path == '/api/users/disable':
             return accounts.set_disabled(conn, actor, target, payload.get('disabled'))
         if path == '/api/users/reset-password':
+            if target == actor['id']:
+                raise accounts.AccountError('自己的密码要在“我的账号”里改，那里要输入现在的密码', 403)
             return accounts.reset_password(conn, actor['username'], target, payload.get('password'))
         if 'role' not in payload and 'display_name' not in payload:
             raise accounts.AccountError('要写明改什么（role 或 display_name）')

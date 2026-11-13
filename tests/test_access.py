@@ -1,6 +1,7 @@
 """The route table, and the sign-in gate in front of the real service: who may call what, the cookie, the Origin check, the first admin."""
 import base64
 from contextlib import contextmanager
+from http.client import HTTPMessage
 import json
 import os
 from pathlib import Path
@@ -62,7 +63,7 @@ class RouteTableTests(unittest.TestCase):
 class Client:
     """One person's browser: keeps the cookie the service sets."""
     def __init__(self, base):
-        self.base, self.cookie, self.last_headers = base, None, None
+        self.base, self.cookie, self.cookie_name, self.last_headers = base, None, auth_http.COOKIE, None
 
     def call(self, method, path, payload=None, origin='same', headers=None):
         head = {'Content-Type': 'application/json', **(headers or {})}
@@ -71,7 +72,7 @@ class Client:
         if origin and method == 'POST':
             head['Origin'] = origin
         if self.cookie:
-            head['Cookie'] = f'{accounts_cookie()}={self.cookie}'
+            head['Cookie'] = f'{self.cookie_name}={self.cookie}'
         request = Request(self.base + path, data=None if payload is None and method == 'GET' else json.dumps(payload or {}).encode(), headers=head, method=method)
         try:
             with urlopen(request, timeout=30) as response:
@@ -80,7 +81,8 @@ class Client:
             status, body, self.last_headers = exc.code, json.load(exc), exc.headers
         set_cookie = self.last_headers.get('Set-Cookie')
         if set_cookie:
-            self.cookie = set_cookie.split(';')[0].split('=', 1)[1] or None
+            self.cookie_name, value = set_cookie.split(';')[0].split('=', 1)
+            self.cookie = value or None
         return status, body
 
     def get(self, path, **more):
@@ -91,10 +93,6 @@ class Client:
 
     def login(self, username, password=GOOD):
         return self.post('/api/auth/login', {'username': username, 'password': password})
-
-
-def accounts_cookie():
-    return auth_http.COOKIE
 
 
 class GateTestCase(unittest.TestCase):
@@ -228,7 +226,10 @@ class GateTests(GateTestCase):
         with self.service() as (base, _):
             team = self.team(base)
             self.assertEqual(team['admin'].post('/api/users/update', {'id': 2, 'role': 'viewer'})[1]['user']['role'], 'viewer')
-            self.assertEqual(team['builder'].post('/api/workspace/datasets/upload', {'files': [table_part()]})[0], 403)
+            self.assertEqual(team['builder'].post('/api/workspace/datasets/upload', {'files': [table_part()]})[0], 401)   # a role change signs the person out
+            builder = Client(base)
+            builder.login('builder')
+            self.assertEqual(builder.post('/api/workspace/datasets/upload', {'files': [table_part()]})[0], 403)
             self.assertEqual(team['admin'].post('/api/users/disable', {'id': 3, 'disabled': True})[0], 200)
             self.assertEqual(team['viewer'].get('/api/workspace/datasets')[0], 401)   # the session died with the account
             self.assertEqual(Client(base).login('viewer')[0], 401)
@@ -257,8 +258,13 @@ class GateTests(GateTestCase):
             self.assertEqual(script.get('/api/auth/me', headers={'Authorization': 'Bearer otp_nope'})[0], 401)
             team['builder'].post('/api/auth/tokens/revoke', {'id': made['id']})
             self.assertEqual(script.get('/api/workspace/datasets', **bearer)[0], 401)
+            _, later = team['builder'].post('/api/auth/tokens', {'label': 'later'})
+            bearer = {'headers': {'Authorization': f'Bearer {later["token"]}'}, 'origin': None}
             team['admin'].post('/api/users/update', {'id': 2, 'role': 'viewer'})
-            _, again = team['builder'].post('/api/auth/tokens', {'label': 'later'})
+            self.assertEqual(script.post('/api/workspace/datasets/upload', {'files': [table_part('u.csv')]}, **bearer)[0], 401)   # a role change revokes the tokens too
+            builder = Client(base)
+            builder.login('builder')
+            _, again = builder.post('/api/auth/tokens', {'label': 'viewer now'})
             self.assertEqual(script.post('/api/workspace/datasets/upload', {'files': [table_part('u.csv')]}, headers={'Authorization': f'Bearer {again["token"]}'}, origin=None)[0], 403)
 
     def test_logging_out_ends_the_session_on_the_server(self):
@@ -279,6 +285,47 @@ class GateTests(GateTestCase):
             second.login('root')
             self.assertNotEqual(first.cookie, second.cookie)
 
+    def test_a_person_cannot_reset_their_own_password_without_the_current_one(self):
+        with self.service() as (base, _):
+            admin = Client(base)
+            admin.login('root')
+            status, body = admin.post('/api/users/reset-password', {'id': 1, 'password': 'a stolen session picks'})
+            self.assertEqual(status, 403)
+            self.assertIn('现在的密码', body['error'])
+            self.assertEqual(Client(base).login('root')[0], 200)   # the old password still works
+
+    def test_a_token_dies_with_the_password_it_was_made_under(self):
+        with self.service() as (base, _):
+            team = self.team(base)
+            _, made = team['builder'].post('/api/auth/tokens', {'label': 'mcp'})
+            script = Client(base)
+            bearer = {'headers': {'Authorization': f'Bearer {made["token"]}'}, 'origin': None}
+            self.assertEqual(script.get('/api/workspace/datasets', **bearer)[0], 200)
+            self.assertEqual(team['builder'].post('/api/auth/password', {'current': GOOD, 'new': 'a newer long password'})[0], 200)
+            self.assertEqual(script.get('/api/workspace/datasets', **bearer)[0], 401)
+
+    def test_signing_in_again_ends_the_session_the_browser_had(self):
+        with self.service() as (base, _):
+            browser = Client(base)
+            browser.login('root')
+            old = browser.cookie
+            browser.login('root')
+            self.assertNotEqual(browser.cookie, old)
+            stale = Client(base)
+            stale.cookie = old
+            self.assertEqual(stale.get('/api/auth/me')[0], 401)
+
+    def test_a_sign_in_body_is_capped_at_four_kilobytes_and_every_answer_carries_security_headers(self):
+        with self.service() as (base, _):
+            guest = Client(base)
+            status, body = guest.login('root', 'x' * 5000)
+            self.assertEqual((status, body['error']), (413, '请求太大。'))
+            self.assertEqual(guest.get('/api/ontology/health')[0], 200)
+            headers = guest.last_headers
+            self.assertEqual((headers['X-Content-Type-Options'], headers['Referrer-Policy']), ('nosniff', 'no-referrer'))
+            self.assertIn("frame-ancestors 'none'", headers['Content-Security-Policy'])
+            self.assertEqual(headers['Server'], 'ontopoc')
+
     def test_a_request_for_another_host_name_is_refused(self):
         with self.service() as (base, _):
             guest = Client(base)
@@ -294,6 +341,7 @@ class BehindAProxyTests(GateTestCase):
             self.assertEqual(status, 200)
             self.assertTrue(admin.last_headers['Set-Cookie'].endswith('; Secure'))
             self.assertEqual(admin.call('POST', '/api/users', {'username': 'x', 'display_name': 'x', 'role': 'viewer', 'password': GOOD}, origin='http://onto.example.com', headers=host)[0], 403)
+            self.assertTrue(admin.cookie_name.startswith('__Host-'))   # a browser refuses it unless it is Secure and for this host alone
             self.assertEqual(admin.call('GET', '/api/auth/me', headers=host)[0], 200)
 
     def test_a_plain_http_address_that_is_not_this_machine_is_refused_at_start(self):
@@ -305,14 +353,33 @@ class BehindAProxyTests(GateTestCase):
 
     def test_the_caller_is_the_address_the_proxy_saw_and_not_what_came_before_it(self):
         class Fake:
-            client_address = ('127.0.0.1', 5)
-            headers = {'X-Forwarded-For': '1.1.1.1, 2.2.2.2'}
+            def __init__(self, peer='127.0.0.1', *lines):
+                self.client_address, self.headers = (peer, 5), HTTPMessage()
+                for line in lines:
+                    self.headers['X-Forwarded-For'] = line   # one header line each, as a proxy that appends its own sends them
         proxied = Gate(':memory:', 0, ['https://onto.example.com'])
-        self.assertEqual(proxied.client(Fake()), '2.2.2.2')   # the left-hand entries are whatever the caller wrote
-        self.assertEqual(Gate(':memory:', 0).client(Fake()), '127.0.0.1')   # with no proxy configured the header is ignored
+        self.assertEqual(proxied.client(Fake('127.0.0.1', '1.1.1.1, 2.2.2.2')), '2.2.2.2')   # the left-hand entries are whatever the caller wrote
+        self.assertEqual(proxied.client(Fake('127.0.0.1', '9.9.9.9', '2.2.2.2')), '2.2.2.2')   # a second header line: the proxy's own is the last
+        self.assertEqual(proxied.client(Fake('10.1.1.1', '2.2.2.2')), '10.1.1.1')   # a peer that is not the configured proxy is not believed
+        self.assertEqual(Gate(':memory:', 0, ['https://onto.example.com'], trusted_proxies=['10.1.1.1']).client(Fake('10.1.1.1', '2.2.2.2')), '2.2.2.2')
+        self.assertEqual(Gate(':memory:', 0).client(Fake('127.0.0.1', '1.1.1.1, 2.2.2.2')), '127.0.0.1')   # with no proxy configured the header is ignored
 
 
 class NoAuthTests(GateTestCase):
+    def test_no_auth_needs_the_dev_switch_and_refuses_an_origin_and_a_proxied_request(self):
+        with tempfile.TemporaryDirectory() as out:
+            with mock.patch.dict(os.environ, {'ONTOPOC_DEV': ''}), self.assertRaises(ValueError) as caught:
+                ontology_server.make_server(port=0, gateway=None, output_dir=Path(out), no_auth=True)
+            self.assertIn('ONTOPOC_DEV=1', str(caught.exception))
+            with self.assertRaises(ValueError) as caught:
+                ontology_server.make_server(port=0, gateway=None, output_dir=Path(out), no_auth=True, origins=['https://onto.example.com'])
+            self.assertIn('--origin', str(caught.exception))
+        with self.service(first_admin=False, no_auth=True) as (base, _):
+            guest = Client(base)
+            for header in ('X-Forwarded-For', 'X-Forwarded-Host', 'Forwarded', 'X-Real-IP'):
+                self.assertEqual(guest.get('/api/workspace/datasets', headers={header: '203.0.113.9'})[0], 403, header)
+            self.assertEqual(guest.get('/api/workspace/datasets')[0], 200)
+
     def test_no_auth_keeps_the_old_local_behaviour_and_makes_everyone_the_local_admin(self):
         with self.service(first_admin=False, no_auth=True) as (base, _):
             guest = Client(base)

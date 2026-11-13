@@ -69,6 +69,8 @@ ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
 KEPT_RUNS_IN_MEMORY = 8   # runs whose rows and graph stay in memory; the least recently used is dropped and read again when asked for
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
+SECURITY_HEADERS = (('X-Content-Type-Options', 'nosniff'), ('Referrer-Policy', 'no-referrer'),
+                    ('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'"))   # the service answers JSON and downloads, never a page
 MAX_BULK = 200   # relations approved in one request: far above what a run has
 
 
@@ -109,10 +111,10 @@ def write_run(path: Path, run: dict) -> None:
 
 
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent,
-                no_auth: bool = False, origins=()):
+                no_auth: bool = False, origins=(), trusted_proxies=None):
     """no_auth: no sign-in, every request is the local admin (trials and tests only). origins: the addresses, besides the service's own, that
     people reach it at: a proxy's https address, or a dev server."""
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)   # the data holds password hashes, every prompt sent to the model and the people's names
     running = code_fingerprint(code_dir)
     if gateway is not None:   # every model call, from any agent, leaves one line beside the runs
         gateway = LoggedGateway(gateway, output_dir / 'model_calls.jsonl')
@@ -980,11 +982,21 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {exc}'[:300]
         return None
 
-    gate = Gate(output_dir / 'workspace.sqlite', port, origins, no_auth)
+    gate = Gate(output_dir / 'workspace.sqlite', port, origins, no_auth, trusted_proxies)
 
     class Handler(BaseHTTPRequestHandler):
+        timeout = 15   # seconds the service waits on one read from a client, so a connection that sends nothing does not hold a thread
+
+        def version_string(self):
+            return 'ontopoc'   # no software name or version in the Server header
+
         def log_message(self, format, *args):
             pass
+
+        def end_headers(self):
+            for name, value in SECURITY_HEADERS:
+                self.send_header(name, value)
+            super().end_headers()
 
         def reply(self, status, payload, headers=None):
             body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
@@ -1310,10 +1322,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 raise ValueError('确认人最多写 40 个字')
             return (value or '').strip() or None
 
-        def read_json(self):
+        def read_json(self, limit=MAX_BODY):
             length = int(self.headers.get('Content-Length', '0'))
-            if not 0 < length <= MAX_BODY:
-                self.reply(413, {'error': f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。'})
+            if not 0 < length <= limit:
+                self.reply(413, {'error': f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。' if limit == MAX_BODY else '请求太大。'})
                 return None
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                 self.reply(415, {'error': 'Expected application/json'})
@@ -2425,10 +2437,16 @@ def main(argv=None):
                         help='where runs, confirmations and rules are kept; point a trial run elsewhere')
     parser.add_argument('--origin', action='append', default=[], metavar='URL',
                         help='an address people reach the service at besides http://127.0.0.1:<port> (the https address of the proxy in front, or a dev server); repeat for several')
-    parser.add_argument('--no-auth', action='store_true', help='no sign-in: every request is the local admin. Only for a trial on your own machine')
+    parser.add_argument('--trusted-proxy', action='append', default=None, metavar='ADDRESS',
+                        help='the address of the proxy in front, whose X-Forwarded-For is believed (default with an https --origin: this machine); repeat for several')
+    parser.add_argument('--no-auth', action='store_true', help='no sign-in: every request is the local admin. Only for a trial on your own machine; needs ONTOPOC_DEV=1, and refuses --origin and proxied requests')
     args = parser.parse_args(argv)
     gateway = gateway_from_env()
-    server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin)
+    os.umask(0o077)   # files the service makes (runs, confirmations, the model log, the workspace) are this account's only
+    try:
+        server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin, trusted_proxies=args.trusted_proxy)
+    except ValueError as exc:
+        parser.error(str(exc))
     print(f'Ontology API: http://127.0.0.1:{server.server_port}'
           + ('' if gateway else '  (no model key: set DEEPSEEK_API_KEY to build ontologies)'), flush=True)
     if args.no_auth:

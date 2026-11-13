@@ -74,6 +74,8 @@ def _quote(name: str) -> str:
 
 def open_workspace(path) -> sqlite3.Connection:
     """Open (creating if needed) the workspace file; ':memory:' for a throwaway one. Transactions are explicit."""
+    if str(path) != ':memory:' and not os.path.exists(path):
+        os.close(os.open(path, os.O_CREAT | os.O_WRONLY, 0o600))   # made private from the start, not after a moment at the umask's mode
     conn = sqlite3.connect(str(path), timeout=30, isolation_level=None)
     conn.executescript(SCHEMA + ACCOUNTS_SCHEMA)
     if str(path) != ':memory:':

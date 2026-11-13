@@ -268,9 +268,9 @@ ontopoc.example.com {
 }
 ```
 
-服务启动时加 `--origin https://ontopoc.example.com`：这个地址才会被接受，登录 cookie 带 Secure，登录次数限制按代理看到的来访地址算。非本机的 http 地址会被拒绝。`workspace.sqlite` 里有密码的哈希和登录记录，文件权限是仅本人可读写，拷贝给别人等于把哈希给了别人。
+服务启动时加 `--origin https://ontopoc.example.com`：这个地址才会被接受，登录 cookie 带 Secure，登录次数限制按代理看到的来访地址算。非本机的 http 地址会被拒绝。`workspace.sqlite` 里有密码的哈希和登录记录，文件权限是仅本人可读写，拷贝给别人等于把哈希给了别人。代理要把它看到的来访地址写进 X-Forwarded-For（nginx：`proxy_set_header X-Forwarded-For $remote_addr;`），服务只信这个头的最后一个地址，且只信 `--trusted-proxy` 指定的代理（配了 https 的 `--origin` 时默认是本机）。
 
-**只在自己机器上试**：`--no-auth` 关掉登录，所有请求都当作本机管理员，不要用在共用的机器上。
+**只在自己机器上试**：`--no-auth` 关掉登录，所有请求都当作本机管理员，不要用在共用的机器上。要先设环境变量 `ONTOPOC_DEV=1`；和 `--origin` 一起用会被拒绝，带代理头（X-Forwarded-For 等）的请求也会被拒绝。
 
 ## 开发
 

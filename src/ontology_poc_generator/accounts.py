@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 import unicodedata
-from collections import deque
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -30,14 +30,23 @@ ROLES = ('viewer', 'builder', 'admin')
 RANK = {role: i for i, role in enumerate(ROLES, 1)}
 ROLE_LABEL = {'viewer': '查看', 'builder': '建设', 'admin': '管理员'}
 
-SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 15, 8, 1   # stored with each hash, so raising them later does not lock anyone out
+SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 15, 8, 3   # stored with each hash (OWASP's minimum for scrypt); a hash made with lower ones is made again at the next sign-in
+HASHING_AT_ONCE, HASHING_WAIT = 3, 3.0   # one hash takes 32 MiB, so only this many run together; another waits this many seconds, then is told the service is busy
 MIN_PASSWORD, MAX_PASSWORD = 12, 1024   # the cap keeps a huge "password" from being used to burn the host's CPU
 IDLE, ABSOLUTE = timedelta(hours=8), timedelta(days=14)
+MAX_SESSIONS = 10   # signed in at once per person
 TOUCH_EVERY = timedelta(seconds=60)   # last-seen is written at most this often, not on every request
 GENERIC = '账号或密码不对'
 USERNAME = re.compile(r'[\w.@+-]{1,64}')
 
+
+def fold(name: str) -> str:
+    """An account name as it is stored and looked up: compatibility forms and case folded the same way everywhere (the Kelvin sign is a k)."""
+    return unicodedata.normalize('NFKC', name).strip().casefold()
+
 SCHEMA = '''
+CREATE TABLE IF NOT EXISTS sign_in_limit (key TEXT PRIMARY KEY, failures INTEGER NOT NULL, since REAL NOT NULL, locked_until REAL NOT NULL, last REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS sign_in_limit_last ON sign_in_limit(last);
 CREATE TABLE IF NOT EXISTS user (
     id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('viewer', 'builder', 'admin')), password_hash TEXT, disabled INTEGER NOT NULL DEFAULT 0,
@@ -64,6 +73,17 @@ class AccountError(ValueError):
         self.status = status
 
 
+@contextmanager
+def transaction(conn):
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        yield
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -78,8 +98,20 @@ def _digest(token: str) -> str:
 
 # passwords
 
+class Busy(AccountError):
+    """Too many passwords are being hashed at once to take another now."""
+
+
+_hashing = threading.BoundedSemaphore(HASHING_AT_ONCE)
+
+
 def _scrypt(password: str, salt: bytes, n: int, r: int, p: int) -> bytes:
-    return hashlib.scrypt(unicodedata.normalize('NFC', password).encode(), salt=salt, n=n, r=r, p=p, dklen=32, maxmem=256 * n * r * p)
+    if not _hashing.acquire(timeout=HASHING_WAIT):   # scrypt lets go of the GIL: unlimited parallel hashes would use all the memory before anyone is signed in
+        raise Busy('服务现在很忙，请稍后再试', 503)
+    try:
+        return hashlib.scrypt(unicodedata.normalize('NFC', password).encode(), salt=salt, n=n, r=r, p=p, dklen=32, maxmem=256 * n * r * p)
+    finally:
+        _hashing.release()
 
 
 def hash_password(password: str) -> str:
@@ -87,83 +119,144 @@ def hash_password(password: str) -> str:
     return f'scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt.hex()}${_scrypt(password, salt, SCRYPT_N, SCRYPT_R, SCRYPT_P).hex()}'
 
 
-def verify_password(password: str, stored: str) -> bool:
+def _parts(stored: str) -> tuple[bytes, int, int, int, bytes] | None:
     try:
         scheme, n, r, p, salt, expected = stored.split('$')
-        if scheme != 'scrypt':
-            return False
-        found = _scrypt(password, bytes.fromhex(salt), int(n), int(r), int(p))
+        return (bytes.fromhex(salt), int(n), int(r), int(p), bytes.fromhex(expected)) if scheme == 'scrypt' else None
+    except ValueError:
+        return None
+
+
+def verify_password(password: str, stored: str) -> bool:
+    parts = _parts(stored)
+    if parts is None:
+        return False
+    salt, n, r, p, expected = parts
+    try:
+        found = _scrypt(password, salt, n, r, p)
+    except Busy:
+        raise
     except (ValueError, MemoryError):
         return False
-    return hmac.compare_digest(found, bytes.fromhex(expected))
+    return hmac.compare_digest(found, expected)
+
+
+def needs_rehash(stored: str) -> bool:
+    """Whether a stored hash was made with less cost than the current one."""
+    parts = _parts(stored)
+    return parts is not None and parts[1:4] != (SCRYPT_N, SCRYPT_R, SCRYPT_P)
 
 
 _dummy_hashes: dict[tuple, str] = {}
 
 
-def _dummy_hash() -> str:
+def dummy_hash() -> str:
     """A hash of nothing anyone knows, made with the current cost: checked when the account does not exist, so that a wrong name and a wrong
-    password take the same time."""
+    password take the same time. Made once per cost; Gate makes it at start so the first stranger does not pay for it."""
     key = (SCRYPT_N, SCRYPT_R, SCRYPT_P)
     if key not in _dummy_hashes:
         _dummy_hashes[key] = hash_password(secrets.token_urlsafe(16))
     return _dummy_hashes[key]
 
 
+COMMON_PASSWORDS = frozenset(('password1234', 'password12345', 'password123456', 'qwertyuiop12', 'qwertyuiop123', 'iloveyou1234', 'welcome12345',
+                              'administrator', '123456789012', '1234567890123', '0123456789ab', 'letmein12345'))
+
+
 def password_problem(password, username: str = '') -> str | None:
     if not isinstance(password, str):
         return '密码要写成文字'
-    if len(password) < MIN_PASSWORD:
-        return f'密码至少 {MIN_PASSWORD} 个字符'
+    if len(password) < MIN_PASSWORD or len(password.strip()) < MIN_PASSWORD:
+        return f'密码至少 {MIN_PASSWORD} 个字符，不算头尾的空格'
     if len(password) > MAX_PASSWORD:
         return f'密码最多 {MAX_PASSWORD} 个字符'
     if username and password.strip().lower() == username.strip().lower():
         return '密码不能和账号一样'
+    if password.strip().lower() in COMMON_PASSWORDS or len(set(password)) == 1:
+        return '这个密码太常见了，换一个'
     return None
 
 
 # sign-in limits
 
 class LoginLimiter:
-    """Five wrong passwords for one account lock it for a minute, then twice as long each time up to fifteen minutes; one client address may
-    get 20 wrong passwords in ten minutes. An unknown account name is counted the same way, so the limit says nothing about which names
-    exist. Kept in memory: restarting the service is not something a person at the sign-in page can do."""
+    """Wrong passwords are counted three ways, in the workspace file: by account and address together (five tries, then a wait that doubles
+    from a minute to fifteen), by account alone (a high ceiling, so guessing spread over many addresses still stops) and by address alone
+    (20 in ten minutes). A try is counted when it starts and given back if the password turns out right, so a burst of parallel tries cannot
+    all pass a check made before any of them was counted. In the file so that the host's reset-password can clear a lock. An unknown account
+    name is counted the same way, so the limit says nothing about which names exist."""
 
-    ACCOUNT_FREE, CLIENT_MAX, CLIENT_WINDOW, FORGET = 4, 20, 600, 3600
+    PAIR_FREE, ACCOUNT_CEILING, ACCOUNT_LOCK = 4, 50, 900
+    CLIENT_MAX, CLIENT_WINDOW, FORGET = 20, 600, 3600
 
-    def __init__(self, clock=time.monotonic):
-        self._clock, self._lock = clock, threading.Lock()
-        self._accounts: dict[str, list] = {}   # name -> [failures, locked until, last failure]
-        self._clients: dict[str, deque] = {}
+    def __init__(self, clock=time.time):
+        self._clock = clock
 
-    def wait(self, name: str, client: str) -> int:
-        """Seconds the person must wait before this attempt may be checked; 0 when it may."""
+    @staticmethod
+    def _keys(name: str, client: str) -> tuple[str, str, str]:
+        return f'pair:{name}|{client}', f'account:{name}', f'client:{client}'
+
+    def _rows(self, conn, name: str, client: str, now: float) -> list[list]:
+        """[failures, window start, locked until] of the pair, the account and the address; a row whose window is over counts as empty."""
+        out = []
+        for key, window in zip(self._keys(name, client), (self.FORGET, self.FORGET, self.CLIENT_WINDOW)):
+            row = conn.execute('SELECT failures, since, locked_until FROM sign_in_limit WHERE key = ?', (key,)).fetchone()
+            out.append([0, now, 0.0] if row is None or now - row[1] >= window else list(row))
+        return out
+
+    def _wait(self, rows: list[list], now: float) -> int:
+        pair, account, client = rows
+        over = client[1] + self.CLIENT_WINDOW - now if client[0] >= self.CLIENT_MAX else 0
+        return max(0, math.ceil(max(pair[2] - now, account[2] - now, over)))
+
+    def wait(self, conn, name: str, client: str) -> int:
+        """Seconds the person must wait before a try may be checked; 0 when it may. Counts nothing."""
         now = self._clock()
-        with self._lock:
-            locked = self._accounts.get(name, [0, 0, 0])[1] - now
-            times = self._clients.get(client, deque())
-            while times and now - times[0] > self.CLIENT_WINDOW:
-                times.popleft()
-            over = self.CLIENT_WINDOW - (now - times[0]) if len(times) >= self.CLIENT_MAX else 0
-        return max(0, math.ceil(max(locked, over)))
+        return self._wait(self._rows(conn, name, client, now), now)
 
-    def fail(self, name: str, client: str) -> None:
+    def begin(self, conn, name: str, client: str) -> int:
+        """Seconds to wait (the try is refused and not counted), or 0: the try is allowed and counted as a failure until refund() says it was not."""
         now = self._clock()
-        with self._lock:
-            if len(self._accounts) > 10_000:   # a flood of made-up names does not grow memory without end
-                self._accounts = {k: v for k, v in self._accounts.items() if now - v[2] < self.FORGET}
-            record = self._accounts.setdefault(name, [0, 0, now])
-            record[0] += 1
-            record[2] = now
-            if record[0] > self.ACCOUNT_FREE:
-                record[1] = now + min(60 * 2 ** (record[0] - self.ACCOUNT_FREE - 1), 900)
-            self._clients.setdefault(client, deque()).append(now)
-            if len(self._clients) > 10_000:
-                self._clients = {k: v for k, v in self._clients.items() if v and now - v[-1] < self.CLIENT_WINDOW}
+        conn.execute('BEGIN IMMEDIATE')   # the check and the count are one step: nothing else counts between them
+        try:
+            conn.execute('DELETE FROM sign_in_limit WHERE last < ?', (now - self.FORGET,))
+            rows = self._rows(conn, name, client, now)
+            seconds = self._wait(rows, now)
+            if not seconds:
+                pair, account, client_row = rows
+                pair[0] += 1
+                if pair[0] > self.PAIR_FREE:
+                    pair[2] = now + min(60 * 2 ** (pair[0] - self.PAIR_FREE - 1), 900)
+                account[0] += 1
+                if account[0] >= self.ACCOUNT_CEILING:
+                    account[2] = now + self.ACCOUNT_LOCK
+                client_row[0] += 1
+                for key, row in zip(self._keys(name, client), rows):
+                    conn.execute('INSERT OR REPLACE INTO sign_in_limit(key, failures, since, locked_until, last) VALUES (?, ?, ?, ?, ?)', (key, *row, now))
+            conn.execute('COMMIT')
+        except BaseException:
+            conn.execute('ROLLBACK')
+            raise
+        return seconds
 
-    def clear(self, name: str) -> None:
-        with self._lock:
-            self._accounts.pop(name, None)
+    def refund(self, conn, name: str, client: str) -> None:
+        """The try that begin() counted was not a failure (the password was right, or it could not be checked). The pair starts clean; the account
+        and the address each get that one try back and keep the failures of others."""
+        pair, account, address = self._keys(name, client)
+        conn.execute('BEGIN IMMEDIATE')
+        try:
+            conn.execute('DELETE FROM sign_in_limit WHERE key = ?', (pair,))
+            conn.execute('UPDATE sign_in_limit SET failures = MAX(failures - 1, 0) WHERE key IN (?, ?)', (account, address))
+            conn.execute('COMMIT')
+        except BaseException:
+            conn.execute('ROLLBACK')
+            raise
+
+    @staticmethod
+    def forget(conn, name: str) -> None:
+        """Clear every lock on an account (a new password was set for it)."""
+        prefix = f'pair:{name}|'
+        conn.execute('DELETE FROM sign_in_limit WHERE key = ? OR substr(key, 1, ?) = ?', (f'account:{name}', len(prefix), prefix))
 
 
 # users
@@ -171,6 +264,10 @@ class LoginLimiter:
 def _public(row: sqlite3.Row | tuple) -> dict:
     user = dict(zip(_USER_KEYS, row))
     return {**user, 'disabled': bool(user['disabled']), 'must_change': bool(user['must_change'])}
+
+
+def _printable(text: str) -> str:
+    return ''.join(c for c in text if c.isprintable())
 
 
 def _log(conn, who: str, element: str, change: str, detail: dict | None = None) -> None:
@@ -205,7 +302,7 @@ def _name(value, what: str) -> str:
 
 
 def create_user(conn, username, display_name, role, password, by: str, must_change: bool = True, provider: str = 'local') -> dict:
-    username = _name(username, '账号')
+    username = fold(_name(username, '账号'))
     if not USERNAME.fullmatch(username):
         raise AccountError('账号只能用字母、数字、汉字和 . _ @ + -')
     display_name = _name(display_name or username, '显示名')
@@ -226,36 +323,59 @@ def create_user(conn, username, display_name, role, password, by: str, must_chan
 
 def authenticate(conn, limiter: LoginLimiter, username, password, client: str) -> dict:
     """The user for a right name and password. A wrong name, a wrong password, a disabled account and an account without a password all
-    answer the same words after the same work; too many tries answer how long to wait."""
-    name = (username.strip().lower() if isinstance(username, str) else '')[:64]
+    answer the same words after the same work; too many tries answer how long to wait. The try is counted before the password is checked."""
+    name = fold(username)[:64] if isinstance(username, str) else ''
+    client = client[:64]
     if not isinstance(password, str) or len(password) > MAX_PASSWORD:
         raise AccountError(GENERIC, 401)
-    seconds = limiter.wait(name, client)
+    seconds = limiter.begin(conn, name, client)
     if seconds:
         raise AccountError(f'试得太多了，请 {seconds} 秒后再试', 429)
-    row = conn.execute(f'SELECT {_USER_COLUMNS}, password_hash FROM user WHERE username = ?', (name,)).fetchone()
-    stored = row[-1] if row and row[-1] else None
-    good = verify_password(password, stored or _dummy_hash())
+    try:
+        row = conn.execute(f'SELECT {_USER_COLUMNS}, password_hash FROM user WHERE username = ?', (name,)).fetchone()
+        stored = row[-1] if row and row[-1] else None
+        good = verify_password(password, stored or dummy_hash())
+    except Busy:
+        limiter.refund(conn, name, client)   # nothing was checked, so nothing failed
+        raise
     if row and good and stored and not row[4]:
-        limiter.clear(name)
+        limiter.refund(conn, name, client)
         _log(conn, row[1], f'user:{row[0]}', 'login')
         conn.execute('UPDATE user SET last_login_at = ? WHERE id = ?', (_stamp(_now()), row[0]))
+        if needs_rehash(stored):
+            conn.execute('UPDATE user SET password_hash = ? WHERE id = ?', (hash_password(password), row[0]))
         return _public(row[:-1])
-    limiter.fail(name, client)
-    _log(conn, name or '(空)', 'login', 'login_failed', {'client': client[:64]})
+    _log(conn, '(sign-in)', 'login', 'login_failed', {'name': _printable(name), 'client': _printable(client)})   # what a stranger typed is data, not a signature
     raise AccountError(GENERIC, 401)
 
 
-def change_password(conn, user: dict, current, new, keep_token: str | None = None) -> None:
+def change_password(conn, user: dict, current, new, keep_token: str | None = None, limiter: LoginLimiter | None = None, client: str = '') -> None:
+    """The current password is always asked for, and wrong guesses are limited like sign-in. Other sessions end and every API token is revoked."""
+    key = f'pw:{user["id"]}'   # a colon cannot be in an account name, so this never meets one
+    if limiter:
+        seconds = limiter.begin(conn, key, client[:64])
+        if seconds:
+            raise AccountError(f'试得太多了，请 {seconds} 秒后再试', 429)
     row = conn.execute('SELECT password_hash FROM user WHERE id = ?', (user['id'],)).fetchone()
-    if not row or not row[0] or not isinstance(current, str) or not verify_password(current, row[0]):
+    try:
+        right = bool(row and row[0] and isinstance(current, str) and len(current) <= MAX_PASSWORD and verify_password(current, row[0]))
+    except Busy:
+        if limiter:
+            limiter.refund(conn, key, client[:64])
+        raise
+    if not right:
         raise AccountError('现在的密码不对', 403)
+    if limiter:
+        limiter.refund(conn, key, client[:64])
     problem = password_problem(new, user['username'])
     if problem:
         raise AccountError(problem)
-    conn.execute('UPDATE user SET password_hash = ?, must_change = 0 WHERE id = ?', (hash_password(new), user['id']))
-    end_sessions(conn, user['id'], except_token=keep_token)
-    _log(conn, user['username'], f'user:{user["id"]}', 'password_changed')
+    hashed = hash_password(new)
+    with transaction(conn):   # not the caller's: the count the limiter kept above must stay when this is refused
+        conn.execute('UPDATE user SET password_hash = ?, must_change = 0 WHERE id = ?', (hashed, user['id']))
+        end_sessions(conn, user['id'], except_token=keep_token)
+        revoke_tokens(conn, user['id'])
+        _log(conn, user['username'], f'user:{user["id"]}', 'password_changed')
 
 
 def _target(conn, user_id) -> dict:
@@ -274,6 +394,8 @@ def set_role(conn, actor: dict, user_id, role) -> dict:
     if target['role'] == 'admin' and role != 'admin' and not target['disabled'] and _active_admins(conn) <= 1:
         raise AccountError('至少要留一位启用的管理员')
     conn.execute('UPDATE user SET role = ? WHERE id = ?', (role, target['id']))
+    end_sessions(conn, target['id'])   # the person signs in again, and tokens are made again: nothing issued under the old role survives
+    revoke_tokens(conn, target['id'])
     _log(conn, actor['username'], f'user:{target["id"]}', 'role_changed', {'from': target['role'], 'to': role})
     return get_user(conn, target['id'])
 
@@ -295,7 +417,7 @@ def set_disabled(conn, actor: dict, user_id, disabled) -> dict:
     conn.execute('UPDATE user SET disabled = ? WHERE id = ?', (int(disabled), target['id']))
     if disabled:
         end_sessions(conn, target['id'])
-        conn.execute('UPDATE api_token SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL', (_stamp(_now()), target['id']))
+        revoke_tokens(conn, target['id'])
     _log(conn, actor['username'], f'user:{target["id"]}', 'user_disabled' if disabled else 'user_enabled')
     return get_user(conn, target['id'])
 
@@ -307,6 +429,8 @@ def reset_password(conn, actor_name: str, user_id: int, password, must_change: b
         raise AccountError(problem)
     conn.execute('UPDATE user SET password_hash = ?, must_change = ? WHERE id = ?', (hash_password(password), int(must_change), user_id))
     end_sessions(conn, user_id)
+    revoke_tokens(conn, user_id)
+    LoginLimiter.forget(conn, fold(target['username']))   # a locked-out person who was given a new password is let in
     _log(conn, actor_name, f'user:{user_id}', 'password_reset')
     return get_user(conn, user_id)
 
@@ -319,6 +443,8 @@ def start_session(conn, user_id: int, now: datetime | None = None) -> str:
     token = secrets.token_urlsafe(32)   # 256 bits; a fresh one at every sign-in
     conn.execute('INSERT INTO session(token_hash, user_id, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?)',
                  (_digest(token), user_id, _stamp(now), _stamp(now), _stamp(now + ABSOLUTE)))
+    conn.execute('DELETE FROM session WHERE user_id = ? AND rowid NOT IN (SELECT rowid FROM session WHERE user_id = ? ORDER BY rowid DESC LIMIT ?)',
+                 (user_id, user_id, MAX_SESSIONS))   # the newest few stay
     return token
 
 
@@ -372,6 +498,10 @@ def set_two_person(conn, enabled, by: str) -> dict:
 # API tokens
 
 TOKEN_PREFIX = 'otp_'
+
+
+def revoke_tokens(conn, user_id: int) -> None:
+    conn.execute('UPDATE api_token SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL', (_stamp(_now()), user_id))
 
 
 def create_token(conn, user: dict, label, now: datetime | None = None) -> tuple[dict, str]:
@@ -441,7 +571,7 @@ def main(argv=None) -> int:
             user = create_user(conn, name, name, 'admin', _prompt_password(name), 'host', must_change=False)
             print(f'已建好管理员“{user["username"]}”。')
         else:
-            found = conn.execute('SELECT id FROM user WHERE username = ?', (name,)).fetchone()
+            found = conn.execute('SELECT id FROM user WHERE username = ?', (fold(name),)).fetchone()
             if not found:
                 print(f'没有叫“{name}”的账号', file=sys.stderr)
                 return 1
