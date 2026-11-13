@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { STATUS_LABELS, answerLines, evidenceLines, evidenceTitle, questionSummary } from "./ontologyStudioModel.js";
+import { STATUS_LABELS, answerLines, evidenceLines, evidenceTitle, questionSummary, understoodLine } from "./ontologyStudioModel.js";
 
 test("each question says whether the ontology could answer it", () => {
-  assert.deepEqual(STATUS_LABELS, { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "这种问法还不支持", needs_derived: "待确认指标" });
+  assert.deepEqual(STATUS_LABELS, { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "这种问法还不支持", needs_derived: "待确认指标", definition_unmet: "没按你确认的定义回答", rows_lost: "上游可能丢了行" });
 });
 
 test("answers read as short lines", () => {
@@ -57,4 +57,29 @@ test("an item with no check pack has no lines, and the title warns only when a f
   assert.equal(evidenceTitle({ evidence: { folded: [{ field: "x", table: "t", start: "客户", objects: 1, examples: [] }] } }), "核对：有重复行只算了一次");
   assert.equal(evidenceTitle({ evidence: { filters: [f(true)], merged: [merged] } }), "核对：有一个筛选条件问题里没提；“G”背后有 2 个最终母公司");
   assert.equal(evidenceTitle({ evidence: { shared: [{ field: "x", table: "t", start: "往来方", rows: 2, examples: [] }] } }), "核对：有的行算进了不止一个往来方");
+  const bad = { type: "客户", source: "客户", objects: 1, examples: ["KH012"] };
+  assert.deepEqual(evidenceLines({ evidence: { data_error: [bad] } }), ["客户（客户表）里有 1 个编号重复（KH012），已确认当作数据错误；这个答案用到了这些行，等客户改了数据再用"]);
+  assert.equal(understoodLine({}), "");
+  assert.equal(understoodLine({ understood: [{ definition: "已取消", direction: "exclude", how: "读视图 有效订单" }]}), "理解为：排除「已取消」（读视图 有效订单）");
+  assert.equal(understoodLine({ understood: [{ definition: "已取消", direction: "include", how: "状态码 = 2" }, { definition: "有效订单", direction: "include", how: "读视图 有效订单" }]}),
+    "理解为：包含「已取消」（状态码 = 2）；包含「有效订单」（读视图 有效订单）");
+  const view = { name: "库存快照_当前", source: "库存快照", rows: 12, from: "产品（库存快照表）重复编号的处理办法：只留「快照月份」最新的一行" };
+  assert.deepEqual(evidenceLines({ evidence: { views: [view] } }), ["读的是视图「库存快照_当前」（产品（库存快照表）重复编号的处理办法：只留「快照月份」最新的一行，12 行），不是表里的全部行"]);
+  assert.deepEqual(evidenceLines({ evidence: { views: [{ name: "有效订单", source: "订单", rows: 144, from: "你定义的：订单.状态码 不是「已取消」的行" }] } }),
+    ["读的是视图「有效订单」（你定义的：订单.状态码 不是「已取消」的行，144 行），不是表里的全部行"]);
+  assert.equal(evidenceTitle({ evidence: { views: [view] } }), "核对：读的是视图「库存快照_当前」");
+  assert.deepEqual(evidenceLines({ evidence: { views_unread: "视图没有读出来，这次读的是原表的行" } }), ["视图没有读出来，这次读的是原表的行"]);
+  assert.equal(evidenceTitle({ evidence: { data_error: [bad] } }), "核对：用到了被标为数据错误的行");
+});
+
+test("an answer says which rows could not find the object the relation leads to, and what became of them", async () => {
+  const { gapLine } = await import("./ontologyStudioModel.js");
+  const gap = { relation: "order_customer", many: "订单", one: "客户", table: "客户", rows: 3, keys: ["KH099"], distinct: 1 };
+  assert.equal(gapLine({ ...gap, effect: "dropped" }), "3 条订单的客户在「客户」表里找不到（KH099），没算进去");
+  assert.match(gapLine({ ...gap, effect: "counted" }), /仍按编号算作客户/);
+  assert.equal(gapLine({ ...gap, distinct: 4, keys: ["A", "B"], effect: "asked" }), "3 条订单的客户在「客户」表里找不到（A、B 等）");
+  assert.deepEqual(answerLines({ answer: { total: 3, relation_gap: { ...gap, effect: "asked" } } }), ["3 条订单的客户在「客户」表里找不到（KH099）"]);
+  const item = { evidence: { relation_gaps: [{ ...gap, effect: "dropped" }] } };
+  assert.deepEqual(evidenceLines(item), ["3 条订单的客户在「客户」表里找不到（KH099），没算进去"]);
+  assert.equal(evidenceTitle(item), "核对：有行连不到对象");
 });

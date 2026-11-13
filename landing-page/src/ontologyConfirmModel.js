@@ -1,10 +1,24 @@
 // A person's item-by-item judgement of an ontology. Every change returns new decisions; the old ones are never edited.
+import { tableChecks } from "./dataLayoutModel.js";
 import { savedAcceptance } from "./ontologyAcceptanceModel.js";
 
 export function decisionsOf(run) {
   const saved = run.confirmation?.decisions || run.evaluation?.reference?.suggested;   // a rerun starts from the last confirmation
   return saved ? { types: { ...saved.types }, relations: { ...saved.relations }, added: [...(saved.added || [])], variants: [...(saved.variants || [])] }
     : { types: {}, relations: {}, added: [], variants: [] };
+}
+
+/** What was saved for one object ("types") or relation: the decision, who made it, when, which version, and the stored
+ *  key checks it rests on as sentences. Null when nothing was saved for it (or the run was saved before this was kept). */
+export function elementNote(run, kind, key) {
+  const saved = run.confirmation?.elements?.[`${kind}:${key}`];
+  if (!saved) return null;
+  const ids = (saved.evidence_ref || "").split(",").filter(Boolean).map((ref) => Number(ref.split(":")[1]));
+  const evidence = (run.data_checks?.keys || []).filter((k) => ids.includes(k.check_id)).map((k) => {
+    const line = tableChecks(run, k.dataset)?.keys.find((x) => x.checkId === k.check_id);
+    return line ? `${k.dataset}（${line.columns}）：${line.text}` : null;
+  }).filter(Boolean);
+  return { state: saved.state, who: saved.confirmed_by, at: saved.confirmed_at, version: saved.version, evidence };
 }
 
 /** 重传时，模型又提出了哪些上次被判错的对象；这次重新确认过就不再提。 */

@@ -35,6 +35,13 @@ test("attempts say how many times code sent the model back and why", () => {
   assert.deepEqual(attemptSummary(run().ontology), { attempts: 2, passed: true, rejected: [["relation_source_mismatch", 1]] });
 });
 
+test("a data retry whose draft was dropped is not counted as a change to the draft", () => {
+  const key = { code: "key_not_unique", message: "key not unique in 客户" };
+  const field = { code: "unknown_field", message: "no such column" };
+  const ontology = { status: "auto_built_verified", attempts: [{ errors: [key] }, { errors: [field], data_retry: true, discarded: true }] };
+  assert.deepEqual(attemptSummary(ontology), { attempts: 1, passed: true, rejected: [] });
+});
+
 test("a type lists where it comes from and by which fields", () => {
   assert.equal(typeSources(run().ontology.object_types[0]), "客户（客户编号）、订单（客户编号）");
 });

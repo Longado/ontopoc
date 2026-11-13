@@ -63,7 +63,7 @@ export function validatePack(pack) {
   return pack;
 }
 
-const TIMING_RANK = { after: 0, same_day: 1, before: 2 };
+const TIMING_RANK = { after: 0, same_day: 1, same_month: 2, before: 3 };   // a month against a date has no day count: same_month or months apart
 export function orderCandidates(candidates, signals) {
   const rank = (c) => TIMING_RANK[c.timing?.relation] ?? 3;
   return [...candidates].sort((a, b) => rank(a) - rank(b)
@@ -75,7 +75,9 @@ export function orderCandidates(candidates, signals) {
 export function timingLabel(timing) {
   if (!timing) return "";
   if (timing.relation === "same_day") return "召回当天";
-  return timing.relation === "after" ? `召回后 ${timing.days} 天` : `召回前 ${-timing.days} 天`;
+  if (timing.relation === "same_month") return "与召回同月";
+  const [span, unit] = timing.days == null ? [timing.months, "个月"] : [timing.days, "天"];   // days is null when either date is only a month
+  return timing.relation === "after" ? `召回后 ${span} ${unit}` : `召回前 ${-span} ${unit}`;
 }
 
 export function defaultRecallId(pack) {
@@ -158,14 +160,14 @@ const otherDateFields = (pack) => {
 };
 /** Other complaint dates (e.g. the incident date) that fall before the recall although the complaint was filed after it. */
 export function earlierDates(pack, candidate) {
-  if (candidate.timing?.relation !== "after") return [];
+  if (!["after", "same_month"].includes(candidate.timing?.relation)) return [];
   const fields = pack.signals[candidate.id].fields;
   return otherDateFields(pack).filter((path) => fields.some((f) => f.path === path && f.value < candidate.timing.event_date));
 }
 export function dateCaveat(pack) {
   const fields = otherDateFields(pack);
   if (!fields.length) return null;
-  const after = pack.recalls.flatMap((r) => r.candidates).filter((c) => c.timing?.relation === "after");
+  const after = pack.recalls.flatMap((r) => r.candidates).filter((c) => ["after", "same_month"].includes(c.timing?.relation));
   return { fields, after: after.length, earlier: after.filter((c) => earlierDates(pack, c).length).length };
 }
 export const viewKey = (pack) => `ontopoc.public-review.view.${pack.ontology.hash.slice(0, 16)}`;

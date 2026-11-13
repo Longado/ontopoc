@@ -167,10 +167,10 @@ test("the card says how many cells are still unclear, and what an empty card mea
 });
 
 test("a thing to settle can be answered unless it is one that is settled by doing something else", () => {
-  for (const kind of ["unlinked", "same_name", "merged", "found_elsewhere", "unstable", "check_finding", "data_gaps", "unanswered"]) {
+  for (const kind of ["unlinked", "same_name", "merged", "name_vs_calc", "name_source", "name_by_view", "name_values", "found_elsewhere", "unstable", "check_finding", "data_gap", "data_gaps", "unanswered"]) {
     assert.equal(canAnswerItem({ id: `${kind}:x`, kind }), true, kind);
   }
-  for (const kind of ["model_filter", "unjudged", "card_blank"]) assert.equal(canAnswerItem({ id: `${kind}:x`, kind }), false, kind);
+  for (const kind of ["model_filter", "unjudged", "card_blank", "code_meaning"]) assert.equal(canAnswerItem({ id: `${kind}:x`, kind }), false, kind);
   assert.equal(canAnswerItem({ kind: "data_gaps" }), false);   // an old service gives the items no id: there is nothing to answer by
 });
 

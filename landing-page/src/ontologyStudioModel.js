@@ -28,6 +28,7 @@ export const ERROR_LABELS = {
   empty_field: "身份字段没有值", identity_keys_mismatch: "同一对象在各表的身份键名不一致", mixed_list_identity: "身份字段混用了不同列表",
   transform_needs_single_field: "拆分规则只能用于单个身份字段", time_field_invalid: "时间字段不是日期", where_invalid: "筛选条件不成立",
   invalid_response: "返回的格式不对", model_request_failed: "模型请求失败",
+  key_not_unique: "识别字段在表里有重复", key_empty: "识别字段有空值",
 };
 
 export function validateRun(run) {
@@ -43,9 +44,10 @@ export function checkSummary(fit) {
 }
 
 export function attemptSummary(ontology) {
+  const kept = ontology.attempts.filter((a) => !a.discarded);   // a retry whose draft was dropped did not change the draft
   const counts = new Map();
-  for (const a of ontology.attempts.slice(0, -1)) for (const e of a.errors) counts.set(e.code, (counts.get(e.code) || 0) + 1);
-  return { attempts: ontology.attempts.length, passed: ontology.status === "auto_built_verified", rejected: [...counts] };
+  for (const a of kept.slice(0, -1)) for (const e of a.errors) counts.set(e.code, (counts.get(e.code) || 0) + 1);
+  return { attempts: kept.length, passed: ontology.status === "auto_built_verified", rejected: [...counts] };
 }
 
 export const typeSources = (t) => t.populated_from.map((p) => `${p.source}（${Object.values(p.identity).join(" + ")}）`).join("、");
@@ -72,7 +74,7 @@ export function verificationIssues(ontology) {
   });
 }
 
-export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "这种问法还不支持", needs_derived: "待确认指标" };
+export const STATUS_LABELS = { answered: "能回答", no_data: "数据里没有", ontology_gap: "本体缺这一块", query_limit: "这种问法还不支持", needs_derived: "待确认指标", definition_unmet: "没按你确认的定义回答", rows_lost: "上游可能丢了行" };
 
 const NUMBER = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
 
@@ -103,9 +105,17 @@ export function groupFigure(item, [, n, all]) {
   return n;
 }
 
+/** Rows of a relation's source that name an object the table describing it does not have (a relation check finding), and what the
+ *  answer did with them: "dropped" they are in no group, "counted" the object is still counted by its key, "asked" they are the answer. */
+export function gapLine(g) {
+  const named = `${g.rows} 条${g.many}的${g.one}在「${g.table}」表里找不到（${g.keys.join("、")}${g.distinct > g.keys.length ? " 等" : ""}）`;
+  return named + ({ dropped: "，没算进去", counted: `，仍按编号算作${g.one}，但表里没有它的任何信息` }[g.effect] || "");
+}
+
 export function answerLines(item) {
   const a = item.answer;
   if (!a) return [];
+  if (a.relation_gap) return [gapLine(a.relation_gap)];
   if (a.groups && measureOf(item)) {
     return [...a.groups.map(([value, n, read]) => `${value}：${NUMBER.format(n)}${read === undefined ? "" : `（${read} 个值）`}`),
       ...(a.total_groups > a.groups.length ? [`另有 ${a.total_groups - a.groups.length} 组未列出`] : []),
@@ -150,12 +160,24 @@ const sharedLine = (r) => {
   return `${r.table} 表有 ${r.rows} 行同时算进了不止一个${start}${r.examples?.length ? `（例如 ${r.examples[0]} 共用一行）` : ""}，每个${start}自己的数对，全部${start}的合计里这些行算了不止一次`;
 };
 
+const viewLine = (v) => `读的是视图「${v.name}」（${v.from}，${v.rows} 行），不是表里的全部行`;
+const UNDERSTOOD_WORDS = { include: "包含", exclude: "排除", mention: "提到", unsaid: "没说明" };
+/** How the question writer read the question against what a person confirmed, and how the code carried it out: the direction
+ *  comes from the model, so it is said beside every answer for a person to catch a wrong one. "" when no definition was used. */
+export const understoodLine = (item) => (item.understood?.length
+  ? `理解为：${item.understood.map((u) => `${UNDERSTOOD_WORDS[u.direction] || "包含"}「${u.definition}」（${u.how}）`).join("；")}` : "");
+const dataErrorLine = (d) => `${d.type}（${d.source}表）里有 ${d.objects} 个编号重复（${shown(d.examples, d.objects)}），已确认当作数据错误；这个答案用到了这些行，等客户改了数据再用`;
+
 /** The check pack beside an answer: what each filter removed, values copied on several rows of one object, rows
  *  counted for several objects, and groups where several objects fed one count. */
 export function evidenceLines(item) {
   const e = item.evidence || {};
   const unlisted = (e.merged_total || 0) - (e.merged || []).length;
   return [...(e.filters || []).map(filterLine), ...(e.folded || []).map(foldedLine), ...(e.shared || []).map(sharedLine), ...(e.merged || []).map(mergedLine),
+    ...(e.data_error || []).map(dataErrorLine),
+    ...(e.views || []).map(viewLine),
+    ...(e.views_unread ? [e.views_unread] : []),
+    ...(e.relation_gaps || []).map(gapLine),
     ...(unlisted > 0 ? [`另有 ${unlisted} 组也是这样，没有列出`] : [])];
 }
 
@@ -170,8 +192,21 @@ export function evidenceTitle(item) {
     ...(merged === 1 && one.reached ? [`“${one.group}”背后有 ${one.objects} 个${one.reached}`] : merged ? [`有 ${merged} 组背后不止一个对象`] : []),
     ...(e.folded?.length ? ["有重复行只算了一次"] : []),
     ...(e.shared?.length ? [`有的行算进了不止一个${e.shared[0].start || "对象"}`] : []),
+    ...(e.data_error?.length ? ["用到了被标为数据错误的行"] : []),
+    ...(e.views?.length ? [`读的是视图「${e.views.map((v) => v.name).join("」「")}」`] : []),
+    ...(e.views_unread ? ["视图没读出来，用的是原表"] : []),
+    ...(e.relation_gaps?.length ? ["有行连不到对象"] : []),
   ];
   return found.length ? `核对：${found.join("；")}` : "核对";
+}
+
+/** Said under an answer that was worked out again after something it rests on changed: what changed, and what it said before. */
+export function rerunLine(item) {
+  const r = item.rerun;
+  if (!r) return "";
+  const was = r.was || {};
+  const before = was.status === "answered" ? answerLines({ answer: was.answer, query: item.query }).join("，") : (was.reason || STATUS_LABELS[was.status] || "");
+  return `已按新确认的内容重算：${r.because.join("；")}${before ? `。之前是：${before}` : ""}`;
 }
 
 export const questionSummary = (round) => (round ? `能回答 ${round.answered} / ${round.total} 题` : null);
@@ -279,7 +314,7 @@ export function previousLine(previous) {
 
 /** Answers count objects by identity; say so when some identities disagree with themselves in the data. */
 export function conflictNote(run, typeKeys) {
-  const conflicts = run.evaluation.data_fit?.identity_conflicts || [];
+  const conflicts = (run.evaluation.data_fit?.identity_conflicts || []).filter((c) => !c.settled);   // one a person settled by keeping the latest row is no longer read
   const parts = typeKeys.map((key) => {
     const ids = new Set(conflicts.filter((c) => c.type === key).map((c) => c.identity));
     return ids.size ? `${ids.size} 个${typeLabel(run.ontology, key)}编号` : "";
@@ -292,9 +327,19 @@ export function conflictGroups(fit) {
   const groups = new Map();
   for (const c of fit.identity_conflicts || []) {
     const key = JSON.stringify([c.type, c.field]);
-    groups.set(key, { type: c.type, field: c.field, count: (groups.get(key)?.count || 0) + 1 });
+    const was = groups.get(key);
+    groups.set(key, { type: c.type, field: c.field, count: (was?.count || 0) + 1, ...(was?.settled || c.settled ? { settled: (was?.settled || 0) + (c.settled ? 1 : 0) } : {}) });
   }
   return [...groups.values()].sort((a, b) => b.count - a.count);
+}
+
+export const SETTLED_BY_LATEST = "已按只留最新处理";
+
+/** The heading's count of identity conflicts, with how many a person settled by keeping the latest row. */
+export function conflictCount(fit) {
+  const all = fit.identity_conflicts || [];
+  const settled = all.filter((c) => c.settled).length;
+  return `${all.length}${settled ? `，其中 ${settled} 个${SETTLED_BY_LATEST}` : ""}`;
 }
 
 /** Why a fresh-looking result has nothing remembered against it: the system tells files apart by their content. */
