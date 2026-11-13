@@ -35,6 +35,7 @@ from ontology_poc_generator.workspace_store import (
 EXPIRE_DAYS = 14
 MAX_PROPERTIES = 5
 MAX_REASON = 300
+MAX_VALUE = 500   # a text value goes into the dataset, the pending record and the log
 STATE_WORDS = {'proposed': '还是模型的草稿', 'checked': '还没有另一位确认', 'needs_look': '需要再看', 'rejected': '被退回了'}
 
 
@@ -249,7 +250,7 @@ def action_detail(conn, name: str, user: dict | None) -> dict:
     row = _action_row(conn, name, user)
     expire_old(conn)
     records = [record_view(conn, r, user) for r in _records(conn, 'action_id = ?', (row['element_id'],), limit=50)]
-    return {**_line(conn, row, user), 'records': [r for r in records if r], 'log': log_entries(conn, [row['element_id']])}
+    return {**_line(conn, row, user), 'records': [r for r in records if r], 'log': log_entries(conn, [row['element_id']], user)}
 
 
 # --- records -------------------------------------------------------------------------------------------------------------------------------------------
@@ -372,6 +373,8 @@ def _check_values(conn, content: dict, t: dict, params) -> tuple[dict, str | Non
         text = str(value).strip() if isinstance(value, (str, int, float)) and not isinstance(value, bool) else ''
         if not text:
             return {}, f'“{props[column]["name"]}”要给一个新值'
+        if len(text) > MAX_VALUE or '\n' in text:
+            return {}, f'“{props[column]["name"]}”的新值最多 {MAX_VALUE} 个字，不能换行'
         if props[column]['enum']:
             labels = meaning_labels(conn, content['type'], column)
             if text not in labels:
@@ -439,13 +442,20 @@ def submit(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     return {'record': record_id, 'state': 'pending'}
 
 
+def _write_state(conn, rec: dict, state: str, who: str | None, user: dict | None, note: str | None, why: str | None, change: str, text: str, new_version: int | None = None) -> None:
+    """The record's new state and its log line, inside the caller's transaction."""
+    if conn.execute('UPDATE action_record SET state = ?, decided_by = ?, decided_by_user_id = ?, decided_at = ?, note = ?, why = ?, new_version = ? WHERE id = ? AND state IN (?, ?)',
+                    (state, who, user['id'] if user else None, now_text(), note, why, new_version, rec['id'], 'pending', 'needs_look')).rowcount != 1:
+        raise TypeRefused('这条提交在你看过之后被处理了，请刷新', 409)
+    self_decided = rec['submitted_by_user_id'] is not None and user is not None and rec['submitted_by_user_id'] == user['id']
+    log_line(conn, who or '未署名', rec['action_id'], change, after={'record': rec['id'], 'text': text + ('（提交人自己批准，没有第二个人）' if self_decided and state == 'approved' else ''),
+                                                                   'submitted_by': rec['submitted_by'], 'decided_by': who, 'why': why, 'version': new_version, 'self_confirmed': self_decided and state == 'approved'})
+
+
 def _set_state(conn, rec: dict, state: str, who: str | None, user: dict | None, note: str | None, why: str | None, change: str, text: str, new_version: int | None = None) -> None:
     conn.execute('BEGIN IMMEDIATE')
     try:
-        if conn.execute('UPDATE action_record SET state = ?, decided_by = ?, decided_by_user_id = ?, decided_at = ?, note = ?, why = ?, new_version = ? WHERE id = ? AND state IN (?, ?)',
-                        (state, who, user['id'] if user else None, now_text(), note, why, new_version, rec['id'], 'pending', 'needs_look')).rowcount != 1:
-            raise TypeRefused('这条提交在你看过之后被处理了，请刷新', 409)
-        log_line(conn, who or '未署名', rec['action_id'], change, after={'record': rec['id'], 'text': text, 'submitted_by': rec['submitted_by'], 'decided_by': who, 'why': why, 'version': new_version})
+        _write_state(conn, rec, state, who, user, note, why, change, text, new_version)
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
@@ -493,6 +503,10 @@ def decide(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     clash = conflict_with_actions(conn, rec['type_id'], content['properties'])
     if clash:
         refuse(clash)
+    if rec['action_version'] != action['version']:   # the definition was changed (and confirmed again) after the submit: what was asked is not what the action now says
+        why = '行为定义在提交后变了：现在的定义不是提交时的那一版，没有写入，请按现在的定义重新提交'
+        _set_state(conn, rec, 'needs_look', who, user, note, why, 'action_needs_look', f'{who} 要批准 #{rec["id"]}，但{why}')
+        return {'state': 'needs_look', 'why': why}
     before, after = json.loads(rec['before_json']), json.loads(rec['after_json'])
     moved = []
     if dataset is None:
@@ -514,20 +528,29 @@ def decide(conn, payload: dict, who: str | None, user: dict | None) -> dict:
         why = f'现在写不进去：{wrong}'
         _set_state(conn, rec, 'needs_look', who, user, note, why, 'action_failed', f'{who} 批准 #{rec["id"]} 失败：{why}')
         raise TypeRefused(why, 409)
+    conn.execute('BEGIN IMMEDIATE')   # the new version, the record's approved state and its log line are one write: all of it or none (the caller holds the upload lock)
     try:
         plan = plan_upload(conn, dataset['name'], [{**{c: found[c] for c in t['key']}, **written}], mode='update_by_key', key_columns=t['key'])
         plan['changes'] = {**plan['changes'], 'action': {'id': content['name'], 'record': rec['id'], 'submitted_by': rec['submitted_by'], 'approved_by': who}}
         done = apply_upload(conn, plan, who or '未署名', origin=f'action:{content["name"]}')
         if not done['created']:
             raise ValueError('写入没有改变任何数据')
+        version = done['dataset']['version']
+        _write_state(conn, rec, 'approved', who, user, note, None, 'action_approved',
+                     f'{who} 批准了 #{rec["id"]}（{rec["submitted_by"]} 提交）：{shown}，{_pairs(conn, content, before)} → {_pairs(conn, content, after)}；{dataset["name"]} 有了第 {version} 版', version)
+        conn.execute('COMMIT')
+    except TypeRefused:   # the record was decided by someone else in between
+        conn.execute('ROLLBACK')
+        raise
     except ValueError as exc:
+        conn.execute('ROLLBACK')
         why = f'写入失败：{exc}'
         _set_state(conn, rec, 'needs_look', who, user, note, why, 'action_failed', f'{who} 批准 #{rec["id"]} 失败：{why}')
         raise TypeRefused(why, 409) from None
-    version = done['dataset']['version']
-    problem = recheck_after_write(conn, dataset['name'], who or '未署名')
-    _set_state(conn, rec, 'approved', who, user, note, None, 'action_approved',
-               f'{who} 批准了 #{rec["id"]}（{rec["submitted_by"]} 提交）：{shown}，{_pairs(conn, content, before)} → {_pairs(conn, content, after)}；{dataset["name"]} 有了第 {version} 版', version)
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    problem = recheck_after_write(conn, dataset['name'], who or '未署名')   # as after an upload, once the version stands
     return {'state': 'approved', 'version': version, 'dataset': dataset['name'], 'recheck_error': problem}
 
 

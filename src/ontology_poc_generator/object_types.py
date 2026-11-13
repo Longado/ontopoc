@@ -21,7 +21,7 @@ from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, dataset_hidden, hidden_values, visible_to
-from ontology_poc_generator.workspace_store import StaleElement, check_key, current_dataset, dataset_records, element_state_writes, log_line
+from ontology_poc_generator.workspace_store import StaleElement, _canonical, _key_of, check_key, current_dataset, dataset_records, element_state_writes, log_line
 
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
@@ -38,6 +38,7 @@ FITS = {'integer': ('integer', 'decimal', 'text'), 'decimal': ('decimal', 'text'
         'month': ('month', 'text'), 'datetime': ('datetime', 'text'), 'boolean': ('boolean', 'text')}   # what a column of this inferred type may be declared as
 CODE_TYPES = ('integer', 'text')   # a code column is one of these, never boolean
 WAITING = ('proposed', 'checked')
+LIMITED_NOTE = '受行规则限制，看不到全部数据的统计'
 
 
 class TypeRefused(ValueError):
@@ -596,6 +597,7 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
         row = element_row(conn, enum_id(row['element_id'][len(TYPE_PREFIX):], str(payload.get('column'))))
         if row is None:
             raise TypeRefused('这一列还没有人提出含义', 404)
+    refuse_if_limited(conn, row, user)
     if payload.get('version') != row['version']:
         raise TypeRefused('确认要带上你看到的那一版；它在你看过之后被改了，请刷新后重新看一遍', 409)
     element_id, content, is_type = row['element_id'], _content(row), row['element_id'].startswith(TYPE_PREFIX)
@@ -652,16 +654,32 @@ def write_confirmation(conn, element_id: str, content: dict, evidence: str | Non
 
 # --- what the pages read ------------------------------------------------------------------------------------------------------------------------
 
+def _types_read(row: dict) -> list[str]:
+    """The ids of the object types an element is about (a type: itself; a relation: its two ends; a meaning, view or action: its type)."""
+    content = _content(row) if row['content_json'] else {}
+    return ([type_id(content[e]) for e in ('from', 'to')] if row['element_id'].startswith(RELATION_PREFIX) else [type_id(content['type'])] if row['element_id'].startswith((ENUM_PREFIX, VIEW_PREFIX, ACTION_PREFIX))
+            else [row['element_id']])
+
+
+def limited_on(conn, row: dict, person: dict | None) -> bool:
+    """Whether a row rule limits this person to some of the rows of what the element is about: they do not see all the data, and what confirming a type, its
+    meanings, a view or a relation quotes (counts of the whole data) is not theirs to read. An action's definition quotes no counts."""
+    return not row['element_id'].startswith(ACTION_PREFIX) and any(restriction(conn, t, person) is not None for t in _types_read(row))
+
+
+def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
+    if limited_on(conn, row, user):
+        raise TypeRefused('你受行规则限制，只看得到一部分行，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的构建者来确认', 403)
+
+
 def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
     """(whether this person may confirm it now, the builders who may). A viewer never; the one who put it forward not while two-person is active."""
     rule = two_person(conn)
     excluded = row['proposed_by_user_id'] if rule['active'] else None
-    content = _content(row) if row['content_json'] else {}
-    types = ([type_id(content[e]) for e in ('from', 'to')] if row['element_id'].startswith(RELATION_PREFIX) else [type_id(content['type'])] if row['element_id'].startswith((ENUM_PREFIX, VIEW_PREFIX, ACTION_PREFIX))
-             else [row['element_id']])
-    others = [name for person, name, role in conn.execute(   # only people who may see what it is about can be asked to confirm it
+    types = _types_read(row)
+    others = [name for person, name, role in conn.execute(   # only people who may see what it is about, and all of its data, can be asked to confirm it
         "SELECT id, display_name, role FROM user WHERE disabled = 0 AND role IN ('builder', 'admin') AND (? IS NULL OR id != ?) ORDER BY display_name", (excluded, excluded))
-        if all(can_access(conn, t, {'id': person, 'role': role}) for t in types)]
+        if all(can_access(conn, t, {'id': person, 'role': role}) for t in types) and not limited_on(conn, row, {'id': person, 'role': role})]
     if user is not None and user['role'] == 'viewer':
         return False, others
     return not (excluded is not None and user is not None and user['id'] == excluded), others
@@ -676,8 +694,10 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
         "SELECT 1 FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND s.state = 'needs_look'", (row['element_id'],)).fetchone())
     last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json, evidence_ref FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1',
                         (row['element_id'],)).fetchone()
+    limited = limited_on(conn, row, user)
     return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'reason': row['reason'] if row['state'] in ('needs_look', 'rejected') else None,
-            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked, 'confirmers': others if waiting and not blocked else [], 'meanings_blocking': meanings,
+            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited, 'limited_by_rule': limited,
+            'confirmers': others if waiting and not blocked else [], 'meanings_blocking': meanings,
             'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None,
             'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at']}
 
@@ -717,10 +737,14 @@ def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | N
     now = (cols.get(prop['column']) or {}).get('counts') or {}
     labels = {e['value']: e for e in (_content(row)['values'] if row and row['content_json'] else [])}
     was = json.loads(row['anchors_json'])['counts'] if row and row['anchors_json'] else {}
-    values = [{'value': v, 'label': labels[v]['label'] if v in labels else '', 'description': labels[v]['description'] if v in labels else '',
-               'rows': now.get(v), 'rows_at_confirmation': was.get(v), 'in_data': v in now} for v in _by_value({*now, *labels})]
-    return {'column': prop['column'], 'values': values, 'seen': seen_of_meaning(dataset, cols.get(prop['column'])),
-            **(_state_view(conn, row, user) if row else {'state': None, 'can_confirm': False})}
+    limited = restriction(conn, type_id(content['english_name']), user) is not None
+    if limited:   # no per-value counts and no list of the values the whole data holds: only the meanings on file
+        values = [{'value': v, 'label': labels[v]['label'], 'description': labels[v]['description'], 'rows': None, 'rows_at_confirmation': None, 'in_data': True} for v in _by_value(labels)]
+    else:
+        values = [{'value': v, 'label': labels[v]['label'] if v in labels else '', 'description': labels[v]['description'] if v in labels else '',
+                   'rows': now.get(v), 'rows_at_confirmation': was.get(v), 'in_data': v in now} for v in _by_value({*now, *labels})]
+    return {'column': prop['column'], 'values': values, 'seen': None if limited else seen_of_meaning(dataset, cols.get(prop['column'])),
+            **({'limited_note': LIMITED_NOTE} if limited else {}), **(_state_view(conn, row, user) if row else {'state': None, 'can_confirm': False})}
 
 
 def type_detail(conn, english_name: str, user: dict | None) -> dict:
@@ -730,9 +754,10 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
     unsent = hidden_values(conn, row['element_id'])
     props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
+    limited = restriction(conn, row['element_id'], user) is not None
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'],
-            'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': restriction(conn, row['element_id'], user) is not None,
-            'seen': None if user is not None and user['role'] == 'viewer' and restriction(conn, row['element_id'], user) is not None else seen_of_type(dataset), 'key': content['key'],
+            'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
+            **({'limited_note': LIMITED_NOTE} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),
             'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items()]}
 
@@ -774,15 +799,40 @@ def type_log(conn, english_name: str, user: dict | None) -> list[dict]:
     only_confirmed = " AND state = 'confirmed'" if user is not None and user['role'] == 'viewer' else ''   # a viewer reads nothing of a view nobody confirmed
     views = [e for (e,) in conn.execute(f"SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' AND json_extract(content_json, '$.type') = ?{only_confirmed}", (english_name,))]
     actions = [] if user is not None and user['role'] == 'viewer' else [e for (e,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objaction:%' AND json_extract(content_json, '$.type') = ?", (english_name,))]
-    return log_entries(conn, [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), *views, *actions, f'dataset:{detail["dataset"]}'])
+    return log_entries(conn, [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), *views, *actions, f'dataset:{detail["dataset"]}'], user)
 
 
-def log_entries(conn, ids: list[str]) -> list[dict]:
-    """The log lines about these elements, newest first (the caller has checked that this person may read them)."""
+def _action_line_readable(conn, element: str, after: dict, user: dict | None) -> bool:
+    """Whether this person may read a log line of an action: it quotes the object it is about (its key, before and after values, the reason), so a person a row
+    rule limits reads it only when the row is one they may read. The row is the record's, or for an attempt with no record the one its key names; a line whose
+    row cannot be found is not shown to them."""
+    rec = after.get('record')
+    if rec is not None:
+        found = conn.execute('SELECT type_id, key_json FROM action_record WHERE id = ?', (rec,)).fetchone()
+        tid, key = (found[0], json.loads(found[1])) if found else (None, None)
+    else:
+        action = element_row(conn, element)
+        tid, key = (type_id(_content(action)['type']) if action else None), (after.get('attempt') or {}).get('key')
+    limit = restriction(conn, tid, user) if tid else None
+    if limit is None:
+        return True
+    t = _content(element_row(conn, tid))
+    dataset = current_dataset(conn, t['dataset'])
+    if dataset is None or not isinstance(key, dict) or set(key) != set(t['key']) or not all(isinstance(v, (str, int, float)) and not isinstance(v, bool) for v in key.values()):
+        return False
+    wanted = tuple(_canonical(str(key[c])) for c in t['key'])
+    return any(keeps(r, limit) for r in dataset_records(conn, dataset) if _key_of(r, t['key']) == wanted)
+
+
+def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
+    """The log lines about these elements, newest first (the caller has checked that this person may read them). A line of an action about a row a row rule keeps
+    from `user` is left out altogether."""
     out = []
     for at, who, element, change, before, after in conn.execute(
             f'SELECT time, who, element_id, change, before_json, after_json FROM log WHERE element_id IN ({",".join("?" * len(ids))}) ORDER BY time DESC, rowid DESC', ids):
         after = json.loads(after) if after else {}
+        if change.startswith('action_') and not _action_line_readable(conn, element, after, user):
+            continue
         kind = ('dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX)
                 else 'view' if element.startswith(VIEW_PREFIX) else 'action' if element.startswith(ACTION_PREFIX) else 'type')
         out.append({'at': at, 'who': who, 'element': kind, 'column': element.split(':', 2)[2] if kind == 'meaning' else None, 'change': change,

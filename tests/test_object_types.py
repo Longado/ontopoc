@@ -820,7 +820,8 @@ class ActionTests(SigningTestCase):
             # a submit on an order the person cannot read is "no such object", and the attempt is logged
             status, body = self.submit(ann)
             self.assertEqual((status, body['error']), (404, '没有这个对象，或者你看不到它'))
-            self.assertEqual(self.log(ann)[0]['change'], 'action_refused')
+            self.assertEqual([e for e in self.log(ann) if e['change'].startswith('action_')], [])   # the line is about a row she may not read: not shown to her
+            self.assertEqual(self.log(admin)[0]['change'], 'action_refused')   # the admin sees every row, so every line
             # Ann is named by a rule, Bob is not: Ann can submit an order the rule keeps; Bob is not shown the record and cannot approve it
             self.assertEqual(self.rule(admin, 'vera', 'ann')[0], 200)
             in_rule = next(r for r in kh001 if r['状态码'] == '1')
@@ -839,6 +840,160 @@ class ActionTests(SigningTestCase):
             self.assertEqual(body['results'][0]['version'], 3)
             status, body = ann.post('/api/workspace/datasets/upload', {'files': [back]})
             self.assertEqual((status, body['results'][0]['overwrites_action_rows']), (200, []))   # the same file again changes nothing
+
+    def two_rules(self, admin):
+        ids = {u: self.user_id(admin, u) for u in ('ann', 'bob')}
+        return admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [
+            {'column': '客户编号', 'value': 'KH001', 'user_ids': [ids['ann']]}, {'column': '客户编号', 'value': 'KH002', 'user_ids': [ids['bob']]}]})
+
+    def test_the_log_and_the_action_page_show_nothing_about_a_row_the_reader_may_not_read(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.confirmed_action(team)
+            self.assertEqual(self.two_rules(admin)[0], 200)
+            hers = next(r for r in ORDERS if r['客户编号'] == 'KH001' and r['状态码'] == '1')
+            record = self.submit(ann, order=hers)[1]['record']
+            self.assertEqual(self.submit(ann, order=hers, to='1')[0], 409)   # refused: "already those values", the line quotes the order
+            self.assertEqual(admin.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[1]['state'], 'approved')
+            mine = lambda log: [e for e in log if e['change'].startswith('action_')]
+            for log in (self.log(bob), bob.get('/api/workspace/types/order/log')[1]['log']):   # Bob's rule keeps KH001 from him: no line, not a blanked one
+                self.assertEqual(mine(log), [])
+                self.assertNotIn(hers['订单号'], json.dumps(log, ensure_ascii=False))
+            for reader in (ann, admin):
+                for log in (self.log(reader), reader.get('/api/workspace/types/order/log')[1]['log']):
+                    self.assertEqual([e['change'] for e in mine(log)], ['action_approved', 'action_refused', 'action_submitted'])
+            self.assertIn(hers['订单号'], ' '.join(e['text'] for e in mine(self.log(ann))))
+
+    AMOUNT = {'english_name': 'order_amount', 'name': '订单金额', 'dataset': '订单', 'key': ['订单号'], 'properties': [{'column': '订单号'}, {'column': '金额'}, {'column': '客户编号'}]}
+
+    def test_a_row_rule_binds_the_rows_of_the_dataset_so_a_sibling_type_shows_no_more_and_no_action_on_it_can_write_the_ruled_column(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/types', self.AMOUNT)[0], 200)
+            shown = bob.get('/api/workspace/types/order_amount')[1]
+            self.assertEqual(bob.post('/api/workspace/types/confirm', {'id': 'order_amount', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+            self.assertEqual(bob.get('/api/workspace/types/order_amount/objects')[1]['total'], 160)   # no rule yet
+            self.assertEqual(self.two_rules(admin)[0], 200)   # the rules are on `order`; `order_amount` reads the same dataset
+            kh = lambda value: sum(1 for r in ORDERS if r['客户编号'] == value)
+            for reader, expected in ((ann, kh('KH001')), (bob, kh('KH002')), (vera, 0), (admin, 160)):
+                self.assertEqual(reader.get('/api/workspace/types/order_amount/objects')[1]['total'], expected)
+                self.assertEqual(reader.get('/api/workspace/types/order_amount')[1]['rows'], expected)
+                self.assertEqual(next(t for t in reader.get('/api/workspace/types')[1]['types'] if t['id'] == 'order_amount')['rows'], expected)
+            # two row-ruled types on one dataset: a person keeps the rows both allow
+            ids = [self.user_id(admin, u) for u in ('ann', 'bob')]
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order_amount', 'rules': [{'column': '客户编号', 'value': 'KH002', 'user_ids': ids}]})[0], 200)
+            self.assertEqual(ann.get('/api/workspace/types/order/objects')[1]['total'], 0)   # KH001 by one rule and KH002 by the other
+            self.assertEqual(bob.get('/api/workspace/types/order_amount/objects')[1]['total'], kh('KH002'))
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order_amount', 'rules': []})[0], 200)
+            # an action on the sibling cannot write the column the rule on `order` reads, and the other way round
+            status, body = ann.post('/api/workspace/actions', {'name': '改金额客户', 'type': 'order_amount', 'properties': ['客户编号']})
+            self.assertEqual(status, 409)
+            self.assertIn('行规则用到“客户编号”', body['error'])
+            self.assertEqual(ann.post('/api/workspace/actions', {'name': '改金额', 'type': 'order_amount', 'properties': ['金额']})[0], 200)   # a column no rule reads
+            self.assertEqual(self.rule(admin)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/actions', {'name': '改金额客户', 'type': 'order_amount', 'properties': ['客户编号']})[0], 200)
+            status, body = self.rule(admin, 'vera')
+            self.assertEqual(status, 409)
+            self.assertIn('改金额客户', body['error'])
+
+    def test_a_person_under_a_row_rule_confirms_nothing_and_reads_no_count_of_the_whole_data(self):
+        with self.service() as (base, out):
+            team = self.people(base, 'ann', 'bob', roles={})
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': TABLES})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types', self.order)[0], 200)
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH001', 'user_ids': [self.user_id(admin, 'ann')]}]})[0], 200)
+            shown = bob.get('/api/workspace/types/order')[1]   # Bob is named by no rule: he sees no row, and no count of the rest
+            self.assertEqual((shown['rows'], shown['rows_limited'], shown['seen'], shown['limited_note']), (0, True, None, '受行规则限制，看不到全部数据的统计'))
+            meanings = next(p for p in shown['properties'] if p['column'] == '状态码')['meanings']
+            self.assertEqual({(v['rows'], v['rows_at_confirmation']) for v in meanings['values']}, {(None, None)})
+            self.assertEqual(meanings['seen'], None)
+            self.assertFalse(shown['can_confirm'])
+            for payload in ({'id': 'order', 'column': '状态码', 'version': meanings['version'], 'seen': {}}, {'id': 'order', 'version': shown['version'], 'seen': {}}):
+                status, body = bob.post('/api/workspace/types/confirm', payload)
+                self.assertEqual(status, 403)
+                self.assertIn('行规则', body['error'])
+            items = [i for i in bob.get('/api/workspace/queue')[1]['items'] if i['id'] == 'order']
+            self.assertTrue(items)
+            for item in items:   # the evidence says counts are not his, and quotes none
+                self.assertFalse(item['can_confirm'])
+                self.assertNotIn('160', ' '.join(l['text'] for l in item['lines']))
+                self.assertNotIn('行）', ' '.join(l['text'] for l in item['lines']))
+            self.assertEqual(bob.post('/api/workspace/queue/confirm', {'element': items[0]['element'], 'version': items[0]['version'], 'seen': items[0]['seen']})[0], 403)
+            whole = next(i for i in admin.get('/api/workspace/queue')[1]['items'] if i['element'] == 'objtype:order')   # an admin is not limited: the whole data
+            self.assertIn('160', ' '.join(l['text'] for l in whole['lines']))
+
+    def test_a_limited_person_makes_a_view_without_the_count_of_the_whole_data_and_cannot_confirm_it(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH001', 'user_ids': [self.user_id(admin, 'ann')]}]})[0], 200)
+            body = bob.post('/api/workspace/types/views', VALID)[1]
+            self.assertEqual((body['rows'], body['of'], body['limited_note']), (None, None, '受行规则限制，看不到全部数据的统计'))
+            seen = next(v for v in bob.get('/api/workspace/types/order/views')[1]['views'] if v['name'] == '有效订单')
+            self.assertEqual((seen['rows'], seen['of'], seen['seen'], seen['anchored']), (0, 0, None, None))   # the count is of his own rows, of which he has none
+            status, body = admin.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': seen['version'], 'seen': {}})   # admins are not limited: refused only for the seen
+            self.assertNotEqual(status, 403)
+            self.assertEqual(ann.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': seen['version'], 'seen': {}})[0], 403)   # limited to KH001, and the proposer is Bob
+
+    def test_an_approval_after_the_definition_changed_goes_to_needs_look_and_writes_nothing(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.confirmed_action(team)
+            record = self.submit(ann)[1]['record']
+            changed = {**STATUS_ACTION, 'id': '改订单状态', 'version': ann.get(ACTION_URL)[1]['version'], 'condition': {'column': '状态码', 'value': '0'}}
+            self.assertEqual(ann.post('/api/workspace/actions/update', changed)[0], 200)
+            shown = ann.get(ACTION_URL)[1]
+            self.assertEqual(bob.post('/api/workspace/actions/confirm', {'id': '改订单状态', 'version': shown['version']})[0], 200)
+            status, body = bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})
+            self.assertEqual((status, body['state']), (200, 'needs_look'))
+            self.assertIn('行为定义在提交后变了', body['why'])
+            self.assertEqual(ann.get(DATASET_URL)[1]['version'], 1)
+            self.assertEqual(self.status_counts(ann), STATUS_COUNTS)
+
+    def test_the_new_version_and_the_approved_record_are_one_write_a_failed_one_leaves_neither_and_a_self_approval_is_marked(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.confirmed_action(team)
+            record = self.submit(ann)[1]['record']
+            conn = self.db(out)
+            conn.execute("CREATE TRIGGER no_approved BEFORE UPDATE ON action_record WHEN NEW.state = 'approved' BEGIN SELECT RAISE(ABORT, 'disk gone'); END")
+            conn.commit()
+            conn.close()
+            with self.assertRaises(Exception):
+                bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})
+            self.assertEqual(ann.get(DATASET_URL)[1]['version'], 1)   # no half: the version is not there either
+            self.assertEqual(self.status_counts(ann), STATUS_COUNTS)
+            self.assertEqual(next(r for r in ann.get(ACTION_URL)[1]['records'])['state'], 'pending')
+            conn = self.db(out)
+            conn.execute('DROP TRIGGER no_approved')
+            conn.commit()
+            conn.close()
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[1]['state'], 'approved')
+            self.assertEqual(ann.get(DATASET_URL)[1]['version'], 2)
+            approved = next(e for e in self.log(ann) if e['change'] == 'action_approved')
+            self.assertFalse(approved['self_confirmed'])
+            # with the two-person switch off the submitter may approve their own record, and the log line says so
+            self.assertEqual(team['admin'].post('/api/settings', {'two_person': False})[0], 200)
+            second = self.submit(ann, order=next(r for r in ORDERS if r['状态码'] == '1' and r['订单号'] != IN_PRODUCTION['订单号']))[1]['record']
+            self.assertEqual(ann.post('/api/workspace/actions/decide', {'id': second, 'decision': 'approve'})[1]['state'], 'approved')
+            own = next(e for e in self.log(ann) if e['change'] == 'action_approved')
+            self.assertTrue(own['self_confirmed'])
+            self.assertIn('没有第二个人', own['text'])
+
+    def test_a_text_value_is_capped_at_500_characters(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.assertEqual(team['ann'].post('/api/workspace/actions', {'name': '改金额', 'type': 'order', 'properties': ['金额']})[0], 200)
+            shown = team['bob'].get('/api/workspace/actions/' + quote('改金额'))[1]
+            self.assertEqual(team['bob'].post('/api/workspace/actions/confirm', {'id': '改金额', 'version': shown['version']})[0], 200)
+            status, body = team['ann'].post('/api/workspace/actions/submit', {'action': '改金额', 'key': {'订单号': IN_PRODUCTION['订单号']}, 'params': {'金额': '9' * 501}})
+            self.assertEqual(status, 400)
+            self.assertIn('最多 500 个字', body['error'])
 
 
 class OlderFileTests(unittest.TestCase):

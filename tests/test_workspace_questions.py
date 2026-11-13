@@ -407,3 +407,34 @@ class QuestionTests(SigningTestCase):
             self.assertEqual((status, withheld['withheld']), (200, {'types': ['订单']}))
             self.assertIn('行规则后来变了', withheld['reason'])
             self.assertNotIn('answer', withheld)
+
+    def test_a_rule_on_one_type_limits_a_question_through_another_type_on_the_same_dataset_and_the_queue_shows_a_limited_person_counts_only(self):
+        orders = {**ORDER, 'properties': [*ORDER['properties'], {'column': '客户编号'}]}
+        amount = {'english_name': 'order_amount', 'name': '订单金额', 'dataset': '订单', 'key': ['订单号'], 'properties': [{'column': '订单号'}, {'column': '金额'}]}
+        kh001 = sum(1 for r in ORDERS if r['客户编号'] == 'KH001')
+        model = AskModel(cancelled(query={**ALL_ORDERS, 'start': 'order_amount'}, used=[]))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            for payload in (orders, CUSTOMER, amount):
+                self.assertEqual(ann.post('/api/workspace/types', payload)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/relations', RELATION)[0], 200)   # proposed, not confirmed: it waits in the queue
+            self.confirm(bob, 'order', '状态码')
+            for name in ('order', 'customer', 'order_amount'):
+                self.confirm(bob, name)
+            vera_id = next(u['id'] for u in admin.get('/api/users')[1]['users'] if u['username'] == 'vera')
+            self.assertEqual(self.ask(vera, '一共有多少订单金额？')[1]['answer']['total'], 160)
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH001', 'user_ids': [vera_id]}]})[0], 200)   # on `order`, not on the type asked about
+            status, body = self.ask(vera, '一共有多少订单金额？')
+            self.assertEqual((status, body['answer']['total']), (200, kh001))
+            self.assertEqual([l['type'] for l in body['limited_by_rule']], ['order_amount'])
+            # the queue: a person a rule limits (Bob is named by none) reads the counts of the rows he may read, no key and no sample; an admin reads the whole check
+            text = lambda client: ' '.join(l['text'] for i in client.get('/api/workspace/queue')[1]['items'] if i['element'] == 'relation:order_customer' for l in i['lines'])
+            self.assertIn('KH099', text(admin))
+            self.assertNotIn('KH', text(bob))
+            self.assertNotIn('160', text(bob))
+            item = next(i for i in bob.get('/api/workspace/queue')[1]['items'] if i['element'] == 'relation:order_customer')
+            self.assertFalse(item['can_confirm'])
+            status, body = bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': item['version'], 'seen': item['seen']})
+            self.assertEqual(status, 403)
+            self.assertIn('行规则', body['error'])

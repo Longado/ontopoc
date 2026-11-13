@@ -19,7 +19,7 @@ import json
 import re
 
 from ontology_poc_generator.object_types import (
-    RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _edit_names, _flag_readers, _state_view, _text, _visible, dataset_columns, element_row, log_entries, type_id,
+    RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _edit_names, _flag_readers, _state_view, _text, _visible, dataset_columns, element_row, log_entries, refuse_if_limited, type_id,
     write_confirmation, write_elements, MAX_DESCRIPTION, MAX_NAME, ENGLISH_NAME)
 from ontology_poc_generator.relation_checks import _side_numbers
 from ontology_poc_generator.row_rules import positions, restriction
@@ -292,6 +292,7 @@ def confirm_relation(conn, payload: dict, who: str | None, user: dict | None) ->
     row = element_row(conn, relation_id(str(payload.get('id'))))
     if row is None or not _relation_visible(conn, row, user):
         raise TypeRefused('没有这个关系', 404)
+    refuse_if_limited(conn, row, user)
     if payload.get('version') != row['version']:
         raise TypeRefused('确认要带上你看到的那一版；它在你看过之后被改了，请刷新后重新看一遍', 409)
     if row['state'] == 'confirmed':

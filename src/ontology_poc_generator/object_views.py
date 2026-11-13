@@ -22,8 +22,8 @@ import json
 
 from ontology_poc_generator.named_views import NUMERIC, orderable
 from ontology_poc_generator.object_types import (
-    MAX_DESCRIPTION, MAX_NAME, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
-    dataset_columns, element_row, enum_id, log_entries, type_id, write_confirmation, write_elements)
+    LIMITED_NOTE, MAX_DESCRIPTION, MAX_NAME, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
+    dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, write_confirmation, write_elements)
 from ontology_poc_generator.public_ontology import normalize_value
 from ontology_poc_generator.row_rules import positions as row_positions, restriction
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
@@ -241,7 +241,8 @@ def create_view(conn, payload: dict, who: str | None, user: dict | None) -> dict
     if summary['problems']:
         raise TypeRefused('；'.join(summary['problems']), 409)
     write_elements(conn, [_change(content, summary, who)], {view_id(content['name']): _reads(content, summary)})
-    return {'id': content['name'], 'rows': summary['rows'], 'of': summary['of']}
+    limited = restriction(conn, type_id(content['type']), user) is not None   # the count is of the whole data
+    return {'id': content['name'], 'rows': None if limited else summary['rows'], 'of': None if limited else summary['of'], **({'limited_note': LIMITED_NOTE} if limited else {})}
 
 
 def update_view(conn, payload: dict, who: str | None, user: dict | None) -> dict:
@@ -268,6 +269,7 @@ def confirm_view(conn, payload: dict, who: str | None, user: dict | None) -> dic
     data as it is and the confirmation is refused (409) when it is not that. The type and the meanings the conditions use must be confirmed. Another
     builder (SelfConfirmation otherwise)."""
     row = _view_row(conn, payload.get('id'), user)
+    refuse_if_limited(conn, row, user)
     if payload.get('version') != row['version']:
         raise TypeRefused('确认要带上你看到的那一版；它在你看过之后被改了，请刷新后重新看一遍', 409)
     if row['state'] == 'confirmed':
@@ -329,10 +331,11 @@ def view_state(conn, row: dict, user: dict | None) -> dict:
 def _line(conn, row: dict, user: dict | None, summary: dict, type_name: str) -> dict:
     content = _content(row)
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else None
+    limited = restriction(conn, type_id(content['type']), user) is not None   # counts of the whole data are not theirs; list_views puts the counts of their rows in
     return {'id': content['name'], 'name': content['name'], 'description': content['description'], 'type': content['type'], 'type_name': type_name,
             'filters': content['filters'], 'latest': content['latest'], 'says': describe(content, type_name), 'problems': summary['problems'],
-            'rows': summary.get('rows'), 'of': summary.get('of'), 'dataset': summary.get('dataset'), 'dataset_version': summary.get('version'),
-            'seen': seen_of_view(summary), 'anchored': anchors, **view_state(conn, row, user)}
+            'rows': None if limited else summary.get('rows'), 'of': None if limited else summary.get('of'), 'dataset': summary.get('dataset'), 'dataset_version': summary.get('version'),
+            'seen': None if limited else seen_of_view(summary), 'anchored': None if limited else anchors, **({'limited_note': LIMITED_NOTE} if limited else {}), **view_state(conn, row, user)}
 
 
 def list_views(conn, english_name: str, user: dict | None) -> list[dict]:

@@ -7,8 +7,12 @@ are limited where they are read: the objects tab, the counts and rows a relation
 says so), the views' counts, an action's submit and approval. A dataset a row-ruled type reads is the admins' only (type_access.dataset_hidden), so the
 dataset pages, a download or an upload cannot be a way round.
 
-An action may not write a property a row rule on its type reads: the one action could move a row into or out of someone's view. Setting such a rule is refused
-naming the action; confirming such an action is refused (object_actions).
+A rule binds the rows of the dataset, not one type: a person's rows are the ones every row-ruled type reading that dataset lets them see (a rule naming
+them with no condition lifts that type's limit; one type's rule holds on its siblings). A person a rule limits does not see all the data, so they confirm nothing
+about it and read none of its whole-data counts.
+
+An action may not write a property a row rule on any type of its dataset reads: the one action could move a row into or out of someone's view. Setting such a
+rule is refused naming the action; defining, confirming, submitting or approving such an action is refused (object_actions).
 """
 from __future__ import annotations
 
@@ -44,48 +48,66 @@ def holds_all_rows(conn, type_element_id: str, user: dict | None) -> bool:
     return user is None or user['role'] == 'admin' or any(r['column'] == '' and user['id'] in r['user_ids'] for r in rules_of(conn, type_element_id))
 
 
-def restriction(conn, type_element_id: str, user: dict | None) -> list[tuple[str, str]] | None:
-    """None when this person sees every row of the type (no rules, an admin, or an all-rows rule names them); else the (column, value) pairs a row must match
-    one of (an empty list: no row)."""
+def types_on_dataset_of(conn, type_element_id: str) -> list[str]:
+    """This type and every other type that reads the same dataset (any state): a row rule binds the dataset's rows, so one type's rule holds on all of them."""
+    found = conn.execute('SELECT content_json FROM element_state WHERE element_id = ?', (type_element_id,)).fetchone()
+    if found is None:
+        return [type_element_id]
+    dataset = json.loads(found[0]).get('dataset')
+    others = [e for (e,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' AND json_extract(content_json, '$.dataset') = ? ORDER BY element_id", (dataset,))]
+    return list(dict.fromkeys([type_element_id, *others]))
+
+
+def restriction(conn, type_element_id: str, user: dict | None) -> list[list[tuple[str, str]]] | None:
+    """None when this person sees every row of the dataset the type reads (no rules on any type reading it, an admin, or an all-rows rule names them on each
+    row-ruled type); else a list of clauses, one for each row-ruled type reading the dataset that does not give them all rows: a row must match one (column,
+    value) pair of every clause (an empty clause: no row)."""
     if user is None or user['role'] == 'admin':
         return None
-    rules = rules_of(conn, type_element_id)
-    if not rules or holds_all_rows(conn, type_element_id, user):
-        return None
-    return [(r['column'], r['value']) for r in rules if user['id'] in r['user_ids']]
+    clauses = []
+    for element_id in types_on_dataset_of(conn, type_element_id):
+        rules = rules_of(conn, element_id)
+        if rules and not holds_all_rows(conn, element_id, user):
+            clauses.append([(r['column'], r['value']) for r in rules if user['id'] in r['user_ids']])
+    return clauses or None
 
 
-def keeps(record: dict, limit: list[tuple[str, str]] | None) -> bool:
-    return limit is None or any(_canonical(record.get(c)) == _canonical(v) for c, v in limit)
+def keeps(record: dict, limit: list[list[tuple[str, str]]] | None) -> bool:
+    return limit is None or all(any(_canonical(record.get(c)) == _canonical(v) for c, v in clause) for clause in limit)
 
 
-def positions(records: list[dict], limit: list[tuple[str, str]] | None) -> set[int]:
+def positions(records: list[dict], limit: list[list[tuple[str, str]]] | None) -> set[int]:
     """The positions (from 1) of the rows this limit lets through."""
     return {i for i, r in enumerate(records, 1) if keeps(r, limit)}
 
 
-def describe(limit: list[tuple[str, str]]) -> str:
-    return '、'.join(f'{c} = {v}' for c, v in limit) if limit else '没有一条规则让你看到行'
+def describe(limit: list[list[tuple[str, str]]]) -> str:
+    return '；且 '.join('、'.join(f'{c} = {v}' for c, v in clause) if clause else '没有一条规则让你看到行' for clause in limit)
+
+
+def limit_as_list(limit) -> list | None:
+    """The limit in a plain form to keep with a saved answer and compare later."""
+    return None if limit is None else [[list(pair) for pair in clause] for clause in limit]
 
 
 def _actions_writing(conn, type_element_id: str) -> dict[str, list[str]]:
-    """{column: [action names]} of the definitions on this type (any state but sent back) that write it."""
-    english = type_element_id.partition(':')[2]
+    """{column: [action names]} of the definitions on this type or any other type reading its dataset (any state but sent back) that write it."""
+    english = {e.partition(':')[2] for e in types_on_dataset_of(conn, type_element_id)}
     out: dict[str, list[str]] = {}
     for content, in conn.execute("SELECT content_json FROM element_state WHERE element_id LIKE 'objaction:%' AND state != 'rejected'"):
         c = json.loads(content)
-        if c['type'] == english:
+        if c['type'] in english:
             for column in c['properties']:
                 out.setdefault(column, []).append(c['name'])
     return out
 
 
 def conflict_with_actions(conn, type_element_id: str, written: list[str]) -> str | None:
-    """Why an action that writes these columns cannot stand on this type, or None: a row rule reads one of them."""
-    ruled = columns_ruled(conn, type_element_id) & set(written)
+    """Why an action that writes these columns cannot stand on this type, or None: a row rule on a type reading the same dataset reads one of them."""
+    ruled = set().union(*(columns_ruled(conn, e) for e in types_on_dataset_of(conn, type_element_id))) & set(written)
     if not ruled:
         return None
-    return f'这个类型的行规则用到“{"、".join(sorted(ruled))}”，行为不能改写它：一次改写就能把一行移进或移出某个人看得到的范围'
+    return f'这个数据集上的行规则用到“{"、".join(sorted(ruled))}”，行为不能改写它：一次改写就能把一行移进或移出某个人看得到的范围'
 
 
 def set_rules(conn, english_name: str, rules, who: str | None) -> dict:

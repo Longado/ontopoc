@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 
 from ontology_poc_generator.object_relations import (
-    _relation_visible, check_relation, confirm_relation, evidence_lines, relation_view)
+    _relation_visible, check_relation, confirm_relation, counts_only, evidence_lines, relation_view)
 from ontology_poc_generator.object_types import (
-    ACTION_PREFIX, ENUM_PREFIX, RELATION_PREFIX, STALE, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
+    ACTION_PREFIX, ENUM_PREFIX, LIMITED_NOTE, RELATION_PREFIX, STALE, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
 from ontology_poc_generator.object_actions import action_state, action_visible, confirm_action, describe as describe_action, open_records
 from ontology_poc_generator.object_views import confirm_view, describe, seen_of_view, view_state, view_summary, view_visible
 from ontology_poc_generator.workspace_store import current_dataset, log_line
@@ -23,10 +23,12 @@ ORDER = {'needs_look': 0, 'pending': 1, 'checked': 1, 'proposed': 2}
 MAX_REASON = 300
 
 
-def _type_lines(conn, row: dict, content: dict) -> list[dict]:
+def _type_lines(conn, row: dict, content: dict, limited: bool = False) -> list[dict]:
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else {}
     lines = []
-    if anchors.get('key_rows') is not None:
+    if limited:   # a row rule keeps part of the data from this person: no count of the whole data
+        lines.append({'ok': True, 'text': f'主键“{" + ".join(content["key"])}”；{LIMITED_NOTE}'})
+    elif anchors.get('key_rows') is not None:
         lines.append({'ok': True, 'text': f'主键“{" + ".join(content["key"])}”在 {anchors["dataset"]} 第 {anchors["version"]} 版的全部 {anchors["key_rows"]} 行上唯一，没有空值'})
     lines.append({'ok': True, 'text': f'{len(content["properties"])} 个属性，来自 {content["dataset"]}'})
     for column, state in conn.execute("SELECT substr(d.depends_on, ?), s.state FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on "
@@ -35,9 +37,9 @@ def _type_lines(conn, row: dict, content: dict) -> list[dict]:
     return lines
 
 
-def _meaning_lines(content: dict, row: dict) -> list[dict]:
+def _meaning_lines(content: dict, row: dict, limited: bool = False) -> list[dict]:
     counts = (json.loads(row['anchors_json']) if row['anchors_json'] else {}).get('counts') or {}
-    return [{'ok': True, 'text': f'{e["value"]} = {e["label"]}（提出时 {counts.get(e["value"], 0)} 行）'} for e in content['values']]
+    return [{'ok': True, 'text': f'{e["value"]} = {e["label"]}' + ('' if limited else f'（提出时 {counts.get(e["value"], 0)} 行）')} for e in content['values']]
 
 
 def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | None:
@@ -51,9 +53,14 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
         names = {e: _content(r)['name'] for e in ('from', 'to') if (r := element_row(conn, f'{TYPE_PREFIX}{content[e]}'))}
         base = {'kind': 'relation', 'title': f'{names.get("from", content["from"])} → {names.get("to", content["to"])}（{content["name"]}）', 'id': content['english_name'], 'lines': []}
         if not light:
-            result = check_relation(conn, content, record=False)
-            base['lines'] = evidence_lines(result)
-            view['seen'] = result.get('signature')   # what the person reads, which confirming has to quote
+            if view['limited_by_rule']:   # a row rule keeps part of the data from this person: the counts of the rows they may read, no keys or samples
+                result = counts_only(check_relation(conn, content, record=False, user=user))
+                base['lines'] = evidence_lines(result)
+                view['seen'] = None
+            else:
+                result = check_relation(conn, content, record=False)
+                base['lines'] = evidence_lines(result)
+                view['seen'] = result.get('signature')   # what the person reads, which confirming has to quote
     elif element_id.startswith(VIEW_PREFIX):
         if not view_visible(conn, row, user):
             return None
@@ -62,11 +69,11 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
         base = {'kind': 'view', 'title': f'{content["name"]}（{type_name}的视图）', 'id': content['type'], 'view': content['name'], 'lines': []}
         if not light:
             summary = view_summary(conn, content)
+            shown = [{'ok': True, 'text': LIMITED_NOTE if view['limited_by_rule'] else f'{summary["dataset"]} 第 {summary["version"]} 版的 {summary["of"]} 行里，视图留下 {summary["rows"]} 行'}]
             base['lines'] = [{'ok': True, 'text': describe(content, type_name)},
-                             *([{'ok': False, 'text': p} for p in summary['problems']] if summary['problems']
-                               else [{'ok': True, 'text': f'{summary["dataset"]} 第 {summary["version"]} 版的 {summary["of"]} 行里，视图留下 {summary["rows"]} 行'}]),
+                             *([{'ok': False, 'text': p} for p in summary['problems']] if summary['problems'] else shown),
                              *[{'ok': w['state'] == 'confirmed', 'text': f'“{w["name"]}”{"已确认" if w["state"] == "confirmed" else "还没有确认"}'} for w in view['waiting_on']]]
-            view['seen'] = seen_of_view(summary)
+            view['seen'] = None if view['limited_by_rule'] else seen_of_view(summary)
     elif element_id.startswith(ACTION_PREFIX):
         if not action_visible(conn, row, user):
             return None
@@ -85,16 +92,16 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
         base = {'kind': 'meaning', 'title': f'{_content(type_row)["name"]}.{content["column"]}', 'id': content['type'], 'column': content['column'], 'lines': []}
         if not light:
             dataset = current_dataset(conn, content['dataset'])
-            base['lines'] = _meaning_lines(content, row)
-            view['seen'] = seen_of_meaning(dataset, (dataset_columns(conn, dataset['id']) if dataset else {}).get(content['column']))
+            base['lines'] = _meaning_lines(content, row, view['limited_by_rule'])
+            view['seen'] = None if view['limited_by_rule'] else seen_of_meaning(dataset, (dataset_columns(conn, dataset['id']) if dataset else {}).get(content['column']))
     else:
         if not _visible(conn, row, user):
             return None
         view = _state_view(conn, row, user)
         base = {'kind': 'type', 'title': content['name'], 'id': content['english_name'], 'lines': []}
         if not light:
-            base['lines'] = _type_lines(conn, row, content)
-            view['seen'] = seen_of_type(current_dataset(conn, content['dataset']))
+            base['lines'] = _type_lines(conn, row, content, view['limited_by_rule'])
+            view['seen'] = None if view['limited_by_rule'] else seen_of_type(current_dataset(conn, content['dataset']))
     if light:
         return {'element': element_id, **base, **view}
     if row['state'] == 'needs_look' and row['reason']:

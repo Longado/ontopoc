@@ -24,7 +24,7 @@ from ontology_poc_generator.object_views import describe, kept_positions, view_v
 from ontology_poc_generator.ontology_questions import _catalog, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
-from ontology_poc_generator.row_rules import describe as describe_limit, positions as row_positions, restriction
+from ontology_poc_generator.row_rules import describe as describe_limit, limit_as_list, positions as row_positions, restriction
 from ontology_poc_generator.type_access import hidden_values, visible_type_ids
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
@@ -419,7 +419,7 @@ def _named_ids(result: dict, sc: dict) -> list[str]:
 
 
 def _limit_list(limit) -> list | None:
-    return None if limit is None else [list(p) for p in limit]
+    return limit_as_list(limit)
 
 
 def _rules_read(sc: dict, result: dict) -> dict:

@@ -403,7 +403,9 @@ def import_records(conn, name: str, records, origin: str, file_sha256: str, who:
     if mode is None and keeps_current and not current_dataset(conn, name):
         mode = 'new'   # the first version of a name, made by the old screen: a new dataset like any other, so it shows in Tasks
     originals = list(dict.fromkeys(k for r in records for k in r))
-    conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
+    outer = conn.in_transaction   # a caller that writes more with the version (an approved action) holds the transaction: it commits or rolls back with them
+    if not outer:
+        conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
     try:
         version = (conn.execute('SELECT COALESCE(MAX(version), 0) FROM dataset WHERE name = ?', (name,)).fetchone()[0]) + 1
         dataset_id = conn.execute('INSERT INTO dataset(name, version, origin, file_sha256, rows_in, rows_stored, table_name, imported_at, dropped_json, who, mode, changes_json, who_user_id)'
@@ -426,9 +428,11 @@ def import_records(conn, name: str, records, origin: str, file_sha256: str, who:
             conn.execute('INSERT OR REPLACE INTO current_dataset(name, dataset_id) VALUES (?, ?)', (name, dataset_id))
         _log(conn, who, f'dataset:{name}', f'import v{version}: {rows_in} rows in the file, {rows_stored} stored, {sum(dropped.values())} dropped',
              after={'version': version, 'rows_in': rows_in, 'rows_stored': rows_stored, 'dropped': dropped, 'file_sha256': file_sha256})
-        conn.execute('COMMIT')
+        if not outer:
+            conn.execute('COMMIT')
     except BaseException:
-        conn.execute('ROLLBACK')
+        if not outer:
+            conn.execute('ROLLBACK')
         raise
     return {**_dataset(conn, 'id = ?', (dataset_id,)), 'reused': False}
 
