@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
+from decimal import Decimal
 import hashlib
 import json
 import re
@@ -327,8 +328,20 @@ def dataset_records(conn, dataset: dict) -> list[dict]:
     return [dict(zip(names, row)) for row in cursor]
 
 
+def _canonical(value):
+    """A key value as it is matched: a number in its plain form (1.0, 1.00 and 1 are one key, as an Excel file and a CSV
+    file write the same number differently), anything else as the trimmed text. A code with a leading zero (007) is text, not 7."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if (_INTEGER.fullmatch(text) or _DECIMAL.fullmatch(text)) and not _LEADING_ZERO.match(text):
+        number = Decimal(text)
+        return '0' if number == 0 else format(number.normalize(), 'f')
+    return text
+
+
 def _key_of(row: dict, columns: list[str]) -> tuple:
-    return tuple(row.get(c) for c in columns)
+    return tuple(_canonical(row.get(c)) for c in columns)
 
 
 def _shown(key: tuple) -> str:
@@ -338,8 +351,10 @@ def _shown(key: tuple) -> str:
 def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[str]) -> tuple[list[dict], dict]:
     """The rows of a dataset after an update by key, and what the update did: {'changed', 'added', 'unchanged'}.
     A row of the new file whose key is already there replaces the values it carries; a key that is not there is appended after
-    the existing rows; a row of the current data that the file does not mention stays, because an update never deletes. Columns the file
-    does not carry keep their values; columns only the file carries are added (empty for rows it does not touch).
+    the existing rows; a row of the current data that the file does not mention stays, because an update never deletes. Keys are
+    matched in their plain form (1.0 is 1). A blank cell in the file leaves the stored value as it is and is not a change
+    ('blank_kept' counts the cells that kept a value); columns the file does not carry keep their values; columns only the file
+    carries are added (empty for rows it does not touch).
     Raises ValueError, with the reason in plain Chinese, when a key cannot be matched without guessing."""
     if not key_columns:
         raise ValueError('按主键更新要先选出主键列')
@@ -367,7 +382,7 @@ def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[st
         raise ValueError(f'现有数据里主键“{_shown(clash[0])}”有 {len(where[clash[0]])} 行（共 {len(clash)} 个主键），按主键更新会分不清改哪一行')
     columns = here + [c for c in there if c not in here]
     rows = [{c: r.get(c) for c in columns} for r in current]
-    changed = added = 0
+    changed = added = blank_kept = 0
     for r in incoming:
         found = where.get(_key_of(r, key_columns))
         merged = {c: r.get(c) for c in columns}
@@ -375,11 +390,14 @@ def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[st
             rows.append(merged)
             added += 1
             continue
-        taken = {**rows[found[0]], **{c: r.get(c) for c in there}}
-        if taken != rows[found[0]]:
+        stored = rows[found[0]]
+        given = {c: r[c] for c in there if c not in key_columns and r.get(c) not in (None, '')}   # a key is what matched: its stored spelling stays
+        blank_kept += sum(1 for c in there if c not in key_columns and r.get(c) in (None, '') and stored.get(c) is not None)
+        taken = {**stored, **given}
+        if taken != stored:
             rows[found[0]] = taken
             changed += 1
-    return rows, {'changed': changed, 'added': added, 'unchanged': len(seen) - changed - added}
+    return rows, {'changed': changed, 'added': added, 'unchanged': len(seen) - changed - added, 'blank_kept': blank_kept}
 
 
 UPLOAD_MODES = ('update_by_key', 'overwrite')
@@ -404,7 +422,9 @@ def plan_upload(conn, name: str, records: list[dict], *, mode: str | None = None
     if mode == 'overwrite':
         return {'name': name, 'mode': mode, 'records': records, 'rows_in': rows_in, 'dropped': dropped, 'unchanged': False,
                 'changes': {'replaced_rows': current['rows_stored']}}
-    merged, counts = merge_by_key(dataset_records(conn, current), records, list(key_columns or []))
+    if not isinstance(key_columns, list) or not key_columns or not all(isinstance(c, str) and c for c in key_columns):
+        raise ValueError('主键列要写成列名的列表，例如 ["订单号"]')
+    merged, counts = merge_by_key(dataset_records(conn, current), records, key_columns)
     file_rows = len(records) + sum((dropped or {}).values())
     return {'name': name, 'mode': mode, 'records': merged, 'rows_in': None, 'dropped': None, 'key_columns': list(key_columns),
             'unchanged': not (counts['changed'] or counts['added']), 'current': current,

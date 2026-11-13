@@ -47,15 +47,28 @@ def _version_row(row: dict, current_id: int) -> dict:
     changes = json.loads(row['changes_json']) if row['changes_json'] else {}
     return {'version': row['version'], 'who': row['who'], 'at': row['imported_at'], 'mode': row['mode'] or 'upload', 'rows': row['rows_stored'],
             'changed': changes.get('changed'), 'added': changes.get('added'), 'unchanged': changes.get('unchanged'),
-            'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'),
+            'blank_kept': changes.get('blank_kept'), 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'),
             'current': row['id'] == current_id}
 
 
-def _key_checks(conn, dataset_id: int) -> list[dict]:
+def _key_columns(element_id: str, name: str, known: set[str]) -> list[str]:
+    """The columns a key check names, read out of its element id (key:<dataset>(<column>,<column>)) by the dataset's own name and
+    columns, so a name or a column with a bracket or a comma in it still comes out whole."""
+    parts = element_id[len(f'key:{name}('):-1].split(',')
+    out, i = [], 0
+    while i < len(parts):
+        j = next((j for j in range(len(parts), i, -1) if ','.join(parts[i:j]) in known), i + 1)
+        out.append(','.join(parts[i:j]))
+        i = j
+    return out
+
+
+def _key_checks(conn, dataset_id: int, name: str) -> list[dict]:
     """The latest recorded key check of each column set on this version."""
+    known = {r[0] for r in conn.execute('SELECT name FROM "column" WHERE dataset_id = ?', (dataset_id,))}
     rows = _rows(conn, 'SELECT * FROM check_result WHERE dataset_id = ? AND check_type IN (\'key_unique\', \'key_distinct\') '
                        'AND id IN (SELECT MAX(id) FROM check_result WHERE dataset_id = ? GROUP BY element_id) ORDER BY id', (dataset_id, dataset_id))
-    return [{'id': r['id'], 'columns': r['element_id'].partition('(')[2].rstrip(')').split(','), 'type': r['check_type'], 'status': r['status'],
+    return [{'id': r['id'], 'columns': _key_columns(r['element_id'], name, known), 'type': r['check_type'], 'status': r['status'],
              'rows_checked': r['rows_checked'], 'violations': r['violations'], 'null_key_rows': r['null_key_rows'],
              'samples': json.loads(r['samples_json'] or '[]'), 'at': r['checked_at']} for r in rows]
 
@@ -71,7 +84,7 @@ def dataset_detail(conn, name: str, version: int | None = None) -> dict | None:
     if shown is None:
         return None
     total = shown['rows_stored']
-    checks = _key_checks(conn, shown['id'])
+    checks = _key_checks(conn, shown['id'], name)
     single = {c['columns'][0]: c for c in checks if len(c['columns']) == 1}
     columns = [{'name': c['name'], 'type': c['inferred_type'], 'distinct': c['distinct_count'], 'missing': c['missing_count'],
                 'fill_rate': (total - c['missing_count']) / total if total else None,
@@ -124,6 +137,12 @@ def _jobs(conn, parts: list) -> list[dict]:
         mode, target = part.get('mode') or None, part.get('target') or None
         if mode and mode not in UPLOAD_MODES:
             raise ValueError(f'{label}：导入方式只有按主键更新（update_by_key）和覆盖（overwrite）两种')
+        for field in ('target', 'name', 'mode'):
+            if part.get(field) is not None and not isinstance(part[field], str):
+                raise ValueError(f'{label}：{field} 要写成文字')
+        keys = part.get('key_columns')
+        if keys is not None and not (isinstance(keys, list) and keys and all(isinstance(c, str) and c for c in keys)):
+            raise ValueError(f'{label}：主键列（key_columns）要写成列名的列表，例如 ["订单号"]')
         if bool(mode) != bool(target):
             raise ValueError(f'{label}：要更新已有的数据集，数据集（target）和方式（mode）要一起写；不要靠文件名猜')
         if mode == 'update_by_key' and not part.get('key_columns'):
@@ -132,6 +151,8 @@ def _jobs(conn, parts: list) -> list[dict]:
             sources = load_table_file(filename, data)['sources']
         except SourceFileError as exc:
             raise ValueError(f'{label}：{exc}') from None
+        if not sources:
+            raise ValueError(f'{label}：文件里没有数据行：第一行应是表头，下面是数据')
         if len(sources) > 1 and (target or part.get('name')):
             raise ValueError(f'{label}：文件里有 {len(sources)} 个工作表（{"、".join(sources)}），更新或改名只能用于只有一个工作表的文件')
         for sheet, source in sources.items():

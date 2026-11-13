@@ -68,6 +68,9 @@ test("each saved file reads as a sentence; a skipped update is plain and a faile
   const base = { name: "订单", version: 2, rows: 163, created_version: true, reused: false, mode: "update_by_key", changes: { changed: 2, added: 3, unchanged: 1 } };
   assert.equal(resultLine(base), "订单：按主键更新，改 2、增 3、未变 1；现在 163 行，第 2 版");
   assert.equal(resultLine({ ...base, created_version: false }), "订单：没有变化，没有新版本");
+  const blank = { ...base, changes: { ...base.changes, blank_kept: 4 } };
+  assert.equal(resultLine(blank), "订单：按主键更新，改 2、增 3、未变 1；现在 163 行，第 2 版；新文件里 4 个空格子，保留了原值");
+  assert.equal(resultLine({ ...blank, created_version: false }), "订单：没有变化，没有新版本（新文件里 4 个空格子，保留了原值）");
   assert.match(resultLine({ ...base, key_check: { status: "failed" } }), /主键检查没通过$/);
   assert.equal(resultLine({ ...base, mode: "overwrite" }), "订单：已覆盖，现在 163 行，第 2 版");
   assert.equal(resultLine({ ...base, mode: "new", rows: 12 }), "订单：新建，12 行");

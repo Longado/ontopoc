@@ -1060,7 +1060,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 if url.path.startswith('/api/workspace/datasets/'):
                     version = (parse_qs(url.query).get('version') or [None])[0]
-                    if version is not None and not version.isdigit():
+                    if version is not None and not re.fullmatch(r'[0-9]{1,9}', version):
                         self.reply(400, {'error': '版本要写成数字'})
                         return
                     found = dataset_detail(conn, unquote(url.path[len('/api/workspace/datasets/'):]), int(version) if version else None)

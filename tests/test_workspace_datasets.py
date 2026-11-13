@@ -12,9 +12,15 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from ontology_poc_generator.anchors import check_code, code_anchor
+from ontology_poc_generator.code_meanings import code_columns
+from ontology_poc_generator.named_views import save_definition, views_of_run
+from ontology_poc_generator.pipelines import workspace_datasets
+from ontology_poc_generator.relation_checks import check_relations
 from ontology_poc_generator.workspace_datasets import dataset_detail, list_datasets, upload
-from ontology_poc_generator.workspace_store import merge_by_key, open_workspace
+from ontology_poc_generator.workspace_store import current_dataset, dataset_records, merge_by_key, open_workspace, set_element_states
 from tests.test_ontology_server import OntologyServerTests
+from tests.test_relation_checks import DRAFT
 
 PLANTED = Path(__file__).parent / 'fixtures' / 'planted'
 ORDER_COLUMNS = ['订单号', '客户编号', '产品编号', '数量', '金额', '下单日期', '状态码', '交付天数']
@@ -49,15 +55,30 @@ class MergeByKeyTests(unittest.TestCase):
 
     def test_changes_additions_and_untouched_rows_are_counted_and_nothing_is_deleted(self):
         rows, counts = merge_by_key(self.CURRENT, [{'id': 'a', 'v': '1'}, {'id': 'b', 'v': '9'}, {'id': 'd', 'v': '4'}], ['id'])
-        self.assertEqual(counts, {'changed': 1, 'added': 1, 'unchanged': 1})
+        self.assertEqual(counts, {'changed': 1, 'added': 1, 'unchanged': 1, 'blank_kept': 0})
         self.assertEqual([(r['id'], r['v']) for r in rows], [('a', '1'), ('b', '9'), ('c', '3'), ('d', '4')])
         self.assertEqual(self.CURRENT[1], {'id': 'b', 'v': '2'})   # the input is not changed
 
     def test_a_column_only_the_file_has_is_added_and_one_it_lacks_keeps_its_values(self):
         rows, counts = merge_by_key(self.CURRENT, [{'id': 'a', 'note': 'x'}], ['id'])
-        self.assertEqual(counts, {'changed': 1, 'added': 0, 'unchanged': 0})
+        self.assertEqual(counts, {'changed': 1, 'added': 0, 'unchanged': 0, 'blank_kept': 0})
         self.assertEqual(rows[0], {'id': 'a', 'v': '1', 'note': 'x'})
         self.assertEqual(rows[1], {'id': 'b', 'v': '2', 'note': None})
+
+    def test_a_blank_cell_keeps_the_stored_value_and_is_not_a_change(self):
+        rows, counts = merge_by_key(self.CURRENT, [{'id': 'c', 'v': ''}, {'id': 'b', 'v': None}, {'id': 'a', 'v': '5'}], ['id'])
+        self.assertEqual(counts, {'changed': 1, 'added': 0, 'unchanged': 2, 'blank_kept': 2})
+        self.assertEqual([r['v'] for r in rows], ['5', '2', '3'])
+        _, added = merge_by_key(self.CURRENT, [{'id': 'z', 'v': ''}], ['id'])   # a new row's blank is just blank
+        self.assertEqual((added['added'], added['blank_kept']), (1, 0))
+
+    def test_keys_match_as_numbers_in_plain_form_but_codes_with_a_leading_zero_stay_text(self):
+        current = [{'id': '1', 'v': 'a'}, {'id': '2.5', 'v': 'b'}, {'id': '007', 'v': 'c'}]
+        rows, counts = merge_by_key(current, [{'id': '1.0', 'v': 'x'}, {'id': ' 2.50 ', 'v': 'y'}, {'id': '7', 'v': 'z'}], ['id'])
+        self.assertEqual({k: counts[k] for k in ('changed', 'added', 'unchanged')}, {'changed': 2, 'added': 1, 'unchanged': 0})
+        self.assertEqual([(r['id'], r['v']) for r in rows], [('1', 'x'), ('2.5', 'y'), ('007', 'c'), ('7', 'z')])   # a matched key keeps its stored spelling
+        with self.assertRaisesRegex(ValueError, '出现了 2 行'):
+            merge_by_key(current, [{'id': '1', 'v': 'x'}, {'id': '1.0', 'v': 'y'}], ['id'])
 
     def test_what_cannot_be_matched_without_guessing_is_refused(self):
         for incoming, key, words in [
@@ -185,6 +206,109 @@ class DatasetStoreTests(unittest.TestCase):
             upload(self.conn, [part('两张.xlsx', buffer.getvalue(), target='甲', mode='overwrite')], '小林')
 
 
+def small_xlsx(rows):
+    from openpyxl import Workbook
+    book = Workbook()
+    for row in rows:
+        book.active.append(row)
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+class UpdateDetailsTests(unittest.TestCase):
+    def setUp(self):
+        self.conn = open_workspace(':memory:')
+        self.addCleanup(self.conn.close)
+        upload(self.conn, [part('k.csv', '编号,值,备注\n1,甲,x\n2,乙,y\n'.encode())], '小林')
+
+    def update(self, filename, data, keys=('编号',)):
+        [r] = upload(self.conn, [part(filename, data, target='k', mode='update_by_key', key_columns=list(keys))], '小王')
+        return r
+
+    def rows(self):
+        return [tuple(r.values()) for r in dataset_records(self.conn, current_dataset(self.conn, 'k'))]
+
+    def test_blank_cells_keep_what_was_stored_and_the_count_is_reported(self):
+        r = self.update('x.csv', '编号,值,备注\n1,,\n2,丙,y\n'.encode())
+        self.assertEqual({k: r['changes'][k] for k in ('changed', 'added', 'unchanged', 'blank_kept')}, {'changed': 1, 'added': 0, 'unchanged': 1, 'blank_kept': 2})
+        self.assertEqual(self.rows(), [('1', '甲', 'x'), ('2', '丙', 'y')])
+        self.assertEqual(dataset_detail(self.conn, 'k')['versions'][0]['blank_kept'], 2)
+
+    def test_overwrite_still_writes_blanks(self):
+        upload(self.conn, [part('x.csv', '编号,值,备注\n1,,\n'.encode(), target='k', mode='overwrite')], '小王')
+        self.assertEqual(self.rows(), [('1', None, None)])
+
+    def test_the_same_key_matches_from_csv_and_from_xlsx(self):
+        r = self.update('x.csv', '编号,值,备注\n1.0,乙乙,\n'.encode())   # a CSV spells the number 1.0
+        self.assertEqual((r['changes']['changed'], r['changes']['added'], r['rows']), (1, 0, 2))
+        r = self.update('x.xlsx', small_xlsx([['编号', '值', '备注'], [2.0, '丙丙', None]]))   # an Excel cell holds the number 2.0
+        self.assertEqual((r['changes']['changed'], r['changes']['added'], r['rows']), (1, 0, 2))
+        self.assertEqual(self.rows(), [('1', '乙乙', 'x'), ('2', '丙丙', 'y')])
+
+    def test_a_name_and_a_column_with_brackets_and_commas_read_back_whole(self):
+        upload(self.conn, [part('o(1).csv', 'id,a\n1,x\n'.encode())], '小林')
+        upload(self.conn, [part('x.csv', 'id,a\n2,y\n'.encode(), target='o(1)', mode='update_by_key', key_columns=['id'])], '小林')
+        self.assertEqual([c['columns'] for c in dataset_detail(self.conn, 'o(1)')['key_checks']], [['id']])
+        upload(self.conn, [part('c.csv', '"x,y",z\n1,2\n'.encode())], '小林')
+        upload(self.conn, [part('c2.csv', '"x,y",z\n3,4\n'.encode(), target='c', mode='update_by_key', key_columns=['x,y'])], '小林')
+        self.assertEqual([c['columns'] for c in dataset_detail(self.conn, 'c')['key_checks']], [['x,y']])
+        self.assertEqual(dataset_detail(self.conn, 'c')['columns'][0]['key_check']['status'], 'passed')
+
+    def test_malformed_requests_are_refused_in_words(self):
+        for more, words in [({'key_columns': 5}, '主键列'), ({'key_columns': 'id'}, '主键列'), ({'key_columns': []}, '主键列'), ({'key_columns': [1]}, '主键列'),
+                            ({'target': ['k'], 'mode': 'overwrite'}, 'target 要写成文字'), ({'name': 7}, 'name 要写成文字'), ({'target': 'k', 'mode': 5}, '导入方式')]:
+            with self.subTest(more), self.assertRaisesRegex(ValueError, words):
+                upload(self.conn, [part('x.csv', '编号,值\n1,a\n'.encode(), **{'target': 'k', 'mode': 'update_by_key', **more})], '小王')
+
+    def test_a_file_with_no_data_rows_is_refused(self):
+        for name, data in [('h.csv', '编号,值\n'.encode()), ('b.xlsx', small_xlsx([[None, None]]))]:
+            with self.subTest(name), self.assertRaisesRegex(ValueError, '没有数据行'):
+                upload(self.conn, [part(name, data)], '小林')
+
+
+KEY = 'abcdef0123456789'   # what the definitions are kept under
+CODES = {'values': [{'value': '0', 'label': '进行中', 'description': ''}, {'value': '1', 'label': '已交付', 'description': ''},
+                    {'value': '2', 'label': '已取消', 'description': ''}]}
+
+
+class ConsumersReadTheNewVersionTests(unittest.TestCase):
+    """What reads the planted tables (a view, a code anchor, a relation check) is handed the current version of each dataset: after an update
+    by key it reads the new one. Those consumers are given dataset ids, so this is the check that a new version's id is a good one."""
+
+    def setUp(self):
+        self.conn = open_workspace(':memory:')
+        self.addCleanup(self.conn.close)
+        uploaded_all(self.conn)
+
+    def current(self):
+        return {d['name']: current_dataset(self.conn, d['name']) for d in list_datasets(self.conn)}
+
+    def seen(self):
+        """(valid orders, the 订单→客户 side, the 状态码 profile with the rows it came from), all read from the current versions."""
+        current = self.current()
+        tables = workspace_datasets(self.conn, {n: d['id'] for n, d in current.items()})
+        view = {v['name']: v for v in views_of_run(self.conn, KEY, 'run00001', DRAFT, tables)}['有效订单']
+        [relation] = [r for r in check_relations(self.conn, DRAFT, current) if r['key'] == 'order_customer']
+        records = dataset_records(self.conn, current['订单'])
+        [profile] = [p for p in code_columns({'sources': {'订单': {'records': records}}}) if p['column'] == '状态码']
+        return view, relation['sides'][0], profile, records
+
+    def test_the_view_the_code_anchor_and_the_relation_check_all_move_to_the_new_version(self):
+        set_element_states(self.conn, [(f'property:{KEY}:订单.状态码', 'confirmed', None, '小林', CODES)])
+        save_definition(self.conn, KEY, {'name': '有效订单', 'kind': 'filter', 'base': '订单', 'column': '状态码', 'op': 'is_not', 'label': '已取消'},
+                        workspace_datasets(self.conn, {n: d['id'] for n, d in self.current().items()}), DRAFT, '小林')
+        view, side, profile, records = self.seen()
+        self.assertEqual((view['rows'], side['rows'], side['matched'], side['unmatched']), (144, 160, 157, 3))
+        anchor = code_anchor(profile, records)
+        self.assertEqual(check_code(anchor, {'2': '已取消'}, profile, records), [])
+        upload(self.conn, [part('x.csv', table_csv([order('DD20269001', 'KH001', status='0'), order('DD20269002', 'KH999', status='1'), order('DD20269003', 'KH001', status='3')]),
+                                target='订单', mode='update_by_key', key_columns=['订单号'])], '小王')
+        view, side, profile, records = self.seen()
+        self.assertEqual((view['rows'], side['rows'], side['matched'], side['unmatched']), (147, 163, 159, 4))   # 163 orders, 16 of them cancelled; KH999 joins KH099
+        self.assertEqual(check_code(anchor, {'2': '已取消'}, profile, records), ['多了取值 3（1 行）'])
+
+
 class DatasetApiTests(unittest.TestCase):
     def call(self, base, path, payload=None):
         request = Request(base + path, data=None if payload is None else json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
@@ -210,7 +334,12 @@ class DatasetApiTests(unittest.TestCase):
             status, page = self.call(base, f'/api/workspace/datasets/{quote("订单")}?version=1')
             self.assertEqual((status, page['version'], page['current_version'], page['preview']['rows'][0][4]), (200, 1, 2, '2520'))
             self.assertEqual(self.call(base, f'/api/workspace/datasets/{quote("没有")}')[0], 404)
-            self.assertEqual(self.call(base, f'/api/workspace/datasets/{quote("订单")}?version=x')[0], 400)
+            for bad in ('x', '²', '99999999999999999999', '-1'):
+                self.assertEqual(self.call(base, f'/api/workspace/datasets/{quote("订单")}?version={quote(bad)}')[0], 400, bad)
+            for bad in (5, 'id', None):
+                status, body = self.call(base, '/api/workspace/datasets/upload', {'files': [part('x.csv', table_csv([order('A')]), target='订单', mode='update_by_key', key_columns=bad)]})
+                self.assertEqual(status, 400, bad)
+                self.assertIn('主键列', body['error'])
             self.assertEqual([p.name for p in out.glob('*.json')], [])   # no run file anywhere
 
 

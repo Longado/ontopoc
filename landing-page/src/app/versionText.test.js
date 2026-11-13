@@ -7,6 +7,7 @@ import { modeLabel, noChangeText, timeline, versionChangeText } from "./versionT
 test("each version says what it did in its own mode", () => {
   assert.equal(versionChangeText({ mode: "new", rows: 160 }), "160 行");
   assert.equal(versionChangeText({ mode: "update_by_key", changed: 2, added: 3, unchanged: 1, rows: 163 }), "改 2，增 3，未变 1");
+  assert.equal(versionChangeText({ mode: "update_by_key", changed: 0, added: 1, unchanged: 0, blank_kept: 3, rows: 4 }), "改 0，增 1，未变 0，3 个空格子保留原值");
   assert.equal(versionChangeText({ mode: "overwrite", replaced_rows: 160, rows: 2 }), "原 160 行，现 2 行");
   assert.equal(versionChangeText({ mode: "upload", rows: 31 }), "31 行");
   assert.deepEqual(["new", "update_by_key", "overwrite", "upload", "x"].map(modeLabel), ["新建", "按主键更新", "覆盖", "导入", "导入"]);
@@ -14,6 +15,7 @@ test("each version says what it did in its own mode", () => {
 
 test("an update that changed nothing is one plain sentence", () => {
   assert.equal(noChangeText({ key_columns: ["订单号"] }), "按主键更新（订单号）：没有变化，没有新版本");
+  assert.equal(noChangeText({ key_columns: ["订单号"], blank_kept: 2 }), "按主键更新（订单号）：没有变化，没有新版本（2 个空格子保留原值）");
 });
 
 test("versions and skipped updates share one list, newest first", () => {
