@@ -116,11 +116,21 @@ def write_run(path: Path, run: dict) -> None:
     os.replace(part, path)
 
 
+def close_to_others(folder: Path) -> None:
+    """The folder and everything under it readable by this account only: folders 0700, files 0600 (customer rows, every prompt, the workspace). Links are left alone."""
+    for path in [folder, *folder.rglob('*')]:
+        if not path.is_symlink():
+            mode = 0o700 if path.is_dir() else 0o600
+            if path.stat().st_mode & 0o777 != mode:
+                path.chmod(mode)
+
+
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent,
                 no_auth: bool = False, origins=(), trusted_proxies=None):
     """no_auth: no sign-in, every request is the local admin (trials and tests only). origins: the addresses, besides the service's own, that
     people reach it at: a proxy's https address, or a dev server."""
     output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)   # the data holds password hashes, every prompt sent to the model and the people's names
+    close_to_others(output_dir)   # a folder made before this was a rule may be open to every account on the machine
     running = code_fingerprint(code_dir)
     if gateway is not None:   # every model call, from any agent, leaves one line beside the runs
         gateway = LoggedGateway(gateway, output_dir / 'model_calls.jsonl')
@@ -2545,16 +2555,25 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if answered['error'] and answered['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': answered['error']})
                 return
+            keeps = self.user['role'] != 'viewer'   # a viewer reads: the answer comes back and nothing is written into the run
             with runs_lock:
                 latest = json.loads(result_path.read_text(encoding='utf-8'))
                 if (latest.get('confirmation') or {}).get('decisions') != (result.get('confirmation') or {}).get('decisions'):
                     self.reply(409, {'error': '等待回答期间，本体的人工确认已改变。这次回答没有保存，请按最新确认重新提问。'})
                     return
+                if keeps:
+                    answered = {**answered, 'asked_by': self.user['display_name'], 'asked_by_id': self.user['id']}   # who put the question to the run
                 if question:
                     latest['evaluation'].setdefault('asked', []).append(answered)
                 else:
                     latest['evaluation']['questions'] = answered
-                write_run(result_path, latest)
+                if keeps:
+                    write_run(result_path, latest)
+                    conn = open_workspace(output_dir / 'workspace.sqlite')
+                    try:
+                        log_write(conn, self.user['display_name'], 'write:ask', 'saved', {'saved_as': name[:80]})
+                    finally:
+                        conn.close()
             self.reply(200, latest)
 
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)

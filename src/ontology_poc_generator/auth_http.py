@@ -79,7 +79,7 @@ class Gate:
     def _credentials(self, h) -> tuple[str | None, str | None]:
         """(bearer token, session cookie token)."""
         header = h.headers.get('Authorization', '')
-        bearer = header[7:].strip() if header[:7].lower() == 'bearer ' else None
+        bearer = (header[7:].strip() if header[:7].lower() == 'bearer ' else '') or None   # an empty value is no credential: the cookie then needs the Origin check
         try:
             cookie = SimpleCookie(h.headers.get('Cookie', '')).get(self.cookie)
         except CookieError:

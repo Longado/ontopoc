@@ -310,6 +310,25 @@ class SessionTests(AccountTestCase):
             accounts.change_password(self.conn, self.admin, GOOD, 'another long password', limiter=self.limiter, client='1.1.1.1')
         self.assertEqual(caught.exception.status, 429)
 
+    def test_a_sign_in_name_cannot_land_on_the_password_change_count_of_a_person(self):
+        for _ in range(8):   # a stranger tries the name pw:1 from many places: it is not a name, so it is counted under a key of its own
+            with self.assertRaises(AccountError):
+                accounts.authenticate(self.conn, self.limiter, f'pw:{self.admin["id"]}', 'wrong password!', '9.9.9.9')
+        self.assertEqual(self.limiter.wait(self.conn, f'pw:{self.admin["id"]}', '1.1.1.1'), 0)
+        for _ in range(5):
+            with self.assertRaises(AccountError):
+                accounts.authenticate(self.conn, self.limiter, 'pw:1', 'wrong password!', f'10.0.0.{_}')
+        accounts.change_password(self.conn, self.admin, GOOD, 'another long password', limiter=self.limiter, client='1.1.1.1')   # still allowed
+
+    def test_an_admin_reset_clears_the_password_change_count_too(self):
+        for _ in range(5):
+            with self.assertRaises(AccountError):
+                accounts.change_password(self.conn, self.admin, 'not it at all!', 'another long password', limiter=self.limiter, client='1.1.1.1')
+        self.assertGreater(self.limiter.wait(self.conn, f'pw:{self.admin["id"]}', '1.1.1.1') + 1, 0)
+        other = accounts.create_user(self.conn, 'other', '另一位', 'admin', GOOD, 'host', must_change=False)
+        accounts.reset_password(self.conn, 'other', self.admin['id'], 'a brand new password')
+        accounts.change_password(self.conn, self.admin, 'a brand new password', 'yet another password', limiter=self.limiter, client='1.1.1.1')
+
     def test_a_wrong_current_password_changes_nothing(self):
         with self.assertRaises(AccountError) as caught:
             accounts.change_password(self.conn, self.admin, 'not it at all!', 'another long password')

@@ -1,11 +1,14 @@
 """Signatures come from the session, and a definition one person put forward is confirmed by another. Run through the real service with a
 fake model, on the planted tables."""
+import base64
 import json
 import sqlite3
 
 from ontology_poc_generator import accounts
 from tests.test_access import GOOD, Client, GateTestCase, table_part
 from tests.test_card_server import CUSTOMER, UPLOAD, CardModel
+from tests.test_ontology_ask_server import QuestionModel
+from tests.test_ontology_server import CSV
 from tests import test_workspace_store as planted   # the module, so its test classes are not collected a second time here
 
 CODES = [{'value': '0', 'label': '进行中'}, {'value': '1', 'label': '已交付'}, {'value': '2', 'label': '已取消'}]
@@ -238,6 +241,29 @@ class TwoPersonTests(SigningTestCase):
             self.assertEqual(team['admin'].get('/api/settings')[1]['two_person']['active'], True)   # root and ann
             team['admin'].post('/api/users/disable', {'id': 2, 'disabled': True})
             self.assertEqual(team['admin'].get('/api/settings')[1]['two_person'], {'enabled': True, 'builders': 1, 'active': False})
+
+
+class AskWhoMayKeepTests(SigningTestCase):
+    def test_a_viewer_gets_the_answer_and_nothing_is_written_while_a_builder_keeps_it_signed(self):
+        with self.service(gateway=QuestionModel()) as (base, out):
+            team = self.people(base, 'ann', 'vic', roles={'vic': 'viewer'})
+            status, run = team['ann'].post('/api/ontology/build', {'filename': 'orders.csv', 'content_base64': base64.b64encode(CSV).decode()})
+            self.assertEqual(status, 200, run)
+            path = out / run['saved_as']
+            before = path.read_bytes()
+            status, answer = team['vic'].post('/api/ontology/ask', {'saved_as': run['saved_as'], 'question': '哪个客户订单最多？'})
+            self.assertEqual(status, 200, answer)
+            self.assertEqual(len(answer['evaluation']['asked']), 1)   # the answer comes back
+            self.assertEqual(path.read_bytes(), before)               # and is not kept
+            status, _ = team['vic'].post('/api/ontology/ask', {'saved_as': run['saved_as']})
+            self.assertEqual((status, path.read_bytes() == before), (200, True))   # no question: the stored question set is not replaced either
+            status, answer = team['ann'].post('/api/ontology/ask', {'saved_as': run['saved_as'], 'question': '哪个客户订单最多？'})
+            self.assertEqual(status, 200, answer)
+            saved = json.loads(path.read_text(encoding='utf-8'))
+            self.assertEqual([(a['asked_by'], a['asked_by_id']) for a in saved['evaluation']['asked']], [('Ann', 2)])
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            self.assertEqual(conn.execute("SELECT who, user_id FROM log WHERE element_id = 'write:ask'").fetchall(), [('Ann', 2)])
+            conn.close()
 
 
 class OlderFileTests(GateTestCase):

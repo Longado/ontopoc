@@ -338,6 +338,9 @@ def authenticate(conn, limiter: LoginLimiter, username, password, client: str) -
     """The user for a right name and password. A wrong name, a wrong password, a disabled account and an account without a password all
     answer the same words after the same work; too many tries answer how long to wait. The try is counted before the password is checked."""
     name = fold(username)[:64] if isinstance(username, str) else ''
+    typed = name
+    if not USERNAME.fullmatch(name):
+        name = '(invalid)'   # counted, but under a key no real account or limiter key can have (pw:<id> has a colon, which a name cannot)
     client = client[:64]
     if not isinstance(password, str) or len(password) > MAX_PASSWORD:
         raise AccountError(GENERIC, 401)
@@ -358,7 +361,7 @@ def authenticate(conn, limiter: LoginLimiter, username, password, client: str) -
         if needs_rehash(stored):
             conn.execute('UPDATE user SET password_hash = ? WHERE id = ?', (hash_password(password), row[0]))
         return _public(row[:-1])
-    _log(conn, '(sign-in)', 'login', 'login_failed', {'name': _printable(name), 'client': _printable(client)})   # what a stranger typed is data, not a signature
+    _log(conn, '(sign-in)', 'login', 'login_failed', {'name': _printable(typed), 'client': _printable(client)})   # what a stranger typed is data, not a signature
     raise AccountError(GENERIC, 401)
 
 
@@ -446,6 +449,7 @@ def reset_password(conn, actor_name: str, user_id: int, password, must_change: b
     end_sessions(conn, user_id)
     revoke_tokens(conn, user_id)
     LoginLimiter.forget(conn, fold(target['username']))   # a locked-out person who was given a new password is let in
+    LoginLimiter.forget(conn, f'pw:{user_id}')   # and may change it at once
     _log(conn, actor_name, f'user:{user_id}', 'password_reset')
     return get_user(conn, user_id)
 

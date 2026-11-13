@@ -194,6 +194,15 @@ class GateTests(GateTestCase):
             status, _ = script.post('/api/workspace/datasets/upload', {'files': [table_part()]}, origin=None, headers={'Authorization': f'Bearer {made["token"]}'})
             self.assertEqual(status, 200)   # a script sends no Origin; a token is not sent by a browser by itself
 
+    def test_an_empty_bearer_header_does_not_switch_the_origin_check_off_for_a_cookie(self):
+        with self.service() as (base, _):
+            admin = Client(base)
+            admin.login('root')
+            for value in ('Bearer ', 'Bearer    ', 'bearer'):
+                status, _ = admin.post('/api/auth/tokens', {'label': 'x'}, origin=None, headers={'Authorization': value})
+                self.assertEqual(status, 403, value)   # a cookie with no Origin is refused, whatever the header says
+            self.assertEqual(admin.post('/api/auth/tokens', {'label': 'x'})[0], 200)
+
     def test_a_viewer_reads_a_builder_changes_data_and_only_an_admin_manages_people(self):
         with self.service() as (base, _):
             team = self.team(base)
