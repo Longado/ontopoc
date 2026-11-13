@@ -86,7 +86,7 @@ export const confirmType = (id, version, seen, column = null) => send("/api/work
 export const getTypeViews = (id) => request(typePath(id, "/views"));
 export const createView = (payload) => send("/api/workspace/types/views", payload);
 export const confirmView = (id, version, seen) => send("/api/workspace/types/views/confirm", { id, version, seen });
-export const suggestTypes =(datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
+export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
 
 // relations, the 待确认 queue, who sees which type
 const relationPath = (id, tail = "") => `/api/workspace/relations/${encodeURIComponent(id)}${tail}`;

@@ -2,6 +2,7 @@
 confirmed definitions, names the definition when it refuses, never sends a row to the model, and keeps what each answer stood on. Expected numbers come from the
 planted records counted here (16 cancelled orders out of 160, 3 orders naming KH099 which the customer table lacks)."""
 import json
+import sqlite3
 
 from ontology_poc_generator.recognition import ModelCompletion
 from tests import test_workspace_store as planted
@@ -233,6 +234,58 @@ class QuestionTests(SigningTestCase):
             self.assertEqual((status, withheld['withheld']), (200, {'types': ['订单']}))
             self.assertNotIn('answer', withheld)
 
+    def test_a_refusal_saved_before_the_type_was_restricted_shows_no_name_when_reopened(self):
+        model = AskModel(cancelled())
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/types', ORDER)[0], 200)   # proposed, not confirmed
+            status, refused = self.ask(bob, '订单有多少？')
+            self.assertEqual((refused['status'], refused['refusal']['kind']), ('refused', 'unsettled'))
+            self.assertIn('订单', [d['name'] for d in bob.get(f'/api/workspace/ask/{refused["id"]}')[1]['refusal']['definitions']])   # still there while Bob may see it
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [2]})[0], 200)   # Ann only
+            status, withheld = bob.get(f'/api/workspace/ask/{refused["id"]}')
+            self.assertEqual((status, withheld['withheld']), (200, {'types': []}))
+            self.assertNotIn('订单', json.dumps({k: v for k, v in withheld.items() if k != 'question'}, ensure_ascii=False))
+            self.assertNotIn('refusal', withheld)
+
+    def test_the_definitions_an_answer_records_are_the_ones_it_was_read_from_even_when_one_is_changed_while_the_model_works(self):
+        class Slow(AskModel):
+            def complete_json(self, **kw):
+                done = super().complete_json(**kw)
+                conn = sqlite3.connect(self.out / 'workspace.sqlite')
+                conn.execute("UPDATE element_state SET version = version + 1 WHERE element_id IN ('objtype:order', 'enum:order:状态码')")
+                conn.commit()
+                conn.close()
+                return done
+        model = Slow(cancelled())
+        with self.service(gateway=model) as (base, out):
+            model.out = out
+            team = self.team(base)
+            self.confirmed_orders(team)
+            before = {e: v for e, v in sqlite3.connect(out / 'workspace.sqlite').execute("SELECT element_id, version FROM element_state WHERE element_id IN ('objtype:order', 'enum:order:状态码')")}
+            status, body = self.ask(team['ann'])
+            self.assertEqual((status, body['status']), (200, 'answered'))
+            self.assertEqual({d['id']: d['version'] for d in body['definitions']}, before)   # what it stood on, not what is on file after the call
+            reopened = team['ann'].get(f'/api/workspace/ask/{body["id"]}')[1]
+            self.assertEqual({c['id'] for c in reopened['changed']}, set(before))
+
+    def test_a_person_made_a_viewer_since_asking_reads_the_saved_answer_without_its_rows(self):
+        model = AskModel(cancelled())
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            saved = self.ask(team['bob'])[1]
+            self.assertIn('examples', json.dumps(saved))   # a builder reads the orders behind the count
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            conn.execute("UPDATE user SET role = 'viewer' WHERE username = 'bob'")
+            conn.commit()
+            conn.close()
+            status, reopened = team['bob'].get(f'/api/workspace/ask/{saved["id"]}')
+            self.assertEqual(status, 200, reopened)
+            self.assertEqual(reopened['answer']['total'], CANCELLED)
+            self.assertNotIn('examples', json.dumps(reopened))
+
     def test_a_filter_the_model_claims_but_the_query_does_not_apply_is_refused(self):
         model = AskModel(cancelled(query={'start': 'order', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None},
                                    used=[{'id': '订单.状态码=已取消', 'direction': 'exclude', 'basis': '不算已取消'}]))
@@ -262,6 +315,23 @@ class QuestionTests(SigningTestCase):
             state_column = next(a for a in request['ontology']['object_types'][0]['attributes'] if a['path'] == '状态码')
             self.assertEqual(state_column, {'path': '状态码', 'type': 'integer'})
             self.assertNotIn('definitions', request)   # the meaning of a column marked this way is not told either
+
+    def test_a_short_master_table_does_not_go_to_the_model_whole_only_the_columns_whose_values_come_back(self):
+        model = AskModel(cancelled(query={'start': 'product', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}, used=[]))
+        product = {'english_name': 'product', 'name': '产品', 'dataset': '产品', 'key': ['产品编号'], 'properties': [{'column': '产品名称'}, {'column': '品类'}, {'column': '单价'}]}
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.assertEqual(team['ann'].post('/api/workspace/types', product)[0], 200)
+            self.confirm(team['bob'], 'product')
+            self.assertEqual(self.ask(team['ann'], '产品有多少？')[0], 200)
+            sent = json.dumps(model.requests[0], ensure_ascii=False)
+            planted_products = planted.planted_bundle()['sources']['产品']['records']
+            for r in planted_products:
+                self.assertNotIn(r['产品名称'], sent)   # twelve products, twelve different names and prices: the table minus its key
+                self.assertNotIn(r['单价'], sent)
+            columns = {a['path']: a for a in model.requests[0]['ontology']['object_types'][0]['attributes']}
+            self.assertNotIn('values', columns['产品名称'])
+            self.assertEqual(columns['品类']['values'], sorted({r['品类'] for r in planted_products}))   # four categories over twelve rows come back
 
     def test_orders_whose_customer_is_missing_are_answered_from_the_relation_check_and_the_answer_stands_on_both_types_and_the_relation(self):
         unmatched = {'reasoning': '问的是订单里客户编号在客户表里找不到的', 'query': None, 'missing': 'query_language', 'definitions_used': [],

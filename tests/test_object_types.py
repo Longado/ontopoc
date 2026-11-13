@@ -524,6 +524,21 @@ class ObjectTypeTests(SigningTestCase):
             self.assertIn('确认时 144 / 160 行，现在 143 / 160 行', moved['reason'])
             self.assertEqual(self.confirm_view(bob, 'order', '有效订单')[0], 200)   # looked at again: 143 is what the page shows
 
+    def test_a_new_version_that_swaps_which_rows_a_view_keeps_sends_it_back_though_the_count_stays_the_same(self):
+        first, cancelled = 0, next(i for i, r in enumerate(ORDERS) if r['状态码'] == '2')
+        self.assertEqual((ORDERS[first]['状态码'], ORDERS[cancelled]['状态码']), ('0', '2'))
+        with self.service() as (base, _):
+            team = self.team(base, 'ann', 'bob')
+            ann, bob = team['ann'], team['bob']
+            self.confirm_all(ann, bob)
+            self.make_view(ann, VALID)
+            self.assertEqual(self.confirm_view(bob, 'order', '有效订单')[0], 200)
+            swap = lambda r, i: {**r, '状态码': '2'} if i == first else {**r, '状态码': '0'} if i == cancelled else r   # one cancelled for one delivered
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(swap)]})[0], 200)
+            moved = self.view_of(bob, 'order', '有效订单')
+            self.assertEqual((moved['state'], moved['rows'], moved['of']), ('needs_look', 144, 160))
+            self.assertIn('已经不是确认时的那些行', moved['reason'])
+
     def test_a_latest_view_keeps_one_row_per_key_and_refuses_a_column_that_cannot_be_put_in_order(self):
         with self.service() as (base, _):
             team = self.team(base, 'ann', 'bob')

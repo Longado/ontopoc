@@ -205,6 +205,7 @@ form.ask button { flex: none; white-space: nowrap; }
 h2.question { font-size: 15px; }
 .answer { margin: 16px 0; }
 .answer .big { font-size: var(--title); font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+.answer.then .big, .answer.then .table-wrap, .answer.then > .muted { opacity: 0.55; }
 .answer .table-wrap { margin-top: 12px; max-width: 480px; }
 .refusal-card { margin: 8px 0 16px; }
 .refusal-card h2.section { margin: 16px 0 8px; }

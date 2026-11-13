@@ -3,7 +3,7 @@ import { askQuestion, getAnswer, getAsk } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText } from "./format.js";
-import { answerView, definitionHref, isAnswer, readText, scopeText, staleLines, standingText, statusText } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, isThenAnswer, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
 import { State } from "./TypesPage.jsx";
 import { useLoad } from "./useLoad.js";
 
@@ -66,9 +66,11 @@ function Refusal({ record, mayBuild }) {
 function Answer({ record }) {
   const view = answerView(record);
   const notes = staleLines(record);
+  const then = isThenAnswer(record);
   return (
-    <div className="answer">
-      <div className="big">{view.big}</div>
+    <div className={then ? "answer then" : "answer"}>
+      {then && <p className="warn">{staleHeading(record)}</p>}
+      <div className="big">{then && <span className="small muted">当时的答案 </span>}{view.big}</div>
       {view.note && <p className="muted">{view.note}</p>}
       {view.table && (
         <div className="table-wrap">
@@ -79,7 +81,7 @@ function Answer({ record }) {
           {view.table.total > view.table.rows.length && <p className="muted small">只显示前 {view.table.rows.length} 组，共 {view.table.total} 组</p>}
         </div>
       )}
-      {notes.length > 0 && <p className="warn">数据有新版本，这条回答是旧的：{notes.join("；")}</p>}
+      {notes.length > 0 && <p className="warn">{then ? "" : `${staleHeading(record)}：`}{notes.join("；")}</p>}
     </div>
   );
 }
@@ -207,7 +209,7 @@ export function QaPage({ route }) {
             <input type="text" aria-label="问题" value={text} maxLength={300} placeholder="问一个问题" disabled={busy} onChange={(e) => setText(e.target.value)} />
             <button className="primary" type="submit" disabled={busy || !text.trim()}>提问</button>
           </form>
-          <p className="hint">模型只看到类型、属性、含义和取值不多的列的取值，看不到数据行。</p>
+          <p className="hint">模型只看到类型、属性、含义，以及取值不多又重复出现的列的取值，看不到数据行。</p>
           {busy && <p className="muted" role="status">正在回答，通常几秒到半分钟</p>}
           {error && <p className="error" role="alert">{error}</p>}
           {route.id && <Saved key={route.id} id={route.id} mayBuild={mayBuild} />}

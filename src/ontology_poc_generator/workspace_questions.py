@@ -110,11 +110,13 @@ def scope_line(conn, user: dict | None) -> dict:
 
 # --- definitions that are not settled -----------------------------------------------------------------------------------------------------------------
 
-def _kind_and_name(conn, row: dict) -> tuple[str, str]:
+def _kind_and_name(conn, row: dict, types: dict | None = None) -> tuple[str, str]:
+    """`types` (the scope's) gives a meaning's type name as it stood when the scope was read; without it the name is read now."""
     content = _content(row)
     element_id = row['element_id']
     if element_id.startswith(ENUM_PREFIX):
-        return 'meaning', f'{_content(element_row(conn, type_id(content["type"])))["name"]}.{content["column"]}'
+        type_name = types[content['type']]['content']['name'] if types else _content(element_row(conn, type_id(content['type'])))['name']
+        return 'meaning', f'{type_name}.{content["column"]}'
     return ('type' if element_id.startswith(TYPE_PREFIX) else 'view' if element_id.startswith(VIEW_PREFIX) else 'relation'), content['name']
 
 
@@ -296,18 +298,16 @@ def _reads(sc: dict, parts: dict, query, used: list, spec) -> tuple[list[str], l
 def _used_definitions(conn, sc: dict, parts: dict, read: list[str], walked: list[str], fields: set, views: list[dict]) -> tuple[list[dict], list[dict], dict]:
     """(the definitions the answer stood on with their version and who confirmed them, the types it read, {dataset: version} it read): the types, the
     relations, the views whose rows it read, and the meanings of the code columns the answer used."""
-    elements = [type_id(k) for k in read] + [f'{RELATION_PREFIX}{k}' for k in walked]
-    elements += [v['element'] for v in views]
+    held = {type_id(k): sc['types'][k]['row'] for k in read} | {f'{RELATION_PREFIX}{k}': sc['relations'][k]['row'] for k in walked}
+    held |= {v['element']: sc['views'][v['name']]['row'] for v in views}
     for k in read:
         for column, m in sc['meanings'].get(k, {}).items():
             if f'{parts["alias"][sc["types"][k]["dataset"]["name"]]}.{column}' in fields:
-                elements.append(m['row']['element_id'])
+                held[m['row']['element_id']] = m['row']
     lines = []
-    for element_id in dict.fromkeys(elements):
-        row = element_row(conn, element_id)
-        who, at = _confirmation(conn, element_id)
-        kind, name = _kind_and_name(conn, row)
-        lines.append({'id': element_id, 'kind': kind, 'name': name, 'state': row['state'], 'version': row['version'], 'confirmed_by': who, 'confirmed_at': at,
+    for element_id, row in held.items():   # the rows the question was answered from (read before the model was asked), not what is on file when it comes back
+        kind, name = _kind_and_name(conn, row, sc['types'])
+        lines.append({'id': element_id, 'kind': kind, 'name': name, 'state': row['state'], 'version': row['version'], 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at'],
                       **({'type': _content(row)['type']} if kind == 'view' else {})})   # a view's page is on its type
     return lines, [{'id': k, 'name': sc['types'][k]['content']['name']} for k in read], {sc['types'][k]['dataset']['name']: sc['types'][k]['dataset']['version'] for k in read}
 
@@ -391,6 +391,17 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
     return {**result, 'model': asked['model'], 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets}
 
 
+def _named_ids(result: dict, sc: dict) -> list[str]:
+    """The ids of every type, relation, view and meaning this answer or refusal names, so that reopening it can tell when the asker may no longer see one."""
+    ids = [type_id(t['id']) for t in result.get('types', [])] + [d['id'] for d in result.get('definitions', [])]
+    refusal = result.get('refusal') or {}
+    if refusal.get('kind') == 'unsettled':
+        ids += [d['id'] for d in refusal['definitions']]
+    elif refusal.get('kind') in ('not_in_scope', 'definition_unmet'):   # these say what is in scope (and for a builder what is left out)
+        ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', [])]
+    return list(dict.fromkeys(ids))
+
+
 def ask(conn, gateway, user: dict | None, question) -> dict:
     """Answer one question from what this person may see and what is confirmed, keep it with the definitions and dataset versions it used, and return it.
     QaRefused (503 without a model, 502 when it failed) when no answer could be worked out at all; a refusal to answer is an answer, saved like the rest."""
@@ -410,7 +421,7 @@ def ask(conn, gateway, user: dict | None, question) -> dict:
         result = _strip_rows(result)
     now = _now()
     cursor = conn.execute('INSERT INTO qa_question(user_id, asked_by, question, asked_at, status, answer_json, definitions_json, dataset_versions_json, types_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                          (user['id'] if user else None, user['display_name'] if user else None, question, now, result['status'], json.dumps(result, ensure_ascii=False),
+                          (user['id'] if user else None, user['display_name'] if user else None, question, now, result['status'], json.dumps({**result, 'named': _named_ids(result, sc)}, ensure_ascii=False),
                            json.dumps(result['definitions'], ensure_ascii=False), json.dumps(result['datasets'], ensure_ascii=False), json.dumps(result['types'], ensure_ascii=False)))
     return {'id': cursor.lastrowid, 'question': question, 'asked_at': now, **result}
 
@@ -428,6 +439,21 @@ def history(conn, user: dict | None) -> list[dict]:
         f'SELECT id, question, asked_at, status FROM qa_question WHERE {where} ORDER BY id DESC LIMIT {HISTORY_LIMIT}', args)]
 
 
+def _may_see(conn, user: dict | None, element_id: str) -> bool:
+    """Whether this person may see the type, relation, view or meaning today (a viewer: confirmed ones only; a meaning follows its type)."""
+    row = element_row(conn, element_id)
+    if row is None:
+        return False
+    if element_id.startswith(TYPE_PREFIX):
+        return _visible(conn, row, user)
+    if element_id.startswith(RELATION_PREFIX):
+        return _relation_visible(conn, row, user)
+    if element_id.startswith(VIEW_PREFIX):
+        return view_visible(conn, row, user)
+    type_row = element_row(conn, type_id(_content(row)['type']))
+    return type_row is not None and _visible(conn, type_row, user)
+
+
 def reopen(conn, user: dict | None, question_id: int) -> dict:
     """A saved answer as it stands now: `stale` lists the datasets it read that have another current version, `changed` the definitions it used that are not as
     they were (not confirmed, or confirmed again since), and when the asker may no longer see a type it used the answer is withheld and says which."""
@@ -437,11 +463,14 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
         raise QaRefused('没有这条问题', 404)
     i, question, at, stored = found
     record = json.loads(stored)
-    seeing = set(visible_type_ids(conn, user))
-    lost = [t['name'] for t in record['types'] if t['id'] not in seeing]
-    if lost:
-        return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': lost},
-                'reason': f'这条回答用到的对象类型你现在看不到了：{"、".join(lost)}，所以不再显示它。'}
+    named = list(dict.fromkeys([*record.pop('named', []), *(type_id(t['id']) for t in record['types'])]))
+    lost = [element_id for element_id in named if not _may_see(conn, user, element_id)]
+    if lost:   # an answer names the types it read (the asker saw them then); a refusal names nothing, since what it says about a definition is for those who may see it
+        types = [] if 'refusal' in record else [t['name'] for t in record['types'] if type_id(t['id']) in lost]
+        return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': types},
+                'reason': f'这条回答用到的对象类型你现在看不到了：{"、".join(types)}，所以不再显示它。' if types else '这条回答说到的定义你现在看不到了，所以不再显示它。'}
+    if user is not None and user['role'] == 'viewer':   # a person made a viewer since asking: no rows in what was saved
+        record = _strip_rows(record)
     stale = []
     for name, read in record['datasets'].items():
         now = current_dataset(conn, name)

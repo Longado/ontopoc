@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, definitionHref, isAnswer, readText, scopeText, standingText, staleLines } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, isThenAnswer, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -24,6 +24,15 @@ test("a saved answer says which dataset has a newer version and which definition
     ["订单 有新版本：这条回答读的是第 1 版，现在是第 2 版", "订单.状态码 现在需再看", "订单 在回答之后重新确认过"]);
   assert.deepEqual(staleLines({ stale: [], changed: [] }), []);
   assert.deepEqual(readText({ 订单: 1, 客户: 2 }), ["订单 第 1 版", "客户 第 2 版"]);
+});
+
+test("a saved answer whose definition needs a look says so and is shown as the answer of then; newer data alone says the data is newer", () => {
+  assert.equal(staleHeading({ changed: [{ name: "订单", state: "needs_look" }], stale: [{ dataset: "订单", read: 1, now: 2 }] }), "依据的定义现在需要再看，下面是当时的答案");
+  assert.equal(staleHeading({ changed: [{ name: "订单", state: "confirmed" }], stale: [] }), "依据的定义在回答之后重新确认过，下面是当时的答案");
+  assert.equal(staleHeading({ changed: [], stale: [{ dataset: "订单", read: 1, now: 2 }] }), "数据有新版本，这条回答是旧的");
+  assert.equal(staleHeading({ changed: [], stale: [] }), "");
+  assert.equal(isThenAnswer({ changed: [{ name: "订单", state: "needs_look" }] }) && !isThenAnswer({ changed: [], stale: [{ dataset: "订单" }] }), true);
+  assert.deepEqual(staleLines({ changed: [{ name: "有效订单", state: null }] }), ["有效订单 已经不在了"]);
 });
 
 test("a definition links to its own page and a refusal says where it stands", () => {

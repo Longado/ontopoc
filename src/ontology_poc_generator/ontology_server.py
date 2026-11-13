@@ -1294,7 +1294,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             try:
                 if not parts:
                     body = {**scope_line(conn, self.user), 'history': question_history(conn, self.user), 'model_ready': gateway is not None}
-                elif len(parts) == 1 and parts[0].isdigit():
+                elif len(parts) == 1 and re.fullmatch(r'[0-9]+', parts[0]):
                     body = reopen_question(conn, self.user, int(parts[0]))
                 else:
                     self.reply(404, {'error': 'Unknown workspace endpoint'})

@@ -17,6 +17,7 @@ is the same idea over the workspace's elements, picked by rows in code (answer_c
 """
 from __future__ import annotations
 
+import hashlib
 import json
 
 from ontology_poc_generator.named_views import NUMERIC, orderable
@@ -109,11 +110,21 @@ def view_summary(conn, content: dict) -> dict:
     records = dataset_records(conn, dataset)
     labels = {f['column']: meaning_labels(conn, content['type'], f['column']) for f in content['filters']}
     positions = kept_positions(records, {n: c['type'] for n, c in cols.items()}, labels, content)
-    return {'problems': [], 'rows': len(positions), 'of': len(records), 'dataset': dataset['name'], 'version': dataset['version'], 'positions': positions}
+    return {'problems': [], 'rows': len(positions), 'of': len(records), 'dataset': dataset['name'], 'version': dataset['version'], 'positions': positions,
+            'signature': _signature(records, positions, content, _content(element_row(conn, type_id(content['type'])))['key'])}
+
+
+def _signature(records: list[dict], positions: list[int], content: dict, type_key: list[str]) -> str:
+    """A hash of which rows the view keeps, by the type's key (and for a latest rule, the key and the ordering value it picked on): the same count of other rows
+    gives another hash."""
+    latest = content.get('latest')
+    columns = list(dict.fromkeys([*type_key, *((latest['key'] + [latest['order']]) if latest else [])]))
+    kept = sorted(['' if records[p - 1].get(c) is None else str(records[p - 1].get(c)) for c in columns] for p in positions)
+    return hashlib.sha256(json.dumps(kept, ensure_ascii=False).encode('utf-8')).hexdigest()
 
 
 def _public(summary: dict) -> dict:
-    return {k: v for k, v in summary.items() if k != 'positions'}
+    return {k: v for k, v in summary.items() if k not in ('positions', 'signature')}
 
 
 def seen_of_view(summary: dict) -> dict | None:
@@ -137,7 +148,9 @@ def view_problems(conn, row: dict) -> list[str]:
         return summary['problems']
     was = json.loads(row['anchors_json'])
     if (summary['rows'], summary['of']) == (was['rows'], was['of']):
-        return []
+        if summary['signature'] == was.get('signature', summary['signature']):
+            return []
+        return [f'{summary["dataset"]} 第 {summary["version"]} 版之后，视图留下的还是 {summary["rows"]} / {summary["of"]} 行，但已经不是确认时的那些行']
     return [f'{summary["dataset"]} 第 {summary["version"]} 版之后，视图留下的行变了：确认时 {was["rows"]} / {was["of"]} 行，现在 {summary["rows"]} / {summary["of"]} 行']
 
 
@@ -210,7 +223,7 @@ def _reads(content: dict, summary: dict) -> list[str]:
 
 
 def _anchors(summary: dict) -> dict:
-    return {'dataset': summary['dataset'], 'version': summary['version'], 'rows': summary['rows'], 'of': summary['of']}
+    return {'dataset': summary['dataset'], 'version': summary['version'], 'rows': summary['rows'], 'of': summary['of'], 'signature': summary['signature']}
 
 
 def _change(content: dict, summary: dict, who: str | None) -> tuple:

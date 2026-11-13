@@ -129,13 +129,16 @@ def _resolve_field(t: dict, field) -> str | None:
 
 
 def categorical_values(ontology: dict, bundle: dict) -> dict:
-    """Fields with few distinct values, listed so the model can filter on real values."""
+    """Fields with few distinct values, listed so the model can filter on real values: a code column with confirmed meanings, or a column whose values repeat
+    (fewer distinct values than filled rows). A column of unique values (names, ids, prices of a short master table) would hand the model the table, so it is not listed."""
     out = {}
+    coded = {f for f, m in (bundle.get('meanings') or {}).items() if m.get('labels')}
     for t in normalize_proposal(ontology)['object_types']:
         for field in _fields(t):
             source, _, path = field.partition('.')
-            values = {str(v) for r in bundle['sources'].get(source, {}).get('records', []) for v in resolve(r, path) if v not in (None, '')}
-            if 0 < len(values) <= CATEGORY_LIMIT:
+            found = [str(v) for r in bundle['sources'].get(source, {}).get('records', []) for v in resolve(r, path) if v not in (None, '')]
+            values = set(found)
+            if 0 < len(values) <= CATEGORY_LIMIT and (field in coded or len(values) < len(found)):
                 out[field] = sorted(values)
     return out
 

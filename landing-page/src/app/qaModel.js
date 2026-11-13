@@ -34,9 +34,21 @@ export const readText = (datasets) => Object.entries(datasets ?? {}).map(([name,
 /** The banner lines of a saved answer that is no longer as it was: a newer dataset version, a definition that is not as confirmed then. */
 export function staleLines(record) {
   const data = (record.stale ?? []).map((s) => (s.now == null ? `${s.dataset} 已经不在了，这条回答读的是第 ${s.read} 版` : `${s.dataset} 有新版本：这条回答读的是第 ${s.read} 版，现在是第 ${s.now} 版`));
-  const defs = (record.changed ?? []).map((c) => (c.state && c.state !== "confirmed" ? `${c.name} 现在${STATE_LABEL[c.state]}` : `${c.name} 在回答之后重新确认过`));
+  const defs = (record.changed ?? []).map((c) => (!c.state ? `${c.name} 已经不在了` : c.state !== "confirmed" ? `${c.name} 现在${STATE_LABEL[c.state]}` : `${c.name} 在回答之后重新确认过`));
   return [...data, ...defs];
 }
+
+/** The heading over a saved answer's notes, by what changed: a definition that needs another look (the answer is only what was said then), a definition
+ * confirmed again, or only newer data. Empty when nothing changed. */
+export function staleHeading(record) {
+  const changed = record.changed ?? [];
+  if (changed.some((c) => c.state !== "confirmed")) return "依据的定义现在需要再看，下面是当时的答案";
+  if (changed.length) return "依据的定义在回答之后重新确认过，下面是当时的答案";
+  return (record.stale ?? []).length ? "数据有新版本，这条回答是旧的" : "";
+}
+
+/** The answer's figure is greyed ("当时的答案") when a definition it stood on is no longer confirmed as it was. */
+export const isThenAnswer = (record) => (record.changed ?? []).length > 0;
 
 /** Where a definition's own page is: a type or its meanings, or a relation. */
 export function definitionHref(id, type = null) {
