@@ -25,6 +25,7 @@ from ontology_poc_generator.object_types import (
     MAX_DESCRIPTION, MAX_NAME, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
     dataset_columns, element_row, enum_id, log_entries, type_id, write_confirmation, write_elements)
 from ontology_poc_generator.public_ontology import normalize_value
+from ontology_poc_generator.row_rules import positions as row_positions, restriction
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
 OPS = {'is': '是', 'is_not': '不是'}
@@ -342,7 +343,13 @@ def list_views(conn, english_name: str, user: dict | None) -> list[dict]:
     for element_id, in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
         if _content(row)['type'] == english_name and view_visible(conn, row, user):
-            out.append(_line(conn, row, user, _public(view_summary(conn, _content(row))), type_name))
+            summary = view_summary(conn, _content(row))
+            line = _line(conn, row, user, _public(summary), type_name)
+            limit = restriction(conn, type_row['element_id'], user)
+            if limit is not None and not summary['problems']:   # a row rule limits the type: the counts are of the rows this person may read
+                readable = row_positions(dataset_records(conn, current_dataset(conn, summary['dataset'])), limit)
+                line['rows'], line['of'] = len(readable & set(summary['positions'])), len(readable)
+            out.append(line)
     return out
 
 

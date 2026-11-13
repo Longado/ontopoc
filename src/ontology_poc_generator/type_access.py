@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 
+from ontology_poc_generator.row_rules import has_rules, rules_of
 from ontology_poc_generator.workspace_store import log_line
 
 TYPE_PREFIX = 'objtype:'
@@ -43,10 +44,11 @@ def can_access(conn, type_element_id: str, user: dict | None) -> bool:
 
 def dataset_hidden(conn, name: str, user: dict | None) -> bool:
     """A dataset that a type this person may not see reads is not theirs to see either: its rows, its download, an upload to it, its removal. Only
-    admins, and people allowed to see every type that reads it, get past this; to everyone else it is not found."""
+    admins, and people allowed to see every type that reads it, get past this; to everyone else it is not found. A type with row rules makes its dataset the
+    admins' too: the dataset holds the rows a rule keeps from them."""
     if user is None or user['role'] == 'admin':
         return False
-    return any(not can_access(conn, element_id, user) for (element_id,) in conn.execute(
+    return any(not can_access(conn, element_id, user) or has_rules(conn, element_id) for (element_id,) in conn.execute(   # a row-ruled type's dataset holds rows they may not see
         "SELECT element_id FROM element_dep WHERE depends_on = ? AND element_id LIKE 'objtype:%'", (f'dataset:{name}',)))
 
 
@@ -138,5 +140,7 @@ def access_table(conn) -> dict:
     types = []
     for element_id, state, content in conn.execute("SELECT element_id, state, content_json FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
         allowed = allowed_ids(conn, element_id)
-        types.append({'id': element_id[len(TYPE_PREFIX):], 'name': json.loads(content)['name'], 'state': state, 'everyone': allowed is None, 'user_ids': allowed or []})
+        c = json.loads(content)
+        types.append({'id': element_id[len(TYPE_PREFIX):], 'name': c['name'], 'state': state, 'everyone': allowed is None, 'user_ids': allowed or [],
+                      'columns': [{'column': p['column'], 'name': p['name']} for p in c['properties']], 'row_rules': rules_of(conn, element_id)})
     return {'people': people, 'types': types}

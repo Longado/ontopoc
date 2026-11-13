@@ -19,13 +19,15 @@ import re
 
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
+from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, dataset_hidden, hidden_values, visible_to
-from ontology_poc_generator.workspace_store import StaleElement, check_key, current_dataset, element_state_writes, log_line
+from ontology_poc_generator.workspace_store import StaleElement, check_key, current_dataset, dataset_records, element_state_writes, log_line
 
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
 RELATION_PREFIX = 'relation:'
 VIEW_PREFIX = 'objview:'
+ACTION_PREFIX = 'objaction:'
 ENGLISH_NAME = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,39}')
 MAX_NAME, MAX_DESCRIPTION = 40, 200
 OBJECT_PAGE = 50
@@ -458,7 +460,7 @@ def _enum_problems(conn, row: dict) -> list[str]:
 def _label(conn, element_id: str) -> str:
     content = _content(element_row(conn, element_id))
     return (f'“{content["name"]}”类型' if element_id.startswith(TYPE_PREFIX) else f'“{content["name"]}”关系' if element_id.startswith(RELATION_PREFIX)
-            else f'“{content["name"]}”视图' if element_id.startswith(VIEW_PREFIX) else f'“{content["column"]}”的含义')
+            else f'“{content["name"]}”视图' if element_id.startswith(VIEW_PREFIX) else f'“{content["name"]}”行为' if element_id.startswith(ACTION_PREFIX) else f'“{content["column"]}”的含义')
 
 
 def _flag_readers(conn, element_id: str, reason: str, moved: list[str]) -> None:
@@ -532,6 +534,18 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
         conn.execute('ROLLBACK')
         raise
     return moved
+
+
+def recheck_after_write(conn, name: str, signer: str) -> str | None:
+    """What was confirmed on the version before is checked against the new one (an upload, or an approved action). When the check itself fails, nothing can be said
+    to still hold: everything confirmed that reads the dataset goes to needs_look saying so, and the error is returned for the answer, so a new version is never
+    live with its readers silently left confirmed."""
+    try:
+        recheck_dependents(conn, name, signer)
+    except Exception as exc:   # whatever went wrong, the readers are flagged and the person is told
+        flag_dataset_readers(conn, name, f'“{name}”有了新版本，重新检查出了错（{exc}），没法确认它还成立，请再看一遍', signer)
+        return str(exc)
+    return None
 
 
 def dataset_readers_of(conn, name: str, user: dict | None = None, everyone: bool = True) -> list[dict]:
@@ -643,7 +657,7 @@ def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
     rule = two_person(conn)
     excluded = row['proposed_by_user_id'] if rule['active'] else None
     content = _content(row) if row['content_json'] else {}
-    types = ([type_id(content[e]) for e in ('from', 'to')] if row['element_id'].startswith(RELATION_PREFIX) else [type_id(content['type'])] if row['element_id'].startswith((ENUM_PREFIX, VIEW_PREFIX))
+    types = ([type_id(content[e]) for e in ('from', 'to')] if row['element_id'].startswith(RELATION_PREFIX) else [type_id(content['type'])] if row['element_id'].startswith((ENUM_PREFIX, VIEW_PREFIX, ACTION_PREFIX))
              else [row['element_id']])
     others = [name for person, name, role in conn.execute(   # only people who may see what it is about can be asked to confirm it
         "SELECT id, display_name, role FROM user WHERE disabled = 0 AND role IN ('builder', 'admin') AND (? IS NULL OR id != ?) ORDER BY display_name", (excluded, excluded))
@@ -655,7 +669,7 @@ def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
 
 def _state_view(conn, row: dict, user: dict | None) -> dict:
     """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look."""
-    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX)))
+    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX, ACTION_PREFIX)))
     can, others = _confirmers(conn, row, user)
     meanings = _unconfirmed_meanings(conn, row['element_id']) if row['element_id'].startswith(TYPE_PREFIX) and waiting else []   # a type waits for its meanings first
     blocked = meanings or (row['state'] == 'needs_look' and conn.execute(
@@ -675,6 +689,12 @@ def _visible(conn, row: dict, user: dict | None) -> bool:
     return can_access(conn, row['element_id'], user)
 
 
+def visible_rows(conn, row: dict, dataset: dict, user: dict | None) -> int:
+    """How many rows of the type this person sees: all of the dataset's, or the ones a row rule that names them keeps (row_rules)."""
+    limit = restriction(conn, row['element_id'], user)
+    return dataset['rows_stored'] if limit is None else len(positions(dataset_records(conn, dataset), limit))
+
+
 def list_types(conn, user: dict | None) -> list[dict]:
     """Every object type as the list shows it, by English name. A viewer sees only the confirmed ones."""
     out = []
@@ -687,7 +707,7 @@ def list_types(conn, user: dict | None) -> list[dict]:
         waiting = conn.execute("SELECT COUNT(*) FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND d.depends_on LIKE 'enum:%' "
                                "AND s.state != 'confirmed'", (element_id,)).fetchone()[0]
         out.append({'id': content['english_name'], 'name': content['name'], 'dataset': content['dataset'], 'dataset_version': dataset['version'] if dataset else None,
-                    'rows': dataset['rows_stored'] if dataset else None, 'meanings_waiting': waiting, **_state_view(conn, row, user)})
+                    'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'meanings_waiting': waiting, **_state_view(conn, row, user)})
     return out
 
 
@@ -711,7 +731,8 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     unsent = hidden_values(conn, row['element_id'])
     props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'],
-            'dataset_version': dataset['version'] if dataset else None, 'rows': dataset['rows_stored'] if dataset else None, 'seen': seen_of_type(dataset), 'key': content['key'],
+            'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': restriction(conn, row['element_id'], user) is not None,
+            'seen': None if user is not None and user['role'] == 'viewer' and restriction(conn, row['element_id'], user) is not None else seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),
             'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items()]}
 
@@ -726,16 +747,24 @@ def type_objects(conn, english_name: str, page: int, user: dict | None) -> dict:
     gone = [p['column'] for p in detail['properties'] if p['column'] not in present]
     if gone:   # an unknown column in double quotes would be read by SQLite as the text of its name
         raise TypeRefused(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{"、".join(gone)}', 409)
-    total = dataset['rows_stored']
-    pages = max(1, -(-total // OBJECT_PAGE))
-    page = min(max(page, 1), pages)
+    limit = restriction(conn, type_id(english_name), user)
     q = lambda name: '"' + name.replace('"', '""') + '"'
-    rows = [list(r) for r in conn.execute(f'SELECT {", ".join(q(p["column"]) for p in detail["properties"])} FROM {q(dataset["table_name"])} '
-                                          f'ORDER BY rowid LIMIT {OBJECT_PAGE} OFFSET {(page - 1) * OBJECT_PAGE}')]
+    if limit is None:
+        total = dataset['rows_stored']
+        pages = max(1, -(-total // OBJECT_PAGE))
+        page = min(max(page, 1), pages)
+        rows = [list(r) for r in conn.execute(f'SELECT {", ".join(q(p["column"]) for p in detail["properties"])} FROM {q(dataset["table_name"])} '
+                                              f'ORDER BY rowid LIMIT {OBJECT_PAGE} OFFSET {(page - 1) * OBJECT_PAGE}')]
+    else:   # a row rule names this person (or none does): only the rows it keeps, paged here
+        kept = [r for r in dataset_records(conn, dataset) if keeps(r, limit)]
+        total = len(kept)
+        pages = max(1, -(-total // OBJECT_PAGE))
+        page = min(max(page, 1), pages)
+        rows = [[r.get(p['column']) for p in detail['properties']] for r in kept[(page - 1) * OBJECT_PAGE:page * OBJECT_PAGE]]
     enums = {p['column']: {'state': p['meanings']['state'], 'labels': {v['value']: v['label'] for v in p['meanings']['values'] if v['label']}}
              for p in detail['properties'] if p['meanings']}
     return {'columns': [{'column': p['column'], 'name': p['name'], 'type': p['type'], 'key': p['key']} for p in detail['properties']], 'rows': rows, 'total': total,
-            'page': page, 'pages': pages, 'limit': OBJECT_PAGE, 'dataset': detail['dataset'], 'dataset_version': dataset['version'], 'enums': enums}
+            'page': page, 'pages': pages, 'limit': OBJECT_PAGE, 'dataset': detail['dataset'], 'dataset_version': dataset['version'], 'enums': enums, 'rows_limited': limit is not None}
 
 
 def type_log(conn, english_name: str, user: dict | None) -> list[dict]:
@@ -744,7 +773,8 @@ def type_log(conn, english_name: str, user: dict | None) -> list[dict]:
     detail = type_detail(conn, english_name, user)
     only_confirmed = " AND state = 'confirmed'" if user is not None and user['role'] == 'viewer' else ''   # a viewer reads nothing of a view nobody confirmed
     views = [e for (e,) in conn.execute(f"SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' AND json_extract(content_json, '$.type') = ?{only_confirmed}", (english_name,))]
-    return log_entries(conn, [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), *views, f'dataset:{detail["dataset"]}'])
+    actions = [] if user is not None and user['role'] == 'viewer' else [e for (e,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objaction:%' AND json_extract(content_json, '$.type') = ?", (english_name,))]
+    return log_entries(conn, [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), *views, *actions, f'dataset:{detail["dataset"]}'])
 
 
 def log_entries(conn, ids: list[str]) -> list[dict]:
@@ -754,11 +784,13 @@ def log_entries(conn, ids: list[str]) -> list[dict]:
             f'SELECT time, who, element_id, change, before_json, after_json FROM log WHERE element_id IN ({",".join("?" * len(ids))}) ORDER BY time DESC, rowid DESC', ids):
         after = json.loads(after) if after else {}
         kind = ('dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX)
-                else 'view' if element.startswith(VIEW_PREFIX) else 'type')
+                else 'view' if element.startswith(VIEW_PREFIX) else 'action' if element.startswith(ACTION_PREFIX) else 'type')
         out.append({'at': at, 'who': who, 'element': kind, 'column': element.split(':', 2)[2] if kind == 'meaning' else None, 'change': change,
+                    'record': after.get('record') if change.startswith('action_') else None,
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
                     'caused_by': after.get('caused_by'), 'self_confirmed': bool(after.get('self_confirmed')),
                     'visible_to': after.get('visible_to') if change == 'access_changed' else None,
                     'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(after['columns']) if change == 'meanings_retired'
+                    else after.get('text') if change.startswith('action_') else after.get('summary') if change == 'row_rules_changed'
                     else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed' else None})
     return out

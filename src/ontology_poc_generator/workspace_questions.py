@@ -24,6 +24,7 @@ from ontology_poc_generator.object_views import describe, kept_positions, view_v
 from ontology_poc_generator.ontology_questions import _catalog, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
+from ontology_poc_generator.row_rules import describe as describe_limit, positions as row_positions, restriction
 from ontology_poc_generator.type_access import hidden_values, visible_type_ids
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
@@ -64,7 +65,7 @@ def scope(conn, user: dict | None) -> dict:
         dataset = current_dataset(conn, content['dataset'])
         if dataset is None:
             continue
-        types[name] = {'row': row, 'content': content, 'dataset': dataset}
+        types[name] = {'row': row, 'content': content, 'dataset': dataset, 'limit': restriction(conn, row['element_id'], user)}   # the rows a row rule lets this person read, or None
         for p in content['properties']:
             held = element_row(conn, enum_id(name, p['column'])) if p['enum'] else None
             if held and held['state'] == 'confirmed':
@@ -81,7 +82,7 @@ def scope(conn, user: dict | None) -> dict:
         if content['type'] in types and view_visible(conn, row, user) and columns <= set(meanings.get(content['type'], {})) \
                 and not columns & hidden_values(conn, type_id(content['type'])):
             views[content['name']] = {'row': row, 'content': content}
-    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views}
+    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'user': user}
 
 
 def _unsettled(conn, user: dict | None) -> list[dict]:
@@ -214,11 +215,23 @@ def _inputs(conn, sc: dict) -> dict:
             continue
         relations.append({'key': k, 'from': c['from'], 'to': c['to'], 'label': c['name'], 'meaning': c.get('description') or '',
                           'source': alias[sc['types'][c[many]]['dataset']['name']], f'{one}_identity': {one_key[0]: c[f'{many}_column']}})
-    sources = {alias[name]: {'records': dataset_records(conn, d), 'requests': []}
+    sources = {alias[name]: {'records': _readable_rows(conn, sc, name, d), 'requests': []}
                for name, d in {t['dataset']['name']: t['dataset'] for t in sc['types'].values()}.items()}
     meanings = {f'{alias[sc["types"][k]["dataset"]["name"]]}.{column}': {'labels': m['labels']} for k, cols in sc['meanings'].items() for column, m in cols.items()}
     return {'ontology': {'object_types': object_types, 'relations': relations, 'ignored_fields': [], 'open_questions': []}, 'alias': alias, 'unusable': unusable,
             'bundle': {'decision': '', 'sources': sources, 'meanings': meanings}, 'views': _engine_views(conn, sc, alias, sources)}
+
+
+def _readable_rows(conn, sc: dict, name: str, dataset: dict) -> list[dict]:
+    """The rows of a dataset this person may read: all of them, or only those that every row-ruled type in scope reading it lets through (the rows are limited here,
+    before anything is counted, grouped or joined; two types on one dataset keep the rows both allow)."""
+    records = dataset_records(conn, dataset)
+    kept = None
+    for t in sc['types'].values():
+        if t['dataset']['name'] == name and t['limit'] is not None:
+            allowed = row_positions(records, t['limit'])
+            kept = allowed if kept is None else kept & allowed
+    return records if kept is None else [r for i, r in enumerate(records, 1) if i in kept]
 
 
 def _engine_views(conn, sc: dict, alias: dict, sources: dict) -> list[dict]:
@@ -267,7 +280,7 @@ def _checked_relations(conn, sc: dict, parts: dict) -> list[dict]:
     out = []
     for k, r in sc['relations'].items():
         c = r['content']
-        result = check_relation(conn, c, record=False)
+        result = check_relation(conn, c, record=False, user=sc['user'])
         if result['problems']:
             continue
         many, one = result['many'], result['one']
@@ -388,6 +401,9 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
         result['refusal'] = {'kind': 'not_in_scope', 'in_scope': [t['content']['name'] for t in sc['types'].values()], 'left_out': _unsettled(conn, user)}
     elif item['status'] == 'definition_unmet':
         result['refusal'] = {'kind': 'definition_unmet', 'definitions': item.get('unmet') or []}
+    limited = [{'type': t['id'], 'name': t['name'], 'rule': describe_limit(sc['types'][t['id']]['limit'])} for t in types if sc['types'][t['id']]['limit'] is not None]
+    if limited and item['status'] in ('answered', 'no_data'):   # the rows were limited before anything was counted: the answer says so
+        result['limited_by_rule'] = limited
     return {**result, 'model': asked['model'], 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets}
 
 
@@ -400,6 +416,15 @@ def _named_ids(result: dict, sc: dict) -> list[str]:
     elif refusal.get('kind') in ('not_in_scope', 'definition_unmet'):   # these say what is in scope (and for a builder what is left out)
         ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', [])]
     return list(dict.fromkeys(ids))
+
+
+def _limit_list(limit) -> list | None:
+    return None if limit is None else [list(p) for p in limit]
+
+
+def _rules_read(sc: dict, result: dict) -> dict:
+    """The row rules each type an answer read was under when it was worked out, so that reopening it can tell when they have changed."""
+    return {t['id']: _limit_list(sc['types'][t['id']]['limit']) for t in result.get('types', []) if t['id'] in sc['types']}
 
 
 def ask(conn, gateway, user: dict | None, question) -> dict:
@@ -421,7 +446,7 @@ def ask(conn, gateway, user: dict | None, question) -> dict:
         result = _strip_rows(result)
     now = _now()
     cursor = conn.execute('INSERT INTO qa_question(user_id, asked_by, question, asked_at, status, answer_json, definitions_json, dataset_versions_json, types_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                          (user['id'] if user else None, user['display_name'] if user else None, question, now, result['status'], json.dumps({**result, 'named': _named_ids(result, sc)}, ensure_ascii=False),
+                          (user['id'] if user else None, user['display_name'] if user else None, question, now, result['status'], json.dumps({**result, 'named': _named_ids(result, sc), 'rules': _rules_read(sc, result)}, ensure_ascii=False),
                            json.dumps(result['definitions'], ensure_ascii=False), json.dumps(result['datasets'], ensure_ascii=False), json.dumps(result['types'], ensure_ascii=False)))
     return {'id': cursor.lastrowid, 'question': question, 'asked_at': now, **result}
 
@@ -469,6 +494,11 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
         types = [] if 'refusal' in record else [t['name'] for t in record['types'] if type_id(t['id']) in lost]
         return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': types},
                 'reason': f'这条回答用到的对象类型你现在看不到了：{"、".join(types)}，所以不再显示它。' if types else '这条回答说到的定义你现在看不到了，所以不再显示它。'}
+    rules = record.pop('rules', {})
+    moved = [t['name'] for t in record['types'] if t['id'] in rules and _limit_list(restriction(conn, type_id(t['id']), user)) != rules[t['id']]]
+    if moved:   # the answer was worked out from the rows a rule let this person read then: a different rule, a different set of rows
+        return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': moved},
+                'reason': f'这条回答算的是你当时能看到的行；“{"、".join(moved)}”的行规则后来变了，所以不再显示它，请重新问一次。'}
     if user is not None and user['role'] == 'viewer':   # a person made a viewer since asking: no rows in what was saved
         record = _strip_rows(record)
     stale = []

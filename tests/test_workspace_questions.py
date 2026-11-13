@@ -359,3 +359,51 @@ class QuestionTests(SigningTestCase):
             status, viewer_body = self.ask(team['vera'], question)
             self.assertEqual(viewer_body['answer']['relation_gap'].get('keys'), None)   # a viewer reads the count, not which customers
             self.assertEqual(viewer_body['answer']['total'], 3)
+
+    def test_a_row_rule_limits_what_a_question_counts_and_a_relation_shows_the_answer_says_so_and_a_saved_answer_is_withheld_when_the_rule_changes(self):
+        orders = {**ORDER, 'properties': [*ORDER['properties'], {'column': '客户编号'}]}
+        kh001 = sum(1 for r in ORDERS if r['客户编号'] == 'KH001')
+        model = AskModel(cancelled(query=ALL_ORDERS, used=[]))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/types', orders)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types', CUSTOMER)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/relations', RELATION)[0], 200)
+            self.confirm(bob, 'order', '状态码')
+            for name in ('order', 'customer'):
+                self.confirm(bob, name)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
+            shown = bob.get('/api/workspace/relations/order_customer')[1]
+            self.assertEqual(bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': shown['version'], 'seen': shown['check']['signature']})[0], 200)
+            self.assertEqual(kh001, 5)
+            status, everything = self.ask(vera, '一共有多少订单？')
+            self.assertEqual((status, everything['status'], everything['answer']['total'], 'limited_by_rule' in everything), (200, 'answered', 160, False))
+            vera_id = next(u['id'] for u in admin.get('/api/users')[1]['users'] if u['username'] == 'vera')
+            rule = {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH001', 'user_ids': [vera_id]}]}
+            self.assertEqual(admin.post('/api/workspace/row-rules', rule)[0], 200)
+            # the count is of her rows only, and the answer says rows were limited
+            status, limited = self.ask(vera, '一共有多少订单？')
+            self.assertEqual((status, limited['status'], limited['answer']['total']), (200, 'answered', kh001))
+            self.assertEqual(limited['limited_by_rule'], [{'type': 'order', 'name': '订单', 'rule': '客户编号 = KH001'}])
+            # the other people who may read the type: a builder no rule names sees none of its rows, an admin all of them
+            self.assertEqual(self.ask(admin, '一共有多少订单？')[1]['answer']['total'], 160)
+            status, none = self.ask(ann, '一共有多少订单？')
+            self.assertEqual((none['status'], none['limited_by_rule'][0]['rule']), ('no_data', '没有一条规则让你看到行'))
+            # the relation: connected rows and unmatched ones are counted over the orders she may read (all five name a customer the table has)
+            numbers = vera.get('/api/workspace/relations/order_customer')[1]['check']['numbers']
+            self.assertEqual((numbers['rows'], numbers['matched'], numbers['unmatched']), (kh001, kh001, 0))
+            self.assertEqual(admin.get('/api/workspace/relations/order_customer')[1]['check']['numbers']['rows'], 160)
+            model.item = {'reasoning': '客户在客户表里找不到的订单', 'query': None, 'missing': 'query_language', 'definitions_used': [],
+                          'unmatched_relation': {'relation': 'order_customer', 'direction': 'many_without_one', 'other_conditions': False}}
+            status, gap = self.ask(vera, '有多少订单的客户在客户表里找不到？')
+            self.assertEqual((gap['status'], gap['answer']['total']), ('answered', 0))   # not the 3 KH099 orders: she may not read them
+            self.assertEqual(self.ask(admin, '有多少订单的客户在客户表里找不到？')[1]['answer']['total'], 3)
+            # what she asked under one rule is not shown under another
+            self.assertEqual(vera.get(f'/api/workspace/ask/{limited["id"]}')[1]['answer']['total'], kh001)
+            rule['rules'][0]['value'] = 'KH002'
+            self.assertEqual(admin.post('/api/workspace/row-rules', rule)[0], 200)
+            status, withheld = vera.get(f'/api/workspace/ask/{limited["id"]}')
+            self.assertEqual((status, withheld['withheld']), (200, {'types': ['订单']}))
+            self.assertIn('行规则后来变了', withheld['reason'])
+            self.assertNotIn('answer', withheld)

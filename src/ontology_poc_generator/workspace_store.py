@@ -52,6 +52,13 @@ CREATE TABLE IF NOT EXISTS type_access (
     type_id TEXT PRIMARY KEY, user_ids_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS value_privacy (
     type_id TEXT NOT NULL, column_name TEXT NOT NULL, PRIMARY KEY (type_id, column_name));
+CREATE TABLE IF NOT EXISTS row_rule (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, type_id TEXT NOT NULL, column_name TEXT NOT NULL, value TEXT NOT NULL, user_ids_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS action_record (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, action_id TEXT NOT NULL, action_version INTEGER NOT NULL, type_id TEXT NOT NULL, dataset TEXT NOT NULL, dataset_version INTEGER NOT NULL,
+    key_json TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL, reason TEXT,
+    state TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'rejected', 'withdrawn', 'expired', 'needs_look')),
+    submitted_by TEXT, submitted_by_user_id INTEGER, submitted_at TEXT NOT NULL, decided_by TEXT, decided_by_user_id INTEGER, decided_at TEXT, note TEXT, why TEXT, new_version INTEGER);
 CREATE TABLE IF NOT EXISTS qa_question (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, asked_by TEXT, question TEXT NOT NULL, asked_at TEXT NOT NULL, status TEXT NOT NULL,
     answer_json TEXT NOT NULL, definitions_json TEXT NOT NULL, dataset_versions_json TEXT NOT NULL, types_json TEXT NOT NULL);

@@ -22,7 +22,8 @@ from ontology_poc_generator.object_types import (
     RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _edit_names, _flag_readers, _state_view, _text, _visible, dataset_columns, element_row, log_entries, type_id,
     write_confirmation, write_elements, MAX_DESCRIPTION, MAX_NAME, ENGLISH_NAME)
 from ontology_poc_generator.relation_checks import _side_numbers
-from ontology_poc_generator.workspace_store import SAMPLE_LIMIT, _quote, current_dataset, record_result
+from ontology_poc_generator.row_rules import positions, restriction
+from ontology_poc_generator.workspace_store import SAMPLE_LIMIT, _quote, current_dataset, dataset_records, record_result
 
 CARDINALITY = {'many_to_one': '多对一', 'one_to_many': '一对多', 'one_to_one': '一对一'}
 ROW_SAMPLE = 10   # rows shown for the keys that miss and for the keys that repeat
@@ -41,9 +42,32 @@ def _rows(conn, sql: str) -> list[list]:
     return [list(r) for r in conn.execute(sql)]
 
 
-def check_relation(conn, content: dict, record: bool = True) -> dict:
+def check_relation(conn, content: dict, record: bool = True, user: dict | None = None) -> dict:
     """The check of a definition on the current data: {'problems': [...]} when it cannot be run (a type, dataset or column is gone), else the numbers
-    (see the top of the file) and `signature`, the six counts a person confirms against. With record the two checks are kept as check_result rows."""
+    (see the top of the file) and `signature`, the six counts a person confirms against. With record the two checks are kept as check_result rows. With `user`
+    (and no record), an end that a row rule limits for them is read through a temporary copy of the rows they may see, so the counts and rows are theirs."""
+    if user is None or record:
+        return _check_relation(conn, content, record, {})
+    copies, made = {}, []
+    try:
+        for end in ('from', 'to'):
+            type_row = element_row(conn, type_id(content[end]))
+            limit = restriction(conn, type_row['element_id'], user) if type_row else None
+            dataset = current_dataset(conn, _content(type_row)['dataset']) if limit is not None else None
+            if dataset is not None:
+                keep = sorted(positions(dataset_records(conn, dataset), limit))
+                name = f'rr_{end}'
+                conn.execute(f'DROP TABLE IF EXISTS temp.{name}')
+                conn.execute(f'CREATE TEMP TABLE {name} AS SELECT * FROM {_quote(dataset["table_name"])} WHERE rowid IN ({",".join(map(str, keep)) or "NULL"}) ORDER BY rowid')
+                made.append(name)
+                copies[end] = {**dataset, 'table_name': name, 'rows_stored': len(keep)}
+        return _check_relation(conn, content, record, copies)
+    finally:
+        for name in made:
+            conn.execute(f'DROP TABLE IF EXISTS temp.{name}')
+
+
+def _check_relation(conn, content: dict, record: bool, copies: dict) -> dict:
     ends = {end: element_row(conn, type_id(content[end])) for end in ('from', 'to')}
     problems = [f'对象类型“{content[end]}”已经不在了' for end, row in ends.items() if row is None]
     if problems:
@@ -55,6 +79,7 @@ def check_relation(conn, content: dict, record: bool = True) -> dict:
     problems += [f'{datasets[end]["name"]} 第 {datasets[end]["version"]} 版里没有“{content[f"{end}_column"]}”这一列' for end in columns if content[f'{end}_column'] not in columns[end]]
     if problems:
         return {'problems': problems}
+    datasets = {end: copies.get(end, d) for end, d in datasets.items()}   # the rows a row rule leaves this person, when it limits an end
     many_end, one_end = ('from', 'to') if content['cardinality'] in ('many_to_one', 'one_to_one') else ('to', 'from')
     m, o = types[many_end], types[one_end]
     m_ds, o_ds = datasets[many_end], datasets[one_end]
@@ -322,7 +347,7 @@ def list_relations(conn, user: dict | None) -> list[dict]:
         if not _relation_visible(conn, row, user):
             continue
         content = _content(row)
-        result = check_relation(conn, content, record=False)
+        result = check_relation(conn, content, record=False, user=user)
         names = _type_names(conn, content)
         out.append({'id': content['english_name'], 'name': content['name'], 'from': content['from'], 'to': content['to'], 'from_name': names.get('from'), 'to_name': names.get('to'),
                     'cardinality': content['cardinality'], 'numbers': result.get('numbers'), 'problems': result['problems'], **relation_view(conn, row, user)})
@@ -334,7 +359,7 @@ def relation_detail(conn, english_name: str, user: dict | None) -> dict:
     if row is None or not _relation_visible(conn, row, user):
         raise TypeRefused('没有这个关系', 404)
     content = _content(row)
-    result = check_relation(conn, content, record=False)
+    result = check_relation(conn, content, record=False, user=user)
     if user is not None and user['role'] == 'viewer':   # a viewer reads the counts; the rows and keys behind them are data
         result = counts_only(result)
     names = _type_names(conn, content)

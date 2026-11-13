@@ -15,9 +15,11 @@ from pathlib import PurePath
 
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.company_sources import TABLE_SUFFIXES, SourceFileError, load_table_file
-from ontology_poc_generator.object_types import dataset_readers_of, flag_dataset_readers, recheck_dependents
+from ontology_poc_generator.object_actions import overwritten_by_upload
+from ontology_poc_generator.object_types import dataset_readers_of, recheck_after_write
 from ontology_poc_generator.type_access import dataset_hidden
-from ontology_poc_generator.workspace_store import DELETED, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, now_text as _now_text, plan_upload
+from ontology_poc_generator.workspace_store import (
+    DELETED, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, dataset_records, now_text as _now_text, plan_upload)
 
 PREVIEW_ROWS = 50   # rows on one page of the preview
 MAX_NAME = 100
@@ -68,7 +70,7 @@ def _version_row(row: dict, current_id: int) -> dict:
     changes = json.loads(row['changes_json']) if row['changes_json'] else {}
     return {'version': row['version'], 'who': row['who'], 'at': row['imported_at'], 'mode': row['mode'] or 'upload', 'origin': row['origin'], 'rows': row['rows_stored'],
             'changed': changes.get('changed'), 'added': changes.get('added'), 'unchanged': changes.get('unchanged'),
-            'blank_kept': changes.get('blank_kept'), 'same_as': changes.get('same_as'), 'changed_keys': changes.get('changed_keys') or [], 'added_keys': changes.get('added_keys') or [], 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'),
+            'blank_kept': changes.get('blank_kept'), 'same_as': changes.get('same_as'), 'changed_keys': changes.get('changed_keys') or [], 'added_keys': changes.get('added_keys') or [], 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'), 'action': changes.get('action'),
             'current': row['id'] == current_id}
 
 
@@ -270,18 +272,6 @@ def _outcome(job: dict, done: dict) -> dict:
             'key_check': done.get('key_check') and {k: done['key_check'][k] for k in ('status', 'columns', 'rows_checked', 'violations', 'null_key_rows', 'samples')}}
 
 
-def _recheck(conn, name: str, signer: str) -> str | None:
-    """What was confirmed on the version before is checked against the new one. When the check itself fails, nothing can be said to still hold: everything
-    confirmed that reads the dataset goes to needs_look saying so, and the error is returned for the upload's answer, so a new version is never live
-    with its readers silently left confirmed."""
-    try:
-        recheck_dependents(conn, name, signer)
-    except Exception as exc:   # whatever went wrong, the readers are flagged and the person is told; the later files of the request are still written
-        flag_dataset_readers(conn, name, f'上传“{name}”的新版本后，重新检查出了错（{exc}），没法确认它还成立，请再看一遍', signer)
-        return str(exc)
-    return None
-
-
 def upload(conn, parts: list, who: str | None, user: dict | None = None) -> list[dict]:
     """Save the uploaded table files: a new dataset for each name not taken, a new version for each explicit update. Everything is
     checked first (ValueError in plain Chinese, nothing written); then each is written as one version. A dataset a type this person may not see reads
@@ -292,9 +282,12 @@ def upload(conn, parts: list, who: str | None, user: dict | None = None) -> list
     signer = str(who or '').strip() or '未署名'
     outcomes = []
     for job in jobs:
-        done = apply_upload(conn, job['plan'], signer)
-        error = _recheck(conn, job['plan']['name'], signer) if done['created'] else None
-        outcomes.append({**_outcome(job, done), 'recheck_error': error})
+        plan = job['plan']
+        current = current_dataset(conn, plan['name'])
+        overwrites = overwritten_by_upload(conn, plan['name'], dataset_records(conn, current), plan['records']) if current and not plan['unchanged'] else []   # a warning, not a block
+        done = apply_upload(conn, plan, signer)
+        error = recheck_after_write(conn, plan['name'], signer) if done['created'] else None
+        outcomes.append({**_outcome(job, done), 'recheck_error': error, 'overwrites_action_rows': overwrites if done['created'] else []})
     return outcomes
 
 

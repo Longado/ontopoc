@@ -246,7 +246,7 @@ class ObjectTypeTests(SigningTestCase):
             team = self.team(base, 'ann', 'bob')
             ann, bob = team['ann'], team['bob']
             self.confirm_all(ann, bob)
-            with mock.patch('ontology_poc_generator.workspace_datasets.recheck_dependents', side_effect=RuntimeError('boom')):
+            with mock.patch('ontology_poc_generator.object_types.recheck_dependents', side_effect=RuntimeError('boom')):
                 status, body = ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})
             self.assertEqual((status, body['results'][0]['version'], body['results'][0]['recheck_error']), (200, 2, 'boom'))
             detail = self.detail(bob)
@@ -589,6 +589,238 @@ class ObjectTypeTests(SigningTestCase):
             self.assertEqual(ann.get('/api/workspace/types/order/views')[0], 404)
             self.assertEqual(ann.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': 1, 'seen': {}})[0], 404)
             self.assertEqual(self.view_of(bob, 'order', '有效订单')['state'], 'confirmed')
+
+
+ORDER_WITH_CUSTOMER = {**ORDER, 'properties': [*ORDER['properties'], {'column': '客户编号'}]}
+STATUS_ACTION = {'name': '改订单状态', 'type': 'order', 'properties': ['状态码'], 'condition': {'column': '状态码', 'value': '1'}, 'description': '生产中的订单改成已交付'}
+ACTION_URL = '/api/workspace/actions/' + quote('改订单状态')
+DATASET_URL = '/api/workspace/datasets/' + quote('订单')
+IN_PRODUCTION = next(r for r in ORDERS if r['状态码'] == '1')   # the first order still in production
+STATUS_COUNTS = {k: sum(1 for r in ORDERS if r['状态码'] == k) for k in '012'}   # 96 delivered, 48 in production, 16 cancelled, counted from the records
+
+
+class ActionTests(SigningTestCase):
+    """One edit action with a second person's approval, and the rows a row rule keeps from someone, on the planted tables."""
+
+    def setUp(self):
+        super().setUp()
+        self.order = ORDER_WITH_CUSTOMER
+
+    def team(self, base):
+        team = self.people(base, 'ann', 'bob', 'vera', roles={'vera': 'viewer'})
+        self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': TABLES})[0], 200)
+        self.assertEqual(team['ann'].post('/api/workspace/types', self.order)[0], 200)
+        for column in ('状态码', None):
+            shown = team['bob'].get('/api/workspace/types/order')[1]
+            shown = next(p for p in shown['properties'] if p['column'] == column)['meanings'] if column else shown
+            status, body = team['bob'].post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen'], **({'column': column} if column else {})})
+            self.assertEqual(status, 200, body)
+        return team
+
+    def confirmed_action(self, team, payload=STATUS_ACTION):
+        self.assertEqual(team['ann'].post('/api/workspace/actions', payload)[0], 200)
+        shown = team['bob'].get(f'/api/workspace/actions/{quote(payload["name"])}')[1]
+        status, body = team['bob'].post('/api/workspace/actions/confirm', {'id': payload['name'], 'version': shown['version']})
+        self.assertEqual(status, 200, body)
+
+    def submit(self, client, order=IN_PRODUCTION, to='0', action='改订单状态', **more):
+        return client.post('/api/workspace/actions/submit', {'action': action, 'key': {'订单号': order['订单号']}, 'params': {'状态码': to}, 'reason': '客户已签收', **more})
+
+    def log(self, client, name='改订单状态'):
+        return client.get(f'/api/workspace/actions/{quote(name)}')[1]['log']
+
+    def status_counts(self, client):
+        column = next(c for c in client.get(DATASET_URL)[1]['columns'] if c['name'] == '状态码')
+        return column['values']
+
+    def test_ann_defines_bob_confirms_ann_submits_and_cannot_approve_bob_approves_and_the_order_has_a_new_version_with_the_action_on_it(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.assertEqual(STATUS_COUNTS, {'0': 96, '1': 48, '2': 16})
+            self.assertEqual(ann.post('/api/workspace/actions', STATUS_ACTION)[0], 200)
+            # not confirmed yet: nobody can run it, and the refused attempt is on the log with who and why
+            status, body = self.submit(ann)
+            self.assertEqual(status, 409)
+            self.assertIn('还没有另一位确认', body['error'])
+            shown = ann.get(ACTION_URL)[1]
+            self.assertEqual((shown['state'], shown['says']), ('checked', '改 订单 的「状态码」；只在 状态码 是「生产中」时可以提交'))
+            self.assertEqual([{'value': o['value'], 'label': o['label']} for o in shown['parameters'][0]['options']], [{'value': v['value'], 'label': v['label']} for v in MEANINGS])
+            self.assertFalse(shown['can_confirm'])   # the proposer
+            self.assertEqual(ann.post('/api/workspace/actions/confirm', {'id': '改订单状态', 'version': shown['version']})[0], 403)
+            self.assertEqual(self.submit(vera)[0], 403)   # a viewer runs nothing
+            status, body = bob.post('/api/workspace/actions/confirm', {'id': '改订单状态', 'version': shown['version']})
+            self.assertEqual((status, body), (200, {'state': 'confirmed'}))
+            # a value that is not one of the meanings, and an order that is not in production: refused naming the field and value
+            status, body = self.submit(ann, to='7')
+            self.assertEqual(status, 400)
+            self.assertIn('“状态码”的值“7”不是它的含义里的取值', body['error'])
+            cancelled = next(r for r in ORDERS if r['状态码'] == '2')
+            status, body = self.submit(ann, order=cancelled)
+            self.assertEqual(status, 409)
+            self.assertIn(f'{cancelled["订单号"]}', body['error'])
+            self.assertIn('现在是“已取消”', body['error'])
+            self.assertEqual(self.submit(ann, to='1')[1]['error'].split('：')[0], '订单 ' + IN_PRODUCTION['订单号'] + ' 已经是这些值了，没有要改的')
+            # the real one
+            status, body = self.submit(ann)
+            self.assertEqual((status, body['state']), (200, 'pending'))
+            record = body['record']
+            self.assertEqual(self.status_counts(ann), STATUS_COUNTS)   # nothing written by a submit
+            self.assertEqual(ann.get(DATASET_URL)[1]['version'], 1)
+            # the card is in Bob's queue and not Ann's to approve
+            card = next(i for i in bob.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'approval')
+            self.assertEqual((card['record'], card['can_confirm'], card['state']), (record, True, 'pending'))
+            self.assertIn('Ann 想把 订单 ' + IN_PRODUCTION['订单号'], card['lines'][0]['text'])
+            own = next(i for i in ann.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'approval')
+            self.assertFalse(own['can_confirm'])
+            status, body = ann.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})
+            self.assertEqual(status, 403)
+            self.assertEqual(ann.get(DATASET_URL)[1]['version'], 1)
+            # Bob approves: a new version of 订单 by key, the action on it, the order now delivered, the log naming all three people
+            status, body = bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve', 'note': '收到签收单'})
+            self.assertEqual((status, body['state'], body['version']), (200, 'approved', 2), body)
+            version = ann.get(DATASET_URL)[1]['versions'][0]
+            self.assertEqual((version['version'], version['mode'], version['origin'], version['who'], version['changed'], version['added']), (2, 'update_by_key', 'action:改订单状态', 'Bob', 1, 0))
+            self.assertEqual(version['action'], {'id': '改订单状态', 'record': record, 'submitted_by': 'Ann', 'approved_by': 'Bob'})
+            self.assertEqual(self.status_counts(ann), {'0': STATUS_COUNTS['0'] + 1, '1': STATUS_COUNTS['1'] - 1, '2': STATUS_COUNTS['2']})
+            texts = [(e['who'], e['change'], e['text']) for e in self.log(ann)]
+            self.assertEqual([t[:2] for t in texts if t[1].startswith('action_')][::-1],
+                             [('Ann', 'action_refused'), ('Ann', 'action_refused'), ('Ann', 'action_refused'), ('Ann', 'action_refused'), ('Ann', 'action_submitted'), ('Ann', 'action_refused'), ('Bob', 'action_approved')])
+            approved = next(t for t in texts if t[1] == 'action_approved')[2]
+            self.assertIn('Bob 批准了', approved)
+            self.assertIn('Ann 提交', approved)
+            self.assertIn('第 2 版', approved)
+            self.assertTrue(any('还没有另一位确认' in (t[2] or '') for t in texts))
+            self.assertEqual(next(r for r in ann.get(ACTION_URL)[1]['records'])['state'], 'approved')
+            # the same record cannot be approved twice
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[0], 409)
+            # the type's own log tab carries it too
+            self.assertTrue(any(e['change'] == 'action_approved' for e in ann.get('/api/workspace/types/order/log')[1]['log']))
+
+    def test_a_submit_on_a_row_that_changed_before_approval_goes_to_needs_look_and_writes_nothing(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.confirmed_action(team)
+            record = self.submit(ann)[1]['record']
+            # someone else's upload moves this very order (update by key) before Bob looks
+            moved = orders_upload(lambda r, i: {**r, '状态码': '2'} if r['订单号'] == IN_PRODUCTION['订单号'] else r, target='订单', mode='update_by_key', key_columns=['订单号'])
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [moved]})
+            self.assertEqual(status, 200, body)
+            self.assertEqual(ann.get(DATASET_URL)[1]['version'], 2)
+            card = next(i for i in bob.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'approval')
+            self.assertIn('现在是第 2 版', ' '.join(l['text'] for l in card['lines']))   # the card says so before he decides
+            status, body = bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})
+            self.assertEqual((status, body['state']), (200, 'needs_look'))
+            self.assertIn('数据在提交后变了', body['why'])
+            self.assertIn('提交时是“生产中”，现在是“已取消”', body['why'])
+            self.assertEqual(ann.get(DATASET_URL)[1]['version'], 2)   # nothing written
+            self.assertEqual(self.status_counts(ann), {'0': STATUS_COUNTS['0'], '1': STATUS_COUNTS['1'] - 1, '2': STATUS_COUNTS['2'] + 1})
+            shown = ann.get(ACTION_URL)[1]['records'][0]
+            self.assertEqual((shown['state'], shown['can_withdraw']), ('needs_look', True))
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[0], 409)   # it cannot be approved as it was
+            self.assertEqual(ann.post('/api/workspace/actions/withdraw', {'id': record})[1], {'state': 'withdrawn'})
+            self.assertEqual(bob.post('/api/workspace/actions/withdraw', {'id': record})[0], 403)
+            self.assertIn('action_needs_look', [e['change'] for e in self.log(ann)])
+
+    def test_a_pending_record_ends_rejected_withdrawn_or_expired_and_is_kept(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.confirmed_action(team)
+            first = self.submit(ann)[1]['record']
+            status, body = bob.post('/api/workspace/actions/decide', {'id': first, 'decision': 'reject', 'note': '还没签收'})
+            self.assertEqual((status, body['state']), (200, 'rejected'))
+            second = self.submit(ann)[1]['record']
+            self.assertEqual(ann.post('/api/workspace/actions/withdraw', {'id': second})[1], {'state': 'withdrawn'})
+            third = self.submit(ann)[1]['record']
+            conn = self.db(out)
+            conn.execute("UPDATE action_record SET submitted_at = '2026-01-01T00:00:00+00:00' WHERE id = ?", (third,))
+            conn.commit()
+            conn.close()
+            self.assertEqual([r['state'] for r in ann.get(ACTION_URL)[1]['records']], ['expired', 'withdrawn', 'rejected'])
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': third, 'decision': 'approve'})[0], 409)
+            conn = self.db(out)
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM action_record').fetchone()[0], 3)   # none deleted
+            conn.close()
+            self.assertEqual(ann.get(DATASET_URL)[1]['version'], 1)
+
+    @staticmethod
+    def user_id(admin, username):
+        return next(u['id'] for u in admin.get('/api/users')[1]['users'] if u['username'] == username)
+
+    def rule(self, admin, *usernames, value='KH001'):
+        return admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': value, 'user_ids': [self.user_id(admin, u) for u in usernames]}] if usernames else []})
+
+    def test_an_action_that_writes_a_property_a_row_rule_reads_is_refused_in_both_orders_and_a_changed_meaning_sends_the_action_to_needs_look(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            customer_action = {'name': '改订单客户', 'type': 'order', 'properties': ['客户编号']}
+            self.assertEqual(self.rule(admin, 'vera')[0], 200)
+            status, body = ann.post('/api/workspace/actions', customer_action)
+            self.assertEqual(status, 409)
+            self.assertIn('行规则用到“客户编号”', body['error'])
+            self.assertEqual(self.rule(admin)[0], 200)   # the rule taken away
+            self.assertEqual(ann.post('/api/workspace/actions', customer_action)[0], 200)
+            status, body = self.rule(admin, 'vera')
+            self.assertEqual(status, 409)
+            self.assertIn('改订单客户', body['error'])
+            # the meanings it uses change: the action needs another look at once, and cannot be run until it is confirmed again
+            self.confirmed_action(team)
+            changed = ann.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': [{'value': '1', 'label': '制造中'}]})
+            self.assertEqual(changed[0], 200, changed)
+            shown = ann.get(ACTION_URL)[1]
+            self.assertEqual(shown['state'], 'needs_look')
+            self.assertIn('需要再看', shown['reason'])
+            status, body = self.submit(ann)
+            self.assertEqual(status, 409)
+            self.assertIn('需要再看', body['error'])
+
+    def test_a_row_rule_limits_the_objects_tab_the_dataset_and_a_submit_to_the_rows_the_rule_keeps_and_an_upload_over_an_action_write_is_warned(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            self.confirmed_action(team)
+            kh001 = [r for r in ORDERS if r['客户编号'] == 'KH001']
+            self.assertEqual(len(kh001), 5)
+            self.assertEqual(vera.get('/api/workspace/types/order/objects')[1]['total'], 160)   # no rule yet
+            status, body = self.rule(admin, 'vera')
+            self.assertEqual(status, 200, body)
+            self.assertEqual(ann.post('/api/workspace/row-rules', {'type': 'order', 'rules': []})[0], 403)   # the admin's
+            objects = vera.get('/api/workspace/types/order/objects')[1]
+            self.assertEqual((objects['total'], objects['rows_limited']), (5, True))
+            self.assertEqual({r[3] for r in objects['rows']}, {'KH001'})
+            self.assertEqual(vera.get('/api/workspace/types/order')[1]['rows'], 5)
+            self.assertEqual(next(t for t in vera.get('/api/workspace/types')[1]['types'] if t['id'] == 'order')['rows'], 5)
+            self.assertEqual(admin.get('/api/workspace/types/order/objects')[1]['total'], 160)   # admins see all
+            # a builder no rule names sees no row, and the dataset under the rule is the admins' (no way round through its own page)
+            self.assertEqual(ann.get('/api/workspace/types/order/objects')[1]['total'], 0)
+            self.assertEqual(ann.get(DATASET_URL)[0], 404)
+            self.assertEqual(ann.get(DATASET_URL + '?format=csv')[0], 404)
+            self.assertNotIn('订单', [d['name'] for d in ann.get('/api/workspace/datasets')[1]['datasets']])
+            # a submit on an order the person cannot read is "no such object", and the attempt is logged
+            status, body = self.submit(ann)
+            self.assertEqual((status, body['error']), (404, '没有这个对象，或者你看不到它'))
+            self.assertEqual(self.log(ann)[0]['change'], 'action_refused')
+            # Ann is named by a rule, Bob is not: Ann can submit an order the rule keeps; Bob is not shown the record and cannot approve it
+            self.assertEqual(self.rule(admin, 'vera', 'ann')[0], 200)
+            in_rule = next(r for r in kh001 if r['状态码'] == '1')
+            record = self.submit(ann, order=in_rule)[1]['record']
+            self.assertEqual([i['record'] for i in bob.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'approval'], [])
+            status, body = bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})
+            self.assertEqual((status, body['error']), (404, '没有这个对象，或者你看不到它'))
+            self.assertEqual(self.rule(admin)[0], 200)   # the rule is taken away: Bob can read the order and approves
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[1]['state'], 'approved')
+            # an upload by key that would put the order back is warned about, naming the order, the column, the action and the approver; and is not blocked
+            back = orders_upload(target='订单', mode='update_by_key', key_columns=['订单号'])   # the planted file: that order is in production again
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [back]})
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body['results'][0]['overwrites_action_rows'],
+                             [{'key': in_rule['订单号'], 'columns': ['状态码'], 'removed': False, 'action': '改订单状态', 'record': record, 'approved_by': 'Bob'}])
+            self.assertEqual(body['results'][0]['version'], 3)
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [back]})
+            self.assertEqual((status, body['results'][0]['overwrites_action_rows']), (200, []))   # the same file again changes nothing
 
 
 class OlderFileTests(unittest.TestCase):

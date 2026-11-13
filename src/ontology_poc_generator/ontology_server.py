@@ -69,7 +69,10 @@ from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv
 from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
+from ontology_poc_generator.object_actions import (
+    action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, update_action, withdraw as withdraw_record)
 from ontology_poc_generator.object_views import confirm_view, create_view, list_views, update_view, view_form
+from ontology_poc_generator.row_rules import RuleRefused, set_rules
 from ontology_poc_generator.object_relations import (
     confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
 from ontology_poc_generator.review_queue import confirm_item, queue, send_back
@@ -1287,6 +1290,58 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, body)
 
+        def actions_get(self):
+            """/api/workspace/actions?type=<id> (the actions of one type, and what a form for a new one offers), /actions/<name> (the definition, its records and its log)."""
+            url = urlsplit(self.path)
+            parts = [unquote(p) for p in url.path[len('/api/workspace/actions'):].split('/') if p]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    english = (parse_qs(url.query).get('type') or [''])[0]
+                    body = {'actions': list_actions(conn, english, self.user), 'form': action_form(conn, english, self.user)}
+                elif len(parts) == 1:
+                    body = action_detail(conn, parts[0], self.user)
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def actions_post(self):
+            """POST /api/workspace/actions (define), /actions/update, /actions/confirm, /actions/submit, /actions/decide (approve or reject a record), /actions/withdraw:
+            see object_actions.py. Refusals are a 403 (of who), a 409 (the data or the version moved, or a rule) or a 400 that says what is wrong; a refused submit or
+            approval is also written to the action's log."""
+            route = self.path[len('/api/workspace/actions'):]
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                who = self.signer(payload, 'who')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    with runs_lock:   # the lock an upload takes (see types_post)
+                        handlers = {'': create_action, '/update': update_action, '/confirm': confirm_action, '/submit': submit_action, '/decide': decide_record, '/withdraw': withdraw_record}
+                        if route not in handlers:
+                            self.reply(404, {'error': 'Unknown workspace endpoint'})
+                            return
+                        body = handlers[route](conn, payload, who, self.user)
+                finally:
+                    conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc), **(exc.detail or {})})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
         def ask_get(self):
             """/api/workspace/ask (the scope line and the person's own history), /api/workspace/ask/<id> (one saved answer as it stands now)."""
             parts = [p for p in urlsplit(self.path).path[len('/api/workspace/ask'):].split('/') if p]
@@ -1376,6 +1431,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                             body = send_back(conn, payload, who, self.user)
                         elif route == 'permissions':
                             body = set_access(conn, str(payload.get('type')), payload.get('visible_to'), who)
+                        elif route == 'row-rules':
+                            body = set_rules(conn, str(payload.get('type')), payload.get('rules'), who)
                         else:
                             self.reply(404, {'error': 'Unknown workspace endpoint'})
                             return
@@ -1384,7 +1441,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             except SelfConfirmation as exc:
                 self.reply(403, {'error': str(exc)})
                 return
-            except (TypeRefused, AccessRefused) as exc:
+            except (TypeRefused, AccessRefused, RuleRefused) as exc:
                 self.reply(exc.status, {'error': str(exc), **(getattr(exc, 'detail', None) or {})})
                 return
             except (ValueError, UnicodeError) as exc:
@@ -1397,6 +1454,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path.split('?')[0] == '/api/workspace/ask' or self.path.startswith('/api/workspace/ask/'):
                 self.ask_get()
+                return
+            if self.path.split('?')[0] == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
+                self.actions_get()
                 return
             if self.path.split('?')[0] in ('/api/workspace/relations', '/api/workspace/relation-form', '/api/workspace/queue', '/api/workspace/permissions') \
                     or self.path.startswith('/api/workspace/relations/'):
@@ -1603,8 +1663,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.ask_post()
                 return
             if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
-                             '/api/workspace/queue/send-back', '/api/workspace/permissions'):
+                             '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules'):
                 self.relations_post()
+                return
+            if self.path == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
+                self.actions_post()
                 return
             if self.path == '/api/workspace/datasets/upload':
                 self.workspace_upload()
