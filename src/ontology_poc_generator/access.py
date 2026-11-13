@@ -20,8 +20,8 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/auth/tokens', SESSION),
     ('POST', r'/api/auth/tokens(/revoke)?', SESSION),
     # read
-    ('GET', r'/api/workspace/(datasets|tasks|types|relations)(/.+)?', 'viewer'),   # what a person sees of types and relations is filtered by who they are (type_access)
-    ('GET', r'/api/workspace/(relation-form|queue)', 'builder'),
+    ('GET', r'/api/workspace/(datasets|types|relations)(/.+)?', 'viewer'),   # what a person sees of types and relations is filtered by who they are (type_access)
+    ('GET', r'/api/workspace/(tasks|relation-form|queue)', 'builder'),   # the task list quotes keys and the reasons the model's suggestions were dropped, which carry values
     ('GET', _RUNS, 'viewer'),
     ('GET', r'/api/ontology/jobs/[^/]+', 'viewer'),
     ('GET', r'/api/ontology/library(/.+)?', 'viewer'),

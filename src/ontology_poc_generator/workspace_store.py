@@ -64,6 +64,10 @@ class SelfConfirmation(ValueError):
     """A definition cannot be confirmed by the person who proposed it while two-person confirmation is on; the message is shown to the person."""
 
 
+class StaleElement(ValueError):
+    """An element changed after the version the writer read, so their write would have overwritten someone else's."""
+
+
 class RowCountMismatch(RuntimeError):
     """The rows written are not the rows received; the message names the table and is shown to the person."""
 
@@ -228,7 +232,7 @@ def _evidence(conn, ref: str | None) -> tuple[frozenset, str]:
 
 
 @contextmanager
-def element_state_writes(conn, changes: list[tuple]):
+def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | None = None):
     """Record what a person decided about definitions, all or none, and hold the transaction open for the caller: the
     rows are written but only kept when the block ends without an error, so whatever else must be saved with them (the
     run file) can fail first and take the rows back. Each change is (element_id, state, evidence_ref, confirmed_by) and
@@ -241,6 +245,8 @@ def element_state_writes(conn, changes: list[tuple]):
     or 'open_item:<id>'); confirmed_by is the person (None when they did not sign). version counts real
     changes: the same state, person, definition and evidence (compared by what the checks found, not by their ids) leaves the row,
     its time and its version as they were. Evidence from an older run never replaces newer evidence already kept.
+    `versions` ({element_id: the version the writer read}): inside the write transaction a row that is no longer at that version raises StaleElement and
+    nothing is written, so the last writer does not silently win.
     Yields each element's row as it stands."""
     conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
     try:
@@ -251,6 +257,8 @@ def element_state_writes(conn, changes: list[tuple]):
             cursor = conn.execute('SELECT * FROM element_state WHERE element_id = ?', (element_id,))
             found = cursor.fetchone()
             before = dict(zip([c[0] for c in cursor.description], found)) if found else None
+            if versions and element_id in versions and (before is None or before['version'] != versions[element_id]):
+                raise StaleElement(element_id)
             if before:
                 kept, kept_at = _evidence(conn, before['evidence_ref'])
                 given, given_at = _evidence(conn, evidence_ref)

@@ -44,7 +44,7 @@ class RouteTableTests(unittest.TestCase):
 
     def test_who_may_do_what(self):
         for method, path, role in (
-                ('GET', '/api/workspace/datasets', 'viewer'), ('GET', '/api/workspace/datasets/%E8%AE%A2%E5%8D%95', 'viewer'), ('GET', '/api/workspace/tasks', 'viewer'),
+                ('GET', '/api/workspace/datasets', 'viewer'), ('GET', '/api/workspace/datasets/%E8%AE%A2%E5%8D%95', 'viewer'), ('GET', '/api/workspace/tasks', 'builder'),
                 ('GET', '/api/ontology/runs', 'viewer'), ('GET', '/api/ontology/runs/a.json/objects/x', 'viewer'), ('GET', '/api/ontology/jobs/abc', 'viewer'),
                 ('POST', '/api/ontology/ask', 'viewer'),
                 ('GET', '/api/workspace/types', 'viewer'), ('GET', '/api/workspace/types/order/objects', 'viewer'),

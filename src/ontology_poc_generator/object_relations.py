@@ -3,9 +3,11 @@ definition, a state, a confirmation snapshot and what it reads (element_dep: bot
 
 A relation is A -> B with a cardinality and one key pair: a column of A's dataset and a column of B's dataset that hold the same value. Saving it
 runs the check on the full current data of both datasets: how many rows of the many side find the one side (157 of 160), the keys that miss with
-samples, and the fan-out (a key that repeats on the one side, so a join makes several rows of one: KH012 twice). These are evidence for the person who
-confirms; they do not stop anyone from confirming. What does stop it: either endpoint type is not confirmed, the person is the proposer (two-person
-confirmation), the version is not the one they saw, the numbers are not the ones they saw (the data moved after they looked), or a column is gone.
+samples, and the fan-out (a key that repeats on the one side, so a join makes several rows of one: KH012 twice). Saving is allowed whatever they show: they
+are the evidence a person comes to read. Confirming is not: it stops when either endpoint type is not confirmed, the person is the proposer (two-person
+confirmation), the version is not the one they saw, the numbers are not the ones they saw (the data moved after they looked), a column is gone, or the
+declared cardinality is false on today's data (rows a join would multiply; for one-to-one a repeat on the many side). A one-side column that is not the
+type's key is a warning only. A viewer reads the counts of a check and none of the rows or keys behind them.
 
 A relation goes to needs_look when either endpoint does (object_types._flag follows element_dep) and when a new upload changes the connected rows
 (recheck_dependents calls relation_problems). Saving a relation with a different key, endpoint or cardinality puts it forward again; names and the
@@ -17,7 +19,7 @@ import json
 import re
 
 from ontology_poc_generator.object_types import (
-    RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _edit_names, _state_view, _text, _visible, dataset_columns, element_row, flag_readers, log_entries, type_id,
+    RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _edit_names, _flag_readers, _state_view, _text, _visible, dataset_columns, element_row, log_entries, type_id,
     write_confirmation, write_elements, MAX_DESCRIPTION, MAX_NAME, ENGLISH_NAME)
 from ontology_poc_generator.relation_checks import _side_numbers
 from ontology_poc_generator.workspace_store import SAMPLE_LIMIT, _quote, current_dataset, record_result
@@ -57,12 +59,16 @@ def check_relation(conn, content: dict, record: bool = True) -> dict:
     m, o = types[many_end], types[one_end]
     m_ds, o_ds = datasets[many_end], datasets[one_end]
     m_col, o_col = content[f'{many_end}_column'], content[f'{one_end}_column']
+    shown = list(dict.fromkeys([*m['key'], m_col]))
+    repeated_shown = list(dict.fromkeys([o_col, *[p['column'] for p in o['properties']]]))[:SHOWN_COLUMNS]
+    gone = [f'{ds["name"]} 第 {ds["version"]} 版里没有“{c}”这一列' for ds, wanted, end in ((m_ds, shown, many_end), (o_ds, repeated_shown, one_end))
+            for c in wanted if c not in columns[end]]   # a column in double quotes that is not there would be read by SQLite as its own name, as a value
+    if gone:
+        return {'problems': gone}
     m_table, o_table = _quote(m_ds['table_name']), _quote(o_ds['table_name'])
     found = _side_numbers(conn, m_table, o_table, [m_col], [o_col], m_ds['rows_stored'])
-    shown = list(dict.fromkeys([*m['key'], m_col]))
     unmatched_rows = _rows(conn, f'SELECT {", ".join(f"t.{_quote(c)}" for c in shown)} FROM {m_table} t WHERE {_filled("t", m_col)} AND NOT EXISTS '
                                  f'(SELECT 1 FROM {o_table} o WHERE o.{_quote(o_col)} = t.{_quote(m_col)}) ORDER BY t.rowid LIMIT {ROW_SAMPLE}')
-    repeated_shown = list(dict.fromkeys([o_col, *[p['column'] for p in o['properties']]]))[:SHOWN_COLUMNS]
     repeated_rows = _rows(conn, f'SELECT {", ".join(_quote(c) for c in repeated_shown)} FROM {o_table} WHERE {_quote(o_col)} IN '
                                 f'(SELECT {_quote(o_col)} FROM {o_table} WHERE {_filled(o_table, o_col)} GROUP BY {_quote(o_col)} HAVING COUNT(*) > 1) '
                                 f'ORDER BY {_quote(o_col)}, rowid LIMIT {ROW_SAMPLE}')
@@ -70,6 +76,8 @@ def check_relation(conn, content: dict, record: bool = True) -> dict:
         if content['cardinality'] == 'one_to_one' else 0   # one to one: the many side may not repeat a key either
     rows, empty, unmatched = m_ds['rows_stored'], found['empty'], found['unmatched']
     numbers = {'rows': rows, 'matched': rows - empty - unmatched, 'unmatched': unmatched, 'fan_keys': found['fan_keys'], 'extra_rows': found['extra_rows'], 'many_repeats': many_repeats}
+    warnings = [] if {o_col} == set(o['key']) else [   # unique today is not unique for good unless the column is what the one side is keyed on
+        f'“{o["name"]}”的主键是{" + ".join(f"“{k}”" for k in o["key"])}，这里连的是“{o_col}”：它现在{"有重复" if found["fan_keys"] else "没有重复"}，但没有什么保证它以后一直不重复']
     ids = []
     if record:
         element = relation_id(content['english_name'])
@@ -77,7 +85,7 @@ def check_relation(conn, content: dict, record: bool = True) -> dict:
                              {'distinct_keys': found['unmatched_keys'], 'keys': found['samples'], 'if_trimmed': found['near']}, 'failed' if unmatched else 'passed'),
                record_result(conn, element, o_ds['id'], 'relation_fanout', found['repeated_sql'], o_ds['rows_stored'], found['fan_keys'], 0,
                              {'source_rows': found['source_rows'], 'extra_rows': found['extra_rows'], 'keys': found['fan_samples']}, 'failed' if found['fan_keys'] else 'passed')]
-    return {'problems': [], 'numbers': numbers, 'signature': list(numbers.values()), 'check_ids': ids, 'cardinality': content['cardinality'],
+    return {'problems': [], 'numbers': numbers, 'signature': list(numbers.values()), 'warnings': warnings, 'check_ids': ids, 'cardinality': content['cardinality'],
             'many': {'type': m['english_name'], 'name': m['name'], 'dataset': m_ds['name'], 'version': m_ds['version'], 'column': m_col},
             'one': {'type': o['english_name'], 'name': o['name'], 'dataset': o_ds['name'], 'version': o_ds['version'], 'column': o_col},
             'empty': empty, 'samples': found['samples'], 'unmatched_keys': found['unmatched_keys'], 'if_trimmed': found['near'],
@@ -95,19 +103,48 @@ def evidence_lines(result: dict) -> list[dict]:
     lines = [{'ok': n['unmatched'] == 0 and n['matched'] == n['rows'], 'text': f'{many["dataset"]} 第 {many["version"]} 版的 {n["rows"]} 行里，{n["matched"]} 行用“{many["column"]}”连上了 {one["dataset"]} 的“{one["column"]}”'}]
     if n['unmatched']:
         keys = '、'.join(s['key'] for s in result['samples'])
-        lines.append({'ok': False, 'text': f'{n["unmatched"]} 行连不上：{result["unmatched_keys"]} 个“{many["column"]}”在 {one["dataset"]} 里找不到（{keys}）'
+        lines.append({'ok': False, 'text': f'{n["unmatched"]} 行连不上：{result["unmatched_keys"]} 个“{many["column"]}”在 {one["dataset"]} 里找不到{f"（{keys}）" if keys else ""}'
                                            + (f'；其中 {result["if_trimmed"]} 行去掉空格、忽略大小写后能对上' if result['if_trimmed'] else '')})
     if result['empty']:
         lines.append({'ok': False, 'text': f'{result["empty"]} 行的“{many["column"]}”是空的，没有连任何{one["name"]}'})
     f = result['fanout']
-    if f['keys']:
-        keys = '、'.join(f'{s["key"]}（{s["rows"]} 次）' for s in f['samples'])
-        lines.append({'ok': False, 'text': f'{one["dataset"]} 里“{one["column"]}”有 {f["keys"]} 个值重复：{keys}；连上它们的 {f["source_rows"]} 行会多出 {f["extra_rows"]} 行，按{one["name"]}汇总会重复算'})
-    if n['many_repeats']:
-        lines.append({'ok': False, 'text': f'一对一不成立：{many["dataset"]} 里“{many["column"]}”有 {n["many_repeats"]} 个值出现了不止一次'})
+    lines += [{'ok': False, 'text': text} for text in (_fanout_line(result), _repeat_line(result)) if text]
     if not f['keys'] and not n['many_repeats']:
         lines.append({'ok': True, 'text': f'{one["dataset"]} 里“{one["column"]}”没有重复，一个{many["name"]}只会连上一个{one["name"]}'})
+    lines += [{'ok': False, 'text': f'提醒：{w}'} for w in result.get('warnings', [])]
     return lines
+
+
+def _fanout_line(result: dict) -> str | None:
+    """The keys that repeat on the one side, in words; None when none does."""
+    f, one = result['fanout'], result['one']
+    if not f['keys']:
+        return None
+    keys = '、'.join(f'{s["key"]}（{s["rows"]} 次）' for s in f['samples'])
+    head = f'{one["dataset"]} 里“{one["column"]}”有 {f["keys"]} 个值重复{f"：{keys}" if keys else ""}'
+    if not f['extra_rows']:
+        return f'{head}；现在没有行连上它们，但以后连上就会多出行，按{one["name"]}汇总会重复算'
+    return f'{head}；连上它们的 {f["source_rows"]} 行会多出 {f["extra_rows"]} 行，按{one["name"]}汇总会重复算'
+
+
+def _repeat_line(result: dict) -> str | None:
+    """For one-to-one: the values of the many side that appear more than once; None when none does."""
+    n, many = result['numbers'], result['many']
+    return f'一对一不成立：{many["dataset"]} 里“{many["column"]}”有 {n["many_repeats"]} 个值出现了不止一次' if n['many_repeats'] else None
+
+
+def cardinality_false(result: dict) -> list[str]:
+    """What makes the declared cardinality untrue on today's data, in words: rows that a join would multiply (extra_rows on the one side), or for one-to-one a
+    value that repeats on the many side. Keys that repeat with no row connected to them are a warning in the lines, not this."""
+    return [text for text in (_fanout_line(result) if result['numbers']['extra_rows'] else None, _repeat_line(result)) if text]
+
+
+def counts_only(result: dict) -> dict:
+    """The check as a viewer reads it: the counts, and none of the rows or keys behind them (no unmatched rows, fan-out rows or samples)."""
+    if result['problems']:
+        return result
+    nothing = {'columns': [], 'rows': []}
+    return {**result, 'samples': [], 'unmatched_rows': nothing, 'fanout': {**result['fanout'], 'samples': [], 'rows': nothing}, 'counts_only': True}
 
 
 def _describe(numbers: dict, many: str, one: str) -> str:
@@ -121,7 +158,7 @@ def relation_problems(conn, row: dict) -> list[str]:
     if result['problems']:
         return result['problems']
     was = json.loads(row['anchors_json'])
-    if result['signature'] == list(was['numbers'].values()):
+    if result['numbers'] == was['numbers']:   # by name: the anchors are stored with their keys sorted, the signature is in the order the page reads it
         return []
     many, one = result['many'], result['one']
     moved = '、'.join(f'{name} 第 {v} 版' for name, v in result['datasets'].items() if was['datasets'].get(name) != v)
@@ -197,7 +234,7 @@ def create_relation(conn, payload: dict, who: str | None, user: dict | None) -> 
     check_names_free(conn, content)
     result = check_relation(conn, content)
     write_elements(conn, [_change(content, result, who)], {relation_id(content['english_name']): _reads(content, result)})
-    return {'id': content['english_name'], 'numbers': result['numbers']}
+    return {'id': content['english_name'], 'numbers': result['numbers'], 'warnings': result['warnings']}
 
 
 def update_relation(conn, payload: dict, who: str | None, user: dict | None) -> dict:
@@ -214,12 +251,14 @@ def update_relation(conn, payload: dict, who: str | None, user: dict | None) -> 
     reset = reset_reasons(old, content)
     if reset or row['state'] in ('proposed', 'rejected'):
         result = check_relation(conn, content)
-        write_elements(conn, [_change(content, result, who)], {row['element_id']: _reads(content, result)})
-        if reset and row['state'] == 'confirmed':
-            flag_readers(conn, row['element_id'], f'它用的“{old["name"]}”关系改了{"、".join(reset)}，要重新确认')
-    elif (old['name'], old['description']) != (content['name'], content['description']):
-        _edit_names(conn, row, content, who)
-    return {'id': old['english_name'], 'state': element_row(conn, row['element_id'])['state'], 'reset': reset}
+        after = (lambda c: _flag_readers(c, row['element_id'], f'它用的“{old["name"]}”关系改了{"、".join(reset)}，要重新确认', [])) if reset and row['state'] == 'confirmed' else None
+        write_elements(conn, [_change(content, result, who)], {row['element_id']: _reads(content, result)}, {row['element_id']: row['version']}, after)
+        warnings = result['warnings']
+    else:
+        warnings = []
+        if (old['name'], old['description']) != (content['name'], content['description']):
+            _edit_names(conn, row, content, who)
+    return {'id': old['english_name'], 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': warnings}
 
 
 def confirm_relation(conn, payload: dict, who: str | None, user: dict | None) -> dict:
@@ -245,7 +284,11 @@ def confirm_relation(conn, payload: dict, who: str | None, user: dict | None) ->
         raise TypeRefused(f'按现在的数据过不了检查，不能确认：{"；".join(result["problems"])}', 409)
     if payload['seen'] != result['signature']:
         raise TypeRefused('数据在你看过之后变了，连接的行数和你看到的不一样，请刷新后重新看一遍', 409)
-    write_confirmation(conn, row['element_id'], content, _evidence(result), who, {'numbers': result['numbers'], 'datasets': result['datasets']}, result['datasets'])
+    false = cardinality_false(result)
+    if false:   # saving such a relation is allowed (the evidence is what a person comes to read); standing behind it is not
+        raise TypeRefused(f'按现在的数据，{CARDINALITY[content["cardinality"]]}不成立，不能确认：{"；".join(false)}', 409)
+    write_confirmation(conn, row['element_id'], content, _evidence(result), who, {'numbers': result['numbers'], 'datasets': result['datasets']}, result['datasets'],
+                       row['version'], _reads(content, result))   # what it reads is taken from its two types as they are now
     return {'state': 'confirmed'}
 
 
@@ -292,6 +335,8 @@ def relation_detail(conn, english_name: str, user: dict | None) -> dict:
         raise TypeRefused('没有这个关系', 404)
     content = _content(row)
     result = check_relation(conn, content, record=False)
+    if user is not None and user['role'] == 'viewer':   # a viewer reads the counts; the rows and keys behind them are data
+        result = counts_only(result)
     names = _type_names(conn, content)
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else None
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'from': content['from'], 'to': content['to'],

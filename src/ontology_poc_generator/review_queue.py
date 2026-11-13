@@ -13,7 +13,7 @@ import json
 from ontology_poc_generator.object_relations import (
     _relation_visible, check_relation, confirm_relation, evidence_lines, relation_view)
 from ontology_poc_generator.object_types import (
-    ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _state_view, _visible, confirm_element, dataset_columns, element_row)
+    ENUM_PREFIX, RELATION_PREFIX, STALE, TYPE_PREFIX, TypeRefused, _confirmers, _content, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
 from ontology_poc_generator.workspace_store import current_dataset, log_line
 
 IN_QUEUE = ('proposed', 'checked', 'needs_look')
@@ -38,29 +38,41 @@ def _meaning_lines(content: dict, row: dict) -> list[dict]:
     return [{'ok': True, 'text': f'{e["value"]} = {e["label"]}（提出时 {counts.get(e["value"], 0)} 行）'} for e in content['values']]
 
 
-def _item(conn, row: dict, user: dict | None) -> dict | None:
+def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | None:
+    """One element as the queue shows it, or None when this person may not see it. The titles are the name only: the page puts the kind (对象类型, 取值含义,
+    关系) in front. `light`: states only, no evidence and no check run (what the count on the navigation item needs)."""
     element_id, content = row['element_id'], _content(row)
     if element_id.startswith(RELATION_PREFIX):
         if not _relation_visible(conn, row, user):
             return None
         view = relation_view(conn, row, user)
         names = {e: _content(r)['name'] for e in ('from', 'to') if (r := element_row(conn, f'{TYPE_PREFIX}{content[e]}'))}
-        result = check_relation(conn, content, record=False)
-        base = {'kind': 'relation', 'title': f'{names.get("from", content["from"])} → {names.get("to", content["to"])}（{content["name"]}）', 'id': content['english_name'],
-                'lines': evidence_lines(result)}
-        view['signature'] = result.get('signature')   # what the person reads, which confirming has to quote
+        base = {'kind': 'relation', 'title': f'{names.get("from", content["from"])} → {names.get("to", content["to"])}（{content["name"]}）', 'id': content['english_name'], 'lines': []}
+        if not light:
+            result = check_relation(conn, content, record=False)
+            base['lines'] = evidence_lines(result)
+            view['seen'] = result.get('signature')   # what the person reads, which confirming has to quote
     elif element_id.startswith(ENUM_PREFIX):
         type_row = element_row(conn, f'{TYPE_PREFIX}{content["type"]}')
         if type_row is None or not _visible(conn, type_row, user):
             return None
         view = _state_view(conn, row, user)
         view['can_confirm'] = view['can_confirm'] and row['state'] != 'needs_look'   # meanings that need another look are put forward again, not confirmed as they were
-        base = {'kind': 'meaning', 'title': f'{_content(type_row)["name"]}.{content["column"]} 的含义', 'id': content['type'], 'column': content['column'], 'lines': _meaning_lines(content, row)}
+        base = {'kind': 'meaning', 'title': f'{_content(type_row)["name"]}.{content["column"]}', 'id': content['type'], 'column': content['column'], 'lines': []}
+        if not light:
+            dataset = current_dataset(conn, content['dataset'])
+            base['lines'] = _meaning_lines(content, row)
+            view['seen'] = seen_of_meaning(dataset, (dataset_columns(conn, dataset['id']) if dataset else {}).get(content['column']))
     else:
         if not _visible(conn, row, user):
             return None
         view = _state_view(conn, row, user)
-        base = {'kind': 'type', 'title': f'对象类型 {content["name"]}', 'id': content['english_name'], 'lines': _type_lines(conn, row, content)}
+        base = {'kind': 'type', 'title': content['name'], 'id': content['english_name'], 'lines': []}
+        if not light:
+            base['lines'] = _type_lines(conn, row, content)
+            view['seen'] = seen_of_type(current_dataset(conn, content['dataset']))
+    if light:
+        return {'element': element_id, **base, **view}
     if row['state'] == 'needs_look' and row['reason']:
         base['lines'] = [{'ok': False, 'text': row['reason']}, *base['lines']]
     if view.get('model_draft'):
@@ -68,20 +80,17 @@ def _item(conn, row: dict, user: dict | None) -> dict | None:
     return {'element': element_id, **base, **view}
 
 
-def queue(conn, user: dict | None) -> dict:
-    """{'items': what this person may see, those they can confirm first, then needs-another-look, checked, proposed; 'count': how many of them they can confirm now}."""
+def queue(conn, user: dict | None, light: bool = False) -> dict:
+    """{'items': what this person may see, those they can confirm first, then needs-another-look, checked, proposed; 'count': how many of them they can confirm now}.
+    `light`: the count only, from the states (no relation check runs); items carry no evidence."""
     items = []
     for element_id, in conn.execute("SELECT element_id FROM element_state WHERE state IN ('proposed', 'checked', 'needs_look') AND "
                                     "(element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' OR element_id LIKE 'relation:%') ORDER BY element_id").fetchall():
-        item = _item(conn, element_row(conn, element_id), user)
+        item = _item(conn, element_row(conn, element_id), user, light)
         if item:
             items.append(item)
     items.sort(key=lambda i: (not i['can_confirm'], ORDER[i['state']], i['element']))
-    return {'items': items, 'count': sum(1 for i in items if i['can_confirm'])}
-
-
-def pending_count(conn, user: dict | None) -> int:
-    return queue(conn, user)['count']
+    return {'items': [] if light else items, 'count': sum(1 for i in items if i['can_confirm'])}
 
 
 def _parse(element: str) -> tuple[str, dict]:
@@ -97,7 +106,7 @@ def _parse(element: str) -> tuple[str, dict]:
 
 def _row_for(conn, element: str, user: dict | None) -> dict:
     row = element_row(conn, element) if isinstance(element, str) else None
-    item = _item(conn, row, user) if row and row['state'] in (*IN_QUEUE, 'confirmed', 'rejected') else None
+    item = _item(conn, row, user, light=True) if row and row['state'] in (*IN_QUEUE, 'confirmed', 'rejected') else None
     if row is None or item is None:
         raise TypeRefused('队列里没有这一项', 404)
     return row
@@ -110,7 +119,7 @@ def confirm_item(conn, payload: dict, who: str | None, user: dict | None) -> dic
     kind, ref = _parse(element)
     if kind == 'relation':
         return confirm_relation(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen')}, who, user)
-    return confirm_element(conn, {**ref, 'version': payload.get('version')}, who)
+    return confirm_element(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen')}, who, user)
 
 
 def send_back(conn, payload: dict, who: str | None, user: dict | None) -> dict:
@@ -127,11 +136,13 @@ def send_back(conn, payload: dict, who: str | None, user: dict | None) -> dict:
         raise TypeRefused('这一项不在待确认里了', 409)
     if row['state'] == 'needs_look' and not element.startswith((TYPE_PREFIX, RELATION_PREFIX)):
         raise TypeRefused('这组含义需要再看：请按现在的数据重新提出含义，不用退回', 409)
-    if not _state_view(conn, row, user)['can_confirm']:
+    if not _confirmers(conn, row, user)[0]:   # who may judge it, whether or not it can be confirmed yet
         raise TypeRefused('你现在不能处理这一项：它要另一位构建者来看', 403)
     conn.execute('BEGIN IMMEDIATE')
     try:
-        conn.execute("UPDATE element_state SET state = 'rejected', reason = ?, version = version + 1 WHERE element_id = ?", (reason, element))
+        if conn.execute("UPDATE element_state SET state = 'rejected', reason = ?, version = version + 1 WHERE element_id = ? AND version = ?",
+                        (reason, element, row['version'])).rowcount != 1:   # someone wrote it between the read and here
+            raise TypeRefused(STALE, 409)
         log_line(conn, who or '未署名', element, 'sent_back', before={'state': row['state']}, after={'state': 'rejected', 'reason': reason})
         conn.execute('COMMIT')
     except BaseException:

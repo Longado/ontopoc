@@ -15,7 +15,8 @@ from pathlib import PurePath
 
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.company_sources import TABLE_SUFFIXES, SourceFileError, load_table_file
-from ontology_poc_generator.object_types import dataset_readers_of, recheck_dependents
+from ontology_poc_generator.object_types import dataset_readers_of, flag_dataset_readers, recheck_dependents
+from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_store import DELETED, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, now_text as _now_text, plan_upload
 
 PREVIEW_ROWS = 50   # rows on one page of the preview
@@ -52,10 +53,12 @@ def _updated_at(conn, name: str, fallback: str) -> str:
 
 
 def list_datasets(conn, user: dict | None = None) -> list[dict]:
-    """Every dataset with its current version: name, origin, rows, column count, version, updated time, who, and how many things use it."""
+    """Every dataset with its current version: name, origin, rows, column count, version, updated time, who, and how many things use it. A dataset that a
+    type this person may not see reads is left out (dataset_hidden)."""
     rows = _rows(conn, 'SELECT d.*, (SELECT COUNT(*) FROM "column" c WHERE c.dataset_id = d.id) AS column_count, '
                        '(SELECT COUNT(*) FROM dataset v WHERE v.name = d.name) AS version_count '
                        'FROM dataset d JOIN current_dataset c ON c.dataset_id = d.id ORDER BY d.name')
+    rows = [r for r in rows if not dataset_hidden(conn, r['name'], user)]
     return [{'name': r['name'], 'origin': r['origin'], 'rows': r['rows_stored'], 'columns': r['column_count'], 'version': r['version'],
              'versions': r['version_count'], 'updated_at': _updated_at(conn, r['name'], r['imported_at']), 'who': r['who'],
              'used_by': len(dataset_readers_of(conn, r['name'], user, everyone=False))} for r in rows]   # used_by: the object types that read it; pipelines will too
@@ -108,9 +111,10 @@ def dataset_detail(conn, name: str, version: int | None = None, page: int = 1, u
     """One dataset as its page shows it, for the current version or the one asked for; None when there is no such dataset or version.
     columns: name, inferred type, fill rate, whether the stored counts show it unique and filled on every row (a possible key), and for a
     column that is almost one, where it repeats or is blank (near_key); key_checks: the checks recorded on this version; versions: every
-    version with who, when, mode and the counts; preview: one page (PREVIEW_ROWS rows) of the rows."""
+    version with who, when, mode and the counts; preview: one page (PREVIEW_ROWS rows) of the rows. None also for a dataset this person may not see
+    (dataset_hidden): to them it is not there."""
     current = current_dataset(conn, name)
-    if current is None:
+    if current is None or dataset_hidden(conn, name, user):
         return None
     shown = current if version is None else (_rows(conn, 'SELECT * FROM dataset WHERE name = ? AND version = ?', (name, version)) or [None])[0]
     if shown is None:
@@ -149,9 +153,10 @@ def without_rows(detail: dict) -> dict:
             'preview': {'columns': [], 'rows': [], 'limit': detail['preview']['limit'], 'total': detail['preview']['total'], 'page': 1, 'pages': 1}}
 
 
-def dataset_csv(conn, name: str, version: int | None = None) -> tuple[str, bytes] | None:
-    """(file name, bytes) of one version as a CSV Excel opens correctly (UTF-8 with a byte-order mark); None when there is no such version."""
-    current = current_dataset(conn, name)
+def dataset_csv(conn, name: str, version: int | None = None, user: dict | None = None) -> tuple[str, bytes] | None:
+    """(file name, bytes) of one version as a CSV Excel opens correctly (UTF-8 with a byte-order mark); None when there is no such version, or the dataset is
+    one this person may not see (dataset_hidden)."""
+    current = None if dataset_hidden(conn, name, user) else current_dataset(conn, name)
     shown = None if current is None else current if version is None else (_rows(conn, 'SELECT * FROM dataset WHERE name = ? AND version = ?', (name, version)) or [None])[0]
     if shown is None:
         return None
@@ -192,7 +197,7 @@ class UploadRefused(ValueError):
         self.files = files
 
 
-def _part_jobs(conn, part, taken: dict) -> list[dict]:
+def _part_jobs(conn, part, taken: dict, user: dict | None = None) -> list[dict]:
     """One uploaded file as the writes it asks for: [{'file', 'plan'}], one per sheet. A part is {'filename', 'content_base64'} and, to update
     a dataset that exists, 'target' (its name), 'mode' and for update_by_key 'key_columns'; 'name' picks the name of a new dataset (the file's
     name otherwise). A name that is taken is never decided by guessing: without a target and a mode it is refused, naming the dataset.
@@ -230,6 +235,8 @@ def _part_jobs(conn, part, taken: dict) -> list[dict]:
                      or (PurePath(filename).stem if len(sources) == 1 else sheet))
         if name in taken:
             raise ValueError(f'{label}：和“{taken[name]}”都要写入数据集“{name}”，一次上传里一个数据集只能写一次')
+        if dataset_hidden(conn, name, user):   # not theirs to see, so not theirs to write to; the name is not said to be taken either
+            raise ValueError(f'{label}：没有叫“{name}”的数据集可以写入，也不能用这个名字新建')
         try:
             plan = plan_upload(conn, name, source['records'], mode=mode, key_columns=part.get('key_columns'),
                                rows_in=source.get('rows_read'), dropped=source.get('dropped_rows'))
@@ -240,13 +247,13 @@ def _part_jobs(conn, part, taken: dict) -> list[dict]:
     return jobs
 
 
-def _jobs(conn, parts: list) -> list[dict]:
+def _jobs(conn, parts: list, user: dict | None = None) -> list[dict]:
     """Every uploaded file as the writes it asks for, all checked before anything is written. UploadRefused names what is wrong with each
     file that has a problem, not only the first."""
     jobs, taken, problems = [], {}, {}
     for i, part in enumerate(parts):
         try:
-            jobs += _part_jobs(conn, part, taken)
+            jobs += _part_jobs(conn, part, taken, user)
         except ValueError as exc:
             label = PurePath(str(part.get('filename') or '')).name if isinstance(part, dict) else ''
             problems[i] = str(exc).removeprefix(f'{label}：')
@@ -263,19 +270,31 @@ def _outcome(job: dict, done: dict) -> dict:
             'key_check': done.get('key_check') and {k: done['key_check'][k] for k in ('status', 'columns', 'rows_checked', 'violations', 'null_key_rows', 'samples')}}
 
 
-def upload(conn, parts: list, who: str | None) -> list[dict]:
+def _recheck(conn, name: str, signer: str) -> str | None:
+    """What was confirmed on the version before is checked against the new one. When the check itself fails, nothing can be said to still hold: everything
+    confirmed that reads the dataset goes to needs_look saying so, and the error is returned for the upload's answer, so a new version is never live
+    with its readers silently left confirmed."""
+    try:
+        recheck_dependents(conn, name, signer)
+    except Exception as exc:   # whatever went wrong, the readers are flagged and the person is told; the later files of the request are still written
+        flag_dataset_readers(conn, name, f'上传“{name}”的新版本后，重新检查出了错（{exc}），没法确认它还成立，请再看一遍', signer)
+        return str(exc)
+    return None
+
+
+def upload(conn, parts: list, who: str | None, user: dict | None = None) -> list[dict]:
     """Save the uploaded table files: a new dataset for each name not taken, a new version for each explicit update. Everything is
-    checked first (ValueError in plain Chinese, nothing written); then each is written as one version."""
+    checked first (ValueError in plain Chinese, nothing written); then each is written as one version. A dataset a type this person may not see reads
+    cannot be written to by them (dataset_hidden). Each outcome says `recheck_error` when the checks behind what reads the dataset could not run."""
     if not parts:
         raise ValueError('没有选择文件')
-    jobs = _jobs(conn, parts)
+    jobs = _jobs(conn, parts, user)
     signer = str(who or '').strip() or '未署名'
     outcomes = []
     for job in jobs:
         done = apply_upload(conn, job['plan'], signer)
-        if done['created']:
-            recheck_dependents(conn, job['plan']['name'], signer)   # what was confirmed on the version before is checked against this one
-        outcomes.append(_outcome(job, done))
+        error = _recheck(conn, job['plan']['name'], signer) if done['created'] else None
+        outcomes.append({**_outcome(job, done), 'recheck_error': error})
     return outcomes
 
 

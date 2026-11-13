@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 
-from ontology_poc_generator.type_access import visible_type_ids
+from ontology_poc_generator.type_access import dataset_hidden, visible_type_ids
 from ontology_poc_generator.workspace_store import DELETED, NO_CHANGE
 
 LIMIT = 200
@@ -51,6 +51,7 @@ def upload_tasks(conn, user: dict | None = None) -> list[dict]:
     for name, who, at, before in conn.execute('SELECT element_id, who, time, before_json FROM log WHERE change = ?', (DELETED,)):
         tasks.append({'kind': 'upload', 'id': name, 'title': name.removeprefix('deleted:').rpartition('@')[0], 'state': 'done', 'at': at, 'who': who,
                       'mode': 'deleted', 'version': None, 'rows': None, 'changes': json.loads(before), 'created_version': False})
+    tasks = [t for t in tasks if not dataset_hidden(conn, t['title'], user)]   # a dataset this person may not see is not in their task list either
     if user is not None and user['role'] == 'viewer':   # the keys of the rows an upload changed are rows
         for t in tasks:
             t['changes'] = {k: v for k, v in t['changes'].items() if k not in ('changed_keys', 'added_keys')}
@@ -59,11 +60,16 @@ def upload_tasks(conn, user: dict | None = None) -> list[dict]:
 
 def suggest_tasks(conn, user: dict | None = None) -> list[dict]:
     """The model's suggestions of object types: what was asked, the types it proposed, those the checks dropped and why (object_type_suggest).
-    The types a person may not see (type_access) are not listed for them."""
+    The types a person may not see (type_access) are not listed for them, nor is a task about a dataset they may not see. A viewer gets none: what the
+    checks dropped says why, with the repeated values of the data in it."""
+    if user is not None and user['role'] == 'viewer':
+        return []
     seen = set(visible_type_ids(conn, user)) if user is not None and user['role'] != 'admin' else None
     tasks = []
     for element_id, who, at, after in conn.execute('SELECT element_id, who, time, after_json FROM log WHERE change = ?', ('suggest',)):
         task = json.loads(after)
+        if any(dataset_hidden(conn, name, user) for name in task['datasets']):
+            continue
         if seen is not None:
             task = {**task, 'proposed': [p for p in task['proposed'] if p['id'] in seen]}
         tasks.append({'kind': 'suggest', 'id': element_id, 'title': '、'.join(task['datasets']), 'state': 'failed' if task['error'] else 'done', 'at': at, 'who': who,

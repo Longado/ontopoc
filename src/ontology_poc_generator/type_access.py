@@ -41,6 +41,15 @@ def can_access(conn, type_element_id: str, user: dict | None) -> bool:
     return allowed is None or user['id'] in allowed
 
 
+def dataset_hidden(conn, name: str, user: dict | None) -> bool:
+    """A dataset that a type this person may not see reads is not theirs to see either: its rows, its download, an upload to it, its removal. Only
+    admins, and people allowed to see every type that reads it, get past this; to everyone else it is not found."""
+    if user is None or user['role'] == 'admin':
+        return False
+    return any(not can_access(conn, element_id, user) for (element_id,) in conn.execute(
+        "SELECT element_id FROM element_dep WHERE depends_on = ? AND element_id LIKE 'objtype:%'", (f'dataset:{name}',)))
+
+
 def visible_type_ids(conn, user: dict | None, confirmed_only: bool = False) -> list[str]:
     """The English names of the types this person may see, by name; a viewer's are the confirmed ones, and with confirmed_only so are everyone's
     (the scope of a question: confirmed types the asker may see and nothing else)."""

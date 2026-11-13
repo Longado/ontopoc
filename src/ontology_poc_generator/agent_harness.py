@@ -40,11 +40,13 @@ class Judgement:
         return self.failure == 'request' and 'HTTP Error 402' in self.message
 
 
-def ask_model(gateway, agent: str, prompt_version: str, system_prompt: str, request: dict) -> Judgement:
+def ask_model(gateway, agent: str, prompt_version: str, system_prompt: str, request: dict, timeout_seconds: float | None = None) -> Judgement:
+    """One judgement. `timeout_seconds`: this call's own limit on the model's answer, when it should not be the gateway's."""
     label = AGENTS[agent]   # a call under a name nobody defined does not go out
     started = time.monotonic()
     try:
-        completion = gateway.complete_json(system_prompt=system_prompt, user_prompt=json.dumps(request, ensure_ascii=False))
+        completion = gateway.complete_json(system_prompt=system_prompt, user_prompt=json.dumps(request, ensure_ascii=False),
+                                           **({'timeout_seconds': timeout_seconds} if timeout_seconds else {}))
     except RecognitionError as exc:
         judgement = Judgement(None, None, 'request', str(exc))
     else:
@@ -66,8 +68,8 @@ class LoggedGateway:
     def __init__(self, gateway, path: Path):
         self._gateway, self._path, self._lock = gateway, path, threading.Lock()
 
-    def complete_json(self, *, system_prompt: str, user_prompt: str):
-        return self._gateway.complete_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    def complete_json(self, *, system_prompt: str, user_prompt: str, **limits):
+        return self._gateway.complete_json(system_prompt=system_prompt, user_prompt=user_prompt, **limits)
 
     def log_call(self, record: dict) -> None:
         line = json.dumps(record, ensure_ascii=False) + '\n'

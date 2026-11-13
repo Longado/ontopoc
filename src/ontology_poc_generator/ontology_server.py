@@ -71,7 +71,7 @@ from ontology_poc_generator.object_type_suggest import suggest_types
 from ontology_poc_generator.object_relations import (
     confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
 from ontology_poc_generator.review_queue import confirm_item, queue, send_back
-from ontology_poc_generator.type_access import AccessRefused, access_table, set_access
+from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, set_access
 
 ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
@@ -1127,10 +1127,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         return
                     name = unquote(url.path[len('/api/workspace/datasets/'):])
                     if (query.get('format') or [''])[0] == 'csv':
+                        if dataset_hidden(conn, name, self.user):   # not found, before anything is said about what a viewer may do with it
+                            self.reply(404, {'error': '没有这个数据集或这个版本'})
+                            return
                         if self.user['role'] == 'viewer':
                             self.reply(403, {'error': '查看者读不到数据集的行：数据要通过你能看到的对象类型来读'})
                             return
-                        csv_file = dataset_csv(conn, name, int(version) if version else None)
+                        csv_file = dataset_csv(conn, name, int(version) if version else None, self.user)
                         if csv_file is None:
                             self.reply(404, {'error': '没有这个数据集或这个版本'})
                         else:
@@ -1155,7 +1158,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 with runs_lock:
                     conn = open_workspace(output_dir / 'workspace.sqlite')
                     try:
-                        results = upload_datasets(conn, parts, self.signer(payload, 'who'))
+                        results = upload_datasets(conn, parts, self.signer(payload, 'who'), self.user)
                     finally:
                         conn.close()
             except UploadRefused as exc:
@@ -1178,7 +1181,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 with runs_lock:
                     conn = open_workspace(output_dir / 'workspace.sqlite')
                     try:
-                        readers = dataset_readers(conn, [p for p in output_dir.glob('*.json') if SAVED_NAME.match(p.name)], name)
+                        if dataset_hidden(conn, name, self.user):   # a dataset they may not see is not there to delete, and its readers are not named to them
+                            self.reply(404, {'error': '没有这个数据集'})
+                            return
+                        readers = dataset_readers(conn, [p for p in output_dir.glob('*.json') if SAVED_NAME.match(p.name)], name, self.user)
                         try:
                             deleted = delete_dataset(conn, name, self.signer(payload, 'who'), readers)
                         except KeyError:
@@ -1233,24 +1239,27 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 who = self.signer(payload, 'who')
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
-                    if route == '':
-                        body = create_type(conn, payload, who)
-                    elif route == '/update':
-                        body = update_type(conn, payload, who)
-                    elif route == '/meanings':
-                        body = propose_meanings(conn, payload, who)
-                    elif route == '/confirm':
-                        body = confirm_element(conn, payload, who)
-                    elif route == '/key-check':
-                        body = key_preview(conn, payload.get('dataset'), payload.get('key'))
-                    elif route == '/suggest':
+                    if route == '/suggest':   # the model takes up to two minutes: asked without the lock, its answer is written under it (suggest_types)
                         if gateway is None:
                             self.reply(503, {'error': NO_KEY})
                             return
-                        body = suggest_types(conn, gateway, payload.get('datasets'), payload.get('purpose') or '', who, datetime.now(timezone.utc).isoformat(timespec='seconds'))
+                        body = suggest_types(conn, gateway, payload.get('datasets'), payload.get('purpose') or '', who, datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                                             self.user, runs_lock)
                     else:
-                        self.reply(404, {'error': 'Unknown workspace endpoint'})
-                        return
+                        with runs_lock:   # the lock an upload takes: a check and the write that stands on it are not split by new data
+                            if route == '':
+                                body = create_type(conn, payload, who, self.user)
+                            elif route == '/update':
+                                body = update_type(conn, payload, who, self.user)
+                            elif route == '/meanings':
+                                body = propose_meanings(conn, payload, who, self.user)
+                            elif route == '/confirm':
+                                body = confirm_element(conn, payload, who, self.user)
+                            elif route == '/key-check':
+                                body = key_preview(conn, payload.get('dataset'), payload.get('key'), self.user)
+                            else:
+                                self.reply(404, {'error': 'Unknown workspace endpoint'})
+                                return
                 finally:
                     conn.close()
             except SelfConfirmation as exc:
@@ -1279,8 +1288,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     body = {'log': relation_log(conn, parts[1], self.user)}
                 elif parts == ['relation-form']:
                     body = {'types': relation_columns(conn, self.user)}
-                elif parts == ['queue']:
-                    body = queue(conn, self.user)
+                elif parts == ['queue']:   # ?count=1: only how many this person may confirm, read from the states (the navigation item asks on every page)
+                    body = queue(conn, self.user, light='count' in parse_qs(url.query))
                 elif parts == ['permissions']:
                     body = access_table(conn)
                 else:
@@ -1304,21 +1313,22 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 who = self.signer(payload, 'who')
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
-                    if route == 'relations':
-                        body = create_relation(conn, payload, who, self.user)
-                    elif route == 'relations/update':
-                        body = update_relation(conn, payload, who, self.user)
-                    elif route == 'relations/confirm':
-                        body = confirm_relation(conn, payload, who, self.user)
-                    elif route == 'queue/confirm':
-                        body = confirm_item(conn, payload, who, self.user)
-                    elif route == 'queue/send-back':
-                        body = send_back(conn, payload, who, self.user)
-                    elif route == 'permissions':
-                        body = set_access(conn, str(payload.get('type')), payload.get('visible_to'), who)
-                    else:
-                        self.reply(404, {'error': 'Unknown workspace endpoint'})
-                        return
+                    with runs_lock:   # the lock an upload takes (see types_post)
+                        if route == 'relations':
+                            body = create_relation(conn, payload, who, self.user)
+                        elif route == 'relations/update':
+                            body = update_relation(conn, payload, who, self.user)
+                        elif route == 'relations/confirm':
+                            body = confirm_relation(conn, payload, who, self.user)
+                        elif route == 'queue/confirm':
+                            body = confirm_item(conn, payload, who, self.user)
+                        elif route == 'queue/send-back':
+                            body = send_back(conn, payload, who, self.user)
+                        elif route == 'permissions':
+                            body = set_access(conn, str(payload.get('type')), payload.get('visible_to'), who)
+                        else:
+                            self.reply(404, {'error': 'Unknown workspace endpoint'})
+                            return
                 finally:
                     conn.close()
             except SelfConfirmation as exc:

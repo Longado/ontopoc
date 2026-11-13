@@ -45,6 +45,7 @@ def _definition_readers(conn, name: str) -> list[dict]:
     return readers
 
 
-def dataset_readers(conn, run_paths: list[Path], name: str) -> list[dict]:
-    """[{'kind', 'name'}] of everything that reads the dataset called `name`; empty when nothing does."""
-    return _run_readers(run_paths, name) + _definition_readers(conn, name) + dataset_readers_of(conn, name)
+def dataset_readers(conn, run_paths: list[Path], name: str, user: dict | None = None) -> list[dict]:
+    """[{'kind', 'name'}] of everything that reads the dataset called `name`; empty when nothing does. The object types are those this person may see
+    (no user: all): the guard that refuses a delete does not name a type they cannot see."""
+    return _run_readers(run_paths, name) + _definition_readers(conn, name) + dataset_readers_of(conn, name, user, everyone=False)
