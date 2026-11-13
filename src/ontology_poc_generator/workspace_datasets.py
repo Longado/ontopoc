@@ -11,7 +11,7 @@ import json
 from pathlib import PurePath
 
 from ontology_poc_generator.company_sources import TABLE_SUFFIXES, SourceFileError, load_table_file
-from ontology_poc_generator.workspace_store import UPLOAD_MODES, apply_upload, current_dataset, plan_upload
+from ontology_poc_generator.workspace_store import NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, plan_upload
 
 PREVIEW_ROWS = 50
 MAX_NAME = 100
@@ -29,7 +29,7 @@ def _rows(conn, sql: str, args: tuple = ()) -> list[dict]:
 
 def _updated_at(conn, name: str, fallback: str) -> str:
     """When the dataset last changed: the latest thing written about it (an import, or an older version made current again)."""
-    row = conn.execute('SELECT MAX(time) FROM log WHERE element_id = ?', (f'dataset:{name}',)).fetchone()
+    row = conn.execute('SELECT MAX(time) FROM log WHERE element_id = ? AND change <> ?', (f'dataset:{name}', NO_CHANGE)).fetchone()
     return max(row[0] or '', fallback)
 
 
@@ -81,10 +81,12 @@ def dataset_detail(conn, name: str, version: int | None = None) -> dict | None:
     cols = ', '.join(_quote(c['name']) for c in columns)
     cursor = conn.execute(f'SELECT {cols} FROM {_quote(shown["table_name"])} ORDER BY rowid LIMIT {PREVIEW_ROWS}')
     versions = _rows(conn, 'SELECT * FROM dataset WHERE name = ? ORDER BY version DESC', (name,))
+    skipped = _rows(conn, 'SELECT time, who, after_json FROM log WHERE element_id = ? AND change = ? ORDER BY time DESC', (f'dataset:{name}', NO_CHANGE))
     return {'name': name, 'origin': shown['origin'], 'version': shown['version'], 'current_version': current['version'],
             'rows': total, 'updated_at': _updated_at(conn, name, current['imported_at']), 'who': shown['who'], 'used_by': 0,
             'dropped': json.loads(shown['dropped_json'] or '{}'), 'columns': columns, 'key_checks': checks,
             'versions': [_version_row(v, current['id']) for v in versions],
+            'no_change_updates': [{'at': r['time'], 'who': r['who'], **json.loads(r['after_json'])} for r in skipped],
             'preview': {'columns': [c['name'] for c in columns], 'rows': [list(r) for r in cursor], 'limit': PREVIEW_ROWS, 'total': total}}
 
 

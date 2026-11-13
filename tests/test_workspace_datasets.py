@@ -129,10 +129,14 @@ class DatasetStoreTests(unittest.TestCase):
 
     def test_an_update_that_changes_nothing_makes_no_new_version(self):
         upload(self.conn, [planted('订单')], '小林')
-        same = dataset_detail(self.conn, '订单')['preview']['rows'][:2]
+        before = dataset_detail(self.conn, '订单')
+        same = before['preview']['rows'][:2]
         [r] = upload(self.conn, [part('x.csv', table_csv(same), target='订单', mode='update_by_key', key_columns=['订单号'])], '小王')
         self.assertEqual((r['created_version'], r['version'], r['changes']['unchanged']), (False, 1, 2))
-        self.assertEqual(len(dataset_detail(self.conn, '订单')['versions']), 1)
+        page = dataset_detail(self.conn, '订单')
+        self.assertEqual(len(page['versions']), 1)
+        self.assertEqual([(u['who'], u['unchanged'], u['file_rows'], u['key_columns']) for u in page['no_change_updates']], [('小王', 2, 2, ['订单号'])])
+        self.assertEqual(page['updated_at'], before['updated_at'])   # a skipped update is not an update of the dataset
 
     def test_overwrite_replaces_every_row_as_a_new_version(self):
         upload(self.conn, [planted('订单')], '小林')

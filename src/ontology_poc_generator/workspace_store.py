@@ -383,6 +383,7 @@ def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[st
 
 
 UPLOAD_MODES = ('update_by_key', 'overwrite')
+NO_CHANGE = 'update_by_key: no change'   # the log line of an update that matched every row and changed none
 
 
 def plan_upload(conn, name: str, records: list[dict], *, mode: str | None = None, key_columns: list[str] | None = None,
@@ -415,6 +416,7 @@ def apply_upload(conn, plan: dict, who: str, origin: str = 'upload') -> dict:
     changes and adds nothing writes nothing: {'created': False}. Otherwise {'created': True, 'dataset': the version, 'key_check': ...}
     where key_check is the key check of an update's key columns on the rows now stored."""
     if plan['unchanged']:
+        _log(conn, who, f'dataset:{plan["name"]}', NO_CHANGE, after=plan['changes'])   # the only trace of an upload that wrote no version
         return {'created': False, 'dataset': plan['current'], 'mode': plan['mode'], 'changes': plan['changes'], 'reused': False}
     records = plan['records']
     dataset = import_records(conn, plan['name'], records, origin, records_sha256(records), who, plan['rows_in'], plan['dropped'],
