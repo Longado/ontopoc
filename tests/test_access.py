@@ -29,11 +29,11 @@ class RouteTableTests(unittest.TestCase):
         for name in ('ontology_server.py', 'auth_http.py'):
             literals |= set(re.findall(r"""['"](/api/[A-Za-z0-9_/-]*)['"]""", (SOURCES / name).read_text(encoding='utf-8')))
         literals -= {'/api/recall', '/api/ontology', '/api/workspace', '/api/auth/', '/api/users/', '/api/workspace/', '/api/ontology/runs/', '/api/ontology/library/',
-                     '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/'}   # prefixes the code compares against; their routes are checked below
+                     '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/'}   # prefixes the code compares against; their routes are checked below
         self.assertGreater(len(literals), 25)
         missing = sorted(p for p in literals if route_role('GET', p) is None and route_role('POST', p) is None)
         self.assertEqual(missing, [])
-        for prefix in ('/api/ontology/runs/', '/api/ontology/library/', '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/'):
+        for prefix in ('/api/ontology/runs/', '/api/ontology/library/', '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/'):
             self.assertIsNotNone(route_role('GET', prefix + 'x'), prefix)
 
     def test_a_route_not_in_the_table_needs_an_admin(self):
@@ -49,6 +49,9 @@ class RouteTableTests(unittest.TestCase):
                 ('POST', '/api/ontology/ask', 'viewer'),
                 ('GET', '/api/workspace/types', 'viewer'), ('GET', '/api/workspace/types/order/objects', 'viewer'),
                 ('POST', '/api/workspace/types', 'builder'), ('POST', '/api/workspace/types/confirm', 'builder'), ('POST', '/api/workspace/types/suggest', 'builder'),
+                ('GET', '/api/workspace/relations', 'viewer'), ('GET', '/api/workspace/relations/order_customer/log', 'viewer'), ('GET', '/api/workspace/queue', 'builder'),
+                ('GET', '/api/workspace/relation-form', 'builder'), ('POST', '/api/workspace/relations/confirm', 'builder'), ('POST', '/api/workspace/queue/send-back', 'builder'),
+                ('GET', '/api/workspace/permissions', 'admin'), ('POST', '/api/workspace/permissions', 'admin'),
                 ('POST', '/api/workspace/datasets/upload', 'builder'), ('POST', '/api/workspace/datasets/delete', 'builder'), ('POST', '/api/ontology/build', 'builder'),
                 ('POST', '/api/ontology/confirm', 'builder'), ('POST', '/api/ontology/code-meanings/withdraw', 'builder'), ('POST', '/api/ontology/pipelines/run', 'builder'),
                 ('POST', '/api/ontology/review/confirm', 'builder'), ('POST', '/api/ontology/requery', 'builder'), ('POST', '/api/ontology/library/import', 'builder'),

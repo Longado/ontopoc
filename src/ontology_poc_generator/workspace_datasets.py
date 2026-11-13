@@ -51,14 +51,14 @@ def _updated_at(conn, name: str, fallback: str) -> str:
     return max(row[0] or '', fallback)
 
 
-def list_datasets(conn) -> list[dict]:
+def list_datasets(conn, user: dict | None = None) -> list[dict]:
     """Every dataset with its current version: name, origin, rows, column count, version, updated time, who, and how many things use it."""
     rows = _rows(conn, 'SELECT d.*, (SELECT COUNT(*) FROM "column" c WHERE c.dataset_id = d.id) AS column_count, '
                        '(SELECT COUNT(*) FROM dataset v WHERE v.name = d.name) AS version_count '
                        'FROM dataset d JOIN current_dataset c ON c.dataset_id = d.id ORDER BY d.name')
     return [{'name': r['name'], 'origin': r['origin'], 'rows': r['rows_stored'], 'columns': r['column_count'], 'version': r['version'],
              'versions': r['version_count'], 'updated_at': _updated_at(conn, r['name'], r['imported_at']), 'who': r['who'],
-             'used_by': len(dataset_readers_of(conn, r['name']))} for r in rows]   # used_by: the object types that read it; pipelines will too
+             'used_by': len(dataset_readers_of(conn, r['name'], user, everyone=False))} for r in rows]   # used_by: the object types that read it; pipelines will too
 
 
 def _version_row(row: dict, current_id: int) -> dict:
@@ -104,7 +104,7 @@ def _near_key(conn, table: str, column: dict, total: int) -> dict | None:
             'samples': [{'value': v, 'rows': n} for v, n in repeated[:3]]}
 
 
-def dataset_detail(conn, name: str, version: int | None = None, page: int = 1) -> dict | None:
+def dataset_detail(conn, name: str, version: int | None = None, page: int = 1, user: dict | None = None) -> dict | None:
     """One dataset as its page shows it, for the current version or the one asked for; None when there is no such dataset or version.
     columns: name, inferred type, fill rate, whether the stored counts show it unique and filled on every row (a possible key), and for a
     column that is almost one, where it repeats or is blank (near_key); key_checks: the checks recorded on this version; versions: every
@@ -131,7 +131,7 @@ def dataset_detail(conn, name: str, version: int | None = None, page: int = 1) -
     versions = _rows(conn, 'SELECT * FROM dataset WHERE name = ? ORDER BY version DESC', (name,))
     skipped = _rows(conn, 'SELECT time, who, after_json FROM log WHERE element_id = ? AND change = ? ORDER BY time DESC', (f'dataset:{name}', NO_CHANGE))
     return {'name': name, 'origin': shown['origin'], 'version': shown['version'], 'version_at': shown['imported_at'], 'current_version': current['version'],
-            'rows': total, 'updated_at': _updated_at(conn, name, current['imported_at']), 'who': shown['who'], 'readers': dataset_readers_of(conn, name),
+            'rows': total, 'updated_at': _updated_at(conn, name, current['imported_at']), 'who': shown['who'], 'readers': dataset_readers_of(conn, name, user, everyone=False),
             'dropped': json.loads(shown['dropped_json'] or '{}'), 'columns': columns, 'key_checks': checks,
             'versions': [_version_row(v, current['id']) for v in versions],
             'no_change_updates': [{'at': r['time'], 'who': r['who'], 'mode': 'update_by_key', **json.loads(r['after_json'])} for r in skipped],

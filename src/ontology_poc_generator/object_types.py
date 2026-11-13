@@ -19,10 +19,12 @@ import re
 
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
+from ontology_poc_generator.type_access import can_access
 from ontology_poc_generator.workspace_store import check_key, current_dataset, element_state_writes, log_line
 
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
+RELATION_PREFIX = 'relation:'
 ENGLISH_NAME = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,39}')
 MAX_NAME, MAX_DESCRIPTION = 40, 200
 OBJECT_PAGE = 50
@@ -292,7 +294,7 @@ def update_type(conn, payload: dict, who: str | None) -> dict:
     cols = dataset_columns(conn, dataset['id'])
     reset = reset_reasons(old, content)
     changes, reads = [], {}
-    if reset or row['state'] == 'proposed':   # a model's draft a person saves becomes theirs, checked, even with nothing changed
+    if reset or row['state'] in ('proposed', 'rejected'):   # a model's draft a person saves becomes theirs, checked, even with nothing changed; so does one that was sent back
         changes.append(_type_change(content, dataset, key_check, who))
         reads[type_id(old['english_name'])] = [f'dataset:{dataset["name"]}']
     for column, entries in posted.items():
@@ -302,6 +304,8 @@ def update_type(conn, payload: dict, who: str | None) -> dict:
             reads[change[0]] = [f'column:{dataset["name"]}.{column}']
     if changes:
         write_elements(conn, changes, reads)
+    if reset and row['state'] == 'confirmed':   # the type is not confirmed any more: what reads it (the relations) cannot stand on it
+        flag_readers(conn, row['element_id'], f'它连接的“{old["name"]}”类型改了{"、".join(reset)}，要重新确认')
     if not reset and (old['name'], old['description']) != (content['name'], content['description']):
         _edit_names(conn, row, content, who)
     return {'id': old['english_name'], 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': warnings}
@@ -382,7 +386,21 @@ def _enum_problems(conn, row: dict) -> list[str]:
 
 def _label(conn, element_id: str) -> str:
     content = _content(element_row(conn, element_id))
-    return f'“{content["name"]}”类型' if element_id.startswith(TYPE_PREFIX) else f'“{content["column"]}”的含义'
+    return f'“{content["name"]}”类型' if element_id.startswith(TYPE_PREFIX) else f'“{content["name"]}”关系' if element_id.startswith(RELATION_PREFIX) else f'“{content["column"]}”的含义'
+
+
+def flag_readers(conn, element_id: str, reason: str) -> list[str]:
+    """What reads this element and is confirmed goes to needs_look with the reason (and so on to what reads it): used when the element itself stopped being confirmed."""
+    moved: list[str] = []
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
+            _flag(conn, reader, reason, None, moved)
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    return moved
 
 
 def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list[str]) -> None:
@@ -396,7 +414,7 @@ def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list
              after={'state': 'needs_look', 'reason': reason, 'caused_by': caused_by}, user_id=None)
     moved.append(element_id)
     for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
-        _flag(conn, reader, f'它用的{_label(conn, element_id)}需要再看（原因见那一组含义）', caused_by, moved)
+        _flag(conn, reader, f'它用的{_label(conn, element_id)}需要再看（原因见{"那一组含义" if element_id.startswith(ENUM_PREFIX) else "那个对象类型"}）', caused_by, moved)
 
 
 def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) -> list[str]:
@@ -406,13 +424,16 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
     readers = [r[0] for r in conn.execute('SELECT DISTINCT element_id FROM element_dep WHERE depends_on = ? OR substr(depends_on, 1, ?) = ?',
                                           (f'dataset:{dataset_name}', len(column_prefix), column_prefix))]
     moved: list[str] = []
+    from ontology_poc_generator.object_relations import relation_problems   # object_relations reads this module: imported here, where it is used
+    order = lambda e: 0 if e.startswith(ENUM_PREFIX) else 2 if e.startswith(RELATION_PREFIX) else 1   # meanings, then types (which move with their meanings), then relations (which move with their types)
     conn.execute('BEGIN IMMEDIATE')
     try:
-        for element_id in sorted(readers, key=lambda e: not e.startswith(ENUM_PREFIX)):   # the meanings first: the type that reads one moves with it
+        for element_id in sorted(readers, key=order):
             row = element_row(conn, element_id)
             if row is None or row['state'] != 'confirmed':
                 continue
-            problems = _enum_problems(conn, row) if element_id.startswith(ENUM_PREFIX) else _type_problems(conn, _content(row))[0]
+            problems = (_enum_problems(conn, row) if element_id.startswith(ENUM_PREFIX) else relation_problems(conn, row) if element_id.startswith(RELATION_PREFIX)
+                        else _type_problems(conn, _content(row))[0])
             if problems:
                 _flag(conn, element_id, '；'.join(problems), caused_by, moved)
         conn.execute('COMMIT')
@@ -422,11 +443,12 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
     return moved
 
 
-def dataset_readers_of(conn, name: str) -> list[dict]:
-    """The object types that read this dataset, for the delete guard and the "used by" count."""
-    return [{'kind': '对象类型', 'name': json.loads(content)['name']} for content, in conn.execute(
-        "SELECT s.content_json FROM element_dep d JOIN element_state s ON s.element_id = d.element_id "
-        "WHERE d.depends_on = ? AND d.element_id LIKE 'objtype:%' ORDER BY d.element_id", (f'dataset:{name}',))]
+def dataset_readers_of(conn, name: str, user: dict | None = None, everyone: bool = True) -> list[dict]:
+    """The object types that read this dataset: all of them for the delete guard (everyone), only the ones this person may see for the "used by" shown on a page."""
+    return [{'kind': '对象类型', 'name': json.loads(content)['name']} for element_id, content in conn.execute(
+        "SELECT s.element_id, s.content_json FROM element_dep d JOIN element_state s ON s.element_id = d.element_id "
+        "WHERE d.depends_on = ? AND d.element_id LIKE 'objtype:%' ORDER BY d.element_id", (f'dataset:{name}',))
+        if everyone or _visible(conn, element_row(conn, element_id), user)]
 
 
 # --- confirming ---------------------------------------------------------------------------------------------------------------------------------
@@ -458,6 +480,8 @@ def confirm_element(conn, payload: dict, who: str | None) -> dict:
     element_id, content, is_type = row['element_id'], _content(row), row['element_id'].startswith(TYPE_PREFIX)
     if row['state'] == 'confirmed':
         raise TypeRefused('已经确认过了', 409)
+    if row['state'] == 'rejected':
+        raise TypeRefused('已经被退回了：要先按退回的理由改，再重新提出', 409)
     if row['state'] == 'needs_look' and not is_type:
         raise TypeRefused('这组含义需要再看：请按现在的数据重新提出含义，由另一位确认', 409)
     dataset = current_dataset(conn, content['dataset'])
@@ -475,14 +499,20 @@ def confirm_element(conn, payload: dict, who: str | None) -> dict:
         evidence = f'dataset:{dataset["name"]}@v{dataset["version"]}' if dataset else None
     if problems:
         raise TypeRefused(f'按现在的数据过不了检查，不能确认：{"；".join(problems)}', 409)
+    write_confirmation(conn, element_id, content, evidence, who, anchors, {dataset['name']: dataset['version']})
+    return {'state': 'confirmed'}
+
+
+def write_confirmation(conn, element_id: str, content: dict, evidence: str | None, who: str | None, anchors: dict | None, dataset_versions: dict) -> None:
+    """The element becomes confirmed by this person and the snapshot of what they confirmed (definition, evidence, dataset versions) is kept with it;
+    all or nothing. SelfConfirmation when it is their own proposal while two-person confirmation is active."""
     with element_state_writes(conn, [(element_id, 'confirmed', evidence, who, content, anchors, None)]) as rows:
         kept = rows[element_id]
         conn.execute('INSERT INTO confirmation(element_id, confirmed_by, confirmed_by_user_id, proposed_by, confirmed_at, content_json, evidence_ref, dataset_versions_json, self_confirmed)'
                      ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                      (element_id, kept['confirmed_by'], kept['confirmed_by_user_id'], kept['proposed_by'], kept['confirmed_at'], kept['content_json'], kept['evidence_ref'],
-                      json.dumps({dataset['name']: dataset['version']}, ensure_ascii=False),
+                      json.dumps(dataset_versions, ensure_ascii=False),
                       int(kept['confirmed_by_user_id'] is not None and kept['confirmed_by_user_id'] == kept['proposed_by_user_id'])))
-    return {'state': 'confirmed'}
 
 
 # --- what the pages read ------------------------------------------------------------------------------------------------------------------------
@@ -500,20 +530,23 @@ def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
 
 def _state_view(conn, row: dict, user: dict | None) -> dict:
     """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look."""
-    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith(TYPE_PREFIX))
+    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX)))
     can, others = _confirmers(conn, row, user)
     blocked = row['state'] == 'needs_look' and conn.execute(
         "SELECT 1 FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND s.state = 'needs_look'", (row['element_id'],)).fetchone()
     last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json, evidence_ref FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1',
                         (row['element_id'],)).fetchone()
-    return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'reason': row['reason'] if row['state'] == 'needs_look' else None,
+    return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'reason': row['reason'] if row['state'] in ('needs_look', 'rejected') else None,
             'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked, 'confirmers': others if waiting and not blocked else [],
             'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None,
             'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at']}
 
 
-def _visible(row: dict, user: dict | None) -> bool:
-    return not (user is not None and user['role'] == 'viewer' and row['state'] != 'confirmed')   # a type nobody confirmed is for builders
+def _visible(conn, row: dict, user: dict | None) -> bool:
+    """A type nobody confirmed is for builders; a type with a list of people is for them (and admins) only (type_access)."""
+    if user is not None and user['role'] == 'viewer' and row['state'] != 'confirmed':
+        return False
+    return can_access(conn, row['element_id'], user)
 
 
 def list_types(conn, user: dict | None) -> list[dict]:
@@ -521,7 +554,7 @@ def list_types(conn, user: dict | None) -> list[dict]:
     out = []
     for element_id, in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
-        if not _visible(row, user):
+        if not _visible(conn, row, user):
             continue
         content = _content(row)
         dataset = current_dataset(conn, content['dataset'])
@@ -545,7 +578,7 @@ def _meaning_view(conn, content: dict, prop: dict, cols: dict, user: dict | None
 
 def type_detail(conn, english_name: str, user: dict | None) -> dict:
     row = element_row(conn, type_id(english_name))
-    if row is None or not _visible(row, user):
+    if row is None or not _visible(conn, row, user):
         raise TypeRefused('没有这个对象类型', 404)
     content = _content(row)
     dataset = current_dataset(conn, content['dataset'])
@@ -579,14 +612,19 @@ def type_log(conn, english_name: str, user: dict | None) -> list[dict]:
     """What happened to a type, to the meanings of its code columns and to the dataset it reads, newest first: time, who, what, and for a move to
     needs_look the reason and whose upload it was."""
     detail = type_detail(conn, english_name, user)
-    ids = [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), f'dataset:{detail["dataset"]}']
+    return log_entries(conn, [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), f'dataset:{detail["dataset"]}'])
+
+
+def log_entries(conn, ids: list[str]) -> list[dict]:
+    """The log lines about these elements, newest first (the caller has checked that this person may read them)."""
     out = []
     for at, who, element, change, before, after in conn.execute(
             f'SELECT time, who, element_id, change, before_json, after_json FROM log WHERE element_id IN ({",".join("?" * len(ids))}) ORDER BY time DESC, rowid DESC', ids):
         after = json.loads(after) if after else {}
-        kind = 'dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'type'
+        kind = 'dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX) else 'type'
         out.append({'at': at, 'who': who, 'element': kind, 'column': element.split(':', 2)[2] if kind == 'meaning' else None, 'change': change,
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
                     'caused_by': after.get('caused_by'), 'self_confirmed': bool(after.get('self_confirmed')),
+                    'visible_to': after.get('visible_to') if change == 'access_changed' else None,
                     'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else None})
     return out

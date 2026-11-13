@@ -20,7 +20,8 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/auth/tokens', SESSION),
     ('POST', r'/api/auth/tokens(/revoke)?', SESSION),
     # read
-    ('GET', r'/api/workspace/(datasets|tasks|types)(/.+)?', 'viewer'),
+    ('GET', r'/api/workspace/(datasets|tasks|types|relations)(/.+)?', 'viewer'),   # what a person sees of types and relations is filtered by who they are (type_access)
+    ('GET', r'/api/workspace/(relation-form|queue)', 'builder'),
     ('GET', _RUNS, 'viewer'),
     ('GET', r'/api/ontology/jobs/[^/]+', 'viewer'),
     ('GET', r'/api/ontology/library(/.+)?', 'viewer'),
@@ -28,6 +29,8 @@ ROUTES: list[tuple[str, str, str]] = [
     # change data, start model work, write definitions
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
     ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest))?', 'builder'),
+    ('POST', r'/api/workspace/relations(/(update|confirm))?', 'builder'),
+    ('POST', r'/api/workspace/queue/(confirm|send-back)', 'builder'),
     ('POST', r'/api/ontology/(build|jobs|preview|compare|variants|requery|library/import)', 'builder'),
     ('POST', r'/api/ontology/reference/(preview|confirm)', 'builder'),
     ('POST', r'/api/ontology/(confirm|acceptance|card|derived|bulk-approve|repeat-rules|views|rules|form|pipelines/run)', 'builder'),
@@ -39,6 +42,8 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/users(/(update|disable|reset-password))?', 'admin'),
     ('GET', r'/api/settings', 'admin'),
     ('POST', r'/api/settings', 'admin'),
+    ('GET', r'/api/workspace/permissions', 'admin'),   # who sees which type: only an admin reads or changes it
+    ('POST', r'/api/workspace/permissions', 'admin'),
 ]
 _COMPILED = [(method, re.compile(pattern), role) for method, pattern, role in ROUTES]
 

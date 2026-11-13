@@ -1,0 +1,96 @@
+"""Who may see an object type: everyone, or the people named (an allow-list; there are no "not these" rules). Admins see every type. A viewer
+sees a type only when it is also confirmed (object_types._visible adds that). The list is not part of what a person confirms: changing it
+leaves the state alone and goes to the log as access_changed, with who.
+
+A type nobody may see is nobody's but the admins'; every read path (list, detail, objects, log, relations, the queue, the dataset "used by", the
+task list, the question scope) asks can_access / visible_type_ids here, so there is one place that says who sees what.
+"""
+from __future__ import annotations
+
+import json
+
+from ontology_poc_generator.workspace_store import log_line
+
+TYPE_PREFIX = 'objtype:'
+
+
+class AccessRefused(ValueError):
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.status = status
+
+
+def allowed_ids(conn, type_element_id: str) -> list[int] | None:
+    """The user ids on the list, or None when the type is visible to everyone."""
+    row = conn.execute('SELECT user_ids_json FROM type_access WHERE type_id = ?', (type_element_id,)).fetchone()
+    return None if row is None else json.loads(row[0])
+
+
+def can_access(conn, type_element_id: str, user: dict | None) -> bool:
+    """Whether this person may see the type at all (a viewer's need for it to be confirmed is checked by the caller). The local no-sign-in
+    person and admins see everything."""
+    if user is None or user['role'] == 'admin':
+        return True
+    allowed = allowed_ids(conn, type_element_id)
+    return allowed is None or user['id'] in allowed
+
+
+def visible_type_ids(conn, user: dict | None, confirmed_only: bool = False) -> list[str]:
+    """The English names of the types this person may see, by name; a viewer's are the confirmed ones, and with confirmed_only so are everyone's
+    (the scope of a question: confirmed types the asker may see and nothing else)."""
+    out = []
+    for element_id, state in conn.execute("SELECT element_id, state FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
+        viewer = user is not None and user['role'] == 'viewer'
+        if (viewer or confirmed_only) and state != 'confirmed':
+            continue
+        if can_access(conn, element_id, user):
+            out.append(element_id[len(TYPE_PREFIX):])
+    return out
+
+
+def _names(conn, ids: list[int]) -> list[str]:
+    return [r[0] for r in conn.execute(f'SELECT display_name FROM user WHERE id IN ({",".join("?" * len(ids))}) ORDER BY display_name', ids)] if ids else []
+
+
+def set_access(conn, english_name: str, visible_to, who: str | None) -> dict:
+    """visible_to: 'everyone' or a list of user ids. Returns {'visible_to': 'everyone' | [names]}."""
+    element_id = f'{TYPE_PREFIX}{english_name}'
+    if conn.execute('SELECT 1 FROM element_state WHERE element_id = ?', (element_id,)).fetchone() is None:
+        raise AccessRefused('没有这个对象类型', 404)
+    before = allowed_ids(conn, element_id)
+    if visible_to == 'everyone':
+        ids = None
+    elif isinstance(visible_to, list) and all(isinstance(i, int) and not isinstance(i, bool) for i in visible_to):
+        ids = sorted(set(visible_to))
+        known = {r[0] for r in conn.execute(f'SELECT id FROM user WHERE id IN ({",".join("?" * len(ids))})', ids)} if ids else set()
+        if set(ids) - known:
+            raise AccessRefused('名单里有不存在的账号')
+    else:
+        raise AccessRefused('可见范围要写成 everyone，或一份账号编号的名单')
+    if ids == before:
+        return {'visible_to': 'everyone' if ids is None else _names(conn, ids)}
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        if ids is None:
+            conn.execute('DELETE FROM type_access WHERE type_id = ?', (element_id,))
+        else:
+            conn.execute('INSERT OR REPLACE INTO type_access(type_id, user_ids_json) VALUES (?, ?)', (element_id, json.dumps(ids)))
+        log_line(conn, who or '未署名', element_id, 'access_changed',
+                 before={'visible_to': 'everyone' if before is None else _names(conn, before)},
+                 after={'visible_to': 'everyone' if ids is None else _names(conn, ids)})
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    return {'visible_to': 'everyone' if ids is None else _names(conn, ids)}
+
+
+def access_table(conn) -> dict:
+    """The admin's page: every type with who sees it, and the people (not disabled) a list can name."""
+    people = [{'id': i, 'name': n, 'role': r} for i, n, r in conn.execute(
+        'SELECT id, display_name, role FROM user WHERE disabled = 0 ORDER BY role DESC, display_name')]
+    types = []
+    for element_id, state, content in conn.execute("SELECT element_id, state, content_json FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
+        allowed = allowed_ids(conn, element_id)
+        types.append({'id': element_id[len(TYPE_PREFIX):], 'name': json.loads(content)['name'], 'state': state, 'everyone': allowed is None, 'user_ids': allowed or []})
+    return {'people': people, 'types': types}

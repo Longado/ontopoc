@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 
+from ontology_poc_generator.type_access import visible_type_ids
 from ontology_poc_generator.workspace_store import DELETED, NO_CHANGE
 
 LIMIT = 200
@@ -53,17 +54,21 @@ def upload_tasks(conn) -> list[dict]:
     return tasks
 
 
-def suggest_tasks(conn) -> list[dict]:
-    """The model's suggestions of object types: what was asked, the types it proposed, those the checks dropped and why (object_type_suggest)."""
+def suggest_tasks(conn, user: dict | None = None) -> list[dict]:
+    """The model's suggestions of object types: what was asked, the types it proposed, those the checks dropped and why (object_type_suggest).
+    The types a person may not see (type_access) are not listed for them."""
+    seen = set(visible_type_ids(conn, user)) if user is not None and user['role'] != 'admin' else None
     tasks = []
     for element_id, who, at, after in conn.execute('SELECT element_id, who, time, after_json FROM log WHERE change = ?', ('suggest',)):
         task = json.loads(after)
+        if seen is not None:
+            task = {**task, 'proposed': [p for p in task['proposed'] if p['id'] in seen]}
         tasks.append({'kind': 'suggest', 'id': element_id, 'title': '、'.join(task['datasets']), 'state': 'failed' if task['error'] else 'done', 'at': at, 'who': who,
                       'error': task['error'], 'proposed': task['proposed'], 'rejected': task['rejected'], 'model': task['model']})
     return tasks
 
 
-def list_tasks(conn, jobs_dir: Path, running: set[str]) -> tuple[list[dict], int]:
+def list_tasks(conn, jobs_dir: Path, running: set[str], user: dict | None = None) -> tuple[list[dict], int]:
     """(jobs, uploads and suggestions together, newest first, at most LIMIT; the number of job files that could not be read)."""
     jobs, unreadable = job_tasks(jobs_dir, running)
-    return sorted(jobs + upload_tasks(conn) + suggest_tasks(conn), key=lambda t: t['at'], reverse=True)[:LIMIT], unreadable
+    return sorted(jobs + upload_tasks(conn) + suggest_tasks(conn, user), key=lambda t: t['at'], reverse=True)[:LIMIT], unreadable

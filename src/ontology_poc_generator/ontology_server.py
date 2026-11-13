@@ -68,6 +68,10 @@ from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv
 from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.object_types import TypeRefused, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
+from ontology_poc_generator.object_relations import (
+    confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
+from ontology_poc_generator.review_queue import confirm_item, queue, send_back
+from ontology_poc_generator.type_access import AccessRefused, access_table, set_access
 
 ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
@@ -1107,12 +1111,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
                 if url.path == '/api/workspace/datasets':
-                    self.reply(200, {'datasets': list_datasets(conn)})
+                    self.reply(200, {'datasets': list_datasets(conn, self.user)})
                     return
                 if url.path == '/api/workspace/tasks':
                     with jobs_lock:
                         running = {job_id for job_id, job in jobs.items() if job['state'] == 'running'}
-                    tasks, unreadable = list_tasks(conn, jobs_dir, running)
+                    tasks, unreadable = list_tasks(conn, jobs_dir, running, self.user)
                     self.reply(200, {'tasks': tasks, 'unreadable': unreadable})
                     return
                 if url.path.startswith('/api/workspace/datasets/'):
@@ -1129,7 +1133,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         else:
                             self.reply_file(csv_file[1], 'text/csv; charset=utf-8', csv_file[0])
                         return
-                    found = dataset_detail(conn, name, int(version) if version else None, int(page))
+                    found = dataset_detail(conn, name, int(version) if version else None, int(page), self.user)
                     self.reply(*((200, found) if found else (404, {'error': '没有这个数据集或这个版本'})))
                     return
             finally:
@@ -1257,8 +1261,80 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, body)
 
+        def relations_get(self):
+            """/api/workspace/relations, /relations/<id>, /relations/<id>/log, /relation-form (the types and columns a relation can be made from), /queue (待确认),
+            /permissions (admin): what this person may see of them (type_access, relation_visible)."""
+            url = urlsplit(self.path)
+            parts = [unquote(p) for p in url.path[len('/api/workspace/'):].split('/') if p]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if parts == ['relations']:
+                    body = {'relations': list_relations(conn, self.user)}
+                elif len(parts) == 2 and parts[0] == 'relations':
+                    body = relation_detail(conn, parts[1], self.user)
+                elif len(parts) == 3 and parts[0] == 'relations' and parts[2] == 'log':
+                    body = {'log': relation_log(conn, parts[1], self.user)}
+                elif parts == ['relation-form']:
+                    body = {'types': relation_columns(conn, self.user)}
+                elif parts == ['queue']:
+                    body = queue(conn, self.user)
+                elif parts == ['permissions']:
+                    body = access_table(conn)
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def relations_post(self):
+            """POST /api/workspace/relations (create), /relations/update, /relations/confirm, /queue/confirm, /queue/send-back, /permissions (admin): see
+            object_relations.py, review_queue.py and type_access.py. Refusals are 403 (of who), 409 (the data or the version moved) or a 400 that says what is wrong."""
+            route = self.path[len('/api/workspace/'):]
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                who = self.signer(payload, 'who')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    if route == 'relations':
+                        body = create_relation(conn, payload, who, self.user)
+                    elif route == 'relations/update':
+                        body = update_relation(conn, payload, who, self.user)
+                    elif route == 'relations/confirm':
+                        body = confirm_relation(conn, payload, who, self.user)
+                    elif route == 'queue/confirm':
+                        body = confirm_item(conn, payload, who, self.user)
+                    elif route == 'queue/send-back':
+                        body = send_back(conn, payload, who, self.user)
+                    elif route == 'permissions':
+                        body = set_access(conn, str(payload.get('type')), payload.get('visible_to'), who)
+                    else:
+                        self.reply(404, {'error': 'Unknown workspace endpoint'})
+                        return
+                finally:
+                    conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except (TypeRefused, AccessRefused) as exc:
+                self.reply(exc.status, {'error': str(exc), **(getattr(exc, 'detail', None) or {})})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
         def do_GET(self):
             if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
+                return
+            if self.path.split('?')[0] in ('/api/workspace/relations', '/api/workspace/relation-form', '/api/workspace/queue', '/api/workspace/permissions') \
+                    or self.path.startswith('/api/workspace/relations/'):
+                self.relations_get()
                 return
             if self.path == '/api/workspace/types' or self.path.startswith('/api/workspace/types/') or self.path.startswith('/api/workspace/types?'):
                 self.types_get()
@@ -1456,6 +1532,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/types' or self.path.startswith('/api/workspace/types/'):
                 self.types_post()
+                return
+            if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
+                             '/api/workspace/queue/send-back', '/api/workspace/permissions'):
+                self.relations_post()
                 return
             if self.path == '/api/workspace/datasets/upload':
                 self.workspace_upload()

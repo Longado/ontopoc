@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS element_dep (
 CREATE TABLE IF NOT EXISTS confirmation (
     id INTEGER PRIMARY KEY AUTOINCREMENT, element_id TEXT NOT NULL, confirmed_by TEXT, confirmed_by_user_id INTEGER, proposed_by TEXT,
     confirmed_at TEXT NOT NULL, content_json TEXT, evidence_ref TEXT, dataset_versions_json TEXT, self_confirmed INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS type_access (
+    type_id TEXT PRIMARY KEY, user_ids_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS check_result (
     id INTEGER PRIMARY KEY AUTOINCREMENT, element_id TEXT NOT NULL, check_type TEXT NOT NULL, query TEXT NOT NULL,
     rows_checked INTEGER, violations INTEGER, samples_json TEXT, dataset_id INTEGER, null_key_rows INTEGER,
