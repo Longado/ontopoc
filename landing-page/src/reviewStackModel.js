@@ -66,8 +66,8 @@ export function reopenedLine(reopened) {
 }
 
 // The clean band: what can be approved together once the list is shown. The service works the band out; the page only lists it.
-export const BULK_KIND = { code_meaning: "代码含义", relation: "关系" };
-export const bulkSummary = (band) => `有 ${band.length} 件检查都过了、依据够强，可以一起通过`;
+export const BULK_KIND = { relation: "关系" };
+export const bulkSummary = (band) => `有 ${band.length} 件数据全部核对过了，可以一起通过`;
 export const bulkLabel = (count) => `一起通过 ${count} 件`;
 
 /** What stops a bulk approval, in words; "" when it can go. */

@@ -89,7 +89,8 @@ def _side_numbers(conn, s_table: str, d_table: str, mine: list[str], d_cols: lis
 
 def check_relations(conn, ontology: dict, datasets: dict[str, dict]) -> list[dict]:
     """One entry per relation that can be checked: {'key', 'from', 'to', 'source', 'dataset_id', 'version', 'sides': [one per end
-    with a describing table], 'cardinality'}. See the top of the file for what each holds."""
+    with a describing table], 'own_ends': the ends whose describing table is the relation's own table read by its own key (nothing
+    to look up), 'cardinality'}. See the top of the file for what each holds."""
     p = normalize_proposal(ontology)
     own = describes_rows(ontology)
     columns = lambda d: {r[0] for r in conn.execute('SELECT name FROM "column" WHERE dataset_id = ?', (d['id'],))}
@@ -105,14 +106,17 @@ def check_relations(conn, ontology: dict, datasets: dict[str, dict]) -> list[dic
         if not all(set(c) <= known for c in cols.values()):
             continue
         s_table = _quote(source['table_name'])
-        sides = []
+        sides, own_ends = [], []
         for end, other in (('to', 'from'), ('from', 'to')):
             pop = _describing(p, own, r[end], set(binds[end]))
             d = datasets.get(pop['source']) if pop else None
             if d is None:
                 continue
             d_cols = [pop['identity'][k] for k in logical[end]]
-            if not set(d_cols) <= columns(d) or (d['id'] == source['id'] and d_cols == cols[end]):   # a table's own key matches itself
+            if d['id'] == source['id'] and d_cols == cols[end]:   # a table's own key matches itself: nothing to check, and nothing missing
+                own_ends.append(end)
+                continue
+            if not set(d_cols) <= columns(d):
                 continue
             mine = cols[end]
             rows = conn.execute(f'SELECT COUNT(*) FROM {s_table}').fetchone()[0]
@@ -143,7 +147,7 @@ def check_relations(conn, ontology: dict, datasets: dict[str, dict]) -> list[dic
                                                 source['rows_stored'], 0 if holds in (None, True) else 1, 0, cardinality,
                                                 'skipped' if declared is None else 'passed' if holds else 'failed')
         out.append({'key': r['key'], 'from': r['from'], 'to': r['to'], 'source': r['source'], 'dataset_id': source['id'], 'version': source['version'],
-                    'sides': sides, 'cardinality': cardinality})
+                    'sides': sides, 'own_ends': own_ends, 'cardinality': cardinality})
     return out
 
 

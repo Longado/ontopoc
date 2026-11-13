@@ -14,9 +14,10 @@ decided (the values of a code column with their rows, the keys that repeated, th
 next upload is not asked again unless an anchor breaks: something new is in it, or a count has moved by the same measure as
 for confirmed definitions (anchors.moved). Then it is asked again, with what changed beside the old decision.
 
-The clean band is what can be approved together in one action, after the list is shown: code columns whose every suggestion the data
-backs, and relations whose check found every row connected. Anything with a failed check or a weak suggestion is never in it; the service
-works the band out again when asked to approve, and refuses an id that is not in it. A bulk approval is recorded as 'bulk'."""
+The clean band is what can be approved together in one action, after the list is shown: only what code verifies completely (a relation
+whose every row connects, with no fan-out and a cardinality that holds). What the data cannot say, a code's meaning above all, is one by one.
+The service works the band out again inside the write and refuses what is not in it. A bulk approval is recorded as 'bulk', for the
+approved items only."""
 from __future__ import annotations
 
 from ontology_poc_generator.anchors import moved
@@ -125,37 +126,39 @@ def code_check(values: list[dict]) -> dict | None:
 
 # the clean band: what can be approved together, after the list is shown
 
-def code_band(items: list[dict]) -> list[dict]:
-    """The code columns whose every unconfirmed value has the model's suggestion and the data behind it (a pattern in another column,
-    enough rows: `recommendation.strong`) and nothing waiting for a second look. One value with no suggestion, or a suggestion the data
-    does not back, keeps the whole column out: it is a person's. Each: {'id', 'kind', 'title', 'lines', 'posted'} where `posted` is
-    what approving confirms, value by value."""
-    band = []
-    for item in items:
-        if item['kind'] != 'code_meaning' or item.get('reopened'):
-            continue
-        todo = [v for v in item['column']['values'] if not v['confirmed']]
-        if todo and all(v['preselected'] and v['recommendation'].get('label') and not v['waiting'] for v in todo):
-            column = item['column']
-            band.append({'id': item['id'], 'kind': 'code_meaning', 'title': f'「{column["source"]}」的「{column["column"]}」',
-                         'lines': [f'{v["value"]} = {v["recommendation"]["label"]}：{v["recommendation"].get("basis") or "数据有支持"}' for v in todo],
-                         'posted': [{'value': v['value'], 'label': v['recommendation']['label'], 'description': v['recommendation'].get('description') or ''} for v in todo]})
-    return band
+CARDINALITY_SAYS = {'one_to_one': '一对一', 'many_to_one': '多对一', 'one_to_many': '一对多'}
+
+
+def cardinality_line(cardinality: dict, source: str, target: str) -> str | None:
+    """Why the relation's cardinality is no reason to look at it, in words; None when it is. Either it was declared and the data holds to it
+    (a declared many-to-many holds to anything: it says nothing), or it was not declared and the data is computed one-to-one or
+    many-to-one: one `source` reaches at most one `target`, so walking the relation never multiplies rows."""
+    declared, observed = cardinality.get('declared'), cardinality.get('observed')
+    if declared:
+        return f'声明为{CARDINALITY_SAYS[declared]}，数据里成立' if declared in CARDINALITY_SAYS and cardinality.get('holds') is True else None
+    return f'没有声明，按数据算是{CARDINALITY_SAYS[observed]}：每个{source}只对一个{target}' if observed in ('one_to_one', 'many_to_one') else None
 
 
 def relation_band(relations: list[dict], decisions: dict | None, label, relation_name) -> list[dict]:
-    """The relations nobody has judged whose check found every row connected on every side, no object reached through more than one, and
-    no declared cardinality broken, and whose two objects a person has already judged right (a relation counts only with both).
-    relations: the run's data_checks.relations; label gives an object's name and relation_name a relation's."""
+    """The relations nobody has judged that code can fully verify: every row of a table with rows connects on every end (an end is
+    checked as a side, or is the relation's own table read by its own key), no object is reached through more than one, and the
+    cardinality is declared and holds or computed without fan-out (cardinality_line says which). Their two objects are already judged
+    right by a person: a relation counts only with both. This is all that a person has no judgement to add to: a code's meaning, which
+    the data cannot say, is never here. relations: the run's data_checks.relations; label gives an object's name and relation_name
+    a relation's."""
     types, judged = ((decisions or {}).get('types') or {}), ((decisions or {}).get('relations') or {})
     band = []
     for r in relations:
-        if (judged.get(r['key']) or {}).get('verdict') or not r['sides'] or r['cardinality'].get('holds') is False:
+        if (judged.get(r['key']) or {}).get('verdict') or any((types.get(end) or {}).get('verdict') != 'ok' for end in (r['from'], r['to'])):
             continue
-        if any((types.get(end) or {}).get('verdict') != 'ok' for end in (r['from'], r['to'])):
+        sides = r['sides']
+        if not sides or {s['end'] for s in sides} | set(r.get('own_ends') or []) != {'from', 'to'}:
+            continue   # an end that nothing was looked up against is not verified
+        if any(not s['rows'] or s['matched'] != s['rows'] or s['fanout']['keys'] for s in sides):
             continue
-        if any(s['matched'] != s['rows'] or s['fanout']['keys'] for s in r['sides']):
+        how = cardinality_line(r['cardinality'], label(r['from']), label(r['to']))
+        if how is None:
             continue
         band.append({'id': f'relation:{r["key"]}', 'kind': 'relation', 'title': relation_name(r),
-                     'lines': [f'{s["rows"]} / {s["rows"]} 行{label(s["other"])}都找得到{label(s["object"])}，「{s["lookup"]}」表里没有重复的编号' for s in r['sides']]})
+                     'lines': [*(f'{s["rows"]} / {s["rows"]} 行{label(s["other"])}都找得到{label(s["object"])}，「{s["lookup"]}」表里没有重复的编号' for s in sides), how]})
     return band

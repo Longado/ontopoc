@@ -33,7 +33,7 @@ from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
-from ontology_poc_generator.review_stack import check_mode, code_band, relation_band
+from ontology_poc_generator.review_stack import check_mode, relation_band
 from ontology_poc_generator.open_items import check_answers, code_meaning_items, linked_cells, open_items, split_answers, with_replies
 from ontology_poc_generator.ontology_card import NO_CARD, build_card, check_cells, live_cells, with_changes
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
@@ -64,6 +64,13 @@ ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
 KEPT_RUNS_IN_MEMORY = 8   # runs whose rows and graph stay in memory; the least recently used is dropped and read again when asked for
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
+MAX_BULK = 200   # relations approved in one request: far above what a run has
+
+
+class BandChanged(ValueError):
+    """The clean band is no longer what the person was shown; the message says so and nothing was written."""
+
+
 SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
 JOB_ID = re.compile(r'^[0-9a-f]{12}$')
 NO_KEY = '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'
@@ -450,24 +457,30 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         conn = open_workspace(output_dir / 'workspace.sqlite')
         try:
             said_no = element_rows(conn, f'property:{memory_key(result)}:', 'rejected')
+            approved = element_rows(conn, f'relation:{memory_key(result)}:', 'confirmed')
         finally:
             conn.close()
+        p = normalize_proposal(result['ontology'])
+        label = lambda key: next((t.get('label') or key for t in p['object_types'] if t['key'] == key), key)
+        for r in (r for r in p['relations'] if ((approved.get(r['key']) or {}).get('content') or {}).get('mode') == 'bulk'):   # judged right with others in one action: the one judgement the person did not make on a card
+            row = approved[r['key']]
+            out.append({'id': f'relation:{r["key"]}', 'kind': 'relation', 'ask': f'关系 {label(r["from"])} {r.get("label") or r["key"]} {label(r["to"])}',
+                        'answer': {'says': '判对', 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': 'bulk'}})
         for field, row in said_no.items():
             out.append({'id': f'code_meaning:{field}', 'kind': 'code_meaning', 'ask': f'「{field.partition(".")[0]}」的「{field.partition(".")[2]}」是代码',
                         'answer': {'says': '不是代码', 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': (row['content'] or {}).get('mode')}})
         return out
 
-    def bulk_band_of(found, items, newer):
-        """What can be approved together (review_stack): nothing on a run that a newer version of the file has replaced, where definitions
-        are changed, and nothing on a draft that did not pass verification."""
-        if found is None or newer or found[0]['ontology']['status'] != 'auto_built_verified':
+    def bulk_band_of(result, newer):
+        """What can be approved together (review_stack.relation_band), worked out from a run as it is kept: nothing on a run that a newer
+        version of the file has replaced, where definitions are changed, and nothing on a draft that did not pass verification."""
+        if newer or result['ontology']['status'] != 'auto_built_verified':
             return []
-        result = found[0]
         p = normalize_proposal(result['ontology'])
         names = {t['key']: t.get('label') or t['key'] for t in p['object_types']}
         label = lambda key: names.get(key, key)
         relation_name = lambda r: next((f'{label(x["from"])} {x.get("label") or x["key"]} {label(x["to"])}' for x in p['relations'] if x['key'] == r['key']), r['key'])
-        return [*code_band(items), *relation_band((result.get('data_checks') or {}).get('relations') or [], (result.get('confirmation') or {}).get('decisions'), label, relation_name)]
+        return relation_band((result.get('data_checks') or {}).get('relations') or [], (result.get('confirmation') or {}).get('decisions'), label, relation_name)
 
     def code_reply(found):
         """The open items and answered ones, with what each code column's values mean (the page shows them beside answers and fields),
@@ -479,7 +492,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         newer = newer_run(found[0])   # the run of this line that is more recent than the one shown: definitions are changed there
         rules = repeat_rules(found[0])
         return {'items': items, 'answered': answered, 'settled': settled_definitions(found[0], profiles, enums, rules, {i['id'] for i in items}),
-                'bulk': bulk_band_of(found, items, newer),
+                'bulk': bulk_band_of(found[0], newer),
                 'meanings': meanings_of(profiles, enums), 'row_cap': ROW_CAP, 'repeat_rules': rules,
                 'review': review_list(found[0], newer), 'newer': newer, **view_state(found[0])}
 
@@ -1782,10 +1795,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                  f'「{profile["column"]}」被说成不是代码列')
 
         def bulk_approve(self):
-            """{"saved_as", "ids", "confirmed_by"}: approve together what is in the clean band (review_stack): code columns whose every
-            suggestion the data backs, relations whose check found every row connected. The band is worked out again here from the stored run;
-            an id that is not in it (a check failed, a suggestion is weak, it is already decided) refuses the whole request. All or none is
-            kept, each marked as decided in bulk. Answers with the lists as they now stand."""
+            """{"saved_as", "ids", "confirmed_by"}: approve together what is in the clean band (review_stack.relation_band): relations code
+            verifies completely. The band is worked out again from the stored run, and once more inside the write; an id that is not in it
+            refuses the whole request and writes nothing. What is written is the approved relations only, each marked bulk and signed by
+            the confirmer; what others judged before (their signatures, versions, the run's own confirmer) is left as it is. Answers with the
+            lists as they now stand."""
             try:
                 payload = self.read_json()
                 if payload is None:
@@ -1795,29 +1809,18 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if found is None:
                     raise ValueError('这份运行没有数据表')
                 signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
-                signer = (signer or '').strip() or None
+                if not isinstance(signer, str) or not signer.strip() or len(signer.strip()) > 40:
+                    raise ValueError('要写确认人，最多 40 个字')
+                signer = signer.strip()
                 ids = payload.get('ids')
-                if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
-                    raise ValueError('ids 要写成列表，至少一项')
-                result, bundle, graph = found
-                stale_check(result)
-                _, items, _ = card_for(found)
-                band = {b['id']: b for b in bulk_band_of(found, items, None)}
-                outside = [i for i in dict.fromkeys(ids) if i not in band]
+                if not isinstance(ids, list) or not ids or len(ids) > MAX_BULK or not all(isinstance(i, str) for i in ids):
+                    raise ValueError(f'ids 要写成列表，至少一项，最多 {MAX_BULK} 项')
+                stale_check(found[0])
+                ids = list(dict.fromkeys(ids))
+                in_band = {b['id'] for b in bulk_band_of(found[0], None)}
+                outside = [i for i in ids if i not in in_band]
                 if outside:
-                    raise ValueError('不在可以一起通过的范围里（有检查没通过、依据不够强，或已经定了）：' + '、'.join(outside))
-                picked = [band[i] for i in dict.fromkeys(ids)]
-                profiles, enums = code_state(result, bundle)
-                by_id = {p['id']: p for p in profiles}
-                changes = []
-                for b in (b for b in picked if b['kind'] == 'code_meaning'):
-                    profile = by_id[b['id']]
-                    merged = merge_enum((enums.get(profile['field']) or {}).get('values') or [], check_enum(profile, b['posted']))
-                    anchors = stored_anchors(code_anchor(profile, bundle['sources'][profile['source']]['records'], key_columns(result['ontology'], profile['source'])))
-                    changes.append((f'property:{memory_key(result)}:{profile["field"]}', 'confirmed', f'open_item:{profile["id"]}', signer, {'values': merged, 'mode': 'bulk'}, anchors))
-                relations = [b['id'].partition(':')[2] for b in picked if b['kind'] == 'relation']
+                    raise ValueError(f'有 {len(outside)} 件不在可以一起通过的范围里（有检查没通过、依据不够强，或已经定了）：{"、".join(outside[:5])}{"等" if len(outside) > 5 else ""}')
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
                 return
@@ -1825,23 +1828,47 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             try:
-                if relations:
-                    earlier = (result.get('confirmation') or {}).get('decisions') or {}
-                    decisions = {**earlier, 'types': earlier.get('types') or {}, 'relations': {**(earlier.get('relations') or {}), **{k: {'verdict': 'ok'} for k in relations}}}
-                    decided = {'decisions': decisions}
-                    self.write_confirmation(result, output_dir / name, decided, confirmed_reference(result['ontology'], decisions), signer, changes, frozenset(relations))
-                else:
-                    conn = open_workspace(output_dir / 'workspace.sqlite')
-                    try:
-                        set_element_states(conn, changes)
-                    finally:
-                        conn.close()
+                self.keep_bulk_relations(name, [i.partition(':')[2] for i in ids], ids, signer)
                 found = workspace_run(name)   # read again: what was kept is part of what every reader sees
+            except BandChanged as exc:
+                self.reply(409, {'error': str(exc)})
+                return
             except Exception as exc:
                 self.reply(500, {'error': f'批量通过没有保存：{type(exc).__name__}: {exc}'[:300]})
                 return
-            warning = recompute_warning(name, f'批量通过了 {len(picked)} 件') or views_warning(sync_run_views(found[0]))
+            warning = views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
+
+        def keep_bulk_relations(self, name, keys, ids, signer):
+            """Judge these relations right, in bulk, and nothing else. Inside the write lock the run is read again and the band worked out
+            again from it: if a relation is no longer in it (someone judged or changed something meanwhile) nothing is written. The run's
+            decisions get the approved relations added to what they were; the run's own confirmer and time, the signature and version of
+            every other judgement, stay as they are."""
+            path = output_dir / name
+            earlier = json.loads(path.read_text(encoding='utf-8'))
+            seen = {r['key']: r for r in (earlier.get('data_checks') or {}).get('relations') or []}
+            changes = [(f'relation:{memory_key(earlier)}:{k}', 'confirmed', None, signer, {'mode': 'bulk'}, stored_anchors(relation_anchor(seen[k]))) for k in keys]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                with element_state_writes(conn, changes) as rows:
+                    result = json.loads(path.read_text(encoding='utf-8'))   # as it is now, with the write lock held
+                    if newer_run(result) or not set(ids) <= {b['id'] for b in bulk_band_of(result, None)}:
+                        raise BandChanged('这期间清单变了，什么都没有通过；请再看一遍清单')
+                    confirmation = result['confirmation']
+                    decisions = {**confirmation['decisions'], 'relations': {**(confirmation['decisions'].get('relations') or {}), **{k: {'verdict': 'ok'} for k in keys}}}
+                    reference = confirmed_reference(result['ontology'], decisions)
+                    refs = output_dir / 'references'
+                    stored = refs / f"{memory_key(result)}.json"
+                    if stored.exists():   # the reference the next upload is compared with has these relations too; whose it is does not change
+                        self.archive_reference(refs, stored, result)
+                        stored.write_text(json.dumps({**json.loads(stored.read_text(encoding='utf-8')), 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
+                    elements = {**(confirmation.get('elements') or {}), **{f'relations:{k}': {c: rows[change[0]][c] for c in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
+                                                                           for k, change in zip(keys, changes)}}
+                    shown = result['evaluation'].get('reference')
+                    write_run(path, {**result, 'confirmation': {**confirmation, 'decisions': decisions, 'reference': reference, 'elements': elements},
+                                     'evaluation': {**result['evaluation'], **({'reference': {**shown, 'diff': compare_ontologies(parse_reference(reference), result['ontology'])}} if shown else {})}})
+            finally:
+                conn.close()
 
         def draft_code_meanings(self):
             """One call to the 字段释义员 for the code columns whose meanings nobody confirmed. The guesses are kept with
@@ -1998,34 +2025,35 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if earlier.get('decisions') == payload.get('decisions') and earlier.get('confirmed_by') == signer and 'elements' in earlier:
                 self.reply(200, result)   # the same judgement again (a retried call): nothing new to keep
                 return
-            try:
-                result = self.write_confirmation(result, result_path, payload, reference, signer)
+            try:   # the workspace rows are written first but kept only once the run files are written too: the two never disagree
+                rules = repeat_rules(result)   # read before the write below holds the workspace
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    on_file = element_ids(conn, 'object_type:') + element_ids(conn, 'relation:')
+                    changes = element_changes(memory_key(result), payload['decisions'], (result.get('data_checks') or {}).get('keys') or [], signer, on_file)
+                    seen = {r['key']: r for r in (result.get('data_checks') or {}).get('relations') or []}
+                    for name, change in list(changes.items()):   # a relation judged right keeps what the check found when it was judged
+                        kind, _, rkey = name.partition(':')
+                        if kind == 'relations' and change[1] == 'confirmed' and rkey in seen:
+                            changes[name] = (*change, None, stored_anchors(relation_anchor(seen[rkey])))
+                    with element_state_writes(conn, list(changes.values())) as rows:
+                        result = self.keep_confirmation(result, result_path, payload, reference, signer, rules, {
+                            name: {k: rows[change[0]][k] for k in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
+                            for name, change in changes.items()})
+                finally:
+                    conn.close()
             except Exception as exc:   # whatever failed, the person is told and nothing of the confirmation is kept
                 self.reply(500, {'error': f'确认没有保存：{type(exc).__name__}: {exc}'[:300]})
                 return
             self.reply(200, result)
 
-        def write_confirmation(self, result, result_path, payload, reference, signer, extra_changes=(), bulk=frozenset()):
-            """Keep a confirmation: the workspace rows are written first but kept only once the run files are written too, so the two
-            never disagree. `extra_changes` are element_state changes written in the same transaction (what a bulk approval confirms
-            beside its relations); `bulk` the relation keys judged right in one action with others, which keep that as their content.
-            Returns the run as it now stands; raises when nothing could be kept."""
-            rules = repeat_rules(result)   # read before the write below holds the workspace
-            conn = open_workspace(output_dir / 'workspace.sqlite')
-            try:
-                on_file = element_ids(conn, 'object_type:') + element_ids(conn, 'relation:')
-                changes = element_changes(memory_key(result), payload['decisions'], (result.get('data_checks') or {}).get('keys') or [], signer, on_file)
-                seen = {r['key']: r for r in (result.get('data_checks') or {}).get('relations') or []}
-                for name, change in list(changes.items()):   # a relation judged right keeps what the check found when it was judged
-                    kind, _, rkey = name.partition(':')
-                    if kind == 'relations' and change[1] == 'confirmed' and rkey in seen:
-                        changes[name] = (*change, {'mode': 'bulk'} if rkey in bulk else None, stored_anchors(relation_anchor(seen[rkey])))
-                with element_state_writes(conn, [*changes.values(), *extra_changes]) as rows:
-                    return self.keep_confirmation(result, result_path, payload, reference, signer, rules, {
-                        name: {k: rows[change[0]][k] for k in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
-                        for name, change in changes.items()})
-            finally:
-                conn.close()
+        def archive_reference(self, refs, stored, result):
+            """A changed judgement replaces the old one; keep the old one so it can still be read."""
+            if stored.exists():
+                old = json.loads(stored.read_text(encoding='utf-8'))
+                (refs / 'history').mkdir(exist_ok=True)
+                (refs / 'history' / f"{result['file']['sha256'][:8]}-{old['confirmed_at'].replace(':', '')}.json").write_text(
+                    json.dumps(old, ensure_ascii=False, indent=1), encoding='utf-8')
 
         def keep_confirmation(self, result, result_path, payload, reference, signer, rules, elements):
             """Write what a saved confirmation changes in the run files; returns the run as it now stands."""
@@ -2033,11 +2061,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             refs = output_dir / 'references'
             refs.mkdir(parents=True, exist_ok=True)
             stored = refs / f"{memory_key(result)}.json"
-            if stored.exists():   # a changed judgement replaces the old one; keep the old one so it can still be read
-                old = json.loads(stored.read_text(encoding='utf-8'))
-                (refs / 'history').mkdir(exist_ok=True)
-                (refs / 'history' / f"{result['file']['sha256'][:8]}-{old['confirmed_at'].replace(':', '')}.json").write_text(
-                    json.dumps(old, ensure_ascii=False, indent=1), encoding='utf-8')
+            self.archive_reference(refs, stored, result)
             stored.write_text(json.dumps(
                 {'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
             result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference, 'elements': elements}

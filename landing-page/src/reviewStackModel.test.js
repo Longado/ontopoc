@@ -99,7 +99,7 @@ test("an old decision brought back says who made it, what it was, and what chang
 });
 
 test("the bulk panel says how many and what stops an approval: nothing ticked, no confirmer, a name over 40 characters", () => {
-  assert.equal(bulkSummary([{}, {}, {}]), "有 3 件检查都过了、依据够强，可以一起通过");
+  assert.equal(bulkSummary([{}, {}, {}]), "有 3 件数据全部核对过了，可以一起通过");
   assert.equal(bulkLabel(2), "一起通过 2 件");
   assert.equal(bulkProblem([], "王工"), "先勾上要通过的");
   assert.equal(bulkProblem(["relation:a"], " "), "先填确认人");

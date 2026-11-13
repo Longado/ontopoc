@@ -14,7 +14,7 @@ export function BulkApprove({ band, client }) {
       <label><input type="checkbox" checked={!left.has(b.id)} onChange={() => toggle(b.id)} /><b>{b.title}</b><small className="pr-muted">{BULK_KIND[b.kind]}</small></label>
       <ul className="os-open-facts">{b.lines.map((l) => <li key={l}>{l}</li>)}</ul>
     </li>)}</ul>
-    <p className="pr-muted">通过后记成“批量确认”，和逐件判断分得开。有检查没过或依据不够强的不在这里，要逐件看。</p>
+    <p className="pr-muted">通过后记成“批量确认”，和逐件判断分得开。只放数据能全部核对的关系；代码含义是人对数据的解释，数据证明不了，要逐件看。只有你在这里通过的会记上你的名字，别人之前判过的不动。</p>
     <div className="os-code-save">
       <label>确认人<input value={client.by} maxLength={40} onChange={(e) => client.setBy(e.target.value)} /></label>
       <button type="button" className="pr-primary" disabled={client.busy || !client.can || Boolean(problem)} title={problem || client.why || undefined}
