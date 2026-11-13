@@ -20,6 +20,14 @@ export function parseRoute(hash) {
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
   if ((parts[0] === "account" || parts[0] === "users") && parts.length === 1) return { page: parts[0] };
   if (parts.length === 1 && Object.hasOwn(PLANNED, parts[0])) return { page: "planned", key: parts[0] };
+  if (parts[0] === "relations") {
+    if (parts.length === 1) return { page: "relations" };
+    if (parts.length === 2 && parts[1] === "new") return { page: "relationnew" };   // the service refuses a relation called new, so this address is never a relation
+    if (parts.length === 3 && parts[2] === "edit") return { page: "relationedit", id: parts[1] };
+    if (parts.length === 2) return { page: "relation", id: parts[1] };
+    return { page: "notfound" };
+  }
+  if (parts.length === 1 && (parts[0] === "confirm" || parts[0] === "permissions")) return { page: parts[0] };
   if (parts[0] === "types") {
     if (parts.length === 1) return { page: "types" };
     if (parts.length === 2 && parts[1] === "new") return { page: "typenew" };   // the service refuses a type called new, so this address is never a type
@@ -44,6 +52,10 @@ export function hrefFor(route) {
   if (route.page === "tasks" || route.page === "account" || route.page === "users") return `#/${route.page}`;
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "types") return "#/types";
+  if (route.page === "confirm" || route.page === "permissions" || route.page === "relations") return `#/${route.page}`;
+  if (route.page === "relationnew") return "#/relations/new";
+  if (route.page === "relation") return `#/relations/${encodeURIComponent(route.id)}`;
+  if (route.page === "relationedit") return `#/relations/${encodeURIComponent(route.id)}/edit`;
   if (route.page === "typenew") return "#/types/new";
   if (route.page === "typeedit") return `#/types/${encodeURIComponent(route.id)}/edit`;
   if (route.page === "type") return `#/types/${encodeURIComponent(route.id)}/${route.tab ?? "props"}${route.pageNo > 1 ? `?p=${route.pageNo}` : ""}`;
@@ -60,16 +72,15 @@ export const PLANNED = {
   home: ["首页", "一个提问框和最近的任务，还没做"],
   pipelines: ["管道", "把数据集连接、清洗成新的数据集，每一步看得到行数，还没做"],
   sources: ["数据源", "连接 MySQL、PostgreSQL，把库里的表读成数据集，还没做"],
-  relations: ["关系", "定义对象类型之间的关系，看每条关系连上了多少行，还没做"],
-  confirm: ["待确认", "逐条看模型的提议和数据检查，确认或退回，还没做"],
   qa: ["问答", "用已确认的定义回答业务问题，每个答案写明读了哪个版本，还没做"],
   agents: ["智能体", "给问答设定范围和说明，还没做"],
   boards: ["看板", "用已确认的指标做看板，还没做"],
   lineage: ["血缘", "从数据源到应用，看每一步用了什么，还没做"],
 };
 
-const BUILT = { tasks: "#/tasks", datasets: "#/datasets", types: "#/types", users: "#/users" };
-const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT });
+const BUILT = { tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", confirm: "#/confirm", users: "#/users", permissions: "#/permissions" };
+const BUILDERS = ["confirm"];   // shown to builders and admins only: a viewer has nothing to confirm
+const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
 
 export const NAV = [
   { items: [item("home", "首页"), item("tasks", "任务")] },
@@ -80,8 +91,8 @@ export const NAV = [
 ];
 
 /** What only an admin sees. */
-export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户")] }];
+export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户"), item("permissions", "权限")] }];
 
 /** Which navigation item a route lives under. */
 export const navKeyOf = (route) =>
-  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit"].includes(route.page) ? "types" : route.page === "account" ? null : route.page;
+  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit"].includes(route.page) ? "types" : route.page === "account" ? null : ["relation", "relationnew", "relationedit"].includes(route.page) ? "relations" : route.page;

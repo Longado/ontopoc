@@ -19,7 +19,7 @@ import re
 
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
-from ontology_poc_generator.type_access import can_access
+from ontology_poc_generator.type_access import can_access, visible_to
 from ontology_poc_generator.workspace_store import check_key, current_dataset, element_state_writes, log_line
 
 TYPE_PREFIX = 'objtype:'
@@ -586,7 +586,7 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     props = [{**p, 'key': p['column'] in content['key'], 'meanings': _meaning_view(conn, content, p, cols, user) if p['enum'] else None} for p in content['properties']]
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'],
             'dataset_version': dataset['version'] if dataset else None, 'rows': dataset['rows_stored'] if dataset else None, 'key': content['key'],
-            'properties': props, **_state_view(conn, row, user),
+            'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),
             'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items()]}
 
 

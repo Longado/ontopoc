@@ -162,6 +162,7 @@ a.button.secondary:hover { background: var(--side); }
 .state { font-size: var(--small); font-weight: 600; color: var(--muted); white-space: nowrap; }
 .state-confirmed { color: #2b7a4b; }
 .state-needs_look { color: #a35f00; }
+.state-rejected { color: var(--bad); }
 .reason { margin: 12px 0; max-width: 640px; }
 .reason p { margin-top: 4px; color: var(--ink); }
 .warn { color: #a35f00; }
@@ -172,6 +173,21 @@ table.log td { white-space: normal; }
 table.log td.keep { white-space: nowrap; }
 table input[type="text"] { min-width: 160px; }
 td input[type="checkbox"] { margin: 0; }
+
+/* relations, 待确认, permissions */
+.nav a .count { float: right; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+.connected .big { font-size: var(--title); font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar { height: 4px; background: var(--hover); border-radius: 2px; margin: 8px 0 12px; max-width: 480px; }
+.bar span { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.end { display: flex; flex-direction: column; }
+.cards { display: flex; flex-direction: column; gap: 24px; max-width: 760px; }
+.card { border-bottom: 0.5px solid var(--line); padding-bottom: 20px; }
+.card .page-head { margin-bottom: 4px; }
+.item-title { font-size: var(--text); }
+.card .checks { margin: 12px 0; }
+.inline.wide { max-width: 640px; }
+label.check { display: inline-flex; align-items: center; gap: 6px; }
+table.people th, table.people td { text-align: left; padding-right: 20px; }
 
 /* narrow screens: the menu folds under the name */
 @media (max-width: 760px) {

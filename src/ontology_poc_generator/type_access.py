@@ -26,6 +26,12 @@ def allowed_ids(conn, type_element_id: str) -> list[int] | None:
     return None if row is None else json.loads(row[0])
 
 
+def visible_to(conn, type_element_id: str) -> str | list[str]:
+    """'everyone', or the names of the people on the list (for a page that says who sees the type)."""
+    allowed = allowed_ids(conn, type_element_id)
+    return 'everyone' if allowed is None else _names(conn, allowed)
+
+
 def can_access(conn, type_element_id: str, user: dict | None) -> bool:
     """Whether this person may see the type at all (a viewer's need for it to be confirmed is checked by the caller). The local no-sign-in
     person and admins see everything."""

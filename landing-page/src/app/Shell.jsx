@@ -1,9 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AccountPage } from "./AccountPage.jsx";
+import { WORKSPACE_CHANGED, getQueue } from "./api.js";
 import { useAuth } from "./Auth.jsx";
-import { isAdmin, roleLabel } from "./authModel.js";
+import { canBuild, isAdmin, roleLabel } from "./authModel.js";
+import { ConfirmPage } from "./ConfirmPage.jsx";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
+import { PermissionsPage } from "./PermissionsPage.jsx";
+import { RelationForm } from "./RelationForm.jsx";
+import { RelationPage, RelationsPage } from "./RelationsPage.jsx";
+import { countText } from "./relationModel.js";
 import { TasksPage } from "./TasksPage.jsx";
 import { TypeForm } from "./TypeForm.jsx";
 import { TypePage } from "./TypePage.jsx";
@@ -23,17 +29,40 @@ function UserBox({ onPick }) {
   );
 }
 
-function Navigation({ active, open, onPick }) {
+/** How many items of 待确认 this person may confirm now; read again whenever the page changes, so a confirmation made anywhere is counted. */
+function useQueueCount(route) {
+  const { user } = useAuth();
+  const [count, setCount] = useState(0);
+  const [round, setRound] = useState(0);
+  const mayBuild = canBuild(user);
+  useEffect(() => {
+    const again = () => setRound((n) => n + 1);
+    window.addEventListener(WORKSPACE_CHANGED, again);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, again);
+  }, []);
+  useEffect(() => {
+    if (!mayBuild) return undefined;
+    let live = true;
+    getQueue().then((q) => live && setCount(q.count), () => live && setCount(0));
+    return () => {
+      live = false;
+    };
+  }, [mayBuild, route.page, route.id, route.name, round]);
+  return count;
+}
+
+function Navigation({ active, open, onPick, count }) {
   const { user } = useAuth();
   return (
     <nav className={`nav${open ? " open" : ""}`} aria-label="主导航">
       {[...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])].map((group, i) => (
         <div className="nav-group" key={group.label ?? i}>
           {group.label && <p className="nav-heading">{group.label}</p>}
-          {group.items.map((item) => (
+          {group.items.filter((item) => !item.builders || canBuild(user)).map((item) => (
             <a key={item.key} href={item.href} className={`${item.built ? "" : "off"}${item.key === active ? " active" : ""}`.trim()}
               aria-current={item.key === active ? "page" : undefined} onClick={onPick}>
               {item.label}
+              {item.key === "confirm" && countText(count) && <span className="count" aria-label={`${count} 项等你确认`}>{countText(count)}</span>}
             </a>
           ))}
         </div>
@@ -75,6 +104,7 @@ export function Shell() {
   const { user } = useAuth();
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
   const [menu, setMenu] = useState(false);
+  const queueCount = useQueueCount(route);
   useEffect(() => {
     if (!window.location.hash) window.location.replace("#/datasets");
     const onChange = () => setRoute(parseRoute(window.location.hash));
@@ -95,7 +125,7 @@ export function Shell() {
           <strong className="brand">OntoPoc</strong>
           <button className="plain menu-button" onClick={() => setMenu(!menu)} aria-expanded={menu}>菜单</button>
         </div>
-        <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} />
+        <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} />
       </aside>
       {route.page === "datasets" && <DatasetList />}
       {route.page === "dataset" && <DatasetPage route={route} />}
@@ -104,10 +134,16 @@ export function Shell() {
       {route.page === "type" && <TypePage route={route} />}
       {route.page === "typenew" && <TypeForm key="new" />}
       {route.page === "typeedit" && <TypeForm key={route.id} id={route.id} />}
+      {route.page === "relations" && <RelationsPage />}
+      {route.page === "relation" && <RelationPage route={route} />}
+      {route.page === "relationnew" && <RelationForm key="new" />}
+      {route.page === "relationedit" && <RelationForm key={route.id} id={route.id} />}
+      {route.page === "confirm" && (canBuild(user) ? <ConfirmPage /> : <Forbidden />)}
+      {route.page === "permissions" && (isAdmin(user) ? <PermissionsPage /> : <Forbidden />)}
       {route.page === "account" && <AccountPage />}
       {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
       {route.page === "planned" && <Planned route={route} />}
-      {!["datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "account", "users", "planned"].includes(route.page) && <NotFound />}
+      {!["datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "relation", "relationnew", "relationedit", "confirm", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
     </div>
   );
 }

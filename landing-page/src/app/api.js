@@ -23,7 +23,13 @@ async function request(path, options = {}) {
   return body;
 }
 
-const send = (path, payload = {}) => request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+export const WORKSPACE_CHANGED = "workspace-changed";   // what the navigation listens for, to count what waits for this person again
+
+const send = (path, payload = {}) =>
+  request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then((body) => {
+    if (path.startsWith("/api/workspace/")) window.dispatchEvent(new Event(WORKSPACE_CHANGED));
+    return body;
+  });
 
 // accounts
 export const getMe = () => request("/api/auth/me");
@@ -77,6 +83,24 @@ export const proposeMeanings = (id, column, values) => send("/api/workspace/type
 /** Confirms the type (without `column`) or the meanings of one code column, as the version the person saw. */
 export const confirmType = (id, version, column = null) => send("/api/workspace/types/confirm", { id, version, ...(column ? { column } : {}) });
 export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
+
+// relations, the 待确认 queue, who sees which type
+const relationPath = (id, tail = "") => `/api/workspace/relations/${encodeURIComponent(id)}${tail}`;
+export const getRelations = () => request("/api/workspace/relations").then((b) => b.relations);
+export const getRelation = (id) => request(relationPath(id));
+export const getRelationLog = (id) => request(relationPath(id, "/log")).then((b) => b.log);
+/** The types the person may see with their dataset's columns: what a relation's two ends are picked from. */
+export const getRelationForm = () => request("/api/workspace/relation-form").then((b) => b.types);
+export const createRelation = (payload) => send("/api/workspace/relations", payload);
+export const updateRelation = (payload) => send("/api/workspace/relations/update", payload);
+/** {items, count}: everything waiting to be judged that this person may see, and how many of it they may confirm now. */
+export const getQueue = () => request("/api/workspace/queue");
+/** Confirms one queue item as the version the person saw; a relation also takes `seen`, the connected-row counts they read. */
+export const confirmItem = (element, version, seen = undefined) => send("/api/workspace/queue/confirm", { element, version, ...(seen ? { seen } : {}) });
+export const sendBack = (element, version, reason) => send("/api/workspace/queue/send-back", { element, version, reason });
+export const getPermissions = () => request("/api/workspace/permissions");
+/** `visibleTo`: "everyone" or the ids of the people who may see the type. */
+export const setPermission = (type, visibleTo) => send("/api/workspace/permissions", { type, visible_to: visibleTo });
 
 /** A file's bytes as base64, which is how the service takes them. */
 export async function fileToBase64(file) {

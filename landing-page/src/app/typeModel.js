@@ -1,7 +1,7 @@
 // The words of the object type pages, as plain functions of what the service sends, so they can be tested without a browser.
 import { timeText } from "./format.js";
 
-export const STATE_LABEL = { proposed: "已提出", checked: "已检查", confirmed: "已确认", needs_look: "需再看" };
+export const STATE_LABEL = { proposed: "已提出", checked: "已检查", confirmed: "已确认", needs_look: "需再看", rejected: "已退回" };
 
 /** The state chip's word. A model's draft says so; a code column nobody gave meanings to has no state. */
 export function stateText(item) {
@@ -15,6 +15,7 @@ const versionsText = (on) => Object.entries(on ?? {}).map(([name, v]) => `${name
 export function stateLine(item, noun) {
   const confirmed = item.confirmed_by ? `${item.confirmed_by} 于 ${timeText(item.confirmed_at)} 确认，依据 ${versionsText(item.confirmed_on)}` : "";
   if (item.state === "confirmed") return confirmed;
+  if (item.state === "rejected") return `${item.proposed_by ? `${item.proposed_by} 提出的，` : ""}被退回了；改好重新保存，再由另一位确认`;
   if (item.state === "needs_look") return confirmed ? `原来是 ${confirmed}；之后数据变了，要再看一次` : `${noun}需要再看一次`;
   if (item.model_draft) return `模型写的草稿，还没有人看过，确认前问答和智能体不会用它`;
   if (item.state === "proposed" || item.state === "checked") {
@@ -35,13 +36,15 @@ const DATASET_LINE = [
 
 /** One line of the log as a sentence: {who, text}. */
 export function logText(e) {
-  const what = e.element === "meaning" ? `“${e.column}”的含义` : "对象类型";
+  const what = e.element === "meaning" ? `“${e.column}”的含义` : e.element === "relation" ? "关系" : "对象类型";
   if (e.element === "dataset") {
     const hit = DATASET_LINE.map(([re, say]) => [re.exec(e.change), say]).find(([m]) => m);
     return { who: e.who, text: hit ? hit[1](hit[0]) : e.change };
   }
   if (e.change === "needs_look") return { who: "系统", text: `${what}需再看：${e.reason}${e.caused_by ? `（${e.caused_by} 的上传）` : ""}` };
   if (e.change === "confirmed") return { who: e.who, text: `确认了${what}${e.self_confirmed ? "（自己提的；只有一位构建者，两人确认没有生效）" : ""}` };
+  if (e.change === "sent_back") return { who: e.who, text: `退回了${what}：${e.reason}` };
+  if (e.change === "access_changed") return { who: e.who, text: `改了可见范围：${e.visible_to === "everyone" ? "所有人" : e.visible_to?.length ? e.visible_to.join("、") : "只有管理员"}` };
   if (e.change === "edited") return { who: e.who, text: `改了名称或说明：${e.text}` };
   if (e.change === "checked" || e.change === "proposed") return { who: e.who, text: `提出了${what}` };
   return { who: e.who, text: `${what}：${e.change}` };
