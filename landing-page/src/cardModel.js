@@ -16,19 +16,14 @@ export const CARD_VOCAB = {
 export const saysOf = (kind, value) => CARD_VOCAB[kind]?.find(([v]) => v === value)?.[1] || "";
 
 const SAME_OR_NOT = [["distinct", "是不同的对象"], ["same", "是同一个"]];
-/** The choices a thing to settle offers; every other answerable kind is answered in words only. */
+/** The choices a thing to settle offers of its own; the general replies (confirm, wrong, not applicable, exception) are the service's, see reviewStackModel. */
 export const ITEM_CHOICES = {
   unlinked: [["expected", "本来就没有对应，属正常"], ["incomplete", "数据没导全"]],
   same_name: SAME_OR_NOT,
   merged: SAME_OR_NOT,
   name_vs_calc: [["rename", "名字说错了，按实际算法改名"], ["name_right", "名字是对的，是数据算得不对"]],
 };
-const WORDS_ONLY = ["found_elsewhere", "unstable", "check_finding", "data_gap", "data_gaps", "unanswered", "name_source", "name_by_view", "name_values"];
-// model_filter is settled by dropping the condition, unjudged by judging each one, card_blank by filling the card, code_meaning by writing the meanings
-const ANSWERABLE = [...Object.keys(ITEM_CHOICES), ...WORDS_ONLY];
-
 export const itemChoices = (item) => ITEM_CHOICES[item.kind] || [];
-export const canAnswerItem = (item) => Boolean(item.id) && ANSWERABLE.includes(item.kind);
 
 // complete:{table}|{key columns}[|{where conditions}]: the table is what comes before the first bar
 const sourceOfComplete = (id) => id.slice("complete:".length).split("|")[0];
@@ -132,29 +127,12 @@ export function confirmedCells(card) {
     lines: cells.filter((c) => c.table === source).map((c) => ({ name: c.name, says: c.answer.says, by: c.answer.by, basis: c.answer.basis || "", note: c.answer.note || "" })) }));
 }
 
-/** What answering a thing to settle sends: the item's answer alone. For an unlinked one the client says was not all
- *  imported, the service marks the other end's objects as only partly there, and takes that back if the answer changes. */
-export function itemAnswer(item, form) {
-  const [text, basis] = [form.text.trim(), form.basis.trim()];
-  return { items: [{ id: item.id, ...(form.choice ? { choice: form.choice } : {}), ...(text ? { text } : {}), ...(basis ? { basis } : {}) }] };
-}
-
 /** What saving the answer will also do on the card, said beside the form: "" when it does nothing there. `answer` is the old one. */
 export function linkedHint(item, form, answer = null) {
   if (item.kind !== "unlinked" || !item.complete_id) return "";
   if (form.choice === "incomplete") return "另一端的对象会同时在口径卡上记成“数据里只有一部分”。";
   return answer?.choice === "incomplete" ? "口径卡上那一格如果是这条答复记的，会一起清掉。" : "";
 }
-
-/** What stops an answer from being saved, in words; "" when it can go. */
-export function itemProblem(item, form, by) {
-  if (byProblem(by)) return byProblem(by);
-  if (form.choice || form.text.trim()) return "";
-  return itemChoices(item).length ? "选一项，或写下客户怎么答的" : "写下客户怎么答的";
-}
-
-/** The form for changing an answer starts from the old one. */
-export const itemForm = (answer) => ({ choice: answer?.choice || "", text: answer?.text || "", basis: answer?.basis || "" });
 
 /** The things the client has answered: the question as it was asked then, what the answer says, and who gave it. */
 export const answeredRows = (answered) => answered.map((item) => ({ id: item.id, item, asked: item.answer.asked || item.ask,

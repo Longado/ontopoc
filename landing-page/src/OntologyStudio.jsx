@@ -18,16 +18,17 @@ import { cardinalityLabel, cardinalityLine, formOf } from "./ontologyHandoverMod
 import { folderLabel } from "./runLibraryModel.js";
 import { FillBar, ObjectCards, ObjectDetail, SubLayout, TypeChip } from "./ObjectPages.jsx";
 import { InstanceGraph } from "./InstanceGraph.jsx";
-import { CardSection, AnswerForm } from "./CardSection.jsx";
-import { PIPELINE_EXPORT, answeredRows, canAnswerItem, cardBody, cardEvidence, draftOf, editBasis, editCell, itemAnswer, pipelineUrl, readAnswerer, rememberAnswerer } from "./cardModel.js";
+import { CardSection } from "./CardSection.jsx";
+import { PIPELINE_EXPORT, answeredRows, cardBody, cardEvidence, draftOf, editBasis, editCell, pipelineUrl, readAnswerer, rememberAnswerer } from "./cardModel.js";
 import { derivedCard, editedLabel, elsewhereLine, mustExplain, noteHint, queryCanHint, reasonView, reviewPoints, statusPill } from "./answerModel.js";
-import { dropFor, openItemsEmpty, relabelGroups, reviewStamp } from "./openItemsModel.js";
+import { openItemsEmpty, relabelGroups, reviewStamp } from "./openItemsModel.js";
 import { postAndReread } from "./codeSaveModel.js";
 import { PipelineCard } from "./PipelineCard.jsx";
 import { ViewsCard } from "./ViewsCard.jsx";
 import { pipelineSources, pipelineTables, storedPipelineTables } from "./pipelineModel.js";
-import { CodeMeaningForm, CodeMeanings } from "./CodeMeaningForm.jsx";
-import { RepeatRuleForm } from "./RepeatRuleForm.jsx";
+import { CodeMeanings } from "./CodeMeaningForm.jsx";
+import { ReviewStack } from "./ReviewStack.jsx";
+import { decidedHow } from "./reviewStackModel.js";
 import { RulesView } from "./RulesView.jsx";
 import { rulesTile } from "./rulesModel.js";
 import { earlierVersionOf, versionRows } from "./versionModel.js";
@@ -826,46 +827,19 @@ function QaSection({ run, questions, onPath, askRef, place }) {
   </>;
 }
 
-/** 要确认的事: what the service found that only the client can settle, each with the way to its evidence. */
-function OpenItemCard({ index, item, run, onGo, requery, client }) {
-  const [facts, toggle] = useFirst(item.facts || [], 5);
-  const [answering, setAnswering] = useState(false);
-  const drop = dropFor(run, item);
-  const mine = requery.question === item.question;
-  return <li className="os-open-item">
-    <span className="os-open-no" aria-hidden="true">{index}</span>
-    <div className="os-open-body">
-      <p className="os-open-ask"><b>{item.ask}</b>{item.from_model && <em className="os-chip-note" title="这一条是模型说的，代码没有核对过">模型的说法</em>}</p>
-      {item.kind === "code_meaning" ? <CodeMeaningForm item={item} client={client} /> : <>
-        {facts.length > 0 && <ul className="os-open-facts">{facts.map((f, i) => <li key={i}>{f}</li>)}</ul>}
-        {toggle}
-        {item.kind === "repeated_key" && <RepeatRuleForm item={item} client={client} />}</>}
-      <div className="os-open-actions">
-        <button type="button" className="os-graph-link" onClick={() => onGo(item.target)}>看依据 →</button>
-        {drop && <button type="button" className="os-graph-link" disabled={!requery.can || requery.busy} title={requery.can ? "不再加这个条件，由代码重算这道题，不调模型" : requery.why}
-          onClick={() => requery.onRequery({ question: item.question }, drop)}>{requery.busy && mine ? "重算中…" : "去掉这个条件重算"}</button>}
-        {canAnswerItem(item) && !answering && <button type="button" className="os-graph-link" disabled={!client.can} title={client.can ? undefined : client.why} onClick={() => setAnswering(true)}>记下客户的回答</button>}
-      </div>
-      {answering && <AnswerForm item={item} client={client} onDone={() => setAnswering(false)} />}
-      {requery.error && mine && <p role="alert" className="pr-error">{requery.error}</p>}
-    </div>
-  </li>;
-}
-
-/** 客户已答复: the things the client has answered, folded away from the list but one click off, each changeable. */
+/** 已定: what has been decided, folded away from the stack but one click off. A decision a person made on a card can be taken back,
+ *  and then its card is in the stack again. Those made where a definition is changed (meanings, a repeat rule) are listed only. */
 function AnsweredList({ list, client }) {
-  const [changing, setChanging] = useState(null);
-  const rows = answeredRows(list);
+  const rows = [...answeredRows(list.answered || []).map((r) => ({ ...r, back: true })), ...answeredRows(list.settled || [])];
   if (!rows.length) return null;
   return <details className="os-answered">
-    <summary>客户已答复（{rows.length}）</summary>
+    <summary>已定（{rows.length}）</summary>
     <ul className="os-answered-list">{rows.map((r) => <li key={r.id} className="os-open-item">
       <div className="os-open-body">
         <p className="os-open-ask">{r.asked}</p>
-        <p className="os-answered-says"><b>{r.says}</b><small className="pr-muted">{r.stamp}</small></p>
-        {changing === r.id
-          ? <AnswerForm item={r.item} answer={r.item.answer} client={client} onDone={() => setChanging(null)} />
-          : <div className="os-open-actions"><button type="button" className="os-graph-link" disabled={!client.can} title={client.can ? undefined : client.why} onClick={() => setChanging(r.id)}>改答复</button></div>}
+        <p className="os-answered-says"><b>{r.says}</b><small className="pr-muted">{[r.stamp, decidedHow(r.item.answer)].filter(Boolean).join(" · ")}</small></p>
+        {r.back && <div className="os-open-actions"><button type="button" className="os-graph-link" disabled={!client.can || client.busy} title={client.can ? "收回这个答复，它回到待确认的事里" : client.why}
+          onClick={() => client.onReply({ id: r.id, reply: "reopen" })}>重新判断</button></div>}
       </div>
     </li>)}</ul>
   </details>;
@@ -899,17 +873,18 @@ function ReviewList({ review, onGo, client }) {
 
 function OverviewSection({ run, list, onGo, onDownload, requery, client }) {
   const items = list?.items;
+  const decided = (list?.answered?.length ?? 0) + (list?.settled?.length ?? 0);
   return <section className="pr-card os-open">
-    <div className="pr-card-head"><h2>{items ? `${items.length} 件要和客户确认的事` : "要和客户确认的事"}</h2>
+    <div className="pr-card-head"><h2>要和客户确认的事</h2>
       <button type="button" className="os-icon-btn" onClick={onDownload} title="下载会议纪要：一页 Markdown，要确认的事排在最前面">⤓ 下载纪要</button></div>
     <p className="pr-muted">由代码从这次的数据、问答和确认记录里汇总；标着“模型的说法”的是模型说的，代码没核对过。</p>
     {!run.saved_as && <p className="pr-muted">示例结果没有这份清单，上传自己的文件后由本机服务算。</p>}
     {run.saved_as && !list && <p className="pr-muted">正在读取…</p>}
     {list?.error && <p role="alert" className="pr-error">{list.error}</p>}
     <ReviewList review={list?.review} onGo={onGo} client={client} />
-    {items && !items.length && <p className="pr-muted">{openItemsEmpty(run, list.answered?.length)}</p>}
-    {items?.length > 0 && <ol className="os-open-list">{items.map((item, i) => <OpenItemCard key={item.id || i} index={i + 1} item={item} run={run} onGo={onGo} requery={requery} client={client} />)}</ol>}
-    {list?.answered?.length > 0 && <AnsweredList list={list.answered} client={client} />}
+    {items && !items.length && <p className="pr-muted">{openItemsEmpty(run, decided)}</p>}
+    {items?.length > 0 && <ReviewStack run={run} items={items} decided={decided} onGo={onGo} requery={requery} client={client} />}
+    {list && decided > 0 && <AnsweredList list={list} client={client} />}
   </section>;
 }
 
@@ -960,7 +935,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
         () => set(null, unreachable));
     };
     read("清单", "open-items", (b) => Array.isArray(b.items),
-      (body, error) => live && setOpenItems({ saved_as: run.saved_as, items: body?.items ?? null, answered: Array.isArray(body?.answered) ? body.answered : [], meanings: body?.meanings ?? null, views: body?.views ?? [], viewTables: body?.view_tables ?? [], viewsError: body?.views_error || "", rowCap: body?.row_cap ?? null, repeatRules: body?.repeat_rules ?? {}, newer: body?.newer ?? null, review: Array.isArray(body?.review) ? body.review : [], error }));
+      (body, error) => live && setOpenItems({ saved_as: run.saved_as, items: body?.items ?? null, answered: Array.isArray(body?.answered) ? body.answered : [], settled: Array.isArray(body?.settled) ? body.settled : [], meanings: body?.meanings ?? null, views: body?.views ?? [], viewTables: body?.view_tables ?? [], viewsError: body?.views_error || "", rowCap: body?.row_cap ?? null, repeatRules: body?.repeat_rules ?? {}, newer: body?.newer ?? null, review: Array.isArray(body?.review) ? body.review : [], error }));
     read("口径卡", "card", (b) => Array.isArray(b.tables),
       (body, error) => live && setCardState({ saved_as: run.saved_as, card: body, error }));
     return () => { live = false; };
@@ -1122,7 +1097,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     setCardSaving(true); setCardSaveError(null);
     try {
       const { lists, run: again, warning } = await postAndReread({ url, body, runName: run.saved_as });
-      setOpenItems({ saved_as: run.saved_as, items: lists.items, answered: lists.answered, meanings: lists.meanings ?? null, views: lists.views ?? [], viewTables: lists.view_tables ?? [], viewsError: lists.views_error || "", rowCap: lists.row_cap ?? null, repeatRules: lists.repeat_rules ?? {}, newer: lists.newer ?? null, review: lists.review ?? [], error: "" });
+      setOpenItems({ saved_as: run.saved_as, items: lists.items, answered: lists.answered, settled: lists.settled ?? [], meanings: lists.meanings ?? null, views: lists.views ?? [], viewTables: lists.view_tables ?? [], viewsError: lists.views_error || "", rowCap: lists.row_cap ?? null, repeatRules: lists.repeat_rules ?? {}, newer: lists.newer ?? null, review: lists.review ?? [], error: "" });
       update(again);   // the answers were worked out again: show them
       if (warning) setCardSaveError({ key, text: warning });
       return true;
@@ -1188,7 +1163,7 @@ export function OntologyStudio({ request = null, runs = null, section = null, na
     onDerive: (item) => post("/api/ontology/derived", { saved_as: run.saved_as, derive: item.derive }, setDeriving, setDeriveError), deriving, deriveError };
   const cardWhy = run?.saved_as ? serviceBlock(health, false) : "示例结果不能保存";   // saving a card needs the service, not the model's key
   const client = { by: answerer, setBy: changeAnswerer, busy: cardSaving, error: cardSaveError, can: !cardWhy, why: cardWhy,
-    onSave: (item, form) => saveClient(itemAnswer(item, form), item.id), onSaveCells: (cells) => saveClient({ cells }, "card"),
+    onReply: (entry) => saveClient({ items: [entry] }, entry.id), onSaveCells: (cells) => saveClient({ cells }, "card"),
     onSaveCodes: (item, values) => postCodes("/api/ontology/code-meanings", { id: item.id, values, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
     onSaveRepeat: (item, rule) => postCodes("/api/ontology/repeat-rules", { id: item.id, ...rule, ...(answerer.trim() ? { confirmed_by: answerer.trim() } : {}) }, item.id),
     newer: openList?.newer ?? null,

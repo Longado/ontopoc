@@ -184,7 +184,8 @@ class UnlinkedTests(unittest.TestCase):
             'kind': 'unlinked', 'from_model': False, 'relation': 'spend_contract', 'id': 'unlinked:spend_contract', 'complete_id': 'complete:contracts|award_key',
             'ask': '支出行（spend）1,921 行里有 1,308 行没连上“支出行 对应 合同授标”。是这些行本来就没有对应的合同授标，还是数据没导全？',
             'facts': ['没连上任何对象的支出行，例如 10071|FY2025P03、10078|FY2025P03', '其中 1,308 行用来连的编号是空的'],
-            'target': {'tab': 'graph', 'relation': 'spend_contract'}})
+            'target': {'tab': 'graph', 'relation': 'spend_contract'}, 'check': {'status': 'failed', 'text': '连得上 613 / 1,921 行'},
+            'anchor': {'noun': '内容', 'members': [], 'counts': {'没连上的行': 1308}, 'total': 1921}})
         self.assertEqual(items[1]['relation'], 'contract_vehicle')
         self.assertEqual(items[1]['ask'], '合同授标（contracts）365 行里有 207 行没连上“合同授标 属于 母合同”。是这些行本来就没有对应的母合同，还是数据没导全？')
         self.assertEqual(items[1]['facts'], ['其中 207 行用来连的编号是空的'])
@@ -707,7 +708,7 @@ class AnswerTests(unittest.TestCase):
     def test_a_choice_and_a_few_words_are_kept_with_the_ask_they_answered(self):
         got = self.check({'id': 'unlinked:spend_contract', 'choice': 'incomplete', 'text': ' 合同授标只导了 FY25Q1 的 ', 'basis': '10-27 会议'})
         self.assertEqual(got, {'unlinked:spend_contract': {
-            'choice': 'incomplete', 'text': '合同授标只导了 FY25Q1 的', 'by': '张三', 'basis': '10-27 会议', 'at': AT, 'asked': self.LISTED[0]['ask']}})
+            'choice': 'incomplete', 'text': '合同授标只导了 FY25Q1 的', 'by': '张三', 'basis': '10-27 会议', 'at': AT, 'asked': self.LISTED[0]['ask'], 'mode': 'single'}})
 
     def test_a_choice_alone_is_enough_and_so_are_words_alone_where_there_is_no_choice(self):
         got = self.check({'id': 'unlinked:contract_vehicle', 'choice': 'expected'}, {'id': 'data_gaps', 'text': '客户下周补'})

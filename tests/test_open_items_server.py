@@ -127,7 +127,7 @@ class RepeatRuleRouteTests(unittest.TestCase):
                 [row] = conn.execute("SELECT state, evidence_ref, confirmed_by, content_json FROM element_state WHERE element_id LIKE 'repeat_rule:%'").fetchall()
             finally:
                 conn.close()
-            self.assertEqual(row, ('confirmed', 'open_item:repeated_key:customer.客户', '王工', '{"covers": ["KH012"], "rule": "keep_both"}'))
+            self.assertEqual(row, ('confirmed', 'open_item:repeated_key:customer.客户', '王工', '{"covers": ["KH012"], "mode": "single", "rule": "keep_both"}'))
         self.run_with(check)
 
     def test_keep_latest_needs_an_ordering_column_and_every_reader_then_reads_the_chosen_row_and_a_rule_can_be_taken_back(self):

@@ -66,17 +66,12 @@ export function reviewStamp(r) {
   return `${r.confirmed_by || "有人"}${day ? ` ${day}` : ""} 确认过，换了新数据后对不上`;
 }
 
-// A repeated key's item: the three ways the rows can be read, and what is needed to post one.
+// A repeated key's item: the three ways the rows can be read (the stack shows the hint beside each), and what is posted for one.
 export const REPEAT_CHOICES = [
   ["keep_both", "每一行都留", "它们是同一个对象的几条记录，每一行都算数"],
   ["keep_latest", "只留最新的一行", "按表里的一列定哪一行最新，其余几行不再列出"],
   ["data_error", "当作数据错误", "这个编号不该重复，等客户改了数据再用"],
 ];
-
-export function repeatProblem(form) {
-  if (!form.rule) return "先选一种处理办法";
-  return form.rule === "keep_latest" && !form.column ? "选一列，按它的大小定哪一行最新" : "";
-}
 
 export const repeatBody = (form) => (form.rule === "keep_latest" ? { rule: "keep_latest", column: form.column } : { rule: form.rule });
 

@@ -63,7 +63,7 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 
 口径卡是每张上传的表一张：代码能算的先算好（一行按哪几列唯一、日期列的最早最晚和空值），只有人能答的留空，也就是一行是什么、日期列是什么时间、数值列能不能相加、对象在数据里全不全。`get_card` 读整张卡，每一格有稳定的 id，已答复的格带 `answer`（`value`、`says`、`by`、`basis`、`at`）。文档运行没有卡，返回空的 `tables`。
 
-`save_card` 记的是人说的客户答复：`by`（答复人）和 `basis`（出处）都来自人，不替人填，不替客户答，也不按列名猜。`cells` 记卡上的格（`value` 为 null 是清空），`items` 记“要确认的事”里能答复的事（`model_filter`、`unjudged`、`card_blank` 不能用答复关掉）。校验不过整次不写，服务的 400 说明作为工具错误原样返回；写完服务会按新卡重新核对这次运行的验收题。返回 `{card, items, answered}`。
+`save_card` 记的是人说的客户答复：`by`（答复人）和 `basis`（出处）都来自人，不替人填，不替客户答，也不按列名猜。`cells` 记卡上的格（`value` 为 null 是清空），`items` 记“要确认的事”里能答复的事（`model_filter`、`unjudged`、`card_blank` 不能用答复关掉）：每条写 `choice`（这件事自己的选项）或 `reply`（`confirm`、`wrong`、`not_applicable`、`exception`，各件事只收它的菜单里有的；代码含义和重复编号的确认走各自的接口，这里只收 `exception`），`reply` 为 `reopen` 是收回答复；`mode` 写 `single`（默认）或 `bulk`，记下是逐件判断还是批量确认；`not_applicable` 和 `exception` 还记着这件事当时依据的数据，再上传时数据变了（出现新的取值或编号，占比变了）它就重新出现，并写明变了什么；`exception` 必须写 `text`（原因）。校验不过整次不写，服务的 400 说明作为工具错误原样返回；写完服务会按新卡重新核对这次运行的验收题。返回 `{card, items, answered}`。
 
 格的种类是 id 冒号前的那一段（`grain`、`date`、`range`、`amount`、`complete`）。每种格可选的值和各自的意思（例如 `running` 是“每次事件后的累计值”，`period_to_date` 是“期初到期末的累计值”）写在 `get_card`、`save_card` 的工具说明里，取自 `ontology_card.SAYS`，页面和纪要用的是同一套中文；客户说“这是累计数”时，照这些意思选 `value`，不按列名猜。
 

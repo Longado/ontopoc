@@ -33,7 +33,8 @@ from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
-from ontology_poc_generator.open_items import check_answers, code_meaning_items, linked_cells, open_items, split_answers
+from ontology_poc_generator.review_stack import check_mode
+from ontology_poc_generator.open_items import check_answers, code_meaning_items, linked_cells, open_items, split_answers, with_replies
 from ontology_poc_generator.ontology_card import NO_CARD, build_card, check_cells, live_cells, with_changes
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.relation_suggestions import suggest_relations
@@ -431,15 +432,42 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
     views_warning = lambda problem: f'已记下，但工作区里的视图没有更新：{problem}' if problem else None
 
+    def settled_definitions(result, profiles, enums, rules, open_ids):
+        """What a person decided through the code-meaning and repeat-rule endpoints and no item asks about any more, as the list of
+        decisions shows it: {id, kind, ask, answer: {says, text, by, at, mode}}. The same rows the stack counts as decided."""
+        out = []
+        for p in profiles:
+            kept = enums.get(p['field'])
+            if p['id'] not in open_ids and kept:
+                out.append({'id': p['id'], 'kind': 'code_meaning', 'ask': f'「{p["source"]}」的「{p["column"]}」是代码',
+                            'answer': {'says': '含义已确认', 'text': '、'.join(f'{e["value"]} = {e["label"]}' for e in kept['values'] if e.get('label')),
+                                       'by': kept['confirmed_by'], 'at': kept['confirmed_at'], 'mode': kept.get('mode')}})
+        for key, rule in rules.items():
+            if f'repeated_key:{key}' not in open_ids:
+                said = {'keep_both': '每一行都留', 'data_error': '当作数据错误'}.get(rule['rule'], f'只留「{rule.get("column")}」最新的一行')
+                out.append({'id': f'repeated_key:{key}', 'kind': 'repeated_key', 'ask': f'{key.partition(".")[2]}表重复的编号怎么算',
+                            'answer': {'says': said, 'text': '', 'by': rule['confirmed_by'], 'at': rule['confirmed_at'], 'mode': rule.get('mode')}})
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            said_no = element_rows(conn, f'property:{memory_key(result)}:', 'rejected')
+        finally:
+            conn.close()
+        for field, row in said_no.items():
+            out.append({'id': f'code_meaning:{field}', 'kind': 'code_meaning', 'ask': f'「{field.partition(".")[0]}」的「{field.partition(".")[2]}」是代码',
+                        'answer': {'says': '不是代码', 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': (row['content'] or {}).get('mode')}})
+        return out
+
     def code_reply(found):
         """The open items and answered ones, with what each code column's values mean (the page shows them beside answers and fields),
         and the named views the confirmed definitions make."""
         card, items, answered = card_for(found)
         if found is None:
-            return {'items': items, 'answered': answered, 'meanings': {}, 'views': [], 'view_tables': [], 'row_cap': ROW_CAP, 'repeat_rules': {}, 'review': [], 'newer': None}
+            return {'items': items, 'answered': answered, 'settled': [], 'meanings': {}, 'views': [], 'view_tables': [], 'row_cap': ROW_CAP, 'repeat_rules': {}, 'review': [], 'newer': None}
         profiles, enums = code_state(found[0], found[1])
         newer = newer_run(found[0])   # the run of this line that is more recent than the one shown: definitions are changed there
-        return {'items': items, 'answered': answered, 'meanings': meanings_of(profiles, enums), 'row_cap': ROW_CAP, 'repeat_rules': repeat_rules(found[0]),
+        rules = repeat_rules(found[0])
+        return {'items': items, 'answered': answered, 'settled': settled_definitions(found[0], profiles, enums, rules, {i['id'] for i in items}),
+                'meanings': meanings_of(profiles, enums), 'row_cap': ROW_CAP, 'repeat_rules': rules,
                 'review': review_list(found[0], newer), 'newer': newer, **view_state(found[0])}
 
     def code_labels(row):
@@ -603,12 +631,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         stored = card_file(memory_key(result))
         if graph is None:   # a blocked draft's rows: no graph and no card, but the code columns of its stored tables can be given meanings
             profiles, enums = code_state(result, bundle)
-            return NO_CARD, *split_answers(code_meaning_items({'profiles': profiles, 'enums': enums, 'drafts': code_drafts(result), 'waiting': code_waiting(result)}), stored['items'])
+            open_, answered = split_answers(code_meaning_items({'profiles': profiles, 'enums': enums, 'drafts': code_drafts(result), 'waiting': code_waiting(result)}), stored['items'])
+            return NO_CARD, with_replies(open_, bundle), with_replies(answered, bundle)
         card = build_card(result['ontology'], bundle, stored['cells'], graph, (result.get('confirmation') or {}).get('decisions'))
         profiles, enums = code_state(result, bundle)
         codes = {'profiles': profiles, 'enums': enums, 'drafts': code_drafts(result), 'waiting': code_waiting(result)}
         items, answered = split_answers(open_items(result, bundle, graph, card, codes), stored['items'])
-        return card, items, answered
+        return card, with_replies(items, bundle), with_replies(answered, bundle)
 
     def pipeline_for(name):
         """The pipeline requirements of a kept table run whose ontology passed verification; ValueError says why there are none.
@@ -1498,6 +1527,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 signer = payload.get('confirmed_by')
                 if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
                     raise ValueError('确认人最多写 40 个字')
+                check_mode(payload)
                 return found, profile, enums, (signer or '').strip() or None, payload
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
@@ -1536,7 +1566,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             merged = merge_enum((enums.get(profile['field']) or {}).get('values') or [], posted)
             element = f'property:{memory_key(found[0])}:{profile["field"]}'
             anchors = stored_anchors(code_anchor(profile, found[1]['sources'][profile['source']]['records'], key_columns(found[0]['ontology'], profile['source'])))   # what the person looked at: the next version is held against it
-            change = (element, 'confirmed', f'open_item:{profile["id"]}', signer, {'values': merged}, anchors) if merged else (element, 'proposed', None, signer)
+            change = (element, 'confirmed', f'open_item:{profile["id"]}', signer, {'values': merged, 'mode': check_mode(payload)}, anchors) if merged else (element, 'proposed', None, signer)
             given = [f'{e["value"]} = {e["label"]}' for e in posted if e['label']]
             held = {e['value'] for e in (enums.get(profile['field']) or {}).get('values', []) if e['label']}
             taken = [e['value'] for e in posted if not e['label'] and e['value'] in held]   # a blank for a value never confirmed takes nothing back
@@ -1570,7 +1600,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     change = (element, 'proposed', None, signer)
                     because = f'{names[group["type"]]}（{group["source"]}表）重复编号的处理办法已收回'
                 else:
-                    change = (element, 'confirmed', f'open_item:{group["id"]}', signer, check_rule(group, payload))
+                    change = (element, 'confirmed', f'open_item:{group["id"]}', signer, {**check_rule(group, payload), 'mode': check_mode(payload)})
                     said = {'keep_both': '每一行都留', 'data_error': '当作数据错误', 'keep_latest': f'只留「{change[4].get("column")}」最新的一行'}[change[4]['rule']]
                     because = f'{names[group["type"]]}（{group["source"]}表）重复的编号已选「{said}」'
             except FileNotFoundError:
@@ -1726,13 +1756,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             request = self.code_column_request()
             if request is None:
                 return
-            found, profile, _, signer, _ = request
+            found, profile, _, signer, payload = request
             try:
                 stale_check(found[0])
             except ValueError as exc:
                 self.reply(400, {'error': str(exc)})
                 return
-            self.keep_code_state(found, (f'property:{memory_key(found[0])}:{profile["field"]}', 'rejected', f'open_item:{profile["id"]}', signer), '“不是代码”',
+            self.keep_code_state(found, (f'property:{memory_key(found[0])}:{profile["field"]}', 'rejected', f'open_item:{profile["id"]}', signer, {'mode': check_mode(payload)}), '“不是代码”',
                                  f'「{profile["column"]}」被说成不是代码列')
 
         def draft_code_meanings(self):

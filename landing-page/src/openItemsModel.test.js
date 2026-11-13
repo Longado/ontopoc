@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { askedItem, codeBody, codeGuess, codeProblem, codeStart, codeWhyWeak, dropFor, meaningNote, openItemsEmpty, relabelGroups, repeatBody, repeatProblem, reviewStamp, shownCode } from "./openItemsModel.js";
+import { askedItem, codeBody, codeGuess, codeProblem, codeStart, codeWhyWeak, dropFor, meaningNote, openItemsEmpty, relabelGroups, repeatBody, reviewStamp, shownCode } from "./openItemsModel.js";
 
 const unasked = { field: "awarding_subagency", equals: "BUREAU OF RECLAMATION", before: 1455, after: 1444, removed_measure: 4176392.96, not_in_question: true };
 const paid = (over = {}) => ({ question: "累计付了多少钱？", status: "answered",
@@ -92,11 +92,7 @@ test("the answer posted lists every value with what was written, and refuses not
   assert.equal(codeProblem(item, { ...form, 0: { label: "x".repeat(41), description: "" } }), "取值 0 的含义最多 40 个字");
 });
 
-test("a repeated-key choice needs a rule, and keep-latest needs a column", () => {
-  assert.equal(repeatProblem({ rule: "", column: "" }), "先选一种处理办法");
-  assert.equal(repeatProblem({ rule: "keep_latest", column: "" }), "选一列，按它的大小定哪一行最新");
-  assert.equal(repeatProblem({ rule: "keep_latest", column: "更新日期" }), "");
-  assert.equal(repeatProblem({ rule: "keep_both", column: "" }), "");
+test("a repeated-key choice is posted as its rule, with the column only for keep-latest", () => {
   assert.deepEqual(repeatBody({ rule: "keep_both", column: "x" }), { rule: "keep_both" });
   assert.deepEqual(repeatBody({ rule: "keep_latest", column: "更新日期" }), { rule: "keep_latest", column: "更新日期" });
 });

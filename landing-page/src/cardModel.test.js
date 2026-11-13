@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  CARD_PIPELINE_NOTE, CARD_VOCAB, ITEM_CHOICES, PIPELINE_EXPORT, answeredRows, blankLine, canAnswerItem, cardBody, cardCells, cardEmptyText, cardEvidence, changedCells,
-  confirmedCells, draftOf, editBasis, editCell, itemAnswer, itemChoices, itemForm, itemProblem, linkedHint, noiseLine, pipelineUrl, readAnswerer, rememberAnswerer,
+  CARD_PIPELINE_NOTE, CARD_VOCAB, ITEM_CHOICES, PIPELINE_EXPORT, answeredRows, blankLine, cardBody, cardCells, cardEmptyText, cardEvidence, changedCells,
+  confirmedCells, draftOf, editBasis, editCell, itemChoices, linkedHint, noiseLine, pipelineUrl, readAnswerer, rememberAnswerer,
   saveProblem, saysOf, stampLine, uniqueLine,
 } from "./cardModel.js";
 
@@ -166,33 +166,11 @@ test("the card says how many cells are still unclear, and what an empty card mea
   assert.equal(cardEmptyText({ ontology: { status: "needs_review" } }), "本体还没通过核验，代码先不出口径卡。");
 });
 
-test("a thing to settle can be answered unless it is one that is settled by doing something else", () => {
-  for (const kind of ["unlinked", "same_name", "merged", "name_vs_calc", "name_source", "name_by_view", "name_values", "found_elsewhere", "unstable", "check_finding", "data_gap", "data_gaps", "unanswered"]) {
-    assert.equal(canAnswerItem({ id: `${kind}:x`, kind }), true, kind);
-  }
-  for (const kind of ["model_filter", "unjudged", "card_blank", "code_meaning"]) assert.equal(canAnswerItem({ id: `${kind}:x`, kind }), false, kind);
-  assert.equal(canAnswerItem({ kind: "data_gaps" }), false);   // an old service gives the items no id: there is nothing to answer by
-});
-
 test("the choices an item offers are the contract's, and the rest are answered in words only", () => {
   assert.deepEqual(itemChoices({ kind: "unlinked" }).map(([v, label]) => [v, label]), [["expected", "本来就没有对应，属正常"], ["incomplete", "数据没导全"]]);
   assert.deepEqual(itemChoices({ kind: "same_name" }), [["distinct", "是不同的对象"], ["same", "是同一个"]]);
   assert.deepEqual(itemChoices({ kind: "merged" }), ITEM_CHOICES.same_name);
   assert.deepEqual(itemChoices({ kind: "data_gaps" }), []);
-});
-
-test("an answer to an item carries what the person chose and wrote, and leaves out what they did not", () => {
-  const form = { choice: "", text: "客户说另一个系统还有", basis: "" };
-  assert.deepEqual(itemAnswer({ id: "data_gaps", kind: "data_gaps" }, form), { items: [{ id: "data_gaps", text: "客户说另一个系统还有" }] });
-  assert.deepEqual(itemAnswer({ id: "same_name:customer", kind: "same_name" }, { choice: "distinct", text: " ", basis: " 10-27 会议 " }),
-    { items: [{ id: "same_name:customer", choice: "distinct", basis: "10-27 会议" }] });
-});
-
-test("choosing that the data was not all imported sends the item alone: the service marks the other end's objects as only partly there", () => {
-  const item = { id: "unlinked:financial_row_corresponds_to_contract", kind: "unlinked", complete_id: "complete:contract_awards|award_id" };
-  assert.deepEqual(itemAnswer(item, { choice: "incomplete", text: "合同授标只导了 FY25Q1 的", basis: "10-27 会议" }), {
-    items: [{ id: item.id, choice: "incomplete", text: "合同授标只导了 FY25Q1 的", basis: "10-27 会议" }] });
-  assert.deepEqual(itemAnswer(item, { choice: "expected", text: "", basis: "" }), { items: [{ id: item.id, choice: "expected" }] });
 });
 
 test("the form says what saving will also do on the card: mark the other end as partly there, or take that back", () => {
@@ -208,21 +186,6 @@ test("the form says what saving will also do on the card: mark the other end as 
   assert.equal(linkedHint(item, { choice: "same", text: "", basis: "" }, { choice: "distinct" }), "");
   assert.equal(linkedHint({ ...item, kind: "same_name" }, { choice: "incomplete", text: "", basis: "" }), "");
   assert.equal(linkedHint({ ...item, complete_id: undefined }, { choice: "incomplete", text: "", basis: "" }), "");   // nothing on the card to mark
-});
-
-test("an answer is not ready until it says something and says who", () => {
-  const unlinked = { kind: "unlinked" }, gaps = { kind: "data_gaps" };
-  assert.equal(itemProblem(unlinked, { choice: "expected", text: "", basis: "" }, "张三"), "");
-  assert.equal(itemProblem(unlinked, { choice: "", text: "客户另有说法", basis: "" }, "张三"), "");
-  assert.equal(itemProblem(unlinked, { choice: "", text: "", basis: "" }, "张三"), "选一项，或写下客户怎么答的");
-  assert.equal(itemProblem(gaps, { choice: "", text: "", basis: "" }, "张三"), "写下客户怎么答的");
-  assert.equal(itemProblem(gaps, { choice: "", text: "客户说另一个系统还有", basis: "" }, ""), "先填答复人");
-});
-
-test("changing an answer starts from the old one", () => {
-  assert.deepEqual(itemForm(null), { choice: "", text: "", basis: "" });
-  assert.deepEqual(itemForm({ choice: "incomplete", text: "只导了一季", basis: "会议" }), { choice: "incomplete", text: "只导了一季", basis: "会议" });
-  assert.deepEqual(itemForm({ says: "", text: "有别的系统", by: "张三" }), { choice: "", text: "有别的系统", basis: "" });
 });
 
 test("what the client answered is listed with the question as it was asked then, the answer, who, which day and the basis", () => {

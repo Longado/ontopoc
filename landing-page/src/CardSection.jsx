@@ -1,36 +1,10 @@
 import { useState } from "react";
 
 import {
-  CARD_PIPELINE_NOTE, CARD_VOCAB, blankLine, cardEmptyText, changedCells, itemChoices, itemForm, itemProblem, linkedHint, noiseLine, saveProblem, stampLine, uniqueLine,
+  CARD_PIPELINE_NOTE, CARD_VOCAB, blankLine, cardEmptyText, changedCells, noiseLine, saveProblem, stampLine, uniqueLine,
 } from "./cardModel.js";
 
 const count = (n) => n.toLocaleString("zh-CN");
-
-/** The form that records what the client answered to a thing to settle. `answer` is the old answer when changing one. */
-export function AnswerForm({ item, answer = null, client, onDone }) {
-  const [form, setForm] = useState(() => itemForm(answer));
-  const choices = itemChoices(item);
-  const problem = itemProblem(item, form, client.by);
-  const hint = linkedHint(item, form, answer);
-  const set = (part) => setForm({ ...form, ...part });
-  return <div className="os-add os-answer-form">
-    {choices.length > 0 && <fieldset className="os-answer-choices"><legend>客户怎么答的</legend>
-      {choices.map(([value, label]) => <label key={value} className="os-answer-choice">
-        <input type="radio" name={`choice-${item.id}`} checked={form.choice === value} onChange={() => set({ choice: value })} />{label}</label>)}
-    </fieldset>}
-    <label>{choices.length ? "补充说明（选填）" : "客户怎么答的"}
-      <textarea rows={2} value={form.text} maxLength={300} onChange={(e) => set({ text: e.target.value })} /></label>
-    <label>出处（选填，例如“10-27 会议”）<input value={form.basis} maxLength={200} onChange={(e) => set({ basis: e.target.value })} /></label>
-    <label>答复人<input value={client.by} maxLength={40} onChange={(e) => client.setBy(e.target.value)} /></label>
-    {hint && <p className="pr-muted">{hint}</p>}
-    <div className="os-go">
-      <button type="button" className="pr-primary" disabled={client.busy || Boolean(problem)} title={problem || undefined}
-        onClick={async () => { if (await client.onSave(item, form)) onDone(); }}>{client.busy ? "保存中…" : "记下"}</button>
-      <button type="button" className="pr-link" onClick={onDone}>取消</button>
-    </div>
-    {client.error?.key === item.id && <p role="alert" className="pr-error">{client.error.text}</p>}
-  </div>;
-}
 
 /** A cell answered by choosing one of the contract's words; the saved answer shows under it as who, which day, basis. */
 function Choose({ kind, cell, label, draft, changed, onSet }) {

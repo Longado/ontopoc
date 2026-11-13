@@ -581,12 +581,33 @@ small.os-tone-warn { color: var(--amber); }
 .os-add-question b { color: var(--ink); }
 .os-question.is-flash { border-radius: 8px; outline: 2px solid var(--amber); outline-offset: 8px; background: var(--amber-soft); box-shadow: 0 0 0 8px var(--amber-soft); }
 
-/* 要确认的事: one numbered card per thing to settle */
+/* 要确认的事: one card at a time, replies on the keys 1 to 4 */
 .os-open { display: grid; gap: 10px; }
 .os-open .pr-card-head h2 { margin: 0; }
-.os-open-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 10px; }
-.os-open-item { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding: 14px 16px; border: 1px solid var(--edge); border-radius: 10px; background: var(--canvas); }
-.os-open-no { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-ink); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.os-stack { display: grid; gap: 12px; margin-top: 4px; }
+.os-stack-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.os-stack-line { margin: 0; font-size: 15px; font-variant-numeric: tabular-nums; }
+.os-stack-who { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-2); font-size: 13px; }
+.os-stack-who input, .os-reply-form input, .os-reply-form textarea { padding: 6px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; color: var(--ink); background: var(--surface); font: inherit; font-size: 13px; }
+.os-stack-who input { width: 9em; }
+.os-stack-nav { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.os-stack-nav button:disabled { opacity: 0.45; cursor: not-allowed; }
+.os-stack-card { display: grid; gap: 10px; min-width: 0; padding: 16px; border-radius: 8px; background: var(--canvas); }
+.os-stack-rows { display: grid; gap: 4px; }
+.os-stack-reopened { margin: 0; color: var(--amber); font-size: 13px; line-height: 1.6; }
+.os-stack-check { margin: 0; font-size: 13px; line-height: 1.6; }
+.os-stack-check.is-passed { color: var(--ok); }
+.os-stack-check.is-failed { color: var(--red); }
+.os-stack-check.is-weak { color: var(--amber); }
+.os-replies { display: flex; flex-wrap: wrap; gap: 8px; }
+.os-reply { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--edge-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13px; }
+.os-reply kbd { min-width: 1em; color: var(--text-2); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+.os-reply:hover:not(:disabled) { border-color: var(--primary); }
+.os-reply[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-ink); }
+.os-reply:disabled { opacity: 0.45; cursor: not-allowed; }
+.os-reply-form { display: grid; gap: 8px; max-width: 560px; }
+.os-reply-form label { display: grid; gap: 4px; color: var(--text-2); font-size: 13px; }
+.os-open-item { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid var(--edge); border-radius: 10px; background: var(--canvas); }
 .os-open-body { display: grid; gap: 6px; min-width: 0; }
 .os-open-ask { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
 .os-open-ask .os-chip-note { margin-left: 8px; white-space: nowrap; }
@@ -629,7 +650,6 @@ small.os-tone-warn { color: var(--amber); }
 .os-recheck h3 { margin: 0; font-size: 15px; }
 .os-recheck-who { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--text-2); font-size: 13px; }
 .os-recheck-who input { padding: 6px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; color: var(--ink); background: var(--surface); font: inherit; font-size: 13px; }
-.os-answered-list .os-open-item { grid-template-columns: minmax(0, 1fr); }
 .os-answered-says { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0; overflow-wrap: anywhere; }
 .os-answer-choices { display: grid; gap: 4px; margin: 0; padding: 0; border: 0; color: var(--text-2); font-size: 13px; }
 .os-answer-choices legend { padding: 0; margin-bottom: 4px; }
