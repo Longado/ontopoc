@@ -7,6 +7,7 @@ import { ConfirmPage } from "./ConfirmPage.jsx";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
 import { PermissionsPage } from "./PermissionsPage.jsx";
+import { QaPage } from "./QaPage.jsx";
 import { RelationForm } from "./RelationForm.jsx";
 import { RelationPage, RelationsPage } from "./RelationsPage.jsx";
 import { countText } from "./relationModel.js";
@@ -106,7 +107,6 @@ export function Shell() {
   const [menu, setMenu] = useState(false);
   const queueCount = useQueueCount(route);
   useEffect(() => {
-    if (!window.location.hash) window.location.replace("#/datasets");
     const onChange = () => setRoute(parseRoute(window.location.hash));
     window.addEventListener("hashchange", onChange);
     return () => window.removeEventListener("hashchange", onChange);
@@ -127,6 +127,7 @@ export function Shell() {
         </div>
         <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} />
       </aside>
+      {route.page === "qa" && <QaPage route={route} />}
       {route.page === "datasets" && <DatasetList />}
       {route.page === "dataset" && <DatasetPage route={route} />}
       {route.page === "tasks" && <TasksPage />}
@@ -143,7 +144,7 @@ export function Shell() {
       {route.page === "account" && <AccountPage />}
       {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
       {route.page === "planned" && <Planned route={route} />}
-      {!["datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "relation", "relationnew", "relationedit", "confirm", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
+      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "relation", "relationnew", "relationedit", "confirm", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
     </div>
   );
 }

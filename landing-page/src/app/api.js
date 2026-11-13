@@ -105,6 +105,14 @@ export const getPermissions = () => request("/api/workspace/permissions");
 /** `visibleTo`: "everyone" or the ids of the people who may see the type. */
 export const setPermission = (type, visibleTo) => send("/api/workspace/permissions", { type, visible_to: visibleTo });
 
+// Q&A: the scope line with the person's own history, one saved answer as it stands now, a new question
+export const getAsk = () => request("/api/workspace/ask");
+export const getAnswer = (id) => request(`/api/workspace/ask/${id}`);
+/** The model works out the query: it can take up to a minute, there is no timeout here. */
+export const askQuestion = (question) => send("/api/workspace/ask", { question });
+/** A builder's switch on one property: its values are not sent to the model that reads a question. */
+export const setValuesHidden = (id, column, hide) => send("/api/workspace/types/privacy", { id, column, hide_values: hide });
+
 /** A file's bytes as base64, which is how the service takes them. */
 export async function fileToBase64(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());

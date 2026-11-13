@@ -189,6 +189,34 @@ td input[type="checkbox"] { margin: 0; }
 label.check { display: inline-flex; align-items: center; gap: 6px; }
 table.people th, table.people td { text-align: left; padding-right: 20px; }
 
+/* Q&A */
+.qa { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; margin-top: 20px; align-items: start; }
+.history { display: flex; flex-direction: column; gap: 4px; }
+.history h2 { margin-bottom: 8px; color: var(--muted); font-weight: 400; }
+.history a { display: block; padding: 6px 8px; border-radius: var(--radius); color: var(--ink); }
+.history a:hover { background: var(--hover); text-decoration: none; }
+.history a.active { background: var(--hover); font-weight: 600; }
+.block { display: block; }
+details.scope { margin-bottom: 16px; }
+details.scope summary, details.trace summary { cursor: pointer; }
+form.ask { display: flex; gap: 8px; max-width: 640px; }
+form.ask button { flex: none; white-space: nowrap; }
+.turn { margin-top: 32px; max-width: 720px; }
+h2.question { font-size: 15px; }
+.answer { margin: 16px 0; }
+.answer .big { font-size: var(--title); font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+.answer .table-wrap { margin-top: 12px; max-width: 480px; }
+.refusal-card { margin: 8px 0 16px; }
+.refusal-card h2.section { margin: 16px 0 8px; }
+ul.named { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+dl.defs { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 16px; margin: 16px 0; }
+dl.defs dt { color: var(--muted); }
+dl.defs dd { margin: 0; }
+details.trace { margin: 8px 0; }
+details.trace ol { margin: 8px 0 0; padding-left: 20px; }
+details.trace li { padding: 2px 0; }
+details.trace code { display: block; font-size: var(--small); color: var(--muted); overflow-wrap: anywhere; }
+
 /* narrow screens: the menu folds under the name */
 @media (max-width: 760px) {
   .shell { grid-template-columns: minmax(0, 1fr); align-content: start; }
@@ -206,6 +234,7 @@ table.people th, table.people td { text-align: left; padding-right: 20px; }
   .nav { display: none; padding-top: 12px; }
   .nav.open { display: block; }
   .page { padding: 20px 16px 48px; }
+  .qa { grid-template-columns: minmax(0, 1fr); gap: 24px; }
 }
 
 @media (prefers-reduced-motion: no-preference) {

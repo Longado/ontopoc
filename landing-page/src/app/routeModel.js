@@ -6,7 +6,7 @@ export const TYPE_TAB_LABEL = { props: "属性", objects: "对象", log: "日志
 
 const decode = (part) => decodeURIComponent(part);
 
-/** An address to the page it means: {page: "datasets" | "dataset" | "tasks" | "notfound", ...}. */
+/** An address to the page it means: {page: "qa" | "datasets" | "dataset" | "tasks" | "notfound", ...}. The empty address is the Q&A page, where the app opens. */
 export function parseRoute(hash) {
   const raw = String(hash || "").replace(/^#\/?/, "");
   const [path, query = ""] = raw.split("?");
@@ -16,7 +16,9 @@ export function parseRoute(hash) {
   } catch {
     return { page: "notfound" };   // a broken %-escape in the name
   }
-  if (!parts.length || (parts[0] === "datasets" && parts.length === 1)) return { page: "datasets" };
+  if (!parts.length || (parts[0] === "qa" && parts.length === 1)) return { page: "qa", id: null };
+  if (parts[0] === "qa" && parts.length === 2 && /^[1-9]\d*$/.test(parts[1])) return { page: "qa", id: Number(parts[1]) };   // a saved answer
+  if (parts[0] === "datasets" && parts.length === 1) return { page: "datasets" };
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
   if ((parts[0] === "account" || parts[0] === "users") && parts.length === 1) return { page: parts[0] };
   if (parts.length === 1 && Object.hasOwn(PLANNED, parts[0])) return { page: "planned", key: parts[0] };
@@ -49,6 +51,7 @@ export function parseRoute(hash) {
 
 /** The address of a route; the inverse of parseRoute. */
 export function hrefFor(route) {
+  if (route.page === "qa") return route.id ? `#/qa/${route.id}` : "#/qa";
   if (route.page === "tasks" || route.page === "account" || route.page === "users") return `#/${route.page}`;
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "types") return "#/types";
@@ -69,24 +72,22 @@ export function hrefFor(route) {
 
 // Pages not built yet: what each will do, in one line. The sidebar shows them in grey and they open a page saying exactly this.
 export const PLANNED = {
-  home: ["首页", "一个提问框和最近的任务，还没做"],
   pipelines: ["管道", "把数据集连接、清洗成新的数据集，每一步看得到行数，还没做"],
   sources: ["数据源", "连接 MySQL、PostgreSQL，把库里的表读成数据集，还没做"],
-  qa: ["问答", "用已确认的定义回答业务问题，每个答案写明读了哪个版本，还没做"],
   agents: ["智能体", "给问答设定范围和说明，还没做"],
   boards: ["看板", "用已确认的指标做看板，还没做"],
   lineage: ["血缘", "从数据源到应用，看每一步用了什么，还没做"],
 };
 
-const BUILT = { tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", confirm: "#/confirm", users: "#/users", permissions: "#/permissions" };
+const BUILT = { qa: "#/qa", tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", confirm: "#/confirm", users: "#/users", permissions: "#/permissions" };
 const BUILDERS = ["tasks", "confirm"];   // shown to builders and admins only: a viewer has nothing to confirm, and the task list quotes keys and values (the service refuses it to a viewer)
 const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
 
 export const NAV = [
-  { items: [item("home", "首页"), item("tasks", "任务")] },
+  { items: [item("qa", "问答"), item("tasks", "任务")] },
   { label: "数据", items: [item("datasets", "数据集"), item("pipelines", "管道"), item("sources", "数据源")] },
   { label: "本体", items: [item("types", "对象类型"), item("relations", "关系"), item("confirm", "待确认")] },
-  { label: "应用", items: [item("qa", "问答"), item("agents", "智能体"), item("boards", "看板")] },
+  { label: "应用", items: [item("agents", "智能体"), item("boards", "看板")] },
   { items: [item("lineage", "血缘")] },
 ];
 

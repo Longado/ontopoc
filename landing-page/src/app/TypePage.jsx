@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { confirmType, getType, getTypeLog, getTypeObjects, proposeMeanings } from "./api.js";
+import { confirmType, getType, getTypeLog, getTypeObjects, proposeMeanings, setValuesHidden } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText, typeLabel } from "./format.js";
@@ -88,11 +88,21 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
 }
 
 function Properties({ type, mayBuild, reload }) {
+  const [error, setError] = useState("");
+  const hide = async (column, on) => {
+    setError("");
+    try {
+      await setValuesHidden(type.id, column, on);
+      reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
   return (
     <>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>名称</th><th>来源列</th><th>类型</th><th>主键</th></tr></thead>
+          <thead><tr><th>名称</th><th>来源列</th><th>类型</th><th>主键</th>{mayBuild && <th>问答</th>}</tr></thead>
           <tbody>
             {type.properties.map((p) => (
               <tr key={p.column}>
@@ -100,11 +110,22 @@ function Properties({ type, mayBuild, reload }) {
                 <td className="muted">{p.column}</td>
                 <td>{p.enum ? <>{typeLabel(p.type)}代码 {p.meanings.state && <State item={p.meanings} />}</> : typeLabel(p.type)}</td>
                 <td>{p.key ? "是" : ""}</td>
+                {mayBuild && (
+                  <td>
+                    {p.key ? <span className="faint">不发取值</span> : (
+                      <label className="check">
+                        <input type="checkbox" checked={p.hide_values} onChange={(e) => hide(p.column, e.target.checked)} aria-label={`${p.name}：不把取值发给模型`} />
+                        不发取值
+                      </label>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {error && <p className="error">{error}</p>}
       {type.properties.filter((p) => p.enum).map((p) => (
         <Meanings key={`${p.column}-${p.meanings.version ?? 0}-${p.meanings.state}`} type={type} prop={p} mayBuild={mayBuild} onChanged={reload} />
       ))}
