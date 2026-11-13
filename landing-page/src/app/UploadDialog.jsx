@@ -152,7 +152,7 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
           ))}
         </>
       )}
-      {phase === "done" && <ul className="results">{results.map((r) => <li key={r.name}>{resultLine(r)}</li>)}</ul>}
+      {phase === "done" && <ul className="results">{results.map((r) => <li key={r.name}>{resultLine(r)}{r.recheck_error && <span className="error"> 新版本已保存，但检查依赖它的定义时出错（{r.recheck_error}）；这些定义已标为需再看</span>}</li>)}</ul>}
       </div>
       {phase !== "done" ? (
         <div className="actions">

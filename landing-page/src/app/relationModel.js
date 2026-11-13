@@ -9,10 +9,11 @@ export const connectedText = (numbers) => (numbers ? `${numbers.matched} / ${num
 /** The sentence a relation's two ends make: "订单.客户编号 = 客户.客户编号". */
 export const keyPairText = (r) => `${r.from_name}.${r.from_column} = ${r.to_name}.${r.to_column}`;
 
-/** What stops a relation being confirmed yet, for the reader who would otherwise look for a button; "" when nothing does. */
+/** What stops a relation or a type being confirmed yet, for the reader who would otherwise look for a button; "" when nothing does. */
 export function waitingText(r) {
-  if (!r.waiting_on?.length) return "";
-  return `要先确认${r.waiting_on.map((t) => `对象类型“${t.name}”`).join("、")}，才能确认这个关系`;
+  if (r.waiting_on?.length) return `要先确认${r.waiting_on.map((t) => `对象类型“${t.name}”`).join("、")}，才能确认这个关系`;
+  if (r.meanings_blocking?.length) return `要先确认${r.meanings_blocking.map((c) => `“${c}”`).join("、")}的含义，才能确认这个对象类型`;
+  return "";
 }
 
 /** The payload that creates or changes a relation, from the form. */
@@ -23,11 +24,14 @@ export function relationPayload(form) {
   };
 }
 
-/** The columns a new relation starts with once both types are picked: the far end's key, and the near end's column of the same name when it has one. */
-export function suggestedColumns(fromType, toType) {
+/** The columns a new relation starts with once both types are picked: the key of the one side (the end that is not "many"), and the many side's column of the
+ * same name when it has one. A join on the one side's key is what keeps it from repeating. */
+export function suggestedColumns(fromType, toType, cardinality = "many_to_one") {
   if (!fromType || !toType) return { fromColumn: "", toColumn: "" };
-  const toColumn = toType.key[0];
-  return { fromColumn: fromType.columns.some((c) => c.name === toColumn) ? toColumn : "", toColumn };
+  const [one, many] = cardinality === "one_to_many" ? [fromType, toType] : [toType, fromType];
+  const oneColumn = one.key[0];
+  const manyColumn = many.columns.some((c) => c.name === oneColumn) ? oneColumn : "";
+  return cardinality === "one_to_many" ? { fromColumn: oneColumn, toColumn: manyColumn } : { fromColumn: manyColumn, toColumn: oneColumn };
 }
 
 /** Whether the form can be sent, and the first thing missing. */
@@ -49,7 +53,7 @@ export function itemHref(item) {
 export function itemAction(item) {
   if (item.can_confirm) return "confirm";
   if (item.kind === "meaning" && item.state === "needs_look") return "repropose";
-  if (item.waiting_on?.length) return "blocked";
+  if (item.waiting_on?.length || item.meanings_blocking?.length) return "blocked";
   return "wait";
 }
 

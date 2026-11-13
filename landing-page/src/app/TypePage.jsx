@@ -3,6 +3,7 @@ import { confirmType, getType, getTypeLog, getTypeObjects, proposeMeanings } fro
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText, typeLabel } from "./format.js";
+import { waitingText } from "./relationModel.js";
 import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
 import { codeCell, confirmersText, logText, stateLine } from "./typeModel.js";
@@ -14,6 +15,7 @@ function Standing({ item, noun }) {
   return (
     <>
       {line && <p className="muted">{line}</p>}
+      {waitingText(item) && <p className="warn">{waitingText(item)}</p>}
       {confirmersText(item) && <p className="muted small">{confirmersText(item)}</p>}
       {item.state === "needs_look" && item.reason && (
         <div className="reason">
@@ -45,7 +47,7 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
     setBusy(false);
   };
   const propose = () => act(() => proposeMeanings(type.id, prop.column, m.values.map((v) => ({ value: v.value, label: draft[v.value] ?? "" }))));
-  const confirm = () => act(() => confirmType(type.id, m.version, prop.column));
+  const confirm = () => act(() => confirmType(type.id, m.version, m.seen, prop.column));
   const hasThen = m.state === "needs_look";   // what the rows were when it was confirmed matters only once the data has moved
   return (
     <section>
@@ -179,10 +181,11 @@ export function TypePage({ route }) {
     setBusy(true);
     setError("");
     try {
-      await confirmType(id, t.version);
+      await confirmType(id, t.version, t.seen);
       reload();
     } catch (e) {
       setError(e.message);
+      if (e.code === 409) reload();   // what was read has moved: show what is there now
     }
     setBusy(false);
   };

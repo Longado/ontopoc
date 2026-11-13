@@ -27,8 +27,12 @@ export function RelationForm({ id }) {
   const byId = Object.fromEntries((types.data ?? []).map((t) => [t.id, t]));
   const pickType = (end, value) => {
     const next = { ...form, [end]: value, [`${end}Column`]: "" };
-    const suggested = suggestedColumns(byId[next.from], byId[next.to]);
+    const suggested = suggestedColumns(byId[next.from], byId[next.to], next.cardinality);
     setForm({ ...next, fromColumn: suggested.fromColumn || next.fromColumn, toColumn: suggested.toColumn || next.toColumn });
+  };
+  const pickCardinality = (value) => {   // the one side changes with it: start from that side's key again
+    const suggested = suggestedColumns(byId[form.from], byId[form.to], value);
+    setForm({ ...form, cardinality: value, fromColumn: suggested.fromColumn || form.fromColumn, toColumn: suggested.toColumn || form.toColumn });
   };
   const save = async () => {
     setSending(true);
@@ -88,7 +92,7 @@ export function RelationForm({ id }) {
           {end("from", "起点")}
           <div className="field">
             <span className="caption">一个起点对象对应几个终点对象</span>
-            <Select label="基数" value={form.cardinality} onChange={(v) => setForm({ ...form, cardinality: v })}>
+            <Select label="基数" value={form.cardinality} onChange={pickCardinality}>
               {Object.entries(CARDINALITY_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
             </Select>
           </div>

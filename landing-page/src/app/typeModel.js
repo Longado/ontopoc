@@ -45,6 +45,7 @@ export function logText(e) {
   if (e.change === "confirmed") return { who: e.who, text: `确认了${what}${e.self_confirmed ? "（自己提的；只有一位构建者，两人确认没有生效）" : ""}` };
   if (e.change === "sent_back") return { who: e.who, text: `退回了${what}：${e.reason}` };
   if (e.change === "access_changed") return { who: e.who, text: `改了可见范围：${e.visible_to === "everyone" ? "所有人" : e.visible_to?.length ? e.visible_to.join("、") : "只有管理员"}` };
+  if (e.change === "meanings_retired") return { who: e.who, text: `去掉了这些列的含义（${e.reason}）：${e.text}` };
   if (e.change === "edited") return { who: e.who, text: `改了名称或说明：${e.text}` };
   if (e.change === "checked" || e.change === "proposed") return { who: e.who, text: `提出了${what}` };
   return { who: e.who, text: `${what}：${e.change}` };

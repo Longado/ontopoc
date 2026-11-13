@@ -79,7 +79,7 @@ export const PLANNED = {
 };
 
 const BUILT = { tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", confirm: "#/confirm", users: "#/users", permissions: "#/permissions" };
-const BUILDERS = ["confirm"];   // shown to builders and admins only: a viewer has nothing to confirm
+const BUILDERS = ["tasks", "confirm"];   // shown to builders and admins only: a viewer has nothing to confirm, and the task list quotes keys and values (the service refuses it to a viewer)
 const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
 
 export const NAV = [

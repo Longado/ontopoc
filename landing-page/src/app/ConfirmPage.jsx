@@ -38,7 +38,7 @@ function Card({ item, onChanged }) {
       </ul>
       {action === "confirm" && !asking && (
         <div className="inline">
-          <button className="primary" disabled={busy} onClick={() => act(() => confirmItem(item.element, item.version, item.kind === "relation" ? item.signature : undefined))}>确认</button>
+          <button className="primary" disabled={busy} onClick={() => act(() => confirmItem(item.element, item.version, item.seen))}>确认</button>
           <button className="secondary" disabled={busy} onClick={() => setAsking(true)}>退回</button>
         </div>
       )}

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AccountPage } from "./AccountPage.jsx";
-import { WORKSPACE_CHANGED, getQueue } from "./api.js";
+import { WORKSPACE_CHANGED, getQueueCount } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild, isAdmin, roleLabel } from "./authModel.js";
 import { ConfirmPage } from "./ConfirmPage.jsx";
@@ -43,7 +43,7 @@ function useQueueCount(route) {
   useEffect(() => {
     if (!mayBuild) return undefined;
     let live = true;
-    getQueue().then((q) => live && setCount(q.count), () => live && setCount(0));
+    getQueueCount().then((n) => live && setCount(n), () => live && setCount(0));
     return () => {
       live = false;
     };

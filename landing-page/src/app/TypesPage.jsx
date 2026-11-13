@@ -19,11 +19,19 @@ function SuggestDialog({ onClose, onDone }) {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [sending, setSending] = useState(false);
+  const [waited, setWaited] = useState(0);
   useEffect(() => {
     ref.current.showModal();
     getDatasets().then(setDatasets, (e) => setError(e.message));
   }, []);
+  useEffect(() => {
+    if (!sending) return undefined;
+    setWaited(0);
+    const timer = setInterval(() => setWaited((n) => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, [sending]);
   const close = () => {
+    if (sending) return;   // the service keeps writing the drafts when the page goes: closing now would lose the list and invite a second run
     ref.current.close();
     onClose();
   };
@@ -84,7 +92,8 @@ function SuggestDialog({ onClose, onDone }) {
           <button className="primary" onClick={close}>关闭</button>
         ) : (
           <>
-            <button className="plain" onClick={close}>取消</button>
+            {sending && <span className="muted">模型在看，通常 15–40 秒，已等 {waited} 秒</span>}
+            <button className="plain" onClick={close} disabled={sending}>取消</button>
             <button className="primary" onClick={send} disabled={sending || !chosen.length}>{sending ? "模型在看" : "开始"}</button>
           </>
         )}

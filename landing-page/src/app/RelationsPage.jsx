@@ -78,11 +78,11 @@ function Check({ r }) {
         <>
           <h2 className="section">没连上的行 {n.unmatched} 行</h2>
           <p className="muted small" style={{ marginBottom: 8 }}>
-            {c.unmatched_keys} 个“{c.many.column}”在 {c.one.dataset} 里找不到：{c.samples.map((s) => `${s.key}（${s.rows} 行）`).join("、")}
+            {c.unmatched_keys} 个“{c.many.column}”在 {c.one.dataset} 里找不到{!c.counts_only && `：${c.samples.map((s) => `${s.key}（${s.rows} 行）`).join("、")}`}
             {c.if_trimmed > 0 && `；其中 ${c.if_trimmed} 行去掉空格、忽略大小写后能对上`}
           </p>
-          <RowsTable table={c.unmatched_rows} markColumn={c.many.column} />
-          {n.unmatched > c.unmatched_rows.rows.length && <p className="muted small" style={{ marginTop: 4 }}>只列出前 {c.unmatched_rows.rows.length} 行</p>}
+          {!c.counts_only && <RowsTable table={c.unmatched_rows} markColumn={c.many.column} />}
+          {!c.counts_only && n.unmatched > c.unmatched_rows.rows.length && <p className="muted small" style={{ marginTop: 4 }}>只列出前 {c.unmatched_rows.rows.length} 行</p>}
         </>
       )}
       {c.empty > 0 && <p className="warn" style={{ marginTop: 12 }}>{c.empty} 行的“{c.many.column}”是空的，没有连任何{c.one.name}</p>}
@@ -90,14 +90,15 @@ function Check({ r }) {
         <>
           <h2 className="section">重复的键 {c.fanout.keys} 个</h2>
           <p className="muted small" style={{ marginBottom: 8 }}>
-            {c.one.dataset} 里“{c.one.column}”有这些值重复：{c.fanout.samples.map((s) => `${s.key}（${s.rows} 次）`).join("、")}。
-            连上它们的 {c.fanout.source_rows} 行会各多出一行（共多 {c.fanout.extra_rows} 行），按{c.one.name}汇总时会重复算。
+            {c.one.dataset} 里“{c.one.column}”有 {c.fanout.keys} 个值重复{!c.counts_only && `：${c.fanout.samples.map((s) => `${s.key}（${s.rows} 次）`).join("、")}`}。
+            {c.fanout.extra_rows > 0 ? `连上它们的 ${c.fanout.source_rows} 行会各多出一行（共多 ${c.fanout.extra_rows} 行），按${c.one.name}汇总时会重复算。` : "现在没有行连上它们，以后连上就会重复算。"}
           </p>
-          <RowsTable table={c.fanout.rows} markColumn={c.one.column} />
+          {!c.counts_only && <RowsTable table={c.fanout.rows} markColumn={c.one.column} />}
         </>
       )}
       {n.many_repeats > 0 && <p className="warn" style={{ marginTop: 12 }}>一对一不成立：{c.many.dataset} 里“{c.many.column}”有 {n.many_repeats} 个值出现了不止一次</p>}
       {n.unmatched === 0 && c.fanout.keys === 0 && n.many_repeats === 0 && <p className="muted" style={{ marginTop: 12 }}>每一行都连上了，{c.one.dataset} 里“{c.one.column}”没有重复。</p>}
+      {(c.warnings ?? []).map((w, i) => <p key={i} className="warn" style={{ marginTop: 12 }}>{w}</p>)}
     </>
   );
 }

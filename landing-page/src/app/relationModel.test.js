@@ -12,17 +12,21 @@ test("a relation reads as connected rows over all rows, and as the key pair it j
 test("a relation whose types are not confirmed says which ones, and the queue tells apart confirm, wait, put forward again and blocked", () => {
   assert.equal(waitingText({ waiting_on: [{ name: "订单" }, { name: "客户" }] }), "要先确认对象类型“订单”、对象类型“客户”，才能确认这个关系");
   assert.equal(waitingText({ waiting_on: [] }), "");
+  assert.equal(waitingText({ meanings_blocking: ["状态码", "等级"] }), "要先确认“状态码”、“等级”的含义，才能确认这个对象类型");
+  assert.equal(itemAction({ kind: "type", can_confirm: false, meanings_blocking: ["状态码"] }), "blocked");
   assert.equal(itemAction({ kind: "relation", can_confirm: true }), "confirm");
   assert.equal(itemAction({ kind: "relation", can_confirm: false, waiting_on: [{ name: "订单" }] }), "blocked");
   assert.equal(itemAction({ kind: "meaning", state: "needs_look", can_confirm: false }), "repropose");
   assert.equal(itemAction({ kind: "type", state: "checked", can_confirm: false }), "wait");
 });
 
-test("a new relation starts from the far end's key and the near end's column of that name", () => {
+test("a new relation starts from the key of its one side and the many side's column of that name", () => {
   const order = { key: ["订单号"], columns: [{ name: "订单号" }, { name: "客户编号" }] };
   const customer = { key: ["客户编号"], columns: [{ name: "客户编号" }] };
-  assert.deepEqual(suggestedColumns(order, customer), { fromColumn: "客户编号", toColumn: "客户编号" });
+  assert.deepEqual(suggestedColumns(order, customer), { fromColumn: "客户编号", toColumn: "客户编号" });   // many to one: the customer is the one side
   assert.deepEqual(suggestedColumns(customer, order), { fromColumn: "", toColumn: "订单号" });
+  assert.deepEqual(suggestedColumns(customer, order, "one_to_many"), { fromColumn: "客户编号", toColumn: "客户编号" });   // one to many: the one side is the start
+  assert.deepEqual(suggestedColumns(customer, order, "one_to_one"), { fromColumn: "", toColumn: "订单号" });
   assert.deepEqual(suggestedColumns(null, customer), { fromColumn: "", toColumn: "" });
 });
 

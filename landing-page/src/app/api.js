@@ -80,8 +80,9 @@ export const checkTypeKey = (dataset, key) => send("/api/workspace/types/key-che
 export const createType = (payload) => send("/api/workspace/types", payload);
 export const updateType = (payload) => send("/api/workspace/types/update", payload);
 export const proposeMeanings = (id, column, values) => send("/api/workspace/types/meanings", { id, column, values });
-/** Confirms the type (without `column`) or the meanings of one code column, as the version the person saw. */
-export const confirmType = (id, version, column = null) => send("/api/workspace/types/confirm", { id, version, ...(column ? { column } : {}) });
+/** Confirms the type (without `column`) or the meanings of one code column, as the version the person saw and with the `seen` the service sent (the data they read). */
+export const confirmType = (id, version, seen, column = null) => send("/api/workspace/types/confirm", { id, version, seen, ...(column ? { column } : {}) });
+/** Asks the model for types. It can take up to two minutes: there is no timeout here, the dialog says it is waiting. */
 export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
 
 // relations, the 待确认 queue, who sees which type
@@ -95,7 +96,9 @@ export const createRelation = (payload) => send("/api/workspace/relations", payl
 export const updateRelation = (payload) => send("/api/workspace/relations/update", payload);
 /** {items, count}: everything waiting to be judged that this person may see, and how many of it they may confirm now. */
 export const getQueue = () => request("/api/workspace/queue");
-/** Confirms one queue item as the version the person saw; a relation also takes `seen`, the connected-row counts they read. */
+/** Only how many items this person may confirm now: read from the states, cheap enough to ask on every page. */
+export const getQueueCount = () => request("/api/workspace/queue?count=1").then((b) => b.count);
+/** Confirms one queue item as the version the person saw, with the item's `seen` (what it showed of the data: the connected-row counts of a relation, the version and rows of a type's dataset). */
 export const confirmItem = (element, version, seen = undefined) => send("/api/workspace/queue/confirm", { element, version, ...(seen ? { seen } : {}) });
 export const sendBack = (element, version, reason) => send("/api/workspace/queue/send-back", { element, version, reason });
 export const getPermissions = () => request("/api/workspace/permissions");

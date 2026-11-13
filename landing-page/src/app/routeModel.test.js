@@ -53,7 +53,7 @@ test("the sidebar groups what the product has, and marks what is built", () => {
   assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "数据", "本体", "应用", null]);
   assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "任务", "数据集", "管道", "数据源", "对象类型", "关系", "待确认", "问答", "智能体", "看板", "血缘"]);
   assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => i.built).map((i) => i.key), ["tasks", "datasets", "types", "relations", "confirm"]);
-  assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => i.builders).map((i) => i.key), ["confirm"]);   // 待确认 is for builders
+  assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => i.builders).map((i) => i.key), ["tasks", "confirm"]);   // 任务 and 待确认 are for builders
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
 });
 
