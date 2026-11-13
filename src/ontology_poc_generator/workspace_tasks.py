@@ -17,22 +17,23 @@ def _iso(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp, timezone.utc).isoformat(timespec='seconds')
 
 
-def job_tasks(jobs_dir: Path, running: set[str]) -> list[dict]:
-    """The modelling jobs on disk. A job the file says is running but this process is not running was cut off by a restart: 'interrupted'."""
-    tasks = []
+def job_tasks(jobs_dir: Path, running: set[str]) -> tuple[list[dict], int]:
+    """(the modelling jobs on disk, how many files could not be read). A job the file says is running but this process is not running was cut
+    off by a restart: 'interrupted'. A file cut short by a crash, or of another shape than the service writes, is counted, not shown."""
+    tasks, unreadable = [], 0
     for path in jobs_dir.glob('*.json') if jobs_dir.is_dir() else []:
         try:
             job = json.loads(path.read_text(encoding='utf-8'))
-        except (OSError, ValueError):
-            continue   # a file cut short by a crash is not a job anyone can read
-        events = job.get('events') or []
-        state = 'interrupted' if job['state'] == 'running' and path.stem not in running else job['state']
-        read = next((e['detail'] for e in events if e['stage'] == 'read'), {})
-        tasks.append({'kind': 'draft', 'id': path.stem, 'title': read.get('file') or path.stem, 'state': state,
-                      'at': events[0]['at'] if events else _iso(path.stat().st_mtime),
-                      'ended_at': events[-1]['at'] if events and state != 'running' else None,
-                      'error': job.get('error') if state == 'failed' else None})
-    return tasks
+            events = job.get('events') or []
+            state = 'interrupted' if job['state'] == 'running' and path.stem not in running else job['state']
+            read = next((e['detail'] for e in events if e['stage'] == 'read'), {})
+            tasks.append({'kind': 'draft', 'id': path.stem, 'title': read.get('file') or path.stem, 'state': str(state),
+                          'at': events[0]['at'] if events else _iso(path.stat().st_mtime),
+                          'ended_at': events[-1]['at'] if events and state != 'running' else None,
+                          'error': job.get('error') if state == 'failed' else None})
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
+            unreadable += 1
+    return tasks, unreadable
 
 
 def upload_tasks(conn) -> list[dict]:
@@ -48,6 +49,7 @@ def upload_tasks(conn) -> list[dict]:
     return tasks
 
 
-def list_tasks(conn, jobs_dir: Path, running: set[str]) -> list[dict]:
-    """Jobs and uploads together, newest first, at most LIMIT."""
-    return sorted(job_tasks(jobs_dir, running) + upload_tasks(conn), key=lambda t: t['at'], reverse=True)[:LIMIT]
+def list_tasks(conn, jobs_dir: Path, running: set[str]) -> tuple[list[dict], int]:
+    """(jobs and uploads together, newest first, at most LIMIT; the number of job files that could not be read)."""
+    jobs, unreadable = job_tasks(jobs_dir, running)
+    return sorted(jobs + upload_tasks(conn), key=lambda t: t['at'], reverse=True)[:LIMIT], unreadable

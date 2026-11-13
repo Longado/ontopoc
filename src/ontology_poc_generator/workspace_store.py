@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
-from decimal import Decimal
 import hashlib
 import json
 import re
@@ -335,8 +334,12 @@ def _canonical(value):
         return None
     text = str(value).strip()
     if (_INTEGER.fullmatch(text) or _DECIMAL.fullmatch(text)) and not _LEADING_ZERO.match(text):
-        number = Decimal(text)
-        return '0' if number == 0 else format(number.normalize(), 'f')
+        negative = text.startswith('-')
+        whole, _, fraction = text.lstrip('-').partition('.')   # on the digits as written: a number of any length keeps every digit
+        fraction = fraction.rstrip('0')
+        if whole == '0' and not fraction:
+            return '0'
+        return ('-' if negative else '') + whole + ('.' + fraction if fraction else '')
     return text
 
 

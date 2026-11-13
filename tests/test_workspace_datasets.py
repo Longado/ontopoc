@@ -289,6 +289,19 @@ class UpdateDetailsTests(unittest.TestCase):
         self.assertEqual((len(newest['changed_keys']), newest['changed_keys'][:2], newest['added_keys']), (50, ['DD20260001', 'DD20260002'], ['NEW1', 'NEW2']))
         self.assertEqual(dataset_detail(self.conn, '订单', 1)['version_at'], page['versions'][1]['at'])
 
+    def test_numeric_keys_of_any_length_keep_every_digit(self):
+        upload(self.conn, [part('b.csv', 'id,v\n123456789012345678901234567890001,a\n-0.0,z\n'.encode())], '小林')
+        [r] = upload(self.conn, [part('x.csv', 'id,v\n123456789012345678901234567890002,b\n0,y\n'.encode(), target='b', mode='update_by_key', key_columns=['id'])], '小王')
+        self.assertEqual({k: r['changes'][k] for k in ('changed', 'added')}, {'changed': 1, 'added': 1})   # the 0 matched -0.0; the 30-digit key did not match its neighbour
+        self.assertEqual(r['changes']['added_keys'], ['123456789012345678901234567890002'])
+        rows = [(x['id'], x['v']) for x in dataset_records(self.conn, current_dataset(self.conn, 'b'))]
+        self.assertEqual(rows, [('123456789012345678901234567890001', 'a'), ('-0.0', 'y'), ('123456789012345678901234567890002', 'b')])
+        self.assertEqual(merge_by_key([{'id': '1.500'}], [{'id': '1.5'}], ['id'])[1]['unchanged'], 1)
+
+    def test_a_cell_the_csv_reader_cannot_hold_is_refused_in_words(self):
+        with self.assertRaisesRegex(ValueError, '无法作为 CSV 读取'):
+            upload(self.conn, [part('big.csv', ('id,v\n1,' + 'x' * 200000 + '\n').encode())], '小林')
+
     def test_a_file_with_no_data_rows_is_refused(self):
         for name, data in [('h.csv', '编号,值\n'.encode()), ('b.xlsx', small_xlsx([[None, None]]))]:
             with self.subTest(name), self.assertRaisesRegex(ValueError, '没有数据行'):

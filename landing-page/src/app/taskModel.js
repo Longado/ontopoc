@@ -1,4 +1,5 @@
 // The 任务 page: each task of the list as the words of one table row.
+import { hrefFor } from "./routeModel.js";
 import { modeLabel, versionChangeText } from "./versionText.js";
 
 export const STATE_LABEL = { running: "进行中", done: "完成", failed: "失败", interrupted: "中断" };
@@ -31,7 +32,8 @@ export function taskRow(t) {
     at: t.at,
     kind: KIND_LABEL[t.kind] ?? t.kind,
     title: t.title,
-    dataset: t.kind === "upload" ? t.title : null,
+    // an upload opens its dataset's versions; a modelling job opens the old workbench, where its run is kept (it has no page of its own yet)
+    href: t.kind === "upload" ? hrefFor({ page: "dataset", name: t.title, tab: "versions" }) : "/legacy.html",
     state: STATE_LABEL[t.state] ?? t.state,
     bad: t.state === "failed" || t.state === "interrupted",
     who: t.who ?? "",

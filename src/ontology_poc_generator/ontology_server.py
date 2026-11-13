@@ -1063,7 +1063,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if url.path == '/api/workspace/tasks':
                     with jobs_lock:
                         running = {job_id for job_id, job in jobs.items() if job['state'] == 'running'}
-                    self.reply(200, {'tasks': list_tasks(conn, jobs_dir, running)})
+                    tasks, unreadable = list_tasks(conn, jobs_dir, running)
+                    self.reply(200, {'tasks': tasks, 'unreadable': unreadable})
                     return
                 if url.path.startswith('/api/workspace/datasets/'):
                     version = (parse_qs(url.query).get('version') or [None])[0]

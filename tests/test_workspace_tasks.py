@@ -31,12 +31,16 @@ class JobTaskTests(unittest.TestCase):
             job_file(jobs, 'd' * 12, 'running', [read('2026-11-13T13:00:00+00:00', '库存.xlsx')])
             (jobs / ('e' * 12 + '.json')).write_text('{"state": "do', encoding='utf-8')   # cut short by a crash
             (jobs / ('f' * 12 + '.json.part')).write_text('{}', encoding='utf-8')
-            got = {t['title']: t for t in job_tasks(jobs, {'c' * 12})}
+            (jobs / ('g' * 12 + '.json')).write_text('[]', encoding='utf-8')   # not the shape the service writes
+            (jobs / ('h' * 12 + '.json')).write_text('{"events": []}', encoding='utf-8')   # no state
+            found, unreadable = job_tasks(jobs, {'c' * 12})
+            got = {t['title']: t for t in found}
         self.assertEqual(sorted(got), ['产品.xlsx', '客户.xlsx', '库存.xlsx', '订单.xlsx'])
         self.assertEqual((got['订单.xlsx']['state'], got['订单.xlsx']['at'], got['订单.xlsx']['ended_at']), ('done', '2026-11-13T10:00:00+00:00', '2026-11-13T10:01:30+00:00'))
         self.assertEqual((got['客户.xlsx']['state'], got['客户.xlsx']['error']), ('failed', '建模时出错：x'))
         self.assertEqual((got['产品.xlsx']['state'], got['产品.xlsx']['ended_at']), ('running', None))
         self.assertEqual(got['库存.xlsx']['state'], 'interrupted')   # running on disk, not in this process
+        self.assertEqual(unreadable, 3)   # the cut-short file, the list and the one without a state; the .part file is not a record
 
     def test_newest_first_by_start_time(self):
         with tempfile.TemporaryDirectory() as out:
@@ -44,10 +48,10 @@ class JobTaskTests(unittest.TestCase):
                 job_file(Path(out), str(i) * 12, 'done', [{'stage': 'read', 'detail': {'file': f'f{i}'}, 'at': at}])
             conn = open_workspace(':memory:')
             self.addCleanup(conn.close)
-            self.assertEqual([t['title'] for t in list_tasks(conn, Path(out), set())], ['f1', 'f2', 'f0'])
+            self.assertEqual([t['title'] for t in list_tasks(conn, Path(out), set())[0]], ['f1', 'f2', 'f0'])
 
     def test_no_jobs_directory_is_no_jobs(self):
-        self.assertEqual(job_tasks(Path('/no/such/dir'), set()), [])
+        self.assertEqual(job_tasks(Path('/no/such/dir'), set()), ([], 0))
 
 
 class UploadTaskTests(unittest.TestCase):
@@ -60,7 +64,7 @@ class UploadTaskTests(unittest.TestCase):
         rows = [order('DD20260001')]
         upload(conn, [part('x.csv', table_csv(rows), target='订单', mode='update_by_key', key_columns=['订单号'])], '小王')   # changes row 1
         upload(conn, [part('x.csv', table_csv(rows), target='订单', mode='update_by_key', key_columns=['订单号'])], '小王')   # the same again: nothing to do
-        tasks = list_tasks(conn, Path('/no/such/dir'), set())
+        tasks, _ = list_tasks(conn, Path('/no/such/dir'), set())
         self.assertEqual(sorted((t['mode'], t['created_version']) for t in tasks), [('new', True), ('update_by_key', False), ('update_by_key', True)])
         self.assertEqual(sorted(t['version'] for t in tasks if t['created_version']), [1, 2])
         self.assertNotIn('旧', {t['title'] for t in tasks})
