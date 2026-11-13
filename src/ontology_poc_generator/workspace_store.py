@@ -11,9 +11,11 @@ from contextlib import contextmanager
 from datetime import date, datetime, timezone
 import hashlib
 import json
+import os
 import re
 import sqlite3
 
+from ontology_poc_generator.accounts import SCHEMA as ACCOUNTS_SCHEMA
 from ontology_poc_generator.public_ontology import normalize_proposal
 
 VALUE_COUNT_LIMIT = 20   # a column with more distinct values than this keeps no value counts
@@ -68,7 +70,9 @@ def _quote(name: str) -> str:
 def open_workspace(path) -> sqlite3.Connection:
     """Open (creating if needed) the workspace file; ':memory:' for a throwaway one. Transactions are explicit."""
     conn = sqlite3.connect(str(path), timeout=30, isolation_level=None)
-    conn.executescript(SCHEMA)
+    conn.executescript(SCHEMA + ACCOUNTS_SCHEMA)
+    if str(path) != ':memory:':
+        os.chmod(path, 0o600)   # the file holds password hashes and sessions: this account only
     for table, column in (('dataset', 'dropped_json'), ('dataset', 'who'), ('dataset', 'mode'), ('dataset', 'changes_json'), ('check_result', 'dataset_id'), ('check_result', 'null_key_rows'),
                           ('element_state', 'content_json'), ('element_state', 'anchors_json')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed

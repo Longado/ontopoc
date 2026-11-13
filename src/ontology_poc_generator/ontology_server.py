@@ -59,6 +59,7 @@ from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
+from ontology_poc_generator.auth_http import LOOPBACK, Gate
 from ontology_poc_generator.dataset_readers import dataset_readers
 from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
 from ontology_poc_generator.workspace_tasks import list_tasks
@@ -106,7 +107,11 @@ def write_run(path: Path, run: dict) -> None:
     os.replace(part, path)
 
 
-def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent):
+def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent,
+                no_auth: bool = False, origins=()):
+    """no_auth: no sign-in, every request is the local admin (trials and tests only). origins: the addresses, besides the service's own, that
+    people reach it at: a proxy's https address, or a dev server."""
+    output_dir.mkdir(parents=True, exist_ok=True)
     running = code_fingerprint(code_dir)
     if gateway is not None:   # every model call, from any agent, leaves one line beside the runs
         gateway = LoggedGateway(gateway, output_dir / 'model_calls.jsonl')
@@ -969,16 +974,20 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {exc}'[:300]
         return None
 
+    gate = Gate(output_dir / 'workspace.sqlite', port, origins, no_auth)
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
             pass
 
-        def reply(self, status, payload):
+        def reply(self, status, payload, headers=None):
             body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
             self.send_response(status)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', 'no-store')
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
 
@@ -1140,7 +1149,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.reply(200, deleted)
 
         def do_GET(self):
-            if not self.local_request():
+            if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
                 return
             if self.path.startswith('/api/workspace/'):
                 self.workspace_get()
@@ -1175,6 +1184,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path != '/api/ontology/health':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
+                return
+            if self.user is None:   # a stranger learns only that the service is up
+                self.reply(200, {'ok': True})
                 return
             on_disk = code_fingerprint(code_dir)
             self.reply(200, {'model_ready': gateway is not None, 'running': running, 'on_disk': on_disk, 'stale': on_disk != running})
@@ -1293,7 +1305,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return payload
 
         def do_POST(self):
-            if not self.local_request():
+            if not gate.admit(self, 'POST') or gate.handle(self, 'POST'):
                 return
             if self.path == '/api/workspace/datasets/upload':
                 self.workspace_upload()
@@ -2394,7 +2406,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 write_run(result_path, latest)
             self.reply(200, latest)
 
-    return ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server.gate = gate
+    gate.origins |= {f'http://{h}:{server.server_port}' for h in LOOPBACK}   # the port is known only now when port=0
+    return server
 
 
 def main(argv=None):
@@ -2402,11 +2417,19 @@ def main(argv=None):
     parser.add_argument('--port', type=int, default=8767)
     parser.add_argument('--data-dir', type=Path, default=ROOT / 'output/ontology-runs',
                         help='where runs, confirmations and rules are kept; point a trial run elsewhere')
+    parser.add_argument('--origin', action='append', default=[], metavar='URL',
+                        help='an address people reach the service at besides http://127.0.0.1:<port> (the https address of the proxy in front, or a dev server); repeat for several')
+    parser.add_argument('--no-auth', action='store_true', help='no sign-in: every request is the local admin. Only for a trial on your own machine')
     args = parser.parse_args(argv)
     gateway = gateway_from_env()
-    server = make_server(args.port, gateway, output_dir=args.data_dir)
+    server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin)
     print(f'Ontology API: http://127.0.0.1:{server.server_port}'
           + ('' if gateway else '  (no model key: set DEEPSEEK_API_KEY to build ontologies)'), flush=True)
+    if args.no_auth:
+        print('Sign-in is OFF (--no-auth): every request is the local admin. Do not use this on a shared machine.', flush=True)
+    elif server.gate.needs_first_admin():
+        print('No accounts yet. Make the first admin on this machine:  python -m ontology_poc_generator.accounts create-admin'
+              + ('' if args.data_dir == ROOT / 'output/ontology-runs' else f' --data-dir {args.data_dir}'), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
