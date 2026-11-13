@@ -1,0 +1,14 @@
+{
+ "statuses_original": [
+  "已交付",
+  "已取消",
+  "生产中"
+ ],
+ "planted": {
+  "status_code": "订单.状态码 0=已交付, 1=未交付(生产中/待发货等), 2=取消(if any); text status removed",
+  "fan_out": "订单 1:N 售后工单 (45 tickets); joining then summing 订单.金额 double-counts",
+  "snapshot": "库存快照 is month x product; summing 库存数量 across months is wrong",
+  "versions": "订单承诺 has 1-3 versions per order for first 60 orders; counting rows != orders",
+  "p50": "交付统计.交付天数P50 is the mean, not the median"
+ }
+}
