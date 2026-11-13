@@ -13,9 +13,10 @@ export function durationText(from, to) {
 }
 
 function uploadText(t) {
-  if (!t.created_version) return `${modeLabel(t.mode)}：没有变化，没有新版本`;
+  if (t.mode === "deleted") return `已删除，原有 ${t.changes.versions} 个版本、${t.changes.rows} 行`;
+  if (!t.created_version) return t.mode === "overwrite" ? "覆盖：内容和当前版本完全一样，没有新版本" : `${modeLabel(t.mode)}：没有变化，没有新版本`;
   const c = t.changes;
-  return `${modeLabel(t.mode)}：${versionChangeText({ mode: t.mode, rows: t.rows, changed: c.changed, added: c.added, unchanged: c.unchanged, blank_kept: c.blank_kept, replaced_rows: c.replaced_rows })}，第 ${t.version} 版`;
+  return `${modeLabel(t.mode)}：${versionChangeText({ mode: t.mode, rows: t.rows, changed: c.changed, added: c.added, unchanged: c.unchanged, blank_kept: c.blank_kept, replaced_rows: c.replaced_rows, same_as: c.same_as })}，第 ${t.version} 版`;
 }
 
 function draftText(t) {
@@ -33,7 +34,7 @@ export function taskRow(t) {
     kind: KIND_LABEL[t.kind] ?? t.kind,
     title: t.title,
     // an upload opens its dataset's versions; a modelling job opens the old workbench, where its run is kept (it has no page of its own yet)
-    href: t.kind === "upload" ? hrefFor({ page: "dataset", name: t.title, tab: "versions" }) : "/legacy.html",
+    href: t.mode === "deleted" ? null : t.kind === "upload" ? hrefFor({ page: "dataset", name: t.title, tab: "versions" }) : "/legacy.html",   // a deleted dataset has no page
     state: STATE_LABEL[t.state] ?? t.state,
     bad: t.state === "failed" || t.state === "interrupted",
     who: t.who ?? "",

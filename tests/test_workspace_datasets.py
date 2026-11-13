@@ -16,9 +16,12 @@ from ontology_poc_generator.anchors import check_code, code_anchor
 from ontology_poc_generator.code_meanings import code_columns
 from ontology_poc_generator.named_views import save_definition, views_of_run
 from ontology_poc_generator.pipelines import workspace_datasets
+from ontology_poc_generator.dataset_readers import dataset_readers
 from ontology_poc_generator.relation_checks import check_relations
-from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_detail, list_datasets, upload
-from ontology_poc_generator.workspace_store import current_dataset, dataset_records, merge_by_key, open_workspace, set_element_states
+from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload
+from ontology_poc_generator.workspace_store import check_bundle, current_dataset, dataset_records, merge_by_key, open_workspace, set_element_states
+from ontology_poc_generator.workspace_tasks import upload_tasks
+from tests.test_workspace_store import planted_bundle
 from tests.test_ontology_server import OntologyServerTests
 from tests.test_relation_checks import DRAFT
 
@@ -313,6 +316,106 @@ CODES = {'values': [{'value': '0', 'label': '进行中', 'description': ''}, {'v
                     {'value': '2', 'label': '已取消', 'description': ''}]}
 
 
+class OldScreenAndNewAppShareOneLineTests(unittest.TestCase):
+    """The old screen (check_bundle) records its version but never moves the pointer the new app set; the new app never reuses a version silently."""
+
+    def setUp(self):
+        self.conn = open_workspace(':memory:')
+        self.addCleanup(self.conn.close)
+        uploaded_all(self.conn)
+        upload(self.conn, [part('x.csv', table_csv([order('DD20260001', amount='7')]), target='订单', mode='update_by_key', key_columns=['订单号'])], '小王')
+
+    def versions(self):
+        current = current_dataset(self.conn, '订单')['id']
+        return [(v, i == current, o) for v, i, o in self.conn.execute("SELECT version, id, origin FROM dataset WHERE name = '订单' ORDER BY version")]
+
+    def test_the_old_import_of_older_content_keeps_the_pointer_where_the_new_app_put_it(self):
+        self.assertEqual(self.versions(), [(1, False, 'upload'), (2, True, 'upload')])
+        done = {t['dataset']: t for t in check_bundle(self.conn, {'object_types': []}, planted_bundle(), '建模运行', relations=False)['tables']}
+        self.assertEqual(self.conn.execute("SELECT version FROM dataset WHERE id = ?", (done['订单']['dataset_id'],)).fetchone()[0], 1)   # its run reads v1
+        self.assertEqual(current_dataset(self.conn, '订单')['version'], 2)
+        self.assertEqual(dataset_detail(self.conn, '订单')['current_version'], 2)
+
+    def test_the_old_import_of_new_content_is_a_version_in_the_list_but_not_the_current_one(self):
+        records = dataset_records(self.conn, current_dataset(self.conn, '订单'))
+        bundle = {'sources': {'订单': {'records': [*records, {**records[0], '订单号': 'DD-OLD'}], 'rows_read': 161, 'dropped_rows': {}}}}
+        check_bundle(self.conn, {'object_types': []}, bundle, '建模运行', relations=False)
+        self.assertEqual([(v['version'], v['origin']) for v in dataset_detail(self.conn, '订单')['versions']], [(3, '建模运行'), (2, 'upload'), (1, 'upload')])
+        self.assertEqual(current_dataset(self.conn, '订单')['version'], 2)
+
+    def test_the_old_import_of_a_new_name_makes_it_current(self):
+        check_bundle(self.conn, {'object_types': []}, {'sources': {'新表': {'records': [{'a': '1'}], 'rows_read': 1, 'dropped_rows': {}}}}, '建模运行', relations=False)
+        self.assertEqual(current_dataset(self.conn, '新表')['version'], 1)
+
+    def test_the_same_content_uploaded_again_in_the_new_app_is_a_new_version_that_says_which_it_equals(self):
+        out = upload(self.conn, [part('x.csv', table_csv([order('DD20260001', amount='2520')]), target='订单', mode='update_by_key', key_columns=['订单号'])], '小李')
+        self.assertEqual(out[0]['version'], 3)
+        out = upload(self.conn, [planted('订单', target='订单', mode='overwrite')], '小李')
+        self.assertEqual((out[0]['created_version'], out[0]['version'], out[0]['same_as']), (True, 4, 1))
+        self.assertEqual(current_dataset(self.conn, '订单')['version'], 4)
+        self.assertEqual({v['version']: v['same_as'] for v in dataset_detail(self.conn, '订单')['versions']}, {4: 1, 3: None, 2: None, 1: None})
+        out = upload(self.conn, [planted('订单', target='订单', mode='overwrite')], '小李')   # identical to the current one: nothing to record but the line
+        self.assertEqual((out[0]['created_version'], current_dataset(self.conn, '订单')['version']), (False, 4))
+        self.assertEqual([t['mode'] for t in upload_tasks(self.conn) if t['title'] == '订单' and not t['created_version']], ['overwrite'])
+
+
+class DatasetPageTests(unittest.TestCase):
+    def setUp(self):
+        self.conn = open_workspace(':memory:')
+        self.addCleanup(self.conn.close)
+        uploaded_all(self.conn)
+
+    def test_a_column_that_is_unique_but_for_a_few_values_says_which_repeat(self):
+        columns = {c['name']: c for c in dataset_detail(self.conn, '客户')['columns']}
+        self.assertEqual(columns['客户编号']['near_key'], {'repeated_values': 1, 'repeated_rows': 2, 'missing': 0, 'samples': [{'value': 'KH012', 'rows': 2}]})
+        self.assertIsNone({c['name']: c for c in dataset_detail(self.conn, '订单')['columns']}['订单号']['near_key'])
+
+    def test_the_preview_is_paged_by_fifty_and_the_csv_has_every_row_of_the_chosen_version(self):
+        first, last = dataset_detail(self.conn, '订单'), dataset_detail(self.conn, '订单', page=4)
+        self.assertEqual((first['preview']['page'], first['preview']['pages'], len(first['preview']['rows']), len(last['preview']['rows'])), (1, 4, 50, 10))
+        self.assertEqual(dataset_detail(self.conn, '订单', page=99)['preview']['page'], 4)   # past the end shows the last page
+        name, body = dataset_csv(self.conn, '订单', None)
+        rows = list(csv.reader(io.StringIO(body.decode('utf-8-sig'))))
+        self.assertEqual((name, len(rows), rows[0][:2]), ('订单-第1版.csv', 161, ['订单号', '客户编号']))
+        self.assertIsNone(dataset_csv(self.conn, '订单', 9))
+
+    def test_a_repeated_key_column_is_refused(self):
+        with self.assertRaises(UploadRefused) as caught:
+            upload(self.conn, [part('x.csv', table_csv([order('A')]), target='订单', mode='update_by_key', key_columns=['订单号', '订单号'])], '小林')
+        self.assertIn('重复', str(caught.exception))
+
+    def test_a_dataset_is_deleted_with_its_versions_unless_something_reads_it(self):
+        with self.assertRaises(ValueError) as caught:
+            delete_dataset(self.conn, '客户', '小林', [{'kind': '视图', 'name': '有效客户'}])
+        self.assertIn('视图「有效客户」', str(caught.exception))
+        self.assertEqual(len(list_datasets(self.conn)), 7)
+        self.assertEqual(delete_dataset(self.conn, '客户', '小林', []), {'name': '客户', 'versions': 1, 'rows': 31})
+        self.assertNotIn('客户', [d['name'] for d in list_datasets(self.conn)])
+        self.assertIsNone(dataset_detail(self.conn, '客户'))
+        with self.assertRaises(KeyError):
+            delete_dataset(self.conn, '客户', '小林', [])
+        self.assertEqual(upload(self.conn, [planted('客户')], '小林')[0]['version'], 1)   # the name is free again, with a clean history
+
+    def test_readers_are_the_runs_relations_views_and_definitions_that_name_the_dataset(self):
+        self.assertEqual(dataset_readers(self.conn, [], '订单'), [])
+        set_element_states(self.conn, [(f'property:{KEY}:订单.状态码', 'confirmed', None, '小林', CODES)])
+        save_definition(self.conn, KEY, {'name': '有效订单', 'kind': 'filter', 'base': '订单', 'column': '状态码', 'op': 'is_not', 'label': '已取消'},
+                        workspace_datasets(self.conn, {d['name']: current_dataset(self.conn, d['name'])['id'] for d in list_datasets(self.conn)}), DRAFT, '小林')
+        self.assertEqual(sorted((r['kind'], r['name']) for r in dataset_readers(self.conn, [], '订单')), [('口径', '订单.状态码'), ('视图', '有效订单')])
+        self.assertEqual(dataset_readers(self.conn, [], '客户'), [])
+
+    def test_a_run_file_reads_its_tables_and_a_broken_or_deeply_nested_one_reads_nothing(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            good, bad, deep = (Path(folder) / n for n in ('a.json', 'b.json', 'c.json'))
+            good.write_text(json.dumps({'file': {'name': 'x.xlsx'}, 'started_at': '2026-11-13T10:00:00', 'data_checks': {'tables': [{'dataset': '订单'}]},
+                                        'ontology': {'relations': [{'source': '订单', 'key': 'order_customer', 'label': '订单属于客户'}, {'source': '客户', 'key': 'k'}]}}))
+            bad.write_text('[1, 2')
+            deep.write_text('[' * 100000)
+            found = dataset_readers(self.conn, [good, bad, deep], '订单')
+        self.assertEqual([r['kind'] for r in found], ['运行', '关系'])
+
+
 class ConsumersReadTheNewVersionTests(unittest.TestCase):
     """What reads the planted tables (a view, a code anchor, a relation check) is handed the current version of each dataset: after an update
     by key it reads the new one. Those consumers are given dataset ids, so this is the check that a new version's id is a good one."""
@@ -385,6 +488,30 @@ class DatasetApiTests(unittest.TestCase):
                 self.assertEqual(status, 400, bad)
                 self.assertIn('主键列', body['error'])
             self.assertEqual([p.name for p in out.glob('*.json')], [])   # no run file anywhere
+
+    def test_page_csv_delete_and_a_deeply_nested_body_over_http(self):
+        with OntologyServerTests().server() as (base, out):
+            self.call(base, '/api/workspace/datasets/upload', {'who': '小林', 'files': [planted('订单'), planted('客户')]})
+            status, page = self.call(base, f'/api/workspace/datasets/{quote("订单")}?page=4')
+            self.assertEqual((status, page['preview']['page'], len(page['preview']['rows'])), (200, 4, 10))
+            self.assertEqual(self.call(base, f'/api/workspace/datasets/{quote("订单")}?page=x')[0], 400)
+            with urlopen(base + f'/api/workspace/datasets/{quote("订单")}?format=csv', timeout=30) as response:
+                self.assertEqual(response.headers['Content-Type'], 'text/csv; charset=utf-8')
+                self.assertEqual(len(response.read().decode('utf-8-sig').splitlines()), 161)
+            self.assertEqual(self.call(base, f'/api/workspace/datasets/{quote("没有")}?format=csv')[0], 404)
+            self.assertEqual(self.call(base, '/api/workspace/datasets/delete', {'name': '没有'})[0], 404)
+            self.assertEqual(self.call(base, '/api/workspace/datasets/delete', {})[0], 400)
+            (out / '20261113T100000Z-abcdef01.json').write_text(json.dumps({'file': {'name': 'a.xlsx'}, 'data_checks': {'tables': [{'dataset': '订单'}]}}))
+            status, body = self.call(base, '/api/workspace/datasets/delete', {'name': '订单', 'who': '小林'})
+            self.assertEqual((status, body['readers'][0]['kind']), (409, '运行'))
+            status, body = self.call(base, '/api/workspace/datasets/delete', {'name': '客户', 'who': '小林'})
+            self.assertEqual((status, body['versions']), (200, 1))
+            _, tasks = self.call(base, '/api/workspace/tasks')
+            self.assertIn(('客户', 'deleted'), [(t['title'], t['mode']) for t in tasks['tasks']])
+            request = Request(base + '/api/workspace/datasets/upload', data=b'[' * 100000, headers={'Content-Type': 'application/json'})
+            with self.assertRaises(HTTPError) as caught:
+                urlopen(request, timeout=30)
+            self.assertEqual(caught.exception.code, 400)
 
 
 if __name__ == '__main__':

@@ -48,7 +48,7 @@ function FileChoice({ file, choice, names, columns, refused, onChange, onRemove 
               {c.name}{c.possible_key && <span className="faint"> 唯一</span>}
             </label>
           ))}
-          <p className="hint">对上的行改成新文件里的值，新的主键追加在后面，不会删除任何行。</p>
+          <p className="hint">对上的行改成新文件里的值，新的主键追加在后面，不会删除任何行。新文件里的空格子保留原值，想清空一个值要用“覆盖”。</p>
         </fieldset>
       )}
       {choice.kind === "overwrite" && choice.target && <p className="hint">整表换成新文件，写成新的一版，旧版本还在版本页。</p>}
@@ -139,7 +139,7 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
           </label>
           <div className="pick">
             <button className="secondary" onClick={() => input.current.click()} disabled={phase === "sending" || !loaded}>选择文件</button>
-            <span className="muted">.xlsx 或 .csv，可以一次选几个，也可以拖进来</span>
+            <span className="muted">.xlsx 或 .csv，可以一次选几个，也可以拖进来；一次上传合计不超过 10 MB</span>
             <input ref={input} type="file" multiple accept={ACCEPT} hidden onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
           </div>
           {files.map((f, i) => (

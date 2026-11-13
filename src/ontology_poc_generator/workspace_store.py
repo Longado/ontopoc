@@ -58,6 +58,9 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
+now_text = _now   # for the modules that write log lines of their own
+
+
 def _quote(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
@@ -263,9 +266,12 @@ def _unique_names(records) -> list[str]:
 
 
 def import_records(conn, name: str, records, origin: str, file_sha256: str, who: str = 'system',
-                   rows_in: int | None = None, dropped: dict | None = None, mode: str | None = None, changes: dict | None = None) -> dict:
-    """Store every record as a row of a new dataset version, or return the version already holding this content;
-    either way that version becomes the current one. rows_in is the number of data rows in the file and dropped says
+                   rows_in: int | None = None, dropped: dict | None = None, mode: str | None = None, changes: dict | None = None,
+                   reuse: bool = True, keeps_current: bool = False) -> dict:
+    """Store every record as a row of a new dataset version, or return the version already holding this content (reuse=False always
+    stores a new one); either way that version becomes the current one, unless keeps_current: then the name's current version is left
+    where it is (a name with none gets this one). The run-based screen imports that way: what it imports is its own run's, and a
+    person's choice of current version in the workspace is not its to change. rows_in is the number of data rows in the file and dropped says
     how many of them the reader left out and why ({'blank': 2, 'title': 1}); without them the records are all there was.
     mode ('new', 'update_by_key', 'overwrite') and changes ({'changed', 'added', 'unchanged', ...}) are kept on the version beside who.
     Raises RowCountMismatch, writing nothing, when the rows do not add up or what was stored is not what was received."""
@@ -274,9 +280,10 @@ def import_records(conn, name: str, records, origin: str, file_sha256: str, who:
     rows_in = expected + sum(dropped.values()) if rows_in is None else rows_in
     if rows_in != expected + sum(dropped.values()):
         raise RowCountMismatch(f'{name}：文件里有 {rows_in} 行，读到 {expected} 行、丢掉 {sum(dropped.values())} 行，对不上，已取消导入')
-    existing = _dataset(conn, 'name = ? AND file_sha256 = ? ORDER BY version DESC LIMIT 1', (name, file_sha256))
+    existing = _dataset(conn, 'name = ? AND file_sha256 = ? ORDER BY version DESC LIMIT 1', (name, file_sha256)) if reuse else None
     if existing:
-        _set_current(conn, who, existing)
+        if not (keeps_current and current_dataset(conn, name)):
+            _set_current(conn, who, existing)
         return {**existing, 'reused': True}
     names = _unique_names(records)
     if not names:
@@ -301,7 +308,8 @@ def import_records(conn, name: str, records, origin: str, file_sha256: str, who:
             d = _describe([row[0] for row in conn.execute(f'SELECT {_quote(column)} FROM {_quote(table)}')])
             conn.execute('INSERT INTO "column" VALUES (?, ?, ?, ?, ?, ?, ?)',
                          (dataset_id, column, position, d['inferred_type'], d['distinct_count'], d['missing_count'], d['value_counts_json']))
-        conn.execute('INSERT OR REPLACE INTO current_dataset(name, dataset_id) VALUES (?, ?)', (name, dataset_id))
+        if not (keeps_current and conn.execute('SELECT 1 FROM current_dataset WHERE name = ?', (name,)).fetchone()):
+            conn.execute('INSERT OR REPLACE INTO current_dataset(name, dataset_id) VALUES (?, ?)', (name, dataset_id))
         _log(conn, who, f'dataset:{name}', f'import v{version}: {rows_in} rows in the file, {rows_stored} stored, {sum(dropped.values())} dropped',
              after={'version': version, 'rows_in': rows_in, 'rows_stored': rows_stored, 'dropped': dropped, 'file_sha256': file_sha256})
         conn.execute('COMMIT')
@@ -409,7 +417,8 @@ def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[st
 
 UPLOAD_MODES = ('update_by_key', 'overwrite')
 KEY_LIST_LIMIT = 50   # keys of changed and added rows kept with a version, so its page can say which rows
-NO_CHANGE = 'update_by_key: no change'   # the log line of an update that matched every row and changed none
+DELETED = 'deleted'   # the log line of a dataset removed with all its versions
+NO_CHANGE = 'no change'   # the log line of an upload that changed nothing and wrote no version (its mode is in the line's detail)
 
 
 def plan_upload(conn, name: str, records: list[dict], *, mode: str | None = None, key_columns: list[str] | None = None,
@@ -432,6 +441,8 @@ def plan_upload(conn, name: str, records: list[dict], *, mode: str | None = None
                 'changes': {'replaced_rows': current['rows_stored']}}
     if not isinstance(key_columns, list) or not key_columns or not all(isinstance(c, str) and c for c in key_columns):
         raise ValueError('主键列要写成列名的列表，例如 ["订单号"]')
+    if len(set(key_columns)) != len(key_columns):
+        raise ValueError(f'主键列里有重复的列：{"、".join(c for c in dict.fromkeys(key_columns) if key_columns.count(c) > 1)}')
     merged, counts = merge_by_key(dataset_records(conn, current), records, key_columns)
     file_rows = len(records) + sum((dropped or {}).values())
     return {'name': name, 'mode': mode, 'records': merged, 'rows_in': None, 'dropped': None, 'key_columns': list(key_columns),
@@ -441,17 +452,21 @@ def plan_upload(conn, name: str, records: list[dict], *, mode: str | None = None
 
 def apply_upload(conn, plan: dict, who: str, origin: str = 'upload') -> dict:
     """Write what plan_upload decided as the next version of the dataset, recording who and the counts with it. An update that
-    changes and adds nothing writes nothing: {'created': False}. Otherwise {'created': True, 'dataset': the version, 'key_check': ...}
-    where key_check is the key check of an update's key columns on the rows now stored."""
-    if plan['unchanged']:
-        _log(conn, who, f'dataset:{plan["name"]}', NO_CHANGE, after=plan['changes'])   # the only trace of an upload that wrote no version
-        return {'created': False, 'dataset': plan['current'], 'mode': plan['mode'], 'changes': plan['changes'], 'reused': False}
-    records = plan['records']
-    dataset = import_records(conn, plan['name'], records, origin, records_sha256(records), who, plan['rows_in'], plan['dropped'],
-                             mode=plan['mode'], changes=plan['changes'])
+    changes and adds nothing, and an overwrite with what the current version already holds, write nothing: {'created': False} and a
+    line in the log. Content an older version holds is written as a new version of its own, and says which it equals
+    (changes['same_as']): a person's upload never moves the current version quietly. Otherwise {'created': True, 'dataset': the
+    version, 'key_check': ...} where key_check is the key check of an update's key columns on the rows now stored."""
+    name, records = plan['name'], plan['records']
+    sha = records_sha256(records)
+    twin = None if plan['mode'] == 'new' else _dataset(conn, 'name = ? AND file_sha256 = ? ORDER BY version DESC LIMIT 1', (name, sha))
+    current = current_dataset(conn, name) if plan['mode'] != 'new' else None
+    if plan['unchanged'] or (plan['mode'] == 'overwrite' and twin and twin['id'] == current['id']):
+        _log(conn, who, f'dataset:{name}', NO_CHANGE, after={**plan['changes'], 'mode': plan['mode']})   # the only trace of an upload that wrote no version
+        return {'created': False, 'dataset': current, 'mode': plan['mode'], 'changes': plan['changes'], 'reused': False}
+    changes = {**plan['changes'], **({'same_as': twin['version']} if twin else {})}
+    dataset = import_records(conn, name, records, origin, sha, who, plan['rows_in'], plan['dropped'], mode=plan['mode'], changes=changes, reuse=False)
     key_check = check_key(conn, dataset['id'], plan['key_columns']) if plan.get('key_columns') else None
-    return {'created': not dataset['reused'], 'dataset': dataset, 'mode': plan['mode'], 'changes': plan['changes'],
-            'reused': dataset['reused'], 'key_check': key_check}
+    return {'created': True, 'dataset': dataset, 'mode': plan['mode'], 'changes': changes, 'reused': False, 'key_check': key_check}
 
 
 def _key_context(conn, dataset_id: int, columns: list[str]):
@@ -542,7 +557,7 @@ def check_bundle(conn, ontology: dict, bundle: dict, origin: str, relations: boo
         read = s.get('rows_read')
         dropped = s.get('dropped_rows')
         try:
-            d = import_records(conn, name, s['records'], origin, records_sha256(s['records']), rows_in=read, dropped=dropped)
+            d = import_records(conn, name, s['records'], origin, records_sha256(s['records']), rows_in=read, dropped=dropped, keeps_current=True)
         except RowCountMismatch as exc:
             tables.append({'dataset': name, 'status': 'error', 'error': str(exc), 'rows_in': read if read is not None else len(s['records']),
                            'rows_stored': None, 'dropped': dropped or {}})

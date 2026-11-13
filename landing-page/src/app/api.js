@@ -7,7 +7,7 @@ async function request(path, options = {}) {
     throw new Error("连不上本机服务，请确认服务已经启动后再试");
   }
   const body = await response.json().catch(() => null);
-  if (!response.ok) throw Object.assign(new Error(body?.error || `服务返回了 ${response.status}`), { code: response.status, files: body?.files });
+  if (!response.ok) throw Object.assign(new Error(body?.error || `服务返回了 ${response.status}`), { code: response.status, files: body?.files, readers: body?.readers });
   return body;
 }
 
@@ -16,8 +16,19 @@ export const getDatasets = () => request("/api/workspace/datasets").then((b) => 
 /** {tasks, unreadable}: the tasks, and how many job records the service could not read. */
 export const getTasks = () => request("/api/workspace/tasks");
 
-export const getDataset = (name, version = null) =>
-  request(`/api/workspace/datasets/${encodeURIComponent(name)}${version ? `?version=${version}` : ""}`);
+const datasetPath = (name, version, extra = "") => {
+  const query = [version ? `version=${version}` : "", extra].filter(Boolean).join("&");
+  return `/api/workspace/datasets/${encodeURIComponent(name)}${query ? `?${query}` : ""}`;
+};
+
+export const getDataset = (name, version = null, page = 1) => request(datasetPath(name, version, page > 1 ? `page=${page}` : ""));
+
+/** The address that downloads one version as a CSV. */
+export const csvHref = (name, version = null) => datasetPath(name, version, "format=csv");
+
+/** Removes a dataset with all its versions; refused (409, with `readers`) while something reads it. */
+export const deleteDataset = (name, who) =>
+  request("/api/workspace/datasets/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, who: who.trim() }) });
 
 export const uploadDatasets = (payload) =>
   request("/api/workspace/datasets/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then((b) => b.results);

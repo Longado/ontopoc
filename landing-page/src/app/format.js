@@ -25,7 +25,15 @@ export function keyText(column) {
   const check = column.key_check;
   if (check) {
     const parts = [check.violations ? `重复 ${check.violations} 行` : "", check.null_key_rows ? `空 ${check.null_key_rows} 行` : ""].filter(Boolean);
-    return check.status === "passed" ? "主键检查通过" : `主键检查没通过：${parts.join("，") || "没有结果"}`;
+    return check.status === "passed" ? "唯一，没有空值" : `主键检查没通过：${parts.join("，") || "没有结果"}`;
   }
-  return column.possible_key ? "唯一，没有空值" : "—";
+  if (column.possible_key) return "唯一，没有空值";
+  return column.near_key ? nearKeyText(column.near_key) : "—";
+}
+
+/** A column that is almost a key: which values repeat (the worst few) and how many rows are blank. */
+export function nearKeyText(near) {
+  const shown = near.samples.map((s) => `${s.value}，${s.rows} 行`).join("；");
+  const repeated = near.repeated_values ? `重复 ${near.repeated_values} 个值（${shown}${near.repeated_values > near.samples.length ? " 等" : ""}）` : "";
+  return [repeated, near.missing ? `空 ${near.missing} 行` : ""].filter(Boolean).join("，");
 }

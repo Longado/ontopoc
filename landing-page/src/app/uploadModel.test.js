@@ -74,5 +74,7 @@ test("each saved file reads as a sentence; a skipped update is plain and a faile
   assert.match(resultLine({ ...base, key_check: { status: "failed" } }), /主键检查没通过$/);
   assert.equal(resultLine({ ...base, mode: "overwrite" }), "订单：已覆盖，现在 163 行，第 2 版");
   assert.equal(resultLine({ ...base, mode: "new", rows: 12 }), "订单：新建，12 行");
-  assert.equal(resultLine({ ...base, reused: true, version: 1 }), "订单：内容和第 1 版完全一样，已设为当前版本");
+  assert.equal(resultLine({ ...base, mode: "overwrite", same_as: 1, version: 4 }), "订单：已覆盖，现在 163 行，第 4 版；内容同第 1 版");
+  assert.equal(resultLine({ ...base, same_as: 1 }), "订单：按主键更新，改 2、增 3、未变 1；现在 163 行，第 2 版；内容同第 1 版");
+  assert.equal(resultLine({ ...base, mode: "overwrite", created_version: false }), "订单：内容和当前版本完全一样，没有新版本");
 });

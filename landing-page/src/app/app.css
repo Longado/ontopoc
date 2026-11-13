@@ -121,6 +121,11 @@ input[aria-invalid="true"] { border-color: var(--bad); }
 .keys .hint { flex-basis: 100%; }
 .actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 12px 24px 20px; border-top: 0.5px solid var(--line); flex: none; }
 .actions > span { margin-right: auto; font-size: var(--small); }
+.actions button { flex: none; white-space: nowrap; }   /* a long message wraps in its own space; the buttons stay on one line */
+.head-actions { display: flex; align-items: center; gap: 8px; }
+.pager { display: flex; align-items: center; gap: 16px; margin-top: 12px; }
+.download { margin-left: auto; }
+.readers { margin: 8px 0 0; padding-left: 18px; }
 .refusal { margin-top: 8px; }
 .results { margin: 0; padding-left: 18px; }
 .results li { padding: 2px 0; }

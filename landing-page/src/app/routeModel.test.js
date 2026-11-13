@@ -10,9 +10,12 @@ test("an empty address and the list address both mean the dataset list", () => {
 });
 
 test("a dataset opens on its fields; the tab and the version come from the address", () => {
-  assert.deepEqual(parseRoute("#/datasets/%E8%AE%A2%E5%8D%95"), { page: "dataset", name: "订单", tab: "fields", version: null });
-  assert.deepEqual(parseRoute("#/datasets/%E8%AE%A2%E5%8D%95/preview?v=2"), { page: "dataset", name: "订单", tab: "preview", version: 2 });
-  assert.deepEqual(parseRoute("#/datasets/a%2Fb/versions"), { page: "dataset", name: "a/b", tab: "versions", version: null });
+  assert.deepEqual(parseRoute("#/datasets/%E8%AE%A2%E5%8D%95"), { page: "dataset", name: "订单", tab: "fields", version: null, pageNo: 1 });
+  assert.deepEqual(parseRoute("#/datasets/%E8%AE%A2%E5%8D%95/preview?v=2"), { page: "dataset", name: "订单", tab: "preview", version: 2, pageNo: 1 });
+  assert.deepEqual(parseRoute("#/datasets/x/preview?v=2&p=3"), { page: "dataset", name: "x", tab: "preview", version: 2, pageNo: 3 });
+  assert.equal(parseRoute("#/datasets/x/preview?p=0").pageNo, 1);
+  assert.equal(parseRoute("#/datasets/x/preview?p=abc").pageNo, 1);
+  assert.deepEqual(parseRoute("#/datasets/a%2Fb/versions"), { page: "dataset", name: "a/b", tab: "versions", version: null, pageNo: 1 });
   assert.equal(parseRoute("#/datasets/x/preview?v=abc").version, null);
 });
 
@@ -23,7 +26,7 @@ test("addresses that mean nothing are not found, including a broken escape", () 
 });
 
 test("hrefFor is the inverse of parseRoute", () => {
-  for (const route of [{ page: "datasets" }, { page: "tasks" }, { page: "dataset", name: "订单 (试)", tab: "preview", version: 3 }, { page: "dataset", name: "a/b", tab: "versions", version: null }]) {
+  for (const route of [{ page: "datasets" }, { page: "tasks" }, { page: "dataset", name: "订单 (试)", tab: "preview", version: 3, pageNo: 2 }, { page: "dataset", name: "a/b", tab: "versions", version: null, pageNo: 1 }]) {
     assert.deepEqual(parseRoute(hrefFor(route)), route);
   }
 });

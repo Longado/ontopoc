@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { getDataset } from "./api.js";
+import { csvHref, getDataset } from "./api.js";
+import { DeleteDialog } from "./DeleteDialog.jsx";
 import { isNumeric, keyText, originText, percentText, timeText, typeLabel } from "./format.js";
 import { Select } from "./Select.jsx";
 import { TABS, TAB_LABEL, hrefFor } from "./routeModel.js";
 import { UploadDialog } from "./UploadDialog.jsx";
 import { useLoad } from "./useLoad.js";
-import { keyListText, modeLabel, noChangeText, timeline, versionChangeText } from "./versionText.js";
+import { keyListText, noChangeText, timeline, versionChangeText, versionWay } from "./versionText.js";
 
 function Fields({ page }) {
   const multi = page.key_checks.filter((c) => c.columns.length > 1);
@@ -22,7 +23,7 @@ function Fields({ page }) {
                 <td>{c.name}</td>
                 <td>{typeLabel(c.type)}</td>
                 <td className="num" title={c.missing ? `缺 ${c.missing} 行` : undefined}>{percentText(c.fill_rate)}</td>
-                <td className={c.key_check?.status === "failed" ? "bad" : c.possible_key || c.key_check ? "" : "muted"}>{keyText(c)}</td>
+                <td className={c.key_check?.status === "failed" || (c.near_key && !c.possible_key) ? "bad" : c.possible_key || c.key_check ? "" : "muted"}>{keyText(c)}</td>
               </tr>
             ))}
           </tbody>
@@ -43,6 +44,7 @@ function Fields({ page }) {
 
 function Preview({ page, name }) {
   const { preview } = page;
+  const at = (n) => hrefFor({ page: "dataset", name, tab: "preview", version: page.version === page.current_version ? null : page.version, pageNo: n });
   const numeric = page.columns.map((c) => isNumeric(c.type));
   return (
     <>
@@ -52,7 +54,10 @@ function Preview({ page, name }) {
             <option key={v.version} value={v.version}>第 {v.version} 版{v.current ? "（当前）" : ""}</option>
           ))}
         </Select>
-        <span className="muted">显示前 {Math.min(preview.limit, preview.total)} 行，共 {preview.total} 行</span>
+        <span className="muted">
+          第 {(preview.page - 1) * preview.limit + (preview.total ? 1 : 0)}–{Math.min(preview.page * preview.limit, preview.total)} 行，共 {preview.total} 行
+        </span>
+        <a className="download" href={csvHref(name, page.version === page.current_version ? null : page.version)} download>下载 CSV</a>
       </div>
       <div className="table-wrap tall">
         <table>
@@ -70,6 +75,13 @@ function Preview({ page, name }) {
           </tbody>
         </table>
       </div>
+      {preview.pages > 1 && (
+        <nav className="pager" aria-label="预览分页">
+          {preview.page > 1 ? <a href={at(preview.page - 1)}>上一页</a> : <span className="faint">上一页</span>}
+          <span>{preview.page} / {preview.pages}</span>
+          {preview.page < preview.pages ? <a href={at(preview.page + 1)}>下一页</a> : <span className="faint">下一页</span>}
+        </nav>
+      )}
     </>
   );
 }
@@ -96,7 +108,7 @@ function Versions({ page, name }) {
                 <td>第 {r.version} 版{r.current && <span className="here"> 当前</span>}</td>
                 <td>{timeText(r.at)}</td>
                 <td className="keep">{r.who ?? <span className="faint">—</span>}</td>
-                <td className="keep">{modeLabel(r.mode)}</td>
+                <td className="keep">{versionWay(r)}</td>
                 <td>
                   {versionChangeText(r)}
                   {(r.changed_keys.length > 0 || r.added_keys.length > 0) && (
@@ -118,9 +130,10 @@ function Versions({ page, name }) {
 }
 
 export function DatasetPage({ route }) {
-  const { name, tab, version } = route;
-  const [state, reload] = useLoad(() => getDataset(name, version), [name, version]);
+  const { name, tab, version, pageNo } = route;
+  const [state, reload] = useLoad(() => getDataset(name, version, pageNo), [name, version, pageNo]);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const page = state.data;
   const at = (t) => hrefFor({ page: "dataset", name, tab: t, version });
   return (
@@ -130,8 +143,13 @@ export function DatasetPage({ route }) {
         数据集
       </a>
       <div className="page-head">
-        <h1>{name}</h1>
-        {page && <button className="primary" onClick={() => setUploading(true)}>上传新版本</button>}
+        <h1 tabIndex={-1}>{name}</h1>
+        {page && (
+          <div className="head-actions">
+            <button className="plain" onClick={() => setDeleting(true)}>删除</button>
+            <button className="primary" onClick={() => setUploading(true)}>上传新版本</button>
+          </div>
+        )}
       </div>
       {state.status === "error" && <p className="error">{state.error} {!state.missing && <button className="plain" onClick={reload}>重试</button>}</p>}
       {state.status === "loading" && !page && <p className="muted">加载中</p>}
@@ -157,6 +175,7 @@ export function DatasetPage({ route }) {
           {tab === "versions" && <Versions page={page} name={name} />}
         </>
       )}
+      {deleting && <DeleteDialog name={name} page={page} onClose={() => setDeleting(false)} />}
       {uploading && <UploadDialog presetTarget={name} onClose={() => setUploading(false)} onDone={reload} />}
     </main>
   );

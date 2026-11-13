@@ -84,12 +84,13 @@ const blankText = (n) => (n ? `新文件里 ${n} 个空格子，保留了原值`
 /** One saved file as a sentence for the dialog. A skipped update is a plain line, not an error. */
 export function resultLine(r) {
   const failed = r.key_check?.status === "failed" ? "；主键检查没通过" : "";
-  if (r.reused) return `${r.name}：内容和第 ${r.version} 版完全一样，已设为当前版本`;
+  if (r.mode === "overwrite" && !r.created_version) return `${r.name}：内容和当前版本完全一样，没有新版本`;
+  const same = r.same_as ? `；内容同第 ${r.same_as} 版` : "";
   if (r.mode === "update_by_key" && !r.created_version) return `${r.name}：没有变化，没有新版本${r.changes.blank_kept ? `（${blankText(r.changes.blank_kept)}）` : ""}`;
   if (r.mode === "update_by_key") {
     const c = r.changes;
-    return `${r.name}：按主键更新，改 ${c.changed}、增 ${c.added}、未变 ${c.unchanged}；现在 ${r.rows} 行，第 ${r.version} 版${r.changes.blank_kept ? `；${blankText(r.changes.blank_kept)}` : ""}${failed}`;
+    return `${r.name}：按主键更新，改 ${c.changed}、增 ${c.added}、未变 ${c.unchanged}；现在 ${r.rows} 行，第 ${r.version} 版${same}${r.changes.blank_kept ? `；${blankText(r.changes.blank_kept)}` : ""}${failed}`;
   }
-  if (r.mode === "overwrite") return `${r.name}：已覆盖，现在 ${r.rows} 行，第 ${r.version} 版`;
+  if (r.mode === "overwrite") return `${r.name}：已覆盖，现在 ${r.rows} 行，第 ${r.version} 版${same}`;
   return `${r.name}：新建，${r.rows} 行`;
 }

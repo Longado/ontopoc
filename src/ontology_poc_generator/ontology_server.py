@@ -59,7 +59,8 @@ from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
-from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_detail, list_datasets, upload as upload_datasets
+from ontology_poc_generator.dataset_readers import dataset_readers
+from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
 from ontology_poc_generator.workspace_tasks import list_tasks
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1067,11 +1068,20 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     self.reply(200, {'tasks': tasks, 'unreadable': unreadable})
                     return
                 if url.path.startswith('/api/workspace/datasets/'):
-                    version = (parse_qs(url.query).get('version') or [None])[0]
-                    if version is not None and not re.fullmatch(r'[0-9]{1,9}', version):
-                        self.reply(400, {'error': '版本要写成数字'})
+                    query = parse_qs(url.query)
+                    version, page = (query.get('version') or [None])[0], (query.get('page') or ['1'])[0]
+                    if any(v is not None and not re.fullmatch(r'[0-9]{1,9}', v) for v in (version, page)):
+                        self.reply(400, {'error': '版本和页码要写成数字'})
                         return
-                    found = dataset_detail(conn, unquote(url.path[len('/api/workspace/datasets/'):]), int(version) if version else None)
+                    name = unquote(url.path[len('/api/workspace/datasets/'):])
+                    if (query.get('format') or [''])[0] == 'csv':
+                        csv_file = dataset_csv(conn, name, int(version) if version else None)
+                        if csv_file is None:
+                            self.reply(404, {'error': '没有这个数据集或这个版本'})
+                        else:
+                            self.reply_file(csv_file[1], 'text/csv; charset=utf-8', csv_file[0])
+                        return
+                    found = dataset_detail(conn, name, int(version) if version else None, int(page))
                     self.reply(*((200, found) if found else (404, {'error': '没有这个数据集或这个版本'})))
                     return
             finally:
@@ -1100,6 +1110,34 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             self.reply(200, {'results': results})
+
+        def workspace_delete(self):
+            """POST /api/workspace/datasets/delete {who, name}: remove a dataset with all its versions, unless something reads it (409, naming what)."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = payload.get('name')
+                if not isinstance(name, str) or not name:
+                    raise ValueError('要写明数据集的名字（name）')
+                with runs_lock:
+                    conn = open_workspace(output_dir / 'workspace.sqlite')
+                    try:
+                        readers = dataset_readers(conn, [p for p in output_dir.glob('*.json') if SAVED_NAME.match(p.name)], name)
+                        try:
+                            deleted = delete_dataset(conn, name, payload.get('who'), readers)
+                        except KeyError:
+                            self.reply(404, {'error': '没有这个数据集'})
+                            return
+                        except ValueError as exc:
+                            self.reply(409, {'error': str(exc), 'readers': readers})
+                            return
+                    finally:
+                        conn.close()
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, deleted)
 
         def do_GET(self):
             if not self.local_request():
@@ -1246,7 +1284,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                 self.reply(415, {'error': 'Expected application/json'})
                 return None
-            payload = json.loads(self.rfile.read(length))
+            try:
+                payload = json.loads(self.rfile.read(length))
+            except RecursionError:
+                raise ValueError('请求的嵌套层数太多') from None
             if not isinstance(payload, dict):
                 raise ValueError('请求必须是 JSON 对象')
             return payload
@@ -1256,6 +1297,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/datasets/upload':
                 self.workspace_upload()
+                return
+            if self.path == '/api/workspace/datasets/delete':
+                self.workspace_delete()
                 return
             if self.path in ('/api/ontology/reference/preview', '/api/ontology/reference/confirm'):
                 with runs_lock:

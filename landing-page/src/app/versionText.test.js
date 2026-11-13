@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { keyText, percentText, typeLabel } from "./format.js";
-import { keyListText, modeLabel, noChangeText, timeline, versionChangeText } from "./versionText.js";
+import { keyListText, modeLabel, noChangeText, timeline, versionChangeText, versionWay } from "./versionText.js";
 
 test("each version says what it did in its own mode", () => {
   assert.equal(versionChangeText({ mode: "new", rows: 160 }), "160 行");
@@ -10,6 +10,9 @@ test("each version says what it did in its own mode", () => {
   assert.equal(versionChangeText({ mode: "update_by_key", changed: 0, added: 1, unchanged: 0, blank_kept: 3, rows: 4 }), "改 0，增 1，未变 0，3 个空格子保留原值");
   assert.equal(versionChangeText({ mode: "overwrite", replaced_rows: 160, rows: 2 }), "原 160 行，现 2 行");
   assert.equal(versionChangeText({ mode: "upload", rows: 31 }), "31 行");
+  assert.equal(versionChangeText({ mode: "overwrite", replaced_rows: 163, rows: 160, same_as: 1 }), "原 163 行，现 160 行，内容同第 1 版");
+  assert.equal(versionWay({ mode: "upload", origin: "建模运行" }), "建模运行");
+  assert.equal(versionWay({ mode: "overwrite", origin: "upload" }), "覆盖");
   assert.deepEqual(["new", "update_by_key", "overwrite", "upload", "x"].map(modeLabel), ["新建", "按主键更新", "覆盖", "导入", "导入"]);
 });
 
@@ -19,6 +22,7 @@ test("a list of keys says how many more there were than were kept", () => {
 });
 
 test("an update that changed nothing is one plain sentence", () => {
+  assert.equal(noChangeText({ mode: "overwrite" }), "覆盖：内容和当前版本完全一样，没有新版本");
   assert.equal(noChangeText({ key_columns: ["订单号"] }), "按主键更新（订单号）：没有变化，没有新版本");
   assert.equal(noChangeText({ key_columns: ["订单号"], blank_kept: 2 }), "按主键更新（订单号）：没有变化，没有新版本（2 个空格子保留原值）");
 });
@@ -40,5 +44,9 @@ test("a column's key cell reads the recorded check first, then the stored counts
   assert.equal(keyText({ possible_key: true, key_check: null }), "唯一，没有空值");
   assert.equal(keyText({ possible_key: false, key_check: null }), "—");
   assert.equal(keyText({ key_check: { status: "failed", violations: 1, null_key_rows: 0 } }), "主键检查没通过：重复 1 行");
-  assert.equal(keyText({ key_check: { status: "passed" } }), "主键检查通过");
+  assert.equal(keyText({ key_check: { status: "passed" } }), "唯一，没有空值");
+  const near = { repeated_values: 1, repeated_rows: 2, missing: 0, samples: [{ value: "KH012", rows: 2 }] };
+  assert.equal(keyText({ possible_key: false, key_check: null, near_key: near }), "重复 1 个值（KH012，2 行）");
+  assert.equal(keyText({ possible_key: false, key_check: null, near_key: { ...near, repeated_values: 5, missing: 2 } }), "重复 5 个值（KH012，2 行 等），空 2 行");
+  assert.equal(keyText({ possible_key: false, key_check: null, near_key: { repeated_values: 0, repeated_rows: 0, missing: 3, samples: [] } }), "空 3 行");
 });

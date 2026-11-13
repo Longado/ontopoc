@@ -1,4 +1,4 @@
-// The app's addresses (#/datasets/订单/preview?v=2) and its left navigation, as plain data so both can be tested without a browser.
+// The app's addresses (#/datasets/订单/preview?v=2&p=3) and its left navigation, as plain data so both can be tested without a browser.
 export const TABS = ["fields", "preview", "versions"];
 export const TAB_LABEL = { fields: "字段", preview: "预览", versions: "版本" };
 
@@ -21,7 +21,8 @@ export function parseRoute(hash) {
     const tab = parts[2] ?? "fields";
     if (!TABS.includes(tab)) return { page: "notfound" };
     const v = new URLSearchParams(query).get("v");
-    return { page: "dataset", name: parts[1], tab, version: /^\d+$/.test(v ?? "") ? Number(v) : null };
+    const p = new URLSearchParams(query).get("p");
+    return { page: "dataset", name: parts[1], tab, version: /^\d+$/.test(v ?? "") ? Number(v) : null, pageNo: /^[1-9]\d*$/.test(p ?? "") ? Number(p) : 1 };
   }
   return { page: "notfound" };
 }
@@ -32,7 +33,8 @@ export function hrefFor(route) {
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "dataset") {
     const base = `#/datasets/${encodeURIComponent(route.name)}/${route.tab ?? "fields"}`;
-    return route.version ? `${base}?v=${route.version}` : base;
+    const query = [route.version ? `v=${route.version}` : "", route.pageNo > 1 ? `p=${route.pageNo}` : ""].filter(Boolean).join("&");
+    return query ? `${base}?${query}` : base;
   }
   return "#/datasets";
 }

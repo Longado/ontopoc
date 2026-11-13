@@ -7,14 +7,18 @@ from __future__ import annotations
 
 import base64
 import binascii
+import csv
+import io
 import json
 from pathlib import PurePath
 
 from ontology_poc_generator.company_sources import TABLE_SUFFIXES, SourceFileError, load_table_file
-from ontology_poc_generator.workspace_store import NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, plan_upload
+from ontology_poc_generator.workspace_store import DELETED, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, now_text as _now_text, plan_upload
 
-PREVIEW_ROWS = 50
+PREVIEW_ROWS = 50   # rows on one page of the preview
 MAX_NAME = 100
+NEAR_KEY_SHARE = 0.95   # a text or integer column with this share of its filled cells distinct reads as meant to be a key
+NEAR_KEY_TYPES = ('text', 'integer')
 
 
 def _quote(name: str) -> str:
@@ -45,9 +49,9 @@ def list_datasets(conn) -> list[dict]:
 
 def _version_row(row: dict, current_id: int) -> dict:
     changes = json.loads(row['changes_json']) if row['changes_json'] else {}
-    return {'version': row['version'], 'who': row['who'], 'at': row['imported_at'], 'mode': row['mode'] or 'upload', 'rows': row['rows_stored'],
+    return {'version': row['version'], 'who': row['who'], 'at': row['imported_at'], 'mode': row['mode'] or 'upload', 'origin': row['origin'], 'rows': row['rows_stored'],
             'changed': changes.get('changed'), 'added': changes.get('added'), 'unchanged': changes.get('unchanged'),
-            'blank_kept': changes.get('blank_kept'), 'changed_keys': changes.get('changed_keys') or [], 'added_keys': changes.get('added_keys') or [], 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'),
+            'blank_kept': changes.get('blank_kept'), 'same_as': changes.get('same_as'), 'changed_keys': changes.get('changed_keys') or [], 'added_keys': changes.get('added_keys') or [], 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'),
             'current': row['id'] == current_id}
 
 
@@ -73,10 +77,24 @@ def _key_checks(conn, dataset_id: int, name: str) -> list[dict]:
              'samples': json.loads(r['samples_json'] or '[]'), 'at': r['checked_at']} for r in rows]
 
 
-def dataset_detail(conn, name: str, version: int | None = None) -> dict | None:
+def _near_key(conn, table: str, column: dict, total: int) -> dict | None:
+    """For a column that reads as meant to be a key but is not one: the values that repeat (how many, the rows they cover, the worst three)
+    and the rows left blank. None for a column that is not key-like, or is one."""
+    filled = total - column['missing_count']
+    if (column['inferred_type'] not in NEAR_KEY_TYPES or filled < 2 or column['distinct_count'] < NEAR_KEY_SHARE * filled
+            or (column['missing_count'] == 0 and column['distinct_count'] == total)):
+        return None
+    col = _quote(column['name'])
+    repeated = conn.execute(f'SELECT {col}, COUNT(*) FROM {table} WHERE {col} IS NOT NULL GROUP BY {col} HAVING COUNT(*) > 1 ORDER BY 2 DESC, 1').fetchall()
+    return {'repeated_values': len(repeated), 'repeated_rows': sum(n for _, n in repeated), 'missing': column['missing_count'],
+            'samples': [{'value': v, 'rows': n} for v, n in repeated[:3]]}
+
+
+def dataset_detail(conn, name: str, version: int | None = None, page: int = 1) -> dict | None:
     """One dataset as its page shows it, for the current version or the one asked for; None when there is no such dataset or version.
-    columns: name, inferred type, fill rate, and whether the stored counts show it unique and filled on every row (a possible key);
-    key_checks: the checks recorded on this version; versions: every version with who, when, mode and the counts."""
+    columns: name, inferred type, fill rate, whether the stored counts show it unique and filled on every row (a possible key), and for a
+    column that is almost one, where it repeats or is blank (near_key); key_checks: the checks recorded on this version; versions: every
+    version with who, when, mode and the counts; preview: one page (PREVIEW_ROWS rows) of the rows."""
     current = current_dataset(conn, name)
     if current is None:
         return None
@@ -89,18 +107,35 @@ def dataset_detail(conn, name: str, version: int | None = None) -> dict | None:
     columns = [{'name': c['name'], 'type': c['inferred_type'], 'distinct': c['distinct_count'], 'missing': c['missing_count'],
                 'fill_rate': (total - c['missing_count']) / total if total else None,
                 'possible_key': bool(total) and c['missing_count'] == 0 and c['distinct_count'] == total,
-                'key_check': single.get(c['name'])}
+                'key_check': single.get(c['name']), 'near_key': _near_key(conn, _quote(shown['table_name']), c, total)}
                for c in _rows(conn, 'SELECT * FROM "column" WHERE dataset_id = ? ORDER BY position', (shown['id'],))]
     cols = ', '.join(_quote(c['name']) for c in columns)
-    cursor = conn.execute(f'SELECT {cols} FROM {_quote(shown["table_name"])} ORDER BY rowid LIMIT {PREVIEW_ROWS}')
+    pages = max(1, -(-total // PREVIEW_ROWS))
+    page = min(max(page, 1), pages)
+    cursor = conn.execute(f'SELECT {cols} FROM {_quote(shown["table_name"])} ORDER BY rowid LIMIT {PREVIEW_ROWS} OFFSET {(page - 1) * PREVIEW_ROWS}')
     versions = _rows(conn, 'SELECT * FROM dataset WHERE name = ? ORDER BY version DESC', (name,))
     skipped = _rows(conn, 'SELECT time, who, after_json FROM log WHERE element_id = ? AND change = ? ORDER BY time DESC', (f'dataset:{name}', NO_CHANGE))
     return {'name': name, 'origin': shown['origin'], 'version': shown['version'], 'version_at': shown['imported_at'], 'current_version': current['version'],
             'rows': total, 'updated_at': _updated_at(conn, name, current['imported_at']), 'who': shown['who'], 'used_by': 0,
             'dropped': json.loads(shown['dropped_json'] or '{}'), 'columns': columns, 'key_checks': checks,
             'versions': [_version_row(v, current['id']) for v in versions],
-            'no_change_updates': [{'at': r['time'], 'who': r['who'], **json.loads(r['after_json'])} for r in skipped],
-            'preview': {'columns': [c['name'] for c in columns], 'rows': [list(r) for r in cursor], 'limit': PREVIEW_ROWS, 'total': total}}
+            'no_change_updates': [{'at': r['time'], 'who': r['who'], 'mode': 'update_by_key', **json.loads(r['after_json'])} for r in skipped],
+            'preview': {'columns': [c['name'] for c in columns], 'rows': [list(r) for r in cursor], 'limit': PREVIEW_ROWS, 'total': total,
+                        'page': page, 'pages': pages}}
+
+
+def dataset_csv(conn, name: str, version: int | None = None) -> tuple[str, bytes] | None:
+    """(file name, bytes) of one version as a CSV Excel opens correctly (UTF-8 with a byte-order mark); None when there is no such version."""
+    current = current_dataset(conn, name)
+    shown = None if current is None else current if version is None else (_rows(conn, 'SELECT * FROM dataset WHERE name = ? AND version = ?', (name, version)) or [None])[0]
+    if shown is None:
+        return None
+    cursor = conn.execute(f'SELECT * FROM {_quote(shown["table_name"])} ORDER BY rowid')
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow([c[0] for c in cursor.description])
+    writer.writerows(('' if v is None else v for v in row) for row in cursor)
+    return f'{name}-第{shown["version"]}版.csv', out.getvalue().encode('utf-8-sig')
 
 
 def _decode(part: dict) -> tuple[str, bytes]:
@@ -150,6 +185,8 @@ def _part_jobs(conn, part, taken: dict) -> list[dict]:
     keys = part.get('key_columns')
     if keys is not None and not (isinstance(keys, list) and keys and all(isinstance(c, str) and c for c in keys)):
         raise ValueError(f'{label}：主键列（key_columns）要写成列名的列表，例如 ["订单号"]')
+    if keys is not None and len(set(keys)) != len(keys):
+        raise ValueError(f'{label}：主键列里有重复的列：{"、".join(c for c in dict.fromkeys(keys) if keys.count(c) > 1)}')
     if bool(mode) != bool(target):
         raise ValueError(f'{label}：要更新已有的数据集，数据集（target）和方式（mode）要一起写；不要靠文件名猜')
     if mode == 'update_by_key' and not part.get('key_columns'):
@@ -197,7 +234,7 @@ def _jobs(conn, parts: list) -> list[dict]:
 def _outcome(job: dict, done: dict) -> dict:
     dataset = done['dataset']
     return {'file': job['file'], 'name': job['plan']['name'], 'mode': done['mode'], 'version': dataset['version'], 'rows': dataset['rows_stored'],
-            'created_version': done['created'], 'reused': done['reused'], 'changes': done['changes'],
+            'created_version': done['created'], 'reused': done['reused'], 'same_as': done['changes'].get('same_as'), 'changes': done['changes'],
             'key_check': done.get('key_check') and {k: done['key_check'][k] for k in ('status', 'columns', 'rows_checked', 'violations', 'null_key_rows', 'samples')}}
 
 
@@ -209,3 +246,32 @@ def upload(conn, parts: list, who: str | None) -> list[dict]:
     jobs = _jobs(conn, parts)
     signer = str(who or '').strip() or '未署名'
     return [_outcome(job, apply_upload(conn, job['plan'], signer)) for job in jobs]
+
+
+def delete_dataset(conn, name: str, who: str | None, readers: list[dict]) -> dict:
+    """Remove a dataset with all of its versions and their rows. Refused (ValueError naming each reader) while anything reads it: `readers`
+    is what dataset_readers found. The log keeps what was removed, under a name of its own, so a dataset made later under the same name
+    starts with a clean history. Returns {'name', 'versions', 'rows'}."""
+    versions = _rows(conn, 'SELECT * FROM dataset WHERE name = ?', (name,))
+    if not versions:
+        raise KeyError(name)
+    if readers:
+        raise ValueError(f'有 {len(readers)} 处在读“{name}”，先处理它们：' + '、'.join(f'{r["kind"]}「{r["name"]}」' for r in readers))
+    signer = str(who or '').strip() or '未署名'
+    stamp = _now_text()
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        for v in versions:
+            conn.execute(f'DROP TABLE IF EXISTS {_quote(v["table_name"])}')
+            conn.execute('DELETE FROM "column" WHERE dataset_id = ?', (v['id'],))
+            conn.execute('DELETE FROM dataset WHERE id = ?', (v['id'],))
+        conn.execute('DELETE FROM current_dataset WHERE name = ?', (name,))
+        conn.execute('UPDATE log SET element_id = ? WHERE element_id = ?', (f'deleted:{name}@{stamp}', f'dataset:{name}'))
+        conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json) VALUES (?, ?, ?, ?, ?, NULL)',
+                     (stamp, signer, f'deleted:{name}@{stamp}', DELETED,
+                      json.dumps({'versions': len(versions), 'rows': max(v['rows_stored'] for v in versions)}, ensure_ascii=False)))
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    return {'name': name, 'versions': len(versions), 'rows': max(v['rows_stored'] for v in versions)}

@@ -26,6 +26,10 @@ test("an upload says what it did in the version list's words, and a skipped upda
   assert.deepEqual([made.kind, made.href, made.who, made.text, made.bad], ["上传数据集", "#/datasets/%E8%AE%A2%E5%8D%95/versions", "小王", "按主键更新：改 2，增 3，未变 1，第 2 版", false]);
   assert.equal(taskRow(draft()).href, "/legacy.html");
   assert.equal(taskRow(upload({ created_version: false, version: null, rows: null })).text, "按主键更新：没有变化，没有新版本");
+  assert.equal(taskRow(upload({ created_version: false, mode: "overwrite", version: null, rows: null })).text, "覆盖：内容和当前版本完全一样，没有新版本");
+  assert.equal(taskRow(upload({ mode: "overwrite", rows: 160, version: 4, changes: { replaced_rows: 163, same_as: 1 } })).text, "覆盖：原 163 行，现 160 行，内容同第 1 版，第 4 版");
+  const gone = taskRow(upload({ mode: "deleted", created_version: false, version: null, rows: null, changes: { versions: 2, rows: 163 } }));
+  assert.deepEqual([gone.text, gone.href], ["已删除，原有 2 个版本、163 行", null]);
   assert.equal(taskRow(upload({ mode: "new", version: 1, rows: 160, changes: { changed: 0, added: 160, unchanged: 0 } })).text, "新建：160 行，第 1 版");
   assert.equal(taskRow(upload({ mode: "overwrite", version: 3, rows: 2, changes: { replaced_rows: 160 } })).text, "覆盖：原 160 行，现 2 行，第 3 版");
 });

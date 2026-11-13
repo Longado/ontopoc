@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 
-from ontology_poc_generator.workspace_store import NO_CHANGE
+from ontology_poc_generator.workspace_store import DELETED, NO_CHANGE
 
 LIMIT = 200
 
@@ -31,21 +31,25 @@ def job_tasks(jobs_dir: Path, running: set[str]) -> tuple[list[dict], int]:
                           'at': events[0]['at'] if events else _iso(path.stat().st_mtime),
                           'ended_at': events[-1]['at'] if events and state != 'running' else None,
                           'error': job.get('error') if state == 'failed' else None})
-        except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RecursionError):   # RecursionError: a file nested too deeply to parse
             unreadable += 1
     return tasks, unreadable
 
 
 def upload_tasks(conn) -> list[dict]:
-    """The versions made through the workspace API, and the updates that changed nothing."""
+    """The versions made through the workspace API, the uploads that changed nothing, and the datasets removed."""
     tasks = []
     for name, version, who, mode, at, rows, changes in conn.execute(
             'SELECT name, version, who, mode, imported_at, rows_stored, changes_json FROM dataset WHERE mode IS NOT NULL'):
         tasks.append({'kind': 'upload', 'id': f'{name}@{version}', 'title': name, 'state': 'done', 'at': at, 'who': who, 'mode': mode,
                       'version': version, 'rows': rows, 'changes': json.loads(changes) if changes else {}, 'created_version': True})
-    for name, who, at, after in conn.execute('SELECT element_id, who, time, after_json FROM log WHERE change = ?', (NO_CHANGE,)):
+    for name, who, at, after in conn.execute('SELECT element_id, who, time, after_json FROM log WHERE change = ? AND element_id LIKE ?', (NO_CHANGE, 'dataset:%')):
+        changes = json.loads(after)
         tasks.append({'kind': 'upload', 'id': f'{name}@{at}', 'title': name.removeprefix('dataset:'), 'state': 'done', 'at': at, 'who': who,
-                      'mode': 'update_by_key', 'version': None, 'rows': None, 'changes': json.loads(after), 'created_version': False})
+                      'mode': changes.get('mode', 'update_by_key'), 'version': None, 'rows': None, 'changes': changes, 'created_version': False})
+    for name, who, at, before in conn.execute('SELECT element_id, who, time, before_json FROM log WHERE change = ?', (DELETED,)):
+        tasks.append({'kind': 'upload', 'id': name, 'title': name.removeprefix('deleted:').rpartition('@')[0], 'state': 'done', 'at': at, 'who': who,
+                      'mode': 'deleted', 'version': None, 'rows': None, 'changes': json.loads(before), 'created_version': False})
     return tasks
 
 
