@@ -167,7 +167,7 @@ export function TypeActions({ type, mayBuild }) {
   const { actions, form } = state.data;
   return (
     <>
-      {!actions.length && <p className="muted">还没有行为。行为是改数据的唯一办法：一个人提交，另一位构建者批准，才会写成数据集的新版本。</p>}
+      {!actions.length && <p className="muted">还没有行为。行为是改数据的唯一办法：一个人提交，另一位建设者批准，才会写成数据集的新版本。</p>}
       <div className="cards">
         {actions.map((a) => <ActionCard key={`${a.id}@${a.version}`} action={a} mayBuild={mayBuild} onChanged={reload} />)}
       </div>
@@ -195,7 +195,7 @@ export function RunAction({ action, objectKey, objectText, onDone, onCancel }) {
     }
     setBusy(false);
   };
-  if (done) return <p>已提交，等另一位构建者在 <a href="#/confirm">待确认</a> 里批准。 <button className="plain" onClick={onCancel}>关闭</button></p>;
+  if (done) return <p>已提交，等另一位建设者在 <a href="#/confirm">待确认</a> 里批准。 <button className="plain" onClick={onCancel}>关闭</button></p>;
   return (
     <section className="card">
       <h2 className="item-title">{action.name}：{objectText}</h2>

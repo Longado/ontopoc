@@ -11,7 +11,7 @@ import sys
 from urllib.request import Request, urlopen
 import zipfile
 
-from ontology_poc_generator import mcp_server
+from ontology_poc_generator import mcp_server, ontology_server
 from tests.test_explorer import CUSTOMERS, ORDERS, UseLayerCase
 from tests.test_derived_properties import GROSS
 from tests.test_workspace_questions import AskModel, QUESTION, cancelled
@@ -226,6 +226,9 @@ class SkillTests(AgentCase):
             self.assertEqual(info['more_with_all'], len(mcp_server.TOOLS) - len(mcp_server.READ_TOOLS))   # what ONTOPOC_TOOLSET=all would add
             ask = next(t for t in info['tools'] if t['name'] == 'ask')
             self.assertEqual(ask['arguments'], [{'name': 'question', 'description': '要问的业务问题', 'required': True}])
-            self.assertTrue(Path(info['command']['src']).joinpath('ontology_poc_generator', 'mcp_server.py').is_file())
+            self.assertEqual(info['command'], {'python': 'python3', 'module': 'ontology_poc_generator.mcp_server'})   # a builder is not told where the code sits on this machine
+            self.assertNotIn(str(Path(ontology_server.__file__).resolve().parents[1]), json.dumps(info))
+            _, admin_info = team['admin'].get('/api/workspace/agent')
+            self.assertTrue(Path(admin_info['command']['local_src']).joinpath('ontology_poc_generator', 'mcp_server.py').is_file())   # an admin gets it, labelled as this machine's
             self.assertEqual((info['skill']['types'], info['skill']['views'], info['skill']['derived']), (6, 1, 1))
             self.assertEqual(team['vera'].get('/api/workspace/agent')[0], 403)

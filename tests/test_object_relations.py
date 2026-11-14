@@ -144,7 +144,7 @@ class RelationTests(SigningTestCase):
             self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
             conn = open_workspace(out / 'workspace.sqlite')
             checks = conn.execute('SELECT COUNT(*) FROM check_result').fetchone()[0]
-            self.assertEqual(bob.get('/api/workspace/queue?count=1')[1], {'items': [], 'count': 1})   # the navigation item asks for the count: no relation check runs for it
+            self.assertEqual(bob.get('/api/workspace/queue?count=1')[1], {'items': [], 'count': 1, 'hidden_by_rules': 0})   # the navigation item asks for the count: no relation check runs for it
             self.assertEqual(conn.execute('SELECT COUNT(*) FROM check_result').fetchone()[0], checks)
             conn.close()
             self.assertEqual(bob.get('/api/workspace/queue')[1]['count'], 1)

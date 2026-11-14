@@ -16,6 +16,7 @@ export function RelationGraph() {
   const groups = useMemo(() => (graph ? groupEdges(graph.edges.filter((e) => e.from !== e.to)) : []), [graph]);   // a relation from a type to itself has no line: its drawer lists it
   if (state.status === "error") return <p className="error">{state.error}</p>;
   if (!graph) return <p className="muted">加载中</p>;
+  if (!graph.nodes.length && graph.hidden_types > 0) return <p className="muted">有 {graph.hidden_types} 个对象类型没有开放给你，找管理员。</p>;
   if (!graph.nodes.length) return <p className="muted">还没有对象类型，画不出图。<a href={hrefFor({ page: "types" })}>去对象类型</a></p>;
   const group = picked?.kind === "edge" ? groups.find((g) => g.key === picked.id) : null;
   const node = picked?.kind === "node" ? graph.nodes.find((n) => n.id === picked.id) : null;

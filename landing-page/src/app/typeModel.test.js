@@ -12,10 +12,10 @@ test("the chip says what a person needs to know: a model's draft is not an ordin
 
 test("the proposer is told another builder must confirm; another builder is told they may", () => {
   const waiting = { state: "checked", proposed_by: "Ann", can_confirm: false, confirmers: ["Bob", "管理员"] };
-  assert.equal(stateLine(waiting, "这个对象类型"), "Ann 提出，需要另一位构建者确认");
+  assert.equal(stateLine(waiting, "这个对象类型"), "Ann 提出，需要另一位建设者确认");
   assert.equal(confirmersText(waiting), "可以确认的人：Bob、管理员");
   const mine = { ...waiting, can_confirm: true };
-  assert.equal(stateLine(mine, "这个对象类型"), "Ann 提出，等你或另一位构建者确认");
+  assert.equal(stateLine(mine, "这个对象类型"), "Ann 提出，等你或另一位建设者确认");
   assert.equal(confirmersText(mine), "");
 });
 

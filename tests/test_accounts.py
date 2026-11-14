@@ -108,6 +108,20 @@ class SignInTests(AccountTestCase):
         self.assertEqual(self.sign_in('ROOT')['username'], 'root')
         self.assertIsNotNone(accounts.get_user(self.conn, self.admin['id'])['last_login_at'])
 
+    def test_a_disabled_account_with_the_right_password_is_told_it_is_disabled(self):
+        self.make('off', password=GOOD)
+        accounts.set_disabled(self.conn, self.admin, accounts.list_users(self.conn)[1]['id'], True)
+        with self.assertRaises(AccountError) as caught:
+            self.sign_in('off', GOOD)
+        self.assertEqual((caught.exception.status, str(caught.exception)), (403, '这个账号已停用，找管理员'))
+        with self.assertRaises(AccountError) as caught:
+            self.sign_in('off', 'wrong password!')   # a wrong password gets nothing about the account
+        self.assertEqual((caught.exception.status, str(caught.exception)), (401, accounts.GENERIC))
+        for _ in range(8):   # a right password is not a failed try: it never locks the person out
+            with self.assertRaises(AccountError) as caught:
+                self.sign_in('off', GOOD)
+            self.assertEqual(caught.exception.status, 403)
+
     def test_every_kind_of_wrong_answer_says_the_same_words_after_the_same_work(self):
         self.make('off', password=GOOD)
         accounts.set_disabled(self.conn, self.admin, accounts.list_users(self.conn)[1]['id'], True)
@@ -115,7 +129,7 @@ class SignInTests(AccountTestCase):
         real = accounts._scrypt
         with mock.patch.object(accounts, '_scrypt', side_effect=lambda *a: calls.append(1) or real(*a)):
             messages = []
-            for name, password in (('nobody', GOOD), ('root', 'wrong password!'), ('off', GOOD), ('', GOOD)):
+            for name, password in (('nobody', GOOD), ('root', 'wrong password!'), ('off', 'wrong password!'), ('', GOOD)):
                 before = len(calls)
                 with self.assertRaises(AccountError) as caught:
                     self.sign_in(name, password, client=name or 'blank')

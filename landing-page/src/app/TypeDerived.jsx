@@ -291,7 +291,7 @@ function DerivedForm({ type, options, editing, onSaved, onCancel }) {
   return (
     <section>
       <h2 className="section">{editing ? `修改“${editing.name}”` : "新建派生属性"}</h2>
-      {editing && <p className="muted small">改了它算出什么，就是新的一版，要另一位构建者重新确认；原来的确认记录留着。只改名称和说明不用。</p>}
+      {editing && <p className="muted small">改了它算出什么，就是新的一版，要另一位建设者重新确认；原来的确认记录留着。只改名称和说明不用。</p>}
       {!editing && (
         <div className="inline">
           {Object.entries(options.kinds).map(([k, label]) => (

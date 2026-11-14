@@ -3,13 +3,21 @@ import test from "node:test";
 
 import { TOKEN_PLACEHOLDER, connectConfig, endText, firstSentence, scopeWord, skillText, tokenState } from "./agentModel.js";
 
-const COMMAND = { python: "python3", module: "ontology_poc_generator.mcp_server", src: "/repo/src" };
+const COMMAND = { python: "python3", module: "ontology_poc_generator.mcp_server" };
 
-test("the connect entry starts the server with the read-only tools as the token's person, and a placeholder until there is a token", () => {
+test("the connect entry starts the installed package's server as the token's person with the service address, and a placeholder until there is a token", () => {
   const config = JSON.parse(connectConfig({ command: COMMAND, origin: "http://127.0.0.1:5302", token: "" }));
+  assert.equal(config.mcpServers.ontopoc.command, "python3");
   assert.deepEqual(config.mcpServers.ontopoc.args, ["-m", "ontology_poc_generator.mcp_server"]);
-  assert.deepEqual(config.mcpServers.ontopoc.env, { PYTHONPATH: "/repo/src", ONTOPOC_URL: "http://127.0.0.1:5302", ONTOPOC_TOKEN: TOKEN_PLACEHOLDER });
+  assert.deepEqual(config.mcpServers.ontopoc.env, { ONTOPOC_URL: "http://127.0.0.1:5302", ONTOPOC_TOKEN: TOKEN_PLACEHOLDER });
   assert.equal(JSON.parse(connectConfig({ command: COMMAND, origin: "x", token: "otp_abc" })).mcpServers.ontopoc.env.ONTOPOC_TOKEN, "otp_abc");
+});
+
+test("the entry for this machine adds where the code sits, and only when it is given one", () => {
+  const local = JSON.parse(connectConfig({ command: { ...COMMAND, local_src: "/repo/src" }, origin: "http://127.0.0.1:5302", token: "", local: true }));
+  assert.equal(local.mcpServers.ontopoc.env.PYTHONPATH, "/repo/src");
+  const generic = connectConfig({ command: { ...COMMAND, local_src: "/repo/src" }, origin: "http://127.0.0.1:5302", token: "" });
+  assert.ok(!generic.includes("/repo/src"));
 });
 
 test("a tool is described by its first sentence, the skill by what it holds, a token by its state", () => {

@@ -5,7 +5,7 @@ import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { CADENCES, WEEKDAYS, reasonText, runStatusText, runSummary, runnablePipeline, scheduleBody, scheduleProblem } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
-import { FormDialog } from "./UsersPage.jsx";
+import { FormDialog } from "./FormDialog.jsx";
 
 const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const runClass = (status) => (status === "success" ? "state-confirmed" : status === "failed" ? "state-rejected" : status === "skipped" ? "state-needs_look" : "");
@@ -91,6 +91,8 @@ export function SchedulesPage() {
   const [state, reload] = useLoad(getSchedules, []);
   const [options, setOptions] = useState({ sources: [], pipelines: [] });
   const [making, setMaking] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [deleted, setDeleted] = useState(false);
   const [open, setOpen] = useState(null);   // the schedule whose runs are shown
   const [error, setError] = useState("");
   useEffect(() => {
@@ -138,7 +140,7 @@ export function SchedulesPage() {
                   <td className="keep">
                     <button className="plain" onClick={() => setOpen(open === s.id ? null : s.id)}>{open === s.id ? "收起记录" : "运行记录"}</button>
                     {s.can_change && <button className="plain" onClick={() => act(() => updateSchedule({ id: s.id, enabled: !s.enabled }))}>{s.enabled ? "关闭" : "开启"}</button>}
-                    {s.can_change && <button className="plain" onClick={() => act(() => deleteSchedule(s.id))}>删除</button>}
+                    {s.can_change && <button className="plain" onClick={() => setDeleting(s)}>删除</button>}
                   </td>
                 </tr>,
                 ...(open === s.id ? [<tr key={`${s.id}-runs`}><td colSpan={9}><RunList id={s.id} /></td></tr>] : []),
@@ -147,6 +149,13 @@ export function SchedulesPage() {
           </table>
         </div>
       )}
+      {deleting && (
+        <FormDialog title={`删除调度“${deleting.name}”`} submitLabel="确认删除" valid onClose={() => setDeleting(null)}
+          onSubmit={async () => { await deleteSchedule(deleting.id); setDeleted(true); reload(); }}>
+          <p>它不会再按时刷新 {deleting.target}。数据集和已经读进来的数据不受影响。要再按时刷新，得重新建一个调度。</p>
+        </FormDialog>
+      )}
+      {deleted && <p className="ok" role="status">已删除</p>}
       {making && <ScheduleForm sources={options.sources} pipelines={options.pipelines} onClose={() => setMaking(false)} onDone={reload} />}
     </main>
   );

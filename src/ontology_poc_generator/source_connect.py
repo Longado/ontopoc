@@ -69,19 +69,39 @@ def _embedded(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> list:
 def _check_address(address) -> None:
     for each in _embedded(address):
         if each in _BLOCKED_ADDRESSES or any(each in net for net in _BLOCKED_NETWORKS):
-            raise SourceError('这个地址是链路本地或云厂商的元数据地址，不能当数据源：它会交出这台机器自己的凭据')
+            raise SourceError('这个地址是云服务商的内部地址（元数据服务，169.254 开头一类），机器用它领取自己的凭据，不能当数据源。换成数据库自己的地址')
 
 
 def check_host(host: str) -> None:
     """The early check, with no lookup: an address written out, or a metadata name. connect() checks again on what the name resolves to."""
     name = host.strip().lower().rstrip('.')
     if name in _BLOCKED_NAMES or name.endswith('.metadata.google.internal'):
-        raise SourceError('这个主机名是云厂商的元数据服务，不能当数据源：它会交出这台机器自己的凭据')
+        raise SourceError('这个主机名是云服务商的内部服务（元数据服务），机器用它领取自己的凭据，不能当数据源。换成数据库自己的地址')
     try:
         literal = ipaddress.ip_address(name.strip('[]'))
     except ValueError:
         return
     _check_address(literal)
+
+
+def _checked_addresses(host: str, port: int) -> list:
+    """Every address the host looks up to, each checked (socket.gaierror when it looks up to nothing). A number such as 2852039166 or 0xa9fea9fe and a name such as
+    169.254.169.254.nip.io only show what they are here."""
+    found = socket.getaddrinfo(host.strip('[]'), port, type=socket.SOCK_STREAM)
+    addresses = [ipaddress.ip_address(info[4][0].split('%')[0]) for info in found]
+    for address in addresses:
+        _check_address(address)
+    return addresses
+
+
+def screen_host(host: str, port: int) -> None:
+    """The check when a source is saved: the written-out address and the metadata names (check_host), then what the host looks up to. A name that looks up to nothing is
+    let through: it may not be in DNS yet, and the connection test says so when it is tried."""
+    check_host(host)
+    try:
+        _checked_addresses(host, port)
+    except socket.gaierror:
+        return
 
 
 def resolve(host: str, port: int) -> str:
@@ -90,12 +110,9 @@ def resolve(host: str, port: int) -> str:
     try:
         check_host(host)
         try:
-            found = socket.getaddrinfo(host.strip('[]'), port, type=socket.SOCK_STREAM)
+            addresses = _checked_addresses(host, port)
         except socket.gaierror:
             raise SourceError('找不到这个主机名：名字解析不出地址') from None
-        addresses = [ipaddress.ip_address(info[4][0].split('%')[0]) for info in found]
-        for address in addresses:
-            _check_address(address)
     except SourceError as exc:
         raise SourceError(str(exc), GENERIC) from None
     return str(min(addresses, key=lambda a: a.version))   # IPv4 first: a database published on 127.0.0.1 is not always on ::1
@@ -116,7 +133,7 @@ def _driver(module: str, package: str, kind: str):
     try:
         return importlib.import_module(module)
     except ImportError:
-        raise SourceError(f'连 {KINDS[kind]} 要先装 {package}：pip install "ontopoc[sources]"（或 pip install {package}），装好后重启服务') from None
+        raise SourceError(f"这台服务器还连不了 {KINDS[kind]}：少了连接它用的程序包 {package}。请运维人员在服务器上执行 pip install 'ontopoc[sources]'（或单独 pip install {package}），装好后重启服务") from None
 
 
 def describe(exc: BaseException, password: str) -> str:

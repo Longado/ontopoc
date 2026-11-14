@@ -45,7 +45,12 @@ def columns_ruled(conn, type_element_id: str) -> set[str]:
 
 def holds_all_rows(conn, type_element_id: str, user: dict | None) -> bool:
     """Whether this person is named by an all-rows rule (a rule with no condition: column and value empty) on the type."""
-    return user is None or user['role'] == 'admin' or any(r['column'] == '' and user['id'] in r['user_ids'] for r in rules_of(conn, type_element_id))
+    return user is None or user['role'] == 'admin' or user.get('all_rows') or any(r['column'] == '' and user['id'] in r['user_ids'] for r in rules_of(conn, type_element_id))
+
+
+def without_rules(user: dict | None) -> dict | None:
+    """The same person as if no row rule applied to them: what the queue asks to count the items a rule alone keeps from them (never used to let anyone read anything)."""
+    return None if user is None else {**user, 'all_rows': True}
 
 
 def types_on_dataset_of(conn, type_element_id: str) -> list[str]:

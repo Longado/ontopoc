@@ -19,7 +19,7 @@ from ontology_poc_generator.derived_properties import derived_visible
 from ontology_poc_generator.object_actions import action_visible
 from ontology_poc_generator.object_relations import _relation_visible, cardinality_false, check_relation
 from ontology_poc_generator.object_types import (
-    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _type_row, _types_read, _visible, element_row, type_id)
+    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _type_row, _types_read, _visible, element_row, hidden_type_count, type_id)
 from ontology_poc_generator.object_views import view_visible
 from ontology_poc_generator.row_rules import positions, restriction
 from ontology_poc_generator.type_access import dataset_hidden
@@ -202,7 +202,7 @@ def relation_graph(conn, user: dict | None) -> dict:
         row = element_row(conn, element_id)
         if _relation_visible(conn, row, user) and {type_id(_content(row)[e]) for e in ('from', 'to')} <= shown:
             edges.append(_edge(conn, row, user))
-    return {'nodes': nodes, 'edges': edges, 'rows_limited': any(n['rows_limited'] for n in nodes)}
+    return {'nodes': nodes, 'edges': edges, 'rows_limited': any(n['rows_limited'] for n in nodes), 'hidden_types': hidden_type_count(conn, user)}
 
 
 # --- the lineage graph ---------------------------------------------------------------------------------------------------------------------------
@@ -292,7 +292,7 @@ def lineage_graph(conn, user: dict | None) -> dict:
             drawn += 1
             nodes.append(made[0])
             edges += [{'from': r, 'to': made[0]['id']} for r in reads]
-    return {'nodes': nodes, 'edges': list({(e['from'], e['to']): e for e in edges}.values()), 'rows_limited': any(n['rows_limited'] for n in types)}
+    return {'nodes': nodes, 'edges': list({(e['from'], e['to']): e for e in edges}.values()), 'rows_limited': any(n['rows_limited'] for n in types), 'hidden_types': drawn_relations['hidden_types']}
 
 
 # --- the type page: what uses it, and the data it stands on ---------------------------------------------------------------------------------------

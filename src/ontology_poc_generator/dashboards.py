@@ -90,10 +90,23 @@ def _may_open(user: dict | None, record: dict) -> bool:
     return not _expired(record) and _published_to(user, record)
 
 
+def _reads_nothing(conn, user: dict | None, record: dict) -> bool:
+    """A reader (not the owner, not an admin) for whom no component's type opens: the board has nothing to show them, so it is neither listed nor there."""
+    if _is_admin(user) or _owns(user, record):
+        return False
+    for component in record['spec']['components']:
+        try:
+            _type_row(conn, component['query']['type'], user)
+            return False
+        except TypeRefused:
+            continue
+    return True
+
+
 def _found(conn, user: dict | None, dashboard_id) -> dict:
     row = conn.execute(f'SELECT {COLUMNS} FROM dashboard WHERE id = ?', (dashboard_id,)).fetchone() if isinstance(dashboard_id, int) and not isinstance(dashboard_id, bool) else None
     record = _record(row) if row else None
-    if record is None or not _may_open(user, record):
+    if record is None or not _may_open(user, record) or _reads_nothing(conn, user, record):
         if record is not None and _expired(record) and _published_to(user, record):   # only someone it was published to is told that it has ended: to anyone else it is not there
             raise DashboardRefused('这个看板已经过期，不再开放了', 410)
         raise DashboardRefused('没有这个看板', 404)
@@ -109,7 +122,7 @@ def _summary(record: dict, user: dict | None) -> dict:
 def list_dashboards(conn, user: dict | None) -> list[dict]:
     ensure_schema(conn)
     records = [_record(r) for r in conn.execute(f'SELECT {COLUMNS} FROM dashboard ORDER BY id DESC')]
-    return [_summary(r, user) for r in records if _may_open(user, r)]
+    return [_summary(r, user) for r in records if _may_open(user, r) and not _reads_nothing(conn, user, r)]
 
 
 def people(conn, user: dict | None) -> list[dict]:

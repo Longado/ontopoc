@@ -767,7 +767,7 @@ def reason_for(conn, row: dict, user: dict | None) -> tuple[str | None, str | No
 
 def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
     if limited_on(conn, row, user):
-        raise TypeRefused('你受行规则限制，只看得到一部分行，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的构建者来确认', 403)
+        raise TypeRefused('你受行规则限制，只看得到一部分行，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的建设者来确认', 403)
 
 
 def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
@@ -832,6 +832,13 @@ def list_types(conn, user: dict | None) -> list[dict]:
         out.append({'id': content['english_name'], 'name': content['name'], 'dataset': content['dataset'], 'dataset_version': dataset['version'] if dataset else None,
                     'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'meanings_waiting': waiting, **_state_view(conn, row, user)})
     return out
+
+
+def hidden_type_count(conn, user: dict | None) -> int:
+    """How many types exist that this person cannot open because a list of people leaves them out (a draft a viewer may not see yet is not counted: it is not out yet).
+    Only the number: the names are the list's own business."""
+    return sum(1 for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%'").fetchall()
+               if not can_access(conn, element_id, user) and not (user is not None and user['role'] == 'viewer' and element_row(conn, element_id)['state'] != 'confirmed'))
 
 
 def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | None, user: dict | None) -> dict:

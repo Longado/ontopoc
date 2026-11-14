@@ -2,14 +2,15 @@
 
 export const TOKEN_PLACEHOLDER = "<在下面创建令牌后填这里>";
 
-/** The entry an MCP client puts in its settings to start the server as the person the token belongs to. With a token the server offers the read-only tools unless told otherwise. */
-export function connectConfig({ command, origin, token }) {
+/** The entry an MCP client puts in its settings to start the server as the person the token belongs to, from the installed package. `local` adds this machine's code path (the admin's, for a machine that has not installed the package). With a token the server offers the read-only tools unless told otherwise. */
+export function connectConfig({ command, origin, token, local = false }) {
+  const env = { ONTOPOC_URL: origin, ONTOPOC_TOKEN: token || TOKEN_PLACEHOLDER };
   return JSON.stringify({
     mcpServers: {
       ontopoc: {
         command: command.python,
         args: ["-m", command.module],
-        env: { PYTHONPATH: command.src, ONTOPOC_URL: origin, ONTOPOC_TOKEN: token || TOKEN_PLACEHOLDER },
+        env: local && command.local_src ? { PYTHONPATH: command.local_src, ...env } : env,
       },
     },
   }, null, 2);
@@ -21,7 +22,7 @@ export const firstSentence = (text) => text.split(/[。\n]/)[0];
 /** What the skill folder holds, in one line. */
 export const skillText = (skill) => `${skill.types} 个对象类型、${skill.relations} 条关系、${skill.views} 个视图、${skill.derived} 个派生属性；都是已确认的，没有数据行`;
 
-export const SCOPES = [["read", "只读：读定义、提问、看数据"], ["all", "全部：和主人在页面上能做的一样"]];
+export const SCOPES = [["read", "只读：读定义和数据行、提问；不能上传、确认、改"], ["all", "全部：和主人在页面上能做的一样"]];
 export const EXPIRY_DAYS = [7, 30, 90, 365];
 
 /** A token's reach in a word. */

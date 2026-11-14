@@ -7,7 +7,7 @@ import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { KINDS, TLS_MODES, TLS_WARNING, kindPort, sourceProblem, statusText, tlsDefault } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
-import { FormDialog } from "./UsersPage.jsx";
+import { FormDialog } from "./FormDialog.jsx";
 
 export function SourceState({ source }) {
   const cls = source.status === "ok" ? "state-confirmed" : source.status === "failed" ? "state-rejected" : "";
@@ -52,7 +52,7 @@ export function SourceForm({ source, onClose, onDone }) {
         </Select>
       </div>
       {tls === "none" && <p className="warn">{TLS_WARNING}</p>}
-      <p className="hint">密码保存时打散，页面和接口不会再返回它。读数据用只读会话。</p>
+      <p className="hint">密码在这台服务器上加密保存，页面和接口都读不出来；但能拿到服务器上文件的人，有办法还原它，所以请用只读账号。读数据时用只读会话。</p>
       {problem && <p className="hint">{problem}</p>}
     </FormDialog>
   );

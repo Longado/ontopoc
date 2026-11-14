@@ -401,7 +401,7 @@ def submit(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     attempt = {'op': 'submit', 'key': payload.get('key'), 'params': payload.get('params')}
     refuse = lambda message, status=409: _refuse(conn, who, element_id, message, attempt, status)
     if row['state'] != 'confirmed':
-        refuse(f'这个行为{STATE_WORDS.get(row["state"], row["state"])}，要另一位构建者确认之后才能提交')
+        refuse(f'这个行为{STATE_WORDS.get(row["state"], row["state"])}，要另一位建设者确认之后才能提交')
     type_row = element_row(conn, type_id(content['type']))
     t = _content(type_row)
     if type_row['state'] != 'confirmed':
@@ -491,7 +491,7 @@ def decide(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     if user is not None and user['role'] == 'viewer':
         refuse('查看者不能批准或驳回', 403)
     if two_person(conn)['active'] and user is not None and rec['submitted_by_user_id'] == user['id']:
-        refuse('这条是你自己提交的，要另一位构建者来批准或驳回；想收回可以撤回', 403)
+        refuse('这条是你自己提交的，要另一位建设者来批准或驳回；想收回可以撤回', 403)
     type_row = element_row(conn, rec['type_id'])
     t = _content(type_row)
     dataset = current_dataset(conn, rec['dataset'])

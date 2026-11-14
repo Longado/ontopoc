@@ -93,6 +93,37 @@ class GuardTests(unittest.TestCase):
                 source_connect.connect('postgresql', 'localhost', 5432, 'd', 'u', 'p')
         self.assertIn('pg8000', str(caught.exception))
 
+    def test_a_missing_driver_says_the_server_cannot_reach_that_kind_yet_and_what_an_operator_installs(self):
+        for kind, package, label in (('postgresql', 'pg8000', 'PostgreSQL'), ('mysql', 'PyMySQL', 'MySQL')):
+            with mock.patch.object(source_connect.importlib, 'import_module', side_effect=ImportError('no module')):
+                with self.assertRaises(SourceError) as caught:
+                    source_connect.connect(kind, 'localhost', 5432, 'd', 'u', 'p')
+            text = str(caught.exception)
+            self.assertIn(f'这台服务器还连不了 {label}', text)
+            self.assertIn("pip install 'ontopoc[sources]'", text)
+            self.assertIn(package, text)
+            self.assertIn('运维', text)
+            self.assertEqual(caught.exception.public, text)   # the same words for a builder: there is nothing of the database in them
+
+    def test_a_wrong_host_is_still_reported_as_a_wrong_host_when_the_driver_is_missing(self):
+        with mock.patch.object(source_connect.importlib, 'import_module', side_effect=ImportError('no module')), \
+                mock.patch.object(source_connect.socket, 'getaddrinfo', side_effect=source_connect.socket.gaierror('no such host')):
+            with self.assertRaises(SourceError) as caught:
+                source_connect.connect('postgresql', 'no-such-host.invalid', 5432, 'd', 'u', 'p')
+        self.assertIn('找不到这个主机名', str(caught.exception))
+        self.assertNotIn('pip install', str(caught.exception))
+
+    def test_saving_refuses_a_number_or_a_name_that_resolves_to_a_blocked_address_and_leaves_an_unknown_name_to_the_test(self):
+        blocked = [(2, 1, 6, '', ('169.254.169.254', 5432))]
+        with mock.patch.object(source_connect.socket, 'getaddrinfo', return_value=blocked):
+            for host in ('2852039166', '0xa9fea9fe', '169.254.169.254.nip.io', 'db.example.com'):
+                with self.assertRaises(SourceError, msg=host) as caught:
+                    source_connect.screen_host(host, 5432)
+                self.assertIn('元数据', str(caught.exception))
+        with mock.patch.object(source_connect.socket, 'getaddrinfo', side_effect=source_connect.socket.gaierror('no such host')):
+            source_connect.screen_host('db-not-yet-in-dns.example.com', 5432)   # not an error: the address may be made later, and the test says so
+        source_connect.screen_host('localhost', 5432)
+
 
 class ScrubTests(unittest.TestCase):
     def test_a_driver_error_loses_the_password_wherever_it_is(self):

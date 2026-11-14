@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { SKILL_HREF, createAgentToken, getAgentInfo, getAgentTokens, getUsers, revokeAgentToken } from "./api.js";
 import { useAuth } from "./Auth.jsx";
+import { FormDialog } from "./FormDialog.jsx";
 import { isAdmin, roleLabel } from "./authModel.js";
 import { EXPIRY_DAYS, SCOPES, connectConfig, endText, firstSentence, scopeWord, skillText, tokenState } from "./agentModel.js";
 import { timeText } from "./format.js";
@@ -17,6 +18,8 @@ function Tokens({ onMade }) {
   const [days, setDays] = useState("90");
   const [made, setMade] = useState(null);
   const [error, setError] = useState("");
+  const [revoking, setRevoking] = useState(null);   // the token the admin is about to revoke
+  const [revoked, setRevoked] = useState(false);
   const active = (users.data ?? []).filter((u) => !u.disabled && u.role !== "admin");   // an admin's account gets no token: a leaked one would be the whole service
   const create = async (e) => {
     e.preventDefault();
@@ -32,15 +35,11 @@ function Tokens({ onMade }) {
     }
   };
   const revoke = async (id) => {
-    setError("");
-    try {
-      await revokeAgentToken(id);
-      setMade(null);
-      onMade("");
-      reload();
-    } catch (err) {
-      setError(err.message);
-    }
+    await revokeAgentToken(id);
+    setMade(null);
+    onMade("");
+    setRevoked(true);
+    reload();
   };
   return (
     <>
@@ -61,6 +60,7 @@ function Tokens({ onMade }) {
         <button className="secondary" type="submit" disabled={!who || !label.trim()}>创建令牌</button>
       </form>
       {error && <p className="error" role="alert">{error}</p>}
+      {revoked && <p className="ok" role="status">已撤销</p>}
       {made && (
         <p className="token">
           <span className="caption">现在复制，之后看不到了（{made.display_name} 的令牌）：</span>
@@ -80,12 +80,17 @@ function Tokens({ onMade }) {
                   <td>{scopeWord(t)}</td>
                   <td>{endText(t)}</td>
                   <td>{t.last_used_at ? timeText(t.last_used_at) : <span className="faint">没用过</span>}</td>
-                  <td>{t.revoked || t.expired ? <span className="muted">{tokenState(t)}</span> : <button className="plain" onClick={() => revoke(t.id)}>撤销</button>}</td>
+                  <td>{t.revoked || t.expired ? <span className="muted">{tokenState(t)}</span> : <button className="plain" onClick={() => { setRevoked(false); setRevoking(t); }}>撤销</button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {revoking && (
+        <FormDialog title="撤销这个令牌" submitLabel="确认撤销" valid onClose={() => setRevoking(null)} onSubmit={() => revoke(revoking.id)}>
+          <p>“{revoking.label}”（{revoking.display_name} 的令牌）马上失效，用它的智能体会被拒绝。撤销后不能恢复，要用就得重新创建一个。</p>
+        </FormDialog>
       )}
     </>
   );
@@ -95,15 +100,16 @@ export function AgentsPage() {
   const { user } = useAuth();
   const [info] = useLoad(() => getAgentInfo(), []);
   const [token, setToken] = useState("");
-  const [copied, setCopied] = useState(false);
   const i = info.data;
   const config = i ? connectConfig({ command: i.command, origin: window.location.origin, token }) : "";
-  const copy = async () => {
+  const localConfig = i?.command.local_src ? connectConfig({ command: i.command, origin: window.location.origin, token, local: true }) : "";
+  const [copied, setCopied] = useState("");
+  const copy = async (which, text) => {
     try {
-      await navigator.clipboard.writeText(config);
-      setCopied(true);
+      await navigator.clipboard.writeText(text);
+      setCopied(which);
     } catch {
-      setCopied(false);
+      setCopied("");
     }
   };
   return (
@@ -130,9 +136,17 @@ export function AgentsPage() {
           <p className="muted small">连上来的工具跟着令牌的权限走，由服务判定：只读令牌只有这几个，都是只读的，不能上传、不能确认、不能改。问答被拒绝时，原因原样转告，不会给一个猜的答案。</p>
           <p className="muted small">创建令牌时选“全部”，会再多 {i.more_with_all} 个工具：上传数据、建模、确认、存规则、导出等，能做的仍受令牌主人的角色限制。不建议给外部智能体。</p>
           <h2 className="section">怎么连</h2>
-          <p className="muted">把这一段放进支持 MCP 的客户端的设置里。令牌在下面创建。</p>
+          <p className="muted">在要连上来的电脑上先装好 ontopoc 这个包，再把这一段放进支持 MCP 的客户端的设置里。服务地址已经写好。令牌在下面创建。</p>
           <pre className="code-box">{config}</pre>
-          <div className="inline"><button className="secondary" onClick={copy}>{copied ? "已复制" : "复制"}</button></div>
+          <div className="inline"><button className="secondary" onClick={() => copy("generic", config)}>{copied === "generic" ? "已复制" : "复制"}</button></div>
+          {localConfig && (
+            <>
+              <h3 className="item-title">本机</h3>
+              <p className="muted small">只有管理员看得到。这台机器上没装包、直接跑源码时用这一段，多一行代码所在的目录。</p>
+              <pre className="code-box">{localConfig}</pre>
+              <div className="inline"><button className="secondary" onClick={() => copy("local", localConfig)}>{copied === "local" ? "已复制" : "复制"}</button></div>
+            </>
+          )}
           {isAdmin(user) ? <Tokens onMade={setToken} /> : <p className="muted">令牌由管理员在这里创建。</p>}
           <h2 className="section">技能包</h2>
           <p className="muted">{skillText(i.skill)}。</p>

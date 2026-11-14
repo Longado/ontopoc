@@ -307,6 +307,8 @@ class GraphTests(SigningTestCase):
             self.assertNotIn('dataset:客户', {n['id'] for n in lineage['nodes']})   # nothing she may see reads it
             self.assertFalse([n for n in lineage['nodes'] if n['kind'] == 'action' or n['kind'] == 'answer'])
             self.assertIn('objtype:customer', {n['id'] for n in self.graph(ann, RELATIONS)['nodes']})
+            self.assertEqual([self.graph(vera, path)['hidden_types'] for path in (RELATIONS, LINEAGE)], [1, 1])   # how many types are left out, never which
+            self.assertEqual([self.graph(ann, path)['hidden_types'] for path in (RELATIONS, LINEAGE)], [0, 0])
 
 
 PIPELINES = '/api/workspace/pipelines'

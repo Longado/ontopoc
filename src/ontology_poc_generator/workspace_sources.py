@@ -23,7 +23,7 @@ from pathlib import Path
 from ontology_poc_generator.object_actions import overwritten_by_upload
 from ontology_poc_generator.object_types import recheck_after_write
 from ontology_poc_generator.source_connect import (
-    DEFAULT_PORTS, GENERIC, KINDS, MAX_PULL_ROWS, TLS_MODES, SourceError, check_host, connect, describe, records_of)
+    DEFAULT_PORTS, GENERIC, KINDS, MAX_PULL_ROWS, TLS_MODES, SourceError, connect, describe, records_of, screen_host)
 from ontology_poc_generator.source_vault import seal, unseal
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_store import (
@@ -158,13 +158,13 @@ def _connection_fields(payload: dict, kind: str) -> dict:
     host = _text(payload, 'host', '主机')
     if re.search(r'[\s/@?#]', host) or '://' in host:
         raise ValueError('主机只写地址，例如 db.example.com 或 10.0.0.5，不要带协议、路径或账号')
-    try:
-        check_host(host)
-    except SourceError as exc:
-        raise ValueError(str(exc)) from None
     port = payload.get('port', DEFAULT_PORTS[kind])
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise ValueError('端口要写成 1 到 65535 的整数')
+    try:
+        screen_host(host, port)
+    except SourceError as exc:
+        raise ValueError(str(exc)) from None
     return {'host': host, 'port': port, 'database': _text(payload, 'database', '数据库名'), 'username': _text(payload, 'username', '账号')}
 
 

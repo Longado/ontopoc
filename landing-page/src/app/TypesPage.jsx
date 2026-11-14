@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { getDatasets, getTypes, suggestTypes } from "./api.js";
+import { getDatasets, getTypeList, suggestTypes } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { hrefFor } from "./routeModel.js";
@@ -103,11 +103,13 @@ function SuggestDialog({ onClose, onDone }) {
 }
 
 export function TypesPage() {
-  const [state, reload] = useLoad(getTypes, []);
+  const [state, reload] = useLoad(getTypeList, []);
   const [suggesting, setSuggesting] = useState(false);
   const [filter, setFilter] = useState("");
   const mayBuild = canBuild(useAuth().user);
-  const types = (state.data ?? []).filter((t) => `${t.name} ${t.id}`.toLowerCase().includes(filter.trim().toLowerCase()));
+  const all = state.data?.types;
+  const hidden = state.data?.hidden ?? 0;
+  const types = (all ?? []).filter((t) => `${t.name} ${t.id}`.toLowerCase().includes(filter.trim().toLowerCase()));
   return (
     <main className="page">
       <div className="page-head">
@@ -121,8 +123,9 @@ export function TypesPage() {
       </div>
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
-      {state.data && !state.data.length && <p className="muted">还没有对象类型。{mayBuild ? "从一个数据集新建，或让模型先提议。" : "建设者确认后会出现在这里。"}</p>}
-      {state.data?.length > 8 && <label className="field"><span className="caption">按名称筛选</span><input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} /></label>}
+      {all && !all.length && hidden > 0 && <p className="muted">有 {hidden} 个对象类型没有开放给你，找管理员。</p>}
+      {all && !all.length && !hidden && <p className="muted">还没有对象类型。{mayBuild ? "从一个数据集新建，或让模型先提议。" : "建设者确认后会出现在这里。"}</p>}
+      {all?.length > 8 && <label className="field"><span className="caption">按名称筛选</span><input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} /></label>}
       {types.length > 0 && (
         <div className="table-wrap">
           <table>
@@ -144,6 +147,8 @@ export function TypesPage() {
           </table>
         </div>
       )}
+      {all?.length > 0 && <p className="hint">对象浏览器：点开一个类型，在“对象”页里按条件筛行、看表格和图表、打开单个对象。</p>}
+      {all?.length > 0 && hidden > 0 && <p className="hint">另有 {hidden} 个对象类型没有开放给你，找管理员。</p>}
       {suggesting && <SuggestDialog onClose={() => setSuggesting(false)} onDone={reload} />}
     </main>
   );
