@@ -6,7 +6,7 @@ import { timeText } from "./format.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { SourceForm, SourceState } from "./SourcesPage.jsx";
-import { keyColumnsFrom, reasonText, runStatusText, runSummary } from "./sourceModel.js";
+import { estimateText, keyColumnsFrom, reasonText, runStatusText, runSummary } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
 import { FormDialog } from "./UsersPage.jsx";
 
@@ -60,10 +60,12 @@ function Tables({ name, tables, reload }) {
             <tr key={t.name}>
               <td>{t.name}</td>
               <td>{t.kind}</td>
-              <td>{t.rows == null ? <span className="warn small" title={t.note ?? ""}>数不出来</span> : t.rows.toLocaleString()}</td>
+              <td title="数据库自己统计的行数，可能不是最新">{t.rows == null ? <span className="faint">{estimateText(t.rows)}</span> : estimateText(t.rows)}</td>
               <td>
-                {t.dataset ? <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>
-                  : <button className="plain" onClick={() => setPulling(t.name)}>读成数据集</button>}
+                {t.hidden ? <span className="faint">已读成你看不到的数据集</span>
+                  : t.dataset ? <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>
+                    : t.supported === false ? <span className="faint small">{t.note}</span>
+                      : <button className="plain" onClick={() => setPulling(t.name)}>读成数据集</button>}
               </td>
             </tr>
           ))}
@@ -171,7 +173,7 @@ export function SourcePage({ route }) {
 
           <h2 className="section">库里的表</h2>
           {!live && <p><button className="secondary" onClick={look}>查看库里的表</button></p>}
-          {live?.status === "loading" && <p className="muted">正在连接，数每张表的行数</p>}
+          {live?.status === "loading" && <p className="muted">正在连接，读表的列表</p>}
           {live?.status === "error" && <p className="error">{live.error} <button className="plain" onClick={look}>重试</button></p>}
           {live?.status === "ready" && (live.tables.length ? <Tables name={name} tables={live.tables} reload={afterPull} /> : <p className="muted">库里没有表，或这个账号看不到。</p>)}
 

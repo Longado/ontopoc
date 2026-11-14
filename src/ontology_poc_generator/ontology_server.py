@@ -1487,11 +1487,15 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     if area == 'sources':
                         reply = sources_post(conn, '/' + rest if rest else '', payload, who, self.user, runs_lock) if writing else sources_get(conn, [unquote(p) for p in rest.split('/') if p], self.user)
                     else:
-                        reply = schedules_post(conn, '/' + rest if rest else '', payload, who) if writing else schedules_get(conn, [unquote(p) for p in rest.split('/') if p])
+                        reply = schedules_post(conn, '/' + rest if rest else '', payload, who, self.user) if writing else schedules_get(conn, [unquote(p) for p in rest.split('/') if p], self.user)
                 finally:
                     conn.close()
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
+                return
+            except Exception as exc:   # never a dropped connection: the person is told something went wrong, and what it was goes to the service's log
+                print(f'{self.path} stopped with {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+                self.reply(500, {'error': '服务出了内部错误，详情见服务日志'})
                 return
             self.reply(*reply)
 

@@ -118,7 +118,7 @@ export function SchedulesPage() {
       {schedules.length > 0 && (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>名称</th><th>对象</th><th>什么时候</th><th>下一次</th><th>最近一次</th><th>上次改了数据</th><th>写入</th><th></th></tr></thead>
+            <thead><tr><th>名称</th><th>对象</th><th>什么时候</th><th>下一次</th><th>最近一次</th><th>上次改了数据</th><th>写入</th><th>建的人</th><th></th></tr></thead>
             <tbody>
               {schedules.flatMap((s) => [
                 <tr key={s.id} className={s.enabled ? "" : "note"}>
@@ -134,13 +134,14 @@ export function SchedulesPage() {
                   </td>
                   <td>{s.last_change ? <>{timeText(s.last_change.at)}，{s.last_change.by}</> : <span className="faint">还没有</span>}</td>
                   <td>{s.targets.length ? s.targets.map((t) => <span key={t} className="output-chip"><a href={hrefFor({ page: "dataset", name: t, tab: "fields" })}>{t}</a> </span>) : <span className="faint">—</span>}</td>
+                  <td>{s.mine ? "我" : s.created_by}</td>
                   <td className="keep">
                     <button className="plain" onClick={() => setOpen(open === s.id ? null : s.id)}>{open === s.id ? "收起记录" : "运行记录"}</button>
-                    <button className="plain" onClick={() => act(() => updateSchedule({ id: s.id, enabled: !s.enabled }))}>{s.enabled ? "关闭" : "开启"}</button>
-                    <button className="plain" onClick={() => act(() => deleteSchedule(s.id))}>删除</button>
+                    {s.can_change && <button className="plain" onClick={() => act(() => updateSchedule({ id: s.id, enabled: !s.enabled }))}>{s.enabled ? "关闭" : "开启"}</button>}
+                    {s.can_change && <button className="plain" onClick={() => act(() => deleteSchedule(s.id))}>删除</button>}
                   </td>
                 </tr>,
-                ...(open === s.id ? [<tr key={`${s.id}-runs`}><td colSpan={8}><RunList id={s.id} /></td></tr>] : []),
+                ...(open === s.id ? [<tr key={`${s.id}-runs`}><td colSpan={9}><RunList id={s.id} /></td></tr>] : []),
               ])}
             </tbody>
           </table>

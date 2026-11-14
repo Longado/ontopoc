@@ -1,6 +1,7 @@
 """Live sources and schedules, against a fake database (no network): a table arrives typed and says where it came from; a scheduled pull that shifts the codes
 sends what was confirmed on them back to "needs another look"; the password is in no page, log or error; a source with datasets cannot be deleted; a schedule that
 is still running is not started again. The connection is a stand-in for the driver's: source_connect.OPENERS is replaced for the length of a test."""
+import base64
 import json
 import sqlite3
 import tempfile
@@ -40,7 +41,7 @@ class FakeDb(Connection):
         self.data, self.can_write, self.closed = tables, writes, 0
 
     def tables(self):
-        return [{'name': n, 'kind': '表', 'rows': len(rows), 'note': None} for n, (_, rows) in self.data.items()]
+        return [{'name': n, 'kind': '表', 'rows': len(rows), 'approx': True, 'supported': True, 'note': None} for n, (_, rows) in self.data.items()]
 
     def writes(self):
         return self.can_write
@@ -104,7 +105,7 @@ class ScrubTests(unittest.TestCase):
         self.assertEqual(scrub('a b ab', 'a'), '*** b ab')   # a one-letter password is hidden where it stands alone, not inside other words
 
     def test_connect_keeps_nothing_of_the_drivers_own_exception(self):
-        def refusing(address, port, database, user, password):
+        def refusing(host, address, port, database, user, password, tls):
             raise Exception(f'bad dsn password={password}')
         with mock.patch.dict(source_connect.OPENERS, {'postgresql': refusing}):
             with self.assertRaises(SourceError) as caught:
@@ -176,8 +177,8 @@ class SourceCase(SigningTestCase):
         self.addCleanup(patcher.stop)
         self.said = []   # everything the service answered, to look for the password in
 
-    def open_db(self, address, port, database, user, password):
-        self.opened.append((address, port, database, user, password))
+    def open_db(self, host, address, port, database, user, password, tls):
+        self.opened.append((address, port, database, user, password, host, tls))
         if self.db is None:
             raise Exception(f'FATAL: connection to {address} with password={password} failed')
         return self.db
@@ -226,7 +227,7 @@ class SourceServerTests(SourceCase):
             team = self.team(base)
             ann = team['ann']
             status, body = self.ask(team['admin'], 'post', '/api/workspace/sources/test', {'name': '订单库'})
-            self.assertEqual((status, body['status'], body['tables']), (200, 'ok', [{'name': 'orders', 'kind': '表', 'rows': 12, 'note': None, 'dataset': None}]))
+            self.assertEqual((status, body['status'], body['tables']), (200, 'ok', [{'name': 'orders', 'kind': '表', 'rows': 12, 'approx': True, 'supported': True, 'note': None, 'dataset': None, 'hidden': False}]))
             self.assertEqual(self.opened[-1][:4], ('127.0.0.1', 15432, 'shop', 'reader'))   # the address that was checked is the one that was dialled
             self.assertEqual(self.opened[-1][4], PASSWORD)   # the sealed password comes back whole to the driver
             run = self.pull(ann)
@@ -255,9 +256,10 @@ class SourceServerTests(SourceCase):
             self.assertIn('***', tested['note'])
             run = self.pull(ann)
             self.assertEqual(run['status'], 'failed')
-            self.assertIn('***', run['error'])
+            self.assertEqual(run['error'], source_connect.GENERIC)   # a builder reads the general reason; the database's words (scrubbed) are the admin's
+            self.assertIn('***', self.ask(admin, 'get', '/api/workspace/sources/%E8%AE%A2%E5%8D%95%E5%BA%93/runs')[1]['runs'][0]['error'])
             status, body = self.ask(ann, 'get', '/api/workspace/sources/%E8%AE%A2%E5%8D%95%E5%BA%93/tables')
-            self.assertEqual(status, 502)
+            self.assertEqual((status, body['error']), (502, source_connect.GENERIC))
             self.ask(admin, 'get', '/api/workspace/sources')
             self.ask(admin, 'get', '/api/workspace/sources/%E8%AE%A2%E5%8D%95%E5%BA%93')
             self.ask(admin, 'get', '/api/workspace/schedules')
@@ -279,7 +281,7 @@ class SourceServerTests(SourceCase):
             self.assertEqual(self.ask(vera, 'get', '/api/workspace/sources')[0], 403)
             self.assertEqual(self.ask(vera, 'post', '/api/workspace/sources/pull', {'source': '订单库', 'table': 'orders'})[0], 403)
             builder_view = self.ask(ann, 'get', '/api/workspace/sources')[1]['sources'][0]
-            self.assertEqual(sorted(builder_view), ['can_write', 'kind', 'kind_label', 'name', 'status', 'status_at', 'status_label', 'status_note', 'tables', 'write_note'])   # no host, port, database or account
+            self.assertEqual(sorted(builder_view), ['can_write', 'kind', 'kind_label', 'name', 'status', 'status_at', 'status_label', 'status_note', 'tables', 'tls'])   # no host, port, database or account
             admin_view = self.ask(team['admin'], 'get', '/api/workspace/sources')[1]['sources'][0]
             self.assertEqual((admin_view['host'], admin_view['port'], admin_view['database'], admin_view['username'], admin_view['local']), ('localhost', 15432, 'shop', 'reader', True))
 
@@ -321,8 +323,8 @@ class SourceServerTests(SourceCase):
             self.db = FakeDb({'orders': (COLUMNS, orders(codes=(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3)))})   # 0 is gone, 3 is new: the codes shifted by one
             this_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)   # the schedule's slots are on the hour: stay clear of the edge of one
             runs = self.server.run_schedules(this_hour + timedelta(hours=1, minutes=1))
-            self.assertEqual([(r['status'], r['reason'], r['who'], r['changed'], r['version']) for r in runs], [('success', 'schedule', '定时：订单每小时', True, 2)])
-            self.assertEqual(len(runs[0]['detail']['flagged']), 2)   # the meanings and the type that reads them
+            self.assertEqual([(r['status'], r['reason'], r['who'], r['changed'], r['version']) for r in runs], [('success', 'schedule', '定时：订单每小时（Ann）', True, 2)])
+            self.assertEqual(runs[0]['detail']['flagged_count'], 2)   # the meanings and the type that reads them
             detail = self.detail(bob)
             self.assertEqual((self.meanings(detail)['state'], detail['state']), ('needs_look', 'needs_look'))
             self.assertIn('新出现 3', self.meanings(detail)['reason'])
@@ -332,7 +334,7 @@ class SourceServerTests(SourceCase):
             conn.close()
             status, schedule = self.ask(ann, 'get', '/api/workspace/schedules')
             only = schedule['schedules'][0]
-            self.assertEqual((only['latest_run']['status'], only['last_change']['by'], only['last_change']['version']), ('success', '定时：订单每小时', 2))
+            self.assertEqual((only['latest_run']['status'], only['last_change']['by'], only['last_change']['version']), ('success', '定时：订单每小时（Ann）', 2))
             self.assertEqual(self.server.run_schedules(this_hour + timedelta(hours=1, minutes=30)), [])   # the same slot is not acted on twice
 
     def test_a_pull_of_data_that_did_not_change_writes_no_version_and_says_so(self):
@@ -354,7 +356,13 @@ class SourceServerTests(SourceCase):
             self.db = FakeDb({'orders': (COLUMNS, orders()), 'extra': (['k', 'v'], [('1', 'a')])})
             status, body = self.ask(ann, 'post', '/api/workspace/sources/pull', {'source': '订单库', 'table': 'extra', 'name': '订单'})
             self.assertEqual(status, 400)
-            self.assertIn('已经有叫“订单”的数据集', body['error'])
+            self.assertIn('已经从另一张表读来', body['error'])   # a dataset that is the reading of one table is not written by another
+            upload = {'filename': '手工表.csv', 'content_base64': base64.b64encode('k,v\n1,a\n'.encode()).decode()}
+            uploaded = ann.post('/api/workspace/datasets/upload', {'files': [upload]})
+            self.assertEqual(uploaded[0], 200, uploaded[1])
+            status, body = self.ask(ann, 'post', '/api/workspace/sources/pull', {'source': '订单库', 'table': 'extra', 'name': '手工表'})
+            self.assertEqual(status, 400)
+            self.assertIn('已经有叫“手工表”的数据集', body['error'])   # one that is not: the mode (update by key or overwrite) is asked for, never guessed
             changed = orders()
             changed[0] = (*changed[0][:2], Decimal('999.00'), *changed[0][3:])
             self.db = FakeDb({'orders': (COLUMNS, changed + [('A999', '2026-04-01', Decimal('5.00'), 1, date(2026, 4, 2), datetime(2026, 4, 1))])})
@@ -411,7 +419,7 @@ class SourceServerTests(SourceCase):
             self.assertEqual(make(minute=60)[0], 400)
             self.assertEqual(make(cadence='daily', time='25:00')[0], 400)
             self.assertEqual(make(scope=['nothing'])[0], 400)
-            self.assertEqual(make(kind='pipeline', target='没有这条')[0], 400)
+            self.assertEqual(make(kind='pipeline', target='没有这条')[0], 404)   # a pipeline that is not there and one kept from the person read alike
             self.assertEqual(make()[0], 200)
             self.assertEqual(make()[0], 400)   # the name is taken
             status, off = self.ask(ann, 'post', '/api/workspace/schedules/update', {'id': 1, 'enabled': False})
@@ -451,7 +459,7 @@ class PipelineScheduleTests(SourceCase):
             self.assertEqual([(r['status'], r['reason'], r['kind'], r['dataset'], r['changed']) for r in runs], [('success', 'upstream', 'pipeline', '订单副本', True)])
             self.assertEqual(self.ask(ann, 'get', '/api/workspace/datasets/%E8%AE%A2%E5%8D%95%E5%89%AF%E6%9C%AC')[1]['version'], 1)
             self.assertEqual(self.server.run_schedules(), [])   # the same input versions are not run twice
-            self.assertEqual(self.ask(ann, 'get', '/api/workspace/pipelines/%E8%AE%A2%E5%8D%95%E5%89%AF%E6%9C%AC/runs')[1]['runs'][0]['who'], '定时：订单副本跟着跑')
+            self.assertEqual(self.ask(ann, 'get', '/api/workspace/pipelines/%E8%AE%A2%E5%8D%95%E5%89%AF%E6%9C%AC/runs')[1]['runs'][0]['who'], '定时：订单副本跟着跑（Ann）')
 
 
 if __name__ == '__main__':
