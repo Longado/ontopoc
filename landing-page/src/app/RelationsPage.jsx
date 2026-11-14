@@ -3,22 +3,45 @@ import { confirmItem, getRelation, getRelationLog, getRelations } from "./api.js
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText } from "./format.js";
+import { RelationGraph } from "./RelationGraph.jsx";
 import { CARDINALITY_LABEL, connectedText, keyPairText, waitingText } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
 import { confirmersText, logText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
-export function RelationsPage() {
-  const [state, reload] = useLoad(getRelations, []);
+/** 图 / 列表: two addresses of the same page, so a reload or a shared link keeps the view. */
+function ViewToggle({ list }) {
+  return (
+    <div className="seg" role="group" aria-label="显示方式">
+      <a href={hrefFor({ page: "relations" })} aria-current={list ? undefined : "true"} className={list ? "" : "on"}>图</a>
+      <a href={hrefFor({ page: "relations", list: true })} aria-current={list ? "true" : undefined} className={list ? "on" : ""}>列表</a>
+    </div>
+  );
+}
+
+export function RelationsPage({ route }) {
+  const list = Boolean(route?.list);
   const mayBuild = canBuild(useAuth().user);
-  const relations = state.data ?? [];
   return (
     <main className="page">
       <div className="page-head">
         <h1 tabIndex={-1}>关系</h1>
-        {mayBuild && <div className="head-actions"><a className="button primary" href={hrefFor({ page: "relationnew" })}>新建关系</a></div>}
+        <div className="head-actions">
+          <ViewToggle list={list} />
+          {mayBuild && <a className="button primary" href={hrefFor({ page: "relationnew" })}>新建关系</a>}
+        </div>
       </div>
+      {list ? <RelationList mayBuild={mayBuild} /> : <RelationGraph />}
+    </main>
+  );
+}
+
+function RelationList({ mayBuild }) {
+  const [state, reload] = useLoad(getRelations, []);
+  const relations = state.data ?? [];
+  return (
+    <>
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
       {state.data && !relations.length && <p className="muted">还没有关系。{mayBuild ? "从两个对象类型新建一个，保存时会按全部数据数出有多少行连得上。" : "建设者确认后会出现在这里。"}</p>}
@@ -42,7 +65,7 @@ export function RelationsPage() {
           </table>
         </div>
       )}
-    </main>
+    </>
   );
 }
 

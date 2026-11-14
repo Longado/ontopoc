@@ -218,8 +218,31 @@ details.trace ol { margin: 8px 0 0; padding-left: 20px; }
 details.trace li { padding: 2px 0; }
 details.trace code { display: block; font-size: var(--small); color: var(--muted); overflow-wrap: anywhere; }
 
+/* graphs: relation graph, lineage */
+.seg { display: inline-flex; border: 0.5px solid var(--faint); border-radius: var(--radius); overflow: hidden; }
+.seg a, .seg button { padding: 5px 12px; background: #fff; color: var(--ink); border: 0; border-radius: 0; text-decoration: none; }
+.seg > * + * { border-left: 0.5px solid var(--faint); }
+.seg a:hover, .seg button:hover { background: var(--side); text-decoration: none; }
+.seg .on { background: var(--hover); font-weight: 600; }
+.graph-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 12px; }
+input[type="search"] { font: inherit; border: 0.5px solid var(--faint); border-radius: var(--radius); padding: 5px 10px; width: 200px; }
+.graph-layout { display: grid; grid-template-columns: minmax(0, 1fr); }
+.graph-layout.with-drawer { grid-template-columns: minmax(0, 1fr) 320px; }
+.canvas { position: relative; height: calc(100vh - 200px); min-height: 420px; border: 0.5px solid var(--line); border-radius: var(--radius); overflow: hidden; touch-action: none; }
+.canvas svg { display: block; cursor: grab; }
+.graph-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; z-index: 1; }
+.graph-tools button { padding: 4px 10px; font-size: var(--small); }
+.drawer { padding: 0 0 0 20px; overflow-y: auto; max-height: calc(100vh - 200px); }
+.drawer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.drawer h3 { font-size: var(--text); font-weight: 600; margin: 16px 0 4px; }
+.drawer ul { margin: 0; padding-left: 18px; }
+.drawer p { margin-top: 4px; }
+.drawer .reason { margin: 12px 0; }
+
 /* narrow screens: the menu folds under the name */
 @media (max-width: 760px) {
+  .graph-layout.with-drawer { grid-template-columns: minmax(0, 1fr); }
+  .drawer { padding: 16px 0 0; max-height: none; }
   .shell { grid-template-columns: minmax(0, 1fr); align-content: start; }
   table.tasks thead { display: none; }
   table.tasks tr { display: flex; flex-wrap: wrap; gap: 2px 12px; padding: 10px 0; border-bottom: 0.5px solid var(--line); }

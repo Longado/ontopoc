@@ -6,6 +6,7 @@ import { canBuild, isAdmin, roleLabel } from "./authModel.js";
 import { ConfirmPage } from "./ConfirmPage.jsx";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
+import { LineagePage } from "./LineagePage.jsx";
 import { PermissionsPage } from "./PermissionsPage.jsx";
 import { QaPage } from "./QaPage.jsx";
 import { RelationForm } from "./RelationForm.jsx";
@@ -135,7 +136,8 @@ export function Shell() {
       {route.page === "type" && <TypePage route={route} />}
       {route.page === "typenew" && <TypeForm key="new" />}
       {route.page === "typeedit" && <TypeForm key={route.id} id={route.id} />}
-      {route.page === "relations" && <RelationsPage />}
+      {route.page === "relations" && <RelationsPage route={route} />}
+      {route.page === "lineage" && <LineagePage />}
       {route.page === "relation" && <RelationPage route={route} />}
       {route.page === "relationnew" && <RelationForm key="new" />}
       {route.page === "relationedit" && <RelationForm key={route.id} id={route.id} />}
@@ -144,7 +146,7 @@ export function Shell() {
       {route.page === "account" && <AccountPage />}
       {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
       {route.page === "planned" && <Planned route={route} />}
-      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "relation", "relationnew", "relationedit", "confirm", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
+      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
     </div>
   );
 }

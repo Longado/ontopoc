@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { actionFits, rowKey } from "./actionModel.js";
 import { TypeActions, RunAction } from "./TypeActions.jsx";
-import { confirmType, getActions, getType, getTypeLog, getTypeObjects, proposeMeanings, setValuesHidden } from "./api.js";
+import { confirmType, getActions, getTypeUses, getType, getTypeLog, getTypeObjects, proposeMeanings, setValuesHidden } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText, typeLabel } from "./format.js";
+import { ageText } from "./graphModel.js";
 import { waitingText } from "./relationModel.js";
 import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
@@ -205,9 +206,35 @@ function Log({ id }) {
   );
 }
 
+const USE_HREF = {
+  views: (id) => hrefFor({ page: "type", id, tab: "views" }),
+  actions: (id) => hrefFor({ page: "type", id, tab: "actions" }),
+  relations: (_id, item) => hrefFor({ page: "relation", id: item.id }),
+  answers: (_id, item) => hrefFor({ page: "qa", id: item.id }),
+};
+
+/** 用到它的: what stands on this type, a line for each kind with its count and the names. Kinds nothing uses are not listed. */
+function Uses({ id, uses }) {
+  if (!uses?.used_by.length) return null;
+  return (
+    <section aria-label="用到它的">
+      <h2 className="section">用到它的</h2>
+      <dl className="defs">
+        {uses.used_by.map((u) => (
+          <React.Fragment key={u.kind}>
+            <dt>{u.label} {u.count}</dt>
+            <dd>{u.items.map((item, i) => <span key={item.id}>{i > 0 && "、"}<a href={USE_HREF[u.kind](id, item)}>{item.name}</a>{item.state && item.state !== "confirmed" && <span className="muted small"> {item.state === "needs_look" ? "需再看" : "未确认"}</span>}</span>)}</dd>
+          </React.Fragment>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 export function TypePage({ route }) {
   const { id, tab, pageNo } = route;
   const [state, reload] = useLoad(() => getType(id), [id]);
+  const [uses] = useLoad(() => getTypeUses(id), [id, state.data?.version]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const mayBuild = canBuild(useAuth().user);
@@ -245,13 +272,14 @@ export function TypePage({ route }) {
           </div>
           {error && <p className="error">{error}</p>}
           <p className="facts">
-            <span>来源 {t.rows_limited ? t.dataset : <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>} 第 {t.dataset_version} 版</span>
+            <span>来源 {t.rows_limited ? t.dataset : <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>} 第 {t.dataset_version} 版{uses.data?.data.uploaded_at && `，上传于 ${ageText(uses.data.data.uploaded_at)}${uses.data.data.who ? `（${uses.data.data.who}）` : ""}`}</span>
             <span>{t.rows_limited ? `你能看到 ${t.rows} 个对象` : `${t.rows} 个对象`}</span>
             {t.limited_note && <span>{t.limited_note}</span>}
             {t.description && <span>{t.description}</span>}
             {t.visible_to && t.visible_to !== "everyone" && <span>只有{t.visible_to.length ? t.visible_to.join("、") : "管理员"}看得到</span>}
           </p>
           <Standing item={t} noun="这个对象类型" />
+          <Uses id={id} uses={uses.data} />
           <nav className="tabs" aria-label="对象类型的页面" style={{ marginTop: 16 }}>
             {TYPE_TABS.filter((k) => k !== "actions" || mayBuild).map((k) => (
               <a key={k} href={hrefFor({ page: "type", id, tab: k })} aria-current={k === tab ? "page" : undefined} className={k === tab ? "active" : ""}>{TYPE_TAB_LABEL[k]}</a>

@@ -22,8 +22,9 @@ export function parseRoute(hash) {
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
   if ((parts[0] === "account" || parts[0] === "users") && parts.length === 1) return { page: parts[0] };
   if (parts.length === 1 && Object.hasOwn(PLANNED, parts[0])) return { page: "planned", key: parts[0] };
+  if (parts[0] === "lineage" && parts.length === 1) return { page: "lineage" };
   if (parts[0] === "relations") {
-    if (parts.length === 1) return { page: "relations" };
+    if (parts.length === 1) return new URLSearchParams(query).get("view") === "list" ? { page: "relations", list: true } : { page: "relations" };   // the graph is the default, the list stays one click away
     if (parts.length === 2 && parts[1] === "new") return { page: "relationnew" };   // the service refuses a relation called new, so this address is never a relation
     if (parts.length === 3 && parts[2] === "edit") return { page: "relationedit", id: parts[1] };
     if (parts.length === 2) return { page: "relation", id: parts[1] };
@@ -55,7 +56,8 @@ export function hrefFor(route) {
   if (route.page === "tasks" || route.page === "account" || route.page === "users") return `#/${route.page}`;
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "types") return "#/types";
-  if (route.page === "confirm" || route.page === "permissions" || route.page === "relations") return `#/${route.page}`;
+  if (route.page === "confirm" || route.page === "permissions" || route.page === "lineage") return `#/${route.page}`;
+  if (route.page === "relations") return route.list ? "#/relations?view=list" : "#/relations";
   if (route.page === "relationnew") return "#/relations/new";
   if (route.page === "relation") return `#/relations/${encodeURIComponent(route.id)}`;
   if (route.page === "relationedit") return `#/relations/${encodeURIComponent(route.id)}/edit`;
@@ -76,10 +78,9 @@ export const PLANNED = {
   sources: ["数据源", "连接 MySQL、PostgreSQL，把库里的表读成数据集，还没做"],
   agents: ["智能体", "给问答设定范围和说明，还没做"],
   boards: ["看板", "用已确认的指标做看板，还没做"],
-  lineage: ["血缘", "从数据源到应用，看每一步用了什么，还没做"],
 };
 
-const BUILT = { qa: "#/qa", tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", confirm: "#/confirm", users: "#/users", permissions: "#/permissions" };
+const BUILT = { qa: "#/qa", tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", confirm: "#/confirm", users: "#/users", permissions: "#/permissions" };
 const BUILDERS = ["tasks", "confirm"];   // shown to builders and admins only: a viewer has nothing to confirm, and the task list quotes keys and values (the service refuses it to a viewer)
 const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
 
