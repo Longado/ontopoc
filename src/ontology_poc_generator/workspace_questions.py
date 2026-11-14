@@ -90,6 +90,7 @@ def scope(conn, user: dict | None) -> dict:
         content = _content(row)
         read = [(content['types'][-1], content['measure']['column'])] if content['measure'] and content['measure']['column'] else []
         read += [(content['type'], i['column']) for i in content['inputs']]
+        read += [(content['types'][-1], f['column']) for f in content['conditions']]   # what it says names the meaning of that column, as a view's conditions do
         if all(t in types for t in content['types']) and all(r in relations for r in content['path']) and derived_visible(conn, row, user) \
                 and not any(c in hidden_values(conn, type_id(t)) for t, c in read):
             derived[element_id] = {'row': row, 'content': content}
