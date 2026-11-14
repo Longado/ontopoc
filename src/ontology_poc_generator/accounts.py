@@ -28,7 +28,7 @@ from pathlib import Path
 
 ROLES = ('viewer', 'builder', 'admin')
 RANK = {role: i for i, role in enumerate(ROLES, 1)}
-ROLE_LABEL = {'viewer': '查看', 'builder': '建设', 'admin': '管理员'}
+ROLE_LABEL = {'viewer': '查看者', 'builder': '建设者', 'admin': '管理员'}
 
 SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 15, 8, 3   # stored with each hash (OWASP's minimum for scrypt); a hash made with lower ones is made again at the next sign-in
 HASHING_AT_ONCE, HASHING_WAIT = 3, 3.0   # one hash takes 32 MiB, so only this many run together; another waits this many seconds, then is told the service is busy
@@ -321,7 +321,7 @@ def create_user(conn, username, display_name, role, password, by: str, must_chan
         raise AccountError('账号只能用字母、数字、汉字和 . _ @ + -')
     display_name = _display_name(conn, display_name or username, None)
     if role not in ROLES:
-        raise AccountError('角色要从 查看、建设、管理员 里选')
+        raise AccountError('角色要从 查看者、建设者、管理员 里选')
     if provider == 'local':
         problem = password_problem(password, username)
         if problem:
@@ -408,7 +408,7 @@ def _target(conn, user_id) -> dict:
 def set_role(conn, actor: dict, user_id, role) -> dict:
     target = _target(conn, user_id)
     if role not in ROLES:
-        raise AccountError('角色要从 查看、建设、管理员 里选')
+        raise AccountError('角色要从 查看者、建设者、管理员 里选')
     if target['id'] == actor['id']:
         raise AccountError('不能改自己的角色，请另一位管理员来改')
     if target['role'] == 'admin' and role != 'admin' and not target['disabled'] and _active_admins(conn) <= 1:
@@ -555,7 +555,7 @@ def issue_token(conn, admin: dict, target_id, label, scope='read', days=90) -> t
     if target is None or target['disabled']:
         raise AccountError('没有这个在用的账号', 404)
     if target['role'] == 'admin':
-        raise AccountError('管理员的账号不发给智能体用的令牌：给它一个建设或查看的账号', 400)
+        raise AccountError('管理员的账号不发给智能体用的令牌：给它一个建设者或查看者的账号', 400)
     if days not in EXPIRY_DAYS or isinstance(days, bool):
         raise AccountError(f'有效期要选 {"、".join(map(str, EXPIRY_DAYS))} 天之一')
     record, token = create_token(conn, target, label, by=admin, scope=scope, days=days)

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { SKILL_HREF, createAgentToken, getAgentInfo, getAgentTokens, getUsers, revokeAgentToken } from "./api.js";
 import { useAuth } from "./Auth.jsx";
+import { FormDialog } from "./FormDialog.jsx";
 import { isAdmin, roleLabel } from "./authModel.js";
 import { EXPIRY_DAYS, SCOPES, connectConfig, endText, firstSentence, scopeWord, skillText, tokenState } from "./agentModel.js";
 import { timeText } from "./format.js";
@@ -17,6 +18,8 @@ function Tokens({ onMade }) {
   const [days, setDays] = useState("90");
   const [made, setMade] = useState(null);
   const [error, setError] = useState("");
+  const [revoking, setRevoking] = useState(null);   // the token the admin is about to revoke
+  const [revoked, setRevoked] = useState(false);
   const active = (users.data ?? []).filter((u) => !u.disabled && u.role !== "admin");   // an admin's account gets no token: a leaked one would be the whole service
   const create = async (e) => {
     e.preventDefault();
@@ -32,15 +35,11 @@ function Tokens({ onMade }) {
     }
   };
   const revoke = async (id) => {
-    setError("");
-    try {
-      await revokeAgentToken(id);
-      setMade(null);
-      onMade("");
-      reload();
-    } catch (err) {
-      setError(err.message);
-    }
+    await revokeAgentToken(id);
+    setMade(null);
+    onMade("");
+    setRevoked(true);
+    reload();
   };
   return (
     <>
@@ -61,6 +60,7 @@ function Tokens({ onMade }) {
         <button className="secondary" type="submit" disabled={!who || !label.trim()}>创建令牌</button>
       </form>
       {error && <p className="error" role="alert">{error}</p>}
+      {revoked && <p className="ok" role="status">已撤销</p>}
       {made && (
         <p className="token">
           <span className="caption">现在复制，之后看不到了（{made.display_name} 的令牌）：</span>
@@ -80,12 +80,17 @@ function Tokens({ onMade }) {
                   <td>{scopeWord(t)}</td>
                   <td>{endText(t)}</td>
                   <td>{t.last_used_at ? timeText(t.last_used_at) : <span className="faint">没用过</span>}</td>
-                  <td>{t.revoked || t.expired ? <span className="muted">{tokenState(t)}</span> : <button className="plain" onClick={() => revoke(t.id)}>撤销</button>}</td>
+                  <td>{t.revoked || t.expired ? <span className="muted">{tokenState(t)}</span> : <button className="plain" onClick={() => { setRevoked(false); setRevoking(t); }}>撤销</button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {revoking && (
+        <FormDialog title="撤销这个令牌" submitLabel="确认撤销" valid onClose={() => setRevoking(null)} onSubmit={() => revoke(revoking.id)}>
+          <p>“{revoking.label}”（{revoking.display_name} 的令牌）马上失效，用它的智能体会被拒绝。撤销后不能恢复，要用就得重新创建一个。</p>
+        </FormDialog>
       )}
     </>
   );

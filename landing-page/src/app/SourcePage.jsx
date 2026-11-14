@@ -8,7 +8,7 @@ import { Select } from "./Select.jsx";
 import { SourceForm, SourceState } from "./SourcesPage.jsx";
 import { estimateText, keyColumnsFrom, reasonText, runStatusText, runSummary } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
-import { FormDialog } from "./UsersPage.jsx";
+import { FormDialog } from "./FormDialog.jsx";
 
 const MODE_TEXT = { overwrite: "整张覆盖", update_by_key: "按主键更新" };
 

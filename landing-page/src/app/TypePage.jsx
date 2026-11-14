@@ -85,7 +85,7 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
         <div className="inline">
           {(changed || m.state === "needs_look") && <button className="secondary" onClick={propose} disabled={busy}>提出这组含义</button>}
           {m.can_confirm && !changed && <button className="primary" onClick={confirm} disabled={busy}>确认这组含义</button>}
-          {m.state === "needs_look" && <span className="muted small">提出后要另一位构建者确认</span>}
+          {m.state === "needs_look" && <span className="muted small">提出后要另一位建设者确认</span>}
         </div>
       )}
       {error && <p className="error">{error}</p>}

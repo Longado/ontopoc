@@ -54,7 +54,7 @@ function Card({ item, onChanged }) {
           <button className="plain" onClick={() => setAsking(false)}>取消</button>
         </div>
       )}
-      {item.kind === "approval" && !item.can_confirm && !item.can_withdraw && item.state === "pending" && <p className="muted">需要另一位构建者批准，提交的人自己不能批准。</p>}
+      {item.kind === "approval" && !item.can_confirm && !item.can_withdraw && item.state === "pending" && <p className="muted">需要另一位建设者批准，提交的人自己不能批准。</p>}
       {item.kind === "pipeline" && (
         <p>{action === "confirm" ? <a className="button primary" href={itemHref(item)}>看改了什么，再确认</a> : <a href={itemHref(item)}>打开管道</a>}</p>
       )}
@@ -72,7 +72,7 @@ function Card({ item, onChanged }) {
         </div>
       )}
       {item.kind !== "approval" && item.kind !== "pipeline" && action === "wait" && (
-        <p className="muted">{item.model_draft ? "模型写的草稿，等一位构建者看过确认。" : "需要另一位构建者确认，不能由提出的人自己确认。"}{confirmersText(item) && ` ${confirmersText(item)}`}</p>
+        <p className="muted">{item.model_draft ? "模型写的草稿，等一位建设者看过确认。" : "需要另一位建设者确认，不能由提出的人自己确认。"}{confirmersText(item) && ` ${confirmersText(item)}`}</p>
       )}
       {item.kind !== "approval" && item.kind !== "pipeline" && action === "blocked" &&<p className="warn">{item.kind === "view" ? viewWaitingText(item) : item.kind === "derived" ? derivedWaitingText(item) : waitingText(item)}</p>}
       {action === "repropose" && <p><a href={itemHref(item)}>到类型的属性页，按现在的数据写新的含义</a> <span className="muted small">提出后由另一位确认</span></p>}
@@ -98,7 +98,7 @@ export function ConfirmPage() {
       {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
       {state.data && <p className="muted" style={{ marginBottom: 16 }}>共 {state.data.items.length} 项，其中 {state.data.count} 项你现在能确认</p>}
       {state.data?.hidden_by_rules > 0 && <p className="warn">有 {state.data.hidden_by_rules} 项因为行规则你看不到。要看，请管理员在权限页给你开“全部行”。</p>}
-      {state.data && !state.data.items.length && <p className="muted">没有要确认的。新提出的定义、数据变了需要再看的，会出现在这里。</p>}
+      {state.data && !state.data.items.length && !state.data.hidden_by_rules && <p className="muted">没有要确认的。新提出的定义、数据变了需要再看的，会出现在这里。</p>}
       <div className="cards">
         {items.map((item) => <Card key={`${item.element}@${item.version}@${item.state}`} item={item} onChanged={reload} />)}
       </div>

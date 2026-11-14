@@ -232,7 +232,7 @@ def send_back(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     if row['state'] == 'needs_look' and not element.startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX, ACTION_PREFIX, PIPELINE_PREFIX, DERIVED_PREFIX)):
         raise TypeRefused('这组含义需要再看：请按现在的数据重新提出含义，不用退回', 409)
     if not _confirmers(conn, row, user)[0]:   # who may judge it, whether or not it can be confirmed yet
-        raise TypeRefused('你现在不能处理这一项：它要另一位构建者来看', 403)
+        raise TypeRefused('你现在不能处理这一项：它要另一位建设者来看', 403)
     conn.execute('BEGIN IMMEDIATE')
     try:
         if conn.execute("UPDATE element_state SET state = 'rejected', reason = ?, version = version + 1 WHERE element_id = ? AND version = ?",

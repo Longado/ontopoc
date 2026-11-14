@@ -740,7 +740,7 @@ def reason_for(conn, row: dict, user: dict | None) -> tuple[str | None, str | No
 
 def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
     if limited_on(conn, row, user):
-        raise TypeRefused('你受行规则限制，只看得到一部分行，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的构建者来确认', 403)
+        raise TypeRefused('你受行规则限制，只看得到一部分行，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的建设者来确认', 403)
 
 
 def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:

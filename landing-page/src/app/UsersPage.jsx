@@ -1,46 +1,11 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { createUser, getTwoPerson, getUsers, resetUserPassword, setTwoPerson, setUserDisabled, updateUser } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { ROLES, roleLabel, statusText, twoPersonText } from "./authModel.js";
+import { FormDialog } from "./FormDialog.jsx";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
-
-/** A small modal with a form, closed by 取消 or Escape. */
-export function FormDialog({ title, onClose, children, submitLabel, onSubmit, valid }) {
-  const ref = useRef(null);
-  const [error, setError] = useState("");
-  const [sending, setSending] = useState(false);
-  useEffect(() => ref.current.showModal(), []);
-  const close = () => {
-    ref.current.close();
-    onClose();
-  };
-  const submit = async () => {
-    setSending(true);
-    setError("");
-    try {
-      await onSubmit();
-      close();
-    } catch (e) {
-      setError(e.message);
-      setSending(false);
-    }
-  };
-  return (
-    <dialog ref={ref} className="upload" onCancel={(e) => { e.preventDefault(); close(); }}>
-      <div className="dialog-body">
-        <h2>{title}</h2>
-        {children}
-      </div>
-      <div className="actions">
-        {error ? <span className="error" role="alert">{error}</span> : <span></span>}
-        <button className="plain" onClick={close}>取消</button>
-        <button className="primary" onClick={submit} disabled={!valid || sending}>{sending ? "提交中" : submitLabel}</button>
-      </div>
-    </dialog>
-  );
-}
 
 function NewUser({ onClose, onDone }) {
   const [f, setF] = useState({ username: "", display_name: "", role: "builder", password: "" });
@@ -54,7 +19,7 @@ function NewUser({ onClose, onDone }) {
         <Select label="角色" value={f.role} onChange={(v) => setF({ ...f, role: v })}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</Select>
       </label>
       <label className="field"><span className="caption">第一个密码（至少 12 个字符，对方第一次登录时必须改掉）</span><input type="text" value={f.password} autoComplete="off" onChange={set("password")} /></label>
-      <p className="hint">查看：只能看和提问。建设：还能上传数据、改定义。管理员：还能管人。</p>
+      <p className="hint">查看者：只能看和提问。建设者：还能上传数据、改定义。管理员：还能管人。</p>
     </FormDialog>
   );
 }
@@ -74,12 +39,15 @@ export function UsersPage() {
   const me = useAuth().user;
   const [users, reload] = useLoad(getUsers, []);
   const [two, reloadTwo] = useLoad(getTwoPerson, []);
-  const [dialog, setDialog] = useState(null);   // "new" | {reset: user}
+  const [dialog, setDialog] = useState(null);   // "new" | {reset: user} | {role: user, to} | {disable: user}
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
   const act = async (call) => {
     setError("");
+    setSaved(false);
     try {
       await call();
+      setSaved(true);
       reload();
       reloadTwo();
     } catch (e) {
@@ -97,10 +65,11 @@ export function UsersPage() {
       {two.data && (
         <p className="facts">
           <span>{twoPersonText(two.data)}</span>
-          <button className="plain" onClick={() => act(() => setTwoPerson(!two.data.enabled))}>{two.data.enabled ? "关闭" : "开启"}</button>
+          <button className="plain" onClick={() => (two.data.enabled ? setDialog("two-off") : act(() => setTwoPerson(true)))}>{two.data.enabled ? "关闭" : "开启"}</button>
         </p>
       )}
       {(error || users.status === "error") && <p className="error" role="alert">{error || users.error}</p>}
+      {saved && !error && <p className="ok" role="status">已保存</p>}
       {users.status === "loading" && !users.data && <p className="muted">加载中</p>}
       {list.length > 0 && (
         <div className="table-wrap">
@@ -113,7 +82,7 @@ export function UsersPage() {
                   <td>{u.display_name}</td>
                   <td>
                     {u.id === me.id ? roleLabel(u.role) : (
-                      <Select label={`${u.username} 的角色`} value={u.role} onChange={(role) => act(() => updateUser(u.id, { role }))}>
+                      <Select label={`${u.username} 的角色`} value={u.role} onChange={(role) => setDialog({ role: u, to: role })}>
                         {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
                       </Select>
                     )}
@@ -123,7 +92,7 @@ export function UsersPage() {
                   <td>
                     {u.id === me.id ? <span className="faint">自己</span> : (
                       <>
-                        <button className="plain" onClick={() => act(() => setUserDisabled(u.id, !u.disabled))}>{u.disabled ? "启用" : "停用"}</button>
+                        <button className="plain" onClick={() => (u.disabled ? act(() => setUserDisabled(u.id, false)) : setDialog({ disable: u }))}>{u.disabled ? "启用" : "停用"}</button>
                         <button className="plain" onClick={() => setDialog({ reset: u })}>重置密码</button>
                       </>
                     )}
@@ -135,7 +104,25 @@ export function UsersPage() {
         </div>
       )}
       {dialog === "new" && <NewUser onClose={() => setDialog(null)} onDone={() => { reload(); reloadTwo(); }} />}
-      {dialog?.reset && <ResetPassword user={dialog.reset} onClose={() => setDialog(null)} onDone={reload} />}
+      {dialog?.reset && <ResetPassword user={dialog.reset} onClose={() => setDialog(null)} onDone={() => { setSaved(true); reload(); }} />}
+      {dialog === "two-off" && (
+        <FormDialog title="关闭两人确认" submitLabel="确认关闭" valid onClose={() => setDialog(null)}
+          onSubmit={async () => { await setTwoPerson(false); setSaved(true); reload(); reloadTwo(); }}>
+          <p>关闭后，一个人建的东西，自己确认就算数，不再需要另一个建设者看一遍。</p>
+        </FormDialog>
+      )}
+      {dialog?.role && (
+        <FormDialog title={`把“${dialog.role.display_name}”改成${roleLabel(dialog.to)}`} submitLabel="确认改" valid onClose={() => setDialog(null)}
+          onSubmit={async () => { await updateUser(dialog.role.id, { role: dialog.to }); setSaved(true); reload(); }}>
+          <p>对方会被登出，要重新登录；他名下的令牌也会作废，要重发。</p>
+        </FormDialog>
+      )}
+      {dialog?.disable && (
+        <FormDialog title={`停用“${dialog.disable.display_name}”`} submitLabel="确认停用" valid onClose={() => setDialog(null)}
+          onSubmit={async () => { await setUserDisabled(dialog.disable.id, true); setSaved(true); reload(); reloadTwo(); }}>
+          <p>对方会被登出，令牌永久作废，重新启用后要重发。他登录时会看到“这个账号已停用”。</p>
+        </FormDialog>
+      )}
     </main>
   );
 }

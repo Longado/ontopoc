@@ -22,7 +22,7 @@ export const firstSentence = (text) => text.split(/[。\n]/)[0];
 /** What the skill folder holds, in one line. */
 export const skillText = (skill) => `${skill.types} 个对象类型、${skill.relations} 条关系、${skill.views} 个视图、${skill.derived} 个派生属性；都是已确认的，没有数据行`;
 
-export const SCOPES = [["read", "只读：读定义、提问、看数据"], ["all", "全部：和主人在页面上能做的一样"]];
+export const SCOPES = [["read", "只读：读定义和数据行、提问；不能上传、确认、改"], ["all", "全部：和主人在页面上能做的一样"]];
 export const EXPIRY_DAYS = [7, 30, 90, 365];
 
 /** A token's reach in a word. */

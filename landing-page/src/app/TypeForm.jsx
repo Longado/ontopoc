@@ -191,7 +191,7 @@ export function TypeForm({ id }) {
                       </tbody>
                     </table>
                   </div>
-                  <p className="hint">没写含义的取值保持“含义未确认”。写了的，要另一位构建者确认才算数。</p>
+                  <p className="hint">没写含义的取值保持“含义未确认”。写了的，要另一位建设者确认才算数。</p>
                 </section>
               ))}
             </>

@@ -1,26 +1,41 @@
 import React, { useEffect, useState } from "react";
 import { getPermissions, setPermission, setRowRules } from "./api.js";
+import { FormDialog } from "./FormDialog.jsx";
+import { cutOff, loseAccess, prefilledRule } from "./permissionModel.js";
 import { Select } from "./Select.jsx";
 import { toggled } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
 import { useLoad } from "./useLoad.js";
 
-/** The rows of one type that named people see: each rule is a property, a value and the people. The whole list is saved when a rule is added or taken away. */
-function RowRules({ type, people, onChanged, onError }) {
+const nameList = (people) => people.map((p) => p.name).join("、");
+
+/** The rows of one type that named people see: each rule is a property, a value and the people. Changes are collected here and saved together, so the person who sets them sees who is cut off before it happens. */
+function RowRules({ type, people, onChanged, onError, onSaved }) {
   const [column, setColumn] = useState("");
   const [value, setValue] = useState("");
   const [ids, setIds] = useState([]);
+  const [draft, setDraft] = useState(null);   // null: nothing changed yet, what is saved is shown
   const [busy, setBusy] = useState(false);
+  const rules = draft ?? type.row_rules;
   const names = (list) => list.map((i) => people.find((p) => p.id === i)?.name ?? `#${i}`).join("、");
-  const save = async (rules) => {
+  const cut = cutOff(type, people, rules);
+  const changed = draft !== null && JSON.stringify(draft.map(({ column: c, value: v, user_ids }) => [c, v, user_ids])) !== JSON.stringify(type.row_rules.map(({ column: c, value: v, user_ids }) => [c, v, user_ids]));
+  const add = () => {
+    const rule = { column, value: value.trim(), user_ids: ids };
+    const lead = draft === null ? prefilledRule(type, people, rule) : null;   // the first rule of a type brings an all-rows entry for the people it does not name
+    setDraft([...rules, ...(lead ? [lead] : []), rule]);
+    setColumn("");
+    setValue("");
+    setIds([]);
+  };
+  const save = async () => {
     setBusy(true);
     onError("");
     try {
       await setRowRules(type.id, rules.map(({ column: c, value: v, user_ids }) => ({ column: c, value: v, user_ids })));
-      setColumn("");
-      setValue("");
-      setIds([]);
+      setDraft(null);
+      onSaved();
     } catch (e) {
       onError(e.message);
     }
@@ -30,13 +45,15 @@ function RowRules({ type, people, onChanged, onError }) {
   return (
     <section className="card">
       <h3 className="item-title">{type.name}</h3>
-      {!type.row_rules.length && <p className="muted">没有行规则，所有看得到这个类型的人都看全部的行。</p>}
+      {!rules.length && <p className="muted">没有行规则，所有看得到这个类型的人都看全部的行。</p>}
       <ul className="checks">
-        {type.row_rules.map((r) => (
-          <li key={r.id}>{names(r.user_ids)} 看{r.column ? ` ${type.columns.find((c) => c.column === r.column)?.name ?? r.column} = ${r.value} 的行` : "全部行"}{" "}
-            <button className="plain" disabled={busy} onClick={() => save(type.row_rules.filter((x) => x.id !== r.id))}>去掉</button></li>
+        {rules.map((r, i) => (
+          <li key={r.id ?? `new${i}`}>{names(r.user_ids)} 看{r.column ? ` ${type.columns.find((c) => c.column === r.column)?.name ?? r.column} = ${r.value} 的行` : "全部行"}
+            {r.prefilled && <span className="faint small">（自动加上：原来能看这个类型的人，照常看全部行）</span>}{" "}
+            <button className="plain" disabled={busy} onClick={() => setDraft(rules.filter((_, j) => j !== i))}>去掉</button></li>
         ))}
       </ul>
+      {cut.length > 0 && <p className="warn">{changed ? "保存后" : "现在"}这些人会一行也看不到：{nameList(cut)}。没被哪条规则点名的人，看不到这个类型的任何一行。</p>}
       <div className="inline wide" style={{ flexWrap: "wrap" }}>
         <Select label={`${type.name}：规则的属性`} value={column} onChange={setColumn}>
           <option value="">全部行（不设条件）</option>
@@ -50,39 +67,59 @@ function RowRules({ type, people, onChanged, onError }) {
             {p.name}
           </label>
         ))}
-        <button className="primary" disabled={busy || (column && !value.trim()) || !ids.length} onClick={() => save([...type.row_rules, { column, value: value.trim(), user_ids: ids }])}>加这条规则</button>
+        <button className="secondary" disabled={busy || (column && !value.trim()) || !ids.length} onClick={add}>加这条规则</button>
       </div>
+      {changed && (
+        <div className="inline">
+          <button className="primary" disabled={busy} onClick={save}>保存行规则</button>
+          <button className="plain" disabled={busy} onClick={() => setDraft(null)}>放弃修改</button>
+        </div>
+      )}
     </section>
   );
 }
 
-/** Who sees which object type: everyone, or the people ticked. A change is saved when it is made. */
+/** Who sees which object type: everyone, or the people ticked. A change that takes the type from someone asks first, and says who. */
 export function PermissionsPage() {
   const [state, reload] = useLoad(getPermissions, []);
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
+  const [asking, setAsking] = useState(null);   // {type, visibleTo, losing}
   const [shown, setShown] = useState({});   // what a person just ticked, shown at once while the service saves it
-  const change = async (type, visibleTo) => {
-    setError("");
+  const people = state.data?.people ?? [];
+  const save = async (type, visibleTo) => {
     setShown((s) => ({ ...s, [type]: visibleTo }));
     try {
       await setPermission(type, visibleTo);
-    } catch (e) {
-      setError(e.message);
+      setSaved("已保存");
+    } finally {
+      reload();
     }
-    reload();
+  };
+  const change = (type, visibleTo) => {
+    setError("");
+    setSaved("");
+    const losing = loseAccess(type, visibleTo, people);
+    if (losing.length) {
+      setAsking({ type, visibleTo, losing });
+      return;
+    }
+    save(type.id, visibleTo).catch((e) => setError(e.message));
   };
   useEffect(() => setShown({}), [state.data]);   // the saved list has arrived: it is what is shown
   const now = (t) => (t.id in shown ? { ...t, everyone: shown[t.id] === "everyone", user_ids: shown[t.id] === "everyone" ? [] : shown[t.id] } : t);
-  const people = state.data?.people ?? [];
+  const types = (state.data?.types ?? []).map(now);
+  const later = people.filter((p) => p.role !== "admin");
   return (
     <main className="page">
       <div className="page-head"><h1 tabIndex={-1}>权限</h1></div>
       <p className="muted" style={{ marginBottom: 16 }}>每个对象类型可以让所有人看，或只让勾选的人看。管理员始终看得到全部；没确认的类型，查看者看不到，勾上也一样。</p>
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      {saved && !error && <p className="ok" role="status">{saved}</p>}
       {state.data && !state.data.types.length && <p className="muted">还没有对象类型。</p>}
-      {state.data?.types.length > 0 && (
+      {types.length > 0 && (
         <div className="table-wrap">
           <table className="people">
             <thead>
@@ -92,15 +129,15 @@ export function PermissionsPage() {
               </tr>
             </thead>
             <tbody>
-              {state.data.types.map(now).map((t) => (
+              {types.map((t) => (
                 <tr key={t.id}>
                   <td><a href={hrefFor({ page: "type", id: t.id, tab: "props" })}>{t.name}</a></td>
                   <td><State item={t} /></td>
-                  <td><input type="checkbox" aria-label={`${t.name}：所有人可见`} checked={t.everyone} onChange={(e) => change(t.id, e.target.checked ? "everyone" : [])} /></td>
+                  <td><input type="checkbox" aria-label={`${t.name}：所有人可见`} checked={t.everyone} onChange={(e) => change(t, e.target.checked ? "everyone" : [])} /></td>
                   {people.map((p) => (
                     <td key={p.id}>
                       <input type="checkbox" aria-label={`${t.name}：${p.name}可见`} checked={t.everyone || p.role === "admin" || t.user_ids.includes(p.id)} disabled={t.everyone || p.role === "admin"}
-                        onChange={(e) => change(t.id, toggled(t.user_ids, p.id, e.target.checked))} />
+                        onChange={(e) => change(t, toggled(t.user_ids, p.id, e.target.checked))} />
                     </td>
                   ))}
                 </tr>
@@ -109,13 +146,20 @@ export function PermissionsPage() {
           </table>
         </div>
       )}
-      <p className="hint">不让所有人看之后，没勾的人（构建者也一样）在对象类型、对象、关系、待确认里都看不到这个类型。</p>
-      {state.data?.types.length > 0 && (
+      <p className="hint">不让所有人看之后，没勾的人（建设者也一样）在对象类型、对象、关系、待确认里都看不到这个类型。</p>
+      {types.length > 0 && (
         <>
           <h2 className="section">行规则</h2>
-          <p className="muted" style={{ marginBottom: 16 }}>类型一旦有行规则（选“全部行”就是不设条件，点名的人看全部），每个人只看到点了名的规则放行的行，没有被点名的人一行也看不到；管理员看全部。规则读的属性不能被行为改写，有行规则的类型，它的数据集只有管理员能看。</p>
-          {state.data.types.map((t) => <RowRules key={t.id} type={t} people={people.filter((p) => p.role !== "admin")} onChanged={reload} onError={setError} />)}
+          <p className="muted" style={{ marginBottom: 16 }}>类型一旦有行规则，每个人只看到点了他名字的规则放行的行；没被点名的人一行也看不到。“全部行”是不设条件的规则，点名的人看全部。管理员看全部。
+            行为（类型页“行为”里定义的、会改某几个属性的值的操作）不能改写规则读的属性：改一次就能把一行移进或移出某个人看得到的范围。有行规则的类型，它的数据集只有管理员和被点名看全部行的人能看。</p>
+          {types.map((t) => <RowRules key={t.id} type={t} people={later} onChanged={reload} onError={setError} onSaved={() => setSaved("已保存")} />)}
         </>
+      )}
+      {asking && (
+        <FormDialog title={`改“${asking.type.name}”的可见范围`} submitLabel="确认改" valid onClose={() => setAsking(null)}
+          onSubmit={() => save(asking.type.id, asking.visibleTo)}>
+          <p>改了之后，这些人看不到“{asking.type.name}”了：{nameList(asking.losing)}。他们在对象类型、对象、关系、待确认里都不再出现它。</p>
+        </FormDialog>
       )}
     </main>
   );
