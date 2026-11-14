@@ -61,6 +61,16 @@ def _sentence(payload: dict) -> str:
     return text.strip()
 
 
+def _settled(settle, raw):
+    """`settle()`; a `raw` the client sent back that is not the shape the model's answer had (the code reads it as that) is refused in words, not left to fail."""
+    try:
+        return settle()
+    except (TypeError, AttributeError, KeyError) as exc:
+        if raw is None:
+            raise   # the model's own answer was checked as it came; a failure here is ours
+        raise TypeRefused('raw 要写成上一次返回的 raw，原样带回来；这一份读不了，请重新问一次') from exc
+
+
 def _raw(payload: dict):
     raw = payload.get('raw')
     if raw is not None and not isinstance(raw, dict):
@@ -86,7 +96,7 @@ def parse(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
         facts = column_facts(columns, found['ctx'], seen)
         out = {'kind': kind, 'sees': disclosure(facts), 'label': 'AI 写的草稿，用不用由你定'}
         if kind == 'filter':
-            drafted = parse_condition(gateway, sentence, facts, seen, answers, _confirmed_by(conn, found['ctx'], meaning_ids, columns), raw)
+            drafted = _settled(lambda: parse_condition(gateway, sentence, facts, seen, answers, _confirmed_by(conn, found['ctx'], meaning_ids, columns), raw), raw)
             if 'error' in drafted:
                 raise TypeRefused(drafted['error'], 409)
             check = {'ok': False, 'error': '没有一个条件能先写下来：先回答下面的问题'} if drafted['where'] is None else _checked_filter(drafted['where'], compiled['columns'], found['ctx'])
@@ -144,7 +154,7 @@ def draft(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
         merged_by = {c: w for i in selected for c, w in by[i].items()}
     finally:
         drop_temporary(engine, found['resolved'])
-    settled = settle_plan(asked, facts, seen, {s['id'] for s in spec['steps']}, llm.model if llm else None, sentence, answers, merged_by)
+    settled = _settled(lambda: settle_plan(asked, facts, seen, {s['id'] for s in spec['steps']}, llm.model if llm else None, sentence, answers, merged_by), raw)
     out = {'raw': asked, 'basis': str(asked.get('basis') or ''), 'selected': selected, 'questions': settled['questions'], 'cites': settled['cites'], 'problems': settled['problems'],
            'sees': disclosure([f for i in selected for f in facts[i]]), 'label': 'AI 写的草稿，用不用由你定', 'steps': [], 'max_steps': MAX_DRAFT_STEPS}
     if not settled['steps']:
@@ -181,4 +191,5 @@ def explain_steps(conn, engine, payload: dict, user: dict | None, llm: LlmServic
     said = explain(gateway, steps)
     if 'error' in said:
         raise TypeRefused(said['error'], 409)
-    return {**said, 'selected': selected, 'label': 'AI 写的说明，供读的人参考；以步骤的设置为准'}
+    return {**said, 'selected': selected, 'label': 'AI 写的说明，供读的人参考；以步骤的设置为准',
+            'sees': {'text': '会把选中步骤的设置发给模型，设置里写的具体取值（比如过滤条件里的客户名、编号）也在内；不发数据行，也不发取值统计。'}}

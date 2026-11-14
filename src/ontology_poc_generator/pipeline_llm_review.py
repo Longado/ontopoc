@@ -11,7 +11,7 @@ import random
 from ontology_poc_generator import pipeline_llm
 from ontology_poc_generator.pipeline_funcs import number_text
 from ontology_poc_generator.pipeline_llm import (
-    LlmError, LlmService, MAX_FIELD_CHARS, _blank, cache_get, cache_put, call_many, compile_prompt, contract_of, effective, prompt_sent, refuse_over, render, row_hash)
+    LlmError, LlmService, MAX_FIELD_CHARS, _blank, cache_get, cache_put, call_many, compile_prompt, contract_of, effective, prompt_sent, refuse_over, request_of, row_hash)
 from ontology_poc_generator.workspace_store import now_text
 
 SAMPLE_ROWS = 20   # the sample a person is shown to label when they do not say how many
@@ -100,7 +100,7 @@ def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: lis
         if not all(_blank(values.get(f)) for f in fields):
             asked.setdefault(row_hash(values, fields), values)
     kept = cache_get(conn, pipeline_id, step['id'], contract, list(asked))
-    todo = {k: render(parts, v) for k, v in asked.items() if k not in kept and all(len(x or '') <= MAX_FIELD_CHARS for x in v.values())}
+    todo = {k: request_of(eff, parts, v) for k, v in asked.items() if k not in kept and all(len(x or '') <= MAX_FIELD_CHARS for x in v.values())}
     refuse_over(len(todo), pipeline_llm.MAX_TRIAL_CALLS, what)
     if todo and service.gateway is None:
         raise LlmError('本机服务没有模型凭据，不能调用模型')
@@ -108,16 +108,16 @@ def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: lis
     out = []
     for position, values in rows:
         shown = {f: values.get(f) for f in fields}
-        task = render(parts, values)
+        request = request_of(eff, parts, values)
         if all(_blank(values.get(f)) for f in fields):
             out.append({'row': position, 'fields': shown, 'status': 'skipped', 'values': None, 'message': '跳过：提示用到的列都是空的', 'raw': None, 'cached': False, 'prompt': None})
             continue
         key = row_hash(values, fields)
         if key in kept:
-            out.append({'row': position, 'fields': shown, 'status': 'ok', 'values': kept[key]['values'], 'message': None, 'raw': kept[key]['raw'], 'cached': True, 'prompt': prompt_sent(eff, task)})
+            out.append({'row': position, 'fields': shown, 'status': 'ok', 'values': kept[key]['values'], 'message': None, 'raw': kept[key]['raw'], 'cached': True, 'prompt': prompt_sent(request)})
         elif key in got:
             g = got[key]
-            out.append({'row': position, 'fields': shown, 'status': g['status'], 'values': g['values'], 'message': g['message'], 'raw': g['raw'], 'cached': False, 'prompt': prompt_sent(eff, task)})
+            out.append({'row': position, 'fields': shown, 'status': g['status'], 'values': g['values'], 'message': g['message'], 'raw': g['raw'], 'cached': False, 'prompt': prompt_sent(request)})
         else:
             out.append({'row': position, 'fields': shown, 'status': 'failed', 'values': None, 'message': f'内容超过 {MAX_FIELD_CHARS} 字，没有发送', 'raw': None, 'cached': False, 'prompt': None})
     return out

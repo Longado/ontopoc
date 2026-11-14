@@ -210,6 +210,26 @@ class AssistantTests(SigningTestCase):
             self.assertEqual([s['id'] for s in sent], ['t'])
             self.assertNotIn('160', json.dumps(sent))   # settings, not rows
 
+    def test_the_explanation_says_what_it_sends_and_a_raw_that_is_not_what_the_last_answer_returned_is_refused_in_words(self):
+        model = Assistant()
+        with self.service(gateway=model) as (base, out):
+            ann = self.team(base, confirmed=False)['ann']
+            spec = {'steps': [*DRAFT_SPEC['steps'], {'id': 't', 'type': 'transform', 'from': 'o', 'operators': [AGGREGATE]}]}
+            said = ann.post(f'{PIPELINES}/ai/explain', {'spec': spec, 'selected': ['t']})[1]
+            self.assertIn('具体取值', said['sees']['text'])   # a filter's settings can hold a customer's name: that goes too
+            self.assertIn('不发数据行', said['sees']['text'])
+            node = {'spec': {'steps': [*DRAFT_SPEC['steps'], {'id': 't', 'type': 'transform', 'from': 'o', 'operators': []}]}, 'step': 't', 'operator': 0, 'kind': 'filter', 'text': '剔除已取消订单'}
+            for raw in ({'where': {'column': '状态码', 'cmp': 'in', 'values': 5}}, {'where': {'column': ['x'], 'cmp': 'eq'}}, {'where': {'column': {'a': 1}, 'cmp': 'eq'}}):
+                status, body = ann.post(f'{PIPELINES}/ai/parse', {**node, 'raw': raw})
+                self.assertEqual(status, 400, (raw, body))
+                self.assertIn('上一次返回的', body['error'])
+            for raw in ({'steps': 'x'}, {'steps': [5]}):
+                self.assertLess(self.draft(ann, raw=raw)[0], 500, raw)   # said in the draft's own words
+            bad = {'steps': [{'step': {'type': 'transform', 'from': 'o', 'operators': [{'op': 'filter', 'where': {'column': '状态码', 'cmp': 'in', 'values': 5}}]}}]}
+            status, body = self.draft(ann, raw=bad)
+            self.assertEqual(status, 400, body)
+            self.assertIn('上一次返回的', body['error'])
+
     def test_someone_kept_from_the_input_gets_no_draft_no_filter_and_no_explanation_and_the_model_is_not_asked(self):
         model = Assistant()
         with self.service(gateway=model) as (base, out):
