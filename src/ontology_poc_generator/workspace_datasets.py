@@ -89,6 +89,7 @@ def _version_row(conn, row: dict, current_id: int, user: dict | None) -> dict:
             'changed': changes.get('changed'), 'added': changes.get('added'), 'unchanged': changes.get('unchanged'),
             'blank_kept': changes.get('blank_kept'), 'same_as': changes.get('same_as'), 'changed_keys': changes.get('changed_keys') or [], 'added_keys': changes.get('added_keys') or [], 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'), 'action': changes.get('action'),
             'pipeline': shown,   # a version a pipeline run wrote: the pipeline, the run, the definition version and the input versions it read
+            'source': changes.get('source'),   # a version a pull from a data source wrote: {name, table, left_out (columns of bytes that were not read)}
             'current': row['id'] == current_id}
 
 
@@ -328,6 +329,7 @@ def delete_dataset(conn, name: str, who: str | None, readers: list[dict]) -> dic
             conn.execute('DELETE FROM dataset WHERE id = ?', (v['id'],))
             conn.execute('DELETE FROM check_result WHERE dataset_id = ?', (v['id'],))   # the key checks recorded on it go with it
         conn.execute('DELETE FROM current_dataset WHERE name = ?', (name,))
+        conn.execute('DELETE FROM source_table WHERE dataset = ?', (name,))   # it no longer comes from a source: the source can be deleted now
         conn.execute('UPDATE log SET element_id = ? WHERE element_id = ?', (f'deleted:{name}@{stamp}', f'dataset:{name}'))
         conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id) VALUES (?, ?, ?, ?, ?, NULL, ?)',
                      (stamp, signer, f'deleted:{name}@{stamp}', DELETED,

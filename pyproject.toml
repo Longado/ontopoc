@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 dependencies = ["openpyxl>=3.1"]
 
 [project.optional-dependencies]
+sources = ["pg8000>=1.30", "PyMySQL>=1.1"]   # live PostgreSQL and MySQL sources; pure Python, imported only when a source is opened
 check = ["rdflib>=7", "pyshacl>=0.26"]   # tests read the Turtle export back; the service does not need them
 
 [project.scripts]
