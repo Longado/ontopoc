@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AccountPage } from "./AccountPage.jsx";
+import { AgentsPage } from "./AgentsPage.jsx";
+import { BoardEditor } from "./BoardEditor.jsx";
+import { BoardPage, BoardsPage } from "./BoardsPage.jsx";
 import { WORKSPACE_CHANGED, getQueueCount } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild, isAdmin, roleLabel } from "./authModel.js";
@@ -7,6 +10,7 @@ import { ConfirmPage } from "./ConfirmPage.jsx";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
 import { LineagePage } from "./LineagePage.jsx";
+import { ObjectPage } from "./ObjectPage.jsx";
 import { PermissionsPage } from "./PermissionsPage.jsx";
 import { PipelinePage } from "./PipelinePage.jsx";
 import { PipelineNew, PipelinesPage } from "./PipelinesPage.jsx";
@@ -136,6 +140,12 @@ export function Shell() {
       {route.page === "tasks" && <TasksPage />}
       {route.page === "types" && <TypesPage />}
       {route.page === "type" && <TypePage route={route} />}
+      {route.page === "object" && <ObjectPage key={`${route.id}/${route.n}`} route={route} />}
+      {route.page === "boards" && <BoardsPage />}
+      {route.page === "board" && <BoardPage key={route.id} route={route} />}
+      {route.page === "boardnew" && (canBuild(user) ? <BoardEditor key="new" /> : <Forbidden />)}
+      {route.page === "boardedit" && (canBuild(user) ? <BoardEditor key={route.id} id={route.id} /> : <Forbidden />)}
+      {route.page === "agents" && (canBuild(user) ? <AgentsPage /> : <Forbidden />)}
       {route.page === "typenew" && <TypeForm key="new" />}
       {route.page === "typeedit" && <TypeForm key={route.id} id={route.id} />}
       {route.page === "relations" && <RelationsPage route={route} />}
@@ -151,7 +161,7 @@ export function Shell() {
       {route.page === "account" && <AccountPage />}
       {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
       {route.page === "planned" && <Planned route={route} />}
-      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "pipelines", "pipelinenew", "pipeline", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
+      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "pipelines", "pipelinenew", "pipeline", "permissions", "account", "users", "planned", "object", "boards", "board", "boardnew", "boardedit", "agents"].includes(route.page) && <NotFound />}
     </div>
   );
 }
