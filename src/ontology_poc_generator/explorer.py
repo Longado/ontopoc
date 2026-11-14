@@ -27,7 +27,7 @@ from ontology_poc_generator.pipeline_expr import NUMBER_TYPES
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, _aggregate_sql, aggregation_options
 from ontology_poc_generator.row_rules import keeps, restriction
-from ontology_poc_generator.workspace_store import _canonical, current_dataset, dataset_records
+from ontology_poc_generator.workspace_store import FAN_NOTE, _canonical, current_dataset, dataset_records, fan_marks
 
 FILTER_OPS = {'eq': '等于', 'ne': '不等于', 'contains': '包含', 'gt': '大于', 'ge': '不小于', 'lt': '小于', 'le': '不大于', 'empty': '为空', 'filled': '有值'}
 NO_VALUE = ('empty', 'filled')
@@ -245,12 +245,21 @@ def _pivot(conn, user: dict | None, query: dict, table: dict, rows: list[dict]) 
 
 # --- standing ------------------------------------------------------------------------------------------------------------------------------------------------
 
-def _standing(conn, used: list[str]) -> dict:
+def _standing(conn, used: list[str], notes: list[str] = ()) -> dict:
     """{'confirmed', 'reasons', 'lines'}: the caliber of what was selected. The type itself is a line only when it is not confirmed (a confirmed type is no
-    definition worth reciting on every card)."""
+    definition worth reciting on every card). `notes` are sentences about the columns it read that the definitions do not carry (含重复计算), added as lines that are
+    in colour: they are a caution, not a reason to grey."""
     lines = lines_of(conn, used)
     shown = [l for l in lines if l['kind'] != 'type' or not l['confirmed']]
-    return {'confirmed': all(l['confirmed'] for l in lines), 'reasons': grey_reasons(lines), 'why': root_reason(conn, lines), 'lines': shown}
+    return {'confirmed': all(l['confirmed'] for l in lines), 'reasons': grey_reasons(lines), 'why': root_reason(conn, lines),
+            'lines': [*shown, *({'id': f'note:{n}', 'kind': 'note', 'name': n, 'confirmed': True, 'line': n} for n in notes)]}
+
+
+def _fan_notes(conn, table: dict, fields: list) -> list[str]:
+    """For the columns of this type that a chart or table reads: the sentence about each that was worked out over a repeated join."""
+    dataset = table['dataset']
+    fanned = fan_marks(conn, dataset['id'])
+    return [f'“{f["name"]}”{FAN_NOTE}' for f in fields if f is not None and not f['derived'] and not f.get('via') and f.get('column') in fanned]
 
 
 def _type_line(conn, user: dict | None, row: dict) -> dict:
@@ -318,7 +327,7 @@ def explore_table(conn, user: dict | None, raw_query, page=1) -> dict:
     shown = rows[(page - 1) * OBJECT_PAGE:page * OBJECT_PAGE]
     return {'query': query, 'columns': _columns(table), 'rows': [_display(table, r) for r in shown], 'numbers': [r['n'] for r in shown], 'outside': [_outside(table, r) for r in shown], 'total': len(rows), 'page': page, 'pages': pages,
             'limit': OBJECT_PAGE, 'dataset': table['dataset']['name'], 'dataset_version': table['dataset']['version'], 'rows_limited': table['limit'] is not None,
-            'enums': _enums(table), 'standing': _standing(conn, got['used'])}
+            'enums': _enums(table), 'standing': _standing(conn, got['used'], _fan_notes(conn, table, table['fields']))}
 
 
 # --- charts --------------------------------------------------------------------------------------------------------------------------------------------------
@@ -477,7 +486,7 @@ def explore_chart(conn, user: dict | None, raw_query, raw_chart) -> dict:
     if group is not None and group['code'] and group['meaning'] and group['meaning']['element']:
         used.append(group['meaning']['element'])
         meaning = group['meaning']['state'] == 'confirmed'
-    out = {'query': query, 'chart': chart, 'rows': len(got['rows']), 'standing': _standing(conn, used), 'group': group and group['name'], 'measure': measure and measure['name'],
+    out = {'query': query, 'chart': chart, 'rows': len(got['rows']), 'standing': _standing(conn, used, _fan_notes(conn, table, [group, measure])), 'group': group and group['name'], 'measure': measure and measure['name'],
            'fn': chart['fn'], 'rows_limited': table['limit'] is not None}
     kind = chart['kind']
     if kind == 'histogram':

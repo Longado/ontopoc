@@ -40,19 +40,24 @@ def _q(name: str) -> str:
     return '"' + str(name).replace('"', '""') + '"'
 
 
-def new_context(meanings: dict | None = None, codes=frozenset(), unsent=frozenset(), ai=frozenset()) -> dict:
+def new_context(meanings: dict | None = None, codes=frozenset(), unsent=frozenset(), ai=frozenset(), fan=frozenset()) -> dict:
     """What the operators may ask the workspace: meanings {"dataset.column": {label: [codes]}} (confirmed ones only), codes {"dataset.column"} (columns that are
     code lists, confirmed or not), unsent {"dataset.column"} (columns whose values a builder keeps from the model, or that a pipeline wrote from such columns), ai
-    {"dataset.column"} (columns a pipeline wrote from what a model answered), and `used`, which the operators fill with the meanings they read."""
-    return {'meanings': meanings or {}, 'codes': set(codes), 'unsent': set(unsent), 'ai': set(ai), 'used': set()}
+    {"dataset.column"} (columns a pipeline wrote from what a model answered), fan {"dataset.column"} (columns a pipeline wrote from a figure a join repeated), and `used`, which the operators fill with the meanings they read."""
+    return {'meanings': meanings or {}, 'codes': set(codes), 'unsent': set(unsent), 'ai': set(ai), 'fan': set(fan), 'used': set()}
 
 
 FLAGS = ('unsent', 'ai')   # what a column made from other columns inherits: not to be sent to the model, written by the model
 
 
+UPSTREAM = '__upstream'   # in `fan_agg`: the column was already worked out over a repeated join in the pipeline that wrote its dataset
+
+
 def carry(*sources: dict) -> dict:
-    """The marks a column made from these columns inherits."""
-    return {k: True for k in FLAGS if any(c.get(k) for c in sources)}
+    """The marks a column made from these columns inherits: the flags of FLAGS, and `fan_agg`, the names of the aggregations (over a column a join repeated) it comes from;
+    which of them really counted a row twice is known only once the run has measured it."""
+    aggs = sorted({n for c in sources for n in c.get('fan_agg', ())})
+    return {**{k: True for k in FLAGS if any(c.get(k) for c in sources)}, **({'fan_agg': aggs} if aggs else {})}
 
 
 def visible(columns: list[dict]) -> list[dict]:
@@ -466,13 +471,24 @@ def _aggregate(op, src, columns, ctx, label):
     params = [p for a in aggs for p in a['params']]
     group_by = f' GROUP BY {", ".join(_q(c["name"]) for c in group_cols)}' if group_cols else ''
     out_columns = [{'name': c['name'], 'type': c['type'], **({'origin': c['origin']} if c.get('origin') else {}), **carry(c)} for c in group_cols] + \
-                  [{'name': a['name'], 'type': a['type'], 'badge': 'new', **(carry(a['col']) if a['col'] else {}), 'aggregation': {'fn': a['fn'], 'column': a['col']['name'] if a['col'] else None, 'exact': a['fn'] in PERCENTILE}} for a in aggs]
+                  [{'name': a['name'], 'type': a['type'], 'badge': 'new', **_fanned(a), 'aggregation': {'fn': a['fn'], 'column': a['col']['name'] if a['col'] else None, 'exact': a['fn'] in PERCENTILE}} for a in aggs]
 
     def measure(conn, src, out):
         doubled = [d for a in aggs for d in _double_counted(conn, src, group_cols, a)]
         return {'groups': _count(conn, out), 'double_counted': doubled, 'affected': _count(conn, src),
                 'text': '空值不计入；一组里全是空值的，结果为空（计数除外）' + (f'。有 {len(doubled)} 项统计把同一行算了不止一次' if doubled else '')}
     return {'columns': out_columns, 'select': f'SELECT {", ".join(selects)} FROM {src}{group_by}', 'params': params, 'measure': measure}
+
+
+def _fanned(agg: dict) -> dict:
+    """The marks an aggregated column starts with: those of the column it reads, and its own name in `fan_agg` when it adds, averages or counts a column a join repeated."""
+    col = agg['col']
+    if col is None:
+        return {}
+    marks = carry(col)
+    if agg['fn'] in ('sum', 'avg', 'count') and col.get('fan'):
+        marks = {**marks, 'fan_agg': sorted({*marks.get('fan_agg', []), agg['name']})}
+    return marks
 
 
 def _agg_name(item: dict, fn: str, col: dict | None, used: set, label: str) -> str:

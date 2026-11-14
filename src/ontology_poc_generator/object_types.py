@@ -21,7 +21,7 @@ from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, dataset_hidden, hidden_values, visible_to
-from ontology_poc_generator.workspace_store import StaleElement, _canonical, _key_of, check_key, current_dataset, dataset_records, element_state_writes, log_line
+from ontology_poc_generator.workspace_store import FAN_NOTE, StaleElement, _canonical, _key_of, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line
 
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
@@ -856,7 +856,8 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
     unsent = hidden_values(conn, row['element_id'])
-    props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
+    fanned = fan_marks(conn, dataset['id']) if dataset else set()
+    props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'fan': FAN_NOTE if p['column'] in fanned else None, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
     limited = restriction(conn, row['element_id'], user) is not None
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'],
             'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,

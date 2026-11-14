@@ -112,7 +112,7 @@ function Properties({ type, mayBuild, reload }) {
           <tbody>
             {type.properties.map((p) => (
               <tr key={p.column}>
-                <td>{p.name}</td>
+                <td>{p.name}{p.fan && <span className="warn small block">{p.fan}</span>}</td>
                 <td className="muted">{p.column}</td>
                 <td>{p.enum ? <>{typeLabel(p.type)}代码 {p.meanings.state && <State item={p.meanings} />}</> : typeLabel(p.type)}</td>
                 <td>{p.key ? "是" : ""}</td>

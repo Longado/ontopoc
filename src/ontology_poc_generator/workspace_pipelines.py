@@ -30,7 +30,7 @@ from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, com
 from ontology_poc_generator.pipeline_funcs import guess_formats, number_text, register
 from ontology_poc_generator.pipeline_llm import LlmRun, LlmService, cache_counts, contract_of, effective
 from ontology_poc_generator.pipeline_llm_review import review_rows, review_state
-from ontology_poc_generator.pipeline_ops import AGGREGATIONS, CAST_TYPES, CATALOG, aggregation_options, new_context, shift_notices, visible
+from ontology_poc_generator.pipeline_ops import AGGREGATIONS, CAST_TYPES, CATALOG, UPSTREAM, aggregation_options, new_context, shift_notices, visible
 from ontology_poc_generator.pipelines import (
     HOWS, OUTPUT_CAP, ROW_CAP, RUN_SECONDS, PipelineRunError, check_pipeline, compile_pipeline, dataset_key, deadline, needed_steps, run_pipeline, workspace_datasets)
 from ontology_poc_generator.row_rules import has_rules
@@ -141,7 +141,8 @@ def build_context(conn) -> tuple[dict, dict]:
     for content, in conn.execute("SELECT content_json FROM element_state WHERE element_id LIKE 'objtype:%' AND content_json IS NOT NULL"):
         c = json.loads(content)
         codes |= {f'{c["dataset"]}.{p["column"]}' for p in c['properties'] if p['enum']}
-    return new_context(meanings, codes, unsent, ai), ids
+    fan = {f'{dataset}.{column}' for dataset, column in conn.execute('SELECT d.name, f.column_name FROM column_fan f JOIN dataset d ON d.id = f.dataset_id')}
+    return new_context(meanings, codes, unsent, ai, fan), ids
 
 
 # --- who may see and what is allowed ------------------------------------------------------------------------------------------------------------------
@@ -687,6 +688,7 @@ def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, 
     the write, what reads each output is checked again."""
     signer = who or '未署名'
     written = []
+    doubled = {UPSTREAM, *(d['as'] for n in nodes for op in n.get('operators', []) for d in op.get('double_counted', []))}   # what the run measured as counted twice
     conn.execute('BEGIN IMMEDIATE')   # apply_upload joins a transaction its caller holds
     try:
         for step in content['spec']['steps']:
@@ -700,6 +702,7 @@ def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, 
             done = apply_upload(conn, plan, signer, origin=f'pipeline:{content["name"]}@run{run_id}')
             conn.executemany('INSERT OR IGNORE INTO column_mark(dataset_id, column_name, mark) VALUES (?, ?, ?)',
                              [(done['dataset']['id'], c['name'], mark) for c in columns for mark in ('unsent', 'ai') if c.get(mark)])
+            conn.executemany('INSERT OR IGNORE INTO column_fan(dataset_id, column_name) VALUES (?, ?)', [(done['dataset']['id'], c['name']) for c in columns if set(c.get('fan_agg', ())) & doubled])
             if done['created'] and row['state'] != 'confirmed':
                 _flag_takeover(conn, content['name'], [step['name']])
             written.append({'dataset': step['name'], 'version': done['dataset']['version'], 'rows': len(records), 'created_version': done['created'], 'mode': plan['mode'],

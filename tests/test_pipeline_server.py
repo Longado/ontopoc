@@ -91,6 +91,41 @@ class PipelineServerTests(SigningTestCase):
             totals = ann.get(f'/api/workspace/datasets/{quote("客户合计")}')[1]
             self.assertEqual((totals['rows'], totals['versions'][0]['pipeline']['run'], totals['versions'][0]['pipeline']['inputs']), (len(TRUE), run['id'], {'订单': 1, '售后工单': 1}))
 
+    def test_an_output_whose_sum_ran_over_a_fanned_out_join_carries_the_mark_to_its_dataset_page_its_type_the_confirm_screen_and_the_chart_caliber(self):
+        note = '含重复计算：关联后一行变多行'
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.make(ann)
+            self.go(ann)
+            totals = ann.get(f'/api/workspace/datasets/{quote("客户合计")}')[1]
+            marks = {c['name']: c.get('fan') for c in totals['columns']}
+            self.assertEqual((marks['合计'], marks['行数'], marks['客户编号']), (note, note, None))   # the sum and the count that were multiplied, not the group
+            # a type built on it is not blocked, and says so on the type, on its confirm screen and under a chart of it
+            self.assertEqual(ann.post('/api/workspace/types', TOTAL_TYPE)[0], 200)
+            detail = ann.get('/api/workspace/types/customer_total')[1]
+            self.assertEqual({p['column']: p.get('fan') for p in detail['properties']}, {'客户编号': None, '合计': note})
+            item = next(i for i in bob.get('/api/workspace/queue')[1]['items'] if i['element'] == 'objtype:customer_total')
+            line = next(l for l in item['lines'] if note in l['text'])
+            self.assertEqual((line['ok'], line['text']), (False, f'“合计”{note}（只提醒，不拦着确认）'))
+            chart = ann.post('/api/workspace/explore/chart', {'query': {'type': 'customer_total'}, 'chart': {'kind': 'number', 'measure': '合计', 'fn': 'sum'}})[1]
+            self.assertIn(f'“合计”{note}', [l['line'] for l in chart['standing']['lines']])
+            plain = ann.post('/api/workspace/explore/chart', {'query': {'type': 'customer_total'}, 'chart': {'kind': 'bar', 'group': '客户编号', 'fn': 'count'}})[1]
+            self.assertNotIn(note, ' '.join(l['line'] for l in plain['standing']['lines']))   # a chart that does not read the column does not carry it
+
+    def test_a_sum_over_a_join_that_makes_no_extra_rows_is_not_marked(self):
+        spec = {'steps': [{'id': 'o', 'type': 'input', 'dataset': '订单'}, {'id': 'p', 'type': 'input', 'dataset': '产品'},
+                          {'id': 'j', 'type': 'join', 'left': 'o', 'right': 'p', 'how': 'left', 'on': [{'left': '产品编号', 'right': '产品编号'}]},
+                          {**TOTALS, 'operators': [{'op': 'aggregate', 'group_by': ['客户编号'], 'aggregations': [{'fn': 'sum', 'column': '金额', 'as': '合计'}]}]},
+                          SPEC['steps'][4]]}
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            self.make(ann, spec)
+            run = self.go(ann)
+            self.assertEqual(self.nodes(run)['g']['operators'][0]['double_counted'], [])
+            totals = ann.get(f'/api/workspace/datasets/{quote("客户合计")}')[1]
+            self.assertEqual([c.get('fan') for c in totals['columns']], [None, None])
+
     def test_with_cancelled_orders_left_out_the_run_still_names_the_customer_whose_total_is_counted_twice(self):
         live = [r for r in RECORDS['订单'] if r['状态码'] != '2']
         true, doubled = Counter(), Counter()

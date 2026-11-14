@@ -30,7 +30,7 @@ import time
 
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_llm import check_llm_step, llm_sql
-from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, carry, compile_op, new_context, visible
+from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, UPSTREAM, carry, compile_op, new_context, visible
 
 NUMERIC = ('integer', 'decimal')
 HOWS = ('inner', 'left', 'anti', 'semi')
@@ -133,7 +133,8 @@ def _input_columns(step: dict, sid: str, datasets: dict, views: dict, ctx: dict)
     from such a column or from a model's answer (`ctx['ai']`), is marked, and the mark travels with it."""
     data = _input_of(step, sid, datasets, views)[1]
     origin = data['source'] if 'view' in step else step['dataset']
-    return [{**c, 'origin': f'{origin}.{c["name"]}', **{mark: True for mark in ('unsent', 'ai') if f'{origin}.{c["name"]}' in ctx.get(mark, ())}} for c in data['columns']]
+    return [{**c, 'origin': f'{origin}.{c["name"]}', **{mark: True for mark in ('unsent', 'ai') if f'{origin}.{c["name"]}' in ctx.get(mark, ())},
+             **({'fan_agg': [UPSTREAM]} if f'{origin}.{c["name"]}' in ctx.get('fan', ()) else {})} for c in data['columns']]
 
 
 def _undefined(sid: str, role: str, ref):
@@ -231,7 +232,7 @@ def _output(step: dict, sid: str, columns: list[dict]) -> dict:
             parts = [f'pl_text({_q(c)})' for c in cols]
             build = (built, f'({f" || ? || ".join(parts)})' if len(parts) > 1 else parts[0], [separator] * (len(parts) - 1))
             key_names = [built]
-    out = [{k: v for k, v in shown[n].items() if k in ('name', 'type', 'origin', 'ai', 'unsent')} for n in names] + ([{'name': build[0], 'type': 'text', **carry(*(shown[c] for c in cols))}] if build else [])
+    out = [{k: v for k, v in shown[n].items() if k in ('name', 'type', 'origin', 'ai', 'unsent', 'fan_agg')} for n in names] + ([{'name': build[0], 'type': 'text', **carry(*(shown[c] for c in cols))}] if build else [])
     return {'columns': out, 'key': key_names, 'dropped': [n for n in shown if n not in names], 'build': build}
 
 

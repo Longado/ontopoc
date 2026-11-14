@@ -19,7 +19,7 @@ from ontology_poc_generator.object_actions import action_state, action_visible, 
 from ontology_poc_generator.object_views import confirm_view, describe, seen_of_view, view_state, view_summary, view_visible
 from ontology_poc_generator.workspace_pipelines import (
     _inputs_now, confirm_pipeline, output_states, pipeline_state, pipeline_visible, waiting_on as pipeline_waiting)
-from ontology_poc_generator.workspace_store import current_dataset, log_line
+from ontology_poc_generator.workspace_store import FAN_NOTE, current_dataset, fan_marks, log_line
 
 IN_QUEUE = ('proposed', 'checked', 'needs_look')
 ORDER = {'needs_look': 0, 'pending': 1, 'checked': 1, 'proposed': 2}
@@ -34,6 +34,10 @@ def _type_lines(conn, row: dict, content: dict, limited: bool = False) -> list[d
     elif anchors.get('key_rows') is not None:
         lines.append({'ok': True, 'text': f'主键“{" + ".join(content["key"])}”在 {anchors["dataset"]} 第 {anchors["version"]} 版的全部 {anchors["key_rows"]} 行上唯一，没有空值'})
     lines.append({'ok': True, 'text': f'{len(content["properties"])} 个属性，来自 {content["dataset"]}'})
+    dataset = current_dataset(conn, content['dataset'])
+    fanned = fan_marks(conn, dataset['id']) if dataset else set()
+    names = {**{c: c for c in content['key']}, **{p['column']: p['name'] for p in content['properties']}}
+    lines += [{'ok': False, 'text': f'“{name}”{FAN_NOTE}（只提醒，不拦着确认）'} for column, name in names.items() if column in fanned]   # not a reason to stop: what is built on it should know
     for column, state in conn.execute("SELECT substr(d.depends_on, ?), s.state FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on "
                                       "WHERE d.element_id = ? AND d.depends_on LIKE 'enum:%'", (len(f'{ENUM_PREFIX}{content["english_name"]}:') + 1, row['element_id'])):
         lines.append({'ok': state == 'confirmed', 'text': f'“{column}”的含义{"已确认" if state == "confirmed" else "还没有确认"}'})

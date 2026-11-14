@@ -23,7 +23,7 @@ function Fields({ page }) {
           <tbody>
             {page.columns.map((c) => (
               <tr key={c.name}>
-                <td>{c.name}</td>
+                <td>{c.name}{c.fan && <span className="warn small block">{c.fan}</span>}</td>
                 <td>{typeLabel(c.type)}</td>
                 <td className="num" title={c.missing ? `缺 ${c.missing} 行` : undefined}>{percentText(c.fill_rate)}</td>
                 <td className={c.key_check?.status === "failed" ? "bad" : c.possible_key || c.key_check || c.near_key ? "" : "muted"}>{keyText(c)}</td>

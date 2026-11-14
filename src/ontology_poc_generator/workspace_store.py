@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS value_privacy (
 -- what a pipeline's output column was made from, kept with the dataset it wrote: 'unsent' (made from a column kept from the model), 'ai' (made from a model's answer)
 CREATE TABLE IF NOT EXISTS column_mark (
     dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, mark TEXT NOT NULL CHECK (mark IN ('unsent', 'ai')), PRIMARY KEY (dataset_id, column_name, mark));
+-- an output column of a pipeline whose figure was worked out over a join that made several rows of one (a sum or a count of a column the join repeated): FAN_NOTE says so
+CREATE TABLE IF NOT EXISTS column_fan (
+    dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, PRIMARY KEY (dataset_id, column_name));
 CREATE TABLE IF NOT EXISTS row_rule (
     id INTEGER PRIMARY KEY AUTOINCREMENT, type_id TEXT NOT NULL, column_name TEXT NOT NULL, value TEXT NOT NULL, user_ids_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS action_record (
@@ -398,6 +401,14 @@ def _dataset(conn, where: str, args: tuple) -> dict | None:
     cursor = conn.execute(f'SELECT * FROM dataset WHERE {where}', args)
     row = cursor.fetchone()
     return dict(zip([c[0] for c in cursor.description], row)) if row else None
+
+
+FAN_NOTE = '含重复计算：关联后一行变多行'
+
+
+def fan_marks(conn, dataset_id: int) -> set[str]:
+    """The columns of this version of a dataset that a pipeline wrote from a figure a join repeated (FAN_NOTE)."""
+    return {c for (c,) in conn.execute('SELECT column_name FROM column_fan WHERE dataset_id = ?', (dataset_id,))}
 
 
 def current_dataset(conn, name: str) -> dict | None:

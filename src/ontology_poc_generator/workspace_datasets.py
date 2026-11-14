@@ -19,7 +19,7 @@ from ontology_poc_generator.object_actions import overwritten_by_upload
 from ontology_poc_generator.object_types import dataset_readers_of, element_row, recheck_after_write
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_store import (
-    DELETED, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, dataset_records, now_text as _now_text, plan_upload)
+    DELETED, FAN_NOTE, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, dataset_records, fan_marks, now_text as _now_text, plan_upload)
 
 PREVIEW_ROWS = 50   # rows on one page of the preview
 MAX_NAME = 100
@@ -143,7 +143,8 @@ def dataset_detail(conn, name: str, version: int | None = None, page: int = 1, u
     total = shown['rows_stored']
     checks = _key_checks(conn, shown['id'], name)
     single = {c['columns'][0]: c for c in checks if len(c['columns']) == 1}
-    columns = [{'name': c['name'], 'type': c['inferred_type'], 'distinct': c['distinct_count'], 'missing': c['missing_count'],
+    fanned = fan_marks(conn, shown['id'])
+    columns = [{'name': c['name'], 'type': c['inferred_type'], 'distinct': c['distinct_count'], 'missing': c['missing_count'], 'fan': FAN_NOTE if c['name'] in fanned else None,
                 'fill_rate': (total - c['missing_count']) / total if total else None,
                 'possible_key': bool(total) and c['missing_count'] == 0 and c['distinct_count'] == total,
                 'key_check': single.get(c['name']), 'near_key': _near_key(conn, _quote(shown['table_name']), c, total),
