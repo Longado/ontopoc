@@ -257,6 +257,32 @@ class CaliberWordsTests(UseLayerCase):
         return body['views'][0]
 
 
+class UploadPreviewTests(UseLayerCase):
+    def test_before_an_overwrite_the_service_says_what_would_go_back_to_needs_another_look_and_changes_nothing(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            status, body = ann.post('/api/workspace/datasets/upload/preview', {'files': [shifted_orders_csv()]})
+            self.assertEqual(status, 200, body)
+            kinds = {(m['kind'], m['title']) for m in body['moved']}
+            self.assertIn(('type', '订单'), kinds)
+            self.assertIn(('view', '有效订单（订单的视图）'), kinds)
+            self.assertIn(('meaning', '订单.状态码'), kinds)
+            self.assertTrue(all(m['reason'] for m in body['moved']))   # each says why it would need another look
+            self.assertEqual(body['datasets'], ['订单'])
+            # nothing was written: the orders are still version 1 and everything is still confirmed
+            self.assertEqual(self.meta(bob)['dataset_version'], 1)
+            self.assertTrue(self.table(bob, query(view='有效订单'))['standing']['confirmed'])
+            # an upload of a new dataset sends nothing back, and a viewer may not even ask
+            fresh = {**shifted_orders_csv(), 'target': None, 'mode': None, 'name': '另一张表'}
+            fresh = {k: v for k, v in fresh.items() if v is not None}
+            self.assertEqual(ann.post('/api/workspace/datasets/upload/preview', {'files': [fresh]})[1]['moved'], [])
+            self.assertEqual(vera.post('/api/workspace/datasets/upload/preview', {'files': [shifted_orders_csv()]})[0], 403)
+            # what the preview said is what the upload then does
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+            self.assertFalse(self.table(bob, query(view='有效订单'))['standing']['confirmed'])
+
 class VisibilityTests(UseLayerCase):
     def test_a_row_rule_limits_every_table_chart_and_pivot_to_the_rows_the_person_may_read(self):
         with self.service() as (base, out):

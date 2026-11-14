@@ -79,6 +79,14 @@ export function uploadPayload(who, files, contents, choices) {
   };
 }
 
+const KIND_WORD = { type: "对象类型", view: "视图", meaning: "取值含义", relation: "关系", derived: "派生属性", pipeline: "管道", action: "行为" };
+
+/** Whether the upload changes a dataset that exists, so it is worth asking what that sends back before it is made. */
+export const changesExisting = (payload) => payload.files.some((f) => f.mode === "overwrite" || f.mode === "update_by_key");
+
+/** The definitions an upload would send back to needs another look, one line each: what it is and why. */
+export const movedLines = (moved) => moved.map((m) => ({ key: m.element, what: `${KIND_WORD[m.kind] ?? m.kind}「${m.title}」`, reason: m.reason }));
+
 const blankText = (n) => (n ? `新文件里 ${n} 个空格子，保留了原值` : "");
 
 /** One saved file as a sentence for the dialog. A skipped update is a plain line, not an error. */

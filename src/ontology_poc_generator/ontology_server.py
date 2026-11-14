@@ -66,6 +66,7 @@ from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
 from ontology_poc_generator.auth_http import LOOPBACK, Gate
 from ontology_poc_generator.dataset_readers import dataset_readers
+from ontology_poc_generator.upload_preview import moved_by_upload
 from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
 from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.sources_http import schedules_get, schedules_post, sources_get, sources_post
@@ -1176,8 +1177,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             self.reply(404, {'error': 'Unknown workspace endpoint'})
 
-        def workspace_upload(self):
-            """POST /api/workspace/datasets/upload {who, files: [{filename, content_base64, target?, mode?, key_columns?, name?}]}."""
+        def workspace_upload(self, preview: bool = False):
+            """POST /api/workspace/datasets/upload {who, files: [{filename, content_base64, target?, mode?, key_columns?, name?}]}. With preview (/upload/preview) nothing is
+            written: the answer is what the upload would send back to needs another look (upload_preview)."""
             try:
                 payload = self.read_json()
                 if payload is None:
@@ -1185,6 +1187,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 parts = payload.get('files')
                 if not isinstance(parts, list):
                     raise ValueError('请求里要有 files 列表')
+                if preview:
+                    with runs_lock:   # no write lands while the file is copied and the upload is tried on the copy
+                        answer = moved_by_upload(output_dir / 'workspace.sqlite', parts, self.signer(payload, 'who'), self.user)
+                    self.reply(200, answer)
+                    return
                 with runs_lock:
                     conn = open_workspace(output_dir / 'workspace.sqlite')
                     try:
@@ -1897,6 +1904,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/datasets/upload':
                 self.workspace_upload()
+                return
+            if self.path == '/api/workspace/datasets/upload/preview':
+                self.workspace_upload(preview=True)
                 return
             if self.path == '/api/workspace/datasets/delete':
                 self.workspace_delete()

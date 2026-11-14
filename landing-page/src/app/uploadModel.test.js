@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { choiceProblem, filesProblem, firstChoice, resultLine, stem, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget } from "./uploadModel.js";
+import { changesExisting, movedLines, choiceProblem, filesProblem, firstChoice, resultLine, stem, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget } from "./uploadModel.js";
 
 const NAMES = ["订单", "客户"];
 const file = (name, size = 100) => ({ name, size });
@@ -77,4 +77,14 @@ test("each saved file reads as a sentence; a skipped update is plain and a faile
   assert.equal(resultLine({ ...base, mode: "overwrite", same_as: 1, version: 4 }), "订单：已覆盖，现在 163 行，第 4 版；内容同第 1 版");
   assert.equal(resultLine({ ...base, same_as: 1 }), "订单：按主键更新，改 2、增 3、未变 1；现在 163 行，第 2 版；内容同第 1 版");
   assert.equal(resultLine({ ...base, mode: "overwrite", created_version: false }), "订单：内容和当前版本完全一样，没有新版本");
+});
+
+test("an upload that changes a dataset that exists is the one worth asking about, and what it would send back is listed with each reason", () => {
+  assert.equal(changesExisting({ files: [{ filename: "新.csv" }] }), false);
+  assert.equal(changesExisting({ files: [{ filename: "新.csv" }, { filename: "订单.csv", mode: "overwrite" }] }), true);
+  assert.equal(changesExisting({ files: [{ filename: "订单.csv", mode: "update_by_key" }] }), true);
+  assert.deepEqual(movedLines([{ element: "objtype:order", kind: "type", title: "订单", reason: "数据变了" }, { element: "objview:v", kind: "view", title: "有效订单（订单的视图）", reason: "新值 3 算不算进来？" }]), [
+    { key: "objtype:order", what: "对象类型「订单」", reason: "数据变了" },
+    { key: "objview:v", what: "视图「有效订单（订单的视图）」", reason: "新值 3 算不算进来？" },
+  ]);
 });

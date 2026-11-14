@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { fileToBase64, getDataset, getDatasets, uploadDatasets } from "./api.js";
+import { fileToBase64, getDataset, getDatasets, previewUpload, uploadDatasets } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { Select } from "./Select.jsx";
-import { ACCEPT, firstChoice, sizeText, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget, resultLine } from "./uploadModel.js";
+import { ACCEPT, changesExisting, firstChoice, movedLines, sizeText, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget, resultLine } from "./uploadModel.js";
 
 const WAYS = [["new", "新数据集"], ["update_by_key", "按主键更新"], ["overwrite", "覆盖"]];
 const WHO_KEY = "ontopoc.who";
@@ -67,7 +67,8 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
   const [files, setFiles] = useState([]);
   const [choices, setChoices] = useState([]);
   const [columnsOf, setColumnsOf] = useState({});
-  const [phase, setPhase] = useState("pick");   // pick, sending, done
+  const [phase, setPhase] = useState("pick");   // pick, sending, ask (what the upload would send back, waiting for a yes), done
+  const [moved, setMoved] = useState([]);
   const [results, setResults] = useState([]);
   const [error, setError] = useState("");
   const [refused, setRefused] = useState({});   // the service's problem with each file, by its position
@@ -112,12 +113,21 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
     onClose();
   };
 
-  const send = async () => {
+  const send = async (asked = false) => {
     setPhase("sending");
     setError("");
     try {
       const contents = await Promise.all(files.map(fileToBase64));
-      const saved = await uploadDatasets(uploadPayload(who, files, contents, choices));
+      const payload = uploadPayload(who, files, contents, choices);
+      if (!asked && changesExisting(payload)) {
+        const found = await previewUpload(payload);
+        if (found.moved.length) {
+          setMoved(found.moved);
+          setPhase("ask");
+          return;
+        }
+      }
+      const saved = await uploadDatasets(payload);
       window.localStorage.setItem(WHO_KEY, who.trim());
       setResults(saved);
       setPhase("done");
@@ -133,7 +143,15 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
       onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (phase === "pick" && loaded) add(e.dataTransfer.files); }}>
       <div className="dialog-body">
       <h2>{presetTarget ? `上传新版本：${presetTarget}` : "上传数据集"}</h2>
-      {phase !== "done" && (
+      {phase === "ask" && (
+        <>
+          <p><strong>这次上传会让 {moved.length} 项回到“需要再看”</strong>，要有人重新确认后，它们和用到它们的数字才又算数：</p>
+          <ul className="results">
+            {movedLines(moved).map((m) => <li key={m.key}>{m.what}<span className="muted small block">{m.reason}</span></li>)}
+          </ul>
+        </>
+      )}
+      {(phase === "pick" || phase === "sending") && (
         <>
           {!signedIn && (
             <label className="field">
@@ -155,11 +173,17 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
       {phase === "done" && <ul className="results">{results.map((r) => <li key={r.name}>{resultLine(r)}{r.recheck_error && <span className="error"> 新版本已保存，但检查依赖它的定义时出错（{r.recheck_error}）；这些定义已标为需再看</span>}
         {r.overwrites_action_rows?.length > 0 && <span className="warn block"> 这一版改回了行为写过的值：{r.overwrites_action_rows.map((o) => `${o.key}${o.removed ? "（这一行没有了）" : `（${o.columns.join("、")}，行为“${o.action}”，${o.approved_by} 批准）`}`).join("；")}。已经保存，没有拦。</span>}</li>)}</ul>}
       </div>
-      {phase !== "done" ? (
+      {phase === "ask" ? (
+        <div className="actions">
+          <span className="muted">继续就会写成新版本，上面这些马上变成需要再看</span>
+          <button className="plain" onClick={() => setPhase("pick")}>返回修改</button>
+          <button className="primary" onClick={() => send(true)}>继续上传</button>
+        </div>
+      ) : phase !== "done" ? (
         <div className="actions">
           {error ? <span className="error">{error}</span> : <span className="muted">{files.length ? problem : ""}</span>}
           <button className="plain" onClick={close}>取消</button>
-          <button className="primary" onClick={send} disabled={!files.length || !!problem || phase === "sending"}>{phase === "sending" ? "上传中" : "上传"}</button>
+          <button className="primary" onClick={() => send()} disabled={!files.length || !!problem || phase === "sending"}>{phase === "sending" ? "上传中" : "上传"}</button>
         </div>
       ) : (
         <div className="actions"><span></span><button className="primary" onClick={close}>完成</button></div>

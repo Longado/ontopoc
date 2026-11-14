@@ -66,6 +66,10 @@ export const csvHref = (name, version = null) => datasetPath(name, version, "for
 export const deleteDataset = (name, who) =>
   request("/api/workspace/datasets/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, who: who.trim() }) });
 
+/** What an upload would send back to "needs another look", worked out on a copy: {moved: [{element, kind, title, reason}], datasets}. Nothing is written. */
+export const previewUpload = (payload) =>
+  request("/api/workspace/datasets/upload/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+
 export const uploadDatasets = (payload) =>
   request("/api/workspace/datasets/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then((b) => b.results);
 

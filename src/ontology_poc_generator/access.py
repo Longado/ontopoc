@@ -10,7 +10,7 @@ PUBLIC = 'public'    # no sign-in needed
 SESSION = 'session'  # any signed-in person, whatever the role
 
 _RUNS = r'/api/ontology/runs(/.+)?'
-_UPLOAD_AND_DELETE = r'/api/workspace/datasets/(upload|delete)'
+_UPLOAD_AND_DELETE = r'/api/workspace/datasets/(upload(/preview)?|delete)'
 
 ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/ontology/health', PUBLIC),   # the service answers {ok} to a stranger and the code fingerprint only to a signed-in person
