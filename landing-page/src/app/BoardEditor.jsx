@@ -37,7 +37,7 @@ function ComponentForm({ c, metas, types, onChange, onRemove }) {
         <div className="op-row inline wide">
           <Select label="分组" value={c.group} onChange={(v) => set({ group: v })}>
             <option value="">{c.kind === "table" ? "不分组" : "按哪一列分组"}</option>
-            <GroupColumns fields={fields} reach={meta?.reach} />
+            <GroupColumns fields={fields} reach={meta?.reach} current={c.group} />
           </Select>
           {c.group && <GroupShape top={c.top} order={c.order} onChange={set} />}
         </div>

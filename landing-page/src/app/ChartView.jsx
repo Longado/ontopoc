@@ -25,11 +25,13 @@ export function GroupShape({ top, order, onChange }) {
 }
 
 /** The columns a group can be taken from: the type's own, its derived ones, and the properties of the type at the one end of a confirmed many-to-one relation. */
-export function GroupColumns({ fields, reach }) {
+export function GroupColumns({ fields, reach, current = "" }) {
+  const known = fields.some((f) => f.key === current) || (reach ?? []).some((r) => r.key === current);
   return (
     <>
       {fields.map((f) => <option key={f.key} value={f.key}>{f.name}{f.derived ? "（派生）" : ""}</option>)}
       {(reach ?? []).map((r) => <option key={r.key} value={r.key}>{r.name}（经过 {r.relation_name}）</option>)}
+      {current && !known && <option value={current}>{current.startsWith("via:") ? "经过一个现在没有确认的关系的列" : current}（现在选不了）</option>}
     </>
   );
 }

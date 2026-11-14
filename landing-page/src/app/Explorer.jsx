@@ -47,7 +47,7 @@ function ChartControls({ chart, setChart, fields, reach, aggregations }) {
         <label className="field"><span className="caption">按哪一列分组</span>
           <Select label="分组" value={chart.group} onChange={(v) => set({ group: v })}>
             <option value="">{chart.kind === "table" ? "不分组" : "选一列"}</option>
-            <GroupColumns fields={fields} reach={reach} />
+            <GroupColumns fields={fields} reach={reach} current={chart.group} />
           </Select>
         </label>
       )}
