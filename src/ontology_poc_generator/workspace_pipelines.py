@@ -26,6 +26,8 @@ from ontology_poc_generator.object_types import (
     element_row, log_entries, recheck_after_write, unconfirmed_producers, write_confirmation)
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import guess_formats, number_text, register
+from ontology_poc_generator.pipeline_llm import LlmRun, LlmService, cache_counts, contract_of, effective
+from ontology_poc_generator.pipeline_llm_review import review_state
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, CAST_TYPES, CATALOG, aggregation_options, new_context, shift_notices, visible
 from ontology_poc_generator.pipelines import (
     HOWS, OUTPUT_CAP, ROW_CAP, RUN_SECONDS, PipelineRunError, check_pipeline, compile_pipeline, dataset_key, deadline, needed_steps, run_pipeline, workspace_datasets)
@@ -129,10 +131,12 @@ def build_context(conn) -> tuple[dict, dict]:
                 if e['label']:
                     by_label.setdefault(e['label'], []).append(e['value'])
             meanings[origin] = by_label
+    unsent = {f'{json.loads(content)["dataset"]}.{column}' for type_id, column in conn.execute('SELECT type_id, column_name FROM value_privacy')
+              for (content,) in conn.execute('SELECT content_json FROM element_state WHERE element_id = ? AND content_json IS NOT NULL', (type_id,))}
     for content, in conn.execute("SELECT content_json FROM element_state WHERE element_id LIKE 'objtype:%' AND content_json IS NOT NULL"):
         c = json.loads(content)
         codes |= {f'{c["dataset"]}.{p["column"]}' for p in c['properties'] if p['enum']}
-    return new_context(meanings, codes), ids
+    return new_context(meanings, codes, unsent), ids
 
 
 # --- who may see and what is allowed ------------------------------------------------------------------------------------------------------------------
@@ -315,8 +319,14 @@ def update_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
 
 # --- running: preview, review, run -------------------------------------------------------------------------------------------------------------------
 
-def _execute(engine, spec: dict, resolved: dict, ctx: dict, upto=None, after=None) -> dict:
-    return run_pipeline(engine, spec, resolved['datasets'], resolved['views'], ctx['codes'], ROW_CAP, ctx, upto, after)
+def _execute(engine, spec: dict, resolved: dict, ctx: dict, upto=None, after=None, llm=None) -> dict:
+    """`llm`: the model's part of the run (pipeline_llm.LlmRun) when the pipeline has an LLM step."""
+    return run_pipeline(engine, spec, resolved['datasets'], resolved['views'], ctx['codes'], ROW_CAP, {**ctx, 'llm': llm}, upto, after)
+
+
+def llm_run(conn, service, name, mode: str, lease=None) -> LlmRun:
+    """The model's part of a run for the pipeline `name` (a draft of one that is not saved keeps its answers under no name): "cache" reads kept answers, "run" calls the model."""
+    return LlmRun(conn, service or LlmService(), pipeline_id(name) if name else '', mode, lease)
 
 
 def node_stats(conn, table: str, columns: list[dict]) -> list[dict]:
@@ -352,7 +362,7 @@ def _column_info(columns: list[dict], ctx: dict) -> list[dict]:
              'code': c.get('origin') in ctx['codes'], 'meanings': ctx['meanings'].get(c.get('origin')), 'aggregations': options[c['name']]} for c in visible(columns)]
 
 
-def preview(conn, engine, payload: dict, user: dict | None) -> dict:
+def preview(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
     """{id | spec, node, operator?, rows?}: the first rows of one node, computed from the inputs up to it (with `operator`, only the first operators of a transform node
     up to that one), with the node's report (rows in and out, what each operator affected, the join's fan-out, the output's key), its columns and their statistics over
     all rows (basis full)."""
@@ -379,7 +389,7 @@ def preview(conn, engine, payload: dict, user: dict | None) -> dict:
             captured['columns'] = _column_info(compiled['columns'], found['ctx'])
     try:
         register(engine)
-        result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], needed_steps(found['content']['spec'], [node]), take)
+        result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], needed_steps(found['content']['spec'], [node]), take, llm_run(conn, llm, name, 'cache'))
     except (ValueError, PipelineRunError) as exc:
         raise TypeRefused(str(exc), 409) from None
     finally:
@@ -391,7 +401,7 @@ def preview(conn, engine, payload: dict, user: dict | None) -> dict:
             'basis': 'full', 'inputs': found['versions'], 'limit': PREVIEW_ROWS}
 
 
-def summary(conn, engine, payload: dict, user: dict | None) -> dict:
+def summary(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
     """{id | spec}: every node's report (rows in and out, what each operator did, the join's fan-out, an output's key and status line, its columns with types) from a run
     on the current data with nothing written and no rows returned: what the graph shows on each card. A draft that does not check still shows the steps before the first one
     that is wrong, with `error` saying what is wrong and `checked_steps` how many were run; one whose first step is wrong is refused with the reason (409 or 400)."""
@@ -409,7 +419,7 @@ def summary(conn, engine, payload: dict, user: dict | None) -> dict:
         raise first_error
     try:
         register(engine)
-        result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'])
+        result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], llm=llm_run(conn, llm, name, 'cache'))
     except (ValueError, PipelineRunError) as exc:
         raise TypeRefused(str(exc), 409) from None
     finally:
@@ -485,7 +495,7 @@ def _inputs_now(conn, content: dict) -> dict:
     return out
 
 
-def review(conn, engine, payload: dict, user: dict | None) -> dict:
+def review(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
     """{id}: what a second person reads before confirming: the steps that changed since the last confirmation (ADD / MOD / DEL, with before and after), and the
     statistics of every node's output then (kept with that confirmation) and now (a run on the current data, nothing written)."""
     engine = engine or conn
@@ -493,8 +503,8 @@ def review(conn, engine, payload: dict, user: dict | None) -> dict:
     content = _content(row)
     last = _last_confirmation(conn, row['element_id'])
     before_spec = last['content']['spec'] if last else None
-    stats_now = _dry_run(conn, engine, row, user)
-    return {'id': content['name'], 'definition_version': content['definition_version'], 'compared_with': last['content']['definition_version'] if last else None,
+    stats_now = _dry_run(conn, engine, row, user, llm)
+    return {'id': content['name'], 'ai_nodes': ai_nodes(conn, content, llm.model if llm else None), 'definition_version': content['definition_version'], 'compared_with': last['content']['definition_version'] if last else None,
             'changes': diff_specs(before_spec, content['spec']), 'stats_before': last['anchors']['stats'] if last and last['anchors'] else None, 'rows_before': last['anchors'].get('rows') if last and last['anchors'] else None,
             'stats_now': stats_now['stats'],
             'rows_now': stats_now['rows'], 'inputs_now': stats_now['inputs'], 'failures': stats_now['failures']}
@@ -517,7 +527,7 @@ def diff_specs(old: dict | None, new: dict) -> list[dict]:
     return out
 
 
-def _dry_run(conn, engine, row: dict, user: dict | None) -> dict:
+def _dry_run(conn, engine, row: dict, user: dict | None, llm: LlmService | None = None) -> dict:
     """The pipeline run on the current data with nothing written: the statistics of each node, rows per node, failures per node and the inputs read. TypeRefused (409) when
     it cannot be run."""
     engine = engine or conn
@@ -527,7 +537,8 @@ def _dry_run(conn, engine, row: dict, user: dict | None) -> dict:
     stats = {}
     try:
         register(engine)
-        result = _execute(engine, content['spec'], resolved, ctx, None, lambda c, report, compiled: stats.__setitem__(report['id'], node_stats(c, compiled['table'], compiled['columns'])))
+        result = _execute(engine, content['spec'], resolved, ctx, None, lambda c, report, compiled: stats.__setitem__(report['id'], node_stats(c, compiled['table'], compiled['columns'])),
+                          llm_run(conn, llm, content['name'], 'cache'))
         problems = _output_problems(conn, result['nodes'], content['spec'])
         if problems:
             raise TypeRefused('；'.join(problems), 409)
@@ -574,7 +585,7 @@ def _record(conn, run_id: int, **fields) -> None:
     conn.execute(f'UPDATE pipeline_run SET {sets} WHERE id = ?', (*(json.dumps(v, ensure_ascii=False) if k.endswith('_json') else v for k, v in fields.items()), run_id))
 
 
-def run_now(conn, engine, payload: dict, who: str | None, user: dict | None) -> dict:
+def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm: LlmService | None = None) -> dict:
     """{id}: run the pipeline now on the current data of its inputs. Every output is checked first (its columns against the dataset it writes to, its key unique and not
     empty, at least a row); if any is refused nothing is written and the run is failed with the reasons. Otherwise each output is a new dataset or a new version, recording the
     run and the input versions, and what reads it is checked again (recheck_after_write). The run is kept either way: status, who, when, how long, rows and failures per
@@ -603,8 +614,8 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None) -> 
                 outputs[report['id']] = [[_as_text(v, col['type']) for v, col in zip(r, cols)]
                                          for r in c.execute(f'SELECT {", ".join(_q(col["name"]) for col in cols)} FROM {compiled["table"]} ORDER BY rowid')]
         register(engine)
-        with deadline(engine, RUN_SECONDS):
-            result = _execute(engine, content['spec'], resolved, ctx, feeds, take)
+        with deadline(engine, RUN_SECONDS) as lease:
+            result = _execute(engine, content['spec'], resolved, ctx, feeds, take, llm_run(conn, llm, content['name'], 'run', lease))
         problems = _output_problems(conn, result['nodes'], content['spec'])
         if problems:
             raise PipelineRunError('；'.join(problems))
@@ -691,7 +702,7 @@ def pipeline_state(conn, row: dict, user: dict | None) -> dict:
             'confirmers': [n for n in state['confirmers'] if n not in editor_names] if not waiting else []}
 
 
-def confirm_pipeline(conn, payload: dict, who: str | None, user: dict | None, engine=None) -> dict:
+def confirm_pipeline(conn, payload: dict, who: str | None, user: dict | None, engine=None, llm: LlmService | None = None) -> dict:
     """{id, version, seen: {inputs: {dataset: version}}}: confirm what the person looked at. Another builder who did not edit the definition since it was last confirmed
     (SelfConfirmation otherwise while two-person confirmation is active); the version they saw and the input versions they saw (409 when either moved); what the pipeline
     stands on confirmed. The pipeline is run on the current data with nothing written, refused if it cannot be, and the statistics of every node are kept with the
@@ -717,7 +728,7 @@ def confirm_pipeline(conn, payload: dict, who: str | None, user: dict | None, en
     if payload['seen'].get('inputs') != now:
         read = '、'.join(f'{k} 第 {v} 版' for k, v in now.items())
         raise TypeRefused(f'数据在你看过之后变了：现在读的是 {read}，和你看到的不一样，请刷新后重新看一遍', 409)
-    dry = _dry_run(conn, engine, row, user)
+    dry = _dry_run(conn, engine, row, user, llm)
     anchors = {'definition_version': content['definition_version'], 'inputs': dry['inputs']}
     write_confirmation(conn, element_id, content, f'pipeline:{content["name"]}@d{content["definition_version"]}', who, anchors, dry['inputs'], row['version'],
                        snapshot={'stats': dry['stats'], 'rows': dry['rows'], 'inputs': dry['inputs']})
@@ -749,6 +760,45 @@ def pipeline_problems(conn, row: dict) -> list[str]:
             if resolved:
                 drop_temporary(conn, resolved)
     return problems
+
+
+# --- AI columns ---------------------------------------------------------------------------------------------------------------------------------------
+
+def ai_nodes(conn, content: dict, model: str | None = None) -> list[dict]:
+    """The LLM steps of a pipeline and where each stands for a person who confirms it: its sample review (labelled rows, the count, whether it passed, whether it was made
+    with the prompt, model and output the step has now) and the answers it has kept."""
+    element_id = pipeline_id(content['name'])
+    return [{'id': s['id'], 'name': s['name'], 'model': s.get('model'), 'review': review_state(conn, element_id, s, model),
+             'cache': cache_counts(conn, element_id, s['id'], contract_of(effective(s), model or s.get('model')))}
+            for s in content['spec']['steps'] if s['type'] == 'llm']
+
+
+def ai_uncleared(conn, dataset_name: str, model: str | None = None) -> dict[str, str]:
+    """{column: why} for the columns of a dataset that a pipeline's LLM step wrote and that cannot yet be a key or a confirmed code meaning: the sample review of every LLM
+    step that feeds the output has not passed, or the pipeline is not confirmed (by someone who did not edit it). Empty for a dataset no pipeline writes."""
+    producer = producer_of(conn, dataset_name)
+    row = element_row(conn, producer) if producer else None
+    if row is None:
+        return {}
+    content = _content(row)
+    spec = content['spec']
+    resolved = resolve_inputs(conn, conn, spec, None)
+    try:
+        ctx, _ = build_context(conn)
+        compiled = {s['id']: s for s in compile_pipeline(spec, resolved['datasets'], resolved['views'], ctx)}
+    finally:
+        drop_temporary(conn, resolved)
+    out = next((s for s in spec['steps'] if s['type'] == 'output' and s['name'] == dataset_name), None)
+    if out is None:
+        return {}
+    marked = [c['name'] for c in compiled[out['id']]['columns'] if c.get('ai')]
+    if not marked:
+        return {}
+    feeding = [n for n in ai_nodes(conn, content, model) if n['id'] in needed_steps(spec, [out['id']])]
+    unreviewed = [n['name'] for n in feeding if not n['review']['passed']]
+    why = f'AI 生成的列：{content["name"]} 里的「{"、".join(unreviewed)}」样本审核还没有通过' if unreviewed else \
+        f'AI 生成的列：管道“{content["name"]}”还没有另一位确认' if row['state'] != 'confirmed' else None
+    return {c: why for c in marked} if why else {}
 
 
 # --- what the pages read ------------------------------------------------------------------------------------------------------------------------------
@@ -799,7 +849,7 @@ def list_pipelines(conn, user: dict | None) -> list[dict]:
     return out
 
 
-def pipeline_detail(conn, name: str, user: dict | None) -> dict:
+def pipeline_detail(conn, name: str, user: dict | None, llm: LlmService | None = None) -> dict:
     row = _pipeline_row(conn, name, user)
     content = _content(row)
     ctx, _ = build_context(conn)
@@ -808,7 +858,8 @@ def pipeline_detail(conn, name: str, user: dict | None) -> dict:
     last = _last_confirmation(conn, row['element_id'])
     return {'id': content['name'], 'name': content['name'], 'description': content['description'], 'spec': content['spec'], 'definition_version': content['definition_version'],
             'versions': versions, 'outputs': output_states(conn, row), 'inputs_now': _inputs_now(conn, content), 'changes_since_confirmed': diff_specs(last['content']['spec'] if last else None, content['spec']),
-            'confirmed_definition_version': last['content']['definition_version'] if last else None, **pipeline_state(conn, row, user)}
+            'confirmed_definition_version': last['content']['definition_version'] if last else None, 'ai_nodes': ai_nodes(conn, content, llm.model if llm else None),
+            **pipeline_state(conn, row, user)}
 
 
 def pipeline_versions(conn, name: str, user: dict | None, frm=None, to=None) -> dict:
@@ -847,13 +898,14 @@ def pipeline_log(conn, name: str, user: dict | None) -> list[dict]:
 
 # --- the expression editor, the operator picker ---------------------------------------------------------------------------------------------------------
 
-def options() -> dict:
+def options(llm: LlmService | None = None) -> dict:
     """What the editors list: the operators by category, the functions by group (a click inserts the template), the aggregations, the join kinds, the types a column can be converted to."""
     groups: dict[str, list] = {}
     for group, name, template, what in FUNCTION_DOCS:
         groups.setdefault(group, []).append({'name': name, 'template': template, 'text': what})
     return {'operators': [{'op': o, 'name': n, 'category': c, 'text': t} for o, n, c, t in CATALOG], 'functions': [{'group': g, 'functions': f} for g, f in groups.items()],
-            'aggregations': [{'fn': k, 'name': v} for k, v in AGGREGATIONS.items()], 'joins': list(HOWS), 'cast_types': [{'to': k, 'name': v} for k, v in CAST_TYPES.items()]}
+            'aggregations': [{'fn': k, 'name': v} for k, v in AGGREGATIONS.items()], 'joins': list(HOWS), 'cast_types': [{'to': k, 'name': v} for k, v in CAST_TYPES.items()],
+            'model': llm.model if llm else None, 'model_ready': bool(llm and llm.gateway is not None)}
 
 
 def _columns_before(conn, engine, payload: dict, user: dict | None):
@@ -888,7 +940,7 @@ def check_expression(conn, engine, payload: dict, user: dict | None) -> dict:
         drop_temporary(engine, found['resolved'])
 
 
-def trial_expression(conn, engine, payload: dict, user: dict | None) -> dict:
+def trial_expression(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
     """{id | spec, step, operator?, expression, rows?}: 试算 on the first rows (default 100) of what the operator reads: the values for the first 5 with the fields they came
     from, and how many of the rows gave no result although their fields had values. Labelled 样本: it is the first rows, not the whole table. A date made from a date is set against it
     (the notices of pipeline_ops.calc)."""
@@ -917,7 +969,7 @@ def trial_expression(conn, engine, payload: dict, user: dict | None) -> dict:
                 out['notices'] = shift_notices(c, f'(SELECT * FROM {table} ORDER BY rowid LIMIT {sample})', result['sql'], result['params'],
                                                 [by_name[f] for f in fields if by_name[f]['type'] in ('date', 'datetime')], result['truncates'])
         register(engine)
-        _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], needed_steps(found['content']['spec'], [step_id]), take)
+        _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], needed_steps(found['content']['spec'], [step_id]), take, llm_run(conn, llm, payload.get('id'), 'cache'))
         return {'ok': True, 'type': result['type'], 'errors': out['errors'], 'rows': out['rows'], 'rows_tried': out['rows_tried'], 'notices': out.get('notices', []), 'basis': '样本'}
     except (ValueError, PipelineRunError) as exc:
         raise TypeRefused(str(exc), 409) from None

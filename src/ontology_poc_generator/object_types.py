@@ -139,6 +139,7 @@ def check_key_choice(conn, dataset: dict, cols: dict, key) -> tuple[dict, list[s
         raise TypeRefused('主键要选一列或几列，不能重复')
     if set(key) - set(cols):
         raise TypeRefused(f'数据集里没有这些列：{"、".join(sorted(set(key) - set(cols)))}')
+    refuse_ai_columns(conn, dataset['name'], key, '主键')
     warnings = []
     for column in key:
         kind = cols[column]['type']
@@ -164,6 +165,15 @@ def _type_row(conn, english_name, user: dict | None) -> dict:
     if row is None or not _visible(conn, row, user):
         raise TypeRefused('没有这个对象类型', 404)
     return row
+
+
+def refuse_ai_columns(conn, dataset_name: str, columns, what: str) -> None:
+    """A column an LLM step wrote cannot be a key or a confirmed code meaning until its sample review has passed and the pipeline is confirmed by a second person."""
+    from ontology_poc_generator.workspace_pipelines import ai_uncleared   # the pipelines read types, so the import is made here
+    held = {c: why for c, why in ai_uncleared(conn, dataset_name).items() if c in columns}
+    if held:
+        column, why = next(iter(held.items()))
+        raise TypeRefused(f'“{column}”不能当{what}：{why}', 409)
 
 
 def key_preview(conn, dataset_name, key, user: dict | None = None) -> dict:
@@ -651,6 +661,7 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
         raise TypeRefused('确认要带上你看到的数据版本和行数（seen）')
     dataset = current_dataset(conn, content['dataset'])
     if is_type:
+        refuse_ai_columns(conn, content['dataset'], content['key'], '主键')
         problems, check_id = _type_problems(conn, content)
         waiting = _unconfirmed_meanings(conn, element_id)
         if waiting:
@@ -662,6 +673,7 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
         evidence = f'check_result:{check_id},dataset:{dataset["name"]}@v{dataset["version"]}' if check_id else row['evidence_ref']
         now = seen_of_type(dataset)
     else:
+        refuse_ai_columns(conn, content['dataset'], [content['column']], '已确认的代码含义')
         problems = _enum_now_problems(conn, content)
         col = dataset_columns(conn, dataset['id']).get(content['column']) if dataset else None
         anchors = {'dataset': dataset['name'], 'version': dataset['version'], 'counts': col['counts']} if not problems else None

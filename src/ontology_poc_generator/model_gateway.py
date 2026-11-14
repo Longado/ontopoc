@@ -37,6 +37,10 @@ class OpenAICompatibleGateway:
         self._opener = opener
         self._temperature = temperature
 
+    @property
+    def model(self) -> str:
+        return self._model
+
     def complete_json(
         self,
         *,

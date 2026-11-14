@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { confirmPipeline, reviewPipeline } from "./api.js";
+import { aiExplain, confirmPipeline, reviewPipeline } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { timeText } from "./format.js";
 import { changeTitle, ChangeRow } from "./PipelineViews.jsx";
-import { failureLine, markedIds, numberText, progressOf, statRows, toggleMark, versionsText } from "./pipelineModel.js";
+import { aiNodeLine, failureLine, friendlyError, markedIds, numberText, progressOf, statRows, toggleMark, versionsText } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
 
@@ -51,6 +51,26 @@ export function PipelineConfirm({ detail, reload }) {
   return detail.state === "confirmed" ? <Confirmed detail={detail} /> : <Review detail={detail} reload={reload} />;
 }
 
+/** 解释: a plain description of the steps that changed, written by the model from their settings. A reading aid, labelled AI-written; the settings below are what is confirmed. */
+function Explain({ detail, ids }) {
+  const [state, setState] = useState({ status: "idle" });
+  const go = async () => {
+    setState({ status: "loading" });
+    try {
+      setState({ status: "ready", data: await aiExplain(detail.name, detail.spec, ids) });
+    } catch (e) {
+      setState({ status: "error", error: e.message });
+    }
+  };
+  return (
+    <div className="explain">
+      <button className="secondary" onClick={go} disabled={!ids.length || state.status === "loading"}>{state.status === "loading" ? "AI 在写" : "解释这些步骤"}</button>
+      {state.status === "error" && <p className="error">{friendlyError(state.error, detail.spec.steps)}</p>}
+      {state.data && <div className="ai-draft"><p className="caption">{state.data.label}</p><p>{state.data.text}</p></div>}
+    </div>
+  );
+}
+
 function Review({ detail, reload }) {
   const { user } = useAuth();
   const [state] = useLoad(() => reviewPipeline(detail.name), [detail.name, detail.version]);
@@ -90,6 +110,13 @@ function Review({ detail, reload }) {
           <div className="bar" aria-hidden="true"><span style={{ width: `${progress.total ? (progress.seen / progress.total) * 100 : 0}%` }} /></div>
           <p className="muted small">已看过 {progress.seen} / {progress.total} 步。定义再被改，已看过的标记会清掉。</p>
           {!review.changes.length && <p className="muted">和上次确认的相比，步骤没有变化。</p>}
+          {review.changes.some((c) => c.change !== "DEL") && <Explain detail={detail} ids={review.changes.filter((c) => c.change !== "DEL" && c.after.type !== "output").map((c) => c.id)} />}
+          {review.ai_nodes?.length > 0 && (
+            <div className="verdict">
+              <p className="caption">AI 步骤的样本审核（它们写出的列标着“AI 生成”）</p>
+              <ul className="plain-list">{review.ai_nodes.map((n) => <li key={n.id} className={n.review.passed ? "" : "warn"}>{aiNodeLine(n)}</li>)}</ul>
+            </div>
+          )}
           {review.changes.map((c) => (
             <section key={`${c.id}${c.change}`} className="card confirm-step">
               <ChangeRow change={c} steps={detail.spec.steps} titleOf={changeTitle} />

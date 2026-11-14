@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { getPipelineRun, getPipelineRuns, getPipelineVersions } from "./api.js";
 import { timeText } from "./format.js";
 import { PipelineGraph } from "./PipelineGraph.jsx";
-import { CHANGE_LABEL, KIND_LABEL, STATUS_LABEL, cardFlags, countsText, durationText, failureLines, friendlyError, numberText, stepSummary, stepTitle, versionsText } from "./pipelineModel.js";
+import { CHANGE_LABEL, KIND_LABEL, STATUS_LABEL, cardFlags, countsText, durationText, failureLines, friendlyError, llmRunText, numberText, offListLines, stepSummary, stepTitle, versionsText } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
@@ -81,7 +81,7 @@ export function PipelineRun({ detail, id }) {
                         <tr key={n.id} className="wrap-row">
                           <td>{KIND_LABEL[n.type]} <span className="muted">{n.id}</span></td>
                           <td className="keep">{countsText(n)}</td>
-                          <td>{(n.operators ?? []).map((op, i) => <p key={i} className="small">{i + 1}. {op.text}</p>)}{n.join && <p className="small">{n.join.matched_left} / {n.join.left_rows} 行左边对上了{n.join.extra_rows > 0 ? `，多出 ${n.join.extra_rows} 行` : ""}</p>}</td>
+                          <td>{(n.operators ?? []).map((op, i) => <p key={i} className="small">{i + 1}. {op.text}</p>)}{n.llm && <p className="small">{llmRunText(n.llm)}{n.llm.called > 0 && `；这次问了模型 ${numberText(n.llm.called)} 次`}</p>}{n.llm && offListLines(n.llm).map((l) => <p key={l} className="warn small">{l}</p>)}{n.join && <p className="small">{n.join.matched_left} / {n.join.left_rows} 行左边对上了{n.join.extra_rows > 0 ? `，多出 ${n.join.extra_rows} 行` : ""}</p>}</td>
                           <td>{failureLines(n).map((l) => <p key={l} className="warn small">{l}</p>)}{flags.filter((f) => !failureLines(n).includes(f.text)).map((f) => <p key={f.text} className={`${f.level === "bad" ? "bad" : "warn"} small`}>{f.text}</p>)}</td>
                         </tr>
                       );

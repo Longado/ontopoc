@@ -1,7 +1,7 @@
 // What the pipeline pages decide without a browser: the graph's layout, the card texts, how a draft definition is changed (always into a new object), the operator
 // picker's filtering, the simple expression form, what a confirm screen counts as seen. The service's own words are shown as they come.
 
-export const KIND_LABEL = { input: "输入", join: "关联", transform: "转换", output: "输出" };
+export const KIND_LABEL = { input: "输入", join: "关联", transform: "转换", llm: "AI 判断", output: "输出" };
 export const HOW_LABEL = { left: "保留左边全部", inner: "只留两边都对上的", anti: "只留左边没对上的", semi: "只留左边对上的" };
 export const NULL_KEYS_LABEL = { no_match: "空值不匹配", equal: "空值相等" };
 export const STATUS_LABEL = { success: "成功", failed: "失败", running: "运行中", cancelled: "已取消" };
@@ -12,7 +12,7 @@ export const CAST_LABEL = { date: "日期", datetime: "日期时间", decimal: "
 export const CLEAN_LABEL = { trim: "去首尾空格", whitespace: "合并多余空白", upper: "转大写", lower: "转小写", replace: "替换文字" };
 export const UNMAPPED_LABEL = { null: "留空", keep: "保留原代码", other: "写成指定文字" };
 const CATEGORY_ORDER = ["常用", "清洗", "类型", "日期", "数值", "文本", "汇总"];
-const PREFIX = { input: "in", join: "j", transform: "t", output: "out" };
+const PREFIX = { input: "in", join: "j", transform: "t", llm: "ai", output: "out" };
 
 const STATE_WORD = { proposed: "已提出", checked: "已检查", confirmed: "已确认", needs_look: "需再看", rejected: "已退回" };
 /** The state chip of a pipeline or of one of its outputs: a pipeline that needs another look says why (数据变了 / 定义改了). */
@@ -69,6 +69,7 @@ export function stepTitle(step, steps = []) {
   if (step.type === "input") return `${step.dataset ?? step.view ?? "（还没选）"}${step.version ? ` 第 ${step.version} 版` : ""}`;
   if (step.type === "output") return step.name || "（还没写名字）";
   if (step.type === "join") return `${nameOf(step.left, steps)} 和 ${nameOf(step.right, steps)}`;
+  if (step.type === "llm") return step.name || "（还没写新列的名字）";
   const n = step.operators?.length ?? 0;
   return n ? step.operators.map(operatorName).join("、") : "（还没有操作）";
 }
@@ -104,7 +105,7 @@ const unusedId = (steps, kind) => {
 };
 
 /** A new step after the others. `near` is the step selected now: a join reads it and, as its right side, the nearest other step that reads data; a transform or an output reads it. */
-export function newStep(steps, kind, near, datasets = []) {
+export function newStep(steps, kind, near, datasets = [], model = "") {
   const id = unusedId(steps, kind);
   const last = near ?? steps[steps.length - 1]?.id ?? null;
   if (kind === "input") return { id, type: "input", dataset: datasets[0] ?? "" };
@@ -113,10 +114,16 @@ export function newStep(steps, kind, near, datasets = []) {
     return { id, type: "join", left: last, right: right?.id ?? null, how: "left", on: [{ left: "", right: "" }], null_keys: "no_match" };
   }
   if (kind === "transform") return { id, type: "transform", from: last, operators: [] };
+  if (kind === "llm") return { id, type: "llm", from: near ?? [...steps].reverse().find((s) => s.type !== "output")?.id ?? last, model, name: "", template: "classify", context: "", column: "", categories: ["其他"], multiple: false };
   return { id, type: "output", from: last, name: "" };
 }
 
-export const addStep = (spec, step) => ({ ...spec, steps: [...spec.steps, step] });
+/** New steps go in front of the first output so that it can read them: a step can only read what is above it. An output is added last. */
+const withSteps = (spec, added) => {
+  const at = added.some((s) => s.type === "output") ? -1 : spec.steps.findIndex((s) => s.type === "output");
+  return { ...spec, steps: at < 0 ? [...spec.steps, ...added] : [...spec.steps.slice(0, at), ...added, ...spec.steps.slice(at)] };
+};
+export const addStep = (spec, step) => withSteps(spec, [step]);
 export const updateStep = (spec, id, patch) => ({ ...spec, steps: spec.steps.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 
 /** Removes a step; refused (spec unchanged, `blocked` the ids that read it) while another step reads it. */
@@ -210,6 +217,9 @@ const FAILURE_TEXT = {
   calc_errors: (n) => `${n} 行算不出结果`,
   unmapped_rows: (n) => `${n} 行的代码没有对应的含义`,
   dropped_by_empty_condition: (n) => `${n} 行因为条件的字段是空的被删掉`,
+  ai_failed: (n) => `${n} 行 AI 没答成`,
+  ai_off_list: (n) => `${n} 行 AI 答的不在列表里`,
+  ai_unanswered: (n) => `${n} 行 AI 答不出`,
 };
 export const failureLine = (kind, n) => (FAILURE_TEXT[kind] ?? (() => `${kind} ${n}`))(n);
 export const failureLines = (node) => Object.entries(node?.failures ?? {}).map(([kind, n]) => failureLine(kind, n));
@@ -236,6 +246,7 @@ export function cardFlags(node) {
   }
   const doubled = (node.operators ?? []).flatMap(doubledGroupLines);
   if (doubled.length) out.push({ level: "warn", text: `${(node.operators ?? []).reduce((n, o) => n + (o.double_counted ?? []).reduce((m, d) => Math.max(m, d.groups), 0), 0)} 组的合计重复计算了行` });
+  if (node.llm?.pending > 0) out.push({ level: "note", text: `${numberText(node.llm.pending)} 行 AI 还没跑` });
   const failures = failureLines(node);
   if (failures.length) out.push({ level: "warn", text: failures[0] + (failures.length > 1 ? ` 等 ${failures.length} 类` : "") });
   if (node.type === "output" && node.output) {
@@ -285,6 +296,7 @@ export function stepSummary(step, steps = []) {
   if (step.type === "join") return [`${HOW_LABEL[step.how] ?? step.how}：${nameOf(step.left, steps)} 和 ${nameOf(step.right, steps)}`,`按 ${(step.on ?? []).map((p) => `${p.left} = ${p.right}`).join("，")}，${NULL_KEYS_LABEL[step.null_keys ?? "no_match"]}`,
     ...(step.right_columns ? [`右边只带 ${list(step.right_columns)}`] : [])];
   if (step.type === "transform") return [`读 ${nameOf(step.from, steps)}`, ...(step.operators ?? []).map(operatorTitle)];
+  if (step.type === "llm") return [`读 ${nameOf(step.from, steps)}，让 AI 写「${step.name}」（${LLM_TEMPLATE[step.template ?? "empty"]}）`, `模型 ${step.model}`, ...llmSettingLines(step)];
   return [`读 ${nameOf(step.from, steps)}，写到「${step.name}」`, ...(step.key ? [`主键 ${list(step.key.columns)}`] : []), ...(step.columns ? [`只留 ${list(step.columns)}`] : [])];
 }
 
@@ -308,4 +320,75 @@ export function statRows(before, after) {
     const a = (after ?? []).find((c) => c.name === name);
     return { name, before: text(b), after: text(a), changed: text(b) !== text(a) };
   });
+}
+
+// --- the AI node and the assistant ---
+
+export const LLM_TEMPLATE = { classify: "分类", extract: "抽取", summary: "摘要", empty: "自己写提示" };
+export const LLM_OUTPUT = { text: "一段文字", choice: "几个答案里选一个", number: "一个数" };
+export const TRIAL_MODE = { sample: "随机样本", rows: "选几行", values: "自己填一个值" };
+
+/** The lines a person reads of an AI step's settings, for the confirm screen. */
+export function llmSettingLines(step) {
+  const t = step.template ?? "empty";
+  if (t === "classify") return [`按「${step.column || "（还没选）"}」分成：${(step.categories ?? []).join("、")}${step.multiple ? "（可以选几个）" : ""}`, ...(step.context ? [`背景：${step.context}`] : [])];
+  if (t === "summary") return [`把「${step.column || "（还没选）"}」概括成不超过 ${step.size ?? "?"} ${step.unit ?? "字"}`];
+  if (t === "extract") return [`从「${step.column || "（还没选）"}」抽取：${(step.fields ?? []).map((f) => `${f.name}（${f.type === "number" ? "数" : "文字"}）`).join("、")}`];
+  return [`提示：${step.prompt || "（还没写）"}`, `答案：${LLM_OUTPUT[step.output ?? "text"]}${step.output === "choice" ? `（${(step.choices ?? []).join("、")}）` : ""}`];
+}
+
+/** What a run (or a read of what is kept) did, as a person says it: "30 行答了（18 行是以前记下的），2 行失败，3 行跳过". */
+export function llmRunText(report) {
+  if (!report) return "";
+  const parts = [`${numberText(report.answered)} 行答了${report.from_cache ? `（${numberText(report.from_cache)} 行用的是以前记下的）` : ""}`];
+  if (report.failed) parts.push(`${numberText(report.failed)} 行失败`);
+  if (report.off_list) parts.push(`${numberText(report.off_list)} 行答的不在列表里`);
+  if (report.unanswered) parts.push(`${numberText(report.unanswered)} 行答不出`);
+  if (report.skipped) parts.push(`${numberText(report.skipped)} 行跳过（提示用到的列都是空的）`);
+  if (report.pending) parts.push(`${numberText(report.pending)} 行还没跑`);
+  return parts.join("，");
+}
+
+/** "答了 '质量问题'，不在列表里：3 行" for each off-list answer. */
+export const offListLines = (report) => Object.entries(report?.off_list_answers ?? {}).map(([answer, n]) => `答了「${answer}」，不在列表里：${numberText(n)} 行`);
+
+/** What a run would ask of the model before it starts: calls, characters in, cost when known. */
+export function estimateText(estimate) {
+  if (!estimate) return "";
+  const money = estimate.cost == null ? "服务没有配单价，没有估价" : `约 ${estimate.cost} 元`;
+  return `要调用 ${numberText(estimate.calls)} 次，约 ${numberText(estimate.chars_in)} 字发给模型；${money}`;
+}
+
+/** "20 行里 17 行对上" and where the review stands against the line the step names. */
+export function reviewText(review) {
+  if (!review) return "";
+  if (!review.reviewable) return "概括没有标准答案，不做样本审核";
+  if (!review.labelled) return "还没有标注";
+  if (review.matched == null) return `${review.labelled} 行有标注，还没有按现在的提示核对`;
+  const count = `${review.total} 行里 ${review.matched} 行对上`;
+  if (!review.current) return `${count}（那是改提示之前的结果，要重跑）`;
+  if (review.min_match == null) return `${count}；还没定要对上几行才算通过`;
+  return `${count}，${review.passed ? "达到" : "没达到"}要求的 ${review.min_match} 行`;
+}
+
+/** The AI columns an output keeps and what holds each back from being a key or a code meaning, from the pipeline's AI nodes. */
+export const aiNodeLine = (node) => `${node.name}：${reviewText(node.review)}；记下了 ${numberText(node.cache.current)} 条答案`;
+
+/** A new draft after the assistant's steps were applied: they are ordinary steps from then on. */
+export const applyDraft = (spec, steps) => withSteps(spec, steps.map((s) => s.step));
+
+/** The recent sentences a person gave the assistant, newest first, one of each, at most `keep`. */
+export function rememberPrompt(list, entry, keep = 8) {
+  return [entry, ...list.filter((e) => e.text !== entry.text)].slice(0, keep);
+}
+
+/** The values a sample row shows in its columns: the fields of the prompt, in order, empty ones as "空". */
+export const fieldCells = (fields, values) => fields.map((f) => (values[f] == null || values[f] === "" ? "空" : String(values[f])));
+
+/** Puts a field into the prompt where the caret is, written `${名字}`: {text, caret}. */
+export function insertField(text, start, end, name) {
+  const insert = "${" + name + "}";
+  const from = Math.min(start ?? text.length, end ?? text.length);
+  const to = Math.max(start ?? text.length, end ?? text.length);
+  return { text: text.slice(0, from) + insert + text.slice(to), caret: from + insert.length };
 }
