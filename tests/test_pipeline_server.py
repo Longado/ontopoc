@@ -359,12 +359,22 @@ class PipelineServerTests(SigningTestCase):
             self.assertEqual(self.confirm(admin, '订单副本')[0], 200)                              # a type is confirmed once the pipeline under it is
             shown = admin.get('/api/workspace/types/order_copy')[1]
             self.assertEqual(admin.post('/api/workspace/types/confirm', {'id': 'order_copy', 'version': shown['version'], 'seen': shown['seen']})[0], 200)   # so a viewer would read it
+            ticket = {'english_name': 'ticket', 'name': '售后工单', 'dataset': '售后工单', 'key': ['工单号'], 'properties': [{'column': '订单号'}, {'column': '问题类型'}]}
+            self.assertEqual(ann.post('/api/workspace/types', ticket)[0], 200)
+            shown = admin.get('/api/workspace/types/ticket')[1]
+            self.assertEqual(admin.post('/api/workspace/types/confirm', {'id': 'ticket', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+            status, body = ann.post('/api/workspace/relations', {'english_name': 'ticket_order', 'name': '工单属于订单', 'from': 'ticket', 'to': 'order_copy', 'cardinality': 'many_to_one',
+                                                                  'from_column': '订单号', 'to_column': '订单号'})
+            self.assertEqual(status, 200, body)
+            self.assertEqual([r['name'] for r in ann.get('/api/workspace/relations')[1]['relations']], ['工单属于订单'])
             for who in (bob, vera):
+                self.assertEqual(who.get('/api/workspace/relations')[1]['relations'], [])   # one end of it is a type they may not see
                 self.assertNotIn('order_copy', [t.get('id') or t.get('english_name') for t in who.get('/api/workspace/types')[1]['types']])
                 self.assertEqual(who.get('/api/workspace/types/order_copy')[0], 404)
                 self.assertEqual(who.get('/api/workspace/types/order_copy/objects')[0], 404)
                 self.assertEqual(who.get('/api/workspace/types/order_copy/views')[0], 404)
-                self.assertEqual(who.get('/api/workspace/ask')[1]['types'], [])
+                scope = who.get('/api/workspace/ask')[1]
+                self.assertEqual(([t['id'] for t in scope['types']], scope['relations']), (['ticket'], []))   # the ticket type is theirs; the copy and the relation to it are not
             self.assertEqual(ann.get('/api/workspace/types/order_copy/objects')[0], 200)
             self.assertEqual(admin.get('/api/workspace/types/order_copy/objects')[0], 200)
             self.assertIn('order_copy', [t.get('id') or t.get('english_name') for t in ann.get('/api/workspace/types')[1]['types']])
