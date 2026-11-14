@@ -175,16 +175,20 @@ class CleanAndFillTests(Workspace):
 
     def test_text_cleaning_counts_the_rows_it_changed(self):
         operators = [{'op': 'text_clean', 'columns': ['name'], 'steps': [{'do': 'trim'}, {'do': 'whitespace'}, {'do': 'lower'}]},
-                     {'op': 'text_clean', 'columns': ['note'], 'steps': [{'do': 'replace', 'find': '[-_]\\d+', 'with': '', 'regex': True}]}]
+                     {'op': 'text_clean', 'columns': ['note'], 'steps': [{'do': 'replace', 'find': '-', 'with': ''}]}]
         first, second = self.run_ops(operators, '脏', tables=self.tables)['t']['operators']
         self.assertEqual((first['rows_out'], first['affected']), (4, 2))             # "  ab  cd " and "AB"; "ok" and the missing one stay
-        self.assertEqual(second['affected'], 3)
-        self.assertEqual([r[1:] for r in self.rows(operators, '脏', self.tables)], [('ab cd', 'x'), ('ab', ''), (None, 'y'), ('ok', 'x')])
+        self.assertEqual(second['affected'], 2)                                      # "x-1" and "x-3" lose the dash; "y_22" has none
+        self.assertEqual([r[1:] for r in self.rows(operators, '脏', self.tables)], [('ab cd', 'x1'), ('ab', ''), (None, 'y_22'), ('ok', 'x3')])
 
-    def test_a_pattern_that_can_run_forever_is_refused(self):
-        for pattern in ('(a+)+$', '(.*)*x', 'a' * 300, '['):
-            with self.assertRaises(ValueError, msg=pattern):
-                self.run_ops([{'op': 'text_clean', 'columns': ['name'], 'steps': [{'do': 'replace', 'find': pattern, 'with': '', 'regex': True}]}], '脏', tables=self.tables)
+    def test_a_find_text_that_looks_like_a_pattern_is_taken_literally(self):
+        tables = store(self.conn, {'p': [{'id': '1', 'v': 'a' * 45 + '!'}, {'id': '2', 'v': 'x[-_]\\d+y'}, {'id': '3', 'v': 'x-1y'}]})
+        for pattern, expected in (('(a|aa)+$', ['a' * 45 + '!', 'x[-_]\\d+y', 'x-1y']), ('[-_]\\d+', ['a' * 45 + '!', 'xy', 'x-1y'])):
+            op = [{'op': 'text_clean', 'columns': ['v'], 'steps': [{'do': 'replace', 'find': pattern, 'with': ''}]}]
+            self.assertEqual([r[1] for r in self.rows(op, 'p', tables)], expected, pattern)   # only the exact text is replaced
+        with self.assertRaises(ValueError) as caught:                                          # and a request for a pattern is refused, not quietly read as text
+            self.run_ops([{'op': 'text_clean', 'columns': ['v'], 'steps': [{'do': 'replace', 'find': 'a+', 'with': '', 'regex': True}]}], 'p', tables=tables)
+        self.assertIn('不支持正则', str(caught.exception))
 
     def test_a_text_column_only(self):
         with self.assertRaises(ValueError) as caught:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from functools import lru_cache
 import math
 import re
 
@@ -116,7 +117,9 @@ def _iso(text: str) -> datetime | None:
     return None
 
 
-_PATTERNS: dict[str, re.Pattern] = {}
+@lru_cache(maxsize=64)   # a bounded cache: one compiled pattern per format in use, not one per format ever seen
+def _pattern(fmt: str) -> re.Pattern:
+    return format_regex(fmt)
 
 
 def _read_date(value, fmt) -> datetime | None:
@@ -125,9 +128,7 @@ def _read_date(value, fmt) -> datetime | None:
         return None
     if fmt is None:
         return _iso(text)
-    if fmt not in _PATTERNS:
-        _PATTERNS[fmt] = format_regex(fmt)
-    return _parse_with(text, _PATTERNS[fmt])
+    return _parse_with(text, _pattern(fmt))
 
 
 def to_date(value, fmt=None) -> str | None:
@@ -181,16 +182,12 @@ def _replace(value, find, with_):
     return None if value is None else str(value).replace(find, with_)
 
 
-def _regex(value, pattern, with_):
-    return None if value is None else re.sub(pattern, lambda m: with_, str(value))
-
-
 def register(conn) -> None:
     """Make the functions known to this connection (a read-only one included: they change nothing)."""
     for name, args, fn in (('pl_bool', 1, to_bool), ('pl_text', 1, number_text), ('pl_to_decimal', 2, to_decimal), ('pl_to_integer', 2, to_integer),
                            ('pl_to_boolean', 1, to_bool), ('pl_to_date', 2, to_date), ('pl_to_datetime', 2, to_datetime),
                            ('pl_trim', 1, lambda v: None if v is None else str(v).strip()), ('pl_ws', 1, _clean_whitespace),
                            ('pl_upper', 1, lambda v: None if v is None else str(v).upper()), ('pl_lower', 1, lambda v: None if v is None else str(v).lower()),
-                           ('pl_replace', 3, _replace), ('pl_regex', 3, _regex)):
+                           ('pl_replace', 3, _replace)):
         conn.create_function(name, args, fn, deterministic=True)
     conn.create_aggregate('pl_pct', 2, Percentile)

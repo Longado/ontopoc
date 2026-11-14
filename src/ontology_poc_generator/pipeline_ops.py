@@ -28,7 +28,7 @@ PERCENTILE = {'median': 0.5, 'p25': 0.25, 'p75': 0.75}
 CAST_TYPES = {'date': '日期', 'datetime': '日期时间', 'decimal': '小数', 'integer': '整数', 'boolean': '是否'}
 CATALOG = [   # what the operator picker lists: id, name, category, what it does
     ('filter', '数据过滤', '常用', '按条件留下行；条件为假和条件为空删掉的行分开数'), ('fill_null', '空值替换', '清洗', '把空值换成常量、另一列或表达式算出的值'),
-    ('text_clean', '文本清理', '文本', '去空格、替换文字（或正则）、统一大小写'), ('cast', '字段转换', '类型', '转成日期、时间、小数、整数、是否；转不了的行数和清单都给出'),
+    ('text_clean', '文本清理', '文本', '去空格、合并空白、替换文字、统一大小写'), ('cast', '字段转换', '类型', '转成日期、时间、小数、整数、是否；转不了的行数和清单都给出'),
     ('calc', '计算列', '数值', '用表达式加一列，或替换一列；可以先试算'), ('aggregate', '分组统计', '汇总', '按几列分组，求和、计数、平均、中位数等，空值不计入'),
     ('dedupe', '排重', '清洗', '按主键去重，保留第一条或最后一条（要指定排序的列）'), ('label', '打标签', '常用', '把代码换成含义（读已确认的含义，或自己写对照表）')]
 
@@ -233,8 +233,6 @@ def _fill_null(op, src, columns, ctx, label):
     return {'columns': out_columns, 'select': f'SELECT {", ".join(selects)} FROM {src}', 'params': params, 'measure': measure}
 
 
-_NESTED_REPEAT = re.compile(r'\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)\s*[+*{]')   # (a+)+ and (.*)*: a pattern that can take forever on the wrong text
-MAX_PATTERN = 200
 CLEAN_FUNCTION = {'trim': 'pl_trim', 'whitespace': 'pl_ws', 'upper': 'pl_upper', 'lower': 'pl_lower'}
 
 
@@ -251,15 +249,8 @@ def _clean_steps(steps, label) -> list[tuple[str, list]]:
             if not isinstance(find, str) or not find or not isinstance(with_, str):
                 raise OpError(f'{label}：替换要写要找的文字（find）和换成什么（with，可以是空）')
             if step.get('regex'):
-                if len(find) > MAX_PATTERN or _NESTED_REPEAT.search(find):
-                    raise OpError(f'{label}：正则太长，或含有「(…+)+」这样可能一直算不完的写法')
-                try:
-                    re.compile(find)
-                except re.error as exc:
-                    raise OpError(f'{label}：正则写得不对：{exc}') from None
-                out.append(('pl_regex(%s, ?, ?)', [find, with_]))
-            else:
-                out.append(('pl_replace(%s, ?, ?)', [find, with_]))
+                raise OpError(f'{label}：替换只按原样的文字找，不支持正则')
+            out.append(('pl_replace(%s, ?, ?)', [find, with_]))   # the find text is literal: a person's pattern never runs (a backtracking regex cannot be interrupted)
         else:
             raise OpError(f'{label}：清理动作只有 trim、whitespace、replace、upper、lower')
     return out

@@ -122,9 +122,7 @@ function TextCleanForm({ op, cols, onChange }) {
           {step.do === "replace" && (
             <>
               <input type="text" aria-label="要找的文字" placeholder="要找的文字" value={step.find ?? ""} onChange={(e) => setStep(i, { ...step, find: e.target.value })} />
-              <input type="text" aria-label="换成" placeholder="换成（可以空）" value={step.with ?? ""} onChange={(e) => setStep(i, { ...step, with: e.target.value })} />
-              <label className="check"><input type="checkbox" checked={!!step.regex} onChange={(e) => setStep(i, { ...step, regex: e.target.checked })} />正则</label>
-            </>
+              <input type="text" aria-label="换成" placeholder="换成（可以空）" value={step.with ?? ""} onChange={(e) => setStep(i, { ...step, with: e.target.value })} />            </>
           )}
           <button className="plain" disabled={op.steps.length === 1} onClick={() => onChange({ ...op, steps: op.steps.filter((_, k) => k !== i) })}>删除</button>
         </Row>
