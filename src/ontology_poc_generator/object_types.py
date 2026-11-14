@@ -473,7 +473,7 @@ def _new_value_question(conn, view: dict, moved: list[str]) -> str | None:
         if new:
             values = '、'.join(new)
             default = '会算进来' if f['op'] == 'is_not' else '不会算进来'
-            said.append(f'“{f["column"]}”出现了新值 {values}（{"，".join(f"{v} 有 {n} 行" for v, n in new.items())}）：新值 {values} 算不算进来？'
+            said.append(f'“{f["column"]}”出现了新值 {"、".join(f"{v}（{n} 行）" for v, n in new.items())}：新值 {values} 算不算进来？'
                         f'按现在的写法（{in_out_text(conn, content)}），{"它们" if len(new) > 1 else "它"}{default}。请先给新值写含义，再决定')
     return '；'.join(said) or None
 
