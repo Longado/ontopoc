@@ -157,6 +157,23 @@ class ReaderTests(BoardCase):
             self.assertEqual(self.card(closed)['status'], 'ok')
             self.assertEqual(closed['headline']['unavailable'], ['客户数'])
 
+    def test_a_board_none_of_whose_types_a_person_may_open_is_not_listed_and_is_not_there_for_them(self):
+        only_orders = {'components': [CARD, BY_STATUS, RECENT], 'filters': []}
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            ids = self.ids(admin)
+            board = self.make(ann, 'orders only', spec=only_orders, scope='everyone')
+            mixed = self.make(ann, 'mixed', scope='everyone')
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [ids['ann']]})[0], 200)   # the orders are Ann's now
+            self.assertEqual(sorted(b['name'] for b in bob.get('/api/workspace/dashboards')[1]['dashboards']), ['mixed'])   # the board with only orders on it is not listed for Bob
+            self.assertEqual(self.data(bob, board['id'], expect=404)['error'], '没有这个看板')
+            self.assertEqual(bob.get(f'/api/workspace/dashboards/{board["id"]}')[0], 404)
+            self.assertEqual(self.card(self.data(bob, mixed['id']), 'cust')['status'], 'ok')   # one that still has something Bob can read stays
+            self.assertEqual(sorted(b['name'] for b in ann.get('/api/workspace/dashboards')[1]['dashboards']), ['mixed', 'orders only'])
+            self.assertEqual(sorted(b['name'] for b in admin.get('/api/workspace/dashboards')[1]['dashboards']), ['mixed', 'orders only'])
+
     def test_a_viewer_is_shown_no_number_that_stands_on_a_type_that_needs_a_look(self):
         with self.service() as (base, out):
             team = self.team(base)
