@@ -65,7 +65,8 @@ def _load(conn, user: dict | None, english: str) -> dict:
     limit = restriction(conn, row['element_id'], user)
     kept = [(i, r) for i, r in enumerate(dataset_records(conn, dataset), 1) if keeps(r, limit)]
     derived = confirmed_columns(conn, english, user)
-    rows = [{'n': n, 'pos': pos, 'rec': rec, 'derived': {f'derived:{d["english_name"]}': d['values'].get(pos) for d in derived}} for n, (pos, rec) in enumerate(kept, 1)]
+    rows = [{'n': n, 'pos': pos, 'rec': rec, 'derived': {f'derived:{d["english_name"]}': d['values'].get(pos) for d in derived},
+             'outside': {f'derived:{d["english_name"]}' for d in derived if pos in d['outside']}} for n, (pos, rec) in enumerate(kept, 1)]
     fields = [{'key': f'derived:{d["english_name"]}', 'column': None, 'name': d['name'], 'type': d['output_type'], 'code': False, 'derived': True, 'is_key': False,
                'confirmed': d['confirmed'], 'says': d['says'], 'element': d['id'], 'labels': {}, 'meaning': None} for d in derived]
     for p in content['properties']:
@@ -294,6 +295,11 @@ def _display(table: dict, row: dict) -> list:
     return [_value(row, f) for f in table['fields']]
 
 
+def _outside(table: dict, row: dict) -> list[int]:
+    """The columns (by their place in the row) whose value is empty because everything it is worked out from lies outside the rows this person may read."""
+    return [i for i, f in enumerate(table['fields']) if f['key'] in row['outside']]
+
+
 def _columns(table: dict) -> list[dict]:
     return [{'column': f['key'], 'name': f['name'], 'type': f['type'], 'key': f['is_key'], 'derived': f['derived'], 'confirmed': f['confirmed'], 'says': f['says']} for f in table['fields']]
 
@@ -310,7 +316,7 @@ def explore_table(conn, user: dict | None, raw_query, page=1) -> dict:
     pages = max(1, -(-len(rows) // OBJECT_PAGE))
     page = min(max(whole_page(page), 1), pages)
     shown = rows[(page - 1) * OBJECT_PAGE:page * OBJECT_PAGE]
-    return {'query': query, 'columns': _columns(table), 'rows': [_display(table, r) for r in shown], 'numbers': [r['n'] for r in shown], 'total': len(rows), 'page': page, 'pages': pages,
+    return {'query': query, 'columns': _columns(table), 'rows': [_display(table, r) for r in shown], 'numbers': [r['n'] for r in shown], 'outside': [_outside(table, r) for r in shown], 'total': len(rows), 'page': page, 'pages': pages,
             'limit': OBJECT_PAGE, 'dataset': table['dataset']['name'], 'dataset_version': table['dataset']['version'], 'rows_limited': table['limit'] is not None,
             'enums': _enums(table), 'standing': _standing(conn, got['used'])}
 
@@ -592,5 +598,5 @@ def explore_object(conn, user: dict | None, english: str, n) -> dict:
         other = got['table']
         related.append({**rel, 'count': len(got['rows']), 'objects': [{'n': r['n'], 'text': _object_key(other, r)[1]} for r in got['rows'][:RELATED_SHOWN]], 'query': query,
                         'rows_limited': other['limit'] is not None})
-    return {'type': _type_line(conn, user, table['row']), 'n': n, 'key': key, 'text': text, 'columns': _columns(table), 'row': _display(table, found), 'enums': _enums(table),
+    return {'type': _type_line(conn, user, table['row']), 'n': n, 'key': key, 'text': text, 'columns': _columns(table), 'row': _display(table, found), 'outside': _outside(table, found), 'enums': _enums(table),
             'dataset': table['dataset']['name'], 'dataset_version': table['dataset']['version'], 'related': related, 'standing': _standing(conn, [table['row']['element_id']])}

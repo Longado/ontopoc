@@ -227,10 +227,10 @@ export function TypePage({ route }) {
           <p className="facts">
             <span>来源 {t.rows_limited ? t.dataset : <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>} 第 {t.dataset_version} 版{uses.data?.data.uploaded_at && `，上传于 ${ageText(uses.data.data.uploaded_at)}${uses.data.data.who ? `（${uses.data.data.who}）` : ""}`}</span>
             <span>{t.rows_limited ? `你能看到 ${t.rows} 个对象` : `${t.rows} 个对象`}</span>
-            {t.limited_note && <span>{t.limited_note}</span>}
             {t.description && <span>{t.description}</span>}
             {t.visible_to && t.visible_to !== "everyone" && <span>只有{t.visible_to.length ? t.visible_to.join("、") : "管理员"}看得到</span>}
           </p>
+          {t.rows_limited && <p className="muted small">你受行规则限制：只算你能看的 {t.rows} 行</p>}
           <Standing item={t} noun="这个对象类型" />
           <Uses id={id} uses={uses.data} />
           <nav className="tabs" aria-label="对象类型的页面" style={{ marginTop: 16 }}>

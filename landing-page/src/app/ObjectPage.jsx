@@ -7,7 +7,7 @@ import { canBuild } from "./authModel.js";
 import { queryToParam } from "./explorerModel.js";
 import { hrefFor } from "./routeModel.js";
 import { RunAction } from "./TypeActions.jsx";
-import { codeCell } from "./typeModel.js";
+import { OUTSIDE_NOTE, codeCell } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
 /** One object: its values, what is related to it (with the way across to the whole set), and the actions that may be run on it. */
@@ -43,7 +43,7 @@ export function ObjectPage({ route }) {
               return (
                 <React.Fragment key={c.column}>
                   <dt>{c.name}{c.derived && <span className={c.confirmed ? " small" : " muted small"}>{c.confirmed ? "（派生）" : "（派生，未确认）"}</span>}</dt>
-                  <dd>{o.row[i] == null || o.row[i] === "" ? <span className="faint">—</span> : <>{cell.value}{o.enums[c.column] && cell.note && <span className="muted small"> {cell.note}</span>}</>}</dd>
+                  <dd>{o.row[i] == null || o.row[i] === "" ? <span className="faint" title={o.outside?.includes(i) ? OUTSIDE_NOTE : undefined}>—{o.outside?.includes(i) && <span className="small"> {OUTSIDE_NOTE}</span>}</span> : <>{cell.value}{o.enums[c.column] && cell.note && <span className="muted small"> {cell.note}</span>}</>}</dd>
                 </React.Fragment>
               );
             })}

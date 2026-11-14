@@ -53,6 +53,9 @@ export function logText(e) {
 }
 
 /** A code cell on the objects tab: the value, and next to it what it means when that is confirmed, else why it is not shown as meaning. */
+/** Why a derived value is empty for someone a row rule limits: what it is worked out from lies outside the rows they may read (it is not 0). */
+export const OUTSIDE_NOTE = "不在你能看的行里";
+
 export function codeCell(value, enumState) {
   if (value == null) return { value: "", note: "" };
   const label = enumState?.labels?.[value];

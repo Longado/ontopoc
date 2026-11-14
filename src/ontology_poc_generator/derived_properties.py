@@ -262,6 +262,9 @@ def evaluate(conn, content: dict, user: dict | None = None) -> dict:
     register(conn)
     with _tables(conn, chain, user) as tables:
         body = _evaluate_function(conn, content, chain, tables) if content['kind'] == 'function' else _evaluate_statistic(conn, content, chain, tables)
+        if content['kind'] != 'function' and any(restriction(conn, type_id(e), user) is not None for e in chain['types']):
+            with _tables(conn, chain, None) as everything:   # the same joins over all the rows: an object whose related rows are all outside this person's rows has no value for them
+                body = _outside_the_rows(content, chain, body, _outside(conn, chain, tables, everything))
     owner = chain['types'][chain['owner']]
     values = body.pop('values')
     return {'problems': [], 'values': values, 'objects': body.pop('objects'), 'with_value': sum(v is not None for v in values.values()), 'output_type': chain['output_type'],
@@ -277,6 +280,22 @@ def _evaluate_function(conn, content: dict, chain: dict, tables: dict) -> dict:
     values = {i: _plain(v, chain['output_type']) if not bad else None for i, v, bad in rows}
     failed = sum(1 for _, _, bad in rows if bad)
     return {'values': values, 'objects': len(rows), 'failed': failed, 'no_value': {'empty_input': sum(1 for i, v, bad in rows if v is None and not bad)}, 'rows_used': None}
+
+
+def _outside(conn, chain: dict, tables: dict, everything: dict) -> set[int]:
+    """The objects of the owner type that have related rows, none of which this person may read."""
+    owner = chain['owner']
+    count = lambda t: dict(conn.execute(f'SELECT t0.{t[owner][1]}, COUNT(*) FROM {_joins(chain, t)} GROUP BY 1').fetchall())
+    seen, total = count(tables), count(everything)
+    return {i for i, n in total.items() if n and not seen.get(i)}
+
+
+def _outside_the_rows(content: dict, chain: dict, body: dict, outside: set[int]) -> dict:
+    """The evaluation with those objects' values taken back: a count of 0 there would say there is nothing, when what there is lies outside the rows they may read."""
+    here = {i for i in body['values'] if i in outside}
+    counted = content['fn'] in ('count', 'count_distinct')
+    no_value = {**body['no_value'], 'no_rows': body['no_value']['no_rows'] - (0 if counted else len(here)), 'outside': len(here)}
+    return {**body, 'values': {i: None if i in here else v for i, v in body['values'].items()}, 'no_value': no_value, 'outside': here}
 
 
 def _joins(chain: dict, tables: dict) -> str:
@@ -389,6 +408,8 @@ def _failure_lines(content: dict, result: dict, owner_name: str) -> list[dict]:
         out.append({'ok': False, 'text': f'{no["empty_input"]} 个{owner_name}的输入里有空的，算式没有算它们（空值不当成 0）'})
     if result['failed'] and content['kind'] == 'function':
         out.append({'ok': False, 'text': f'{result["failed"]} 个{owner_name}输入都有值，算式却算不出结果（除以 0、日期不对）'})
+    if no.get('outside'):
+        out.append({'ok': True, 'text': f'{no["outside"]} 个{owner_name}的相关行都不在你能看的行里，显示为 —，不是 0'})
     if no.get('no_rows'):
         out.append({'ok': False, 'text': f'{no["no_rows"]} 个{owner_name}没有可以统计的相关数据（没有相关的行，或条件筛完一行不剩），没有值，不是 0'})
     if no.get('unreadable'):
@@ -902,5 +923,5 @@ def confirmed_columns(conn, english_type: str, user: dict | None) -> list[dict]:
         if result['problems']:
             continue
         out.append({'id': element_id, 'english_name': content['english_name'], 'name': content['name'], 'output_type': result['output_type'], 'says': describe(conn, content),
-                    'confirmed': state == 'confirmed', 'values': {i: text_of(v, result['output_type']) for i, v in result['values'].items()}})
+                    'confirmed': state == 'confirmed', 'values': {i: text_of(v, result['output_type']) for i, v in result['values'].items()}, 'outside': result.get('outside', set())})
     return out

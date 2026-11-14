@@ -4,7 +4,7 @@ import { exploreChart, exploreTable, getExploreMeta } from "./api.js";
 import { CHART_KINDS, OPS, chartMissing, chartSpec, emptyFilter, fnOptions, opsFor, pivotQuery, queryFromParam, queryOf, queryToParam } from "./explorerModel.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
-import { codeCell } from "./typeModel.js";
+import { OUTSIDE_NOTE, codeCell } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { useSettled } from "./useSettled.js";
 
@@ -93,7 +93,7 @@ function TableView({ id, result, page, setPage }) {
               <tr key={result.numbers[r]}>
                 {row.map((v, i) => {
                   const e = result.enums[result.columns[i].column];
-                  if (!e) return <td key={i} className="cell" title={v ?? undefined}>{v ?? <span className="faint">—</span>}</td>;
+                  if (!e) return <td key={i} className="cell" title={v ?? (result.outside?.[r]?.includes(i) ? OUTSIDE_NOTE : undefined)}>{v ?? <span className="faint">—</span>}</td>;
                   const cell = codeCell(v, e);
                   return <td key={i}>{cell.value}{cell.note && <span className="muted small"> {cell.note}</span>}</td>;
                 })}
@@ -103,6 +103,7 @@ function TableView({ id, result, page, setPage }) {
           </tbody>
         </table>
       </div>
+      {result.outside?.some((cells) => cells.length > 0) && <p className="muted small">—：{OUTSIDE_NOTE}</p>}
       {result.pages > 1 && (
         <nav className="pager" aria-label="对象分页">
           {result.page > 1 ? <button className="plain" onClick={() => setPage(result.page - 1)}>上一页</button> : <span className="faint">上一页</span>}

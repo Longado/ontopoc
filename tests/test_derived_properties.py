@@ -241,8 +241,14 @@ class AcceptanceTests(DerivedTestCase):
             full, mine = (self.values(who, 'customer', '客户编号', '已取消订单数') for who in (admin, vera))
             self.assertEqual({k: int(v) for k, v in full.items()}, {k: expected.get(k, 0) for k in full})
             self.assertEqual(mine['KH026'], str(expected['KH026']))
-            self.assertEqual(mine['KH015'], '0')   # KH015 has two cancelled orders; vera reads none of them
+            self.assertIsNone(mine['KH015'])   # KH015 has two cancelled orders and vera reads none of them: no value, "not in the rows you can see", and never a 0
             self.assertEqual(expected['KH015'], 2)
+            table = vera.post('/api/workspace/explore/table', {'query': {'type': 'customer'}})[1]
+            column = [c['column'] for c in table['columns']].index('derived:cancelled_orders')
+            key = [c['name'] for c in table['columns']].index('客户编号')
+            flagged = {table['rows'][r][key] for r, cells in enumerate(table['outside']) if column in cells}
+            self.assertIn('KH015', flagged)   # the table says which cells are not in her rows, so the page can write why they are empty
+            self.assertNotIn('KH026', flagged)
             line = self.line(vera, 'customer', 'cancelled_orders')
             self.assertEqual((line['trial']['numbers'], line['can_confirm']), (None, False))   # no whole-data count; nothing for her to confirm
             self.assertIn('行规则', line['trial']['limited_note'])
