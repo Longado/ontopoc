@@ -71,6 +71,7 @@ def _version_row(row: dict, current_id: int) -> dict:
     return {'version': row['version'], 'who': row['who'], 'at': row['imported_at'], 'mode': row['mode'] or 'upload', 'origin': row['origin'], 'rows': row['rows_stored'],
             'changed': changes.get('changed'), 'added': changes.get('added'), 'unchanged': changes.get('unchanged'),
             'blank_kept': changes.get('blank_kept'), 'same_as': changes.get('same_as'), 'changed_keys': changes.get('changed_keys') or [], 'added_keys': changes.get('added_keys') or [], 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'), 'action': changes.get('action'),
+            'pipeline': changes.get('pipeline'),   # a version a pipeline run wrote: the pipeline, the run, the definition version and the input versions it read
             'current': row['id'] == current_id}
 
 

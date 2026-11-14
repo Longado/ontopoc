@@ -23,6 +23,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/workspace/(datasets|types|relations)(/.+)?', 'viewer'),   # what a person sees of types and relations is filtered by who they are (type_access)
     ('GET', r'/api/workspace/(tasks|relation-form|queue)', 'builder'),   # the task list quotes keys and the reasons the model's suggestions were dropped, which carry values
     ('GET', r'/api/workspace/actions(/.+)?', 'builder'),   # actions are for builders: a viewer runs and reads none (object_actions.action_visible)
+    ('GET', r'/api/workspace/pipelines(/.+)?', 'builder'),   # pipelines are for builders: their steps and previews quote the data (workspace_pipelines.pipeline_visible)
     ('GET', r'/api/workspace/ask(/.+)?', 'viewer'),   # a person's own questions and answers, within what they may see (workspace_questions)
     ('GET', _RUNS, 'viewer'),
     ('GET', r'/api/ontology/jobs/[^/]+', 'viewer'),
@@ -35,6 +36,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/relations(/(update|confirm))?', 'builder'),
     ('POST', r'/api/workspace/queue/(confirm|send-back)', 'builder'),
     ('POST', r'/api/workspace/actions(/(update|confirm|submit|decide|withdraw))?', 'builder'),   # a person may not approve their own submission (object_actions.decide)
+    ('POST', r'/api/workspace/pipelines(/(update|confirm|preview|review|run|format-guess|expression/(check|trial)))?', 'builder'),   # confirming needs a second person who did not edit it (workspace_pipelines.confirm_pipeline)
     ('POST', r'/api/workspace/row-rules', 'admin'),   # who sees which rows of a type: the admin's, with the permissions page
     ('POST', r'/api/ontology/(build|jobs|preview|compare|variants|requery|library/import)', 'builder'),
     ('POST', r'/api/ontology/reference/(preview|confirm)', 'builder'),

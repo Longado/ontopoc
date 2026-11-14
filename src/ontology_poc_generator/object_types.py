@@ -738,7 +738,8 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
     return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'reason': row['reason'] if row['state'] in ('needs_look', 'rejected') else None,
             'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited, 'limited_by_rule': limited,
             'cause': row['cause'] if row['state'] == 'needs_look' else None, 'via': row['via'] if row['state'] == 'needs_look' else None,
-            'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None, 'pipelines_blocking': producers,
+            'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None,
+            'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None, 'pipelines_blocking': producers,
             'confirmers': others if waiting and not blocked else [], 'meanings_blocking': meanings,
             'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None,
             'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at']}

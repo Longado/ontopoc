@@ -203,8 +203,8 @@ def check_definition(conn, engine, payload: dict, user: dict | None, name: str |
     and operator checks against the columns it reads (names and types), the outputs are free to write (unless `outputs_free` is off: a preview of a draft does not write).
     TypeRefused says what is wrong. The caller drops the temporary tables (drop_temporary) when done."""
     name = _text(payload.get('name') if name is None else name, '管道的名字', MAX_NAME)
-    if ':' in name:
-        raise TypeRefused('管道的名字不能有冒号')
+    if ':' in name or '/' in name or '?' in name or '#' in name or name == 'options':
+        raise TypeRefused('管道的名字不能有冒号、斜杠、问号、井号，也不能叫 options')
     description = _text(payload.get('description') or '', '说明', MAX_DESCRIPTION, required=False)
     spec = payload.get('spec')
     if not isinstance(spec, dict) or len(_canonical(spec)) > MAX_BODY_SPEC:

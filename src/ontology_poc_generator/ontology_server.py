@@ -69,6 +69,9 @@ from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv
 from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
+from ontology_poc_generator.workspace_pipelines import (
+    check_expression, confirm_pipeline, create_pipeline, format_guess, list_pipelines, options as pipeline_options, pipeline_detail, pipeline_log, pipeline_versions,
+    preview as pipeline_preview, review as pipeline_review, run_detail, run_list, run_now as run_pipeline_now, trial_expression, update_pipeline)
 from ontology_poc_generator.object_actions import (
     action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, update_action, withdraw as withdraw_record)
 from ontology_poc_generator.object_views import confirm_view, create_view, list_views, update_view, view_form
@@ -1342,6 +1345,78 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, body)
 
+        def pipelines_get(self):
+            """/api/workspace/pipelines (the list), /pipelines/options (operators, functions, aggregations for the editors), /pipelines/<name> (definition, state, outputs),
+            /<name>/versions[?from=&to=] (definition versions, and the changed steps between two), /<name>/runs, /<name>/runs/<n>, /<name>/log."""
+            url = urlsplit(self.path)
+            parts = [unquote(p) for p in url.path[len('/api/workspace/pipelines'):].split('/') if p]
+            query = parse_qs(url.query)
+            number = lambda key: int(query[key][0]) if query.get(key) and re.fullmatch(r'[0-9]+', query[key][0]) else None
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = {'pipelines': list_pipelines(conn, self.user)}
+                elif parts == ['options']:
+                    body = pipeline_options()
+                elif len(parts) == 1:
+                    body = pipeline_detail(conn, parts[0], self.user)
+                elif parts[1:] == ['versions']:
+                    body = pipeline_versions(conn, parts[0], self.user, number('from'), number('to'))
+                elif parts[1:] == ['runs']:
+                    body = {'runs': run_list(conn, parts[0], self.user)}
+                elif len(parts) == 3 and parts[1] == 'runs' and re.fullmatch(r'[0-9]+', parts[2]):
+                    body = run_detail(conn, parts[0], int(parts[2]), self.user)
+                elif parts[1:] == ['log']:
+                    body = {'log': pipeline_log(conn, parts[0], self.user)}
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def pipelines_post(self):
+            """POST /api/workspace/pipelines (define), /update, /confirm, /preview (any node of a saved or a draft pipeline), /run, /review (what a confirm would run on, nothing
+            written), /expression/check, /expression/trial, /format-guess: see workspace_pipelines.py. Reading and trying happen on a read-only connection; only a run, a
+            save and a confirm write."""
+            route = self.path[len('/api/workspace/pipelines'):]
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                who = self.signer(payload, 'who')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                engine = readonly_workspace()
+                try:
+                    with runs_lock:   # the lock an upload takes (see types_post)
+                        writers = {'': create_pipeline, '/update': update_pipeline, '/confirm': confirm_pipeline, '/run': run_pipeline_now}
+                        readers = {'/preview': pipeline_preview, '/review': pipeline_review, '/expression/check': check_expression, '/expression/trial': trial_expression}
+                        if route in writers:
+                            body = writers[route](conn, payload, who, self.user, engine) if route != '/run' else run_pipeline_now(conn, engine, payload, who, self.user)
+                        elif route in readers:
+                            body = readers[route](conn, engine, payload, self.user)
+                        elif route == '/format-guess':
+                            body = format_guess(payload)
+                        else:
+                            self.reply(404, {'error': 'Unknown workspace endpoint'})
+                            return
+                finally:
+                    engine.close()
+                    conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc), **(exc.detail or {})})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
         def ask_get(self):
             """/api/workspace/ask (the scope line and the person's own history), /api/workspace/ask/<id> (one saved answer as it stands now)."""
             parts = [p for p in urlsplit(self.path).path[len('/api/workspace/ask'):].split('/') if p]
@@ -1457,6 +1532,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path.split('?')[0] == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
                 self.actions_get()
+                return
+            if self.path.split('?')[0] == '/api/workspace/pipelines' or self.path.startswith('/api/workspace/pipelines/'):
+                self.pipelines_get()
                 return
             if self.path.split('?')[0] in ('/api/workspace/relations', '/api/workspace/relation-form', '/api/workspace/queue', '/api/workspace/permissions') \
                     or self.path.startswith('/api/workspace/relations/'):
@@ -1665,6 +1743,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
                              '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules'):
                 self.relations_post()
+                return
+            if self.path == '/api/workspace/pipelines' or self.path.startswith('/api/workspace/pipelines/'):
+                self.pipelines_post()
                 return
             if self.path == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
                 self.actions_post()
