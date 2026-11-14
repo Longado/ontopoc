@@ -13,7 +13,7 @@ from tests.test_access import Client
 from tests.test_agent_access import AgentCase
 from tests.test_dashboards import BoardCase, CARD, SPEC
 from tests.test_derived_properties import GROSS
-from tests.test_explorer import CUSTOMERS, ORDER_Q
+from tests.test_explorer import CUSTOMERS, ORDERS, ORDER_Q
 from tests.test_workspace_questions import AskModel, QUESTION, cancelled
 
 
@@ -210,3 +210,37 @@ class BoardExposureTests(BoardCase):
             self.assertEqual([status(bob, n) for n in ('everyone', 'named bob')], [410, 410])   # his, and over
             self.assertEqual([bob.post('/api/workspace/dashboards/data', {'id': made[n]})[0] for n in ('private', 'everyone')], [404, 410])
             self.assertEqual([status(ann, n) for n in made] + [status(admin, n) for n in made], [200] * 8)   # the author and an admin still open what has ended
+
+
+class RowNumberTests(BoardCase):
+    def test_the_row_numbers_a_limited_person_is_given_count_only_the_rows_they_may_read(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
+            self.assertEqual(self.confirm(bob, GROSS)[0], 200)
+            ids = self.ids(admin)
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH026', 'user_ids': [ids['vera']]}, {'column': '', 'value': '', 'user_ids': [ids['ann'], ids['bob']]}]})[0], 200)
+            hers = [r for r in ORDERS if r['客户编号'] == 'KH026']
+            table = self.table(vera, ORDER_Q)
+            self.assertEqual((table['total'], table['numbers']), (len(hers), list(range(1, len(hers) + 1))))   # 1, 2, 3 ...: nothing tells how many rows lie between hers
+            names = [c['name'] for c in table['columns']]
+            for row in table['rows']:   # the value of a derived property is of the row it is shown on
+                record = next(r for r in hers if r['订单号'] == row[names.index('订单号')])
+                self.assertAlmostEqual(float(row[names.index('含税金额')]), float(record['金额']) * 1.13, places=2)
+            first = vera.get('/api/workspace/explore/order/object/1')[1]
+            self.assertEqual(first['key'], {'订单号': hers[0]['订单号']})
+            self.assertEqual(vera.get(f'/api/workspace/explore/order/object/{len(hers) + 1}')[0], 404)   # not "someone else's row": there is no such number for her
+            board = self.make(ann, 'rows', scope='everyone', spec={'components': [{'id': 'r', 'title': 'r', 'query': {'type': 'order'}, 'chart': {'kind': 'rows'}}], 'filters': []})
+            self.assertEqual(self.data(vera, board['id'])['components'][0]['result']['numbers'], list(range(1, len(hers) + 1)))
+            # unlimited, the number is the row's place in the data, as it always was
+            self.assertEqual(self.table(bob, ORDER_Q)['numbers'][:3], [1, 2, 3])
+            # a number from a related list opens the object it names, in the same numbering
+            customers = self.table(vera, {'type': 'customer', 'filters': [{'field': '客户编号', 'op': 'eq', 'value': 'KH026'}]})
+            at = customers['numbers'][0]
+            related = vera.get(f'/api/workspace/explore/customer/object/{at}')[1]['related']
+            orders = next(r for r in related if r['other'] == 'order')
+            self.assertEqual(orders['count'], len(hers))
+            for o in orders['objects']:
+                self.assertEqual(vera.get(f'/api/workspace/explore/order/object/{o["n"]}')[1]['text'], o['text'])

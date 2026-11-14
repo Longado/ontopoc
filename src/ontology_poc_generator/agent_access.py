@@ -98,7 +98,7 @@ def read_derived(conn, user: dict | None, type_name, name, key=None, page=1) -> 
     if result['problems']:
         raise TypeRefused(f'派生属性「{content["name"]}」现在算不出来：{result["problems"][0]}', 409)
     table = _load(conn, user, content['type'])
-    objects = [{'key': _object_key(table, r)[0], 'value': result['values'].get(r['n'])} for r in table['rows']]
+    objects = [{'key': _object_key(table, r)[0], 'value': result['values'].get(r['pos'])} for r in table['rows']]
     if key is not None:
         if not isinstance(key, dict) or set(key) != set(table['content']['key']):
             raise TypeRefused(f'key 要写成 {{{"、".join(table["content"]["key"])}: 取值}}')
