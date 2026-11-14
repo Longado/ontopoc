@@ -19,6 +19,7 @@ from ontology_poc_generator.object_actions import action_state, action_visible, 
 from ontology_poc_generator.object_views import confirm_view, describe, seen_of_view, view_state, view_summary, view_visible
 from ontology_poc_generator.workspace_pipelines import (
     _inputs_now, confirm_pipeline, output_states, pipeline_state, pipeline_visible, waiting_on as pipeline_waiting)
+from ontology_poc_generator.row_rules import without_rules
 from ontology_poc_generator.workspace_store import current_dataset, log_line
 
 IN_QUEUE = ('proposed', 'checked', 'needs_look')
@@ -136,17 +137,21 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
 
 
 def queue(conn, user: dict | None, light: bool = False) -> dict:
-    """{'items': what this person may see, those they can confirm first, then needs-another-look, checked, proposed; 'count': how many of them they can confirm now}.
+    """{'items': what this person may see, those they can confirm first, then needs-another-look, checked, proposed; 'count': how many of them they can confirm now;
+    'hidden_by_rules': how many more would be theirs but for a row rule on the data they read (a number only, no names)}.
     `light`: the count only, from the states (no relation check runs); items carry no evidence."""
-    items = []
+    items, ruled_out = [], 0
     for element_id, in conn.execute("SELECT element_id FROM element_state WHERE state IN ('proposed', 'checked', 'needs_look') AND "
                                     "(element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%' OR element_id LIKE 'objaction:%' OR element_id LIKE 'pipeline:%' OR element_id LIKE 'derived:%') ORDER BY element_id").fetchall():
-        item = _item(conn, element_row(conn, element_id), user, light)
+        row = element_row(conn, element_id)
+        item = _item(conn, row, user, light)
         if item:
             items.append(item)
+        elif not light and _item(conn, row, without_rules(user), light=True):
+            ruled_out += 1
     items += [approval_item(r) for r in open_records(conn, user)]   # the submissions waiting for a second person: a card each
     items.sort(key=lambda i: (not i['can_confirm'], ORDER[i['state']], i['element']))
-    return {'items': [] if light else items, 'count': sum(1 for i in items if i['can_confirm'])}
+    return {'items': [] if light else items, 'count': sum(1 for i in items if i['can_confirm']), 'hidden_by_rules': ruled_out}
 
 
 def approval_item(rec: dict) -> dict:

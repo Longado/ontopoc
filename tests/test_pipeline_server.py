@@ -411,6 +411,24 @@ class PipelineServerTests(SigningTestCase):
             self.assertEqual(self.readable(ann), (200, True))                                                       # Ann is named for all rows
             self.assertEqual(self.readable(admin), (200, True))
 
+    def test_a_queue_item_a_row_rule_hides_from_a_builder_is_counted_for_them_not_dropped_in_silence(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            ids = self.ids(admin)
+            self.assertEqual(ann.post('/api/workspace/types', ORDER)[0], 200)
+            self.make(ann, self.COPY, '订单副本')
+            queue = lambda who: who.get('/api/workspace/queue')[1]
+            self.assertIn('pipeline:订单副本', [i['element'] for i in queue(bob)['items']])
+            self.assertEqual(queue(bob)['hidden_by_rules'], 0)
+            rules = [{'column': '状态码', 'value': '0', 'user_ids': [ids['vera']]}, {'user_ids': [ids['ann']]}]
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': rules})[0], 200)
+            after = queue(bob)
+            self.assertNotIn('pipeline:订单副本', [i['element'] for i in after['items']])   # Bob no longer sees it ...
+            self.assertEqual(after['hidden_by_rules'], 1)   # ... and is told one is missing because of a row rule
+            self.assertNotIn('订单副本', str(after))   # not which
+            self.assertEqual([queue(ann)['hidden_by_rules'], queue(admin)['hidden_by_rules']], [0, 0])
+
     def test_a_pipeline_that_reads_a_view_of_a_type_someone_may_not_see_is_not_theirs_to_see_nor_is_what_it_wrote(self):
         with self.service() as (base, out):
             team = self.team(base)

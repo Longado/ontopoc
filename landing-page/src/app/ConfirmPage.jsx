@@ -97,6 +97,7 @@ export function ConfirmPage() {
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
       {state.data && <p className="muted" style={{ marginBottom: 16 }}>共 {state.data.items.length} 项，其中 {state.data.count} 项你现在能确认</p>}
+      {state.data?.hidden_by_rules > 0 && <p className="warn">有 {state.data.hidden_by_rules} 项因为行规则你看不到。要看，请管理员在权限页给你开“全部行”。</p>}
       {state.data && !state.data.items.length && <p className="muted">没有要确认的。新提出的定义、数据变了需要再看的，会出现在这里。</p>}
       <div className="cards">
         {items.map((item) => <Card key={`${item.element}@${item.version}@${item.state}`} item={item} onChanged={reload} />)}
