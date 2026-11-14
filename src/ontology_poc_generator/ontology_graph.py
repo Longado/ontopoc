@@ -18,7 +18,7 @@ import json
 from ontology_poc_generator.object_actions import action_visible
 from ontology_poc_generator.object_relations import _relation_visible, cardinality_false, check_relation
 from ontology_poc_generator.object_types import (
-    ACTION_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _state_view, _type_row, _visible, element_row, limited_on, type_id, visible_rows)
+    ACTION_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _state_view, _type_row, _types_read, _visible, element_row, type_id, visible_rows)
 from ontology_poc_generator.object_views import view_visible
 from ontology_poc_generator.row_rules import restriction
 from ontology_poc_generator.type_access import dataset_hidden
@@ -82,9 +82,17 @@ def _short(conn, kind: str, root_row: dict | None) -> str | None:
     return f'{content["dataset"]} 第 {dataset["version"]} 版 {content["column"]} 取值变了' if dataset else None
 
 
+def _limited(conn, row: dict | None, user: dict | None) -> bool:
+    """Whether a row rule limits this person on any type the element is about. Unlike object_types.limited_on this holds for actions too: an action's own definition
+    quotes no counts, but the cause on it is the words of the element at the root of the chain, which do."""
+    return row is not None and any(restriction(conn, t, user) is not None for t in _types_read(row))
+
+
 def stale_cause(conn, row: dict, user: dict | None) -> dict | None:
-    """The cause of an element that needs another look, or None when it does not."""
-    return _cause(conn, _chain(conn, row['element_id']), limited_on(conn, row, user))
+    """The cause of an element that needs another look, or None when it does not. The words are held back when the person is limited on this element or on the one
+    at the root of the chain, whose reason they are."""
+    chain = _chain(conn, row['element_id'])
+    return _cause(conn, chain, _limited(conn, row, user) or (chain is not None and _limited(conn, element_row(conn, chain['root']), user)))
 
 
 # --- the pieces both graphs draw -----------------------------------------------------------------------------------------------------------------
@@ -206,7 +214,7 @@ def _answer_node(conn, user: dict | None, answer_id: int, question: str, asked_a
         state = 'needs_look'
         moved = [c for c in (element_row(conn, c['id']) for c in changed) if c]
         chain = min((c for c in (_chain(conn, r['element_id']) for r in moved) if c), key=lambda c: c['depth'], default=None)
-        hide = any(limited_on(conn, r, user) for r in moved)
+        hide = any(_limited(conn, element_row(conn, e), user) for e in named)   # the answer read these: a limit on any of them is a limit on the words
         if chain:
             cause = _cause(conn, {**chain, 'depth': chain['depth'] + 1}, hide)
         elif changed:

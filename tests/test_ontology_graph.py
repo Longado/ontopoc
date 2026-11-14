@@ -199,6 +199,35 @@ class GraphTests(SigningTestCase):
             self.assertTrue(self.node(self.graph(admin, LINEAGE), 'objtype:order')['stale']['text'].startswith('订单 第 2 版'))   # an admin, whom no rule limits, reads it (a builder no rule names is limited too)
             self.assertNotIn('objtype:order', {n['id'] for n in self.graph(vera, LINEAGE)['nodes']})   # a viewer sees only what is confirmed: nothing that needs a look
 
+    def test_a_limited_builder_reads_no_whole_data_words_on_any_node_view_action_relation_or_answer_after_the_shift(self):
+        model = AskModel(cancelled())
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.everything_confirmed(team)
+            action = {'name': '改订单金额', 'type': 'order', 'properties': ['金额']}
+            self.assertEqual(ann.post('/api/workspace/actions', action)[0], 200)
+            shown = bob.get('/api/workspace/actions/%E6%94%B9%E8%AE%A2%E5%8D%95%E9%87%91%E9%A2%9D')[1]
+            self.assertEqual(bob.post('/api/workspace/actions/confirm', {'id': action['name'], 'version': shown['version']})[0], 200)
+            ids = {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
+            rule = [{'column': '状态码', 'value': '2', 'user_ids': [ids['bob']]}]
+            status, body = admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': rule})
+            self.assertEqual(status, 200, body)
+            self.assertEqual(bob.post('/api/workspace/ask', {'question': '取消的订单有多少？'})[1]['status'], 'answered')   # asked under the rule: the rows it read are his
+            self.assertEqual(admin.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+            for path in (LINEAGE, RELATIONS):
+                graph = self.graph(bob, path)
+                causes = [n['stale'] for n in graph['nodes'] if n.get('stale')] + [e['stale'] for e in graph.get('edges', []) if e.get('stale')]
+                causes += [s['stale'] for n in graph['nodes'] if n['kind'] == 'type' for s in n['views'] + n['actions'] if s['stale']]
+                self.assertGreaterEqual(len(causes), 4, path)   # the type, its view and action, the relation (and in the lineage the answer) all need a look
+                for cause in causes:
+                    self.assertIsNone(cause['text'], path)
+                    self.assertIsNone(cause['short'], path)
+                    self.assertIn('行规则', cause['text_hidden'])
+                self.assertNotIn('第 2 版', json.dumps([c for c in causes], ensure_ascii=False))
+            kinds = {n['kind'] for n in self.graph(bob, LINEAGE)['nodes'] if n.get('stale')}
+            self.assertEqual(kinds, {'type', 'view', 'action', 'relation', 'answer'})
+
     def test_a_type_a_person_may_not_see_is_not_a_node_and_its_relation_is_not_an_edge_and_a_viewer_sees_only_what_is_confirmed(self):
         with self.service() as (base, out):
             team = self.team(base)
