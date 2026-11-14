@@ -60,18 +60,42 @@ test("a pipeline opens on its steps; its runs, one run, its history and its conf
 });
 
 test("a page not built yet has an address of its own and says what it will do", () => {
-  assert.deepEqual(parseRoute("#/agents"), { page: "planned", key: "agents" });
-  assert.equal(hrefFor({ page: "planned", key: "boards" }), "#/boards");
+  assert.equal(parseRoute("#/nowhere").page !== "planned", true);
   assert.equal(navKeyOf({ page: "qa", id: 3 }), "qa");
-  assert.equal(navKeyOf({ page: "planned", key: "agents" }), "agents");
+  assert.equal(navKeyOf({ page: "planned", key: "sources" }), "sources");
   for (const { items } of NAV) for (const i of items) assert.ok(i.built || i.key in PLANNED, i.key);   // nothing in the sidebar leads nowhere
 });
 
 test("the sidebar groups what the product has, and marks what is built", () => {
   assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "数据", "本体", "应用", null]);
   assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["问答", "任务", "数据集", "管道", "数据源", "调度", "对象类型", "关系", "待确认", "智能体", "看板", "血缘"]);
-  assert.equal(hrefFor({ page: "planned", key: "boards" }), "#/boards");
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
+});
+
+test("the boards and the agent page are built: a viewer reads boards, only builders see the agent page", () => {
+  assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => ["agents", "boards"].includes(i.key)).map((i) => [i.key, i.built, i.builders]), [["agents", true, true], ["boards", true, false]]);
+  assert.deepEqual(parseRoute("#/agents"), { page: "agents" });
+  assert.deepEqual(parseRoute("#/boards"), { page: "boards" });
+  assert.deepEqual(parseRoute("#/boards/new"), { page: "boardnew" });
+  assert.deepEqual(parseRoute("#/boards/4"), { page: "board", id: 4 });
+  assert.deepEqual(parseRoute("#/boards/4/edit"), { page: "boardedit", id: 4 });
+  for (const hash of ["#/boards/0", "#/boards/x", "#/boards/4/other", "#/boards/new/edit", "#/agents/x"]) assert.deepEqual(parseRoute(hash), { page: "notfound" }, hash);
+  for (const route of [{ page: "agents" }, { page: "boards" }, { page: "boardnew" }, { page: "board", id: 4 }, { page: "boardedit", id: 4 }]) assert.deepEqual(parseRoute(hrefFor(route)), route);
+  assert.equal(navKeyOf({ page: "board", id: 4 }), "boards");
+  assert.equal(navKeyOf({ page: "boardedit", id: 4 }), "boards");
+  assert.equal(navKeyOf({ page: "agents" }), "agents");
+});
+
+test("one object has an address under its type; the explorer's query rides in the address of the objects tab", () => {
+  assert.deepEqual(parseRoute("#/types/order/objects/12"), { page: "object", id: "order", n: 12 });
+  assert.deepEqual(parseRoute("#/types/order/objects/0"), { page: "notfound" });
+  assert.deepEqual(parseRoute("#/types/order/props/12"), { page: "notfound" });
+  assert.equal(navKeyOf({ page: "object", id: "order", n: 12 }), "types");
+  const q = JSON.stringify({ type: "customer", pivot: { relation: "r", side: "from", source: { type: "order" } } });
+  const route = { page: "type", id: "customer", tab: "objects", pageNo: 2, q };
+  assert.deepEqual(parseRoute(hrefFor(route)), route);
+  assert.deepEqual(parseRoute(hrefFor({ page: "object", id: "order", n: 12 })), { page: "object", id: "order", n: 12 });
+  assert.deepEqual(parseRoute("#/types/order/props?q=%7B%7D"), { page: "type", id: "order", tab: "props", pageNo: 1 });   // only the objects tab reads a query
 });
 
 test("an object type opens on its properties; the tab and the page of objects come from the address", () => {

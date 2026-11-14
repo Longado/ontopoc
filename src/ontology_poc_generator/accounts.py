@@ -523,13 +523,36 @@ def revoke_tokens(conn, user_id: int) -> None:
     conn.execute('UPDATE api_token SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL', (_stamp(_now()), user_id))
 
 
-def create_token(conn, user: dict, label, now: datetime | None = None) -> tuple[dict, str]:
-    """(the token's record, the token itself). The token is shown once; only its hash is kept."""
+def create_token(conn, user: dict, label, now: datetime | None = None, by: dict | None = None) -> tuple[dict, str]:
+    """(the token's record, the token itself). The token is shown once; only its hash is kept. `by` is the admin who made it for `user` (the log says so)."""
     label = _name(label, '用途说明')
     token = TOKEN_PREFIX + secrets.token_urlsafe(32)
     cursor = conn.execute('INSERT INTO api_token(token_hash, user_id, label, created_at) VALUES (?, ?, ?, ?)', (_digest(token), user['id'], label, _stamp(now or _now())))
-    _log(conn, user['username'], f'user:{user["id"]}', 'token_created', {'label': label})
+    _log(conn, (by or user)['username'], f'user:{user["id"]}', 'token_created', {'label': label, **({'for': user['username']} if by else {})})
     return {'id': cursor.lastrowid, 'label': label}, token
+
+
+def issue_token(conn, admin: dict, target_id, label) -> tuple[dict, str]:
+    """An admin makes a token that acts as another person (the agent page): it has that person's role and sees what they see. Not for a disabled account."""
+    target = get_user(conn, target_id) if isinstance(target_id, int) and not isinstance(target_id, bool) else None
+    if target is None or target['disabled']:
+        raise AccountError('没有这个在用的账号', 404)
+    record, token = create_token(conn, target, label, by=admin)
+    return {**record, 'user_id': target['id'], 'username': target['username'], 'display_name': target['display_name'], 'role': target['role']}, token
+
+
+def list_all_tokens(conn) -> list[dict]:
+    """Every token with whose it is, newest first (never the token: only its hash is kept)."""
+    return [{'id': i, 'label': label, 'user_id': uid, 'username': username, 'display_name': display, 'role': role, 'created_at': created, 'last_used_at': used, 'revoked': revoked is not None}
+            for i, label, uid, username, display, role, created, used, revoked in conn.execute(
+                'SELECT t.id, t.label, u.id, u.username, u.display_name, u.role, t.created_at, t.last_used_at, t.revoked_at FROM api_token t JOIN user u ON u.id = t.user_id ORDER BY t.id DESC')]
+
+
+def revoke_any_token(conn, admin: dict, token_id) -> None:
+    done = conn.execute('UPDATE api_token SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL', (_stamp(_now()), token_id))
+    if not done.rowcount:
+        raise AccountError('没有这个令牌', 404)
+    _log(conn, admin['username'], f'token:{token_id}', 'token_revoked')
 
 
 def token_user(conn, token: str | None, now: datetime | None = None) -> dict | None:

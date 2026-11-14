@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { actionFits, rowKey } from "./actionModel.js";
-import { TypeActions, RunAction } from "./TypeActions.jsx";
-import { confirmType, getActions, getTypeUses, getType, getTypeLog, getTypeObjects, proposeMeanings, setValuesHidden } from "./api.js";
+import { Explorer } from "./Explorer.jsx";
+import { TypeActions } from "./TypeActions.jsx";
+import { confirmType, getTypeUses, getType, getTypeLog, proposeMeanings, setValuesHidden } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText, typeLabel } from "./format.js";
@@ -11,7 +11,7 @@ import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { codeCell, confirmersText, logText, stateLine } from "./typeModel.js";
+import { confirmersText, logText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
 /** What stands behind a state, in one place: the line, who could confirm, and why it needs another look. */
@@ -139,55 +139,6 @@ function Properties({ type, mayBuild, reload }) {
   );
 }
 
-function Objects({ id, pageNo, mayBuild }) {
-  const [state, reload] = useLoad(() => getTypeObjects(id, pageNo), [id, pageNo]);
-  const [actions] = useLoad(() => (mayBuild ? getActions(id) : Promise.resolve({ actions: [] })), [id, mayBuild]);
-  const [running, setRunning] = useState(null);   // {action, key, text}: the form open for one object
-  const o = state.data;
-  if (state.status === "error") return <p className="error">{state.error}</p>;
-  if (!o) return <p className="muted">加载中</p>;
-  const at = (n) => hrefFor({ page: "type", id, tab: "objects", pageNo: n });
-  const runnable = (actions.data?.actions ?? []).filter((a) => a.state === "confirmed");
-  return (
-    <>
-      <p className="muted small" style={{ marginBottom: 8 }}>
-        来自 {o.dataset} 第 {o.dataset_version} 版，共 {o.total} 行，第 {o.total ? (o.page - 1) * o.limit + 1 : 0}–{Math.min(o.page * o.limit, o.total)} 行
-        {o.rows_limited && "；行规则限制了你能看到的行"}
-      </p>
-      {running && <RunAction key={`${running.action.id}/${running.text}`} action={running.action} objectKey={running.key} objectText={running.text} onDone={reload} onCancel={() => setRunning(null)} />}
-      <div className="table-wrap tall">
-        <table>
-          <thead><tr>{o.columns.map((c) => <th key={c.column} title={c.says}>{c.derived ? <><a href={hrefFor({ page: "type", id, tab: "derived" })}>{c.name}</a> <span className={c.confirmed ? "small" : "muted small"}>{c.confirmed ? "派生" : "派生，未确认"}</span></> : c.name}</th>)}{runnable.length > 0 && <th />}</tr></thead>
-          <tbody>
-            {o.rows.map((row, r) => (
-              <tr key={r}>
-                {row.map((v, i) => {
-                  const column = o.columns[i].column;
-                  if (!o.enums[column]) return <td key={i} className="cell" title={v ?? undefined}>{v ?? <span className="faint">—</span>}</td>;
-                  const cell = codeCell(v, o.enums[column]);
-                  return <td key={i}>{cell.value}{cell.note && <span className="muted small"> {cell.note}</span>}</td>;
-                })}
-                {runnable.length > 0 && (
-                  <td className="keep">
-                    {runnable.filter((a) => actionFits(a, o.columns, row)).map((a) => <button key={a.id} className="plain" onClick={() => setRunning({ action: a, ...rowKey(o.columns, row) })}>{a.name}</button>)}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {o.pages > 1 && (
-        <nav className="pager" aria-label="对象分页">
-          {o.page > 1 ? <a href={at(o.page - 1)}>上一页</a> : <span className="faint">上一页</span>}
-          <span>{o.page} / {o.pages}</span>
-          {o.page < o.pages ? <a href={at(o.page + 1)}>下一页</a> : <span className="faint">下一页</span>}
-        </nav>
-      )}
-    </>
-  );
-}
-
 function Log({ id }) {
   const [state] = useLoad(() => getTypeLog(id), [id]);
   if (state.status === "error") return <p className="error">{state.error}</p>;
@@ -234,7 +185,7 @@ function Uses({ id, uses }) {
 }
 
 export function TypePage({ route }) {
-  const { id, tab, pageNo } = route;
+  const { id, tab } = route;
   const [state, reload] = useLoad(() => getType(id), [id]);
   const [uses] = useLoad(() => getTypeUses(id), [id, state.data?.version]);
   const [error, setError] = useState("");
@@ -291,7 +242,7 @@ export function TypePage({ route }) {
           {tab === "derived" && <TypeDerived type={t} mayBuild={mayBuild} />}
           {tab === "views" && <TypeViews type={t} mayBuild={mayBuild} />}
           {tab === "actions" && mayBuild && <TypeActions type={t} mayBuild={mayBuild} />}
-          {tab === "objects" && <Objects id={id} pageNo={pageNo} mayBuild={mayBuild} />}
+          {tab === "objects" && <Explorer key={`${id}|${route.q ?? ""}`} id={id} route={route} />}
           {tab === "log" && <Log id={id} />}
         </>
       )}

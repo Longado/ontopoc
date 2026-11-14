@@ -27,6 +27,13 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/workspace/pipelines(/.+)?', 'builder'),   # pipelines are for builders: their steps and previews quote the data (workspace_pipelines.pipeline_visible)
     ('GET', r'/api/workspace/(sources|schedules)(/.+)?', 'builder'),   # a builder picks a source's tables and sets schedules; the connection details are shown to an admin only (workspace_sources.public_source)
     ('GET', r'/api/workspace/ask(/.+)?', 'viewer'),   # a person's own questions and answers, within what they may see (workspace_questions)
+    ('GET', r'/api/workspace/explore/.+', 'viewer'),   # the explorer reads through type visibility, viewer visibility and row rules like the objects tab (explorer)
+    ('POST', r'/api/workspace/explore/(table|chart)', 'viewer'),   # a POST only because the query is long; nothing is written
+    ('GET', r'/api/workspace/dashboards(/.+)?', 'viewer'),   # which boards a person may open follows the board's scope (dashboards._may_open)
+    ('POST', r'/api/workspace/dashboards/data', 'viewer'),   # a board worked out for whoever opens it, over what they may see
+    ('POST', r'/api/workspace/dashboards(/(update|delete|preview))?', 'builder'),
+    ('GET', r'/api/workspace/agent/(definitions|unconfirmed|derived)', 'viewer'),   # what an outside agent reads, as the token's person (agent_access)
+    ('GET', r'/api/workspace/agent(/skill)?', 'builder'),   # the page of what an agent can call, and the skill download
     ('GET', _RUNS, 'viewer'),
     ('GET', r'/api/ontology/jobs/[^/]+', 'viewer'),
     ('GET', r'/api/ontology/library(/.+)?', 'viewer'),
@@ -52,6 +59,8 @@ ROUTES: list[tuple[str, str, str]] = [
     # people and settings
     ('GET', r'/api/users', 'admin'),
     ('POST', r'/api/users(/(update|disable|reset-password))?', 'admin'),
+    ('GET', r'/api/users/tokens', 'admin'),   # tokens that act as a named person, for outside agents: made, listed and revoked by an admin
+    ('POST', r'/api/users/tokens(/revoke)?', 'admin'),
     ('GET', r'/api/settings', 'admin'),
     ('POST', r'/api/settings', 'admin'),
     ('GET', r'/api/workspace/permissions', 'admin'),   # who sees which type: only an admin reads or changes it

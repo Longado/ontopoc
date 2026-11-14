@@ -208,6 +208,30 @@ export const createSchedule = (fields) => send("/api/workspace/schedules", field
 export const updateSchedule = (fields) => send("/api/workspace/schedules/update", fields);
 export const deleteSchedule = (id) => send("/api/workspace/schedules/delete", { id });
 
+// the use layer: the explorer, boards, and what an outside agent may call. Reads that are POSTs only because the query is long write nothing, so they do not tell the navigation to count again.
+const readPost = (path, payload) => request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+/** What the explorer offers on a type: its fields (with the values a filter can be picked from), the views, the relations a pivot goes through. */
+export const getExploreMeta = (type) => request(`/api/workspace/explore/${encodeURIComponent(type)}`);
+export const exploreTable = (query, page = 1) => readPost("/api/workspace/explore/table", { query, page });
+export const exploreChart = (query, chart) => readPost("/api/workspace/explore/chart", { query, chart });
+export const getExploreObject = (type, n) => request(`/api/workspace/explore/${encodeURIComponent(type)}/object/${n}`);
+
+export const getBoards = () => request("/api/workspace/dashboards");
+export const getBoard = (id) => request(`/api/workspace/dashboards/${id}`);
+/** The board worked out for this person; `bar` is the filter bar's picks {field: value}. */
+export const getBoardData = (id, bar = {}) => readPost("/api/workspace/dashboards/data", { id, bar });
+export const previewBoard = (spec, bar = {}) => readPost("/api/workspace/dashboards/preview", { spec, bar });
+export const createBoard = (payload) => send("/api/workspace/dashboards", payload);
+export const updateBoard = (payload) => send("/api/workspace/dashboards/update", payload);
+export const deleteBoard = (id) => send("/api/workspace/dashboards/delete", { id });
+
+export const getAgentInfo = () => request("/api/workspace/agent");
+/** The address that downloads the skill folder (a zip) as the signed-in person. */
+export const SKILL_HREF = "/api/workspace/agent/skill";
+export const getAgentTokens = () => request("/api/users/tokens").then((b) => b.tokens);
+export const createAgentToken = (userId, label) => send("/api/users/tokens", { user_id: userId, label });
+export const revokeAgentToken = (id) => send("/api/users/tokens/revoke", { id });
+
 /** A file's bytes as base64, which is how the service takes them. */
 export async function fileToBase64(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
