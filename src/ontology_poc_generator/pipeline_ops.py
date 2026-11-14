@@ -13,7 +13,6 @@ from __future__ import annotations
 import difflib
 import re
 
-from ontology_poc_generator.named_views import orderable
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, EXPR_TYPE, NUMBER_TYPES, TYPE_WORD, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import format_regex
 
@@ -530,8 +529,6 @@ def _dedupe(op, src, columns, ctx, label):
     order = _col(columns, op.get('order_by'), label, '排序的列') if op.get('order_by') else None
     if order is None:
         raise OpError(f'{label}：按主键排重要指定按哪一列排先后（order_by），否则留哪一条是不确定的')
-    if not orderable(order['type']):
-        raise OpError(f'{label}：「{order["name"]}」的内容排不出先后（数字、年月、日期才可以）')
     part = ', '.join(_q(c['name']) for c in keys)
     ref = _ref(order)
     direction = '' if keep == 'first' else ' DESC'

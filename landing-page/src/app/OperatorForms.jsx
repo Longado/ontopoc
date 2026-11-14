@@ -6,7 +6,7 @@ import { typeLabel } from "./format.js";
 import { AGG_LABEL, CAST_LABEL, CLEAN_LABEL, CMP_LABEL, UNMAPPED_LABEL, aggDefaultName } from "./pipelineModel.js";
 import { Select } from "./Select.jsx";
 
-const ORDERABLE = ["integer", "decimal", "date", "datetime", "month"];
+const NUMBERISH = ["integer", "decimal", "date", "datetime", "month"];
 const NO_VALUE = ["is_null", "not_null"];
 
 function ColSelect({ cols, value, onChange, label, blank = "选一列", only }) {
@@ -250,9 +250,10 @@ function DedupeForm({ op, cols, onChange }) {
             <option value="last">最晚的一条</option>
           </Select>
           <span>按</span>
-          <ColSelect cols={cols} only={(c) => ORDERABLE.includes(c.type)} value={op.order_by} label="按哪一列排先后" blank="选排先后的列" onChange={(order_by) => onChange({ ...op, order_by })} />
+          <ColSelect cols={cols} value={op.order_by} label="按哪一列排先后" blank="选排先后的列" onChange={(order_by) => onChange({ ...op, order_by })} />
         </Row>
       )}
+      {op.keys.length > 0 && op.order_by && !NUMBERISH.includes(cols.find((c) => c.name === op.order_by)?.type) && <p className="hint">这一列是文字，按字母顺序排先后：V10 会排在 V2 前面。</p>}
     </div>
   );
 }

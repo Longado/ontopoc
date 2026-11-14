@@ -376,6 +376,11 @@ class DedupeAndLabelTests(Workspace):
         self.assertEqual((op['rows_out'], op['dropped'], op['blank_key_rows_kept']), (4, 1, 2))
         self.assertEqual(op['examples'], [{'key': {'k': 'a'}, 'rows': 2}])
 
+    def test_a_text_column_can_order_the_rows_of_a_key_so_a_table_of_only_text_can_be_deduplicated(self):
+        tables = store(self.conn, {'客户': [{'k': 'KH012', 'city': '合肥', 'v': 'a-早'}, {'k': 'KH012', 'city': '苏州', 'v': 'b-晚'}, {'k': 'KH013', 'city': '无锡', 'v': 'a-早'}]})
+        kept = self.rows([{'op': 'dedupe', 'keys': ['k'], 'keep': 'last', 'order_by': 'v'}], '客户', tables)
+        self.assertEqual(sorted((r[0], r[1]) for r in kept), [('KH012', '苏州'), ('KH013', '无锡')])
+
     def test_the_whole_row_is_the_key_when_no_key_is_given(self):
         tables = store(self.conn, {'行': [{'a': '1', 'b': 'x'}, {'a': '1', 'b': 'x'}, {'a': '2', 'b': 'x'}]})
         self.assertEqual(self.run_ops([{'op': 'dedupe'}], '行', tables=tables)['t']['rows_out'], 2)
