@@ -442,3 +442,6 @@ input[type="date"] { font: inherit; border: 0.5px solid var(--faint); border-rad
 /* a table whose cells hold sentences wraps them at any width; names and numbers stay on one line */
 table.wraps td { white-space: normal; }
 table.wraps td.keep { white-space: nowrap; }
+
+.token-form { flex-wrap: wrap; }
+.token-form input[type="text"] { flex: 1 1 220px; min-width: 200px; }

@@ -21,5 +21,14 @@ export const firstSentence = (text) => text.split(/[。\n]/)[0];
 /** What the skill folder holds, in one line. */
 export const skillText = (skill) => `${skill.types} 个对象类型、${skill.relations} 条关系、${skill.views} 个视图、${skill.derived} 个派生属性；都是已确认的，没有数据行`;
 
+export const SCOPES = [["read", "只读：读定义、提问、看数据"], ["all", "全部：和主人在页面上能做的一样"]];
+export const EXPIRY_DAYS = [7, 30, 90, 365];
+
+/** A token's reach in a word. */
+export const scopeWord = (t) => (t.scope === "all" ? "全部" : "只读");
+
+/** When a token ends: its day, or that it has ended already; a token made before expiry existed has no end. */
+export const endText = (t) => (!t.expires_at ? "不过期" : t.expired ? "已过期" : t.expires_at.slice(0, 10));
+
 /** A token's state in a word. */
-export const tokenState = (t) => (t.revoked ? "已撤销" : t.last_used_at ? "在用" : "还没用过");
+export const tokenState = (t) => (t.revoked ? "已撤销" : t.expired ? "已过期" : t.last_used_at ? "在用" : "还没用过");
