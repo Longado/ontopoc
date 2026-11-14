@@ -169,3 +169,44 @@ class AskBudgetTests(AgentCase):
             with self.assertRaises(ask_budget.AskBudgetSpent):
                 ask_budget.take(conn, person, now=1000.0 + 3600 + 1)   # and the one before it was counted, the refused one was not
             ask_budget.take(conn, {'id': 7, 'token_id': None}, now=1200.0)   # no token: only the person's count, which is not full
+
+
+class BoardExposureTests(BoardCase):
+    def test_a_reader_gets_the_rendered_board_not_its_definition_or_who_else_it_was_published_to(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            ids = self.ids(admin)
+            board = self.make(ann, scope='named', visible_to=[ids['vera'], ids['bob']])
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'customer', 'visible_to': [ids['ann']]})[0], 200)   # Vera may not see customers any more
+            for reader in (vera, bob):
+                seen = reader.get(f'/api/workspace/dashboards/{board["id"]}')[1]
+                self.assertEqual((seen['name'], seen['scope'], seen['components']), ('订单看板', 'named', 4))
+                for key in ('spec', 'visible_to', 'visible_names'):
+                    self.assertNotIn(key, seen)
+                self.assertNotIn('customer', str(seen))
+            self.assertEqual(self.card(self.data(vera, board['id']), 'cust')['status'], 'unavailable')   # what she may not see is said where it would be drawn
+            for author in (ann, admin):
+                seen = author.get(f'/api/workspace/dashboards/{board["id"]}')[1]
+                self.assertEqual(len(seen['spec']['components']), 4)
+                self.assertEqual(sorted(seen['visible_names']), ['Bob', 'Vera'])
+
+    def test_a_board_a_person_may_not_open_is_not_found_whether_or_not_it_exists_and_only_one_they_could_open_is_said_to_be_expired(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            ids = self.ids(admin)
+            made = {name: self.make(ann, name, **more)['id'] for name, more in (
+                ('private', {}), ('everyone', {'scope': 'everyone'}), ('named bob', {'scope': 'named', 'visible_to': [ids['bob']]}), ('named vera', {'scope': 'named', 'visible_to': [ids['vera']]}))}
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            conn.execute("UPDATE dashboard SET expires_at = '2020-01-01'")
+            conn.commit()
+            conn.close()
+            status = lambda client, name: client.get(f'/api/workspace/dashboards/{made[name]}')[0]
+            self.assertEqual(bob.get('/api/workspace/dashboards/999')[0], 404)
+            self.assertEqual([status(bob, n) for n in ('private', 'named vera')], [404, 404])   # not his: the same answer as for a board that is not there
+            self.assertEqual([status(bob, n) for n in ('everyone', 'named bob')], [410, 410])   # his, and over
+            self.assertEqual([bob.post('/api/workspace/dashboards/data', {'id': made[n]})[0] for n in ('private', 'everyone')], [404, 410])
+            self.assertEqual([status(ann, n) for n in made] + [status(admin, n) for n in made], [200] * 8)   # the author and an admin still open what has ended

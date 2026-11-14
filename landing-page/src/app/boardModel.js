@@ -6,7 +6,8 @@ export const REFRESH_OPTIONS = [[0, "只在打开时读"], [60, "每分钟"], [3
 export const COMPONENT_KINDS = [["number", "指标卡"], ["bar", "柱状图"], ["pie", "饼图"], ["histogram", "直方图"], ["table", "统计表"], ["rows", "明细表"]];
 
 /** Who may open a board, in words; the people are named when the scope names them. */
-export const scopeText = (board) => (board.scope === "named" ? `指定的人：${(board.visible_names ?? []).join("、") || "没有人"}` : SCOPE_LABEL[board.scope] ?? board.scope);
+/** Who a board is published to. The names come only to its author and an admin; a reader is told it is for named people. */
+export const scopeText = (board) => (board.scope === "named" ? (board.visible_names ? `指定的人：${board.visible_names.join("、") || "没有人"}` : "指定的人") : SCOPE_LABEL[board.scope] ?? board.scope);
 
 export const expiryText = (board) => (!board.expires_at ? "不过期" : board.expired ? `${board.expires_at} 已过期，只有主人和管理员打得开` : `到 ${board.expires_at}`);
 
