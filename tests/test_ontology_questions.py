@@ -72,10 +72,16 @@ class AskTests(unittest.TestCase):
         out = ask_questions(PROPOSAL, BUNDLE, self.Model({'nope': 1}))
         self.assertEqual((out['items'], out['error']), ([], '模型没有返回问题列表'))
 
-    def test_the_model_sees_the_few_values_a_category_field_takes(self):
+    def test_the_model_sees_the_few_values_a_category_field_takes_when_they_repeat_or_a_person_gave_them_meanings(self):
         values = categorical_values(PROPOSAL, BUNDLE)
-        self.assertEqual(values['客户.城市'], ['常州', '无锡', '苏州'])
-        self.assertEqual(values['客户.客户编号'], ['C1', 'C2'])   # identity fields with few values are listed too
+        self.assertNotIn('客户.城市', values)   # three rows, three cities: listing them would hand over the table
+        self.assertNotIn('订单.金额', values)
+        self.assertEqual(values['客户.客户编号'], ['C1', 'C2'])   # identity fields with repeating values are listed too
+        rows = BUNDLE['sources']['客户']['records']
+        repeating = {**BUNDLE, 'sources': {**BUNDLE['sources'], '客户': {**BUNDLE['sources']['客户'], 'records': [*rows, {'客户编号': 'C3', '名称': '丙', '城市': '苏州'}]}}}
+        self.assertEqual(categorical_values(PROPOSAL, repeating)['客户.城市'], ['常州', '无锡', '苏州'])   # 苏州 comes back
+        coded = {**BUNDLE, 'meanings': {'客户.城市': {'labels': {'苏州': '苏州市'}}}}
+        self.assertEqual(categorical_values(PROPOSAL, coded)['客户.城市'], ['常州', '无锡', '苏州'])   # confirmed meanings: a code column
 
 
 if __name__ == '__main__':

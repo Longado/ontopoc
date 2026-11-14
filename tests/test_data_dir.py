@@ -25,5 +25,19 @@ class DataDirTests(unittest.TestCase):
         self.assertEqual(started_with([]).kwargs['output_dir'], ontology_server.ROOT / 'output/ontology-runs')
 
 
+    def test_a_folder_that_was_open_to_other_accounts_is_closed_when_the_service_starts(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d) / 'runs'
+            (folder / 'jobs').mkdir(parents=True, mode=0o755)
+            run = folder / 'a.bundle.json'
+            run.write_text('{}')
+            run.chmod(0o644)
+            (folder / 'jobs' / 'j.json').write_text('{}')
+            folder.chmod(0o755)
+            server = ontology_server.make_server(port=0, output_dir=folder)
+            server.server_close()
+            self.assertEqual([p.stat().st_mode & 0o777 for p in (folder, folder / 'jobs', run, folder / 'jobs' / 'j.json')], [0o700, 0o700, 0o600, 0o600])
+
+
 if __name__ == '__main__':
     unittest.main()

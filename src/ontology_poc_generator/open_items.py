@@ -15,6 +15,7 @@ from ontology_poc_generator.ontology_confirm import without_wrong
 from ontology_poc_generator.ontology_eval import _row_owners
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value
 from ontology_poc_generator.repeated_keys import EXAMPLES as REPEAT_EXAMPLES, applicable, repeated_keys, unmet
+from ontology_poc_generator.review_stack import REPLY_SAYS, RECORDED, anchor_changes, anchor_of, card_replies, code_check, code_examples, example_rows, menu
 
 MAX_MERGED = 3      # groups of an answer listed; the rest is in the check pack
 MAX_SAME_NAME = 5   # groups of one type listed; all of them are counted
@@ -43,6 +44,12 @@ def _num(value) -> str:
 
 def _item(kind: str, ask: str, target: dict, facts=(), from_model: bool = False, **extra) -> dict:
     return {'kind': kind, 'ask': ask, 'facts': list(facts), 'from_model': from_model, 'target': target, **extra}
+
+
+def _counted(unit: str, **counts: int) -> dict:
+    """The anchor of an item that is about how many: {'noun', 'members': [], 'counts': {what: how many}, 'unit'}. It comes back when a count
+    has grown to more than twice or fallen below half, by at least five (anchors.moved with nothing to measure it against)."""
+    return {'noun': '内容', 'members': [], 'counts': dict(counts), 'unit': unit}
 
 
 def _questions(evaluation: dict) -> tuple[dict, dict]:
@@ -111,7 +118,8 @@ def _merged(questions: dict) -> list:
             ask = (f'「{question}」的答案里，“{g["group"]}”这一组下有 {_num(g["objects"])} 个不同的{g["reached"]}'
                    f'（{"、".join(g["examples"])}{more}），按同一个算了。它们是同一个吗？')
             out.append(_item('merged', ask, _qa_target(place, question),
-                             [f'{_num(g["starts"])} 个{g["start"]}落在“{g["group"]}”这一组里'], question=question, id=f'merged:{question}|{g["group"]}'))
+                             [f'{_num(g["starts"])} 个{g["start"]}落在“{g["group"]}”这一组里'], question=question, id=f'merged:{question}|{g["group"]}',
+                             anchor=_counted('个', **{f'一组里不同的{g["reached"]}': g['objects']})))
     return out
 
 
@@ -137,7 +145,8 @@ def _elsewhere(questions: dict, label) -> list:
                       + (f'其中连着 {_num(e["linked"])} 个{start}' if e['linked'] else f'没有{start}连着它们') for e in es]
         asked_about = '、'.join(dict.fromkeys(label(e['type']) for e in found))
         out.append(_item('found_elsewhere', f'「{question}」在{start}里{said}。这道题问的是不是{asked_about}？',
-                         _qa_target(place, question), facts, question=question, id=f'found_elsewhere:{question}'))
+                         _qa_target(place, question), facts, question=question, id=f'found_elsewhere:{question}',
+                         anchor=_counted('个', **{'编号含这个值的对象': sum(e['count'] for e in found)})))
     return out
 
 
@@ -160,7 +169,8 @@ def _unlinked(fit: dict, types: dict, relations: dict, kept: dict, label, relati
         facts = [*([f'没连上任何对象的{label(r["from"])}，例如 {"、".join(examples)}'] if examples else []),
                  *([f'其中 {_num(stat["empty_rows"])} 行用来连的编号是空的'] if stat.get('empty_rows') else [])]
         out.append(_item('unlinked', ask, {'tab': 'graph', 'relation': r['key']}, facts, relation=r['key'], id=f'unlinked:{r["key"]}',
-                         complete_id=complete_id(types[other])))
+                         complete_id=complete_id(types[other]), check={'status': 'failed', 'text': f'连得上 {_num(stat["linked_rows"])} / {_num(stat["rows"])} 行'},
+                         anchor={'noun': '内容', 'members': [], 'counts': {'没连上的行': left}, 'total': stat['rows']}))
     return out
 
 
@@ -187,7 +197,7 @@ def _same_name(p: dict, bundle: dict, graph: dict, kept: dict, label) -> list:
         ask = (f'{name}里有 {_num(len(same))} 组名字相同、编号不同，例如 {same[0][0][0]}（{numbers(same[0])}）。'
                f'它们是同一个{name}的不同主体，还是该合并？')
         out.append(_item('same_name', ask, {'tab': 'objects', 'object': t['key']},
-                         [f'{g[0][0]}：{numbers(g)}' for g in same[:MAX_SAME_NAME]], id=f'same_name:{t["key"]}'))
+                         [f'{g[0][0]}：{numbers(g)}' for g in same[:MAX_SAME_NAME]], id=f'same_name:{t["key"]}', anchor=_counted('组', **{'名字相同的组': len(same)})))
     return out
 
 
@@ -198,16 +208,19 @@ def _unstable(stability: dict, relations: dict, kept: dict, label, relation_name
     for key, seen in (stability.get('relations') or {}).items():
         if seen < runs and key in kept['relations']:
             out.append(_item('unstable', f'关系“{relation_name(relations[key])}”在 {runs} 次建模里只出现了 {seen} 次。这条关系要保留吗？',
-                             target, [f'共建模 {runs} 次，这条关系出现了 {seen} 次'], relation=key, id=f'unstable:relation:{key}'))
+                             target, [f'共建模 {runs} 次，这条关系出现了 {seen} 次'], relation=key, id=f'unstable:relation:{key}',
+                             anchor={**_counted('次', 出现次数=seen), 'total': runs}))
     for key, seen in (stability.get('types') or {}).items():
         if seen < runs and key in kept['types']:
             out.append(_item('unstable', f'对象“{label(key)}”在 {runs} 次建模里只出现了 {seen} 次。这类对象要保留吗？',
-                             target, [f'共建模 {runs} 次，这类对象出现了 {seen} 次'], id=f'unstable:type:{key}'))
+                             target, [f'共建模 {runs} 次，这类对象出现了 {seen} 次'], id=f'unstable:type:{key}',
+                             anchor={**_counted('次', 出现次数=seen), 'total': runs}))
     elsewhere = stability.get('elsewhere') or {}
     for kind, word in (('relations', '关系'), ('types', '对象')):
         for found in elsewhere.get(kind) or []:
             out.append(_item('unstable', f'另外 {found["count"]} 次建模里出现过{word}“{found["label"]}”，这次的本体里没有。要不要加？',
-                             target, [f'共建模 {runs} 次，另外 {found["count"]} 次出现了它'], id=f'unstable:new:{kind}:{found["label"]}'))
+                             target, [f'共建模 {runs} 次，另外 {found["count"]} 次出现了它'], id=f'unstable:new:{kind}:{found["label"]}',
+                             anchor={**_counted('次', 另外出现的次数=found['count']), 'total': runs}))
     return out
 
 
@@ -234,6 +247,8 @@ def _check_findings(fit: dict, kept: dict, label, relations: dict, settled: froz
          lambda x: f'{label(x["type"])}：只靠{"、".join(map(quote, x["fields"]))}识别'),
         ('unused_sources', len, '张上传的表没被本体读取', '是漏了还是确实用不上？',
          lambda x: f'“{x["source"]}”表：{_num(x["rows"])} 行、{_num(x["fields"])} 个字段'))
+    counted = {'identity_conflicts': ('处', '取值不一样的地方'), 'identity_spellings': ('个', '写法不止一种的对象'), 'suspected_duplicates': ('组', '只差前面 0 的编号'),
+               'missing_across_sources': ('个', '被提到却缺的对象'), 'identity_risks': ('类', '只靠名称识别的对象'), 'unused_sources': ('张', '没被读取的表')}
     out = []
     for key, count, said, question, line in specs:
         # unused tables have no type; a missing object found through a relation goes with the relation
@@ -242,7 +257,8 @@ def _check_findings(fit: dict, kept: dict, label, relations: dict, settled: froz
                  and not (key == 'identity_conflicts' and (x['type'], x['source'], x['identity']) in settled)]
         if found:
             lines = [line(x) for x in found[:MAX_EXAMPLES]]
-            out.append(_item('check_finding', f'有 {_num(count(found))} {said}，例如{lines[0]}。{question}', {'tab': 'check'}, lines, id=f'check_finding:{key}'))
+            out.append(_item('check_finding', f'有 {_num(count(found))} {said}，例如{lines[0]}。{question}', {'tab': 'check'}, lines, id=f'check_finding:{key}',
+                             anchor=_counted(counted[key][0], **{counted[key][1]: count(fit.get(key) or [])})))   # the data's count: not after what a person judged or settled took some away
     return out
 
 
@@ -266,8 +282,12 @@ def _repeated_keys(ontology: dict, bundle: dict, graph: dict, kept: dict, label)
         again = unmet(g, chosen.get(g['rule_key'])) or ''
         ask = (f'{again}{label(g["type"])}（{g["source"]}表）里有 {_num(len(g["objects"]))} 个编号出现在不止一行，共 {_num(g["rows"])} 行，'
                f'例如 {shown[0]["identity"]}。这些行怎么算：每一行都留、只留最新的，还是当作数据错误？')
+        records = bundle['sources'][g['source']]['records']
         out.append(_item('repeated_key', ask, {'tab': 'objects', 'object': g['type']}, lines, id=g['id'],
-                         repeat={'type': g['type'], 'source': g['source'], 'identities': len(g['objects']), 'rows': g['rows'], 'columns': g['latest_columns']}))
+                         repeat={'type': g['type'], 'source': g['source'], 'identities': len(g['objects']), 'rows': g['rows'], 'columns': g['latest_columns']},
+                         examples=example_rows(g['source'], records, shown[0]['rows'], [*list(records[0])[:1], *(c for c, _ in shown[0]['differs'])]),   # the table's first column (its key, usually), then where the rows differ
+                         check={'status': 'failed', 'text': f'编号唯一性没通过：{_num(len(g["objects"]))} 个编号出现在不止一行，共 {_num(g["rows"])} 行'},
+                         anchor={'noun': '重复的编号', 'members': [o['identity'] for o in g['objects']]}))
     return out
 
 
@@ -338,7 +358,7 @@ def _data_gaps(tied: dict, plain: list, bundle: dict, coded: frozenset) -> list:
                          {'tab': 'data', 'table': tables[0]}, [_column_facts(bundle, t, column) for t in tables], from_model=True, id=f'data_gap:{column}'))
     if plain:
         out.append(_item('data_gaps', f'模型指出 {_num(len(plain))} 处数据缺口（下面逐条）。客户那边有没有能补上的数据？',
-                         {'tab': 'objects', 'place': 'build'}, plain, from_model=True, id='data_gaps'))
+                         {'tab': 'objects', 'place': 'build'}, plain, from_model=True, id='data_gaps', anchor=_counted('处', 数据缺口=len(plain))))
     return out
 
 
@@ -359,7 +379,7 @@ def _unanswered(questions: dict) -> list:
             why = item['reason']
         facts.append(f'「{question}」：{why}')
     return [_item('unanswered', f'{_num(len(stuck))} 道问过的题现在答不了。这次 POC 要不要答它们？',
-                  {'tab': 'qa', 'place': 'ask'}, facts, from_model, id='unanswered')]
+                  {'tab': 'qa', 'place': 'ask'}, facts, from_model, id='unanswered', anchor=_counted('道', 答不了的题=len(stuck)))]
 
 
 def _card_blank(card: dict | None) -> list:
@@ -407,7 +427,9 @@ def _code_meanings(codes: dict | None, tied: dict | None = None) -> list:
                          '数据里没有写它们是什么意思。每个代码指什么？',
                          {'tab': 'data', 'table': profile['source']}, facts, from_model=False, id=profile['id'],
                          column={'source': profile['source'], 'column': profile['column'], 'field': profile['field'], 'rows': profile['rows'],
-                                 'values': values}))
+                                 'values': values},
+                         check=code_check(values),
+                         anchor={'noun': '取值', 'members': [v['value'] for v in values], 'counts': {f'取值 {v["value"]}': v['rows'] for v in values}, 'total': profile['rows']}))
     return out
 
 
@@ -442,7 +464,8 @@ def _name_vs_calc(ontology: dict, bundle: dict) -> list:
         elif f['view']:
             out.append(_item('name_by_view', f'「{f["table"]}」的「{f["column"]}」不是用「{f["source"]}」的全部行算的{says}，是按「{f["view"]}」算的{says}。名字要不要写明？',
                              target, [f'{f["compared"]} 行全部和按「{f["view"]}」重算的{says}对得上，按全部行算有 {_num(f["mismatched"])} 行对不上', *notes],
-                             id=f'name_by_view:{f["table"]}.{f["column"]}', column={**head, 'view': f['view']}))
+                             id=f'name_by_view:{f["table"]}.{f["column"]}', column={**head, 'view': f['view']},
+                             anchor={'noun': '内容', 'members': [], 'counts': {'按全部行对不上的行': f['mismatched']}, 'total': f['compared']}))
         elif f['mismatched']:
             actual = f'，这些行算出来都是{STAT_WORDS[f["actual"]]}' if f['actual'] else ''
             ask = (f'「{f["table"]}」的「{f["column"]}」名字说是{says}，用「{f["source"]}」的「{f["source_column"]}」按{"、".join(f["by"])}重算，'
@@ -453,11 +476,14 @@ def _name_vs_calc(ontology: dict, bundle: dict) -> list:
                       + (f'，{"、".join(STAT_WORDS[k] for k in r["agrees_with"])}是 {_num(r["computed"][r["agrees_with"][0]])}' if r['agrees_with'] and not r['agrees'] else '')
                       for r in f['rows'] if not r['agrees']]
             out.append(_item('name_vs_calc', ask, target, facts, id=f'name_vs_calc:{f["table"]}.{f["column"]}',
-                             column={**head, 'actual': f['actual'], 'actual_text': STAT_WORDS.get(f['actual']), 'how': _how(f['says'])}))
+                             column={**head, 'actual': f['actual'], 'actual_text': STAT_WORDS.get(f['actual']), 'how': _how(f['says'])},
+                             check={'status': 'failed', 'text': f'重算{says}，{_num(f["compared"])} 行里 {_num(f["mismatched"])} 行对不上'},
+                             anchor={'noun': '内容', 'members': [], 'counts': {'对不上的行': f['mismatched']}, 'total': f['compared']}))
         elif written_bad:
             out.append(_item('name_values', f'「{f["table"]}」的「{f["column"]}」名字说是{says}，其余的行和重算对得上，但有 {_num(f["written_unreadable"])} 个值不是数字'
                              f'（如{"、".join(f["written_unreadable_shown"])}），没法比。是漏填，还是写法要改？',
-                             target, notes, id=f'name_values:{f["table"]}.{f["column"]}', column=head))
+                             target, notes, id=f'name_values:{f["table"]}.{f["column"]}', column=head,
+                             anchor=_counted('个', 不是数字的值=f['written_unreadable'])))
     return out
 
 
@@ -499,6 +525,14 @@ def open_items(run: dict, bundle: dict, graph: dict | None = None, card: dict | 
             *_unanswered(questions), *_unjudged(run, p)]
 
 
+def with_replies(items: list, bundle: dict | None = None) -> list:
+    """Each item as the review stack shows it: with the replies its kind offers (review_stack.menu) and, for a code column, one
+    row for each of its first values from the stored table; `free_text` where a person can answer in words without picking a choice. Done where the lists are served, not in open_items, which the
+    minutes and the MCP tools read as well."""
+    return [{**i, 'replies': menu(i['kind']), **({'free_text': True} if CHOICES.get(i['kind']) else {}),   # an item with choices of its own can also be answered in words alone
+             **({'examples': e} if i['kind'] == 'code_meaning' and bundle and (e := code_examples(i, bundle)) else {})} for i in items]
+
+
 def code_meaning_items(codes: dict) -> list:
     """Only the code-meaning items (see _code_meanings): the one kind of thing that can be settled on a run whose draft was
     blocked, since it needs the stored tables and nothing from the ontology."""
@@ -507,8 +541,10 @@ def code_meaning_items(codes: dict) -> list:
 
 def check_answers(listed: list, raw, by, at: str) -> dict:
     """The answers posted for items, ready to keep: {item id: answer}. `listed` is every item of the run now, open or
-    answered. A choice is optional; without one the words are required. Anything wrong raises CardError and nothing
-    is returned."""
+    answered. An entry is {"id", and one of "choice" (the kind's own) or "reply" (confirm, wrong, not_applicable, exception: see
+    review_stack), "text", "basis", "mode" ('single' or 'bulk')}. A reply or choice is optional; without one the words are
+    required; {"reply": "reopen"} takes an answer back. A reply that stays decided (not_applicable, exception) keeps what the item is about now, so that the next upload can tell whether it still holds. Anything wrong
+    raises CardError and nothing is returned."""
     by = check_by(by)
     if not isinstance(raw, list):
         raise CardError('items 要写成列表')
@@ -520,15 +556,26 @@ def check_answers(listed: list, raw, by, at: str) -> dict:
         item = by_id.get(entry.get('id')) if isinstance(entry.get('id'), str) else None
         if item is None:
             raise CardError('这件事已经不在清单上了')
-        kind, choice = item['kind'], entry.get('choice')
-        if kind not in CHOICES:
+        if entry.get('reply') == 'reopen':   # a decision taken back: the item is open again (the old one stays in the card's history)
+            out[item['id']] = None
+            continue
+        kind, choice, reply, mode = item['kind'], entry.get('choice'), entry.get('reply'), entry.get('mode', 'single')
+        if kind not in CHOICES and reply not in card_replies(kind):
             raise CardError(f'这件事不能用答复来关掉：{BY_DOING.get(kind, "要照它的要求去做")}')
-        if choice is not None and choice not in CHOICES[kind]:
-            raise CardError(f'这件事的 choice 只能是：{"、".join(CHOICES[kind])}' if CHOICES[kind] else '这件事没有可选的答复，只能写文字')
+        if mode != 'single':
+            raise CardError('mode 只能是 single；批量通过只能走“一起通过”')
+        if reply is not None and (choice is not None or reply not in card_replies(kind)):
+            raise CardError('这件事的 reply 只能是：' + '、'.join(card_replies(kind)) + '，且不能和 choice 一起给' if card_replies(kind) else '这件事没有可选的 reply')
+        if choice is not None and choice not in CHOICES.get(kind, ()):
+            raise CardError(f'这件事的 choice 只能是：{"、".join(CHOICES[kind])}' if CHOICES.get(kind) else '这件事没有可选的答复，只能写文字')
         text, basis = clean_text(entry.get('text'), MAX_NOTE, '答复的文字'), clean_text(entry.get('basis'), MAX_BASIS, '出处')
-        if choice is None and not text:
+        needs = next((m['needs_text'] for m in menu(kind) if m['id'] == reply), False)
+        if needs and not text:
+            raise CardError('已知例外要写原因，“不对”要写对的是什么' if reply != 'confirm' else '要写下客户怎么答的')
+        if choice is None and reply is None and not text:
             raise CardError('要选一个答复，或写几个字')
-        out[item['id']] = {'choice': choice, 'text': text, 'by': by, 'basis': basis, 'at': at, 'asked': item['ask']}
+        out[item['id']] = {'choice': choice, 'text': text, 'by': by, 'basis': basis, 'at': at, 'asked': item['ask'], 'mode': mode,
+                           **({'reply': reply} if reply else {}), **({'anchor': anchor} if reply in RECORDED and (anchor := anchor_of(item)) else {})}
     return out
 
 
@@ -543,7 +590,7 @@ def linked_cells(listed: list, answers: dict, stored: dict, at: str) -> dict:
         cell_id = by_id[item_id].get('complete_id')
         if cell_id is None:
             continue
-        if answer['choice'] == 'incomplete':
+        if answer and answer['choice'] == 'incomplete':
             out[cell_id] = {'value': 'partial', 'note': answer['text'], 'by': answer['by'], 'basis': answer['basis'], 'at': at, 'item': item_id}
         elif (stored.get(cell_id) or {}).get('value') == 'partial' and stored[cell_id].get('item') == item_id:
             out[cell_id] = None
@@ -551,13 +598,19 @@ def linked_cells(listed: list, answers: dict, stored: dict, at: str) -> dict:
 
 
 def split_answers(items: list, answers: dict) -> tuple[list, list]:
-    """The items still open, and the ones the client has answered, each with its answer (and, for a choice, the words
-    for it). An answer whose item is not on the list this time is in neither."""
+    """The items still open, and the ones the client has answered, each with its answer (and the words for a choice or a
+    reply). An answer whose item is not on the list this time is in neither. A decision that stays decided (not applicable, an
+    exception) whose anchor has broken since is open again, with the old decision and what changed in `reopened`."""
     open_, answered = [], []
     for item in items:
         got = answers.get(item['id'])
+        now = anchor_of(item)   # None for an item with nothing structured (an answer kept on its facts by an earlier version of the service holds nothing to compare)
+        changes = anchor_changes(got['anchor'], now) if got and got.get('anchor') and now else []
         if got is None:
             open_.append(item)
+        elif changes:
+            open_.append({**item, 'reopened': {'reply': got['reply'], 'says': REPLY_SAYS[got['reply']], 'by': got['by'], 'at': got['at'], 'text': got['text'], 'changes': changes}})
         else:
-            answered.append({**item, 'answer': {**got, **({'says': CHOICE_SAYS[got['choice']]} if got.get('choice') else {})}})
+            says = CHOICE_SAYS[got['choice']] if got.get('choice') else REPLY_SAYS[got['reply']] if got.get('reply') else None
+            answered.append({**item, 'answer': {**got, **({'says': says} if says else {})}})
     return open_, answered

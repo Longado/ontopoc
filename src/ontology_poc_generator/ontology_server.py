@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import sys
 import threading
 from urllib.parse import parse_qs, unquote, urlsplit
 import uuid
@@ -21,19 +22,22 @@ from ontology_poc_generator.org_documents import build_and_evaluate_org, org_mer
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
 from ontology_poc_generator.code_meanings import check_enum, code_columns, draft_meanings, meanings_of, merge_enum
 from ontology_poc_generator.answer_checks import choose_rows, definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
-from ontology_poc_generator.named_views import compiled_views, definitions_signature, drop_views_except, name_views, read_views, save_definition, sync_views, table_columns, view_anchor_now, view_rowids, views_of_run
-from ontology_poc_generator.pipelines import ROW_CAP, run_pipeline, workspace_datasets, workspace_views
+from ontology_poc_generator.accounts import two_person
+from ontology_poc_generator.actor import set_actor
+from ontology_poc_generator.named_views import StaleProposal, proposed_views, compiled_views, definitions_signature, drop_views_except, name_views, read_views, save_definition, sync_views, table_columns, view_anchor_now, view_rowids, views_of_run
+from ontology_poc_generator.pipelines import PREVIEW_SECONDS, ROW_CAP, RUN_SECONDS, deadline, run_pipeline, workspace_datasets, workspace_views
 from ontology_poc_generator.anchors import check_code, check_relation, check_view, code_anchor, relation_anchor, review_items, view_anchor, stored as stored_anchors, waiting as waiting_change
 from ontology_poc_generator.repeated_keys import check_rule, repeated_keys, settled_by_latest, unmet
 from ontology_poc_generator.workspace_store import (
-    check_bundle, describes_rows, element_contents, element_ids, element_rejected, element_rows, element_state_writes, open_workspace, set_element_states, store_anchors)
+    RowCountMismatch, SelfConfirmation, check_bundle, describes_rows, element_contents, element_ids, element_rejected, element_rows, element_state_writes, log_write, open_workspace, set_element_states, store_anchors)
 from ontology_poc_generator.company_sources import DEFAULT_PURPOSE, MAX_BYTES, TABLE_SUFFIXES, SourceFileError, load_table_file, load_table_files
 from ontology_poc_generator.model_gateway import OpenAICompatibleGateway
 from ontology_poc_generator.model_preview import model_preview
 from ontology_poc_generator.agent_harness import LoggedGateway
 from ontology_poc_generator.name_variants import propose_name_variants
 from ontology_poc_generator.object_rows import find_instances, neighbourhood, object_rows
-from ontology_poc_generator.open_items import check_answers, code_meaning_items, linked_cells, open_items, split_answers
+from ontology_poc_generator.review_stack import check_mode, relation_band
+from ontology_poc_generator.open_items import check_answers, code_meaning_items, linked_cells, open_items, split_answers, with_replies
 from ontology_poc_generator.ontology_card import NO_CARD, build_card, check_cells, live_cells, with_changes
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.relation_suggestions import suggest_relations
@@ -53,16 +57,46 @@ from ontology_poc_generator.ontology_confirm import confirmed_reference, element
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
+from ontology_poc_generator.workspace_questions import QaRefused, ask as ask_workspace, history as question_history, reopen as reopen_question, scope_line
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
+from ontology_poc_generator.auth_http import LOOPBACK, Gate
+from ontology_poc_generator.dataset_readers import dataset_readers
+from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
+from ontology_poc_generator.workspace_tasks import list_tasks
+from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
+from ontology_poc_generator.object_type_suggest import suggest_types
+from ontology_poc_generator.workspace_pipelines import (
+    check_expression, columns_at as pipeline_columns, confirm_pipeline, create_pipeline, format_guess, summary as pipeline_summary, list_pipelines, options as pipeline_options, pipeline_detail, pipeline_log, pipeline_versions,
+    preview as pipeline_preview, review as pipeline_review, run_detail, run_list, run_now as run_pipeline_now, trial_expression, update_pipeline)
+from ontology_poc_generator.object_actions import (
+    action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, update_action, withdraw as withdraw_record)
+from ontology_poc_generator.object_views import confirm_view, create_view, list_views, update_view, view_form
+from ontology_poc_generator.row_rules import RuleRefused, set_rules
+from ontology_poc_generator.object_relations import (
+    confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
+from ontology_poc_generator.ontology_graph import lineage_graph, relation_graph, type_uses
+from ontology_poc_generator.review_queue import confirm_item, queue, send_back
+from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, set_access, set_values_hidden
 
 ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
 KEPT_RUNS_IN_MEMORY = 8   # runs whose rows and graph stay in memory; the least recently used is dropped and read again when asked for
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
+LOGGED_WRITES = {'/api/ontology/acceptance': 'acceptance', '/api/ontology/rules': 'rules', '/api/ontology/form': 'form', '/api/ontology/derived': 'derived',
+                 '/api/ontology/reference/confirm': 'reference', '/api/ontology/card': 'card'}   # library/import only reads a file and keeps nothing
+SECURITY_HEADERS = (('X-Content-Type-Options', 'nosniff'), ('Referrer-Policy', 'no-referrer'),
+                    ('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'"))   # the service answers JSON and downloads, never a page
+MAX_BULK = 200   # relations approved in one request: far above what a run has
+
+
+class RunChanged(ValueError):
+    """What the person was shown (the clean band, the run's confirmations) changed under them before the write; nothing was written."""
+
+
 SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
 JOB_ID = re.compile(r'^[0-9a-f]{12}$')
 NO_KEY = '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'
@@ -95,7 +129,21 @@ def write_run(path: Path, run: dict) -> None:
     os.replace(part, path)
 
 
-def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent):
+def close_to_others(folder: Path) -> None:
+    """The folder and everything under it readable by this account only: folders 0700, files 0600 (customer rows, every prompt, the workspace). Links are left alone."""
+    for path in [folder, *folder.rglob('*')]:
+        if not path.is_symlink():
+            mode = 0o700 if path.is_dir() else 0o600
+            if path.stat().st_mode & 0o777 != mode:
+                path.chmod(mode)
+
+
+def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent,
+                no_auth: bool = False, origins=(), trusted_proxies=None):
+    """no_auth: no sign-in, every request is the local admin (trials and tests only). origins: the addresses, besides the service's own, that
+    people reach it at: a proxy's https address, or a dev server."""
+    output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)   # the data holds password hashes, every prompt sent to the model and the people's names
+    close_to_others(output_dir)   # a folder made before this was a rule may be open to every account on the machine
     running = code_fingerprint(code_dir)
     if gateway is not None:   # every model call, from any agent, leaves one line beside the runs
         gateway = LoggedGateway(gateway, output_dir / 'model_calls.jsonl')
@@ -313,9 +361,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         file; with the reason when they could not be read (the page shows that beside the lists, the rest still works)."""
         try:
             context = view_context(result)
-            return {'views': context['views'], 'view_tables': context['view_tables']}
+            conn = readonly_workspace()
+            try:
+                waiting = proposed_views(conn, memory_key(result))
+            finally:
+                conn.close()
+            return {'views': context['views'], 'view_tables': context['view_tables'], 'proposed_views': waiting}
         except Exception as exc:
-            return {'views': [], 'view_tables': [], 'views_error': f'视图没有读出来：{type(exc).__name__}: {exc}'[:300]}
+            return {'views': [], 'view_tables': [], 'proposed_views': [], 'views_error': f'视图没有读出来：{type(exc).__name__}: {exc}'[:300]}
 
     def rows_kept(result, context, view):
         """The positions of the rows a view keeps in its table, read once per version of the definitions."""
@@ -431,15 +484,71 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
     views_warning = lambda problem: f'已记下，但工作区里的视图没有更新：{problem}' if problem else None
 
+    def settled_definitions(result, profiles, enums, rules, open_ids):
+        """What a person decided through the code-meaning and repeat-rule endpoints and no item asks about any more, as the list of
+        decisions shows it: {id, kind, ask, answer: {says, text, by, at, mode}}. The same rows the stack counts as decided."""
+        out = []
+        for p in profiles:
+            kept = enums.get(p['field'])
+            if p['id'] not in open_ids and kept:
+                out.append({'id': p['id'], 'kind': 'code_meaning', 'ask': f'「{p["source"]}」的「{p["column"]}」是代码',
+                            'answer': {'says': '含义已确认', 'text': '、'.join(f'{e["value"]} = {e["label"]}' for e in kept['values'] if e.get('label')),
+                                       'by': kept['confirmed_by'], 'at': kept['confirmed_at'], 'mode': kept.get('mode')}})
+        for key, rule in rules.items():
+            if f'repeated_key:{key}' not in open_ids:
+                said = {'keep_both': '每一行都留', 'data_error': '当作数据错误'}.get(rule['rule'], f'只留「{rule.get("column")}」最新的一行')
+                out.append({'id': f'repeated_key:{key}', 'kind': 'repeated_key', 'ask': f'{key.partition(".")[2]}表重复的编号怎么算',
+                            'answer': {'says': said, 'text': '', 'by': rule['confirmed_by'], 'at': rule['confirmed_at'], 'mode': rule.get('mode')}})
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            said_no = element_rows(conn, f'property:{memory_key(result)}:', 'rejected')
+            approved = element_rows(conn, f'relation:{memory_key(result)}:', 'confirmed')
+        finally:
+            conn.close()
+        p = normalize_proposal(result['ontology'])
+        label = lambda key: next((t.get('label') or key for t in p['object_types'] if t['key'] == key), key)
+        for r in (r for r in p['relations'] if ((approved.get(r['key']) or {}).get('content') or {}).get('mode') == 'bulk'):   # judged right with others in one action: the one judgement the person did not make on a card
+            row = approved[r['key']]
+            out.append({'id': f'relation:{r["key"]}', 'kind': 'relation', 'ask': f'关系 {label(r["from"])} {r.get("label") or r["key"]} {label(r["to"])}',
+                        'answer': {'says': '判对', 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': 'bulk'}})
+        for field, row in said_no.items():
+            out.append({'id': f'code_meaning:{field}', 'kind': 'code_meaning', 'ask': f'「{field.partition(".")[0]}」的「{field.partition(".")[2]}」是代码',
+                        'answer': {'says': '不是代码', 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': (row['content'] or {}).get('mode')}})
+        return out
+
+    def bulk_band_of(result, newer):
+        """What can be approved together (review_stack.relation_band), worked out from a run as it is kept: nothing on a run that a newer
+        version of the file has replaced, where definitions are changed, and nothing on a draft that did not pass verification."""
+        if newer or result['ontology']['status'] != 'auto_built_verified':
+            return []
+        p = normalize_proposal(result['ontology'])
+        names = {t['key']: t.get('label') or t['key'] for t in p['object_types']}
+        label = lambda key: names.get(key, key)
+        relation_name = lambda r: next((f'{label(x["from"])} {x.get("label") or x["key"]} {label(x["to"])}' for x in p['relations'] if x['key'] == r['key']), r['key'])
+        return relation_band((result.get('data_checks') or {}).get('relations') or [], (result.get('confirmation') or {}).get('decisions'), label, relation_name)
+
+    def bulk_judged(result):
+        """The relations of this run judged right in a bulk approval, as {key: the kept definition with who confirmed it}."""
+        conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            kept = element_contents(conn, f'relation:{memory_key(result)}:')
+        finally:
+            conn.close()
+        here = {r['key'] for r in result['ontology'].get('relations') or []}
+        return {k: c for k, c in kept.items() if c.get('mode') == 'bulk' and k in here}
+
     def code_reply(found):
         """The open items and answered ones, with what each code column's values mean (the page shows them beside answers and fields),
         and the named views the confirmed definitions make."""
         card, items, answered = card_for(found)
         if found is None:
-            return {'items': items, 'answered': answered, 'meanings': {}, 'views': [], 'view_tables': [], 'row_cap': ROW_CAP, 'repeat_rules': {}, 'review': [], 'newer': None}
+            return {'items': items, 'answered': answered, 'settled': [], 'bulk': [], 'meanings': {}, 'views': [], 'view_tables': [], 'row_cap': ROW_CAP, 'repeat_rules': {}, 'review': [], 'newer': None}
         profiles, enums = code_state(found[0], found[1])
         newer = newer_run(found[0])   # the run of this line that is more recent than the one shown: definitions are changed there
-        return {'items': items, 'answered': answered, 'meanings': meanings_of(profiles, enums), 'row_cap': ROW_CAP, 'repeat_rules': repeat_rules(found[0]),
+        rules = repeat_rules(found[0])
+        return {'items': items, 'answered': answered, 'settled': settled_definitions(found[0], profiles, enums, rules, {i['id'] for i in items}),
+                'bulk': bulk_band_of(found[0], newer),
+                'meanings': meanings_of(profiles, enums), 'row_cap': ROW_CAP, 'repeat_rules': rules,
                 'review': review_list(found[0], newer), 'newer': newer, **view_state(found[0])}
 
     def code_labels(row):
@@ -603,12 +712,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         stored = card_file(memory_key(result))
         if graph is None:   # a blocked draft's rows: no graph and no card, but the code columns of its stored tables can be given meanings
             profiles, enums = code_state(result, bundle)
-            return NO_CARD, *split_answers(code_meaning_items({'profiles': profiles, 'enums': enums, 'drafts': code_drafts(result), 'waiting': code_waiting(result)}), stored['items'])
+            open_, answered = split_answers(code_meaning_items({'profiles': profiles, 'enums': enums, 'drafts': code_drafts(result), 'waiting': code_waiting(result)}), stored['items'])
+            return NO_CARD, with_replies(open_, bundle), with_replies(answered, bundle)
         card = build_card(result['ontology'], bundle, stored['cells'], graph, (result.get('confirmation') or {}).get('decisions'))
         profiles, enums = code_state(result, bundle)
         codes = {'profiles': profiles, 'enums': enums, 'drafts': code_drafts(result), 'waiting': code_waiting(result)}
         items, answered = split_answers(open_items(result, bundle, graph, card, codes), stored['items'])
-        return card, items, answered
+        return card, with_replies(items, bundle), with_replies(answered, bundle)
 
     def pipeline_for(name):
         """The pipeline requirements of a kept table run whose ontology passed verification; ValueError says why there are none.
@@ -729,11 +839,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return earlier
         return None
 
-    def finish_build(bundle, is_document, progress=None, previous=None):
+    def finish_build(bundle, is_document, progress=None, previous=None, starter=None):
+        """starter: the signed-in person who started the build; the datasets it stores are signed by them."""
         if bundle.get('mode') == 'org':
-            return save_build(bundle, build_and_evaluate_org(bundle, gateway, progress), progress, previous)
+            return save_build(bundle, build_and_evaluate_org(bundle, gateway, progress), progress, previous, starter)
         if is_document:
-            return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress, previous)
+            return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress, previous, starter)
         # the extra runs start together with the shown one, so three runs take about as long as one
         with ThreadPoolExecutor(max_workers=STABILITY_RUNS - 1) as pool:
             extra = [pool.submit(build_company_ontology, bundle, gateway, None, False) for _ in range(STABILITY_RUNS - 1)]
@@ -766,7 +877,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if progress:
                     progress('stability', {'total': STABILITY_RUNS - 1})
                 result['evaluation']['stability'] = stability_of(result['ontology'], [extra_result(f) for f in extra])
-        return save_build(bundle, result, progress, previous)
+        return save_build(bundle, result, progress, previous, starter)
 
     def extra_result(future):
         try:
@@ -774,20 +885,22 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         except Exception as exc:   # an extra run is evidence, not the answer: its failure is counted, the upload goes on
             return {'status': 'failed', 'error': f'{type(exc).__name__}: {exc}'[:200]}
 
-    def data_checks(ontology, bundle):
+    def data_checks(ontology, bundle, starter=None):
         """Every source table goes into the workspace file beside the runs, and each drafted identity is checked over the
         stored rows. A failed check stays in the result as failed; a check that cannot run is returned as an error the
         person sees, and the upload goes on."""
         try:
+            set_actor(starter)   # a build runs in the starter's name even on a job's own thread, which has no request behind it
+            who = starter['display_name'] if starter and starter['id'] is not None else 'system'
             conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
-                return check_bundle(conn, ontology, bundle, bundle['file']['name'])
+                return check_bundle(conn, ontology, bundle, bundle['file']['name'], who=who)
             finally:
                 conn.close()
         except Exception as exc:   # the checks are evidence on top of the build: their failure is shown, not fatal
             return {'tables': [], 'keys': [], 'error': f'{type(exc).__name__}: {exc}'[:300]}
 
-    def save_build(bundle, result, progress=None, previous_name=None):
+    def save_build(bundle, result, progress=None, previous_name=None, starter=None):
         outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
         if result['ontology']['status'] != 'auto_built_verified' and outage:
             return 502, {'error': model_failure_text(outage[-1])}
@@ -823,7 +936,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 result['evaluation']['acceptance'] = reviewed_acceptance(result, bundle, saved['items'])
                 accepted.write_text(json.dumps({**saved, 'items': result['evaluation']['acceptance']['items']}, ensure_ascii=False, indent=1), encoding='utf-8')
         if result['file'].get('kind') != 'document':
-            result['data_checks'] = data_checks(result['ontology'], bundle)   # also for a draft that failed the model checks
+            result['data_checks'] = data_checks(result['ontology'], bundle, starter)   # also for a draft that failed the model checks
             if previous_name and result['data_checks'].get('tables'):
                 waiting_relations = recheck_workspace_anchors(result, name, result['lineage'], earlier_of(previous_name))
                 suggested = (result['evaluation'].get('reference') or {}).get('suggested')
@@ -901,16 +1014,32 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {exc}'[:300]
         return None
 
+    gate = Gate(output_dir / 'workspace.sqlite', port, origins, no_auth, trusted_proxies)
+
     class Handler(BaseHTTPRequestHandler):
+        timeout = 15   # seconds the service waits on one read from a client, so a connection that sends nothing does not hold a thread
+
+        def version_string(self):
+            return 'ontopoc'   # no software name or version in the Server header
+
         def log_message(self, format, *args):
             pass
 
-        def reply(self, status, payload):
+        def end_headers(self):
+            for name, value in SECURITY_HEADERS:
+                self.send_header(name, value)
+            super().end_headers()
+
+        def reply(self, status, payload, headers=None):
+            if status < 300 and self.command == 'POST' and self.path in LOGGED_WRITES:
+                self.note_write()   # before the answer goes out: whoever sees it saved can find its line
             body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
             self.send_response(status)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', 'no-store')
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
 
@@ -984,8 +1113,458 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': '仅允许本机请求。'})
                 return False
 
+        def workspace_get(self):
+            """/api/workspace/datasets, /api/workspace/datasets/<name>?version=N: the workspace's datasets, which belong to no run;
+            /api/workspace/tasks: modelling jobs and dataset uploads, newest first."""
+            url = urlsplit(self.path)
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if url.path == '/api/workspace/datasets':
+                    self.reply(200, {'datasets': list_datasets(conn, self.user)})
+                    return
+                if url.path == '/api/workspace/tasks':
+                    with jobs_lock:
+                        running = {job_id for job_id, job in jobs.items() if job['state'] == 'running'}
+                    tasks, unreadable = list_tasks(conn, jobs_dir, running, self.user)
+                    self.reply(200, {'tasks': tasks, 'unreadable': unreadable})
+                    return
+                if url.path.startswith('/api/workspace/datasets/'):
+                    query = parse_qs(url.query)
+                    version, page = (query.get('version') or [None])[0], (query.get('page') or ['1'])[0]
+                    if any(v is not None and not re.fullmatch(r'[0-9]{1,9}', v) for v in (version, page)):
+                        self.reply(400, {'error': '版本和页码要写成数字'})
+                        return
+                    name = unquote(url.path[len('/api/workspace/datasets/'):])
+                    if (query.get('format') or [''])[0] == 'csv':
+                        if dataset_hidden(conn, name, self.user):   # not found, before anything is said about what a viewer may do with it
+                            self.reply(404, {'error': '没有这个数据集或这个版本'})
+                            return
+                        if self.user['role'] == 'viewer':
+                            self.reply(403, {'error': '查看者读不到数据集的行：数据要通过你能看到的对象类型来读'})
+                            return
+                        csv_file = dataset_csv(conn, name, int(version) if version else None, self.user)
+                        if csv_file is None:
+                            self.reply(404, {'error': '没有这个数据集或这个版本'})
+                        else:
+                            self.reply_file(csv_file[1], 'text/csv; charset=utf-8', csv_file[0])
+                        return
+                    found = dataset_detail(conn, name, int(version) if version else None, int(page), self.user)
+                    self.reply(*((200, found) if found else (404, {'error': '没有这个数据集或这个版本'})))
+                    return
+            finally:
+                conn.close()
+            self.reply(404, {'error': 'Unknown workspace endpoint'})
+
+        def workspace_upload(self):
+            """POST /api/workspace/datasets/upload {who, files: [{filename, content_base64, target?, mode?, key_columns?, name?}]}."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                parts = payload.get('files')
+                if not isinstance(parts, list):
+                    raise ValueError('请求里要有 files 列表')
+                with runs_lock:
+                    conn = open_workspace(output_dir / 'workspace.sqlite')
+                    try:
+                        results = upload_datasets(conn, parts, self.signer(payload, 'who'), self.user)
+                    finally:
+                        conn.close()
+            except UploadRefused as exc:
+                self.reply(400, {'error': str(exc), 'files': {str(i): m for i, m in exc.files.items()}})
+                return
+            except (ValueError, UnicodeError, RowCountMismatch) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, {'results': results})
+
+        def workspace_delete(self):
+            """POST /api/workspace/datasets/delete {who, name}: remove a dataset with all its versions, unless something reads it (409, naming what)."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = payload.get('name')
+                if not isinstance(name, str) or not name:
+                    raise ValueError('要写明数据集的名字（name）')
+                with runs_lock:
+                    conn = open_workspace(output_dir / 'workspace.sqlite')
+                    try:
+                        if dataset_hidden(conn, name, self.user):   # a dataset they may not see is not there to delete, and its readers are not named to them
+                            self.reply(404, {'error': '没有这个数据集'})
+                            return
+                        readers = dataset_readers(conn, [p for p in output_dir.glob('*.json') if SAVED_NAME.match(p.name)], name, self.user)
+                        try:
+                            deleted = delete_dataset(conn, name, self.signer(payload, 'who'), readers)
+                        except KeyError:
+                            self.reply(404, {'error': '没有这个数据集'})
+                            return
+                        except ValueError as exc:
+                            self.reply(409, {'error': str(exc), 'readers': readers})
+                            return
+                    finally:
+                        conn.close()
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, deleted)
+
+        def types_get(self):
+            """/api/workspace/types, /types/<id>, /types/<id>/objects?page=N, /types/<id>/log: the object types of the workspace (a viewer sees the confirmed ones)."""
+            url = urlsplit(self.path)
+            parts = [unquote(p) for p in url.path[len('/api/workspace/types'):].split('/') if p]
+            page = (parse_qs(url.query).get('page') or ['1'])[0]
+            if not re.fullmatch(r'[0-9]{1,9}', page):
+                self.reply(400, {'error': '页码要写成数字'})
+                return
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = {'types': list_types(conn, self.user)}
+                elif len(parts) == 1:
+                    body = type_detail(conn, parts[0], self.user)
+                elif len(parts) == 2 and parts[1] == 'objects':
+                    body = type_objects(conn, parts[0], int(page), self.user)
+                elif len(parts) == 2 and parts[1] == 'log':
+                    body = {'log': type_log(conn, parts[0], self.user)}
+                elif len(parts) == 2 and parts[1] == 'uses':   # what uses this type, and the data it stands on
+                    body = type_uses(conn, parts[0], self.user)
+                elif len(parts) == 2 and parts[1] == 'views':   # the views of this type and, for a builder, what a form for a new one offers
+                    body = {'views': list_views(conn, parts[0], self.user), 'form': None if self.user is not None and self.user['role'] == 'viewer' else view_form(conn, parts[0], self.user)}
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def types_post(self):
+            """POST /api/workspace/types (create), /types/update, /types/meanings, /types/confirm, /types/key-check, /types/suggest, /types/views (+ /update, /confirm):
+            see object_types.py and object_views.py. A refusal
+            of who (confirming one's own proposal) is a 403, a stale version a 409, the rest a 400 that says what is wrong."""
+            route = self.path[len('/api/workspace/types'):]
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                who = self.signer(payload, 'who')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    if route == '/suggest':   # the model takes up to two minutes: asked without the lock, its answer is written under it (suggest_types)
+                        if gateway is None:
+                            self.reply(503, {'error': NO_KEY})
+                            return
+                        body = suggest_types(conn, gateway, payload.get('datasets'), payload.get('purpose') or '', who, datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                                             self.user, runs_lock)
+                    else:
+                        with runs_lock:   # the lock an upload takes: a check and the write that stands on it are not split by new data
+                            if route == '':
+                                body = create_type(conn, payload, who, self.user)
+                            elif route == '/update':
+                                body = update_type(conn, payload, who, self.user)
+                            elif route == '/meanings':
+                                body = propose_meanings(conn, payload, who, self.user)
+                            elif route == '/confirm':
+                                body = confirm_element(conn, payload, who, self.user)
+                            elif route == '/views':
+                                body = create_view(conn, payload, who, self.user)
+                            elif route == '/views/update':
+                                body = update_view(conn, payload, who, self.user)
+                            elif route == '/views/confirm':
+                                body = confirm_view(conn, payload, who, self.user)
+                            elif route == '/key-check':
+                                body = key_preview(conn, payload.get('dataset'), payload.get('key'), self.user)
+                            elif route == '/privacy':
+                                _type_row(conn, payload.get('id'), self.user)   # a type this person may not see is not there for them
+                                body = set_values_hidden(conn, str(payload.get('id')), str(payload.get('column')), payload.get('hide_values'), who)
+                            else:
+                                self.reply(404, {'error': 'Unknown workspace endpoint'})
+                                return
+                finally:
+                    conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc), **(exc.detail or {})})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
+        def actions_get(self):
+            """/api/workspace/actions?type=<id> (the actions of one type, and what a form for a new one offers), /actions/<name> (the definition, its records and its log)."""
+            url = urlsplit(self.path)
+            parts = [unquote(p) for p in url.path[len('/api/workspace/actions'):].split('/') if p]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    english = (parse_qs(url.query).get('type') or [''])[0]
+                    body = {'actions': list_actions(conn, english, self.user), 'form': action_form(conn, english, self.user)}
+                elif len(parts) == 1:
+                    body = action_detail(conn, parts[0], self.user)
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def actions_post(self):
+            """POST /api/workspace/actions (define), /actions/update, /actions/confirm, /actions/submit, /actions/decide (approve or reject a record), /actions/withdraw:
+            see object_actions.py. Refusals are a 403 (of who), a 409 (the data or the version moved, or a rule) or a 400 that says what is wrong; a refused submit or
+            approval is also written to the action's log."""
+            route = self.path[len('/api/workspace/actions'):]
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                who = self.signer(payload, 'who')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    with runs_lock:   # the lock an upload takes (see types_post)
+                        handlers = {'': create_action, '/update': update_action, '/confirm': confirm_action, '/submit': submit_action, '/decide': decide_record, '/withdraw': withdraw_record}
+                        if route not in handlers:
+                            self.reply(404, {'error': 'Unknown workspace endpoint'})
+                            return
+                        body = handlers[route](conn, payload, who, self.user)
+                finally:
+                    conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc), **(exc.detail or {})})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
+        def pipelines_get(self):
+            """/api/workspace/pipelines (the list), /pipelines/options (operators, functions, aggregations for the editors), /pipelines/<name> (definition, state, outputs),
+            /<name>/versions[?from=&to=] (definition versions, and the changed steps between two), /<name>/runs, /<name>/runs/<n>, /<name>/log."""
+            url = urlsplit(self.path)
+            parts = [unquote(p) for p in url.path[len('/api/workspace/pipelines'):].split('/') if p]
+            query = parse_qs(url.query)
+            number = lambda key: int(query[key][0]) if query.get(key) and re.fullmatch(r'[0-9]+', query[key][0]) else None
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = {'pipelines': list_pipelines(conn, self.user)}
+                elif parts == ['options']:
+                    body = pipeline_options()
+                elif len(parts) == 1:
+                    body = pipeline_detail(conn, parts[0], self.user)
+                elif parts[1:] == ['versions']:
+                    body = pipeline_versions(conn, parts[0], self.user, number('from'), number('to'))
+                elif parts[1:] == ['runs']:
+                    body = {'runs': run_list(conn, parts[0], self.user)}
+                elif len(parts) == 3 and parts[1] == 'runs' and re.fullmatch(r'[0-9]+', parts[2]):
+                    body = run_detail(conn, parts[0], int(parts[2]), self.user)
+                elif parts[1:] == ['log']:
+                    body = {'log': pipeline_log(conn, parts[0], self.user)}
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def pipelines_post(self):
+            """POST /api/workspace/pipelines (define), /update, /confirm, /preview (any node of a saved or a draft pipeline), /run, /review (what a confirm would run on, nothing
+            written), /expression/check, /expression/trial, /format-guess: see workspace_pipelines.py. Reading and trying happen on a read-only connection; only a run, a
+            save and a confirm write."""
+            route = self.path[len('/api/workspace/pipelines'):]
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                who = self.signer(payload, 'who')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                engine = readonly_workspace()
+                try:
+                    writers = {'': create_pipeline, '/update': update_pipeline, '/confirm': confirm_pipeline, '/run': run_pipeline_now}
+                    readers = {'/preview': pipeline_preview, '/summary': pipeline_summary, '/columns': pipeline_columns, '/review': pipeline_review, '/expression/check': check_expression, '/expression/trial': trial_expression}
+                    if route in readers:   # trying reads only, on its own read-only connection and for at most PREVIEW_SECONDS: it does not hold the lock uploads and confirms need
+                        with deadline(engine, PREVIEW_SECONDS):
+                            body = readers[route](conn, engine, payload, self.user)
+                    elif route in writers:
+                        with runs_lock:   # the lock an upload takes (see types_post)
+                            if route == '/run':   # the run sets its own time limit around the part that computes
+                                body = run_pipeline_now(conn, engine, payload, who, self.user)
+                            else:
+                                with deadline(engine, RUN_SECONDS):
+                                    body = writers[route](conn, payload, who, self.user, engine)
+                    elif route == '/format-guess':
+                        body = format_guess(payload)
+                    else:
+                        self.reply(404, {'error': 'Unknown workspace endpoint'})
+                        return
+                finally:
+                    engine.close()
+                    conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc), **(exc.detail or {})})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
+        def ask_get(self):
+            """/api/workspace/ask (the scope line and the person's own history), /api/workspace/ask/<id> (one saved answer as it stands now)."""
+            parts = [p for p in urlsplit(self.path).path[len('/api/workspace/ask'):].split('/') if p]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = {**scope_line(conn, self.user), 'history': question_history(conn, self.user), 'model_ready': gateway is not None}
+                elif len(parts) == 1 and re.fullmatch(r'[0-9]+', parts[0]):
+                    body = reopen_question(conn, self.user, int(parts[0]))
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except QaRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def ask_post(self):
+            """POST /api/workspace/ask {question}: answered from the confirmed definitions this person may see, or refused with the reason (see workspace_questions.py).
+            The model is asked without the lock; the answer is kept under it."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    body = ask_workspace(conn, gateway, self.user, payload.get('question'))
+                finally:
+                    conn.close()
+            except QaRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
+        def relations_get(self):
+            """/api/workspace/relations, /relations/<id>, /relations/<id>/log, /relation-form (the types and columns a relation can be made from), /queue (待确认),
+            /permissions (admin): what this person may see of them (type_access, relation_visible)."""
+            url = urlsplit(self.path)
+            parts = [unquote(p) for p in url.path[len('/api/workspace/'):].split('/') if p]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if parts == ['relations']:
+                    body = {'relations': list_relations(conn, self.user)}
+                elif len(parts) == 2 and parts[0] == 'relations':
+                    body = relation_detail(conn, parts[1], self.user)
+                elif len(parts) == 3 and parts[0] == 'relations' and parts[2] == 'log':
+                    body = {'log': relation_log(conn, parts[1], self.user)}
+                elif parts == ['relation-form']:
+                    body = {'types': relation_columns(conn, self.user)}
+                elif parts == ['queue']:   # ?count=1: only how many this person may confirm, read from the states (the navigation item asks on every page)
+                    body = queue(conn, self.user, light='count' in parse_qs(url.query))
+                elif parts == ['permissions']:
+                    body = access_table(conn)
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except TypeRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def graph_get(self):
+            """/api/workspace/graph/relations and /graph/lineage: the ontology as nodes and edges, as much of it as this person may see (ontology_graph)."""
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                body = relation_graph(conn, self.user) if self.path == '/api/workspace/graph/relations' else lineage_graph(conn, self.user)
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def relations_post(self):
+            """POST /api/workspace/relations (create), /relations/update, /relations/confirm, /queue/confirm, /queue/send-back, /permissions (admin): see
+            object_relations.py, review_queue.py and type_access.py. Refusals are 403 (of who), 409 (the data or the version moved) or a 400 that says what is wrong."""
+            route = self.path[len('/api/workspace/'):]
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                who = self.signer(payload, 'who')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    with runs_lock:   # the lock an upload takes (see types_post)
+                        if route == 'relations':
+                            body = create_relation(conn, payload, who, self.user)
+                        elif route == 'relations/update':
+                            body = update_relation(conn, payload, who, self.user)
+                        elif route == 'relations/confirm':
+                            body = confirm_relation(conn, payload, who, self.user)
+                        elif route == 'queue/confirm':
+                            body = confirm_item(conn, payload, who, self.user)
+                        elif route == 'queue/send-back':
+                            body = send_back(conn, payload, who, self.user)
+                        elif route == 'permissions':
+                            body = set_access(conn, str(payload.get('type')), payload.get('visible_to'), who)
+                        elif route == 'row-rules':
+                            body = set_rules(conn, str(payload.get('type')), payload.get('rules'), who)
+                        else:
+                            self.reply(404, {'error': 'Unknown workspace endpoint'})
+                            return
+                finally:
+                    conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except (TypeRefused, AccessRefused, RuleRefused) as exc:
+                self.reply(exc.status, {'error': str(exc), **(getattr(exc, 'detail', None) or {})})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
         def do_GET(self):
-            if not self.local_request():
+            if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
+                return
+            if self.path.split('?')[0] == '/api/workspace/ask' or self.path.startswith('/api/workspace/ask/'):
+                self.ask_get()
+                return
+            if self.path.split('?')[0] == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
+                self.actions_get()
+                return
+            if self.path in ('/api/workspace/graph/relations', '/api/workspace/graph/lineage'):
+                self.graph_get()
+                return
+            if self.path.split('?')[0] == '/api/workspace/pipelines' or self.path.startswith('/api/workspace/pipelines/'):
+                self.pipelines_get()
+                return
+            if self.path.split('?')[0] in ('/api/workspace/relations', '/api/workspace/relation-form', '/api/workspace/queue', '/api/workspace/permissions') \
+                    or self.path.startswith('/api/workspace/relations/'):
+                self.relations_get()
+                return
+            if self.path == '/api/workspace/types' or self.path.startswith('/api/workspace/types/') or self.path.startswith('/api/workspace/types?'):
+                self.types_get()
+                return
+            if self.path.startswith('/api/workspace/'):
+                self.workspace_get()
                 return
             if self.path == '/api/ontology/library' or self.path.startswith('/api/ontology/library/'):
                 try:
@@ -1017,6 +1596,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path != '/api/ontology/health':
                 self.reply(404, {'error': 'Unknown ontology endpoint'})
+                return
+            if self.user is None:   # a stranger learns only that the service is up
+                self.reply(200, {'ok': True})
                 return
             on_disk = code_fingerprint(code_dir)
             self.reply(200, {'model_ready': gateway is not None, 'running': running, 'on_disk': on_disk, 'stale': on_disk != running})
@@ -1118,21 +1700,81 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             except ValueError as exc:
                 self.reply(400, {'error': str(exc)})
 
-        def read_json(self):
+        def signer(self, payload, field='confirmed_by', required=False, raw=False):
+            """Who a write is signed by. A signed-in person: their display name, whatever the request says in `field` (a name typed into a request
+            is a claim, not an identity). With --no-auth, what the request says: at most 40 characters, None when it says nothing (the three
+            routes that need a name refuse then); `raw` leaves it exactly as sent, for the one route that checks it itself."""
+            if self.user['id'] is not None:
+                return self.user['display_name']
+            value = payload.get(field)
+            if raw:
+                return value
+            if required:
+                if not isinstance(value, str) or not value.strip() or len(value.strip()) > 40:
+                    raise ValueError('要写确认人，最多 40 个字')
+            elif value is not None and (not isinstance(value, str) or len(value.strip()) > 40):
+                raise ValueError('确认人最多写 40 个字')
+            return (value or '').strip() or None
+
+        def read_json(self, limit=MAX_BODY):
             length = int(self.headers.get('Content-Length', '0'))
-            if not 0 < length <= MAX_BODY:
-                self.reply(413, {'error': f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。'})
+            if not 0 < length <= limit:
+                self.reply(413, {'error': f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。' if limit == MAX_BODY else '请求太大。'})
                 return None
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                 self.reply(415, {'error': 'Expected application/json'})
                 return None
-            payload = json.loads(self.rfile.read(length))
+            try:
+                payload = json.loads(self.rfile.read(length))
+            except RecursionError:
+                raise ValueError('请求的嵌套层数太多') from None
             if not isinstance(payload, dict):
                 raise ValueError('请求必须是 JSON 对象')
+            self.payload = payload
             return payload
 
         def do_POST(self):
-            if not self.local_request():
+            self.payload = None
+            self.post_route()
+
+        def note_write(self):
+            """A write that keeps its data in a file of its own (a rule, a form, a derived measure, an acceptance question, a reference,
+            a card) leaves a line in the log: the signed-in person, what, and which run it was about."""
+            what = LOGGED_WRITES[self.path]
+            run = (self.payload or {}).get('saved_as')
+            try:
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    log_write(conn, self.user['display_name'], f'write:{what}', 'saved', {'saved_as': run[:80]} if isinstance(run, str) else None)
+                finally:
+                    conn.close()
+            except sqlite3.Error as exc:   # the answer has gone out; the failure is not lost
+                print(f'log line for {what} not written: {exc}', file=sys.stderr, flush=True)
+
+        def post_route(self):
+            if not gate.admit(self, 'POST') or gate.handle(self, 'POST'):
+                return
+            if self.path == '/api/workspace/types' or self.path.startswith('/api/workspace/types/'):
+                self.types_post()
+                return
+            if self.path == '/api/workspace/ask':
+                self.ask_post()
+                return
+            if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
+                             '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules'):
+                self.relations_post()
+                return
+            if self.path == '/api/workspace/pipelines' or self.path.startswith('/api/workspace/pipelines/'):
+                self.pipelines_post()
+                return
+            if self.path == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
+                self.actions_post()
+                return
+            if self.path == '/api/workspace/datasets/upload':
+                self.workspace_upload()
+                return
+            if self.path == '/api/workspace/datasets/delete':
+                self.workspace_delete()
                 return
             if self.path in ('/api/ontology/reference/preview', '/api/ontology/reference/confirm'):
                 with runs_lock:
@@ -1183,6 +1825,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/ontology/code-meanings/dismiss':
                 self.dismiss_code_column()
                 return
+            if self.path == '/api/ontology/code-meanings/withdraw':
+                self.withdraw_code_decision()
+                return
+            if self.path == '/api/ontology/bulk-approve':
+                self.bulk_approve()
+                return
             if self.path == '/api/ontology/code-meanings/draft':
                 self.draft_code_meanings()
                 return
@@ -1231,7 +1879,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if gateway is None:
                 self.reply(503, {'error': NO_KEY})
                 return
-            self.reply(*finish_build(bundle, is_document, None, previous))
+            self.reply(*finish_build(bundle, is_document, None, previous, self.user))
 
         def preview(self):
             try:
@@ -1269,10 +1917,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                           'at': datetime.now(timezone.utc).isoformat(timespec='seconds')})
                     keep_job(job_id, job)
             report('read', {'file': bundle['file']['name'], 'kind': bundle['file']['kind']})
+            starter = self.user
 
             def run():
                 try:
-                    status, body = finish_build(bundle, is_document, report, previous)
+                    status, body = finish_build(bundle, is_document, report, previous, starter)
                 except Exception as exc:  # the job must end in a state the page can show; the server log keeps the rest
                     status, body = 500, {'error': f'建模时出错：{exc}'}
                 report('done' if status == 200 else 'failed', {})
@@ -1456,9 +2105,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 cells_raw, items_raw = payload.get('cells') or [], payload.get('items') or []
                 if not cells_raw and not items_raw:
                     raise ValueError('cells、items 至少要给一样')
+                if items_raw:
+                    stale_check(found[0])   # an answer keeps what the item was about on these rows: not older ones, and a reopen must not wipe the newest run's
                 now = datetime.now(timezone.utc).isoformat(timespec='seconds')
-                cells = check_cells(card, cells_raw, payload.get('by'), now)
-                answers = check_answers([*items, *answered], items_raw, payload.get('by'), now)
+                by = payload.get('by')   # who gave the answer: the client or whoever spoke to them, said by the person writing it down; data, not a signature
+                cells = check_cells(card, cells_raw, by, now)
+                answers = check_answers([*items, *answered], items_raw, by, now)
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
                 return
@@ -1469,7 +2121,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             key = memory_key(result)
             stored = card_file(key)
             # an unlinked item answered "incomplete" marks the other end's object as only partly in the data; a cell the request sets itself wins
-            cells = {**linked_cells([*items, *answered], answers, stored['cells'], now), **cells}
+            cells = self.recorded({**linked_cells([*items, *answered], answers, stored['cells'], now), **cells})
+            answers = self.recorded(answers)
             kept_card = output_dir / 'cards' / f'{key}.json'
             kept_card.parent.mkdir(parents=True, exist_ok=True)
             partial = kept_card.with_name(f'{key}.json.part')
@@ -1481,6 +2134,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 write_run((output_dir / name), result)
             card, items, answered = card_for((result, bundle, graph))
             self.reply(200, {'card': card, 'items': items, 'answered': answered})
+
+        def recorded(self, entries):
+            """Answers as they are kept: `by` stays whoever gave the answer, and who wrote it down, the signed-in account, goes in `recorded_by`
+            (and `recorded_by_id`). With --no-auth there is no account and nothing is added."""
+            if self.user['id'] is None:
+                return entries
+            return {k: v and {**v, 'recorded_by': self.user['display_name'], 'recorded_by_id': self.user['id']} for k, v in entries.items()}
 
         def code_column_request(self):
             """The run, the code column and the signer a code-meanings request is about; replies and returns None when it cannot be read."""
@@ -1495,10 +2155,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 profile = next((p for p in profiles if p['id'] == payload.get('id')), None)
                 if profile is None:
                     raise ValueError('这一列已经不在清单上了')
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
-                return found, profile, enums, (signer or '').strip() or None, payload
+                signer = self.signer(payload)
+                check_mode(payload)
+                return found, profile, enums, signer, payload
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
             except (ValueError, UnicodeError) as exc:
@@ -1513,6 +2172,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     set_element_states(conn, [change])
                 finally:
                     conn.close()
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
             except Exception as exc:
                 self.reply(500, {'error': f'{what}没有保存：{type(exc).__name__}: {exc}'[:300]})
                 return
@@ -1536,7 +2198,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             merged = merge_enum((enums.get(profile['field']) or {}).get('values') or [], posted)
             element = f'property:{memory_key(found[0])}:{profile["field"]}'
             anchors = stored_anchors(code_anchor(profile, found[1]['sources'][profile['source']]['records'], key_columns(found[0]['ontology'], profile['source'])))   # what the person looked at: the next version is held against it
-            change = (element, 'confirmed', f'open_item:{profile["id"]}', signer, {'values': merged}, anchors) if merged else (element, 'proposed', None, signer)
+            change = (element, 'confirmed', f'open_item:{profile["id"]}', signer, {'values': merged, 'mode': check_mode(payload)}, anchors) if merged else (element, 'proposed', None, signer)
             given = [f'{e["value"]} = {e["label"]}' for e in posted if e['label']]
             held = {e['value'] for e in (enums.get(profile['field']) or {}).get('values', []) if e['label']}
             taken = [e['value'] for e in posted if not e['label'] and e['value'] in held]   # a blank for a value never confirmed takes nothing back
@@ -1560,17 +2222,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 group = next((g for g in repeated_keys(result['ontology'], bundle, graph) if g['id'] == payload.get('id')), None)
                 if group is None:
                     raise ValueError('这个重复的编号已经不在清单上了')
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
-                signer = (signer or '').strip() or None
+                signer = self.signer(payload)
                 element = f'repeat_rule:{memory_key(result)}:{group["rule_key"]}'
                 stale_check(result)
                 if 'rule' in payload and payload['rule'] is None:
                     change = (element, 'proposed', None, signer)
                     because = f'{names[group["type"]]}（{group["source"]}表）重复编号的处理办法已收回'
                 else:
-                    change = (element, 'confirmed', f'open_item:{group["id"]}', signer, check_rule(group, payload))
+                    change = (element, 'confirmed', f'open_item:{group["id"]}', signer, {**check_rule(group, payload), 'mode': check_mode(payload)})
                     said = {'keep_both': '每一行都留', 'data_error': '当作数据错误', 'keep_latest': f'只留「{change[4].get("column")}」最新的一行'}[change[4]['rule']]
                     because = f'{names[group["type"]]}（{group["source"]}表）重复的编号已选「{said}」'
             except FileNotFoundError:
@@ -1586,6 +2245,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 finally:
                     conn.close()
                 found = card_run(name)   # read again: the rule is part of what every reader of the rows sees
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
             except Exception as exc:
                 self.reply(500, {'error': f'处理办法没有保存：{type(exc).__name__}: {exc}'[:300]})
                 return
@@ -1604,10 +2266,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
                     raise ValueError('这份运行没有数据表')
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
-                signer = (signer or '').strip() or None
+                signer = self.signer(payload)
                 asked = re.fullmatch(r'review:(property|repeat_rule|view|relation):(.+)', str(payload.get('id') or ''), re.S)
                 if asked is None:
                     raise ValueError('这一项不在“需要再看一眼”的清单上')
@@ -1663,19 +2322,24 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
                     raise ValueError('这份运行没有数据表')
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
+                signer = self.signer(payload)
                 stale_check(found[0])
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
                     versions = {t['dataset']: t['version'] for t in (found[0].get('data_checks') or {}).get('tables', []) if t.get('status') == 'ok'}
-                    message = save_definition(conn, memory_key(found[0]), payload, stored_tables(conn, found[0]), found[0]['ontology'], (signer or '').strip() or None,
-                                              run_id(found[0]['saved_as']), versions)
+                    message = save_definition(conn, memory_key(found[0]), payload, stored_tables(conn, found[0]), found[0]['ontology'], signer,
+                                              run_id(found[0]['saved_as']), versions,
+                                              propose=self.user['id'] is not None and two_person(conn)['active'])   # a person's own view waits for a second person
                 finally:
                     conn.close()
             except FileNotFoundError:
                 self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except StaleProposal as exc:
+                self.reply(409, {'error': str(exc)})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
@@ -1726,14 +2390,122 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             request = self.code_column_request()
             if request is None:
                 return
-            found, profile, _, signer, _ = request
+            found, profile, _, signer, payload = request
             try:
                 stale_check(found[0])
             except ValueError as exc:
                 self.reply(400, {'error': str(exc)})
                 return
-            self.keep_code_state(found, (f'property:{memory_key(found[0])}:{profile["field"]}', 'rejected', f'open_item:{profile["id"]}', signer), '“不是代码”',
+            self.keep_code_state(found, (f'property:{memory_key(found[0])}:{profile["field"]}', 'rejected', f'open_item:{profile["id"]}', signer, {'mode': check_mode(payload)}), '“不是代码”',
                                  f'「{profile["column"]}」被说成不是代码列')
+
+        def withdraw_code_decision(self):
+            """{"saved_as", "id": "code_meaning:<table>.<column>", "confirmed_by"}: take back what was decided about a code column, whether its
+            meanings were confirmed or it was said not to be a code; the column is a question again. Answers with the lists as they now stand."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                found = workspace_run(str(payload.get('saved_as') or ''))
+                if found is None:
+                    raise ValueError('这份运行没有数据表，没有代码列')
+                signer = self.signer(payload)
+                stale_check(found[0])
+                prefix = f'property:{memory_key(found[0])}:'
+                field = str(payload.get('id') or '').removeprefix('code_meaning:')
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    decided = {*element_contents(conn, prefix), *element_rejected(conn, prefix)}
+                finally:
+                    conn.close()
+                if field not in decided:
+                    raise ValueError('这一列没有定过什么，没有可收回的')
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            column = field.partition('.')[2]
+            self.keep_code_state(found, (f'{prefix}{field}', 'proposed', None, signer), '收回', f'「{column}」的判断已收回')
+
+        def bulk_approve(self):
+            """{"saved_as", "ids", "confirmed_by"}: approve together what is in the clean band (review_stack.relation_band): relations code
+            verifies completely. The band is worked out again from the stored run, and once more inside the write; an id that is not in it
+            refuses the whole request and writes nothing. What is written is the approved relations only, each marked bulk and signed by
+            the confirmer; what others judged before (their signatures, versions, the run's own confirmer) is left as it is. Answers with the
+            lists as they now stand."""
+            try:
+                payload = self.read_json()
+                if payload is None:
+                    return
+                name = str(payload.get('saved_as') or '')
+                found = workspace_run(name)
+                if found is None:
+                    raise ValueError('这份运行没有数据表')
+                if payload.get('mode', 'bulk') != 'bulk':
+                    raise ValueError('一起通过的 mode 只能是 bulk')
+                signer = self.signer(payload, required=True)
+                ids = payload.get('ids')
+                if not isinstance(ids, list) or not ids or len(ids) > MAX_BULK or not all(isinstance(i, str) for i in ids):
+                    raise ValueError(f'ids 要写成列表，至少一项，最多 {MAX_BULK} 项')
+                stale_check(found[0])
+                ids = list(dict.fromkeys(ids))
+                in_band = {b['id'] for b in bulk_band_of(found[0], None)}
+                outside = [i for i in ids if i not in in_band]
+                if outside:
+                    raise ValueError(f'有 {len(outside)} 件不在可以一起通过的范围里（有检查没通过，或已经定了）：{"、".join(i[:60] for i in outside[:5])}{"等" if len(outside) > 5 else ""}')
+            except FileNotFoundError:
+                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            try:
+                self.keep_bulk_relations(name, [i.partition(':')[2] for i in ids], ids, signer)
+                found = workspace_run(name)   # read again: what was kept is part of what every reader sees
+            except RunChanged as exc:
+                self.reply(409, {'error': str(exc)})
+                return
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
+            except Exception as exc:
+                self.reply(500, {'error': f'批量通过没有保存：{type(exc).__name__}: {exc}'[:300]})
+                return
+            warning = views_warning(sync_run_views(found[0]))
+            self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
+
+        def keep_bulk_relations(self, name, keys, ids, signer):
+            """Judge these relations right, in bulk, and nothing else. Inside the write lock the run is read again and the band worked out
+            again from it: if a relation is no longer in it (someone judged or changed something meanwhile) nothing is written. The run's
+            decisions get the approved relations added to what they were; the run's own confirmer and time, the signature and version of
+            every other judgement, stay as they are."""
+            path = output_dir / name
+            earlier = json.loads(path.read_text(encoding='utf-8'))
+            seen = {r['key']: r for r in (earlier.get('data_checks') or {}).get('relations') or []}
+            changes = [(f'relation:{memory_key(earlier)}:{k}', 'confirmed', None, signer, {'mode': 'bulk'}, stored_anchors(relation_anchor(seen[k]))) for k in keys]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                with element_state_writes(conn, changes) as rows:
+                    result = json.loads(path.read_text(encoding='utf-8'))   # as it is now, with the write lock held
+                    if newer_run(result) or not set(ids) <= {b['id'] for b in bulk_band_of(result, None)}:
+                        raise RunChanged('这期间清单变了，什么都没有通过；请再看一遍清单')
+                    confirmation = result['confirmation']
+                    decisions = {**confirmation['decisions'], 'relations': {**(confirmation['decisions'].get('relations') or {}), **{k: {'verdict': 'ok'} for k in keys}}}
+                    reference = confirmed_reference(result['ontology'], decisions)
+                    refs = output_dir / 'references'
+                    stored = refs / f"{memory_key(result)}.json"
+                    if stored.exists():   # the reference the next upload is compared with has these relations too; whose it is does not change
+                        self.archive_reference(refs, stored, result)
+                        stored.write_text(json.dumps({**json.loads(stored.read_text(encoding='utf-8')), 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
+                    elements = {**(confirmation.get('elements') or {}), **{f'relations:{k}': {c: rows[change[0]][c] for c in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
+                                                                           for k, change in zip(keys, changes)}}
+                    shown = result['evaluation'].get('reference')
+                    write_run(path, {**result, 'confirmation': {**confirmation, 'decisions': decisions, 'reference': reference, 'elements': elements},
+                                     'evaluation': {**result['evaluation'], **({'reference': {**shown, 'diff': compare_ontologies(parse_reference(reference), result['ontology'])}} if shown else {})}})
+            finally:
+                conn.close()
 
         def draft_code_meanings(self):
             """One call to the 字段释义员 for the code columns whose meanings nobody confirmed. The guesses are kept with
@@ -1877,12 +2649,17 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 result = json.loads(result_path.read_text(encoding='utf-8'))
                 reference = confirmed_reference(result['ontology'], payload.get('decisions'))
-                signer = payload.get('confirmed_by')
-                if signer is not None and (not isinstance(signer, str) or len(signer.strip()) > 40):
-                    raise ValueError('确认人最多写 40 个字')
-                signer = (signer or '').strip() or None
+                signer = self.signer(payload)
                 if payload['decisions'].get('relations'):   # a relation judged right keeps what its check found: only the newest run's
                     stale_check(result)
+                cleared = payload.get('cleared') or []   # relations the page held a verdict on (as kept) and clicked off: a verdict taken back, not silence
+                if not isinstance(cleared, list) or not all(isinstance(k, str) for k in cleared):
+                    raise ValueError('cleared 要写成关系编号的列表')
+                kept_bulk = bulk_judged(result)   # a page that loaded before a bulk approval does not have it: its silence about it is not a verdict
+                silent = {k for k in kept_bulk if k not in cleared and not ((payload['decisions'].get('relations') or {}).get(k) or {}).get('verdict')}
+                if silent:
+                    payload = {**payload, 'decisions': {**payload['decisions'], 'relations': {**(payload['decisions'].get('relations') or {}), **{k: {'verdict': 'ok'} for k in silent}}}}
+                    reference = confirmed_reference(result['ontology'], payload['decisions'])
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
@@ -1901,16 +2678,34 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         kind, _, rkey = name.partition(':')
                         if kind == 'relations' and change[1] == 'confirmed' and rkey in seen:
                             changes[name] = (*change, None, stored_anchors(relation_anchor(seen[rkey])))
+                    for k in silent & seen.keys():   # the bulk approval stays as it was: its signer, its mark, its version
+                        changes[f'relations:{k}'] = (changes[f'relations:{k}'][0], 'confirmed', None, kept_bulk[k]['confirmed_by'], {'mode': 'bulk'}, stored_anchors(relation_anchor(seen[k])))
                     with element_state_writes(conn, list(changes.values())) as rows:
+                        if json.loads(result_path.read_text(encoding='utf-8')).get('confirmation') != result.get('confirmation'):   # read again with the write lock held
+                            raise RunChanged('这期间这次运行的确认有了变化（比如别人批量通过了关系），什么都没有保存；请刷新页面后再确认')
                         result = self.keep_confirmation(result, result_path, payload, reference, signer, rules, {
                             name: {k: rows[change[0]][k] for k in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
                             for name, change in changes.items()})
                 finally:
                     conn.close()
+            except RunChanged as exc:
+                self.reply(409, {'error': str(exc)})
+                return
+            except SelfConfirmation as exc:
+                self.reply(403, {'error': str(exc)})
+                return
             except Exception as exc:   # whatever failed, the person is told and nothing of the confirmation is kept
                 self.reply(500, {'error': f'确认没有保存：{type(exc).__name__}: {exc}'[:300]})
                 return
             self.reply(200, result)
+
+        def archive_reference(self, refs, stored, result):
+            """A changed judgement replaces the old one; keep the old one so it can still be read."""
+            if stored.exists():
+                old = json.loads(stored.read_text(encoding='utf-8'))
+                (refs / 'history').mkdir(exist_ok=True)
+                (refs / 'history' / f"{result['file']['sha256'][:8]}-{old['confirmed_at'].replace(':', '')}.json").write_text(
+                    json.dumps(old, ensure_ascii=False, indent=1), encoding='utf-8')
 
         def keep_confirmation(self, result, result_path, payload, reference, signer, rules, elements):
             """Write what a saved confirmation changes in the run files; returns the run as it now stands."""
@@ -1918,11 +2713,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             refs = output_dir / 'references'
             refs.mkdir(parents=True, exist_ok=True)
             stored = refs / f"{memory_key(result)}.json"
-            if stored.exists():   # a changed judgement replaces the old one; keep the old one so it can still be read
-                old = json.loads(stored.read_text(encoding='utf-8'))
-                (refs / 'history').mkdir(exist_ok=True)
-                (refs / 'history' / f"{result['file']['sha256'][:8]}-{old['confirmed_at'].replace(':', '')}.json").write_text(
-                    json.dumps(old, ensure_ascii=False, indent=1), encoding='utf-8')
+            self.archive_reference(refs, stored, result)
             stored.write_text(json.dumps(
                 {'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
             result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference, 'elements': elements}
@@ -2077,19 +2868,31 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if answered['error'] and answered['error'].startswith('模型请求失败'):
                 self.reply(502, {'error': answered['error']})
                 return
+            keeps = self.user['role'] != 'viewer'   # a viewer reads: the answer comes back and nothing is written into the run
             with runs_lock:
                 latest = json.loads(result_path.read_text(encoding='utf-8'))
                 if (latest.get('confirmation') or {}).get('decisions') != (result.get('confirmation') or {}).get('decisions'):
                     self.reply(409, {'error': '等待回答期间，本体的人工确认已改变。这次回答没有保存，请按最新确认重新提问。'})
                     return
+                if keeps:
+                    answered = {**answered, 'asked_by': self.user['display_name'], 'asked_by_id': self.user['id']}   # who put the question to the run
                 if question:
                     latest['evaluation'].setdefault('asked', []).append(answered)
                 else:
                     latest['evaluation']['questions'] = answered
-                write_run(result_path, latest)
+                if keeps:
+                    write_run(result_path, latest)
+                    conn = open_workspace(output_dir / 'workspace.sqlite')
+                    try:
+                        log_write(conn, self.user['display_name'], 'write:ask', 'saved', {'saved_as': name[:80]})
+                    finally:
+                        conn.close()
             self.reply(200, latest)
 
-    return ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server.gate = gate
+    gate.origins |= {f'http://{h}:{server.server_port}' for h in LOOPBACK}   # the port is known only now when port=0
+    return server
 
 
 def main(argv=None):
@@ -2097,11 +2900,25 @@ def main(argv=None):
     parser.add_argument('--port', type=int, default=8767)
     parser.add_argument('--data-dir', type=Path, default=ROOT / 'output/ontology-runs',
                         help='where runs, confirmations and rules are kept; point a trial run elsewhere')
+    parser.add_argument('--origin', action='append', default=[], metavar='URL',
+                        help='an address people reach the service at besides http://127.0.0.1:<port> (the https address of the proxy in front, or a dev server); repeat for several')
+    parser.add_argument('--trusted-proxy', action='append', default=None, metavar='ADDRESS',
+                        help='the address of the proxy in front, whose X-Forwarded-For is believed (default with an https --origin: this machine); repeat for several')
+    parser.add_argument('--no-auth', action='store_true', help='no sign-in: every request is the local admin. Only for a trial on your own machine; needs ONTOPOC_DEV=1, and refuses --origin and proxied requests')
     args = parser.parse_args(argv)
     gateway = gateway_from_env()
-    server = make_server(args.port, gateway, output_dir=args.data_dir)
+    os.umask(0o077)   # files the service makes (runs, confirmations, the model log, the workspace) are this account's only
+    try:
+        server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin, trusted_proxies=args.trusted_proxy)
+    except ValueError as exc:
+        parser.error(str(exc))
     print(f'Ontology API: http://127.0.0.1:{server.server_port}'
           + ('' if gateway else '  (no model key: set DEEPSEEK_API_KEY to build ontologies)'), flush=True)
+    if args.no_auth:
+        print('Sign-in is OFF (--no-auth): every request is the local admin. Do not use this on a shared machine.', flush=True)
+    elif server.gate.needs_first_admin():
+        print('No accounts yet. Make the first admin on this machine:  python -m ontology_poc_generator.accounts create-admin'
+              + ('' if args.data_dir == ROOT / 'output/ontology-runs' else f' --data-dir {args.data_dir}'), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

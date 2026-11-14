@@ -12,7 +12,7 @@ test("domain correspondence draft survives tab and module navigation; cancel and
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     const response = await fetch(`${url}/api/ontology/runs/${savedAs}`, { headers: { Connection: "close" } });
     assert.ok(response.ok); const run = await response.json();
-    await page.goto(url);
+    await page.goto(`${url}/legacy.html`);
     await page.evaluate(run => localStorage.setItem("ontopoc.studio.last-result", JSON.stringify(run)), run);
     await page.reload();
     const click = name => page.getByRole("button", { name, exact: true }).click();
