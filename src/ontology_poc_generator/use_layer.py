@@ -40,7 +40,7 @@ def get(conn, user: dict | None, path: str, query: dict[str, list[str]]):
             return explorer.explore_object(conn, user, parts[1], _whole(parts[3], '对象的行号'))
     elif parts[0] == 'dashboards':
         if len(parts) == 1:
-            return {'dashboards': dashboards.list_dashboards(conn, user), 'sign_in_note': dashboards.SIGN_IN_NOTE}
+            return {'dashboards': dashboards.list_dashboards(conn, user), 'people': dashboards.people(conn, user), 'sign_in_note': dashboards.SIGN_IN_NOTE}
         if len(parts) == 2:
             return dashboards.dashboard_detail(conn, user, _whole(parts[1], '看板的编号'))
     elif parts[0] == 'agent':

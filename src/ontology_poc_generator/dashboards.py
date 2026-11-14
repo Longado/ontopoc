@@ -100,6 +100,13 @@ def list_dashboards(conn, user: dict | None) -> list[dict]:
     return [_summary(r, user) for r in records if _may_open(user, r)]
 
 
+def people(conn, user: dict | None) -> list[dict]:
+    """The accounts a board can be published to by name: for those who may publish (builders and admins), not for a viewer."""
+    if user is not None and user['role'] == 'viewer':
+        return []
+    return [{'id': i, 'name': name} for i, name in conn.execute('SELECT id, display_name FROM user WHERE disabled = 0 ORDER BY display_name')]
+
+
 def dashboard_detail(conn, user: dict | None, dashboard_id: int) -> dict:
     ensure_schema(conn)
     record = _found(conn, user, dashboard_id)
