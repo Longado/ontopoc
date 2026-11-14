@@ -195,6 +195,22 @@ class ConnectionSettingsTests(SourceCase):
             self.assertEqual(self.update(admin, host='db.example.com')[0], 200)   # the same address again, no change, no password asked
             self.assertEqual(self.update(admin, host='db.example.com', tls='none')[0], 200)   # the encryption setting does not send the password anywhere new
 
+    def test_saving_a_source_refuses_a_host_that_resolves_to_a_metadata_address(self):
+        real = source_connect.socket.getaddrinfo
+        lookup = lambda host, *a, **k: real(host, *a, **k) if host in ('localhost', '127.0.0.1') else [(2, 1, 6, '', ('169.254.169.254', 15432))]   # the page's own requests still go through
+        with self.service() as (base_url, out):
+            admin = self.team(base_url)['admin']
+            fields = {'kind': 'postgresql', 'database': 'd', 'username': 'u', 'password': 'p'}
+            with mock.patch.object(source_connect.socket, 'getaddrinfo', side_effect=lookup):
+                for host in ('2852039166', '0xa9fea9fe', '169.254.169.254.nip.io'):
+                    status, body = self.ask(admin, 'post', '/api/workspace/sources', {**fields, 'name': f'n-{host}', 'host': host})
+                    self.assertEqual(status, 400, host)
+                    self.assertIn('元数据', body['error'])
+                    status, body = self.update(admin, host=host, password='again')
+                    self.assertEqual(status, 400, host)
+            self.assertEqual([s['name'] for s in self.ask(admin, 'get', '/api/workspace/sources')[1]['sources']], ['订单库'])   # nothing was saved
+            self.assertEqual(self.ask(admin, 'get', '/api/workspace/sources')[1]['sources'][0]['host'], 'localhost')
+
     def test_m2_a_source_names_whether_its_connection_is_encrypted_and_the_driver_is_told(self):
         with self.service() as (base_url, out):
             team = self.team(base_url)
