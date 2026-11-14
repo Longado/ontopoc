@@ -3,6 +3,7 @@ the lineage from a dataset version to the types, views and saved answers that st
 not get. Expected numbers are the planted ones (160 orders, 157 of them naming a customer the customer table has) counted from the records in the tests that
 set them up, not from the service."""
 import json
+from urllib.parse import quote
 
 from ontology_poc_generator.ontology_graph import _own_cause
 from tests.test_object_relations import CUSTOMER, RELATION, customers_mended
@@ -306,3 +307,79 @@ class GraphTests(SigningTestCase):
             self.assertNotIn('dataset:客户', {n['id'] for n in lineage['nodes']})   # nothing she may see reads it
             self.assertFalse([n for n in lineage['nodes'] if n['kind'] == 'action' or n['kind'] == 'answer'])
             self.assertIn('objtype:customer', {n['id'] for n in self.graph(ann, RELATIONS)['nodes']})
+
+
+PIPELINES = '/api/workspace/pipelines'
+
+
+def copy_spec(source: str, output: str, key: str) -> dict:
+    return {'steps': [{'id': 'i', 'type': 'input', 'dataset': source}, {'id': 'out', 'type': 'output', 'from': 'i', 'name': output, 'key': {'columns': [key]}}]}
+
+
+class PipelineLineageTests(SigningTestCase):
+    team, confirm_type, graph, node = GraphTests.team, GraphTests.confirm_type, GraphTests.graph, staticmethod(GraphTests.node)
+
+    def put_forward_and_run(self, client, name, spec):
+        status, body = client.post(PIPELINES, {'name': name, 'spec': spec})
+        self.assertEqual(status, 200, body)
+        status, body = client.post(f'{PIPELINES}/run', {'id': name})
+        self.assertEqual((status, body['status']), (200, 'success'), body)
+
+    def confirm_pipeline(self, client, name):
+        shown = client.get(f'{PIPELINES}/{quote(name)}')[1]
+        status, body = client.post(f'{PIPELINES}/confirm', {'id': name, 'version': shown['version'], 'seen': {'inputs': shown['inputs_now']}})
+        self.assertEqual(status, 200, body)
+
+    def test_a_pipeline_is_a_node_between_what_it_reads_and_what_it_writes_for_the_builders_who_may_see_it_and_not_for_a_viewer_or_one_kept_from_an_input(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            ids = {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
+            self.assertEqual(ann.post('/api/workspace/types', ORDER)[0], 200)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [ids['ann']]})[0], 200)   # only Ann sees the order type, so its dataset
+            self.put_forward_and_run(ann, '工单副本管道', copy_spec('售后工单', '工单副本', '工单号'))
+            self.put_forward_and_run(ann, '订单副本管道', copy_spec('订单', '订单副本', '订单号'))
+            ticket_copy = {'english_name': 'ticket_copy', 'name': '工单副本', 'dataset': '工单副本', 'key': ['工单号'], 'properties': [{'column': '问题类型'}]}
+            self.assertEqual(ann.post('/api/workspace/types', ticket_copy)[0], 200)
+            self.confirm_pipeline(bob, '工单副本管道')
+            self.confirm_type(bob, 'ticket_copy')
+
+            lineage = self.graph(ann, LINEAGE)
+            self.assertEqual({n['id']: (n['kind'], n['name'], n['state']) for n in lineage['nodes'] if n['kind'] == 'pipeline'},
+                             {'pipeline:工单副本管道': ('pipeline', '工单副本管道', 'confirmed'), 'pipeline:订单副本管道': ('pipeline', '订单副本管道', 'checked')})
+            pairs = {(e['from'], e['to']) for e in lineage['edges']}
+            self.assertLessEqual({('dataset:售后工单', 'pipeline:工单副本管道'), ('pipeline:工单副本管道', 'dataset:工单副本'), ('dataset:工单副本', 'objtype:ticket_copy'),
+                                  ('dataset:订单', 'pipeline:订单副本管道'), ('pipeline:订单副本管道', 'dataset:订单副本')}, pairs)
+
+            seen_by_bob = self.graph(bob, LINEAGE)
+            shown = {n['id'] for n in seen_by_bob['nodes']}
+            self.assertIn('pipeline:工单副本管道', shown)                                     # a pipeline of Ann's that reads only what he may read
+            self.assertLessEqual({('dataset:售后工单', 'pipeline:工单副本管道'), ('pipeline:工单副本管道', 'dataset:工单副本')}, {(e['from'], e['to']) for e in seen_by_bob['edges']})
+            self.assertFalse({'pipeline:订单副本管道', 'dataset:订单副本', 'dataset:订单'} & shown)   # kept from its input: neither the pipeline nor what it wrote
+
+            seen_by_vera = self.graph(vera, LINEAGE)
+            self.assertFalse([n for n in seen_by_vera['nodes'] if n['kind'] == 'pipeline'])
+            self.assertTrue(all(e['from'] in {n['id'] for n in seen_by_vera['nodes']} and e['to'] in {n['id'] for n in seen_by_vera['nodes']} for e in seen_by_vera['edges']))
+            self.assertIn('dataset:工单副本', {n['id'] for n in seen_by_vera['nodes']})        # a confirmed type she may see reads it
+
+    def test_a_pipeline_that_needs_another_look_says_why_in_the_same_four_causes_and_the_type_under_an_edited_pipeline_says_the_definition_changed(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.put_forward_and_run(ann, '工单副本管道', copy_spec('售后工单', '工单副本', '工单号'))
+            ticket_copy = {'english_name': 'ticket_copy', 'name': '工单副本', 'dataset': '工单副本', 'key': ['工单号'], 'properties': [{'column': '问题类型'}]}
+            self.assertEqual(ann.post('/api/workspace/types', ticket_copy)[0], 200)
+            self.confirm_pipeline(bob, '工单副本管道')
+            self.confirm_type(bob, 'ticket_copy')
+            node = self.node(self.graph(bob, LINEAGE), 'objtype:ticket_copy')
+            self.assertEqual((node['state'], node['stale']), ('confirmed', None))
+            shown = ann.get(f'{PIPELINES}/{quote("工单副本管道")}')[1]
+            edited = {'steps': [{'id': 'i', 'type': 'input', 'dataset': '售后工单'},
+                                {'id': 't', 'type': 'transform', 'from': 'i', 'operators': [{'op': 'filter', 'where': {'column': '问题类型', 'cmp': 'ne', 'value': '无'}}]},
+                                {'id': 'out', 'type': 'output', 'from': 't', 'name': '工单副本', 'key': {'columns': ['工单号']}}]}
+            status, body = ann.post(f'{PIPELINES}/update', {'id': '工单副本管道', 'version': shown['version'], 'spec': edited})
+            self.assertEqual(status, 200, body)
+            lineage = self.graph(bob, LINEAGE)
+            self.assertEqual(self.node(lineage, 'pipeline:工单副本管道')['state'], 'checked')                       # put forward again: nobody has confirmed this version
+            under = self.node(lineage, 'objtype:ticket_copy')
+            self.assertEqual((under['state'], under['stale']['cause']), ('needs_look', 'definition'))             # what the edit moved is a definition change, not 数据变了

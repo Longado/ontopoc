@@ -5,6 +5,7 @@ import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY
 export const SIZE = {
   type: { w: 216, h: 80 },
   dataset: { w: 172, h: 64 },
+  pipeline: { w: 172, h: 48 },
   relation: { w: 156, h: 48 },
   view: { w: 156, h: 48 },
   action: { w: 156, h: 48 },
@@ -184,7 +185,7 @@ export function confirmedText(node) {
   return `${node.confirmed_by} 于 ${timeText(node.confirmed_at)} 确认${on ? `，依据 ${on}` : ""}`;
 }
 
-export const KIND_LABEL = { dataset: "数据集", type: "对象类型", relation: "关系", view: "视图", action: "行为", answer: "回答" };
+export const KIND_LABEL = { dataset: "数据集", pipeline: "管道", type: "对象类型", relation: "关系", view: "视图", action: "行为", answer: "回答" };
 
 /** `text` cut with "…" so it fits `maxPx` at font size `size`: a Chinese character is as wide as the size, a Latin one about 0.58 of it. */
 export function fitText(text, maxPx, size) {

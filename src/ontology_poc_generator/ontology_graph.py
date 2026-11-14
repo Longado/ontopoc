@@ -22,6 +22,7 @@ from ontology_poc_generator.object_types import (
 from ontology_poc_generator.object_views import view_visible
 from ontology_poc_generator.row_rules import positions, restriction
 from ontology_poc_generator.type_access import dataset_hidden
+from ontology_poc_generator.workspace_pipelines import pipeline_visible
 from ontology_poc_generator.workspace_questions import _mine, reopen
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
@@ -34,15 +35,16 @@ CARDINALITY_NAME = {'many_to_one': '多对一', 'one_to_many': '一对多', 'one
 
 # --- why something needs another look ------------------------------------------------------------------------------------------------------------
 
-def _own_cause(reason: str | None) -> str:
+def _own_cause(reason: str | None, stored: str | None = None) -> str:
     """'definition' for a reason that says a definition changed (it ends 要重新确认), 'cascade' for one that only says what it reads needs a look
-    (it begins 它用的 and says 需要再看), else 'data': a new version of a dataset moved what a check found."""
+    (it begins 它用的 and says 需要再看), else 'data': a new version of a dataset moved what a check found. `stored` is the cause the store wrote with the flag: a reason
+    the words do not place (the edit of the pipeline a type's data comes from) is a definition change when the store says so."""
     reason = reason or ''
     if reason.endswith('要重新确认'):
         return 'definition'
     if reason.startswith('它用的') and '需要再看' in reason:
         return 'cascade'
-    return 'data'
+    return 'definition' if stored == 'definition' else 'data'
 
 
 def _chain(conn, element_id: str, path: tuple = ()) -> dict | None:
@@ -51,7 +53,7 @@ def _chain(conn, element_id: str, path: tuple = ()) -> dict | None:
     row = element_row(conn, element_id)
     if row is None or row['state'] != 'needs_look':
         return None
-    own = _own_cause(row['reason'])
+    own = _own_cause(row['reason'], row.get('cause'))
     if own != 'cascade':
         return {'depth': 0, 'own': own, 'root': element_id, 'text': row['reason']}
     parents = [p for (p,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ?', (element_id,)) if p not in path and p != element_id]
@@ -231,9 +233,22 @@ def _answer_node(conn, user: dict | None, answer_id: int, question: str, asked_a
     return {'id': f'answer:{answer_id}', 'kind': 'answer', 'key': answer_id, 'name': question, 'state': state, 'asked_at': asked_at, 'stale': cause}, list(dict.fromkeys(named))
 
 
+def _pipeline_nodes(conn, user: dict | None) -> list[dict]:
+    """The pipelines this person may see (workspace_pipelines.pipeline_visible: a builder's, and not one that reads what they are kept from; a viewer has none), each
+    with its state and, when it needs another look, why."""
+    out = []
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'pipeline:%' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        if row is not None and pipeline_visible(conn, row, user):
+            name = _content(row)['name']
+            out.append({'id': element_id, 'kind': 'pipeline', 'key': name, 'name': name, 'state': row['state'], 'stale': stale_cause(conn, row, user), 'link': True})
+    return out
+
+
 def lineage_graph(conn, user: dict | None) -> dict:
-    """Datasets -> object types -> relations, views and actions -> the person's saved answers, from element_dep and the answers' own record. A dataset is drawn
-    when a type this person may see reads it (a builder also sees one nothing reads); a hidden type is not there at all."""
+    """Datasets -> pipelines -> the datasets they write -> object types -> relations, views and actions -> the person's saved answers, from element_dep and the answers'
+    own record. A dataset is drawn when a type this person may see reads it (a builder also sees one nothing reads); a hidden type is not there at all. A pipeline is
+    drawn for the people who may see it, between what it reads (datasets, views) and what it writes."""
     drawn_relations = relation_graph(conn, user)
     types = drawn_relations['nodes']
     nodes: list[dict] = list(types)
@@ -249,8 +264,13 @@ def lineage_graph(conn, user: dict | None) -> dict:
         readers = by_dataset.get(name, [])
         if readers or (user is None or user['role'] != 'viewer') and not dataset_hidden(conn, name, user):
             nodes.append(_dataset_node(conn, name, readers, user))
+    pipelines = _pipeline_nodes(conn, user)
+    nodes += pipelines
     ids = {n['id'] for n in nodes}
     edges = [{'from': t, 'to': r['id']} for r in relations for t in (r['from'], r['to'])]
+    for p in pipelines:   # what it reads (datasets, views) into the pipeline, and the pipeline into the datasets it writes
+        edges += [{'from': parent, 'to': p['id']} for (parent,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ?', (p['id'],)).fetchall() if parent in ids and parent.startswith(('dataset:', VIEW_PREFIX))]
+        edges += [{'from': p['id'], 'to': written} for (written,) in conn.execute("SELECT element_id FROM element_dep WHERE depends_on = ? AND element_id LIKE 'dataset:%'", (p['id'],)).fetchall() if written in ids]
     for n in nodes:   # what each element reads that is drawn: the datasets under a type, the type under a view or action
         if n['kind'] in ('type', 'view', 'action'):
             for (parent,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ?', (n['id'],)).fetchall():

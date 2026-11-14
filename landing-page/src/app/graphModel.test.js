@@ -25,6 +25,14 @@ test("a node sits one column after the furthest thing it reads, left to right, a
   assert.deepEqual(positions["dataset:订单"].w, SIZE.dataset.w);
 });
 
+test("a pipeline sits between the datasets it reads and the dataset it writes, which has the type on it one column further", () => {
+  const nodes = [node("dataset:订单", "dataset"), node("pipeline:合计", "pipeline", "客户合计管道"), node("dataset:客户合计", "dataset"), node("objtype:total", "type", "客户合计")];
+  const edges = [{ from: "dataset:订单", to: "pipeline:合计" }, { from: "pipeline:合计", to: "dataset:客户合计" }, { from: "dataset:客户合计", to: "objtype:total" }];
+  const { positions } = layeredLayout(nodes, edges);
+  assert.deepEqual(nodes.map((n) => Math.round(positions[n.id].x / 252)), [0, 1, 2, 3]);
+  assert.equal(positions["pipeline:合计"].w, SIZE.pipeline.w);
+});
+
 test("a cycle in the edges does not make the layout run for ever", () => {
   const nodes = [node("a", "type"), node("b", "type")];
   const { positions } = layeredLayout(nodes, [{ from: "a", to: "b" }, { from: "b", to: "a" }]);

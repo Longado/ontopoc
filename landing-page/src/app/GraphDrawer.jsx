@@ -71,6 +71,7 @@ function DatasetBody({ node }) {
 
 function ElementBody({ node }) {
   const href = node.kind === "relation" ? hrefFor({ page: "relation", id: node.key }) : node.kind === "answer" ? hrefFor({ page: "qa", id: node.key })
+    : node.kind === "pipeline" ? hrefFor({ page: "pipeline", name: node.key })
     : hrefFor({ page: "type", id: node.type, tab: node.kind === "view" ? "views" : "actions" });
   return (
     <>
