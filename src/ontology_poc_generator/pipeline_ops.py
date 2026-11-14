@@ -41,11 +41,11 @@ def _q(name: str) -> str:
     return '"' + str(name).replace('"', '""') + '"'
 
 
-def new_context(meanings: dict | None = None, codes=frozenset(), unsent=frozenset()) -> dict:
+def new_context(meanings: dict | None = None, codes=frozenset(), unsent=frozenset(), ai=frozenset()) -> dict:
     """What the operators may ask the workspace: meanings {"dataset.column": {label: [codes]}} (confirmed ones only), codes {"dataset.column"} (columns that are
-    code lists, confirmed or not), unsent {"dataset.column"} (columns whose values a builder keeps from the model), and `used`, which the operators fill with the
-    meanings they read."""
-    return {'meanings': meanings or {}, 'codes': set(codes), 'unsent': set(unsent), 'used': set()}
+    code lists, confirmed or not), unsent {"dataset.column"} (columns whose values a builder keeps from the model, or that a pipeline wrote from such columns), ai
+    {"dataset.column"} (columns a pipeline wrote from what a model answered), and `used`, which the operators fill with the meanings they read."""
+    return {'meanings': meanings or {}, 'codes': set(codes), 'unsent': set(unsent), 'ai': set(ai), 'used': set()}
 
 
 FLAGS = ('unsent', 'ai')   # what a column made from other columns inherits: not to be sent to the model, written by the model
@@ -212,7 +212,7 @@ def _fill_null(op, src, columns, ctx, label):
     if not isinstance(how, dict) or sum(k in how for k in ('constant', 'column', 'expression')) != 1:
         raise OpError(f'{label}：要写用什么替换：{{"constant": 值}}、{{"column": 另一列}} 或 {{"expression": 表达式}} 三选一')
     empty = bool(op.get('empty_as_null'))
-    replaced = {}
+    replaced, read = {}, {}   # what each chosen column is filled with, and the columns that value is read from (its marks go with it)
     for col in chosen:
         if 'constant' in how:
             replaced[col['name']] = ('?', [_value(col, how['constant'], label, whole=True)])
@@ -221,18 +221,20 @@ def _fill_null(op, src, columns, ctx, label):
             if EXPR_TYPE[other['type']] != EXPR_TYPE[col['type']]:
                 raise OpError(f'{label}：「{col["name"]}」是{TYPE_WORD[EXPR_TYPE[col["type"]]]}，「{other["name"]}」是{TYPE_WORD[EXPR_TYPE[other["type"]]]}，不能互相替换')
             replaced[col['name']] = (_q(other['name']), [])
+            read[col['name']] = [other]
         else:
             result = compile_expression(how['expression'], [{'name': c['name'], 'type': c['type']} for c in visible(columns)], EXPR_TYPE[col['type']])
             if not result['ok']:
                 raise OpError(f'{label}：表达式不对：{result["errors"][0]["message"]}')
             replaced[col['name']] = (result['sql'], result['params'])
+            read[col['name']] = [_by_name(columns)[f] for f in result['fields']]
     selects, params, out_columns = [], [], []
     for c in columns:
         if c['name'] in replaced:
             sql, p = replaced[c['name']]
             selects.append(f'CASE WHEN {_blank(c["name"], empty)} THEN {sql} ELSE {_q(c["name"])} END AS {_q(c["name"])}')
             params += p
-            out_columns.append({**c, 'badge': 'replaced'})
+            out_columns.append({**c, 'badge': 'replaced', **carry(c, *read.get(c['name'], []))})   # the rows that were empty now hold a value read from those columns
         else:
             selects.append(_q(c['name']))
             out_columns.append(c)

@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from ontology_poc_generator.pipeline_llm import LlmError, LlmRun, LlmService, check_llm_step, compile_prompt, contract_of, effective, parse_reply
 from ontology_poc_generator.pipeline_ops import new_context
-from ontology_poc_generator.pipelines import PipelineRunError, check_pipeline, run_pipeline
+from ontology_poc_generator.pipelines import PipelineRunError, check_pipeline, compile_pipeline, run_pipeline
 from ontology_poc_generator.recognition import ModelCompletion, RecognitionError
 from ontology_poc_generator.workspace_store import open_workspace
 from tests import test_workspace_store as planted
@@ -97,6 +97,38 @@ class PromptAndStepTests(unittest.TestCase):
         with self.assertRaises(LlmError) as caught:
             check_llm_step(llm(), 'm', [{**c, 'unsent': True} if c['name'] == '内容' else c for c in columns])
         self.assertIn('不发送给模型', str(caught.exception))
+
+    def test_fill_null_and_a_built_key_pass_on_the_marks_of_what_they_read(self):
+        engine, datasets = small_table([('1', '内容一', 'a')])
+        ctx = new_context(unsent={'评论.内容'})
+        steps = [{'id': 'i', 'type': 'input', 'dataset': '评论'}]
+
+        def spec(operator, more=()):
+            return {'steps': [*steps, {'id': 't', 'type': 'transform', 'from': 'i', 'operators': [operator]}, *more]}
+
+        def asks_about(column):
+            return {'id': 'm', 'type': 'llm', 'from': 't', 'model': 'test-model', 'name': '结果', 'template': 'empty', 'prompt': f'看 ${column}', 'output': 'text'}
+
+        for how in ({'column': '内容'}, {'expression': '[内容]'}):   # a value of an unsent column copied into another column is as unsent as it was
+            fill = {'op': 'fill_null', 'columns': ['备注'], 'with': how, 'empty_as_null': True}
+            with self.assertRaises(ValueError) as caught:
+                check_pipeline(spec(fill, [asks_about('备注')]), datasets, {}, ctx)
+            self.assertIn('不发送给模型', str(caught.exception), how)
+        # the same for the mark of a model-written column, which an output keeps
+        ai = {'id': 'm', 'type': 'llm', 'from': 'i', 'model': 'test-model', 'name': '结果', 'template': 'empty', 'prompt': '看 $内容', 'output': 'text'}
+        filled = {'steps': [*steps, ai, {'id': 't', 'type': 'transform', 'from': 'm', 'operators': [{'op': 'fill_null', 'columns': ['备注'], 'with': {'column': '结果'}, 'empty_as_null': True}]},
+                            {'id': 'out', 'type': 'output', 'from': 't', 'name': '表'}]}
+        plain = new_context()
+        columns = {c['name']: c for c in compile_pipeline(check_pipeline(filled, datasets, {}, plain), datasets, {}, plain)[-1]['columns']}
+        self.assertTrue(columns['备注'].get('ai'))
+        # a key built from several columns carries the marks of its parts
+        keyed = {'steps': [*steps, ai, {'id': 'out', 'type': 'output', 'from': 'm', 'name': '表', 'key': {'columns': ['结果', '编号'], 'as': '键'}},
+                           {'id': 'out2', 'type': 'output', 'from': 'm', 'name': '表二', 'key': {'columns': ['备注', '编号'], 'as': '键'}}]}
+        held_back = new_context(unsent={'评论.备注'})
+        compiled = {s['id']: {c['name']: c for c in s['columns']} for s in compile_pipeline(check_pipeline(keyed, datasets, {}, held_back), datasets, {}, held_back)}
+        self.assertTrue(compiled['out']['键'].get('ai'))
+        self.assertTrue(compiled['out2']['键'].get('unsent'))
+        self.assertTrue(compiled['out2']['备注'].get('unsent'))   # a column an output keeps keeps its mark, which is how the dataset it writes records it
 
     def test_an_answer_off_the_list_is_not_an_answer_and_a_number_is_a_number_or_nothing(self):
         eff = effective(llm())
@@ -336,6 +368,56 @@ class TicketWalkTests(SigningTestCase):
             status, body = self.ask(ann, 'llm/trial', {'mode': 'sample'})
             self.assertEqual(status, 400, body)
             self.assertEqual(model.requests, [])
+
+    def test_the_marks_of_a_column_travel_into_the_dataset_a_pipeline_writes_and_to_the_pipeline_that_reads_it(self):
+        model = RowModel()
+        ticket = {'english_name': 'ticket', 'name': '售后工单', 'dataset': '售后工单', 'key': ['工单号'], 'properties': [{'column': '问题描述'}]}
+        copy = {'steps': [{'id': 't', 'type': 'input', 'dataset': '售后工单'}, {'id': 'out', 'type': 'output', 'from': 't', 'name': '工单副本', 'key': {'columns': ['工单号']}}]}
+        again = {'steps': [{'id': 't', 'type': 'input', 'dataset': '工单副本'}, classify_step(), {'id': 'out', 'type': 'output', 'from': 'c', 'name': '副本分类', 'key': {'columns': ['工单号']}}]}
+        with self.service(gateway=model) as (base, out):
+            ann = self.team(base)['ann']
+            self.assertEqual(ann.post('/api/workspace/types', ticket)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'ticket', 'column': '问题描述', 'hide_values': True})[0], 200)
+            self.make(ann, copy, '复制')
+            self.go(ann, '复制')
+            status, body = ann.post(PIPELINES, {'name': '副本里分类', 'spec': again})
+            self.assertEqual(status, 400, body)
+            self.assertIn('不发送给模型', body['error'])
+            self.assertEqual(model.requests, [])
+
+    def test_a_type_keyed_on_a_model_written_column_is_refused_when_a_second_pipeline_carried_the_column_on(self):
+        model = RowModel()
+        carry = {'steps': [{'id': 't', 'type': 'input', 'dataset': '工单分类'}, {'id': 'out', 'type': 'output', 'from': 't', 'name': '分类副本', 'key': {'columns': ['工单号']}}]}
+        built = {'steps': [{'id': 't', 'type': 'input', 'dataset': '工单分类'}, {'id': 'out', 'type': 'output', 'from': 't', 'name': '分类组合键', 'key': {'columns': ['问题类别', '工单号'], 'as': '键'}}]}
+        with self.service(gateway=model) as (base, out):
+            ann = self.team(base)['ann']
+            self.make(ann)
+            self.go(ann)
+            self.make(ann, carry, '转一手')
+            self.go(ann, '转一手')
+            self.make(ann, built, '拼键')
+            self.go(ann, '拼键')
+            for dataset, key in (('分类副本', '问题类别'), ('分类组合键', '键')):
+                status, body = ann.post('/api/workspace/types', {'english_name': f'k{len(dataset)}', 'name': dataset, 'dataset': dataset, 'key': [key], 'properties': [{'column': key}]})
+                self.assertEqual(status, 409, (dataset, body))
+                self.assertIn('AI 生成', body['error'])
+
+    def test_a_pipeline_that_carries_the_column_on_does_not_clear_it_the_review_of_the_pipeline_that_wrote_it_is_still_needed(self):
+        model = RowModel()
+        carry = {'steps': [{'id': 't', 'type': 'input', 'dataset': '工单分类'}, {'id': 'out', 'type': 'output', 'from': 't', 'name': '分类副本', 'key': {'columns': ['工单号']}}]}
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.make(ann)
+            self.go(ann)
+            self.make(ann, carry, '转一手')
+            self.go(ann, '转一手')
+            for name in ('工单分类', '转一手'):   # both pipelines confirmed by the second person; the sample review of the AI step never passed
+                shown = bob.get(f'{PIPELINES}/{quote(name)}')[1]
+                self.assertEqual(bob.post(f'{PIPELINES}/confirm', {'id': name, 'version': shown['version'], 'seen': {'inputs': shown['inputs_now']}})[0], 200, name)
+            status, body = ann.post('/api/workspace/types', {'english_name': 'copy_class', 'name': '分类副本', 'dataset': '分类副本', 'key': ['问题类别'], 'properties': [{'column': '问题类别'}]})
+            self.assertEqual(status, 409, body)
+            self.assertIn('样本审核还没有通过', body['error'])
 
     def test_a_viewer_gets_nothing_of_the_node(self):
         with self.service(gateway=RowModel()) as (base, out):

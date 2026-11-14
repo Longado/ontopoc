@@ -133,10 +133,13 @@ def build_context(conn) -> tuple[dict, dict]:
             meanings[origin] = by_label
     unsent = {f'{json.loads(content)["dataset"]}.{column}' for type_id, column in conn.execute('SELECT type_id, column_name FROM value_privacy')
               for (content,) in conn.execute('SELECT content_json FROM element_state WHERE element_id = ? AND content_json IS NOT NULL', (type_id,))}
+    ai = set()
+    for dataset, column, mark in conn.execute('SELECT d.name, m.column_name, m.mark FROM column_mark m JOIN dataset d ON d.id = m.dataset_id'):   # a column a pipeline wrote carries its marks on (any version of the dataset: the safer reading)
+        (unsent if mark == 'unsent' else ai).add(f'{dataset}.{column}')
     for content, in conn.execute("SELECT content_json FROM element_state WHERE element_id LIKE 'objtype:%' AND content_json IS NOT NULL"):
         c = json.loads(content)
         codes |= {f'{c["dataset"]}.{p["column"]}' for p in c['properties'] if p['enum']}
-    return new_context(meanings, codes, unsent), ids
+    return new_context(meanings, codes, unsent, ai), ids
 
 
 # --- who may see and what is allowed ------------------------------------------------------------------------------------------------------------------
@@ -654,6 +657,8 @@ def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, 
             plan = plan_upload(conn, step['name'], records, mode='overwrite' if existing else None, rows_in=len(records))
             plan['changes'] = {**plan['changes'], 'pipeline': {'id': content['name'], 'run': run_id, 'definition_version': content['definition_version'], 'inputs': versions}}
             done = apply_upload(conn, plan, signer, origin=f'pipeline:{content["name"]}@run{run_id}')
+            conn.executemany('INSERT OR IGNORE INTO column_mark(dataset_id, column_name, mark) VALUES (?, ?, ?)',
+                             [(done['dataset']['id'], c['name'], mark) for c in columns for mark in ('unsent', 'ai') if c.get(mark)])
             if done['created'] and row['state'] != 'confirmed':
                 _flag_takeover(conn, content['name'], [step['name']])
             written.append({'dataset': step['name'], 'version': done['dataset']['version'], 'rows': len(records), 'created_version': done['created'], 'mode': plan['mode'],
@@ -773,12 +778,13 @@ def ai_nodes(conn, content: dict, model: str | None = None) -> list[dict]:
             for s in content['spec']['steps'] if s['type'] == 'llm']
 
 
-def ai_uncleared(conn, dataset_name: str, model: str | None = None) -> dict[str, str]:
-    """{column: why} for the columns of a dataset that a pipeline's LLM step wrote and that cannot yet be a key or a confirmed code meaning: the sample review of every LLM
-    step that feeds the output has not passed, or the pipeline is not confirmed (by someone who did not edit it). Empty for a dataset no pipeline writes."""
+def ai_uncleared(conn, dataset_name: str, model: str | None = None, _seen: frozenset = frozenset()) -> dict[str, str]:
+    """{column: why} for the columns of a dataset that a pipeline's LLM step wrote, directly or through the pipelines in between (the mark travels with the dataset), and that
+    cannot yet be a key or a confirmed code meaning: the sample review of every LLM step that feeds the output has not passed, or the pipeline is not confirmed (by someone who
+    did not edit it), or the same is so of a pipeline upstream that wrote the column. Empty for a dataset no pipeline writes."""
     producer = producer_of(conn, dataset_name)
     row = element_row(conn, producer) if producer else None
-    if row is None:
+    if row is None or dataset_name in _seen:
         return {}
     content = _content(row)
     spec = content['spec']
@@ -798,6 +804,9 @@ def ai_uncleared(conn, dataset_name: str, model: str | None = None) -> dict[str,
     unreviewed = [n['name'] for n in feeding if not n['review']['passed']]
     why = f'AI 生成的列：{content["name"]} 里的「{"、".join(unreviewed)}」样本审核还没有通过' if unreviewed else \
         f'AI 生成的列：管道“{content["name"]}”还没有另一位确认' if row['state'] != 'confirmed' else None
+    for upstream in _datasets_of(spec):
+        if why is None:
+            why = next(iter(ai_uncleared(conn, upstream, model, _seen | {dataset_name}).values()), None)
     return {c: why for c in marked} if why else {}
 
 

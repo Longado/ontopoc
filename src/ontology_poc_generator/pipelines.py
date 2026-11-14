@@ -30,7 +30,7 @@ import time
 
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_llm import check_llm_step, llm_sql
-from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, compile_op, new_context, visible
+from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, carry, compile_op, new_context, visible
 
 NUMERIC = ('integer', 'decimal')
 HOWS = ('inner', 'left', 'anti', 'semi')
@@ -127,11 +127,12 @@ def _input_of(step: dict, sid: str, datasets: dict, views: dict) -> tuple[str, d
     return f'{kind} {name}' + (f' 第 {step["version"]} 版' if step.get('version') is not None else ''), pool[key]
 
 
-def _input_columns(step: dict, sid: str, datasets: dict, views: dict, unsent=frozenset()) -> list[dict]:
-    """The columns an input reads, each with where it comes from; one a builder switched off for the model (`unsent`: "dataset.column") is marked, and the mark travels with it."""
+def _input_columns(step: dict, sid: str, datasets: dict, views: dict, ctx: dict) -> list[dict]:
+    """The columns an input reads, each with where it comes from; one a builder switched off for the model (`ctx['unsent']`: "dataset.column"), or that a pipeline wrote
+    from such a column or from a model's answer (`ctx['ai']`), is marked, and the mark travels with it."""
     data = _input_of(step, sid, datasets, views)[1]
     origin = data['source'] if 'view' in step else step['dataset']
-    return [{**c, 'origin': f'{origin}.{c["name"]}', **({'unsent': True} if f'{origin}.{c["name"]}' in unsent else {})} for c in data['columns']]
+    return [{**c, 'origin': f'{origin}.{c["name"]}', **{mark: True for mark in ('unsent', 'ai') if f'{origin}.{c["name"]}' in ctx.get(mark, ())}} for c in data['columns']]
 
 
 def _undefined(sid: str, role: str, ref):
@@ -229,7 +230,7 @@ def _output(step: dict, sid: str, columns: list[dict]) -> dict:
             parts = [f'pl_text({_q(c)})' for c in cols]
             build = (built, f'({f" || ? || ".join(parts)})' if len(parts) > 1 else parts[0], [separator] * (len(parts) - 1))
             key_names = [built]
-    out = [{k: v for k, v in shown[n].items() if k in ('name', 'type', 'origin', 'ai')} for n in names] + ([{'name': build[0], 'type': 'text'}] if build else [])
+    out = [{k: v for k, v in shown[n].items() if k in ('name', 'type', 'origin', 'ai', 'unsent')} for n in names] + ([{'name': build[0], 'type': 'text', **carry(*(shown[c] for c in cols))}] if build else [])
     return {'columns': out, 'key': key_names, 'dropped': [n for n in shown if n not in names], 'build': build}
 
 
@@ -255,7 +256,7 @@ def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | 
             raise ValueError(f'步骤 {sid} 是不认识的步骤类型 {kind}，只有 {"、".join(STEP_TYPES)}')
         read = lambda ref, role: columns[ref] if isinstance(ref, str) and ref in columns else _undefined(sid, role, ref)   # a list or an object is not a step id
         if kind == 'input':
-            columns[sid] = _input_columns(step, sid, datasets, views, ctx.get('unsent', ()))
+            columns[sid] = _input_columns(step, sid, datasets, views, ctx)
         elif kind == 'join':
             left, right = read(step.get('left'), '左'), read(step.get('right'), '右')
             if step.get('how') not in HOWS:
@@ -306,7 +307,7 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
         stages, output, params, llm = [], None, [], None
         if step['type'] == 'input':
             data = _input_of(step, sid, datasets, views)[1]
-            columns = _input_columns(step, sid, datasets, views, ctx.get('unsent', ()))
+            columns = _input_columns(step, sid, datasets, views, ctx)
             sql = f'CREATE TEMP TABLE {table} AS SELECT {", ".join(_q(c["name"]) for c in columns)} FROM {_q(data["table"])}'
         elif step['type'] == 'join':
             (left, lcols), (right, rcols) = kept[step['left']], kept[step['right']]

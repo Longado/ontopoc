@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS type_access (
     type_id TEXT PRIMARY KEY, user_ids_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS value_privacy (
     type_id TEXT NOT NULL, column_name TEXT NOT NULL, PRIMARY KEY (type_id, column_name));
+-- what a pipeline's output column was made from, kept with the dataset it wrote: 'unsent' (made from a column kept from the model), 'ai' (made from a model's answer)
+CREATE TABLE IF NOT EXISTS column_mark (
+    dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, mark TEXT NOT NULL CHECK (mark IN ('unsent', 'ai')), PRIMARY KEY (dataset_id, column_name, mark));
 CREATE TABLE IF NOT EXISTS row_rule (
     id INTEGER PRIMARY KEY AUTOINCREMENT, type_id TEXT NOT NULL, column_name TEXT NOT NULL, value TEXT NOT NULL, user_ids_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS action_record (
