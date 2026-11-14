@@ -151,8 +151,7 @@ class McpTests(AgentCase):
             defined = self.payload(replies[10])
             order = next(t for t in defined['types'] if t['id'] == 'order')
             self.assertEqual(order['meanings'], {})   # the meanings of a column marked "don't send values" are not given to a model
-            self.assertEqual([d['id'] for d in defined['derived']], ['cancelled_orders'])
-            self.assertEqual(self.payload(replies[11])['unconfirmed'], [])
+            self.assertEqual([(d['id'], d['says']) for d in defined['derived']], [('cancelled_orders', None)])   # listed, so the agent can read it; the sentence naming the kept-back meaning is not given            self.assertEqual(self.payload(replies[11])['unconfirmed'], [])
             page = self.payload(replies[12])
             self.assertEqual((page['total'], page['rows_limited']), (1, True))   # her rows only
             self.assertEqual(rules[0]['value'], page['objects'][0]['key']['客户编号'])

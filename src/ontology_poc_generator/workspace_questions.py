@@ -60,8 +60,9 @@ def scope(conn, user: dict | None) -> dict:
     'views': {name: {'row', 'content'}}, 'derived': {element id: {'row', 'content'}}}: the confirmed types this person may see (and whose dataset is still there), the
     confirmed meanings of their code columns, the confirmed relations whose two ends are among them, the confirmed views of those types whose conditions stand on
     confirmed meanings (a view on a column marked "don't send values" is left out: what it says would tell the model the meanings), and the confirmed derived
-    properties whose types and relations are all among them and that read no column marked "don't send values"."""
-    types, meanings, relations, views, derived = {}, {}, {}, {}, {}
+    properties whose types and relations are all among them and that read no column marked "don't send values".
+    The ones that do read such a column are in 'derived_kept_back' (same shape): not for the model, but a person or an agent may still be told they exist."""
+    types, meanings, relations, views, derived, kept_back = {}, {}, {}, {}, {}, {}
     for name in visible_type_ids(conn, user, confirmed_only=True):
         row = element_row(conn, type_id(name))
         content = _content(row)
@@ -91,10 +92,9 @@ def scope(conn, user: dict | None) -> dict:
         read = [(content['types'][-1], content['measure']['column'])] if content['measure'] and content['measure']['column'] else []
         read += [(content['type'], i['column']) for i in content['inputs']]
         read += [(content['types'][-1], f['column']) for f in content['conditions']]   # what it says names the meaning of that column, as a view's conditions do
-        if all(t in types for t in content['types']) and all(r in relations for r in content['path']) and derived_visible(conn, row, user) \
-                and not any(c in hidden_values(conn, type_id(t)) for t, c in read):
-            derived[element_id] = {'row': row, 'content': content}
-    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'user': user}
+        if all(t in types for t in content['types']) and all(r in relations for r in content['path']) and derived_visible(conn, row, user):
+            (kept_back if any(c in hidden_values(conn, type_id(t)) for t, c in read) else derived)[element_id] = {'row': row, 'content': content}
+    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'derived_kept_back': kept_back, 'user': user}
 
 
 def _unsettled(conn, user: dict | None) -> list[dict]:
