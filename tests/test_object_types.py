@@ -493,7 +493,7 @@ class ObjectTypeTests(SigningTestCase):
             self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
             moved = self.view_of(bob, 'order', '有效订单')
             self.assertEqual(moved['state'], 'needs_look')
-            self.assertIn('需要再看', moved['reason'])
+            self.assertIn('新值 3 算不算进来', moved['reason'])   # the view says what it is waiting to be asked, not only that it needs a look
             self.assertEqual((moved['confirmed_by'], moved['can_confirm']), ('Bob', False))   # not until the type and the meaning are looked at again
             self.assertEqual(vera.get('/api/workspace/types/order/views')[0], 404)   # the type is not confirmed now, so a viewer is not shown it, nor what stands on it
             queue = bob.get('/api/workspace/queue')[1]['items']

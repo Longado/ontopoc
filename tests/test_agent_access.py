@@ -189,7 +189,7 @@ class SkillTests(AgentCase):
             self.assertIn('[订单](definitions/order.md)', skill)
             self.assertIn('refusal-rules.md', skill)
             self.assertIn('状态码：0 = 已交付、1 = 生产中、2 = 已取消（Bob 确认于 订单 v1）', files['ontopoc-definitions/definitions/order.md'])
-            self.assertIn('剔除 状态码 = 2（已取消），Bob 确认于 订单 v1', files['ontopoc-definitions/definitions/views.md'])
+            self.assertIn('状态码 不是 2（已取消）：算进 0 已交付、1 生产中，Bob 确认于 订单 v1', files['ontopoc-definitions/definitions/views.md'])
             self.assertIn('已取消订单数', files['ontopoc-definitions/definitions/derived.md'])
             self.assertIn('不要猜', files['ontopoc-definitions/refusal-rules.md'])
             everything = '\n'.join(files.values())
