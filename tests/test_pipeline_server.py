@@ -345,6 +345,19 @@ class PipelineServerTests(SigningTestCase):
             self.assertEqual(self.readable(bob, '订单副本二'), (404, False))
             self.assertEqual(self.readable(ann, '订单副本二'), (200, True))
 
+    def test_the_version_record_of_a_pipeline_output_names_the_pipeline_to_builders_and_not_to_a_viewer(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.make(ann, self.COPY, '订单副本')
+            self.go(ann, '订单副本')
+            seen = bob.get(f'/api/workspace/datasets/{quote("订单副本")}')[1]
+            self.assertEqual((seen['origin'], seen['versions'][0]['pipeline']['id']), ('pipeline:订单副本@run1', '订单副本'))
+            status, body = vera.get(f'/api/workspace/datasets/{quote("订单副本")}')
+            self.assertEqual((status, body['origin'], body['versions'][0]['origin'], body['versions'][0]['pipeline']), (200, 'pipeline', 'pipeline', None))
+            self.assertNotIn('订单', str(body['versions']))                                                        # no input dataset name either
+            self.assertEqual({d['name']: d['origin'] for d in vera.get('/api/workspace/datasets')[1]['datasets']}['订单副本'], 'pipeline')
+
     def test_a_row_rule_added_after_a_run_hides_the_output_from_the_people_it_limits(self):
         with self.service() as (base, out):
             team = self.team(base)

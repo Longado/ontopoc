@@ -16,7 +16,7 @@ from pathlib import PurePath
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.company_sources import TABLE_SUFFIXES, SourceFileError, load_table_file
 from ontology_poc_generator.object_actions import overwritten_by_upload
-from ontology_poc_generator.object_types import dataset_readers_of, recheck_after_write
+from ontology_poc_generator.object_types import dataset_readers_of, element_row, recheck_after_write
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_store import (
     DELETED, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, dataset_records, now_text as _now_text, plan_upload)
@@ -61,17 +61,34 @@ def list_datasets(conn, user: dict | None = None) -> list[dict]:
                        '(SELECT COUNT(*) FROM dataset v WHERE v.name = d.name) AS version_count '
                        'FROM dataset d JOIN current_dataset c ON c.dataset_id = d.id ORDER BY d.name')
     rows = [r for r in rows if not dataset_hidden(conn, r['name'], user)]
-    return [{'name': r['name'], 'origin': r['origin'], 'rows': r['rows_stored'], 'columns': r['column_count'], 'version': r['version'],
+    return [{'name': r['name'], 'origin': _origin(conn, r['origin'], user), 'rows': r['rows_stored'], 'columns': r['column_count'], 'version': r['version'],
              'versions': r['version_count'], 'updated_at': _updated_at(conn, r['name'], r['imported_at']), 'who': r['who'],
              'used_by': len(dataset_readers_of(conn, r['name'], user, everyone=False))} for r in rows]   # used_by: the object types that read it; pipelines will too
 
 
-def _version_row(row: dict, current_id: int) -> dict:
+def _pipeline_shown(conn, name: str, user: dict | None) -> bool:
+    """Whether this person may see the pipeline that wrote a version: it is a builder's, and not shown to one who may not see what it reads (the names of those
+    datasets are in the version's record)."""
+    from ontology_poc_generator.workspace_pipelines import pipeline_visible   # workspace_pipelines reads this module
+    row = element_row(conn, f'pipeline:{name}')
+    return row is not None and pipeline_visible(conn, row, user)
+
+
+def _origin(conn, origin: str | None, user: dict | None) -> str | None:
+    """pipeline:<name>@run<n> names the pipeline: a person who may not see it reads just "pipeline"."""
+    if not origin or not origin.startswith('pipeline:'):
+        return origin
+    return origin if _pipeline_shown(conn, origin[len('pipeline:'):].rsplit('@run', 1)[0], user) else 'pipeline'
+
+
+def _version_row(conn, row: dict, current_id: int, user: dict | None) -> dict:
     changes = json.loads(row['changes_json']) if row['changes_json'] else {}
-    return {'version': row['version'], 'who': row['who'], 'at': row['imported_at'], 'mode': row['mode'] or 'upload', 'origin': row['origin'], 'rows': row['rows_stored'],
+    lineage = changes.get('pipeline')
+    shown = lineage if lineage and _pipeline_shown(conn, str(lineage.get('id')), user) else None
+    return {'version': row['version'], 'who': row['who'], 'at': row['imported_at'], 'mode': row['mode'] or 'upload', 'origin': _origin(conn, row['origin'], user), 'rows': row['rows_stored'],
             'changed': changes.get('changed'), 'added': changes.get('added'), 'unchanged': changes.get('unchanged'),
             'blank_kept': changes.get('blank_kept'), 'same_as': changes.get('same_as'), 'changed_keys': changes.get('changed_keys') or [], 'added_keys': changes.get('added_keys') or [], 'replaced_rows': changes.get('replaced_rows'), 'file_rows': changes.get('file_rows'), 'key_columns': changes.get('key_columns'), 'action': changes.get('action'),
-            'pipeline': changes.get('pipeline'),   # a version a pipeline run wrote: the pipeline, the run, the definition version and the input versions it read
+            'pipeline': shown,   # a version a pipeline run wrote: the pipeline, the run, the definition version and the input versions it read
             'current': row['id'] == current_id}
 
 
@@ -137,10 +154,10 @@ def dataset_detail(conn, name: str, version: int | None = None, page: int = 1, u
     cursor = conn.execute(f'SELECT {cols} FROM {_quote(shown["table_name"])} ORDER BY rowid LIMIT {PREVIEW_ROWS} OFFSET {(page - 1) * PREVIEW_ROWS}')
     versions = _rows(conn, 'SELECT * FROM dataset WHERE name = ? ORDER BY version DESC', (name,))
     skipped = _rows(conn, 'SELECT time, who, after_json FROM log WHERE element_id = ? AND change = ? ORDER BY time DESC', (f'dataset:{name}', NO_CHANGE))
-    detail = {'name': name, 'origin': shown['origin'], 'version': shown['version'], 'version_at': shown['imported_at'], 'current_version': current['version'],
+    detail = {'name': name, 'origin': _origin(conn, shown['origin'], user), 'version': shown['version'], 'version_at': shown['imported_at'], 'current_version': current['version'],
             'rows': total, 'updated_at': _updated_at(conn, name, current['imported_at']), 'who': shown['who'], 'readers': dataset_readers_of(conn, name, user, everyone=False),
             'dropped': json.loads(shown['dropped_json'] or '{}'), 'columns': columns, 'key_checks': checks,
-            'versions': [_version_row(v, current['id']) for v in versions],
+            'versions': [_version_row(conn, v, current['id'], user) for v in versions],
             'no_change_updates': [{'at': r['time'], 'who': r['who'], 'mode': 'update_by_key', **json.loads(r['after_json'])} for r in skipped],
             'preview': {'columns': [c['name'] for c in columns], 'rows': [list(r) for r in cursor], 'limit': PREVIEW_ROWS, 'total': total,
                         'page': page, 'pages': pages}}
