@@ -82,12 +82,17 @@ def unconfirmed(conn, user: dict | None) -> dict:
 def read_derived(conn, user: dict | None, type_name, name, key=None, page=1) -> dict:
     """The value of a confirmed derived property for the objects this person may read: one object when `key` ({key column: value}) is given, else one page of them. A
     property that is not confirmed gives no value: the refusal says its state and why (409)."""
-    row = element_row(conn, derived_id(str(type_name), str(name)))
+    row = element_row(conn, derived_id(type_name, name)) if isinstance(type_name, str) and isinstance(name, str) else None
     if row is None or not derived_visible(conn, row, user):
         raise TypeRefused('没有这个派生属性', 404)
     if row['state'] != 'confirmed':
         line = line_of(conn, row['element_id'])
         raise TypeRefused(f'派生属性「{line["name"]}」现在不是已确认的状态（{line["reason"]}），不给出它的值', 409)
+    sc = scope(conn, user)   # the one list of what may be told to a model: a property that reads a column kept from models is not in it
+    if row['element_id'] not in sc['derived']:
+        if row['element_id'] in sc['derived_kept_back']:
+            raise TypeRefused(f'派生属性「{line_of(conn, row["element_id"])["name"]}」用到的一列，所有者设成了取值不对模型开放，所以不给出它的值', 403)
+        raise TypeRefused('没有这个派生属性', 404)
     content = json.loads(row['content_json'])
     result = evaluate(conn, content, user)
     if result['problems']:

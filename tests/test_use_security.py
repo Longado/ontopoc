@@ -3,13 +3,15 @@ expiry (M1), a derived property that reads a column kept from models is not read
 its author (L1, L2), row numbers do not count the rows a person may not read (L3), wrongly typed requests are answered (L4), the key of an object is not in a URL
 (L5) and a request has a size (L6)."""
 from datetime import datetime, timedelta, timezone
+import json
 import sqlite3
 
 from ontology_poc_generator import mcp_server
 from tests.test_access import Client
 from tests.test_agent_access import AgentCase
 from tests.test_dashboards import BoardCase, CARD, SPEC
-from tests.test_explorer import ORDER_Q
+from tests.test_derived_properties import GROSS
+from tests.test_explorer import CUSTOMERS, ORDER_Q
 from tests.test_workspace_questions import AskModel, QUESTION, cancelled
 
 
@@ -92,3 +94,39 @@ class TokenScopeTests(AgentCase, BoardCase):
             self.assertIn('build_ontology', listed(token=full, toolset=None))
             self.assertEqual(listed(token=full, toolset='read'), set(mcp_server.READ_TOOLS))
             self.assertIn('build_ontology', listed(token=None, toolset=None))   # no token: the local session's toolset, as before
+
+
+class DerivedReadTests(AgentCase):
+    def test_a_derived_property_that_reads_a_column_kept_from_models_is_not_read_out_even_to_the_person_s_own_agent(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
+            self.assertEqual(self.confirm(bob, GROSS)[0], 200)
+            gross, cancelled_orders = {'type': 'order', 'name': 'gross'}, {'type': 'customer', 'name': 'cancelled_orders'}
+            self.assertEqual(bob.post('/api/workspace/agent/derived', gross)[0], 200)   # until a column it reads is kept from models
+            self.assertEqual(bob.post('/api/workspace/agent/derived', cancelled_orders)[0], 200)
+            for column in ('金额', '状态码'):
+                self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'order', 'column': column, 'hide_values': True})[0], 200)
+            for body in (gross, cancelled_orders):   # one reads the column in its expression, the other in its condition
+                status, refused = bob.post('/api/workspace/agent/derived', body)
+                self.assertEqual(status, 403, body)
+                self.assertIn('不对模型开放', refused['error'])
+            token = self.token_for(admin, 'bob')['token']
+            reply = self.mcp(base, token, [('read_derived_property', gross)])[10]['result']
+            self.assertTrue(reply['isError'])
+            self.assertIn('不对模型开放', reply['content'][0]['text'])
+            self.assertNotIn('2847', json.dumps(reply))   # not one value of 金额 x 1.13
+
+    def test_the_key_of_an_object_travels_in_the_body_not_in_the_address(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            bob = team['bob']
+            customer = CUSTOMERS[0]
+            key = {'客户编号': customer['客户编号'], '城市': customer['城市']}
+            status, one = bob.post('/api/workspace/agent/derived', {'type': 'customer', 'name': 'cancelled_orders', 'key': key})
+            self.assertEqual((status, one['total']), (200, 1))
+            self.assertNotEqual(bob.get('/api/workspace/agent/derived?type=customer&name=cancelled_orders')[0], 200)   # no such route any more
+            self.assertEqual(bob.post('/api/workspace/agent/derived', {'type': 'customer', 'name': 'cancelled_orders', 'key': 'KH001'})[0], 400)

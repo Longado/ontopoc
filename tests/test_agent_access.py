@@ -144,19 +144,21 @@ class McpTests(AgentCase):
             self.world(team)
             ann, admin = team['ann'], team['admin']
             self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
-            self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'order', 'column': '状态码', 'hide_values': True})[0], 200)   # a column whose values may not go to a model
             ids = {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
             rules = [{'column': '客户编号', 'value': 'KH026', 'user_ids': [ids['vera']]}, {'column': '', 'value': '', 'user_ids': [ids['ann'], ids['bob']]}]
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'customer', 'rules': rules})[0], 200)
             token = self.token_for(admin, 'vera')['token']
+            page = self.payload(self.mcp(base, token, [('read_derived_property', {'type': 'customer', 'name': 'cancelled_orders'})])[10])
+            self.assertEqual((page['total'], page['rows_limited']), (1, True))   # her rows only
+            self.assertEqual(rules[0]['value'], page['objects'][0]['key']['客户编号'])
+            self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'order', 'column': '状态码', 'hide_values': True})[0], 200)   # a column whose values may not go to a model
             replies = self.mcp(base, token, [('describe_definitions', {}), ('list_unconfirmed', {}), ('read_derived_property', {'type': 'customer', 'name': 'cancelled_orders'})])
             defined = self.payload(replies[10])
             order = next(t for t in defined['types'] if t['id'] == 'order')
             self.assertEqual(order['meanings'], {})   # the meanings of a column marked "don't send values" are not given to a model
             self.assertEqual([(d['id'], d['says']) for d in defined['derived']], [('cancelled_orders', None)])   # listed, so the agent can read it; the sentence naming the kept-back meaning is not given            self.assertEqual(self.payload(replies[11])['unconfirmed'], [])
-            page = self.payload(replies[12])
-            self.assertEqual((page['total'], page['rows_limited']), (1, True))   # her rows only
-            self.assertEqual(rules[0]['value'], page['objects'][0]['key']['客户编号'])
+            self.assertTrue(replies[12]['result']['isError'])   # it reads the kept-back column in its condition: listed above, not read out
+            self.assertIn('不对模型开放', replies[12]['result']['content'][0]['text'])
 
     def test_the_full_toolset_still_has_the_run_tools_and_the_read_tools_are_in_it(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):

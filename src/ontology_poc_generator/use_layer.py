@@ -52,14 +52,6 @@ def get(conn, user: dict | None, path: str, query: dict[str, list[str]]):
             return agent_access.unconfirmed(conn, user)
         if parts[1] == 'skill':
             return (*SKILL_FILE, agent_access.skill_zip(conn, user))
-        if parts[1] == 'derived':
-            key = first('key')
-            try:
-                found = None if key is None else json.loads(key)
-            except ValueError:
-                raise TypeRefused('key 要写成 JSON：{"主键列": 取值}') from None
-            page = first('page') or '1'
-            return agent_access.read_derived(conn, user, first('type'), first('name'), found, _whole(page, '页码'))
     raise TypeRefused('Unknown workspace endpoint', 404)
 
 
@@ -79,4 +71,6 @@ def post(conn, user: dict | None, path: str, payload: dict):
         return dashboards.dashboard_data(conn, user, payload.get('id'), payload.get('bar'))
     if route == '/api/workspace/dashboards/preview':
         return dashboards.preview(conn, user, payload)
+    if route == '/api/workspace/agent/derived':
+        return agent_access.read_derived(conn, user, payload.get('type'), payload.get('name'), payload.get('key'), payload.get('page') or 1)
     raise TypeRefused('Unknown workspace endpoint', 404)

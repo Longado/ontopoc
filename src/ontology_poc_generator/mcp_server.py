@@ -502,12 +502,12 @@ def list_unconfirmed(s, a):
 
 
 def read_derived_property(s, a):
-    query = f"type={quote(_text(a.get('type'), 'type'), safe='')}&name={quote(_text(a.get('name'), 'name'), safe='')}"
+    body = {'type': _text(a.get('type'), 'type'), 'name': _text(a.get('name'), 'name')}   # in the body, not the address: the key of the object is data
     if a.get('key') is not None:
-        query += f"&key={quote(json.dumps(a['key'], ensure_ascii=False), safe='')}"
+        body['key'] = a['key']
     if a.get('page') is not None:
-        query += f"&page={int(a['page'])}"
-    return s.request(f'/api/workspace/agent/derived?{query}')
+        body['page'] = int(a['page'])
+    return s.request('/api/workspace/agent/derived', body)
 
 
 WRONG = {'include_wrong': {'type': 'boolean', 'description': '连人判错的也给（默认不给）'}}
