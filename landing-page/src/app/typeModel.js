@@ -25,6 +25,9 @@ export function stateLine(item, noun) {
   return "";
 }
 
+/** What a viewer reads of an object type whose data moved after it was confirmed: it is there, it waits for a second look. */
+export const reconfirmText = (names) => `数据更新了，正在等 ${names?.length ? names.join("、") : "有权限确认的人"} 再确认`;
+
 /** Who could confirm, when it is waiting for someone and the reader is not one of them. */
 export const confirmersText = (item) => (item.confirmers?.length && !item.can_confirm ? `可以确认的人：${item.confirmers.join("、")}` : "");
 

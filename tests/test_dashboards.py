@@ -4,7 +4,11 @@ expired), that a share link still needs a sign-in, that every reader gets number
 from datetime import date, timedelta
 import sqlite3
 
-from tests.test_access import Client
+from ontology_poc_generator.type_access import visible_type_ids
+from ontology_poc_generator.workspace_store import open_workspace
+
+from tests.test_access import GOOD, Client
+from tests.test_derived_properties import ORDER
 from tests.test_explorer import LIVE, ORDERS, UseLayerCase
 from tests.test_object_types import shifted_orders_csv
 
@@ -246,3 +250,85 @@ class ReaderTests(BoardCase):
             self.assertEqual(self.data(bob, board['id'], {'状态码': 5}, expect=400)['error'], '筛选条的取值要写成 {字段: 取值}')
             preview = bob.post('/api/workspace/dashboards/preview', {'spec': SPEC, 'bar': {'状态码': '2'}})[1]
             self.assertEqual(self.card(preview)['result']['value'], 0)   # the view drops 2; the pick asks for it: nothing, said as 0 and not as a gap
+
+
+class WaitingTests(BoardCase):
+    """A viewer whose type went to needs_look after an overwrite upload: the type is waiting for a second look, not closed to them."""
+
+    ORDERS_ONLY = {'components': [CARD, BY_STATUS, RECENT], 'filters': []}
+
+    def second_viewer(self, base, admin, name):
+        admin.post('/api/users', {'username': name, 'display_name': name.title(), 'role': 'viewer', 'password': 'first password 1'})
+        person = Client(base)
+        person.login(name, 'first password 1')
+        person.post('/api/auth/password', {'current': 'first password 1', 'new': GOOD})
+        return person
+
+    def test_a_viewer_still_has_the_type_and_the_board_after_an_overwrite_and_sees_that_they_wait_and_the_last_confirmed_number(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, vera, admin = team['ann'], team['vera'], team['admin']
+            wes = self.second_viewer(base, admin, 'wes')   # never opened the board while it was confirmed
+            board = self.make(ann, 'orders only', spec=self.ORDERS_ONLY, scope='everyone')
+            self.assertEqual(self.card(self.data(vera, board['id']))['result']['value'], len(LIVE))   # Vera reads it while everything is confirmed
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+            # the type list: still there, saying it waits, with nothing of the data or of the definition
+            listed = {t['id']: t for t in vera.get('/api/workspace/types')[1]['types']}
+            self.assertIn('order', listed)
+            waiting = listed['order']
+            self.assertEqual((waiting['state'], waiting['waiting'], waiting['rows'], waiting['dataset']), ('needs_look', True, None, None))
+            self.assertIn('Bob', waiting['waiting_for'])
+            self.assertNotIn('Vera', waiting['waiting_for'])
+            self.assertFalse(listed['customer'].get('waiting'))
+            # the type page: the same line, no objects, no definitions
+            page = vera.get('/api/workspace/types/order')
+            self.assertEqual(page[0], 200, page)
+            self.assertEqual((page[1]['waiting'], page[1]['state'], page[1]['waiting_for']), (True, 'needs_look', waiting['waiting_for']))
+            for hidden in ('properties', 'rows', 'dataset', 'key', 'reason'):
+                self.assertNotIn(hidden, {k: v for k, v in page[1].items() if v is not None}, hidden)
+            self.assertEqual(vera.get('/api/workspace/types/order/objects')[0], 404)   # nothing of the data, and nothing else of the type either
+            self.assertEqual(vera.get('/api/workspace/types/order/views')[0], 404)
+            self.assertEqual(vera.get('/api/workspace/types/order/log')[0], 404)
+            # the board: listed, its components waiting, each with the number that was confirmed
+            self.assertEqual([b['name'] for b in vera.get('/api/workspace/dashboards')[1]['dashboards']], ['orders only'])
+            self.assertEqual(vera.get(f'/api/workspace/dashboards/{board["id"]}')[0], 200)
+            now = self.data(vera, board['id'])
+            self.assertEqual([c['status'] for c in now['components']], ['waiting', 'waiting', 'waiting'])
+            card = self.card(now)
+            self.assertTrue(card['message'].startswith('数据更新了，正在等 Bob'), card['message'])
+            self.assertEqual(card['last']['result']['value'], len(LIVE))
+            self.assertNotIn('result', card)
+            # a viewer who never read it while it was confirmed has no number to be shown, and is told so by the missing 'last'
+            self.assertEqual(wes.get(f'/api/workspace/dashboards/{board["id"]}')[0], 200)
+            first = self.card(self.data(wes, board['id']))
+            self.assertEqual(first['status'], 'waiting')
+            self.assertIsNone(first['last'])
+            # Q&A and agents keep their refusal: the scope of a question has no waiting type in it
+            conn = open_workspace(out / 'workspace.sqlite')
+            try:
+                scope = visible_type_ids(conn, {'id': self.ids(admin)['vera'], 'role': 'viewer'}, confirmed_only=True)
+            finally:
+                conn.close()
+            self.assertNotIn('order', scope)
+            self.assertIn('customer', scope)
+
+    def test_a_type_nobody_ever_confirmed_stays_invisible_to_a_viewer_and_a_closed_type_stays_fully_hidden(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, vera, admin = team['ann'], team['vera'], team['admin']
+            ids = self.ids(admin)
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'english_name': 'draft_order', 'name': '订单草稿'})[0], 200)   # never confirmed
+            board = self.make(ann, 'orders only', spec=self.ORDERS_ONLY, scope='everyone')
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [ids['ann'], ids['bob']]})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+            listed = [t['id'] for t in vera.get('/api/workspace/types')[1]['types']]
+            self.assertNotIn('draft_order', listed)
+            self.assertEqual(vera.get('/api/workspace/types/draft_order')[0], 404)
+            self.assertNotIn('order', listed)   # closed by visible_to, and also needs a look: still not there, not even as waiting
+            self.assertEqual(vera.get('/api/workspace/types/order')[0], 404)
+            self.assertEqual(vera.get('/api/workspace/types')[1]['hidden'], 1)   # the count-only notice of the admin round
+            self.assertEqual(vera.get('/api/workspace/dashboards')[1]['dashboards'], [])   # a board of only that type is not there for her
+            self.assertEqual(self.data(vera, board['id'], expect=404)['error'], '没有这个看板')
+

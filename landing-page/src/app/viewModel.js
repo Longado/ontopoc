@@ -30,3 +30,15 @@ export const viewWaitingText = (view) => (view.waiting_on?.length ? `要先确�
 
 /** A fresh form: one empty condition row, "latest" off. */
 export const emptyViewForm = () => ({ name: "", description: "", filters: [{ column: "", op: "is_not", label: "" }], latest: { on: false, key: [], order: "" } });
+
+/** One new value a view has to be told about: the question as the card puts it. */
+export const newValueText = (v) => `“${v.column}”出现了新值 ${v.value}${v.label ? `（${v.label}）` : ""}，${v.rows} 行：算不算进来？`;
+
+/** The choices as the service takes them, from {"状态码|3": "in" | "out"}; null until every new value has one. */
+export function newValueChoices(newValues, picked) {
+  const all = (newValues ?? []).map((v) => ({ column: v.column, value: v.value, choice: picked[`${v.column}|${v.value}`] }));
+  return all.every((c) => c.choice === "in" || c.choice === "out") ? all : null;
+}
+
+/** The confirm button's words: "不算进来" changes the definition, so it goes to the other builder instead of being confirmed. */
+export const confirmWords = (choices) => (choices?.some((c) => c.choice === "out") ? "加上这个条件，交给另一位确认" : "确认这个视图");

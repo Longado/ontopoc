@@ -1,5 +1,5 @@
 import React from "react";
-import { GROUP_ORDERS, GROUP_TOPS, barRows, formatNumber, greyText, histogramBars, leftOutLines, pieSlices, sliceColor } from "./explorerModel.js";
+import { GROUP_ORDERS, GROUP_TOPS, NOT_OFFICIAL, barRows, formatNumber, greyText, histogramBars, leftOutLines, pieSlices, sliceColor } from "./explorerModel.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { codeCell } from "./typeModel.js";
@@ -34,6 +34,11 @@ export function GroupColumns({ fields, reach, current = "" }) {
       {current && !known && <option value={current}>{current.startsWith("via:") ? "经过一个现在没有确认的关系的列" : current}（现在选不了）</option>}
     </>
   );
+}
+
+/** Said in words beside a grey result, so a forwarded screenshot is not read as an official number; nothing when it stands on confirmed definitions. */
+export function NotOfficial({ standing }) {
+  return standing && !standing.confirmed ? <p className="not-official">{NOT_OFFICIAL}</p> : null;
 }
 
 /** What a result stands on, one line for each definition (the caliber), and, when any is not confirmed, why the result is grey. */
@@ -155,6 +160,7 @@ export function ChartResult({ result, withStanding = true }) {
   const kind = result.chart?.kind ?? "rows";
   return (
     <div className={`chart${grey ? " is-grey" : ""}`}>
+      <NotOfficial standing={result.standing} />
       {kind === "number" && (
         <p className="metric">{formatNumber(result.value)}{result.rows_limited && <span className="muted small"> 你能看到的行</span>}</p>
       )}

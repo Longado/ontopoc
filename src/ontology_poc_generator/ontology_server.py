@@ -72,7 +72,7 @@ from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.sources_http import schedules_get, schedules_post, sources_get, sources_post
 from ontology_poc_generator.workspace_schedules import schedule_loop, tick as schedule_tick
 from ontology_poc_generator.workspace_sources import interrupted_runs
-from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, hidden_type_count, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
+from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, hidden_type_count, key_preview, list_types, propose_meanings, type_detail, type_log, type_page, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
 from ontology_poc_generator.pipeline_llm import LlmService
 from ontology_poc_generator.workspace_ai import draft as ai_draft, explain_steps as ai_explain, parse as ai_parse
@@ -1250,7 +1250,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if not parts:
                     body = {'types': list_types(conn, self.user), 'hidden': hidden_type_count(conn, self.user)}
                 elif len(parts) == 1:
-                    body = type_detail(conn, parts[0], self.user)
+                    body = type_page(conn, parts[0], self.user)
                 elif len(parts) == 2 and parts[1] == 'objects':
                     with derived_time_limit(conn):
                         body = type_objects(conn, parts[0], int(page), self.user)

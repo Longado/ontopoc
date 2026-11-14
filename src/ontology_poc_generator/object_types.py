@@ -812,6 +812,28 @@ def _visible(conn, row: dict, user: dict | None) -> bool:
     return can_access(conn, row['element_id'], user)
 
 
+def was_confirmed(conn, element_id: str) -> bool:
+    return conn.execute('SELECT 1 FROM confirmation WHERE element_id = ?', (element_id,)).fetchone() is not None
+
+
+def waiting_for_viewer(conn, row: dict | None, user: dict | None) -> bool:
+    """A type a viewer is allowed to see that was confirmed once and now needs another look: it is not closed to them, it waits for a confirmer. They are shown
+    that it waits and nothing of its definition or data (a type nobody ever confirmed, or one a list of people leaves them out of, is not this)."""
+    return (row is not None and user is not None and user['role'] == 'viewer' and row['state'] == 'needs_look' and row['element_id'].startswith(TYPE_PREFIX)
+            and can_access(conn, row['element_id'], user) and was_confirmed(conn, row['element_id']))
+
+
+def waiting_for(conn, row: dict, user: dict | None) -> list[str]:
+    """The builders who could confirm it again, by name."""
+    return _confirmers(conn, row, user)[1]
+
+
+def _waiting_line(conn, row: dict, user: dict | None) -> dict:
+    """What a viewer is told of a type that waits: its name and who it waits for, no counts, no dataset, no reason (it quotes the data)."""
+    content = _content(row)
+    return {'id': content['english_name'], 'name': content['name'], 'state': 'needs_look', 'waiting': True, 'waiting_for': waiting_for(conn, row, user)}
+
+
 def visible_rows(conn, row: dict, dataset: dict, user: dict | None) -> int:
     """How many rows of the type this person sees: all of the dataset's, or the ones a row rule that names them keeps (row_rules)."""
     limit = restriction(conn, row['element_id'], user)
@@ -823,6 +845,9 @@ def list_types(conn, user: dict | None) -> list[dict]:
     out = []
     for element_id, in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
+        if waiting_for_viewer(conn, row, user):
+            out.append({**_waiting_line(conn, row, user), 'dataset': None, 'dataset_version': None, 'rows': None, 'meanings_waiting': 0})
+            continue
         if not _visible(conn, row, user):
             continue
         content = _content(row)
@@ -835,10 +860,11 @@ def list_types(conn, user: dict | None) -> list[dict]:
 
 
 def hidden_type_count(conn, user: dict | None) -> int:
-    """How many types exist that this person cannot open because a list of people leaves them out (a draft a viewer may not see yet is not counted: it is not out yet).
-    Only the number: the names are the list's own business."""
+    """How many types exist that this person cannot open because a list of people leaves them out (a draft a viewer may not see yet is not counted: it is not out yet;
+    one that was confirmed and now needs a look is, since it was theirs to see). Only the number: the names are the list's own business."""
     return sum(1 for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%'").fetchall()
-               if not can_access(conn, element_id, user) and not (user is not None and user['role'] == 'viewer' and element_row(conn, element_id)['state'] != 'confirmed'))
+               if not can_access(conn, element_id, user)
+               and not (user is not None and user['role'] == 'viewer' and element_row(conn, element_id)['state'] != 'confirmed' and not was_confirmed(conn, element_id)))
 
 
 def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | None, user: dict | None) -> dict:
@@ -855,6 +881,13 @@ def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | N
                    'rows': now.get(v), 'rows_at_confirmation': was.get(v), 'in_data': v in now} for v in _by_value({*now, *labels})]
     return {'column': prop['column'], 'values': values, 'seen': None if limited else seen_of_meaning(dataset, cols.get(prop['column'])),
             **({'limited_note': LIMITED_NOTE} if limited else {}), **(_state_view(conn, row, user) if row else {'state': None, 'can_confirm': False})}
+
+
+def type_page(conn, english_name: str, user: dict | None) -> dict:
+    """What the type's page is sent: a viewer's waiting type says so and nothing more; everything else is type_detail. (The objects, log, views and the rest keep
+    asking type_detail, which refuses a type a viewer may not read.)"""
+    row = element_row(conn, type_id(str(english_name)))
+    return _waiting_line(conn, row, user) if waiting_for_viewer(conn, row, user) else type_detail(conn, english_name, user)
 
 
 def type_detail(conn, english_name: str, user: dict | None) -> dict:

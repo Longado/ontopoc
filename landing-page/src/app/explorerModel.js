@@ -60,6 +60,9 @@ export function formatNumber(value) {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+/** Said beside a result that is not in colour, with the number itself. */
+export const NOT_OFFICIAL = "待确认，不是正式数";
+
 /** The line under a result that is not in colour: why, from the definition at the bottom of the chain. "" when it is. */
 export const greyText = (standing) => (standing?.confirmed ? "" : standing?.why ?? "用到的定义现在不是已确认的状态");
 

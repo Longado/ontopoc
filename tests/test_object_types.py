@@ -536,6 +536,53 @@ class ObjectTypeTests(SigningTestCase):
             self.assertIn('确认时 144 / 160 行，现在 143 / 160 行', moved['reason'])
             self.assertEqual(self.confirm_view(bob, 'order', '有效订单')[0], 200)   # looked at again: 143 is what the page shows
 
+    def view_after_a_shift_with_a_new_value_that_means_something_else(self, team):
+        """VALID confirmed, then every code shifts up by one; the meanings are written again with the new 3 meaning 已发货待签收 and confirmed, and the type is confirmed."""
+        ann, bob = team['ann'], team['bob']
+        self.confirm_all(ann, bob)
+        self.make_view(ann, VALID)
+        self.assertEqual(self.confirm_view(bob, 'order', '有效订单')[0], 200)
+        self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+        new = [{'value': '0', 'label': ''}, {'value': '1', 'label': '已交付'}, {'value': '2', 'label': '已取消'}, {'value': '3', 'label': '已发货待签收'}]
+        self.assertEqual(bob.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': new})[1], {'changed': True})
+        self.assertEqual(self.confirm(ann, '状态码')[0], 200)
+        self.assertEqual(self.confirm(bob)[0], 200)
+
+    def confirm_view_with(self, client, choices=None):
+        shown = self.view_of(client, 'order', '有效订单')
+        return client.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': shown['version'], 'seen': shown['seen'], **({'new_values': choices} if choices is not None else {})})
+
+    def test_confirming_a_view_asks_whether_a_new_value_counts_and_does_not_take_a_one_click_confirm(self):
+        new_rows = sum(r['状态码'] == '2' for r in ORDERS)   # the old 2 is the new 3
+        with self.service() as (base, _):
+            team = self.team(base, 'ann', 'bob')
+            ann, bob = team['ann'], team['bob']
+            self.view_after_a_shift_with_a_new_value_that_means_something_else(team)
+            shown = self.view_of(bob, 'order', '有效订单')
+            self.assertEqual(shown['new_values'], [{'column': '状态码', 'value': '3', 'label': '已发货待签收', 'rows': new_rows}])
+            status, body = self.confirm_view_with(bob)   # what the page did before: one click
+            self.assertEqual((status, '新值 3' in body['error'], '算不算进来' in body['error']), (409, True, True), body)
+            self.assertEqual(self.view_of(bob, 'order', '有效订单')['state'], 'needs_look')
+            self.assertEqual(self.confirm_view_with(bob, [{'column': '状态码', 'value': '3', 'choice': 'maybe'}])[0], 409)
+            status, body = self.confirm_view_with(bob, [{'column': '状态码', 'value': '3', 'choice': 'in'}])
+            self.assertEqual((status, body), (200, {'state': 'confirmed'}))
+            done = self.view_of(bob, 'order', '有效订单')
+            self.assertEqual((done['state'], done['new_values'], done['rows']), ('confirmed', [], len(ORDERS) - sum(r['状态码'] == '1' for r in ORDERS)))   # the new 2 (cancelled) is out; 1 and the new 3 are in
+
+    def test_saying_a_new_value_does_not_count_adds_it_to_the_excluded_codes_and_leaves_the_confirming_to_the_other_builder(self):
+        with self.service() as (base, _):
+            team = self.team(base, 'ann', 'bob')
+            ann, bob = team['ann'], team['bob']
+            self.view_after_a_shift_with_a_new_value_that_means_something_else(team)
+            status, body = self.confirm_view_with(bob, [{'column': '状态码', 'value': '3', 'choice': 'out'}])
+            self.assertEqual((status, body['state']), (200, 'checked'), body)   # Bob changed the definition, so it is his proposal now: not confirmed by the one who wrote it
+            moved = self.view_of(bob, 'order', '有效订单')
+            self.assertEqual(moved['filters'], [{'column': '状态码', 'op': 'is_not', 'label': '已取消'}, {'column': '状态码', 'op': 'is_not', 'label': '已发货待签收'}])
+            self.assertEqual((moved['state'], moved['proposed_by'], moved['can_confirm'], moved['new_values']), ('checked', 'Bob', False, []))
+            self.assertEqual(moved['rows'], sum(r['状态码'] == '0' for r in ORDERS))   # only the old 0 (now 1) is left
+            self.assertEqual(self.confirm_view_with(bob)[0], 403)
+            self.assertEqual(self.confirm_view_with(ann)[0], 200)   # the other builder confirms what it says now
+
     def test_a_new_version_that_swaps_which_rows_a_view_keeps_sends_it_back_though_the_count_stays_the_same(self):
         first, cancelled = 0, next(i for i, r in enumerate(ORDERS) if r['状态码'] == '2')
         self.assertEqual((ORDERS[first]['状态码'], ORDERS[cancelled]['状态码']), ('0', '2'))

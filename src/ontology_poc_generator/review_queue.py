@@ -16,7 +16,7 @@ from ontology_poc_generator.object_types import (
     ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, LIMITED_NOTE, PIPELINE_PREFIX, RELATION_PREFIX, STALE, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
 from ontology_poc_generator.derived_properties import confirm_derived, derived_state, derived_visible, describe as describe_derived, trial as derived_trial
 from ontology_poc_generator.object_actions import action_state, action_visible, confirm_action, describe as describe_action, open_records
-from ontology_poc_generator.object_views import confirm_view, describe, seen_of_view, view_state, view_summary, view_visible
+from ontology_poc_generator.object_views import confirm_view, describe, open_new_values, seen_of_view, view_state, view_summary, view_visible
 from ontology_poc_generator.workspace_pipelines import (
     _inputs_now, confirm_pipeline, output_states, pipeline_state, pipeline_visible, waiting_on as pipeline_waiting)
 from ontology_poc_generator.row_rules import without_rules
@@ -82,6 +82,7 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
                              *([{'ok': False, 'text': p} for p in summary['problems']] if summary['problems'] else shown),
                              *[{'ok': w['state'] == 'confirmed', 'text': f'“{w["name"]}”{"已确认" if w["state"] == "confirmed" else "还没有确认"}'} for w in view['waiting_on']]]
             view['seen'] = None if view['limited_by_rule'] else seen_of_view(summary)
+            view['new_values'] = [] if view['limited_by_rule'] else open_new_values(conn, row, summary)
     elif element_id.startswith(DERIVED_PREFIX):
         if not derived_visible(conn, row, user):
             return None
@@ -215,7 +216,7 @@ def confirm_item(conn, payload: dict, who: str | None, user: dict | None) -> dic
     if kind == 'pipeline':
         return confirm_pipeline(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen')}, who, user)
     if kind == 'view':
-        return confirm_view(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen')}, who, user)
+        return confirm_view(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen'), 'new_values': payload.get('new_values')}, who, user)
     if kind == 'derived':
         return confirm_derived(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen')}, who, user)
     return confirm_element(conn, {**ref, 'version': payload.get('version'), 'seen': payload.get('seen')}, who, user)

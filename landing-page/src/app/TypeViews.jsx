@@ -4,16 +4,18 @@ import { Select } from "./Select.jsx";
 import { State } from "./TypesPage.jsx";
 import { confirmersText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
-import { OP_LABEL, emptyViewForm, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
+import { OP_LABEL, confirmWords, emptyViewForm, newValueChoices, newValueText, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
 
 function ViewCard({ view, mayBuild, onChanged }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState({});   // {"column|value": "in" | "out"}: what to do with each new value
+  const choices = newValueChoices(view.new_values, picked);
   const confirm = async () => {
     setBusy(true);
     setError("");
     try {
-      await confirmView(view.id, view.version, view.seen);
+      await confirmView(view.id, view.version, view.seen, choices);
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -45,7 +47,17 @@ function ViewCard({ view, mayBuild, onChanged }) {
           <p>{view.reason}</p>
         </div>
       )}
-      {mayBuild && view.can_confirm && <div className="inline"><button className="primary" onClick={confirm} disabled={busy}>确认这个视图</button></div>}
+      {mayBuild && view.can_confirm && view.new_values?.map((v) => {
+        const key = `${v.column}|${v.value}`;
+        return (
+          <fieldset key={key} className="new-value">
+            <legend>{newValueText(v)}</legend>
+            <label><input type="radio" name={`new-${view.id}-${key}`} checked={picked[key] === "in"} onChange={() => setPicked({ ...picked, [key]: "in" })} /> 算进来</label>
+            <label><input type="radio" name={`new-${view.id}-${key}`} checked={picked[key] === "out"} onChange={() => setPicked({ ...picked, [key]: "out" })} /> 不算进来</label>
+          </fieldset>
+        );
+      })}
+      {mayBuild && view.can_confirm && <div className="inline"><button className="primary" onClick={confirm} disabled={busy || !choices}>{confirmWords(choices)}</button></div>}
       {error && <p className="error">{error}</p>}
     </section>
   );

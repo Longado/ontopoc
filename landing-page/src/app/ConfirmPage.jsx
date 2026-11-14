@@ -58,7 +58,10 @@ function Card({ item, onChanged }) {
       {item.kind === "pipeline" && (
         <p>{action === "confirm" ? <a className="button primary" href={itemHref(item)}>看改了什么，再确认</a> : <a href={itemHref(item)}>打开管道</a>}</p>
       )}
-      {item.kind !== "approval" && item.kind !== "pipeline" && action === "confirm" && !asking && (
+      {item.kind === "view" && action === "confirm" && item.new_values?.length > 0 && (
+        <p><a className="button primary" href={itemHref(item)}>选新值算不算进来，再确认</a></p>
+      )}
+      {item.kind !== "approval" && item.kind !== "pipeline" && !(item.kind === "view" && item.new_values?.length > 0) && action === "confirm" && !asking && (
         <div className="inline">
           <button className="primary" disabled={busy} onClick={() => act(() => confirmItem(item.element, item.version, item.seen))}>确认</button>
           <button className="secondary" disabled={busy} onClick={() => setAsking(true)}>退回</button>

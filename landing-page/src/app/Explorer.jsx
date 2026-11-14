@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChartResult, GroupColumns, GroupShape, Standing } from "./ChartView.jsx";
+import { ChartResult, GroupColumns, GroupShape, NotOfficial, Standing } from "./ChartView.jsx";
 import { exploreChart, exploreTable, getExploreMeta } from "./api.js";
 import { CHART_KINDS, OPS, chartMissing, chartSpec, emptyFilter, fnOptions, opsFor, pivotQuery, queryFromParam, queryOf, queryToParam } from "./explorerModel.js";
 import { hrefFor } from "./routeModel.js";
@@ -165,6 +165,7 @@ export function Explorer({ id, route }) {
       {result.status === "error" && <p className="error">{result.error}</p>}
       {result.data && mode === "table" && (
         <>
+          <NotOfficial standing={result.data.standing} />
           <Standing standing={result.data.standing} />
           <TableView id={id} result={result.data} page={page} setPage={setPage} />
         </>

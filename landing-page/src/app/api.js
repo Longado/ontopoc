@@ -96,7 +96,7 @@ export const getRelationGraph = () => request("/api/workspace/graph/relations");
 export const getLineageGraph = () => request("/api/workspace/graph/lineage");
 export const getTypeViews = (id) => request(typePath(id, "/views"));
 export const createView = (payload) => send("/api/workspace/types/views", payload);
-export const confirmView = (id, version, seen) => send("/api/workspace/types/views/confirm", { id, version, seen });
+export const confirmView = (id, version, seen, newValues = undefined) => send("/api/workspace/types/views/confirm", { id, version, seen, ...(newValues?.length ? { new_values: newValues } : {}) });
 
 // derived properties of a type. A try (试算, 校验, the path's shape) writes nothing, so it does not tell the navigation to count again.
 const tryDerived = (tail, payload) => request(`/api/workspace/types/derived${tail}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });

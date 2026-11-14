@@ -415,6 +415,10 @@ button.fn { display: flex; flex-direction: column; align-items: flex-start; widt
 .caliber li.grey, .grey-why { color: var(--faint); }
 .grey-why { font-size: var(--small); margin-top: 2px; }
 .grey-banner { color: var(--muted); margin-bottom: 12px; }
+.new-value { border: 0; padding: 0; margin: 12px 0; display: flex; flex-wrap: wrap; gap: 4px 16px; max-width: 640px; }
+.new-value legend { padding: 0; margin-bottom: 4px; color: var(--ink); }
+.new-value label { display: inline-flex; align-items: center; gap: 6px; }
+.not-official { color: #a35f00; font-size: var(--small); font-weight: 600; margin-bottom: 2px; }
 .chart { margin: 8px 0; max-width: 640px; }
 .chart-svg { display: block; width: 100%; max-width: 440px; height: auto; }
 .chart-svg text { font-size: 14px; fill: currentColor; }

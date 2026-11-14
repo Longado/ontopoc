@@ -11,7 +11,7 @@ import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { confirmersText, limitedNote, logText, stateLine } from "./typeModel.js";
+import { confirmersText, limitedNote, logText, reconfirmText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
 /** What stands behind a state, in one place: the line, who could confirm, and why it needs another look. */
@@ -187,7 +187,7 @@ function Uses({ id, uses }) {
 export function TypePage({ route }) {
   const { id, tab } = route;
   const [state, reload] = useLoad(() => getType(id), [id]);
-  const [uses] = useLoad(() => getTypeUses(id), [id, state.data?.version]);
+  const [uses] = useLoad(() => (state.data?.waiting ? Promise.resolve(null) : getTypeUses(id)), [id, state.data?.version, state.data?.waiting]);   // a waiting type has no uses to show
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const mayBuild = canBuild(useAuth().user);
@@ -212,7 +212,16 @@ export function TypePage({ route }) {
       </a>
       {state.status === "error" && <p className="error">{state.error}</p>}
       {state.status === "loading" && !t && <p className="muted">加载中</p>}
-      {t && (
+      {t?.waiting && (
+        <>
+          <div className="page-head">
+            <h1 tabIndex={-1}>{t.name} <span className="muted id">{t.id}</span> <State item={t} /></h1>
+          </div>
+          <p className="warn">{reconfirmText(t.waiting_for)}</p>
+          <p className="muted">确认之前不显示它的属性和对象。</p>
+        </>
+      )}
+      {t && !t.waiting && (
         <>
           <div className="page-head">
             <h1 tabIndex={-1}>{t.name} <span className="muted id">{t.id}</span> <State item={t} /></h1>

@@ -24,7 +24,7 @@ import json
 import re
 
 from ontology_poc_generator.explorer import explore_chart, explore_meta, explore_table, normalize_chart, normalize_query
-from ontology_poc_generator.object_types import TypeRefused, _confirmers, _content, _type_row, element_row, type_id
+from ontology_poc_generator.object_types import TypeRefused, _confirmers, _content, _type_row, element_row, type_id, was_confirmed, waiting_for_viewer
 from ontology_poc_generator.object_views import view_id
 from ontology_poc_generator.type_access import can_access
 
@@ -99,7 +99,8 @@ def _reads_nothing(conn, user: dict | None, record: dict) -> bool:
             _type_row(conn, component['query']['type'], user)
             return False
         except TypeRefused:
-            continue
+            if waiting_for_viewer(conn, element_row(conn, type_id(component['query']['type'])), user):   # it waits for a second look: theirs to be told so, not closed
+                return False
     return True
 
 
@@ -275,7 +276,7 @@ def _waiting_on(conn, user: dict | None, component: dict) -> list[str] | None:
     if rows[0] is None or not can_access(conn, rows[0]['element_id'], user):
         return None
     pending = [r for r in rows if r is not None and r['state'] == 'needs_look']
-    if not pending:
+    if not pending or not all(was_confirmed(conn, r['element_id']) for r in pending):   # one nobody ever confirmed is not waiting for a re-confirmation
         return None
     return list(dict.fromkeys(name for r in pending for name in _confirmers(conn, r, user)[1]))
 

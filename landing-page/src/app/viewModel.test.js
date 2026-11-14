@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { emptyViewForm, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
+import { confirmWords, emptyViewForm, newValueChoices, newValueText, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
 
 const form = (over = {}) => ({ ...emptyViewForm(), name: " 有效订单 ", filters: [{ column: "状态码", op: "is_not", label: "已取消" }, { column: "", op: "is", label: "" }], ...over });
 
@@ -26,4 +26,14 @@ test("the row count and what a view waits for read as sentences", () => {
   assert.equal(rowsText({ rows: null }), "读不出来");
   assert.equal(viewWaitingText({ waiting_on: [] }), "");
   assert.equal(viewWaitingText({ waiting_on: [{ name: "订单" }, { name: "订单.状态码" }] }), "要先确认“订单”、“订单.状态码”，才能确认这个视图");
+});
+
+test("a view with a new value cannot be confirmed until each new value has a choice, and the choice that changes the view says so on the button", () => {
+  const nv = [{ column: "状态码", value: "3", label: "已发货待签收", rows: 5 }];
+  assert.equal(newValueText(nv[0]), "“状态码”出现了新值 3（已发货待签收），5 行：算不算进来？");
+  assert.equal(newValueChoices(nv, {}), null);
+  assert.deepEqual(newValueChoices(nv, { "状态码|3": "in" }), [{ column: "状态码", value: "3", choice: "in" }]);
+  assert.equal(confirmWords(newValueChoices(nv, { "状态码|3": "in" })), "确认这个视图");
+  assert.equal(confirmWords(newValueChoices(nv, { "状态码|3": "out" })), "加上这个条件，交给另一位确认");
+  assert.deepEqual(newValueChoices([], {}), []);   // nothing to ask: confirm as before
 });

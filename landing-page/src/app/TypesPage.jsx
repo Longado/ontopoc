@@ -3,7 +3,7 @@ import { getDatasets, getTypeList, suggestTypes } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { hrefFor } from "./routeModel.js";
-import { stateText } from "./typeModel.js";
+import { reconfirmText, stateText } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
 export function State({ item }) {
@@ -137,10 +137,10 @@ export function TypesPage() {
                 <tr key={t.id}>
                   <td><a href={hrefFor({ page: "type", id: t.id, tab: "props" })}>{t.name}</a></td>
                   <td className="id">{t.id}</td>
-                  <td>{t.dataset}{t.dataset_version != null && <span className="muted"> 第 {t.dataset_version} 版</span>}</td>
-                  <td><State item={t} />{t.meanings_waiting > 0 && <span className="muted small"> 有 {t.meanings_waiting} 组含义没确认</span>}</td>
+                  <td>{t.waiting ? <span className="faint">—</span> : <>{t.dataset}{t.dataset_version != null && <span className="muted"> 第 {t.dataset_version} 版</span>}</>}</td>
+                  <td><State item={t} />{t.waiting && <span className="muted small"> {reconfirmText(t.waiting_for)}</span>}{t.meanings_waiting > 0 && <span className="muted small"> 有 {t.meanings_waiting} 组含义没确认</span>}</td>
                   <td className="num">{t.rows ?? "—"}</td>
-                  <td>{t.confirmed_by ?? <span className="faint">没有</span>}</td>
+                  <td>{t.waiting ? <span className="faint">—</span> : t.confirmed_by ?? <span className="faint">没有</span>}</td>
                 </tr>
               ))}
             </tbody>

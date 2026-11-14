@@ -112,6 +112,7 @@ def view_summary(conn, content: dict) -> dict:
     labels = {f['column']: meaning_labels(conn, content['type'], f['column']) for f in content['filters']}
     positions = kept_positions(records, {n: c['type'] for n, c in cols.items()}, labels, content)
     return {'problems': [], 'rows': len(positions), 'of': len(records), 'dataset': dataset['name'], 'version': dataset['version'], 'positions': positions,
+            'codes': {c: cols[c]['counts'] or {} for c in dict.fromkeys(f['column'] for f in content['filters'])},
             'signature': _signature(records, positions, content, _content(element_row(conn, type_id(content['type'])))['key'])}
 
 
@@ -125,7 +126,7 @@ def _signature(records: list[dict], positions: list[int], content: dict, type_ke
 
 
 def _public(summary: dict) -> dict:
-    return {k: v for k, v in summary.items() if k not in ('positions', 'signature')}
+    return {k: v for k, v in summary.items() if k not in ('positions', 'signature', 'codes')}
 
 
 def seen_of_view(summary: dict) -> dict | None:
@@ -243,7 +244,9 @@ def _reads(content: dict, summary: dict) -> list[str]:
 
 
 def _anchors(summary: dict) -> dict:
-    return {'dataset': summary['dataset'], 'version': summary['version'], 'rows': summary['rows'], 'of': summary['of'], 'signature': summary['signature']}
+    """What a confirmation was made against. `codes` are the values each code column of the conditions had then, so a value that shows up later can be asked about."""
+    return {'dataset': summary['dataset'], 'version': summary['version'], 'rows': summary['rows'], 'of': summary['of'], 'signature': summary['signature'],
+            'codes': {c: sorted(counts) for c, counts in summary['codes'].items()}}
 
 
 def _change(content: dict, summary: dict, who: str | None) -> tuple:
@@ -306,7 +309,13 @@ def confirm_view(conn, payload: dict, who: str | None, user: dict | None) -> dic
         raise TypeRefused(f'按现在的数据过不了检查，不能确认：{"；".join(summary["problems"])}', 409)
     if payload['seen'] != seen_of_view(summary):
         raise TypeRefused(f'数据在你看过之后变了：{summary["dataset"]} 现在是第 {summary["version"]} 版，视图留下 {summary["rows"]} / {summary["of"]} 行，和你看到的不一样，请刷新后重新看一遍', 409)
-    write_confirmation(conn, row['element_id'], content, _evidence(summary), who, _anchors(summary), {summary['dataset']: summary['version']}, row['version'], _reads(content, summary))
+    open_ = open_new_values(conn, row, summary)
+    choices = _choices(payload.get('new_values'), open_) if open_ else {}
+    out = [o for o in open_ if choices[(o['column'], o['value'])] == 'out']
+    if out:   # the definition changes, so it is not what the other builder looked at either: it goes to them
+        return _keep_out(conn, row, content, out, who)
+    write_confirmation(conn, row['element_id'], content, _evidence(summary), who, _anchors(summary), {summary['dataset']: summary['version']}, row['version'], _reads(content, summary),
+                       snapshot={'new_values': [{**o, 'choice': 'in'} for o in open_]} if open_ else None)
     return {'state': 'confirmed'}
 
 
@@ -340,6 +349,50 @@ def waiting_on(conn, content: dict) -> list[dict]:
     return out
 
 
+def open_new_values(conn, row: dict, summary: dict) -> list[dict]:
+    """The values a code column of an "is not" condition has now that it did not have when the view was confirmed, and that the condition does not already keep out
+    (by the meaning written for them): [{'column', 'value', 'label', 'rows'}]. The view lets each of them in unless someone says otherwise, so confirming asks.
+    Only a view that needs another look asks; one confirmed before the codes were kept has no such question."""
+    was = json.loads(row['anchors_json']).get('codes') if row['state'] == 'needs_look' and row['anchors_json'] and not summary['problems'] else None
+    if was is None:
+        return []
+    content = _content(row)
+    out = []
+    for column in dict.fromkeys(f['column'] for f in content['filters'] if f['op'] == 'is_not'):
+        labels = meaning_labels(conn, content['type'], column)
+        kept_out = {f['label'] for f in content['filters'] if f['column'] == column and f['op'] == 'is_not'}
+        for value in sorted(set(summary['codes'][column]) - set(was.get(column, [])), key=lambda v: _by_code((v,))):
+            if labels.get(value) not in kept_out:
+                out.append({'column': column, 'value': value, 'label': labels.get(value, ''), 'rows': summary['codes'][column][value]})
+    return out
+
+
+def _choices(asked, open_: list[dict]) -> dict[tuple, str]:
+    """{(column, value): 'in' | 'out'} from the request; 409 naming what is still unanswered."""
+    picked = {(c.get('column'), c.get('value')): c.get('choice') for c in asked if isinstance(c, dict)} if isinstance(asked, list) else {}
+    missing = [o for o in open_ if picked.get((o['column'], o['value'])) not in ('in', 'out')]
+    if missing:
+        said = '；'.join(f'“{o["column"]}”出现了新值 {o["value"]}（{o["rows"]} 行）：新值 {o["value"]} 算不算进来' for o in missing)
+        raise TypeRefused(f'{said}？先选“算进来”或“不算进来”，再确认', 409)
+    return picked
+
+
+def _keep_out(conn, row: dict, content: dict, out: list[dict], who: str | None) -> dict:
+    """"不算进来": a condition for each of these values (by its meaning) is added, and the changed view is this person's proposal for another builder to confirm."""
+    unnamed = [o['value'] for o in out if not o['label']]
+    if unnamed:
+        raise TypeRefused(f'新值 {"、".join(unnamed)} 还没有写含义，没法写成条件：先给它写含义，再选“不算进来”', 409)
+    added = list({(o['column'], o['label']): {'column': o['column'], 'op': 'is_not', 'label': o['label']} for o in out}.values())
+    changed = {**content, 'filters': [*content['filters'], *added]}
+    if len(changed['filters']) > MAX_FILTERS:
+        raise TypeRefused(f'条件最多 {MAX_FILTERS} 个，加上新值的就超了', 409)
+    summary = view_summary(conn, changed)
+    if summary['problems']:
+        raise TypeRefused('；'.join(summary['problems']), 409)
+    write_elements(conn, [_change(changed, summary, who)], {row['element_id']: _reads(changed, summary)}, {row['element_id']: row['version']})
+    return {'state': 'checked', 'added': [{'column': a['column'], 'label': a['label']} for a in added]}
+
+
 def view_state(conn, row: dict, user: dict | None) -> dict:
     """_state_view, and that a view whose type or meanings are not confirmed cannot be confirmed yet."""
     state = _state_view(conn, row, user)
@@ -368,6 +421,7 @@ def list_views(conn, english_name: str, user: dict | None) -> list[dict]:
             summary = view_summary(conn, _content(row))
             line = _line(conn, row, user, _public(summary), type_name)
             limit = restriction(conn, type_row['element_id'], user)
+            line['new_values'] = [] if limit is not None else open_new_values(conn, row, summary)   # a person a row rule limits cannot confirm, and the counts are of the whole data
             if limit is not None and not summary['problems']:   # a row rule limits the type: the counts are of the rows this person may read
                 readable = row_positions(dataset_records(conn, current_dataset(conn, summary['dataset'])), limit)
                 line['rows'], line['of'] = len(readable & set(summary['positions'])), len(readable)
