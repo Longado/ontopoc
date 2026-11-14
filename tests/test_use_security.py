@@ -13,7 +13,7 @@ from tests.test_access import Client
 from tests.test_agent_access import AgentCase
 from tests.test_dashboards import BoardCase, CARD, SPEC
 from tests.test_derived_properties import GROSS
-from tests.test_explorer import CUSTOMERS, ORDERS, ORDER_Q
+from tests.test_explorer import CUSTOMERS, ORDERS, ORDER_Q, query
 from tests.test_workspace_questions import AskModel, QUESTION, cancelled
 
 
@@ -244,3 +244,79 @@ class RowNumberTests(BoardCase):
             self.assertEqual(orders['count'], len(hers))
             for o in orders['objects']:
                 self.assertEqual(vera.get(f'/api/workspace/explore/order/object/{o["n"]}')[1]['text'], o['text'])
+
+
+MUTATIONS = (None, True, 7, 1e308, 'abc', [], ['x'], {}, {'a': 1})
+SMALL = {'components': [{'id': 'valid', 'title': '有效订单', 'query': {'type': 'order', 'view': '有效订单', 'filters': [{'field': '状态码', 'op': 'eq', 'value': '1'}], 'rows': [1, 2], 'pivot': None},
+                        'chart': {'kind': 'bar', 'group': '状态码', 'measure': None, 'fn': 'count', 'bins': 10}}],
+         'filters': [{'field': '状态码', 'label': '状态'}]}
+
+
+def leaves(value, path=()):
+    """The place of every value in a request body, so that each can be replaced by a wrong one."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            yield from leaves(v, (*path, k))
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            yield from leaves(v, (*path, i))
+    yield path
+
+
+def replaced(value, path, new):
+    if not path:
+        return new
+    head, rest = path[0], path[1:]
+    if isinstance(value, dict):
+        return {**value, head: replaced(value[head], rest, new)}
+    return [replaced(v, rest, new) if i == head else v for i, v in enumerate(value)]
+
+
+class MalformedRequestTests(BoardCase):
+    def test_a_request_with_a_wrongly_typed_field_is_answered_with_words_never_dropped(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, admin = team['ann'], team['admin']
+            ids = self.ids(admin)
+            board = self.make(ann, scope='everyone', spec=SMALL)
+            more = {'scope': 'named', 'visible_to': [ids['bob']], 'expires_at': '2099-01-01', 'refresh_seconds': 60}
+            bodies = {
+                '/api/workspace/explore/table': {'query': SMALL['components'][0]['query'], 'page': 1},
+                '/api/workspace/explore/chart': {'query': SMALL['components'][0]['query'], 'chart': SMALL['components'][0]['chart']},
+                '/api/workspace/dashboards': {'name': 'x', 'spec': SMALL, **more},
+                '/api/workspace/dashboards/update': {'id': board['id'], 'version': board['version'], 'name': 'x', 'spec': SMALL, **more},
+                '/api/workspace/dashboards/data': {'id': board['id'], 'bar': {'状态码': '1'}},
+                '/api/workspace/dashboards/preview': {'spec': SMALL, 'bar': {'状态码': '1'}},
+                '/api/workspace/agent/derived': {'type': 'customer', 'name': 'cancelled_orders', 'key': {'客户编号': 'KH001', '城市': '东莞'}, 'page': 1},
+                '/api/workspace/dashboards/delete': {'id': 99999},
+            }
+            failed = []
+            for path, body in bodies.items():
+                self.assertLess(ann.post(path, body)[0], 500, path)   # the unchanged request is fine
+                tries = [(whole, ()) for whole in (['x'], 'x', 7)] + [(replaced(body, p, new), p) for p in leaves(body) if p for new in MUTATIONS]
+                for sent, where in tries:
+                    try:
+                        status, answer = ann.post(path, sent)
+                    except Exception as exc:   # a dropped connection, or an answer that is not JSON
+                        failed.append((path, where, repr(exc)[:60]))
+                        continue
+                    if status >= 500 or (status >= 400 and not (isinstance(answer, dict) and answer.get('error'))):
+                        failed.append((path, where, status))
+            self.assertEqual(failed[:12], [], f'{len(failed)} requests were not answered')   # the first few say what to look at
+
+
+class BodySizeTests(BoardCase):
+    def test_a_request_for_a_chart_or_a_board_is_a_few_kilobytes_and_a_big_one_is_refused(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann = team['ann']
+            padding = 'x' * 70000
+            for path, body in (('/api/workspace/explore/table', {'query': {'type': 'order', 'filters': [{'field': '状态码', 'op': 'eq', 'value': padding}]}}),
+                               ('/api/workspace/dashboards', {'name': 'x', 'spec': SMALL, 'scope': 'private', 'note': padding}),
+                               ('/api/workspace/agent/derived', {'type': 'customer', 'name': padding})):
+                status, refused = ann.post(path, body)
+                self.assertEqual(status, 413, path)
+                self.assertEqual(refused['error'], '请求太大。')
+            self.assertEqual(self.table(ann, query(filters=[{'field': '状态码', 'op': 'eq', 'value': '1'}]))['total'] > 0, True)

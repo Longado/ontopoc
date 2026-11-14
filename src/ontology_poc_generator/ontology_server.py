@@ -95,6 +95,7 @@ ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
 KEPT_RUNS_IN_MEMORY = 8   # runs whose rows and graph stay in memory; the least recently used is dropped and read again when asked for
 MAX_BODY = MAX_BYTES * 4 // 3 + 4096  # base64 grows the file by a third, plus the JSON around it
+USE_BODY = 64 * 1024  # what the explorer, board and agent routes read: a query or a board is a few kilobytes
 LOGGED_WRITES = {'/api/ontology/acceptance': 'acceptance', '/api/ontology/rules': 'rules', '/api/ontology/form': 'form', '/api/ontology/derived': 'derived',
                  '/api/ontology/reference/confirm': 'reference', '/api/ontology/card': 'card'}   # library/import only reads a file and keeps nothing
 SECURITY_HEADERS = (('X-Content-Type-Options', 'nosniff'), ('Referrer-Policy', 'no-referrer'),
@@ -1572,25 +1573,30 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.reply(200, body)
 
         def use_route(self, method: str):
-            """The use layer (use_layer.py): /api/workspace/explore, /dashboards, /agent. Saving or deleting a board takes the write lock; the rest only reads."""
+            """The use layer (use_layer.py): /api/workspace/explore, /dashboards, /agent. Saving or deleting a board takes the write lock; the rest only reads. A body is a
+            few kilobytes (USE_BODY); a field of the wrong type is answered 400 like any other wrong request."""
             url = urlsplit(self.path)
-            payload = self.read_json() if method == 'POST' else None
-            if method == 'POST' and payload is None:
-                return
-            conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
-                if method == 'GET':
-                    body = use_layer.get(conn, self.user, url.path, parse_qs(url.query))
-                elif use_layer.writes(url.path):
-                    with runs_lock:
+                payload = self.read_json(USE_BODY) if method == 'POST' else None
+                if method == 'POST' and payload is None:
+                    return
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    if method == 'GET':
+                        body = use_layer.get(conn, self.user, url.path, parse_qs(url.query))
+                    elif use_layer.writes(url.path):
+                        with runs_lock:
+                            body = use_layer.post(conn, self.user, url.path, payload)
+                    else:
                         body = use_layer.post(conn, self.user, url.path, payload)
-                else:
-                    body = use_layer.post(conn, self.user, url.path, payload)
+                finally:
+                    conn.close()
             except (TypeRefused, DashboardRefused) as exc:
                 self.reply(exc.status, {'error': str(exc)})
                 return
-            finally:
-                conn.close()
+            except (ValueError, UnicodeError, TypeError, AttributeError) as exc:   # a body that is not what the route reads (a list where a word goes): the person is told, the connection is not dropped
+                self.reply(400, {'error': f'请求的内容不对：{exc}'})
+                return
             if isinstance(body, tuple):   # a download: (content type, file name, bytes)
                 self.reply_file(body[2], body[0], body[1])
             else:
