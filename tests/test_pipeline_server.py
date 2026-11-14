@@ -127,6 +127,13 @@ class PipelineServerTests(SigningTestCase):
             by_name = {c['name']: c for c in columns['columns']}
             self.assertEqual(by_name['金额']['aggregations'][:2], ['sum', 'count'])
             self.assertEqual(ann.post(f'{PIPELINES}/summary', {'spec': {'steps': [{'id': 'o', 'type': 'input', 'dataset': '没有这个'}]}})[0], 404)
+            # a draft whose join has no key pair yet still shows the steps before it, and says what is wrong
+            draft = {'steps': [SPEC['steps'][0], SPEC['steps'][1], {**JOIN, 'on': [{'left': '', 'right': ''}]}, SPEC['steps'][3]]}
+            status, partial = ann.post(f'{PIPELINES}/summary', {'spec': draft})
+            self.assertEqual((status, partial['checked_steps'], [n['id'] for n in partial['nodes']]), (200, 2, ['o', 't']))
+            self.assertIn('订单号', ann.post(f'{PIPELINES}/summary', {'id': '客户合计'})[1]['nodes'][0]['columns'])
+            self.assertIn('列', partial['error'])
+            self.assertIsNone(body['error'])
             self.assertEqual(self.go(ann)['status'], 'success')
             review = ann.post(f'{PIPELINES}/review', {'id': '客户合计'})[1]
             self.assertEqual(review['rows_before'], None)   # never confirmed

@@ -203,8 +203,8 @@ def check_definition(conn, engine, payload: dict, user: dict | None, name: str |
     and operator checks against the columns it reads (names and types), the outputs are free to write (unless `outputs_free` is off: a preview of a draft does not write).
     TypeRefused says what is wrong. The caller drops the temporary tables (drop_temporary) when done."""
     name = _text(payload.get('name') if name is None else name, '管道的名字', MAX_NAME)
-    if ':' in name or '/' in name or '?' in name or '#' in name or name == 'options':
-        raise TypeRefused('管道的名字不能有冒号、斜杠、问号、井号，也不能叫 options')
+    if ':' in name or '/' in name or '?' in name or '#' in name or name in ('options', 'new'):
+        raise TypeRefused('管道的名字不能有冒号、斜杠、问号、井号，也不能叫 options 或 new')
     description = _text(payload.get('description') or '', '说明', MAX_DESCRIPTION, required=False)
     spec = payload.get('spec')
     if not isinstance(spec, dict) or len(_canonical(spec)) > MAX_BODY_SPEC:
@@ -374,10 +374,20 @@ def preview(conn, engine, payload: dict, user: dict | None) -> dict:
 
 def summary(conn, engine, payload: dict, user: dict | None) -> dict:
     """{id | spec}: every node's report (rows in and out, what each operator did, the join's fan-out, an output's key and status line, its columns with types) from a run
-    on the current data with nothing written and no rows returned: what the graph shows on each card. A draft that does not check is refused with the reason (409 or 400)."""
+    on the current data with nothing written and no rows returned: what the graph shows on each card. A draft that does not check still shows the steps before the first one
+    that is wrong, with `error` saying what is wrong and `checked_steps` how many were run; one whose first step is wrong is refused with the reason (409 or 400)."""
     engine = engine or conn
     spec, name = _spec_of(conn, payload, user)
-    found = check_definition(conn, engine, {'name': name or 'preview', 'spec': spec}, user, outputs_free=False)
+    steps = spec.get('steps') if isinstance(spec, dict) else None
+    first_error, found = None, None
+    for count in ([len(steps), *range(len(steps) - 1, 0, -1)] if isinstance(steps, list) and steps else [None]):
+        try:
+            found = check_definition(conn, engine, {'name': name or 'preview', 'spec': spec if count in (None, len(steps)) else {**spec, 'steps': steps[:count]}}, user, outputs_free=False)
+            break
+        except TypeRefused as exc:
+            first_error = first_error or exc
+    if found is None:
+        raise first_error
     try:
         register(engine)
         result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'])
@@ -389,7 +399,8 @@ def summary(conn, engine, payload: dict, user: dict | None) -> dict:
     for n in nodes:
         if n['type'] == 'output':
             n['output']['status'] = output_status(conn, n['output'], _output_step(found['content']['spec'], n['id']))
-    return {'nodes': nodes, 'inputs': found['versions']}
+    first_error = str(first_error) if first_error else None
+    return {'nodes': nodes, 'inputs': found['versions'], 'error': first_error, 'checked_steps': len(found['content']['spec']['steps'])}
 
 
 def columns_at(conn, engine, payload: dict, user: dict | None) -> dict:

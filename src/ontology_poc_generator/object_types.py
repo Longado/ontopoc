@@ -885,5 +885,7 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
                     'visible_to': after.get('visible_to') if change == 'access_changed' else None,
                     'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(after['columns']) if change == 'meanings_retired'
                     else after.get('text') if change.startswith('action_') else after.get('summary') if change == 'row_rules_changed'
-                    else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed' else None})
+                    else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed'
+                    else f'第 {after["run"]} 次运行，写了 {"、".join(after["outputs"]) or "没有数据集"}' if change == 'run'
+                    else f'第 {after["run"]} 次运行失败：{after["error"]}' if change == 'run_failed' else None})
     return out
