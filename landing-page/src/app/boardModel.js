@@ -16,7 +16,7 @@ export const refreshText = (seconds) => (REFRESH_OPTIONS.find(([s]) => s === sec
 /** The link a person copies: the board's own address in the app. Opening it asks for a sign-in first. */
 export const shareLink = (origin, id) => `${origin}/#/boards/${id}`;
 
-export const emptyComponent = (type, n) => ({ id: `c${n}`, title: "", type, view: "", kind: "number", group: "", measure: "", fn: "count", bins: 10 });
+export const emptyComponent = (type, n) => ({ id: `c${n}`, title: "", type, view: "", kind: "number", group: "", measure: "", fn: "count", bins: 10, top: "", order: "" });
 
 export const emptyDraft = () => ({ name: "", components: [], filters: [], scope: "private", visible_to: [], expires_at: "", refresh_seconds: 0 });
 
@@ -24,7 +24,7 @@ export const emptyDraft = () => ({ name: "", components: [], filters: [], scope:
 export const draftOf = (board) => ({
   name: board.name, scope: board.scope, visible_to: board.visible_to, expires_at: board.expires_at ?? "", refresh_seconds: board.refresh_seconds, filters: board.spec.filters.map((f) => ({ ...f })),
   components: board.spec.components.map((c) => ({
-    id: c.id, title: c.title, type: c.query.type, view: c.query.view ?? "", kind: c.chart.kind, group: c.chart.group ?? "", measure: c.chart.measure ?? "", fn: c.chart.fn ?? "count", bins: c.chart.bins ?? 10,
+    id: c.id, title: c.title, type: c.query.type, view: c.query.view ?? "", kind: c.chart.kind, group: c.chart.group ?? "", measure: c.chart.measure ?? "", fn: c.chart.fn ?? "count", bins: c.chart.bins ?? 10, top: c.chart.top ? String(c.chart.top) : "", order: c.chart.order ?? "",
     filters: c.query.filters ?? [],
   })),
 });

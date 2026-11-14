@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChartResult, Standing } from "./ChartView.jsx";
+import { ChartResult, GroupColumns, GroupShape, Standing } from "./ChartView.jsx";
 import { exploreChart, exploreTable, getExploreMeta } from "./api.js";
 import { CHART_KINDS, OPS, chartMissing, chartSpec, emptyFilter, fnOptions, opsFor, pivotQuery, queryFromParam, queryOf, queryToParam } from "./explorerModel.js";
 import { hrefFor } from "./routeModel.js";
@@ -31,7 +31,7 @@ function FilterRow({ filter, fields, onChange, onRemove }) {
   );
 }
 
-function ChartControls({ chart, setChart, fields, aggregations }) {
+function ChartControls({ chart, setChart, fields, reach, aggregations }) {
   const numeric = fields.filter((f) => f.numeric);
   const needsNumber = chart.kind === "histogram" || chart.kind === "table";
   const measure = fields.find((f) => f.key === chart.measure);
@@ -47,10 +47,11 @@ function ChartControls({ chart, setChart, fields, aggregations }) {
         <label className="field"><span className="caption">按哪一列分组</span>
           <Select label="分组" value={chart.group} onChange={(v) => set({ group: v })}>
             <option value="">{chart.kind === "table" ? "不分组" : "选一列"}</option>
-            {fields.map((f) => <option key={f.key} value={f.key}>{f.name}{f.derived ? "（派生）" : ""}</option>)}
+            <GroupColumns fields={fields} reach={reach} />
           </Select>
         </label>
       )}
+      {(chart.kind === "bar" || chart.kind === "pie" || chart.kind === "table") && chart.group && <GroupShape top={chart.top} order={chart.order} onChange={set} />}
       <label className="field"><span className="caption">量哪一列</span>
         <Select label="度量" value={chart.measure} onChange={(v) => set({ measure: v, fn: fnOptions(fields.find((f) => f.key === v), aggregations).includes(chart.fn) ? chart.fn : "count" })}>
           {!needsNumber && <option value="">行数</option>}
@@ -122,7 +123,7 @@ export function Explorer({ id, route }) {
   const [pivot, setPivot] = useState(first?.pivot ?? null);
   const [mode, setMode] = useState("table");
   const [page, setPage] = useState(route.pageNo ?? 1);
-  const [chart, setChart] = useState({ kind: "bar", group: "", measure: "", fn: "count", bins: 10 });
+  const [chart, setChart] = useState({ kind: "bar", group: "", measure: "", fn: "count", bins: 10, top: "", order: "" });
   const m = meta.data;
   const query = queryOf({ type: id, view, filters, pivot });
   const missing = chartMissing(chart);
@@ -158,7 +159,7 @@ export function Explorer({ id, route }) {
       {filters.map((f, i) => (
         <FilterRow key={i} filter={f} fields={m.fields} onChange={(next) => change(() => setFilters(filters.map((x, j) => (j === i ? next : x))))} onRemove={() => change(() => setFilters(filters.filter((_, j) => j !== i)))} />
       ))}
-      {mode === "chart" && <ChartControls chart={chart} setChart={setChart} fields={m.fields} aggregations={m.aggregations} />}
+      {mode === "chart" && <ChartControls chart={chart} setChart={setChart} fields={m.fields} reach={m.reach} aggregations={m.aggregations} />}
       {mode === "chart" && missing && <p className="muted">{missing}</p>}
       {result.status === "error" && <p className="error">{result.error}</p>}
       {result.data && mode === "table" && (

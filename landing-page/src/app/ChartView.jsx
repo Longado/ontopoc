@@ -1,9 +1,38 @@
 import React from "react";
-import { barRows, formatNumber, greyText, histogramBars, pieSlices, sliceColor } from "./explorerModel.js";
+import { GROUP_ORDERS, GROUP_TOPS, barRows, formatNumber, greyText, histogramBars, leftOutLines, pieSlices, sliceColor } from "./explorerModel.js";
 import { hrefFor } from "./routeModel.js";
+import { Select } from "./Select.jsx";
 import { codeCell } from "./typeModel.js";
 
 const short = (text, n = 10) => (text.length > n ? `${text.slice(0, n)}…` : text);
+
+/** How many groups a bar, a pie or a statistics table keeps and in which order: two choices next to the group's own. */
+export function GroupShape({ top, order, onChange }) {
+  return (
+    <>
+      <label className="field"><span className="caption">只看</span>
+        <Select label="只看前几组" value={top ?? ""} onChange={(v) => onChange({ top: v })}>
+          {GROUP_TOPS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+        </Select>
+      </label>
+      <label className="field"><span className="caption">排序</span>
+        <Select label="排序" value={order ?? ""} onChange={(v) => onChange({ order: v })}>
+          {GROUP_ORDERS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+        </Select>
+      </label>
+    </>
+  );
+}
+
+/** The columns a group can be taken from: the type's own, its derived ones, and the properties of the type at the one end of a confirmed many-to-one relation. */
+export function GroupColumns({ fields, reach }) {
+  return (
+    <>
+      {fields.map((f) => <option key={f.key} value={f.key}>{f.name}{f.derived ? "（派生）" : ""}</option>)}
+      {(reach ?? []).map((r) => <option key={r.key} value={r.key}>{r.name}（经过 {r.relation_name}）</option>)}
+    </>
+  );
+}
 
 /** What a result stands on, one line for each definition (the caliber), and, when any is not confirmed, why the result is grey. */
 export function Standing({ standing }) {
@@ -132,9 +161,7 @@ export function ChartResult({ result, withStanding = true }) {
       {kind === "histogram" && (result.bins.length ? <Histogram result={result} grey={grey} /> : <p className="muted">没有可画的数字</p>)}
       {kind === "table" && <StatTable result={result} />}
       {kind === "rows" && <Rows result={result} />}
-      {(kind === "bar" || kind === "pie" || kind === "table") && result.groups_hidden > 0 && (
-        <p className="muted small">还有 {result.groups_hidden} 组没有画出来{result.rows_hidden ? `（${result.rows_hidden} 行）` : ""}</p>
-      )}
+      {(kind === "bar" || kind === "pie" || kind === "table") && leftOutLines(result).map((line) => <p key={line} className="muted small">{line}</p>)}
       {kind !== "rows" && <p className="muted small">算的是 {result.rows} 行</p>}
       {withStanding && <Standing standing={result.standing} />}
     </div>

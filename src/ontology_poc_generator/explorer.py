@@ -36,6 +36,9 @@ CHARTS = {'number': '单个数字', 'bar': '柱状图', 'pie': '饼图', 'histog
 STAT_COLUMNS = (('count', '有值'), ('sum', '求和'), ('avg', '平均'), ('min', '最小'), ('p25', 'P25'), ('median', '中位数'), ('p75', 'P75'), ('max', '最大'))
 ADDITIVE = ('count', 'sum')   # what a pie may show: shares of a whole
 MAX_FILTERS, MAX_GROUPS, MAX_BINS, OPTION_LIMIT, RELATED_SHOWN = 8, 30, 50, 20, 5
+NAMED_LEFT_OUT = 10   # the groups a chart did not draw that a result names (their number is always given)
+ORDERS = {'desc': '从大到小', 'asc': '从小到大'}
+VIA = 'via:'   # a group key "via:<relation>:<column>": a property of the type on the one end of a many-to-one relation, reached through it
 EMPTY_GROUP = '（空）'
 
 
@@ -74,6 +77,8 @@ def _load(conn, user: dict | None, english: str) -> dict:
 
 
 def _value(row: dict, field: dict):
+    if field.get('via'):
+        return row['via'].get(field['key'])
     return row['derived'].get(field['key']) if field['derived'] else row['rec'].get(field['column'])
 
 
@@ -277,7 +282,7 @@ def explore_meta(conn, user: dict | None, english: str) -> dict:
     return {'type': _type_line(conn, user, row), 'dataset': table['dataset']['name'], 'dataset_version': table['dataset']['version'], 'rows': len(table['rows']),
             'rows_limited': table['limit'] is not None, 'fields': [_field_view(table, f) for f in table['fields']],
             'views': [{k: v[k] for k in ('id', 'name', 'says', 'state', 'reason', 'confirmed_by', 'confirmed_on')} for v in list_views(conn, english, user) if not v['problems']],
-            'relations': _relations_of(conn, user, english), 'charts': CHARTS, 'aggregations': AGGREGATIONS, 'filter_ops': FILTER_OPS}
+            'relations': _relations_of(conn, user, english), 'reach': reach_options(conn, user, english), 'charts': CHARTS, 'aggregations': AGGREGATIONS, 'filter_ops': FILTER_OPS}
 
 
 def _object_key(table: dict, row: dict) -> tuple[dict, str]:
@@ -313,10 +318,12 @@ def explore_table(conn, user: dict | None, raw_query, page=1) -> dict:
 # --- charts --------------------------------------------------------------------------------------------------------------------------------------------------
 
 def normalize_chart(raw) -> dict:
-    """{'kind', 'group', 'measure', 'fn', 'bins'} from what a page sent; what is missing for the kind is said in words."""
+    """{'kind', 'group', 'measure', 'fn', 'bins', 'top', 'order'} from what a page sent; what is missing for the kind is said in words. `top` keeps the N biggest
+    groups of a bar, a pie or a statistics table (by value; a statistics table by rows), `order` puts the groups from the biggest or the smallest."""
     if not isinstance(raw, dict) or not isinstance(raw.get('kind'), str) or raw['kind'] not in CHARTS:
         raise TypeRefused(f'图要写明种类（kind）：{"、".join(CHARTS)}')
-    out = {'kind': raw['kind'], 'group': raw.get('group') or None, 'measure': raw.get('measure') or None, 'fn': raw.get('fn') or 'count', 'bins': raw.get('bins', 10)}
+    out = {'kind': raw['kind'], 'group': raw.get('group') or None, 'measure': raw.get('measure') or None, 'fn': raw.get('fn') or 'count', 'bins': raw.get('bins', 10), 'top': raw.get('top') or None,
+           'order': raw.get('order') or None}
     for name in ('group', 'measure'):
         if out[name] is not None and not isinstance(out[name], str):
             raise TypeRefused(f'{name} 要写字段的名字')
@@ -324,6 +331,10 @@ def normalize_chart(raw) -> dict:
         raise TypeRefused(f'统计方式要是 {"、".join(AGGREGATIONS)} 之一')
     if not isinstance(out['bins'], int) or isinstance(out['bins'], bool) or not 2 <= out['bins'] <= MAX_BINS:
         raise TypeRefused(f'直方图的分段数要在 2 到 {MAX_BINS} 之间')
+    if out['top'] is not None and (not isinstance(out['top'], int) or isinstance(out['top'], bool) or not 1 <= out['top'] <= MAX_GROUPS):
+        raise TypeRefused(f'只看前几组最少 1、最多 {MAX_GROUPS}')
+    if out['order'] is not None and out['order'] not in ORDERS:
+        raise TypeRefused(f'排序要写 {"、".join(f"{k}（{v}）" for k, v in ORDERS.items())}')
     return out
 
 
@@ -381,14 +392,41 @@ def _group_order(group: dict, items: list[dict]) -> list[dict]:
     return sorted(items, key=lambda i: (-(i['value'] if isinstance(i['value'], (int, float)) else 0), i['key'] is None, str(i['key'])))
 
 
-def _grouped(mem, group, measure, fn: str, confirmed_meaning: bool) -> tuple[list[dict], int, int]:
+def _grouped(mem, group, measure, fn: str, confirmed_meaning: bool) -> list[dict]:
+    """Every group with its aggregation and rows, labelled, in no particular order."""
     col = {'name': 'm', 'type': measure['type']} if measure else None
     sql, params, _ = _aggregate_sql(fn, col)
     found = [{'key': k, 'value': v, 'rows': n} for k, v, n in mem.execute(f'SELECT g, {sql}, COUNT(*) FROM t GROUP BY g', params)]
-    ordered = _group_order(group, found)
-    for item in ordered:
+    for item in found:
         item['label'] = _group_label(group, item['key'], confirmed_meaning)
-    return ordered[:MAX_GROUPS], len(ordered) - MAX_GROUPS if len(ordered) > MAX_GROUPS else 0, sum(i['rows'] for i in ordered[MAX_GROUPS:])
+    return found
+
+
+def _size(item: dict) -> float:
+    return float(item['value']) if isinstance(item['value'], (int, float)) else float('-inf')
+
+
+def _arranged(group: dict, items: list[dict], chart: dict) -> tuple[list[dict], list[dict]]:
+    """(the groups to draw, the groups left out). Past the cap or the top N the biggest groups are the ones kept; what is drawn then goes in the order asked for, or in
+    the group's own order (numbers, dates and codes in sequence, the rest biggest first)."""
+    limit = chart['top'] or MAX_GROUPS
+    if len(items) > limit:
+        ranked = sorted(items, key=lambda i: (-_size(i), str(i['label'])))
+        kept, left = ranked[:limit], ranked[limit:]
+    else:
+        kept, left = items, []
+    if chart['order'] in ORDERS:
+        kept = sorted(kept, key=lambda i: (i['value'] is None, -_size(i) if chart['order'] == 'desc' else _size(i), str(i['label'])))
+    elif chart['top']:
+        kept = sorted(kept, key=lambda i: (-_size(i), str(i['label'])))
+    else:
+        kept = _group_order(group, kept)
+    return kept, sorted(left, key=lambda i: (-_size(i), str(i['label'])))
+
+
+def _named(items: list[dict], with_value: bool) -> list[dict]:
+    """The groups a chart did not draw as a reader is told of them: the label, the rows and, when the chart measures something, its value (the first few)."""
+    return [{'label': i['label'], 'rows': i['rows'], 'value': i['value'] if with_value else None} for i in items[:NAMED_LEFT_OUT]]
 
 
 def _histogram(rows: list[dict], measure: dict, bins: int) -> dict:
@@ -414,24 +452,32 @@ def _histogram(rows: list[dict], measure: dict, bins: int) -> dict:
 def explore_chart(conn, user: dict | None, raw_query, raw_chart) -> dict:
     """A chart of what a query selects. kind: number (one value: the aggregation of the measure over the rows), bar and pie (the aggregation of the measure for each
     group), histogram (a number column in equal-width bins), table (the statistics of a number column, for each group or for all). The result carries what it was
-    worked out on (rows), the standing (grey and why) and, for a group, what it counted but did not draw."""
+    worked out on (rows), the standing (grey and why) and, for a group, what it counted but did not draw: the groups past the cap or the top N, named with their rows
+    and value, and the rows a group through a relation could not place (their key has no match on the other end), named the same way."""
     query, chart = normalize_query(raw_query), normalize_chart(raw_chart)
     got = select(conn, user, query)
     table, rows = got['table'], got['rows']
-    group, measure = _chart_fields(table, chart)
     used = list(got['used'])
+    reached = None
+    if chart['group'] is not None and chart['group'].startswith(VIA):
+        reached = _reach(conn, user, table, query, chart['group'], rows)
+        table, rows = {**table, 'by_key': {**table['by_key'], chart['group']: reached['field']}}, reached['placed']
+        used += reached['used']
+    group, measure = _chart_fields(table, chart)
     meaning = True
     for f in (group, measure):
         if f is not None and f['derived']:
             used.append(f['element'])
-    if group is not None and group['code'] and group['meaning']['element']:
+    if group is not None and group['code'] and group['meaning'] and group['meaning']['element']:
         used.append(group['meaning']['element'])
         meaning = group['meaning']['state'] == 'confirmed'
-    out = {'query': query, 'chart': chart, 'rows': len(rows), 'standing': _standing(conn, used), 'group': group and group['name'], 'measure': measure and measure['name'],
+    out = {'query': query, 'chart': chart, 'rows': len(got['rows']), 'standing': _standing(conn, used), 'group': group and group['name'], 'measure': measure and measure['name'],
            'fn': chart['fn'], 'rows_limited': table['limit'] is not None}
     kind = chart['kind']
     if kind == 'histogram':
         return {**out, **_histogram(rows, measure, chart['bins'])}
+    if reached is not None:
+        out = {**out, **_unplaced(reached, measure, chart)}
     mem = _memory(rows, group, measure)
     try:
         if kind == 'number':
@@ -443,18 +489,86 @@ def explore_chart(conn, user: dict | None, raw_query, raw_chart) -> dict:
             aggs = [_aggregate_sql(fn, col) for fn, _ in STAT_COLUMNS]
             parts = ', '.join(a[0] for a in aggs)
             params = [p for a in aggs for p in a[1]]
-            found = [{'key': r[0], 'rows': r[1], 'values': list(r[2:])} for r in mem.execute(f'SELECT g, COUNT(*), {parts} FROM t GROUP BY g', params)]
-            ordered = _group_order(group, [{**f, 'value': f['rows']} for f in found]) if group else found
-            for item in ordered:
+            found = [{'key': r[0], 'rows': r[1], 'values': list(r[2:]), 'value': r[1]} for r in mem.execute(f'SELECT g, COUNT(*), {parts} FROM t GROUP BY g', params)]
+            for item in found:
                 item['label'] = _group_label(group, item['key'], meaning) if group else '全部'
+            shown, left = _arranged(group, found, chart) if group else (found, [])
+            for item in shown:
                 item.pop('value', None)
-            return {**out, 'columns': [{'fn': fn, 'name': name} for fn, name in STAT_COLUMNS], 'table': ordered[:MAX_GROUPS], 'groups_hidden': max(0, len(ordered) - MAX_GROUPS)}
-        items, hidden, hidden_rows = _grouped(mem, group, measure, chart['fn'], meaning)
+            return {**out, 'columns': [{'fn': fn, 'name': name} for fn, name in STAT_COLUMNS], 'table': shown, 'groups_hidden': len(left), 'rows_hidden': sum(i['rows'] for i in left),
+                    'hidden_groups': _named(left, False)}
+        items, left = _arranged(group, _grouped(mem, group, measure, chart['fn'], meaning), chart)
         if kind == 'pie' and any(isinstance(i['value'], (int, float)) and i['value'] < 0 for i in items):
             raise TypeRefused('这一列有负数，不能画成饼图（份额不能是负的）')
-        return {**out, 'groups': items, 'groups_hidden': hidden, 'rows_hidden': hidden_rows}
+        return {**out, 'groups': items, 'groups_hidden': len(left), 'rows_hidden': sum(i['rows'] for i in left), 'hidden_groups': _named(left, measure is not None)}
     finally:
         mem.close()
+
+
+# --- a group reached through a relation --------------------------------------------------------------------------------------------------------------------
+
+def _many_end(rel: dict) -> bool:
+    """Whether the type this relation is seen from is on its many end, so each of its rows reaches at most one row on the other."""
+    return rel['cardinality'] == 'one_to_one' or (rel['cardinality'] == 'many_to_one') == (rel['side'] == 'from')
+
+
+def reach_options(conn, user: dict | None, english: str) -> list[dict]:
+    """The properties a group can be taken from through a confirmed relation whose one end is the other type: [{'key': 'via:<relation>:<column>', 'name': '客户的客户名称',
+    'relation', 'relation_name', 'other', 'column'}]."""
+    out = []
+    for rel in _relations_of(conn, user, english):
+        if not (rel['confirmed'] and _many_end(rel)):
+            continue
+        other = _content(element_row(conn, type_id(rel['other'])))
+        link = _content(element_row(conn, relation_id(rel['id'])))[f'{"to" if rel["side"] == "from" else "from"}_column']
+        out += [{'key': f'{VIA}{rel["id"]}:{p["column"]}', 'name': f'{rel["other_name"]}的{p["name"]}', 'relation': rel['id'], 'relation_name': rel['name'], 'other': rel['other'], 'column': p['column']}
+                for p in other['properties'] if p['column'] != link]
+    return out
+
+
+def _reach(conn, user: dict | None, table: dict, query: dict, key: str, rows: list[dict]) -> dict:
+    """The rows given a group through a relation: {'field', 'placed' (the rows whose key finds a row on the other end, each with its value), 'unplaced' (the rows
+    whose key finds none), 'link' (a field that reads the key), 'used'}."""
+    _, relation, column = key.split(':', 2) if key.count(':') >= 2 else (None, None, None)
+    rel = next((r for r in _relations_of(conn, user, query['type']) if r['id'] == relation and _many_end(r)), None)
+    if rel is None:
+        raise TypeRefused(f'这个关系不是从“{table["content"]["name"]}”连到一个对象的（多对一）：{relation}')
+    rc = _content(element_row(conn, relation_id(relation)))
+    other_side = 'to' if rel['side'] == 'from' else 'from'
+    other = _load(conn, user, rel['other'])
+    base = other['by_key'].get(column)
+    if base is None or base['derived']:
+        raise TypeRefused(f'“{rel["other_name"]}”里没有“{column}”这个字段')
+    here, there = rc[f'{rel["side"]}_column'], rc[f'{other_side}_column']
+    found: dict = {}
+    for r in other['rows']:
+        link = _row_text(r['rec'].get(there))
+        if link is not None:
+            found.setdefault(_canonical(link), _value(r, base))   # a key that repeats on the one end keeps its first row: a confirmed relation has none
+    field = {**base, 'key': key, 'name': f'{rel["other_name"]}的{base["name"]}', 'via': True, 'is_key': False}
+    placed, unplaced = [], []
+    for r in rows:
+        link = _row_text(r['rec'].get(here))
+        if link is not None and _canonical(link) in found:
+            placed.append({**r, 'via': {key: found[_canonical(link)]}})
+        else:
+            unplaced.append(r)
+    return {'field': field, 'placed': placed, 'unplaced': unplaced, 'link': {'key': here, 'column': here, 'derived': False, 'via': False}, 'other_name': rel['other_name'],
+            'used': [relation_id(relation), other['row']['element_id']]}
+
+
+def _unplaced(reached: dict, measure: dict | None, chart: dict) -> dict:
+    """The rows a group through a relation could not place, by the key they carry: {'unplaced': [{'label', 'rows', 'value'}], 'unplaced_groups', 'unplaced_rows'}."""
+    rows = reached['unplaced']
+    if not rows:
+        return {'unplaced': [], 'unplaced_groups': 0, 'unplaced_rows': 0}
+    mem = _memory(rows, reached['link'], measure)
+    try:
+        items = sorted(_grouped(mem, {'labels': {}, 'code': False}, measure, chart['fn'] if chart['kind'] in ('bar', 'pie') else 'count', True), key=lambda i: (-i['rows'], str(i['label'])))
+    finally:
+        mem.close()
+    with_value = measure is not None and chart['kind'] in ('bar', 'pie')
+    return {'unplaced': _named(items, with_value), 'unplaced_groups': len(items), 'unplaced_rows': len(rows), 'unplaced_through': reached['other_name']}
 
 
 # --- one object ------------------------------------------------------------------------------------------------------------------------------------------

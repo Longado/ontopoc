@@ -121,6 +121,56 @@ class ChartTests(UseLayerCase):
             whole = self.chart(bob, ORDER_Q, {'kind': 'table', 'measure': '金额'})
             self.assertEqual([r['label'] for r in whole['table']], ['全部'])
 
+    def test_only_the_top_n_and_a_sort_order_for_bars_pies_and_the_statistics_table_and_what_is_left_out_is_named(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            bob = team['bob']
+            totals = Counter()
+            rows = Counter()
+            for r in LIVE:
+                totals[r['客户编号']] += float(r['金额'])
+                rows[r['客户编号']] += 1
+            ranked = sorted(totals, key=lambda k: (-totals[k], k))
+            top = self.chart(bob, query(view='有效订单'), {'kind': 'bar', 'group': '客户编号', 'measure': '金额', 'fn': 'sum', 'top': 5})
+            self.assertEqual([g['key'] for g in top['groups']], ranked[:5])   # the biggest five, the biggest first
+            self.assertEqual(top['groups_hidden'], len(totals) - 5)
+            self.assertEqual([h['label'] for h in top['hidden_groups']], ranked[5:15])   # what was left out is named (the first ten), with its rows and its sum
+            first = top['hidden_groups'][0]
+            self.assertEqual((first['rows'], float(first['value'])), (rows[ranked[5]], totals[ranked[5]]))
+            small = self.chart(bob, query(view='有效订单'), {'kind': 'bar', 'group': '客户编号', 'measure': '金额', 'fn': 'sum', 'order': 'asc'})
+            self.assertEqual([g['key'] for g in small['groups']][:3], sorted(ranked[:30], key=lambda k: (totals[k], k))[:3])   # the cap keeps the biggest 30, then they are drawn from the smallest
+            pie = self.chart(bob, query(view='有效订单'), {'kind': 'pie', 'group': '客户编号', 'measure': '金额', 'fn': 'sum', 'top': 3})
+            self.assertEqual([g['key'] for g in pie['groups']], ranked[:3])
+            table = self.chart(bob, query(view='有效订单'), {'kind': 'table', 'measure': '金额', 'group': '客户编号', 'top': 2})
+            self.assertEqual([r['key'] for r in table['table']], sorted(rows, key=lambda k: (-rows[k], k))[:2])   # a statistics table ranks its groups by their rows
+            self.assertEqual(table['groups_hidden'], len(rows) - 2)
+            self.assertIn('最多', self.chart(bob, ORDER_Q, {'kind': 'bar', 'group': '状态码', 'top': 99}, expect=400)['error'])
+            self.assertIn('从大到小', self.chart(bob, ORDER_Q, {'kind': 'bar', 'group': '状态码', 'order': 'sideways'}, expect=400)['error'])
+
+    def test_rows_a_chart_cannot_place_are_named_with_their_rows_and_their_measure(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            bob = team['bob']
+            lost = [r for r in ORDERS if r['客户编号'] == 'KH099']
+            chart = self.chart(bob, ORDER_Q, {'kind': 'bar', 'group': 'via:order_customer:客户名称', 'measure': '金额', 'fn': 'sum'})
+            self.assertEqual(chart['unplaced'], [{'label': 'KH099', 'rows': len(lost), 'value': sum(float(r['金额']) for r in lost)}])
+            names = {c['客户编号']: c['客户名称'] for c in CUSTOMERS}
+            expected = Counter()
+            for r in ORDERS:
+                if r['客户编号'] in names:
+                    expected[names[r['客户编号']]] += float(r['金额'])
+            self.assertEqual(len(expected), 30)
+            self.assertEqual({g['key']: float(g['value']) for g in chart['groups']}, dict(expected))
+            self.assertEqual(sum(g['rows'] for g in chart['groups']), len(ORDERS) - len(lost))   # every other row is in a group
+            self.assertEqual(chart['group'], '客户的客户名称')
+            self.assertIn('订单属于客户', [l['name'] for l in chart['standing']['lines']])   # the relation it went through is in the caliber
+            reach = {f['key']: f for f in self.meta(bob)['reach']}
+            self.assertEqual(reach['via:order_customer:客户名称']['name'], '客户的客户名称')
+            self.assertNotIn('via:order_customer:客户名称', {f['key'] for f in self.meta(bob, 'customer')['reach']})   # the one side does not reach the many
+            self.assertIn('不是从', self.chart(bob, {'type': 'customer'}, {'kind': 'bar', 'group': 'via:order_customer:客户名称'}, expect=400)['error'])
+
     def test_a_chart_that_would_lie_is_refused_the_way_the_pipelines_refuse_it(self):
         with self.service() as (base, out):
             team = self.team(base)

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { BoardCards } from "./BoardsPage.jsx";
+import { GroupColumns, GroupShape } from "./ChartView.jsx";
 import { createBoard, getBoard, getBoards, getExploreMeta, getTypes, previewBoard, updateBoard } from "./api.js";
 import { COMPONENT_KINDS, REFRESH_OPTIONS, SCOPE_LABEL, draftOf, draftProblem, emptyComponent, emptyDraft, payloadOf, specOf } from "./boardModel.js";
 import { fnOptions } from "./explorerModel.js";
@@ -36,8 +37,9 @@ function ComponentForm({ c, metas, types, onChange, onRemove }) {
         <div className="op-row inline wide">
           <Select label="分组" value={c.group} onChange={(v) => set({ group: v })}>
             <option value="">{c.kind === "table" ? "不分组" : "按哪一列分组"}</option>
-            {fields.map((f) => <option key={f.key} value={f.key}>{f.name}</option>)}
+            <GroupColumns fields={fields} reach={meta?.reach} />
           </Select>
+          {c.group && <GroupShape top={c.top} order={c.order} onChange={set} />}
         </div>
       )}
       {c.kind !== "rows" && (

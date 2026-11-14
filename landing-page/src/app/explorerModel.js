@@ -30,7 +30,27 @@ export function chartMissing({ kind, group, measure, fn }) {
   return "";
 }
 
-export const chartSpec = ({ kind, group, measure, fn, bins }) => ({ kind, group: group || null, measure: measure || null, fn: fn || "count", bins: bins ?? 10 });
+export const chartSpec = ({ kind, group, measure, fn, bins, top, order }) => ({ kind, group: group || null, measure: measure || null, fn: fn || "count", bins: bins ?? 10, top: top ? Number(top) : null, order: order || null });
+
+export const GROUP_TOPS = [["", "全部"], ["5", "前 5"], ["10", "前 10"], ["20", "前 20"]];
+export const GROUP_ORDERS = [["", "默认顺序"], ["desc", "从大到小"], ["asc", "从小到大"]];
+
+/** The sentences under a bar, a pie or a statistics table about what it did not draw: the groups past the cap or the top N, and the rows whose key has no match on the other end of the relation the group goes through. */
+export function leftOutLines(result) {
+  const measured = Boolean(result.measure) && result.chart?.kind !== "table";
+  const one = (g) => `${g.label}（${g.rows} 行${measured && g.value !== null && g.value !== undefined ? `，${formatNumber(g.value)}` : ""}）`;
+  const lines = [];
+  const hidden = result.hidden_groups ?? [];
+  if (result.groups_hidden > 0) {
+    const named = hidden.slice(0, 5);
+    lines.push(`没画出来的：${named.map(one).join("、")}${result.groups_hidden > named.length ? `，等 ${result.groups_hidden} 组共 ${result.rows_hidden} 行` : ""}`);
+  }
+  if (result.unplaced_rows > 0) {
+    const named = (result.unplaced ?? []).slice(0, 5);
+    lines.push(`没画出来的：${named.map(one).join("、")}${result.unplaced_groups > named.length ? `，等 ${result.unplaced_groups} 个` : ""}，在「${result.unplaced_through}」里找不到对应的行`);
+  }
+  return lines;
+}
 
 /** 1234.5 -> "1,234.5"; at most two decimals; nothing -> "—". */
 export function formatNumber(value) {

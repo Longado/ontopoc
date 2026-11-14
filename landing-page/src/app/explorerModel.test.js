@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { barRows, chartMissing, chartSpec, emptyFilter, fnOptions, formatNumber, greyText, histogramBars, opsFor, pieSlices, pivotQuery, queryFromParam, queryOf, queryToParam, readyFilters, sliceColor } from "./explorerModel.js";
+import { barRows, chartMissing, chartSpec, emptyFilter, fnOptions, formatNumber, greyText, histogramBars, leftOutLines, opsFor, pieSlices, pivotQuery, queryFromParam, queryOf, queryToParam, readyFilters, sliceColor } from "./explorerModel.js";
 
 const AGGREGATIONS = { sum: "求和", count: "计数", count_distinct: "去重计数", avg: "平均", min: "最小", max: "最大", median: "中位数", p25: "P25", p75: "P75" };
 
@@ -28,7 +28,8 @@ test("a chart says what it still needs before it can be asked for", () => {
   assert.equal(chartMissing({ kind: "histogram", measure: "", fn: "count" }), "选一个数字列来量");
   assert.equal(chartMissing({ kind: "number", measure: "", fn: "sum" }), "选要统计的列");
   assert.equal(chartMissing({ kind: "number", measure: "", fn: "count" }), "");
-  assert.deepEqual(chartSpec({ kind: "bar", group: "状态码", measure: "", fn: "", bins: undefined }), { kind: "bar", group: "状态码", measure: null, fn: "count", bins: 10 });
+  assert.deepEqual(chartSpec({ kind: "bar", group: "状态码", measure: "", fn: "", bins: undefined }), { kind: "bar", group: "状态码", measure: null, fn: "count", bins: 10, top: null, order: null });
+  assert.deepEqual(chartSpec({ kind: "bar", group: "客户编号", top: "5", order: "desc" }), { kind: "bar", group: "客户编号", measure: null, fn: "count", bins: 10, top: 5, order: "desc" });
 });
 
 test("numbers read with separators, two decimals at most, and an empty value is a dash", () => {
@@ -82,4 +83,14 @@ test("a query survives the address and a broken one is no query", () => {
   assert.equal(queryFromParam('{"x":1}'), null);
   assert.equal(queryFromParam(""), null);
   assert.equal(queryFromParam(null), null);
+});
+
+test("what a chart did not draw is named with its rows and its measure, and the rows a relation could not place say where they were not found", () => {
+  const capped = { chart: { kind: "bar" }, measure: "金额", groups_hidden: 7, rows_hidden: 20, hidden_groups: [{ label: "KH004", rows: 2, value: 15600 }, { label: "KH023", rows: 3, value: 34020 }] };
+  assert.deepEqual(leftOutLines(capped), ["没画出来的：KH004（2 行，15,600）、KH023（3 行，34,020），等 7 组共 20 行"]);
+  const counted = { chart: { kind: "bar" }, measure: null, groups_hidden: 1, rows_hidden: 2, hidden_groups: [{ label: "KH099", rows: 2, value: 2 }] };
+  assert.deepEqual(leftOutLines(counted), ["没画出来的：KH099（2 行）"]);
+  const lost = { chart: { kind: "bar" }, measure: "金额", groups_hidden: 0, unplaced_rows: 2, unplaced_groups: 1, unplaced_through: "客户", unplaced: [{ label: "KH099", rows: 2, value: 12670 }] };
+  assert.deepEqual(leftOutLines(lost), ["没画出来的：KH099（2 行，12,670），在「客户」里找不到对应的行"]);
+  assert.deepEqual(leftOutLines({ chart: { kind: "bar" }, groups_hidden: 0, unplaced_rows: 0 }), []);
 });

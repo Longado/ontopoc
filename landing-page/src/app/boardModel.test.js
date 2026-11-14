@@ -31,7 +31,9 @@ test("a saved board becomes the form's draft and the draft becomes what the serv
   const draft = draftOf(SAVED);
   assert.deepEqual(draft.components.map((c) => [c.id, c.type, c.view, c.kind]), [["c1", "order", "有效订单", "number"], ["c2", "order", "", "rows"]]);
   assert.deepEqual(specOf(draft).components[1], SAVED.spec.components[1]);
-  assert.deepEqual(specOf(draft).components[0].chart, { kind: "number", group: null, measure: null, fn: "count", bins: 10 });
+  assert.deepEqual(specOf(draft).components[0].chart, { kind: "number", group: null, measure: null, fn: "count", bins: 10, top: null, order: null });
+  const ranked = { ...SAVED, spec: { ...SAVED.spec, components: [{ ...SAVED.spec.components[0], chart: { kind: "bar", group: "via:order_customer:客户名称", measure: "金额", fn: "sum", bins: 10, top: 10, order: "desc" } }] } };
+  assert.deepEqual(specOf(draftOf(ranked)).components[0].chart, ranked.spec.components[0].chart);   // the top N and the order survive the form
   assert.deepEqual(specOf(draft).filters, SAVED.spec.filters);
   const sent = payloadOf(draft);
   assert.deepEqual([sent.scope, sent.visible_to, sent.expires_at, sent.refresh_seconds], ["named", [3], "2026-12-01", 300]);
