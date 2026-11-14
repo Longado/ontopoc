@@ -5,6 +5,7 @@ only. Expected numbers are counted from the planted records here, not from the s
 from collections import Counter, defaultdict
 import json
 import statistics
+from unittest import mock
 
 from tests import test_workspace_store as planted
 from tests.test_object_relations import CUSTOMER, customers_mended
@@ -208,6 +209,23 @@ class AcceptanceTests(DerivedTestCase):
             self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'order', 'column': '状态码', 'hide_values': True})[0], 200)   # "已取消" is a meaning of that column
             ann.post('/api/workspace/ask', {'question': '客户 KH026 的已取消订单数是多少？'})
             self.assertNotIn('已取消订单数', paths())
+
+    def test_working_out_the_derived_properties_of_a_request_stops_after_a_few_seconds_and_says_so_in_words(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
+            self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)   # one nobody confirmed yet waits in the queue, with its trial
+            self.assertEqual(ann.get('/api/workspace/types/customer/derived')[0], 200)
+            with mock.patch('ontology_poc_generator.derived_properties.DERIVED_SECONDS', 0.0):   # no time at all: the first statement is stopped
+                for path in ('/api/workspace/types/customer/derived', '/api/workspace/types/customer/objects', '/api/workspace/queue'):
+                    status, body = ann.get(path)
+                    self.assertEqual(status, 409, (path, body))
+                    self.assertIn('派生属性', body['error'])
+                    self.assertIn('已经停下', body['error'])
+            self.assertEqual(ann.get('/api/workspace/types/customer/derived')[0], 200)   # and nothing was left stopped
 
     def test_a_person_a_row_rule_limits_gets_the_statistic_over_their_rows_only(self):
         with self.service() as (base, out):

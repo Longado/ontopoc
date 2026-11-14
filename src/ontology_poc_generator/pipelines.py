@@ -60,9 +60,10 @@ class Lease:
 
 
 @contextmanager
-def deadline(engine, seconds: float):
+def deadline(engine, seconds: float, advice: str = '数据多的时候，先在前面加过滤，或把步骤拆开分别试'):
     """Whatever the engine computes inside this block is stopped after `seconds` (SQLite's progress handler; it stops SQL, not a Python function in the middle of a
-    value). The stop, and a statement SQLite itself refuses as too big, come out as a PipelineRunError in words a person reads. Yields the Lease."""
+    value). The stop, and a statement SQLite itself refuses as too big, come out as a PipelineRunError in words a person reads, with `advice` for what to do about it.
+    Yields the Lease."""
     lease = Lease(seconds)
     engine.set_progress_handler(lambda: 1 if time.monotonic() > lease.end else 0, 1000)
     try:
@@ -71,7 +72,7 @@ def deadline(engine, seconds: float):
         if not _ENGINE_LIMIT.search(str(exc)):
             raise
         if 'interrupted' in str(exc):
-            raise PipelineRunError(f'算了超过 {seconds:g} 秒，已经停下。数据多的时候，先在前面加过滤，或把步骤拆开分别试') from None
+            raise PipelineRunError(f'算了超过 {seconds:g} 秒，已经停下。{advice}') from None
         raise PipelineRunError(f'数据库算不了这一步：{exc}。表达式、条件或步骤太大，请拆小') from None
     finally:
         engine.set_progress_handler(None, 0)

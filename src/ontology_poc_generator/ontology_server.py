@@ -77,7 +77,7 @@ from ontology_poc_generator.workspace_pipelines import (
     preview as pipeline_preview, review as pipeline_review, run_detail, run_list, fill_answers as fill_pipeline_answers, run_now as run_pipeline_now, trial_expression, update_pipeline)
 from ontology_poc_generator.object_actions import (
     action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, update_action, withdraw as withdraw_record)
-from ontology_poc_generator.derived_properties import check_expression as check_derived_expression, confirm_derived, create_derived, derived_form, derived_log, derived_shape, list_derived, trial_payload, update_derived
+from ontology_poc_generator.derived_properties import time_limit as derived_time_limit, check_expression as check_derived_expression, confirm_derived, create_derived, derived_form, derived_log, derived_shape, list_derived, trial_payload, update_derived
 from ontology_poc_generator.object_views import confirm_view, create_view, list_views, update_view, view_form
 from ontology_poc_generator.row_rules import RuleRefused, set_rules
 from ontology_poc_generator.object_relations import (
@@ -1237,7 +1237,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif len(parts) == 1:
                     body = type_detail(conn, parts[0], self.user)
                 elif len(parts) == 2 and parts[1] == 'objects':
-                    body = type_objects(conn, parts[0], int(page), self.user)
+                    with derived_time_limit(conn):
+                        body = type_objects(conn, parts[0], int(page), self.user)
                 elif len(parts) == 2 and parts[1] == 'log':
                     body = {'log': type_log(conn, parts[0], self.user)}
                 elif len(parts) == 2 and parts[1] == 'uses':   # what uses this type, and the data it stands on
@@ -1245,7 +1246,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif len(parts) == 2 and parts[1] == 'views':   # the views of this type and, for a builder, what a form for a new one offers
                     body = {'views': list_views(conn, parts[0], self.user), 'form': None if self.user is not None and self.user['role'] == 'viewer' else view_form(conn, parts[0], self.user)}
                 elif len(parts) == 2 and parts[1] == 'derived':   # the derived properties of this type and, for a builder, what a form for a new one offers
-                    body = {'derived': list_derived(conn, parts[0], self.user), 'form': None if self.user is not None and self.user['role'] == 'viewer' else derived_form(conn, parts[0], self.user)}
+                    with derived_time_limit(conn):
+                        listed = list_derived(conn, parts[0], self.user)
+                    body = {'derived': listed, 'form': None if self.user is not None and self.user['role'] == 'viewer' else derived_form(conn, parts[0], self.user)}
                 elif len(parts) == 4 and parts[1] == 'derived' and parts[3] == 'log':   # what happened to one of them and the confirmations it has had
                     body = derived_log(conn, parts[0], parts[2], self.user)
                 else:
@@ -1292,14 +1295,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                 body = update_view(conn, payload, who, self.user)
                             elif route == '/views/confirm':
                                 body = confirm_view(conn, payload, who, self.user)
-                            elif route == '/derived':
-                                body = create_derived(conn, payload, who, self.user)
-                            elif route == '/derived/update':
-                                body = update_derived(conn, payload, who, self.user)
-                            elif route == '/derived/confirm':
-                                body = confirm_derived(conn, payload, who, self.user)
-                            elif route == '/derived/trial':
-                                body = trial_payload(conn, payload, self.user)
+                            elif route in ('/derived', '/derived/update', '/derived/confirm', '/derived/trial'):
+                                with derived_time_limit(conn):
+                                    body = {'/derived': create_derived, '/derived/update': update_derived, '/derived/confirm': confirm_derived,
+                                            '/derived/trial': lambda c, p, w, u: trial_payload(c, p, u)}[route](conn, payload, who, self.user)
                             elif route == '/derived/shape':
                                 body = derived_shape(conn, payload, self.user)
                             elif route == '/derived/expression':
@@ -1517,7 +1516,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif parts == ['relation-form']:
                     body = {'types': relation_columns(conn, self.user)}
                 elif parts == ['queue']:   # ?count=1: only how many this person may confirm, read from the states (the navigation item asks on every page)
-                    body = queue(conn, self.user, light='count' in parse_qs(url.query))
+                    with derived_time_limit(conn):
+                        body = queue(conn, self.user, light='count' in parse_qs(url.query))
                 elif parts == ['permissions']:
                     body = access_table(conn)
                 else:

@@ -43,12 +43,24 @@ from ontology_poc_generator.object_types import (
 from ontology_poc_generator.object_views import meaning_labels
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, MAX_LENGTH, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import register
+from ontology_poc_generator.pipelines import PipelineRunError, deadline
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, NUMBER_TYPES, _aggregate_sql, _q, aggregation_options
 from ontology_poc_generator.row_rules import positions, restriction, types_on_dataset_of
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
 KINDS = {'function': '函数', 'statistic': '统计'}
 MAX_HOPS = 3
+DERIVED_SECONDS = 5   # the longest one request may spend working out derived properties
+
+
+@contextmanager
+def time_limit(conn):
+    """The derived properties a request works out (on every row, each time a page or a list is read) are stopped after DERIVED_SECONDS; TypeRefused (409) says so."""
+    try:
+        with deadline(conn, DERIVED_SECONDS, '数据多的时候，给类型加行规则缩小范围，或把派生属性拆简单一些'):
+            yield
+    except PipelineRunError as exc:
+        raise TypeRefused(f'派生属性{exc}', 409) from None
 MAX_CONDITIONS = 5
 OPS = {'is': '是', 'is_not': '不是'}
 STAT_FNS = {**AGGREGATIONS, 'latest': '取最新'}
