@@ -345,6 +345,33 @@ class PipelineServerTests(SigningTestCase):
             self.assertEqual(self.readable(bob, '订单副本二'), (404, False))
             self.assertEqual(self.readable(ann, '订单副本二'), (200, True))
 
+    def test_a_type_made_on_a_pipeline_output_is_not_seen_by_someone_kept_from_what_the_pipeline_read_whatever_list_the_type_carries(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            ids = self.ids(admin)
+            self.assertEqual(ann.post('/api/workspace/types', ORDER)[0], 200)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [ids['ann']]})[0], 200)
+            self.make(ann, self.COPY, '订单副本')
+            self.go(ann, '订单副本')
+            made = {'english_name': 'order_copy', 'name': '订单副本', 'dataset': '订单副本', 'key': ['订单号'], 'properties': [{'column': '金额'}]}
+            self.assertEqual(ann.post('/api/workspace/types', made)[0], 200)                    # no list: visible to everyone, as a new type is
+            self.assertEqual(self.confirm(admin, '订单副本')[0], 200)                              # a type is confirmed once the pipeline under it is
+            shown = admin.get('/api/workspace/types/order_copy')[1]
+            self.assertEqual(admin.post('/api/workspace/types/confirm', {'id': 'order_copy', 'version': shown['version'], 'seen': shown['seen']})[0], 200)   # so a viewer would read it
+            for who in (bob, vera):
+                self.assertNotIn('order_copy', [t.get('id') or t.get('english_name') for t in who.get('/api/workspace/types')[1]['types']])
+                self.assertEqual(who.get('/api/workspace/types/order_copy')[0], 404)
+                self.assertEqual(who.get('/api/workspace/types/order_copy/objects')[0], 404)
+                self.assertEqual(who.get('/api/workspace/types/order_copy/views')[0], 404)
+                self.assertEqual(who.get('/api/workspace/ask')[1]['types'], [])
+            self.assertEqual(ann.get('/api/workspace/types/order_copy/objects')[0], 200)
+            self.assertEqual(admin.get('/api/workspace/types/order_copy/objects')[0], 200)
+            self.assertIn('order_copy', [t.get('id') or t.get('english_name') for t in ann.get('/api/workspace/types')[1]['types']])
+            # let Bob see the restricted type: the copy, and what is made on it, comes back to him
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': 'everyone'})[0], 200)
+            self.assertEqual(bob.get('/api/workspace/types/order_copy')[0], 200)
+
     def test_the_version_record_of_a_pipeline_output_names_the_pipeline_to_builders_and_not_to_a_viewer(self):
         with self.service() as (base, out):
             team = self.team(base)
