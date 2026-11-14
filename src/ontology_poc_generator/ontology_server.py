@@ -74,6 +74,7 @@ from ontology_poc_generator.workspace_pipelines import (
     preview as pipeline_preview, review as pipeline_review, run_detail, run_list, run_now as run_pipeline_now, trial_expression, update_pipeline)
 from ontology_poc_generator.object_actions import (
     action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, update_action, withdraw as withdraw_record)
+from ontology_poc_generator.derived_properties import confirm_derived, create_derived, derived_form, derived_log, derived_shape, list_derived, trial_payload, update_derived
 from ontology_poc_generator.object_views import confirm_view, create_view, list_views, update_view, view_form
 from ontology_poc_generator.row_rules import RuleRefused, set_rules
 from ontology_poc_generator.object_relations import (
@@ -1231,6 +1232,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     body = type_uses(conn, parts[0], self.user)
                 elif len(parts) == 2 and parts[1] == 'views':   # the views of this type and, for a builder, what a form for a new one offers
                     body = {'views': list_views(conn, parts[0], self.user), 'form': None if self.user is not None and self.user['role'] == 'viewer' else view_form(conn, parts[0], self.user)}
+                elif len(parts) == 2 and parts[1] == 'derived':   # the derived properties of this type and, for a builder, what a form for a new one offers
+                    body = {'derived': list_derived(conn, parts[0], self.user), 'form': None if self.user is not None and self.user['role'] == 'viewer' else derived_form(conn, parts[0], self.user)}
+                elif len(parts) == 4 and parts[1] == 'derived' and parts[3] == 'log':   # what happened to one of them and the confirmations it has had
+                    body = derived_log(conn, parts[0], parts[2], self.user)
                 else:
                     self.reply(404, {'error': 'Unknown workspace endpoint'})
                     return
@@ -1275,6 +1280,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                 body = update_view(conn, payload, who, self.user)
                             elif route == '/views/confirm':
                                 body = confirm_view(conn, payload, who, self.user)
+                            elif route == '/derived':
+                                body = create_derived(conn, payload, who, self.user)
+                            elif route == '/derived/update':
+                                body = update_derived(conn, payload, who, self.user)
+                            elif route == '/derived/confirm':
+                                body = confirm_derived(conn, payload, who, self.user)
+                            elif route == '/derived/trial':
+                                body = trial_payload(conn, payload, self.user)
+                            elif route == '/derived/shape':
+                                body = derived_shape(conn, payload, self.user)
                             elif route == '/key-check':
                                 body = key_preview(conn, payload.get('dataset'), payload.get('key'), self.user)
                             elif route == '/privacy':

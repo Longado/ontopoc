@@ -17,11 +17,12 @@ import json
 import re
 
 from ontology_poc_generator.answer_checks import _uses, choose_rows, definition_catalog, definition_check, refusal
+from ontology_poc_generator.derived_properties import derived_visible, describe as describe_derived, evaluate as evaluate_derived, text_of
 from ontology_poc_generator.named_views import name_views
-from ontology_poc_generator.object_relations import _relation_visible, check_relation
-from ontology_poc_generator.object_types import CAUSE_WORDS, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, stale_word, type_id
+from ontology_poc_generator.object_relations import _relation_visible, check_relation, relation_id
+from ontology_poc_generator.object_types import CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, stale_word, type_id
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible
-from ontology_poc_generator.ontology_questions import _catalog, answer_query, ask_questions
+from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
 from ontology_poc_generator.row_rules import describe as describe_limit, limit_as_list, positions as row_positions, restriction
@@ -55,10 +56,11 @@ def _confirmation(conn, element_id: str) -> tuple:
 
 def scope(conn, user: dict | None) -> dict:
     """{'types': {english name: {'row', 'content', 'dataset'}}, 'meanings': {english name: {column: {'row', 'labels'}}}, 'relations': {english name: {'row', 'content'}},
-    'views': {name: {'row', 'content'}}}: the confirmed types this person may see (and whose dataset is still there), the confirmed meanings of their code columns,
-    the confirmed relations whose two ends are among them, and the confirmed views of those types whose conditions stand on confirmed meanings (a view on a column
-    marked "don't send values" is left out: what it says would tell the model the meanings)."""
-    types, meanings, relations, views = {}, {}, {}, {}
+    'views': {name: {'row', 'content'}}, 'derived': {element id: {'row', 'content'}}}: the confirmed types this person may see (and whose dataset is still there), the
+    confirmed meanings of their code columns, the confirmed relations whose two ends are among them, the confirmed views of those types whose conditions stand on
+    confirmed meanings (a view on a column marked "don't send values" is left out: what it says would tell the model the meanings), and the confirmed derived
+    properties whose types and relations are all among them and that read no column marked "don't send values"."""
+    types, meanings, relations, views, derived = {}, {}, {}, {}, {}
     for name in visible_type_ids(conn, user, confirmed_only=True):
         row = element_row(conn, type_id(name))
         content = _content(row)
@@ -82,19 +84,27 @@ def scope(conn, user: dict | None) -> dict:
         if content['type'] in types and view_visible(conn, row, user) and columns <= set(meanings.get(content['type'], {})) \
                 and not columns & hidden_values(conn, type_id(content['type'])):
             views[content['name']] = {'row': row, 'content': content}
-    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'user': user}
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'derived:%' AND state = 'confirmed' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        content = _content(row)
+        read = [(content['types'][-1], content['measure']['column'])] if content['measure'] and content['measure']['column'] else []
+        read += [(content['type'], i['column']) for i in content['inputs']]
+        if all(t in types for t in content['types']) and all(r in relations for r in content['path']) and derived_visible(conn, row, user) \
+                and not any(c in hidden_values(conn, type_id(t)) for t, c in read):
+            derived[element_id] = {'row': row, 'content': content}
+    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'user': user}
 
 
 def _unsettled(conn, user: dict | None) -> list[dict]:
     """The types and relations this person may see that are not confirmed, with the state, the reason and who could confirm: what is outside the scope
     for a reason a builder can do something about. A viewer sees none (they see only confirmed ones)."""
     out = []
-    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%' ORDER BY element_id").fetchall():
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%' OR element_id LIKE 'derived:%' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
         if row['state'] == 'confirmed':
             continue
         visible = (_visible(conn, row, user) if element_id.startswith(TYPE_PREFIX) else view_visible(conn, row, user) if element_id.startswith(VIEW_PREFIX)
-                   else _relation_visible(conn, row, user))
+                   else derived_visible(conn, row, user) if element_id.startswith(DERIVED_PREFIX) else _relation_visible(conn, row, user))
         if visible:
             out.append(_definition_line(conn, row, user))
     return out
@@ -118,6 +128,9 @@ def _kind_and_name(conn, row: dict, types: dict | None = None) -> tuple[str, str
     if element_id.startswith(ENUM_PREFIX):
         type_name = types[content['type']]['content']['name'] if types else _content(element_row(conn, type_id(content['type'])))['name']
         return 'meaning', f'{type_name}.{content["column"]}'
+    if element_id.startswith(DERIVED_PREFIX):
+        owner = types[content['type']]['content']['name'] if types and content['type'] in types else _content(element_row(conn, type_id(content['type'])))['name']
+        return 'derived', f'{owner}.{content["name"]}'
     return ('type' if element_id.startswith(TYPE_PREFIX) else 'view' if element_id.startswith(VIEW_PREFIX) else 'relation'), content['name']
 
 
@@ -127,7 +140,7 @@ def _definition_line(conn, row: dict, user: dict | None) -> dict:
     _, confirmers = _confirmers(conn, row, user)
     return {'id': row['element_id'], 'kind': kind, 'name': name, 'state': row['state'], 'reason': row['reason'] if row['state'] in ('needs_look', 'rejected') else None,
             'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None, 'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None,
-            'proposed_by': row['proposed_by'], 'who_can_confirm': confirmers, **({'type': _content(row)['type']} if kind == 'view' else {})}
+            'proposed_by': row['proposed_by'], 'who_can_confirm': confirmers, **({'type': _content(row)['type']} if kind in ('view', 'derived') else {})}
 
 
 def _causes(conn, row: dict, user: dict | None) -> list[dict]:
@@ -143,6 +156,10 @@ def _causes(conn, row: dict, user: dict | None) -> list[dict]:
     elif row['element_id'].startswith(RELATION_PREFIX):
         content = _content(row)
         found = [r['element_id'] for r in (element_row(conn, type_id(content[e])) for e in ('from', 'to')) if r and r['state'] != 'confirmed']
+    elif row['element_id'].startswith(DERIVED_PREFIX):
+        content = _content(row)
+        stands_on = [*(type_id(t) for t in content['types']), *(relation_id(r) for r in content['path']), *(enum_id(content['types'][-1], c) for c in dict.fromkeys(f['column'] for f in content['conditions']))]
+        found = [r['element_id'] for r in (element_row(conn, e) for e in stands_on) if r and r['state'] != 'confirmed']
     else:
         found = []
     return [_definition_line(conn, element_row(conn, e), user) for e in found]
@@ -164,7 +181,7 @@ def _blockers(conn, user: dict | None, question: str) -> list[dict]:
         content = _content(row)
         if line['kind'] == 'type':
             hit = _named(question, content['name']) or _named(question, content['english_name'])
-        elif line['kind'] == 'view':
+        elif line['kind'] in ('view', 'derived'):
             hit = _named(question, content['name'])
         else:
             ends = [element_row(conn, type_id(content[e])) for e in ('from', 'to')]
@@ -190,7 +207,7 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
 
 
 def _kind_word(kind: str) -> str:
-    return {'type': '对象类型', 'relation': '关系', 'meaning': '含义', 'view': '视图'}[kind]
+    return {'type': '对象类型', 'relation': '关系', 'meaning': '含义', 'view': '视图', 'derived': '派生属性'}[kind]
 
 
 # --- what the engine reads ----------------------------------------------------------------------------------------------------------------------------
@@ -204,8 +221,19 @@ def _inputs(conn, sc: dict) -> dict:
     for t in sc['types'].values():
         name = t['dataset']['name']
         alias.setdefault(name, name.replace('.', '_') if name.replace('.', '_') not in alias.values() else f'{name.replace(".", "_")}_{len(alias)}')
+    rows = {alias[name]: _readable_rows(conn, sc, name, d) for name, d in {t['dataset']['name']: t['dataset'] for t in sc['types'].values()}.items()}
+    derived_attrs, extra = {}, {}
+    for element_id, d in sc['derived'].items():   # a confirmed derived property is one more column of its type's rows, worked out over the rows this person may read
+        content, owner = d['content'], sc['types'][d['content']['type']]
+        result = evaluate_derived(conn, content, sc['user'])
+        if result['problems']:
+            continue
+        source = alias[owner['dataset']['name']]
+        rows = {**rows, source: [(i, {**r, content['name']: text_of(result['values'].get(i), result['output_type'])}) for i, r in rows[source]]}
+        extra[content['type']] = [*extra.get(content['type'], []), {'source': source, 'path': content['name']}]
+        derived_attrs[f'{source}.{content["name"]}'] = {'element': element_id, 'type': result['output_type'], 'says': describe_derived(conn, content)}
     object_types = [{'key': k, 'label': t['content']['name'], 'populated_from': [{'source': alias[t['dataset']['name']], 'identity': {c: c for c in t['content']['key']}}],
-                     'attributes': [{'source': alias[t['dataset']['name']], 'path': p['column']} for p in t['content']['properties']]} for k, t in sc['types'].items()]
+                     'attributes': [*({'source': alias[t['dataset']['name']], 'path': p['column']} for p in t['content']['properties']), *extra.get(k, [])]} for k, t in sc['types'].items()]
     relations, unusable = [], []
     for k, r in sc['relations'].items():
         c = r['content']
@@ -216,23 +244,22 @@ def _inputs(conn, sc: dict) -> dict:
             continue
         relations.append({'key': k, 'from': c['from'], 'to': c['to'], 'label': c['name'], 'meaning': c.get('description') or '',
                           'source': alias[sc['types'][c[many]]['dataset']['name']], f'{one}_identity': {one_key[0]: c[f'{many}_column']}})
-    sources = {alias[name]: {'records': _readable_rows(conn, sc, name, d), 'requests': []}
-               for name, d in {t['dataset']['name']: t['dataset'] for t in sc['types'].values()}.items()}
+    sources = {source: {'records': [r for _, r in kept], 'requests': []} for source, kept in rows.items()}
     meanings = {f'{alias[sc["types"][k]["dataset"]["name"]]}.{column}': {'labels': m['labels']} for k, cols in sc['meanings'].items() for column, m in cols.items()}
-    return {'ontology': {'object_types': object_types, 'relations': relations, 'ignored_fields': [], 'open_questions': []}, 'alias': alias, 'unusable': unusable,
+    return {'ontology': {'object_types': object_types, 'relations': relations, 'ignored_fields': [], 'open_questions': []}, 'alias': alias, 'unusable': unusable, 'derived': derived_attrs,
             'bundle': {'decision': '', 'sources': sources, 'meanings': meanings}, 'views': _engine_views(conn, sc, alias, sources)}
 
 
-def _readable_rows(conn, sc: dict, name: str, dataset: dict) -> list[dict]:
-    """The rows of a dataset this person may read: all of them, or only those that every row-ruled type in scope reading it lets through (the rows are limited here,
-    before anything is counted, grouped or joined; two types on one dataset keep the rows both allow)."""
+def _readable_rows(conn, sc: dict, name: str, dataset: dict) -> list[tuple[int, dict]]:
+    """[(position from 1, row)] of the rows of a dataset this person may read: all of them, or only those that every row-ruled type in scope reading it lets through
+    (the rows are limited here, before anything is counted, grouped or joined; two types on one dataset keep the rows both allow)."""
     records = dataset_records(conn, dataset)
     kept = None
     for t in sc['types'].values():
         if t['dataset']['name'] == name and t['limit'] is not None:
             allowed = row_positions(records, t['limit'])
             kept = allowed if kept is None else kept & allowed
-    return records if kept is None else [r for i, r in enumerate(records, 1) if i in kept]
+    return [(i, r) for i, r in enumerate(records, 1) if kept is None or i in kept]
 
 
 def _engine_views(conn, sc: dict, alias: dict, sources: dict) -> list[dict]:
@@ -269,6 +296,9 @@ def _catalog_for_model(conn, sc: dict, parts: dict) -> tuple[dict, list[dict]]:
         for a in entry['attributes']:
             if a['path'] in kinds:
                 a['type'] = kinds[a['path']]
+            if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in parts['derived']:   # a derived value: its kind and what it says, never its values (they are worked out from rows)
+                a.update(type=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['type'], derived=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['says'])
+                a.pop('values', None)
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in hidden or a['path'] in t['content']['key']:
                 a.pop('values', None)
                 a.pop('meanings', None)
@@ -306,6 +336,9 @@ def _reads(sc: dict, parts: dict, query, used: list, spec) -> tuple[list[str], l
     walked = sorted({k for k in [*(query.get('via') or []), *(k for d in dims if isinstance(d, dict) for k in d.get('via') or [])] if k in relations})
     read = list(dict.fromkeys([query['start'], *[end for k in walked for end in (relations[k]['from'], relations[k]['to'])]]))
     fields = {f for f, _, _ in _uses(query, types, relations) if f} | {u['id'].rpartition('=')[0] for u in used if isinstance(u.get('id'), str)}
+    measure = query.get('measure')
+    if isinstance(measure, dict) and isinstance(measure.get('field'), str) and query['start'] in types:   # the amount an answer adds up is a use too (a derived value is cited by it)
+        fields |= {f for f in [_resolve_field(types[query['start']], measure['field'])] if f}
     return read, walked, fields
 
 
@@ -314,6 +347,7 @@ def _used_definitions(conn, sc: dict, parts: dict, read: list[str], walked: list
     relations, the views whose rows it read, and the meanings of the code columns the answer used."""
     held = {type_id(k): sc['types'][k]['row'] for k in read} | {f'{RELATION_PREFIX}{k}': sc['relations'][k]['row'] for k in walked}
     held |= {v['element']: sc['views'][v['name']]['row'] for v in views}
+    held |= {a['element']: sc['derived'][a['element']]['row'] for f, a in parts['derived'].items() if f in fields and sc['derived'][a['element']]['content']['type'] in read}
     for k in read:
         for column, m in sc['meanings'].get(k, {}).items():
             if f'{parts["alias"][sc["types"][k]["dataset"]["name"]]}.{column}' in fields:
@@ -322,8 +356,10 @@ def _used_definitions(conn, sc: dict, parts: dict, read: list[str], walked: list
     for element_id, row in held.items():   # the rows the question was answered from (read before the model was asked), not what is on file when it comes back
         kind, name = _kind_and_name(conn, row, sc['types'])
         lines.append({'id': element_id, 'kind': kind, 'name': name, 'state': row['state'], 'version': row['version'], 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at'],
-                      **({'type': _content(row)['type']} if kind == 'view' else {})})   # a view's page is on its type
-    return lines, [{'id': k, 'name': sc['types'][k]['content']['name']} for k in read], {sc['types'][k]['dataset']['name']: sc['types'][k]['dataset']['version'] for k in read}
+                      **({'type': _content(row)['type']} if kind in ('view', 'derived') else {}),   # a view's and a derived property's page is on its type
+                      **({'says': describe_derived(conn, _content(row))} if kind == 'derived' else {})})
+    standing = [*read, *(t for element_id in held if element_id in sc['derived'] for t in sc['derived'][element_id]['content']['types'])]   # a derived value also stands on the datasets of the types its path crosses
+    return lines, [{'id': k, 'name': sc['types'][k]['content']['name']} for k in read], {sc['types'][k]['dataset']['name']: sc['types'][k]['dataset']['version'] for k in standing}
 
 
 def _steps(item: dict, types: list[dict], relations: list[str]) -> list[dict]:
@@ -476,6 +512,8 @@ def _may_see(conn, user: dict | None, element_id: str) -> bool:
         return _relation_visible(conn, row, user)
     if element_id.startswith(VIEW_PREFIX):
         return view_visible(conn, row, user)
+    if element_id.startswith(DERIVED_PREFIX):
+        return derived_visible(conn, row, user)
     type_row = element_row(conn, type_id(_content(row)['type']))
     return type_row is not None and _visible(conn, type_row, user)
 

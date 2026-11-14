@@ -29,6 +29,7 @@ RELATION_PREFIX = 'relation:'
 VIEW_PREFIX = 'objview:'
 ACTION_PREFIX = 'objaction:'
 PIPELINE_PREFIX = 'pipeline:'
+DERIVED_PREFIX = 'derived:'
 ENGLISH_NAME = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,39}')
 MAX_NAME, MAX_DESCRIPTION = 40, 200
 OBJECT_PAGE = 50
@@ -463,7 +464,8 @@ def _label(conn, element_id: str) -> str:
     content = _content(element_row(conn, element_id))
     return (f'“{content["name"]}”类型' if element_id.startswith(TYPE_PREFIX) else f'“{content["name"]}”关系' if element_id.startswith(RELATION_PREFIX)
             else f'“{content["name"]}”视图' if element_id.startswith(VIEW_PREFIX) else f'“{content["name"]}”行为' if element_id.startswith(ACTION_PREFIX)
-            else f'“{content["name"]}”管道' if element_id.startswith(PIPELINE_PREFIX) else f'“{content["column"]}”的含义')
+            else f'“{content["name"]}”管道' if element_id.startswith(PIPELINE_PREFIX) else f'“{content["name"]}”派生属性' if element_id.startswith(DERIVED_PREFIX)
+            else f'“{content["column"]}”的含义')
 
 
 CAUSE_WORDS = {'data': '数据变了', 'definition': '定义改了'}   # why something needs another look: what changed at the root
@@ -538,9 +540,10 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
     readers = _readers_of_dataset(conn, dataset_name)
     moved: list[str] = []
     from ontology_poc_generator.object_relations import relation_problems   # object_relations and object_views read this module: imported here, where they are used
+    from ontology_poc_generator.derived_properties import derived_problems
     from ontology_poc_generator.object_views import view_problems
     from ontology_poc_generator.workspace_pipelines import pipeline_problems
-    order = lambda e: (0 if e.startswith(ENUM_PREFIX) else 2 if e.startswith((RELATION_PREFIX, VIEW_PREFIX)) else 1, e)   # meanings, then types and pipelines (which move with their meanings), then relations and views (which move with their types)
+    order = lambda e: (0 if e.startswith(ENUM_PREFIX) else 2 if e.startswith((RELATION_PREFIX, VIEW_PREFIX, DERIVED_PREFIX)) else 1, e)   # meanings, then types and pipelines (which move with their meanings), then relations, views and derived properties (which move with their types and relations)
     conn.execute('BEGIN IMMEDIATE')
     try:
         for element_id in sorted(readers, key=order):
@@ -549,6 +552,7 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
                 continue
             problems = (_enum_problems(conn, row) if element_id.startswith(ENUM_PREFIX) else relation_problems(conn, row) if element_id.startswith(RELATION_PREFIX)
                         else view_problems(conn, row) if element_id.startswith(VIEW_PREFIX) else pipeline_problems(conn, row) if element_id.startswith(PIPELINE_PREFIX)
+                        else derived_problems(conn, row) if element_id.startswith(DERIVED_PREFIX)
                         else _type_problems(conn, _content(row))[0])
             if problems:
                 _flag(conn, element_id, '；'.join(problems), caused_by, moved, 'data')
@@ -694,8 +698,11 @@ def write_confirmation(conn, element_id: str, content: dict, evidence: str | Non
 # --- what the pages read ------------------------------------------------------------------------------------------------------------------------
 
 def _types_read(row: dict) -> list[str]:
-    """The ids of the object types an element is about (a type: itself; a relation: its two ends; a meaning, view or action: its type)."""
+    """The ids of the object types an element is about (a type: itself; a relation: its two ends; a meaning, view or action: its type; a derived property: its
+    type and every type its path reaches)."""
     content = _content(row) if row['content_json'] else {}
+    if row['element_id'].startswith(DERIVED_PREFIX):
+        return [type_id(t) for t in content['types']]
     return ([type_id(content[e]) for e in ('from', 'to')] if row['element_id'].startswith(RELATION_PREFIX) else [type_id(content['type'])] if row['element_id'].startswith((ENUM_PREFIX, VIEW_PREFIX, ACTION_PREFIX))
             else [row['element_id']])
 
@@ -726,7 +733,7 @@ def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
 
 def _state_view(conn, row: dict, user: dict | None) -> dict:
     """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look."""
-    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX, ACTION_PREFIX, PIPELINE_PREFIX)))
+    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX, ACTION_PREFIX, PIPELINE_PREFIX, DERIVED_PREFIX)))
     can, others = _confirmers(conn, row, user)
     meanings = _unconfirmed_meanings(conn, row['element_id']) if row['element_id'].startswith(TYPE_PREFIX) and waiting else []   # a type waits for its meanings first
     producers = unconfirmed_producers(conn, _content(row)['dataset']) if row['element_id'].startswith(TYPE_PREFIX) and waiting else []   # and for the pipeline that writes its data
@@ -821,17 +828,23 @@ def type_objects(conn, english_name: str, page: int, user: dict | None) -> dict:
         total = dataset['rows_stored']
         pages = max(1, -(-total // OBJECT_PAGE))
         page = min(max(page, 1), pages)
-        rows = [list(r) for r in conn.execute(f'SELECT {", ".join(q(p["column"]) for p in detail["properties"])} FROM {q(dataset["table_name"])} '
-                                              f'ORDER BY rowid LIMIT {OBJECT_PAGE} OFFSET {(page - 1) * OBJECT_PAGE}')]
+        fetched = [list(r) for r in conn.execute(f'SELECT rowid, {", ".join(q(p["column"]) for p in detail["properties"])} FROM {q(dataset["table_name"])} '
+                                                 f'ORDER BY rowid LIMIT {OBJECT_PAGE} OFFSET {(page - 1) * OBJECT_PAGE}')]
+        numbers, rows = [r[0] for r in fetched], [r[1:] for r in fetched]
     else:   # a row rule names this person (or none does): only the rows it keeps, paged here
-        kept = [r for r in dataset_records(conn, dataset) if keeps(r, limit)]
+        kept = [(i, r) for i, r in enumerate(dataset_records(conn, dataset), 1) if keeps(r, limit)]
         total = len(kept)
         pages = max(1, -(-total // OBJECT_PAGE))
         page = min(max(page, 1), pages)
-        rows = [[r.get(p['column']) for p in detail['properties']] for r in kept[(page - 1) * OBJECT_PAGE:page * OBJECT_PAGE]]
+        shown = kept[(page - 1) * OBJECT_PAGE:page * OBJECT_PAGE]
+        numbers, rows = [i for i, _ in shown], [[r.get(p['column']) for p in detail['properties']] for _, r in shown]
+    from ontology_poc_generator.derived_properties import confirmed_columns   # derived_properties reads this module: imported here, where it is used
+    derived = confirmed_columns(conn, english_name, user)   # their values come last, tagged 派生, over the rows this person may read
+    rows = [[*row, *(d['values'].get(n) for d in derived)] for n, row in zip(numbers, rows)]
     enums = {p['column']: {'state': p['meanings']['state'], 'labels': {v['value']: v['label'] for v in p['meanings']['values'] if v['label']}}
              for p in detail['properties'] if p['meanings']}
-    return {'columns': [{'column': p['column'], 'name': p['name'], 'type': p['type'], 'key': p['key']} for p in detail['properties']], 'rows': rows, 'total': total,
+    return {'columns': [{'column': p['column'], 'name': p['name'], 'type': p['type'], 'key': p['key']} for p in detail['properties']]
+            + [{'column': f'derived:{d["english_name"]}', 'name': d['name'], 'type': d['output_type'], 'key': False, 'derived': True, 'says': d['says']} for d in derived], 'rows': rows, 'total': total,
             'page': page, 'pages': pages, 'limit': OBJECT_PAGE, 'dataset': detail['dataset'], 'dataset_version': dataset['version'], 'enums': enums, 'rows_limited': limit is not None}
 
 
@@ -842,7 +855,8 @@ def type_log(conn, english_name: str, user: dict | None) -> list[dict]:
     only_confirmed = " AND state = 'confirmed'" if user is not None and user['role'] == 'viewer' else ''   # a viewer reads nothing of a view nobody confirmed
     views = [e for (e,) in conn.execute(f"SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' AND json_extract(content_json, '$.type') = ?{only_confirmed}", (english_name,))]
     actions = [] if user is not None and user['role'] == 'viewer' else [e for (e,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objaction:%' AND json_extract(content_json, '$.type') = ?", (english_name,))]
-    return log_entries(conn, [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), *views, *actions, f'dataset:{detail["dataset"]}'], user)
+    derived = [e for (e,) in conn.execute(f"SELECT element_id FROM element_state WHERE element_id LIKE 'derived:%' AND json_extract(content_json, '$.type') = ?{only_confirmed}", (english_name,))]
+    return log_entries(conn, [type_id(english_name), *(enum_id(english_name, p['column']) for p in detail['properties'] if p['meanings']), *views, *actions, *derived, f'dataset:{detail["dataset"]}'], user)
 
 
 def _action_line_readable(conn, element: str, after: dict, user: dict | None) -> bool:
@@ -877,7 +891,7 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
         if change.startswith('action_') and not _action_line_readable(conn, element, after, user):
             continue
         kind = ('dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX)
-                else 'view' if element.startswith(VIEW_PREFIX) else 'action' if element.startswith(ACTION_PREFIX) else 'pipeline' if element.startswith(PIPELINE_PREFIX) else 'type')
+                else 'view' if element.startswith(VIEW_PREFIX) else 'derived' if element.startswith(DERIVED_PREFIX) else 'action' if element.startswith(ACTION_PREFIX) else 'pipeline' if element.startswith(PIPELINE_PREFIX) else 'type')
         out.append({'at': at, 'who': who, 'element': kind, 'column': element.split(':', 2)[2] if kind == 'meaning' else None, 'change': change,
                     'record': after.get('record') if change.startswith('action_') else None,
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
