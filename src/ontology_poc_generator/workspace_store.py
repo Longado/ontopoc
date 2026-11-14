@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS check_result (
 CREATE TABLE IF NOT EXISTS data_source (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('postgresql', 'mysql')),
     host TEXT NOT NULL, port INTEGER NOT NULL, database TEXT NOT NULL, username TEXT NOT NULL, secret TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'untested' CHECK (status IN ('untested', 'ok', 'failed')), status_at TEXT, status_note TEXT, can_write INTEGER, write_note TEXT,
+    tls TEXT NOT NULL DEFAULT 'required', status TEXT NOT NULL DEFAULT 'untested' CHECK (status IN ('untested', 'ok', 'failed')), status_at TEXT, status_note TEXT, can_write INTEGER, write_note TEXT,
     created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS source_table (
     id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NOT NULL REFERENCES data_source(id), table_name TEXT NOT NULL, dataset TEXT NOT NULL UNIQUE,
@@ -101,11 +101,11 @@ CREATE TABLE IF NOT EXISTS source_table (
 CREATE TABLE IF NOT EXISTS schedule (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('source', 'pipeline')), target TEXT NOT NULL, scope_json TEXT,
     cadence TEXT NOT NULL CHECK (cadence IN ('hourly', 'daily', 'weekly', 'upstream')), minute INTEGER, hour INTEGER, weekday INTEGER, tz TEXT NOT NULL,
-    enabled INTEGER NOT NULL DEFAULT 1, last_slot TEXT, upstream_seen_json TEXT, created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    enabled INTEGER NOT NULL DEFAULT 1, last_slot TEXT, upstream_seen_json TEXT, created_by TEXT, created_by_user_id INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS refresh_run (
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, target TEXT NOT NULL, item TEXT NOT NULL DEFAULT '', schedule_id INTEGER,
     reason TEXT NOT NULL CHECK (reason IN ('manual', 'schedule', 'upstream')), who TEXT, status TEXT NOT NULL CHECK (status IN ('running', 'success', 'failed', 'skipped')),
-    started_at TEXT NOT NULL, finished_at TEXT, rows INTEGER, dataset TEXT, version INTEGER, changed INTEGER, error TEXT, detail_json TEXT);
+    started_at TEXT NOT NULL, finished_at TEXT, rows INTEGER, dataset TEXT, version INTEGER, changed INTEGER, error TEXT, error_public TEXT, detail_json TEXT);
 CREATE TABLE IF NOT EXISTS log (
     time TEXT NOT NULL, who TEXT NOT NULL, element_id TEXT, change TEXT NOT NULL, before_json TEXT, after_json TEXT);
 '''
@@ -146,7 +146,8 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('element_state', 'content_json'), ('element_state', 'anchors_json'), ('element_state', 'proposed_by'), ('element_state', 'reason'),
                           ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id'),
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
-                          ('api_token', 'scope'), ('api_token', 'expires_at')):
+                          ('api_token', 'scope'), ('api_token', 'expires_at'),
+                          ('data_source', 'tls'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows") or column.endswith("user_id") else "TEXT"}')
     _never_reuse_ids(conn)

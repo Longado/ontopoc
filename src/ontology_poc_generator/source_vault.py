@@ -27,16 +27,24 @@ def _master(directory: Path | None) -> bytes:
     if directory is None:
         return _ephemeral.setdefault('memory', secrets.token_bytes(32))
     path = directory / KEY_FILE
-    try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)   # made private from the start; the first caller to get here makes it
-    except FileExistsError:
-        key = path.read_bytes()
-        if len(key) != 32:
-            raise VaultError(f'{KEY_FILE} 不是一把有效的钥匙（应是 32 个字节），数据源的密码读不出来；不要手改它') from None
-        return key
-    key = secrets.token_bytes(32)
-    with os.fdopen(fd, 'wb') as out:
-        out.write(key)
+    if not path.exists():
+        # written whole to a file of its own (mode 600 from the start) and linked into place: a crash leaves no half-written key, and of two first callers one wins
+        temporary = directory / f'.{KEY_FILE}.{secrets.token_hex(4)}'
+        fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        try:
+            with os.fdopen(fd, 'wb') as out:
+                out.write(secrets.token_bytes(32))
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                pass   # another caller got there first: its key is the key
+        finally:
+            os.unlink(temporary)
+    key = path.read_bytes()
+    if len(key) != 32:
+        raise VaultError(f'{KEY_FILE} 不是一把有效的钥匙（应是 32 个字节），数据源的密码读不出来；不要手改它')
+    if path.stat().st_mode & 0o077:
+        os.chmod(path, 0o600)   # a key file that someone made readable is closed again
     return key
 
 

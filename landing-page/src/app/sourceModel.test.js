@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { keyColumnsFrom, runSummary, scheduleBody, scheduleProblem, sourceOrigin, sourceProblem } from "./sourceModel.js";
+import { estimateText, keyColumnsFrom, runSummary, scheduleBody, scheduleProblem, sourceOrigin, sourceProblem, tlsDefault } from "./sourceModel.js";
 import { originText } from "./format.js";
 import { parseRoute, hrefFor, NAV } from "./routeModel.js";
 
@@ -44,4 +44,22 @@ test("a run in one line: what it did, or why it did not", () => {
   assert.equal(runSummary({ status: "success", rows: 12, version: 1, changed: false }), "12 行，第 1 版，和上一版一样，没有写新版本");
   assert.equal(runSummary({ status: "failed", error: "连不上" }), "连不上");
   assert.deepEqual(keyColumnsFrom("订单号, 行号、版本"), ["订单号", "行号", "版本"]);
+});
+
+test("changing where the password goes needs it typed again; encryption starts on except for this machine; row counts say they are estimates", () => {
+  const saved = { host: "db.example.com", port: 5432, database: "d", username: "u" };
+  const form = { name: "库", host: "db.example.com", port: "5432", database: "d", username: "u", password: "" };
+  assert.equal(sourceProblem(form, true, saved), "");
+  assert.match(sourceProblem({ ...form, host: "other.example.com" }, true, saved), /改了主机，要重新填密码/);
+  assert.match(sourceProblem({ ...form, port: "5433", username: "v" }, true, saved), /端口、账号/);
+  assert.equal(sourceProblem({ ...form, host: "other.example.com", password: "p" }, true, saved), "");
+  assert.equal(tlsDefault("localhost"), "none");
+  assert.equal(tlsDefault("db.example.com"), "required");
+  assert.equal(estimateText(1200), "约 1,200（估计）");
+  assert.equal(estimateText(null), "没有估计");
+});
+
+test("a run is counted, not named, for a person who may not see the definitions it sent back; a hidden one says only that", () => {
+  assert.equal(runSummary({ status: "success", rows: 3, version: 2, changed: true, detail: { flagged_count: 2, left_out: [] } }), "3 行，第 2 版，2 项已确认的内容进了“需要再看”");
+  assert.equal(runSummary({ status: "success", hidden: true }), "写进了一个你看不到的数据集");
 });

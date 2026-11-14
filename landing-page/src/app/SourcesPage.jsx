@@ -5,7 +5,7 @@ import { isAdmin } from "./authModel.js";
 import { timeText } from "./format.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
-import { KINDS, kindPort, sourceProblem, statusText } from "./sourceModel.js";
+import { KINDS, TLS_MODES, TLS_WARNING, kindPort, sourceProblem, statusText, tlsDefault } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
 import { FormDialog } from "./UsersPage.jsx";
 
@@ -19,11 +19,12 @@ export function SourceForm({ source, onClose, onDone }) {
   const editing = !!source;
   const [f, setF] = useState({
     name: source?.name ?? "", kind: source?.kind ?? "postgresql", host: source?.host ?? "", port: String(source?.port ?? 5432),
-    database: source?.database ?? "", username: source?.username ?? "", password: "",
+    database: source?.database ?? "", username: source?.username ?? "", password: "", tls: source?.tls ?? null,   // null: the default for this host until one is chosen
   });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const problem = sourceProblem(f, editing);
-  const body = { ...f, port: Number(f.port) };
+  const problem = sourceProblem(f, editing, source);
+  const tls = f.tls ?? tlsDefault(f.host);
+  const body = { ...f, tls, port: Number(f.port), ...(f.password ? {} : { password: undefined }) };
   return (
     <FormDialog title={editing ? `修改“${source.name}”` : "新建数据源"} submitLabel={editing ? "保存" : "创建"} onClose={onClose} valid={!problem}
       onSubmit={async () => { await (editing ? updateSource(body) : createSource(body)); onDone(); }}>
@@ -41,9 +42,16 @@ export function SourceForm({ source, onClose, onDone }) {
       <label className="field"><span className="caption">数据库名</span><input type="text" value={f.database} autoComplete="off" onChange={set("database")} /></label>
       <label className="field"><span className="caption">账号（建议只给 SELECT 权限）</span><input type="text" value={f.username} autoComplete="off" onChange={set("username")} /></label>
       <label className="field">
-        <span className="caption">{editing ? "密码（不改就留空）" : "密码"}</span>
+        <span className="caption">{editing ? "密码（主机、端口、数据库名、账号都没改时，不改就留空）" : "密码"}</span>
         <input type="password" value={f.password} autoComplete="new-password" onChange={set("password")} />
       </label>
+      <div className="field">
+        <span className="caption">加密连接</span>
+        <Select label="加密连接" value={tls} onChange={(v) => setF({ ...f, tls: v })}>
+          {TLS_MODES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+        </Select>
+      </div>
+      {tls === "none" && <p className="warn">{TLS_WARNING}</p>}
       <p className="hint">密码保存时打散，页面和接口不会再返回它。读数据用只读会话。</p>
       {problem && <p className="hint">{problem}</p>}
     </FormDialog>
