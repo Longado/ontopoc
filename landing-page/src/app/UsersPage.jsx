@@ -120,7 +120,7 @@ export function UsersPage() {
       {dialog?.disable && (
         <FormDialog title={`停用“${dialog.disable.display_name}”`} submitLabel="确认停用" valid onClose={() => setDialog(null)}
           onSubmit={async () => { await setUserDisabled(dialog.disable.id, true); setSaved(true); reload(); reloadTwo(); }}>
-          <p>对方会被登出，令牌永久作废，重新启用后要重发。他登录时会看到“这个账号已停用”。</p>
+          <p>对方会被登出，令牌永久作废，重新启用后要重发。对方登录时会看到“这个账号已停用”。</p>
         </FormDialog>
       )}
     </main>
