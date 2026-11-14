@@ -32,8 +32,8 @@ export function RelationGraph() {
           <GraphNode key={n.id} node={n} box={layout.positions[n.id]} picked={node?.id === n.id} faded={Boolean(lit) && !lit.has(n.id)} onPick={() => setPicked({ kind: "node", id: n.id })} />
         ))}
       </GraphCanvas>
-      {node && <NodeDrawer node={node} onClose={() => setPicked(null)} />}
-      {group && <EdgeDrawer group={group} onClose={() => setPicked(null)} />}
+      {node && <NodeDrawer key={node.id} node={node} onClose={() => setPicked(null)} />}
+      {group && <EdgeDrawer key={group.key} group={group} onClose={() => setPicked(null)} />}
     </div>
   );
 }

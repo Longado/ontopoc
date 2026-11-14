@@ -57,7 +57,7 @@ export function LineagePage() {
                   faded={(Boolean(reach) && !reach.has(n.id)) || (narrowed && !shown(n, filter, query))} onPick={() => pick(n.id)} />
               ))}
             </GraphCanvas>
-            {node && <NodeDrawer node={node} onClose={() => setPicked(null)} />}
+            {node && <NodeDrawer key={node.id} node={node} onClose={() => setPicked(null)} />}
           </div>
         </>
       )}

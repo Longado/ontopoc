@@ -1,9 +1,23 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { timeText } from "./format.js";
 import { KIND_LABEL, ageText, confirmedText, edgeLabel, verdictText } from "./graphModel.js";
 import { CARDINALITY_LABEL, keyPairText } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
+
+/** Keyboard use of a drawer: it takes focus when it opens (so a keyboard user does not tab through every node to reach it), Escape or the close button shut it, and focus goes
+ * back to what was focused before (the node that was picked). The drawer is mounted again for each pick (a `key` on it), so this runs once per pick. */
+function useDrawer(onClose) {
+  const ref = useRef(null);
+  const opener = useRef(document.activeElement);
+  useEffect(() => { ref.current?.querySelector("h2")?.focus(); }, []);
+  const close = () => {
+    onClose();
+    const back = opener.current;
+    if (back?.isConnected && back !== document.body) setTimeout(() => back.focus(), 0);   // after the drawer has gone and the canvas has settled
+  };
+  return { ref, close, onKeyDown: (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } } };
+}
 
 /** Why a node needs another look, in the cause's own word and the words the service wrote. */
 function Cause({ node }) {
@@ -71,14 +85,15 @@ function ElementBody({ node }) {
 
 /** The right-hand panel for a picked node of either graph. */
 export function NodeDrawer({ node, onClose }) {
+  const { ref, close, onKeyDown } = useDrawer(onClose);
   return (
-    <aside className="drawer" aria-label={`${node.name}的详情`}>
+    <aside className="drawer" ref={ref} onKeyDown={onKeyDown} aria-label={`${node.name}的详情`}>
       <div className="drawer-head">
         <div>
           <p className="muted small">{KIND_LABEL[node.kind]}</p>
-          <h2>{node.name}</h2>
+          <h2 tabIndex={-1}>{node.name}</h2>
         </div>
-        <button className="plain" onClick={onClose}>关闭</button>
+        <button className="plain" onClick={close}>关闭</button>
       </div>
       {node.state && <p><State item={node} /></p>}
       {node.kind === "type" ? <TypeBody node={node} /> : node.kind === "dataset" ? <DatasetBody node={node} /> : <ElementBody node={node} />}
@@ -88,11 +103,12 @@ export function NodeDrawer({ node, onClose }) {
 
 /** The right-hand panel for a picked line of the relation graph: each relation between the two types, with its rows and whether its cardinality holds. */
 export function EdgeDrawer({ group, onClose }) {
+  const { ref, close, onKeyDown } = useDrawer(onClose);
   return (
-    <aside className="drawer" aria-label="关系详情">
+    <aside className="drawer" ref={ref} onKeyDown={onKeyDown} aria-label="关系详情">
       <div className="drawer-head">
-        <h2>{group.edges[0].from_name} 和 {group.edges[0].to_name}</h2>
-        <button className="plain" onClick={onClose}>关闭</button>
+        <h2 tabIndex={-1}>{group.edges[0].from_name} 和 {group.edges[0].to_name}</h2>
+        <button className="plain" onClick={close}>关闭</button>
       </div>
       {group.edges.map((e) => (
         <section key={e.id}>

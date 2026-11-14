@@ -233,6 +233,7 @@ input[type="search"] { font: inherit; border: 0.5px solid var(--faint); border-r
 .graph-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; z-index: 1; }
 .graph-tools button { padding: 4px 10px; font-size: var(--small); }
 .drawer { padding: 0 0 0 20px; overflow-y: auto; max-height: calc(100vh - 200px); }
+.drawer h2:focus { outline: none; }
 .drawer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .drawer h3 { font-size: var(--text); font-weight: 600; margin: 16px 0 4px; }
 .drawer ul { margin: 0; padding-left: 18px; }
