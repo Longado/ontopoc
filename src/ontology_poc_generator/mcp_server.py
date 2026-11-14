@@ -59,6 +59,12 @@ INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判
 - confirm_proposed_view 确认的是另一个人提出的视图，要带上 list_proposed_views 里那条的 version；提出的人自己确认会被拒绝（403），定义在你看过之后被改了会被拒绝（409）。
 - save_card 只记人说的客户答复：by、basis 都来自人，不替客户填格、不替他答。
 - 拿不准的事写成问题交给人，不要当成结论。"""
+READ_INSTRUCTIONS = """本机 OntoPoc 的只读入口：团队已经确认的业务定义，和用它们回答问题。你以令牌主人的身份看，只看得到他看得到的。
+1. describe_definitions 看定义（对象、代码含义、关系、视图、派生属性）和拒答规则。没写在里面的东西没有定义，不要猜。
+2. ask 问业务问题。答得出来会带上用到的定义；被拒绝（status 不是 answered）就把 reason 原样转告人，不要换问法绕过，也不要自己编一个答案。
+3. list_unconfirmed 看现在不是已确认的定义：不要用它们回答。
+4. read_derived_property 读一个已确认的派生属性的值；没确认就不给值。
+ask 会调用模型，慢且花钱；其余工具只是读。"""
 
 
 class ToolError(Exception):
@@ -481,6 +487,28 @@ def find_name_variants(s, a):
     return s.request('/api/ontology/variants', {'saved_as': _text(a.get('saved_as'), 'saved_as')})['evaluation']['variants']
 
 
+def describe_definitions(s, a):
+    return s.request('/api/workspace/agent/definitions')
+
+
+def ask(s, a):
+    body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
+    return {k: body[k] for k in ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'definitions', 'datasets', 'limited_by_rule') if k in body}
+
+
+def list_unconfirmed(s, a):
+    return s.request('/api/workspace/agent/unconfirmed')
+
+
+def read_derived_property(s, a):
+    query = f"type={quote(_text(a.get('type'), 'type'), safe='')}&name={quote(_text(a.get('name'), 'name'), safe='')}"
+    if a.get('key') is not None:
+        query += f"&key={quote(json.dumps(a['key'], ensure_ascii=False), safe='')}"
+    if a.get('page') is not None:
+        query += f"&page={int(a['page'])}"
+    return s.request(f'/api/workspace/agent/derived?{query}')
+
+
 WRONG = {'include_wrong': {'type': 'boolean', 'description': '连人判错的也给（默认不给）'}}
 RUN = {'saved_as': {'type': 'string', 'description': '运行的保存名，来自 list_runs 或 build_ontology'}}
 TYPE = {'type': {'type': 'string', 'description': '对象的 key，来自 list_objects'}}
@@ -604,13 +632,26 @@ TOOLS = [
           {**RUN, 'name': {'type': 'string', 'description': '视图的名字，来自 list_proposed_views'},
            'version': {'type': 'integer', 'minimum': 1, 'description': '你看过的那一版，来自 list_proposed_views 里这条的 version'}}, ('saved_as', 'name', 'version')),
     _tool(find_name_variants, '找出同一类对象里可能是同一个东西的不同写法，只给建议、不合并。会调用模型。', RUN, ('saved_as',)),
+    _tool(describe_definitions, '团队已经确认的业务定义：对象类型（属性、主键、代码的含义）、关系、视图（取哪些行）、派生属性（怎么算），每条带谁确认、确认于哪个数据版本；还有拒答规则 rules。'
+          '只有已确认的、令牌的主人看得到的；没有数据行，没有全部数据的行数。不在这里的东西没有定义：不要猜，照 rules 拒答。'),
+    _tool(ask, '用已确认的定义回答一个业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
+          'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。会调用模型，慢且花钱。',
+          {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
+    _tool(list_unconfirmed, '现在不是“已确认”的定义（提出了还没确认、需要再看、被退回），每条有状态、原因和可以确认它的人。这些不能拿来回答问题。令牌的主人是只读的人时这里是空的。'),
+    _tool(read_derived_property, '读一个已确认的派生属性（例如 客户的已取消订单数）：给 key（主键列 → 取值）就是那一个对象的值，不给就是一页对象的值。'
+          '派生属性没确认或现在算不出来时不给值，错误里说它的状态和原因。只算令牌的主人看得到的行。',
+          {'type': {'type': 'string', 'description': '对象类型的英文名，来自 describe_definitions'}, 'name': {'type': 'string', 'description': '派生属性的英文名，来自 describe_definitions'},
+           'key': {'type': 'object', 'description': '主键列 → 取值，例如 {"客户编号": "KH022"}；不写就给一页'}, 'page': {'type': 'integer', 'minimum': 1, 'description': '第几页，从 1 起'}},
+          ('type', 'name')),
 ]
+READ_TOOLS = ('describe_definitions', 'ask', 'list_unconfirmed', 'read_derived_property')   # what an outside agent is given with ONTOPOC_TOOLSET=read: no uploading, no confirming, no writing
 BY_NAME = {t['name']: t for t in TOOLS}
 
 
-def handle(message: dict, service) -> dict | None:
-    """One JSON-RPC message in, its reply out; None for a notification."""
+def handle(message: dict, service, only: tuple | None = None) -> dict | None:
+    """One JSON-RPC message in, its reply out; None for a notification. `only` names the tools this server offers (None: all of them)."""
     method, mid = message.get('method'), message.get('id')
+    offered = [t for t in TOOLS if only is None or t['name'] in only]
     reply = lambda result: {'jsonrpc': '2.0', 'id': mid, 'result': result}
     error = lambda code, text: {'jsonrpc': '2.0', 'id': mid, 'error': {'code': code, 'message': text}}
     if 'id' not in message:
@@ -620,14 +661,14 @@ def handle(message: dict, service) -> dict | None:
         return reply({'protocolVersion': asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
                       'capabilities': {'tools': {'listChanged': False}},
                       'serverInfo': {'name': 'ontopoc', 'version': '0.1.0'},
-                      'instructions': INSTRUCTIONS})
+                      'instructions': INSTRUCTIONS if only is None else READ_INSTRUCTIONS})
     if method == 'ping':
         return reply({})
     if method == 'tools/list':
-        return reply({'tools': [{k: t[k] for k in ('name', 'description', 'inputSchema')} for t in TOOLS]})
+        return reply({'tools': [{k: t[k] for k in ('name', 'description', 'inputSchema')} for t in offered]})
     if method == 'tools/call':
         params = message.get('params') or {}
-        tool = BY_NAME.get(params.get('name'))
+        tool = next((t for t in offered if t['name'] == params.get('name')), None)
         if tool is None:
             return error(-32602, f"没有这个工具：{params.get('name')}")
         missing = [k for k in tool['inputSchema']['required'] if (params.get('arguments') or {}).get(k) in (None, '')]
@@ -660,6 +701,10 @@ def main():
         service = LocalService(base, token=os.environ.get('ONTOPOC_TOKEN'))
     except ValueError as exc:
         sys.exit(str(exc))
+    toolset = os.environ.get('ONTOPOC_TOOLSET', 'all')
+    if toolset not in ('all', 'read'):
+        sys.exit('ONTOPOC_TOOLSET 要写 all 或 read')
+    only = READ_TOOLS if toolset == 'read' else None
     for line in sys.stdin:
         if not line.strip():
             continue
@@ -668,7 +713,7 @@ def main():
         except ValueError:
             out = {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': '不是合法的 JSON'}}
         else:
-            out = handle(message, service) if isinstance(message, dict) else {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32600, 'message': '请求必须是 JSON 对象'}}
+            out = handle(message, service, only) if isinstance(message, dict) else {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32600, 'message': '请求必须是 JSON 对象'}}
         if out is not None:
             sys.stdout.write(json.dumps(out, ensure_ascii=False) + '\n')
             sys.stdout.flush()

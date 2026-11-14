@@ -188,6 +188,16 @@ class Gate:
         elif path == '/api/auth/tokens/revoke':
             accounts.revoke_token(conn, user, payload.get('id'))
             h.reply(200, {'ok': True})
+        elif path == '/api/users/tokens' and method == 'GET':   # the agent page: every token with whose it is
+            h.reply(200, {'tokens': accounts.list_all_tokens(conn)})
+        elif path == '/api/users/tokens':   # an admin makes a token that acts as a named person; shown once
+            with transaction(conn):
+                record, token = accounts.issue_token(conn, user, payload.get('user_id'), payload.get('label'))
+            h.reply(200, {**record, 'token': token})
+        elif path == '/api/users/tokens/revoke':
+            with transaction(conn):
+                accounts.revoke_any_token(conn, user, payload.get('id'))
+            h.reply(200, {'ok': True})
         elif path == '/api/users' and method == 'GET':
             h.reply(200, {'users': accounts.list_users(conn)})
         elif path == '/api/users':

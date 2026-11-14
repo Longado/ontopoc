@@ -26,10 +26,11 @@ class RouteTableTests(unittest.TestCase):
     def test_every_route_the_service_has_is_in_the_table(self):
         """A route added to the service without a line in access.py is admin-only by default; this makes that a failing test instead of a surprise."""
         literals = set()
-        for name in ('ontology_server.py', 'auth_http.py'):
+        for name in ('ontology_server.py', 'auth_http.py', 'use_layer.py'):
             literals |= set(re.findall(r"""['"](/api/[A-Za-z0-9_/-]*)['"]""", (SOURCES / name).read_text(encoding='utf-8')))
         literals -= {'/api/recall', '/api/ontology', '/api/workspace', '/api/auth/', '/api/users/', '/api/workspace/', '/api/ontology/runs/', '/api/ontology/library/',
-                     '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/', '/api/workspace/pipelines/'}   # prefixes the code compares against; their routes are checked below
+                     '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/', '/api/workspace/pipelines/',
+                     '/api/workspace/explore'}   # prefixes the code compares against; their routes are checked below
         self.assertGreater(len(literals), 25)
         missing = sorted(p for p in literals if route_role('GET', p) is None and route_role('POST', p) is None)
         self.assertEqual(missing, [])

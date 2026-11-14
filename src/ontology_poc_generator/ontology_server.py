@@ -84,6 +84,8 @@ from ontology_poc_generator.object_relations import (
     confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
 from ontology_poc_generator.ontology_graph import lineage_graph, relation_graph, type_uses
 from ontology_poc_generator.review_queue import confirm_item, queue, send_back
+from ontology_poc_generator import use_layer
+from ontology_poc_generator.dashboards import DashboardRefused
 from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, set_access, set_values_hidden
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1538,6 +1540,31 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             self.reply(200, body)
 
+        def use_route(self, method: str):
+            """The use layer (use_layer.py): /api/workspace/explore, /dashboards, /agent. Saving or deleting a board takes the write lock; the rest only reads."""
+            url = urlsplit(self.path)
+            payload = self.read_json() if method == 'POST' else None
+            if method == 'POST' and payload is None:
+                return
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if method == 'GET':
+                    body = use_layer.get(conn, self.user, url.path, parse_qs(url.query))
+                elif use_layer.writes(url.path):
+                    with runs_lock:
+                        body = use_layer.post(conn, self.user, url.path, payload)
+                else:
+                    body = use_layer.post(conn, self.user, url.path, payload)
+            except (TypeRefused, DashboardRefused) as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            if isinstance(body, tuple):   # a download: (content type, file name, bytes)
+                self.reply_file(body[2], body[0], body[1])
+            else:
+                self.reply(200, body)
+
         def relations_post(self):
             """POST /api/workspace/relations (create), /relations/update, /relations/confirm, /queue/confirm, /queue/send-back, /permissions (admin): see
             object_relations.py, review_queue.py and type_access.py. Refusals are 403 (of who), 409 (the data or the version moved) or a 400 that says what is wrong."""
@@ -1582,6 +1609,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_GET(self):
             if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
+                return
+            if use_layer.owns(self.path):
+                self.use_route('GET')
                 return
             if self.path.split('?')[0] == '/api/workspace/ask' or self.path.startswith('/api/workspace/ask/'):
                 self.ask_get()
@@ -1792,6 +1822,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def post_route(self):
             if not gate.admit(self, 'POST') or gate.handle(self, 'POST'):
+                return
+            if use_layer.owns(self.path):
+                self.use_route('POST')
                 return
             if self.path == '/api/workspace/types' or self.path.startswith('/api/workspace/types/'):
                 self.types_post()
