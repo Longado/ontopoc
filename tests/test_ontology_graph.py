@@ -4,6 +4,7 @@ not get. Expected numbers are the planted ones (160 orders, 157 of them naming a
 set them up, not from the service."""
 import json
 
+from ontology_poc_generator.ontology_graph import _own_cause
 from tests.test_object_relations import CUSTOMER, RELATION, customers_mended
 from tests.test_object_types import MEANINGS, ORDER, TABLES, VALID, shifted_orders_csv
 from tests.test_two_person import SigningTestCase
@@ -237,6 +238,28 @@ class GraphTests(SigningTestCase):
                 self.assertNotIn('第 2 版', json.dumps([c for c in causes], ensure_ascii=False))
             kinds = {n['kind'] for n in self.graph(bob, LINEAGE)['nodes'] if n.get('stale')}
             self.assertEqual(kinds, {'type', 'view', 'action', 'relation', 'answer'})
+
+    def test_the_three_reason_sentences_the_cause_classifier_reads_are_the_ones_the_store_writes(self):
+        """The causes are read from the sentences object_types writes as the reason of a needs_look: a change in their wording must fail here, not turn every cause into 数据变了."""
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann = team['ann']
+            self.everything_confirmed(team)
+            self.assertEqual(ann.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': [{'value': '1', 'label': '制造中'}]})[0], 200)
+            definition = ann.get('/api/workspace/types/order')[1]['reason']
+            view = next(v for v in ann.get('/api/workspace/types/order/views')[1]['views'] if v['name'] == '有效订单')['reason']
+            self.assertEqual(definition, '“状态码”的含义改了，要重新确认')
+            self.assertEqual(_own_cause(definition), 'definition')
+            self.assertEqual((view.startswith('它用的“订单”类型需要再看'), _own_cause(view)), (True, 'cascade'))
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.everything_confirmed(team)
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+            meaning = next(p for p in team['ann'].get('/api/workspace/types/order')[1]['properties'] if p['column'] == '状态码')['meanings']['reason']
+            type_reason = team['ann'].get('/api/workspace/types/order')[1]['reason']
+            self.assertTrue(meaning.startswith('订单 第 2 版（') and '“状态码”的取值变了' in meaning)
+            self.assertEqual(_own_cause(meaning), 'data')
+            self.assertEqual((type_reason.startswith('它用的“状态码”的含义需要再看'), _own_cause(type_reason)), (True, 'cascade'))
 
     def test_a_relation_from_a_type_to_itself_is_listed_once(self):
         with self.service() as (base, out):
