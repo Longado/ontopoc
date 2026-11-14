@@ -157,7 +157,7 @@ function Objects({ id, pageNo, mayBuild }) {
       {running && <RunAction key={`${running.action.id}/${running.text}`} action={running.action} objectKey={running.key} objectText={running.text} onDone={reload} onCancel={() => setRunning(null)} />}
       <div className="table-wrap tall">
         <table>
-          <thead><tr>{o.columns.map((c) => <th key={c.column} title={c.says}>{c.derived ? <><a href={hrefFor({ page: "type", id, tab: "derived" })}>{c.name}</a> <span className="muted small">派生</span></> : c.name}</th>)}{runnable.length > 0 && <th />}</tr></thead>
+          <thead><tr>{o.columns.map((c) => <th key={c.column} title={c.says}>{c.derived ? <><a href={hrefFor({ page: "type", id, tab: "derived" })}>{c.name}</a> <span className={c.confirmed ? "small" : "muted small"}>{c.confirmed ? "派生" : "派生，未确认"}</span></> : c.name}</th>)}{runnable.length > 0 && <th />}</tr></thead>
           <tbody>
             {o.rows.map((row, r) => (
               <tr key={r}>

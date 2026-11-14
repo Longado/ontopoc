@@ -839,11 +839,11 @@ def type_objects(conn, english_name: str, page: int, user: dict | None) -> dict:
         shown = kept[(page - 1) * OBJECT_PAGE:page * OBJECT_PAGE]
         numbers, rows = [i for i, _ in shown], [[r.get(p['column']) for p in detail['properties']] for _, r in shown]
     from ontology_poc_generator.derived_properties import confirmed_columns   # derived_properties reads this module: imported here, where it is used
-    derived = confirmed_columns(conn, english_name, user)   # their values come first, tagged 派生, over the rows this person may read
+    derived = confirmed_columns(conn, english_name, user)   # their values come first, tagged 派生 (those not yet confirmed last, and only for builders), over the rows this person may read
     rows = [[*(d['values'].get(n) for d in derived), *row] for n, row in zip(numbers, rows)]
     enums = {p['column']: {'state': p['meanings']['state'], 'labels': {v['value']: v['label'] for v in p['meanings']['values'] if v['label']}}
              for p in detail['properties'] if p['meanings']}
-    return {'columns': [{'column': f'derived:{d["english_name"]}', 'name': d['name'], 'type': d['output_type'], 'key': False, 'derived': True, 'says': d['says']} for d in derived]
+    return {'columns': [{'column': f'derived:{d["english_name"]}', 'name': d['name'], 'type': d['output_type'], 'key': False, 'derived': True, 'confirmed': d['confirmed'], 'says': d['says']} for d in derived]
             + [{'column': p['column'], 'name': p['name'], 'type': p['type'], 'key': p['key']} for p in detail['properties']], 'rows': rows, 'total': total,
             'page': page, 'pages': pages, 'limit': OBJECT_PAGE, 'dataset': detail['dataset'], 'dataset_version': dataset['version'], 'enums': enums, 'rows_limited': limit is not None}
 

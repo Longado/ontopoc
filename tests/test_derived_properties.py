@@ -151,7 +151,8 @@ class AcceptanceTests(DerivedTestCase):
             last = max(r['快照月份'] for r in STOCKS)
             latest = {r['产品编号']: int(r['库存数量']) for r in STOCKS if r['快照月份'] == last}
             self.assertEqual(sum(latest.values()), 1115)
-            self.assertNotIn('当前库存', [c['name'] for c in self.objects(ann, 'product')['columns']])   # not confirmed yet: the objects page shows confirmed properties only
+            self.assertNotIn('当前库存', [c['name'] for c in self.objects(team['vera'], 'product')['columns']])   # not confirmed yet: a viewer does not see it
+            self.assertEqual([c['confirmed'] for c in self.objects(ann, 'product')['columns'] if c.get('derived')], [False])   # a builder sees it marked as not confirmed
             self.assertEqual(self.confirm(team['bob'], STOCK_LATEST)[0], 200)
             got = {k: int(v) for k, v in self.values(ann, 'product', '产品编号', '当前库存').items()}
             self.assertEqual(got, latest)
@@ -250,7 +251,9 @@ class ConfirmAndVersionTests(DerivedTestCase):
             line = self.line(bob, 'order', 'gross')
             self.assertEqual((line['state'], line['proposed_by'], line['can_confirm']), ('checked', 'Bob', False))   # the one who edited it does not confirm it
             self.assertGreater(line['version'], first_version)
-            self.assertNotIn('含税金额（元）', [c['name'] for c in self.objects(ann, 'order')['columns']])   # unconfirmed again: not shown on the objects page
+            shown = {c['name']: c for c in self.objects(ann, 'order')['columns']}   # unconfirmed again: a builder still sees it, but marked as not confirmed
+            self.assertEqual(shown['含税金额（元）']['confirmed'], False)
+            self.assertNotIn('含税金额（元）', [c['name'] for c in self.objects(team['vera'], 'order')['columns']])
             self.assertEqual(self.confirm(ann, {**GROSS, 'english_name': 'gross'})[0], 200)
             status, history = ann.get('/api/workspace/types/order/derived/gross/log')
             self.assertEqual(status, 200, history)
@@ -306,6 +309,18 @@ class ConfirmAndVersionTests(DerivedTestCase):
             status, body = bob.post('/api/workspace/queue/send-back', {'element': item['element'], 'version': item['version'], 'reason': '名字和已取消订单数重复'})
             self.assertEqual((status, body), (200, {'state': 'rejected'}))
             self.assertEqual(self.line(ann, 'customer', 'other')['state'], 'rejected')
+
+    def test_the_objects_page_puts_a_property_nobody_has_confirmed_after_the_confirmed_ones_and_only_for_builders(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.assertEqual(ann.post('/api/workspace/types/derived', {**CANCELLED, 'english_name': 'a_waiting', 'name': 'A 待确认'})[0], 200)   # sorts before the confirmed one by id
+            self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
+            self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
+            derived = lambda client: [(c['name'], c['confirmed']) for c in self.objects(client, 'customer')['columns'] if c.get('derived')]
+            self.assertEqual(derived(bob), [('已取消订单数', True), ('A 待确认', False)])
+            self.assertEqual(derived(vera), [('已取消订单数', True)])
 
     def test_the_drawer_and_the_type_page_list_the_derived_properties_tagged_and_confirmed_ones_first(self):
         with self.service() as (base, out):

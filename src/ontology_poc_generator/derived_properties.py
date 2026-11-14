@@ -876,11 +876,12 @@ def trial_payload(conn, payload: dict, user: dict | None) -> dict:
 # --- what other pages read ---------------------------------------------------------------------------------------------------------------------------
 
 def confirmed_columns(conn, english_type: str, user: dict | None) -> list[dict]:
-    """The confirmed derived properties of a type this person may see, each with its values by row number in the type's table over the rows they may read:
-    [{'id', 'name', 'output_type', 'says', 'values': {row number: text}}]. One that cannot be computed now is left out."""
+    """The derived properties of a type this person may see, each with its values by row number in the type's table over the rows they may read:
+    [{'id', 'name', 'output_type', 'says', 'confirmed', 'values': {row number: text}}]. The confirmed ones come first; a viewer sees only those, while a builder also
+    gets the ones still waiting (confirmed False), so a value nobody has confirmed never looks like one somebody has. One that cannot be computed now is left out."""
     out = []
-    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'derived:%' AND state = 'confirmed' AND json_extract(content_json, '$.type') = ? ORDER BY element_id",
-                                      (english_type,)).fetchall():
+    for (element_id, state) in conn.execute("SELECT element_id, state FROM element_state WHERE element_id LIKE 'derived:%' AND state != 'rejected' AND json_extract(content_json, '$.type') = ? "
+                                            "ORDER BY state != 'confirmed', element_id", (english_type,)).fetchall():
         row = element_row(conn, element_id)
         if not derived_visible(conn, row, user):
             continue
@@ -889,5 +890,5 @@ def confirmed_columns(conn, english_type: str, user: dict | None) -> list[dict]:
         if result['problems']:
             continue
         out.append({'id': element_id, 'english_name': content['english_name'], 'name': content['name'], 'output_type': result['output_type'], 'says': describe(conn, content),
-                    'values': {i: text_of(v, result['output_type']) for i, v in result['values'].items()}})
+                    'confirmed': state == 'confirmed', 'values': {i: text_of(v, result['output_type']) for i, v in result['values'].items()}})
     return out
