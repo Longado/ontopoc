@@ -18,15 +18,16 @@ import json
 from ontology_poc_generator.object_actions import action_visible
 from ontology_poc_generator.object_relations import _relation_visible, cardinality_false, check_relation
 from ontology_poc_generator.object_types import (
-    ACTION_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _state_view, _type_row, _types_read, _visible, element_row, type_id, visible_rows)
+    ACTION_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _type_row, _types_read, _visible, element_row, type_id)
 from ontology_poc_generator.object_views import view_visible
-from ontology_poc_generator.row_rules import restriction
+from ontology_poc_generator.row_rules import positions, restriction
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_questions import _mine, reopen
-from ontology_poc_generator.workspace_store import current_dataset
+from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
 CAUSE_LABEL = {'data': '数据变了', 'definition': '定义改了', 'upstream': '上一步过时', 'far_upstream': '更上游过时'}
 ANSWER_NODES = 15   # the latest saved answers of the person, drawn in the lineage
+ANSWER_LOOK = 100   # and how many of the newest are looked at to find them: reopening one reads the answer and every dataset it used
 HIDDEN_WORDS = '原因里有全部数据的统计，你受行规则限制，看不到'
 CARDINALITY_NAME = {'many_to_one': '多对一', 'one_to_many': '一对多', 'one_to_one': '一对一'}
 
@@ -103,11 +104,11 @@ def _small(conn, row: dict, user: dict | None) -> dict:
     return {'id': row['element_id'], 'key': content['name'], 'name': content['name'], 'state': row['state'], 'stale': stale_cause(conn, row, user)}
 
 
-def _mine_answers(conn, user: dict | None) -> list[tuple[int, str, str, list[str]]]:
-    """The person's own saved answers, newest first: (id, question, when, the element ids of the types it read)."""
+def _mine_answers(conn, user: dict | None, limit: int = 1000) -> list[tuple[int, str, str, list[str]]]:
+    """The person's own saved answers, newest first, at most `limit`: (id, question, when, the element ids of the types it read)."""
     where, args = _mine(user)
     return [(i, q, at, [type_id(t['id']) for t in json.loads(types)]) for i, q, at, types in conn.execute(
-        f'SELECT id, question, asked_at, types_json FROM qa_question WHERE {where} ORDER BY id DESC', args)]
+        f'SELECT id, question, asked_at, types_json FROM qa_question WHERE {where} ORDER BY id DESC LIMIT {int(limit)}', args)]
 
 
 def _by_type(conn, user: dict | None) -> dict[str, dict]:
@@ -135,15 +136,17 @@ def _type_nodes(conn, user: dict | None) -> list[dict]:
             continue
         content = _content(row)
         dataset = current_dataset(conn, content['dataset'])
-        state = _state_view(conn, row, user)
-        limited = restriction(conn, element_id, user) is not None
+        confirmed = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+        limit = restriction(conn, element_id, user)
         near = by_type.get(element_id, {'views': [], 'actions': [], 'relations': []})
         nodes.append({
             'id': element_id, 'kind': 'type', 'key': content['english_name'], 'name': content['name'], 'description': content['description'], 'state': row['state'],
-            'model_draft': state['model_draft'], 'objects': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
+            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None,
+            'objects': None if dataset is None else dataset['rows_stored'] if limit is None else len(positions(dataset_records(conn, dataset), limit)), 'rows_limited': limit is not None,
             'dataset': {'name': content['dataset'], 'version': dataset['version'] if dataset else None},
             'key_columns': content['key'], 'properties': [{'name': p['name'], 'column': p['column'], 'type': p['type'], 'key': p['column'] in content['key']} for p in content['properties']],
-            'confirmed_by': state['confirmed_by'], 'confirmed_at': state['confirmed_at'], 'confirmed_on': state['confirmed_on'], 'proposed_by': state['proposed_by'],
+            'confirmed_by': confirmed[0] if confirmed else None, 'confirmed_at': confirmed[1] if confirmed else None, 'confirmed_on': json.loads(confirmed[2]) if confirmed else None,
+            'proposed_by': row['proposed_by'],
             'stale': stale_cause(conn, row, user),
             'views': [_small(conn, r, user) for r in near['views']], 'actions': [_small(conn, r, user) for r in near['actions']],
             'relations': [{'id': r['element_id'], 'key': _content(r)['english_name'], 'name': _content(r)['name']} for r in near['relations']],
@@ -164,7 +167,7 @@ def _verdict_words(result: dict) -> str | None:
 
 def _edge(conn, row: dict, user: dict | None) -> dict:
     content = _content(row)
-    result = check_relation(conn, content, record=False, user=user)
+    result = check_relation(conn, content, record=False, user=user, examples=False)
     ends = {e: element_row(conn, type_id(content[e])) for e in ('from', 'to')}
     limited = any(restriction(conn, r['element_id'], user) is not None for r in ends.values())
     one_end = {'many_to_one': 'to', 'one_to_many': 'from'}.get(content['cardinality'])
@@ -231,13 +234,13 @@ def _answer_node(conn, user: dict | None, answer_id: int, question: str, asked_a
 def lineage_graph(conn, user: dict | None) -> dict:
     """Datasets -> object types -> relations, views and actions -> the person's saved answers, from element_dep and the answers' own record. A dataset is drawn
     when a type this person may see reads it (a builder also sees one nothing reads); a hidden type is not there at all."""
-    types = _type_nodes(conn, user)
+    drawn_relations = relation_graph(conn, user)
+    types = drawn_relations['nodes']
     nodes: list[dict] = list(types)
     for t in types:
         for kind in ('view', 'action'):
             nodes += [{**v, 'kind': kind, 'type': t['key'], 'type_name': t['name']} for v in t[f'{kind}s']]
-    shown = {n['id'] for n in types}
-    relations = [e for e in relation_graph(conn, user)['edges'] if {e['from'], e['to']} <= shown]
+    relations = drawn_relations['edges']
     nodes += relations
     by_dataset: dict[str, list[dict]] = {}
     for t in types:
@@ -254,8 +257,12 @@ def lineage_graph(conn, user: dict | None) -> dict:
                 if parent in ids and (n['kind'] == 'type') == parent.startswith('dataset:'):
                     edges.append({'from': parent, 'to': n['id']})
     drawn = 0
-    for answer_id, question, asked_at, _types in _mine_answers(conn, user):
-        made = _answer_node(conn, user, answer_id, question, asked_at) if drawn < ANSWER_NODES else None
+    for answer_id, question, asked_at, read_types in _mine_answers(conn, user, ANSWER_LOOK):
+        if drawn >= ANSWER_NODES:
+            break
+        if not ids.intersection(read_types):   # it read no type that is drawn (a refusal, or a type this person no longer sees): nothing to draw, nothing to reopen
+            continue
+        made = _answer_node(conn, user, answer_id, question, asked_at)
         reads = [r for r in made[1] if r in ids] if made else []
         if reads:
             drawn += 1

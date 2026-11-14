@@ -261,6 +261,18 @@ class GraphTests(SigningTestCase):
             self.assertEqual(_own_cause(meaning), 'data')
             self.assertEqual((type_reason.startswith('它用的“状态码”的含义需要再看'), _own_cause(type_reason)), (True, 'cascade'))
 
+    def test_the_lineage_works_out_the_types_once_and_the_edges_without_example_rows(self):
+        from unittest import mock
+        from ontology_poc_generator import ontology_graph
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.everything_confirmed(team)
+            with mock.patch.object(ontology_graph, '_type_nodes', wraps=ontology_graph._type_nodes) as nodes, \
+                    mock.patch.object(ontology_graph, 'check_relation', wraps=ontology_graph.check_relation) as check:
+                self.graph(team['ann'], LINEAGE)
+            self.assertEqual(nodes.call_count, 1)
+            self.assertEqual([c.kwargs['examples'] for c in check.call_args_list], [False])   # one relation, one check, counts only
+
     def test_a_relation_from_a_type_to_itself_is_listed_once(self):
         with self.service() as (base, out):
             team = self.team(base)

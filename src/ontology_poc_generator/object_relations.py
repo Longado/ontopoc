@@ -42,12 +42,13 @@ def _rows(conn, sql: str) -> list[list]:
     return [list(r) for r in conn.execute(sql)]
 
 
-def check_relation(conn, content: dict, record: bool = True, user: dict | None = None) -> dict:
+def check_relation(conn, content: dict, record: bool = True, user: dict | None = None, examples: bool = True) -> dict:
     """The check of a definition on the current data: {'problems': [...]} when it cannot be run (a type, dataset or column is gone), else the numbers
     (see the top of the file) and `signature`, the six counts a person confirms against. With record the two checks are kept as check_result rows. With `user`
-    (and no record), an end that a row rule limits for them is read through a temporary copy of the rows they may see, so the counts and rows are theirs."""
+    (and no record), an end that a row rule limits for them is read through a temporary copy of the rows they may see, so the counts and rows are theirs. With
+    examples=False the rows that miss and the rows that repeat are not fetched (the graphs draw counts only)."""
     if user is None or record:
-        return _check_relation(conn, content, record, {})
+        return _check_relation(conn, content, record, {}, examples)
     copies, made = {}, []
     try:
         for end in ('from', 'to'):
@@ -61,13 +62,13 @@ def check_relation(conn, content: dict, record: bool = True, user: dict | None =
                 conn.execute(f'CREATE TEMP TABLE {name} AS SELECT * FROM {_quote(dataset["table_name"])} WHERE rowid IN ({",".join(map(str, keep)) or "NULL"}) ORDER BY rowid')
                 made.append(name)
                 copies[end] = {**dataset, 'table_name': name, 'rows_stored': len(keep)}
-        return _check_relation(conn, content, record, copies)
+        return _check_relation(conn, content, record, copies, examples)
     finally:
         for name in made:
             conn.execute(f'DROP TABLE IF EXISTS temp.{name}')
 
 
-def _check_relation(conn, content: dict, record: bool, copies: dict) -> dict:
+def _check_relation(conn, content: dict, record: bool, copies: dict, examples: bool = True) -> dict:
     ends = {end: element_row(conn, type_id(content[end])) for end in ('from', 'to')}
     problems = [f'对象类型“{content[end]}”已经不在了' for end, row in ends.items() if row is None]
     if problems:
@@ -93,10 +94,10 @@ def _check_relation(conn, content: dict, record: bool, copies: dict) -> dict:
     m_table, o_table = _quote(m_ds['table_name']), _quote(o_ds['table_name'])
     found = _side_numbers(conn, m_table, o_table, [m_col], [o_col], m_ds['rows_stored'])
     unmatched_rows = _rows(conn, f'SELECT {", ".join(f"t.{_quote(c)}" for c in shown)} FROM {m_table} t WHERE {_filled("t", m_col)} AND NOT EXISTS '
-                                 f'(SELECT 1 FROM {o_table} o WHERE o.{_quote(o_col)} = t.{_quote(m_col)}) ORDER BY t.rowid LIMIT {ROW_SAMPLE}')
+                                 f'(SELECT 1 FROM {o_table} o WHERE o.{_quote(o_col)} = t.{_quote(m_col)}) ORDER BY t.rowid LIMIT {ROW_SAMPLE}') if examples else []
     repeated_rows = _rows(conn, f'SELECT {", ".join(_quote(c) for c in repeated_shown)} FROM {o_table} WHERE {_quote(o_col)} IN '
                                 f'(SELECT {_quote(o_col)} FROM {o_table} WHERE {_filled(o_table, o_col)} GROUP BY {_quote(o_col)} HAVING COUNT(*) > 1) '
-                                f'ORDER BY {_quote(o_col)}, rowid LIMIT {ROW_SAMPLE}')
+                                f'ORDER BY {_quote(o_col)}, rowid LIMIT {ROW_SAMPLE}') if examples else []
     many_repeats = conn.execute(f'SELECT COUNT(*) FROM (SELECT 1 FROM {m_table} t WHERE {_filled("t", m_col)} GROUP BY t.{_quote(m_col)} HAVING COUNT(*) > 1)').fetchone()[0] \
         if content['cardinality'] == 'one_to_one' else 0   # one to one: the many side may not repeat a key either
     rows, empty, unmatched = m_ds['rows_stored'], found['empty'], found['unmatched']
