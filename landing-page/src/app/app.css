@@ -356,7 +356,7 @@ button.fn { display: flex; flex-direction: column; align-items: flex-start; widt
 .chips button.on { background: var(--hover); color: var(--ink); font-weight: 600; }
 .prompt-box { margin: 0; padding: 8px 10px; background: var(--side); border-radius: var(--radius); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--small); }
 .badge-ai { color: var(--accent); }
-.trial-detail { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 12px; }
+.trial-detail { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 12px; position: sticky; left: 0; max-width: 368px; }   /* the trial table scrolls sideways in the 400px editor: the detail stays in view at its left edge */
 .trial-detail .caption { font-size: var(--small); color: var(--muted); margin-top: 6px; }
 .ai-box { display: flex; flex-direction: column; gap: 8px; }
 .ai-box .inline { max-width: none; margin: 0; }
