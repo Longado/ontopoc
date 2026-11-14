@@ -2,14 +2,14 @@
 
 export const TOKEN_PLACEHOLDER = "<在下面创建令牌后填这里>";
 
-/** The entry an MCP client puts in its settings to start the server as the person the token belongs to. Read-only tools only. */
+/** The entry an MCP client puts in its settings to start the server as the person the token belongs to. With a token the server offers the read-only tools unless told otherwise. */
 export function connectConfig({ command, origin, token }) {
   return JSON.stringify({
     mcpServers: {
       ontopoc: {
         command: command.python,
         args: ["-m", command.module],
-        env: { PYTHONPATH: command.src, ONTOPOC_URL: origin, ONTOPOC_TOOLSET: "read", ONTOPOC_TOKEN: token || TOKEN_PLACEHOLDER },
+        env: { PYTHONPATH: command.src, ONTOPOC_URL: origin, ONTOPOC_TOKEN: token || TOKEN_PLACEHOLDER },
       },
     },
   }, null, 2);

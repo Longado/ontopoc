@@ -8,7 +8,7 @@ const COMMAND = { python: "python3", module: "ontology_poc_generator.mcp_server"
 test("the connect entry starts the server with the read-only tools as the token's person, and a placeholder until there is a token", () => {
   const config = JSON.parse(connectConfig({ command: COMMAND, origin: "http://127.0.0.1:5302", token: "" }));
   assert.deepEqual(config.mcpServers.ontopoc.args, ["-m", "ontology_poc_generator.mcp_server"]);
-  assert.deepEqual(config.mcpServers.ontopoc.env, { PYTHONPATH: "/repo/src", ONTOPOC_URL: "http://127.0.0.1:5302", ONTOPOC_TOOLSET: "read", ONTOPOC_TOKEN: TOKEN_PLACEHOLDER });
+  assert.deepEqual(config.mcpServers.ontopoc.env, { PYTHONPATH: "/repo/src", ONTOPOC_URL: "http://127.0.0.1:5302", ONTOPOC_TOKEN: TOKEN_PLACEHOLDER });
   assert.equal(JSON.parse(connectConfig({ command: COMMAND, origin: "x", token: "otp_abc" })).mcpServers.ontopoc.env.ONTOPOC_TOKEN, "otp_abc");
 });
 

@@ -28,12 +28,13 @@ class AgentCase(UseLayerCase):
         return made
 
     def mcp(self, base, token, calls, toolset='read'):
-        """Starts the MCP server as the subprocess an agent would start, sends initialize and these tools/call requests, returns {id: result} (ids from 10)."""
+        """Starts the MCP server as the subprocess an agent would start, sends initialize and these tools/call requests, returns {id: result} (ids from 10).
+        toolset None leaves ONTOPOC_TOOLSET unset and token None leaves ONTOPOC_TOKEN unset, to see the server's own defaults."""
         messages = [{'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18', 'capabilities': {}, 'clientInfo': {'name': 'test', 'version': '0'}}},
                     {'jsonrpc': '2.0', 'method': 'notifications/initialized'}, {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'},
                     *({'jsonrpc': '2.0', 'id': 10 + i, 'method': 'tools/call', 'params': {'name': name, 'arguments': args}} for i, (name, args) in enumerate(calls))]
-        env = {**os.environ, 'PYTHONPATH': SRC, 'ONTOPOC_URL': base, 'ONTOPOC_TOKEN': token, 'ONTOPOC_TOOLSET': toolset}
-        done = subprocess.run([sys.executable, '-m', 'ontology_poc_generator.mcp_server'], input='\n'.join(json.dumps(m, ensure_ascii=False) for m in messages) + '\n',
+        env = {k: v for k, v in {**os.environ, 'PYTHONPATH': SRC, 'ONTOPOC_URL': base, 'ONTOPOC_TOKEN': token, 'ONTOPOC_TOOLSET': toolset}.items() if v is not None}
+        done =subprocess.run([sys.executable, '-m', 'ontology_poc_generator.mcp_server'], input='\n'.join(json.dumps(m, ensure_ascii=False) for m in messages) + '\n',
                               capture_output=True, text=True, env=env, timeout=120, check=False)
         self.assertEqual(done.returncode, 0, done.stderr)
         return {r['id']: r for r in (json.loads(line) for line in done.stdout.splitlines() if line.strip())}
@@ -164,6 +165,15 @@ class McpTests(AgentCase):
             self.assertTrue(set(mcp_server.READ_TOOLS) <= names)
             self.assertIn('build_ontology', names)
 
+    def test_with_a_token_the_server_is_read_only_unless_all_is_asked_for_and_without_one_it_keeps_the_local_toolset(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            token = self.token_for(team['admin'], 'bob')['token']
+            listed = lambda **kw: {t['name'] for t in self.mcp(base, **kw, calls=[])[2]['result']['tools']}
+            self.assertEqual(listed(token=token, toolset=None), set(mcp_server.READ_TOOLS))   # a token and nothing said: read only
+            self.assertIn('build_ontology', listed(token=token, toolset='all'))               # all only when asked for
+            self.assertIn('build_ontology', listed(token=None, toolset=None))                 # no token: the local toolset as before
+
 
 class SkillTests(AgentCase):
     def test_the_skill_folder_holds_confirmed_definitions_and_refusal_rules_and_nothing_else(self):
@@ -219,6 +229,7 @@ class SkillTests(AgentCase):
             status, info = team['bob'].get('/api/workspace/agent')
             self.assertEqual(status, 200, info)
             self.assertEqual(sorted(t['name'] for t in info['tools']), sorted(mcp_server.READ_TOOLS))
+            self.assertEqual(info['more_with_all'], len(mcp_server.TOOLS) - len(mcp_server.READ_TOOLS))   # what ONTOPOC_TOOLSET=all would add
             ask = next(t for t in info['tools'] if t['name'] == 'ask')
             self.assertEqual(ask['arguments'], [{'name': 'question', 'description': '要问的业务问题', 'required': True}])
             self.assertTrue(Path(info['command']['src']).joinpath('ontology_poc_generator', 'mcp_server.py').is_file())

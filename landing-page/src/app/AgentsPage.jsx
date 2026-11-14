@@ -118,7 +118,8 @@ export function AgentsPage() {
               </tbody>
             </table>
           </div>
-          <p className="muted small">都是只读的：不能上传、不能确认、不能改。问答被拒绝时，原因原样转告，不会给一个猜的答案。</p>
+          <p className="muted small">带令牌连上来时默认只给这几个，都是只读的：不能上传、不能确认、不能改。问答被拒绝时，原因原样转告，不会给一个猜的答案。</p>
+          <p className="muted small">在连接配置的 env 里加 <code>"ONTOPOC_TOOLSET": "all"</code> 会再多 {i.more_with_all} 个工具：上传数据、建模、确认、存规则、导出等，能做的仍受令牌主人的角色限制。给外部智能体不建议加。</p>
           <h2 className="section">怎么连</h2>
           <p className="muted">把这一段放进支持 MCP 的客户端的设置里。令牌在下面创建。</p>
           <pre className="code-box">{config}</pre>

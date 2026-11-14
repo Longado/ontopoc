@@ -5,7 +5,8 @@ counts and records whichever way a person or an agent comes in. The protocol par
 server needs — initialize, ping, tools/list, tools/call — written out here rather than adding a dependency.
 
 Run: PYTHONPATH=src python -m ontology_poc_generator.mcp_server   (ONTOPOC_URL defaults to http://127.0.0.1:8767;
-ONTOPOC_TOKEN is a personal token from the account page: the service then signs what this server does with the token owner's name)
+ONTOPOC_TOKEN is a personal token from the account page: the service then signs what this server does with the token owner's name;
+with a token the server offers the read tools only, unless ONTOPOC_TOOLSET=all; with no token it offers all of them)
 """
 from __future__ import annotations
 
@@ -644,7 +645,7 @@ TOOLS = [
            'key': {'type': 'object', 'description': '主键列 → 取值，例如 {"客户编号": "KH022"}；不写就给一页'}, 'page': {'type': 'integer', 'minimum': 1, 'description': '第几页，从 1 起'}},
           ('type', 'name')),
 ]
-READ_TOOLS = ('describe_definitions', 'ask', 'list_unconfirmed', 'read_derived_property')   # what an outside agent is given with ONTOPOC_TOOLSET=read: no uploading, no confirming, no writing
+READ_TOOLS = ('describe_definitions', 'ask', 'list_unconfirmed', 'read_derived_property')   # what an outside agent is given (a token and no ONTOPOC_TOOLSET, or ONTOPOC_TOOLSET=read): no uploading, no confirming, no writing
 BY_NAME = {t['name']: t for t in TOOLS}
 
 
@@ -701,7 +702,8 @@ def main():
         service = LocalService(base, token=os.environ.get('ONTOPOC_TOKEN'))
     except ValueError as exc:
         sys.exit(str(exc))
-    toolset = os.environ.get('ONTOPOC_TOOLSET', 'all')
+    # a server started with a token is an outside agent's: read only unless 'all' is asked for; with no token it is the local session's, all of them
+    toolset = os.environ.get('ONTOPOC_TOOLSET') or ('read' if os.environ.get('ONTOPOC_TOKEN') else 'all')
     if toolset not in ('all', 'read'):
         sys.exit('ONTOPOC_TOOLSET 要写 all 或 read')
     only = READ_TOOLS if toolset == 'read' else None
