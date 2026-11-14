@@ -130,6 +130,22 @@ export const checkExpression = (name, spec, step, operator, expression, type) =>
 export const trialExpression = (name, spec, step, operator, expression) => tryOut("/api/workspace/pipelines/expression/trial", { id: name, spec, step, operator, expression });
 export const guessDateFormat = (examples) => tryOut("/api/workspace/pipelines/format-guess", { examples });
 
+// the AI step: where it stands, 试跑, the sample review, the kept answers; and the assistant. The ones that call the model can take a while: there is no timeout here.
+const llmPath = (route) => `/api/workspace/pipelines/llm/${route}`;
+export const llmState = (name, spec, step) => tryOut(llmPath("state"), { id: name, spec, step });
+/** `body`: {mode: "sample" | "rows" | "values", n?, seed?, rows?, values?, exclude_labelled?}. Calls the model. */
+export const llmTrial = (name, spec, step, body) => tryOut(llmPath("trial"), { id: name, spec, step, ...body });
+/** `labels`: [{fields, expected}]; `remove`: row hashes. The expected answers of rows, kept with the node. */
+export const llmLabel = (name, spec, step, labels, remove = []) => send(llmPath("label"), { id: name, spec, step, labels, remove });
+/** Runs the labelled rows through the step as it is now and counts the matches. Calls the model. */
+export const llmReview = (name, spec, step) => send(llmPath("review"), { id: name, spec, step });
+export const llmClearCache = (name, spec, step) => send(llmPath("clear-cache"), { id: name, spec, step });
+/** A sentence into a filter (kind "filter") or a calculated column (kind "calc"). `more`: {raw, answers} when a question was answered. */
+export const aiParse = (name, spec, step, operator, kind, text, more = {}) => tryOut("/api/workspace/pipelines/ai/parse", { id: name, spec, step, operator, kind, text, ...more });
+/** A draft of steps over the selected nodes. `more`: {raw, answers} when a question was answered. Nothing is saved. */
+export const aiDraft = (name, spec, selected, text, more = {}) => tryOut("/api/workspace/pipelines/ai/draft", { id: name, spec, selected, text, ...more });
+export const aiExplain = (name, spec, selected) => tryOut("/api/workspace/pipelines/ai/explain", { id: name, spec, selected });
+
 // relations, the 待确认 queue, who sees which type
 const relationPath = (id, tail = "") => `/api/workspace/relations/${encodeURIComponent(id)}${tail}`;
 export const getRelations = () => request("/api/workspace/relations").then((b) => b.relations);

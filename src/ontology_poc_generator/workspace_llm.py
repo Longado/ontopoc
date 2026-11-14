@@ -90,15 +90,15 @@ def state(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
     why = [*([f'记的模型是 {step["model"]}，现在用的是 {model}'] if model != step.get('model') else []),
            *([f'提示、模型或输出改过：以前记下的 {kept["stale"]} 条答案不再用'] if kept['stale'] else [])]
     return {'step': step['id'], 'name': step['name'], 'template': eff['template'], 'kind': eff['kind'], 'choices': eff['choices'], 'fields': eff['fields'], 'prompt': eff['prompt'],
-            'columns': [c['name'] for c in eff['columns']], 'model_now': model, 'model_node': step.get('model'), 'contract': contract, 'report': report, 'cache': kept,
+            'columns': [c['name'] for c in eff['columns']], 'inputs': compile_prompt(eff['prompt'], names)[1], 'model_now': model, 'model_node': step.get('model'), 'contract': contract, 'report': report, 'cache': kept,
             'recompute': {'rows': report['to_call'], 'why': why} if why else None, 'estimate': _estimate(report, llm), 'review': review_state(conn, scope, step, model),
             'labels': labels_of(conn, scope, step['id']) if scope else [], 'basis': '全部行'}
 
 
 def trial(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
-    """{id | spec, step, mode: values | rows | sample, values?, rows?, n?, seed?, exclude_labelled?}: the step tried on typed values (the fields of the prompt), on chosen rows of what
+    """{id | spec, step, mode: values | rows | sample | draw, values?, rows?, n?, seed?, exclude_labelled?}: the step tried on typed values (the fields of the prompt), on chosen rows of what
     it reads (their numbers, from 0), or on a random sample (n, default 20): for each the prompt sent, the raw answer and the parsed value. This calls the model, and keeps the
-    answers that are answers. A sample is labelled 样本; with exclude_labelled it leaves out the rows that already have a label."""
+    answers that are answers. A sample is labelled 样本; with exclude_labelled it leaves out the rows that already have a label; `draw` picks the sample rows only and does not call the model."""
     found, step, eff, names, name = _checked(conn, engine, payload, user)
     scope = pipeline_id(name) if name else ''
     try:
@@ -116,14 +116,17 @@ def trial(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
         if not isinstance(wanted, list) or not 1 <= len(wanted) <= MAX_TRIAL_ROWS or not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(rows) for i in wanted):
             raise TypeRefused(f'要选 1 到 {MAX_TRIAL_ROWS} 行，行号从 0 数起，不超过这一步的行数 {len(rows)}')
         chosen, basis = [(i, rows[i][1]) for i in dict.fromkeys(wanted)], '选的行'
-    elif mode == 'sample':
+    elif mode in ('sample', 'draw'):
         n = payload.get('n', SAMPLE_ROWS)
         if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= MAX_TRIAL_ROWS:
             raise TypeRefused(f'样本要 1 到 {MAX_TRIAL_ROWS} 行')
         skip = {l['row_hash'] for l in labels_of(conn, scope, step['id'])} if payload.get('exclude_labelled') and scope else set()
         chosen, basis = draw(rows, fields, n, payload.get('seed'), skip), '样本'
     else:
-        raise TypeRefused('试跑的方式（mode）只有 values、rows、sample')
+        raise TypeRefused('试跑的方式（mode）只有 values、rows、sample、draw')
+    if mode == 'draw':   # the rows to label, without the model's answers: a person writes what they expect before they see what it said
+        return {'trials': [{'row': i, 'fields': v, 'row_hash': row_hash(v, fields)} for i, v in chosen], 'fields': fields, 'columns': [c['name'] for c in eff['columns']], 'basis': basis,
+                'rows_in_input': len(rows), 'model': None}
     try:
         done = run_rows(conn, llm or LlmService(), scope, step, names, chosen)
     except LlmError as exc:

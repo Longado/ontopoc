@@ -350,6 +350,24 @@ button.fn { display: flex; flex-direction: column; align-items: flex-start; widt
 .past { margin: 16px 0; }
 .run-error { margin: 8px 0; }
 .output-chip { margin-right: 12px; }
+/* AI steps and the assistant */
+.llm-tabs { padding: 0; margin-bottom: 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-left: -8px; }
+.chips button.on { background: var(--hover); color: var(--ink); font-weight: 600; }
+.prompt-box { margin: 0; padding: 8px 10px; background: var(--side); border-radius: var(--radius); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--small); }
+.badge-ai { color: var(--accent); }
+.trial-detail { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 12px; }
+.trial-detail .caption { font-size: var(--small); color: var(--muted); margin-top: 6px; }
+.ai-box { display: flex; flex-direction: column; gap: 8px; }
+.ai-box .inline { max-width: none; margin: 0; }
+.ai-draft { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.ai-draft .caption { font-size: var(--small); color: var(--muted); }
+.questions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.draft-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.expected { display: flex; flex-wrap: wrap; gap: 4px; }
+.tall-small { max-height: 220px; overflow: auto; }
+.run-llm { padding: 8px 0 12px; }
+.explain { margin: 12px 0; }
 @media (max-width: 1180px) {
   .pl-grid { grid-template-columns: 180px minmax(0, 1fr); grid-template-rows: 300px 300px auto; height: auto; }
   .pl-steps { grid-row: 1 / 3; }

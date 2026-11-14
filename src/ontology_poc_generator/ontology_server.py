@@ -1372,7 +1372,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if not parts:
                     body = {'pipelines': list_pipelines(conn, self.user)}
                 elif parts == ['options']:
-                    body = pipeline_options()
+                    body = pipeline_options(llm)
                 elif len(parts) == 1:
                     body = pipeline_detail(conn, parts[0], self.user, llm)
                 elif parts[1:] == ['versions']:

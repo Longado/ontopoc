@@ -398,3 +398,18 @@ class TicketWalkTests(SigningTestCase):
             self.assertIn('以前记下的', state['recompute']['why'][0])
             again = self.ask(ann, 'llm/review', {})[1]
             self.assertTrue(again['review']['current'])
+
+    def test_drawing_the_rows_to_label_does_not_call_the_model_and_leaves_out_rows_already_labelled(self):
+        model = RowModel()
+        with self.service(gateway=model) as (base, out):
+            ann = self.team(base)['ann']
+            self.make(ann)
+            status, drawn = self.ask(ann, 'llm/trial', {'mode': 'draw', 'n': 10, 'seed': 5})
+            self.assertEqual(status, 200, drawn)
+            self.assertEqual((len(drawn['trials']), model.requests, drawn['fields']), (10, [], ['问题描述']))
+            self.assertEqual(len({t['row_hash'] for t in drawn['trials']}), 10)   # ten different descriptions
+            self.ask(ann, 'llm/label', {'labels': [{'fields': t['fields'], 'expected': TRUTH[t['fields']['问题描述']]} for t in drawn['trials']]})
+            more = self.ask(ann, 'llm/trial', {'mode': 'draw', 'n': 50, 'seed': 5, 'exclude_labelled': True})[1]
+            self.assertEqual(len(more['trials']), len(set(TRUTH)) - 10)
+            self.assertFalse({t['row_hash'] for t in more['trials']} & {t['row_hash'] for t in drawn['trials']})
+            self.assertEqual(self.ask(ann, 'llm/state', {})[1]['inputs'], ['问题描述'])

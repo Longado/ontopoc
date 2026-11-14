@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { operatorColumns } from "./api.js";
+import { LlmEditor } from "./LlmEditor.jsx";
 import { OperatorForm } from "./OperatorForms.jsx";
 import {
   HOW_LABEL, KIND_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, catalogView, copyOperator, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, moveOperator, newOperator,
@@ -264,7 +265,7 @@ function OutputEditor({ step, draft, setDraft, nodes }) {
 }
 
 /** The editor on the right: by the kind of the selected step. `onPreviewTo(i)` shows the node's rows up to operator i in the bottom panel. */
-export function StepEditor({ step, draft, setDraft, nodes, datasets, name, catalog, onPreviewTo, onRemoved }) {
+export function StepEditor({ step, draft, setDraft, nodes, datasets, name, catalog, options, dirty, onPreviewTo, onRemoved }) {
   if (!step) return <p className="muted pl-empty">点左边的步骤或图里的卡片，在这里改它。</p>;
   const failures = failureLines(nodes[step.id]);
   return (
@@ -273,8 +274,9 @@ export function StepEditor({ step, draft, setDraft, nodes, datasets, name, catal
       {step.type === "input" && <InputEditor step={step} draft={draft} setDraft={setDraft} datasets={datasets} />}
       {step.type === "join" && <JoinEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} />}
       {step.type === "transform" && <TransformEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} name={name} catalog={catalog} onPreviewTo={onPreviewTo} />}
+      {step.type === "llm" && <LlmEditor key={step.id} step={step} draft={draft} setDraft={setDraft} nodes={nodes} name={name} options={options} dirty={dirty} />}
       {step.type === "output" && <OutputEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} />}
-      {step.type === "transform" && failures.length > 0 && <p className="warn small">这一步共：{failures.join("；")}</p>}
+      {(step.type === "transform" || step.type === "llm") && failures.length > 0 && <p className="warn small">这一步共：{failures.join("；")}</p>}
     </div>
   );
 }

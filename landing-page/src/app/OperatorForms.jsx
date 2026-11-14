@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { guessDateFormat, previewNode } from "./api.js";
+import { AiBox } from "./AiBox.jsx";
 import { ExpressionEditor } from "./ExpressionEditor.jsx";
 import { typeLabel } from "./format.js";
 import { AGG_LABEL, CAST_LABEL, CLEAN_LABEL, CMP_LABEL, UNMAPPED_LABEL, aggDefaultName } from "./pipelineModel.js";
@@ -31,13 +32,14 @@ function ColChecks({ cols, value, onChange, legend, only }) {
 
 const Row = ({ children }) => <div className="inline wide op-row">{children}</div>;
 
-function FilterForm({ op, cols, onChange }) {
+function FilterForm({ op, cols, onChange, where }) {
   const group = op.where.any ? "any" : "all";
   const rows = op.where[group] ?? [];
   const setRows = (next, g = group) => onChange({ ...op, where: { [g]: next } });
   const setRow = (i, row) => setRows(rows.map((r, k) => (k === i ? row : r)));
   return (
     <div className="op-form">
+      <AiBox where={where} kind="filter" onApply={(d) => onChange({ ...op, where: d.where })} />
       <div className="inline">
         <span>留下</span>
         <Select label="条件之间的关系" value={group} onChange={(g) => setRows(rows, g)}>
@@ -193,6 +195,7 @@ function CastForm({ op, cols, onChange, where }) {
 function CalcForm({ op, cols, onChange, where }) {
   return (
     <div className="op-form">
+      <AiBox where={where} kind="calc" onApply={(d) => onChange({ ...op, name: op.name || d.name, expression: d.expression })} />
       <Row>
         <label className="field"><span className="caption">新列的名字</span><input type="text" value={op.name} onChange={(e) => onChange({ ...op, name: e.target.value })} /></label>
         <label className="check"><input type="checkbox" checked={!!op.replace} disabled={!cols.some((c) => c.name === op.name)} onChange={(e) => onChange({ ...op, replace: e.target.checked || undefined })} />替换同名的列</label>

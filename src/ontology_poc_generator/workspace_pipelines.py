@@ -898,13 +898,14 @@ def pipeline_log(conn, name: str, user: dict | None) -> list[dict]:
 
 # --- the expression editor, the operator picker ---------------------------------------------------------------------------------------------------------
 
-def options() -> dict:
+def options(llm: LlmService | None = None) -> dict:
     """What the editors list: the operators by category, the functions by group (a click inserts the template), the aggregations, the join kinds, the types a column can be converted to."""
     groups: dict[str, list] = {}
     for group, name, template, what in FUNCTION_DOCS:
         groups.setdefault(group, []).append({'name': name, 'template': template, 'text': what})
     return {'operators': [{'op': o, 'name': n, 'category': c, 'text': t} for o, n, c, t in CATALOG], 'functions': [{'group': g, 'functions': f} for g, f in groups.items()],
-            'aggregations': [{'fn': k, 'name': v} for k, v in AGGREGATIONS.items()], 'joins': list(HOWS), 'cast_types': [{'to': k, 'name': v} for k, v in CAST_TYPES.items()]}
+            'aggregations': [{'fn': k, 'name': v} for k, v in AGGREGATIONS.items()], 'joins': list(HOWS), 'cast_types': [{'to': k, 'name': v} for k, v in CAST_TYPES.items()],
+            'model': llm.model if llm else None, 'model_ready': bool(llm and llm.gateway is not None)}
 
 
 def _columns_before(conn, engine, payload: dict, user: dict | None):

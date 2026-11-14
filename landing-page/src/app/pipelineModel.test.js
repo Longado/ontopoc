@@ -162,3 +162,58 @@ test("statistics before and after are compared per column and a column that came
   assert.deepEqual(statRows(before, after).map((r) => [r.name, r.changed, r.before === "—"]), [["合计", true, false], ["行数", true, true]]);
   assert.equal(statRows(before, before)[0].changed, false);
 });
+
+// --- the AI step and the assistant ---
+
+import { aiNodeLine, applyDraft, estimateText, insertField, llmRunText, offListLines, rememberPrompt, reviewText, stepSummary } from "./pipelineModel.js";
+
+test("a new AI step reads the selected step, records the model and starts as a classification that ends in 其他", () => {
+  const step = newStep([{ id: "t", type: "input" }], "llm", "t", [], "deepseek-flash");
+  assert.deepEqual([step.id, step.type, step.from, step.model, step.template, step.categories], ["ai1", "llm", "t", "deepseek-flash", "classify", ["其他"]]);
+  assert.equal(stepTitle({ ...step, name: "问题类别" }), "问题类别");
+  assert.equal(stepTitle(step), "（还没写新列的名字）");
+});
+
+test("a run says how many rows answered, how many came from what was kept, and every kind of row that did not", () => {
+  const report = { answered: 30, from_cache: 18, failed: 2, off_list: 1, unanswered: 0, skipped: 3, pending: 0 };
+  assert.equal(llmRunText(report), "30 行答了（18 行用的是以前记下的），2 行失败，1 行答的不在列表里，3 行跳过（提示用到的列都是空的）");
+  assert.equal(llmRunText({ ...report, failed: 0, off_list: 0, skipped: 0, from_cache: 0, pending: 5 }), "30 行答了，5 行还没跑");
+  assert.deepEqual(offListLines({ off_list_answers: { 质量问题: 3 } }), ["答了「质量问题」，不在列表里：3 行"]);
+});
+
+test("the review reads 20 行里 17 行对上 and says when it is old, when no line is set and when it passed", () => {
+  const base = { reviewable: true, labelled: 20, matched: 17, total: 20, current: true, min_match: 17, passed: true };
+  assert.equal(reviewText(base), "20 行里 17 行对上，达到要求的 17 行");
+  assert.equal(reviewText({ ...base, passed: false, min_match: 18 }), "20 行里 17 行对上，没达到要求的 18 行");
+  assert.equal(reviewText({ ...base, current: false }), "20 行里 17 行对上（那是改提示之前的结果，要重跑）");
+  assert.equal(reviewText({ ...base, min_match: null, passed: false }), "20 行里 17 行对上；还没定要对上几行才算通过");
+  assert.equal(reviewText({ reviewable: true, labelled: 0 }), "还没有标注");
+  assert.equal(reviewText({ reviewable: false }), "概括没有标准答案，不做样本审核");
+  assert.equal(aiNodeLine({ name: "问题类别", review: base, cache: { current: 30 } }), "问题类别：20 行里 17 行对上，达到要求的 17 行；记下了 30 条答案");
+});
+
+test("the estimate names calls and characters and claims no money when the service has no price", () => {
+  assert.equal(estimateText({ calls: 30, chars_in: 1200, cost: null }), "要调用 30 次，约 1,200 字发给模型；服务没有配单价，没有估价");
+  assert.equal(estimateText({ calls: 30, chars_in: 1200, cost: 0.05 }), "要调用 30 次，约 1,200 字发给模型；约 0.05 元");
+});
+
+test("applying a draft appends its steps to the spec as ordinary steps and leaves the spec it was given alone; recent prompts keep one of each, newest first", () => {
+  const spec = { steps: [{ id: "o", type: "input" }] };
+  const next = applyDraft(spec, [{ id: "ai1", step: { id: "ai1", type: "transform", from: "o", operators: [] } }]);
+  assert.deepEqual(next.steps.map((s) => s.id), ["o", "ai1"]);
+  assert.equal(spec.steps.length, 1);
+  const list = rememberPrompt([{ text: "a" }, { text: "b" }], { text: "a" }, 2);
+  assert.deepEqual(list.map((e) => e.text), ["a", "b"]);
+  assert.deepEqual(rememberPrompt([{ text: "x" }, { text: "y" }], { text: "z" }, 2).map((e) => e.text), ["z", "x"]);
+});
+
+test("a column goes into the prompt at the caret, written in braces so any name works", () => {
+  assert.deepEqual(insertField("看 ", 2, 2, "问题描述"), { text: "看 ${问题描述}", caret: 9 });
+  assert.equal(insertField("看 X 吧", 2, 3, "列").text, "看 ${列} 吧");
+});
+
+test("an AI step shows on the confirm screen with its template and what it reads, and the card says how many rows have no answer yet", () => {
+  const step = { id: "c", type: "llm", from: "t", model: "m", name: "类别", template: "classify", column: "描述", categories: ["甲", "其他"] };
+  assert.deepEqual(stepSummary(step, [{ id: "t", type: "input", dataset: "工单" }]), ["读 工单，让 AI 写「类别」（分类）", "模型 m", "按「描述」分成：甲、其他"]);
+  assert.deepEqual(cardFlags({ type: "llm", llm: { pending: 4 }, failures: { ai_failed: 2 } }).map((f) => f.text), ["4 行 AI 还没跑", "2 行 AI 没答成"]);
+});
