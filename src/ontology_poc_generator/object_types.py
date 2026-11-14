@@ -725,6 +725,19 @@ def limited_on(conn, row: dict, person: dict | None) -> bool:
     return not row['element_id'].startswith(ACTION_PREFIX) and any(restriction(conn, t, person) is not None for t in _types_read(row))
 
 
+HIDDEN_REASON = '原因里有全部数据的统计，你受行规则限制，看不到'
+
+
+def reason_for(conn, row: dict, user: dict | None) -> tuple[str | None, str | None]:
+    """(the reason an element needs another look or was sent back, as this person may read it; the words that stand in its place). The reason a changed dataset sends an element
+    back for quotes counts of the whole data, which a person a row rule limits does not read: they see the cause word without the numbers."""
+    if row['state'] not in ('needs_look', 'rejected'):
+        return None, None
+    if row['state'] == 'needs_look' and row['reason'] and limited_on(conn, row, user):
+        return None, HIDDEN_REASON
+    return row['reason'], None
+
+
 def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
     if limited_on(conn, row, user):
         raise TypeRefused('你受行规则限制，只看得到一部分行，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的构建者来确认', 403)
@@ -754,7 +767,8 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
     last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json, evidence_ref FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1',
                         (row['element_id'],)).fetchone()
     limited = limited_on(conn, row, user)
-    return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'reason': row['reason'] if row['state'] in ('needs_look', 'rejected') else None,
+    reason, reason_hidden = reason_for(conn, row, user)
+    return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'reason': reason, 'reason_hidden': reason_hidden,
             'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited, 'limited_by_rule': limited,
             'cause': row['cause'] if row['state'] == 'needs_look' else None, 'via': row['via'] if row['state'] == 'needs_look' else None,
             'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None,
@@ -896,10 +910,16 @@ def _action_line_readable(conn, element: str, after: dict, user: dict | None) ->
 def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
     """The log lines about these elements, newest first (the caller has checked that this person may read them). A line of an action about a row a row rule keeps
     from `user` is left out altogether."""
-    out = []
+    out, limited = [], {}
     for at, who, element, change, before, after in conn.execute(
             f'SELECT time, who, element_id, change, before_json, after_json FROM log WHERE element_id IN ({",".join("?" * len(ids))}) ORDER BY time DESC, rowid DESC', ids):
         after = json.loads(after) if after else {}
+        if change == 'needs_look' and after.get('reason'):   # a reason that quotes counts of the whole data
+            if element not in limited:
+                held = element_row(conn, element)
+                limited[element] = held is not None and held['content_json'] is not None and limited_on(conn, held, user)
+            if limited[element]:
+                after = {**after, 'reason': HIDDEN_REASON}
         if change.startswith('action_') and not _action_line_readable(conn, element, after, user):
             continue
         kind = ('dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX)

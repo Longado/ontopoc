@@ -8,7 +8,7 @@ import statistics
 
 from tests import test_workspace_store as planted
 from tests.test_object_relations import CUSTOMER, customers_mended
-from tests.test_object_types import COMMIT, MEANINGS, STOCK, TABLES
+from tests.test_object_types import COMMIT, MEANINGS, STOCK, TABLES, orders_upload
 from tests.test_two_person import SigningTestCase
 from tests.test_workspace_questions import AskModel
 
@@ -217,6 +217,32 @@ class AcceptanceTests(DerivedTestCase):
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': []})[0], 200)
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'customer', 'rules': [{'column': '客户名称', 'value': '东莞家电客户01', 'user_ids': [ids['vera']]}]})[0], 200)
             self.assertEqual(self.values(vera, 'customer', '客户编号', '已取消订单数'), {'KH001': str(expected['KH001'])})
+
+    def test_the_words_why_a_property_needs_another_look_do_not_quote_whole_data_counts_to_a_person_a_row_rule_limits(self):
+        per_day = {**GROSS, 'english_name': 'per_day', 'name': '每天金额', 'expression': '金额 / 交付天数'}
+        with self.service() as (base, out):
+            team = self.people(base, 'ann', 'bob', 'lim')
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': TABLES})[0], 200)
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
+            self.foundation(team)
+            ann, bob, admin, lim = team['ann'], team['bob'], team['admin'], team['lim']
+            self.assertEqual(ann.post('/api/workspace/types/derived', per_day)[0], 200)
+            self.assertEqual(self.confirm(bob, per_day)[0], 200)
+            ids = {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH026', 'user_ids': [ids['lim']]}]})[0], 200)
+            self.assertEqual(admin.post('/api/workspace/datasets/upload', {'files': [orders_upload(lambda r, i: {**r, '交付天数': '0' if i in (3, 4, 5) else r['交付天数']})]})[0], 200)   # three orders now have no per-day value
+            whole = self.line(admin, 'order', 'per_day')
+            self.assertIn('确认时 0 个，现在 3 个', whole['reason'])   # whoever reads all the data reads the counts
+            mine = self.line(lim, 'order', 'per_day')
+            self.assertEqual((mine['state'], mine['reason'], mine['stale_word']), ('needs_look', None, '数据变了'))
+            self.assertIn('受行规则限制', mine['reason_hidden'])
+            queued = next(i for i in lim.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'derived')
+            self.assertNotIn('确认时', json.dumps(queued, ensure_ascii=False))
+            self.assertIn('受行规则限制', json.dumps(queued, ensure_ascii=False))
+            logged = lim.get('/api/workspace/types/order/derived/per_day/log')[1]['log']
+            self.assertNotIn('确认时', json.dumps(logged, ensure_ascii=False))
+            self.assertTrue(any(e['to'] == 'needs_look' and '受行规则限制' in e['reason'] for e in logged))
+            self.assertIn('确认时 0 个，现在 3 个', json.dumps(admin.get('/api/workspace/types/order/derived/per_day/log')[1]['log'], ensure_ascii=False))
 
 
 class ConfirmAndVersionTests(DerivedTestCase):

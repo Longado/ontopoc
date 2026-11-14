@@ -129,7 +129,7 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
     if light:
         return {'element': element_id, **base, **view}
     if row['state'] == 'needs_look' and row['reason']:
-        base['lines'] = [{'ok': False, 'text': row['reason']}, *base['lines']]
+        base['lines'] = [{'ok': False, 'text': view['reason'] or f'{view["stale_word"] or "要再看一遍"}：{view["reason_hidden"]}'}, *base['lines']]
     if view.get('model_draft'):
         base['lines'].append({'ok': False, 'text': '模型写的草稿，还没有人看过'})
     return {'element': element_id, **base, **view}

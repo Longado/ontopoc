@@ -20,7 +20,8 @@ from ontology_poc_generator.answer_checks import _uses, choose_rows, definition_
 from ontology_poc_generator.derived_properties import derived_visible, describe as describe_derived, evaluate as evaluate_derived, text_of
 from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import _relation_visible, check_relation, relation_id
-from ontology_poc_generator.object_types import CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, stale_word, type_id
+from ontology_poc_generator.object_types import (
+    CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, reason_for, stale_word, type_id)
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible
 from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
@@ -138,7 +139,8 @@ def _definition_line(conn, row: dict, user: dict | None) -> dict:
     """One definition as a refusal names it: what it is, its state, the reason it needs a look, and the builders who could confirm it."""
     kind, name = _kind_and_name(conn, row)
     _, confirmers = _confirmers(conn, row, user)
-    return {'id': row['element_id'], 'kind': kind, 'name': name, 'state': row['state'], 'reason': row['reason'] if row['state'] in ('needs_look', 'rejected') else None,
+    reason, reason_hidden = reason_for(conn, row, user)
+    return {'id': row['element_id'], 'kind': kind, 'name': name, 'state': row['state'], 'reason': reason, 'reason_hidden': reason_hidden,
             'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None, 'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None,
             'proposed_by': row['proposed_by'], 'who_can_confirm': confirmers, **({'type': _content(row)['type']} if kind in ('view', 'derived') else {})}
 
@@ -199,7 +201,7 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
             if d['id'] in names:
                 continue
             names.append(d['id'])
-            why = d['reason'] or STATE_WORDS[d['state']]
+            why = d['reason'] or (f'{d["stale_word"] or "要再看一遍"}：{d["reason_hidden"]}' if d['reason_hidden'] else STATE_WORDS[d['state']])
             who = f'；可以确认的人：{"、".join(d["who_can_confirm"])}' if d['who_can_confirm'] else ''
             lines.append({**d, 'text': f'{_kind_word(d["kind"])}「{d["name"]}」：{why}{who}'})
     return {'status': 'refused', 'reason': '没有回答：问题用到的定义不是已确认的状态。' + '；'.join(l['text'] for l in lines),
@@ -550,5 +552,5 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
         row = element_row(conn, d['id'])
         if row is None or row['state'] != 'confirmed' or row['version'] != d['version']:
             changed.append({'id': d['id'], 'name': d['name'], 'state': row['state'] if row else None,
-                            **({'reason': row['reason'], 'cause': row['cause'], 'cause_word': CAUSE_WORDS.get(row['cause']), 'stale_word': stale_word(row['cause'], row['via'])} if row and row['state'] == 'needs_look' else {})})
+                            **({'reason': reason_for(conn, row, user)[0], 'reason_hidden': reason_for(conn, row, user)[1], 'cause': row['cause'], 'cause_word': CAUSE_WORDS.get(row['cause']), 'stale_word': stale_word(row['cause'], row['via'])} if row and row['state'] == 'needs_look' else {})})
     return {'id': i, 'question': question, 'asked_at': at, **record, 'stale': stale, 'changed': changed}
