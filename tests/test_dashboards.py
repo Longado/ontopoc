@@ -166,9 +166,51 @@ class ReaderTests(BoardCase):
             self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
             as_builder, as_viewer = self.data(bob, board['id']), self.data(vera, board['id'])
             self.assertEqual((self.card(as_builder)['status'], self.card(as_builder)['result']['standing']['confirmed']), ('ok', False))   # a builder sees the number, grey, with the reason
-            self.assertEqual(self.card(as_viewer)['status'], 'unavailable')   # a viewer reads confirmed things only: the type is not theirs to see now
+            self.assertEqual(self.card(as_viewer)['status'], 'waiting')   # a viewer reads confirmed things only: the type is not theirs to read now, and the card says it waits
             self.assertNotIn('value', self.card(as_viewer))
             self.assertEqual(self.card(as_viewer, 'cust')['status'], 'ok')
+
+    def test_a_viewer_whose_type_needs_another_look_is_told_the_board_waits_for_a_confirmer_and_sees_the_last_confirmed_number(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            board = self.make(ann, scope='everyone')
+            was = self.data(vera, board['id'])   # opened while everything was confirmed: this is the number that was confirmed
+            self.assertEqual(self.card(was)['result']['value'], len(LIVE))
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+            now = self.data(vera, board['id'])
+            card = self.card(now)
+            self.assertEqual(card['status'], 'waiting')   # not "you cannot see this type": it is there, and waits for somebody to confirm it again
+            self.assertTrue(card['message'].startswith('数据更新了，正在等 '), card['message'])
+            self.assertTrue(card['message'].endswith(' 再确认'), card['message'])
+            self.assertIn('Bob', card['message'])
+            self.assertNotIn('Vera', card['message'])   # a viewer cannot confirm
+            self.assertEqual((card['last']['result']['value'], card['last']['at'] > ''), (len(LIVE), True))   # the number as it was when it was confirmed, stored, not worked out again from the new data
+            self.assertNotIn('result', card)
+            self.assertNotIn('你现在看不到', card['message'])
+            self.assertEqual(self.card(now, 'cust')['status'], 'ok')
+            self.assertNotEqual(now['headline']['text'], '全部按已确认的定义算出')
+            self.assertEqual(now['headline']['waiting'], ['有效订单', '按状态', '最近的订单'])
+            self.assertIn('在等再确认', now['headline']['text'])
+            # a reader who had not opened the board before has no earlier number to be shown
+            self.assertIsNone(self.card(self.data(bob, board['id']), 'valid').get('last'))
+
+    def test_a_type_that_is_really_closed_to_a_reader_keeps_the_cannot_see_sentence_and_the_header_does_not_claim_everything_is_confirmed(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            board = self.make(ann, scope='everyone')
+            ids = self.ids(admin)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [ids['ann'], ids['bob']]})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)   # and it needs another look as well
+            closed = self.card(self.data(vera, board['id']))
+            self.assertEqual((closed['status'], closed['message']), ('unavailable', '你现在看不到这个对象类型：它还没有确认，或者没有开放给你'))
+            self.assertNotIn('last', closed)
+            text = self.data(vera, board['id'])['headline']['text']
+            self.assertNotEqual(text, '全部按已确认的定义算出')
+            self.assertIn('看不到', text)
 
     def test_the_filter_bar_applies_to_the_components_whose_type_has_the_field(self):
         with self.service() as (base, out):

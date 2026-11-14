@@ -3,7 +3,7 @@ import { ChartResult, Standing } from "./ChartView.jsx";
 import { deleteBoard, getBoard, getBoardData, getBoards } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
-import { SCOPE_LABEL, expiryText, refreshText, scopeText, shareLink, unavailableText } from "./boardModel.js";
+import { SCOPE_LABEL, expiryText, headlineStands, refreshText, scopeText, shareLink, unavailableText } from "./boardModel.js";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
@@ -15,7 +15,18 @@ export function BoardCards({ data }) {
       {data.components.map((c) => (
         <section key={c.id} className={`board-card kind-${c.chart.kind}`}>
           <h2 className="item-title">{c.title}</h2>
-          {c.status !== "ok" ? <p className="muted">{unavailableText(c)}</p> : (
+          {c.status === "waiting" ? (
+            <>
+              <p className="muted">{unavailableText(c)}</p>
+              {c.last ? (
+                <div className="last-confirmed">
+                  <p className="muted small">上次确认的数（{timeText(c.last.at)}）</p>
+                  <ChartResult result={c.last.result} withStanding={false} />
+                  {c.last.result.standing.lines.length > 0 && <Standing standing={c.last.result.standing} />}
+                </div>
+              ) : <p className="muted small">还没有一个确认过的数可以给你看</p>}
+            </>
+          ) : c.status !== "ok" ? <p className="muted">{unavailableText(c)}</p> : (
             <>
               <ChartResult result={c.result} withStanding={false} />
               {c.result.standing.lines.length ? <Standing standing={c.result.standing} /> : (
@@ -115,7 +126,7 @@ export function BoardPage({ route }) {
       {data.status === "error" && <p className="error">{data.error}</p>}
       {data.data && (
         <>
-          <p className={data.data.headline.grey.length ? "grey-banner" : "muted small"}>{data.data.headline.text}</p>
+          <p className={headlineStands(data.data.headline) ? "grey-banner" : "muted small"}>{data.data.headline.text}</p>
           <BarPicks bar={data.data.bar} picked={picked} setPicked={setPicked} />
           <BoardCards data={data.data} />
           <p className="muted small">读于 {timeText(data.data.read_at)}，数字是按你能看到的行算的</p>

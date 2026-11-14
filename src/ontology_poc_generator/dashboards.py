@@ -8,6 +8,11 @@ Each component carries its caliber: the confirmed definitions it stands on, gene
 them stops being confirmed the line turns grey with the reason it carries and so does the component. A board is not an element with a confirmation of its own: its
 trust is the trust of the definitions it shows.
 
+The one thing a board stores is, for each reader and each component, the last result that was worked out while every definition under it was confirmed (dashboard_last): when
+a viewer opens the board after the data under it moved, the type is not theirs to read until somebody confirms it again, and the component says it is waiting for
+them and shows that number, labelled with when it was confirmed. It is the number that was shown, never one worked out again from the new data, and only the reader's
+own (over the rows their rules let them read). A change to the board's spec drops what it stored.
+
 A share link is the board's address in the app. It opens only for someone who is signed in and may see the board: there is no anonymous access.
 Visibility: the owner and admins always; `everyone` is every signed-in person; `named` the people listed; `private` (the default, a draft) the owner. After
 `expires_at` only the owner and admins can still open it, and it says it expired.
@@ -19,12 +24,17 @@ import json
 import re
 
 from ontology_poc_generator.explorer import explore_chart, explore_meta, explore_table, normalize_chart, normalize_query
-from ontology_poc_generator.object_types import TypeRefused, _content, _type_row
+from ontology_poc_generator.object_types import TypeRefused, _confirmers, _content, _type_row, element_row, type_id
+from ontology_poc_generator.object_views import view_id
+from ontology_poc_generator.type_access import can_access
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS dashboard (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, owner_id INTEGER NOT NULL, owner TEXT NOT NULL, spec_json TEXT NOT NULL, scope TEXT NOT NULL,
     visible_to_json TEXT NOT NULL, expires_at TEXT, refresh_seconds INTEGER NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS dashboard_last (
+    dashboard_id INTEGER NOT NULL, component_id TEXT NOT NULL, reader INTEGER NOT NULL, picks TEXT NOT NULL, result_json TEXT NOT NULL, at TEXT NOT NULL,
+    PRIMARY KEY (dashboard_id, component_id, reader, picks));
 '''
 SCOPES = {'private': '只有我', 'named': '指定的人', 'everyone': '所有登录的人'}
 REFRESH = (0, 60, 300, 900, 3600)   # seconds between two reads of the data; 0 is "only when the page is opened or the person asks"
@@ -218,6 +228,7 @@ def update_dashboard(conn, user: dict | None, payload: dict) -> dict:
     name, spec, published = _checked(conn, user, payload)
     conn.execute('UPDATE dashboard SET name = ?, spec_json = ?, scope = ?, visible_to_json = ?, expires_at = ?, refresh_seconds = ?, version = version + 1, updated_at = ? WHERE id = ?',
                  (name, json.dumps(spec, ensure_ascii=False), published['scope'], json.dumps(published['visible_to']), published['expires_at'], published['refresh_seconds'], _now(), record['id']))
+    conn.execute('DELETE FROM dashboard_last WHERE dashboard_id = ?', (record['id'],))   # what was stored was worked out for the components as they were
     return dashboard_detail(conn, user, record['id'])
 
 
@@ -227,6 +238,7 @@ def delete_dashboard(conn, user: dict | None, payload: dict) -> dict:
     if not (_owns(user, record) or _is_admin(user)):
         raise DashboardRefused('只有看板的主人或管理员能删它', 403)
     conn.execute('DELETE FROM dashboard WHERE id = ?', (record['id'],))
+    conn.execute('DELETE FROM dashboard_last WHERE dashboard_id = ?', (record['id'],))
     return {'deleted': record['id']}
 
 
@@ -240,10 +252,30 @@ def _with_bar(conn, user: dict | None, component: dict, bar: dict) -> dict:
     return {**query, 'filters': [*query['filters'], *added]}
 
 
-def _failed(component: dict, exc: Exception) -> dict:
+def _waiting_on(conn, user: dict | None, component: dict) -> list[str] | None:
+    """The people who could confirm it again, when what a reader cannot read is a type (or a view of it) that was confirmed and needs another look, and not one that is
+    closed to them: [] when nobody could. None when the component is unreadable for another reason."""
+    query = component['query']
+    rows = [element_row(conn, type_id(query['type']))]
+    if query['view']:
+        rows.append(element_row(conn, view_id(query['view'])))
+    if rows[0] is None or not can_access(conn, rows[0]['element_id'], user):
+        return None
+    pending = [r for r in rows if r is not None and r['state'] == 'needs_look']
+    if not pending:
+        return None
+    return list(dict.fromkeys(name for r in pending for name in _confirmers(conn, r, user)[1]))
+
+
+def _failed(conn, user: dict | None, component: dict, exc: Exception) -> dict:
+    base = {'id': component['id'], 'title': component['title'], 'chart': component['chart']}
+    waiting = _waiting_on(conn, user, component) if isinstance(exc, TypeRefused) else None
+    if waiting is not None:
+        who = '、'.join(waiting) or '有权限确认的人'
+        return {**base, 'status': 'waiting', 'message': f'数据更新了，正在等 {who} 再确认', 'waiting_on': waiting}
     status = getattr(exc, 'status', None)
     message = '你现在看不到这个对象类型：它还没有确认，或者没有开放给你' if isinstance(exc, TypeRefused) and status == 404 and str(exc) == '没有这个对象类型' else str(exc)
-    return {'id': component['id'], 'title': component['title'], 'chart': component['chart'], 'status': 'unavailable', 'message': message}
+    return {**base, 'status': 'unavailable', 'message': message}
 
 
 def _work_out(conn, user: dict | None, component: dict, bar: dict) -> dict:
@@ -264,7 +296,7 @@ def evaluate(conn, user: dict | None, spec: dict, bar: dict) -> list[dict]:
         try:
             out.append(_work_out(conn, user, component, bar))
         except TypeRefused as exc:
-            out.append(_failed(component, exc))
+            out.append(_failed(conn, user, component, exc))
     return out
 
 
@@ -298,10 +330,33 @@ def _picked(spec: dict, bar) -> dict:
 
 
 def _headline(components: list[dict]) -> dict:
+    """What the top of a board says about its numbers: all of them stand on confirmed definitions only when every component shows a number that does."""
     ok = [c for c in components if c['status'] == 'ok']
     grey = [c['title'] for c in ok if not c['result']['standing']['confirmed']]
-    return {'components': len(components), 'unavailable': [c['title'] for c in components if c['status'] != 'ok'], 'grey': grey,
-            'text': ('全部按已确认的定义算出' if not grey else f'{len(grey)} 个组件用到了现在不是“已确认”的定义，灰色显示：{"、".join(grey)}')}
+    waiting = [c['title'] for c in components if c['status'] == 'waiting']
+    unavailable = [c['title'] for c in components if c['status'] == 'unavailable']
+    said = [*([f'{len(grey)} 个组件用到了现在不是“已确认”的定义，灰色显示：{"、".join(grey)}'] if grey else []),
+            *([f'{len(waiting)} 个组件的数据更新了，在等再确认：{"、".join(waiting)}'] if waiting else []),
+            *([f'{len(unavailable)} 个组件你现在看不到：{"、".join(unavailable)}'] if unavailable else [])]
+    return {'components': len(components), 'unavailable': unavailable, 'waiting': waiting, 'grey': grey, 'text': '；'.join(said) or '全部按已确认的定义算出'}
+
+
+def _with_last(conn, user: dict | None, board: int, picked: dict, components: list[dict]) -> list[dict]:
+    """Each result that stands on confirmed definitions is kept for this reader as the last confirmed one; a component that waits for a confirmation carries the one that
+    was kept, {'result', 'at'}, or none when this reader had not read it while it was confirmed."""
+    reader, picks, out = user['id'] if user else 0, json.dumps(picked, sort_keys=True, ensure_ascii=False), []
+    for c in components:
+        key = (board, c['id'], reader, picks)
+        if c['status'] == 'ok' and c['result']['standing']['confirmed']:
+            conn.execute('INSERT OR REPLACE INTO dashboard_last(dashboard_id, component_id, reader, picks, result_json, at) VALUES (?, ?, ?, ?, ?, ?)',
+                         (*key, json.dumps(c['result'], ensure_ascii=False), _now()))
+            out.append(c)
+        elif c['status'] == 'waiting':
+            kept = conn.execute('SELECT result_json, at FROM dashboard_last WHERE dashboard_id = ? AND component_id = ? AND reader = ? AND picks = ?', key).fetchone()
+            out.append({**c, 'last': {'result': json.loads(kept[0]), 'at': kept[1]} if kept else None})
+        else:
+            out.append(c)
+    return out
 
 
 def dashboard_data(conn, user: dict | None, dashboard_id, bar=None) -> dict:
@@ -309,7 +364,7 @@ def dashboard_data(conn, user: dict | None, dashboard_id, bar=None) -> dict:
     ensure_schema(conn)
     record = _found(conn, user, dashboard_id)
     picked = _picked(record['spec'], bar)
-    components = evaluate(conn, user, record['spec'], picked)
+    components = _with_last(conn, user, record['id'], picked, evaluate(conn, user, record['spec'], picked))
     return {'id': record['id'], 'name': record['name'], 'bar': _bar_options(conn, user, record['spec'], picked), 'components': components, 'headline': _headline(components),
             'refresh_seconds': record['refresh_seconds'], 'expired': _expired(record), 'read_at': _now(), 'sign_in_note': SIGN_IN_NOTE}
 

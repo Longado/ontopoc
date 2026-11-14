@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { draftOf, draftProblem, emptyComponent, emptyDraft, expiryText, payloadOf, refreshText, scopeText, shareLink, specOf } from "./boardModel.js";
+import { headlineStands, draftOf, draftProblem, emptyComponent, emptyDraft, expiryText, payloadOf, refreshText, scopeText, shareLink, specOf } from "./boardModel.js";
 
 const SAVED = {
   name: "订单看板", scope: "named", visible_to: [3], visible_names: ["Vera"], expires_at: "2026-12-01", refresh_seconds: 300,
@@ -47,4 +47,11 @@ test("the form says what is missing before it can be saved", () => {
   assert.equal(draftProblem({ ...emptyDraft(), name: "x", components: [emptyComponent("order", 1)] }), "第 1 个组件要写标题");
   assert.equal(draftProblem({ ...emptyDraft(), name: "x", scope: "named", components: [{ ...emptyComponent("order", 1), title: "t" }] }), "指定的人至少选一位");
   assert.equal(draftProblem({ ...emptyDraft(), name: "x", components: [{ ...emptyComponent("order", 1), title: "t" }] }), "");
+});
+
+test("the line at the top of a board stands out when anything on it is grey, waits for a confirmation or is closed to the reader", () => {
+  assert.equal(headlineStands({ grey: [], waiting: [], unavailable: [] }), false);
+  assert.equal(headlineStands({ grey: ["a"], waiting: [], unavailable: [] }), true);
+  assert.equal(headlineStands({ grey: [], waiting: ["a"], unavailable: [] }), true);
+  assert.equal(headlineStands({ grey: [], waiting: [], unavailable: ["a"] }), true);
 });

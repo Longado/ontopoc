@@ -51,5 +51,8 @@ export function draftProblem(draft) {
   return "";
 }
 
+/** Whether the line at the top of a board should stand out: something on it is grey, waits for a confirmation or cannot be read by this person. */
+export const headlineStands = (headline) => Boolean(headline.grey?.length || headline.waiting?.length || headline.unavailable?.length);
+
 /** A component's answer as the card says it: what it could not show, in words, or "". */
 export const unavailableText = (component) => (component.status === "ok" ? "" : component.message);
