@@ -4,7 +4,7 @@ asked for it counts those rows and lists them (a null here is never the end of t
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 import math
 import re
 

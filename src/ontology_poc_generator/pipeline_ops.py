@@ -341,7 +341,7 @@ def _cast(op, src, columns, ctx, label):
 
 # --- calc ---------------------------------------------------------------------------------------------------------------------------------------------
 
-def _shift_notices(conn, src: str, result_sql: str, params: list, fields: list[dict], truncates: bool) -> list[dict]:
+def shift_notices(conn, src: str, result_sql: str, params: list, fields: list[dict], truncates: bool) -> list[dict]:
     """A date made from another date, set against its source: every row early or late by the same days, or (for a week or month start) later than the source."""
     notices = []
     for f in fields[:3]:
@@ -396,7 +396,7 @@ def _calc(op, src, columns, ctx, label):
     def measure(conn, src, out):
         errors = conn.execute(f'SELECT COUNT(*) FROM {src} WHERE {failing}', failing_params).fetchone()[0]
         rows = [r[0] for r in conn.execute(f'SELECT rowid FROM {src} WHERE {failing} ORDER BY rowid LIMIT 5', failing_params)]
-        notices = _shift_notices(conn, src, result['sql'], result['params'], sources, result['truncates']) if new['type'] in ('date', 'datetime') else []
+        notices = shift_notices(conn, src, result['sql'], result['params'], sources, result['truncates']) if new['type'] in ('date', 'datetime') else []
         total = _count(conn, src)
         return {'errors': errors, 'error_rows': rows, 'notices': notices, 'affected': total - errors,
                 'text': f'{errors} 行算不出结果（字段都有值，结果却是空：除以 0、日期不对）' if errors else f'{total} 行都算出了结果'}

@@ -294,14 +294,14 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
 
 def needed_steps(spec: dict, targets) -> set[str]:
     """The ids of the steps the targets read, directly or not, and the targets themselves: what has to run for them."""
-    by_id = {s['id']: s for s in spec['steps']}
+    by_id = {s['id']: s for s in spec['steps'] if isinstance(s, dict) and isinstance(s.get('id'), str)}
     found, todo = set(), list(targets)
     while todo:
         sid = todo.pop()
-        if sid in found:
+        if sid in found or sid not in by_id:   # a step that reads one that is not there is for the check to refuse
             continue
         found.add(sid)
-        todo += [by_id[sid][k] for k in ('left', 'right', 'from') if k in by_id[sid]]
+        todo += [by_id[sid][k] for k in ('left', 'right', 'from') if isinstance(by_id[sid].get(k), str)]
     return found
 
 
