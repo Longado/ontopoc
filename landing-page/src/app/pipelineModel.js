@@ -114,11 +114,16 @@ export function newStep(steps, kind, near, datasets = [], model = "") {
     return { id, type: "join", left: last, right: right?.id ?? null, how: "left", on: [{ left: "", right: "" }], null_keys: "no_match" };
   }
   if (kind === "transform") return { id, type: "transform", from: last, operators: [] };
-  if (kind === "llm") return { id, type: "llm", from: last, model, name: "", template: "classify", context: "", column: "", categories: ["其他"], multiple: false };
+  if (kind === "llm") return { id, type: "llm", from: near ?? [...steps].reverse().find((s) => s.type !== "output")?.id ?? last, model, name: "", template: "classify", context: "", column: "", categories: ["其他"], multiple: false };
   return { id, type: "output", from: last, name: "" };
 }
 
-export const addStep = (spec, step) => ({ ...spec, steps: [...spec.steps, step] });
+/** New steps go in front of the first output so that it can read them: a step can only read what is above it. An output is added last. */
+const withSteps = (spec, added) => {
+  const at = added.some((s) => s.type === "output") ? -1 : spec.steps.findIndex((s) => s.type === "output");
+  return { ...spec, steps: at < 0 ? [...spec.steps, ...added] : [...spec.steps.slice(0, at), ...added, ...spec.steps.slice(at)] };
+};
+export const addStep = (spec, step) => withSteps(spec, [step]);
 export const updateStep = (spec, id, patch) => ({ ...spec, steps: spec.steps.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 
 /** Removes a step; refused (spec unchanged, `blocked` the ids that read it) while another step reads it. */
@@ -370,7 +375,7 @@ export function reviewText(review) {
 export const aiNodeLine = (node) => `${node.name}：${reviewText(node.review)}；记下了 ${numberText(node.cache.current)} 条答案`;
 
 /** A new draft after the assistant's steps were applied: they are ordinary steps from then on. */
-export const applyDraft = (spec, steps) => ({ ...spec, steps: [...spec.steps, ...steps.map((s) => s.step)] });
+export const applyDraft = (spec, steps) => withSteps(spec, steps.map((s) => s.step));
 
 /** The recent sentences a person gave the assistant, newest first, one of each, at most `keep`. */
 export function rememberPrompt(list, entry, keep = 8) {

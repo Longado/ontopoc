@@ -57,6 +57,9 @@ test("removing a step that another reads is refused and names the readers; a dra
   assert.deepEqual(gone.spec.steps.map((s) => s.id), ["o", "t", "j", "g", "x"]);
   const grown = addStep(SPEC, { id: "z", type: "input", dataset: "产品" });
   assert.equal(grown.steps.length, 7);
+  const firstOutput = grown.steps.findIndex((s) => s.type === "output");
+  assert.ok(grown.steps.findIndex((s) => s.id === "z") < firstOutput, "a new step goes in front of the first output so it can be read");
+  assert.equal(addStep(SPEC, { id: "o2", type: "output", from: "x", name: "n" }).steps.at(-1).id, "o2");
   assert.equal(JSON.stringify(SPEC), before);
 });
 
