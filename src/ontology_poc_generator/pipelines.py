@@ -177,7 +177,7 @@ def _output(step: dict, sid: str, columns: list[dict]) -> dict:
     key, build, key_names = step.get('key'), None, None
     if key is not None:
         cols = key.get('columns') if isinstance(key, dict) else None
-        if not isinstance(cols, list) or not cols or len(set(map(str, cols))) != len(cols) or any(c not in shown for c in cols):
+        if not isinstance(cols, list) or not cols or len(set(map(str, cols))) != len(cols) or any(not isinstance(c, str) or c not in shown for c in cols):
             raise ValueError(f'步骤 {sid}：主键（key）要写成 {{"columns": […], "separator": "|", "as": 新列名}}，列要在读的步骤里')
         separator = key.get('separator', '|')
         if not isinstance(separator, str) or len(separator) > 10:
@@ -234,7 +234,7 @@ def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | 
                         raise ValueError(f'步骤 {sid}：读的步骤 {ref} 里没有列 {pair.get(side)}')
             chosen = step.get('right_columns')
             if chosen is not None:
-                if not isinstance(chosen, list) or any(c not in {x['name'] for x in visible(right)} for c in chosen):
+                if not isinstance(chosen, list) or any(not isinstance(c, str) or c not in {x['name'] for x in visible(right)} for c in chosen):
                     raise ValueError(f'步骤 {sid}：要带过来的右边的列（right_columns）要写成右边读的步骤里有的列名列表')
             columns[sid] = _join_columns(step, left, right)
         elif kind == 'transform':

@@ -130,7 +130,7 @@ def _meaning_codes(col: dict, wanted, ctx: dict, label: str) -> list[str]:
         raise OpError(f'{label}：「{col["name"]}」还没有已确认的含义，不能按含义选；先给这一列写含义并确认，或直接写代码值')
     codes = []
     for name in ([wanted] if isinstance(wanted, str) else wanted if isinstance(wanted, list) else []):
-        if name not in known:
+        if not isinstance(name, str) or name not in known:
             raise OpError(f'{label}：「{col["name"]}」已确认的含义里没有「{name}」，有：{"、".join(known)}')
         codes += known[name]
     if not codes:
@@ -142,6 +142,8 @@ def _meaning_codes(col: dict, wanted, ctx: dict, label: str) -> list[str]:
 def _condition(node, columns, ctx, label) -> tuple[str, list]:
     col = _col(columns, node.get('column'), label)
     cmp = node.get('cmp')
+    if not isinstance(cmp, str):
+        raise OpError(f'{label}：条件里的比较方式（cmp）要写成文字')
     ref = _ref(col)
     if cmp in ('is_null', 'not_null'):
         sql = _blank(col['name'])
@@ -242,6 +244,8 @@ def _clean_steps(steps, label) -> list[tuple[str, list]]:
     out = []
     for step in steps:
         what = step.get('do') if isinstance(step, dict) else None
+        if not isinstance(what, str):
+            raise OpError(f'{label}：清理动作只有 trim、whitespace、replace、upper、lower')
         if what in CLEAN_FUNCTION:
             out.append((f'{CLEAN_FUNCTION[what]}(%s)', []))
         elif what == 'replace':
@@ -291,7 +295,7 @@ def _text_clean(op, src, columns, ctx, label):
 def _cast(op, src, columns, ctx, label):
     col = _col(columns, op.get('column'), label)
     to = op.get('to')
-    if to not in CAST_TYPES:
+    if not isinstance(to, str) or to not in CAST_TYPES:
         raise OpError(f'{label}：转成什么类型要写 {"、".join(CAST_TYPES)} 之一')
     fmt, thousands = op.get('format'), bool(op.get('thousands'))
     if fmt is not None:
@@ -434,7 +438,7 @@ def _aggregate(op, src, columns, ctx, label):
     used, aggs = {c['name'] for c in group_cols}, []
     for item in wanted:
         fn = item.get('fn') if isinstance(item, dict) else None
-        if fn not in AGGREGATIONS:
+        if not isinstance(fn, str) or fn not in AGGREGATIONS:
             raise OpError(f'{label}：统计方式要是 {"、".join(AGGREGATIONS)} 之一')
         col = _col(columns, item.get('column'), label) if item.get('column') is not None else None
         if col is None and fn != 'count':
@@ -537,7 +541,10 @@ def _dedupe(op, src, columns, ctx, label):
 def _label(op, src, columns, ctx, label):
     col = _col(columns, op.get('column'), label)
     mapping = {}
-    for item in op.get('mapping') or []:
+    table = op.get('mapping') or []
+    if not isinstance(table, list):
+        raise OpError(f'{label}：对照表（mapping）要写成一组 {{"value": 代码, "label": 含义}}')
+    for item in table:
         if not isinstance(item, dict) or not isinstance(item.get('label'), str) or not item['label'].strip() or item.get('value') is None:
             raise OpError(f'{label}：对照表每一行要写 {{"value": 代码, "label": 含义}}')
         value = str(item['value'])
@@ -592,6 +599,6 @@ OPERATORS = {'filter': _filter, 'fill_null': _fill_null, 'text_clean': _text_cle
 
 def compile_op(op, src: str, columns: list[dict], ctx: dict, label: str) -> dict:
     """{'columns', 'select', 'params', 'measure'} for one operator reading the table `src` of `columns`; OpError says what is wrong."""
-    if not isinstance(op, dict) or op.get('op') not in OPERATORS:
+    if not isinstance(op, dict) or not isinstance(op.get('op'), str) or op['op'] not in OPERATORS:
         raise OpError(f'{label}：操作类型要是 {"、".join(OPERATORS)} 之一')
     return OPERATORS[op['op']](op, src, columns, ctx, label)

@@ -2,6 +2,7 @@
 loops, not by the code under test."""
 from collections import Counter, defaultdict
 from datetime import date, timedelta
+import json
 import statistics
 import unittest
 
@@ -491,6 +492,48 @@ class SafetyTests(Workspace):
         node = self.run_ops([{'op': 'filter', 'where': {'column': name, 'cmp': 'gt', 'value': 1}}, {'op': 'calc', 'name': 'x"y', 'expression': f'[{name}] + v'}], '带引号', tables=tables)['t']
         self.assertEqual(node['rows_out'], 1)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM dataset").fetchone()[0] > 0, True)
+
+    OPS = [{'op': 'filter', 'where': {'all': [{'column': '金额', 'cmp': 'between', 'low': 1000, 'high': 5000}, {'column': '金额', 'cmp': 'in', 'values': [2520, 24000]},
+                                              {'any': [{'column': '交付天数', 'cmp': 'is_null'}, {'column': '状态码', 'cmp': 'ne', 'meaning': '已取消'}]}]}},
+           {'op': 'fill_null', 'columns': ['交付天数'], 'with': {'constant': 0}, 'empty_as_null': True}, {'op': 'fill_null', 'columns': ['交付天数'], 'with': {'column': '数量'}},
+           {'op': 'text_clean', 'columns': ['订单号'], 'steps': [{'do': 'trim'}, {'do': 'replace', 'find': 'a', 'with': 'b'}]},
+           {'op': 'cast', 'column': '订单号', 'to': 'date', 'format': 'YYYY-MM-DD', 'as': '日期'}, {'op': 'calc', 'name': '比', 'expression': '金额 / 数量', 'type': 'decimal'},
+           {'op': 'dedupe', 'keys': ['订单号'], 'keep': 'last', 'order_by': '金额'},
+           {'op': 'label', 'column': '状态码', 'as': '状态', 'mapping': [{'value': 0, 'label': '已交付'}], 'unmapped': 'other', 'other': '其他'},
+           {'op': 'aggregate', 'group_by': ['客户编号'], 'aggregations': [{'fn': 'sum', 'column': '金额', 'as': '合计'}, {'fn': 'count', 'column': None, 'as': 'n'}]}]
+
+    def test_a_value_of_the_wrong_kind_anywhere_in_a_definition_is_refused_in_words_and_never_crashes(self):
+        """Every field of a definition that uses all the operators, a join and an output is set in turn to a list, an object, a number, null, true and text, and left out:
+        the answer is a ValueError (what a person reads), never a TypeError from looking a list up in a dict."""
+        spec = {'steps': [{'id': 'o', 'type': 'input', 'dataset': '订单'}, {'id': 't', 'type': 'input', 'dataset': '售后工单'},
+                          {'id': 'j', 'type': 'join', 'left': 'o', 'right': 't', 'how': 'left', 'on': [{'left': '订单号', 'right': '订单号'}], 'null_keys': 'equal', 'right_columns': ['问题类型']},
+                          *({'id': f'x{i}', 'type': 'transform', 'from': 'o', 'operators': [op]} for i, op in enumerate(self.OPS)),
+                          {'id': 'out', 'type': 'output', 'from': 'j', 'name': '输出', 'key': {'columns': ['订单号', '问题类型']}, 'mode': 'new'}]}
+        ctx = new_context(meanings={'订单.状态码': {'已取消': ['2']}}, codes={'订单.状态码'})
+
+        def paths(node, path=()):
+            for k, v in (node.items() if isinstance(node, dict) else enumerate(node) if isinstance(node, list) else ()):
+                yield path + (k,)
+                yield from paths(v, path + (k,))
+
+        def changed(path, value=None, remove=False):
+            copy = json.loads(json.dumps(spec))
+            holder = copy
+            for p in path[:-1]:
+                holder = holder[p]
+            if remove:
+                del holder[path[-1]]
+            else:
+                holder[path[-1]] = value
+            return copy
+        for path in paths(spec):
+            for variant in [changed(path, v) for v in ([], {}, [[]], 1, 2.5, None, True, {'a': []}, '没有')] + ([changed(path, remove=True)] if isinstance(path[-1], str) else []):
+                try:
+                    check_pipeline(variant, self.datasets, {}, new_context(meanings=ctx['meanings'], codes=ctx['codes']))
+                except ValueError:
+                    pass   # said in words
+                except Exception as exc:
+                    self.fail(f'{path}: {type(exc).__name__}: {exc}')
 
 
 if __name__ == '__main__':
