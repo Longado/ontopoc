@@ -70,6 +70,7 @@ from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
 from ontology_poc_generator.pipeline_llm import LlmService
+from ontology_poc_generator.workspace_ai import draft as ai_draft, explain_steps as ai_explain, parse as ai_parse
 from ontology_poc_generator.workspace_llm import clear_cache as llm_clear_cache, label as llm_label, review_rerun as llm_review_rerun, state as llm_state, trial as llm_trial
 from ontology_poc_generator.workspace_pipelines import (
     check_expression, columns_at as pipeline_columns, confirm_pipeline, create_pipeline, format_guess, summary as pipeline_summary, list_pipelines, options as pipeline_options, pipeline_detail, pipeline_log, pipeline_versions,
@@ -1408,7 +1409,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     writers = {'': create_pipeline, '/update': update_pipeline, '/confirm': confirm_pipeline, '/run': run_pipeline_now}
                     readers = {'/preview': pipeline_preview, '/summary': pipeline_summary, '/columns': pipeline_columns, '/review': pipeline_review, '/expression/check': check_expression, '/expression/trial': trial_expression}
                     asks_model = {'/preview', '/summary', '/review', '/expression/trial'}   # these run the pipeline: an LLM step in it answers from what is kept, never from a call
-                    model_calls = {'/llm/trial': llm_trial, '/llm/state': llm_state}   # read-only too, but the model may be called: no time limit of the engine's around them
+                    model_calls = {'/llm/trial': llm_trial, '/llm/state': llm_state, '/ai/parse': ai_parse, '/ai/draft': ai_draft, '/ai/explain': ai_explain}   # read-only too, but the model may be called: no time limit of the engine's around them
                     model_writes = {'/llm/label': llm_label, '/llm/clear-cache': llm_clear_cache}
                     if route in readers:   # trying reads only, on its own read-only connection and for at most PREVIEW_SECONDS: it does not hold the lock uploads and confirms need
                         with deadline(engine, PREVIEW_SECONDS):
