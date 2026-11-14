@@ -24,6 +24,10 @@ AGENTS = {
     'field_describer': '字段释义员',
     'org_mapper': '组织梳理员',
     'type_suggester': '对象类型建议员',
+    'row_judge': '管道逐行判断员',
+    'condition_parser': '条件解析员',
+    'pipeline_planner': '管道编排员',
+    'pipeline_explainer': '管道说明员',
 }
 
 
@@ -67,6 +71,10 @@ class LoggedGateway:
 
     def __init__(self, gateway, path: Path):
         self._gateway, self._path, self._lock = gateway, path, threading.Lock()
+
+    @property
+    def model(self) -> str | None:
+        return getattr(self._gateway, 'model', None)
 
     def complete_json(self, *, system_prompt: str, user_prompt: str, **limits):
         return self._gateway.complete_json(system_prompt=system_prompt, user_prompt=user_prompt, **limits)

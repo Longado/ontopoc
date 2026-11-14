@@ -29,13 +29,14 @@ import sqlite3
 import time
 
 from ontology_poc_generator.pipeline_funcs import register
+from ontology_poc_generator.pipeline_llm import check_llm_step, llm_sql
 from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, compile_op, new_context, visible
 
 NUMERIC = ('integer', 'decimal')
 HOWS = ('inner', 'left', 'anti', 'semi')
 NULL_KEYS = ('no_match', 'equal')
 EXAMPLES = 3
-STEP_TYPES = ('input', 'join', 'transform', 'output')
+STEP_TYPES = ('input', 'join', 'transform', 'llm', 'output')
 ROW_CAP = 1_000_000   # the most rows one join may make: past it the join is refused, before it runs
 MAX_STEPS = 60
 KEY_EXAMPLES = 20
@@ -48,14 +49,24 @@ class PipelineRunError(ValueError):
     """A run that stopped for a reason a person asked for (a conversion set to stop on failure), or that was too much for the engine."""
 
 
+class Lease:
+    """The time the engine has left in a `deadline` block. Time spent waiting for the model is not the engine's: the step that waited gives it back (`extend`)."""
+
+    def __init__(self, seconds: float):
+        self.end = time.monotonic() + seconds
+
+    def extend(self, seconds: float) -> None:
+        self.end += seconds
+
+
 @contextmanager
 def deadline(engine, seconds: float):
     """Whatever the engine computes inside this block is stopped after `seconds` (SQLite's progress handler; it stops SQL, not a Python function in the middle of a
-    value). The stop, and a statement SQLite itself refuses as too big, come out as a PipelineRunError in words a person reads."""
-    end = time.monotonic() + seconds
-    engine.set_progress_handler(lambda: 1 if time.monotonic() > end else 0, 1000)
+    value). The stop, and a statement SQLite itself refuses as too big, come out as a PipelineRunError in words a person reads. Yields the Lease."""
+    lease = Lease(seconds)
+    engine.set_progress_handler(lambda: 1 if time.monotonic() > lease.end else 0, 1000)
     try:
-        yield
+        yield lease
     except sqlite3.OperationalError as exc:
         if not _ENGINE_LIMIT.search(str(exc)):
             raise
@@ -116,10 +127,11 @@ def _input_of(step: dict, sid: str, datasets: dict, views: dict) -> tuple[str, d
     return f'{kind} {name}' + (f' 第 {step["version"]} 版' if step.get('version') is not None else ''), pool[key]
 
 
-def _input_columns(step: dict, sid: str, datasets: dict, views: dict) -> list[dict]:
+def _input_columns(step: dict, sid: str, datasets: dict, views: dict, unsent=frozenset()) -> list[dict]:
+    """The columns an input reads, each with where it comes from; one a builder switched off for the model (`unsent`: "dataset.column") is marked, and the mark travels with it."""
     data = _input_of(step, sid, datasets, views)[1]
     origin = data['source'] if 'view' in step else step['dataset']
-    return [{**c, 'origin': f'{origin}.{c["name"]}'} for c in data['columns']]
+    return [{**c, 'origin': f'{origin}.{c["name"]}', **({'unsent': True} if f'{origin}.{c["name"]}' in unsent else {})} for c in data['columns']]
 
 
 def _undefined(sid: str, role: str, ref):
@@ -217,7 +229,7 @@ def _output(step: dict, sid: str, columns: list[dict]) -> dict:
             parts = [f'pl_text({_q(c)})' for c in cols]
             build = (built, f'({f" || ? || ".join(parts)})' if len(parts) > 1 else parts[0], [separator] * (len(parts) - 1))
             key_names = [built]
-    out = [{k: v for k, v in shown[n].items() if k in ('name', 'type', 'origin')} for n in names] + ([{'name': build[0], 'type': 'text'}] if build else [])
+    out = [{k: v for k, v in shown[n].items() if k in ('name', 'type', 'origin', 'ai')} for n in names] + ([{'name': build[0], 'type': 'text'}] if build else [])
     return {'columns': out, 'key': key_names, 'dropped': [n for n in shown if n not in names], 'build': build}
 
 
@@ -243,7 +255,7 @@ def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | 
             raise ValueError(f'步骤 {sid} 是不认识的步骤类型 {kind}，只有 {"、".join(STEP_TYPES)}')
         read = lambda ref, role: columns[ref] if isinstance(ref, str) and ref in columns else _undefined(sid, role, ref)   # a list or an object is not a step id
         if kind == 'input':
-            columns[sid] = _input_columns(step, sid, datasets, views)
+            columns[sid] = _input_columns(step, sid, datasets, views, ctx.get('unsent', ()))
         elif kind == 'join':
             left, right = read(step.get('left'), '左'), read(step.get('right'), '右')
             if step.get('how') not in HOWS:
@@ -268,6 +280,8 @@ def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | 
                 columns[sid] = _transform(step, sid, 'x', source, ctx, position)[1]
             except OpError as exc:
                 raise ValueError(str(exc)) from None
+        elif kind == 'llm':
+            columns[sid] = check_llm_step(step, sid, read(step.get('from'), '来源'))
         else:
             source = read(step.get('from'), '来源')
             name = _text(step.get('name'), f'步骤 {sid}：输出要写名字，输出的名字')
@@ -289,10 +303,10 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
     steps, kept = [], {}
     for index, step in enumerate(spec['steps']):
         sid, table = step['id'], f'pl_{index}'
-        stages, output, params = [], None, []
+        stages, output, params, llm = [], None, [], None
         if step['type'] == 'input':
             data = _input_of(step, sid, datasets, views)[1]
-            columns = _input_columns(step, sid, datasets, views)
+            columns = _input_columns(step, sid, datasets, views, ctx.get('unsent', ()))
             sql = f'CREATE TEMP TABLE {table} AS SELECT {", ".join(_q(c["name"]) for c in columns)} FROM {_q(data["table"])}'
         elif step['type'] == 'join':
             (left, lcols), (right, rcols) = kept[step['left']], kept[step['right']]
@@ -302,6 +316,11 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
             src, columns = kept[step['from']]
             table, columns, stages = _transform(step, sid, src, columns, ctx, index)
             sql = ''
+        elif step['type'] == 'llm':
+            src, source_columns = kept[step['from']]
+            columns = check_llm_step(step, sid, source_columns)
+            llm = {'answers': f'{table}_ans', 'source': src, 'source_columns': source_columns}
+            sql = llm_sql(table, src, source_columns, columns[len(source_columns):], llm['answers'])
         else:
             src, source_columns = kept[step['from']]
             output = _output(step, sid, source_columns)
@@ -313,7 +332,7 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
             else:
                 table, sql = src, ''
         kept[sid] = (table, columns)
-        steps.append({'id': sid, 'type': step['type'], 'table': table, 'columns': columns, 'sql': sql, 'params': params, 'stages': stages, 'output': output})
+        steps.append({'id': sid, 'type': step['type'], 'table': table, 'columns': columns, 'sql': sql, 'params': params, 'stages': stages, 'output': output, 'llm': llm})
     return steps
 
 
@@ -477,6 +496,13 @@ def _failures(operators: list[dict]) -> dict:
     return out
 
 
+def prepare_llm(conn, ctx: dict, step: dict, compiled: dict) -> dict:
+    """The answers of an LLM step as a table beside its rows (the model's part of a run is `ctx['llm']`, an LlmRun); its report. A run with nothing to do it is refused."""
+    if ctx.get('llm') is None:
+        raise ValueError(f'步骤 {step["id"]}：这里不能调用模型，管道里的 AI 步骤只在管道页面里运行')
+    return ctx['llm'].prepare(conn, step, compiled['llm']['source'], compiled['llm']['source_columns'], compiled['llm']['answers'])
+
+
 def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, skip=frozenset(), row_cap: int = ROW_CAP, ctx: dict | None = None,
                  upto=None, after=None) -> dict:
     """Run a checked pipeline on a connection that may only read its tables: {'nodes': [...], 'row_cap'} in step order. Each node has its id, type, rows_in
@@ -503,6 +529,10 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                 measured = _measure_join(conn, index, step, left['table'], right['table'], row_cap)
             if step['type'] == 'join':
                 _index_right(conn, index, step, by_id[step['right']]['table'])
+            report = None
+            if compiled['llm']:
+                made.append(compiled['llm']['answers'])
+                report = prepare_llm(conn, ctx, step, compiled)
             if compiled['sql']:
                 made.append(compiled['table'])
                 conn.execute(f'DROP TABLE IF EXISTS temp.{compiled["table"]}')
@@ -535,6 +565,9 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
             if step['type'] == 'transform':
                 node['operators'] = operators
                 node['failures'] = _failures(operators)
+            if report is not None:
+                node['llm'] = report
+                node['failures'] = report['failures']
             if step['type'] == 'output':
                 node['output'] = _output_report(conn, compiled['table'], compiled['output'])
             nodes.append(node)

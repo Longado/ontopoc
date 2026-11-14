@@ -69,6 +69,8 @@ from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv
 from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
+from ontology_poc_generator.pipeline_llm import LlmService
+from ontology_poc_generator.workspace_llm import clear_cache as llm_clear_cache, label as llm_label, review_rerun as llm_review_rerun, state as llm_state, trial as llm_trial
 from ontology_poc_generator.workspace_pipelines import (
     check_expression, columns_at as pipeline_columns, confirm_pipeline, create_pipeline, format_guess, summary as pipeline_summary, list_pipelines, options as pipeline_options, pipeline_detail, pipeline_log, pipeline_versions,
     preview as pipeline_preview, review as pipeline_review, run_detail, run_list, run_now as run_pipeline_now, trial_expression, update_pipeline)
@@ -101,6 +103,14 @@ SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
 JOB_ID = re.compile(r'^[0-9a-f]{12}$')
 NO_KEY = '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'
 INTERRUPTED = '建模服务在这次建模途中重启过，这次作业中断了。请重新上传文件。'
+
+
+def prices_from_env() -> tuple[float | None, float | None]:
+    """What a million tokens in and out cost on the model the service uses, when the operator says (EIP_MODEL_PRICE_IN, EIP_MODEL_PRICE_OUT); the service does not guess a price."""
+    try:
+        return float(os.environ['EIP_MODEL_PRICE_IN']), float(os.environ['EIP_MODEL_PRICE_OUT'])
+    except (KeyError, ValueError):
+        return None, None
 
 
 def gateway_from_env():
@@ -147,6 +157,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
     running = code_fingerprint(code_dir)
     if gateway is not None:   # every model call, from any agent, leaves one line beside the runs
         gateway = LoggedGateway(gateway, output_dir / 'model_calls.jsonl')
+    llm = LlmService(gateway, *prices_from_env())   # the model's part of a pipeline: the one the questions use
     jobs, jobs_lock = {}, threading.Lock()
     # one run file is read, changed and written back by several endpoints; this keeps two of them from overwriting each other
     runs_lock = threading.Lock()
@@ -1396,16 +1407,26 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 try:
                     writers = {'': create_pipeline, '/update': update_pipeline, '/confirm': confirm_pipeline, '/run': run_pipeline_now}
                     readers = {'/preview': pipeline_preview, '/summary': pipeline_summary, '/columns': pipeline_columns, '/review': pipeline_review, '/expression/check': check_expression, '/expression/trial': trial_expression}
+                    asks_model = {'/preview', '/summary', '/review', '/expression/trial'}   # these run the pipeline: an LLM step in it answers from what is kept, never from a call
+                    model_calls = {'/llm/trial': llm_trial, '/llm/state': llm_state}   # read-only too, but the model may be called: no time limit of the engine's around them
+                    model_writes = {'/llm/label': llm_label, '/llm/clear-cache': llm_clear_cache}
                     if route in readers:   # trying reads only, on its own read-only connection and for at most PREVIEW_SECONDS: it does not hold the lock uploads and confirms need
                         with deadline(engine, PREVIEW_SECONDS):
-                            body = readers[route](conn, engine, payload, self.user)
+                            body = readers[route](conn, engine, payload, self.user, **({'llm': llm} if route in asks_model else {}))
+                    elif route in model_calls:
+                        body = model_calls[route](conn, engine, payload, self.user, llm)
+                    elif route == '/llm/review':
+                        body = llm_review_rerun(conn, engine, payload, who, self.user, llm)   # calls the model: the lock uploads need is not held while it answers
+                    elif route in model_writes:
+                        with runs_lock:
+                            body = model_writes[route](conn, engine, payload, who, self.user)
                     elif route in writers:
                         with runs_lock:   # the lock an upload takes (see types_post)
                             if route == '/run':   # the run sets its own time limit around the part that computes
-                                body = run_pipeline_now(conn, engine, payload, who, self.user)
+                                body = run_pipeline_now(conn, engine, payload, who, self.user, llm)
                             else:
                                 with deadline(engine, RUN_SECONDS):
-                                    body = writers[route](conn, payload, who, self.user, engine)
+                                    body = writers[route](conn, payload, who, self.user, engine, **({'llm': llm} if route == '/confirm' else {}))
                     elif route == '/format-guess':
                         body = format_guess(payload)
                     else:

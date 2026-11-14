@@ -66,6 +66,16 @@ CREATE TABLE IF NOT EXISTS pipeline_run (
     id INTEGER PRIMARY KEY AUTOINCREMENT, pipeline_id TEXT NOT NULL, definition_version INTEGER NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('running', 'success', 'failed', 'cancelled')), who TEXT, who_user_id INTEGER, started_at TEXT NOT NULL, finished_at TEXT,
     duration_ms INTEGER, input_versions_json TEXT, nodes_json TEXT, failures_json TEXT, outputs_json TEXT, error TEXT);
+-- the model's part of a pipeline (pipeline_llm): answers kept per node, the answers a person expects for rows, the last count against them
+CREATE TABLE IF NOT EXISTS llm_cache (
+    pipeline_id TEXT NOT NULL, step_id TEXT NOT NULL, key_hash TEXT NOT NULL, contract TEXT NOT NULL, value_json TEXT NOT NULL, raw_json TEXT, model TEXT, at TEXT NOT NULL,
+    PRIMARY KEY (pipeline_id, step_id, key_hash));
+CREATE TABLE IF NOT EXISTS llm_label (
+    pipeline_id TEXT NOT NULL, step_id TEXT NOT NULL, row_hash TEXT NOT NULL, fields_json TEXT NOT NULL, expected_json TEXT NOT NULL, who TEXT, who_user_id INTEGER, at TEXT NOT NULL,
+    PRIMARY KEY (pipeline_id, step_id, row_hash));
+CREATE TABLE IF NOT EXISTS llm_review (
+    pipeline_id TEXT NOT NULL, step_id TEXT NOT NULL, contract TEXT NOT NULL, total INTEGER NOT NULL, matched INTEGER NOT NULL, min_match INTEGER, who TEXT, who_user_id INTEGER, at TEXT NOT NULL,
+    PRIMARY KEY (pipeline_id, step_id));
 CREATE TABLE IF NOT EXISTS qa_question (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, asked_by TEXT, question TEXT NOT NULL, asked_at TEXT NOT NULL, status TEXT NOT NULL,
     answer_json TEXT NOT NULL, definitions_json TEXT NOT NULL, dataset_versions_json TEXT NOT NULL, types_json TEXT NOT NULL);

@@ -41,10 +41,19 @@ def _q(name: str) -> str:
     return '"' + str(name).replace('"', '""') + '"'
 
 
-def new_context(meanings: dict | None = None, codes=frozenset()) -> dict:
+def new_context(meanings: dict | None = None, codes=frozenset(), unsent=frozenset()) -> dict:
     """What the operators may ask the workspace: meanings {"dataset.column": {label: [codes]}} (confirmed ones only), codes {"dataset.column"} (columns that are
-    code lists, confirmed or not), and `used`, which the operators fill with the meanings they read."""
-    return {'meanings': meanings or {}, 'codes': set(codes), 'used': set()}
+    code lists, confirmed or not), unsent {"dataset.column"} (columns whose values a builder keeps from the model), and `used`, which the operators fill with the
+    meanings they read."""
+    return {'meanings': meanings or {}, 'codes': set(codes), 'unsent': set(unsent), 'used': set()}
+
+
+FLAGS = ('unsent', 'ai')   # what a column made from other columns inherits: not to be sent to the model, written by the model
+
+
+def carry(*sources: dict) -> dict:
+    """The marks a column made from these columns inherits."""
+    return {k: True for k in FLAGS if any(c.get(k) for c in sources)}
 
 
 def visible(columns: list[dict]) -> list[dict]:
@@ -312,7 +321,7 @@ def _cast(op, src, columns, ctx, label):
     sql, params = {'decimal': ('pl_to_decimal(%s, ?)', [int(thousands)]), 'integer': ('pl_to_integer(%s, ?)', [int(thousands)]), 'boolean': ('pl_to_boolean(%s)', []),
                    'date': ('pl_to_date(%s, ?)', [fmt]), 'datetime': ('pl_to_datetime(%s, ?)', [fmt])}[to]
     convert = sql % ref
-    new = {'name': target, 'type': to, 'badge': 'replaced' if target == col['name'] else 'new'}
+    new = {'name': target, 'type': to, 'badge': 'replaced' if target == col['name'] else 'new', **carry(col)}
     out_columns = [new if c['name'] == col['name'] and target == col['name'] else c for c in columns] + ([] if target == col['name'] else [new])
     selects, select_params = [], []
     for c in out_columns:
@@ -372,7 +381,8 @@ def _calc(op, src, columns, ctx, label):
         raise OpError(f'{label}：表达式不对：{result["errors"][0]["message"]}' + (f'（第 {result["errors"][0]["pos"] + 1} 个字符）' if result['errors'][0]['pos'] else ''))
     by_name = {c['name']: c for c in inputs}
     sources = [by_name[f] for f in result['fields'] if by_name[f]['type'] in ('date', 'datetime')]
-    new = {'name': name, 'type': COLUMN_TYPE[result['type']], 'badge': 'replaced' if existing else 'new', **({'english_name': op['english_name']} if op.get('english_name') else {})}
+    new = {'name': name, 'type': COLUMN_TYPE[result['type']], 'badge': 'replaced' if existing else 'new', **carry(*(_by_name(columns)[f] for f in result['fields'])),
+           **({'english_name': op['english_name']} if op.get('english_name') else {})}
     selects, params, out_columns = [], [], []
     for c in columns:
         if existing is not None and c['name'] == name:
@@ -454,8 +464,8 @@ def _aggregate(op, src, columns, ctx, label):
     selects = [_q(c['name']) for c in group_cols] + [f'{a["sql"]} AS {_q(a["name"])}' for a in aggs]
     params = [p for a in aggs for p in a['params']]
     group_by = f' GROUP BY {", ".join(_q(c["name"]) for c in group_cols)}' if group_cols else ''
-    out_columns = [{'name': c['name'], 'type': c['type'], **({'origin': c['origin']} if c.get('origin') else {})} for c in group_cols] + \
-                  [{'name': a['name'], 'type': a['type'], 'badge': 'new', 'aggregation': {'fn': a['fn'], 'column': a['col']['name'] if a['col'] else None, 'exact': a['fn'] in PERCENTILE}} for a in aggs]
+    out_columns = [{'name': c['name'], 'type': c['type'], **({'origin': c['origin']} if c.get('origin') else {}), **carry(c)} for c in group_cols] + \
+                  [{'name': a['name'], 'type': a['type'], 'badge': 'new', **(carry(a['col']) if a['col'] else {}), 'aggregation': {'fn': a['fn'], 'column': a['col']['name'] if a['col'] else None, 'exact': a['fn'] in PERCENTILE}} for a in aggs]
 
     def measure(conn, src, out):
         doubled = [d for a in aggs for d in _double_counted(conn, src, group_cols, a)]
@@ -569,7 +579,7 @@ def _label(op, src, columns, ctx, label):
     whens = ' '.join('WHEN ? THEN ?' for _ in mapping)
     params = [x for pair in mapping.items() for x in pair]
     otherwise = {'null': ('', []), 'keep': (f' ELSE {text}', []), 'other': (' ELSE ?', [op.get('other')])}[unmapped]
-    new = {'name': target, 'type': 'text', 'badge': 'replaced' if target == col['name'] else 'new'}
+    new = {'name': target, 'type': 'text', 'badge': 'replaced' if target == col['name'] else 'new', **carry(col)}
     selects, select_params, out_columns = [], [], []
     for c in columns:
         if c['name'] == target:
