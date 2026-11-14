@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { confirmPipeline, reviewPipeline } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { changeTitle, ChangeRow } from "./PipelineViews.jsx";
-import { markedIds, numberText, progressOf, statRows, toggleMark, versionsText } from "./pipelineModel.js";
+import { failureLine, markedIds, numberText, progressOf, statRows, toggleMark, versionsText } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
 
@@ -78,12 +78,12 @@ export function PipelineConfirm({ detail, reload }) {
           {!review.changes.length && <p className="muted">和上次确认的相比，步骤没有变化。</p>}
           {review.changes.map((c) => (
             <section key={`${c.id}${c.change}`} className="card confirm-step">
-              <ChangeRow change={c} titleOf={changeTitle} />
+              <ChangeRow change={c} steps={detail.spec.steps} titleOf={changeTitle} />
               {c.change !== "DEL" && (
                 <p className="muted small">这一步的结果：{review.rows_before?.[c.id] != null ? `${numberText(review.rows_before[c.id])} 行 → ` : ""}{numberText(review.rows_now[c.id])} 行</p>
               )}
               {c.change !== "DEL" && <StatsTable before={review.stats_before?.[c.id]} after={review.stats_now[c.id]} />}
-              {Object.keys(review.failures ?? {}).includes(c.id) && <p className="warn small">这一步有 {Object.entries(review.failures[c.id]).map(([k, n]) => `${k} ${n}`).join("，")}</p>}
+              {review.failures?.[c.id] && <p className="warn small">按现在的数据：{Object.entries(review.failures[c.id]).map(([k, n]) => failureLine(k, n)).join("；")}</p>}
               <label className="check"><input type="checkbox" checked={seen.includes(c.id)} onChange={() => mark(c.id)} />已看过这一步</label>
             </section>
           ))}

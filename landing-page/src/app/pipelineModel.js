@@ -58,14 +58,17 @@ export function orphans(steps) {
 /** The card's top line: what kind of step, and for a join how it keeps rows. */
 export const kindLine = (step) => (step.type === "join" ? `关联，${HOW_LABEL[step.how] ?? ""}` : KIND_LABEL[step.type]);
 
+/** A step by its title, from its id (the id itself when it is not among `steps`). */
+export function nameOf(id, steps) {
+  const s = steps.find((x) => x.id === id);
+  return s ? stepTitle(s, steps.filter((x) => x !== s)) : id ?? "?";
+}
+
 /** What a step is called: a dataset or output by its name, a join by the two steps it joins (`steps` lets it name them, else it uses their ids). */
 export function stepTitle(step, steps = []) {
   if (step.type === "input") return `${step.dataset ?? step.view ?? "（还没选）"}${step.version ? ` 第 ${step.version} 版` : ""}`;
   if (step.type === "output") return step.name || "（还没写名字）";
-  if (step.type === "join") {
-    const named = (id) => { const s = steps.find((x) => x.id === id); return s ? stepTitle(s, steps.filter((x) => x !== s)) : id ?? "?"; };
-    return `${named(step.left)} 和 ${named(step.right)}`;
-  }
+  if (step.type === "join") return `${nameOf(step.left, steps)} 和 ${nameOf(step.right, steps)}`;
   const n = step.operators?.length ?? 0;
   return n ? step.operators.map(operatorName).join("、") : "（还没有操作）";
 }
@@ -198,7 +201,8 @@ const FAILURE_TEXT = {
   unmapped_rows: (n) => `${n} 行的代码没有对应的含义`,
   dropped_by_empty_condition: (n) => `${n} 行因为条件的字段是空的被删掉`,
 };
-export const failureLines = (node) => Object.entries(node?.failures ?? {}).map(([kind, n]) => (FAILURE_TEXT[kind] ?? (() => `${kind} ${n}`))(n));
+export const failureLine = (kind, n) => (FAILURE_TEXT[kind] ?? (() => `${kind} ${n}`))(n);
+export const failureLines = (node) => Object.entries(node?.failures ?? {}).map(([kind, n]) => failureLine(kind, n));
 
 /** "KH099：合计算成 52,620，每行只算一次是 49,470" for each group a statistic counted a source row more than once. */
 export function doubledGroupLines(operator) {
@@ -265,13 +269,13 @@ export const versionsText = (inputs) => Object.entries(inputs ?? {}).map(([k, v]
 // --- the confirm screen ---
 
 /** One step in words, for the before / after of a change. */
-export function stepSummary(step) {
+export function stepSummary(step, steps = []) {
   if (!step) return [];
   if (step.type === "input") return [`读 ${stepTitle(step)}`];
-  if (step.type === "join") return [`${HOW_LABEL[step.how] ?? step.how}：${step.left} 和 ${step.right}`, `按 ${(step.on ?? []).map((p) => `${p.left} = ${p.right}`).join("，")}，${NULL_KEYS_LABEL[step.null_keys ?? "no_match"]}`,
+  if (step.type === "join") return [`${HOW_LABEL[step.how] ?? step.how}：${nameOf(step.left, steps)} 和 ${nameOf(step.right, steps)}`,`按 ${(step.on ?? []).map((p) => `${p.left} = ${p.right}`).join("，")}，${NULL_KEYS_LABEL[step.null_keys ?? "no_match"]}`,
     ...(step.right_columns ? [`右边只带 ${list(step.right_columns)}`] : [])];
-  if (step.type === "transform") return [`读 ${step.from}`, ...(step.operators ?? []).map(operatorTitle)];
-  return [`读 ${step.from}，写到「${step.name}」`, ...(step.key ? [`主键 ${list(step.key.columns)}`] : []), ...(step.columns ? [`只留 ${list(step.columns)}`] : [])];
+  if (step.type === "transform") return [`读 ${nameOf(step.from, steps)}`, ...(step.operators ?? []).map(operatorTitle)];
+  return [`读 ${nameOf(step.from, steps)}，写到「${step.name}」`, ...(step.key ? [`主键 ${list(step.key.columns)}`] : []), ...(step.columns ? [`只留 ${list(step.columns)}`] : [])];
 }
 
 /** Marks made for one definition version only: a definition that was edited has none. */

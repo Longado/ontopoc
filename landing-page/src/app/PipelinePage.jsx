@@ -9,7 +9,7 @@ import { useLoad } from "./useLoad.js";
 
 /** One pipeline: the editing page, its runs, one run, its history, or the screen where a second person confirms it. */
 export function PipelinePage({ route }) {
-  const [state, reload] = useLoad(() => getPipeline(route.name), [route.name]);
+  const [state, reload] = useLoad(() => getPipeline(route.name), [route.name, route.view]);   // read again when the person moves between its screens: what another person did meanwhile shows
   const detail = state.data;
   if (!detail) {
     return (

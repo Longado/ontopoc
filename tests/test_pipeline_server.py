@@ -177,7 +177,8 @@ class PipelineServerTests(SigningTestCase):
             # the queue shows the pipeline again, for someone other than the editor
             queue = bob.get('/api/workspace/queue')[1]
             waiting = next(i for i in queue['items'] if i['kind'] == 'pipeline')
-            self.assertEqual((waiting['id'], waiting['state'], waiting['can_confirm'], waiting['title']), ('客户合计', 'checked', True, '客户合计（管道）'))
+            self.assertEqual((waiting['id'], waiting['state'], waiting['can_confirm'], waiting['title']), ('客户合计', 'checked', True, '客户合计'))
+            self.assertIn('第 2 版定义', waiting['lines'][0]['text'])
             self.assertFalse(next(i for i in ann.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'pipeline')['can_confirm'])   # not for the one who edited it
 
     def test_an_inner_join_is_the_rows_that_have_a_ticket_and_the_run_says_so(self):

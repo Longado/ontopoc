@@ -97,11 +97,11 @@ export function PipelineRun({ detail, id }) {
   );
 }
 
-function ChangeRow({ change, titleOf }) {
-  const line = (step) => stepSummary(step).map((l, i) => <p key={i} className="small">{l}</p>);
+function ChangeRow({ change, steps, titleOf }) {
+  const line = (step) => stepSummary(step, steps).map((l, i) => <p key={i} className="small">{l}</p>);
   return (
     <div className={`change change-${change.change}`}>
-      <div className="change-head"><span className="change-tag">{CHANGE_LABEL[change.change]}</span><strong>{titleOf(change)}</strong></div>
+      <div className="change-head"><span className="change-tag">{CHANGE_LABEL[change.change]}</span><strong>{titleOf(change, steps)}</strong></div>
       <div className="change-sides">
         <div><p className="caption">之前</p>{change.before ? line(change.before) : <p className="faint small">没有</p>}</div>
         <div><p className="caption">现在</p>{change.after ? line(change.after) : <p className="faint small">没有</p>}</div>
@@ -110,7 +110,7 @@ function ChangeRow({ change, titleOf }) {
   );
 }
 
-export const changeTitle = (change) => `${KIND_LABEL[(change.after ?? change.before).type]} ${stepTitle(change.after ?? change.before)}`;
+export const changeTitle = (change, steps) => `${KIND_LABEL[(change.after ?? change.before).type]} ${stepTitle(change.after ?? change.before, steps)}`;
 
 /** The versions kept, any one of them read-only (as the graph of its steps), and two of them compared step by step. */
 export function PipelineHistory({ detail }) {
@@ -150,7 +150,7 @@ export function PipelineHistory({ detail }) {
         <div className="past">
           <h3 className="section-title">第 {viewing} 版（只读）</h3>
           <PipelineGraph steps={past.data.spec.steps} nodes={{}} selected={null} onSelect={() => {}} />
-          <ul className="plain-list">{past.data.spec.steps.flatMap((s) => stepSummary(s).map((l, i) => <li key={`${s.id}${i}`}><span className="muted">{KIND_LABEL[s.type]}</span> {l}</li>))}</ul>
+          <ul className="plain-list">{past.data.spec.steps.flatMap((s) => stepSummary(s, past.data.spec.steps).map((l, i) => <li key={`${s.id}${i}`}><span className="muted">{KIND_LABEL[s.type]}</span> {l}</li>))}</ul>
         </div>
       )}
       {versions.length > 1 && (
@@ -163,7 +163,7 @@ export function PipelineHistory({ detail }) {
           </div>
           {compared.status === "error" && <p className="error">{compared.error}</p>}
           {compared.data && !compared.data.changes.length && <p className="muted">这两版的步骤一样</p>}
-          {compared.data?.changes.map((c) => <ChangeRow key={`${c.id}${c.change}`} change={c} titleOf={changeTitle} />)}
+          {compared.data?.changes.map((c) => <ChangeRow key={`${c.id}${c.change}`} change={c} steps={compared.data.spec.steps} titleOf={changeTitle} />)}
         </>
       )}
     </div>

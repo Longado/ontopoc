@@ -17,7 +17,7 @@ from ontology_poc_generator.object_types import (
 from ontology_poc_generator.object_actions import action_state, action_visible, confirm_action, describe as describe_action, open_records
 from ontology_poc_generator.object_views import confirm_view, describe, seen_of_view, view_state, view_summary, view_visible
 from ontology_poc_generator.workspace_pipelines import (
-    _inputs_now, confirm_pipeline, diff_specs, output_states, pipeline_state, pipeline_visible, waiting_on as pipeline_waiting)
+    _inputs_now, confirm_pipeline, output_states, pipeline_state, pipeline_visible, waiting_on as pipeline_waiting)
 from ontology_poc_generator.workspace_store import current_dataset, log_line
 
 IN_QUEUE = ('proposed', 'checked', 'needs_look')
@@ -80,12 +80,11 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
         if not pipeline_visible(conn, row, user):
             return None
         view = pipeline_state(conn, row, user)
-        base = {'kind': 'pipeline', 'title': f'{content["name"]}（管道）', 'id': content['name'], 'pipeline': content['name'], 'lines': []}
+        base = {'kind': 'pipeline', 'title': content['name'], 'id': content['name'], 'pipeline': content['name'], 'lines': []}
         if not light:
-            changes = diff_specs(None, content['spec'])
             base['lines'] = [{'ok': True, 'text': f'{len(content["spec"]["steps"])} 个步骤，第 {content["definition_version"]} 版定义，写出 {"、".join(o["dataset"] for o in output_states(conn, row)) or "没有输出"}'},
                              *[{'ok': w['state'] == 'confirmed', 'text': f'“{w["name"]}”{"已确认" if w["state"] == "confirmed" else "还没有确认"}'} for w in pipeline_waiting(conn, content)],
-                             {'ok': True, 'text': f'确认前会按现在的数据运行一遍（不写数据），逐步骤的统计在“确认前看”里；{len(changes)} 步定义'}]
+                             {'ok': True, 'text': '确认页会按现在的数据把管道算一遍（不写数据），逐步骤给出改了什么和前后的统计'}]
             view['seen'] = {'inputs': _inputs_now(conn, content)}
     elif element_id.startswith(ACTION_PREFIX):
         if not action_visible(conn, row, user):
