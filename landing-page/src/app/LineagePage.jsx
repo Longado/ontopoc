@@ -29,7 +29,9 @@ export function LineagePage() {
       </div>
       {state.status === "error" && <p className="error">{state.error}</p>}
       {state.status === "loading" && !graph && <p className="muted">加载中</p>}
-      {graph && !graph.nodes.length && <p className="muted">还没有数据集和对象类型。</p>}
+      {graph && !graph.nodes.length && (graph.hidden_types > 0
+        ? <p className="muted">有 {graph.hidden_types} 个对象类型没有开放给你，找管理员。</p>
+        : <p className="muted">还没有数据集和对象类型。</p>)}
       {graph && graph.nodes.length > 0 && (
         <>
           <div className="graph-bar">
