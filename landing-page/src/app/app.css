@@ -166,6 +166,7 @@ a.button.secondary:hover { background: var(--side); }
 .reason { margin: 12px 0; max-width: 640px; }
 .reason p { margin-top: 4px; color: var(--ink); }
 .warn { color: #a35f00; }
+.strong { font-weight: 600; }
 .stack.wide { max-width: 760px; }
 .stack.wide .field { max-width: 480px; }
 table.props td { vertical-align: middle; }

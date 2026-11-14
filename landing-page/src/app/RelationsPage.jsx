@@ -100,8 +100,8 @@ function Check({ r }) {
       {n.unmatched > 0 && (
         <>
           <h2 className="section">没连上的行 {n.unmatched} 行</h2>
-          <p className="muted small" style={{ marginBottom: 8 }}>
-            {c.unmatched_keys} 个“{c.many.column}”在 {c.one.dataset} 里找不到{!c.counts_only && `：${c.samples.map((s) => `${s.key}（${s.rows} 行）`).join("、")}`}
+          <p className="warn strong" style={{ marginBottom: 8 }}>
+            {n.unmatched} 行{c.many.name}找不到{c.one.name}{!c.counts_only && `：${c.samples.map((s) => s.key).join("、")}${c.unmatched_keys > c.samples.length ? ` 等 ${c.unmatched_keys} 个编号` : ""}`}
             {c.if_trimmed > 0 && `；其中 ${c.if_trimmed} 行去掉空格、忽略大小写后能对上`}
           </p>
           {!c.counts_only && <RowsTable table={c.unmatched_rows} markColumn={c.many.column} />}

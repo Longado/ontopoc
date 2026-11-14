@@ -37,7 +37,7 @@ function Card({ item, onChanged }) {
       </div>
       <p className="muted small">{item.kind === "approval" ? (item.state === "needs_look" ? "数据变了，不能批准；可以驳回，提交的人可以撤回后重新提交" : "") : stateLine(item, "它") || "需要再看一次"}</p>
       <ul className="checks">
-        {item.lines.map((l, i) => <li key={i} className={l.ok ? "" : "warn"}>{l.text}</li>)}
+        {item.lines.map((l, i) => <li key={i} className={l.ok ? "" : l.strong ? "warn strong" : "warn"}>{l.text}</li>)}
       </ul>
       {item.kind === "approval" && !asking && (
         <div className="inline">

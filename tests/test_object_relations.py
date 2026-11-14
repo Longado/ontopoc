@@ -93,6 +93,8 @@ class RelationTests(SigningTestCase):
             self.assertEqual((check['fanout']['keys'], check['fanout']['source_rows'], check['fanout']['extra_rows']), (1, KH012_ORDERS, KH012_ORDERS))
             self.assertEqual([r[0] for r in check['fanout']['rows']['rows']], ['KH012', 'KH012'])
             self.assertIn('KH099', ' '.join(e['text'] for e in detail['lines']))
+            lost = next(e for e in detail['lines'] if '找不到' in e['text'])
+            self.assertEqual((lost['text'], lost['strong'], lost['ok']), ('3 行订单找不到客户：KH099', True, False))   # said as what it is, with the keys, and drawn strongly on the confirm screen
             self.assertIn('KH012（2 次）', ' '.join(e['text'] for e in detail['lines']))
             # not while the types are not confirmed, however many people are willing
             self.assertEqual(detail['waiting_on'], [{'id': 'order', 'name': '订单', 'state': 'checked'}, {'id': 'customer', 'name': '客户', 'state': 'checked'}])
@@ -295,7 +297,7 @@ class RelationTests(SigningTestCase):
             check = detail['check']
             self.assertEqual((check['numbers']['matched'], check['numbers']['unmatched'], check['counts_only']), (157, 3, True))
             self.assertEqual((check['samples'], check['unmatched_rows']['rows'], check['fanout']['samples'], check['fanout']['rows']['rows']), ([], [], [], []))
-            self.assertIn('3 行连不上', ' '.join(e['text'] for e in detail['lines']))   # the count is said, the keys that miss are not
+            self.assertIn('3 行订单找不到客户', ' '.join(e['text'] for e in detail['lines']))   # the count is said, the keys that miss are not
             self.assertNotIn('KH099', json.dumps(detail, ensure_ascii=False))
             self.assertEqual((vera.get('/api/workspace/tasks')[0], bob.get('/api/workspace/tasks')[0]), (403, 200))
 

@@ -129,8 +129,10 @@ def evidence_lines(result: dict) -> list[dict]:
     lines = [{'ok': n['unmatched'] == 0 and n['matched'] == n['rows'], 'text': f'{many["dataset"]} 第 {many["version"]} 版的 {n["rows"]} 行里，{n["matched"]} 行用“{many["column"]}”连上了 {one["dataset"]} 的“{one["column"]}”'}]
     if n['unmatched']:
         keys = '、'.join(s['key'] for s in result['samples'])
-        lines.append({'ok': False, 'text': f'{n["unmatched"]} 行连不上：{result["unmatched_keys"]} 个“{many["column"]}”在 {one["dataset"]} 里找不到{f"（{keys}）" if keys else ""}'
-                                           + (f'；其中 {result["if_trimmed"]} 行去掉空格、忽略大小写后能对上' if result['if_trimmed'] else '')})
+        etc = f' 等 {result["unmatched_keys"]} 个编号' if result['unmatched_keys'] > len(result['samples']) else ''
+        lines.append({'ok': False, 'strong': True,   # the rows that belong to nobody are what a person confirming this has to see first: they are in no statistic through the relation
+                      'text': f'{n["unmatched"]} 行{many["name"]}找不到{one["name"]}' + (f'：{keys}{etc}' if keys else '')
+                              + (f'；其中 {result["if_trimmed"]} 行去掉空格、忽略大小写后能对上' if result['if_trimmed'] else '')})
     if result['empty']:
         lines.append({'ok': False, 'text': f'{result["empty"]} 行的“{many["column"]}”是空的，没有连任何{one["name"]}'})
     f = result['fanout']

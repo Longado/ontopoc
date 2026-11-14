@@ -227,6 +227,18 @@ class AcceptanceTests(DerivedTestCase):
                     self.assertIn('已经停下', body['error'])
             self.assertEqual(ann.get('/api/workspace/types/customer/derived')[0], 200)   # and nothing was left stopped
 
+    def test_a_statistic_through_a_relation_says_how_many_rows_it_left_out_because_they_find_no_owner(self):
+        total = {**CANCELLED, 'english_name': 'order_total', 'name': '订单金额', 'measure': {'column': '金额'}, 'fn': 'sum', 'conditions': []}
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann = team['ann']
+            self.assertEqual(ann.post('/api/workspace/types/derived', total)[0], 200)
+            lines = [l['text'] for l in self.line(ann, 'customer', 'order_total')['trial']['lines']]
+            lost = [r for r in ORDERS if r['客户编号'] not in {c['客户编号'] for c in planted.planted_bundle()['sources']['客户']['records']}]
+            self.assertIn(f'有 {len(lost)} 行订单因为找不到客户没算进来（KH099）', lines)
+            self.assertEqual(len(lost), 3)
+
     def test_a_person_a_row_rule_limits_gets_the_statistic_over_their_rows_only(self):
         with self.service() as (base, out):
             team = self.team(base)

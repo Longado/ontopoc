@@ -354,8 +354,24 @@ def _evaluate_statistic(conn, content: dict, chain: dict, tables: dict) -> dict:
     if hops and hops[0]['toward'] == 'many':   # objects that name the same thing by the same join key each count the same rows
         c = _q(hops[0]['from_column'])
         shared = conn.execute(f"SELECT COUNT(*) FROM {owner_table} WHERE {c} <> '' AND {c} IN (SELECT {c} FROM {owner_table} WHERE {c} <> '' GROUP BY {c} HAVING COUNT(*) > 1)").fetchone()[0]
-    return {'values': values, 'objects': objects, 'failed': unreadable + ambiguous, 'rows_used': rows_used, 'shared_keys': shared,
+    return {'values': values, 'objects': objects, 'failed': unreadable + ambiguous, 'rows_used': rows_used, 'shared_keys': shared, 'orphans': _orphans(conn, chain, tables),
             'no_value': {'no_rows': no_rows, 'unreadable': unreadable, 'ambiguous': ambiguous}}
+
+
+def _orphans(conn, chain: dict, tables: dict) -> list[dict]:
+    """For each hop, the rows on the many end whose key is filled and finds no row on the one end: {'many', 'one' (type names), 'rows', 'keys' (the first few)}. A statistic
+    that goes through the relation leaves those rows out (toward the many end they are in no owner's count, toward the one end the owner has nothing to look up)."""
+    out = []
+    for h in chain['hops']:
+        many_end, one_end = ((h['to_type'], h['to_column']), (h['from_type'], h['from_column'])) if h['toward'] == 'many' else ((h['from_type'], h['from_column']), (h['to_type'], h['to_column']))
+        (m_type, m_col), (o_type, o_col) = many_end, one_end
+        m_table, o_table = tables[m_type][0], tables[o_type][0]
+        lost = conn.execute(f"SELECT {_q(m_col)}, COUNT(*) FROM {m_table} WHERE {_q(m_col)} <> '' AND {_q(m_col)} NOT IN (SELECT {_q(o_col)} FROM {o_table} WHERE {_q(o_col)} <> '') "
+                            f'GROUP BY {_q(m_col)} ORDER BY 2 DESC, 1 LIMIT {EXAMPLES}').fetchall()
+        rows = conn.execute(f"SELECT COUNT(*) FROM {m_table} WHERE {_q(m_col)} <> '' AND {_q(m_col)} NOT IN (SELECT {_q(o_col)} FROM {o_table} WHERE {_q(o_col)} <> '')").fetchone()[0]
+        if rows:
+            out.append({'many': chain['types'][m_type]['name'], 'one': chain['types'][o_type]['name'], 'rows': rows, 'keys': [k for k, _ in lost]})
+    return out
 
 
 # --- what a person reads ------------------------------------------------------------------------------------------------------------------------------
@@ -418,6 +434,8 @@ def _failure_lines(content: dict, result: dict, owner_name: str) -> list[dict]:
         out.append({'ok': False, 'text': f'{no["ambiguous"]} 个{owner_name}在另一边找到了不止一个不同的值，没有取其中一个'})
     if result.get('shared_keys'):
         out.append({'ok': False, 'text': f'{result["shared_keys"]} 个{owner_name}和别的{owner_name}用同一个连接键，它们各自数到了同一批行'})
+    for o in result.get('orphans') or []:
+        out.append({'ok': False, 'text': f'有 {o["rows"]} 行{o["many"]}因为找不到{o["one"]}没算进来（{"、".join(o["keys"])}）'})
     return out
 
 
