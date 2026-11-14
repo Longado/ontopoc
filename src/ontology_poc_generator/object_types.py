@@ -859,7 +859,8 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     fanned = fan_marks(conn, dataset['id']) if dataset else set()
     props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'fan': FAN_NOTE if p['column'] in fanned else None, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
     limited = restriction(conn, row['element_id'], user) is not None
-    return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'],
+    from ontology_poc_generator.derived_properties import limited_reads   # derived_properties reads this module: imported here, where it is used
+    return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),
             'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
             **({'limited_note': LIMITED_NOTE} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),

@@ -261,6 +261,9 @@ class AcceptanceTests(DerivedTestCase):
             flagged = {table['rows'][r][key] for r, cells in enumerate(table['outside']) if column in cells}
             self.assertIn('KH015', flagged)   # the table says which cells are not in her rows, so the page can write why they are empty
             self.assertNotIn('KH026', flagged)
+            mine_rows = sum(r['客户编号'] == 'KH026' for r in ORDERS)
+            self.assertEqual(vera.get('/api/workspace/types/customer')[1]['limited_reads'], [{'name': '已取消订单数', 'types': [{'name': '订单', 'rows': mine_rows}]}])   # the customer page can say whose rows its numbers are
+            self.assertEqual(admin.get('/api/workspace/types/customer')[1]['limited_reads'], [])
             line = self.line(vera, 'customer', 'cancelled_orders')
             self.assertEqual((line['trial']['numbers'], line['can_confirm']), (None, False))   # no whole-data count; nothing for her to confirm
             self.assertIn('行规则', line['trial']['limited_note'])

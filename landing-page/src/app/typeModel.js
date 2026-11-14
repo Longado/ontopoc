@@ -54,6 +54,15 @@ export function logText(e) {
 
 /** A code cell on the objects tab: the value, and next to it what it means when that is confirmed, else why it is not shown as meaning. */
 /** Why a derived value is empty for someone a row rule limits: what it is worked out from lies outside the rows they may read (it is not 0). */
+/** The one line on a type's page for someone a row rule limits: their own rows of this type, and the other types whose rows a derived property of it is worked out over. "" when nothing limits them. */
+export function limitedNote(type) {
+  const parts = [
+    ...(type.rows_limited ? [`只算你能看的 ${type.rows} 行`] : []),
+    ...(type.limited_reads ?? []).map((d) => `${d.name}只算你能看的${d.types.map((t) => `${t.name} ${t.rows} 行`).join("、")}`),
+  ];
+  return parts.length ? `你受行规则限制：${parts.join("；")}` : "";
+}
+
 export const OUTSIDE_NOTE = "不在你能看的行里";
 
 export function codeCell(value, enumState) {

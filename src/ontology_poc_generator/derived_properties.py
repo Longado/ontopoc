@@ -926,6 +926,26 @@ def trial_payload(conn, payload: dict, user: dict | None) -> dict:
 
 # --- what other pages read ---------------------------------------------------------------------------------------------------------------------------
 
+def limited_reads(conn, english_type: str, user: dict | None) -> list[dict]:
+    """The derived properties of this type that this person may see and that are worked out over rows a row rule limits them to, on a type other than this one (this
+    one's own limit is the type's): [{'name', 'types': [{'name', 'rows'}]}], rows being how many rows of that type they may read."""
+    from ontology_poc_generator.object_types import visible_rows   # the page of a type reads this; imported where it is used
+    out = []
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'derived:%' AND state != 'rejected' AND json_extract(content_json, '$.type') = ? ORDER BY element_id", (english_type,)).fetchall():
+        row = element_row(conn, element_id)
+        if not derived_visible(conn, row, user):
+            continue
+        content = _content(row)
+        chain = _chain(conn, content, user)
+        if chain['problems']:
+            continue
+        held = [{'name': t['name'], 'rows': visible_rows(conn, element_row(conn, type_id(e)), t['dataset'], user)} for e, t in chain['types'].items()
+                if e != english_type and restriction(conn, type_id(e), user) is not None]
+        if held:
+            out.append({'name': content['name'], 'types': held})
+    return out
+
+
 def confirmed_columns(conn, english_type: str, user: dict | None) -> list[dict]:
     """The derived properties of a type this person may see, each with its values by row number in the type's table over the rows they may read:
     [{'id', 'name', 'output_type', 'says', 'confirmed', 'values': {row number: text}}]. The confirmed ones come first; a viewer sees only those, while a builder also

@@ -11,7 +11,7 @@ import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { confirmersText, logText, stateLine } from "./typeModel.js";
+import { confirmersText, limitedNote, logText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
 /** What stands behind a state, in one place: the line, who could confirm, and why it needs another look. */
@@ -230,7 +230,7 @@ export function TypePage({ route }) {
             {t.description && <span>{t.description}</span>}
             {t.visible_to && t.visible_to !== "everyone" && <span>只有{t.visible_to.length ? t.visible_to.join("、") : "管理员"}看得到</span>}
           </p>
-          {t.rows_limited && <p className="muted small">你受行规则限制：只算你能看的 {t.rows} 行</p>}
+          {limitedNote(t) && <p className="muted small">{limitedNote(t)}</p>}
           <Standing item={t} noun="这个对象类型" />
           <Uses id={id} uses={uses.data} />
           <nav className="tabs" aria-label="对象类型的页面" style={{ marginTop: 16 }}>

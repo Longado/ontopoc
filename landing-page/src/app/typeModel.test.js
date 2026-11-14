@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { codeCell, confirmersText, keyProblem, logText, stateLine, stateText, typePayload } from "./typeModel.js";
+import { codeCell, confirmersText, keyProblem, limitedNote, logText, stateLine, stateText, typePayload } from "./typeModel.js";
 
 test("the chip says what a person needs to know: a model's draft is not an ordinary proposal", () => {
   assert.equal(stateText({ state: "proposed", model_draft: true }), "模型草稿");
@@ -62,4 +62,11 @@ test("the payload carries the key columns even when unticked, and only the meani
   assert.equal(payload.english_name, "order");
   assert.deepEqual(payload.enums, { 状态码: [{ value: "0", label: "已交付" }, { value: "2", label: "已取消" }] });
   assert.equal(payload.properties[1].name, "状态");
+});
+
+test("a type's page says whose rows the reader's numbers are when a row rule limits them, on the type itself or under a derived property", () => {
+  assert.equal(limitedNote({ rows_limited: false, rows: 30, limited_reads: [] }), "");
+  assert.equal(limitedNote({ rows_limited: true, rows: 12, limited_reads: [] }), "你受行规则限制：只算你能看的 12 行");
+  assert.equal(limitedNote({ rows_limited: false, rows: 30, limited_reads: [{ name: "已取消订单数", types: [{ name: "订单", rows: 7 }] }] }), "你受行规则限制：已取消订单数只算你能看的订单 7 行");
+  assert.equal(limitedNote({ rows_limited: true, rows: 12 }), "你受行规则限制：只算你能看的 12 行");
 });
