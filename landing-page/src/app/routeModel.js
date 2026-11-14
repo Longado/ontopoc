@@ -31,6 +31,15 @@ export function parseRoute(hash) {
     return { page: "notfound" };
   }
   if (parts.length === 1 && (parts[0] === "confirm" || parts[0] === "permissions")) return { page: parts[0] };
+  if (parts[0] === "pipelines") {
+    if (parts.length === 1) return { page: "pipelines" };
+    if (parts.length === 2 && parts[1] === "new") return { page: "pipelinenew" };   // the service refuses a pipeline called new
+    const view = parts[2] ?? "edit";
+    if (parts.length === 2) return { page: "pipeline", name: parts[1], view };
+    if (parts.length === 3 && ["runs", "history", "confirm"].includes(view)) return { page: "pipeline", name: parts[1], view };
+    if (parts.length === 4 && view === "runs" && /^[1-9]\d*$/.test(parts[3])) return { page: "pipeline", name: parts[1], view: "run", run: Number(parts[3]) };
+    return { page: "notfound" };
+  }
   if (parts[0] === "types") {
     if (parts.length === 1) return { page: "types" };
     if (parts.length === 2 && parts[1] === "new") return { page: "typenew" };   // the service refuses a type called new, so this address is never a type
@@ -58,6 +67,12 @@ export function hrefFor(route) {
   if (route.page === "types") return "#/types";
   if (route.page === "confirm" || route.page === "permissions" || route.page === "lineage") return `#/${route.page}`;
   if (route.page === "relations") return route.list ? "#/relations?view=list" : "#/relations";
+  if (route.page === "pipelines") return "#/pipelines";
+  if (route.page === "pipelinenew") return "#/pipelines/new";
+  if (route.page === "pipeline") {
+    const base = `#/pipelines/${encodeURIComponent(route.name)}`;
+    return route.view === "run" ? `${base}/runs/${route.run}` : route.view && route.view !== "edit" ? `${base}/${route.view}` : base;
+  }
   if (route.page === "relationnew") return "#/relations/new";
   if (route.page === "relation") return `#/relations/${encodeURIComponent(route.id)}`;
   if (route.page === "relationedit") return `#/relations/${encodeURIComponent(route.id)}/edit`;
@@ -74,14 +89,13 @@ export function hrefFor(route) {
 
 // Pages not built yet: what each will do, in one line. The sidebar shows them in grey and they open a page saying exactly this.
 export const PLANNED = {
-  pipelines: ["管道", "把数据集连接、清洗成新的数据集，每一步看得到行数，还没做"],
   sources: ["数据源", "连接 MySQL、PostgreSQL，把库里的表读成数据集，还没做"],
   agents: ["智能体", "给问答设定范围和说明，还没做"],
   boards: ["看板", "用已确认的指标做看板，还没做"],
 };
 
-const BUILT = { qa: "#/qa", tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", confirm: "#/confirm", users: "#/users", permissions: "#/permissions" };
-const BUILDERS = ["tasks", "confirm"];   // shown to builders and admins only: a viewer has nothing to confirm, and the task list quotes keys and values (the service refuses it to a viewer)
+const BUILT = { qa: "#/qa", tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", confirm: "#/confirm", users: "#/users", permissions: "#/permissions", pipelines: "#/pipelines" };
+const BUILDERS = ["tasks", "confirm", "pipelines"];   // shown to builders and admins only: a viewer has nothing to confirm, the task list quotes keys and values and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
 const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
 
 export const NAV = [
@@ -97,4 +111,4 @@ export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户"), it
 
 /** Which navigation item a route lives under. */
 export const navKeyOf = (route) =>
-  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit"].includes(route.page) ? "types" : route.page === "account" ? null : ["relation", "relationnew", "relationedit"].includes(route.page) ? "relations" : route.page;
+  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit"].includes(route.page) ? "types" : ["pipeline", "pipelinenew"].includes(route.page) ? "pipelines" : route.page === "account" ? null : ["relation", "relationnew", "relationedit"].includes(route.page) ? "relations" : route.page;

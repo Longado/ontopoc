@@ -46,6 +46,7 @@ export function relationProblem(form, editing) {
 /** The page an item of the queue leads to. */
 export function itemHref(item) {
   if (item.kind === "relation") return hrefFor({ page: "relation", id: item.id });
+  if (item.kind === "pipeline") return hrefFor({ page: "pipeline", name: item.id, view: "confirm" });   // a pipeline is confirmed on its own screen, after reading what changed
   if (item.kind === "view") return hrefFor({ page: "type", id: item.id, tab: "views" });
   if (item.kind === "action" || item.kind === "approval") return hrefFor({ page: "type", id: item.id, tab: "actions" });
   return hrefFor({ page: "type", id: item.id, tab: "props" });

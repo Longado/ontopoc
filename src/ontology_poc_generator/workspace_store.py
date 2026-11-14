@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS element_dep (
     element_id TEXT NOT NULL, depends_on TEXT NOT NULL, PRIMARY KEY (element_id, depends_on));
 CREATE TABLE IF NOT EXISTS confirmation (
     id INTEGER PRIMARY KEY AUTOINCREMENT, element_id TEXT NOT NULL, confirmed_by TEXT, confirmed_by_user_id INTEGER, proposed_by TEXT,
-    confirmed_at TEXT NOT NULL, content_json TEXT, evidence_ref TEXT, dataset_versions_json TEXT, self_confirmed INTEGER NOT NULL DEFAULT 0);
+    confirmed_at TEXT NOT NULL, content_json TEXT, evidence_ref TEXT, dataset_versions_json TEXT, self_confirmed INTEGER NOT NULL DEFAULT 0, snapshot_json TEXT);
 CREATE TABLE IF NOT EXISTS type_access (
     type_id TEXT PRIMARY KEY, user_ids_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS value_privacy (
@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS action_record (
     key_json TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL, reason TEXT,
     state TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'rejected', 'withdrawn', 'expired', 'needs_look')),
     submitted_by TEXT, submitted_by_user_id INTEGER, submitted_at TEXT NOT NULL, decided_by TEXT, decided_by_user_id INTEGER, decided_at TEXT, note TEXT, why TEXT, new_version INTEGER);
+CREATE TABLE IF NOT EXISTS pipeline_version (
+    pipeline_id TEXT NOT NULL, version INTEGER NOT NULL, definition_json TEXT NOT NULL, saved_by TEXT, saved_by_user_id INTEGER, saved_at TEXT NOT NULL,
+    PRIMARY KEY (pipeline_id, version));
+CREATE TABLE IF NOT EXISTS pipeline_run (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, pipeline_id TEXT NOT NULL, definition_version INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('running', 'success', 'failed', 'cancelled')), who TEXT, who_user_id INTEGER, started_at TEXT NOT NULL, finished_at TEXT,
+    duration_ms INTEGER, input_versions_json TEXT, nodes_json TEXT, failures_json TEXT, outputs_json TEXT, error TEXT);
 CREATE TABLE IF NOT EXISTS qa_question (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, asked_by TEXT, question TEXT NOT NULL, asked_at TEXT NOT NULL, status TEXT NOT NULL,
     answer_json TEXT NOT NULL, definitions_json TEXT NOT NULL, dataset_versions_json TEXT NOT NULL, types_json TEXT NOT NULL);
@@ -105,7 +112,8 @@ def open_workspace(path) -> sqlite3.Connection:
         os.chmod(path, 0o600)   # the file holds password hashes and sessions: this account only
     for table, column in (('dataset', 'dropped_json'), ('dataset', 'who'), ('dataset', 'mode'), ('dataset', 'changes_json'), ('check_result', 'dataset_id'), ('check_result', 'null_key_rows'),
                           ('element_state', 'content_json'), ('element_state', 'anchors_json'), ('element_state', 'proposed_by'), ('element_state', 'reason'),
-                          ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id')):
+                          ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id'),
+                          ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows") or column.endswith("user_id") else "TEXT"}')
     _never_reuse_ids(conn)

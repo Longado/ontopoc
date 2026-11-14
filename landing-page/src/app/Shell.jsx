@@ -8,6 +8,8 @@ import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
 import { LineagePage } from "./LineagePage.jsx";
 import { PermissionsPage } from "./PermissionsPage.jsx";
+import { PipelinePage } from "./PipelinePage.jsx";
+import { PipelineNew, PipelinesPage } from "./PipelinesPage.jsx";
 import { QaPage } from "./QaPage.jsx";
 import { RelationForm } from "./RelationForm.jsx";
 import { RelationPage, RelationsPage } from "./RelationsPage.jsx";
@@ -142,11 +144,14 @@ export function Shell() {
       {route.page === "relationnew" && <RelationForm key="new" />}
       {route.page === "relationedit" && <RelationForm key={route.id} id={route.id} />}
       {route.page === "confirm" && (canBuild(user) ? <ConfirmPage /> : <Forbidden />)}
+      {route.page === "pipelines" && (canBuild(user) ? <PipelinesPage /> : <Forbidden />)}
+      {route.page === "pipelinenew" && (canBuild(user) ? <PipelineNew /> : <Forbidden />)}
+      {route.page === "pipeline" && (canBuild(user) ? <PipelinePage key={route.name} route={route} /> : <Forbidden />)}
       {route.page === "permissions" && (isAdmin(user) ? <PermissionsPage /> : <Forbidden />)}
       {route.page === "account" && <AccountPage />}
       {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
       {route.page === "planned" && <Planned route={route} />}
-      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
+      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "pipelines", "pipelinenew", "pipeline", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
     </div>
   );
 }

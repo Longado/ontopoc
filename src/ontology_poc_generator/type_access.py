@@ -35,21 +35,70 @@ def visible_to(conn, type_element_id: str) -> str | list[str]:
 
 def can_access(conn, type_element_id: str, user: dict | None) -> bool:
     """Whether this person may see the type at all (a viewer's need for it to be confirmed is checked by the caller). The local no-sign-in
-    person and admins see everything."""
+    person and admins see everything. A type whose dataset a pipeline writes is not theirs either when they are kept from anything that pipeline reads (the
+    figures are those rows' figures), whatever list the type itself carries; worked out on each call."""
+    return _can(conn, type_element_id, user, set())
+
+
+def _can(conn, type_element_id: str, user: dict | None, seen: set[str]) -> bool:
     if user is None or user['role'] == 'admin':
         return True
     allowed = allowed_ids(conn, type_element_id)
-    return allowed is None or user['id'] in allowed
+    if allowed is not None and user['id'] not in allowed:
+        return False
+    return not any(_made_from_hidden(conn, d[len('dataset:'):], user, seen) for (d,) in conn.execute(
+        "SELECT depends_on FROM element_dep WHERE element_id = ? AND depends_on LIKE 'dataset:%'", (type_element_id,)))
+
+
+def _type_hidden(conn, element_id: str, user: dict, seen: set[str]) -> bool:
+    return not _can(conn, element_id, user, seen) or (has_rules(conn, element_id) and not holds_all_rows(conn, element_id, user))   # a row-ruled type holds rows they may not see
+
+
+def _view_hidden(conn, view_element_id: str, user: dict, seen: set[str]) -> bool:
+    deps = [d for (d,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ?', (view_element_id,))]
+    return any(_type_hidden(conn, d, user, seen) for d in deps if d.startswith('objtype:')) or any(_hidden(conn, d[len('dataset:'):], user, seen) for d in deps if d.startswith('dataset:'))
+
+
+def _hidden(conn, name: str, user: dict, seen: set[str]) -> bool:
+    if name in seen:   # pipelines cannot loop (a write that reads its own output is refused), but a bad row must not make this loop
+        return False
+    seen.add(name)
+    if any(_type_hidden(conn, element_id, user, seen) for (element_id,) in conn.execute(
+            "SELECT element_id FROM element_dep WHERE depends_on = ? AND element_id LIKE 'objtype:%'", (f'dataset:{name}',))):
+        return True
+    return _made_from_hidden(conn, name, user, seen)
+
+
+def _made_from_hidden(conn, name: str, user: dict, seen: set[str]) -> bool:
+    """Only the producer chain: the dataset is written by a pipeline that reads something this person is kept from. (Not the types that read the dataset itself:
+    those ask this first, to know whether they are theirs.)"""
+    producer = conn.execute("SELECT depends_on FROM element_dep WHERE element_id = ? AND depends_on LIKE 'pipeline:%'", (f'dataset:{name}',)).fetchone()
+    if producer is None:
+        return False
+    for (depends_on,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ?', (producer[0],)).fetchall():   # what the pipeline reads now, so a rule added later counts
+        if depends_on.startswith('dataset:') and _hidden(conn, depends_on[len('dataset:'):], user, seen):
+            return True
+        if depends_on.startswith('objview:') and _view_hidden(conn, depends_on, user, seen):
+            return True
+    return False
 
 
 def dataset_hidden(conn, name: str, user: dict | None) -> bool:
     """A dataset that a type this person may not see reads is not theirs to see either: its rows, its download, an upload to it, its removal. Only
     admins, and people allowed to see every type that reads it, get past this; to everyone else it is not found. A type with row rules makes its dataset the
-    admins' too: the dataset holds the rows a rule keeps from them."""
+    admins' too: the dataset holds the rows a rule keeps from them. A dataset a pipeline writes is hidden from whoever is kept from anything the pipeline reads
+    (a dataset, or a view and the type under it, down through earlier pipelines): it holds those rows' figures. This is worked out on each call, so a rule added
+    after a run hides the output from then on."""
     if user is None or user['role'] == 'admin':
         return False
-    return any(not can_access(conn, element_id, user) or (has_rules(conn, element_id) and not holds_all_rows(conn, element_id, user)) for (element_id,) in conn.execute(   # a row-ruled type's dataset holds rows they may not see
-        "SELECT element_id FROM element_dep WHERE depends_on = ? AND element_id LIKE 'objtype:%'", (f'dataset:{name}',)))
+    return _hidden(conn, name, user, set())
+
+
+def view_input_hidden(conn, view_element_id: str, user: dict | None) -> bool:
+    """A view that stands on a type, or a dataset, this person is kept from (see dataset_hidden)."""
+    if user is None or user['role'] == 'admin':
+        return False
+    return _view_hidden(conn, view_element_id, user, set())
 
 
 def visible_type_ids(conn, user: dict | None, confirmed_only: bool = False) -> list[str]:

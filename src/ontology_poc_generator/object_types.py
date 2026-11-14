@@ -28,6 +28,7 @@ ENUM_PREFIX = 'enum:'
 RELATION_PREFIX = 'relation:'
 VIEW_PREFIX = 'objview:'
 ACTION_PREFIX = 'objaction:'
+PIPELINE_PREFIX = 'pipeline:'
 ENGLISH_NAME = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,39}')
 MAX_NAME, MAX_DESCRIPTION = 40, 200
 OBJECT_PAGE = 50
@@ -461,28 +462,47 @@ def _enum_problems(conn, row: dict) -> list[str]:
 def _label(conn, element_id: str) -> str:
     content = _content(element_row(conn, element_id))
     return (f'“{content["name"]}”类型' if element_id.startswith(TYPE_PREFIX) else f'“{content["name"]}”关系' if element_id.startswith(RELATION_PREFIX)
-            else f'“{content["name"]}”视图' if element_id.startswith(VIEW_PREFIX) else f'“{content["name"]}”行为' if element_id.startswith(ACTION_PREFIX) else f'“{content["column"]}”的含义')
+            else f'“{content["name"]}”视图' if element_id.startswith(VIEW_PREFIX) else f'“{content["name"]}”行为' if element_id.startswith(ACTION_PREFIX)
+            else f'“{content["name"]}”管道' if element_id.startswith(PIPELINE_PREFIX) else f'“{content["column"]}”的含义')
 
 
-def _flag_readers(conn, element_id: str, reason: str, moved: list[str]) -> None:
+CAUSE_WORDS = {'data': '数据变了', 'definition': '定义改了'}   # why something needs another look: what changed at the root
+VIA_WORDS = {'parent': '上一步过时', 'ancestor': '更上游过时'}   # and how far away that root is: its direct parent, or further up
+
+
+def stale_word(cause: str | None, via: str | None) -> str | None:
+    """The one of the four words a needs-another-look element shows: 数据变了 or 定义改了 when the change is at its own input or logic, 上一步过时 when its direct
+    parent is out of date, 更上游过时 when an ancestor is."""
+    return VIA_WORDS.get(via) or CAUSE_WORDS.get(cause)
+
+
+def _flag_readers(conn, element_id: str, reason: str, moved: list[str], cause: str = 'definition') -> None:
     """What reads this element and is confirmed goes to needs_look with the reason (and so on to what reads it): used when the element itself stopped being
-    confirmed. Inside the caller's transaction, so it is written together with what stopped the confirmation."""
+    confirmed (its definition was edited). Inside the caller's transaction, so it is written together with what stopped the confirmation. The readers' cause is
+    the edit (定义改了) and their parent is out of date."""
     for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
-        _flag(conn, reader, reason, None, moved)
+        _flag(conn, reader, reason, None, moved, cause, 'parent')
 
 
-def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list[str]) -> None:
-    """A confirmed element whose check came out different goes to needs_look with the reason; then the same for what reads it, with its own reason."""
+def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list[str], cause: str = 'data', via: str = 'self') -> None:
+    """A confirmed element whose check came out different goes to needs_look with the reason; then the same for what reads it, with its own reason. `cause` is
+    what changed at the root (data or definition) and stays the same all the way down; `via` is self for the element whose own input or logic changed, parent
+    for what reads it directly, ancestor for the rest. The dataset a pipeline writes is not an element: it passes the flag on to what reads it."""
     row = element_row(conn, element_id)
+    if row is None and element_id.startswith('dataset:'):
+        for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
+            _flag(conn, reader, reason, caused_by, moved, cause, via)
+        return
     if row is None or row['state'] != 'confirmed':
         return
-    conn.execute("UPDATE element_state SET state = 'needs_look', reason = ?, version = version + 1 WHERE element_id = ?", (reason, element_id))
+    conn.execute("UPDATE element_state SET state = 'needs_look', reason = ?, cause = ?, via = ?, version = version + 1 WHERE element_id = ?", (reason, cause, via, element_id))
     log_line(conn, 'system', element_id, 'needs_look',
              before={'state': 'confirmed', 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at']},
-             after={'state': 'needs_look', 'reason': reason, 'caused_by': caused_by}, user_id=None)
+             after={'state': 'needs_look', 'reason': reason, 'caused_by': caused_by, 'cause': cause, 'via': via}, user_id=None)
     moved.append(element_id)
     for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
-        _flag(conn, reader, f'它用的{_label(conn, element_id)}需要再看（原因见{"那一组含义" if element_id.startswith(ENUM_PREFIX) else "那个对象类型"}）', caused_by, moved)
+        _flag(conn, reader, f'它用的{_label(conn, element_id)}需要再看（原因见{"那一组含义" if element_id.startswith(ENUM_PREFIX) else "那条管道" if element_id.startswith(PIPELINE_PREFIX) else "那个对象类型"}）',
+              caused_by, moved, cause, 'parent' if via == 'self' else 'ancestor')
 
 
 def _readers_of_dataset(conn, dataset_name: str) -> set[str]:
@@ -504,7 +524,7 @@ def flag_dataset_readers(conn, dataset_name: str, reason: str, caused_by: str | 
     conn.execute('BEGIN IMMEDIATE')
     try:
         for element_id in sorted(_readers_of_dataset(conn, dataset_name)):
-            _flag(conn, element_id, reason, caused_by, moved)
+            _flag(conn, element_id, reason, caused_by, moved, 'data')
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
@@ -519,7 +539,8 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
     moved: list[str] = []
     from ontology_poc_generator.object_relations import relation_problems   # object_relations and object_views read this module: imported here, where they are used
     from ontology_poc_generator.object_views import view_problems
-    order = lambda e: 0 if e.startswith(ENUM_PREFIX) else 2 if e.startswith((RELATION_PREFIX, VIEW_PREFIX)) else 1   # meanings, then types (which move with their meanings), then relations and views (which move with their types)
+    from ontology_poc_generator.workspace_pipelines import pipeline_problems
+    order = lambda e: (0 if e.startswith(ENUM_PREFIX) else 2 if e.startswith((RELATION_PREFIX, VIEW_PREFIX)) else 1, e)   # meanings, then types and pipelines (which move with their meanings), then relations and views (which move with their types)
     conn.execute('BEGIN IMMEDIATE')
     try:
         for element_id in sorted(readers, key=order):
@@ -527,9 +548,10 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
             if row is None or row['state'] != 'confirmed':
                 continue
             problems = (_enum_problems(conn, row) if element_id.startswith(ENUM_PREFIX) else relation_problems(conn, row) if element_id.startswith(RELATION_PREFIX)
-                        else view_problems(conn, row) if element_id.startswith(VIEW_PREFIX) else _type_problems(conn, _content(row))[0])
+                        else view_problems(conn, row) if element_id.startswith(VIEW_PREFIX) else pipeline_problems(conn, row) if element_id.startswith(PIPELINE_PREFIX)
+                        else _type_problems(conn, _content(row))[0])
             if problems:
-                _flag(conn, element_id, '；'.join(problems), caused_by, moved)
+                _flag(conn, element_id, '；'.join(problems), caused_by, moved, 'data')
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
@@ -550,11 +572,17 @@ def recheck_after_write(conn, name: str, signer: str) -> str | None:
 
 
 def dataset_readers_of(conn, name: str, user: dict | None = None, everyone: bool = True) -> list[dict]:
-    """The object types that read this dataset: all of them for the delete guard (everyone), only the ones this person may see for the "used by" shown on a page."""
-    return [{'kind': '对象类型', 'name': json.loads(content)['name']} for element_id, content in conn.execute(
+    """The object types and pipelines that read this dataset: all of them for the delete guard (everyone), only the ones this person may see for the "used by"
+    shown on a page (the types they may see; the pipelines, unless they are a viewer: a pipeline is a builder's)."""
+    readers = [{'kind': '对象类型', 'name': json.loads(content)['name']} for element_id, content in conn.execute(
         "SELECT s.element_id, s.content_json FROM element_dep d JOIN element_state s ON s.element_id = d.element_id "
         "WHERE d.depends_on = ? AND d.element_id LIKE 'objtype:%' ORDER BY d.element_id", (f'dataset:{name}',))
         if everyone or _visible(conn, element_row(conn, element_id), user)]
+    if everyone or user is None or user['role'] != 'viewer':
+        readers += [{'kind': '管道', 'name': json.loads(content)['name']} for content, in conn.execute(
+            "SELECT s.content_json FROM element_dep d JOIN element_state s ON s.element_id = d.element_id "
+            "WHERE d.depends_on = ? AND d.element_id LIKE 'pipeline:%' ORDER BY d.element_id", (f'dataset:{name}',))]
+    return readers
 
 
 # --- confirming ---------------------------------------------------------------------------------------------------------------------------------
@@ -577,6 +605,13 @@ def seen_of_type(dataset: dict | None) -> dict | None:
 def seen_of_meaning(dataset: dict | None, col: dict | None) -> dict | None:
     """What a person reads of a set of meanings: the dataset version and the rows of each value."""
     return {'dataset_version': dataset['version'], 'counts': dict(col['counts'] or {})} if dataset and col else None
+
+
+def unconfirmed_producers(conn, dataset_name: str) -> list[str]:
+    """The names of the pipelines that write this dataset and are not confirmed: a type built on their output cannot be confirmed before they are."""
+    return [json.loads(content)['name'] for (content,) in conn.execute(
+        "SELECT s.content_json FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on "
+        "WHERE d.element_id = ? AND d.depends_on LIKE 'pipeline:%' AND s.state != 'confirmed' ORDER BY d.depends_on", (f'dataset:{dataset_name}',))]
 
 
 def _unconfirmed_meanings(conn, element_id: str) -> list[str]:
@@ -616,6 +651,9 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
         waiting = _unconfirmed_meanings(conn, element_id)
         if waiting:
             raise TypeRefused(f'它的{"、".join(f"“{c}”" for c in waiting)}的含义还没有确认，要先确认含义', 409)
+        unsettled = unconfirmed_producers(conn, content['dataset'])
+        if unsettled:
+            raise TypeRefused(f'“{content["dataset"]}”是管道{"、".join(f"“{n}”" for n in unsettled)}写出来的数据，管道还没有确认，要先确认管道', 409)
         anchors = {'dataset': dataset['name'], 'version': dataset['version']} if dataset else None
         evidence = f'check_result:{check_id},dataset:{dataset["name"]}@v{dataset["version"]}' if check_id else row['evidence_ref']
         now = seen_of_type(dataset)
@@ -634,18 +672,19 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
 
 
 def write_confirmation(conn, element_id: str, content: dict, evidence: str | None, who: str | None, anchors: dict | None, dataset_versions: dict,
-                       version: int | None = None, reads: list[str] | None = None) -> None:
+                       version: int | None = None, reads: list[str] | None = None, snapshot: dict | None = None) -> None:
     """The element becomes confirmed by this person and the snapshot of what they confirmed (definition, evidence, dataset versions) is kept with it;
     all or nothing. SelfConfirmation when it is their own proposal while two-person confirmation is active. `version`: the one the person read, 409 when the
-    row has moved since; `reads`: what the element reads now, written with it."""
+    row has moved since; `reads`: what the element reads now, written with it; `snapshot`: more evidence kept with the confirmation (a pipeline's statistics)."""
     try:
         with element_state_writes(conn, [(element_id, 'confirmed', evidence, who, content, anchors, None)], None if version is None else {element_id: version}) as rows:
             kept = rows[element_id]
-            conn.execute('INSERT INTO confirmation(element_id, confirmed_by, confirmed_by_user_id, proposed_by, confirmed_at, content_json, evidence_ref, dataset_versions_json, self_confirmed)'
-                         ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            conn.execute('INSERT INTO confirmation(element_id, confirmed_by, confirmed_by_user_id, proposed_by, confirmed_at, content_json, evidence_ref, dataset_versions_json, self_confirmed, snapshot_json)'
+                         ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                          (element_id, kept['confirmed_by'], kept['confirmed_by_user_id'], kept['proposed_by'], kept['confirmed_at'], kept['content_json'], kept['evidence_ref'],
                           json.dumps(dataset_versions, ensure_ascii=False),
-                          int(kept['confirmed_by_user_id'] is not None and kept['confirmed_by_user_id'] == kept['proposed_by_user_id'])))
+                          int(kept['confirmed_by_user_id'] is not None and kept['confirmed_by_user_id'] == kept['proposed_by_user_id']),
+                          None if snapshot is None else json.dumps(snapshot, ensure_ascii=False)))
             if reads is not None:
                 _set_deps(conn, element_id, reads)
     except StaleElement:
@@ -687,16 +726,20 @@ def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
 
 def _state_view(conn, row: dict, user: dict | None) -> dict:
     """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look."""
-    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX, ACTION_PREFIX)))
+    waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX, ACTION_PREFIX, PIPELINE_PREFIX)))
     can, others = _confirmers(conn, row, user)
     meanings = _unconfirmed_meanings(conn, row['element_id']) if row['element_id'].startswith(TYPE_PREFIX) and waiting else []   # a type waits for its meanings first
-    blocked = meanings or (row['state'] == 'needs_look' and conn.execute(
+    producers = unconfirmed_producers(conn, _content(row)['dataset']) if row['element_id'].startswith(TYPE_PREFIX) and waiting else []   # and for the pipeline that writes its data
+    blocked = meanings or producers or (row['state'] == 'needs_look' and conn.execute(
         "SELECT 1 FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND s.state = 'needs_look'", (row['element_id'],)).fetchone())
     last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json, evidence_ref FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1',
                         (row['element_id'],)).fetchone()
     limited = limited_on(conn, row, user)
     return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'reason': row['reason'] if row['state'] in ('needs_look', 'rejected') else None,
             'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited, 'limited_by_rule': limited,
+            'cause': row['cause'] if row['state'] == 'needs_look' else None, 'via': row['via'] if row['state'] == 'needs_look' else None,
+            'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None,
+            'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None, 'pipelines_blocking': producers,
             'confirmers': others if waiting and not blocked else [], 'meanings_blocking': meanings,
             'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None,
             'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at']}
@@ -834,7 +877,7 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
         if change.startswith('action_') and not _action_line_readable(conn, element, after, user):
             continue
         kind = ('dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX)
-                else 'view' if element.startswith(VIEW_PREFIX) else 'action' if element.startswith(ACTION_PREFIX) else 'type')
+                else 'view' if element.startswith(VIEW_PREFIX) else 'action' if element.startswith(ACTION_PREFIX) else 'pipeline' if element.startswith(PIPELINE_PREFIX) else 'type')
         out.append({'at': at, 'who': who, 'element': kind, 'column': element.split(':', 2)[2] if kind == 'meaning' else None, 'change': change,
                     'record': after.get('record') if change.startswith('action_') else None,
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
@@ -842,5 +885,7 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
                     'visible_to': after.get('visible_to') if change == 'access_changed' else None,
                     'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(after['columns']) if change == 'meanings_retired'
                     else after.get('text') if change.startswith('action_') else after.get('summary') if change == 'row_rules_changed'
-                    else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed' else None})
+                    else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed'
+                    else f'第 {after["run"]} 次运行，写了 {"、".join(after["outputs"]) or "没有数据集"}' if change == 'run'
+                    else f'第 {after["run"]} 次运行失败：{after["error"]}' if change == 'run_failed' else None})
     return out

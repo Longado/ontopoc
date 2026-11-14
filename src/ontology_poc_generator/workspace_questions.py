@@ -19,7 +19,7 @@ import re
 from ontology_poc_generator.answer_checks import _uses, choose_rows, definition_catalog, definition_check, refusal
 from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import _relation_visible, check_relation
-from ontology_poc_generator.object_types import ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, type_id
+from ontology_poc_generator.object_types import CAUSE_WORDS, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, stale_word, type_id
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible
 from ontology_poc_generator.ontology_questions import _catalog, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
@@ -126,6 +126,7 @@ def _definition_line(conn, row: dict, user: dict | None) -> dict:
     kind, name = _kind_and_name(conn, row)
     _, confirmers = _confirmers(conn, row, user)
     return {'id': row['element_id'], 'kind': kind, 'name': name, 'state': row['state'], 'reason': row['reason'] if row['state'] in ('needs_look', 'rejected') else None,
+            'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None, 'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None,
             'proposed_by': row['proposed_by'], 'who_can_confirm': confirmers, **({'type': _content(row)['type']} if kind == 'view' else {})}
 
 
@@ -510,5 +511,6 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
     for d in record['definitions']:
         row = element_row(conn, d['id'])
         if row is None or row['state'] != 'confirmed' or row['version'] != d['version']:
-            changed.append({'id': d['id'], 'name': d['name'], 'state': row['state'] if row else None})
+            changed.append({'id': d['id'], 'name': d['name'], 'state': row['state'] if row else None,
+                            **({'reason': row['reason'], 'cause': row['cause'], 'cause_word': CAUSE_WORDS.get(row['cause']), 'stale_word': stale_word(row['cause'], row['via'])} if row and row['state'] == 'needs_look' else {})})
     return {'id': i, 'question': question, 'asked_at': at, **record, 'stale': stale, 'changed': changed}

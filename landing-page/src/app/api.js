@@ -104,6 +104,32 @@ export const submitAction = (action, key, params, reason) => send("/api/workspac
 export const decideRecord = (id, decision, note = "") => send("/api/workspace/actions/decide", { id, decision, note });
 export const withdrawRecord = (id) => send("/api/workspace/actions/withdraw", { id });
 
+// pipelines. A try (preview, summary, expression trial) writes nothing, so it does not tell the navigation to count again.
+const pipelinePath = (name, tail = "") => `/api/workspace/pipelines/${encodeURIComponent(name)}${tail}`;
+const tryOut = (path, payload) => request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+export const getPipelines = () => request("/api/workspace/pipelines").then((b) => b.pipelines);
+/** The operators by category, the functions by group, the aggregations, the join kinds: what the editors list. */
+export const getPipelineOptions = () => request("/api/workspace/pipelines/options");
+export const getPipeline = (name) => request(pipelinePath(name));
+export const getPipelineVersions = (name, from = null, to = null) => request(pipelinePath(name, `/versions${from && to ? `?from=${from}&to=${to}` : ""}`));
+export const getPipelineRuns = (name) => request(pipelinePath(name, "/runs")).then((b) => b.runs);
+export const getPipelineRun = (name, id) => request(pipelinePath(name, `/runs/${id}`));
+export const getPipelineLog = (name) => request(pipelinePath(name, "/log")).then((b) => b.log);
+export const createPipeline = (name, description, spec) => send("/api/workspace/pipelines", { name, description, spec });
+/** Saves a changed definition as the version the person had open (409 when it moved since). */
+export const savePipeline = (name, version, spec) => send("/api/workspace/pipelines/update", { id: name, version, spec });
+export const runPipeline = (name) => send("/api/workspace/pipelines/run", { id: name });
+/** Confirms what the person looked at: the definition version and the input versions they saw. */
+export const confirmPipeline = (name, version, inputs) => send("/api/workspace/pipelines/confirm", { id: name, version, seen: { inputs } });
+export const reviewPipeline = (name) => tryOut("/api/workspace/pipelines/review", { id: name });
+/** Every node's counts for the cards, from the draft as it is now. */
+export const pipelineSummary = (name, spec) => tryOut("/api/workspace/pipelines/summary", { id: name, spec });
+export const previewNode = (name, spec, node, operator = null) => tryOut("/api/workspace/pipelines/preview", { id: name, spec, node, ...(operator == null ? {} : { operator }) });
+export const operatorColumns = (name, spec, step, operator) => tryOut("/api/workspace/pipelines/columns", { id: name, spec, step, operator });
+export const checkExpression = (name, spec, step, operator, expression, type) => tryOut("/api/workspace/pipelines/expression/check", { id: name, spec, step, operator, expression, ...(type ? { type } : {}) });
+export const trialExpression = (name, spec, step, operator, expression) => tryOut("/api/workspace/pipelines/expression/trial", { id: name, spec, step, operator, expression });
+export const guessDateFormat = (examples) => tryOut("/api/workspace/pipelines/format-guess", { examples });
+
 // relations, the 待确认 queue, who sees which type
 const relationPath = (id, tail = "") => `/api/workspace/relations/${encodeURIComponent(id)}${tail}`;
 export const getRelations = () => request("/api/workspace/relations").then((b) => b.relations);

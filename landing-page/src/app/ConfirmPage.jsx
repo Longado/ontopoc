@@ -8,7 +8,7 @@ import { useLoad } from "./useLoad.js";
 
 import { viewWaitingText } from "./viewModel.js";
 
-const KIND = { type: "对象类型", meaning: "取值含义", relation: "关系", view: "视图", action: "行为", approval: "行为提交" };
+const KIND = { type: "对象类型", meaning: "取值含义", relation: "关系", view: "视图", action: "行为", approval: "行为提交", pipeline: "管道" };
 
 function Card({ item, onChanged }) {
   const [asking, setAsking] = useState(false);
@@ -54,23 +54,26 @@ function Card({ item, onChanged }) {
         </div>
       )}
       {item.kind === "approval" && !item.can_confirm && !item.can_withdraw && item.state === "pending" && <p className="muted">需要另一位构建者批准，提交的人自己不能批准。</p>}
-      {item.kind !== "approval" && action === "confirm" && !asking && (
+      {item.kind === "pipeline" && (
+        <p>{action === "confirm" ? <a className="button primary" href={itemHref(item)}>看改了什么，再确认</a> : <a href={itemHref(item)}>打开管道</a>}</p>
+      )}
+      {item.kind !== "approval" && item.kind !== "pipeline" && action === "confirm" && !asking && (
         <div className="inline">
           <button className="primary" disabled={busy} onClick={() => act(() => confirmItem(item.element, item.version, item.seen))}>确认</button>
           <button className="secondary" disabled={busy} onClick={() => setAsking(true)}>退回</button>
         </div>
       )}
-      {item.kind !== "approval" && action === "confirm" && asking && (
+      {item.kind !== "approval" && item.kind !== "pipeline" && action === "confirm" && asking && (
         <div className="inline wide">
           <input type="text" aria-label="退回的理由" value={reason} maxLength={300} placeholder="写明哪里不对" onChange={(e) => setReason(e.target.value)} />
           <button className="primary" disabled={busy || !reason.trim()} onClick={() => act(() => sendBack(item.element, item.version, reason))}>退回</button>
           <button className="plain" onClick={() => setAsking(false)}>取消</button>
         </div>
       )}
-      {item.kind !== "approval" && action === "wait" && (
+      {item.kind !== "approval" && item.kind !== "pipeline" && action === "wait" && (
         <p className="muted">{item.model_draft ? "模型写的草稿，等一位构建者看过确认。" : "需要另一位构建者确认，不能由提出的人自己确认。"}{confirmersText(item) && ` ${confirmersText(item)}`}</p>
       )}
-      {item.kind !== "approval" && action === "blocked" && <p className="warn">{item.kind === "view" ? viewWaitingText(item) : waitingText(item)}</p>}
+      {item.kind !== "approval" && item.kind !== "pipeline" && action === "blocked" &&<p className="warn">{item.kind === "view" ? viewWaitingText(item) : waitingText(item)}</p>}
       {action === "repropose" && <p><a href={itemHref(item)}>到类型的属性页，按现在的数据写新的含义</a> <span className="muted small">提出后由另一位确认</span></p>}
       {error && <p className="error">{error}</p>}
       <p className="muted small">{item.proposed_by ? `${item.proposed_by} 提出` : "写入"} {timeText(item.written_at)}</p>

@@ -29,11 +29,11 @@ class RouteTableTests(unittest.TestCase):
         for name in ('ontology_server.py', 'auth_http.py'):
             literals |= set(re.findall(r"""['"](/api/[A-Za-z0-9_/-]*)['"]""", (SOURCES / name).read_text(encoding='utf-8')))
         literals -= {'/api/recall', '/api/ontology', '/api/workspace', '/api/auth/', '/api/users/', '/api/workspace/', '/api/ontology/runs/', '/api/ontology/library/',
-                     '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/'}   # prefixes the code compares against; their routes are checked below
+                     '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/', '/api/workspace/pipelines/'}   # prefixes the code compares against; their routes are checked below
         self.assertGreater(len(literals), 25)
         missing = sorted(p for p in literals if route_role('GET', p) is None and route_role('POST', p) is None)
         self.assertEqual(missing, [])
-        for prefix in ('/api/ontology/runs/', '/api/ontology/library/', '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/'):
+        for prefix in ('/api/ontology/runs/', '/api/ontology/library/', '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/', '/api/workspace/pipelines/'):
             self.assertIsNotNone(route_role('GET', prefix + 'x'), prefix)
 
     def test_a_route_not_in_the_table_needs_an_admin(self):
@@ -57,6 +57,9 @@ class RouteTableTests(unittest.TestCase):
                 ('POST', '/api/workspace/datasets/upload', 'builder'), ('POST', '/api/workspace/datasets/delete', 'builder'), ('POST', '/api/ontology/build', 'builder'),
                 ('POST', '/api/ontology/confirm', 'builder'), ('POST', '/api/ontology/code-meanings/withdraw', 'builder'), ('POST', '/api/ontology/pipelines/run', 'builder'),
                 ('POST', '/api/ontology/review/confirm', 'builder'), ('POST', '/api/ontology/requery', 'builder'), ('POST', '/api/ontology/library/import', 'builder'),
+                ('GET', '/api/workspace/pipelines', 'builder'), ('GET', '/api/workspace/pipelines/options', 'builder'), ('GET', '/api/workspace/pipelines/x/runs/2', 'builder'),
+                ('POST', '/api/workspace/pipelines', 'builder'), ('POST', '/api/workspace/pipelines/run', 'builder'), ('POST', '/api/workspace/pipelines/expression/trial', 'builder'),
+                ('POST', '/api/workspace/pipelines/delete', 'admin'),
                 ('GET', '/api/users', 'admin'), ('POST', '/api/users/disable', 'admin'),
                 ('POST', '/api/auth/login', PUBLIC), ('GET', '/api/ontology/health', PUBLIC), ('GET', '/api/auth/me', SESSION), ('POST', '/api/auth/tokens/revoke', SESSION)):
             self.assertEqual(required_role(method, path), role, (method, path))
