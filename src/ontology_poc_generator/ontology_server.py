@@ -1373,7 +1373,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif parts == ['options']:
                     body = pipeline_options()
                 elif len(parts) == 1:
-                    body = pipeline_detail(conn, parts[0], self.user)
+                    body = pipeline_detail(conn, parts[0], self.user, llm)
                 elif parts[1:] == ['versions']:
                     body = pipeline_versions(conn, parts[0], self.user, number('from'), number('to'))
                 elif parts[1:] == ['runs']:

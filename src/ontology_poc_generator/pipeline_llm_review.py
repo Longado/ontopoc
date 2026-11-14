@@ -74,9 +74,13 @@ def _is_number(value) -> bool:
 
 
 def draw(rows: list[tuple[int, dict]], fields: list[str], n: int, seed, skip: set[str]) -> list[tuple[int, dict]]:
-    """n rows at random from the rows that have something to ask and are not in `skip` (row hashes); the same seed draws the same rows."""
-    pool = [(i, v) for i, (_, v) in enumerate(rows) if not all(_blank(v[f]) for f in fields) and row_hash(v, fields) not in skip]
-    return random.Random(seed).sample(pool, min(n, len(pool)))
+    """n rows with different content at random from the rows that have something to ask and are not in `skip` (row hashes); the same seed draws the same rows."""
+    pool = {}
+    for i, (_, v) in enumerate(rows):
+        key = row_hash(v, fields)
+        if not all(_blank(v[f]) for f in fields) and key not in skip:
+            pool.setdefault(key, (i, v))   # the same content is one row to label: its answer is the same
+    return random.Random(seed).sample(list(pool.values()), min(n, len(pool)))
 
 
 def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: list[str], rows: list[tuple[int, dict]]) -> list[dict]:

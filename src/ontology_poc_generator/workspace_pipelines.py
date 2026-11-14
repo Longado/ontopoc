@@ -788,7 +788,9 @@ def ai_uncleared(conn, dataset_name: str, model: str | None = None) -> dict[str,
         compiled = {s['id']: s for s in compile_pipeline(spec, resolved['datasets'], resolved['views'], ctx)}
     finally:
         drop_temporary(conn, resolved)
-    out = next(s for s in spec['steps'] if s['type'] == 'output' and s['name'] == dataset_name)
+    out = next((s for s in spec['steps'] if s['type'] == 'output' and s['name'] == dataset_name), None)
+    if out is None:
+        return {}
     marked = [c['name'] for c in compiled[out['id']]['columns'] if c.get('ai')]
     if not marked:
         return {}
@@ -847,7 +849,7 @@ def list_pipelines(conn, user: dict | None) -> list[dict]:
     return out
 
 
-def pipeline_detail(conn, name: str, user: dict | None) -> dict:
+def pipeline_detail(conn, name: str, user: dict | None, llm: LlmService | None = None) -> dict:
     row = _pipeline_row(conn, name, user)
     content = _content(row)
     ctx, _ = build_context(conn)
@@ -856,7 +858,8 @@ def pipeline_detail(conn, name: str, user: dict | None) -> dict:
     last = _last_confirmation(conn, row['element_id'])
     return {'id': content['name'], 'name': content['name'], 'description': content['description'], 'spec': content['spec'], 'definition_version': content['definition_version'],
             'versions': versions, 'outputs': output_states(conn, row), 'inputs_now': _inputs_now(conn, content), 'changes_since_confirmed': diff_specs(last['content']['spec'] if last else None, content['spec']),
-            'confirmed_definition_version': last['content']['definition_version'] if last else None, **pipeline_state(conn, row, user)}
+            'confirmed_definition_version': last['content']['definition_version'] if last else None, 'ai_nodes': ai_nodes(conn, content, llm.model if llm else None),
+            **pipeline_state(conn, row, user)}
 
 
 def pipeline_versions(conn, name: str, user: dict | None, frm=None, to=None) -> dict:
