@@ -52,7 +52,7 @@ function LabelledRows({ node }) {
   const rows = node.rows.map(labelledRow).sort((a, b) => Number(a.matched) - Number(b.matched));
   if (!rows.length) return <p className="muted small">{node.name}：还没有人标注过行，没有什么可看的。</p>;
   return (
-    <details className="labelled" open={!node.review.passed}>
+    <details className="labelled" open>
       <summary>{node.name}：标注的 {rows.length} 行，期望的答案和 AI 的答案（{rows.filter((r) => r.checked && !r.matched).length} 行没对上）</summary>
       <div className="table-wrap">
         <table className="wraps">
