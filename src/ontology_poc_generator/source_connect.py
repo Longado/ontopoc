@@ -112,6 +112,10 @@ def describe(exc: BaseException, password: str) -> str:
         if arg == 3024 or arg == 1317:
             return f'查询超过 {STATEMENT_SECONDS} 秒，已被数据库停掉'
         return f'数据库说：{scrub(exc.args[1], password)}'
+    cause = exc
+    while cause.__cause__ is not None:   # pg8000 wraps the socket error in its own InterfaceError
+        cause = cause.__cause__
+    exc = cause if isinstance(cause, OSError) else exc
     if isinstance(exc, (TimeoutError, socket.timeout)):
         return f'连接超时（{CONNECT_SECONDS} 秒没有应答）'
     if isinstance(exc, ConnectionRefusedError):
@@ -185,7 +189,9 @@ class _Sql(Connection):
         cursor = self.raw.cursor()
         try:
             cursor.execute(sql)
-            return [d[0] for d in cursor.description or []], list(cursor.fetchall())
+            if not cursor.description:   # a statement with no result (SET): nothing to fetch, and pg8000 refuses to try
+                return [], []
+            return [d[0] for d in cursor.description], list(cursor.fetchall())
         finally:
             cursor.close()
 

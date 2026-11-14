@@ -169,13 +169,13 @@ export function SourcePage({ route }) {
           {source.can_write && <p className="warn">这个账号不是只读的：{source.write_note}。服务只用只读会话读数据，但建议换成只有 SELECT 权限的账号。</p>}
           {message && <p className="muted">{message}</p>}
 
-          <h2>库里的表</h2>
+          <h2 className="section">库里的表</h2>
           {!live && <p><button className="secondary" onClick={look}>查看库里的表</button></p>}
           {live?.status === "loading" && <p className="muted">正在连接，数每张表的行数</p>}
           {live?.status === "error" && <p className="error">{live.error} <button className="plain" onClick={look}>重试</button></p>}
           {live?.status === "ready" && (live.tables.length ? <Tables name={name} tables={live.tables} reload={afterPull} /> : <p className="muted">库里没有表，或这个账号看不到。</p>)}
 
-          <h2>已读成的数据集</h2>
+          <h2 className="section">已读成的数据集</h2>
           {!source.tables.length ? <p className="muted">还没有。从上面的表里选一张读成数据集。</p> : (
             <div className="table-wrap">
               <table>
@@ -194,14 +194,14 @@ export function SourcePage({ route }) {
             </div>
           )}
 
-          <h2>调度</h2>
+          <h2 className="section">调度</h2>
           {source.schedules.length ? (
             <ul className="plain-list">
               {source.schedules.map((s) => <li key={s.id}><a href="#/schedules">{s.name}</a> {s.when}{!s.enabled && <span className="faint">（已关）</span>}</li>)}
             </ul>
           ) : <p className="muted">没有。<a href="#/schedules">去设一个定时刷新</a></p>}
 
-          <h2>拉取记录</h2>
+          <h2 className="section">拉取记录</h2>
           <Runs runs={source.runs} />
         </>
       )}

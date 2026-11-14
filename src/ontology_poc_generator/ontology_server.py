@@ -2971,11 +2971,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         finally:
             schedule_conn.close()
 
-    startup = open_workspace(output_dir / 'workspace.sqlite')
-    try:
-        interrupted_runs(startup)   # a pull or run left "running" by a process that is gone
-    finally:
-        startup.close()
+    if (output_dir / 'workspace.sqlite').exists():   # a data directory that has no workspace yet is not given one by starting
+        startup = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            interrupted_runs(startup)   # a pull or run left "running" by a process that is gone
+        finally:
+            startup.close()
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
     server.run_schedules = run_schedules
     server.gate = gate
