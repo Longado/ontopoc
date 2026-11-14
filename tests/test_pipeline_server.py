@@ -384,3 +384,62 @@ class PipelineServerTests(SigningTestCase):
             self.assertEqual(bob.post(f'{PIPELINES}/preview', {'id': '看视图', 'node': 'out'})[0], 404)
             self.assertEqual(self.readable(bob), (404, False))
             self.assertEqual(self.readable(ann), (200, True))
+
+    # --- an unconfirmed pipeline taking over a dataset; several outputs written together ------------------------------------------------------------------
+
+    TAKEOVER = {'steps': [{'id': 'o', 'type': 'input', 'dataset': '订单备份'}, {'id': 'out', 'type': 'output', 'from': 'o', 'name': '订单', 'mode': 'new_version', 'key': {'columns': ['订单号']}}]}
+
+    def confirmed_order_type(self, ann, bob):
+        self.assertEqual(ann.post('/api/workspace/types', ORDER)[0], 200)
+        for column in ('状态码', None):
+            detail = bob.get('/api/workspace/types/order')[1]
+            shown = next(p for p in detail['properties'] if p['column'] == column)['meanings'] if column else detail
+            self.assertEqual(bob.post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen'], **({'column': column} if column else {})})[0], 200)
+        self.assertEqual(bob.get('/api/workspace/types/order')[1]['state'], 'confirmed')
+
+    def test_a_pipeline_nobody_confirmed_that_takes_over_a_dataset_a_confirmed_type_reads_sends_that_type_back_for_new_data_and_names_the_pipeline(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [csv_part('订单备份', RECORDS['订单'][:100])]})[0], 200)
+            self.confirmed_order_type(ann, bob)
+            self.make(ann, self.TAKEOVER, '订单重算')
+            state = bob.get('/api/workspace/types/order')[1]
+            self.assertEqual((state['state'], state['cause'], state['cause_word']), ('needs_look', 'data', '数据变了'))
+            self.assertIn('订单重算', state['reason'])
+            # put the type back as confirmed (as if it were, with the pipeline still unconfirmed) and run: the run flags it too
+            import sqlite3
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            conn.execute("UPDATE element_state SET state = 'confirmed', reason = NULL WHERE element_id = 'objtype:order'")
+            conn.commit()
+            conn.close()
+            self.go(ann, '订单重算')
+            state = bob.get('/api/workspace/types/order')[1]
+            self.assertEqual((state['state'], state['cause']), ('needs_look', 'data'))
+            self.assertIn('订单重算', state['reason'])
+
+    def test_two_outputs_are_written_together_and_a_second_that_fails_takes_the_first_back(self):
+        from unittest import mock
+        from ontology_poc_generator import workspace_pipelines
+        two = {'steps': [{'id': 'o', 'type': 'input', 'dataset': '订单'}, {'id': 't', 'type': 'input', 'dataset': '售后工单'},
+                         {'id': 'a', 'type': 'output', 'from': 'o', 'name': '订单甲', 'key': {'columns': ['订单号']}},
+                         {'id': 'b', 'type': 'output', 'from': 't', 'name': '工单乙', 'key': {'columns': ['工单号']}}]}
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann = team['ann']
+            self.make(ann, two, '两份输出')
+            real, calls = workspace_pipelines.apply_upload, []
+
+            def second_fails(*args, **kwargs):
+                calls.append(1)
+                if len(calls) == 2:
+                    raise RuntimeError('disk full')
+                return real(*args, **kwargs)
+            with mock.patch.object(workspace_pipelines, 'apply_upload', second_fails):
+                with self.assertRaises(Exception):   # the server drops the connection on an error that is not ours to explain
+                    ann.post(f'{PIPELINES}/run', {'id': '两份输出'})
+            names = [d['name'] for d in ann.get('/api/workspace/datasets')[1]['datasets']]
+            self.assertNotIn('订单甲', names)
+            self.assertNotIn('工单乙', names)
+            self.assertEqual(ann.get(f'{PIPELINES}/{quote("两份输出")}/runs')[1]['runs'][0]['status'], 'failed')
+            self.assertEqual([w['dataset'] for w in self.go(ann, '两份输出')['outputs']], ['订单甲', '工单乙'])   # and run again, both are written

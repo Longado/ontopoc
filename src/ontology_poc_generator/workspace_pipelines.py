@@ -22,7 +22,7 @@ import time
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.object_types import (
-    MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, STALE, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _flag_readers, _state_view, _text, dataset_columns,
+    MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, STALE, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _flag, _flag_readers, _state_view, _text, dataset_columns,
     element_row, log_entries, recheck_after_write, unconfirmed_producers, write_confirmation)
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import guess_formats, number_text, register
@@ -253,6 +253,13 @@ def _write(conn, change: tuple, reads: list[str], outputs: list[str], version_ro
         raise TypeRefused(STALE, 409) from None
 
 
+def _flag_takeover(conn, name: str, datasets: list[str]) -> None:
+    """A pipeline nobody has confirmed writes (or is now to write) these datasets: what is confirmed on them, types, views, other pipelines, goes to needs_look for new
+    data and says which pipeline, since confirming a type means confirming the pipeline under it too (unconfirmed_producers). Inside the caller's transaction."""
+    for dataset in datasets:
+        _flag(conn, f'dataset:{dataset}', f'数据集“{dataset}”现在由管道“{name}”写，这条管道还没有确认', pipeline_id(name), [], 'data', 'self')
+
+
 def _version_row(element_id: str, version: int, content: dict, who: str | None) -> tuple:
     return (element_id, version, json.dumps({'spec': content['spec'], 'description': content['description']}, ensure_ascii=False, sort_keys=True), who, actor_id_for(who), now_text())
 
@@ -273,7 +280,8 @@ def create_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
         for (other,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'pipeline:%'"):
             if other.casefold() == element_id.casefold():
                 raise TypeRefused(f'已经有叫“{other[len(PIPELINE_PREFIX):]}”的管道（名字不分大小写）', 409)
-        _write(conn, _change(found['content'], 1, found['versions'], who), found['reads'], found['outputs'], _version_row(element_id, 1, found['content'], who))
+        _write(conn, _change(found['content'], 1, found['versions'], who), found['reads'], found['outputs'], _version_row(element_id, 1, found['content'], who), None,
+               lambda c: _flag_takeover(c, found['content']['name'], found['outputs']))
     finally:
         drop_temporary(engine, found['resolved'])
     return {'id': found['content']['name'], 'definition_version': 1}
@@ -615,21 +623,33 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None) -> 
 
 
 def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, nodes: list[dict], outputs: dict, who: str | None) -> list[dict]:
-    """Each output as a new dataset or a new version, carrying the run, the definition version and the input versions; what reads each is checked again."""
+    """Every output as a new dataset or a new version, carrying the run, the definition version and the input versions: all of them in one transaction, so a second
+    output that cannot be written takes the first back. When the pipeline is not confirmed, what is confirmed on its outputs goes to needs_look (_flag_takeover). After
+    the write, what reads each output is checked again."""
     signer = who or '未署名'
     written = []
-    for step in content['spec']['steps']:
-        if step['type'] != 'output' or step['id'] not in outputs:
-            continue
-        columns = next(n for n in nodes if n['id'] == step['id'])['output']['columns']
-        records = [dict(zip([c['name'] for c in columns], r)) for r in outputs[step['id']]]
-        existing = current_dataset(conn, step['name'])
-        plan = plan_upload(conn, step['name'], records, mode='overwrite' if existing else None, rows_in=len(records))
-        plan['changes'] = {**plan['changes'], 'pipeline': {'id': content['name'], 'run': run_id, 'definition_version': content['definition_version'], 'inputs': versions}}
-        done = apply_upload(conn, plan, signer, origin=f'pipeline:{content["name"]}@run{run_id}')
-        error = recheck_after_write(conn, step['name'], signer) if done['created'] else None
-        written.append({'dataset': step['name'], 'version': done['dataset']['version'], 'rows': len(records), 'created_version': done['created'], 'mode': plan['mode'],
-                        'recheck_error': error})
+    conn.execute('BEGIN IMMEDIATE')   # apply_upload joins a transaction its caller holds
+    try:
+        for step in content['spec']['steps']:
+            if step['type'] != 'output' or step['id'] not in outputs:
+                continue
+            columns = next(n for n in nodes if n['id'] == step['id'])['output']['columns']
+            records = [dict(zip([c['name'] for c in columns], r)) for r in outputs[step['id']]]
+            existing = current_dataset(conn, step['name'])
+            plan = plan_upload(conn, step['name'], records, mode='overwrite' if existing else None, rows_in=len(records))
+            plan['changes'] = {**plan['changes'], 'pipeline': {'id': content['name'], 'run': run_id, 'definition_version': content['definition_version'], 'inputs': versions}}
+            done = apply_upload(conn, plan, signer, origin=f'pipeline:{content["name"]}@run{run_id}')
+            if done['created'] and row['state'] != 'confirmed':
+                _flag_takeover(conn, content['name'], [step['name']])
+            written.append({'dataset': step['name'], 'version': done['dataset']['version'], 'rows': len(records), 'created_version': done['created'], 'mode': plan['mode'],
+                            'recheck_error': None})
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    for item in written:
+        if item['created_version']:
+            item['recheck_error'] = recheck_after_write(conn, item['dataset'], signer)
     return written
 
 
