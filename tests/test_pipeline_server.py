@@ -310,3 +310,77 @@ class PipelineServerTests(SigningTestCase):
             self.assertIn('行规则', body['error'])
             self.assertEqual(team['bob'].post(PIPELINES, {'name': '客户合计', 'spec': SPEC})[0], 404)   # a builder the rule does not name does not see the dataset at all
             self.assertEqual(ann.get(PIPELINES)[1]['pipelines'], [])
+
+    # --- what a pipeline's output inherits from what it reads ------------------------------------------------------------------------------------------
+
+    COPY = {'steps': [{'id': 'o', 'type': 'input', 'dataset': '订单'}, {'id': 'out', 'type': 'output', 'from': 'o', 'name': '订单副本', 'key': {'columns': ['订单号']}}]}
+
+    def ids(self, admin):
+        return {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
+
+    def readable(self, client, name='订单副本'):
+        """Whether this person gets the dataset's rows or detail, and whether it is in their list."""
+        listed = name in [d['name'] for d in client.get('/api/workspace/datasets')[1]['datasets']]
+        return client.get(f'/api/workspace/datasets/{quote(name)}')[0], listed
+
+    def test_a_copy_of_a_dataset_hidden_from_someone_is_hidden_from_them_too_and_so_is_a_copy_of_the_copy(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            ids = self.ids(admin)
+            self.assertEqual(ann.post('/api/workspace/types', ORDER)[0], 200)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [ids['ann']]})[0], 200)   # only Ann sees the type, so the dataset
+            self.make(ann, self.COPY, '订单副本')
+            self.go(ann, '订单副本')
+            self.assertEqual(self.readable(ann), (200, True))
+            self.assertEqual(self.readable(admin), (200, True))
+            self.assertEqual(self.readable(bob), (404, False))
+            self.assertEqual(self.readable(vera), (404, False))
+            self.assertEqual(bob.get(f'/api/workspace/datasets/{quote("订单副本")}?format=csv')[0], 404)
+            self.assertEqual(bob.get(f'{PIPELINES}/{quote("订单副本")}')[0], 404)
+            # the same for a copy of a copy
+            second = {'steps': [{'id': 'o', 'type': 'input', 'dataset': '订单副本'}, {'id': 'out', 'type': 'output', 'from': 'o', 'name': '订单副本二', 'key': {'columns': ['订单号']}}]}
+            self.make(ann, second, '再抄一份')
+            self.go(ann, '再抄一份')
+            self.assertEqual(self.readable(bob, '订单副本二'), (404, False))
+            self.assertEqual(self.readable(ann, '订单副本二'), (200, True))
+
+    def test_a_row_rule_added_after_a_run_hides_the_output_from_the_people_it_limits(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            ids = self.ids(admin)
+            self.assertEqual(ann.post('/api/workspace/types', ORDER)[0], 200)
+            self.make(ann, self.COPY, '订单副本')
+            self.go(ann, '订单副本')
+            self.assertEqual(self.readable(bob), (200, True))                                                       # nothing holds the rows back yet
+            rules = [{'column': '状态码', 'value': '0', 'user_ids': [ids['vera']]}, {'user_ids': [ids['ann']]}]
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': rules})[0], 200)
+            self.assertEqual(self.readable(bob), (404, False))                                                      # the existing output has every row, so it is theirs no longer
+            self.assertEqual(self.readable(vera), (404, False))
+            self.assertEqual(self.readable(ann), (200, True))                                                       # Ann is named for all rows
+            self.assertEqual(self.readable(admin), (200, True))
+
+    def test_a_pipeline_that_reads_a_view_of_a_type_someone_may_not_see_is_not_theirs_to_see_nor_is_what_it_wrote(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            ids = self.ids(admin)
+            self.assertEqual(ann.post('/api/workspace/types', ORDER)[0], 200)
+            for column in ('状态码', None):
+                detail = bob.get('/api/workspace/types/order')[1]
+                shown = next(p for p in detail['properties'] if p['column'] == column)['meanings'] if column else detail
+                self.assertEqual(bob.post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen'], **({'column': column} if column else {})})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types/views', {'name': '有效订单', 'type': 'order', 'filters': [{'column': '状态码', 'op': 'is_not', 'label': '已取消'}]})[0], 200)
+            shown = bob.get('/api/workspace/types/order/views')[1]['views'][0]
+            self.assertEqual(bob.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [ids['ann']]})[0], 200)
+            spec = {'steps': [{'id': 'v', 'type': 'input', 'view': '有效订单'}, {'id': 'out', 'type': 'output', 'from': 'v', 'name': '订单副本', 'key': {'columns': ['订单号']}}]}
+            self.make(ann, spec, '看视图')
+            run = self.go(ann, '看视图')
+            self.assertEqual(bob.get(PIPELINES)[1]['pipelines'], [])
+            for path in ('', '/runs', f'/runs/{run["id"]}', '/log', '/versions'):
+                self.assertEqual(bob.get(f'{PIPELINES}/{quote("看视图")}{path}')[0], 404, path)
+            self.assertEqual(bob.post(f'{PIPELINES}/preview', {'id': '看视图', 'node': 'out'})[0], 404)
+            self.assertEqual(self.readable(bob), (404, False))
+            self.assertEqual(self.readable(ann), (200, True))

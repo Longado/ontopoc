@@ -30,7 +30,7 @@ from ontology_poc_generator.pipeline_ops import AGGREGATIONS, CAST_TYPES, CATALO
 from ontology_poc_generator.pipelines import (
     HOWS, ROW_CAP, PipelineRunError, check_pipeline, compile_pipeline, dataset_key, needed_steps, run_pipeline, workspace_datasets)
 from ontology_poc_generator.row_rules import has_rules
-from ontology_poc_generator.type_access import dataset_hidden
+from ontology_poc_generator.type_access import dataset_hidden, view_input_hidden
 from ontology_poc_generator.workspace_store import (
     SelfConfirmation, StaleElement, apply_upload, current_dataset, element_state_writes, log_line, now_text, plan_upload)
 from ontology_poc_generator.object_views import view_summary, view_visible
@@ -87,7 +87,7 @@ def resolve_inputs(conn, engine, spec, user: dict | None) -> dict:
             reads.append(f'dataset:{name}')
         elif isinstance(step.get('view'), str):
             view = element_row(conn, f'{VIEW_PREFIX}{step["view"]}')
-            if view is None or not view_visible(conn, view, user):
+            if view is None or not view_visible(conn, view, user) or view_input_hidden(conn, view['element_id'], user):
                 raise TypeRefused(f'没有叫“{step["view"]}”的视图', 404)
             if view['state'] != 'confirmed':
                 raise TypeRefused(f'视图“{step["view"]}”还没有确认（{view["state"]}），不能做管道的输入', 409)
@@ -141,11 +141,22 @@ def _datasets_of(spec) -> list[str]:
     return [s['dataset'] for s in (spec.get('steps') or []) if isinstance(s, dict) and s.get('type') == 'input' and isinstance(s.get('dataset'), str)]
 
 
+def _views_of(spec) -> list[str]:
+    return [s['view'] for s in (spec.get('steps') or []) if isinstance(s, dict) and s.get('type') == 'input' and isinstance(s.get('view'), str)]
+
+
 def pipeline_visible(conn, row: dict, user: dict | None) -> bool:
-    """A pipeline is a builder's, and not shown to a person who may not see a dataset it reads."""
+    """A pipeline is a builder's, and not shown to a person who may not see a dataset it reads, or a view (or the type or dataset under the view)."""
     if user is not None and user['role'] == 'viewer':
         return False
-    return not any(dataset_hidden(conn, name, user) for name in _datasets_of(_content(row)['spec']))
+    spec = _content(row)['spec']
+    if any(dataset_hidden(conn, name, user) for name in _datasets_of(spec)):
+        return False
+    for name in _views_of(spec):
+        view = element_row(conn, f'{VIEW_PREFIX}{name}')
+        if view is not None and (not view_visible(conn, view, user) or view_input_hidden(conn, view['element_id'], user)):
+            return False
+    return True
 
 
 def _pipeline_row(conn, name, user: dict | None) -> dict:
