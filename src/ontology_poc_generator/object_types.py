@@ -807,6 +807,13 @@ def list_types(conn, user: dict | None) -> list[dict]:
     return out
 
 
+def hidden_type_count(conn, user: dict | None) -> int:
+    """How many types exist that this person cannot open because a list of people leaves them out (a draft a viewer may not see yet is not counted: it is not out yet).
+    Only the number: the names are the list's own business."""
+    return sum(1 for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%'").fetchall()
+               if not can_access(conn, element_id, user) and not (user is not None and user['role'] == 'viewer' and element_row(conn, element_id)['state'] != 'confirmed'))
+
+
 def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | None, user: dict | None) -> dict:
     """One code column: its values as the data has them now beside the meanings on file and the rows each had when they were confirmed, and the state."""
     row = element_row(conn, enum_id(content['english_name'], prop['column']))

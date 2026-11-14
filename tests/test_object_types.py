@@ -285,7 +285,7 @@ class ObjectTypeTests(SigningTestCase):
             self.assertEqual(status, 400)
             self.assertIn('KH012', body['error'])
             self.assertEqual((body['key_check']['rows_checked'], body['key_check']['violations'], body['key_check']['repeated']), (31, 1, [{'key': ['KH012'], 'rows': 2}]))
-            self.assertEqual(ann.get('/api/workspace/types')[1], {'types': []})   # nothing was saved
+            self.assertEqual(ann.get('/api/workspace/types')[1], {'types': [], 'hidden': 0})   # nothing was saved
             status, body = ann.post('/api/workspace/types/key-check', {'dataset': '订单承诺', 'key': ['订单号']})
             self.assertEqual((status, body['key_check']['violations']), (400, 61))
             status, body = ann.post('/api/workspace/types/key-check', {'dataset': '订单承诺', 'key': ['订单号', '承诺版本']})   # a composite key is fine
@@ -338,7 +338,7 @@ class ObjectTypeTests(SigningTestCase):
         with self.service() as (base, _):
             team = self.team(base, 'ann', 'bob', 'vic', roles={'vic': 'viewer'})
             team['ann'].post('/api/workspace/types', ORDER)
-            self.assertEqual(team['vic'].get('/api/workspace/types')[1], {'types': []})
+            self.assertEqual(team['vic'].get('/api/workspace/types')[1], {'types': [], 'hidden': 0})
             self.assertEqual(team['vic'].get('/api/workspace/types/order')[0], 404)
             self.assertEqual(team['vic'].post('/api/workspace/types/confirm', {'id': 'order', 'version': 1})[0], 403)
             self.assertEqual(team['vic'].post('/api/workspace/types', ORDER)[0], 403)
@@ -347,6 +347,18 @@ class ObjectTypeTests(SigningTestCase):
                 self.assertEqual(self.confirm(team['bob'], column)[0], 200)
             self.assertEqual([t['id'] for t in team['vic'].get('/api/workspace/types')[1]['types']], ['order'])
             self.assertEqual(self.detail(team['vic'])['can_confirm'], False)
+
+    def test_a_person_a_type_is_not_open_to_is_told_how_many_there_are_and_never_which(self):
+        with self.service() as (base, _):
+            team = self.team(base, 'ann', 'bob', 'vic', roles={'vic': 'viewer'})
+            ann, bob, vic, admin = team['ann'], team['bob'], team['vic'], team['admin']
+            ann.post('/api/workspace/types', ORDER)
+            self.assertEqual(vic.get('/api/workspace/types')[1], {'types': [], 'hidden': 0})   # a draft is not "closed to" a viewer: it is not out yet
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [2]})[0], 200)   # only Ann
+            status, body = bob.get('/api/workspace/types')
+            self.assertEqual((status, body), (200, {'types': [], 'hidden': 1}))
+            self.assertEqual([ann.get('/api/workspace/types')[1]['hidden'], admin.get('/api/workspace/types')[1]['hidden']], [0, 0])
+            self.assertEqual([t['id'] for t in ann.get('/api/workspace/types')[1]['types']], ['order'])
 
     def test_a_dataset_that_a_type_reads_cannot_be_deleted_and_says_which(self):
         with self.service() as (base, _):
@@ -429,7 +441,7 @@ class ObjectTypeTests(SigningTestCase):
             ann = self.team(base, 'ann')['ann']
             status, body = ann.post('/api/workspace/types/suggest', {'datasets': ['订单'], 'purpose': 'x'})
             self.assertEqual(status, 502)
-            self.assertEqual(ann.get('/api/workspace/types')[1], {'types': []})
+            self.assertEqual(ann.get('/api/workspace/types')[1], {'types': [], 'hidden': 0})
             task = next(t for t in ann.get('/api/workspace/tasks')[1]['tasks'] if t['kind'] == 'suggest')
             self.assertEqual(task['state'], 'failed')
             self.assertIn('请稍后重试', task['error'])

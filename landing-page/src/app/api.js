@@ -72,6 +72,8 @@ export const uploadDatasets = (payload) =>
 // object types
 const typePath = (id, tail = "") => `/api/workspace/types/${encodeURIComponent(id)}${tail}`;
 export const getTypes = () => request("/api/workspace/types").then((b) => b.types);
+/** {types, hidden}: the types this person may open, and how many more exist that they may not (a count, never names). */
+export const getTypeList = () => request("/api/workspace/types");
 export const getType = (id) => request(typePath(id));
 export const getTypeObjects = (id, page = 1) => request(typePath(id, `/objects${page > 1 ? `?page=${page}` : ""}`));
 export const getTypeLog = (id) => request(typePath(id, "/log")).then((b) => b.log);
