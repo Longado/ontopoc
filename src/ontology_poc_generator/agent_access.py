@@ -167,5 +167,8 @@ def agent_info(conn, user: dict | None) -> dict:
                                                                                 for k, v in t['inputSchema']['properties'].items()]}
              for t in mcp_server.TOOLS if t['name'] in mcp_server.READ_TOOLS]
     d = definitions(conn, user)
-    return {'tools': tools, 'more_with_all': len(mcp_server.TOOLS) - len(tools), 'command': {'python': 'python3', 'module': 'ontology_poc_generator.mcp_server', 'src': str(Path(__file__).resolve().parents[1])},
+    command = {'python': 'python3', 'module': 'ontology_poc_generator.mcp_server'}
+    if user is None or user['role'] == 'admin':
+        command = {**command, 'local_src': str(Path(__file__).resolve().parents[1])}   # where the code sits on this machine: the admin's to know, not every builder's
+    return {'tools': tools, 'more_with_all': len(mcp_server.TOOLS) - len(tools), 'command': command,
             'skill': {'types': len(d['types']), 'relations': len(d['relations']), 'views': len(d['views']), 'derived': len(d['derived']), 'file': f'{SKILL_NAME}.zip'}}
