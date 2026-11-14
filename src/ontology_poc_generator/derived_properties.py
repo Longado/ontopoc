@@ -43,7 +43,7 @@ from ontology_poc_generator.object_types import (
 from ontology_poc_generator.object_views import meaning_labels
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, MAX_LENGTH, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import register
-from ontology_poc_generator.pipeline_ops import AGGREGATIONS, NUMBER_TYPES, _aggregate_sql, _q, _round, aggregation_options
+from ontology_poc_generator.pipeline_ops import AGGREGATIONS, NUMBER_TYPES, _aggregate_sql, _q, aggregation_options
 from ontology_poc_generator.row_rules import positions, restriction, types_on_dataset_of
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
@@ -214,7 +214,8 @@ def _plain(value, output: str):
         if output == 'integer':
             return int(value) if float(value).is_integer() else None
         if output == 'decimal':
-            return _round(float(value))
+            number = round(float(value), 6)   # 24000 * 1.13 is 27120.000000000004 in floating point
+            return int(number) if number.is_integer() else number
     except (TypeError, ValueError, OverflowError):
         return None
     return str(value)
@@ -412,7 +413,7 @@ def describe(conn, content: dict) -> str:
         names.append(_content(row)['name'] if row else h)
     measured = element_row(conn, type_id(content['types'][-1]))
     measured_name = _content(measured)['name'] if measured else content['types'][-1]
-    where = '，且 '.join(f'{f["column"]} {OPS[f["op"]]}「{f["label"]}」' for f in content['conditions'])
+    where = '，且'.join(f'「{f["column"]}」{OPS[f["op"]]}「{f["label"]}」' for f in content['conditions'])
     column, fn = content['measure']['column'], content['fn']
     if fn in ('latest', 'value'):
         what = f'取「{column}」' + (f'（按「{content["latest"]["order"]}」最新的一行）' if fn == 'latest' else '')
@@ -420,7 +421,7 @@ def describe(conn, content: dict) -> str:
         what = '数行数'
     else:
         what = f'{STAT_FNS[fn]}「{column}」'
-    return f'{owner_name}的{content["name"]}：每个{owner_name}，经过 {" → ".join(names)}，{measured_name}里' + (f'{where} 的行，' if where else '的行，') + what
+    return f'{owner_name}的{content["name"]}：每个{owner_name}，经过 {" → ".join(names)}，{measured_name}里' + (f'{where}的行，' if where else '的行，') + what
 
 
 # --- the definition a person writes -------------------------------------------------------------------------------------------------------------------
@@ -776,7 +777,7 @@ def _line(conn, row: dict, user: dict | None) -> dict:
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else None
     shown = trial(conn, content, user)
     return {'id': content['english_name'], 'type': content['type'], 'name': content['name'], 'description': content['description'], 'kind': content['kind'], 'kind_name': KINDS[content['kind']],
-            'says': describe(conn, content), 'output_type': content['output_type'], 'path': content['path'], 'fn': content['fn'], 'expression': content['expression'], 'problems': shown['problems'],
+            'says': describe(conn, content), 'output_type': content['output_type'], 'definition': content, 'problems': shown['problems'],
             'trial': shown, 'anchored': None if shown.get('limited_note') else anchors, 'used_by': _used_by(conn, row['element_id'], user), **derived_state(conn, row, user),
             'seen': shown.get('seen')}
 
@@ -828,8 +829,8 @@ def derived_shape(conn, payload: dict, user: dict | None) -> dict:
 
 
 def derived_form(conn, english_type: str, user: dict | None) -> dict:
-    """What the form for a new derived property offers on this type: its columns (with a sample value, 样本) for a formula, the functions the editor lists, the relations
-    that can start a path from here, and the hint that a formula over the type's own columns is better made in a pipeline."""
+    """What the form for a new derived property offers on this type: its columns (with a sample value, 样本) for a formula, the functions the editor lists, the
+    confirmed relations a path is made of, and the hint that a formula over the type's own columns is better made in a pipeline."""
     owner = _content(_type_row(conn, english_type, user))
     dataset = current_dataset(conn, owner['dataset'])
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
@@ -842,15 +843,28 @@ def derived_form(conn, english_type: str, user: dict | None) -> dict:
             for c in cols:
                 if c not in sample and record.get(c) not in (None, ''):
                     sample[c] = record[c]
-    relations = []
+    relations = []   # every confirmed relation this person may see (a path continues from the type it reached), the ones that join a type to itself left out
     for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'relation:%' AND state = 'confirmed' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
         c = _content(row)
-        if _relation_visible(conn, row, user) and owner['english_name'] in (c['from'], c['to']) and c['from'] != c['to']:
-            relations.append({'key': c['english_name'], 'name': c['name'], 'from': c['from'], 'to': c['to'], 'cardinality': c['cardinality']})
+        if _relation_visible(conn, row, user) and c['from'] != c['to']:
+            names = {e: _content(element_row(conn, type_id(c[e])))['name'] for e in ('from', 'to')}
+            relations.append({'key': c['english_name'], 'name': c['name'], 'from': c['from'], 'to': c['to'], 'from_name': names['from'], 'to_name': names['to'], 'cardinality': c['cardinality']})
     return {'columns': [{'name': c, 'type': cols[c]['type'], 'sample': sample.get(c)} for c in _own_columns(owner) if c in cols], 'sample_label': '样本',
             'functions': [{'group': g, 'name': n, 'template': t, 'does': d} for g, n, t, d in FUNCTION_DOCS], 'relations': relations, 'kinds': KINDS,
             'aggregations': STAT_FNS, 'hint': ROUTING_HINT}
+
+
+def check_expression(conn, payload: dict, user: dict | None) -> dict:
+    """校验 of an expression written for a formula, without trying it on rows: {'ok', 'errors': [{message, pos}], 'column_type'} over the columns of the type's dataset."""
+    owner = _content(_type_row(conn, payload.get('type'), user))
+    dataset = current_dataset(conn, owner['dataset'])
+    if dataset is None:
+        raise TypeRefused(f'数据集“{owner["dataset"]}”已经不在了', 409)
+    cols = dataset_columns(conn, dataset['id'])
+    expression = payload.get('expression')
+    result = compile_expression(expression if isinstance(expression, str) else '', [{'name': c, 'type': cols[c]['type']} for c in _own_columns(owner) if c in cols])
+    return {'ok': result['ok'], 'errors': result['errors'], 'column_type': COLUMN_TYPE.get(result['type']) if result['ok'] else None}
 
 
 def trial_payload(conn, payload: dict, user: dict | None) -> dict:

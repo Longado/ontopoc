@@ -74,7 +74,7 @@ from ontology_poc_generator.workspace_pipelines import (
     preview as pipeline_preview, review as pipeline_review, run_detail, run_list, run_now as run_pipeline_now, trial_expression, update_pipeline)
 from ontology_poc_generator.object_actions import (
     action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, update_action, withdraw as withdraw_record)
-from ontology_poc_generator.derived_properties import confirm_derived, create_derived, derived_form, derived_log, derived_shape, list_derived, trial_payload, update_derived
+from ontology_poc_generator.derived_properties import check_expression, confirm_derived, create_derived, derived_form, derived_log, derived_shape, list_derived, trial_payload, update_derived
 from ontology_poc_generator.object_views import confirm_view, create_view, list_views, update_view, view_form
 from ontology_poc_generator.row_rules import RuleRefused, set_rules
 from ontology_poc_generator.object_relations import (
@@ -1290,6 +1290,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                 body = trial_payload(conn, payload, self.user)
                             elif route == '/derived/shape':
                                 body = derived_shape(conn, payload, self.user)
+                            elif route == '/derived/expression':
+                                body = check_expression(conn, payload, self.user)
                             elif route == '/key-check':
                                 body = key_preview(conn, payload.get('dataset'), payload.get('key'), self.user)
                             elif route == '/privacy':

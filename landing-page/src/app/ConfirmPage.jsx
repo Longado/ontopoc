@@ -6,9 +6,10 @@ import { State } from "./TypesPage.jsx";
 import { confirmersText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
+import { waitingText as derivedWaitingText } from "./derivedModel.js";
 import { viewWaitingText } from "./viewModel.js";
 
-const KIND = { type: "对象类型", meaning: "取值含义", relation: "关系", view: "视图", action: "行为", approval: "行为提交", pipeline: "管道" };
+const KIND = { type: "对象类型", meaning: "取值含义", relation: "关系", view: "视图", derived: "派生属性", action: "行为", approval: "行为提交", pipeline: "管道" };
 
 function Card({ item, onChanged }) {
   const [asking, setAsking] = useState(false);
@@ -73,7 +74,7 @@ function Card({ item, onChanged }) {
       {item.kind !== "approval" && item.kind !== "pipeline" && action === "wait" && (
         <p className="muted">{item.model_draft ? "模型写的草稿，等一位构建者看过确认。" : "需要另一位构建者确认，不能由提出的人自己确认。"}{confirmersText(item) && ` ${confirmersText(item)}`}</p>
       )}
-      {item.kind !== "approval" && item.kind !== "pipeline" && action === "blocked" &&<p className="warn">{item.kind === "view" ? viewWaitingText(item) : waitingText(item)}</p>}
+      {item.kind !== "approval" && item.kind !== "pipeline" && action === "blocked" &&<p className="warn">{item.kind === "view" ? viewWaitingText(item) : item.kind === "derived" ? derivedWaitingText(item) : waitingText(item)}</p>}
       {action === "repropose" && <p><a href={itemHref(item)}>到类型的属性页，按现在的数据写新的含义</a> <span className="muted small">提出后由另一位确认</span></p>}
       {error && <p className="error">{error}</p>}
       <p className="muted small">{item.proposed_by ? `${item.proposed_by} 提出` : "写入"} {timeText(item.written_at)}</p>

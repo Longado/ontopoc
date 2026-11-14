@@ -9,6 +9,7 @@ import { ageText } from "./graphModel.js";
 import { waitingText } from "./relationModel.js";
 import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
+import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
 import { codeCell, confirmersText, logText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
@@ -156,7 +157,7 @@ function Objects({ id, pageNo, mayBuild }) {
       {running && <RunAction key={`${running.action.id}/${running.text}`} action={running.action} objectKey={running.key} objectText={running.text} onDone={reload} onCancel={() => setRunning(null)} />}
       <div className="table-wrap tall">
         <table>
-          <thead><tr>{o.columns.map((c) => <th key={c.column}>{c.name}</th>)}{runnable.length > 0 && <th />}</tr></thead>
+          <thead><tr>{o.columns.map((c) => <th key={c.column} title={c.says}>{c.derived ? <><a href={hrefFor({ page: "type", id, tab: "derived" })}>{c.name}</a> <span className="muted small">派生</span></> : c.name}</th>)}{runnable.length > 0 && <th />}</tr></thead>
           <tbody>
             {o.rows.map((row, r) => (
               <tr key={r}>
@@ -208,6 +209,7 @@ function Log({ id }) {
 
 const USE_HREF = {
   views: (id) => hrefFor({ page: "type", id, tab: "views" }),
+  derived: (id) => hrefFor({ page: "type", id, tab: "derived" }),
   actions: (id) => hrefFor({ page: "type", id, tab: "actions" }),
   relations: (_id, item) => hrefFor({ page: "relation", id: item.id }),
   answers: (_id, item) => hrefFor({ page: "qa", id: item.id }),
@@ -286,6 +288,7 @@ export function TypePage({ route }) {
             ))}
           </nav>
           {tab === "props" && <Properties type={t} mayBuild={mayBuild} reload={reload} />}
+          {tab === "derived" && <TypeDerived type={t} mayBuild={mayBuild} />}
           {tab === "views" && <TypeViews type={t} mayBuild={mayBuild} />}
           {tab === "actions" && mayBuild && <TypeActions type={t} mayBuild={mayBuild} />}
           {tab === "objects" && <Objects id={id} pageNo={pageNo} mayBuild={mayBuild} />}

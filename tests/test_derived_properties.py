@@ -488,3 +488,18 @@ class DataMovesTests(DerivedTestCase):
             status, reopened = ann.get(f'/api/workspace/ask/{answer["id"]}')
             self.assertEqual(reopened['stale'], [{'dataset': '订单', 'read': 1, 'now': 2}])
             self.assertEqual([(c['name'], c['state']) for c in reopened['changed'] if c['id'].startswith('derived:')], [('产品.交付天数P50', 'needs_look')])
+
+
+class ExpressionCheckTests(DerivedTestCase):
+    def test_the_expression_check_names_an_unknown_column_and_a_type_that_does_not_fit_before_anything_runs(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann = team['ann']
+            status, body = ann.post('/api/workspace/types/derived/expression', {'type': 'order', 'expression': '金额 * 数量'})
+            self.assertEqual((status, body['ok'], body['column_type']), (200, True, 'decimal'))
+            status, body = ann.post('/api/workspace/types/derived/expression', {'type': 'order', 'expression': '金额 * 重量'})
+            self.assertEqual((status, body['ok']), (200, False))
+            self.assertIn('重量', body['errors'][0]['message'])
+            status, body = ann.post('/api/workspace/types/derived/expression', {'type': 'order', 'expression': '订单号 * 2'})
+            self.assertFalse(body['ok'])

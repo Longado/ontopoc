@@ -17,7 +17,7 @@ async function request(path, options = {}) {
   if (response.status === 401 && path !== "/api/auth/login") onSignedOut();   // the session ended (or never was): back to the sign-in form
   if (!response.ok) {
     throw Object.assign(new Error(body?.error || `服务返回了 ${response.status}`), {
-      code: response.status, files: body?.files, readers: body?.readers, setup: body?.setup, mustChange: body?.must_change, keyCheck: body?.key_check,
+      code: response.status, files: body?.files, readers: body?.readers, setup: body?.setup, mustChange: body?.must_change, keyCheck: body?.key_check, offer: body?.offer,
     });
   }
   return body;
@@ -91,6 +91,18 @@ export const getLineageGraph = () => request("/api/workspace/graph/lineage");
 export const getTypeViews = (id) => request(typePath(id, "/views"));
 export const createView = (payload) => send("/api/workspace/types/views", payload);
 export const confirmView = (id, version, seen) => send("/api/workspace/types/views/confirm", { id, version, seen });
+
+// derived properties of a type. A try (试算, 校验, the path's shape) writes nothing, so it does not tell the navigation to count again.
+const tryDerived = (tail, payload) => request(`/api/workspace/types/derived${tail}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+/** {derived: [...], form}: the properties of this type with the trial on the data as it is now, and what a form for a new one offers (null for a viewer). */
+export const getTypeDerived = (id) => request(typePath(id, "/derived"));
+export const getDerivedLog = (id, name) => request(typePath(id, `/derived/${encodeURIComponent(name)}/log`));
+export const createDerived = (payload) => send("/api/workspace/types/derived", payload);
+export const updateDerived = (payload, version) => send("/api/workspace/types/derived/update", { ...payload, version });
+export const confirmDerived = (type, englishName, version, seen) => send("/api/workspace/types/derived/confirm", { type, english_name: englishName, version, seen });
+export const trialDerived = (payload) => tryDerived("/trial", payload);
+export const shapeDerived = (type, path) => tryDerived("/shape", { type, path });
+export const checkDerivedExpression = (type, expression) => tryDerived("/expression", { type, expression });
 export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
 
 // actions: the definitions of one type with their parameters, one action with its records and log, submitting, approving

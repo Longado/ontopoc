@@ -7,7 +7,7 @@ import { answerView, definitionHref, isAnswer, isThenAnswer, readText, scopeText
 import { State } from "./TypesPage.jsx";
 import { useLoad } from "./useLoad.js";
 
-const KIND = { type: "对象类型", meaning: "含义", relation: "关系", view: "视图" };
+const KIND = { type: "对象类型", meaning: "含义", relation: "关系", view: "视图", derived: "派生属性" };
 
 /** The definitions a refusal names, bottom of the chain first: what it is, where it stands and why, who could confirm it. */
 function Named({ list, mayBuild }) {
@@ -109,6 +109,7 @@ function Basis({ record }) {
               {record.definitions.map((d) => (
                 <span className="block" key={d.id}>
                   {KIND[d.kind]} <a href={definitionHref(d.id, d.type)}>{d.name}</a> <span className="muted">{d.confirmed_by ? `${d.confirmed_by} 于 ${timeText(d.confirmed_at)} 确认` : ""}</span>
+                  {d.says && <span className="muted small block">{d.says}</span>}
                 </span>
               ))}
             </dd>

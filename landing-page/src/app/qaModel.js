@@ -53,6 +53,7 @@ export const isThenAnswer = (record) => (record.changed ?? []).length > 0;
 /** Where a definition's own page is: a type or its meanings, or a relation. */
 export function definitionHref(id, type = null) {
   if (id.startsWith("objview:")) return `#/types/${encodeURIComponent(type ?? "")}/views`;   // a view is shown on its type's page
+  if (id.startsWith("derived:")) return `#/types/${encodeURIComponent(type ?? id.slice("derived:".length).split(":")[0])}/derived`;   // so is a derived property
   if (id.startsWith("relation:")) return `#/relations/${encodeURIComponent(id.slice("relation:".length))}`;
   const name = id.startsWith("enum:") ? id.slice("enum:".length).split(":")[0] : id.slice("objtype:".length);
   return `#/types/${encodeURIComponent(name)}`;

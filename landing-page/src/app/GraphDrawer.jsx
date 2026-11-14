@@ -49,6 +49,7 @@ function TypeBody({ node }) {
       <p className="muted small">来源 {node.dataset.name} 第 {node.dataset.version} 版</p>
       {confirmedText(node) && <p className="muted small">{confirmedText(node)}</p>}
       <Cause node={node} />
+      {node.derived?.length > 0 && <List title="派生属性" empty="没有派生属性" items={node.derived.map((d) => ({ key: d.id, name: d.name, note: d.state === "confirmed" ? "派生" : `派生，${d.stale?.label ?? "未确认"}`, href: typePage("derived") }))} />}
       <List title="属性" empty="没有属性" items={node.properties.map((p) => ({ key: p.column, name: p.name, note: p.key ? "主键" : "" }))} />
       <List title="关系" empty="没有关系" items={node.relations.map((r) => ({ key: r.id, name: r.name, href: hrefFor({ page: "relation", id: r.key }) }))} />
       <List title="视图" empty="没有视图" items={node.views.map((v) => ({ key: v.id, name: v.name, note: v.state === "confirmed" ? "" : v.stale?.label ?? "未确认", href: typePage("views") }))} />
@@ -72,7 +73,7 @@ function DatasetBody({ node }) {
 function ElementBody({ node }) {
   const href = node.kind === "relation" ? hrefFor({ page: "relation", id: node.key }) : node.kind === "answer" ? hrefFor({ page: "qa", id: node.key })
     : node.kind === "pipeline" ? hrefFor({ page: "pipeline", name: node.key })
-    : hrefFor({ page: "type", id: node.type, tab: node.kind === "view" ? "views" : "actions" });
+    : hrefFor({ page: "type", id: node.type, tab: node.kind === "view" ? "views" : node.kind === "derived" ? "derived" : "actions" });
   return (
     <>
       {node.kind === "relation" && <p className="muted">{node.from_name} → {node.to_name}，{CARDINALITY_LABEL[node.cardinality]}，{edgeLabel(node)}</p>}
