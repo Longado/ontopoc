@@ -76,6 +76,16 @@ export function stepTitle(step, steps = []) {
 export const OP_NAME = { filter: "数据过滤", fill_null: "空值替换", text_clean: "文本清理", cast: "字段转换", calc: "计算列", aggregate: "分组统计", dedupe: "排重", label: "打标签" };
 export const operatorName = (op) => OP_NAME[op.op] ?? op.op;
 
+/** A message from the engine ("步骤 t1 的第 1 个操作（calc）：…") with the step id and the operator id said as a person says them ("转换「计算列」的第 1 个操作（计算列）：…"). An id that is not among `steps` is left as it is. */
+export function friendlyError(message, steps) {
+  return String(message ?? "").replace(/步骤 ([^\s：，、（）。]+?)(?: 的第 (\d+) 个操作（(\w+)）)?(?=[：，、。 ）]|$)/g, (whole, id, n, op) => {
+    const step = steps.find((s) => s.id === id);
+    if (!step) return whole;
+    const head = `${KIND_LABEL[step.type]}「${stepTitle(step, steps.filter((s) => s !== step))}」`;
+    return n ? `${head}的第 ${n} 个操作（${OP_NAME[op] ?? op}）` : head;
+  });
+}
+
 /** The picker: the categories present (in the order people look for them), and the operators of the chosen one that match the search. */
 export function catalogView(catalog, category, query) {
   const text = String(query ?? "").trim().toLowerCase();

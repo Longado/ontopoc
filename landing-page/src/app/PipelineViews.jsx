@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { getPipelineRun, getPipelineRuns, getPipelineVersions } from "./api.js";
 import { timeText } from "./format.js";
 import { PipelineGraph } from "./PipelineGraph.jsx";
-import { CHANGE_LABEL, KIND_LABEL, STATUS_LABEL, cardFlags, countsText, durationText, failureLines, numberText, stepSummary, stepTitle, versionsText } from "./pipelineModel.js";
+import { CHANGE_LABEL, KIND_LABEL, STATUS_LABEL, cardFlags, countsText, durationText, failureLines, friendlyError, numberText, stepSummary, stepTitle, versionsText } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
@@ -57,7 +57,7 @@ export function PipelineRun({ detail, id }) {
             <dt>定义版本</dt><dd>第 {run.definition_version} 版</dd>
             <dt>读了</dt><dd>{versionsText(run.input_versions) || "—"}</dd>
           </dl>
-          {run.error && <p className="error run-error">{run.error}</p>}
+          {run.error && <p className="error run-error">{friendlyError(run.error, detail.spec.steps)}</p>}
           {run.outputs.length > 0 && (
             <>
               <h3 className="section-title">写出了</h3>

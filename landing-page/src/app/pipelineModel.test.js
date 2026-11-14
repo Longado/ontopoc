@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  addOperator, addStep, cardFlags, catalogView, copyOperator, countsText, doubledGroupLines, fanOutLines, fieldRef, insertAt, joinVerdictLines, kindLine, layout, markedIds, moveOperator, newOperator, newStep,
+  addOperator, addStep, cardFlags, catalogView, copyOperator, countsText, doubledGroupLines, fanOutLines, fieldRef, friendlyError, insertAt, joinVerdictLines, kindLine, layout, markedIds, moveOperator, newOperator, newStep,
   operatorTitle, orphans, pipelineStateText, progressOf, removeOperator, removeStep, sameSpec, setOperator, simpleExpression, statRows, stepTitle, toggleMark,
 } from "./pipelineModel.js";
 
@@ -24,6 +24,15 @@ test("a step stands one column right of the furthest step it reads, and an edge 
   assert.equal(width, 4 * 208 + 3 * 56);
   assert.equal(height, 3 * 116 + 2 * 16);
   assert.deepEqual(layout([]), { nodes: {}, edges: [], size: { w: 208, h: 116, gx: 56, gy: 16 }, width: 0, height: 116 });
+});
+
+test("an engine message names the step by what it reads or does and the operator in Chinese, and leaves an id it does not know alone", () => {
+  const steps = [...SPEC.steps.slice(0, 3), { id: "t1", type: "transform", from: "j", operators: [{ op: "calc", name: "比", expression: "a" }] }];
+  assert.equal(friendlyError("步骤 t1 的第 1 个操作（calc）：表达式不对：括号不成对", steps), "转换「计算列」的第 1 个操作（计算列）：表达式不对：括号不成对");
+  assert.equal(friendlyError("步骤 j：读的步骤 zz 还没有定义", steps), "关联「订单 和 售后工单」：读的步骤 zz 还没有定义");
+  assert.equal(friendlyError("步骤 nope：不对", steps), "步骤 nope：不对");
+  assert.equal(friendlyError("步骤 o 的第 2 个操作（filter）：x", steps), "输入「订单」的第 2 个操作（数据过滤）：x");
+  assert.equal(friendlyError(undefined, steps), "");
 });
 
 test("a step that feeds no output is an orphan once there is an output, and not before", () => {

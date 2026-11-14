@@ -1,7 +1,7 @@
 import React from "react";
 import { getPipelineLog } from "./api.js";
 import { timeText, typeLabel } from "./format.js";
-import { doubledGroupLines, failureLines, joinVerdictLines, numberText, operatorTitle, stepTitle } from "./pipelineModel.js";
+import { doubledGroupLines, failureLines, friendlyError, joinVerdictLines, numberText, operatorTitle, stepTitle } from "./pipelineModel.js";
 import { logText } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
@@ -99,7 +99,7 @@ export function PipelinePanel({ tab, setTab, preview, upto, onClearUpto, name, s
         {!step && <p className="muted">选一个步骤，这里显示它的前 100 行。</p>}
         {step && tab === "log" && <Log name={name} step={step} steps={steps} node={node} />}
         {step && tab !== "log" && preview.status === "loading" && !preview.data && <p className="muted">加载中</p>}
-        {step && tab !== "log" && preview.status === "error" && <p className="error">{preview.error}</p>}
+        {step && tab !== "log" && preview.status === "error" && <p className="error">{friendlyError(preview.error, steps)}</p>}
         {step && tab !== "log" && preview.data && (
           <>
             {tab === "rows" && <p className="muted small">前 {preview.data.rows.length} 行，这一步共 {numberText(preview.data.node.rows_out)} 行</p>}

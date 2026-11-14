@@ -10,8 +10,17 @@ export function PipelineGraph({ steps, nodes, selected, onSelect }) {
   const { w, h } = lay.size;
   const at = (id) => lay.nodes[id];
   const chosen = useRef(null);
+  const shown = useRef(selected);
   useEffect(() => {
-    chosen.current?.scrollIntoView({ block: "nearest", inline: "nearest" });   // a step picked in the list or added is brought into view
+    if (shown.current === selected) return;   // the graph opens at its left edge, with the first card whole; only a step picked afterwards is brought into view
+    shown.current = selected;
+    const card = chosen.current;
+    const pane = card?.closest(".pl-graph");
+    if (!card || !pane) return;
+    const left = card.offsetLeft;
+    const right = left + card.offsetWidth;
+    if (left < pane.scrollLeft) pane.scrollLeft = Math.max(0, left - PAD);
+    else if (right > pane.scrollLeft + pane.clientWidth) pane.scrollLeft = right - pane.clientWidth + PAD;
   }, [selected]);
   return (
     <div className="graph-scroll">

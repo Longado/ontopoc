@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { operatorColumns } from "./api.js";
 import { OperatorForm } from "./OperatorForms.jsx";
 import {
-  HOW_LABEL, KIND_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, catalogView, copyOperator, doubledGroupLines, failureLines, joinVerdictLines, moveOperator, newOperator,
+  HOW_LABEL, KIND_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, catalogView, copyOperator, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, moveOperator, newOperator,
   operatorName, operatorTitle, removeOperator, removeStep, setOperator, stepTitle, updateStep,
 } from "./pipelineModel.js";
 import { Select } from "./Select.jsx";
@@ -112,7 +112,7 @@ function OperatorEditor({ name, draft, step, index, onChange }) {
     operatorColumns(name, before, step.id, null).then((b) => live && setState({ key, cols: b.columns, error: "" }), (e) => live && setState({ key, cols: null, error: e.message }));
     return () => { live = false; };
   }, [key]);
-  if (state.error) return <p className="error">读不出这一步看到的列：{state.error}</p>;
+  if (state.error) return <p className="error">读不出这一步看到的列：{friendlyError(state.error, draft.steps)}</p>;
   if (!state.cols) return <p className="muted">加载中</p>;
   return <OperatorForm op={step.operators[index]} cols={state.cols} onChange={onChange} where={{ name, spec: before, stepId: step.id, index, from: step.from }} />;
 }

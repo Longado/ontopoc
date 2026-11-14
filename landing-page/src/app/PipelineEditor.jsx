@@ -3,11 +3,37 @@ import { getDatasets, getPipelineOptions, pipelineSummary, previewNode, runPipel
 import { PipelineBar } from "./PipelineBar.jsx";
 import { PipelineGraph } from "./PipelineGraph.jsx";
 import { PipelinePanel } from "./PipelinePanel.jsx";
-import { KIND_LABEL, addStep, kindLine, newStep, orphans, sameSpec, stepTitle } from "./pipelineModel.js";
+import { KIND_LABEL, addStep, friendlyError, kindLine, newStep, orphans, sameSpec, stepTitle } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { StepEditor } from "./StepEditors.jsx";
 
 const ADDABLE = ["input", "join", "transform", "output"];
+const LEAVE_ASK = "有改动还没保存，离开会丢掉这些改动。要离开吗？";
+
+/** While there are unsaved changes: closing or reloading the tab asks, and so does following a link to another page of the app. (The browser's back button cannot be stopped from here.) */
+function useLeaveGuard(dirty) {
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const onUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const onClick = (e) => {
+      const link = e.target instanceof Element ? e.target.closest("a[href]") : null;
+      const to = link?.getAttribute("href");
+      if (to?.startsWith("#") && to !== window.location.hash && !window.confirm(LEAVE_ASK)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", onUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [dirty]);
+}
 
 /** Runs `load` a moment after `key` stops changing; what it returns is {status, data, error}. The last good data stays while the next is worked out. */
 function useSettled(load, key, wait = 350) {
@@ -46,6 +72,7 @@ export function PipelineEditor({ detail, reload }) {
     getPipelineOptions().then((o) => setCatalog(o.operators), () => {});
   }, []);
   const dirty = !sameSpec(draft, detail.spec);
+  useLeaveGuard(dirty);
   const step = draft.steps.find((s) => s.id === selected) ?? null;
   const summary = useSettled(() => pipelineSummary(name, draft), JSON.stringify(draft));
   const nodes = Object.fromEntries((summary.data?.nodes ?? []).map((n) => [n.id, n]));
@@ -92,9 +119,9 @@ export function PipelineEditor({ detail, reload }) {
         <button className="secondary" onClick={save} disabled={!dirty || saving}>{saving ? "保存中" : "保存"}</button>
         <button className="primary" onClick={run} disabled={dirty || running || !hasOutput} title={dirty ? "先保存" : !hasOutput ? "要有一个输出才能运行" : ""}>{running ? "运行中" : "运行"}</button>
       </PipelineBar>
-      {error && <p className="error pl-error">{error} {error.includes("被改了") && <button className="plain" onClick={reload}>重新载入</button>}</p>}
-      {summary.status === "error" && <p className="error pl-error">{summary.error}</p>}
-      {summary.status === "ready" && summary.data.error && <p className="error pl-error">{summary.data.error}（图里只算到这一步之前）</p>}
+      {error && <p className="error pl-error">{friendlyError(error, draft.steps)} {error.includes("被改了") && <button className="plain" onClick={reload}>重新载入</button>}</p>}
+      {summary.status === "error" && <p className="error pl-error">{friendlyError(summary.error, draft.steps)}</p>}
+      {summary.status === "ready" && summary.data.error && <p className="error pl-error">{friendlyError(summary.data.error, draft.steps)}（图里只算到这一步之前）</p>}
       <div className="pl-grid">
         <aside className="pl-steps" aria-label="步骤">
           <ol>
