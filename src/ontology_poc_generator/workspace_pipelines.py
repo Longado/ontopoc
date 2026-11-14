@@ -28,7 +28,7 @@ from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, com
 from ontology_poc_generator.pipeline_funcs import guess_formats, number_text, register
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, CAST_TYPES, CATALOG, aggregation_options, new_context, shift_notices, visible
 from ontology_poc_generator.pipelines import (
-    HOWS, ROW_CAP, PipelineRunError, check_pipeline, compile_pipeline, dataset_key, needed_steps, run_pipeline, workspace_datasets)
+    HOWS, OUTPUT_CAP, ROW_CAP, RUN_SECONDS, PipelineRunError, check_pipeline, compile_pipeline, dataset_key, deadline, needed_steps, run_pipeline, workspace_datasets)
 from ontology_poc_generator.row_rules import has_rules
 from ontology_poc_generator.type_access import dataset_hidden, view_input_hidden
 from ontology_poc_generator.workspace_store import (
@@ -596,11 +596,15 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None) -> 
 
         def take(c, report, compiled):
             if report['type'] == 'output':
+                held = sum(len(r) for r in outputs.values()) + report['rows_out']
+                if held > OUTPUT_CAP:   # said before the rows are read into memory
+                    raise PipelineRunError(f'输出一共 {held:,} 行，超过一次运行最多 {OUTPUT_CAP:,} 行，没有写数据集。先在前面过滤，或汇总后再输出')
                 cols = compiled['output']['columns']
                 outputs[report['id']] = [[_as_text(v, col['type']) for v, col in zip(r, cols)]
                                          for r in c.execute(f'SELECT {", ".join(_q(col["name"]) for col in cols)} FROM {compiled["table"]} ORDER BY rowid')]
         register(engine)
-        result = _execute(engine, content['spec'], resolved, ctx, feeds, take)
+        with deadline(engine, RUN_SECONDS):
+            result = _execute(engine, content['spec'], resolved, ctx, feeds, take)
         problems = _output_problems(conn, result['nodes'], content['spec'])
         if problems:
             raise PipelineRunError('；'.join(problems))

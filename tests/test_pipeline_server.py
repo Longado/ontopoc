@@ -431,6 +431,29 @@ class PipelineServerTests(SigningTestCase):
             self.assertEqual((state['state'], state['cause']), ('needs_look', 'data'))
             self.assertIn('订单重算', state['reason'])
 
+    def test_a_preview_and_a_run_past_their_time_are_stopped_in_words_and_a_run_that_holds_too_many_rows_writes_nothing(self):
+        from unittest import mock
+        from ontology_poc_generator import ontology_server, workspace_pipelines
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann = team['ann']
+            self.make(ann, self.COPY, '订单副本')
+            with mock.patch.object(ontology_server, 'PREVIEW_SECONDS', 0):
+                status, body = ann.post(f'{PIPELINES}/preview', {'id': '订单副本', 'node': 'out'})
+            self.assertEqual(status, 400, body)
+            self.assertIn('已经停下', body['error'])
+            self.assertEqual(ann.post(f'{PIPELINES}/preview', {'id': '订单副本', 'node': 'out'})[0], 200)   # the limit was the patch's: the next call is as before
+            with mock.patch.object(workspace_pipelines, 'RUN_SECONDS', 0):
+                run = self.go(ann, '订单副本')
+            self.assertEqual(run['status'], 'failed')
+            self.assertIn('已经停下', run['error'])
+            with mock.patch.object(workspace_pipelines, 'OUTPUT_CAP', 100):
+                run = self.go(ann, '订单副本')
+            self.assertEqual(run['status'], 'failed')
+            self.assertIn('160 行，超过一次运行最多 100 行', run['error'])
+            self.assertNotIn('订单副本', [d['name'] for d in ann.get('/api/workspace/datasets')[1]['datasets']])
+            self.assertEqual(self.go(ann, '订单副本')['status'], 'success')
+
     def test_two_outputs_are_written_together_and_a_second_that_fails_takes_the_first_back(self):
         from unittest import mock
         from ontology_poc_generator import workspace_pipelines

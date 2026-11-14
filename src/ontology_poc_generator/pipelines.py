@@ -22,7 +22,11 @@ Steps stay plain data and a run changes nothing in the workspace; the engine is 
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import copy
+import re
+import sqlite3
+import time
 
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, compile_op, new_context, visible
@@ -35,10 +39,31 @@ STEP_TYPES = ('input', 'join', 'transform', 'output')
 ROW_CAP = 1_000_000   # the most rows one join may make: past it the join is refused, before it runs
 MAX_STEPS = 60
 KEY_EXAMPLES = 20
+PREVIEW_SECONDS, RUN_SECONDS = 5, 20   # the longest one call may compute: trying a pipeline, and running it
+OUTPUT_CAP = 200_000   # the most rows all the outputs of one run may hold together
+_ENGINE_LIMIT = re.compile(r'interrupted|too large|too many|too complex|too deep')
 
 
 class PipelineRunError(ValueError):
-    """A run that stopped for a reason a person asked for (a conversion set to stop on failure)."""
+    """A run that stopped for a reason a person asked for (a conversion set to stop on failure), or that was too much for the engine."""
+
+
+@contextmanager
+def deadline(engine, seconds: float):
+    """Whatever the engine computes inside this block is stopped after `seconds` (SQLite's progress handler; it stops SQL, not a Python function in the middle of a
+    value). The stop, and a statement SQLite itself refuses as too big, come out as a PipelineRunError in words a person reads."""
+    end = time.monotonic() + seconds
+    engine.set_progress_handler(lambda: 1 if time.monotonic() > end else 0, 1000)
+    try:
+        yield
+    except sqlite3.OperationalError as exc:
+        if not _ENGINE_LIMIT.search(str(exc)):
+            raise
+        if 'interrupted' in str(exc):
+            raise PipelineRunError(f'算了超过 {seconds:g} 秒，已经停下。数据多的时候，先在前面加过滤，或把步骤拆开分别试') from None
+        raise PipelineRunError(f'数据库算不了这一步：{exc}。表达式、条件或步骤太大，请拆小') from None
+    finally:
+        engine.set_progress_handler(None, 0)
 
 
 def workspace_datasets(conn, dataset_ids: dict[str, int]) -> dict[str, dict]:
@@ -322,6 +347,16 @@ def _key_counts(conn, table: str, keys: list[str], name: str, equal: bool = Fals
     conn.execute(f'CREATE INDEX temp.{name}_k ON {name}({", ".join(f"k{i}" for i in range(len(keys)))})')
 
 
+def _index_right(conn, index: int, step: dict, rtable: str) -> None:
+    """The right side's join keys, indexed, for the joins SQLite would otherwise run as every left row against every right row: an anti or semi join (a lookup in a
+    subquery) and a join where empty keys are equal (the COALESCE hides the column from an automatic index). The index goes away with the table."""
+    equal = step.get('null_keys') == 'equal'
+    if equal or step['how'] in ('anti', 'semi'):
+        keys = ', '.join(f"COALESCE({_q(p['right'])}, '')" if equal else _q(p['right']) for p in step['on'])
+        conn.execute(f'DROP INDEX IF EXISTS temp.ix_{index}')
+        conn.execute(f'CREATE INDEX temp.ix_{index} ON {rtable}({keys})')
+
+
 def _as_number(column: str) -> str:
     """A key read as a number when it looks like one, else trimmed text: "1.0", " 1" and "1" come out the same."""
     t = f'TRIM({column})'
@@ -466,6 +501,8 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                 left, right = by_id[step['left']], by_id[step['right']]
                 made += [f'jl_{index}', f'jr_{index}']
                 measured = _measure_join(conn, index, step, left['table'], right['table'], row_cap)
+            if step['type'] == 'join':
+                _index_right(conn, index, step, by_id[step['right']]['table'])
             if compiled['sql']:
                 made.append(compiled['table'])
                 conn.execute(f'DROP TABLE IF EXISTS temp.{compiled["table"]}')

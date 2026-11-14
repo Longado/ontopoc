@@ -9,7 +9,7 @@ import unittest
 from ontology_poc_generator.pipeline_expr import compile_expression
 from ontology_poc_generator.pipeline_funcs import guess_formats, register
 from ontology_poc_generator.pipeline_ops import aggregation_options, new_context
-from ontology_poc_generator.pipelines import check_pipeline, run_pipeline, workspace_datasets
+from ontology_poc_generator.pipelines import PipelineRunError, check_pipeline, deadline, run_pipeline, workspace_datasets
 from ontology_poc_generator.workspace_store import import_records, open_workspace, records_sha256
 from tests.test_workspace_store import planted_bundle
 
@@ -451,6 +451,22 @@ class JoinTests(Workspace):
         self.assertEqual({k: v for k, v in by_group.items()}, {k: (doubled[k], true[k]) for k in wrong})
         # the figure that would be wrong is named before it is used; a customer nothing doubled is not listed
         self.assertNotIn('KH002', by_group)
+
+    def test_anti_semi_and_empty_keys_equal_joins_on_twenty_thousand_rows_finish_inside_a_few_seconds_because_the_right_keys_are_indexed(self):
+        tables = store(self.conn, {'左大': [{'k': str(i), 'v': '1'} for i in range(20000)], '右大': [{'k': str(i + 10000)} for i in range(20000)]})
+        for how, extra, expected in (('anti', {}, 10000), ('semi', {}, 10000), ('left', {'null_keys': 'equal'}, 20000)):   # without the index each is 4e8 comparisons, 8 seconds and more
+            spec = {'steps': [{'id': 'l', 'type': 'input', 'dataset': '左大'}, {'id': 'r', 'type': 'input', 'dataset': '右大'},
+                              {'id': 'j', 'type': 'join', 'left': 'l', 'right': 'r', 'how': how, 'on': [{'left': 'k', 'right': 'k'}], **extra}]}
+            with deadline(self.conn, 4):
+                nodes = run_pipeline(self.conn, spec, tables)['nodes']
+            self.assertEqual(nodes[2]['rows_out'], expected, how)
+
+    def test_a_computation_past_its_time_is_stopped_in_words_and_the_connection_goes_on_working(self):
+        with self.assertRaises(PipelineRunError) as caught:
+            with deadline(self.conn, 0.05):
+                self.conn.execute('WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 1000000000) SELECT COUNT(*) FROM c').fetchall()
+        self.assertIn('已经停下', str(caught.exception))
+        self.assertEqual(self.conn.execute('SELECT 1').fetchone()[0], 1)
 
 
 class OutputTests(Workspace):

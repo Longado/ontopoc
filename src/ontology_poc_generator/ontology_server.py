@@ -25,7 +25,7 @@ from ontology_poc_generator.answer_checks import choose_rows, definition_catalog
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.actor import set_actor
 from ontology_poc_generator.named_views import StaleProposal, proposed_views, compiled_views, definitions_signature, drop_views_except, name_views, read_views, save_definition, sync_views, table_columns, view_anchor_now, view_rowids, views_of_run
-from ontology_poc_generator.pipelines import ROW_CAP, run_pipeline, workspace_datasets, workspace_views
+from ontology_poc_generator.pipelines import PREVIEW_SECONDS, ROW_CAP, RUN_SECONDS, deadline, run_pipeline, workspace_datasets, workspace_views
 from ontology_poc_generator.anchors import check_code, check_relation, check_view, code_anchor, relation_anchor, review_items, view_anchor, stored as stored_anchors, waiting as waiting_change
 from ontology_poc_generator.repeated_keys import check_rule, repeated_keys, settled_by_latest, unmet
 from ontology_poc_generator.workspace_store import (
@@ -1391,18 +1391,23 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 engine = readonly_workspace()
                 try:
-                    with runs_lock:   # the lock an upload takes (see types_post)
-                        writers = {'': create_pipeline, '/update': update_pipeline, '/confirm': confirm_pipeline, '/run': run_pipeline_now}
-                        readers = {'/preview': pipeline_preview, '/summary': pipeline_summary, '/columns': pipeline_columns, '/review': pipeline_review, '/expression/check': check_expression, '/expression/trial': trial_expression}
-                        if route in writers:
-                            body = writers[route](conn, payload, who, self.user, engine) if route != '/run' else run_pipeline_now(conn, engine, payload, who, self.user)
-                        elif route in readers:
+                    writers = {'': create_pipeline, '/update': update_pipeline, '/confirm': confirm_pipeline, '/run': run_pipeline_now}
+                    readers = {'/preview': pipeline_preview, '/summary': pipeline_summary, '/columns': pipeline_columns, '/review': pipeline_review, '/expression/check': check_expression, '/expression/trial': trial_expression}
+                    if route in readers:   # trying reads only, on its own read-only connection and for at most PREVIEW_SECONDS: it does not hold the lock uploads and confirms need
+                        with deadline(engine, PREVIEW_SECONDS):
                             body = readers[route](conn, engine, payload, self.user)
-                        elif route == '/format-guess':
-                            body = format_guess(payload)
-                        else:
-                            self.reply(404, {'error': 'Unknown workspace endpoint'})
-                            return
+                    elif route in writers:
+                        with runs_lock:   # the lock an upload takes (see types_post)
+                            if route == '/run':   # the run sets its own time limit around the part that computes
+                                body = run_pipeline_now(conn, engine, payload, who, self.user)
+                            else:
+                                with deadline(engine, RUN_SECONDS):
+                                    body = writers[route](conn, payload, who, self.user, engine)
+                    elif route == '/format-guess':
+                        body = format_guess(payload)
+                    else:
+                        self.reply(404, {'error': 'Unknown workspace endpoint'})
+                        return
                 finally:
                     engine.close()
                     conn.close()
