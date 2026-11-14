@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { aiDraft, llmState } from "./api.js";
 import { QuestionList, SeesNote } from "./AiBox.jsx";
-import { estimateText, failureLines, friendlyError, kindLine, llmRunText, numberText, rememberPrompt, rowsText, stepTitle } from "./pipelineModel.js";
+import { estimateText, failureLines, friendlyError, kindLine, llmRunText, numberText, rememberPrompt, rowsText, runCalls, stepTitle } from "./pipelineModel.js";
 
 const storeKey = (name) => `pipeline-ai-prompts:${name}`;
 const readPrompts = (name) => {
@@ -106,6 +106,7 @@ export function RunDialog({ name, spec, onGo, onClose }) {
     Promise.all(llmSteps.map((s) => llmState(name, spec, s.id).then((d) => [s.id, d]))).then((all) => setStates(Object.fromEntries(all)), (e) => setError(e.message));
   }, []);
   const ready = llmSteps.every((s) => states[s.id]);
+  const total = ready ? runCalls(states) : null;
   return (
     <dialog ref={ref} className="upload" onCancel={(e) => { e.preventDefault(); onClose(); }}>
       <div className="dialog-body">
@@ -124,11 +125,12 @@ export function RunDialog({ name, spec, onGo, onClose }) {
             </div>
           );
         })}
+        {total && <p className={total.over ? "warn" : "small"}><strong>这次运行一共要问模型 {numberText(total.calls)} 次</strong>，一次运行最多 {numberText(total.cap)} 次{total.over && "：超过了，运行会在问第一次之前被拒绝。先在前面过滤，或分几次来"}</p>}
       </div>
       <div className="actions">
         <span></span>
         <button className="plain" onClick={onClose}>取消</button>
-        <button className="primary" disabled={!ready} onClick={() => { onClose(); onGo(); }}>开始运行</button>
+        <button className="primary" disabled={!ready || total?.over} onClick={() => { onClose(); onGo(); }}>开始运行</button>
       </div>
     </dialog>
   );

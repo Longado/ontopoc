@@ -356,7 +356,17 @@ export const offListLines = (report) => Object.entries(report?.off_list_answers 
 export function estimateText(estimate) {
   if (!estimate) return "";
   const money = estimate.cost == null ? "服务没有配单价，没有估价" : `约 ${estimate.cost} 元`;
-  return `要调用 ${numberText(estimate.calls)} 次，约 ${numberText(estimate.chars_in)} 字发给模型；${money}`;
+  const cap = estimate.cap == null ? "" : `；一次运行最多 ${numberText(estimate.cap)} 次`;
+  return `要调用 ${numberText(estimate.calls)} 次，约 ${numberText(estimate.chars_in)} 字发给模型；${money}${cap}`;
+}
+
+/** The whole run's calls against the most one run may make, over all its AI steps; null when the service does not say. */
+export function runCalls(states) {
+  const all = Object.values(states).map((d) => d.estimate);
+  if (!all.length || all.some((e) => e.cap == null)) return null;
+  const calls = all.reduce((sum, e) => sum + e.calls, 0);
+  const cap = Math.min(...all.map((e) => e.cap));
+  return { calls, cap, over: calls > cap };
 }
 
 /** "20 行里 17 行对上" and where the review stands against the line the step names. */

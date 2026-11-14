@@ -74,7 +74,7 @@ from ontology_poc_generator.workspace_ai import draft as ai_draft, explain_steps
 from ontology_poc_generator.workspace_llm import clear_cache as llm_clear_cache, label as llm_label, review_rerun as llm_review_rerun, state as llm_state, trial as llm_trial
 from ontology_poc_generator.workspace_pipelines import (
     check_expression, columns_at as pipeline_columns, confirm_pipeline, create_pipeline, format_guess, summary as pipeline_summary, list_pipelines, options as pipeline_options, pipeline_detail, pipeline_log, pipeline_versions,
-    preview as pipeline_preview, review as pipeline_review, run_detail, run_list, run_now as run_pipeline_now, trial_expression, update_pipeline)
+    preview as pipeline_preview, review as pipeline_review, run_detail, run_list, fill_answers as fill_pipeline_answers, run_now as run_pipeline_now, trial_expression, update_pipeline)
 from ontology_poc_generator.object_actions import (
     action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, update_action, withdraw as withdraw_record)
 from ontology_poc_generator.derived_properties import check_expression as check_derived_expression, confirm_derived, create_derived, derived_form, derived_log, derived_shape, list_derived, trial_payload, update_derived
@@ -1423,7 +1423,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 engine = readonly_workspace()
                 try:
-                    writers = {'': create_pipeline, '/update': update_pipeline, '/confirm': confirm_pipeline, '/run': run_pipeline_now}
+                    writers = {'': create_pipeline, '/update': update_pipeline, '/confirm': confirm_pipeline}
                     readers = {'/preview': pipeline_preview, '/summary': pipeline_summary, '/columns': pipeline_columns, '/review': pipeline_review, '/expression/check': check_expression, '/expression/trial': trial_expression}
                     asks_model = {'/preview', '/summary', '/review', '/expression/trial'}   # these run the pipeline: an LLM step in it answers from what is kept, never from a call
                     model_calls = {'/llm/trial': llm_trial, '/llm/state': llm_state, '/ai/parse': ai_parse, '/ai/draft': ai_draft, '/ai/explain': ai_explain}   # read-only too, but the model may be called: no time limit of the engine's around them
@@ -1438,13 +1438,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     elif route in model_writes:
                         with runs_lock:
                             body = model_writes[route](conn, engine, payload, who, self.user)
+                    elif route == '/run':
+                        filled = fill_pipeline_answers(conn, engine, payload, self.user, llm)   # the model is asked first, without the lock: a slow model holds up nobody's upload
+                        with runs_lock:   # the lock an upload takes (see types_post); the run writes from the answers now kept
+                            body = run_pipeline_now(conn, engine, payload, who, self.user, llm, filled)
                     elif route in writers:
                         with runs_lock:   # the lock an upload takes (see types_post)
-                            if route == '/run':   # the run sets its own time limit around the part that computes
-                                body = run_pipeline_now(conn, engine, payload, who, self.user, llm)
-                            else:
-                                with deadline(engine, RUN_SECONDS):
-                                    body = writers[route](conn, payload, who, self.user, engine, **({'llm': llm} if route == '/confirm' else {}))
+                            with deadline(engine, RUN_SECONDS):
+                                body = writers[route](conn, payload, who, self.user, engine, **({'llm': llm} if route == '/confirm' else {}))
                     elif route == '/format-guess':
                         body = format_guess(payload)
                     else:

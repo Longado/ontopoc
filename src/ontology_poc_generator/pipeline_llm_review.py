@@ -7,9 +7,10 @@ from __future__ import annotations
 import json
 import random
 
+from ontology_poc_generator import pipeline_llm
 from ontology_poc_generator.pipeline_funcs import number_text
 from ontology_poc_generator.pipeline_llm import (
-    LlmError, LlmService, MAX_FIELD_CHARS, _blank, cache_get, cache_put, call_many, compile_prompt, contract_of, effective, prompt_sent, render, row_hash)
+    LlmError, LlmService, MAX_FIELD_CHARS, _blank, cache_get, cache_put, call_many, compile_prompt, contract_of, effective, prompt_sent, refuse_over, render, row_hash)
 from ontology_poc_generator.workspace_store import now_text
 
 SAMPLE_ROWS = 20   # the sample a person is shown to label when they do not say how many
@@ -83,9 +84,10 @@ def draw(rows: list[tuple[int, dict]], fields: list[str], n: int, seed, skip: se
     return random.Random(seed).sample(list(pool.values()), min(n, len(pool)))
 
 
-def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: list[str], rows: list[tuple[int, dict]]) -> list[dict]:
+def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: list[str], rows: list[tuple[int, dict]], what: str = '这次试跑') -> list[dict]:
     """The step applied to these (row number, values) rows; `names` are the columns the step reads. For each {'row', 'fields', 'status', 'values', 'message', 'raw', 'cached', 'prompt'}. A row with
-    nothing in its prompt fields is skipped without a call. Answers that are answers are kept for later runs. This calls the model."""
+    nothing in its prompt fields is skipped without a call. Answers that are answers are kept for later runs, each batch as it comes back. This calls the model, for at most
+    MAX_TRIAL_CALLS rows (refused before the first call, in words that start with `what`)."""
     eff = effective(step)
     parts, fields = compile_prompt(eff['prompt'], names)
     model = service.model or step.get('model')
@@ -96,10 +98,10 @@ def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: lis
             asked.setdefault(row_hash(values, fields), values)
     kept = cache_get(conn, pipeline_id, step['id'], contract, list(asked))
     todo = {k: render(parts, v) for k, v in asked.items() if k not in kept and all(len(x or '') <= MAX_FIELD_CHARS for x in v.values())}
+    refuse_over(len(todo), pipeline_llm.MAX_TRIAL_CALLS, what)
     if todo and service.gateway is None:
         raise LlmError('本机服务没有模型凭据，不能调用模型')
-    got = call_many(service.gateway, eff, todo) if todo else {}
-    cache_put(conn, pipeline_id, step['id'], contract, model, {k: g for k, g in got.items() if g['status'] == 'ok'})
+    got = call_many(service.gateway, eff, todo, lambda batch: cache_put(conn, pipeline_id, step['id'], contract, model, {k: g for k, g in batch.items() if g['status'] == 'ok'})) if todo else {}
     out = []
     for position, values in rows:
         shown = {f: values.get(f) for f in fields}
@@ -159,7 +161,7 @@ def run_review(conn, service: LlmService, pipeline_id: str, step: dict, names: l
     labels = labels_of(conn, pipeline_id, step['id'])
     if not labels:
         raise LlmError('还没有标注：先抽一批行，写下你期望的答案')
-    rows = run_rows(conn, service, pipeline_id, step, names, [(i, l['fields']) for i, l in enumerate(labels)])
+    rows = run_rows(conn, service, pipeline_id, step, names, [(i, l['fields']) for i, l in enumerate(labels)], '这次样本审核')
     detail = [{'fields': l['fields'], 'expected': l['expected'], 'values': r['values'], 'matched': matches(eff, l['expected'], r['values']), 'status': r['status'], 'message': r['message'], 'row_hash': l['row_hash']}
               for l, r in zip(labels, rows)]
     matched = sum(d['matched'] for d in detail)

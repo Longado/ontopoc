@@ -4,10 +4,13 @@ a small table with a model that answers by keyword; and the acceptance walk thro
 a confirmed code until the review passed and a second person confirmed. The model is never a real one."""
 import json
 import sqlite3
+import threading
 from collections import Counter
+from unittest import mock
 from urllib.parse import quote
 
-from ontology_poc_generator.pipeline_llm import LlmError, LlmRun, LlmService, check_llm_step, compile_prompt, contract_of, effective, parse_reply
+from ontology_poc_generator.pipeline_llm import (
+    MAX_RUN_CALLS, MAX_TRIAL_CALLS, LlmError, LlmRun, LlmService, check_llm_step, compile_prompt, contract_of, effective, parse_reply)
 from ontology_poc_generator.pipeline_ops import new_context
 from ontology_poc_generator.pipelines import PipelineRunError, check_pipeline, compile_pipeline, run_pipeline
 from ontology_poc_generator.recognition import ModelCompletion, RecognitionError
@@ -235,6 +238,41 @@ class RunTests(unittest.TestCase):
         self.assertEqual(by_row['6'], (None, '还没跑'))   # the failed row was not kept, so a read of what is kept finds nothing for it
         self.assertEqual(by_row['2'], ('否', None))
 
+    def test_answers_are_kept_as_each_batch_comes_back_so_an_error_part_way_loses_nothing_that_was_paid_for(self):
+        engine, datasets = small_table([(str(i), f'内容{i}', 'x') for i in range(20)])
+
+        class Explodes(RowModel):
+            def complete_json(self, **more):
+                if len(self.requests) >= 8:
+                    raise RuntimeError('the process was stopped')
+                return super().complete_json(**more)
+
+        with self.assertRaises(RuntimeError):
+            run_small(engine, datasets, self.conn, LlmService(Explodes(answer=lambda task: '否')), llm())
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM llm_cache').fetchone()[0], 8)   # the first batch was paid for and is kept
+
+    def test_a_run_over_the_cap_is_refused_before_the_model_is_called_with_the_count_and_the_cap(self):
+        engine, datasets = small_table([(str(i), f'内容{i}', 'x') for i in range(20)])
+        model = RowModel(answer=lambda task: '否')
+        steps = [{'id': 'i', 'type': 'input', 'dataset': '评论'}, llm()]
+        run = LlmRun(self.conn, LlmService(model), 'pipeline:小', 'run', limit=15)
+        with self.assertRaises(LlmError) as caught:
+            run_pipeline(engine, {'steps': steps}, datasets, ctx={**new_context(), 'llm': run})
+        self.assertIn('20 次', str(caught.exception))
+        self.assertIn('最多 15 次', str(caught.exception))
+        self.assertEqual(model.requests, [])
+        self.assertEqual((MAX_RUN_CALLS, MAX_TRIAL_CALLS), (500, 100))
+
+    def test_a_run_that_only_reads_what_is_kept_counts_the_failures_it_was_told_about_and_leaves_the_rest_pending(self):
+        engine, datasets = small_table([('1', '甲', 'x'), ('2', '乙', 'x'), ('3', '丙', 'x')])
+        filling = LlmRun(self.conn, LlmService(RowModel(fail=('乙',), answer=lambda task: '否')), 'pipeline:小', 'run')
+        run_pipeline(engine, {'steps': [{'id': 'i', 'type': 'input', 'dataset': '评论'}, llm()]}, datasets, ctx={**new_context(), 'llm': filling})
+        self.assertEqual(len(filling.results['m']), 3)   # every distinct row, answered or failed
+        reading = LlmRun(self.conn, LlmService(RowModel()), 'pipeline:小', 'cache', known=filling.results)
+        result = run_pipeline(engine, {'steps': [{'id': 'i', 'type': 'input', 'dataset': '评论'}, llm()]}, datasets, ctx={**new_context(), 'llm': reading})
+        report = next(n for n in result['nodes'] if n['id'] == 'm')['llm']
+        self.assertEqual((report['answered'], report['failed'], report['pending'], report['called'], report['from_cache']), (2, 1, 0, 3, 0))
+
     def test_a_pipeline_run_where_no_model_is_given_says_so_in_words(self):
         with self.assertRaises(ValueError) as caught:
             run_pipeline(self.engine, {'steps': [{'id': 'i', 'type': 'input', 'dataset': '评论'}, llm()]}, self.datasets)
@@ -418,6 +456,77 @@ class TicketWalkTests(SigningTestCase):
             status, body = ann.post('/api/workspace/types', {'english_name': 'copy_class', 'name': '分类副本', 'dataset': '分类副本', 'key': ['问题类别'], 'properties': [{'column': '问题类别'}]})
             self.assertEqual(status, 409, body)
             self.assertIn('样本审核还没有通过', body['error'])
+
+    def test_a_run_asks_the_model_without_holding_the_lock_other_people_need_and_then_writes_from_what_is_kept(self):
+        class Waits(RowModel):
+            """Holds its first answer until the test lets go."""
+            def __init__(self):
+                super().__init__()
+                self.asking, self.let_go = threading.Event(), threading.Event()
+
+            def complete_json(self, **more):
+                self.asking.set()
+                self.let_go.wait(20)
+                return super().complete_json(**more)
+
+        model = Waits()
+        ticket = {'english_name': 'ticket', 'name': '售后工单', 'dataset': '售后工单', 'key': ['工单号'], 'properties': [{'column': '问题描述'}]}
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.make(ann)
+            running = {}
+            worker = threading.Thread(target=lambda: running.update(done=self.go(ann)))
+            worker.start()
+            try:
+                self.assertTrue(model.asking.wait(20))
+                status, body = bob.post('/api/workspace/types', ticket)   # a write the run's lock would hold up
+                self.assertEqual((status, model.let_go.is_set()), (200, False), body)
+            finally:
+                model.let_go.set()
+                worker.join(60)
+            self.assertEqual(running['done']['status'], 'success')
+            node = {n['id']: n for n in running['done']['nodes']}['c']
+            self.assertEqual((node['llm']['answered'], node['llm']['called'], node['llm']['pending']), (45, len(set(TRUTH)), 0))
+
+    def test_a_run_over_the_cap_is_refused_with_the_number_of_rows_it_would_call_and_a_review_or_trial_over_its_cap_too(self):
+        model = RowModel()
+        with self.service(gateway=model) as (base, out):
+            ann = self.team(base)['ann']
+            self.make(ann)
+            distinct = len(set(TRUTH))
+            state = self.ask(ann, 'llm/state', {})[1]
+            self.assertEqual((state['estimate']['calls'], state['estimate']['cap'], state['estimate']['over_cap']), (distinct, 500, False))
+            with mock.patch('ontology_poc_generator.pipeline_llm.MAX_RUN_CALLS', 10):
+                self.assertTrue(self.ask(ann, 'llm/state', {})[1]['estimate']['over_cap'])
+                status, body = ann.post(f'{PIPELINES}/run', {'id': '工单分类'})
+                self.assertEqual(status, 409, body)
+                self.assertIn(f'{distinct} 次', body['error'])
+                self.assertIn('最多 10 次', body['error'])
+            with mock.patch('ontology_poc_generator.pipeline_llm.MAX_TRIAL_CALLS', 10):
+                status, body = self.ask(ann, 'llm/trial', {'mode': 'sample', 'n': 20, 'seed': 1})
+                self.assertEqual(status, 409, body)
+                self.assertIn('最多 10 次', body['error'])
+                drawn = self.ask(ann, 'llm/trial', {'mode': 'draw', 'n': 20, 'seed': 1})[1]
+                self.ask(ann, 'llm/label', {'labels': [{'fields': t['fields'], 'expected': TRUTH[t['fields']['问题描述']]} for t in drawn['trials']]})
+                status, body = self.ask(ann, 'llm/review', {})
+                self.assertEqual(status, 409, body)
+                self.assertIn('20 次', body['error'])
+            self.assertEqual(model.requests, [])   # nothing was asked, and nothing was run
+
+    def test_what_a_draft_asked_the_model_is_kept_for_that_person_and_that_draft_not_for_anyone_who_can_try_the_same_text(self):
+        model = RowModel()
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            text = TICKETS[0]['问题描述']
+            probe = {'spec': TICKET_SPEC, 'step': 'c', 'mode': 'values', 'values': {'问题描述': text}}
+            first = ann.post(f'{PIPELINES}/llm/trial', probe)[1]['trials'][0]
+            self.assertEqual((first['cached'], len(model.requests)), (False, 1))
+            again = ann.post(f'{PIPELINES}/llm/trial', probe)[1]['trials'][0]
+            self.assertEqual((again['cached'], len(model.requests)), (True, 1))   # the same person trying the same draft again
+            theirs = bob.post(f'{PIPELINES}/llm/trial', probe)[1]['trials'][0]
+            self.assertEqual((theirs['cached'], len(model.requests)), (False, 2))   # another person cannot learn that it was tried, nor read what came back
 
     def test_a_viewer_gets_nothing_of_the_node(self):
         with self.service(gateway=RowModel()) as (base, out):

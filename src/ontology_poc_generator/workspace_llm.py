@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 
+from ontology_poc_generator import pipeline_llm
 from ontology_poc_generator.object_types import TypeRefused
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_llm import (
@@ -13,7 +14,7 @@ from ontology_poc_generator.pipeline_llm import (
 from ontology_poc_generator.pipeline_llm_review import SAMPLE_ROWS, draw, labels_of, remove_label, review_state, run_review, run_rows, save_labels
 from ontology_poc_generator.pipeline_ops import visible
 from ontology_poc_generator.pipelines import PREVIEW_SECONDS, PipelineRunError, compile_pipeline, deadline, needed_steps
-from ontology_poc_generator.workspace_pipelines import _execute, _pipeline_row, _spec_of, check_definition, drop_temporary, llm_run, pipeline_id
+from ontology_poc_generator.workspace_pipelines import _execute, _pipeline_row, _spec_of, check_definition, drop_temporary, llm_run, llm_scope, pipeline_id
 from ontology_poc_generator.workspace_store import log_line
 
 MAX_TRIAL_ROWS = 100
@@ -66,16 +67,17 @@ def _estimate(report: dict, service: LlmService | None) -> dict:
     cost when the service knows its prices; nothing is claimed about money when it does not."""
     calls, chars = report['to_call'], report['chars_in']
     prices = service is not None and service.price_in is not None and service.price_out is not None
-    return {'calls': calls, 'chars_in': chars, 'cost': round((chars * service.price_in + calls * EXPECTED_TOKENS_OUT * service.price_out) / 1_000_000, 4) if prices else None}
+    return {'calls': calls, 'chars_in': chars, 'cap': pipeline_llm.MAX_RUN_CALLS, 'over_cap': calls > pipeline_llm.MAX_RUN_CALLS,
+            'cost': round((chars * service.price_in + calls * EXPECTED_TOKENS_OUT * service.price_out) / 1_000_000, 4) if prices else None}
 
 
 def state(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
     """{id | spec, step}: where the step stands on the current data: the report of a run that only reads what is kept (rows, skipped, answered from the kept answers, still to call,
     the estimate), the kept answers, whether a prompt, model or output change has made them stale, the sample review and its labels."""
     found, step, eff, names, name = _checked(conn, engine, payload, user)
-    scope = pipeline_id(name) if name else ''
+    scope = llm_scope(name, user, found['content']['spec'])
     try:
-        run = llm_run(conn, llm, name, 'cache')
+        run = llm_run(conn, llm, scope, 'cache')
         _, contract, model = run.contract(step)
         try:
             with deadline(engine, PREVIEW_SECONDS):
@@ -92,7 +94,7 @@ def state(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
     return {'step': step['id'], 'name': step['name'], 'template': eff['template'], 'kind': eff['kind'], 'choices': eff['choices'], 'fields': eff['fields'], 'prompt': eff['prompt'],
             'columns': [c['name'] for c in eff['columns']], 'inputs': compile_prompt(eff['prompt'], names)[1], 'model_now': model, 'model_node': step.get('model'), 'contract': contract, 'report': report, 'cache': kept,
             'recompute': {'rows': report['to_call'], 'why': why} if why else None, 'estimate': _estimate(report, llm), 'review': review_state(conn, scope, step, model),
-            'labels': labels_of(conn, scope, step['id']) if scope else [], 'basis': '全部行'}
+            'labels': labels_of(conn, scope, step['id']) if name else [], 'basis': '全部行'}
 
 
 def trial(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
@@ -100,7 +102,7 @@ def trial(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
     it reads (their numbers, from 0), or on a random sample (n, default 20): for each the prompt sent, the raw answer and the parsed value. This calls the model, and keeps the
     answers that are answers. A sample is labelled 样本; with exclude_labelled it leaves out the rows that already have a label; `draw` picks the sample rows only and does not call the model."""
     found, step, eff, names, name = _checked(conn, engine, payload, user)
-    scope = pipeline_id(name) if name else ''
+    scope = llm_scope(name, user, found['content']['spec'])
     try:
         fields, rows = _rows(engine, found, step, names) if payload.get('mode') != 'values' else (compile_prompt(eff['prompt'], names)[1], [])
     finally:
@@ -120,7 +122,7 @@ def trial(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
         n = payload.get('n', SAMPLE_ROWS)
         if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= MAX_TRIAL_ROWS:
             raise TypeRefused(f'样本要 1 到 {MAX_TRIAL_ROWS} 行')
-        skip = {l['row_hash'] for l in labels_of(conn, scope, step['id'])} if payload.get('exclude_labelled') and scope else set()
+        skip = {l['row_hash'] for l in labels_of(conn, scope, step['id'])} if payload.get('exclude_labelled') and name else set()
         chosen, basis = draw(rows, fields, n, payload.get('seed'), skip), '样本'
     else:
         raise TypeRefused('试跑的方式（mode）只有 values、rows、sample、draw')

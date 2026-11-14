@@ -168,7 +168,7 @@ test("statistics before and after are compared per column and a column that came
 
 // --- the AI step and the assistant ---
 
-import { aiNodeLine, applyDraft, estimateText, insertField, llmRunText, offListLines, rememberPrompt, reviewText, stepSummary } from "./pipelineModel.js";
+import { aiNodeLine, applyDraft, estimateText, insertField, llmRunText, runCalls, offListLines, rememberPrompt, reviewText, stepSummary } from "./pipelineModel.js";
 
 test("a new AI step reads the selected step, records the model and starts as a classification that ends in 其他", () => {
   const step = newStep([{ id: "t", type: "input" }], "llm", "t", [], "deepseek-flash");
@@ -198,6 +198,9 @@ test("the review reads 20 行里 17 行对上 and says when it is old, when no l
 test("the estimate names calls and characters and claims no money when the service has no price", () => {
   assert.equal(estimateText({ calls: 30, chars_in: 1200, cost: null }), "要调用 30 次，约 1,200 字发给模型；服务没有配单价，没有估价");
   assert.equal(estimateText({ calls: 30, chars_in: 1200, cost: 0.05 }), "要调用 30 次，约 1,200 字发给模型；约 0.05 元");
+  assert.equal(estimateText({ calls: 30, chars_in: 1200, cost: null, cap: 500 }), "要调用 30 次，约 1,200 字发给模型；服务没有配单价，没有估价；一次运行最多 500 次");
+  assert.deepEqual(runCalls({ a: { estimate: { calls: 300, cap: 500 } }, b: { estimate: { calls: 250, cap: 500 } } }), { calls: 550, cap: 500, over: true });
+  assert.equal(runCalls({}), null);
 });
 
 test("applying a draft appends its steps to the spec as ordinary steps and leaves the spec it was given alone; recent prompts keep one of each, newest first", () => {

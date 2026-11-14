@@ -16,9 +16,11 @@ see), nor one this person may not see; a pipeline that reads one is not shown to
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import time
 
+from ontology_poc_generator import pipeline_llm
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.object_types import (
@@ -327,9 +329,18 @@ def _execute(engine, spec: dict, resolved: dict, ctx: dict, upto=None, after=Non
     return run_pipeline(engine, spec, resolved['datasets'], resolved['views'], ctx['codes'], ROW_CAP, {**ctx, 'llm': llm}, upto, after)
 
 
-def llm_run(conn, service, name, mode: str, lease=None) -> LlmRun:
-    """The model's part of a run for the pipeline `name` (a draft of one that is not saved keeps its answers under no name): "cache" reads kept answers, "run" calls the model."""
-    return LlmRun(conn, service or LlmService(), pipeline_id(name) if name else '', mode, lease)
+def llm_scope(name: str | None, user: dict | None, spec: dict) -> str:
+    """Whose the kept answers of this definition are: a saved pipeline's own (whoever asks, the same checks stand in front of them), and for a draft that is not saved this person's,
+    for what it reads. What one person tried on a draft is not another's to read, and trying the same text is no way to learn that it was tried."""
+    if name:
+        return pipeline_id(name)
+    reads = sorted(f'{kind}:{s[kind]}' for s in spec.get('steps') or [] if isinstance(s, dict) and s.get('type') == 'input' for kind in ('dataset', 'view') if isinstance(s.get(kind), str))
+    return 'draft:' + hashlib.sha256(json.dumps([user['id'] if user else None, reads], ensure_ascii=False).encode()).hexdigest()[:20]
+
+
+def llm_run(conn, service, scope: str, mode: str, lease=None, known=None, limit=None) -> LlmRun:
+    """The model's part of a run for the answers kept under `scope` (llm_scope): "cache" reads kept answers (and `known`, what the step before the run was told), "run" calls the model."""
+    return LlmRun(conn, service or LlmService(), scope, mode, lease, known, limit)
 
 
 def node_stats(conn, table: str, columns: list[dict]) -> list[dict]:
@@ -392,7 +403,7 @@ def preview(conn, engine, payload: dict, user: dict | None, llm: LlmService | No
             captured['columns'] = _column_info(compiled['columns'], found['ctx'])
     try:
         register(engine)
-        result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], needed_steps(found['content']['spec'], [node]), take, llm_run(conn, llm, name, 'cache'))
+        result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], needed_steps(found['content']['spec'], [node]), take, llm_run(conn, llm, llm_scope(name, user, spec), 'cache'))
     except (ValueError, PipelineRunError) as exc:
         raise TypeRefused(str(exc), 409) from None
     finally:
@@ -422,7 +433,7 @@ def summary(conn, engine, payload: dict, user: dict | None, llm: LlmService | No
         raise first_error
     try:
         register(engine)
-        result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], llm=llm_run(conn, llm, name, 'cache'))
+        result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], llm=llm_run(conn, llm, llm_scope(name, user, spec), 'cache'))
     except (ValueError, PipelineRunError) as exc:
         raise TypeRefused(str(exc), 409) from None
     finally:
@@ -541,7 +552,7 @@ def _dry_run(conn, engine, row: dict, user: dict | None, llm: LlmService | None 
     try:
         register(engine)
         result = _execute(engine, content['spec'], resolved, ctx, None, lambda c, report, compiled: stats.__setitem__(report['id'], node_stats(c, compiled['table'], compiled['columns'])),
-                          llm_run(conn, llm, content['name'], 'cache'))
+                          llm_run(conn, llm, pipeline_id(content['name']), 'cache'))
         problems = _output_problems(conn, result['nodes'], content['spec'])
         if problems:
             raise TypeRefused('；'.join(problems), 409)
@@ -588,8 +599,36 @@ def _record(conn, run_id: int, **fields) -> None:
     conn.execute(f'UPDATE pipeline_run SET {sets} WHERE id = ?', (*(json.dumps(v, ensure_ascii=False) if k.endswith('_json') else v for k, v in fields.items()), run_id))
 
 
-def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm: LlmService | None = None) -> dict:
-    """{id}: run the pipeline now on the current data of its inputs. Every output is checked first (its columns against the dataset it writes to, its key unique and not
+def fill_answers(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
+    """{id}: the model's part of a run of a saved pipeline, done before the run takes the lock uploads and confirms need: every row of an AI step that has no kept answer is asked
+    (at most MAX_RUN_CALLS of them, refused with the count before the first call), each batch kept as it comes back. {step id: {key hash: what came back}}, which run_now
+    reads (the rows that failed are not kept, so they travel in this). Nothing is written but the answers."""
+    row = _pipeline_row(conn, payload.get('id'), user)
+    content, element_id = _content(row), row['element_id']
+    asking = [s['id'] for s in content['spec']['steps'] if s['type'] == 'llm']
+    if not asking:
+        return {}
+    _check_outputs(conn, content['spec'], element_id, user)   # a run that cannot be written is not paid for
+    resolved = resolve_inputs(conn, engine, content['spec'], user)
+    try:
+        ctx, _ = build_context(conn)
+        register(engine)
+        with deadline(engine, RUN_SECONDS) as lease:
+            run = llm_run(conn, llm, element_id, 'run', lease, limit=pipeline_llm.MAX_RUN_CALLS)
+            _execute(engine, content['spec'], resolved, ctx, needed_steps(content['spec'], asking), None, run)
+    except (ValueError, PipelineRunError) as exc:
+        if isinstance(exc, TypeRefused):
+            raise
+        raise TypeRefused(str(exc), 409) from None
+    finally:
+        drop_temporary(engine, resolved)
+        engine.commit()   # the answers table the run wrote opened a transaction on the engine: left open, a later read of the stored tables would hold off the run's own write
+    return run.results
+
+
+def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm: LlmService | None = None, filled: dict | None = None) -> dict:
+    """{id}: run the pipeline now on the current data of its inputs. The model is not called here: an AI step reads the answers kept (and `filled`, what fill_answers was told
+    just before). Every output is checked first (its columns against the dataset it writes to, its key unique and not
     empty, at least a row); if any is refused nothing is written and the run is failed with the reasons. Otherwise each output is a new dataset or a new version, recording the
     run and the input versions, and what reads it is checked again (recheck_after_write). The run is kept either way: status, who, when, how long, rows and failures per
     node, the versions read, what was written. Returns the run (see run_detail)."""
@@ -617,8 +656,10 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm
                 outputs[report['id']] = [[_as_text(v, col['type']) for v, col in zip(r, cols)]
                                          for r in c.execute(f'SELECT {", ".join(_q(col["name"]) for col in cols)} FROM {compiled["table"]} ORDER BY rowid')]
         register(engine)
-        with deadline(engine, RUN_SECONDS) as lease:
-            result = _execute(engine, content['spec'], resolved, ctx, feeds, take, llm_run(conn, llm, content['name'], 'run', lease))
+        with deadline(engine, RUN_SECONDS):
+            result = _execute(engine, content['spec'], resolved, ctx, feeds, take, llm_run(conn, llm, element_id, 'cache', known=filled))
+        if any((n.get('llm') or {}).get('pending') for n in result['nodes']):   # rows that arrived after the model was asked have no answer
+            raise PipelineRunError('数据在问模型的这段时间里变了，有的行还没有答案，没有写数据集。请再运行一次')
         problems = _output_problems(conn, result['nodes'], content['spec'])
         if problems:
             raise PipelineRunError('；'.join(problems))
@@ -978,7 +1019,7 @@ def trial_expression(conn, engine, payload: dict, user: dict | None, llm: LlmSer
                 out['notices'] = shift_notices(c, f'(SELECT * FROM {table} ORDER BY rowid LIMIT {sample})', result['sql'], result['params'],
                                                 [by_name[f] for f in fields if by_name[f]['type'] in ('date', 'datetime')], result['truncates'])
         register(engine)
-        _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], needed_steps(found['content']['spec'], [step_id]), take, llm_run(conn, llm, payload.get('id'), 'cache'))
+        _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], needed_steps(found['content']['spec'], [step_id]), take, llm_run(conn, llm, llm_scope(payload.get('id'), user, found['content']['spec']), 'cache'))
         return {'ok': True, 'type': result['type'], 'errors': out['errors'], 'rows': out['rows'], 'rows_tried': out['rows_tried'], 'notices': out.get('notices', []), 'basis': '样本'}
     except (ValueError, PipelineRunError) as exc:
         raise TypeRefused(str(exc), 409) from None

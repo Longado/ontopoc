@@ -34,6 +34,8 @@ UNITS = ('字', '句')
 MAX_PROMPT, MAX_CONTEXT, MAX_CHOICES, MAX_CHOICE, MAX_EXTRACT = 2000, 200, 50, 40, 20
 MAX_FIELD_CHARS = 4000   # a field longer than this is not sent: the row is counted as failed, not cut
 WORKERS = 8
+MAX_RUN_CALLS = 500     # the most model calls one run of a pipeline may make (rows with different content and no kept answer), refused before the first call
+MAX_TRIAL_CALLS = 100   # the same for one 试跑 or one 样本审核 request
 ERROR_SUFFIX = '_错误'
 SKIPPED, PENDING = '跳过：提示用到的列都是空的', '还没跑'
 
@@ -363,28 +365,41 @@ def read_rows(engine, table: str, fields: list[str]) -> list[tuple[int, dict]]:
     return [(r[0], {f: _text(v) for f, v in zip(fields, r[1:])}) for r in engine.execute(f'SELECT rowid, {", ".join(q(f) for f in fields)} FROM {table} ORDER BY rowid')]
 
 
-def call_many(gateway, eff: dict, todo: dict) -> dict:
-    """{key hash: the judge result} for {key hash: task}. Calls go out WORKERS at a time; when a whole batch could not reach the model, the rest are not tried (a
-    stopped account or a broken network does not mend by asking the next row)."""
+def refuse_over(calls: int, limit: int, what: str) -> None:
+    """LlmError, before any call is made, when `calls` is more than the `limit` of this kind of request."""
+    if calls > limit:
+        raise LlmError(f'{what}要问模型 {calls} 次（内容不同、还没有记下答案的行），一次最多 {limit} 次，没有调用模型。先在前面过滤，或少选一些行，分几次来')
+
+
+def call_many(gateway, eff: dict, todo: dict, on_batch=None) -> dict:
+    """{key hash: the judge result} for {key hash: task}. Calls go out WORKERS at a time; `on_batch({key hash: result})` is called as each batch is back, so what was paid
+    for is kept even when a later one fails; when a whole batch could not reach the model, the rest are not tried (a stopped account or a broken network does not mend by
+    asking the next row)."""
     results, keys = {}, list(todo)
     for start in range(0, len(keys), WORKERS):
         batch = keys[start:start + WORKERS]
         with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-            for key, result in zip(batch, pool.map(lambda k: judge(gateway, eff, todo[k]), batch)):
-                results[key] = result
+            done = dict(zip(batch, pool.map(lambda k: judge(gateway, eff, todo[k]), batch)))
+        results.update(done)
+        if on_batch:
+            on_batch(done)
         if all(results[k]['request_failed'] for k in batch):
-            for key in keys[start + WORKERS:]:
-                results[key] = {'status': 'failed', 'values': None, 'message': '模型连不上，后面的行没有再试', 'raw': None, 'request_failed': True}
+            rest = {key: {'status': 'failed', 'values': None, 'message': '模型连不上，后面的行没有再试', 'raw': None, 'request_failed': True} for key in keys[start + WORKERS:]}
+            results.update(rest)
             break
     return results
 
 
 class LlmRun:
-    """The model's part of one run of a pipeline on one connection: `mode` "cache" reads kept answers only (trying a pipeline), "run" calls the model for the rows with
-    none. `conn` is the workspace connection the answers are kept on, `engine` (given to prepare) the one the run computes on."""
+    """The model's part of one run of a pipeline on one connection: `mode` "cache" reads kept answers only (trying a pipeline, and the run that writes the outputs), "run"
+    calls the model for the rows with none (the step before the run, outside the lock others need): each batch is kept as it comes back, `limit` is the most calls it may
+    make (refused before the first), and `results` holds, per step, what every row it asked came back as. `known` (a "run"'s `results`) is what a "cache" run was told
+    about the rows asked just before it, which a failure leaves out of the cache. `conn` is the workspace connection the answers are kept on, `engine` (given to prepare)
+    the one the run computes on."""
 
-    def __init__(self, conn, service: LlmService, pipeline_id: str, mode: str, deadline=None):
+    def __init__(self, conn, service: LlmService, pipeline_id: str, mode: str, deadline=None, known: dict | None = None, limit: int | None = None):
         self.conn, self.service, self.pipeline_id, self.mode, self.deadline = conn, service, pipeline_id, mode, deadline
+        self.known, self.limit, self.calls, self.results = known or {}, limit, 0, {}
 
     def contract(self, step: dict) -> tuple[dict, str, str | None]:
         eff = effective(step)
@@ -408,6 +423,8 @@ class LlmRun:
         stale = cache_counts(self.conn, self.pipeline_id, step['id'], contract)['stale']
         kept = cache_get(self.conn, self.pipeline_id, step['id'], contract, list(distinct))
         outcome = {k: {'status': 'ok', 'values': v['values'], 'message': None, 'cached': True} for k, v in kept.items()}
+        told = {k: g for k, g in self.known.get(step['id'], {}).items() if k in distinct}   # asked a moment ago: answered (and kept) or failed (and not)
+        outcome.update(told)
         todo = {}
         for key, values in distinct.items():
             if key in outcome:
@@ -421,15 +438,19 @@ class LlmRun:
         if todo and self.mode == 'run':
             if self.service.gateway is None:
                 raise LlmError(f'步骤 {step["id"]}：本机服务没有模型凭据，不能调用模型')
+            if self.limit is not None:
+                refuse_over(self.calls + len(todo), self.limit, '这次运行一共')
             cache_clear(self.conn, self.pipeline_id, step['id'], contract)   # the earlier answers are not this node's any more
             waited = time.monotonic()
-            got = call_many(self.service.gateway, eff, todo)
+            got = call_many(self.service.gateway, eff, todo,
+                            lambda batch: cache_put(self.conn, self.pipeline_id, step['id'], contract, model, {k: g for k, g in batch.items() if g['status'] == 'ok'}))
             if self.deadline is not None:
                 self.deadline.extend(time.monotonic() - waited)   # the time the model took is not the engine's
             called = len(got)
-            cache_put(self.conn, self.pipeline_id, step['id'], contract, model, {k: g for k, g in got.items() if g['status'] == 'ok'})
+            self.calls += called
             outcome.update({k: {**g, 'cached': False} for k, g in got.items()})
-        report = {'mode': self.mode, 'model': model, 'rows': len(rows), 'skipped': 0, 'answered': 0, 'from_cache': 0, 'called': called, 'failed': 0, 'off_list': 0,
+            self.results.setdefault(step['id'], {}).update({k: {**g, 'cached': False} for k, g in got.items()})
+        report = {'mode': self.mode, 'model': model, 'rows': len(rows), 'skipped': 0, 'answered': 0, 'from_cache': 0, 'called': called + len(told), 'failed': 0, 'off_list': 0,
                   'off_list_answers': {}, 'unanswered': 0, 'pending': 0, 'to_call': len(todo) if self.mode != 'run' else 0, 'chars_in': chars, 'stale_cache': stale,
                   'cache_rows': len(kept)}
         width, table = len(eff['columns']) - 1, []
