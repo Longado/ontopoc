@@ -3,7 +3,7 @@ import { aiExplain, confirmPipeline, reviewPipeline } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { timeText } from "./format.js";
 import { changeTitle, ChangeRow } from "./PipelineViews.jsx";
-import { aiNodeLine, failureLine, friendlyError, markedIds, numberText, progressOf, statRows, toggleMark, versionsText } from "./pipelineModel.js";
+import { aiNodeLine, failureLine, friendlyError, labelledRow, markedIds, numberText, progressOf, statRows, toggleMark, versionsText } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
 
@@ -47,6 +47,23 @@ function Confirmed({ detail }) {
 }
 
 /** What the second person reads before confirming: each changed step with before and after, the statistics of its output then and now, a mark for each step seen. Once confirmed: only who confirmed which version. */
+/** The rows the sample review was made on: what each said, what its labeller expected and what the step answered, mismatches first. Read this before trusting the count. */
+function LabelledRows({ node }) {
+  const rows = node.rows.map(labelledRow).sort((a, b) => Number(a.matched) - Number(b.matched));
+  if (!rows.length) return <p className="muted small">{node.name}：还没有人标注过行，没有什么可看的。</p>;
+  return (
+    <details className="labelled" open={!node.review.passed}>
+      <summary>{node.name}：标注的 {rows.length} 行，期望的答案和 AI 的答案（{rows.filter((r) => r.checked && !r.matched).length} 行没对上）</summary>
+      <div className="table-wrap">
+        <table className="wraps">
+          <thead><tr><th>这一行</th><th>标注的人期望</th><th>AI 答的</th><th>标注人</th></tr></thead>
+          <tbody>{rows.map((r, i) => <tr key={i} className={r.checked && !r.matched ? "changed" : ""}><td>{r.text}</td><td>{r.expected}</td><td>{r.answered}</td><td className="muted">{r.who}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
 export function PipelineConfirm({ detail, reload }) {
   return detail.state === "confirmed" ? <Confirmed detail={detail} /> : <Review detail={detail} reload={reload} />;
 }
@@ -115,6 +132,7 @@ function Review({ detail, reload }) {
             <div className="verdict">
               <p className="caption">AI 步骤的样本审核（它们写出的列标着“AI 生成”）</p>
               <ul className="plain-list">{review.ai_nodes.map((n) => <li key={n.id} className={n.review.passed ? "" : "warn"}>{aiNodeLine(n)}</li>)}</ul>
+              {review.ai_nodes.map((n) => <LabelledRows key={n.id} node={n} />)}
             </div>
           )}
           {review.changes.map((c) => (

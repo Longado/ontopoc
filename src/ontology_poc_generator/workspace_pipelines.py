@@ -29,7 +29,7 @@ from ontology_poc_generator.object_types import (
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import guess_formats, number_text, register
 from ontology_poc_generator.pipeline_llm import LlmRun, LlmService, cache_counts, contract_of, effective
-from ontology_poc_generator.pipeline_llm_review import review_state
+from ontology_poc_generator.pipeline_llm_review import review_rows, review_state
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, CAST_TYPES, CATALOG, aggregation_options, new_context, shift_notices, visible
 from ontology_poc_generator.pipelines import (
     HOWS, OUTPUT_CAP, ROW_CAP, RUN_SECONDS, PipelineRunError, check_pipeline, compile_pipeline, dataset_key, deadline, needed_steps, run_pipeline, workspace_datasets)
@@ -814,7 +814,7 @@ def ai_nodes(conn, content: dict, model: str | None = None) -> list[dict]:
     """The LLM steps of a pipeline and where each stands for a person who confirms it: its sample review (labelled rows, the count, whether it passed, whether it was made
     with the prompt, model and output the step has now) and the answers it has kept."""
     element_id = pipeline_id(content['name'])
-    return [{'id': s['id'], 'name': s['name'], 'model': s.get('model'), 'review': review_state(conn, element_id, s, model),
+    return [{'id': s['id'], 'name': s['name'], 'model': s.get('model'), 'review': review_state(conn, element_id, s, model), 'rows': review_rows(conn, element_id, s),
              'cache': cache_counts(conn, element_id, s['id'], contract_of(effective(s), model or s.get('model')))}
             for s in content['spec']['steps'] if s['type'] == 'llm']
 

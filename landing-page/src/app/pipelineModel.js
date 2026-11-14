@@ -378,7 +378,15 @@ export function reviewText(review) {
   const count = `${review.total} 行里 ${review.matched} 行对上`;
   if (!review.current) return `${count}（那是改提示之前的结果，要重跑）`;
   if (review.min_match == null) return `${count}；还没定要对上几行才算通过`;
-  return `${count}，${review.passed ? "达到" : "没达到"}要求的 ${review.min_match} 行`;
+  if (review.need_labelled != null && review.labelled < review.need_labelled) return `${count}；至少要标注 ${review.need_labelled} 行才能通过，现在 ${review.labelled} 行`;
+  return `${count}，${review.passed ? "达到" : "没达到"}要求的 ${review.need_match ?? review.min_match} 行`;
+}
+
+/** One labelled row for the person who confirms: what the row said, what was expected, what the step answered, and whether they match. */
+export function labelledRow(row) {
+  const answered = row.ai == null ? (row.status === "absent" ? "这一行不在现在的数据里" : "还没核对") : row.ai.map((v) => (v == null ? "空" : String(v))).join("；");
+  const expected = row.expected !== null && typeof row.expected === "object" ? Object.values(row.expected).map((v) => (v == null ? "空" : String(v))).join("；") : String(row.expected);
+  return { text: Object.values(row.fields).map((v) => (v == null || v === "" ? "空" : String(v))).join(" ｜ "), expected, answered, matched: row.matched === true, checked: row.matched != null, who: row.who ?? "—" };
 }
 
 /** The AI columns an output keeps and what holds each back from being a key or a code meaning, from the pipeline's AI nodes. */

@@ -10,7 +10,7 @@ from ontology_poc_generator import pipeline_llm
 from ontology_poc_generator.object_types import TypeRefused
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_llm import (
-    LlmError, LlmService, cache_clear, cache_counts, compile_prompt, contract_of, effective, read_rows, row_hash)
+    LlmError, LlmService, _blank, cache_clear, cache_counts, compile_prompt, contract_of, effective, read_rows, row_hash)
 from ontology_poc_generator.pipeline_llm_review import SAMPLE_ROWS, draw, labels_of, remove_label, review_state, run_review, run_rows, save_labels
 from ontology_poc_generator.pipeline_ops import visible
 from ontology_poc_generator.pipelines import PREVIEW_SECONDS, PipelineRunError, compile_pipeline, deadline, needed_steps
@@ -159,14 +159,20 @@ def label(conn, engine, payload: dict, who: str | None, user: dict | None) -> di
 
 
 def review_rerun(conn, engine, payload: dict, who: str | None, user: dict | None, llm: LlmService | None = None) -> dict:
-    """{id, step}: run the labelled rows through the step as it is now (this calls the model for the rows it has no answer for) and keep the count against what was expected."""
+    """{id, step}: run the labelled rows through the step as it is now (this calls the model for the rows it has no answer for) and keep the count against what was expected.
+    The labels have to be rows of what the step reads now (a label for another is a miss), and the number of different rows it reads is kept: a step with fewer than
+    MIN_LABELLED of them is reviewed on all of them."""
     _, scope = _saved(conn, payload, user)
     found, step, eff, names, _ = _checked(conn, engine, payload, user)
-    drop_temporary(engine, found['resolved'])
-    if eff['template'] == 'summary':
-        raise TypeRefused('概括没有标准答案，不做样本审核')
     try:
-        result = run_review(conn, llm or LlmService(), scope, step, names, who, user['id'] if user else None)
+        if eff['template'] == 'summary':
+            raise TypeRefused('概括没有标准答案，不做样本审核')
+        fields, rows = _rows(engine, found, step, names)
+    finally:
+        drop_temporary(engine, found['resolved'])
+    present = {row_hash(v, fields) for _, v in rows if not all(_blank(v[f]) for f in fields)}
+    try:
+        result = run_review(conn, llm or LlmService(), scope, step, names, who, user['id'] if user else None, present, len(present))
     except LlmError as exc:
         raise TypeRefused(str(exc), 409) from None
     log_line(conn, who or '未署名', scope, 'llm_review', after={'step': step['id'], 'matched': result['matched'], 'total': result['total'], 'passed': result['passed']})

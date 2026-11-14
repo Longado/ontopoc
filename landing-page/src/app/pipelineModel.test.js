@@ -168,7 +168,7 @@ test("statistics before and after are compared per column and a column that came
 
 // --- the AI step and the assistant ---
 
-import { aiNodeLine, applyDraft, estimateText, insertField, llmRunText, runCalls, offListLines, rememberPrompt, reviewText, stepSummary } from "./pipelineModel.js";
+import { aiNodeLine, applyDraft, estimateText, insertField, labelledRow, llmRunText, runCalls, offListLines, rememberPrompt, reviewText, stepSummary } from "./pipelineModel.js";
 
 test("a new AI step reads the selected step, records the model and starts as a classification that ends in 其他", () => {
   const step = newStep([{ id: "t", type: "input" }], "llm", "t", [], "deepseek-flash");
@@ -190,6 +190,10 @@ test("the review reads 20 行里 17 行对上 and says when it is old, when no l
   assert.equal(reviewText({ ...base, passed: false, min_match: 18 }), "20 行里 17 行对上，没达到要求的 18 行");
   assert.equal(reviewText({ ...base, current: false }), "20 行里 17 行对上（那是改提示之前的结果，要重跑）");
   assert.equal(reviewText({ ...base, min_match: null, passed: false }), "20 行里 17 行对上；还没定要对上几行才算通过");
+  assert.equal(reviewText({ ...base, labelled: 10, total: 10, matched: 10, need_labelled: 20, passed: false }), "10 行里 10 行对上；至少要标注 20 行才能通过，现在 10 行");
+  assert.equal(reviewText({ ...base, need_labelled: 20, need_match: 17 }), "20 行里 17 行对上，达到要求的 17 行");
+  assert.deepEqual(labelledRow({ fields: { 问题描述: "发热" }, expected: "质量缺陷", ai: ["其他"], matched: false, who: "Ann" }), { text: "发热", expected: "质量缺陷", answered: "其他", matched: false, checked: true, who: "Ann" });
+  assert.equal(labelledRow({ fields: { a: "x" }, expected: "是", ai: null, status: "absent", matched: false }).answered, "这一行不在现在的数据里");
   assert.equal(reviewText({ reviewable: true, labelled: 0 }), "还没有标注");
   assert.equal(reviewText({ reviewable: false }), "概括没有标准答案，不做样本审核");
   assert.equal(aiNodeLine({ name: "问题类别", review: base, cache: { current: 30 } }), "问题类别：20 行里 17 行对上，达到要求的 17 行；记下了 30 条答案");

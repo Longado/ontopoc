@@ -11,6 +11,7 @@ from urllib.parse import quote
 
 from ontology_poc_generator.pipeline_llm import (
     MAX_RUN_CALLS, MAX_TRIAL_CALLS, LlmError, LlmRun, LlmService, check_llm_step, compile_prompt, contract_of, effective, parse_reply)
+from ontology_poc_generator.pipeline_llm_review import review_state
 from ontology_poc_generator.pipeline_ops import new_context
 from ontology_poc_generator.pipelines import PipelineRunError, check_pipeline, compile_pipeline, run_pipeline
 from ontology_poc_generator.recognition import ModelCompletion, RecognitionError
@@ -273,6 +274,20 @@ class RunTests(unittest.TestCase):
         report = next(n for n in result['nodes'] if n['id'] == 'm')['llm']
         self.assertEqual((report['answered'], report['failed'], report['pending'], report['called'], report['from_cache']), (2, 1, 0, 3, 0))
 
+    def test_a_step_that_reads_fewer_than_twenty_different_rows_is_reviewed_on_all_of_them_and_still_needs_four_in_five(self):
+        step = {**llm(), 'min_match': 1}
+        contract = contract_of(effective(step), 'test-model')
+        for i in range(3):
+            self.conn.execute('INSERT INTO llm_label(pipeline_id, step_id, row_hash, fields_json, expected_json, who, who_user_id, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                              ('pipeline:小', 'm', f'h{i}', '{}', '"是"', 'Ann', 1, 't'))
+
+        def kept(matched):
+            self.conn.execute('INSERT OR REPLACE INTO llm_review(pipeline_id, step_id, contract, total, matched, min_match, at, distinct_rows) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                              ('pipeline:小', 'm', contract, 3, matched, 1, 't', 3))
+            return review_state(self.conn, 'pipeline:小', step)
+        self.assertEqual((kept(3)['passed'], kept(3)['need_labelled']), (True, 3))   # three different rows, all labelled, all right
+        self.assertFalse(kept(2)['passed'])   # two of three is under four in five, whatever the step names
+
     def test_a_pipeline_run_where_no_model_is_given_says_so_in_words(self):
         with self.assertRaises(ValueError) as caught:
             run_pipeline(self.engine, {'steps': [{'id': 'i', 'type': 'input', 'dataset': '评论'}, llm()]}, self.datasets)
@@ -528,6 +543,61 @@ class TicketWalkTests(SigningTestCase):
             theirs = bob.post(f'{PIPELINES}/llm/trial', probe)[1]['trials'][0]
             self.assertEqual((theirs['cached'], len(model.requests)), (False, 2))   # another person cannot learn that it was tried, nor read what came back
 
+    def labelled(self, ann, n, wrong=0, seed=3):
+        """n rows labelled with what the keyword model answers, the first `wrong` of them with another category; the labels as drawn."""
+        drawn = self.ask(ann, 'llm/trial', {'mode': 'draw', 'n': n, 'seed': seed})[1]['trials']
+        labels = [{'fields': t['fields'], 'expected': '其他' if i < wrong and keyword_answer(t['fields']['问题描述']) != '其他' else keyword_answer(t['fields']['问题描述'])} for i, t in enumerate(drawn)]
+        self.assertEqual(self.ask(ann, 'llm/label', {'labels': labels})[0], 200)
+        return labels
+
+    def test_the_review_passes_only_with_twenty_labelled_rows_and_at_least_four_in_five_of_them_matching_whatever_pass_mark_the_step_names(self):
+        model = RowModel()
+        lenient = {'steps': [TICKET_SPEC['steps'][0], classify_step(min_match=3), TICKET_SPEC['steps'][2]]}
+        with self.service(gateway=model) as (base, out):
+            ann = self.team(base)['ann']
+            self.make(ann, lenient)
+            self.labelled(ann, 10)
+            few = self.ask(ann, 'llm/review', {})[1]
+            self.assertEqual((few['matched'], few['total'], few['passed']), (10, 10, False))   # every row right, and still too few rows to say
+            self.assertEqual((few['review']['need_labelled'], few['review']['passed']), (20, False))
+            self.labelled(ann, 20, wrong=6, seed=9)
+            hard = self.ask(ann, 'llm/review', {})[1]
+            self.assertTrue(hard['review']['labelled'] >= 20)
+            self.assertEqual(hard['review']['need_match'], -(-hard['review']['labelled'] * 4 // 5))   # four in five of the rows labelled, though the step asks for 3
+            self.assertFalse(hard['passed'], hard)
+            self.ask(ann, 'llm/label', {'labels': [], 'remove': [l['row_hash'] for l in self.ask(ann, 'llm/state', {})[1]['labels']]})
+            self.labelled(ann, 20)
+            self.assertTrue(self.ask(ann, 'llm/review', {})[1]['passed'])
+
+    def test_the_second_person_is_shown_the_labelled_rows_what_was_expected_and_what_the_step_answered(self):
+        model = RowModel()
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.make(ann)
+            labels = self.labelled(ann, 20, wrong=4)
+            self.ask(ann, 'llm/review', {})
+            node = bob.get(f'{PIPELINES}/{quote("工单分类")}')[1]['ai_nodes'][0]
+            rows = {r['fields']['问题描述']: r for r in node['rows']}
+            self.assertEqual(len(rows), 20)
+            for label in labels:
+                shown = rows[label['fields']['问题描述']]
+                self.assertEqual((shown['expected'], shown['ai'], shown['who']), (label['expected'], [keyword_answer(label['fields']['问题描述'])], 'Ann'))
+                self.assertEqual(shown['matched'], shown['expected'] == shown['ai'][0])
+            self.assertEqual(sum(not r['matched'] for r in rows.values()), len([l for l in labels if l['expected'] != keyword_answer(l['fields']['问题描述'])]))
+
+    def test_a_label_for_a_row_that_is_not_in_the_data_counts_as_a_miss(self):
+        model = RowModel()
+        with self.service(gateway=model) as (base, out):
+            ann = self.team(base)['ann']
+            self.make(ann)
+            self.labelled(ann, 15)
+            self.ask(ann, 'llm/label', {'labels': [{'fields': {'问题描述': f'凭空写的第 {i} 行，数据里没有'}, 'expected': '其他'} for i in range(5)]})
+            review = self.ask(ann, 'llm/review', {})[1]
+            self.assertEqual((review['total'], review['matched'], review['passed']), (20, 15, False))   # twenty labelled, five of them rows that are not in the data
+            self.assertEqual(len(model.requests), 15)   # an invented row is never sent to the model
+            self.assertEqual(sum(r['status'] == 'absent' for r in review['rows']), 5)
+
     def test_a_viewer_gets_nothing_of_the_node(self):
         with self.service(gateway=RowModel()) as (base, out):
             team = self.team(base)
@@ -587,6 +657,7 @@ class TicketWalkTests(SigningTestCase):
             self.assertEqual((state['review']['current'], state['review']['passed'], state['review']['labelled'] > 0), (False, False, True))
             self.assertEqual(state['recompute']['rows'], len(set(TRUTH)))
             self.assertIn('以前记下的', state['recompute']['why'][0])
+            self.assertTrue(state['review']['needs_rerun'])   # the count was made with the old prompt: it is to be run again, and passes nothing until it is
             again = self.ask(ann, 'llm/review', {})[1]
             self.assertTrue(again['review']['current'])
 

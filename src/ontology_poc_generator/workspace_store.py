@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS llm_label (
     PRIMARY KEY (pipeline_id, step_id, row_hash));
 CREATE TABLE IF NOT EXISTS llm_review (
     pipeline_id TEXT NOT NULL, step_id TEXT NOT NULL, contract TEXT NOT NULL, total INTEGER NOT NULL, matched INTEGER NOT NULL, min_match INTEGER, who TEXT, who_user_id INTEGER, at TEXT NOT NULL,
+    distinct_rows INTEGER, detail_json TEXT,   -- how many different rows the step had to ask about then, and what each labelled row came back as
     PRIMARY KEY (pipeline_id, step_id));
 CREATE TABLE IF NOT EXISTS qa_question (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, asked_by TEXT, question TEXT NOT NULL, asked_at TEXT NOT NULL, status TEXT NOT NULL,
@@ -126,9 +127,9 @@ def open_workspace(path) -> sqlite3.Connection:
     for table, column in (('dataset', 'dropped_json'), ('dataset', 'who'), ('dataset', 'mode'), ('dataset', 'changes_json'), ('check_result', 'dataset_id'), ('check_result', 'null_key_rows'),
                           ('element_state', 'content_json'), ('element_state', 'anchors_json'), ('element_state', 'proposed_by'), ('element_state', 'reason'),
                           ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id'),
-                          ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json')):
+                          ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
-            conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows") or column.endswith("user_id") else "TEXT"}')
+            conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows") or column.endswith("user_id") else "TEXT"}')
     _never_reuse_ids(conn)
     _allow_needs_look(conn)
     conn.execute('INSERT OR IGNORE INTO current_dataset SELECT name, id FROM dataset WHERE version = '
