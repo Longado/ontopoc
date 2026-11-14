@@ -67,6 +67,9 @@ from ontology_poc_generator.auth_http import LOOPBACK, Gate
 from ontology_poc_generator.dataset_readers import dataset_readers
 from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
 from ontology_poc_generator.workspace_tasks import list_tasks
+from ontology_poc_generator.sources_http import schedules_get, schedules_post, sources_get, sources_post
+from ontology_poc_generator.workspace_schedules import schedule_loop, tick as schedule_tick
+from ontology_poc_generator.workspace_sources import interrupted_runs
 from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
 from ontology_poc_generator.pipeline_llm import LlmService
@@ -95,6 +98,7 @@ LOGGED_WRITES = {'/api/ontology/acceptance': 'acceptance', '/api/ontology/rules'
 SECURITY_HEADERS = (('X-Content-Type-Options', 'nosniff'), ('Referrer-Policy', 'no-referrer'),
                     ('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'"))   # the service answers JSON and downloads, never a page
 MAX_BULK = 200   # relations approved in one request: far above what a run has
+SOURCE_PATH = re.compile(r'/api/workspace/(sources|schedules)(/.*)?')   # the sources and schedules pages' requests (sources_http.py)
 
 
 class RunChanged(ValueError):
@@ -1464,6 +1468,31 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, body)
 
+        def sources_request(self, writing):
+            """/api/workspace/sources and /api/workspace/schedules, read or written: see sources_http.py. A pull reads the database without holding runs_lock and takes
+            it only to write the version (the lock an upload takes); setting a source up, testing it and the log are small writes of their own."""
+            url = urlsplit(self.path)
+            area, _, rest = url.path[len('/api/workspace/'):].partition('/')
+            try:
+                payload = None
+                if writing:
+                    payload = self.read_json()
+                    if payload is None:
+                        return
+                who = self.signer(payload, 'who') if writing else None
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    if area == 'sources':
+                        reply = sources_post(conn, '/' + rest if rest else '', payload, who, self.user, runs_lock) if writing else sources_get(conn, [unquote(p) for p in rest.split('/') if p], self.user)
+                    else:
+                        reply = schedules_post(conn, '/' + rest if rest else '', payload, who) if writing else schedules_get(conn, [unquote(p) for p in rest.split('/') if p])
+                finally:
+                    conn.close()
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(*reply)
+
         def ask_get(self):
             """/api/workspace/ask (the scope line and the person's own history), /api/workspace/ask/<id> (one saved answer as it stands now)."""
             parts = [p for p in urlsplit(self.path).path[len('/api/workspace/ask'):].split('/') if p]
@@ -1602,6 +1631,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/types' or self.path.startswith('/api/workspace/types/') or self.path.startswith('/api/workspace/types?'):
                 self.types_get()
+                return
+            if SOURCE_PATH.fullmatch(self.path.split('?')[0]):
+                self.sources_request(False)
                 return
             if self.path.startswith('/api/workspace/'):
                 self.workspace_get()
@@ -1809,6 +1841,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
                 self.actions_post()
+                return
+            if SOURCE_PATH.fullmatch(self.path):
+                self.sources_request(True)
                 return
             if self.path == '/api/workspace/datasets/upload':
                 self.workspace_upload()
@@ -2929,7 +2964,22 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         conn.close()
             self.reply(200, latest)
 
+    def run_schedules(now=None):
+        """Run every schedule that is due (workspace_schedules.tick); main() calls it once a minute, a test calls it with the time it wants."""
+        schedule_conn = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            return schedule_tick(schedule_conn, runs_lock, readonly_workspace, llm, now)
+        finally:
+            schedule_conn.close()
+
+    if (output_dir / 'workspace.sqlite').exists():   # a data directory that has no workspace yet is not given one by starting
+        startup = open_workspace(output_dir / 'workspace.sqlite')
+        try:
+            interrupted_runs(startup)   # a pull or run left "running" by a process that is gone
+        finally:
+            startup.close()
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server.run_schedules = run_schedules
     server.gate = gate
     gate.origins |= {f'http://{h}:{server.server_port}' for h in LOOPBACK}   # the port is known only now when port=0
     return server
@@ -2959,11 +3009,14 @@ def main(argv=None):
     elif server.gate.needs_first_admin():
         print('No accounts yet. Make the first admin on this machine:  python -m ontology_poc_generator.accounts create-admin'
               + ('' if args.data_dir == ROOT / 'output/ontology-runs' else f' --data-dir {args.data_dir}'), flush=True)
+    stop = threading.Event()
+    threading.Thread(target=schedule_loop, args=(server.run_schedules, stop), name='schedules', daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        stop.set()
         server.server_close()
 
 

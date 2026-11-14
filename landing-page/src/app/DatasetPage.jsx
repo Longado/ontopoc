@@ -7,6 +7,7 @@ import { TABS, TAB_LABEL, hrefFor } from "./routeModel.js";
 import { UploadDialog } from "./UploadDialog.jsx";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
+import { sourceOrigin } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
 import { keyListText, noChangeText, timeline, versionChangeText, versionWay } from "./versionText.js";
 
@@ -164,7 +165,8 @@ export function DatasetPage({ route }) {
             <span>{page.columns.length} 列</span>
             <span>第 {page.version} 版</span>
             <span>{page.version === page.current_version ? `更新于 ${timeText(page.updated_at)}` : `这一版导入于 ${timeText(page.version_at)}`}</span>
-            <span>来源 {originText(page.origin)}</span>
+            <span>来源 {sourceOrigin(page.origin) ? <>数据源“{mayBuild ? <a href={hrefFor({ page: "source", name: sourceOrigin(page.origin).source })}>{sourceOrigin(page.origin).source}</a> : sourceOrigin(page.origin).source}”的表 {sourceOrigin(page.origin).table}，拉取于 {timeText(page.version_at)}</> : originText(page.origin)}</span>
+            {page.versions.find((v) => v.version === page.version)?.source?.left_out?.length > 0 && <span className="warn">没读的二进制列：{page.versions.find((v) => v.version === page.version).source.left_out.join("、")}</span>}
             {page.readers.length > 0 && <span>被 {page.readers.map((r) => r.name).join("、")} 用到</span>}
           </p>
           {page.version !== page.current_version && (

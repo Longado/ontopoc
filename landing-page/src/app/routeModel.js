@@ -20,6 +20,8 @@ export function parseRoute(hash) {
   if (parts[0] === "qa" && parts.length === 2 && /^[1-9]\d*$/.test(parts[1])) return { page: "qa", id: Number(parts[1]) };   // a saved answer
   if (parts[0] === "datasets" && parts.length === 1) return { page: "datasets" };
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
+  if (parts[0] === "schedules" && parts.length === 1) return { page: "schedules" };
+  if (parts[0] === "sources" && parts.length <= 2) return parts.length === 1 ? { page: "sources" } : { page: "source", name: parts[1] };
   if ((parts[0] === "account" || parts[0] === "users") && parts.length === 1) return { page: parts[0] };
   if (parts.length === 1 && Object.hasOwn(PLANNED, parts[0])) return { page: "planned", key: parts[0] };
   if (parts[0] === "lineage" && parts.length === 1) return { page: "lineage" };
@@ -62,7 +64,8 @@ export function parseRoute(hash) {
 /** The address of a route; the inverse of parseRoute. */
 export function hrefFor(route) {
   if (route.page === "qa") return route.id ? `#/qa/${route.id}` : "#/qa";
-  if (route.page === "tasks" || route.page === "account" || route.page === "users") return `#/${route.page}`;
+  if (route.page === "tasks" || route.page === "account" || route.page === "users" || route.page === "sources" || route.page === "schedules") return `#/${route.page}`;
+  if (route.page === "source") return `#/sources/${encodeURIComponent(route.name)}`;
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "types") return "#/types";
   if (route.page === "confirm" || route.page === "permissions" || route.page === "lineage") return `#/${route.page}`;
@@ -89,18 +92,17 @@ export function hrefFor(route) {
 
 // Pages not built yet: what each will do, in one line. The sidebar shows them in grey and they open a page saying exactly this.
 export const PLANNED = {
-  sources: ["数据源", "连接 MySQL、PostgreSQL，把库里的表读成数据集，还没做"],
   agents: ["智能体", "给问答设定范围和说明，还没做"],
   boards: ["看板", "用已确认的指标做看板，还没做"],
 };
 
-const BUILT = { qa: "#/qa", tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", confirm: "#/confirm", users: "#/users", permissions: "#/permissions", pipelines: "#/pipelines" };
-const BUILDERS = ["tasks", "confirm", "pipelines"];   // shown to builders and admins only: a viewer has nothing to confirm, the task list quotes keys and values and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
+const BUILT = { qa: "#/qa", tasks: "#/tasks", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", confirm: "#/confirm", users: "#/users", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
+const BUILDERS = ["tasks", "confirm", "pipelines", "sources", "schedules"];   // shown to builders and admins only: a viewer has nothing to confirm, the task list quotes keys and values and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
 const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
 
 export const NAV = [
   { items: [item("qa", "问答"), item("tasks", "任务")] },
-  { label: "数据", items: [item("datasets", "数据集"), item("pipelines", "管道"), item("sources", "数据源")] },
+  { label: "数据", items: [item("datasets", "数据集"), item("pipelines", "管道"), item("sources", "数据源"), item("schedules", "调度")] },
   { label: "本体", items: [item("types", "对象类型"), item("relations", "关系"), item("confirm", "待确认")] },
   { label: "应用", items: [item("agents", "智能体"), item("boards", "看板")] },
   { items: [item("lineage", "血缘")] },
@@ -111,4 +113,4 @@ export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户"), it
 
 /** Which navigation item a route lives under. */
 export const navKeyOf = (route) =>
-  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit"].includes(route.page) ? "types" : ["pipeline", "pipelinenew"].includes(route.page) ? "pipelines" : route.page === "account" ? null : ["relation", "relationnew", "relationedit"].includes(route.page) ? "relations" : route.page;
+  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit"].includes(route.page) ? "types" : ["pipeline", "pipelinenew"].includes(route.page) ? "pipelines" : route.page === "source" ? "sources" : route.page === "account" ? null : ["relation", "relationnew", "relationedit"].includes(route.page) ? "relations" : route.page;

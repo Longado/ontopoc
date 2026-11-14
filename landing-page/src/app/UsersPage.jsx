@@ -7,7 +7,7 @@ import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
 
 /** A small modal with a form, closed by 取消 or Escape. */
-function FormDialog({ title, onClose, children, submitLabel, onSubmit, valid }) {
+export function FormDialog({ title, onClose, children, submitLabel, onSubmit, valid }) {
   const ref = useRef(null);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);

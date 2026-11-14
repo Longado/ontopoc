@@ -88,6 +88,24 @@ CREATE TABLE IF NOT EXISTS check_result (
     rows_checked INTEGER, violations INTEGER, samples_json TEXT, dataset_id INTEGER, null_key_rows INTEGER,
     status TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'error', 'skipped')),
     checked_at TEXT NOT NULL DEFAULT '');
+-- live sources (workspace_sources): a database connection (the password sealed, see source_vault), the tables read as datasets, and every pull
+CREATE TABLE IF NOT EXISTS data_source (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('postgresql', 'mysql')),
+    host TEXT NOT NULL, port INTEGER NOT NULL, database TEXT NOT NULL, username TEXT NOT NULL, secret TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'untested' CHECK (status IN ('untested', 'ok', 'failed')), status_at TEXT, status_note TEXT, can_write INTEGER, write_note TEXT,
+    created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS source_table (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NOT NULL REFERENCES data_source(id), table_name TEXT NOT NULL, dataset TEXT NOT NULL UNIQUE,
+    mode TEXT NOT NULL, key_json TEXT, UNIQUE (source_id, table_name));
+-- schedules (workspace_schedules) and the log of what a pull or a scheduled run did
+CREATE TABLE IF NOT EXISTS schedule (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('source', 'pipeline')), target TEXT NOT NULL, scope_json TEXT,
+    cadence TEXT NOT NULL CHECK (cadence IN ('hourly', 'daily', 'weekly', 'upstream')), minute INTEGER, hour INTEGER, weekday INTEGER, tz TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1, last_slot TEXT, upstream_seen_json TEXT, created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS refresh_run (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, target TEXT NOT NULL, item TEXT NOT NULL DEFAULT '', schedule_id INTEGER,
+    reason TEXT NOT NULL CHECK (reason IN ('manual', 'schedule', 'upstream')), who TEXT, status TEXT NOT NULL CHECK (status IN ('running', 'success', 'failed', 'skipped')),
+    started_at TEXT NOT NULL, finished_at TEXT, rows INTEGER, dataset TEXT, version INTEGER, changed INTEGER, error TEXT, detail_json TEXT);
 CREATE TABLE IF NOT EXISTS log (
     time TEXT NOT NULL, who TEXT NOT NULL, element_id TEXT, change TEXT NOT NULL, before_json TEXT, after_json TEXT);
 '''
