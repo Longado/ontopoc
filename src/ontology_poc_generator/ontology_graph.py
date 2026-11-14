@@ -58,16 +58,28 @@ def _chain(conn, element_id: str, path: tuple = ()) -> dict | None:
     if not found:   # what it read has been put right since, and it has not been looked at again
         return {'depth': 1, 'own': None, 'root': element_id, 'text': row['reason']}
     best = min(found, key=lambda c: c['depth'])
-    return {**best, 'depth': best['depth'] + 1}
+    if best['own'] and best['depth'] == 0 and element_id.startswith(TYPE_PREFIX) and best['root'].startswith(f'{ENUM_PREFIX}{element_id[len(TYPE_PREFIX):]}:'):
+        return {**best, 'at': element_id}   # the meanings of its own columns are the type's own input: the data or definition moved under it, it is not one step behind a parent
+    return {**best, 'depth': best['depth'] + 1, 'at': element_id}
 
 
 def _cause(conn, chain: dict | None, hide: bool) -> dict | None:
     if chain is None:
         return None
     kind = chain['own'] if chain['depth'] == 0 else 'upstream' if chain['depth'] == 1 else 'far_upstream'
-    root = _label(conn, chain['root']) if element_row(conn, chain['root']) else None
-    return {'cause': kind, 'label': CAUSE_LABEL[kind], 'root_cause': chain['own'], 'root': root if chain['depth'] else None,
+    root_row = element_row(conn, chain['root'])
+    root = _label(conn, chain['root']) if root_row and chain.get('at', chain['root']) != chain['root'] else None
+    return {'cause': kind, 'label': CAUSE_LABEL[kind], 'root_cause': chain['own'], 'root': root, 'short': None if hide else _short(conn, kind, root_row),
             'text': None if hide else chain['text'], **({'text_hidden': HIDDEN_WORDS} if hide else {})}
+
+
+def _short(conn, kind: str, root_row: dict | None) -> str | None:
+    """What moved, in a few words for the node itself: for a data cause on a set of meanings, '订单 第 2 版 状态码 取值变了'."""
+    if kind != 'data' or root_row is None or not root_row['element_id'].startswith(ENUM_PREFIX):
+        return None
+    content = _content(root_row)
+    dataset = current_dataset(conn, content['dataset'])
+    return f'{content["dataset"]} 第 {dataset["version"]} 版 {content["column"]} 取值变了' if dataset else None
 
 
 def stale_cause(conn, row: dict, user: dict | None) -> dict | None:

@@ -3,7 +3,7 @@ import { timeText } from "./format.js";
 import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY } from "d3-force";
 
 export const SIZE = {
-  type: { w: 172, h: 64 },
+  type: { w: 216, h: 80 },
   dataset: { w: 172, h: 64 },
   relation: { w: 156, h: 48 },
   view: { w: 156, h: 48 },
@@ -20,7 +20,7 @@ export function forceLayout(nodes, edges) {
   const sim = forceSimulation(items)
     .force("charge", forceManyBody().strength(-500))
     .force("link", forceLink(links).id((d) => d.id).distance(340).strength(1))
-    .force("collide", forceCollide(112))
+    .force("collide", forceCollide(130))
     .force("x", forceX(0).strength(0.05))
     .force("y", forceY(0).strength(0.05))
     .stop();

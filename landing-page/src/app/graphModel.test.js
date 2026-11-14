@@ -94,6 +94,9 @@ test("the cause filter and the search keep the nodes they match, and a node that
   assert.deepEqual([stale, edited, fine].map((n) => shown(n, "definition", "")), [false, true, false]);
   assert.deepEqual([stale, edited, fine].map((n) => shown(n, "", " 客")), [false, true, false]);
   assert.equal(shown(node("relation:r", "relation", "订单属于客户", { from_name: "订单", to_name: "客户" }), "", "客户"), true);
+  const own = node("objtype:order", "type", "订单", { stale: { cause: "data", label: "数据变了", root: "“状态码”的含义", root_cause: "data", short: "订单 第 2 版 状态码 取值变了" } });
+  assert.equal(shown(own, "data", ""), true);   // a type whose own data moved is in the 数据变了 filter
+  assert.equal(shown(own, "definition", ""), false);
   assert.equal(causeLine(stale), "上一步过时：“状态码”的含义");
   assert.equal(causeLine(edited), "定义改了");
   assert.equal(causeLine(fine), "");

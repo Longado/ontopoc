@@ -109,16 +109,18 @@ class GraphTests(SigningTestCase):
             graph = self.graph(ann, LINEAGE)
             self.assertEqual(self.node(graph, 'dataset:订单')['version'], 2)
             order, view = self.node(graph, 'objtype:order'), self.node(graph, 'objview:有效订单')
-            for node in (order, view):
-                self.assertEqual(node['state'], 'needs_look')
-                self.assertEqual((node['stale']['cause'], node['stale']['label'], node['stale']['root_cause']), ('upstream', '上一步过时', 'data'))
+            # the type's own dataset moved and its own meanings changed under it: the cause is the data's, in short words on the node, never "the step before"
+            self.assertEqual(order['state'], 'needs_look')
+            self.assertEqual((order['stale']['cause'], order['stale']['label'], order['stale']['root_cause']), ('data', '数据变了', 'data'))
+            self.assertEqual(order['stale']['short'], '订单 第 2 版 状态码 取值变了')
+            self.assertEqual(order['stale']['root'], '“状态码”的含义')
+            self.assertIn('订单 第 2 版', order['stale']['text'])
+            self.assertIn('“状态码”的取值变了', order['stale']['text'])
+            # what reads the type or the meaning, and whose own inputs did not change, is one step behind it, with the same words
+            for node in (view, self.node(graph, 'relation:order_customer')):
+                self.assertEqual((node['state'], node['stale']['cause'], node['stale']['label'], node['stale']['root_cause']), ('needs_look', 'upstream', '上一步过时', 'data'))
                 self.assertEqual(node['stale']['root'], '“状态码”的含义')
-                self.assertIn('订单 第 2 版', node['stale']['text'])
                 self.assertIn('“状态码”的取值变了', node['stale']['text'])
-            # one more step away: the relation reads the type, the saved answer read the meaning itself
-            relation = self.node(graph, 'relation:order_customer')
-            self.assertEqual((relation['state'], relation['stale']['cause'], relation['stale']['label']), ('needs_look', 'far_upstream', '更上游过时'))
-            self.assertIn('“状态码”的取值变了', relation['stale']['text'])
             answer = next(n for n in graph['nodes'] if n['kind'] == 'answer')
             self.assertEqual((answer['state'], answer['stale']['cause']), ('needs_look', 'upstream'))
             customer = self.node(graph, 'objtype:customer')
@@ -129,9 +131,9 @@ class GraphTests(SigningTestCase):
             self.assertEqual(order['answers'], 1)
             # the relation graph carries the same state and cause on the node and the edge
             drawn = self.graph(ann, RELATIONS)
-            self.assertEqual(self.node(drawn, 'objtype:order')['stale']['label'], '上一步过时')
+            self.assertEqual(self.node(drawn, 'objtype:order')['stale']['label'], '数据变了')
             (edge,) = drawn['edges']
-            self.assertEqual((edge['connected'], edge['of'], edge['stale']['label']), (157, 160, '更上游过时'))
+            self.assertEqual((edge['connected'], edge['of'], edge['stale']['label']), (157, 160, '上一步过时'))
 
     def test_a_changed_meaning_is_a_definition_cause_on_the_type_and_the_step_before_on_the_view(self):
         with self.service() as (base, out):
@@ -192,7 +194,7 @@ class GraphTests(SigningTestCase):
             # the codes shift: Bob, limited too, is told which cause it is and not the words of it (they quote counts of every row)
             self.assertEqual(admin.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)   # a row-ruled type's dataset is the admin's
             order = self.node(self.graph(bob, LINEAGE), 'objtype:order')
-            self.assertEqual((order['state'], order['stale']['label'], order['stale']['text']), ('needs_look', '上一步过时', None))
+            self.assertEqual((order['state'], order['stale']['label'], order['stale']['text'], order['stale']['short']), ('needs_look', '数据变了', None, None))
             self.assertIn('行规则', order['stale']['text_hidden'])
             self.assertTrue(self.node(self.graph(admin, LINEAGE), 'objtype:order')['stale']['text'].startswith('订单 第 2 版'))   # an admin, whom no rule limits, reads it (a builder no rule names is limited too)
             self.assertNotIn('objtype:order', {n['id'] for n in self.graph(vera, LINEAGE)['nodes']})   # a viewer sees only what is confirmed: nothing that needs a look

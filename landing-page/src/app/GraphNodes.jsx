@@ -12,7 +12,7 @@ function secondLine(node) {
 function lines(node) {
   if (node.kind === "type") {
     const objects = node.objects == null ? "" : node.rows_limited ? `你能看到 ${node.objects} 个对象` : `${node.objects} 个对象`;
-    return [{ text: objects }, secondLine(node)];
+    return [{ text: objects }, secondLine(node), ...(node.stale?.short ? [{ text: node.stale.short }] : [])];   // what moved, in a few words, under the cause
   }
   if (node.kind === "dataset") return [{ text: `第 ${node.version} 版` }, { text: `上传于 ${ageText(node.uploaded_at)}` }];
   return [node.stale ? { text: node.stale.label, cause: true } : { text: `${KIND_LABEL[node.kind]} ${stateText(node)}`, word: node.state }];
