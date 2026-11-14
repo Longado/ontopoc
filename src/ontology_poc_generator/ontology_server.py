@@ -87,7 +87,7 @@ from ontology_poc_generator.object_relations import (
     confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
 from ontology_poc_generator.ontology_graph import lineage_graph, relation_graph, type_uses
 from ontology_poc_generator.review_queue import confirm_item, queue, send_back
-from ontology_poc_generator import use_layer
+from ontology_poc_generator import ask_budget, use_layer
 from ontology_poc_generator.dashboards import DashboardRefused
 from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, set_access, set_values_hidden
 
@@ -1523,11 +1523,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
+                    ask_budget.take(conn, self.user)   # before the model is asked: a token and a person may ask so many questions an hour
                     body = ask_workspace(conn, gateway, self.user, payload.get('question'))
                 finally:
                     conn.close()
             except QaRefused as exc:
-                self.reply(exc.status, {'error': str(exc)})
+                self.reply(exc.status, {'error': str(exc)}, {'Retry-After': str(exc.wait)} if isinstance(exc, ask_budget.AskBudgetSpent) else None)
                 return
             self.reply(200, body)
 

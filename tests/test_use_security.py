@@ -5,8 +5,10 @@ its author (L1, L2), row numbers do not count the rows a person may not read (L3
 from datetime import datetime, timedelta, timezone
 import json
 import sqlite3
+from unittest import mock
 
-from ontology_poc_generator import mcp_server
+from ontology_poc_generator import ask_budget, mcp_server
+from ontology_poc_generator.workspace_store import open_workspace
 from tests.test_access import Client
 from tests.test_agent_access import AgentCase
 from tests.test_dashboards import BoardCase, CARD, SPEC
@@ -130,3 +132,40 @@ class DerivedReadTests(AgentCase):
             self.assertEqual((status, one['total']), (200, 1))
             self.assertNotEqual(bob.get('/api/workspace/agent/derived?type=customer&name=cancelled_orders')[0], 200)   # no such route any more
             self.assertEqual(bob.post('/api/workspace/agent/derived', {'type': 'customer', 'name': 'cancelled_orders', 'key': 'KH001'})[0], 400)
+
+
+class AskBudgetTests(AgentCase):
+    def test_asking_is_limited_for_each_token_and_for_each_person_and_the_refusal_says_when_it_frees_up(self):
+        with mock.patch.object(ask_budget, 'TOKEN_LIMIT', 2), mock.patch.object(ask_budget, 'PERSON_LIMIT', 3), self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            first, second = self.token_for(admin, 'bob')['token'], self.token_for(admin, 'bob')['token']
+            script = Client(base)
+            ask = lambda token: script.post('/api/workspace/ask', {'question': QUESTION}, **bearer(token))
+            self.assertEqual([ask(first)[0], ask(first)[0]], [200, 200])
+            status, refused = ask(first)
+            self.assertEqual(status, 429)
+            self.assertIn('每小时最多 2 个', refused['error'])
+            self.assertRegex(refused['error'], r'约 \d+ 分钟后再问')
+            self.assertTrue(0 < int(script.last_headers['Retry-After']) <= 3600)
+            self.assertEqual(ask(second)[0], 200)   # another token of his has its own count, up to what he may ask in all
+            self.assertEqual(ask(second)[0], 429)
+            self.assertIn('每小时最多 3 个', ask(second)[1]['error'])
+            self.assertEqual(bob.post('/api/workspace/ask', {'question': QUESTION})[0], 429)   # at the page too: it is the person's budget
+            self.assertEqual(ann.post('/api/workspace/ask', {'question': QUESTION})[0], 200)   # someone else's is theirs
+
+    def test_the_hour_is_a_rolling_one_and_a_refused_ask_is_not_counted(self):
+        conn = open_workspace(':memory:')
+        person = {'id': 7, 'token_id': 3}
+        with mock.patch.object(ask_budget, 'TOKEN_LIMIT', 2), mock.patch.object(ask_budget, 'PERSON_LIMIT', 5):
+            ask_budget.take(conn, person, now=1000.0)
+            ask_budget.take(conn, person, now=1100.0)
+            with self.assertRaises(ask_budget.AskBudgetSpent) as spent:
+                ask_budget.take(conn, person, now=1200.0)
+            self.assertEqual(spent.exception.wait, 3600 - 200)   # when the first one leaves the hour
+            self.assertEqual(spent.exception.status, 429)
+            ask_budget.take(conn, person, now=1000.0 + 3600)   # the first has left: one more may be asked
+            with self.assertRaises(ask_budget.AskBudgetSpent):
+                ask_budget.take(conn, person, now=1000.0 + 3600 + 1)   # and the one before it was counted, the refused one was not
+            ask_budget.take(conn, {'id': 7, 'token_id': None}, now=1200.0)   # no token: only the person's count, which is not full
