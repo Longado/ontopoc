@@ -29,6 +29,7 @@ function ViewCard({ view, mayBuild, onChanged }) {
         <State item={view} />
       </div>
       <p>{view.says}</p>
+      {view.caliber && <p className="small">{view.caliber}</p>}
       <p className="facts">
         <span>{view.problems.length ? "读不出来" : `现在留下 ${rowsText(view)}`}</span>
         {view.anchored && view.state === "needs_look" && <span className="muted">确认时 {view.anchored.rows} / {view.anchored.of} 行</span>}

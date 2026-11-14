@@ -6,7 +6,7 @@ import statistics
 
 from tests import test_workspace_store as planted
 from tests.test_derived_properties import CANCELLED, DerivedTestCase, GROSS
-from tests.test_object_types import VALID, shifted_orders_csv
+from tests.test_object_types import VALID, orders_upload, shifted_orders_csv
 
 ORDERS = planted.planted_bundle()['sources']['订单']['records']
 CUSTOMERS = list({r['客户编号']: r for r in reversed(planted.planted_bundle()['sources']['客户']['records'])}.values())   # KH012 once: the team uploads the mended table
@@ -67,7 +67,7 @@ class TableTests(UseLayerCase):
             viewed = self.table(bob, query(view='有效订单'))
             self.assertEqual(viewed['total'], len(LIVE))
             self.assertTrue(viewed['standing']['confirmed'])
-            self.assertEqual([l['line'] for l in viewed['standing']['lines']], ['剔除 状态码 = 2（已取消），Bob 确认于 订单 v1'])   # the acceptance sentence, from the definitions
+            self.assertEqual([l['line'] for l in viewed['standing']['lines']], ['状态码 不是 2（已取消）：算进 0 已交付、1 生产中，Bob 确认于 订单 v1'])   # the acceptance sentence, from the definitions
             both = self.table(bob, query(view='有效订单', filters=[{'field': '金额', 'op': 'gt', 'value': '50000'}]))
             self.assertEqual(both['total'], sum(float(r['金额']) > 50000 for r in LIVE))
             # what the page needs to draw its filter bar
@@ -231,6 +231,30 @@ class GreyTests(UseLayerCase):
             # a plain table of a type that needs a look is grey too, and a viewer is not shown the type at all
             self.assertFalse(self.table(bob, ORDER_Q)['standing']['confirmed'])
             self.assertEqual(self.meta(vera, expect=404)['error'], '没有这个对象类型')
+
+
+class CaliberWordsTests(UseLayerCase):
+    def test_a_view_says_which_code_values_are_in_and_out_and_a_new_value_asks_whether_it_comes_in(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob = team['ann'], team['bob']
+            line = self.table(bob, query(view='有效订单'))['standing']['lines'][0]
+            self.assertEqual(line['line'], '状态码 不是 2（已取消）：算进 0 已交付、1 生产中，Bob 确认于 订单 v1')   # what is in as well as what is out, from the confirmed meanings
+            self.assertEqual(self.view_page(bob)['caliber'], '状态码 不是 2（已取消）：算进 0 已交付、1 生产中')   # the confirm screen of the view reads the same
+            # an upload in which four orders carry a code nobody has given a meaning
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(lambda r, i: {**r, '状态码': '3'} if i % 40 == 0 else r)]})[0], 200)
+            view = next(l for l in self.table(bob, query(view='有效订单'))['standing']['lines'] if l['kind'] == 'view')
+            self.assertFalse(view['confirmed'])
+            self.assertIn('新值 3 算不算进来', view['reason'])
+            self.assertIn('4 行', view['reason'])
+            self.assertIn('按现在的写法', view['reason'])
+            self.assertIn('不是 2（已取消）', view['reason'])   # what the view says now, so the confirmer sees what the new value would do under it
+
+    def view_page(self, client):
+        status, body = client.get('/api/workspace/types/order/views')
+        self.assertEqual(status, 200, body)
+        return body['views'][0]
 
 
 class VisibilityTests(UseLayerCase):

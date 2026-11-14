@@ -107,7 +107,7 @@ class McpTests(AgentCase):
             order = next(t for t in defined['types'] if t['id'] == 'order')
             self.assertEqual(order['meanings']['状态码']['values'], {'0': '已交付', '1': '生产中', '2': '已取消'})
             self.assertEqual((order['meanings']['状态码']['confirmed_by'], order['meanings']['状态码']['confirmed_on']), ('Bob', '订单 v1'))
-            self.assertEqual([v['line'] for v in defined['views']], ['剔除 状态码 = 2（已取消），Bob 确认于 订单 v1'])
+            self.assertEqual([v['line'] for v in defined['views']], ['状态码 不是 2（已取消）：算进 0 已交付、1 生产中，Bob 确认于 订单 v1'])
             self.assertEqual([d['id'] for d in defined['derived']], ['cancelled_orders'])   # not 含税金额
             self.assertNotIn('含税金额', json.dumps(defined, ensure_ascii=False))
             self.assertGreaterEqual(len(defined['rules']), 5)

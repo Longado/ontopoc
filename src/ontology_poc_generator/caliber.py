@@ -12,7 +12,7 @@ import json
 
 from ontology_poc_generator.derived_properties import describe as describe_derived
 from ontology_poc_generator.object_types import DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _content, element_row, stale_word
-from ontology_poc_generator.object_views import meaning_labels
+from ontology_poc_generator.object_views import in_out_text
 
 STATE_WORDS = {'proposed': '模型提出了，还没有人确认', 'checked': '已经提出，还没有另一位确认', 'needs_look': '需要再看', 'rejected': '被退回了'}
 KIND_WORDS = {'type': '对象类型', 'meaning': '含义', 'relation': '关系', 'view': '视图', 'derived': '派生属性'}
@@ -23,14 +23,8 @@ def _type_name(conn, english: str) -> str:
     return _content(row)['name'] if row else english
 
 
-def _codes_of(conn, english: str, column: str, label: str) -> str:
-    """The codes a meaning label stands for, as the data writes them: 2（已取消）."""
-    codes = sorted(code for code, said in meaning_labels(conn, english, column).items() if said == label)
-    return f'{"、".join(codes) or "?"}（{label}）'
-
-
 def _view_text(conn, content: dict) -> str:
-    parts = [f'{"剔除" if f["op"] == "is_not" else "只留"} {f["column"]} = {_codes_of(conn, content["type"], f["column"], f["label"])}' for f in content['filters']]
+    parts = [in_out_text(conn, content)] if content['filters'] else []
     latest = content.get('latest')
     if latest:
         parts.insert(0, f'每个 {"、".join(latest["key"])} 只留 {latest["order"]} 最新的一行')

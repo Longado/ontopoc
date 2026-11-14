@@ -133,6 +133,25 @@ def seen_of_view(summary: dict) -> dict | None:
     return None if summary['problems'] else {'dataset_version': summary['version'], 'rows': summary['rows'], 'of': summary['of']}
 
 
+def _by_code(item: tuple) -> tuple:
+    code = item[0]
+    return (0, float(code), code) if code.replace('.', '', 1).isdigit() else (1, 0.0, code)
+
+
+def in_out_text(conn, content: dict) -> str:
+    """What the conditions of a view let in and keep out, spelled out from the confirmed meanings: 状态码 不是 2（已取消）：算进 0 已交付、1 生产中. The codes with a
+    meaning on file that the condition does not name are the ones that come in (for "is not") or stay out (for "is"); "" when the view has no condition."""
+    parts = []
+    for f in content['filters']:
+        labels = meaning_labels(conn, content['type'], f['column'])
+        named = sorted(((c, l) for c, l in labels.items() if l == f['label']), key=_by_code)
+        others = sorted(((c, l) for c, l in labels.items() if l != f['label']), key=_by_code)
+        said = f'{f["column"]} {OPS[f["op"]]} {"、".join(c for c, _ in named) or "?"}（{f["label"]}）'
+        rest = "、".join(f"{c} {l}" for c, l in others)
+        parts.append(f'{said}：{"算进" if f["op"] == "is_not" else "不算"} {rest}' if rest else said)
+    return '；'.join(parts)
+
+
 def describe(content: dict, type_name: str | None = None) -> str:
     """The definition as a sentence: 订单里 状态码 不是 已取消 的行（先取每个 产品编号 里 快照月份 最新的一行）."""
     latest = content.get('latest')
@@ -333,7 +352,7 @@ def _line(conn, row: dict, user: dict | None, summary: dict, type_name: str) -> 
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else None
     limited = restriction(conn, type_id(content['type']), user) is not None   # counts of the whole data are not theirs; list_views puts the counts of their rows in
     return {'id': content['name'], 'name': content['name'], 'description': content['description'], 'type': content['type'], 'type_name': type_name,
-            'filters': content['filters'], 'latest': content['latest'], 'says': describe(content, type_name), 'problems': summary['problems'],
+            'filters': content['filters'], 'latest': content['latest'], 'says': describe(content, type_name), 'caliber': in_out_text(conn, content), 'problems': summary['problems'],
             'rows': None if limited else summary.get('rows'), 'of': None if limited else summary.get('of'), 'dataset': summary.get('dataset'), 'dataset_version': summary.get('version'),
             'seen': None if limited else seen_of_view(summary), 'anchored': None if limited else anchors, **({'limited_note': LIMITED_NOTE} if limited else {}), **view_state(conn, row, user)}
 

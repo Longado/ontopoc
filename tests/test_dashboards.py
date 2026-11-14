@@ -1,5 +1,5 @@
 """Dashboards, walked through the real service with two builders, a viewer and an admin on the planted tables. Acceptance of stage 6: the 有效订单 card reads
-"剔除 状态码 = 2（已取消），Bob 确认于 订单 v1" and turns grey with the reason after a shifted upload. Also who may open a board (private, named people, everyone,
+"状态码 不是 2（已取消）：算进 0 已交付、1 生产中，Bob 确认于 订单 v1" and turns grey with the reason after a shifted upload. Also who may open a board (private, named people, everyone,
 expired), that a share link still needs a sign-in, that every reader gets numbers over what *they* may read, and the filter bar."""
 from datetime import date, timedelta
 import sqlite3
@@ -45,7 +45,7 @@ class CaliberTests(BoardCase):
             card = self.card(body)
             self.assertEqual(card['result']['value'], len(LIVE))
             standing = card['result']['standing']
-            self.assertEqual([l['line'] for l in standing['lines']], ['剔除 状态码 = 2（已取消），Bob 确认于 订单 v1'])
+            self.assertEqual([l['line'] for l in standing['lines']], ['状态码 不是 2（已取消）：算进 0 已交付、1 生产中，Bob 确认于 订单 v1'])
             self.assertTrue(standing['confirmed'])
             self.assertEqual((body['headline']['grey'], body['headline']['text']), ([], '全部按已确认的定义算出'))
             self.assertEqual(self.card(body, 'status')['result']['standing']['lines'][0]['line'], '状态码：0 已交付、1 生产中、2 已取消，Bob 确认于 订单 v1')   # a grouped code column cites its meanings

@@ -452,6 +452,32 @@ def _type_problems(conn, content: dict) -> tuple[list[str], int | None]:
     return problems, key_check['id']
 
 
+def _new_codes(conn, row: dict) -> dict[str, int]:
+    """{value: rows} of the values a code column has now that it did not have when its meanings were confirmed."""
+    content, was = _content(row), json.loads(row['anchors_json'])['counts']
+    dataset = current_dataset(conn, content['dataset'])
+    col = (dataset_columns(conn, dataset['id']) if dataset else {}).get(content['column'])
+    now = col['counts'] if col and col['counts'] is not None else {}
+    return {v: now[v] for v in _by_value(set(now) - set(was))}
+
+
+def _new_value_question(conn, view: dict, moved: list[str]) -> str | None:
+    """The reason a view needs another look when a code its conditions read has a new value: the question that has to be answered, and what the view does with it now
+    (a condition "is not" lets it in, "is" keeps it out). None when no code its conditions name got a new value in this pass."""
+    from ontology_poc_generator.object_views import in_out_text   # object_views reads this module
+    content = _content(view)
+    said = []
+    for f in content['filters']:
+        meanings = element_row(conn, enum_id(content['type'], f['column']))
+        new = _new_codes(conn, meanings) if meanings and meanings['element_id'] in moved and meanings['anchors_json'] else {}
+        if new:
+            values = '、'.join(new)
+            default = '会算进来' if f['op'] == 'is_not' else '不会算进来'
+            said.append(f'“{f["column"]}”出现了新值 {values}（{"，".join(f"{v} 有 {n} 行" for v, n in new.items())}）：新值 {values} 算不算进来？'
+                        f'按现在的写法（{in_out_text(conn, content)}），{"它们" if len(new) > 1 else "它"}{default}。请先给新值写含义，再决定')
+    return '；'.join(said) or None
+
+
 def _enum_problems(conn, row: dict) -> list[str]:
     """What moved in the values of a code column since its meanings were confirmed: a value the data has now that was not there, or a value with a
     meaning that is not there any more."""
@@ -507,6 +533,7 @@ def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list
         return
     if row is None or row['state'] != 'confirmed':
         return
+    reason = (_new_value_question(conn, row, moved) if element_id.startswith(VIEW_PREFIX) else None) or reason
     conn.execute("UPDATE element_state SET state = 'needs_look', reason = ?, cause = ?, via = ?, version = version + 1 WHERE element_id = ?", (reason, cause, via, element_id))
     log_line(conn, 'system', element_id, 'needs_look',
              before={'state': 'confirmed', 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at']},
