@@ -75,6 +75,7 @@ from ontology_poc_generator.object_views import confirm_view, create_view, list_
 from ontology_poc_generator.row_rules import RuleRefused, set_rules
 from ontology_poc_generator.object_relations import (
     confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
+from ontology_poc_generator.ontology_graph import lineage_graph, relation_graph, type_uses
 from ontology_poc_generator.review_queue import confirm_item, queue, send_back
 from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, set_access, set_values_hidden
 
@@ -1223,6 +1224,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     body = type_objects(conn, parts[0], int(page), self.user)
                 elif len(parts) == 2 and parts[1] == 'log':
                     body = {'log': type_log(conn, parts[0], self.user)}
+                elif len(parts) == 2 and parts[1] == 'uses':   # what uses this type, and the data it stands on
+                    body = type_uses(conn, parts[0], self.user)
                 elif len(parts) == 2 and parts[1] == 'views':   # the views of this type and, for a builder, what a form for a new one offers
                     body = {'views': list_views(conn, parts[0], self.user), 'form': None if self.user is not None and self.user['role'] == 'viewer' else view_form(conn, parts[0], self.user)}
                 else:
@@ -1407,6 +1410,15 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             self.reply(200, body)
 
+        def graph_get(self):
+            """/api/workspace/graph/relations and /graph/lineage: the ontology as nodes and edges, as much of it as this person may see (ontology_graph)."""
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                body = relation_graph(conn, self.user) if self.path == '/api/workspace/graph/relations' else lineage_graph(conn, self.user)
+            finally:
+                conn.close()
+            self.reply(200, body)
+
         def relations_post(self):
             """POST /api/workspace/relations (create), /relations/update, /relations/confirm, /queue/confirm, /queue/send-back, /permissions (admin): see
             object_relations.py, review_queue.py and type_access.py. Refusals are 403 (of who), 409 (the data or the version moved) or a 400 that says what is wrong."""
@@ -1457,6 +1469,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path.split('?')[0] == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
                 self.actions_get()
+                return
+            if self.path in ('/api/workspace/graph/relations', '/api/workspace/graph/lineage'):
+                self.graph_get()
                 return
             if self.path.split('?')[0] in ('/api/workspace/relations', '/api/workspace/relation-form', '/api/workspace/queue', '/api/workspace/permissions') \
                     or self.path.startswith('/api/workspace/relations/'):

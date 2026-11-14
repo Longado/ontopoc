@@ -21,6 +21,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/auth/tokens(/revoke)?', SESSION),
     # read
     ('GET', r'/api/workspace/(datasets|types|relations)(/.+)?', 'viewer'),   # what a person sees of types and relations is filtered by who they are (type_access)
+    ('GET', r'/api/workspace/graph/(relations|lineage)', 'viewer'),   # the drawings leave out what this person may not see, like the pages they are made of (ontology_graph)
     ('GET', r'/api/workspace/(tasks|relation-form|queue)', 'builder'),   # the task list quotes keys and the reasons the model's suggestions were dropped, which carry values
     ('GET', r'/api/workspace/actions(/.+)?', 'builder'),   # actions are for builders: a viewer runs and reads none (object_actions.action_visible)
     ('GET', r'/api/workspace/ask(/.+)?', 'viewer'),   # a person's own questions and answers, within what they may see (workspace_questions)
