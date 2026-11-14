@@ -3,10 +3,12 @@ draft of steps whose code column is filtered by a confirmed meaning (and says wh
 (even when the model wrote a code); the draft is checked and tried on the data before it is shown, reads only what was selected, and writes nothing. Expected numbers are counted
 here from the planted orders (160, 16 of them cancelled)."""
 import json
+import sqlite3
 from collections import Counter
 from urllib.parse import quote
 
-from ontology_poc_generator.pipeline_assist import settle
+from ontology_poc_generator.pipeline_assist import column_facts, disclosure, settle, values_seen
+from ontology_poc_generator.pipeline_ops import new_context
 from ontology_poc_generator.recognition import ModelCompletion
 from tests import test_workspace_store as planted
 from tests.test_object_types import MEANINGS, ORDER, TABLES
@@ -265,3 +267,38 @@ class SettleTests(unittest.TestCase):
         self.assertIsNone(questions['状态码|退款']['recommended'])
         _, questions, _ = self.settle('剔除取消的订单', {'column': '状态码', 'cmp': 'ne', 'concept': '取消'})
         self.assertIsNone(questions['状态码|取消']['recommended'])   # nothing confirmed, nothing to recommend
+
+
+class WhatTheModelIsShownTests(unittest.TestCase):
+    """The values of a column that go to the model with the assistant's request: only a short list of short values, and only from a column nobody keeps from the model."""
+
+    def facts(self, columns, values, ctx=None):
+        engine = sqlite3.connect(':memory:')
+        engine.execute('CREATE TABLE t (' + ', '.join(f'"{c["name"]}" TEXT' for c in columns) + ')')
+        engine.executemany('INSERT INTO t VALUES (' + ', '.join('?' * len(columns)) + ')', values)
+        ctx = ctx or new_context()
+        return column_facts(columns, ctx, values_seen(engine, 't', columns, ctx))
+
+    def test_at_most_twelve_values_of_at_most_forty_characters_go_and_a_column_with_a_longer_value_goes_by_name_and_type_only(self):
+        columns = [{'name': '地区', 'type': 'text'}, {'name': '客户', 'type': 'text'}, {'name': '备注', 'type': 'text'}, {'name': '手机', 'type': 'text', 'unsent': True}]
+        rows = [(f'地区{i % 12}', f'客户{i}', '很长的备注' * 9 if i == 3 else '短', f'138{i:08d}') for i in range(24)]
+        by_name = {f['name']: f for f in self.facts(columns, rows)}
+        self.assertEqual(len(by_name['地区']['values_seen']), 12)   # twelve different values, each short
+        self.assertNotIn('values_seen', by_name['客户'])   # twenty-four different values
+        self.assertEqual(by_name['备注'], {'name': '备注', 'type': 'text'})   # one value of 45 characters keeps the whole column back
+        self.assertEqual(by_name['手机'], {'name': '手机', 'type': 'text', 'values_withheld': True})
+
+    def test_a_code_column_with_more_than_twelve_values_sends_none_though_the_person_is_still_shown_the_first_twelve_to_choose_from(self):
+        columns = [{'name': '状态码', 'type': 'text', 'origin': '订单.状态码'}]
+        ctx = new_context({'订单.状态码': {'已取消': ['2']}}, {'订单.状态码'})
+        engine = sqlite3.connect(':memory:')
+        engine.execute('CREATE TABLE t ("状态码" TEXT)')
+        engine.executemany('INSERT INTO t VALUES (?)', [(str(i),) for i in range(20)])
+        seen = values_seen(engine, 't', columns, ctx)
+        self.assertEqual(len(seen['状态码']), 12)
+        self.assertNotIn('values_seen', column_facts(columns, ctx, seen)[0])
+
+    def test_the_screen_says_how_few_and_how_short(self):
+        text = disclosure([])['text']
+        self.assertIn('最多 12 个', text)
+        self.assertIn('40 个字', text)

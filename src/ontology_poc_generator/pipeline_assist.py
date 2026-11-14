@@ -2,8 +2,8 @@
 description of selected steps (管道说明员). The model drafts; code decides what stands.
 
 What the model is shown: the names and types of the columns of the selected nodes; for a code column whose meanings a person has confirmed, those meanings; for a column that has
-few different values, each value and its rows (a code column nobody has confirmed gets none: the model would guess from them); a column a builder keeps from the model gets name
-and type only. This is more than names and types, and the screen says so.
+at most FEW_VALUES different values of at most LONGEST_VALUE characters, each value and its rows (a code column nobody has confirmed gets none: the model would guess from them); a
+column a builder keeps from the model, or with a longer value, or with more values, gets name and type only. This is more than names and types, and the screen says so.
 
 What stands: a condition on a code column is written by meaning, from the confirmed meanings, and the code checks the meaning is one of them; a code value the model wrote
 stands only when a confirmed meaning gives it, when the person answered the question, or when the sentence states it next to the column's name (状态码≠2, 状态码 是 2);
@@ -22,6 +22,7 @@ from ontology_poc_generator.recognition import model_failure_text
 
 PARSE_VERSION, PLAN_VERSION, EXPLAIN_VERSION = 'pipeline_condition_parser.v1', 'pipeline_planner.v1', 'pipeline_explainer.v1'
 FEW_VALUES = 12   # a column with at most this many different values is shown to the model with each value and its rows
+LONGEST_VALUE = 40   # ... and only when none of those values is longer than this many characters: a column with a longer one goes by name and type only
 MAX_DRAFT_STEPS = 6
 ALLOWED_STEPS = ('transform', 'join', 'llm')
 REFS = ('from', 'left', 'right')
@@ -60,6 +61,12 @@ EXPLAIN_SYSTEM_PROMPT = """你在帮另一个人看懂一段数据管道。你�
 
 # --- what the model is shown ---------------------------------------------------------------------------------------------------------------------------
 
+class Seen(list):
+    """The values of one column with their rows; `complete` is false when the column has more different values than these (a code column's first FEW_VALUES, which a person is
+    shown to choose from but which are not sent as the column's values)."""
+    complete = True
+
+
 def values_seen(conn, table: str, columns: list[dict], ctx: dict) -> dict:
     """{column: [{'value', 'rows'}]} for the columns of the table that have few different values (a code column whatever its count), every row counted; a column switched off for
     the model, one the model wrote and a number are left out."""
@@ -71,7 +78,8 @@ def values_seen(conn, table: str, columns: list[dict], ctx: dict) -> dict:
         column = q(c['name'])
         rows = conn.execute(f"SELECT {column}, COUNT(*) FROM {table} WHERE {column} IS NOT NULL AND TRIM(CAST({column} AS TEXT)) <> '' GROUP BY {column} ORDER BY 2 DESC, 1 LIMIT {FEW_VALUES + 1}").fetchall()
         if rows and (len(rows) <= FEW_VALUES or c.get('origin') in ctx['codes']):
-            seen[c['name']] = [{'value': str(v), 'rows': n} for v, n in rows[:FEW_VALUES]]
+            seen[c['name']] = Seen({'value': str(v), 'rows': n} for v, n in rows[:FEW_VALUES])
+            seen[c['name']].complete = len(rows) <= FEW_VALUES
     return seen
 
 
@@ -88,8 +96,9 @@ def column_facts(columns: list[dict], ctx: dict, seen: dict) -> list[dict]:
             fact['code'] = True
             if ctx['meanings'].get(origin):
                 fact['meanings'] = ctx['meanings'][origin]
-        if c['name'] in seen and (not fact.get('code') or 'meanings' in fact):
-            fact['values_seen'] = seen[c['name']]
+        values = seen.get(c['name'])
+        if values and values.complete and all(len(v['value']) <= LONGEST_VALUE for v in values) and (not fact.get('code') or 'meanings' in fact):
+            fact['values_seen'] = values
         out.append(fact)
     return out
 
@@ -97,7 +106,8 @@ def column_facts(columns: list[dict], ctx: dict, seen: dict) -> list[dict]:
 def disclosure(facts: list[dict]) -> dict:
     """What the person is told is sent besides names and types."""
     return {'values_sent': [f['name'] for f in facts if 'values_seen' in f or 'meanings' in f], 'withheld': [f['name'] for f in facts if f.get('values_withheld')],
-            'text': '除了列名和类型，还会把取值不多的列的每个取值和行数、已确认的代码含义发给模型；标了不发送的列只发名字和类型；整行数据不发。'}
+            'text': f'除了列名和类型，还会把取值不多的列（最多 {FEW_VALUES} 个不同的取值，每个取值不超过 {LONGEST_VALUE} 个字）的每个取值和行数、已确认的代码含义发给模型；'
+                    '取值更多、有更长的取值、或标了不发送的列只发名字和类型；整行数据不发。'}
 
 
 # --- conditions: what stands -----------------------------------------------------------------------------------------------------------------------------
