@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { confirmPipeline, reviewPipeline } from "./api.js";
 import { useAuth } from "./Auth.jsx";
+import { timeText } from "./format.js";
 import { changeTitle, ChangeRow } from "./PipelineViews.jsx";
 import { failureLine, markedIds, numberText, progressOf, statRows, toggleMark, versionsText } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
@@ -30,14 +31,27 @@ function StatsTable({ before, after }) {
 
 /** Why this person cannot confirm, when they cannot. */
 function whyNot(detail, me) {
-  if (detail.state === "confirmed") return "这条管道已经确认了";
   if (detail.editors?.includes(me)) return "这条管道的定义你改过，要另一位来确认";
   if (detail.waiting_on?.length) return `管道用到的 ${detail.waiting_on.map((w) => `“${w.name}”`).join("、")} 还没有确认，要先确认它们`;
   return "你现在不能确认这条管道";
 }
 
-/** What the second person reads before confirming: each changed step with before and after, the statistics of its output then and now, a mark for each step seen. */
+/** A confirmed pipeline has nothing left to confirm: which version, who and when. */
+function Confirmed({ detail }) {
+  return (
+    <div className="pl-page">
+      <p>第 {detail.confirmed_definition_version ?? detail.definition_version} 版已确认{detail.confirmed_by && `（${detail.confirmed_by}，${timeText(detail.confirmed_at)}）`}</p>
+      <p><a href={hrefFor({ page: "pipeline", name: detail.name, view: "edit" })}>回到管道</a></p>
+    </div>
+  );
+}
+
+/** What the second person reads before confirming: each changed step with before and after, the statistics of its output then and now, a mark for each step seen. Once confirmed: only who confirmed which version. */
 export function PipelineConfirm({ detail, reload }) {
+  return detail.state === "confirmed" ? <Confirmed detail={detail} /> : <Review detail={detail} reload={reload} />;
+}
+
+function Review({ detail, reload }) {
   const { user } = useAuth();
   const [state] = useLoad(() => reviewPipeline(detail.name), [detail.name, detail.version]);
   const [marks, setMarks] = useState(() => readMarks(detail.name));
@@ -94,7 +108,6 @@ export function PipelineConfirm({ detail, reload }) {
             {detail.can_confirm && !ready && <span className="muted small">每一步都看过，才能确认</span>}
             {error && <span className="error">{error}</span>}
           </div>
-          {detail.state === "confirmed" && <p><a href={hrefFor({ page: "pipeline", name: detail.name, view: "edit" })}>回到管道</a></p>}
         </>
       )}
     </div>
