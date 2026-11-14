@@ -32,7 +32,8 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/workspace/dashboards(/.+)?', 'viewer'),   # which boards a person may open follows the board's scope (dashboards._may_open)
     ('POST', r'/api/workspace/dashboards/data', 'viewer'),   # a board worked out for whoever opens it, over what they may see
     ('POST', r'/api/workspace/dashboards(/(update|delete|preview))?', 'builder'),
-    ('GET', r'/api/workspace/agent/(definitions|unconfirmed|derived)', 'viewer'),   # what an outside agent reads, as the token's person (agent_access)
+    ('GET', r'/api/workspace/agent/(definitions|unconfirmed)', 'viewer'),   # what an outside agent reads, as the token's person (agent_access)
+    ('POST', r'/api/workspace/agent/derived', 'viewer'),   # a POST so that the key of the object read is not in an address a proxy logs; nothing is written
     ('GET', r'/api/workspace/agent(/skill)?', 'builder'),   # the page of what an agent can call, and the skill download
     ('GET', _RUNS, 'viewer'),
     ('GET', r'/api/ontology/jobs/[^/]+', 'viewer'),
@@ -75,6 +76,16 @@ def route_role(method: str, path: str) -> str | None:
         if m == method and pattern.fullmatch(path):
             return role
     return None
+
+
+# What a token made with scope 'read' may call besides every GET: ask a question and look at data (nothing here changes a definition, a rule, a dataset or an account;
+# an answer is kept with the question, as for a person at the page).
+READ_TOKEN_POSTS = ('/api/workspace/ask', '/api/workspace/explore/table', '/api/workspace/explore/chart', '/api/workspace/dashboards/data', '/api/workspace/dashboards/preview',
+                    '/api/workspace/agent/derived')
+
+
+def read_token_allows(method: str, path: str) -> bool:
+    return method == 'GET' or path in READ_TOKEN_POSTS
 
 
 def required_role(method: str, path: str) -> str:

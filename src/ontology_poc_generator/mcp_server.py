@@ -502,12 +502,12 @@ def list_unconfirmed(s, a):
 
 
 def read_derived_property(s, a):
-    query = f"type={quote(_text(a.get('type'), 'type'), safe='')}&name={quote(_text(a.get('name'), 'name'), safe='')}"
+    body = {'type': _text(a.get('type'), 'type'), 'name': _text(a.get('name'), 'name')}   # in the body, not the address: the key of the object is data
     if a.get('key') is not None:
-        query += f"&key={quote(json.dumps(a['key'], ensure_ascii=False), safe='')}"
+        body['key'] = a['key']
     if a.get('page') is not None:
-        query += f"&page={int(a['page'])}"
-    return s.request(f'/api/workspace/agent/derived?{query}')
+        body['page'] = int(a['page'])
+    return s.request('/api/workspace/agent/derived', body)
 
 
 WRONG = {'include_wrong': {'type': 'boolean', 'description': '连人判错的也给（默认不给）'}}
@@ -693,6 +693,25 @@ def check(base: str) -> None:
         print(f'OntoPoc：本机建模服务没有在 {base} 运行，OntoPoc 的工具暂时用不了。在仓库里运行 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server 启动它。')
 
 
+class Toolset:
+    """The tools this server offers. With no token it is the local session's: all of them, or the read tools when ONTOPOC_TOOLSET=read. With a token the service says
+    what the token may do (its scope, from /api/auth/me): the read tools for a read token, all of them for an all token; the environment can narrow that to the read
+    tools and not widen it, because the service refuses what the token may not do. While the service cannot be asked, the read tools."""
+
+    def __init__(self, service, asked: str | None):
+        self.service, self.asked, self.scope = service, asked, None
+
+    def __call__(self) -> tuple | None:
+        if not self.service.token:
+            return READ_TOOLS if self.asked == 'read' else None
+        if self.scope is None:
+            try:
+                self.scope = self.service.request('/api/auth/me')['user'].get('token_scope')
+            except ToolError:
+                return READ_TOOLS   # asked again with the next message
+        return None if self.scope == 'all' and self.asked != 'read' else READ_TOOLS
+
+
 def main():
     base = os.environ.get('ONTOPOC_URL', 'http://127.0.0.1:8767')
     if sys.argv[1:] == ['--check']:
@@ -702,11 +721,10 @@ def main():
         service = LocalService(base, token=os.environ.get('ONTOPOC_TOKEN'))
     except ValueError as exc:
         sys.exit(str(exc))
-    # a server started with a token is an outside agent's: read only unless 'all' is asked for; with no token it is the local session's, all of them
-    toolset = os.environ.get('ONTOPOC_TOOLSET') or ('read' if os.environ.get('ONTOPOC_TOKEN') else 'all')
-    if toolset not in ('all', 'read'):
+    asked = os.environ.get('ONTOPOC_TOOLSET') or None
+    if asked not in (None, 'all', 'read'):
         sys.exit('ONTOPOC_TOOLSET 要写 all 或 read')
-    only = READ_TOOLS if toolset == 'read' else None
+    offered = Toolset(service, asked)
     for line in sys.stdin:
         if not line.strip():
             continue
@@ -715,7 +733,7 @@ def main():
         except ValueError:
             out = {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': '不是合法的 JSON'}}
         else:
-            out = handle(message, service, only) if isinstance(message, dict) else {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32600, 'message': '请求必须是 JSON 对象'}}
+            out = handle(message, service, offered()) if isinstance(message, dict) else {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32600, 'message': '请求必须是 JSON 对象'}}
         if out is not None:
             sys.stdout.write(json.dumps(out, ensure_ascii=False) + '\n')
             sys.stdout.flush()

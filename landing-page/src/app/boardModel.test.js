@@ -14,6 +14,7 @@ test("who may open a board, when it ends and how often it reads, in words", () =
   assert.equal(scopeText({ scope: "private" }), "只有我");
   assert.equal(scopeText({ scope: "everyone" }), "所有登录的人");
   assert.equal(scopeText(SAVED), "指定的人：Vera");
+  assert.equal(scopeText({ scope: "named" }), "指定的人");   // a reader is not given the names
   assert.equal(expiryText({ expires_at: null }), "不过期");
   assert.equal(expiryText({ expires_at: "2026-12-01", expired: false }), "到 2026-12-01");
   assert.match(expiryText({ expires_at: "2026-11-01", expired: true }), /已过期，只有主人和管理员/);

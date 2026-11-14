@@ -61,6 +61,9 @@ def definitions(conn, user: dict | None) -> dict:
               'line': line_of(conn, v['row']['element_id'])['line'], **_stamp(conn, v['row']['element_id'])} for name, v in sc['views'].items()]
     derived = [{'id': d['content']['english_name'], 'name': d['content']['name'], 'type': d['content']['type'], 'kind': d['content']['kind'], 'output_type': d['content']['output_type'],
                 'says': describe_derived(conn, d['content']), **_stamp(conn, element_id)} for element_id, d in sc['derived'].items()]
+    # one that names a column the owner keeps from models is listed, but not the sentence that spells out that column's meaning (its meanings are left out above too)
+    derived += [{'id': d['content']['english_name'], 'name': d['content']['name'], 'type': d['content']['type'], 'kind': d['content']['kind'], 'output_type': d['content']['output_type'],
+                 'says': None, **_stamp(conn, element_id)} for element_id, d in sc['derived_kept_back'].items()]
     return {'types': types, 'relations': relations, 'views': views, 'derived': derived, 'rules': REFUSAL_RULES}
 
 
@@ -79,18 +82,23 @@ def unconfirmed(conn, user: dict | None) -> dict:
 def read_derived(conn, user: dict | None, type_name, name, key=None, page=1) -> dict:
     """The value of a confirmed derived property for the objects this person may read: one object when `key` ({key column: value}) is given, else one page of them. A
     property that is not confirmed gives no value: the refusal says its state and why (409)."""
-    row = element_row(conn, derived_id(str(type_name), str(name)))
+    row = element_row(conn, derived_id(type_name, name)) if isinstance(type_name, str) and isinstance(name, str) else None
     if row is None or not derived_visible(conn, row, user):
         raise TypeRefused('没有这个派生属性', 404)
     if row['state'] != 'confirmed':
         line = line_of(conn, row['element_id'])
         raise TypeRefused(f'派生属性「{line["name"]}」现在不是已确认的状态（{line["reason"]}），不给出它的值', 409)
+    sc = scope(conn, user)   # the one list of what may be told to a model: a property that reads a column kept from models is not in it
+    if row['element_id'] not in sc['derived']:
+        if row['element_id'] in sc['derived_kept_back']:
+            raise TypeRefused(f'派生属性「{line_of(conn, row["element_id"])["name"]}」用到的一列，所有者设成了取值不对模型开放，所以不给出它的值', 403)
+        raise TypeRefused('没有这个派生属性', 404)
     content = json.loads(row['content_json'])
     result = evaluate(conn, content, user)
     if result['problems']:
         raise TypeRefused(f'派生属性「{content["name"]}」现在算不出来：{result["problems"][0]}', 409)
     table = _load(conn, user, content['type'])
-    objects = [{'key': _object_key(table, r)[0], 'value': result['values'].get(r['n'])} for r in table['rows']]
+    objects = [{'key': _object_key(table, r)[0], 'value': result['values'].get(r['pos'])} for r in table['rows']]
     if key is not None:
         if not isinstance(key, dict) or set(key) != set(table['content']['key']):
             raise TypeRefused(f'key 要写成 {{{"、".join(table["content"]["key"])}: 取值}}')
@@ -128,7 +136,7 @@ def skill_files(conn, user: dict | None, today: date | None = None) -> dict[str,
         f'- {r["name"]}：{by_type[r["from"]]["name"]} → {by_type[r["to"]]["name"]}（{r["cardinality"]}，{r["from_column"]} = {r["to_column"]}；{r["confirmed_by"]} 确认于 {r["confirmed_on"]}）'
         for r in d['relations']) or '还没有已确认的关系。') + '\n'
     files['definitions/views.md'] = '# 视图（取哪些行）\n\n' + ('\n'.join(f'- {v["name"]}：{v["line"]}' for v in d['views']) or '还没有已确认的视图。') + '\n'
-    files['definitions/derived.md'] = '# 派生属性\n\n' + ('\n'.join(f'- {x["name"]}：{x["says"]}（{x["confirmed_by"]} 确认于 {x["confirmed_on"]}）' for x in d['derived']) or '还没有已确认的派生属性。') + '\n'
+    files['definitions/derived.md'] = '# 派生属性\n\n' + ('\n'.join(f'- {x["name"]}：{x["says"] or "算法没有写出来（用到的列的含义不对模型开放），值用 read_derived_property 读"}（{x["confirmed_by"]} 确认于 {x["confirmed_on"]}）' for x in d['derived']) or '还没有已确认的派生属性。') + '\n'
     files['refusal-rules.md'] = '# 什么时候该拒绝回答\n\n' + '\n'.join(f'{i}. {r}' for i, r in enumerate(d['rules'], 1)) + '\n'
     files['definitions/definitions.json'] = json.dumps({k: d[k] for k in ('types', 'relations', 'views', 'derived')}, ensure_ascii=False, indent=2) + '\n'
     index = '\n'.join(f'- [{t["name"]}](definitions/{t["id"]}.md)' for t in d['types']) or '还没有已确认的对象类型。'

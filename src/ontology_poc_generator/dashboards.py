@@ -70,19 +70,21 @@ def _expired(record: dict) -> bool:
     return bool(record['expires_at']) and record['expires_at'] < date.today().isoformat()
 
 
+def _published_to(user: dict | None, record: dict) -> bool:
+    return record['scope'] == 'everyone' or (record['scope'] == 'named' and user['id'] in record['visible_to'])
+
+
 def _may_open(user: dict | None, record: dict) -> bool:
     if _is_admin(user) or _owns(user, record):
         return True
-    if _expired(record):
-        return False
-    return record['scope'] == 'everyone' or (record['scope'] == 'named' and user['id'] in record['visible_to'])
+    return not _expired(record) and _published_to(user, record)
 
 
 def _found(conn, user: dict | None, dashboard_id) -> dict:
     row = conn.execute(f'SELECT {COLUMNS} FROM dashboard WHERE id = ?', (dashboard_id,)).fetchone() if isinstance(dashboard_id, int) and not isinstance(dashboard_id, bool) else None
     record = _record(row) if row else None
     if record is None or not _may_open(user, record):
-        if record is not None and _expired(record):
+        if record is not None and _expired(record) and _published_to(user, record):   # only someone it was published to is told that it has ended: to anyone else it is not there
             raise DashboardRefused('这个看板已经过期，不再开放了', 410)
         raise DashboardRefused('没有这个看板', 404)
     return record
@@ -110,9 +112,11 @@ def people(conn, user: dict | None) -> list[dict]:
 def dashboard_detail(conn, user: dict | None, dashboard_id: int) -> dict:
     ensure_schema(conn)
     record = _found(conn, user, dashboard_id)
+    if not (_owns(user, record) or _is_admin(user)):   # a reader gets the board worked out (dashboard_data), not what it is made of or who else it went to
+        return {**{k: record[k] for k in ('id', 'name', 'owner', 'scope', 'expires_at', 'refresh_seconds', 'version', 'updated_at')}, **_summary(record, user),
+                'owner_id': None, 'sign_in_note': SIGN_IN_NOTE}
     names = {i: n for i, n in conn.execute('SELECT id, display_name FROM user')}
-    return {**record, **_summary(record, user), 'visible_names': [names.get(i, '（已删除）') for i in record['visible_to']], 'sign_in_note': SIGN_IN_NOTE,
-            'owner_id': record['owner_id'] if _owns(user, record) or _is_admin(user) else None}
+    return {**record, **_summary(record, user), 'visible_names': [names.get(i, '（已删除）') for i in record['visible_to']], 'sign_in_note': SIGN_IN_NOTE, 'owner_id': record['owner_id']}
 
 
 # --- what a board is made of ---------------------------------------------------------------------------------------------------------------------------

@@ -229,7 +229,7 @@ export const getAgentInfo = () => request("/api/workspace/agent");
 /** The address that downloads the skill folder (a zip) as the signed-in person. */
 export const SKILL_HREF = "/api/workspace/agent/skill";
 export const getAgentTokens = () => request("/api/users/tokens").then((b) => b.tokens);
-export const createAgentToken = (userId, label) => send("/api/users/tokens", { user_id: userId, label });
+export const createAgentToken = (userId, label, scope, days) => send("/api/users/tokens", { user_id: userId, label, scope, days });
 export const revokeAgentToken = (id) => send("/api/users/tokens/revoke", { id });
 
 /** A file's bytes as base64, which is how the service takes them. */

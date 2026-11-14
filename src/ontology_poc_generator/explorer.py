@@ -47,8 +47,9 @@ def _row_text(value) -> str | None:
 
 
 def _load(conn, user: dict | None, english: str) -> dict:
-    """The type as a table: {'row', 'content', 'dataset', 'limit', 'fields', 'by_key', 'rows': [{'n' (row number in the dataset), 'rec' (the stored row), 'derived'
-    ({field key: value})}]} over the rows this person may read, and the fields in the order a page lists them: derived properties first, then the type's own."""
+    """The type as a table: {'row', 'content', 'dataset', 'limit', 'fields', 'by_key', 'rows': [{'n' (the row's number among the rows this person may read, from 1: a
+    limited person is not told where their rows lie in the whole data), 'pos' (its place in the dataset), 'rec' (the stored row), 'derived' ({field key: value})}]} over
+    the rows this person may read, and the fields in the order a page lists them: derived properties first, then the type's own."""
     row = _type_row(conn, english, user)
     content = _content(row)
     dataset = current_dataset(conn, content['dataset'])
@@ -61,7 +62,7 @@ def _load(conn, user: dict | None, english: str) -> dict:
     limit = restriction(conn, row['element_id'], user)
     kept = [(i, r) for i, r in enumerate(dataset_records(conn, dataset), 1) if keeps(r, limit)]
     derived = confirmed_columns(conn, english, user)
-    rows = [{'n': n, 'rec': rec, 'derived': {f'derived:{d["english_name"]}': d['values'].get(n) for d in derived}} for n, rec in kept]
+    rows = [{'n': n, 'pos': pos, 'rec': rec, 'derived': {f'derived:{d["english_name"]}': d['values'].get(pos) for d in derived}} for n, (pos, rec) in enumerate(kept, 1)]
     fields = [{'key': f'derived:{d["english_name"]}', 'column': None, 'name': d['name'], 'type': d['output_type'], 'code': False, 'derived': True, 'is_key': False,
                'confirmed': d['confirmed'], 'says': d['says'], 'element': d['id'], 'labels': {}, 'meaning': None} for d in derived]
     for p in content['properties']:
@@ -200,7 +201,7 @@ def select(conn, user: dict | None, query: dict) -> dict:
         if summary['problems']:
             raise TypeRefused(f'视图“{query["view"]}”现在读不了：{summary["problems"][0]}', 409)
         keep = set(summary['positions'])
-        rows = [r for r in rows if r['n'] in keep]
+        rows = [r for r in rows if r['pos'] in keep]
         used.append(vrow['element_id'])
     if query['pivot']:
         rows, more = _pivot(conn, user, query, table, rows)

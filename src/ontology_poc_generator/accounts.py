@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS session (
 CREATE TABLE IF NOT EXISTS setting (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS api_token (
     id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES user(id), label TEXT NOT NULL,
-    created_at TEXT NOT NULL, last_used_at TEXT, revoked_at TEXT);
+    created_at TEXT NOT NULL, last_used_at TEXT, revoked_at TEXT, scope TEXT, expires_at TEXT);
 '''
 
 _USER_KEYS = ('id', 'username', 'display_name', 'role', 'disabled', 'must_change', 'created_at', 'last_login_at', 'provider')
@@ -517,35 +517,54 @@ def set_two_person(conn, enabled, by: str) -> dict:
 # API tokens
 
 TOKEN_PREFIX = 'otp_'
+TOKEN_SCOPES = ('read', 'all')   # read: what the service lets a token do besides reading is decided in access.py (read_token_allows); a token made before scopes (no value) is a full pass, as it was
+EXPIRY_DAYS = (7, 30, 90, 365)   # what an admin may choose for a token made on the agent page; 90 when not said
+
+
+def _scope(value) -> str:
+    if value not in TOKEN_SCOPES:
+        raise AccountError('令牌的权限要写 read（只读）或 all（全部）')
+    return value
 
 
 def revoke_tokens(conn, user_id: int) -> None:
     conn.execute('UPDATE api_token SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL', (_stamp(_now()), user_id))
 
 
-def create_token(conn, user: dict, label, now: datetime | None = None, by: dict | None = None) -> tuple[dict, str]:
-    """(the token's record, the token itself). The token is shown once; only its hash is kept. `by` is the admin who made it for `user` (the log says so)."""
-    label = _name(label, '用途说明')
+def create_token(conn, user: dict, label, now: datetime | None = None, by: dict | None = None, scope='all', days: int | None = None) -> tuple[dict, str]:
+    """(the token's record, the token itself). The token is shown once; only its hash is kept. `by` is the admin who made it for `user` (the log says so). `scope` is
+    what it may do (read or all), `days` how long it works (None: no end)."""
+    label, scope = _name(label, '用途说明'), _scope(scope)
     token = TOKEN_PREFIX + secrets.token_urlsafe(32)
-    cursor = conn.execute('INSERT INTO api_token(token_hash, user_id, label, created_at) VALUES (?, ?, ?, ?)', (_digest(token), user['id'], label, _stamp(now or _now())))
-    _log(conn, (by or user)['username'], f'user:{user["id"]}', 'token_created', {'label': label, **({'for': user['username']} if by else {})})
-    return {'id': cursor.lastrowid, 'label': label}, token
+    made = now or _now()
+    expires = None if days is None else _stamp(made + timedelta(days=days))
+    cursor = conn.execute('INSERT INTO api_token(token_hash, user_id, label, created_at, scope, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
+                          (_digest(token), user['id'], label, _stamp(made), scope, expires))
+    _log(conn, (by or user)['username'], f'user:{user["id"]}', 'token_created', {'label': label, 'scope': scope, 'expires_at': expires, **({'for': user['username']} if by else {})})
+    return {'id': cursor.lastrowid, 'label': label, 'scope': scope, 'expires_at': expires}, token
 
 
-def issue_token(conn, admin: dict, target_id, label) -> tuple[dict, str]:
-    """An admin makes a token that acts as another person (the agent page): it has that person's role and sees what they see. Not for a disabled account."""
+def issue_token(conn, admin: dict, target_id, label, scope='read', days=90) -> tuple[dict, str]:
+    """An admin makes a token that acts as another person (the agent page): it sees what they see and, with scope 'read' (the default), may only read and ask. It ends
+    after `days`. Not for a disabled account and not for an admin's: a leaked token would then be the whole service."""
     target = get_user(conn, target_id) if isinstance(target_id, int) and not isinstance(target_id, bool) else None
     if target is None or target['disabled']:
         raise AccountError('没有这个在用的账号', 404)
-    record, token = create_token(conn, target, label, by=admin)
+    if target['role'] == 'admin':
+        raise AccountError('管理员的账号不发给智能体用的令牌：给它一个建设或查看的账号', 400)
+    if days not in EXPIRY_DAYS or isinstance(days, bool):
+        raise AccountError(f'有效期要选 {"、".join(map(str, EXPIRY_DAYS))} 天之一')
+    record, token = create_token(conn, target, label, by=admin, scope=scope, days=days)
     return {**record, 'user_id': target['id'], 'username': target['username'], 'display_name': target['display_name'], 'role': target['role']}, token
 
 
 def list_all_tokens(conn) -> list[dict]:
     """Every token with whose it is, newest first (never the token: only its hash is kept)."""
-    return [{'id': i, 'label': label, 'user_id': uid, 'username': username, 'display_name': display, 'role': role, 'created_at': created, 'last_used_at': used, 'revoked': revoked is not None}
-            for i, label, uid, username, display, role, created, used, revoked in conn.execute(
-                'SELECT t.id, t.label, u.id, u.username, u.display_name, u.role, t.created_at, t.last_used_at, t.revoked_at FROM api_token t JOIN user u ON u.id = t.user_id ORDER BY t.id DESC')]
+    now = _stamp(_now())
+    return [{'id': i, 'label': label, 'user_id': uid, 'username': username, 'display_name': display, 'role': role, 'created_at': created, 'last_used_at': used, 'revoked': revoked is not None,
+             'scope': scope or 'all', 'expires_at': expires, 'expired': bool(expires) and expires <= now}
+            for i, label, uid, username, display, role, created, used, revoked, scope, expires in conn.execute(
+                'SELECT t.id, t.label, u.id, u.username, u.display_name, u.role, t.created_at, t.last_used_at, t.revoked_at, t.scope, t.expires_at FROM api_token t JOIN user u ON u.id = t.user_id ORDER BY t.id DESC')]
 
 
 def revoke_any_token(conn, admin: dict, token_id) -> None:
@@ -556,22 +575,23 @@ def revoke_any_token(conn, admin: dict, token_id) -> None:
 
 
 def token_user(conn, token: str | None, now: datetime | None = None) -> dict | None:
-    """The owner of an API token, if it is not revoked and the owner is not disabled. The token has the owner's role, whatever it is now."""
+    """The owner of an API token, if it is not revoked, has not ended and the owner is not disabled. The token has the owner's role, whatever it is now; the person
+    comes back with the token's own `token_scope` and `token_id`, which the service's gate reads."""
     if not token or not token.startswith(TOKEN_PREFIX):
         return None
     now = now or _now()
-    row = conn.execute(f'SELECT t.id, t.last_used_at, {_JOINED} FROM api_token t JOIN user u ON u.id = t.user_id '
+    row = conn.execute(f'SELECT t.id, t.last_used_at, t.scope, t.expires_at, {_JOINED} FROM api_token t JOIN user u ON u.id = t.user_id '
                        'WHERE t.token_hash = ? AND t.revoked_at IS NULL AND u.disabled = 0', (_digest(token),)).fetchone()
-    if row is None:
+    if row is None or (row[3] and now >= datetime.fromisoformat(row[3])):
         return None
     if row[1] is None or now - datetime.fromisoformat(row[1]) >= TOUCH_EVERY:
         conn.execute('UPDATE api_token SET last_used_at = ? WHERE id = ?', (_stamp(now), row[0]))
-    return _public(row[2:])
+    return {**_public(row[4:]), 'token_id': row[0], 'token_scope': row[2] or 'all'}
 
 
 def list_tokens(conn, user_id: int) -> list[dict]:
-    return [{'id': i, 'label': label, 'created_at': created, 'last_used_at': used, 'revoked': revoked is not None}
-            for i, label, created, used, revoked in conn.execute('SELECT id, label, created_at, last_used_at, revoked_at FROM api_token WHERE user_id = ? ORDER BY id', (user_id,))]
+    return [{'id': i, 'label': label, 'created_at': created, 'last_used_at': used, 'revoked': revoked is not None, 'scope': scope or 'all', 'expires_at': expires}
+            for i, label, created, used, revoked, scope, expires in conn.execute('SELECT id, label, created_at, last_used_at, revoked_at, scope, expires_at FROM api_token WHERE user_id = ? ORDER BY id', (user_id,))]
 
 
 def revoke_token(conn, user: dict, token_id) -> None:

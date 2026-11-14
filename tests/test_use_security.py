@@ -1,0 +1,322 @@
+"""The stage 6 security review (2026-11-14), one test for each finding that was fixed: what a token may do is decided by the service from the token's own scope and
+expiry (M1), a derived property that reads a column kept from models is not read out to an agent (M2), asking has a budget (M3), a board shows its definition only to
+its author (L1, L2), row numbers do not count the rows a person may not read (L3), wrongly typed requests are answered (L4), the key of an object is not in a URL
+(L5) and a request has a size (L6)."""
+from datetime import datetime, timedelta, timezone
+import json
+import sqlite3
+from unittest import mock
+
+from ontology_poc_generator import ask_budget, mcp_server
+from ontology_poc_generator.workspace_store import open_workspace
+from tests.test_access import Client
+from tests.test_agent_access import AgentCase
+from tests.test_dashboards import BoardCase, CARD, SPEC
+from tests.test_derived_properties import GROSS
+from tests.test_explorer import CUSTOMERS, ORDERS, ORDER_Q, query
+from tests.test_workspace_questions import AskModel, QUESTION, cancelled
+
+
+def bearer(token):
+    return {'headers': {'Authorization': f'Bearer {token}'}, 'origin': None}
+
+
+class TokenScopeTests(AgentCase, BoardCase):
+    def test_a_read_token_reads_and_asks_but_changes_nothing_whatever_its_owner_s_role(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, admin = team['ann'], team['admin']
+            board = self.make(ann, scope='everyone')
+            made = self.token_for(admin, 'bob')   # Bob is a builder; no scope said
+            self.assertEqual(made['scope'], 'read')
+            script = Client(base)
+            as_bob = bearer(made['token'])
+            for path in ('/api/workspace/agent/definitions', '/api/workspace/agent/unconfirmed', '/api/workspace/explore/order', '/api/workspace/dashboards', '/api/auth/me',
+                         '/api/workspace/types', f'/api/workspace/dashboards/{board["id"]}'):
+                self.assertEqual(script.get(path, **as_bob)[0], 200, path)
+            self.assertEqual(script.get('/api/auth/me', **as_bob)[1]['user']['token_scope'], 'read')
+            reads = (('/api/workspace/ask', {'question': QUESTION}), ('/api/workspace/explore/table', {'query': ORDER_Q}), ('/api/workspace/explore/chart', {'query': ORDER_Q, 'chart': {'kind': 'number'}}),
+                     ('/api/workspace/dashboards/data', {'id': board['id']}), ('/api/workspace/dashboards/preview', {'spec': SPEC}))
+            for path, body in reads:
+                self.assertEqual(script.post(path, body, **as_bob)[0], 200, path)
+            for path, body in (('/api/workspace/dashboards', {'name': 'x', 'spec': SPEC}), ('/api/workspace/dashboards/delete', {'id': board['id']}),
+                               ('/api/workspace/datasets/upload', {}), ('/api/workspace/types/views', {}), ('/api/workspace/types/confirm', {}),
+                               ('/api/workspace/row-rules', {'type': 'order', 'rules': []}), ('/api/auth/tokens', {'label': 'more'})):
+                status, body = script.post(path, body, **as_bob)
+                self.assertEqual(status, 403, path)
+            self.assertIn('只能读', script.post('/api/workspace/dashboards', {'name': 'x', 'spec': SPEC}, **as_bob)[1]['error'])
+            self.assertEqual(len(ann.get('/api/workspace/dashboards')[1]['dashboards']), 1)   # nothing was made or deleted
+
+    def test_an_admin_can_give_a_token_every_tool_but_only_by_choosing_it_and_never_for_an_admin_account(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            admin = team['admin']
+            full = self.token_for(admin, 'bob', scope='all')
+            self.assertEqual(full['scope'], 'all')
+            made = Client(base).post('/api/workspace/dashboards', {'name': 'x', 'spec': SPEC}, **bearer(full['token']))
+            self.assertEqual(made[0], 200, made[1])
+            ids = {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
+            refused = admin.post('/api/users/tokens', {'user_id': ids['root'], 'label': 'x'})
+            self.assertEqual(refused[0], 400)
+            self.assertIn('管理员', refused[1]['error'])
+            self.assertEqual(admin.post('/api/users/tokens', {'user_id': ids['bob'], 'label': 'x', 'scope': 'write'})[0], 400)
+            listed = {t['id']: t for t in admin.get('/api/users/tokens')[1]['tokens']}
+            self.assertEqual([(t['username'], t['scope']) for t in listed.values()], [('bob', 'all')])
+            # the person's own token from the account page is theirs to scope; it was a full pass before scopes and stays one unless they ask for less
+            own = team['ann'].post('/api/auth/tokens', {'label': 'mine', 'scope': 'read'})[1]
+            self.assertEqual(Client(base).post('/api/workspace/dashboards', {'name': 'y', 'spec': SPEC}, **bearer(own['token']))[0], 403)
+
+    def test_a_token_expires_after_the_days_it_was_made_for_90_unless_said_and_the_list_shows_when(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            admin = team['admin']
+            default, short = self.token_for(admin, 'bob'), self.token_for(admin, 'vera', days=7)
+            for made, days in ((default, 90), (short, 7)):
+                self.assertAlmostEqual(datetime.fromisoformat(made['expires_at']), datetime.now(timezone.utc) + timedelta(days=days), delta=timedelta(minutes=5))
+            self.assertEqual({t['username']: t['expires_at'] for t in admin.get('/api/users/tokens')[1]['tokens']}, {'bob': default['expires_at'], 'vera': short['expires_at']})
+            self.assertEqual(admin.post('/api/users/tokens', {'user_id': default['user_id'], 'label': 'x', 'days': 5})[0], 400)   # 7, 30, 90 or 365
+            self.assertEqual(Client(base).get('/api/auth/me', **bearer(default['token']))[0], 200)
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            conn.execute('UPDATE api_token SET expires_at = ? WHERE id = ?', ((datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec='seconds'), default['id']))
+            conn.commit()
+            conn.close()
+            self.assertEqual(Client(base).get('/api/auth/me', **bearer(default['token']))[0], 401)   # past its day: no credential at all
+
+    def test_the_mcp_server_offers_what_the_token_s_scope_allows_and_its_environment_can_only_narrow_that(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            admin = team['admin']
+            read, full = self.token_for(admin, 'bob')['token'], self.token_for(admin, 'bob', scope='all')['token']
+            listed = lambda **kw: {t['name'] for t in self.mcp(base, calls=[], **kw)[2]['result']['tools']}
+            self.assertEqual(listed(token=read, toolset=None), set(mcp_server.READ_TOOLS))
+            self.assertEqual(listed(token=read, toolset='all'), set(mcp_server.READ_TOOLS))   # asking for more in its own environment gets nothing: the service would refuse the calls
+            self.assertIn('build_ontology', listed(token=full, toolset=None))
+            self.assertEqual(listed(token=full, toolset='read'), set(mcp_server.READ_TOOLS))
+            self.assertIn('build_ontology', listed(token=None, toolset=None))   # no token: the local session's toolset, as before
+
+
+class DerivedReadTests(AgentCase):
+    def test_a_derived_property_that_reads_a_column_kept_from_models_is_not_read_out_even_to_the_person_s_own_agent(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
+            self.assertEqual(self.confirm(bob, GROSS)[0], 200)
+            gross, cancelled_orders = {'type': 'order', 'name': 'gross'}, {'type': 'customer', 'name': 'cancelled_orders'}
+            self.assertEqual(bob.post('/api/workspace/agent/derived', gross)[0], 200)   # until a column it reads is kept from models
+            self.assertEqual(bob.post('/api/workspace/agent/derived', cancelled_orders)[0], 200)
+            for column in ('金额', '状态码'):
+                self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'order', 'column': column, 'hide_values': True})[0], 200)
+            for body in (gross, cancelled_orders):   # one reads the column in its expression, the other in its condition
+                status, refused = bob.post('/api/workspace/agent/derived', body)
+                self.assertEqual(status, 403, body)
+                self.assertIn('不对模型开放', refused['error'])
+            token = self.token_for(admin, 'bob')['token']
+            reply = self.mcp(base, token, [('read_derived_property', gross)])[10]['result']
+            self.assertTrue(reply['isError'])
+            self.assertIn('不对模型开放', reply['content'][0]['text'])
+            self.assertNotIn('2847', json.dumps(reply))   # not one value of 金额 x 1.13
+
+    def test_the_key_of_an_object_travels_in_the_body_not_in_the_address(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            bob = team['bob']
+            customer = CUSTOMERS[0]
+            key = {'客户编号': customer['客户编号'], '城市': customer['城市']}
+            status, one = bob.post('/api/workspace/agent/derived', {'type': 'customer', 'name': 'cancelled_orders', 'key': key})
+            self.assertEqual((status, one['total']), (200, 1))
+            self.assertNotEqual(bob.get('/api/workspace/agent/derived?type=customer&name=cancelled_orders')[0], 200)   # no such route any more
+            self.assertEqual(bob.post('/api/workspace/agent/derived', {'type': 'customer', 'name': 'cancelled_orders', 'key': 'KH001'})[0], 400)
+
+
+class AskBudgetTests(AgentCase):
+    def test_asking_is_limited_for_each_token_and_for_each_person_and_the_refusal_says_when_it_frees_up(self):
+        with mock.patch.object(ask_budget, 'TOKEN_LIMIT', 2), mock.patch.object(ask_budget, 'PERSON_LIMIT', 3), self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            first, second = self.token_for(admin, 'bob')['token'], self.token_for(admin, 'bob')['token']
+            script = Client(base)
+            ask = lambda token: script.post('/api/workspace/ask', {'question': QUESTION}, **bearer(token))
+            self.assertEqual([ask(first)[0], ask(first)[0]], [200, 200])
+            status, refused = ask(first)
+            self.assertEqual(status, 429)
+            self.assertIn('每小时最多 2 个', refused['error'])
+            self.assertRegex(refused['error'], r'约 \d+ 分钟后再问')
+            self.assertTrue(0 < int(script.last_headers['Retry-After']) <= 3600)
+            self.assertEqual(ask(second)[0], 200)   # another token of his has its own count, up to what he may ask in all
+            self.assertEqual(ask(second)[0], 429)
+            self.assertIn('每小时最多 3 个', ask(second)[1]['error'])
+            self.assertEqual(bob.post('/api/workspace/ask', {'question': QUESTION})[0], 429)   # at the page too: it is the person's budget
+            self.assertEqual(ann.post('/api/workspace/ask', {'question': QUESTION})[0], 200)   # someone else's is theirs
+
+    def test_the_hour_is_a_rolling_one_and_a_refused_ask_is_not_counted(self):
+        conn = open_workspace(':memory:')
+        person = {'id': 7, 'token_id': 3}
+        with mock.patch.object(ask_budget, 'TOKEN_LIMIT', 2), mock.patch.object(ask_budget, 'PERSON_LIMIT', 5):
+            ask_budget.take(conn, person, now=1000.0)
+            ask_budget.take(conn, person, now=1100.0)
+            with self.assertRaises(ask_budget.AskBudgetSpent) as spent:
+                ask_budget.take(conn, person, now=1200.0)
+            self.assertEqual(spent.exception.wait, 3600 - 200)   # when the first one leaves the hour
+            self.assertEqual(spent.exception.status, 429)
+            ask_budget.take(conn, person, now=1000.0 + 3600)   # the first has left: one more may be asked
+            with self.assertRaises(ask_budget.AskBudgetSpent):
+                ask_budget.take(conn, person, now=1000.0 + 3600 + 1)   # and the one before it was counted, the refused one was not
+            ask_budget.take(conn, {'id': 7, 'token_id': None}, now=1200.0)   # no token: only the person's count, which is not full
+
+
+class BoardExposureTests(BoardCase):
+    def test_a_reader_gets_the_rendered_board_not_its_definition_or_who_else_it_was_published_to(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            ids = self.ids(admin)
+            board = self.make(ann, scope='named', visible_to=[ids['vera'], ids['bob']])
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'customer', 'visible_to': [ids['ann']]})[0], 200)   # Vera may not see customers any more
+            for reader in (vera, bob):
+                seen = reader.get(f'/api/workspace/dashboards/{board["id"]}')[1]
+                self.assertEqual((seen['name'], seen['scope'], seen['components']), ('订单看板', 'named', 4))
+                for key in ('spec', 'visible_to', 'visible_names'):
+                    self.assertNotIn(key, seen)
+                self.assertNotIn('customer', str(seen))
+            self.assertEqual(self.card(self.data(vera, board['id']), 'cust')['status'], 'unavailable')   # what she may not see is said where it would be drawn
+            for author in (ann, admin):
+                seen = author.get(f'/api/workspace/dashboards/{board["id"]}')[1]
+                self.assertEqual(len(seen['spec']['components']), 4)
+                self.assertEqual(sorted(seen['visible_names']), ['Bob', 'Vera'])
+
+    def test_a_board_a_person_may_not_open_is_not_found_whether_or_not_it_exists_and_only_one_they_could_open_is_said_to_be_expired(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            ids = self.ids(admin)
+            made = {name: self.make(ann, name, **more)['id'] for name, more in (
+                ('private', {}), ('everyone', {'scope': 'everyone'}), ('named bob', {'scope': 'named', 'visible_to': [ids['bob']]}), ('named vera', {'scope': 'named', 'visible_to': [ids['vera']]}))}
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            conn.execute("UPDATE dashboard SET expires_at = '2020-01-01'")
+            conn.commit()
+            conn.close()
+            status = lambda client, name: client.get(f'/api/workspace/dashboards/{made[name]}')[0]
+            self.assertEqual(bob.get('/api/workspace/dashboards/999')[0], 404)
+            self.assertEqual([status(bob, n) for n in ('private', 'named vera')], [404, 404])   # not his: the same answer as for a board that is not there
+            self.assertEqual([status(bob, n) for n in ('everyone', 'named bob')], [410, 410])   # his, and over
+            self.assertEqual([bob.post('/api/workspace/dashboards/data', {'id': made[n]})[0] for n in ('private', 'everyone')], [404, 410])
+            self.assertEqual([status(ann, n) for n in made] + [status(admin, n) for n in made], [200] * 8)   # the author and an admin still open what has ended
+
+
+class RowNumberTests(BoardCase):
+    def test_the_row_numbers_a_limited_person_is_given_count_only_the_rows_they_may_read(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
+            self.assertEqual(self.confirm(bob, GROSS)[0], 200)
+            ids = self.ids(admin)
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH026', 'user_ids': [ids['vera']]}, {'column': '', 'value': '', 'user_ids': [ids['ann'], ids['bob']]}]})[0], 200)
+            hers = [r for r in ORDERS if r['客户编号'] == 'KH026']
+            table = self.table(vera, ORDER_Q)
+            self.assertEqual((table['total'], table['numbers']), (len(hers), list(range(1, len(hers) + 1))))   # 1, 2, 3 ...: nothing tells how many rows lie between hers
+            names = [c['name'] for c in table['columns']]
+            for row in table['rows']:   # the value of a derived property is of the row it is shown on
+                record = next(r for r in hers if r['订单号'] == row[names.index('订单号')])
+                self.assertAlmostEqual(float(row[names.index('含税金额')]), float(record['金额']) * 1.13, places=2)
+            first = vera.get('/api/workspace/explore/order/object/1')[1]
+            self.assertEqual(first['key'], {'订单号': hers[0]['订单号']})
+            self.assertEqual(vera.get(f'/api/workspace/explore/order/object/{len(hers) + 1}')[0], 404)   # not "someone else's row": there is no such number for her
+            board = self.make(ann, 'rows', scope='everyone', spec={'components': [{'id': 'r', 'title': 'r', 'query': {'type': 'order'}, 'chart': {'kind': 'rows'}}], 'filters': []})
+            self.assertEqual(self.data(vera, board['id'])['components'][0]['result']['numbers'], list(range(1, len(hers) + 1)))
+            # unlimited, the number is the row's place in the data, as it always was
+            self.assertEqual(self.table(bob, ORDER_Q)['numbers'][:3], [1, 2, 3])
+            # a number from a related list opens the object it names, in the same numbering
+            customers = self.table(vera, {'type': 'customer', 'filters': [{'field': '客户编号', 'op': 'eq', 'value': 'KH026'}]})
+            at = customers['numbers'][0]
+            related = vera.get(f'/api/workspace/explore/customer/object/{at}')[1]['related']
+            orders = next(r for r in related if r['other'] == 'order')
+            self.assertEqual(orders['count'], len(hers))
+            for o in orders['objects']:
+                self.assertEqual(vera.get(f'/api/workspace/explore/order/object/{o["n"]}')[1]['text'], o['text'])
+
+
+MUTATIONS = (None, True, 7, 1e308, 'abc', [], ['x'], {}, {'a': 1})
+SMALL = {'components': [{'id': 'valid', 'title': '有效订单', 'query': {'type': 'order', 'view': '有效订单', 'filters': [{'field': '状态码', 'op': 'eq', 'value': '1'}], 'rows': [1, 2], 'pivot': None},
+                        'chart': {'kind': 'bar', 'group': '状态码', 'measure': None, 'fn': 'count', 'bins': 10}}],
+         'filters': [{'field': '状态码', 'label': '状态'}]}
+
+
+def leaves(value, path=()):
+    """The place of every value in a request body, so that each can be replaced by a wrong one."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            yield from leaves(v, (*path, k))
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            yield from leaves(v, (*path, i))
+    yield path
+
+
+def replaced(value, path, new):
+    if not path:
+        return new
+    head, rest = path[0], path[1:]
+    if isinstance(value, dict):
+        return {**value, head: replaced(value[head], rest, new)}
+    return [replaced(v, rest, new) if i == head else v for i, v in enumerate(value)]
+
+
+class MalformedRequestTests(BoardCase):
+    def test_a_request_with_a_wrongly_typed_field_is_answered_with_words_never_dropped(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, admin = team['ann'], team['admin']
+            ids = self.ids(admin)
+            board = self.make(ann, scope='everyone', spec=SMALL)
+            more = {'scope': 'named', 'visible_to': [ids['bob']], 'expires_at': '2099-01-01', 'refresh_seconds': 60}
+            bodies = {
+                '/api/workspace/explore/table': {'query': SMALL['components'][0]['query'], 'page': 1},
+                '/api/workspace/explore/chart': {'query': SMALL['components'][0]['query'], 'chart': SMALL['components'][0]['chart']},
+                '/api/workspace/dashboards': {'name': 'x', 'spec': SMALL, **more},
+                '/api/workspace/dashboards/update': {'id': board['id'], 'version': board['version'], 'name': 'x', 'spec': SMALL, **more},
+                '/api/workspace/dashboards/data': {'id': board['id'], 'bar': {'状态码': '1'}},
+                '/api/workspace/dashboards/preview': {'spec': SMALL, 'bar': {'状态码': '1'}},
+                '/api/workspace/agent/derived': {'type': 'customer', 'name': 'cancelled_orders', 'key': {'客户编号': 'KH001', '城市': '东莞'}, 'page': 1},
+                '/api/workspace/dashboards/delete': {'id': 99999},
+            }
+            failed = []
+            for path, body in bodies.items():
+                self.assertLess(ann.post(path, body)[0], 500, path)   # the unchanged request is fine
+                tries = [(whole, ()) for whole in (['x'], 'x', 7)] + [(replaced(body, p, new), p) for p in leaves(body) if p for new in MUTATIONS]
+                for sent, where in tries:
+                    try:
+                        status, answer = ann.post(path, sent)
+                    except Exception as exc:   # a dropped connection, or an answer that is not JSON
+                        failed.append((path, where, repr(exc)[:60]))
+                        continue
+                    if status >= 500 or (status >= 400 and not (isinstance(answer, dict) and answer.get('error'))):
+                        failed.append((path, where, status))
+            self.assertEqual(failed[:12], [], f'{len(failed)} requests were not answered')   # the first few say what to look at
+
+
+class BodySizeTests(BoardCase):
+    def test_a_request_for_a_chart_or_a_board_is_a_few_kilobytes_and_a_big_one_is_refused(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann = team['ann']
+            padding = 'x' * 70000
+            for path, body in (('/api/workspace/explore/table', {'query': {'type': 'order', 'filters': [{'field': '状态码', 'op': 'eq', 'value': padding}]}}),
+                               ('/api/workspace/dashboards', {'name': 'x', 'spec': SMALL, 'scope': 'private', 'note': padding}),
+                               ('/api/workspace/agent/derived', {'type': 'customer', 'name': padding})):
+                status, refused = ann.post(path, body)
+                self.assertEqual(status, 413, path)
+                self.assertEqual(refused['error'], '请求太大。')
+            self.assertEqual(self.table(ann, query(filters=[{'field': '状态码', 'op': 'eq', 'value': '1'}]))['total'] > 0, True)
