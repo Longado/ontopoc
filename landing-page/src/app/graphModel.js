@@ -146,7 +146,7 @@ export function edgeLabel(edge) {
 
 /** The words that say whether the cardinality holds, for the drawer; "" when the check could not run. */
 export function verdictText(edge) {
-  if (edge.cardinality_ok == null) return edge.problems?.join("；") ?? "";
+  if (edge.cardinality_ok == null) return edge.rows_limited ? "受行规则限制，只数了你能看到的行，不判断基数是否成立" : edge.problems?.join("；") ?? "";
   return edge.cardinality_ok ? `${edge.cardinality_label}成立` : `${edge.cardinality_label}不成立：${edge.cardinality_text}`;
 }
 

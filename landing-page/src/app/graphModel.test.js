@@ -74,6 +74,7 @@ test("an edge says how many rows connect, of the rows a limited person can see w
   assert.equal(verdictText(edge), "多对一不成立：客户 里“客户编号”有 1 个值重复");
   assert.equal(verdictText({ ...edge, cardinality_ok: true }), "多对一成立");
   assert.equal(verdictText({ cardinality_ok: null, problems: ["对象类型“x”已经不在了"] }), "对象类型“x”已经不在了");
+  assert.match(verdictText({ ...edge, rows_limited: true, cardinality_ok: null, cardinality_text: null }), /不判断基数/);   // a slice of the rows is no verdict
 });
 
 test("how long ago a version was uploaded reads in the biggest whole unit", () => {

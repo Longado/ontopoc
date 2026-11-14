@@ -13,7 +13,7 @@ export function RelationGraph() {
   const [picked, setPicked] = useState(null);   // {kind: "node" | "edge", id}
   const graph = state.data;
   const layout = useMemo(() => (graph ? forceLayout(graph.nodes, graph.edges) : null), [graph]);
-  const groups = useMemo(() => (graph ? groupEdges(graph.edges) : []), [graph]);
+  const groups = useMemo(() => (graph ? groupEdges(graph.edges.filter((e) => e.from !== e.to)) : []), [graph]);   // a relation from a type to itself has no line: its drawer lists it
   if (state.status === "error") return <p className="error">{state.error}</p>;
   if (!graph) return <p className="muted">加载中</p>;
   if (!graph.nodes.length) return <p className="muted">还没有对象类型，画不出图。<a href={hrefFor({ page: "types" })}>去对象类型</a></p>;

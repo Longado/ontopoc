@@ -119,7 +119,7 @@ def _by_type(conn, user: dict | None) -> dict[str, dict]:
             if not can_see(conn, row, user):
                 continue
             content = _content(row)
-            for t in ([type_id(content['from']), type_id(content['to'])] if kind == 'relations' else [type_id(content['type'])]):
+            for t in dict.fromkeys([type_id(content['from']), type_id(content['to'])] if kind == 'relations' else [type_id(content['type'])]):   # a relation from a type to itself is listed once
                 out.setdefault(t, {'views': [], 'actions': [], 'relations': []})[kind].append(row)
     return out
 
@@ -176,6 +176,8 @@ def _edge(conn, row: dict, user: dict | None) -> dict:
         return {**edge, 'connected': None, 'of': None, 'unmatched': None, 'cardinality_ok': None, 'cardinality_text': None}
     n = result['numbers']
     false = cardinality_false(result)
+    if limited:   # their own slice of the rows says nothing about whether the cardinality holds on all of them
+        return {**edge, 'connected': n['matched'], 'of': n['rows'], 'unmatched': n['unmatched'], 'cardinality_ok': None, 'cardinality_text': None}
     return {**edge, 'connected': n['matched'], 'of': n['rows'], 'unmatched': n['unmatched'], 'cardinality_ok': not false, 'cardinality_text': _verdict_words(result) if false else None}
 
 
@@ -198,8 +200,9 @@ def relation_graph(conn, user: dict | None) -> dict:
 
 def _dataset_node(conn, name: str, readers: list[dict], user: dict | None) -> dict:
     dataset = current_dataset(conn, name)
-    return {'id': f'dataset:{name}', 'kind': 'dataset', 'key': name, 'name': name, 'state': None, 'version': dataset['version'], 'uploaded_at': dataset['imported_at'], 'who': dataset['who'],
-            'used_for': [r['name'] for r in readers], 'link': not dataset_hidden(conn, name, user), 'stale': None}
+    hidden = dataset_hidden(conn, name, user)   # not found to this person: who uploaded it and when are not theirs (the type page already names its version)
+    return {'id': f'dataset:{name}', 'kind': 'dataset', 'key': name, 'name': name, 'state': None, 'version': dataset['version'], 'uploaded_at': None if hidden else dataset['imported_at'],
+            'who': None if hidden else dataset['who'], 'used_for': [r['name'] for r in readers], 'link': not hidden, 'stale': None}
 
 
 def _answer_node(conn, user: dict | None, answer_id: int, question: str, asked_at: str) -> tuple[dict, list[str]] | None:
@@ -209,7 +212,7 @@ def _answer_node(conn, user: dict | None, answer_id: int, question: str, asked_a
         return None
     named = [d['id'] for d in now.get('definitions', [])] + [type_id(t['id']) for t in now.get('types', [])]
     stale, changed = now.get('stale', []), now.get('changed', [])
-    cause, state = None, 'confirmed'
+    cause, state = None, None   # nobody confirms an answer: it has no state until something under it needs a look
     if changed or stale:
         state = 'needs_look'
         moved = [c for c in (element_row(conn, c['id']) for c in changed) if c]
@@ -275,6 +278,7 @@ def type_uses(conn, english_name: str, user: dict | None) -> dict:
              ('actions', '行为', [{'id': _content(r)['name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['actions']]),
              ('relations', '关系', [{'id': _content(r)['english_name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['relations']]),
              ('answers', '你存下的回答', answers)]
-    return {'data': {'dataset': content['dataset'], 'version': dataset['version'] if dataset else None, 'uploaded_at': dataset['imported_at'] if dataset else None,
-                     'who': dataset['who'] if dataset else None, 'link': dataset is not None and not dataset_hidden(conn, content['dataset'], user)},
+    hidden = dataset is not None and dataset_hidden(conn, content['dataset'], user)
+    return {'data': {'dataset': content['dataset'], 'version': dataset['version'] if dataset else None, 'uploaded_at': None if hidden or not dataset else dataset['imported_at'],
+                     'who': None if hidden or not dataset else dataset['who'], 'link': dataset is not None and not hidden},
             'used_by': [{'kind': k, 'label': label, 'count': len(items), 'items': items} for k, label, items in kinds if items]}

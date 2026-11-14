@@ -48,7 +48,7 @@ function TypeBody({ node }) {
 function DatasetBody({ node }) {
   return (
     <>
-      <p className="muted">第 {node.version} 版，上传于 {ageText(node.uploaded_at)}（{timeText(node.uploaded_at)}{node.who ? `，${node.who}` : ""}）</p>
+      <p className="muted">第 {node.version} 版{node.uploaded_at && `，上传于 ${ageText(node.uploaded_at)}（${timeText(node.uploaded_at)}${node.who ? `，${node.who}` : ""}）`}</p>
       <List title="用于对象类型" empty="还没有对象类型用它" items={node.used_for.map((n) => ({ key: n, name: n }))} />
       {node.link && <p><a href={hrefFor({ page: "dataset", name: node.key, tab: "fields" })}>进入 {node.name}</a></p>}
     </>
@@ -80,7 +80,7 @@ export function NodeDrawer({ node, onClose }) {
         </div>
         <button className="plain" onClick={onClose}>关闭</button>
       </div>
-      {node.kind !== "dataset" && <p><State item={node} /></p>}
+      {node.state && <p><State item={node} /></p>}
       {node.kind === "type" ? <TypeBody node={node} /> : node.kind === "dataset" ? <DatasetBody node={node} /> : <ElementBody node={node} />}
     </aside>
   );

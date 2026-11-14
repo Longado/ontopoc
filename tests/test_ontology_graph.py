@@ -104,6 +104,7 @@ class GraphTests(SigningTestCase):
             answer = next(n for n in graph['nodes'] if n['kind'] == 'answer')
             self.assertIn(('objtype:order', answer['id']), edges)
             self.assertTrue(all(n['state'] in ('confirmed', None) for n in graph['nodes']))
+            self.assertIsNone(answer['state'])   # nobody confirmed the answer: it has no state to be drawn green
             # the codes shift by one in a new version of 订单
             self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
             graph = self.graph(ann, LINEAGE)
@@ -191,6 +192,15 @@ class GraphTests(SigningTestCase):
             (edge,) = self.graph(vera, RELATIONS)['edges']
             self.assertEqual((edge['of'], edge['rows_limited']), (16, True))
             self.assertLessEqual(edge['connected'], 16)
+            self.assertIsNone(edge['cardinality_ok'])   # a slice of the rows says nothing about whether the cardinality holds on all of them
+            self.assertIsNone(edge['cardinality_text'])
+            self.assertTrue(self.graph(admin, RELATIONS)['edges'][0]['cardinality_ok'])
+            # the dataset of a row-ruled type is not found to her: who uploaded it and when are not sent, on the lineage or the type page
+            dataset = self.node(self.graph(vera, LINEAGE), 'dataset:订单')
+            self.assertEqual((dataset['link'], dataset['uploaded_at'], dataset['who']), (False, None, None))
+            uses = vera.get('/api/workspace/types/order/uses')[1]['data']
+            self.assertEqual((uses['link'], uses['uploaded_at'], uses['who']), (False, None, None))
+            self.assertTrue(self.node(self.graph(admin, LINEAGE), 'dataset:订单')['uploaded_at'])
             # the codes shift: Bob, limited too, is told which cause it is and not the words of it (they quote counts of every row)
             self.assertEqual(admin.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)   # a row-ruled type's dataset is the admin's
             order = self.node(self.graph(bob, LINEAGE), 'objtype:order')
@@ -227,6 +237,20 @@ class GraphTests(SigningTestCase):
                 self.assertNotIn('第 2 版', json.dumps([c for c in causes], ensure_ascii=False))
             kinds = {n['kind'] for n in self.graph(bob, LINEAGE)['nodes'] if n.get('stale')}
             self.assertEqual(kinds, {'type', 'view', 'action', 'relation', 'answer'})
+
+    def test_a_relation_from_a_type_to_itself_is_listed_once(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann = team['ann']
+            self.assertEqual(ann.post('/api/workspace/types', ORDER)[0], 200)
+            same = {'english_name': 'same_order', 'name': '同一张订单', 'from': 'order', 'to': 'order', 'cardinality': 'one_to_one', 'from_column': '订单号', 'to_column': '订单号'}
+            status, body = ann.post('/api/workspace/relations', same)
+            self.assertEqual(status, 200, body)
+            order = self.node(self.graph(ann, RELATIONS), 'objtype:order')
+            self.assertEqual([r['key'] for r in order['relations']], ['same_order'])
+            self.assertEqual([(u['kind'], u['count']) for u in ann.get('/api/workspace/types/order/uses')[1]['used_by']], [('relations', 1)])
+            edges = {(e['from'], e['to']) for e in self.graph(ann, LINEAGE)['edges']}
+            self.assertEqual({e for e in edges if 'relation:same_order' in e}, {('objtype:order', 'relation:same_order')})
 
     def test_a_type_a_person_may_not_see_is_not_a_node_and_its_relation_is_not_an_edge_and_a_viewer_sees_only_what_is_confirmed(self):
         with self.service() as (base, out):

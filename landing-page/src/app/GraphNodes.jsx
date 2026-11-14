@@ -14,8 +14,9 @@ function lines(node) {
     const objects = node.objects == null ? "" : node.rows_limited ? `你能看到 ${node.objects} 个对象` : `${node.objects} 个对象`;
     return [{ text: objects }, secondLine(node), ...(node.stale?.short ? [{ text: node.stale.short }] : [])];   // what moved, in a few words, under the cause
   }
-  if (node.kind === "dataset") return [{ text: `第 ${node.version} 版` }, { text: `上传于 ${ageText(node.uploaded_at)}` }];
-  return [node.stale ? { text: node.stale.label, cause: true } : { text: `${KIND_LABEL[node.kind]} ${stateText(node)}`, word: node.state }];
+  if (node.kind === "dataset") return [{ text: `第 ${node.version} 版` }, ...(node.uploaded_at ? [{ text: `上传于 ${ageText(node.uploaded_at)}` }] : [])];   // a dataset this person may not open does not say when it came
+  if (node.stale) return [{ text: node.stale.label, cause: true }];
+  return [{ text: node.state ? `${KIND_LABEL[node.kind]} ${stateText(node)}` : KIND_LABEL[node.kind], word: node.state }];   // an answer is nobody's confirmation: it has no state word
 }
 
 /** One node of either graph, at `box`: a type is a card with a header, a dataset a flat box, the rest small boxes. A click or Enter picks it. */
