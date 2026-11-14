@@ -372,6 +372,37 @@ def preview(conn, engine, payload: dict, user: dict | None) -> dict:
             'basis': 'full', 'inputs': found['versions'], 'limit': PREVIEW_ROWS}
 
 
+def summary(conn, engine, payload: dict, user: dict | None) -> dict:
+    """{id | spec}: every node's report (rows in and out, what each operator did, the join's fan-out, an output's key and status line, its columns with types) from a run
+    on the current data with nothing written and no rows returned: what the graph shows on each card. A draft that does not check is refused with the reason (409 or 400)."""
+    engine = engine or conn
+    spec, name = _spec_of(conn, payload, user)
+    found = check_definition(conn, engine, {'name': name or 'preview', 'spec': spec}, user, outputs_free=False)
+    try:
+        register(engine)
+        result = _execute(engine, found['content']['spec'], found['resolved'], found['ctx'])
+    except (ValueError, PipelineRunError) as exc:
+        raise TypeRefused(str(exc), 409) from None
+    finally:
+        drop_temporary(engine, found['resolved'])
+    nodes = [{k: v for k, v in n.items() if k != 'sql'} for n in result['nodes']]
+    for n in nodes:
+        if n['type'] == 'output':
+            n['output']['status'] = output_status(conn, n['output'], _output_step(found['content']['spec'], n['id']))
+    return {'nodes': nodes, 'inputs': found['versions']}
+
+
+def columns_at(conn, engine, payload: dict, user: dict | None) -> dict:
+    """{id | spec, step, operator?}: the columns a transform's operator reads (what the operators before it left), with types, meanings and the aggregations each may have:
+    what the operator forms offer to pick from."""
+    engine = engine or conn
+    found, compiled, _ = _columns_before(conn, engine, payload, user)
+    try:
+        return {'columns': _column_info(compiled['columns'], found['ctx'])}
+    finally:
+        drop_temporary(engine, found['resolved'])
+
+
 def _output_step(spec: dict, node: str) -> dict:
     return next(s for s in spec['steps'] if s['id'] == node)
 
@@ -434,7 +465,8 @@ def review(conn, engine, payload: dict, user: dict | None) -> dict:
     before_spec = last['content']['spec'] if last else None
     stats_now = _dry_run(conn, engine, row, user)
     return {'id': content['name'], 'definition_version': content['definition_version'], 'compared_with': last['content']['definition_version'] if last else None,
-            'changes': diff_specs(before_spec, content['spec']), 'stats_before': last['anchors']['stats'] if last and last['anchors'] else None, 'stats_now': stats_now['stats'],
+            'changes': diff_specs(before_spec, content['spec']), 'stats_before': last['anchors']['stats'] if last and last['anchors'] else None, 'rows_before': last['anchors'].get('rows') if last and last['anchors'] else None,
+            'stats_now': stats_now['stats'],
             'rows_now': stats_now['rows'], 'inputs_now': stats_now['inputs'], 'failures': stats_now['failures']}
 
 

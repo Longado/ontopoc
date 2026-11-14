@@ -91,6 +91,46 @@ class PipelineServerTests(SigningTestCase):
             totals = ann.get(f'/api/workspace/datasets/{quote("客户合计")}')[1]
             self.assertEqual((totals['rows'], totals['versions'][0]['pipeline']['run'], totals['versions'][0]['pipeline']['inputs']), (len(TRUE), run['id'], {'订单': 1, '售后工单': 1}))
 
+    def test_with_cancelled_orders_left_out_the_run_still_names_the_customer_whose_total_is_counted_twice(self):
+        live = [r for r in RECORDS['订单'] if r['状态码'] != '2']
+        true, doubled = Counter(), Counter()
+        for r in live:
+            true[r['客户编号']] += int(r['金额'])
+            doubled[r['客户编号']] += int(r['金额']) * max(1, TICKETS[r['订单号']])
+        wrong = {k for k in true if true[k] != doubled[k]}
+        spec = {'steps': [SPEC['steps'][0], SPEC['steps'][1], JOIN,
+                          {**TOTALS, 'operators': [{'op': 'filter', 'where': {'column': '状态码', 'cmp': 'ne', 'value': 2}}, *TOTALS['operators']]},
+                          SPEC['steps'][4]]}
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            self.make(ann, spec)
+            run = self.go(ann)
+            filtered, grouped = self.nodes(run)['g']['operators']
+            self.assertEqual((filtered['dropped_false'], filtered['dropped_null']), (16, 0))   # the 16 cancelled orders, none of which has a ticket
+            found = grouped['double_counted'][0]
+            by_group = {e['group']['客户编号']: (e['with'], e['true']) for e in found['examples']}
+            self.assertEqual((found['groups'], by_group['KH099']), (len(wrong), (15820, 12670)))
+            self.assertEqual(by_group, {k: (doubled[k], true[k]) for k in wrong})
+
+    def test_the_summary_gives_every_card_its_counts_and_the_column_form_lists_what_an_operator_may_pick(self):
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            self.make(ann)
+            status, body = ann.post(f'{PIPELINES}/summary', {'id': '客户合计'})
+            self.assertEqual(status, 200, body)
+            nodes = {n['id']: n for n in body['nodes']}
+            self.assertEqual([(i, n['rows_in'], n['rows_out']) for i, n in nodes.items()], [('o', [160], 160), ('t', [45], 45), ('j', [160, 45], 169), ('g', [169], len(TRUE)), ('out', [len(TRUE)], len(TRUE))])
+            self.assertEqual(nodes['out']['output']['status']['state'], 'match')
+            self.assertIn('金额', [c['name'] for c in nodes['j']['column_types']])
+            status, columns = ann.post(f'{PIPELINES}/columns', {'id': '客户合计', 'step': 'g', 'operator': 0})
+            self.assertEqual(status, 200, columns)
+            by_name = {c['name']: c for c in columns['columns']}
+            self.assertEqual(by_name['金额']['aggregations'][:2], ['sum', 'count'])
+            self.assertEqual(ann.post(f'{PIPELINES}/summary', {'spec': {'steps': [{'id': 'o', 'type': 'input', 'dataset': '没有这个'}]}})[0], 404)
+            self.assertEqual(self.go(ann)['status'], 'success')
+            review = ann.post(f'{PIPELINES}/review', {'id': '客户合计'})[1]
+            self.assertEqual(review['rows_before'], None)   # never confirmed
+
     def test_the_output_type_waits_for_the_pipeline_and_an_edited_join_sends_output_type_and_saved_answer_back_for_a_new_definition(self):
         model = AskModel(cancelled(query=TOTAL_QUERY, used=[]))
         with self.service(gateway=model) as (base, out):

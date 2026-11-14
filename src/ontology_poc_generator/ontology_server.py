@@ -70,7 +70,7 @@ from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, key_preview, list_types, propose_meanings, type_detail, type_log, type_objects, update_type
 from ontology_poc_generator.object_type_suggest import suggest_types
 from ontology_poc_generator.workspace_pipelines import (
-    check_expression, confirm_pipeline, create_pipeline, format_guess, list_pipelines, options as pipeline_options, pipeline_detail, pipeline_log, pipeline_versions,
+    check_expression, columns_at as pipeline_columns, confirm_pipeline, create_pipeline, format_guess, summary as pipeline_summary, list_pipelines, options as pipeline_options, pipeline_detail, pipeline_log, pipeline_versions,
     preview as pipeline_preview, review as pipeline_review, run_detail, run_list, run_now as run_pipeline_now, trial_expression, update_pipeline)
 from ontology_poc_generator.object_actions import (
     action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, update_action, withdraw as withdraw_record)
@@ -1393,7 +1393,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 try:
                     with runs_lock:   # the lock an upload takes (see types_post)
                         writers = {'': create_pipeline, '/update': update_pipeline, '/confirm': confirm_pipeline, '/run': run_pipeline_now}
-                        readers = {'/preview': pipeline_preview, '/review': pipeline_review, '/expression/check': check_expression, '/expression/trial': trial_expression}
+                        readers = {'/preview': pipeline_preview, '/summary': pipeline_summary, '/columns': pipeline_columns, '/review': pipeline_review, '/expression/check': check_expression, '/expression/trial': trial_expression}
                         if route in writers:
                             body = writers[route](conn, payload, who, self.user, engine) if route != '/run' else run_pipeline_now(conn, engine, payload, who, self.user)
                         elif route in readers:
