@@ -4,6 +4,7 @@ its author (L1, L2), row numbers do not count the rows a person may not read (L3
 (L5) and a request has a size (L6)."""
 from datetime import datetime, timedelta, timezone
 import json
+import re
 import sqlite3
 from unittest import mock
 
@@ -303,6 +304,8 @@ class MalformedRequestTests(BoardCase):
                         continue
                     if status >= 500 or (status >= 400 and not (isinstance(answer, dict) and answer.get('error'))):
                         failed.append((path, where, status))
+                    elif status >= 400 and re.search(r'unhashable|invalid literal|has no attribute|NoneType|object is not|argument must|must be str|int\(\)|float\(\)', answer['error']):
+                        failed.append((path, where, answer['error']))   # Python's own words are not an answer for a person
             self.assertEqual(failed[:12], [], f'{len(failed)} requests were not answered')   # the first few say what to look at
 
 
@@ -320,3 +323,38 @@ class BodySizeTests(BoardCase):
                 self.assertEqual(status, 413, path)
                 self.assertEqual(refused['error'], '请求太大。')
             self.assertEqual(self.table(ann, query(filters=[{'field': '状态码', 'op': 'eq', 'value': '1'}]))['total'] > 0, True)
+
+
+class ReadRefusalWordsTests(AgentCase):
+    def test_both_kept_back_properties_are_refused_in_the_same_words_to_a_read_token_over_http(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
+            self.assertEqual(self.confirm(bob, GROSS)[0], 200)
+            for column in ('金额', '状态码'):
+                self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'order', 'column': column, 'hide_values': True})[0], 200)
+            token = self.token_for(admin, 'bob')['token']
+            for body in ({'type': 'order', 'name': 'gross'}, {'type': 'customer', 'name': 'cancelled_orders'}):
+                status, refused = Client(base).post('/api/workspace/agent/derived', body, **bearer(token))
+                self.assertEqual(status, 403, body)
+                self.assertIn('不对模型开放', refused['error'])
+
+
+class PlainWordsTests(BoardCase):
+    def test_a_wrong_page_names_the_field_a_field_of_the_wrong_type_gets_a_plain_sentence_and_the_old_get_says_it_is_a_post_now(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann = team['ann']
+            for page in ('abc', [1], 1.5, True):
+                status, refused = ann.post('/api/workspace/explore/table', {'query': ORDER_Q, 'page': page})
+                self.assertEqual((status, refused['error']), (400, 'page 要是一个整数'), page)
+            self.assertEqual(ann.post('/api/workspace/agent/derived', {'type': 'customer', 'name': 'cancelled_orders', 'page': 'abc'})[1]['error'], 'page 要是一个整数')
+            status, refused = ann.post('/api/workspace/explore/table', {'query': {'type': 'order', 'filters': [{'field': '状态码', 'op': ['eq'], 'value': '1'}]}})
+            self.assertEqual(status, 400)
+            self.assertIn('比较方式', refused['error'])
+            status, refused = ann.get('/api/workspace/agent/derived?type=customer&name=cancelled_orders')
+            self.assertEqual(status, 405)
+            self.assertIn('POST', refused['error'])

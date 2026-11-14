@@ -19,7 +19,7 @@ import zipfile
 
 from ontology_poc_generator.caliber import line_of
 from ontology_poc_generator.derived_properties import derived_id, derived_visible, describe as describe_derived, evaluate
-from ontology_poc_generator.explorer import _load, _object_key
+from ontology_poc_generator.explorer import _load, _object_key, whole_page
 from ontology_poc_generator.object_types import OBJECT_PAGE, TypeRefused, element_row, type_id
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.type_access import hidden_values
@@ -107,7 +107,7 @@ def read_derived(conn, user: dict | None, type_name, name, key=None, page=1) -> 
         if not objects:
             raise TypeRefused('没有这个对象', 404)
     pages = max(1, -(-len(objects) // OBJECT_PAGE))
-    page = min(max(int(page), 1), pages)
+    page = min(max(whole_page(page), 1), pages)
     shown = objects if key is not None else objects[(page - 1) * OBJECT_PAGE:page * OBJECT_PAGE]
     return {'type': content['type'], 'name': content['name'], 'says': describe_derived(conn, content), 'output_type': result['output_type'], 'datasets': result['datasets'],
             **_stamp(conn, row['element_id']), 'objects': shown, 'total': len(objects), 'page': page, 'pages': pages, 'rows_limited': table['limit'] is not None,

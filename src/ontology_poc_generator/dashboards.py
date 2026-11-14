@@ -163,7 +163,7 @@ def normalize_spec(raw) -> dict:
 
 def _publish(conn, payload: dict) -> dict:
     scope = payload.get('scope', 'private')
-    if scope not in SCOPES:
+    if not isinstance(scope, str) or scope not in SCOPES:
         raise DashboardRefused(f'发布范围要是 {"、".join(SCOPES)} 之一')
     visible = payload.get('visible_to') or []
     if scope == 'named':

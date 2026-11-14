@@ -115,6 +115,12 @@ def _text_of(value, what: str, limit: int = 200) -> str:
     return value
 
 
+def whole_page(value) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeRefused('page 要是一个整数')
+    return value
+
+
 def normalize_query(raw, depth: int = 0) -> dict:
     """{'type', 'view', 'filters': [{'field', 'op', 'value'}], 'rows': [numbers] | None, 'pivot': {'relation', 'side', 'source': query} | None} from what a page sent."""
     if not isinstance(raw, dict) or not isinstance(raw.get('type'), str) or not raw['type']:
@@ -128,7 +134,7 @@ def normalize_query(raw, depth: int = 0) -> dict:
     clean = []
     for f in filters:
         op = f.get('op')
-        if op not in FILTER_OPS:
+        if not isinstance(op, str) or op not in FILTER_OPS:
             raise TypeRefused(f'条件的比较方式要是 {"、".join(FILTER_OPS)} 之一')
         clean.append({'field': _text_of(f.get('field'), '条件的字段'), 'op': op, 'value': '' if op in NO_VALUE else _text_of(f.get('value', ''), '条件的取值')})
     rows = raw.get('rows')
@@ -297,7 +303,7 @@ def explore_table(conn, user: dict | None, raw_query, page=1) -> dict:
     got = select(conn, user, query)
     table, rows = got['table'], got['rows']
     pages = max(1, -(-len(rows) // OBJECT_PAGE))
-    page = min(max(int(page), 1), pages)
+    page = min(max(whole_page(page), 1), pages)
     shown = rows[(page - 1) * OBJECT_PAGE:page * OBJECT_PAGE]
     return {'query': query, 'columns': _columns(table), 'rows': [_display(table, r) for r in shown], 'numbers': [r['n'] for r in shown], 'total': len(rows), 'page': page, 'pages': pages,
             'limit': OBJECT_PAGE, 'dataset': table['dataset']['name'], 'dataset_version': table['dataset']['version'], 'rows_limited': table['limit'] is not None,
@@ -308,13 +314,13 @@ def explore_table(conn, user: dict | None, raw_query, page=1) -> dict:
 
 def normalize_chart(raw) -> dict:
     """{'kind', 'group', 'measure', 'fn', 'bins'} from what a page sent; what is missing for the kind is said in words."""
-    if not isinstance(raw, dict) or raw.get('kind') not in CHARTS:
+    if not isinstance(raw, dict) or not isinstance(raw.get('kind'), str) or raw['kind'] not in CHARTS:
         raise TypeRefused(f'图要写明种类（kind）：{"、".join(CHARTS)}')
     out = {'kind': raw['kind'], 'group': raw.get('group') or None, 'measure': raw.get('measure') or None, 'fn': raw.get('fn') or 'count', 'bins': raw.get('bins', 10)}
     for name in ('group', 'measure'):
         if out[name] is not None and not isinstance(out[name], str):
             raise TypeRefused(f'{name} 要写字段的名字')
-    if out['fn'] not in AGGREGATIONS:
+    if not isinstance(out['fn'], str) or out['fn'] not in AGGREGATIONS:
         raise TypeRefused(f'统计方式要是 {"、".join(AGGREGATIONS)} 之一')
     if not isinstance(out['bins'], int) or isinstance(out['bins'], bool) or not 2 <= out['bins'] <= MAX_BINS:
         raise TypeRefused(f'直方图的分段数要在 2 到 {MAX_BINS} 之间')

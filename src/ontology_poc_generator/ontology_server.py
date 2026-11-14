@@ -14,6 +14,7 @@ import re
 import sqlite3
 import sys
 import threading
+import traceback
 from urllib.parse import parse_qs, unquote, urlsplit
 import uuid
 
@@ -1578,8 +1579,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             url = urlsplit(self.path)
             try:
                 payload = self.read_json(USE_BODY) if method == 'POST' else None
-                if method == 'POST' and payload is None:
-                    return
+            except (ValueError, UnicodeError) as exc:   # the body is not JSON, or not an object: read_json says so in its own words
+                self.reply(400, {'error': str(exc)})
+                return
+            if method == 'POST' and payload is None:
+                return
+            try:
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
                     if method == 'GET':
@@ -1594,8 +1599,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             except (TypeRefused, DashboardRefused) as exc:
                 self.reply(exc.status, {'error': str(exc)})
                 return
-            except (ValueError, UnicodeError, TypeError, AttributeError) as exc:   # a body that is not what the route reads (a list where a word goes): the person is told, the connection is not dropped
-                self.reply(400, {'error': f'请求的内容不对：{exc}'})
+            except (ValueError, TypeError, AttributeError):   # a field of a type the route does not read, that its own checks did not name: the person is told plainly, the cause is logged
+                traceback.print_exc()
+                self.reply(400, {'error': '请求的内容不对：有字段的类型写错了'})
                 return
             if isinstance(body, tuple):   # a download: (content type, file name, bytes)
                 self.reply_file(body[2], body[0], body[1])

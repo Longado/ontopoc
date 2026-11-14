@@ -2,7 +2,6 @@
 handler opens the connection, takes the write lock for the ones that write, and turns the refusals into answers. Who may call what is access.py's table."""
 from __future__ import annotations
 
-import json
 import re
 from urllib.parse import unquote
 
@@ -50,6 +49,8 @@ def get(conn, user: dict | None, path: str, query: dict[str, list[str]]):
             return agent_access.definitions(conn, user)
         if parts[1] == 'unconfirmed':
             return agent_access.unconfirmed(conn, user)
+        if parts[1] == 'derived':
+            raise TypeRefused('读派生属性要用 POST /api/workspace/agent/derived，type、name、key 写在请求体里', 405)
         if parts[1] == 'skill':
             return (*SKILL_FILE, agent_access.skill_zip(conn, user))
     raise TypeRefused('Unknown workspace endpoint', 404)
