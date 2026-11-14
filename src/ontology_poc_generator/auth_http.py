@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from ontology_poc_generator import accounts
 from ontology_poc_generator.accounts import transaction
 from ontology_poc_generator.actor import set_actor
-from ontology_poc_generator.access import PUBLIC, allows, required_role
+from ontology_poc_generator.access import PUBLIC, allows, read_token_allows, required_role
 from ontology_poc_generator.workspace_store import open_workspace
 
 COOKIE = 'ontopoc_session'
@@ -128,6 +128,9 @@ class Gate:
         if not allows(user['role'], needed):
             h.reply(403, {'error': '你的角色不能做这个'})
             return False
+        if user.get('token_scope') == 'read' and not read_token_allows(method, path):
+            h.reply(403, {'error': '这个令牌只能读和提问，不能做这个。需要别的权限请让管理员另发一个。'})
+            return False
         return True
 
     # accounts
@@ -183,7 +186,7 @@ class Gate:
             h.reply(200, {'tokens': accounts.list_tokens(conn, user['id'])})
         elif path == '/api/auth/tokens':
             with transaction(conn):
-                record, token = accounts.create_token(conn, user, payload.get('label'))
+                record, token = accounts.create_token(conn, user, payload.get('label'), scope=payload.get('scope', 'all'))   # the person's own pass: all unless they ask for less
             h.reply(200, {**record, 'token': token})   # the only time the token itself is shown
         elif path == '/api/auth/tokens/revoke':
             accounts.revoke_token(conn, user, payload.get('id'))
@@ -192,7 +195,7 @@ class Gate:
             h.reply(200, {'tokens': accounts.list_all_tokens(conn)})
         elif path == '/api/users/tokens':   # an admin makes a token that acts as a named person; shown once
             with transaction(conn):
-                record, token = accounts.issue_token(conn, user, payload.get('user_id'), payload.get('label'))
+                record, token = accounts.issue_token(conn, user, payload.get('user_id'), payload.get('label'), payload.get('scope', 'read'), payload.get('days', 90))
             h.reply(200, {**record, 'token': token})
         elif path == '/api/users/tokens/revoke':
             with transaction(conn):

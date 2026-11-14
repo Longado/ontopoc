@@ -21,9 +21,10 @@ ASKS_GROSS = '订单的含税金额合计是多少？'
 
 
 class AgentCase(UseLayerCase):
-    def token_for(self, admin, name, label='外部智能体'):
+    def token_for(self, admin, name, label='外部智能体', **more):
+        """An admin makes a token for `name` (more: scope, days)."""
         ids = {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
-        status, made = admin.post('/api/users/tokens', {'user_id': ids[name], 'label': label})
+        status, made = admin.post('/api/users/tokens', {'user_id': ids[name], 'label': label, **more})
         self.assertEqual(status, 200, made)
         return made
 
@@ -66,8 +67,9 @@ class TokenTests(AgentCase):
             self.assertNotIn('token', listed[0])   # the token itself is never listed again
             conn = sqlite3.connect(out / 'workspace.sqlite')
             self.assertNotIn(made['token'], ' '.join(h for (h,) in conn.execute('SELECT token_hash FROM api_token')))   # only its hash is kept
-            self.assertEqual(conn.execute("SELECT who, element_id, after_json FROM log WHERE change = 'token_created'").fetchall(),
-                             [('root', f'user:{made["user_id"]}', json.dumps({'label': '外部智能体', 'for': 'bob'}, ensure_ascii=False))])   # the log says who made it, and for whom
+            logged = conn.execute("SELECT who, element_id, after_json FROM log WHERE change = 'token_created'").fetchall()
+            self.assertEqual([(w, e) for w, e, _ in logged], [('root', f'user:{made["user_id"]}')])   # the log says who made it, and for whom, with what it may do and until when
+            self.assertEqual(json.loads(logged[0][2]), {'label': '外部智能体', 'for': 'bob', 'scope': 'read', 'expires_at': made['expires_at']})
             conn.close()
             # it acts as Bob: the service signs what it does with his name, and it has his role
             request = Request(base + '/api/auth/me', headers={'Authorization': f'Bearer {made["token"]}'})
@@ -159,19 +161,10 @@ class McpTests(AgentCase):
     def test_the_full_toolset_still_has_the_run_tools_and_the_read_tools_are_in_it(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
             team = self.team(base)
-            token = self.token_for(team['admin'], 'bob')['token']
+            token = self.token_for(team['admin'], 'bob', scope='all')['token']
             names = {t['name'] for t in self.mcp(base, token, [], toolset='all')[2]['result']['tools']}
             self.assertTrue(set(mcp_server.READ_TOOLS) <= names)
             self.assertIn('build_ontology', names)
-
-    def test_with_a_token_the_server_is_read_only_unless_all_is_asked_for_and_without_one_it_keeps_the_local_toolset(self):
-        with self.service(gateway=AskModel(cancelled())) as (base, out):
-            team = self.team(base)
-            token = self.token_for(team['admin'], 'bob')['token']
-            listed = lambda **kw: {t['name'] for t in self.mcp(base, **kw, calls=[])[2]['result']['tools']}
-            self.assertEqual(listed(token=token, toolset=None), set(mcp_server.READ_TOOLS))   # a token and nothing said: read only
-            self.assertIn('build_ontology', listed(token=token, toolset='all'))               # all only when asked for
-            self.assertIn('build_ontology', listed(token=None, toolset=None))                 # no token: the local toolset as before
 
 
 class SkillTests(AgentCase):

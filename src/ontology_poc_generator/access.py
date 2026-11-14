@@ -77,6 +77,16 @@ def route_role(method: str, path: str) -> str | None:
     return None
 
 
+# What a token made with scope 'read' may call besides every GET: ask a question and look at data (nothing here changes a definition, a rule, a dataset or an account;
+# an answer is kept with the question, as for a person at the page).
+READ_TOKEN_POSTS = ('/api/workspace/ask', '/api/workspace/explore/table', '/api/workspace/explore/chart', '/api/workspace/dashboards/data', '/api/workspace/dashboards/preview',
+                    '/api/workspace/agent/derived')
+
+
+def read_token_allows(method: str, path: str) -> bool:
+    return method == 'GET' or path in READ_TOKEN_POSTS
+
+
 def required_role(method: str, path: str) -> str:
     """Role (or PUBLIC / SESSION) needed for a request; a route not in the table needs an admin."""
     return route_role(method, path) or 'admin'
