@@ -1,3 +1,5 @@
+import { sourceOrigin } from "./sourceModel.js";
+
 const TYPE_LABEL = { integer: "整数", decimal: "小数", text: "文本", date: "日期", month: "月份", datetime: "日期时间", boolean: "是否" };
 
 export const typeLabel = (type) => TYPE_LABEL[type] ?? type;
@@ -10,7 +12,10 @@ export function percentText(rate) {
 }
 
 /** Where a dataset came from, in words: an upload, or (anything else) a modelling run. */
-export const originText = (origin) => (origin === "upload" ? "上传" : "建模运行");
+export const originText = (origin) => {
+  const source = sourceOrigin(origin);
+  return origin === "upload" ? "上传" : source ? `数据源“${source.source}”的表 ${source.table}` : "建模运行";
+};
 
 /** An ISO time as the local "2026-11-13 14:05". */
 export function timeText(iso) {

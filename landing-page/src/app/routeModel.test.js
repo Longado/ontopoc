@@ -60,7 +60,7 @@ test("a pipeline opens on its steps; its runs, one run, its history and its conf
 });
 
 test("a page not built yet has an address of its own and says what it will do", () => {
-  assert.deepEqual(parseRoute("#/sources"), { page: "planned", key: "sources" });
+  assert.deepEqual(parseRoute("#/agents"), { page: "planned", key: "agents" });
   assert.equal(hrefFor({ page: "planned", key: "boards" }), "#/boards");
   assert.equal(navKeyOf({ page: "qa", id: 3 }), "qa");
   assert.equal(navKeyOf({ page: "planned", key: "agents" }), "agents");
@@ -69,8 +69,7 @@ test("a page not built yet has an address of its own and says what it will do", 
 
 test("the sidebar groups what the product has, and marks what is built", () => {
   assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "数据", "本体", "应用", null]);
-  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["问答", "任务", "数据集", "管道", "数据源", "对象类型", "关系", "待确认", "智能体", "看板", "血缘"]);
-  assert.deepEqual(parseRoute("#/sources"), { page: "planned", key: "sources" });
+  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["问答", "任务", "数据集", "管道", "数据源", "调度", "对象类型", "关系", "待确认", "智能体", "看板", "血缘"]);
   assert.equal(hrefFor({ page: "planned", key: "boards" }), "#/boards");
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
 });

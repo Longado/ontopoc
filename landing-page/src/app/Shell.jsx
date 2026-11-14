@@ -11,6 +11,9 @@ import { PermissionsPage } from "./PermissionsPage.jsx";
 import { PipelinePage } from "./PipelinePage.jsx";
 import { PipelineNew, PipelinesPage } from "./PipelinesPage.jsx";
 import { QaPage } from "./QaPage.jsx";
+import { SchedulesPage } from "./SchedulesPage.jsx";
+import { SourcePage } from "./SourcePage.jsx";
+import { SourcesPage } from "./SourcesPage.jsx";
 import { RelationForm } from "./RelationForm.jsx";
 import { RelationPage, RelationsPage } from "./RelationsPage.jsx";
 import { countText } from "./relationModel.js";
@@ -147,11 +150,14 @@ export function Shell() {
       {route.page === "pipelines" && (canBuild(user) ? <PipelinesPage /> : <Forbidden />)}
       {route.page === "pipelinenew" && (canBuild(user) ? <PipelineNew /> : <Forbidden />)}
       {route.page === "pipeline" && (canBuild(user) ? <PipelinePage key={route.name} route={route} /> : <Forbidden />)}
+      {route.page === "sources" && (canBuild(user) ? <SourcesPage /> : <Forbidden />)}
+      {route.page === "source" && (canBuild(user) ? <SourcePage key={route.name} route={route} /> : <Forbidden />)}
+      {route.page === "schedules" && (canBuild(user) ? <SchedulesPage /> : <Forbidden />)}
       {route.page === "permissions" && (isAdmin(user) ? <PermissionsPage /> : <Forbidden />)}
       {route.page === "account" && <AccountPage />}
       {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
       {route.page === "planned" && <Planned route={route} />}
-      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "pipelines", "pipelinenew", "pipeline", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
+      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "pipelines", "pipelinenew", "pipeline", "sources", "source", "schedules", "permissions", "account", "users", "planned"].includes(route.page) && <NotFound />}
     </div>
   );
 }

@@ -188,6 +188,26 @@ export const askQuestion = (question) => send("/api/workspace/ask", { question }
 /** A builder's switch on one property: its values are not sent to the model that reads a question. */
 export const setValuesHidden = (id, column, hide) => send("/api/workspace/types/privacy", { id, column, hide_values: hide });
 
+// live sources and schedules. The password goes out in createSource / updateSource and never comes back: the service answers has_password.
+const sourcePath = (name, tail = "") => `/api/workspace/sources/${encodeURIComponent(name)}${tail}`;
+export const getSources = () => request("/api/workspace/sources").then((b) => b.sources);
+export const getSource = (name) => request(sourcePath(name));
+/** The tables in the database now, over a live connection (it can take a few seconds). */
+export const getSourceTables = (name) => request(sourcePath(name, "/tables")).then((b) => b.tables);
+export const createSource = (fields) => send("/api/workspace/sources", fields);
+export const updateSource = (fields) => send("/api/workspace/sources/update", fields);
+export const deleteSource = (name) => send("/api/workspace/sources/delete", { name });
+/** Connects, lists the tables with row counts, checks whether the account can write: {status, note, tables, can_write}. A failed connection is a result, not an error. */
+export const testSource = (name) => send("/api/workspace/sources/test", { name });
+/** Reads a table as a dataset: {source, table, name?, mode?, key_columns?}. Returns the run: {status, rows, version, error, detail}. */
+export const pullTable = (fields) => send("/api/workspace/sources/pull", fields).then((b) => b.run);
+export const refreshDataset = (dataset) => send("/api/workspace/sources/refresh", { dataset }).then((b) => b.run);
+export const getSchedules = () => request("/api/workspace/schedules").then((b) => b.schedules);
+export const getScheduleRuns = (id) => request(`/api/workspace/schedules/${id}/runs`).then((b) => b.runs);
+export const createSchedule = (fields) => send("/api/workspace/schedules", fields);
+export const updateSchedule = (fields) => send("/api/workspace/schedules/update", fields);
+export const deleteSchedule = (id) => send("/api/workspace/schedules/delete", { id });
+
 /** A file's bytes as base64, which is how the service takes them. */
 export async function fileToBase64(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
