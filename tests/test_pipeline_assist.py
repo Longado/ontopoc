@@ -6,10 +6,12 @@ import json
 from collections import Counter
 from urllib.parse import quote
 
+from ontology_poc_generator.pipeline_assist import settle
 from ontology_poc_generator.recognition import ModelCompletion
 from tests import test_workspace_store as planted
 from tests.test_object_types import MEANINGS, ORDER, TABLES
 from tests.test_two_person import SigningTestCase
+import unittest
 
 ORDERS = planted.planted_bundle()['sources']['订单']['records']
 LIVE = [r for r in ORDERS if r['状态码'] != '2']
@@ -120,6 +122,16 @@ class AssistantTests(SigningTestCase):
             self.assertEqual(written['steps'][0]['step']['operators'][0]['where'], {'all': [{'column': '状态码', 'cmp': 'ne', 'value': '1'}]})
             self.assertEqual(written['steps'][0]['rows_out'], 160 - STATUS['1'])
 
+    def test_a_digit_the_sentence_happens_to_contain_is_not_the_person_writing_the_code(self):
+        model = Assistant(careless=True)   # writes the code 1 whatever it is told
+        with self.service(gateway=model) as (base, out):
+            ann = self.team(base, confirmed=False)['ann']
+            draft = self.draft(ann, '剔除近 12 个月里已取消的订单')[1]
+            self.assertEqual(draft['steps'][0]['step']['operators'], [])   # nothing is written for a guessed code
+            self.assertEqual([q['column'] for q in draft['questions']], ['状态码'])
+            self.assertEqual(draft['questions'][0]['recommended'], None)
+            self.assertIn('未确认：见过 0、1、2', draft['questions'][0]['evidence'])
+
     def test_answering_the_question_writes_the_filter_without_asking_the_model_again(self):
         model = Assistant()
         with self.service(gateway=model) as (base, out):
@@ -216,3 +228,40 @@ class AssistantTests(SigningTestCase):
             status, body = self.draft(ann)
             self.assertEqual(status, 409)
             self.assertIn('没有模型凭据', body['error'])
+
+
+class SettleTests(unittest.TestCase):
+    """What stands of a code the model wrote, with no server: a confirmed meaning behind it, the person's answer, or the sentence saying it next to the column's name."""
+    SEEN = {'状态码': [{'value': '1', 'rows': 100}, {'value': '2', 'rows': 16}]}
+
+    def settle(self, sentence, node, meanings=None, answers=None):
+        facts = {'状态码': {'name': '状态码', 'type': 'integer', 'code': True, **({'meanings': meanings} if meanings else {})}}
+        questions, cites = {}, []
+        got = settle(node, facts, self.SEEN, sentence, answers or {}, questions, cites, {'状态码': 'Bob'})
+        return got, questions, cites
+
+    def test_a_code_stands_when_the_sentence_states_it_next_to_the_column_and_not_when_the_same_digits_turn_up_elsewhere(self):
+        node = {'column': '状态码', 'cmp': 'ne', 'value': '2'}
+        for sentence in ('剔除状态码≠2的订单', '状态码 是 2 的留下', '状态码为2', '状态码 != 2', '「状态码」等于2'):
+            self.assertEqual(self.settle(sentence, node)[0], node, sentence)
+        for sentence in ('剔除近 12 个月里已取消的订单', '第 2 批里状态码不对的订单', '状态码是 22 的订单', '2 月的订单，状态码不看'):
+            got, questions, _ = self.settle(sentence, node)
+            self.assertEqual((got, list(questions)), (None, ['状态码|']), sentence)
+        self.assertEqual(self.settle('近 12 个月', {'column': '状态码', 'cmp': 'ne', 'value': '1'})[0], None)
+
+    def test_a_code_behind_a_confirmed_meaning_stands_by_the_meaning_and_a_person_answer_stands(self):
+        got, questions, cites = self.settle('剔除已取消的订单', {'column': '状态码', 'cmp': 'ne', 'value': '2'}, meanings={'已取消': ['2'], '已发货': ['1']})
+        self.assertEqual((got, questions, [c['meaning'] for c in cites]), ({'column': '状态码', 'cmp': 'ne', 'meaning': '已取消'}, {}, ['已取消']))
+        got, questions, _ = self.settle('剔除已取消的订单', {'column': '状态码', 'cmp': 'ne', 'concept': '已取消'}, answers={'状态码|已取消': ['2']})
+        self.assertEqual((got, questions), ({'column': '状态码', 'cmp': 'ne', 'value': '2'}, {}))
+
+    def test_a_question_recommends_the_confirmed_meaning_that_looks_like_what_was_asked_for_and_nothing_when_none_does(self):
+        meanings = {'已取消': ['2'], '已发货': ['1']}
+        got, questions, _ = self.settle('剔除取消的订单', {'column': '状态码', 'cmp': 'ne', 'concept': '取消'}, meanings=meanings)
+        self.assertIsNone(got)
+        recommended = questions['状态码|取消']['recommended']
+        self.assertEqual((recommended['meaning'], recommended['value'], recommended['text']), ('已取消', ['2'], '“已取消”：代码 2（已确认，Bob）'))
+        _, questions, _ = self.settle('剔除退款的订单', {'column': '状态码', 'cmp': 'ne', 'concept': '退款'}, meanings=meanings)
+        self.assertIsNone(questions['状态码|退款']['recommended'])
+        _, questions, _ = self.settle('剔除取消的订单', {'column': '状态码', 'cmp': 'ne', 'concept': '取消'})
+        self.assertIsNone(questions['状态码|取消']['recommended'])   # nothing confirmed, nothing to recommend

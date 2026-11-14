@@ -6,13 +6,15 @@ few different values, each value and its rows (a code column nobody has confirme
 and type only. This is more than names and types, and the screen says so.
 
 What stands: a condition on a code column is written by meaning, from the confirmed meanings, and the code checks the meaning is one of them; a code value the model wrote
-that the person's sentence does not contain is not used, and neither is a meaning nobody confirmed: each becomes a question, with the values seen and their rows, and no
-recommended answer. A step that refers to a node that was not selected, or to a column, operator or function that does not exist, does not stand. Nothing is written by the
+stands only when a confirmed meaning gives it, when the person answered the question, or when the sentence states it next to the column's name (状态码≠2, 状态码 是 2);
+digits that merely occur in the sentence are not the person writing the code. A meaning nobody confirmed, or a value that stands on none of these, becomes a question with
+the values seen and their rows, and a recommended answer only when a confirmed meaning looks like what was asked for. A step that refers to a node that was not selected, or to a column, operator or function that does not exist, does not stand. Nothing is written by the
 assistant: 应用 is the person's.
 """
 from __future__ import annotations
 
 import copy
+import re
 
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, CAST_TYPES, visible
@@ -100,8 +102,20 @@ def disclosure(facts: list[dict]) -> dict:
 
 # --- conditions: what stands -----------------------------------------------------------------------------------------------------------------------------
 
-def _question(column: str, concept: str | None, fact: dict, values: list[dict]) -> dict:
-    """A code the draft cannot decide: which value means the concept, with the values seen and their rows (and the confirmed meanings, when there are some) and no recommended answer."""
+def _recommend(concept: str | None, meanings: dict, column: str, by: str | None) -> dict | None:
+    """The confirmed meaning whose name contains what was asked for (or is contained in it), as the answer to suggest; None when no confirmed meaning looks like it."""
+    if not concept or len(concept) < 2:
+        return None
+    label = next((l for l in meanings if concept in l or l in concept), None)
+    if label is None:
+        return None
+    codes = meanings[label]
+    return {'meaning': label, 'value': codes, 'text': f'“{label}”：代码 {"、".join(codes)}（已确认{f"，{by}" if by else ""}）'}
+
+
+def _question(column: str, concept: str | None, fact: dict, values: list[dict], by: str | None = None) -> dict:
+    """A code the draft cannot decide: which value means the concept, with the values seen and their rows (and the confirmed meanings, when there are some), and as the
+    recommended answer the confirmed meaning that looks like what was asked for, if there is one."""
     meanings = fact.get('meanings')
     if meanings:
         evidence = f'已确认的含义有：{"；".join(label + "（" + "、".join(codes) + "）" for label, codes in meanings.items())}，没有“{concept}”'
@@ -109,7 +123,7 @@ def _question(column: str, concept: str | None, fact: dict, values: list[dict]) 
         evidence = f'未确认：见过 {"、".join(v["value"] for v in values)}（{"、".join(str(v["rows"]) + " 行" for v in values)}）'
     else:
         evidence = '未确认：这一列的含义还没有人确认'
-    return {'id': f'{column}|{concept or ""}', 'column': column, 'concept': concept, 'recommended': None, 'evidence': evidence,
+    return {'id': f'{column}|{concept or ""}', 'column': column, 'concept': concept, 'recommended': _recommend(concept, meanings or {}, column, by), 'evidence': evidence,
             'ask': f'「{column}」里哪个代码表示“{concept}”？' if concept else f'「{column}」的哪个值？',
             'options': [{'value': v['value'], 'text': f'{v["value"]}（{v["rows"]} 行）'} for v in values]}
 
@@ -118,9 +132,18 @@ def _cite(column: str, label: str, codes: list, by: str | None) -> dict:
     return {'column': column, 'meaning': label, 'codes': codes, 'text': f'「{column}」的含义“{label}”是代码 {"、".join(codes)}（已确认{f"，{by}" if by else ""}）'}
 
 
+STATES = ('≠', '!=', '<>', '==', '=', '不等于', '不是', '等于', '是', '为', ':', '：')   # what may stand between a column's name and the value the person gives it
+
+
+def _stated(sentence: str, column: str, value: str) -> bool:
+    """Whether the sentence gives the column this value as a whole: the column's name, then 是 / 为 / ≠ …, then the value (not the start of a longer number)."""
+    gap = r'[\s「」"\'“”]*'
+    return re.search(re.escape(column) + gap + '(?:' + '|'.join(map(re.escape, STATES)) + ')' + gap + re.escape(value) + r'(?![0-9A-Za-z])', sentence) is not None
+
+
 def settle(node, facts: dict, seen: dict, sentence: str, answers: dict, questions: dict, cites: list, by: dict):
-    """The condition with every part of it that stands, or None when nothing does: a code column by confirmed meaning; a code value only when the sentence says it or the person
-    answered for it. What cannot stand is added to `questions` ({id: question}), what stands by a meaning to `cites`."""
+    """The condition with every part of it that stands, or None when nothing does: a code column by confirmed meaning; a code value only when a confirmed meaning gives it, the
+    person answered for it, or the sentence states it next to the column's name. What cannot stand is added to `questions` ({id: question}), what stands by a meaning to `cites`."""
     if not isinstance(node, dict):
         return None
     if 'all' in node or 'any' in node:
@@ -144,15 +167,18 @@ def settle(node, facts: dict, seen: dict, sentence: str, answers: dict, question
     if answers.get(key):
         chosen = [str(v) for v in answers[key]]
         return {**base, 'cmp': 'in' if len(chosen) > 1 else (cmp if cmp in ('eq', 'ne') else 'eq'), **({'values': chosen} if len(chosen) > 1 else {'value': chosen[0]})}
+    if concept is not None and concept in labels:   # a confirmed meaning of exactly that name
+        cites.append(_cite(column, concept, labels[concept], by.get(column)))
+        return {**base, 'meaning': concept}
     if concept is None:
         given = [str(node['value'])] if 'value' in node else [str(v) for v in node.get('values') or []]
-        if given and all(g in sentence for g in given):
-            return node   # the person wrote the code themselves
         back = [label for g in given for label, codes in labels.items() if g in codes]
         if given and len(back) == len(given):   # codes a confirmed meaning stands behind: written by the meaning
             cites.extend(_cite(column, n, labels[n], by.get(column)) for n in dict.fromkeys(back))
             return {**base, 'meaning': back[0] if len(set(back)) == 1 else list(dict.fromkeys(back))}
-    questions[key] = _question(column, concept, fact, seen.get(column) or [])
+        if given and all(_stated(sentence, column, g) for g in given):
+            return node   # the person wrote the code themselves, next to the column's name
+    questions[key] = _question(column, concept, fact, seen.get(column) or [], by.get(column))
     return None
 
 
