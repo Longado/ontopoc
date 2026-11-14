@@ -83,17 +83,22 @@ class DerivedTestCase(SigningTestCase):
         line = self.line(client, payload['type'], payload['english_name'])
         return client.post('/api/workspace/types/derived/confirm', {'type': payload['type'], 'english_name': payload['english_name'], 'version': line['version'], 'seen': line['seen']})
 
-    def objects(self, client, type_name):
-        """The first page of the type's objects as the person reads them."""
-        status, body = client.get(f'/api/workspace/types/{type_name}/objects')
+    def objects(self, client, type_name, page=1):
+        """One page of the type's objects as the person reads them."""
+        status, body = client.get(f'/api/workspace/types/{type_name}/objects?page={page}')
         self.assertEqual(status, 200, body)
         return body
 
     def values(self, client, type_name, key, name):
-        """{the key column's value: the value of the column called `name`} over the first page of the type's objects."""
-        shown = self.objects(client, type_name)
-        names = [c['name'] for c in shown['columns']]
-        return {row[names.index(key)]: row[names.index(name)] for row in shown['rows']}
+        """{the key column's value: the value of the column called `name`} over every page of the type's objects."""
+        out, page = {}, 1
+        while True:
+            shown = self.objects(client, type_name, page)
+            names = [c['name'] for c in shown['columns']]
+            out.update({row[names.index(key)]: row[names.index(name)] for row in shown['rows']})
+            if page >= shown['pages']:
+                return out
+            page += 1
 
 
 class AcceptanceTests(DerivedTestCase):
@@ -211,3 +216,275 @@ class AcceptanceTests(DerivedTestCase):
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': []})[0], 200)
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'customer', 'rules': [{'column': '客户名称', 'value': '东莞家电客户01', 'user_ids': [ids['vera']]}]})[0], 200)
             self.assertEqual(self.values(vera, 'customer', '客户编号', '已取消订单数'), {'KH001': str(expected['KH001'])})
+
+
+class ConfirmAndVersionTests(DerivedTestCase):
+    def test_a_derived_property_is_confirmed_by_the_other_builder_and_an_edit_makes_a_new_version_the_old_confirmation_stays_as_history(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
+            line = self.line(ann, 'order', 'gross')
+            self.assertEqual((line['state'], line['proposed_by'], line['can_confirm'], line['kind_name']), ('checked', 'Ann', False, '函数'))
+            self.assertEqual(line['trial']['sample']['label'], '样本')   # the formula tried on one row is labelled as a sample
+            status, body = ann.post('/api/workspace/types/derived/confirm', {'type': 'order', 'english_name': 'gross', 'version': line['version'], 'seen': line['seen']})
+            self.assertEqual((status, body['error']), (403, '这一条是你自己提的，要另一位来确认'))
+            line = self.line(bob, 'order', 'gross')
+            self.assertEqual((line['can_confirm'], line['confirmers']), (True, ['Bob', '管理员']))
+            status, stale = bob.post('/api/workspace/types/derived/confirm', {'type': 'order', 'english_name': 'gross', 'version': line['version'] - 1, 'seen': line['seen']})
+            self.assertEqual(status, 409, stale)
+            status, wrong = bob.post('/api/workspace/types/derived/confirm', {'type': 'order', 'english_name': 'gross', 'version': line['version'], 'seen': {**line['seen'], 'objects': 1}})
+            self.assertEqual(status, 409, wrong)
+            self.assertEqual(self.confirm(bob, GROSS)[0], 200)
+            line = self.line(bob, 'order', 'gross')
+            self.assertEqual((line['state'], line['confirmed_by']), ('confirmed', 'Bob'))
+            first_version = line['version']
+            # the display name and the description are not what was confirmed
+            status, body = bob.post('/api/workspace/types/derived/update', {**GROSS, 'name': '含税金额（元）', 'description': '按 13% 税率', 'version': first_version})
+            self.assertEqual((status, body['state'], body['reset']), (200, 'confirmed', []), body)
+            # a change to what it computes is a new version that is put forward again, as the editor's own
+            line = self.line(bob, 'order', 'gross')
+            status, body = bob.post('/api/workspace/types/derived/update', {**GROSS, 'name': '含税金额（元）', 'expression': '金额 * 1.13 + 数量', 'version': line['version']})
+            self.assertEqual((status, body['state'], body['reset']), (200, 'checked', ['算式', '输入的列']), body)
+            line = self.line(bob, 'order', 'gross')
+            self.assertEqual((line['state'], line['proposed_by'], line['can_confirm']), ('checked', 'Bob', False))   # the one who edited it does not confirm it
+            self.assertGreater(line['version'], first_version)
+            self.assertNotIn('含税金额（元）', [c['name'] for c in self.objects(ann, 'order')['columns']])   # unconfirmed again: not shown on the objects page
+            self.assertEqual(self.confirm(ann, {**GROSS, 'english_name': 'gross'})[0], 200)
+            status, history = ann.get('/api/workspace/types/order/derived/gross/log')
+            self.assertEqual(status, 200, history)
+            self.assertEqual([h['confirmed_by'] for h in history['confirmations']], ['Ann', 'Bob'])   # newest first: the first confirmation stays
+            self.assertIn('金额 * 1.13', history['confirmations'][1]['says'])
+            self.assertNotIn('数量', history['confirmations'][1]['says'])
+            self.assertTrue(history['confirmations'][1]['trial']['lines'])   # the trial they read is kept with it
+
+    def test_an_added_input_and_a_changed_output_type_reset_the_confirmation_and_a_renamed_display_name_does_not(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
+            self.assertEqual(self.confirm(bob, GROSS)[0], 200)
+            for expression, reset in (("金额 * 1.13", []), ("金额 * 1.13 + 数量", ['算式', '输入的列']), ("concat(订单号, '-', 客户编号)", ['算式', '输入的列', '输出类型'])):
+                line = self.line(ann, 'order', 'gross')
+                status, body = ann.post('/api/workspace/types/derived/update', {**GROSS, 'expression': expression, 'version': line['version']})
+                self.assertEqual((status, body['reset']), (200, reset), (expression, body))
+                if reset:
+                    self.assertEqual(self.confirm(bob, {**GROSS, 'expression': expression})[0], 200)
+
+    def test_a_property_stands_on_confirmed_relations_only_and_cannot_be_confirmed_before_what_it_reads_is(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.foundation(team, types=(ORDER, CUSTOMER), relations=[])
+            status, body = ann.post('/api/workspace/relations', RELATIONS[0])
+            self.assertEqual(status, 200, body)
+            status, body = ann.post('/api/workspace/types/derived', CANCELLED)   # the relation is only put forward
+            self.assertEqual(status, 409, body)
+            self.assertIn('还没有确认', body['error'])
+
+    def test_a_viewer_reads_confirmed_properties_only_and_the_queue_lists_the_unconfirmed_one_for_the_other_builder(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
+            self.assertEqual(vera.get('/api/workspace/types/customer/derived')[1]['derived'], [])
+            self.assertIsNone(vera.get('/api/workspace/types/customer/derived')[1]['form'])
+            queue = bob.get('/api/workspace/queue')[1]
+            item = next(i for i in queue['items'] if i['element'] == 'derived:customer:cancelled_orders')
+            self.assertEqual((item['kind'], item['can_confirm'], item['title']), ('derived', True, '已取消订单数（客户的派生属性）'))
+            self.assertTrue(any('订单' in l['text'] and '已取消' in l['text'] for l in item['lines']))
+            self.assertFalse(any(i['element'] == 'derived:customer:cancelled_orders' and i['can_confirm'] for i in ann.get('/api/workspace/queue')[1]['items']))
+            status, body = bob.post('/api/workspace/queue/confirm', {'element': item['element'], 'version': item['version'], 'seen': item['seen']})
+            self.assertEqual(status, 200, body)
+            self.assertEqual([d['name'] for d in vera.get('/api/workspace/types/customer/derived')[1]['derived']], ['已取消订单数'])
+            # sent back with a reason: the editor's to fix
+            self.assertEqual(ann.post('/api/workspace/types/derived', {**CANCELLED, 'english_name': 'other', 'name': '已取消单数'})[0], 200)
+            item = next(i for i in bob.get('/api/workspace/queue')[1]['items'] if i['element'] == 'derived:customer:other')
+            status, body = bob.post('/api/workspace/queue/send-back', {'element': item['element'], 'version': item['version'], 'reason': '名字和已取消订单数重复'})
+            self.assertEqual((status, body), (200, {'state': 'rejected'}))
+            self.assertEqual(self.line(ann, 'customer', 'other')['state'], 'rejected')
+
+    def test_the_drawer_and_the_type_page_list_the_derived_properties_tagged_and_confirmed_ones_first(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', {**CANCELLED, 'english_name': 'a_proposed', 'name': '待确认订单数'})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
+            self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
+            node = next(n for n in ann.get('/api/workspace/graph/relations')[1]['nodes'] if n['key'] == 'customer')
+            self.assertEqual([(d['name'], d['state'], d['tag']) for d in node['derived']], [('已取消订单数', 'confirmed', '派生'), ('待确认订单数', 'checked', '派生')])
+            uses = ann.get('/api/workspace/types/customer/uses')[1]
+            self.assertEqual([(u['kind'], u['count']) for u in uses['used_by'] if u['kind'] == 'derived'], [('derived', 2)])
+
+
+class DefinitionChecksTests(DerivedTestCase):
+    def test_a_version_table_counted_or_added_up_is_refused_and_the_latest_version_or_a_distinct_count_is_offered(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann = team['ann']
+            version_count = {'type': 'order', 'english_name': 'promised', 'name': '承诺次数', 'kind': 'statistic', 'path': ['commit_order'], 'measure': {'column': None}, 'fn': 'count'}
+            status, body = ann.post('/api/workspace/types/derived', version_count)
+            self.assertEqual(status, 400, body)
+            self.assertIn('承诺版本', body['error'])
+            self.assertEqual(body['offer'], [{'fn': 'latest', 'order': '承诺版本'}, {'fn': 'count_distinct', 'column': '订单号'}])
+            self.assertGreater(len(COMMITS), len({r['订单号'] for r in COMMITS}))   # the planted fact: more commitment rows than orders
+            status, body = ann.post('/api/workspace/types/derived', {**version_count, 'measure': {'column': '承诺数量'}, 'fn': 'sum', 'name': '承诺数量合计'})
+            self.assertEqual(status, 400, body)
+            self.assertEqual(ann.post('/api/workspace/types/derived', {**version_count, 'measure': {'column': '订单号'}, 'fn': 'count_distinct', 'name': '承诺过的订单'})[0], 200)
+            status, body = ann.post('/api/workspace/types/derived', {**version_count, 'measure': {'column': '承诺数量'}, 'fn': 'latest', 'latest': {'order': '承诺版本'}, 'name': '最新承诺数量', 'english_name': 'latest_commit'})
+            self.assertEqual(status, 200, body)
+            latest = {}
+            for r in COMMITS:
+                if r['订单号'] not in latest or int(r['承诺版本']) > int(latest[r['订单号']]['承诺版本']):
+                    latest[r['订单号']] = r
+            numbers = body['trial']['numbers']
+            self.assertEqual((numbers['objects'], numbers['with_value'], numbers['no_value']['no_rows']), (160, len(latest), 160 - len(latest)))   # an order with no commitment has no value, not 0
+            self.assertEqual(numbers['rows_used'], len(COMMITS))
+            self.assertTrue(any('没有可以统计' in l['text'] for l in body['trial']['lines']))
+
+    def test_an_order_lines_style_key_is_not_a_layer_and_a_one_side_read_through_a_many_side_is_not_added_up(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann = team['ann']
+            price = {'type': 'customer', 'english_name': 'price_sum', 'name': '买过的产品单价', 'kind': 'statistic', 'path': ['order_customer', 'order_product'], 'measure': {'column': '单价'}, 'fn': 'sum'}
+            status, body = ann.post('/api/workspace/types/derived', price)
+            self.assertEqual(status, 400, body)
+            self.assertIn('重复', body['error'])
+            self.assertEqual([o['fn'] for o in body['offer']], ['count_distinct', 'min', 'max', 'latest'])
+            ok = {**price, 'fn': 'count_distinct', 'measure': {'column': '产品编号'}, 'name': '买过几种产品', 'english_name': 'kinds'}
+            status, body = ann.post('/api/workspace/types/derived', ok)
+            self.assertEqual(status, 200, body)
+            kinds = defaultdict(set)
+            for r in ORDERS:
+                kinds[r['客户编号']].add(r['产品编号'])
+            self.assertEqual(self.confirm(team['bob'], ok)[0], 200)
+            got = self.values(ann, 'customer', '客户编号', '买过几种产品')
+            self.assertEqual({k: int(v) for k, v in got.items()}, {k: len(kinds.get(k, ())) for k in got})   # a customer with no orders has 0 kinds: a count of nothing is 0
+
+    def test_an_aggregation_is_required_across_a_many_side_and_has_no_place_on_a_lookup(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann = team['ann']
+            status, body = ann.post('/api/workspace/types/derived', {**CANCELLED, 'fn': None})
+            self.assertEqual(status, 400, body)
+            self.assertIn('统计方式', body['error'])
+            lookup = {'type': 'order', 'english_name': 'unit_price', 'name': '产品单价', 'kind': 'statistic', 'path': ['order_product'], 'measure': {'column': '单价'}, 'fn': None}
+            status, body = ann.post('/api/workspace/types/derived', {**lookup, 'fn': 'sum'})
+            self.assertEqual(status, 400, body)
+            self.assertIn('不用选统计方式', body['error'])
+            status, body = ann.post('/api/workspace/types/derived', lookup)
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body['trial']['numbers']['no_value']['ambiguous'], 0)
+            self.assertEqual(self.confirm(team['bob'], lookup)[0], 200)
+            prices = {r['产品编号']: r['单价'] for r in SOURCES['产品']['records']}
+            got = self.values(ann, 'order', '订单号', '产品单价')
+            self.assertEqual(got, {r['订单号']: prices[r['产品编号']] for r in ORDERS})
+            # what a person sees offered after choosing a path
+            status, shape = ann.post('/api/workspace/types/derived/shape', {'type': 'product', 'path': ['order_product']})
+            self.assertEqual((status, shape['many'], [h['toward'] for h in shape['hops']]), (200, True, ['many']), shape)
+            status, shape = ann.post('/api/workspace/types/derived/shape', {'type': 'product', 'path': ['stock_product']})
+            self.assertEqual(shape['measured']['layers'], [{'column': '快照月份', 'kind': 'snapshot'}])
+            self.assertEqual(next(c for c in shape['measured']['columns'] if c['name'] == '库存数量')['fns'], ['sum', 'count', 'count_distinct', 'avg', 'min', 'max', 'median', 'p25', 'p75', 'latest'])
+            status, shape = ann.post('/api/workspace/types/derived/shape', {'type': 'order', 'path': ['order_product']})
+            self.assertEqual((shape['many'], shape['hops'][0]['toward']), (False, 'one'))
+
+    def test_a_code_column_is_not_added_up_and_a_path_is_three_hops_at_most(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann = team['ann']
+            code_sum = {**CANCELLED, 'measure': {'column': '状态码'}, 'fn': 'sum', 'conditions': [], 'name': '状态码合计值'}
+            status, body = ann.post('/api/workspace/types/derived', code_sum)
+            self.assertEqual(status, 400, body)
+            self.assertIn('代码列', body['error'])
+            status, body = ann.post('/api/workspace/types/derived', {**CANCELLED, 'path': ['order_customer', 'order_customer', 'order_customer', 'order_customer']})
+            self.assertEqual(status, 400, body)
+            status, body = ann.post('/api/workspace/types/derived', {**CANCELLED, 'conditions': [{'column': '状态码', 'op': 'is', 'label': '没有这个含义'}]})
+            self.assertEqual(status, 400, body)
+
+    def test_the_function_trial_counts_empty_inputs_and_failed_results_and_a_name_cannot_be_a_column_of_the_dataset(self):
+        from tests.test_object_types import orders_upload
+
+        def change(record, i):
+            return {**record, '交付天数': '' if i == 0 else '0' if i == 1 else record['交付天数']}
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [orders_upload(change)]})[0], 200)
+            self.foundation(team)
+            ann = team['ann']
+            status, body = ann.post('/api/workspace/types/derived', {**GROSS, 'english_name': 'per_day', 'name': '每天金额', 'expression': '金额 / 交付天数'})
+            self.assertEqual(status, 200, body)
+            numbers = body['trial']['numbers']
+            self.assertEqual((numbers['objects'], numbers['failed'], numbers['no_value']['empty_input'], numbers['with_value']), (160, 1, 1, 158))
+            texts = [l['text'] for l in body['trial']['lines']]
+            self.assertTrue(any('1 个订单的输入里有空的' in t for t in texts), texts)
+            self.assertTrue(any('算不出结果' in t for t in texts), texts)
+            status, body = ann.post('/api/workspace/types/derived', {**GROSS, 'name': '金额'})
+            self.assertEqual(status, 409, body)
+            status, body = ann.post('/api/workspace/types/derived', {**GROSS, 'expression': '金额 *'})
+            self.assertEqual(status, 400, body)
+            status, form = ann.get('/api/workspace/types/order/derived')[0], ann.get('/api/workspace/types/order/derived')[1]['form']
+            self.assertIn('建议在管道里做', form['hint'])
+            self.assertEqual(next(c for c in form['columns'] if c['name'] == '金额')['sample'], ORDERS[0]['金额'])
+
+
+class DataMovesTests(DerivedTestCase):
+    def test_a_new_version_that_removes_a_column_it_reads_sends_it_back_and_one_that_only_moves_the_values_does_not(self):
+        from tests.test_object_types import orders_upload
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', P50)[0], 200)
+            self.assertEqual(self.confirm(bob, P50)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(lambda r, i: {**r, '交付天数': str(int(r['交付天数']) + 1)})]})[0], 200)
+            self.assertEqual(self.line(bob, 'product', 'delivery_p50')['state'], 'confirmed')   # its values follow the data
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(drop=('交付天数',))]})[0], 200)
+            line = self.line(bob, 'product', 'delivery_p50')
+            self.assertEqual(line['state'], 'needs_look')
+            self.assertIn(line['stale_word'], ('上一步过时', '更上游过时'))   # the types and relations it stands on moved first
+
+    def test_a_new_version_with_more_objects_it_cannot_compute_a_value_for_sends_it_back_with_the_counts(self):
+        from tests.test_object_types import orders_upload
+        per_day = {**GROSS, 'english_name': 'per_day', 'name': '每天金额', 'expression': '金额 / 交付天数'}
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', per_day)[0], 200)
+            self.assertEqual(self.confirm(bob, per_day)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(lambda r, i: {**r, '交付天数': '0' if i == 3 else r['交付天数']})]})[0], 200)   # one division by zero
+            line = self.line(bob, 'order', 'per_day')
+            self.assertEqual(line['state'], 'needs_look')
+            self.assertIn('算不出值的对象变了：确认时 0 个，现在 1 个', line['reason'])
+            self.assertEqual(line['stale_word'], '数据变了')
+
+    def test_a_question_that_names_a_property_that_needs_another_look_is_refused_not_answered_from_the_old_definition(self):
+        from tests.test_object_types import orders_upload
+        query = {'start': 'product', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '交付天数P50', 'op': 'average'}}
+        model = AskModel({'reasoning': '产品的交付天数P50', 'query': query, 'definitions_used': []})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', P50)[0], 200)
+            self.assertEqual(self.confirm(bob, P50)[0], 200)
+            status, answer = ann.post('/api/workspace/ask', {'question': '产品的交付天数P50平均是多少？'})
+            self.assertEqual((status, answer['status']), (200, 'answered'), answer)
+            self.assertEqual(answer['datasets'], {'产品': 1, '订单': 1})   # it stands on the data of the types its path crosses too
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(drop=('交付天数',))]})[0], 200)
+            asked = len(model.requests)
+            status, refused = ann.post('/api/workspace/ask', {'question': '产品的交付天数P50平均是多少？'})
+            self.assertEqual(refused['status'], 'refused', refused)
+            self.assertEqual(len(model.requests), asked)
+            self.assertIn('交付天数P50', refused['reason'])
+            status, reopened = ann.get(f'/api/workspace/ask/{answer["id"]}')
+            self.assertEqual(reopened['stale'], [{'dataset': '订单', 'read': 1, 'now': 2}])
+            self.assertEqual([(c['name'], c['state']) for c in reopened['changed'] if c['id'].startswith('derived:')], [('产品.交付天数P50', 'needs_look')])

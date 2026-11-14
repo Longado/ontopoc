@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import json
 
+from ontology_poc_generator.derived_properties import derived_visible
 from ontology_poc_generator.object_actions import action_visible
 from ontology_poc_generator.object_relations import _relation_visible, cardinality_false, check_relation
 from ontology_poc_generator.object_types import (
-    ACTION_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _type_row, _types_read, _visible, element_row, type_id)
+    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _type_row, _types_read, _visible, element_row, type_id)
 from ontology_poc_generator.object_views import view_visible
 from ontology_poc_generator.row_rules import positions, restriction
 from ontology_poc_generator.type_access import dataset_hidden
@@ -30,6 +31,7 @@ CAUSE_LABEL = {'data': '数据变了', 'definition': '定义改了', 'upstream':
 ANSWER_NODES = 15   # the latest saved answers of the person, drawn in the lineage
 ANSWER_LOOK = 100   # and how many of the newest are looked at to find them: reopening one reads the answer and every dataset it used
 HIDDEN_WORDS = '原因里有全部数据的统计，你受行规则限制，看不到'
+NEAR = lambda: {'views': [], 'actions': [], 'relations': [], 'derived': []}   # what is about one type, by kind
 CARDINALITY_NAME = {'many_to_one': '多对一', 'one_to_many': '一对多', 'one_to_one': '一对一'}
 
 
@@ -116,14 +118,15 @@ def _mine_answers(conn, user: dict | None, limit: int = 1000) -> list[tuple[int,
 def _by_type(conn, user: dict | None) -> dict[str, dict]:
     """For each type element id: the views, actions and relations this person may see that are about it."""
     out: dict[str, dict] = {}
-    for prefix, kind, can_see in ((VIEW_PREFIX, 'views', view_visible), (ACTION_PREFIX, 'actions', action_visible), (RELATION_PREFIX, 'relations', _relation_visible)):
+    for prefix, kind, can_see in ((VIEW_PREFIX, 'views', view_visible), (ACTION_PREFIX, 'actions', action_visible), (RELATION_PREFIX, 'relations', _relation_visible),
+                                  (DERIVED_PREFIX, 'derived', derived_visible)):
         for (element_id,) in conn.execute('SELECT element_id FROM element_state WHERE element_id LIKE ? ORDER BY element_id', (f'{prefix}%',)).fetchall():
             row = element_row(conn, element_id)
             if not can_see(conn, row, user):
                 continue
             content = _content(row)
             for t in dict.fromkeys([type_id(content['from']), type_id(content['to'])] if kind == 'relations' else [type_id(content['type'])]):   # a relation from a type to itself is listed once
-                out.setdefault(t, {'views': [], 'actions': [], 'relations': []})[kind].append(row)
+                out.setdefault(t, NEAR())[kind].append(row)
     return out
 
 
@@ -140,7 +143,7 @@ def _type_nodes(conn, user: dict | None) -> list[dict]:
         dataset = current_dataset(conn, content['dataset'])
         confirmed = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
         limit = restriction(conn, element_id, user)
-        near = by_type.get(element_id, {'views': [], 'actions': [], 'relations': []})
+        near = by_type.get(element_id, NEAR())
         nodes.append({
             'id': element_id, 'kind': 'type', 'key': content['english_name'], 'name': content['name'], 'description': content['description'], 'state': row['state'],
             'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None,
@@ -151,6 +154,7 @@ def _type_nodes(conn, user: dict | None) -> list[dict]:
             'proposed_by': row['proposed_by'],
             'stale': stale_cause(conn, row, user),
             'views': [_small(conn, r, user) for r in near['views']], 'actions': [_small(conn, r, user) for r in near['actions']],
+            'derived': [{**_small(conn, r, user), 'kind': _content(r)['kind'], 'tag': '派生'} for r in sorted(near['derived'], key=lambda r: (r['state'] != 'confirmed', r['element_id']))],   # the confirmed ones first
             'relations': [{'id': r['element_id'], 'key': _content(r)['english_name'], 'name': _content(r)['name']} for r in near['relations']],
             'answers': sum(1 for _, _, _, types in answers if element_id in types)})
     return nodes
@@ -299,11 +303,12 @@ def type_uses(conn, english_name: str, user: dict | None) -> dict:
     content = _content(row)
     dataset = current_dataset(conn, content['dataset'])
     element_id = row['element_id']
-    near = _by_type(conn, user).get(element_id, {'views': [], 'actions': [], 'relations': []})
+    near = _by_type(conn, user).get(element_id, NEAR())
     answers = [{'id': i, 'name': q} for i, q, _at, types in _mine_answers(conn, user) if element_id in types]
     kinds = [('views', '视图', [{'id': _content(r)['name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['views']]),
              ('actions', '行为', [{'id': _content(r)['name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['actions']]),
              ('relations', '关系', [{'id': _content(r)['english_name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['relations']]),
+             ('derived', '派生属性', [{'id': _content(r)['english_name'], 'name': _content(r)['name'], 'state': r['state']} for r in sorted(near['derived'], key=lambda r: (r['state'] != 'confirmed', r['element_id']))]),
              ('answers', '你存下的回答', answers)]
     hidden = dataset is not None and dataset_hidden(conn, content['dataset'], user)
     return {'data': {'dataset': content['dataset'], 'version': dataset['version'] if dataset else None, 'uploaded_at': None if hidden or not dataset else dataset['imported_at'],
