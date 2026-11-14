@@ -260,7 +260,8 @@ class GateTests(GateTestCase):
             self.assertEqual(builder.post('/api/workspace/datasets/upload', {'files': [table_part()]})[0], 403)
             self.assertEqual(team['admin'].post('/api/users/disable', {'id': 3, 'disabled': True})[0], 200)
             self.assertEqual(team['viewer'].get('/api/workspace/datasets')[0], 401)   # the session died with the account
-            self.assertEqual(Client(base).login('viewer')[0], 401)
+            status, body = Client(base).login('viewer')
+            self.assertEqual((status, body['error']), (403, '这个账号已停用，找管理员'))   # the right password, so the person is told why
 
     def test_an_admin_cannot_lock_themselves_out_or_leave_the_workspace_without_one(self):
         with self.service() as (base, _):

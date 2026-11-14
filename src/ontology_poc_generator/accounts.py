@@ -37,6 +37,7 @@ IDLE, ABSOLUTE = timedelta(hours=8), timedelta(days=14)
 MAX_SESSIONS = 10   # signed in at once per person
 TOUCH_EVERY = timedelta(seconds=60)   # last-seen is written at most this often, not on every request
 GENERIC = '账号或密码不对'
+DISABLED = '这个账号已停用，找管理员'   # said only after the password was verified
 USERNAME = re.compile(r'[\w.@+-]{1,64}')
 
 
@@ -361,6 +362,9 @@ def authenticate(conn, limiter: LoginLimiter, username, password, client: str) -
         if needs_rehash(stored):
             conn.execute('UPDATE user SET password_hash = ? WHERE id = ?', (hash_password(password), row[0]))
         return _public(row[:-1])
+    if row and good and stored and row[4]:
+        limiter.refund(conn, name, client)   # the password was right: not a failed try, and the person is told why they cannot come in
+        raise AccountError(DISABLED, 403)
     _log(conn, '(sign-in)', 'login', 'login_failed', {'name': _printable(typed), 'client': _printable(client)})   # what a stranger typed is data, not a signature
     raise AccountError(GENERIC, 401)
 
