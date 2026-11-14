@@ -26,3 +26,10 @@ export function rowKey(columns, row) {
   const keys = columns.map((c, i) => [c, row[i]]).filter(([c]) => c.key);
   return { key: Object.fromEntries(keys.map(([c, v]) => [c.column, v])), text: keys.map(([, v]) => v).join(" + ") };
 }
+
+/** Whether an object row meets the action's condition, so its button is offered only where it would be allowed (the service checks again). */
+export const actionFits = (action, columns, row) => {
+  if (!action.condition) return true;
+  const i = columns.findIndex((c) => c.column === action.condition.column);
+  return i < 0 || String(row[i] ?? "") === action.condition.value;
+};

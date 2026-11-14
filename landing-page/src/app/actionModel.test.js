@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { actionPayload, actionProblem, emptyActionForm, recordStateText, rowKey } from "./actionModel.js";
+import { actionFits, actionPayload, actionProblem, emptyActionForm, recordStateText, rowKey } from "./actionModel.js";
 
 test("an action form needs a name, a property to change, and a value when a condition column is picked", () => {
   const form = emptyActionForm();
@@ -26,4 +26,12 @@ test("a pending record whose data moved says so", () => {
   assert.equal(recordStateText({ state: "pending", stale: false }), "等批准");
   assert.equal(recordStateText({ state: "pending", stale: true }), "等批准（数据已变）");
   assert.equal(recordStateText({ state: "needs_look" }), "需再看");
+});
+
+test("an action is offered only on rows that meet its condition", () => {
+  const columns = [{ column: "订单号" }, { column: "状态码" }];
+  const action = { condition: { column: "状态码", value: "1" } };
+  assert.equal(actionFits(action, columns, ["DD1", "1"]), true);
+  assert.equal(actionFits(action, columns, ["DD2", "0"]), false);
+  assert.equal(actionFits({ condition: null }, columns, ["DD2", "0"]), true);
 });

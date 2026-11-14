@@ -295,6 +295,14 @@ def _pairs(conn, content: dict, values: dict) -> str:
     return '，'.join(f'{names[c]} {_label(conn, content["type"], c, values.get(c))}' for c in content['properties'])
 
 
+def _change(conn, content: dict, before: dict, after: dict) -> str:
+    """'状态码 从 生产中 改成 已交付', one clause per property the action writes."""
+    t = _content(element_row(conn, type_id(content['type'])))
+    names = {p['column']: p['name'] for p in t['properties']}
+    label = lambda c, v: _label(conn, content['type'], c, v)
+    return '，'.join(f'{names[c]} 从 {label(c, before.get(c))} 改成 {label(c, after.get(c))}' for c in content['properties'])
+
+
 def record_view(conn, rec: dict, user: dict | None, light: bool = False) -> dict | None:
     """One record as a page shows it; None when this person may not read the object it is about (a person never reads a row a rule keeps from them)."""
     action = element_row(conn, rec['action_id'])
@@ -311,7 +319,7 @@ def record_view(conn, rec: dict, user: dict | None, light: bool = False) -> dict
     rule = two_person(conn)
     can_decide = (rec['state'] == 'pending' and user is not None and user['role'] != 'viewer' and not (same_person and rule['active']))
     return {'id': rec['id'], 'action': content['name'], 'type': t['english_name'], 'type_name': t['name'], 'object': _object_text(t, key), 'key': key,
-            'before_text': _pairs(conn, content, before), 'after_text': _pairs(conn, content, after), 'before': before, 'after': after, 'reason': rec['reason'],
+            'before_text': _pairs(conn, content, before), 'after_text': _pairs(conn, content, after), 'change_text': _change(conn, content, before, after), 'before': before, 'after': after, 'reason': rec['reason'],
             'state': rec['state'], 'submitted_by': rec['submitted_by'], 'submitted_at': rec['submitted_at'], 'decided_by': rec['decided_by'], 'decided_at': rec['decided_at'],
             'note': rec['note'], 'why': rec['why'], 'new_version': rec['new_version'], 'dataset': rec['dataset'], 'dataset_version': rec['dataset_version'],
             'dataset_now': dataset['version'] if dataset else None, 'stale': rec['state'] == 'pending' and (dataset is None or dataset['version'] != rec['dataset_version']),

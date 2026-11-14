@@ -128,7 +128,7 @@ def queue(conn, user: dict | None, light: bool = False) -> dict:
 def approval_item(rec: dict) -> dict:
     """A submitted action as a card in the queue: what is asked of which object, by whom, and whether the data moved since. Approve and reject are their own
     requests (object_actions.decide), not the confirmation of a definition."""
-    lines = [{'ok': True, 'text': f'{rec["submitted_by"]} 想把 {rec["object"]} 的 {rec["before_text"]} 改成 {rec["after_text"]}'}]
+    lines = [{'ok': True, 'text': f'{rec["submitted_by"]} 想把 {rec["object"]} 的 {rec["change_text"]}'}]
     if rec['reason']:
         lines.append({'ok': True, 'text': f'理由：{rec["reason"]}'})
     if rec['state'] == 'needs_look':

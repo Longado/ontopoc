@@ -671,6 +671,7 @@ class ActionTests(SigningTestCase):
             card = next(i for i in bob.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'approval')
             self.assertEqual((card['record'], card['can_confirm'], card['state']), (record, True, 'pending'))
             self.assertIn('Ann 想把 订单 ' + IN_PRODUCTION['订单号'], card['lines'][0]['text'])
+            self.assertIn('状态码 从 生产中 改成 已交付', card['lines'][0]['text'])
             own = next(i for i in ann.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'approval')
             self.assertFalse(own['can_confirm'])
             status, body = ann.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})

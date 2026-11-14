@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { rowKey } from "./actionModel.js";
+import { actionFits, rowKey } from "./actionModel.js";
 import { TypeActions, RunAction } from "./TypeActions.jsx";
 import { confirmType, getActions, getType, getTypeLog, getTypeObjects, proposeMeanings, setValuesHidden } from "./api.js";
 import { useAuth } from "./Auth.jsx";
@@ -59,7 +59,7 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>取值</th><th>含义</th>{hasThen && <th className="num">上次确认时行数</th>}<th className="num">现在行数</th></tr>
+            <tr><th>取值</th><th>含义</th>{hasThen && !m.limited_note && <th className="num">上次确认时行数</th>}{!m.limited_note && <th className="num">现在行数</th>}</tr>
           </thead>
           <tbody>
             {m.values.map((v) => (
@@ -71,13 +71,14 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
                       onChange={(e) => setDraft({ ...draft, [v.value]: e.target.value })} />
                   ) : (v.label || <span className="faint">含义未确认</span>)}
                 </td>
-                {hasThen && <td className="num">{v.rows_at_confirmation ?? <span className="faint">—</span>}</td>}
-                <td className="num">{v.rows ?? <span className="faint">没有</span>}</td>
+                {hasThen && !m.limited_note && <td className="num">{v.rows_at_confirmation ?? <span className="faint">—</span>}</td>}
+                {!m.limited_note && <td className="num">{v.rows ?? <span className="faint">没有</span>}</td>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {m.limited_note && <p className="muted small">{m.limited_note}</p>}
       {mayBuild && (
         <div className="inline">
           {(changed || m.state === "needs_look") && <button className="secondary" onClick={propose} disabled={busy}>提出这组含义</button>}
@@ -166,7 +167,7 @@ function Objects({ id, pageNo, mayBuild }) {
                 })}
                 {runnable.length > 0 && (
                   <td className="keep">
-                    {runnable.map((a) => <button key={a.id} className="plain" onClick={() => setRunning({ action: a, ...rowKey(o.columns, row) })}>{a.name}</button>)}
+                    {runnable.filter((a) => actionFits(a, o.columns, row)).map((a) => <button key={a.id} className="plain" onClick={() => setRunning({ action: a, ...rowKey(o.columns, row) })}>{a.name}</button>)}
                   </td>
                 )}
               </tr>
@@ -244,8 +245,9 @@ export function TypePage({ route }) {
           </div>
           {error && <p className="error">{error}</p>}
           <p className="facts">
-            <span>来源 <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a> 第 {t.dataset_version} 版</span>
-            <span>{t.rows} 个对象</span>
+            <span>来源 {t.rows_limited ? t.dataset : <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>} 第 {t.dataset_version} 版</span>
+            <span>{t.rows_limited ? `你能看到 ${t.rows} 个对象` : `${t.rows} 个对象`}</span>
+            {t.limited_note && <span>{t.limited_note}</span>}
             {t.description && <span>{t.description}</span>}
             {t.visible_to && t.visible_to !== "everyone" && <span>只有{t.visible_to.length ? t.visible_to.join("、") : "管理员"}看得到</span>}
           </p>
