@@ -33,6 +33,7 @@ export function parseRoute(hash) {
     return { page: "notfound" };
   }
   if (parts.length === 1 && (parts[0] === "confirm" || parts[0] === "permissions")) return { page: parts[0] };
+  if (parts[0] === "confirm" && parts.length === 4 && parts[1] === "group" && /^[1-9]\d*$/.test(parts[3])) return { page: "confirmgroup", dataset: parts[2], version: Number(parts[3]) };   // what one version of a dataset moved, confirmed together
   if (parts[0] === "pipelines") {
     if (parts.length === 1) return { page: "pipelines" };
     if (parts.length === 2 && parts[1] === "new") return { page: "pipelinenew" };   // the service refuses a pipeline called new
@@ -81,6 +82,7 @@ export function hrefFor(route) {
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "types") return "#/types";
   if (route.page === "confirm" || route.page === "permissions" || route.page === "lineage") return `#/${route.page}`;
+  if (route.page === "confirmgroup") return `#/confirm/group/${encodeURIComponent(route.dataset)}/${route.version}`;
   if (route.page === "relations") return route.list ? "#/relations?view=list" : "#/relations";
   if (route.page === "pipelines") return "#/pipelines";
   if (route.page === "pipelinenew") return "#/pipelines/new";
@@ -131,4 +133,4 @@ export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户"), it
 
 /** Which navigation item a route lives under. */
 export const navKeyOf = (route) =>
-  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit", "object"].includes(route.page) ? "types" : ["board", "boardnew", "boardedit"].includes(route.page) ? "boards" : ["pipeline", "pipelinenew"].includes(route.page) ? "pipelines" : route.page === "source" ? "sources" : route.page === "account" ? null : ["relation", "relationnew", "relationedit"].includes(route.page) ? "relations" : route.page;
+  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit", "object"].includes(route.page) ? "types" : ["board", "boardnew", "boardedit"].includes(route.page) ? "boards" : ["pipeline", "pipelinenew"].includes(route.page) ? "pipelines" : route.page === "source" ? "sources" : route.page === "account" ? null : route.page === "confirmgroup" ? "confirm" : ["relation", "relationnew", "relationedit"].includes(route.page) ? "relations" : route.page;

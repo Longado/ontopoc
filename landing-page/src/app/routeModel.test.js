@@ -120,3 +120,11 @@ test("relations, the 待确认 queue and the permissions page have addresses; a 
   assert.deepEqual(parseRoute("#/lineage/x"), { page: "notfound" });
   assert.equal(navKeyOf({ page: "permissions" }), "permissions");
 });
+
+test("the screen that confirms what one dataset version moved has an address under 待确认, and the name survives the round trip", () => {
+  const route = { page: "confirmgroup", dataset: "订单 2026/10", version: 2 };
+  assert.equal(hrefFor(route), "#/confirm/group/%E8%AE%A2%E5%8D%95%202026%2F10/2");
+  assert.deepEqual(parseRoute(hrefFor(route)), route);
+  assert.equal(navKeyOf(route), "confirm");
+  for (const hash of ["#/confirm/group/订单", "#/confirm/group/订单/0", "#/confirm/group/订单/x", "#/confirm/other/订单/2"]) assert.deepEqual(parseRoute(hash), { page: "notfound" }, hash);
+});

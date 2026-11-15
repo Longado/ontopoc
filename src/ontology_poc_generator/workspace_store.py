@@ -304,8 +304,11 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
     its time and its version as they were. Evidence from an older run never replaces newer evidence already kept.
     `versions` ({element_id: the version the writer read}): inside the write transaction a row that is no longer at that version raises StaleElement and
     nothing is written, so the last writer does not silently win.
+    When the caller already holds a transaction the rows join it: they are kept or taken back with whatever else it wrote.
     Yields each element's row as it stands."""
-    conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
+    outer = conn.in_transaction   # a caller that confirms several things as one (batch_confirm) holds the transaction: the rows are kept or taken back with all of them
+    if not outer:
+        conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
     try:
         two = two_person(conn)
         for element_id, state, evidence_ref, confirmed_by, *rest in changes:
@@ -344,9 +347,11 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
             cursor = conn.execute('SELECT * FROM element_state WHERE element_id = ?', (element_id,))
             rows[element_id] = dict(zip([c[0] for c in cursor.description], cursor.fetchone()))
         yield rows
-        conn.execute('COMMIT')
+        if not outer:
+            conn.execute('COMMIT')
     except BaseException:
-        conn.execute('ROLLBACK')
+        if not outer:
+            conn.execute('ROLLBACK')
         raise
 
 

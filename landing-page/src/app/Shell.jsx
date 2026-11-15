@@ -6,6 +6,7 @@ import { BoardPage, BoardsPage } from "./BoardsPage.jsx";
 import { WORKSPACE_CHANGED, getQueueCount } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild, isAdmin, roleLabel } from "./authModel.js";
+import { ConfirmGroupPage } from "./ConfirmGroupPage.jsx";
 import { ConfirmPage } from "./ConfirmPage.jsx";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
@@ -157,6 +158,7 @@ export function Shell() {
       {route.page === "relationnew" && <RelationForm key="new" />}
       {route.page === "relationedit" && <RelationForm key={route.id} id={route.id} />}
       {route.page === "confirm" && (canBuild(user) ? <ConfirmPage /> : <Forbidden />)}
+      {route.page === "confirmgroup" && (canBuild(user) ? <ConfirmGroupPage key={`${route.dataset}@${route.version}`} route={route} /> : <Forbidden />)}
       {route.page === "pipelines" && (canBuild(user) ? <PipelinesPage /> : <Forbidden />)}
       {route.page === "pipelinenew" && (canBuild(user) ? <PipelineNew /> : <Forbidden />)}
       {route.page === "pipeline" && (canBuild(user) ? <PipelinePage key={route.name} route={route} /> : <Forbidden />)}
@@ -167,7 +169,7 @@ export function Shell() {
       {route.page === "account" && <AccountPage />}
       {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
       {route.page === "planned" && <Planned route={route} />}
-      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "pipelines", "pipelinenew", "pipeline", "sources", "source", "schedules", "permissions", "account", "users", "planned", "object", "boards", "board", "boardnew", "boardedit", "agents"].includes(route.page) && <NotFound />}
+      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "confirmgroup", "pipelines", "pipelinenew", "pipeline", "sources", "source", "schedules", "permissions", "account", "users", "planned", "object", "boards", "board", "boardnew", "boardedit", "agents"].includes(route.page) && <NotFound />}
     </div>
   );
 }

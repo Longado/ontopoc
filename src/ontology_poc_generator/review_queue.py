@@ -77,9 +77,9 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
         base = {'kind': 'view', 'title': f'{content["name"]}（{type_name}的视图）', 'id': content['type'], 'view': content['name'], 'lines': []}
         if not light:
             summary = view_summary(conn, content)
-            shown = [{'ok': True, 'text': LIMITED_NOTE if view['limited_by_rule'] else f'{summary["dataset"]} 第 {summary["version"]} 版的 {summary["of"]} 行里，视图留下 {summary["rows"]} 行'}]
             base['lines'] = [{'ok': True, 'text': describe(content, type_name)},
-                             *([{'ok': False, 'text': p} for p in summary['problems']] if summary['problems'] else shown),
+                             *([{'ok': False, 'text': p} for p in summary['problems']]   # a summary that could not be made has no dataset or counts to quote
+                               or [{'ok': True, 'text': LIMITED_NOTE if view['limited_by_rule'] else f'{summary["dataset"]} 第 {summary["version"]} 版的 {summary["of"]} 行里，视图留下 {summary["rows"]} 行'}]),
                              *[{'ok': w['state'] == 'confirmed', 'text': f'“{w["name"]}”{"已确认" if w["state"] == "confirmed" else "还没有确认"}'} for w in view['waiting_on']]]
             view['seen'] = None if view['limited_by_rule'] else seen_of_view(summary)
             view['new_values'] = [] if view['limited_by_rule'] else open_new_values(conn, row, summary)
