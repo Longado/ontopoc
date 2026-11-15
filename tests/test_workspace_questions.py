@@ -415,6 +415,31 @@ class QuestionTests(SigningTestCase):
             self.assertEqual(viewer_body['answer']['relation_gap'].get('keys'), None)   # a viewer reads the count, not which customers
             self.assertEqual(viewer_body['answer']['total'], 3)
 
+    def test_a_confirmed_relation_a_query_cannot_walk_is_named_with_why_when_a_question_needs_it(self):
+        gap = {'reasoning': '要按客户分组，但订单和客户之间没有关系', 'query': None, 'missing': 'ontology', 'definitions_used': []}
+        model = AskModel(gap)
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.assertEqual(ann.post('/api/workspace/types', {k: v for k, v in ORDER.items() if k != 'enums'} | {'properties': [{'column': '订单号'}, {'column': '金额'}]})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types', CUSTOMER)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/relations', RELATION)[0], 200)
+            for name in ('order', 'customer'):
+                self.confirm(bob, name)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
+            shown = bob.get('/api/workspace/relations/order_customer')[1]
+            self.assertEqual(bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': shown['version'], 'seen': shown['check']['signature']})[0], 200)
+            for who in (ann, vera):
+                status, body = self.ask(who, '订单金额最高的三个客户是谁？')
+                self.assertEqual((status, body['status']), (200, 'ontology_gap'), body)
+                named = [d for d in body['refusal']['left_out'] if d['id'] == 'relation:order_customer']
+                self.assertEqual(len(named), 1, body['refusal'])
+                self.assertEqual((named[0]['kind'], named[0]['name'], named[0]['state']), ('relation', '订单属于客户', 'confirmed'))
+                self.assertIn('客户编号 + 城市', named[0]['reason'])   # why a query cannot walk it: the customer is keyed on more than the joined column
+                scope = who.get('/api/workspace/ask')[1]
+                self.assertIn('relation:order_customer', [d['id'] for d in scope['left_out']])
+                self.assertNotIn('order_customer', [r['id'] for r in scope['relations']])
+
     def test_a_row_rule_limits_what_a_question_counts_and_a_relation_shows_the_answer_says_so_and_a_saved_answer_is_withheld_when_the_rule_changes(self):
         orders = {**ORDER, 'properties': [*ORDER['properties'], {'column': '客户编号'}]}
         kh001 = sum(1 for r in ORDERS if r['客户编号'] == 'KH001')
