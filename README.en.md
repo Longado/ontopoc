@@ -46,7 +46,7 @@ The interface is in Chinese only. This page gives the Chinese label in parenthes
 | Pipelines | Filter, join, group, dedupe, calculated columns and more, with an expression editor. An AI step asks the model row by row; what it writes can become a key or a code meaning only after a sample review and another person's confirmation |
 | Ontology | Object types (properties, key, the meaning of code columns), relations (how many rows connect, whether the declared cardinality holds), views (such as 有效订单, valid orders), actions (parameters and conditions, writing data only after approval), derived properties (a formula over a row, or a statistic through relations) |
 | Confirmation | Proposed → checked by code → confirmed by another builder (with one builder it opens up and the log says so). The data version and anchors are kept at confirmation. A new upload re-checks them; whatever no longer holds goes back to "needs another look", with what reads it, and the cause says whether the data changed, the definition changed, or something upstream did. What one upload moved can be confirmed together on one screen |
-| Q&A | Scope is the confirmed types the person may see. A question that names an unconfirmed or stale definition is refused before the model is asked, with the reason. The model sees structure and meanings, never rows, and writes a structured query; code runs it and checks the definitions it used. It can leave a meaning out ("not cancelled") and take the top or bottom N. Each answer is kept with its definitions, who confirmed them and the data versions |
+| Q&A | Scope is the confirmed types the person may see. A question that names an unconfirmed or stale definition is refused before the model is asked, with the reason. The model sees structure, meanings and the values of columns with few distinct values, never rows, and writes a structured query; code runs it and checks the definitions it used. It can leave a meaning out ("not cancelled") and take the top or bottom N. Each answer is kept with its definitions, who confirmed them and the data versions |
 | Use | Object explorer, boards, MCP tools for agents (personal token, read-only by default), the relation graph and lineage graph (coloured by data changed, definition changed, one step behind, further upstream) |
 
 The earlier screen organised around runs is still at `legacy.html`; see [The earlier screen](#the-earlier-screen-organised-around-runs) below.
@@ -63,11 +63,11 @@ Paste this into Claude Code or Codex:
 Install and run OntoPoc (https://github.com/Longado/ontopoc) on this machine:
 1. Read the repository's README.en.md and follow "Quick start".
 2. Check python3 --version ≥ 3.11 and node --version ≥ 22; if not, tell me how to install them and stop.
-3. Clone the repository, run python3 -m pip install -e '.[sources]' in the repository root (the packages that read Excel and connect to databases; if the system Python does not allow a direct install, create a virtual environment first), and run npm ci in landing-page.
+3. Clone the repository, run python3 -m pip install -e '.[sources]' in the repository root ([sources] adds the PostgreSQL and MySQL drivers; if the system Python does not allow a direct install, create a virtual environment first), and run npm ci in landing-page.
 4. Ask me for a model key (DeepSeek or OpenRouter) and put it only in this terminal's DEEPSEEK_API_KEY or OPENROUTER_API_KEY; do not write it to any file.
-5. From the repository root, start the modelling service: PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
-6. In another terminal, start the page: cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
-7. Before starting the service, make the first admin: PYTHONPATH=src python3 -m ontology_poc_generator.accounts create-admin (I type the name and password myself), and start the service with --origin http://127.0.0.1:5178.
+5. From the repository root, first make the admin: PYTHONPATH=src python3 -m ontology_poc_generator.accounts create-admin (I type the name and password myself).
+6. Then start the service: PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http://127.0.0.1:5178
+7. In another terminal, start the page: cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 8. Open http://127.0.0.1:5178/, sign in to the team app, upload examples/company/demo_company.xlsx, and tell me how many tables the datasets page shows.
 ```
 
@@ -238,7 +238,7 @@ The team app is meant for a data team: builders make definitions from the data a
 ## Privacy
 
 - Uploaded files and all results stay on this machine, in `output/ontology-runs/`.
-- In the team app the model sees the names and types of object types and properties, confirmed code meanings, relations and what derived properties say, never rows; a column an admin marks "don't send values" (不发取值) sends no values either.
+- In the team app the model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns an admin marks "don't send values" (不发取值) send no values. No rows are sent.
 - Sent to the model by the earlier screen (DeepSeek, or a model on OpenRouter): the modelling purpose; for each table its row count, each column's name, up to 3 example values, the counts code took (values present, distinct values, whether all differ), the columns or column pairs that differ on every row, and likely links (including into the same table); every value of a category-like column; when writing questions, every value of columns with at most 12 distinct values, and any question you type in 智能问答 (Q&A) as written; when you click "起草" (draft) for field descriptions, each field's type and maximum length; when you click "找出可能的对应" (find possible matches), for objects identified by a single field with 2 to 200 values, all identity values and how many rows each appears in; for documents, the text, at most 12 chunks per upload. The upload page shows exactly what will be sent for modelling, column by column.
 - Each model call leaves one line in `output/ontology-runs/model_calls.jsonl` (which agent, how long, success or failure), never the content.
 - The service accepts requests from this machine only.

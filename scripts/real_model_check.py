@@ -32,6 +32,7 @@ from urllib.request import urlopen
 
 PASSWORD = 'correct horse battery'
 WAIT_SECONDS = 200   # a real model can take a minute; the tests' client waits 30 s
+DATA_FOLDER = 'real-model-check-data'   # the only folder the check empties, inside --out
 
 
 def judge(case: dict, status: int | None, body: dict | None) -> str:
@@ -77,10 +78,18 @@ QUESTIONS = [   # (question, what kind of answer, which truth)
     ('哪个客户的订单金额合计最高？', 'groups', 'top1'),
     ('订单金额合计最高的三个客户是哪几个？', 'groups', 'top3'),
     ('哪个客户的订单金额合计最低？', 'groups', 'bottom1'),
-    ('订单金额最少的是哪个客户？', 'groups', 'bottom1'),
+    ('订单金额合计最少的是哪个客户？', 'groups', 'bottom1'),
     ('订单金额合计最低的三个客户是哪几个？', 'groups', 'bottom3'),
     ('已取消订单数最多的客户是哪个？', 'groups', 'most_cancelled'),
 ]
+
+
+def fresh_data_dir(out: Path) -> Path:
+    """An empty folder of the check's own inside out (made, or emptied when it is there); nothing else in out is touched."""
+    data = out / DATA_FOLDER
+    shutil.rmtree(data, ignore_errors=True)
+    data.mkdir(parents=True)
+    return data
 
 
 def free_port() -> int:
@@ -131,7 +140,7 @@ def ask(person, question: str) -> tuple[int | None, dict | None, float]:
     started = time.time()
     try:
         status, body = person.post('/api/workspace/ask', {'question': question})
-    except (OSError, URLError) as exc:
+    except (OSError, URLError, ValueError) as exc:   # a timeout, a dropped connection or a reply that is not JSON: an error for this question, not the run
         return None, {'error': repr(exc)}, round(time.time() - started, 1)
     return status, body, round(time.time() - started, 1)
 
@@ -158,7 +167,7 @@ def markdown(report: dict) -> str:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('--out', required=True, help='folder for the data, the server log and the report (emptied first)')
+    parser.add_argument('--out', required=True, help=f'folder for the report, the server log and a {DATA_FOLDER} folder (only that one is emptied first)')
     parser.add_argument('--repeat', type=int, default=1, help='ask each question this many times')
     args = parser.parse_args(argv)
     from ontology_poc_generator import accounts
@@ -173,9 +182,7 @@ def main(argv=None) -> int:
         print('No model key in the environment: run it inside hk run "OpenRouter" (or with DEEPSEEK_API_KEY).', file=sys.stderr)
         return 2
     out = Path(args.out)
-    data = out / 'data'
-    shutil.rmtree(data, ignore_errors=True)
-    data.mkdir(parents=True)
+    data = fresh_data_dir(out)
     conn = open_workspace(data / 'workspace.sqlite')
     for name, display, role in (('root', '管理员', 'admin'), ('ann', 'Ann', 'builder'), ('bob', 'Bob', 'builder')):
         accounts.create_user(conn, name, display, role, PASSWORD, 'host', must_change=False)
@@ -195,6 +202,8 @@ def main(argv=None) -> int:
                               stdout=log, stderr=subprocess.STDOUT, env=os.environ.copy())
     try:
         for _ in range(100):
+            if server.poll() is not None:
+                raise RuntimeError(f'the service stopped at start; see {out / "server.log"}')
             try:
                 urlopen(base + '/api/auth/me', timeout=1)
                 break
@@ -223,7 +232,11 @@ def main(argv=None) -> int:
                         'truth': 'refused', 'got': summary(body)})
     finally:
         server.terminate()
-        server.wait(timeout=10)
+        try:
+            server.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            server.kill()
+            server.wait()
         log.close()
     counts = defaultdict(int)
     for r in results:
