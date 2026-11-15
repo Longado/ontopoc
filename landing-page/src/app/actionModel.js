@@ -34,3 +34,13 @@ export const actionFits = (action, columns, row) => {
   const i = columns.findIndex((c) => c.column === action.condition.column);
   return i < 0 || String(row[i] ?? "") === action.condition.value;
 };
+
+/** One recipient of "批准后通知" from the form, or null while it is not complete: {kind: "attr", column, user_attr} or {kind: "via", relation, column, user_attr}. */
+export function notifyRecipient({ kind, column, relation, attr }) {
+  const name = (attr ?? "").trim();
+  const col = (column ?? "").trim();
+  if (!name || !col) return null;
+  if (kind === "attr") return { kind, column: col, user_attr: name };
+  if (kind === "via" && relation) return { kind, relation, column: col, user_attr: name };
+  return null;
+}

@@ -69,7 +69,7 @@ test("a page not built yet has an address of its own and says what it will do", 
 
 test("the sidebar groups what the product has, and marks what is built", () => {
   assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "数据", "本体", "应用", null]);
-  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["问答", "任务", "数据集", "管道", "数据源", "调度", "对象类型", "关系", "待确认", "智能体", "看板", "血缘"]);
+  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["问答", "任务", "消息", "数据集", "管道", "数据源", "调度", "对象类型", "关系", "待确认", "智能体", "看板", "血缘"]);
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
 });
 
@@ -130,7 +130,7 @@ test("the screen that confirms what one dataset version moved has an address und
   for (const hash of ["#/confirm/group/订单", "#/confirm/group/订单/0", "#/confirm/group/订单/x", "#/confirm/other/订单/2"]) assert.deepEqual(parseRoute(hash), { page: "notfound" }, hash);
 });
 
-const ADDRESSES = ["#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
+const ADDRESSES = ["#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/notices", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
   "#/relations", "#/relations/new", "#/relations/x", "#/relations/x/edit", "#/lineage", "#/confirm", "#/confirm/group/x/2", "#/pipelines", "#/pipelines/new",
   "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents"];
 

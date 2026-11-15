@@ -84,6 +84,7 @@ from ontology_poc_generator.object_actions import (
     action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, undo as undo_record, update_action, withdraw as withdraw_record)
 from ontology_poc_generator.derived_properties import time_limit as derived_time_limit, check_expression as check_derived_expression, confirm_derived, create_derived, derived_form, derived_log, derived_shape, list_derived, trial_payload, update_derived
 from ontology_poc_generator.object_views import confirm_view, create_view, list_views, update_view, view_form
+from ontology_poc_generator.notices import list_notices, mark_read, set_notify
 from ontology_poc_generator.row_rules import RuleRefused, set_rules
 from ontology_poc_generator.object_relations import (
     confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
@@ -1389,7 +1390,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
                     with runs_lock:   # the lock an upload takes (see types_post)
-                        handlers = {'': create_action, '/update': update_action, '/confirm': confirm_action, '/submit': submit_action, '/decide': decide_record, '/withdraw': withdraw_record, '/undo': undo_record}
+                        handlers = {'': create_action, '/update': update_action, '/confirm': confirm_action, '/submit': submit_action, '/decide': decide_record, '/withdraw': withdraw_record, '/undo': undo_record,
+                                    '/notify': set_notify}
                         if route not in handlers:
                             self.reply(404, {'error': 'Unknown workspace endpoint'})
                             return
@@ -1704,6 +1706,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path.split('?')[0] == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
                 self.actions_get()
                 return
+            if self.path.split('?')[0] == '/api/workspace/notices':
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    body = list_notices(conn, self.user)
+                finally:
+                    conn.close()
+                self.reply(200, body)
+                return
             if self.path in ('/api/workspace/graph/relations', '/api/workspace/graph/lineage'):
                 self.graph_get()
                 return
@@ -1936,6 +1946,20 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
                 self.actions_post()
+                return
+            if self.path == '/api/workspace/notices/read':
+                payload = self.read_json()
+                if payload is None:
+                    return
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    body = mark_read(conn, self.user, payload)
+                except TypeRefused as exc:
+                    self.reply(exc.status, {'error': str(exc)})
+                    return
+                finally:
+                    conn.close()
+                self.reply(200, body)
                 return
             if SOURCE_PATH.fullmatch(self.path):
                 self.sources_request(True)

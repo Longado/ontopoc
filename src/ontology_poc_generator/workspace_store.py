@@ -50,6 +50,11 @@ CREATE TABLE IF NOT EXISTS confirmation (
     confirmed_at TEXT NOT NULL, content_json TEXT, evidence_ref TEXT, dataset_versions_json TEXT, self_confirmed INTEGER NOT NULL DEFAULT 0, snapshot_json TEXT);
 CREATE TABLE IF NOT EXISTS type_access (
     type_id TEXT PRIMARY KEY, user_ids_json TEXT NOT NULL);
+-- who an action tells when one of its changes is approved (notices.py), and what each person was told
+CREATE TABLE IF NOT EXISTS action_notify (action_id TEXT PRIMARY KEY, spec_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS notice (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, at TEXT NOT NULL, action_name TEXT NOT NULL, record_id INTEGER, text TEXT NOT NULL, read_at TEXT);
+CREATE INDEX IF NOT EXISTS notice_user ON notice(user_id, id);
 -- a property only the people listed (and admins) may see: for anyone else the type is the type without it (type_access.hidden_columns)
 CREATE TABLE IF NOT EXISTS column_access (
     type_id TEXT NOT NULL, column_name TEXT NOT NULL, user_ids_json TEXT NOT NULL, PRIMARY KEY (type_id, column_name));
