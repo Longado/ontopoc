@@ -751,6 +751,21 @@ class ActionTests(SigningTestCase):
             self.assertEqual(status, 409)
             self.assertIn('已批准', body['error'])
 
+    def test_an_undo_is_refused_when_the_action_now_changes_other_properties_than_the_approved_request_did(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.confirmed_action(team)
+            record = self.submit(ann)[1]['record']
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[0], 200)
+            shown = ann.get(ACTION_URL)[1]
+            self.assertEqual(ann.post('/api/workspace/actions/update', {**STATUS_ACTION, 'id': '改订单状态', 'properties': ['状态码', '金额'], 'version': shown['version']})[0], 200)
+            again = bob.get(ACTION_URL)[1]
+            self.assertEqual(bob.post('/api/workspace/actions/confirm', {'id': '改订单状态', 'version': again['version']})[0], 200)
+            status, body = ann.post('/api/workspace/actions/undo', {'id': record})
+            self.assertEqual(status, 409)
+            self.assertIn('行为的定义变了', body['error'])
+
     def test_an_undo_is_refused_once_the_object_was_changed_again_after_the_approval(self):
         with self.service() as (base, out):
             team = self.team(base)
