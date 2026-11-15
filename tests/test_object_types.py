@@ -548,6 +548,31 @@ class ObjectTypeTests(SigningTestCase):
         self.assertEqual(self.confirm(ann, '状态码')[0], 200)
         self.assertEqual(self.confirm(bob)[0], 200)
 
+    def test_a_view_waiting_on_a_new_value_names_the_meaning_written_since_and_stops_asking_for_one(self):
+        with self.service() as (base, _):
+            team = self.team(base, 'ann', 'bob')
+            ann, bob = team['ann'], team['bob']
+            self.confirm_all(ann, bob)
+            self.make_view(ann, VALID)
+            self.assertEqual(self.confirm_view(bob, 'order', '有效订单')[0], 200)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+            first = self.view_of(bob, 'order', '有效订单')['reason']
+            self.assertIn('请先给新值写含义', first)   # nothing is written for 3 yet
+            new = [{'value': '0', 'label': ''}, {'value': '1', 'label': '已交付'}, {'value': '2', 'label': '已取消'}, {'value': '3', 'label': '已发货待签收'}]
+            self.assertEqual(bob.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': new})[1], {'changed': True})
+            written = self.view_of(bob, 'order', '有效订单')['reason']
+            self.assertIn('新值 3 算不算进来', written)
+            self.assertIn('已发货待签收', written)              # the meaning written since is named
+            self.assertNotIn('请先给新值写含义', written)      # there is nothing left to write
+            self.assertIn('需要再看', written)                 # the meanings are not confirmed yet
+            self.assertEqual(self.confirm(ann, '状态码')[0], 200)
+            settled = self.view_of(bob, 'order', '有效订单')['reason']
+            self.assertIn('新值 3 算不算进来', settled)
+            self.assertNotIn('需要再看', settled)              # confirmed again: the view waits only on its own question
+            self.assertIn('算进 1 已交付、3 已发货待签收', settled)   # what the condition lets in, by the meanings on file now
+            self.assertNotIn('0 已交付', settled)              # not the meanings from before the shift
+            self.assertIn(settled, [line['text'] for i in bob.get('/api/workspace/queue')[1]['items'] if i['element'] == 'objview:有效订单' for line in i['lines']])
+
     def confirm_view_with(self, client, choices=None):
         shown = self.view_of(client, 'order', '有效订单')
         return client.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': shown['version'], 'seen': shown['seen'], **({'new_values': choices} if choices is not None else {})})
