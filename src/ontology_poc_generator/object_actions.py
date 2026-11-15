@@ -117,8 +117,12 @@ def _allowed_values(conn, source: dict, user: dict | None, everyone: bool = Fals
     if dataset is None:
         return [], other
     limit = None if everyone else restriction(conn, row['element_id'], user)
-    values = {str(r.get(source['column'])).strip() for r in dataset_records(conn, dataset) if keeps(r, limit) and str(r.get(source['column']) or '').strip()}
-    return sorted(values), other
+    values: dict = {}
+    for r in dataset_records(conn, dataset):
+        text = str(r.get(source['column']) or '').strip()
+        if text and keeps(r, limit):
+            values.setdefault(_canonical(text), text)   # 1 and 1.0 are one value: the first spelling met is offered
+    return sorted(values.values()), other
 
 
 def check_names_free(conn, content: dict) -> None:
@@ -246,8 +250,11 @@ def action_visible(conn, row: dict, user: dict | None) -> bool:
     """Actions are for builders (a viewer can run nothing): those who may see the action's type."""
     if user is not None and user['role'] == 'viewer':
         return False
-    type_row = element_row(conn, type_id(_content(row)['type']))
-    return type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, row['element_id'], user, _content(row))
+    content = _content(row)
+    type_row = element_row(conn, type_id(content['type']))
+    sources = [element_row(conn, type_id(s['type'])) for s in (content.get('choices') or {}).values()]   # the types its values are offered from: theirs to see too
+    return (type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, row['element_id'], user, content)
+            and all(s is not None and _visible(conn, s, user) for s in sources))
 
 
 def action_state(conn, row: dict, user: dict | None) -> dict:

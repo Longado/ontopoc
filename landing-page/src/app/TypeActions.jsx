@@ -293,6 +293,7 @@ export function RunAction({ action, objectKey, objectText, onDone, onCancel }) {
           ) : (
             <input type="text" aria-label={`${p.name} 改成`} value={values[p.column]} onChange={(e) => setValues({ ...values, [p.column]: e.target.value })} />
           )}
+          {p.options_cut && <span className="muted small">只列出前 500 个可选值</span>}
           {!p.options && <span className="muted small">{p.type_name}</span>}
         </div>
       ))}
