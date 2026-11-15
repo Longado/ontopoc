@@ -573,6 +573,12 @@ class ObjectTypeTests(SigningTestCase):
             self.assertIn('算进 1 已交付、3 已发货待签收', settled)   # what the condition lets in, by the meanings on file now
             self.assertNotIn('0 已交付', settled)              # not the meanings from before the shift
             self.assertIn(settled, [line['text'] for i in bob.get('/api/workspace/queue')[1]['items'] if i['element'] == 'objview:有效订单' for line in i['lines']])
+            typed = self.detail(bob)
+            self.assertEqual(typed['state'], 'needs_look')   # the type itself is still to be confirmed again
+            self.assertNotIn('含义需要再看', typed['reason'])   # but not because its meanings need a look: Ann confirmed them again
+            self.assertIn('“状态码”的含义已经由 Ann 重新确认', typed['reason'])
+            relation_reasons = [i for i in bob.get('/api/workspace/queue')[1]['items'] if i['element'].startswith('relation:')]
+            self.assertFalse(any('含义已经由' in line['text'] for i in relation_reasons for line in i['lines']))   # a relation reads the type, which still needs a look
 
     def confirm_view_with(self, client, choices=None):
         shown = self.view_of(client, 'order', '有效订单')
