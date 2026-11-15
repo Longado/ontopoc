@@ -297,6 +297,61 @@ class QuestionTests(SigningTestCase):
             self.assertNotIn('answer', body)
             self.assertEqual(body['refusal']['definitions'][0]['definition'], '已取消')
 
+    def not_cancelled(self, *labels, measure=None, direction='exclude'):
+        where = [{'field': '状态码', 'not_equals': labels[0] if len(labels) == 1 else list(labels)}]
+        return cancelled(query={**ALL_ORDERS, 'where': where, 'measure': measure},
+                         used=[{'id': f'订单.状态码={label}', 'direction': direction, 'basis': f'不算{label}'} for label in labels])
+
+    def test_orders_that_are_not_cancelled_are_answered_by_leaving_the_confirmed_meaning_out_and_the_answer_says_which_codes_count(self):
+        amount = self.not_cancelled('已取消', measure={'field': '金额', 'op': 'sum'})
+        model = AskModel(amount)
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask(team['ann'], '没取消的订单金额一共多少？')
+            self.assertEqual((status, body['status']), (200, 'answered'), body)
+            self.assertEqual((body['answer']['total'], body['answer']['measure']['value']), (144, 2426560))
+            self.assertEqual(sum(int(r['金额']) for r in ORDERS if r['状态码'] != '2'), 2426560)
+            self.assertIn('状态码 不是 2（已取消）：算进 0 已交付、1 生产中', body['path'])
+            self.assertEqual([(u['definition'], u['direction'], u['how']) for u in body['understood']], [('已取消', 'exclude', '状态码 不是 2（已取消）')])
+            self.assertEqual([d['name'] for d in body['definitions']], ['订单', '订单.状态码'])   # the meaning it left a code out by is a definition the answer stands on
+            self.assertNotIn('not_in_question', json.dumps(body['evidence']))   # 没取消 is the question saying it, though not in the label's words
+            model.item = self.not_cancelled('已取消')
+            status, body = self.ask(team['ann'], '没取消的订单有多少？')
+            self.assertEqual((body['status'], body['answer']['total']), ('answered', 144))
+            # leaving out two meanings at once: only the 96 delivered ones stay
+            model.item = self.not_cancelled('已取消', '生产中')
+            status, body = self.ask(team['ann'], '不算已取消和生产中的订单有多少？')
+            self.assertEqual((body['status'], body['answer']['total']), ('answered', 96), body)
+            self.assertIn('状态码 不是 1（生产中）、2（已取消）：算进 0 已交付', body['path'])
+
+    def test_a_query_that_leaves_a_meaning_out_while_the_model_says_include_or_nothing_is_refused(self):
+        for direction, how in (('include', '问题要把它算进来，这条查询却把它排除了'), ('mention', '却按它筛选了行')):
+            with self.subTest(direction=direction), self.service(gateway=AskModel(self.not_cancelled('已取消', direction=direction))) as (base, out):
+                team = self.team(base)
+                self.confirmed_orders(team)
+                status, body = self.ask(team['ann'], '没取消的订单有多少？')
+                self.assertEqual((status, body['status']), (200, 'definition_unmet'), body)
+                self.assertNotIn('answer', body)
+                self.assertIn(how, body['reason'])
+        with self.service(gateway=AskModel(cancelled(query={**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': '已取消'}]}, used=[]))) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask(team['ann'], '没取消的订单有多少？')
+            self.assertEqual(body['status'], 'definition_unmet', body)
+            self.assertIn('没有说明问题是要包含还是排除它', body['reason'])
+
+    def test_a_code_nobody_confirmed_a_meaning_for_stops_an_exclusion_question_before_the_model_is_asked(self):
+        model = AskModel(self.not_cancelled('已取消'))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)   # 3 appears, with no meaning
+            status, body = self.ask(team['ann'], '没取消的订单金额一共多少？')
+            self.assertEqual((status, body['status'], len(model.requests)), (200, 'refused', 0), body)
+            self.assertIn('新出现 3（16 行，没有含义）', json.dumps(body['refusal'], ensure_ascii=False))
+            self.assertNotIn('answer', body)
+
     def test_a_column_marked_not_to_send_values_goes_to_the_model_without_its_values_or_meanings(self):
         model = AskModel(cancelled())
         with self.service(gateway=model) as (base, out):

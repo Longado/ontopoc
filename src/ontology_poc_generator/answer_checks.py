@@ -11,8 +11,8 @@ it checks the executed query against what the model said:
   mention    the question names it without selecting rows by it, but the query must show it: its column is a share (a rate of it)
              or a dimension, or, for a view, the view's table is read. A mention the query does not use is refused ("只是提到却没有用到
              它，没法核对"), since nothing says what the word was for; a filter on its column that picks rows is a use, refused too
-  exclude    a named view a person made that leaves the meaning out is read in its place; else the query language, which
-             can only say "a field equals a value", cannot say it, and the answer is refused naming what could not be applied
+  exclude    the query leaves the meaning's codes out ("not_equals": the column is not one of them, code leaves those rows out); else a
+             named view a person made that leaves the meaning out is read in its place; else the answer is refused naming what could not be applied
   omitted    a confirmed label the model did not list, that the question says verbatim (three characters or more, or with its
              column named) or that the query filters by: refused, saying the model did not say how it was used
   unknown    an id the model wrote that is in no catalog entry (a synonym such as 取消), whatever direction it gave: refused, saying the name did not match,
@@ -41,7 +41,8 @@ from ontology_poc_generator.public_ontology import normalize_proposal, normalize
 from ontology_poc_generator.repeated_keys import rule_key
 from ontology_poc_generator.workspace_store import describes_rows
 
-EXCLUDING = '这个问法要把它排除，查询只能写“某个字段等于某个值”，做不到排除'
+EXCLUDING = '这个问法要把它排除，查询只能写“某个字段等于某个值”，做不到排除'   # of a view: a named view is not a column the query can leave a value out of
+NOT_LEFT_OUT = '这个问法要把它排除，但这条查询没有把它排除掉（没有写“不等于”）'
 UNSAID, UNSAID_HOW = 'unsaid', '出题员没有说明它是怎么用的'
 UNBACKED, UNBACKED_HOW = '没法核对', '只是提到却没有用到它，没法核对'
 
@@ -86,15 +87,16 @@ def _reached(types: dict, relations: dict, start: str, via: list) -> dict | None
 
 
 def _uses(query: dict, types: dict, relations: dict) -> list[tuple[str | None, object, str]]:
-    """(the "table.path" it reads, the value it is compared with, 'filter' | 'share' | 'group') for every filter, share and
-    dimension of the query, each field read as the object type it belongs to reads it: a field is not another table's column
-    of the same name."""
+    """(the "table.path" it reads, the value it is compared with (a list for 'exclude'), 'filter' | 'exclude' | 'share' | 'group') for
+    every filter, share and dimension of the query, each field read as the object type it belongs to reads it: a field is not
+    another table's column of the same name."""
     start = types.get(query.get('start'))
     group_by = query.get('group_by')
     dims = [group_by] if isinstance(group_by, (str, dict)) else group_by if isinstance(group_by, list) else []
     share = query.get('share') if isinstance(query.get('share'), dict) else {}
     resolve = lambda t, name: _resolve_field(t, name) if t else None
-    out = [(resolve(start, w.get('field')), w.get('equals'), 'filter') for w in query.get('where') or [] if isinstance(w, dict)]
+    out = [(resolve(start, w.get('field')), w['not_equals'], 'exclude') if 'not_equals' in w else (resolve(start, w.get('field')), w.get('equals'), 'filter')
+           for w in query.get('where') or [] if isinstance(w, dict)]
     if share:
         out.append((resolve(start, share.get('field')), share.get('equals'), 'share'))
     for d in dims:
@@ -106,7 +108,7 @@ def _uses(query: dict, types: dict, relations: dict) -> list[tuple[str | None, o
 
 
 def _use(uses: list, field: str, labels: dict[str, str], label: str) -> str | None:
-    """How the query reads this meaning of this column: "filter" or "share" when one names it or one of its codes, "group" when
+    """How the query reads this meaning of this column: "filter", "exclude" or "share" when one names it or one of its codes, "group" when
     the column is a dimension (which shows every meaning of it), else None."""
     wanted = {label, *(code for code, said in labels.items() if said == label)}
     found = None
@@ -115,7 +117,7 @@ def _use(uses: list, field: str, labels: dict[str, str], label: str) -> str | No
             continue
         if kind == 'group':
             found = found or 'group'
-        elif str(equals) in wanted:
+        elif any(str(v) in wanted for v in (equals if isinstance(equals, list) else [equals])):
             return kind
     return found
 
@@ -211,27 +213,32 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
             applied = use in ('filter', 'share')
             if direction == 'exclude':
                 other = _excluding_view(views, field, label)
-                if other is not None and not applied and other['source'] in tables:
+                if use == 'exclude':   # the query itself leaves the meaning's codes out
+                    understood.append(_says(direction, label, f'{column} 不是 {codes}（{label}）'))
+                elif other is not None and not applied and other['source'] in tables:
                     apply.append(other)   # the view a person made leaves it out: read that (a dimension on the column is fine)
                     understood.append(_says(direction, label, f'读视图 {other["name"]}'))
                 else:
                     hint = f'（你定义过的视图「{other["name"]}」就是把它排除后的行，可以直接问它）' if other else ''
-                    unmet.append({'definition': label, 'kind': 'meaning', 'why': f'{what}：{EXCLUDING}{hint}'})
-                    understood.append(_says(direction, label, '查询做不到排除'))
+                    unmet.append({'definition': label, 'kind': 'meaning', 'why': f'{what}：{NOT_LEFT_OUT}{hint}'})
+                    understood.append(_says(direction, label, '查询没有把它排除'))
             elif direction == 'include':
                 if use is None:
                     unmet.append({'definition': label, 'kind': 'meaning', 'why': f'{what} 是确认过的含义，但这条查询没有按它筛选'})
-                understood.append(_says(direction, label, f'{column} = {codes}' if applied else f'按 {column} 分组' if use else '查询没有按它筛选'))
+                elif use == 'exclude':
+                    unmet.append({'definition': label, 'kind': 'meaning', 'why': f'{what}：问题要把它算进来，这条查询却把它排除了'})
+                understood.append(_says(direction, label, f'{column} = {codes}' if applied else f'{column} 不是 {codes}，和问题相反' if use == 'exclude' else f'按 {column} 分组' if use else '查询没有按它筛选'))
             elif direction == 'mention':
-                if use == 'filter':
+                if use in ('filter', 'exclude'):
                     unmet.append({'definition': label, 'kind': 'meaning', 'why': f'{what}：出题员说问题只是提到它，这条查询却按它筛选了行，方向没法核对'})
                 elif use is None:
                     unmet.append({'definition': label, 'kind': 'meaning', 'why': f'{what}：出题员说问题只是提到它，但这条查询既没有算它的占比，也没有按「{column}」分组，{UNBACKED}'})
-                understood.append(_says(direction, label, f'算它的占比（{column} = {codes}）' if use == 'share' else f'按 {column} 分组' if use == 'group' else f'{column} = {codes}' if use else UNBACKED_HOW))
+                understood.append(_says(direction, label, f'算它的占比（{column} = {codes}）' if use == 'share' else f'按 {column} 分组' if use == 'group' else f'{column} 不是 {codes}' if use == 'exclude' else f'{column} = {codes}' if use else UNBACKED_HOW))
             elif not offered(ident, label):
                 continue
-            elif use == 'filter' or use == 'share':
-                omitted.append(({'definition': label, 'kind': 'meaning', 'why': f'{what} 是确认过的含义，这条查询按它筛选了，但出题员没有说明问题是要包含还是排除它，方向没法核对'}, _says(UNSAID, label, f'{column} = {codes}，但出题员没说方向')))
+            elif use in ('filter', 'share', 'exclude'):
+                omitted.append(({'definition': label, 'kind': 'meaning', 'why': f'{what} 是确认过的含义，这条查询按它筛选了，但出题员没有说明问题是要包含还是排除它，方向没法核对'},
+                                _says(UNSAID, label, f'{column} {"不是" if use == "exclude" else "="} {codes}，但出题员没说方向')))
             elif label not in addressed and _verbatim(question, label, column):
                 omitted.append(({'definition': label, 'kind': 'meaning', 'why': f'{what} 是确认过的含义，问题里说了它，但出题员没有说明它是怎么用的，这条查询也没有按它筛选'}, _says(UNSAID, label, UNSAID_HOW)))
     unknown = [(name, d) for name, d in sorted(declared.items()) if name not in known and not (told is not None and name in told)]
