@@ -8,6 +8,7 @@ from ontology_poc_generator.accounts import RANK
 
 PUBLIC = 'public'    # no sign-in needed
 SESSION = 'session'  # any signed-in person, whatever the role
+UNLIMITED = 'unlimited'   # a builder or an admin whom no type list and no row rule limits (auth_http.limited_anywhere): the early screen's runs hold whole tables
 
 _RUNS = r'/api/ontology/runs(/.+)?'
 _UPLOAD_AND_DELETE = r'/api/workspace/datasets/(upload(/preview)?|delete)'
@@ -36,10 +37,10 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/workspace/agent/derived', 'viewer'),   # answered 405 with the way to ask: it is a POST now
     ('POST', r'/api/workspace/agent/derived', 'viewer'),   # a POST so that the key of the object read is not in an address a proxy logs; nothing is written
     ('GET', r'/api/workspace/agent(/skill)?', 'builder'),   # the page of what an agent can call, and the skill download
-    ('GET', _RUNS, 'viewer'),
-    ('GET', r'/api/ontology/jobs/[^/]+', 'viewer'),
-    ('GET', r'/api/ontology/library(/.+)?', 'viewer'),
-    ('POST', r'/api/ontology/ask', 'viewer'),
+    ('GET', _RUNS, UNLIMITED),   # the early screen reads its runs with no type list, row rule or kept-back value applied
+    ('GET', r'/api/ontology/jobs/[^/]+', UNLIMITED),
+    ('GET', r'/api/ontology/library(/.+)?', 'viewer'),   # reference ontologies, no company data
+    ('POST', r'/api/ontology/ask', UNLIMITED),
     ('POST', r'/api/workspace/ask', 'viewer'),
     # change data, start model work, write definitions
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
@@ -52,12 +53,13 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/sources(/(update|delete|test))?', 'admin'),   # a new outbound connection, and the password for it: the admin's
     ('POST', r'/api/workspace/schedules(/(update|delete))?', 'builder'),   # a schedule repeats what a builder may already do by hand
     ('POST', r'/api/workspace/row-rules', 'admin'),   # who sees which rows of a type: the admin's, with the permissions page
-    ('POST', r'/api/ontology/(build|jobs|preview|compare|variants|requery|library/import)', 'builder'),
-    ('POST', r'/api/ontology/reference/(preview|confirm)', 'builder'),
-    ('POST', r'/api/ontology/(confirm|acceptance|card|derived|bulk-approve|repeat-rules|views|rules|form|pipelines/run)', 'builder'),
-    ('POST', r'/api/ontology/(form|code-meanings)/draft', 'builder'),
-    ('POST', r'/api/ontology/code-meanings(/(dismiss|withdraw))?', 'builder'),
-    ('POST', r'/api/ontology/review/confirm', 'builder'),
+    ('POST', r'/api/ontology/library/import', 'builder'),
+    ('POST', r'/api/ontology/(build|jobs|preview|compare|variants|requery)', UNLIMITED),
+    ('POST', r'/api/ontology/reference/(preview|confirm)', UNLIMITED),
+    ('POST', r'/api/ontology/(confirm|acceptance|card|derived|bulk-approve|repeat-rules|views|rules|form|pipelines/run)', UNLIMITED),
+    ('POST', r'/api/ontology/(form|code-meanings)/draft', UNLIMITED),
+    ('POST', r'/api/ontology/code-meanings(/(dismiss|withdraw))?', UNLIMITED),
+    ('POST', r'/api/ontology/review/confirm', UNLIMITED),
     # people and settings
     ('GET', r'/api/users', 'admin'),
     ('POST', r'/api/users(/(update|disable|reset-password))?', 'admin'),
@@ -95,4 +97,5 @@ def required_role(method: str, path: str) -> str:
 
 
 def allows(role: str, needed: str) -> bool:
-    return needed in (PUBLIC, SESSION) or RANK[role] >= RANK[needed]
+    """The role part only: UNLIMITED needs a builder here, and the gate also asks limited_anywhere."""
+    return needed in (PUBLIC, SESSION) or RANK[role] >= RANK['builder' if needed == UNLIMITED else needed]
