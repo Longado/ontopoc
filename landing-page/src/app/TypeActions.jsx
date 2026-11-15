@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { confirmAction, createAction, getAction, getActions, submitAction, withdrawRecord } from "./api.js";
+import { confirmAction, createAction, getAction, getActions, submitAction, undoRecord, withdrawRecord } from "./api.js";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
 import { State } from "./TypesPage.jsx";
@@ -13,15 +13,17 @@ function Records({ name }) {
   if (state.status === "error") return <p className="error">{state.error}</p>;
   if (!state.data) return <p className="muted">加载中</p>;
   const { records, log } = state.data;
-  const withdraw = async (id) => {
+  const act = (call) => async (id) => {
     setError("");
     try {
-      await withdrawRecord(id);
+      await call(id);
       reload();
     } catch (e) {
       setError(e.message);
     }
   };
+  const withdraw = act(withdrawRecord);
+  const undo = act(undoRecord);   // a new request that writes the before-values back; another builder approves it
   return (
     <>
       {records.length > 0 && (
@@ -35,7 +37,10 @@ function Records({ name }) {
                   <td>{r.object}</td>
                   <td>{r.before_text} → {r.after_text}{r.reason && <span className="muted small block">{r.reason}</span>}</td>
                   <td>{recordStateText(r)}{r.why && <span className="muted small block">{r.why}</span>}</td>
-                  <td>{r.can_withdraw && <button className="plain" onClick={() => withdraw(r.id)}>撤回</button>}</td>
+                  <td className="keep">
+                    {r.can_withdraw && <button className="plain" onClick={() => withdraw(r.id)}>撤回</button>}
+                    {r.can_undo && <button className="plain" title="提交一条把值改回去的请求，要另一位建设者批准" onClick={() => undo(r.id)}>撤销</button>}
+                  </td>
                 </tr>
               ))}
             </tbody>

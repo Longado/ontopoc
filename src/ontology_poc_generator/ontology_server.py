@@ -81,7 +81,7 @@ from ontology_poc_generator.workspace_pipelines import (
     check_expression, columns_at as pipeline_columns, confirm_pipeline, create_pipeline, format_guess, summary as pipeline_summary, list_pipelines, options as pipeline_options, pipeline_detail, pipeline_log, pipeline_versions,
     preview as pipeline_preview, review as pipeline_review, run_detail, run_list, fill_answers as fill_pipeline_answers, run_now as run_pipeline_now, trial_expression, update_pipeline)
 from ontology_poc_generator.object_actions import (
-    action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, update_action, withdraw as withdraw_record)
+    action_detail, action_form, confirm_action, create_action, decide as decide_record, list_actions, submit as submit_action, undo as undo_record, update_action, withdraw as withdraw_record)
 from ontology_poc_generator.derived_properties import time_limit as derived_time_limit, check_expression as check_derived_expression, confirm_derived, create_derived, derived_form, derived_log, derived_shape, list_derived, trial_payload, update_derived
 from ontology_poc_generator.object_views import confirm_view, create_view, list_views, update_view, view_form
 from ontology_poc_generator.row_rules import RuleRefused, set_rules
@@ -1389,7 +1389,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
                     with runs_lock:   # the lock an upload takes (see types_post)
-                        handlers = {'': create_action, '/update': update_action, '/confirm': confirm_action, '/submit': submit_action, '/decide': decide_record, '/withdraw': withdraw_record}
+                        handlers = {'': create_action, '/update': update_action, '/confirm': confirm_action, '/submit': submit_action, '/decide': decide_record, '/withdraw': withdraw_record, '/undo': undo_record}
                         if route not in handlers:
                             self.reply(404, {'error': 'Unknown workspace endpoint'})
                             return

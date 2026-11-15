@@ -2,8 +2,9 @@
 
 export const RECORD_STATE = { pending: "等批准", approved: "已批准", rejected: "已驳回", withdrawn: "已撤回", expired: "已过期", needs_look: "需再看" };
 
-/** A record's state in words; a pending one whose dataset moved says so. */
-export const recordStateText = (r) => (r.stale && r.state === "pending" ? "等批准（数据已变）" : RECORD_STATE[r.state] ?? r.state);
+/** A record's state in words; a pending one whose dataset moved says so, and one that undoes another names it. */
+export const recordStateText = (r) =>
+  (r.stale && r.state === "pending" ? "等批准（数据已变）" : RECORD_STATE[r.state] ?? r.state) + (r.undo_of ? `（撤销 #${r.undo_of}）` : "");
 
 /** A fresh form: no name, nothing ticked, no condition. */
 export const emptyActionForm = () => ({ name: "", description: "", properties: [], condition: { column: "", value: "" } });
