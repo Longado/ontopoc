@@ -1,8 +1,10 @@
 """How the real-model check scores an answer: right, wrong (a number that does not match the rows), missed (refused or not answered, which is
 never a wrong number) or error. Only a wrong number fails the check."""
+import tempfile
 import unittest
+from pathlib import Path
 
-from scripts.real_model_check import judge
+from scripts.real_model_check import fresh_data_dir, judge
 
 
 class JudgeTests(unittest.TestCase):
@@ -23,6 +25,19 @@ class JudgeTests(unittest.TestCase):
         self.assertEqual(judge({'expect': 'count', 'truth': 16}, 502, {'error': '模型没有返回问题列表'}), 'error')
         self.assertEqual(judge({'expect': 'count', 'truth': 16}, None, None), 'error')
 
+
+
+class DataDirTests(unittest.TestCase):
+    def test_the_check_empties_only_a_folder_of_its_own_inside_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            (out / 'data').mkdir()
+            (out / 'data' / 'keep.txt').write_text('someone else\'s')   # --out pointed at a project folder by mistake
+            made = fresh_data_dir(out)
+            (made / 'old.sqlite').write_text('x')
+            again = fresh_data_dir(out)
+            self.assertEqual((made, again, list(again.iterdir())), (out / 'real-model-check-data', out / 'real-model-check-data', []))
+            self.assertTrue((out / 'data' / 'keep.txt').exists())
 
 if __name__ == '__main__':
     unittest.main()
