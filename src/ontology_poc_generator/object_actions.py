@@ -576,6 +576,13 @@ def undo(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     rec = _record(conn, payload.get('id'), user)
     attempt = {'op': 'undo', 'record': rec['id']}
     refuse = lambda message, status=409: _refuse(conn, who, rec['action_id'], message, attempt, status, record=rec['id'])
+    type_row = element_row(conn, rec['type_id'])
+    t = _content(type_row)
+    dataset = current_dataset(conn, rec['dataset'])
+    key = json.loads(rec['key_json'])
+    found = _find(conn, t, dataset, key) if dataset else None
+    if not _may_read(conn, type_row, found, user):   # first: nothing about the request is said to someone who may not read its object
+        refuse('没有这个对象，或者你看不到它', 404)
     if rec['state'] != 'approved':
         refuse('只有已批准的提交可以撤销：还在等批准的，提交的人可以撤回，别人可以驳回')
     if _undone_by(conn, rec['id']) is not None:
@@ -584,17 +591,12 @@ def undo(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     content = _content(action)
     if action['state'] != 'confirmed':
         refuse(f'这个行为现在{STATE_WORDS.get(action["state"], action["state"])}，要回到已确认才能提交撤销')
-    type_row = element_row(conn, rec['type_id'])
-    t = _content(type_row)
-    dataset = current_dataset(conn, rec['dataset'])
-    key = json.loads(rec['key_json'])
-    found = _find(conn, t, dataset, key) if dataset else None
-    if not _may_read(conn, type_row, found, user):
-        refuse('没有这个对象，或者你看不到它', 404)
     shown = _object_text(t, key)
     if found is None:
         refuse(f'{shown} 已经不在数据里了，没法撤销')
     was, wrote = json.loads(rec['before_json']), json.loads(rec['after_json'])
+    if set(wrote) != set(content['properties']):
+        refuse(f'行为的定义变了：#{rec["id"]} 改的是 {"、".join(wrote)}，现在这个行为改的是 {"、".join(content["properties"])}。不能用它撤销，请按现在的值另外提交')
     moved = [f'“{c}”批准时写成“{_label(conn, t["english_name"], c, wrote[c])}”，现在是“{_label(conn, t["english_name"], c, found.get(c))}”'
              for c in wrote if _canonical(found.get(c)) != _canonical(wrote[c])]
     if moved:
@@ -607,6 +609,8 @@ def undo(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     text = f'{who} 提交撤销 #{rec["id"]}（“{content["name"]}”）：{shown}，{_pairs(conn, content, now)} → {_pairs(conn, content, was)}' + (f'（{reason}）' if reason else '')
     conn.execute('BEGIN IMMEDIATE')
     try:
+        if _undone_by(conn, rec['id']) is not None:   # again inside the write: two undos sent at once make one request
+            raise TypeRefused(f'#{rec["id"]} 已经撤销过，或者有一条撤销在等批准', 409)
         record_id = conn.execute('INSERT INTO action_record(action_id, action_version, type_id, dataset, dataset_version, key_json, before_json, after_json, reason, state, submitted_by,'
                                  " submitted_by_user_id, submitted_at, undo_of) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)",
                                  (rec['action_id'], action['version'], rec['type_id'], dataset['name'], dataset['version'], rec['key_json'], json.dumps(now, ensure_ascii=False),
