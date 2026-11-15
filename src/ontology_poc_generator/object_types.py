@@ -430,7 +430,13 @@ def propose_meanings(conn, payload: dict, who: str | None, user: dict | None = N
     was = element_row(conn, change[0])
     write_elements(conn, [change], {change[0]: [f'column:{dataset["name"]}.{column}']}, {change[0]: was['version']} if was else None,
                    (lambda c: _meaning_reset_flags(c, [column], content['english_name'])) if was and was['state'] == 'confirmed' else None)
+    _refresh_view_reasons(conn, content['english_name'], column)
     return {'changed': True}
+
+
+def _refresh_view_reasons(conn, english_name: str, column: str) -> None:
+    from ontology_poc_generator.object_views import refresh_new_value_reasons   # object_views reads this module
+    refresh_new_value_reasons(conn, english_name, column)
 
 
 # --- checks: now, and again when the data moves ---------------------------------------------------------------------------------------------------
@@ -711,6 +717,8 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
     if seen != now:
         raise TypeRefused(f'数据在你看过之后变了：{dataset["name"]} 现在是第 {dataset["version"]} 版，和你看到的不一样，请刷新后重新看一遍', 409)
     write_confirmation(conn, element_id, content, evidence, who, anchors, {dataset['name']: dataset['version']}, row['version'])
+    if not is_type:
+        _refresh_view_reasons(conn, element_id[len(ENUM_PREFIX):].partition(':')[0], content['column'])
     return {'state': 'confirmed'}
 
 
@@ -762,7 +770,20 @@ def reason_for(conn, row: dict, user: dict | None) -> tuple[str | None, str | No
         return None, None
     if row['state'] == 'needs_look' and row['reason'] and limited_on(conn, row, user):
         return None, HIDDEN_REASON
-    return row['reason'], None
+    return (_settled_since(conn, row) if row['state'] == 'needs_look' and row['reason'] else row['reason']), None
+
+
+def _settled_since(conn, row: dict) -> str:
+    """The reason as it reads now: each "它用的X需要再看（原因见…）" the store wrote when X went to needs_look says, once X has been confirmed again, who confirmed it
+    and that this element still waits for its own confirmation. Only the words read on the pages change; the stored reason, the log and the graph's cause
+    (which reads the stored sentence) stay as written."""
+    reason = row['reason']
+    for (parent,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (row['element_id'],)).fetchall():
+        said = f'它用的{_label(conn, parent)}需要再看' if (held := element_row(conn, parent)) and held['state'] == 'confirmed' else None
+        if said and said in reason:
+            who = conn.execute('SELECT confirmed_by FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (parent,)).fetchone()
+            reason = re.sub(re.escape(said) + r'(（原因见[^）]*）)?', f'它用的{_label(conn, parent)}已经由 {who[0] if who and who[0] else "另一位"} 重新确认，这一项还要再确认一次', reason)
+    return reason
 
 
 def refuse_if_limited(conn, row: dict, user: dict | None) -> None:

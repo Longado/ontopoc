@@ -417,6 +417,28 @@ class ConfirmAndVersionTests(DerivedTestCase):
             self.assertEqual([(u['kind'], u['count']) for u in uses['used_by'] if u['kind'] == 'derived'], [('derived', 2)])
 
 
+    def test_the_lineage_draws_a_derived_property_after_the_types_and_relations_it_reads_and_a_viewer_sees_only_confirmed_ones(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
+            self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)   # put forward, not confirmed
+            graph = ann.get('/api/workspace/graph/lineage')[1]
+            nodes = {n['id']: n for n in graph['nodes']}
+            count, gross = nodes['derived:customer:cancelled_orders'], nodes['derived:order:gross']
+            self.assertEqual((count['kind'], count['derived_kind'], count['type'], count['type_name'], count['name'], count['state']),
+                             ('derived', 'statistic', 'customer', '客户', '已取消订单数', 'confirmed'))
+            self.assertEqual((gross['kind'], gross['derived_kind'], gross['state']), ('derived', 'function', 'checked'))
+            edges = {(e['from'], e['to']) for e in graph['edges']}
+            self.assertTrue({('objtype:customer', count['id']), ('objtype:order', count['id']), ('relation:order_customer', count['id'])} <= edges, edges)
+            self.assertIn(('objtype:order', gross['id']), edges)
+            self.assertFalse([e for e in edges if e[1].startswith('derived:') and e[0].startswith('dataset:')])   # the data comes in through the types
+            seen = {n['id'] for n in vera.get('/api/workspace/graph/lineage')[1]['nodes']}
+            self.assertIn(count['id'], seen)
+            self.assertNotIn(gross['id'], seen)   # a viewer reads confirmed properties only
+
 class DefinitionChecksTests(DerivedTestCase):
     def test_a_version_table_counted_or_added_up_is_refused_and_the_latest_version_or_a_distinct_count_is_offered(self):
         with self.service() as (base, out):

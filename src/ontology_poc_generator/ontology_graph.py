@@ -250,8 +250,8 @@ def _pipeline_nodes(conn, user: dict | None) -> list[dict]:
 
 
 def lineage_graph(conn, user: dict | None) -> dict:
-    """Datasets -> pipelines -> the datasets they write -> object types -> relations, views and actions -> the person's saved answers, from element_dep and the answers'
-    own record. A dataset is drawn when a type this person may see reads it (a builder also sees one nothing reads); a hidden type is not there at all. A pipeline is
+    """Datasets -> pipelines -> the datasets they write -> object types -> relations, views, actions and derived properties -> the person's saved answers, from
+    element_dep and the answers' own record. A derived property comes after every type and relation it walks; its data comes in through those types. A dataset is drawn when a type this person may see reads it (a builder also sees one nothing reads); a hidden type is not there at all. A pipeline is
     drawn for the people who may see it, between what it reads (datasets, views) and what it writes."""
     drawn_relations = relation_graph(conn, user)
     types = drawn_relations['nodes']
@@ -259,6 +259,7 @@ def lineage_graph(conn, user: dict | None) -> dict:
     for t in types:
         for kind in ('view', 'action'):
             nodes += [{**v, 'kind': kind, 'type': t['key'], 'type_name': t['name']} for v in t[f'{kind}s']]
+        nodes += [{**d, 'kind': 'derived', 'derived_kind': d['kind'], 'type': t['key'], 'type_name': t['name']} for d in t['derived']]   # d['kind'] is function or statistic
     relations = drawn_relations['edges']
     nodes += relations
     by_dataset: dict[str, list[dict]] = {}
@@ -275,8 +276,8 @@ def lineage_graph(conn, user: dict | None) -> dict:
     for p in pipelines:   # what it reads (datasets, views) into the pipeline, and the pipeline into the datasets it writes
         edges += [{'from': parent, 'to': p['id']} for (parent,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ?', (p['id'],)).fetchall() if parent in ids and parent.startswith(('dataset:', VIEW_PREFIX))]
         edges += [{'from': p['id'], 'to': written} for (written,) in conn.execute("SELECT element_id FROM element_dep WHERE depends_on = ? AND element_id LIKE 'dataset:%'", (p['id'],)).fetchall() if written in ids]
-    for n in nodes:   # what each element reads that is drawn: the datasets under a type, the type under a view or action
-        if n['kind'] in ('type', 'view', 'action'):
+    for n in nodes:   # what each element reads that is drawn: the datasets under a type, the type under a view or action, the types and relations a derived property walks
+        if n['kind'] in ('type', 'view', 'action', 'derived'):
             for (parent,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ?', (n['id'],)).fetchall():
                 if parent in ids and (n['kind'] == 'type') == parent.startswith('dataset:'):
                     edges.append({'from': parent, 'to': n['id']})

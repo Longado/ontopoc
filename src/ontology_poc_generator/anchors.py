@@ -147,7 +147,7 @@ def check_code(anchor: dict, labels: dict[str, str], profile: dict | None, recor
                 different[pair] += 1
                 example.setdefault(pair, sample)
     for (value, now_codes), n in sorted(different.items()):
-        changes.append(f'抽查的同一批行里，{n} 行上次是 {value}，现在是 {now_codes}（如{_example(example[(value, now_codes)], anchor['columns'])}）')
+        changes.append(f'抽查的同一批行里，{n} 行上次是 {value}，现在是 {now_codes}（如{_example(example[(value, now_codes)], anchor["columns"])}）')
     gone = [v for v in sorted(labels) if v in anchor['values'] and v not in now]
     if changes and gone:
         changes.append('已有含义的取值现在一行都没有：' + '、'.join(gone))
