@@ -1868,7 +1868,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return (value or '').strip() or None
 
         def read_json(self, limit=MAX_BODY):
-            length = int(self.headers.get('Content-Length', '0'))
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+            except ValueError:
+                self.reply(400, {'error': '请求的长度（Content-Length）不是数字，读不了这个 JSON。'})
+                return None
             if not 0 < length <= limit:
                 self.reply(413, {'error': f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。' if limit == MAX_BODY else '请求太大。'})
                 return None
@@ -1879,6 +1883,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 payload = json.loads(self.rfile.read(length))
             except RecursionError:
                 raise ValueError('请求的嵌套层数太多') from None
+            except ValueError:   # not JSON, or not UTF-8: answered here, whichever route asked
+                self.reply(400, {'error': '请求不是有效的 JSON。'})
+                return None
             if not isinstance(payload, dict):
                 raise ValueError('请求必须是 JSON 对象')
             self.payload = payload

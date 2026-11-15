@@ -287,7 +287,7 @@ An admin makes everyone else on the Users page: **viewer** reads and asks, **bui
 
 **Two-person confirmation**: while two or more people can confirm, a definition one person proposes (meanings, object types, relations, views, actions, derived properties, pipelines) takes effect only when another confirms it, and the proposer cannot confirm their own. With one person who can confirm it switches itself off, and the log marks each self-confirmation. An admin can turn it off on the Users page.
 
-**For a team**: the service listens on this machine only and does not do HTTPS. Put a proxy that does in front of it, for example Caddy:
+**For a team**: the service listens on this machine only and does not do HTTPS. Put a proxy that does in front of it, for example Caddy (full steps, backups and what to watch in permissions are in [docs/DEPLOY.md](docs/DEPLOY.md), in Chinese):
 
 ```
 ontopoc.example.com {

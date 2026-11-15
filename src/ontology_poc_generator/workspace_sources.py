@@ -12,6 +12,7 @@ failed) are an admin's. Everything a person reads of a pull, a table or a schedu
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import json
 import re
 import sqlite3
@@ -155,10 +156,19 @@ def _text(payload: dict, field: str, label: str, limit: int = TEXT_LIMIT, requir
     return value.strip()
 
 
+def _ipv6(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host.strip('[]')).version == 6
+    except ValueError:
+        return False
+
+
 def _connection_fields(payload: dict, kind: str) -> dict:
     host = _text(payload, 'host', '主机')
     if re.search(r'[\s/@?#]', host) or '://' in host:
         raise ValueError('主机只写地址，例如 db.example.com 或 10.0.0.5，不要带协议、路径或账号')
+    if ':' in host and not _ipv6(host):
+        raise ValueError('主机里不要写端口，端口有单独的一格（例如主机写 db.example.com，端口写 3306）')
     port = payload.get('port', DEFAULT_PORTS[kind])
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise ValueError('端口要写成 1 到 65535 的整数')
