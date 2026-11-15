@@ -95,7 +95,10 @@ def _sheets(filename: str, data: bytes) -> dict:
     if not data:
         raise SourceFileError('文件是空的')
     if suffix == '.csv':
-        return {PurePath(filename).stem: _records(list(csv.reader(io.StringIO(_decode(data)))))}
+        try:
+            return {PurePath(filename).stem: _records(list(csv.reader(io.StringIO(_decode(data)))))}
+        except csv.Error as exc:   # a cell longer than the reader allows, a stray quote that runs to the end of the file
+            raise SourceFileError(f'无法作为 CSV 读取（可能有单元格超过 {csv.field_size_limit()} 个字符，或引号没有配对）：{exc}') from None
     return _read_xlsx(data)
 
 

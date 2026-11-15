@@ -1,0 +1,148 @@
+import React, { useEffect, useState } from "react";
+import { getDatasets, getPipelineOptions, pipelineSummary, previewNode, runPipeline, savePipeline } from "./api.js";
+import { AiDraftPanel, RunDialog } from "./AiDraftPanel.jsx";
+import { PipelineBar } from "./PipelineBar.jsx";
+import { PipelineGraph } from "./PipelineGraph.jsx";
+import { PipelinePanel } from "./PipelinePanel.jsx";
+import { KIND_LABEL, addStep, applyDraft, friendlyError, kindLine, newStep, orphans, sameSpec, stepTitle } from "./pipelineModel.js";
+import { hrefFor } from "./routeModel.js";
+import { StepEditor } from "./StepEditors.jsx";
+import { useSettled } from "./useSettled.js";
+
+const ADDABLE = ["input", "join", "transform", "llm", "output"];
+const LEAVE_ASK = "有改动还没保存，离开会丢掉这些改动。要离开吗？";
+
+/** While there are unsaved changes: closing or reloading the tab asks, and so does following a link to another page of the app. (The browser's back button cannot be stopped from here.) */
+function useLeaveGuard(dirty) {
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const onUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const onClick = (e) => {
+      const link = e.target instanceof Element ? e.target.closest("a[href]") : null;
+      const to = link?.getAttribute("href");
+      if (to?.startsWith("#") && to !== window.location.hash && !window.confirm(LEAVE_ASK)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", onUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [dirty]);
+}
+
+/** The editing page: steps on the left, the graph in the middle, the selected step's editor on the right, rows / columns / statistics / log below. Nothing is saved until 保存. */
+export function PipelineEditor({ detail, reload }) {
+  const name = detail.name;
+  const [draft, setDraft] = useState(detail.spec);
+  const [selected, setSelected] = useState(detail.spec.steps[detail.spec.steps.length - 1]?.id ?? null);
+  const [tab, setTab] = useState("rows");
+  const [upto, setUpto] = useState(null);
+  const [datasets, setDatasets] = useState([]);
+  const [options, setOptions] = useState(null);
+  const [asking, setAsking] = useState(false);
+  const [confirmRun, setConfirmRun] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    setDraft(detail.spec);
+  }, [detail.version]);
+  useEffect(() => {
+    getDatasets().then(setDatasets, () => {});
+    getPipelineOptions().then(setOptions, () => {});
+  }, []);
+  const dirty = !sameSpec(draft, detail.spec);
+  useLeaveGuard(dirty);
+  const step = draft.steps.find((s) => s.id === selected) ?? null;
+  const summary = useSettled(() => pipelineSummary(name, draft), JSON.stringify(draft));
+  const nodes = Object.fromEntries((summary.data?.nodes ?? []).map((n) => [n.id, n]));
+  const preview = useSettled(() => (step && tab !== "log" ? previewNode(name, draft, step.id, upto) : Promise.resolve(null)), JSON.stringify([draft, selected, upto, tab === "log"]));
+  const hasOutput = draft.steps.some((s) => s.type === "output");
+  const hasAi = draft.steps.some((s) => s.type === "llm");
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      await savePipeline(name, detail.version, draft);
+      reload();
+    } catch (e) {
+      setError(e.message);
+    }
+    setSaving(false);
+  };
+  const run = async () => {
+    setRunning(true);
+    setError("");
+    try {
+      const made = await runPipeline(name);
+      window.location.hash = hrefFor({ page: "pipeline", name, view: "run", run: made.id });
+    } catch (e) {
+      setError(e.message);
+      setRunning(false);
+    }
+  };
+  const add = (kind) => {
+    const made = newStep(draft.steps, kind, selected, datasets.map((d) => d.name), options?.model ?? "");
+    setDraft(addStep(draft, made));
+    setSelected(made.id);
+    setUpto(null);
+  };
+  const select = (id) => {
+    setSelected(id);
+    setUpto(null);
+  };
+  const lost = new Set(orphans(draft.steps));
+  return (
+    <div className="pl">
+      <PipelineBar detail={detail} view="edit">
+        <span className={`saved${dirty ? " unsaved" : ""}`}>{dirty ? "有改动还没保存" : `已保存，第 ${detail.definition_version} 版`}</span>
+        <button className="secondary" onClick={() => setAsking(true)} disabled={!options?.model_ready} title={options && !options.model_ready ? "本机服务没有模型凭据" : "用一句话让 AI 写几个步骤"}>AI</button>
+        <button className="secondary" onClick={save} disabled={!dirty || saving}>{saving ? "保存中" : "保存"}</button>
+        <button className="primary" onClick={() => (hasAi ? setConfirmRun(true) : run())} disabled={dirty || running || !hasOutput} title={dirty ? "先保存" : !hasOutput ? "要有一个输出才能运行" : ""}>{running ? "运行中" : "运行"}</button>
+      </PipelineBar>
+      {error && <p className="error pl-error">{friendlyError(error, draft.steps)} {error.includes("被改了") && <button className="plain" onClick={reload}>重新载入</button>}</p>}
+      {summary.status === "error" && <p className="error pl-error">{friendlyError(summary.error, draft.steps)}</p>}
+      {summary.status === "ready" && summary.data.error && <p className="error pl-error">{friendlyError(summary.data.error, draft.steps)}（图里只算到这一步之前）</p>}
+      <div className="pl-grid">
+        <aside className="pl-steps" aria-label="步骤">
+          <ol>
+            {draft.steps.map((s) => (
+              <li key={s.id}>
+                <button className={`step-item${selected === s.id ? " on" : ""}`} onClick={() => select(s.id)} aria-current={selected === s.id ? "true" : undefined}>
+                  <span className="step-kind">{kindLine(s)}{lost.has(s.id) && "，不会运行"}</span>
+                  <span className="step-title">{stepTitle(s, draft.steps)}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div className="step-add">
+            <p className="caption">加一步</p>
+            {ADDABLE.map((k) => <button key={k} className="plain" onClick={() => add(k)}>{KIND_LABEL[k]}</button>)}
+          </div>
+        </aside>
+        <section className="pl-graph" aria-label="管道图">
+          <PipelineGraph steps={draft.steps} nodes={nodes} selected={selected} onSelect={select} />
+        </section>
+        <section className="pl-editor" aria-label="编辑这一步">
+          <StepEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} datasets={datasets} name={name} catalog={options?.operators ?? []} options={options} dirty={dirty} onPreviewTo={(i) => { setUpto(i); setTab("rows"); }} onRemoved={() => setSelected(null)} />
+        </section>
+        <section className="pl-bottom" aria-label="这一步的内容">
+          <PipelinePanel tab={tab} setTab={setTab} preview={preview} upto={upto} onClearUpto={() => setUpto(null)} name={name} step={step} steps={draft.steps} node={step ? nodes[step.id] : null} />
+        </section>
+      </div>
+      {asking && (
+        <AiDraftPanel name={name} spec={draft} selected={selected} onClose={() => setAsking(false)}
+          onApply={(steps) => { setDraft(applyDraft(draft, steps)); setSelected(steps[0].id); setUpto(null); }} />
+      )}
+      {confirmRun && <RunDialog name={name} spec={draft} onClose={() => setConfirmRun(false)} onGo={run} />}
+    </div>
+  );
+}

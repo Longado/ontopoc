@@ -45,6 +45,10 @@ class RelationCheckTests(unittest.TestCase):
         side = self.side('order_product')
         self.assertEqual((side['rows'], side['matched'], side['unmatched'], side['samples']), (160, 160, 0, []))
 
+    def test_the_planted_relation_read_by_its_own_key_has_no_blank_rows_there(self):
+        relation = self.found['order_product']
+        self.assertEqual((relation['own_ends'], relation['own_blank']), (['from'], {'from': 0}))
+
     def test_an_end_no_table_describes_has_nothing_to_match_against(self):
         self.assertNotIn('ticket_engineer', self.found)
 
@@ -79,7 +83,8 @@ class KeyShapeTests(unittest.TestCase):
             {'key': 'customer', 'label': '客户', 'populated_from': [{'source': '客户', 'identity': {'id': '编号'}}], 'attributes': [{'source': '客户', 'path': '名称'}]},
             {'key': 'order', 'label': '订单', 'populated_from': [{'source': '订单', 'identity': {'id': '订单号'}}], 'attributes': [{'source': '订单', 'path': '金额'}]}],
             'relations': [{'key': 'oc', 'from': 'order', 'to': 'customer', 'source': '订单', 'from_identity': {'id': '订单号'}, 'to_identity': {'id': '客户'}}]}
-        return check_relations(conn, draft, datasets)[0]['sides'][0]
+        self.last = check_relations(conn, draft, datasets)[0]
+        return self.last['sides'][0]
 
     def test_empty_keys_are_not_matches_or_misses_and_near_misses_are_counted_apart(self):
         orders = [{'订单号': str(i), '金额': '1', '客户': k} for i, k in enumerate(['A', ' B', '', 'c', 'Z', 'Z'])]
@@ -88,6 +93,12 @@ class KeyShapeTests(unittest.TestCase):
         self.assertEqual((side['rows'], side['empty'], side['matched'], side['unmatched']), (6, 1, 1, 4))
         self.assertEqual((side['unmatched_keys'], side['samples'][0], side['if_trimmed']), (3, {'key': 'Z', 'rows': 2}, 2))   # " B" and "c" would match trimmed / ignoring case
 
+
+    def test_a_table_read_by_its_own_key_counts_the_rows_where_that_key_is_blank(self):
+        orders = [{'订单号': str(i) if i > 3 else '', '金额': '1', '客户': 'A'} for i in range(10)]   # four of ten orders have no number
+        side = self.check(orders, [{'编号': 'A', '名称': 'a'}])
+        self.assertEqual(side['rows'], 10)
+        self.assertEqual(self.last['own_blank'], {'from': 4})
 
     def test_keys_that_differ_only_in_how_a_number_is_written_are_near_misses_too(self):
         orders = [{'订单号': str(i), '金额': '1', '客户': k} for i, k in enumerate(['1.0', '001', '7', '2'])]

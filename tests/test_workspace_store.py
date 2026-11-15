@@ -222,6 +222,32 @@ class WorkspaceStoreTests(unittest.TestCase):
             self.addCleanup(again.close)
             self.assertEqual(again.execute('SELECT name, rows_stored FROM dataset').fetchall(), [('a', 1)])
 
+    def test_a_file_made_before_ids_were_never_reused_is_rebuilt_and_loses_no_row_but_the_orphans(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as out:
+            path = Path(out) / 'workspace.sqlite'
+            conn = open_workspace(path)
+            a = import_records(conn, 'a', [{'x': '1'}], 't', 'sha-a')
+            check_key(conn, a['id'], ['x'])
+            conn.execute("INSERT INTO check_result(element_id, check_type, query, status, dataset_id) VALUES ('key:gone(x)', 'key_unique', 'q', 'passed', 99)")
+            conn.execute('DROP TABLE dataset')   # the tables as an older build made them: no AUTOINCREMENT
+            conn.execute('DROP TABLE check_result')
+            conn.execute('CREATE TABLE dataset (id INTEGER PRIMARY KEY, name TEXT NOT NULL, version INTEGER NOT NULL, origin TEXT, file_sha256 TEXT NOT NULL, rows_in INTEGER NOT NULL,'
+                         ' rows_stored INTEGER NOT NULL, table_name TEXT NOT NULL, imported_at TEXT NOT NULL, dropped_json TEXT, who TEXT, mode TEXT, changes_json TEXT, UNIQUE (name, version))')
+            conn.execute('CREATE TABLE check_result (id INTEGER PRIMARY KEY, element_id TEXT NOT NULL, check_type TEXT NOT NULL, query TEXT NOT NULL, rows_checked INTEGER, violations INTEGER,'
+                         " samples_json TEXT, dataset_id INTEGER, null_key_rows INTEGER, status TEXT NOT NULL, checked_at TEXT NOT NULL DEFAULT '')")
+            conn.execute("INSERT INTO dataset(id, name, version, file_sha256, rows_in, rows_stored, table_name, imported_at) VALUES (5, 'a', 1, 's', 1, 1, 'ds_1', 'now')")
+            conn.execute("INSERT INTO check_result(element_id, check_type, query, status, dataset_id) VALUES ('key:a(x)', 'key_unique', 'q', 'passed', 5)")
+            conn.execute("INSERT INTO check_result(element_id, check_type, query, status, dataset_id) VALUES ('key:gone(x)', 'key_unique', 'q', 'passed', 99)")
+            conn.close()
+            again = open_workspace(path)
+            self.addCleanup(again.close)
+            self.assertEqual(again.execute('SELECT id, name FROM dataset').fetchall(), [(5, 'a')])
+            self.assertEqual(again.execute('SELECT element_id FROM check_result').fetchall(), [('key:a(x)',)])   # the one whose dataset is gone is dropped
+            again.execute("DELETE FROM dataset WHERE id = 5")
+            self.assertEqual(import_records(again, 'b', [{'x': '1'}], 't', 'sha-b')['id'], 6)   # 5 is never given out again
+            open_workspace(path).close()   # a rebuilt file opens again without another rebuild
+
 
 class ElementStateTests(unittest.TestCase):
     def setUp(self):
@@ -232,6 +258,17 @@ class ElementStateTests(unittest.TestCase):
         cursor = self.conn.execute('SELECT * FROM element_state WHERE element_id = ?', (element_id,))
         found = cursor.fetchone()
         return dict(zip([c[0] for c in cursor.description], found)) if found else None
+
+    def test_a_recheck_by_someone_else_leaves_whose_confirmation_it_was(self):
+        from ontology_poc_generator.actor import set_actor
+        self.addCleanup(set_actor, None)
+        set_actor({'id': 3, 'display_name': 'Bob'})
+        set_element_states(self.conn, [('view:k:v', 'confirmed', None, 'Bob', {'kind': 'filter'})])
+        set_actor({'id': 2, 'display_name': 'Ann'})   # Ann's upload moves the data: the view is checked again, still Bob's confirmation
+        set_element_states(self.conn, [('view:k:v', 'checked', None, 'Bob', {'kind': 'filter'})])
+        row = self.row('view:k:v')
+        self.assertEqual((row['state'], row['confirmed_by'], row['confirmed_by_user_id']), ('checked', 'Bob', 3))
+        self.assertEqual(self.conn.execute("SELECT user_id FROM log WHERE element_id = 'view:k:v' ORDER BY rowid DESC").fetchone()[0], 3)
 
     def test_a_confirmation_keeps_state_evidence_person_time_and_version(self):
         set_element_states(self.conn, [('object_type:k:customer', 'confirmed', 'check_result:3', '王工')])

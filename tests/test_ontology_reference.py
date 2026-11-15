@@ -133,7 +133,7 @@ class ReferenceApiTests(unittest.TestCase):
         class NoModel:
             def complete_json(self, **kwargs):
                 raise AssertionError('domain comparison must not call the model')
-        self.server = make_server(port=0, gateway=NoModel(), output_dir=self.out)
+        self.server = make_server(port=0, gateway=NoModel(), output_dir=self.out, no_auth=True)
         self.thread = threading.Thread(target=lambda: self.server.serve_forever(poll_interval=0.01), daemon=True)
         self.thread.start()
         self.base = f'http://127.0.0.1:{self.server.server_port}'

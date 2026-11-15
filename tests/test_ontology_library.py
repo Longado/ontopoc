@@ -41,7 +41,7 @@ class OntologyLibraryTests(unittest.TestCase):
     @contextmanager
     def server(self):
         with tempfile.TemporaryDirectory() as out:
-            server = make_server(port=0, gateway=NoModelCalls(), output_dir=Path(out))
+            server = make_server(port=0, gateway=NoModelCalls(), output_dir=Path(out), no_auth=True)
             thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
             thread.start()
             try:

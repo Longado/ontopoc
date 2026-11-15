@@ -118,7 +118,7 @@ class RequeryTests(unittest.TestCase):
     def test_it_works_without_a_model_because_no_model_is_called(self):
         from ontology_poc_generator.ontology_server import make_server
         with asked_run() as (_, out, saved_as):
-            server = make_server(port=0, gateway=None, output_dir=out)
+            server = make_server(port=0, gateway=None, output_dir=out, no_auth=True)
             thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
             thread.start()
             try:

@@ -35,9 +35,9 @@ test("select, map, inspect, confirm, reload and cancel keep the user's actual an
   const customerSource = customer.populated_from.find(p => Object.values(p.identity).includes("customerID")).source;
 
   function openReference() {
-    ab("open", url);
+    ab("open", `${url}/legacy.html`);
     evaluate(`localStorage.setItem('ontopoc.studio.last-result', ${JSON.stringify(JSON.stringify(run))})`);
-    ab("open", url);
+    ab("open", `${url}/legacy.html`);
     ab("wait", ".os-overview-file");
     click("数据体检");
     evaluate("[...document.querySelectorAll('.os-segments [role=tab]')].find(e=>e.textContent.includes('对照标准')).click()");

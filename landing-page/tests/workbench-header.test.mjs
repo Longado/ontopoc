@@ -1,4 +1,4 @@
-// ONTOPOC_LAYOUT_URL=http://127.0.0.1:5178 node --test tests/workbench-header.test.mjs
+// ONTOPOC_LAYOUT_URL=http://127.0.0.1:5178/legacy.html node --test tests/workbench-header.test.mjs
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -16,7 +16,7 @@ const click = (role, name) => ab("find", "role", role, "click", "--name", name, 
 after(() => ab("close"));
 
 test("workbench header stays focused while evaluations remain accessible in their own pages", () => {
-  ab("open", process.env.ONTOPOC_LAYOUT_URL || "http://127.0.0.1:5178");
+  ab("open", process.env.ONTOPOC_LAYOUT_URL || "http://127.0.0.1:5178/legacy.html");
   ab("set", "viewport", "1280", "720");
   click("button", "打开示例数据表");
   ab("wait", ".os-overview-file");

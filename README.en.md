@@ -52,7 +52,7 @@ The result can be exported in the shape of a data platform's object form; as a p
 ## Screenshots
 
 <p align="center"><img src="docs/images/readme-confirm.png" alt="Items to confirm: what code gathered for the client" width="880"></p>
-<p align="center"><sub>Items to confirm (要确认的事): 8 items on the sample workbook, each with its basis and a sentence you can ask the client; click "记下客户的回答" in the meeting.</sub></p>
+<p align="center"><sub>Items to confirm (要确认的事): 8 items on the sample workbook, each with its basis and a sentence you can ask the client (the screenshot shows the earlier list; it is now one card at a time).</sub></p>
 
 <p align="center"><img src="docs/images/readme-card.png" alt="Definition cards: one per table" width="880"></p>
 <p align="center"><sub>Definition cards (口径卡): code has already worked out which columns tell each table's rows apart; what one row is and whether a number can be added up are left for the client.</sub></p>
@@ -78,7 +78,7 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 | Open the ontology library (本体库) in the left sidebar | Search and browse 12 Playground reference ontologies by domain, and see objects, properties and relations on a graph. You can also import `.rdf/.owl` files in RDF/XML format. This is for reading definitions only: import calls no model, and you must pick the file again after a refresh |
 | Upload tables and write the question you want answered | Code first counts every row: how many distinct values each column has, which columns differ on every row, which columns point into another table. The model sees each column's name, up to 3 example values and these counts, and proposes objects, identity fields and relations; code checks 14 kinds of error and sends it back to redo, up to 3 rounds |
 | Wait for the build | Builds the same file 3 times at once and marks where the 3 disagree, for you to decide; only objects and relations are compared, not properties; if your purpose asks a question, it is answered from the data too, ready to keep as an acceptance question |
-| Open Items to confirm (要确认的事) | Code gathers what to confirm with the client from the data, the questions and the confirmation record, for example rows whose relations do not connect, objects with the same name but different numbers, and filters the model added by itself in a question. Each item has its basis and a sentence you can ask the client directly. In the meeting, click "记下客户的回答" (record the client's answer); the answers are saved with the run. Columns whose name does not match their arithmetic are here too: a column called 交付天数P50 is worked out again from the rows in another table, and if it is really the mean, it becomes an item (rename it or keep it). Confirmed code meanings, repeated-number rules, named views and relations remember the data they were confirmed on; when a later upload moves it (say the status codes shift), the confirmation is marked "needs another look" (需要再看一眼) and is not used as confirmed until a person confirms it again |
+| Open Items to confirm (要确认的事) | Code gathers what to confirm with the client from the data, the questions and the confirmation record, for example rows whose relations do not connect, objects with the same name but different numbers, and filters the model added by itself in a question. Each item has its basis and a sentence you can ask the client directly. Items come as a stack of cards: the basis, up to 3 example rows from the uploaded table and the check result, a progress line (items left, items decided), keys 1 to 4 to reply (confirm, wrong, not applicable, known exception with its reason, plus the item's own choices) and J / K to move; an item with choices of its own can also be answered in words alone; each reply keeps its own draft; the "left" count leaves out the card to fill in and the objects to judge, which can only be done elsewhere; an answer under 已定 can be taken back and changed with its words in the form, and so can the meanings of a code column, "not a code" and a repeat rule; once a newer version exists, answers and take-backs on the older one are refused. Each reply records who gave it and whether it was decided one by one or in bulk; "not applicable" and "known exception" are not asked again on the next upload unless the data they rest on changes: for a code meaning its values and their share of the rows, for a repeated number the numbers, for unmatched or mismatching rows their share, for the rest that can be counted (conflicting values, groups sharing a name, relations that did not appear often enough, questions that cannot be answered) whether the count has doubled or halved (by at least 5); for what has nothing to count (a model-reported data gap about one column, a column with no table to work it out from) the decision holds until the person takes it back. Only the one-click approval can record "bulk". Only what code can verify completely is listed to approve together: a relation whose two objects are judged right, whose every row connects, whose target table has no repeated numbers, and whose direction is either declared and holds in the data or undeclared but computed one-to-one or many-to-one (the list says which). After you have looked, approving records a bulk confirmation for those items only; what others signed and their versions stay as they were. The service works the list out again inside the write transaction and approves nothing if it changed. A code meaning is a person's reading of the data, which the data cannot prove, so it is never in the list and is confirmed one by one. Approved relations show under 已定 with who approved and "bulk". Columns whose name does not match their arithmetic are here too: a column called 交付天数P50 is worked out again from the rows in another table, and if it is really the mean, it becomes an item (rename it or keep it). Confirmed code meanings, repeated-number rules, named views and relations remember the data they were confirmed on; when a later upload moves it (say the status codes shift), the confirmation is marked "needs another look" (需要再看一眼) and is not used as confirmed until a person confirms it again |
 | Open Data (数据接入) | Each table is checked for row count and key on import (empty numbers, repeated numbers), and the rows dropped are listed with the reason. Code finds columns that look like codes (status 1/2/3), each value with its row count and evidence, and you write what it means. A repeated number in the table that describes an object becomes an item to confirm: keep every row, keep the latest by a column, or call it a data error. Confirmed definitions generate named views (such as "valid orders" or "latest snapshot") listed with their SQL and row count; a definition that no longer holds is marked unavailable with the reason. Every relation is checked on the stored tables: how many rows connect, which keys do not (3 orders name KH099, which the customer table lacks), whether the described end repeats a key, and whether the declared cardinality holds |
 | Join two tables on Data (数据接入) | Pick two tables (or views) and the join columns. Every node shows its rows in and out; when the join makes more rows than the left table, it names the keys that repeat on the right and the sums that would be counted twice. In the synthetic test tables, 160 orders left-joined to tickets become 169 rows |
 | Open Definition cards (口径卡) | One per table: what one row is, what time a date column refers to, whether a numeric column can be added up. Code fills in what it can work out; only the cells the client can answer are left for the meeting. The answers you fill in are used when questions are computed, and are written into the pipeline requirements sheet |
@@ -126,7 +126,7 @@ Install and run OntoPoc (https://github.com/Longado/ontopoc) on this machine:
 4. Ask me for a DeepSeek API key and put it only in this terminal's DEEPSEEK_API_KEY; do not write it to any file.
 5. From the repository root, start the modelling service: PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 6. In another terminal, start the page: cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
-7. Open http://127.0.0.1:5178, upload examples/company/demo_company.xlsx, and tell me how many checks passed in the data check (数据体检).
+7. Open http://127.0.0.1:5178/legacy.html, upload examples/company/demo_company.xlsx, and tell me how many checks passed in the data check (数据体检).
 ```
 
 ### Option B: install it yourself
@@ -144,7 +144,11 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-Open `http://127.0.0.1:5178`. The bundled samples open without a key. After changing backend code, restart the modelling service; the page says so when it finds the service running old code.
+Open `http://127.0.0.1:5178/legacy.html` (the screen organised around runs, which the quick start above uses). The bundled samples open without a key. After changing backend code, restart the modelling service; the page says so when it finds the service running old code.
+
+### Page layout (being rebuilt)
+
+`http://127.0.0.1:5178/` is the new screen, built around one workspace with no runs: the left navigation is grouped as Home, Tasks, Data, Ontology, Apps and Lineage. What works today is Datasets (upload, update by key or overwrite, fields, preview, versions) and Tasks (modelling jobs and upload records); the rest is greyed out. The new screen lives in `landing-page/src/app/`, reads only the workspace API `/api/workspace/*` and never imports the old code. The old screen is all in `landing-page/src/legacy/` (entry `legacy.html`; the old landing text is `legacy.html?landing`), and each old piece goes once the new page that replaces it works. For deployment: what used to be `/landing` is now `legacy.html?landing`; the site configuration has not been changed.
 
 ## Use with MCP / Claude
 
@@ -176,7 +180,7 @@ The tool list is in [docs/MCP.md](docs/MCP.md).
 | Module | What is in it |
 |---|---|
 | Ontology library (本体库) | 12 Playground reference ontologies, browsed by domain, with objects and relations on a graph; import `.rdf/.owl` files in RDF/XML format |
-| Items to confirm (要确认的事) | What to confirm with the client, each with its basis, a sentence you can ask the client directly and "记下客户的回答" (record the client's answer); the meeting note can be downloaded |
+| Items to confirm (要确认的事) | What to confirm with the client, a stack of cards with the basis, example rows and check result, answered with keys 1 to 4; the meeting note can be downloaded |
 | Definition cards (口径卡) | One per table: what one row is, what time a date column refers to, whether a numeric column can be added up, whether the objects are all there; records who answered and the source |
 | Data (数据接入) | Each uploaded table: rows, skipped title lines, each column's type, length and fill; the import row-count and key checks, code meanings, repeated-number rules, named views, two-table join and relation checks; when tables are left unconnected, the column that would connect them |
 | Ontology (本体管理) | Object cards (search, filter by your verdict, cards or list); each object's page: overview, fields (the object form), rows (paged, CSV download), confirmation; plus item-by-item confirmation, stability, last-run comparison (和上次比), new version (新版本) and build record |
@@ -244,6 +248,31 @@ The intended user is an implementation consultant on a data platform, sorting bu
 | Cross-platform | Run it on Windows or Linux and file what breaks |
 
 Issues and pull requests are welcome. Read the [development guardrails](docs/DEVELOPMENT_GUARDRAILS.md) first.
+
+### Sign-in and accounts
+
+The service asks for a sign-in by default, and there is no default account or password. Make the first admin on the machine that runs the service:
+
+```bash
+PYTHONPATH=src python3 -m ontology_poc_generator.accounts create-admin     # asks for a name and a password (12 characters or more); reset-password in the same tool if it is forgotten
+PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http://127.0.0.1:5178   # --origin: the address the page is served from (here the dev server); repeatable
+```
+
+An admin makes everyone else on the Users page: **viewer** reads and asks, **builder** also uploads data and changes definitions, **admin** also manages people. A new account must change the temporary password at its first sign-in. Every action is recorded under the signed-in person; a name typed into a request is ignored. Scripts and the MCP server use a token made under My account (set `ONTOPOC_TOKEN` for MCP); it has its owner's role.
+
+**Two-person confirmation**: while two or more people can confirm, a view one person submits takes effect only when another confirms it, and the submitter cannot confirm their own. With one person who can confirm it switches itself off, and the log marks each self-confirmation. An admin can turn it off on the Users page. Today it covers views only; other confirmations are still one step.
+
+**For a team**: the service listens on this machine only and does not do HTTPS. Put a proxy that does in front of it, for example Caddy:
+
+```
+ontopoc.example.com {
+    reverse_proxy 127.0.0.1:8767
+}
+```
+
+Start the service with `--origin https://ontopoc.example.com`: only that address is accepted, the sign-in cookie is Secure, and the sign-in attempt limit counts the address the proxy saw. A non-local http address is refused. `workspace.sqlite` holds password hashes and sign-in records; it is readable by its owner only, and copying it to someone shares the hashes. The proxy must put the address it saw into X-Forwarded-For (nginx: `proxy_set_header X-Forwarded-For $remote_addr;`); the service believes only the last address in that header, and only from the proxies named with `--trusted-proxy` (by default this machine once an https `--origin` is set).
+
+**Trying it on your own machine**: `--no-auth` turns sign-in off and treats every request as the local admin. Do not use it on a shared machine. It needs the environment variable `ONTOPOC_DEV=1`, is refused together with `--origin`, and refuses any request that carries a proxy header (X-Forwarded-For and the like).
 
 ## Development
 

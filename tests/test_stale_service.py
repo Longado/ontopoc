@@ -19,7 +19,7 @@ class StaleServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as code, tempfile.TemporaryDirectory() as out:
             code_dir = Path(code)
             shutil.copy(Path(ontology_server.__file__), code_dir / 'ontology_server.py')
-            server = ontology_server.make_server(port=0, gateway=None, output_dir=Path(out), code_dir=code_dir)
+            server = ontology_server.make_server(port=0, gateway=None, output_dir=Path(out), code_dir=code_dir, no_auth=True)
             threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True).start()
             base = f'http://127.0.0.1:{server.server_port}'
             try:

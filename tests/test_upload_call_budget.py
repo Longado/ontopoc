@@ -13,17 +13,30 @@ from tests.test_ontology_server import CSV, PROPOSAL
 
 
 class CorrectingModel:
+    """Answers with a draft that is wrong until the `attempts`-th call of one build. A build is one chain of calls: it is not told apart by the thread
+    (the server runs the extra builds on pool threads, and a pool thread that finished one build takes the next; a finished thread's id is reused too),
+    but by where it ends: the call that gets the draft right closes its chain, and the next call on that thread starts another. The question the
+    server asks after the shown build joins the chain that thread just closed."""
     def __init__(self, attempts):
         self.attempts = attempts
-        self.chains = {}
+        self.finished = []
+        self.open = {}
+        self.last = {}
         self.lock = threading.Lock()
+
+    def chains(self):
+        return [*self.finished, *self.open.values()]
 
     def complete_json(self, *, system_prompt, user_prompt):
         is_question = system_prompt == QUESTION_SYSTEM_PROMPT
         with self.lock:
-            chain = self.chains.setdefault(threading.get_ident(), [])
+            thread = threading.current_thread()   # the object, not its id: an id is handed to the next thread once one ends
+            chain = self.last[thread] if is_question and thread in self.last else self.open.setdefault(thread, [])
             chain.append('question' if is_question else 'model')
             count = chain.count('model')
+            if not is_question and count >= self.attempts:
+                self.finished.append(self.open.pop(thread))
+                self.last[thread] = self.finished[-1]
         proposal = copy.deepcopy(PROPOSAL)
         proposal['object_types'][0]['attributes'] += [{'source': 'orders', 'path': f'Missing{i}'}
                                                      for i in range(max(0, self.attempts - count))]
@@ -39,8 +52,8 @@ class UploadCallBudgetTests(unittest.TestCase):
             self.assertEqual(status, 200, run)
             self.assertEqual(run['ontology']['status'], 'auto_built_verified')
             self.assertEqual(len(run['ontology']['attempts']), 3)
-            self.assertLessEqual(max(map(len, model.chains.values())), 3)
-            self.assertFalse(any('question' in chain for chain in model.chains.values()))
+            self.assertLessEqual(max(map(len, model.chains())), 3)
+            self.assertFalse(any('question' in chain for chain in model.chains()))
             deferred = run['evaluation']['asked'][0]
             self.assertEqual(deferred['items'], [])
             self.assertIn('单独提问', deferred['error'])
@@ -56,7 +69,7 @@ class UploadCallBudgetTests(unittest.TestCase):
             self.assertEqual(status, 200, run)
             self.assertEqual(run['ontology']['status'], 'auto_built_verified')
             self.assertEqual(len(run['ontology']['attempts']), 2)
-            question_chains = [chain for chain in model.chains.values() if 'question' in chain]
+            question_chains = [chain for chain in model.chains() if 'question' in chain]
             self.assertEqual(question_chains, [['model', 'model', 'question']])
-            self.assertLessEqual(max(map(len, model.chains.values())), 3)
+            self.assertLessEqual(max(map(len, model.chains())), 3)
             self.assertEqual(run['evaluation']['asked'][0]['items'][0]['status'], 'answered')

@@ -18,7 +18,7 @@ UPLOAD = {'filename': 'orders.csv', 'content_base64': base64.b64encode(CSV).deco
 @contextmanager
 def serving(out, gateway):
     from ontology_poc_generator.ontology_server import make_server
-    server = make_server(port=0, gateway=gateway, output_dir=out)
+    server = make_server(port=0, gateway=gateway, output_dir=out, no_auth=True)
     thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
     thread.start()
     try:
