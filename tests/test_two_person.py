@@ -244,19 +244,15 @@ class TwoPersonTests(SigningTestCase):
 
 
 class AskWhoMayKeepTests(SigningTestCase):
-    def test_a_viewer_gets_the_answer_and_nothing_is_written_while_a_builder_keeps_it_signed(self):
+    def test_a_viewer_is_refused_the_early_screens_ask_and_nothing_is_written_while_a_builder_keeps_it_signed(self):
         with self.service(gateway=QuestionModel()) as (base, out):
             team = self.people(base, 'ann', 'vic', roles={'vic': 'viewer'})
             status, run = team['ann'].post('/api/ontology/build', {'filename': 'orders.csv', 'content_base64': base64.b64encode(CSV).decode()})
             self.assertEqual(status, 200, run)
             path = out / run['saved_as']
             before = path.read_bytes()
-            status, answer = team['vic'].post('/api/ontology/ask', {'saved_as': run['saved_as'], 'question': '哪个客户订单最多？'})
-            self.assertEqual(status, 200, answer)
-            self.assertEqual(len(answer['evaluation']['asked']), 1)   # the answer comes back
-            self.assertEqual(path.read_bytes(), before)               # and is not kept
-            status, _ = team['vic'].post('/api/ontology/ask', {'saved_as': run['saved_as']})
-            self.assertEqual((status, path.read_bytes() == before), (200, True))   # no question: the stored question set is not replaced either
+            status, _ = team['vic'].post('/api/ontology/ask', {'saved_as': run['saved_as'], 'question': '哪个客户订单最多？'})
+            self.assertEqual((status, path.read_bytes() == before), (403, True))   # a viewer asks in the team app, where every read is filtered
             status, answer = team['ann'].post('/api/ontology/ask', {'saved_as': run['saved_as'], 'question': '哪个客户订单最多？'})
             self.assertEqual(status, 200, answer)
             saved = json.loads(path.read_text(encoding='utf-8'))
