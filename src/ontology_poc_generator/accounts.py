@@ -264,7 +264,11 @@ class LoginLimiter:
 
 def _public(row: sqlite3.Row | tuple) -> dict:
     user = dict(zip(_USER_KEYS, row))
-    attrs = json.loads(user.pop('attrs_json') or '{}')
+    try:
+        attrs = json.loads(user.pop('attrs_json') or '{}')
+    except ValueError:   # a value damaged by hand must not lock the person out; they get no attribute, so no row from an attribute rule
+        attrs = {}
+    attrs = attrs if isinstance(attrs, dict) else {}
     return {**user, 'disabled': bool(user['disabled']), 'must_change': bool(user['must_change']), 'attrs': attrs}
 
 

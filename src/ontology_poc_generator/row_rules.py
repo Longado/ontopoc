@@ -162,15 +162,15 @@ def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
         if set(ids) - known:
             raise RuleRefused('名单里有不存在的账号')
         clean.append({'column': column, 'value': value, 'user_ids': ids, 'user_attr': None})
-    if len({json.dumps(r, sort_keys=True) for r in clean}) < len(clean):
-        raise RuleRefused('有两条一模一样的规则，去掉一条')
     used = _actions_writing(conn, element_id)
     clash = sorted({r['column'] for r in clean} & set(used))
     if clash:
         raise RuleRefused(f'“{"、".join(clash)}”被行为“{"、".join(sorted({n for c in clash for n in used[c]}))}”改写：规则读的属性不能同时被行为改写，一次改写就能把一行移进或移出某个人看得到的范围', 409)
     before = rules_of(conn, element_id)
     if [{k: r[k] for k in ('column', 'value', 'user_ids', 'user_attr')} for r in before] == clean:
-        return {'rules': before}
+        return {'rules': before}   # unchanged, even a list saved before duplicates were refused
+    if len({json.dumps(r, sort_keys=True) for r in clean}) < len(clean):
+        raise RuleRefused('有两条一模一样的规则，去掉一条')
     conn.execute('BEGIN IMMEDIATE')
     try:
         conn.execute('DELETE FROM row_rule WHERE type_id = ?', (element_id,))
