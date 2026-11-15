@@ -564,7 +564,8 @@ class ObjectTypeTests(SigningTestCase):
             self.assertIn('新值 3 算不算进来', written)
             self.assertIn('已发货待签收', written)              # the meaning written since is named
             self.assertNotIn('请先给新值写含义', written)      # there is nothing left to write
-            self.assertIn('需要再看', written)                 # the meanings are not confirmed yet
+            self.assertIn('在等另一位确认', written)           # the meanings were written again and wait for the other builder
+            self.assertNotIn('需要再看', written)
             self.assertEqual(self.confirm(ann, '状态码')[0], 200)
             settled = self.view_of(bob, 'order', '有效订单')['reason']
             self.assertIn('新值 3 算不算进来', settled)
