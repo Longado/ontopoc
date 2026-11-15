@@ -14,7 +14,7 @@ from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview, to_number
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 
-QUESTION_PROMPT_VERSION = 'company_questions.v16'
+QUESTION_PROMPT_VERSION = 'company_questions.v17'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
 MAX_MERGED = 20             # groups named in `evidence`: a pointer to where to look, not the full list
@@ -68,7 +68,8 @@ quantity × (1 − discount), or price − cost), propose it in `derive` on that
 of that object's fields, a factor with "complement": true meaning (1 − field). No constants, no division. Then start
 the query from that object and use {{"derived": "<its label>"}} as the measure, walking group_by to whatever the question
 groups by. An object's `derived` list holds measures a person has already confirmed: use them by name, do not propose
-them again. In reasoning, call objects and relations by their Chinese labels.
+them again. An attribute that carries `computed_as` is a value a person confirmed, worked out for each object (`computed_as` says how): it is
+a field like any other, so write its path as "field" (in a measure, a group_by or a where), never as a derived measure. In reasoning, call objects and relations by their Chinese labels.
 Use only type keys, relation keys and attribute paths listed in the ontology, and filter values from an attribute's
 `values` when it lists them (an attribute may also list `meanings`: what each code value stands for. The filter value is
 still the code, so for "cancelled orders" with {{"2": "已取消"}} write "equals": "2"). When a question cannot be written as one query, keep it, set "query" to null, say why in reasoning, and set

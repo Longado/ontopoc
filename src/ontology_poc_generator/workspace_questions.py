@@ -324,7 +324,7 @@ def _catalog_for_model(conn, sc: dict, parts: dict) -> tuple[dict, list[dict]]:
             if a['path'] in kinds:
                 a['type'] = kinds[a['path']]
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in parts['derived']:   # a derived value: its kind and what it says, never its values (they are worked out from rows)
-                a.update(type=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['type'], derived=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['says'])
+                a.update(type=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['type'], computed_as=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['says'])   # not `derived`: that word is the query's formula measure
                 a.pop('values', None)
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in hidden or a['path'] in t['content']['key']:
                 a.pop('values', None)
