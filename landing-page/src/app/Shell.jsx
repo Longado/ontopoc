@@ -27,7 +27,7 @@ import { TypeForm } from "./TypeForm.jsx";
 import { TypePage } from "./TypePage.jsx";
 import { TypesPage } from "./TypesPage.jsx";
 import { UsersPage } from "./UsersPage.jsx";
-import { ADMIN_NAV, NAV, PLANNED, navKeyOf, parseRoute } from "./routeModel.js";
+import { ADMIN_NAV, NAV, PLANNED, mayOpen, navKeyOf, parseRoute } from "./routeModel.js";
 
 function UserBox({ onPick }) {
   const { user, auth, signOut } = useAuth();
@@ -112,6 +112,41 @@ function NotFound() {
   );
 }
 
+/** What each page of routeModel.PAGES draws, one line each (routeModel.test.js checks the two hold the same pages). */
+const VIEWS = {
+  qa: (route) => <QaPage route={route} />,
+  tasks: () => <TasksPage />,
+  datasets: () => <DatasetList />,
+  dataset: (route) => <DatasetPage route={route} />,
+  pipelines: () => <PipelinesPage />,
+  pipelinenew: () => <PipelineNew />,
+  pipeline: (route) => <PipelinePage key={route.name} route={route} />,
+  sources: () => <SourcesPage />,
+  source: (route) => <SourcePage key={route.name} route={route} />,
+  schedules: () => <SchedulesPage />,
+  types: () => <TypesPage />,
+  type: (route) => <TypePage route={route} />,
+  typenew: () => <TypeForm key="new" />,
+  typeedit: (route) => <TypeForm key={route.id} id={route.id} />,
+  object: (route) => <ObjectPage key={`${route.id}/${route.n}`} route={route} />,
+  relations: (route) => <RelationsPage route={route} />,
+  relation: (route) => <RelationPage route={route} />,
+  relationnew: () => <RelationForm key="new" />,
+  relationedit: (route) => <RelationForm key={route.id} id={route.id} />,
+  confirm: () => <ConfirmPage />,
+  confirmgroup: (route) => <ConfirmGroupPage key={`${route.dataset}@${route.version}`} route={route} />,
+  agents: () => <AgentsPage />,
+  boards: () => <BoardsPage />,
+  board: (route) => <BoardPage key={route.id} route={route} />,
+  boardnew: () => <BoardEditor key="new" />,
+  boardedit: (route) => <BoardEditor key={route.id} id={route.id} />,
+  lineage: () => <LineagePage />,
+  users: () => <UsersPage />,
+  permissions: () => <PermissionsPage />,
+  account: () => <AccountPage />,
+  planned: (route) => <Planned route={route} />,
+};
+
 export function Shell() {
   const { user } = useAuth();
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
@@ -138,38 +173,7 @@ export function Shell() {
         </div>
         <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} />
       </aside>
-      {route.page === "qa" && <QaPage route={route} />}
-      {route.page === "datasets" && <DatasetList />}
-      {route.page === "dataset" && <DatasetPage route={route} />}
-      {route.page === "tasks" && <TasksPage />}
-      {route.page === "types" && <TypesPage />}
-      {route.page === "type" && <TypePage route={route} />}
-      {route.page === "object" && <ObjectPage key={`${route.id}/${route.n}`} route={route} />}
-      {route.page === "boards" && <BoardsPage />}
-      {route.page === "board" && <BoardPage key={route.id} route={route} />}
-      {route.page === "boardnew" && (canBuild(user) ? <BoardEditor key="new" /> : <Forbidden />)}
-      {route.page === "boardedit" && (canBuild(user) ? <BoardEditor key={route.id} id={route.id} /> : <Forbidden />)}
-      {route.page === "agents" && (canBuild(user) ? <AgentsPage /> : <Forbidden />)}
-      {route.page === "typenew" && <TypeForm key="new" />}
-      {route.page === "typeedit" && <TypeForm key={route.id} id={route.id} />}
-      {route.page === "relations" && <RelationsPage route={route} />}
-      {route.page === "lineage" && <LineagePage />}
-      {route.page === "relation" && <RelationPage route={route} />}
-      {route.page === "relationnew" && <RelationForm key="new" />}
-      {route.page === "relationedit" && <RelationForm key={route.id} id={route.id} />}
-      {route.page === "confirm" && (canBuild(user) ? <ConfirmPage /> : <Forbidden />)}
-      {route.page === "confirmgroup" && (canBuild(user) ? <ConfirmGroupPage key={`${route.dataset}@${route.version}`} route={route} /> : <Forbidden />)}
-      {route.page === "pipelines" && (canBuild(user) ? <PipelinesPage /> : <Forbidden />)}
-      {route.page === "pipelinenew" && (canBuild(user) ? <PipelineNew /> : <Forbidden />)}
-      {route.page === "pipeline" && (canBuild(user) ? <PipelinePage key={route.name} route={route} /> : <Forbidden />)}
-      {route.page === "sources" && (canBuild(user) ? <SourcesPage /> : <Forbidden />)}
-      {route.page === "source" && (canBuild(user) ? <SourcePage key={route.name} route={route} /> : <Forbidden />)}
-      {route.page === "schedules" && (canBuild(user) ? <SchedulesPage /> : <Forbidden />)}
-      {route.page === "permissions" && (isAdmin(user) ? <PermissionsPage /> : <Forbidden />)}
-      {route.page === "account" && <AccountPage />}
-      {route.page === "users" && (isAdmin(user) ? <UsersPage /> : <Forbidden />)}
-      {route.page === "planned" && <Planned route={route} />}
-      {!["qa", "datasets", "dataset", "tasks", "types", "type", "typenew", "typeedit", "relations", "lineage", "relation", "relationnew", "relationedit", "confirm", "confirmgroup", "pipelines", "pipelinenew", "pipeline", "sources", "source", "schedules", "permissions", "account", "users", "planned", "object", "boards", "board", "boardnew", "boardedit", "agents"].includes(route.page) && <NotFound />}
+      {!VIEWS[route.page] ? <NotFound /> : mayOpen(route.page, user) ? VIEWS[route.page](route) : <Forbidden />}
     </div>
   );
 }
