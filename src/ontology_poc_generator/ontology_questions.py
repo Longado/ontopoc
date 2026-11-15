@@ -436,6 +436,8 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         path += f'，取最{"低" if lowest else "高"}的 {best} 个'
     elif lowest and dims:
         path += '，从低到高排'
+    if lowest and dims:
+        path += f'（只排有{label(start)}的组）'   # a group with no start object is not there to rank: the lowest is the lowest of those that have one
     computed = compute_derived(ontology, bundle, measure['derived'], graph)['values'] if measure and measure.get('derived') else None
 
     def numbers(inst):
