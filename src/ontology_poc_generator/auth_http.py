@@ -250,8 +250,10 @@ class Gate:
             if target == actor['id']:
                 raise accounts.AccountError('自己的密码要在“我的账号”里改，那里要输入现在的密码', 403)
             return accounts.reset_password(conn, actor['username'], target, payload.get('password'))
-        if 'role' not in payload and 'display_name' not in payload:
-            raise accounts.AccountError('要写明改什么（role 或 display_name）')
+        if 'role' not in payload and 'display_name' not in payload and 'attrs' not in payload:
+            raise accounts.AccountError('要写明改什么（role、display_name 或 attrs）')
+        if 'attrs' in payload:
+            accounts.set_attrs(conn, actor, target, payload['attrs'])
         if 'display_name' in payload:
             accounts.set_display_name(conn, actor, target, payload['display_name'])
         return accounts.set_role(conn, actor, target, payload['role']) if 'role' in payload else accounts.get_user(conn, target)

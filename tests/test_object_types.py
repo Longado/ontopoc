@@ -989,6 +989,64 @@ class ActionTests(SigningTestCase):
             status, body = ann.post('/api/workspace/datasets/upload', {'files': [back]})
             self.assertEqual((status, body['results'][0]['overwrites_action_rows']), (200, []))   # the same file again changes nothing
 
+    def attrs(self, admin, username, attrs):
+        return admin.post('/api/users/update', {'id': self.user_id(admin, username), 'attrs': attrs})
+
+    def test_a_rule_on_each_persons_own_attribute_covers_everyone_follows_a_changed_attribute_and_is_logged(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            count = lambda code: len([r for r in ORDERS if r['客户编号'] == code])
+            self.assertEqual(self.attrs(admin, 'vera', {'负责客户': 'KH001'})[0], 200)
+            status, body = self.attrs(admin, 'ann', {'负责客户': ' KH002 ', '岗位': '销售'})
+            self.assertEqual((status, body['user']['attrs']), (200, {'岗位': '销售', '负责客户': 'KH002'}))
+            self.assertEqual(ann.post('/api/users/update', {'id': self.user_id(admin, 'ann'), 'attrs': {'负责客户': 'KH003'}})[0], 403)   # the admin's, not one's own
+            rule = {'column': '客户编号', 'user_attr': '负责客户'}
+            status, body = admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [rule]})
+            self.assertEqual(status, 200, body)
+            self.assertEqual([(r['column'], r['value'], r['user_ids'], r['user_attr']) for r in body['rules']], [('客户编号', '', [], '负责客户')])
+            self.assertEqual(vera.get('/api/workspace/types/order/objects')[1]['total'], count('KH001'))
+            self.assertEqual(ann.get('/api/workspace/types/order/objects')[1]['total'], count('KH002'))
+            self.assertEqual(bob.get('/api/workspace/types/order/objects')[1]['total'], 0)   # no such attribute: no row from the rule
+            self.assertEqual(admin.get('/api/workspace/types/order/objects')[1]['total'], 160)
+            # the attribute changes: so do the rows, at once, and the change is in the log
+            self.assertEqual(self.attrs(admin, 'vera', {'负责客户': 'KH002'})[0], 200)
+            objects = vera.get('/api/workspace/types/order/objects')[1]
+            self.assertEqual(({r[3] for r in objects['rows']}, objects['total']), ({'KH002'}, count('KH002')))
+            conn = self.db(out)
+            changed = conn.execute("SELECT who, after_json FROM log WHERE change = 'user_attrs_changed' ORDER BY rowid").fetchall()
+            ruled = conn.execute("SELECT after_json FROM log WHERE change = 'row_rules_changed'").fetchone()[0]
+            conn.close()
+            self.assertEqual(len(changed), 3)
+            self.assertEqual(json.loads(changed[-1][1]), {'from': {'负责客户': 'KH001'}, 'to': {'负责客户': 'KH002'}})
+            self.assertIn('每个人看 客户编号 = 自己的负责客户 的行', ruled)
+            # named rules and an attribute rule together: Bob is named for KH003, the others keep theirs
+            mixed = [rule, {'column': '客户编号', 'value': 'KH003', 'user_ids': [self.user_id(admin, 'bob')]}]
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': mixed})[0], 200)
+            self.assertEqual(bob.get('/api/workspace/types/order/objects')[1]['total'], count('KH003'))
+            self.assertEqual(vera.get('/api/workspace/types/order/objects')[1]['total'], count('KH002'))
+            # an action may not write the column the rule reads
+            status, body = ann.post('/api/workspace/actions', {'name': '改订单客户', 'type': 'order', 'properties': ['客户编号']})
+            self.assertEqual(status, 409)
+            self.assertIn('行规则用到“客户编号”', body['error'])
+
+    def test_an_attribute_rule_takes_no_value_and_names_nobody_and_bad_attributes_are_refused(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            admin = team['admin']
+            bad_rules = [{'column': '客户编号', 'user_attr': '负责客户', 'value': 'KH001'},
+                         {'column': '客户编号', 'user_attr': '负责客户', 'user_ids': [self.user_id(admin, 'ann')]},
+                         {'column': '不存在', 'user_attr': '负责客户'},
+                         {'column': '客户编号', 'user_attr': 'x' * 21},
+                         {'column': '客户编号', 'user_attr': '负\n责'}]
+            bad_rules.append([{'column': '客户编号', 'user_attr': '负责客户'}] * 2)
+            for bad in bad_rules:
+                self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': bad if isinstance(bad, list) else [bad]})[0], 400, bad)
+            for bad in ({'a': 'x' * 101}, {'': 'x'}, {'x' * 21: 'x'}, {'a': '1\n2'}, {str(i): 'v' for i in range(6)}, ['KH001'], {'a': 3}):
+                self.assertEqual(self.attrs(admin, 'ann', bad)[0], 400, bad)
+            self.assertEqual(self.attrs(admin, 'ann', {'a': 'KH001'})[1]['user']['attrs'], {'a': 'KH001'})
+            self.assertEqual(self.attrs(admin, 'ann', {'a': ''})[1]['user']['attrs'], {})   # an empty value drops the attribute
+
     def two_rules(self, admin):
         ids = {u: self.user_id(admin, u) for u in ('ann', 'bob')}
         return admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [

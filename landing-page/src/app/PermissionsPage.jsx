@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getPermissions, setPermission, setRowRules } from "./api.js";
 import { FormDialog } from "./FormDialog.jsx";
-import { cutOff, loseAccess, prefilledRule } from "./permissionModel.js";
+import { attrNames, cutOff, loseAccess, prefilledRule, ruleText } from "./permissionModel.js";
 import { Select } from "./Select.jsx";
 import { toggled } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
@@ -15,25 +15,30 @@ function RowRules({ type, people, onChanged, onError, onSaved }) {
   const [column, setColumn] = useState("");
   const [value, setValue] = useState("");
   const [ids, setIds] = useState([]);
+  const [attr, setAttr] = useState("");   // set: the rule is everyone's, against their own attribute of this name
+  const [byAttr, setByAttr] = useState(false);
   const [draft, setDraft] = useState(null);   // null: nothing changed yet, what is saved is shown
   const [busy, setBusy] = useState(false);
   const rules = draft ?? type.row_rules;
   const names = (list) => list.map((i) => people.find((p) => p.id === i)?.name ?? `#${i}`).join("、");
   const cut = cutOff(type, people, rules);
-  const changed = draft !== null && JSON.stringify(draft.map(({ column: c, value: v, user_ids }) => [c, v, user_ids])) !== JSON.stringify(type.row_rules.map(({ column: c, value: v, user_ids }) => [c, v, user_ids]));
+  const plain = (list) => JSON.stringify(list.map(({ column: c, value: v, user_ids, user_attr }) => [c, v, user_ids, user_attr || null]));
+  const changed = draft !== null && plain(draft) !== plain(type.row_rules);
+  const known = attrNames(people);
   const add = () => {
-    const rule = { column, value: value.trim(), user_ids: ids };
+    const rule = byAttr ? { column, value: "", user_ids: [], user_attr: attr.trim() } : { column, value: value.trim(), user_ids: ids };
     const lead = draft === null ? prefilledRule(type, people, rule) : null;   // the first rule of a type brings an all-rows entry for the people it does not name
     setDraft([...rules, ...(lead ? [lead] : []), rule]);
     setColumn("");
     setValue("");
     setIds([]);
+    setAttr("");
   };
   const save = async () => {
     setBusy(true);
     onError("");
     try {
-      await setRowRules(type.id, rules.map(({ column: c, value: v, user_ids }) => ({ column: c, value: v, user_ids })));
+      await setRowRules(type.id, rules.map(({ column: c, value: v, user_ids, user_attr }) => (user_attr ? { column: c, user_attr } : { column: c, value: v, user_ids })));
       setDraft(null);
       onSaved();
     } catch (e) {
@@ -48,26 +53,37 @@ function RowRules({ type, people, onChanged, onError, onSaved }) {
       {!rules.length && <p className="muted">没有行规则，所有看得到这个类型的人都看全部的行。</p>}
       <ul className="checks">
         {rules.map((r, i) => (
-          <li key={r.id ?? `new${i}`}>{names(r.user_ids)} 看{r.column ? ` ${type.columns.find((c) => c.column === r.column)?.name ?? r.column} = ${r.value} 的行` : "全部行"}
+          <li key={r.id ?? `new${i}`}>{ruleText(r, type.columns.find((c) => c.column === r.column)?.name ?? r.column, names(r.user_ids))}
+            {r.user_attr && <span className="faint small">（没填“{r.user_attr}”的人从这条规则看不到行）</span>}
             {r.prefilled && <span className="faint small">（自动加上：原来能看这个类型的人，照常看全部行）</span>}{" "}
             <button className="plain" disabled={busy} onClick={() => setDraft(rules.filter((_, j) => j !== i))}>去掉</button></li>
         ))}
       </ul>
       {cut.length > 0 && <p className="warn">{changed ? "保存后" : "现在"}这些人会一行也看不到：{nameList(cut)}。没被哪条规则点名的人，看不到这个类型的任何一行。</p>}
       <div className="inline wide" style={{ flexWrap: "wrap" }}>
+        <Select label={`${type.name}：规则对谁`} value={byAttr ? "attr" : "named"} onChange={(v) => { setByAttr(v === "attr"); setColumn(""); }}>
+          <option value="named">点名的人</option>
+          <option value="attr">每个人，按自己的属性</option>
+        </Select>
         <Select label={`${type.name}：规则的属性`} value={column} onChange={setColumn}>
-          <option value="">全部行（不设条件）</option>
+          {!byAttr && <option value="">全部行（不设条件）</option>}
+          {byAttr && <option value="">选属性</option>}
           {type.columns.map((c) => <option key={c.column} value={c.column}>{c.name}</option>)}
         </Select>
         {column && <span>=</span>}
-        {column && <input type="text" aria-label={`${type.name}：规则的取值`} value={value} maxLength={100} style={{ width: 200 }} onChange={(e) => setValue(e.target.value)} />}
-        {people.map((p) => (
+        {column && !byAttr && <input type="text" aria-label={`${type.name}：规则的取值`} value={value} maxLength={100} style={{ width: 200 }} onChange={(e) => setValue(e.target.value)} />}
+        {byAttr && <span>自己的</span>}
+        {byAttr && (
+          <input type="text" list={`attrs-${type.id}`} aria-label={`${type.name}：人的属性名`} placeholder="如 部门" value={attr} maxLength={20} style={{ width: 140 }} onChange={(e) => setAttr(e.target.value)} />
+        )}
+        {byAttr && <datalist id={`attrs-${type.id}`}>{known.map((n) => <option key={n} value={n} />)}</datalist>}
+        {!byAttr && people.map((p) => (
           <label key={p.id} className="check">
             <input type="checkbox" checked={ids.includes(p.id)} onChange={(e) => setIds(toggled(ids, p.id, e.target.checked))} aria-label={`${type.name}：${p.name}按这条规则看`} />
             {p.name}
           </label>
         ))}
-        <button className="secondary" disabled={busy || (column && !value.trim()) || !ids.length} onClick={add}>加这条规则</button>
+        <button className="secondary" disabled={busy || (byAttr ? !column || !attr.trim() : (column && !value.trim()) || !ids.length)} onClick={add}>加这条规则</button>
       </div>
       {changed && (
         <div className="inline">
@@ -151,6 +167,8 @@ export function PermissionsPage() {
         <>
           <h2 className="section">行规则</h2>
           <p className="muted" style={{ marginBottom: 16 }}>类型一旦有行规则，每个人只看到点了他名字的规则放行的行；没被点名的人一行也看不到。“全部行”是不设条件的规则，点名的人看全部。管理员看全部。
+            “每个人，按自己的属性”是一条管所有人的规则：比如 区域 = 自己的部门，每人看自己部门的行；人的属性在“用户”页填，新来的人填好属性就行，不用改规则。
+            点名看“全部行”的人不受它限制：第一次加规则时自动给还没填属性的人加了“全部行”，之后给他们填了属性，要把这条“全部行”里的名字去掉才会按属性看。
             行为（类型页“行为”里定义的、会改某几个属性的值的操作）不能改写规则读的属性：改一次就能把一行移进或移出某个人看得到的范围。有行规则的类型，它的数据集只有管理员和被点名看全部行的人能看。</p>
           {types.map((t) => <RowRules key={t.id} type={t} people={later} onChanged={reload} onError={setError} onSaved={() => setSaved("已保存")} />)}
         </>

@@ -34,12 +34,32 @@ function ResetPassword({ user, onClose, onDone }) {
   );
 }
 
+/** A person's attributes (部门、岗位…), which row rules may compare with: one name and value per line. */
+function Attributes({ user, onClose, onDone }) {
+  const [rows, setRows] = useState(() => [...Object.entries(user.attrs ?? {}), ["", ""]]);
+  const put = (i, k, v) => setRows((list) => { const next = list.map((r, j) => (j === i ? (k === 0 ? [v, r[1]] : [r[0], v]) : r)); return next.at(-1)[0] || next.at(-1)[1] ? [...next, ["", ""]] : next; });
+  const attrs = Object.fromEntries(rows.filter(([n]) => n.trim()).map(([n, v]) => [n.trim(), v.trim()]));
+  const gone = Object.keys(user.attrs ?? {}).filter((n) => !attrs[n]);
+  return (
+    <FormDialog title={`“${user.display_name}”的属性`} submitLabel="保存" onClose={onClose} valid
+      onSubmit={async () => { await updateUser(user.id, { attrs: { ...Object.fromEntries(gone.map((n) => [n, ""])), ...attrs } }); onDone(); }}>
+      <p className="muted">行规则可以按“自己的属性”放行，比如 区域 = 自己的部门。改了属性，这个人看得到的行马上跟着变，改动记进日志。最多 5 个，值留空就去掉。</p>
+      {rows.map(([n, v], i) => (
+        <div className="inline" key={i}>
+          <input type="text" aria-label={`属性名 ${i + 1}`} placeholder="属性名，如 部门" maxLength={20} value={n} onChange={(e) => put(i, 0, e.target.value)} />
+          <input type="text" aria-label={`属性值 ${i + 1}`} placeholder="值" maxLength={100} value={v} onChange={(e) => put(i, 1, e.target.value)} />
+        </div>
+      ))}
+    </FormDialog>
+  );
+}
+
 /** Admin only: the people, their roles, and the two-person switch. The service refuses anything else, so a person who is not an admin never gets here. */
 export function UsersPage() {
   const me = useAuth().user;
   const [users, reload] = useLoad(getUsers, []);
   const [two, reloadTwo] = useLoad(getTwoPerson, []);
-  const [dialog, setDialog] = useState(null);   // "new" | {reset: user} | {role: user, to} | {disable: user}
+  const [dialog, setDialog] = useState(null);   // "new" | {reset: user} | {role: user, to} | {disable: user} | {attrs: user}
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const act = async (call) => {
@@ -74,12 +94,16 @@ export function UsersPage() {
       {list.length > 0 && (
         <div className="table-wrap">
           <table className="people">
-            <thead><tr><th>账号</th><th>显示名</th><th>角色</th><th>状态</th><th>上次登录</th><th></th></tr></thead>
+            <thead><tr><th>账号</th><th>显示名</th><th>属性</th><th>角色</th><th>状态</th><th>上次登录</th><th></th></tr></thead>
             <tbody>
               {list.map((u) => (
                 <tr key={u.id} className={u.disabled ? "note" : ""}>
                   <td>{u.username}</td>
                   <td>{u.display_name}</td>
+                  <td>
+                    {Object.entries(u.attrs ?? {}).map(([n, v]) => `${n}：${v}`).join("，") || <span className="faint">无</span>}{" "}
+                    <button className="plain" onClick={() => setDialog({ attrs: u })}>改</button>
+                  </td>
                   <td>
                     {u.id === me.id ? roleLabel(u.role) : (
                       <Select label={`${u.username} 的角色`} value={u.role} onChange={(role) => setDialog({ role: u, to: role })}>
@@ -104,6 +128,7 @@ export function UsersPage() {
         </div>
       )}
       {dialog === "new" && <NewUser onClose={() => setDialog(null)} onDone={() => { reload(); reloadTwo(); }} />}
+      {dialog?.attrs && <Attributes user={dialog.attrs} onClose={() => setDialog(null)} onDone={() => { setSaved(true); reload(); }} />}
       {dialog?.reset && <ResetPassword user={dialog.reset} onClose={() => setDialog(null)} onDone={() => { setSaved(true); reload(); }} />}
       {dialog === "two-off" && (
         <FormDialog title="关闭两人确认" submitLabel="确认关闭" valid onClose={() => setDialog(null)}
