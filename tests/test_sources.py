@@ -3,6 +3,7 @@ sends what was confirmed on them back to "needs another look"; the password is i
 is still running is not started again. The connection is a stand-in for the driver's: source_connect.OPENERS is replaced for the length of a test."""
 import base64
 import json
+import ssl
 import sqlite3
 import tempfile
 import threading
@@ -134,6 +135,22 @@ class ScrubTests(unittest.TestCase):
         self.assertNotIn(PASSWORD, describe(Exception(1064, f"syntax near '{PASSWORD}'"), PASSWORD))
         self.assertNotIn(PASSWORD, describe(RuntimeError(f'dsn host=h password={PASSWORD}'), PASSWORD))
         self.assertEqual(scrub('a b ab', 'a'), '*** b ab')   # a one-letter password is hidden where it stands alone, not inside other words
+
+    def test_what_pymysql_really_raises_is_named_for_what_happened(self):
+        """Shapes seen against a live MySQL 8: PyMySQL wraps a failed certificate check in its own (2003, ...) error with the ssl error as the implicit context (not
+        __cause__), and a refused dial is the OS error (61, 'Connection refused'), whose args also look like (number, text)."""
+        try:
+            try:
+                refused = ssl.SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain')
+                refused.verify_message = 'self-signed certificate in certificate chain'   # the field a real handshake failure fills in
+                raise refused
+            except ssl.SSLError:
+                raise Exception(2003, "Can't connect to MySQL server on 'h' ([SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed)")
+        except Exception as wrapped:
+            text = describe(wrapped, PASSWORD)
+        self.assertIn('TLS 证书验证没通过', text)
+        self.assertIn('self-signed certificate', text)
+        self.assertEqual(describe(ConnectionRefusedError(61, 'Connection refused'), PASSWORD), '连接被对方拒绝：地址或端口不对，或数据库没有在听')
 
     def test_connect_keeps_nothing_of_the_drivers_own_exception(self):
         def refusing(host, address, port, database, user, password, tls):
