@@ -17,7 +17,7 @@ import json
 from ontology_poc_generator.accounts import MAX_ATTR_NAME, list_users
 from ontology_poc_generator.object_types import TypeRefused, _content, _visible, element_row, type_id, whole_type_row
 from ontology_poc_generator.row_rules import keeps, restriction
-from ontology_poc_generator.type_access import reads_hidden
+from ontology_poc_generator.type_access import hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_store import _canonical, current_dataset, dataset_records, log_line, now_text
 
 MAX_RECIPIENTS = 5
@@ -89,6 +89,8 @@ def set_notify(conn, payload: dict, who: str | None, user: dict | None) -> dict:
             clean.append({'kind': 'attr', 'column': r['column'], 'user_attr': attr})
             continue
         relation = _relation(conn, r.get('relation'))
+        if relation and relation['from'] == relation['to']:
+            raise TypeRefused(f'关系“{relation["name"]}”两端都是“{t["name"]}”，分不清从哪一端找人，这一版还不能用')
         ends = _other_end(relation, content['type']) if relation else None
         if ends is None:
             raise TypeRefused(f'没有一端是“{t["name"]}”的关系“{r.get("relation")}”', 400)
@@ -127,21 +129,27 @@ def deliver(conn, action_row: dict, record_id: int, row: dict, text: str, approv
     people = [p for p in list_users(conn) if not p['disabled']]
     found: dict[int, dict] = {}
     for r in recipients:
-        if r['kind'] == 'people':
-            found.update({p['id']: p for p in people if p['id'] in r['user_ids']})
-        elif r['kind'] == 'attr':
-            found.update({p['id']: p for p in _matching(people, r['user_attr'], row.get(r['column']))})
-        else:
-            relation = _relation(conn, r['relation'])
-            ends = _other_end(relation, content['type']) if relation else None
-            other = element_row(conn, type_id(ends[1])) if ends else None
-            dataset = current_dataset(conn, _content(other)['dataset']) if other else None
-            if dataset is None:
-                continue
-            link = _canonical(row.get(ends[0]))
-            there = next((rec for rec in dataset_records(conn, dataset) if link not in (None, '') and _canonical(rec.get(ends[2])) == link), None)
-            if there is not None:
-                found.update({p['id']: p for p in _matching(people, r['user_attr'], there.get(r['column']))})
+        try:   # a recipient that no longer fits (a relation edited or gone) is skipped: telling people never stops the change itself
+            if r['kind'] == 'people':
+                found.update({p['id']: p for p in people if p['id'] in r['user_ids']})
+            elif r['kind'] == 'attr':   # matched on that column: someone kept from it is not found through it
+                found.update({p['id']: p for p in _matching(people, r['user_attr'], row.get(r['column']))
+                              if r['column'] not in hidden_columns(conn, type_id(content['type']), p)})
+            else:
+                relation = _relation(conn, r['relation'])
+                ends = _other_end(relation, content['type']) if relation else None
+                other = element_row(conn, type_id(ends[1])) if ends else None
+                dataset = current_dataset(conn, _content(other)['dataset']) if other else None
+                if dataset is None:
+                    continue
+                link = _canonical(row.get(ends[0]))
+                for there in (rec for rec in dataset_records(conn, dataset) if link not in (None, '') and _canonical(rec.get(ends[2])) == link):   # every object it points to
+                    for p in _matching(people, r['user_attr'], there.get(r['column'])):
+                        limit = restriction(conn, other['element_id'], p)   # found through the other type: only by a row and a column of it they may read
+                        if _visible(conn, other, p) and r['column'] not in hidden_columns(conn, other['element_id'], p) and (limit is None or keeps(there, limit)):
+                            found[p['id']] = p
+        except (KeyError, TypeError, AttributeError):
+            continue
     type_row = element_row(conn, type_id(content['type']))
     told = 0
     for person in found.values():
@@ -155,13 +163,30 @@ def deliver(conn, action_row: dict, record_id: int, row: dict, text: str, approv
     return told
 
 
+def _still_readable(conn, record_id: int | None, user: dict) -> bool:
+    """Whether this person may still read what a notice quotes: the action (its columns not kept from them), its type, and the object's row as it is now (a row rule
+    added since keeps it from them: not shown). A notice whose record or action is gone is not shown either."""
+    from ontology_poc_generator.object_actions import _find
+    rec = conn.execute('SELECT action_id, type_id, dataset, key_json FROM action_record WHERE id = ?', (record_id,)).fetchone() if record_id is not None else None
+    action, type_row = (element_row(conn, rec[0]), element_row(conn, rec[1])) if rec else (None, None)
+    if action is None or type_row is None or not _visible(conn, type_row, user) or reads_hidden(conn, rec[0], user, _content(action)):
+        return False
+    limit = restriction(conn, type_row['element_id'], user)
+    if limit is None:
+        return True
+    dataset = current_dataset(conn, rec[2])
+    now = _find(conn, _content(type_row), dataset, json.loads(rec[3])) if dataset else None
+    return now is not None and keeps(now, limit)
+
+
 def list_notices(conn, user: dict | None) -> dict:
-    """This person's notices, newest first (the last LISTED), and how many are unread."""
+    """This person's notices, newest first (the last LISTED that they may still read), and how many of those are unread. Each is checked again as it is read:
+    access taken away since (the type, a column, a row rule) takes the notice with it."""
     if user is None or user.get('id') is None:
         return {'notices': [], 'unread': 0}
     rows = conn.execute('SELECT id, at, action_name, record_id, text, read_at FROM notice WHERE user_id = ? ORDER BY id DESC LIMIT ?', (user['id'], LISTED)).fetchall()
-    unread = conn.execute('SELECT COUNT(*) FROM notice WHERE user_id = ? AND read_at IS NULL', (user['id'],)).fetchone()[0]
-    return {'notices': [{'id': i, 'at': at, 'action': a, 'record': r, 'text': t, 'read': read is not None} for i, at, a, r, t, read in rows], 'unread': unread}
+    shown = [{'id': i, 'at': at, 'action': a, 'record': r, 'text': t, 'read': read is not None} for i, at, a, r, t, read in rows if _still_readable(conn, r, user)]
+    return {'notices': shown, 'unread': sum(1 for n in shown if not n['read'])}
 
 
 def mark_read(conn, user: dict | None, payload: dict) -> dict:

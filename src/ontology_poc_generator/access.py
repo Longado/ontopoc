@@ -47,9 +47,9 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?))?', 'builder'),
     ('POST', r'/api/workspace/relations(/(update|confirm))?', 'builder'),
     ('POST', r'/api/workspace/queue/(confirm|confirm-group|send-back)', 'builder'),
-    ('POST', r'/api/workspace/actions(/(update|confirm|submit|decide|withdraw|undo|notify))?', 'builder'),
+    ('POST', r'/api/workspace/actions(/(update|confirm|submit|decide|withdraw|undo|notify))?', 'builder'),   # a person may not approve their own submission (object_actions.decide)
     ('GET', r'/api/workspace/notices', 'viewer'),   # each person's own notices
-    ('POST', r'/api/workspace/notices/read', 'viewer'),   # a person may not approve their own submission (object_actions.decide)
+    ('POST', r'/api/workspace/notices/read', 'viewer'),
     ('POST', r'/api/workspace/pipelines(/(update|confirm|preview|summary|columns|review|run|format-guess|expression/(check|trial)|llm/(state|trial|label|review|clear-cache)|ai/(parse|draft|explain)))?', 'builder'),   # confirming needs a second person who did not edit it (workspace_pipelines.confirm_pipeline)
     ('POST', r'/api/workspace/sources/(pull|refresh)', 'builder'),   # reading a table into a dataset is a builder's, like an upload
     ('POST', r'/api/workspace/sources(/(update|delete|test))?', 'admin'),   # a new outbound connection, and the password for it: the admin's
