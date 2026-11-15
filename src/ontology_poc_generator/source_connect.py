@@ -1,7 +1,7 @@
 """The outbound side of a data source: which addresses may be dialled, the PostgreSQL and MySQL connections (read-only sessions, TLS by default), the table list,
 the privilege check and one table's rows as text. Nothing here knows about datasets or the workspace file.
 
-The drivers (pg8000 for PostgreSQL, PyMySQL for MySQL) are pure Python and optional: `pip install "ontopoc[sources]"`. They are imported when a connection is
+The drivers (pg8000 for PostgreSQL, PyMySQL for MySQL) are pure Python (PyMySQL also takes `cryptography` for MySQL 8 logins without TLS) and optional: `pip install "ontopoc[sources]"`. They are imported when a connection is
 opened, so a service without them runs and the source page says which package is missing.
 
 Passwords: every message that leaves this module (and so reaches a page, a refresh log or a log line) has the password taken out of it first (scrub); the
@@ -142,8 +142,8 @@ def describe(exc: BaseException, password: str) -> str:
     if isinstance(exc, SourceError):
         return str(exc)
     cause = exc
-    while cause.__cause__ is not None:   # pg8000 wraps the socket error in its own InterfaceError
-        cause = cause.__cause__
+    while (cause.__cause__ or cause.__context__) is not None:   # pg8000 chains the socket error to its own InterfaceError (cause), PyMySQL to its OperationalError (context)
+        cause = cause.__cause__ or cause.__context__
     if isinstance(cause, ssl.SSLCertVerificationError):
         return f'TLS 证书验证没通过，连接已拒绝：{scrub(cause.verify_message or cause, password)}。用公认机构签的证书，或在服务所在的机器上把签发机构加进信任（SSL_CERT_FILE）'
     if isinstance(cause, ssl.SSLError):
@@ -160,6 +160,10 @@ def describe(exc: BaseException, password: str) -> str:
         if code == '57014':
             return f'查询超过时限，已被数据库停掉'
         return f'数据库说：{scrub(message, password)}'
+    if isinstance(cause, (TimeoutError, socket.timeout)):   # before the (number, text) branch below: an OS error has args of that shape too
+        return f'连接超时或读取超时（连接 {CONNECT_SECONDS} 秒、读取 {STATEMENT_SECONDS} 秒没有应答）'
+    if isinstance(cause, ConnectionRefusedError):
+        return '连接被对方拒绝：地址或端口不对，或数据库没有在听'
     if isinstance(arg, int) and len(exc.args) > 1:   # PyMySQL: (error number, message)
         if arg == 1045:
             return '用户名或密码不对，或这个账号不让从这台机器登录'
@@ -170,10 +174,6 @@ def describe(exc: BaseException, password: str) -> str:
         if arg in (3024, 1317, 1969):
             return '查询超过时限，已被数据库停掉'
         return f'数据库说：{scrub(exc.args[1], password)}'
-    if isinstance(cause, (TimeoutError, socket.timeout)):
-        return f'连接超时或读取超时（连接 {CONNECT_SECONDS} 秒、读取 {STATEMENT_SECONDS} 秒没有应答）'
-    if isinstance(cause, ConnectionRefusedError):
-        return '连接被对方拒绝：地址或端口不对，或数据库没有在听'
     text = scrub(cause, password)
     if 'cryptography' in text:
         return '这个账号用 caching_sha2_password 认证，PyMySQL 在不加密的连接上需要 cryptography 包才能登录：把加密设成“必须”，或 pip install cryptography，或让 DBA 给这个账号改用 mysql_native_password'
@@ -197,8 +197,11 @@ def text_of(value) -> str | None:
         return value.isoformat(sep=' ')
     if isinstance(value, (date, time)):
         return value.isoformat()
-    if isinstance(value, timedelta):
-        return str(value)
+    if isinstance(value, timedelta):   # a MySQL TIME (-838:59:59 to 838:59:59), which PyMySQL hands over as a timedelta: the clock reading, not '34 days, 22:59:59'
+        hours, rest = divmod(abs(value // timedelta(microseconds=1)), 3_600_000_000)
+        minutes, rest = divmod(rest, 60_000_000)
+        seconds, micro = divmod(rest, 1_000_000)
+        return f'{"-" if value < timedelta(0) else ""}{hours:02d}:{minutes:02d}:{seconds:02d}' + (f'.{micro:06d}' if micro else '')
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     if isinstance(value, UUID):
@@ -427,7 +430,11 @@ class MySql(_Sql):
                         return
                     yield batch
             finally:
-                self.raw.close()   # an unfinished streamed result would be read to its end before the cursor closes: closing the connection is what stops it
+                # An unfinished streamed result would be read to its end before the cursor closes: closing the connection is what stops it. PyMySQL would still try to
+                # drain what is left (when the cursor is collected) off the closed socket and print a traceback, so it is told there is nothing left to drain.
+                if getattr(cursor, '_result', None) is not None:
+                    cursor._result.unbuffered_active = False
+                self.raw.close()
         return columns, batches()
 
     def writes(self) -> tuple[bool, str]:
