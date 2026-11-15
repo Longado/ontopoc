@@ -458,3 +458,33 @@ class HostToolTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AttributeTests(unittest.TestCase):
+    def test_a_file_made_before_attributes_existed_opens_and_people_start_with_none(self):
+        import os
+        import sqlite3
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, 'old.sqlite')
+            old = sqlite3.connect(path)
+            old.executescript('''CREATE TABLE user (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
+                role TEXT NOT NULL, password_hash TEXT, disabled INTEGER NOT NULL DEFAULT 0, must_change INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+                last_login_at TEXT, provider TEXT NOT NULL DEFAULT 'local');
+                INSERT INTO user(username, display_name, role, created_at) VALUES ('ann', 'Ann', 'viewer', '2026-01-01');
+                CREATE TABLE row_rule (id INTEGER PRIMARY KEY AUTOINCREMENT, type_id TEXT NOT NULL, column_name TEXT NOT NULL, value TEXT NOT NULL, user_ids_json TEXT NOT NULL);
+                INSERT INTO row_rule(type_id, column_name, value, user_ids_json) VALUES ('objtype:order', '客户编号', 'KH001', '[1]');''')
+            old.commit()
+            old.close()
+            conn = open_workspace(path)
+            self.assertEqual(accounts.get_user(conn, 1)['attrs'], {})
+            from ontology_poc_generator.row_rules import rules_of
+            self.assertEqual(rules_of(conn, 'objtype:order'), [{'id': 1, 'column': '客户编号', 'value': 'KH001', 'user_ids': [1], 'user_attr': None}])
+            conn.close()
+
+    def test_attributes_are_trimmed_sorted_capped_and_an_empty_value_drops_one(self):
+        self.assertEqual(accounts.clean_attrs({' 部门 ': ' 华南 ', '岗位': '', 'a': None}), {'部门': '华南'})
+        self.assertEqual(list(accounts.clean_attrs({'b': '1', 'a': '2'})), ['a', 'b'])
+        for bad in ({'a': 1}, {'a\nb': 'x'}, {f'k{i}': 'v' for i in range(6)}, 'x', {'a': 'x' * 101}):
+            with self.assertRaises(AccountError):
+                accounts.clean_attrs(bad)

@@ -1,5 +1,6 @@
 """Row rules: which rows of an object type a person sees. A rule is "these named people see the rows where <property> = <value>" (an allow-list, one property,
-one value; there are no "not these" rules and no combinations). A type with no rules shows everyone every row. A type with rules shows a person only the rows
+one value; there are no "not these" rules and no combinations), or "everyone sees the rows where <property> = their own <attribute>" (an attribute an admin
+sets on each account, such as 部门: one rule covers every person, and someone new needs no rule edit; a person without that attribute gets no row from it). A type with no rules shows everyone every row. A type with rules shows a person only the rows
 that match one of the rules that name them, and nothing when none does; admins, and the local no-sign-in person, see every row.
 
 The rules are the admin's, on the 权限 page, kept apart from what a person confirms (changing them goes to the log as row_rules_changed, with who). The rows
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import json
 
+from ontology_poc_generator.accounts import MAX_ATTR_NAME
 from ontology_poc_generator.workspace_store import _canonical, log_line
 
 MAX_RULES = 30
@@ -31,8 +33,15 @@ class RuleRefused(ValueError):
 
 
 def rules_of(conn, type_element_id: str) -> list[dict]:
-    return [{'id': i, 'column': c, 'value': v, 'user_ids': json.loads(u)} for i, c, v, u in conn.execute(
-        'SELECT id, column_name, value, user_ids_json FROM row_rule WHERE type_id = ? ORDER BY id', (type_element_id,))]
+    return [{'id': i, 'column': c, 'value': v, 'user_ids': json.loads(u), 'user_attr': a} for i, c, v, u, a in conn.execute(
+        'SELECT id, column_name, value, user_ids_json, user_attr FROM row_rule WHERE type_id = ? ORDER BY id', (type_element_id,))]
+
+
+def _pairs(rules: list[dict], user: dict) -> list[tuple[str, str]]:
+    """The (column, value) pairs these rules let this person see: the rules that name them, and each attribute rule their own attribute fills in."""
+    attrs = user.get('attrs') or {}
+    return [(r['column'], attrs[r['user_attr']] if r['user_attr'] else r['value']) for r in rules
+            if (r['user_attr'] and attrs.get(r['user_attr'])) or (not r['user_attr'] and user['id'] in r['user_ids'])]
 
 
 def has_rules(conn, type_element_id: str) -> bool:
@@ -73,7 +82,7 @@ def restriction(conn, type_element_id: str, user: dict | None) -> list[list[tupl
     for element_id in types_on_dataset_of(conn, type_element_id):
         rules = rules_of(conn, element_id)
         if rules and not holds_all_rows(conn, element_id, user):
-            clauses.append([(r['column'], r['value']) for r in rules if user['id'] in r['user_ids']])
+            clauses.append(_pairs(rules, user))
     return clauses or None
 
 
@@ -116,7 +125,7 @@ def conflict_with_actions(conn, type_element_id: str, written: list[str]) -> str
 
 
 def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
-    """Replace the rules of one type with `rules`: [{column, value, user_ids}]. Returns {'rules': [...]}."""
+    """Replace the rules of one type with `rules`: [{column, value, user_ids}] or [{column, user_attr}] (everyone, against their own attribute). Returns {'rules': [...]}."""
     element_id = f'objtype:{english_name}'
     found = conn.execute('SELECT content_json FROM element_state WHERE element_id = ?', (element_id,)).fetchone()
     if found is None:
@@ -126,7 +135,17 @@ def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
         raise RuleRefused(f'规则要写成列表，最多 {MAX_RULES} 条')
     clean = []
     for r in rules:
-        column, value, ids = r.get('column'), r.get('value'), r.get('user_ids')
+        column, value, ids, attr = r.get('column'), r.get('value'), r.get('user_ids'), r.get('user_attr')
+        if attr not in (None, ''):   # everyone: the rows where column = their own attribute
+            if column not in columns:
+                raise RuleRefused(f'“{column}”不是这个对象类型的属性')
+            attr = attr.strip() if isinstance(attr, str) else ''
+            if not attr or len(attr) > MAX_ATTR_NAME or not attr.isprintable():
+                raise RuleRefused(f'人的属性名要写 1 到 {MAX_ATTR_NAME} 个字，不能换行')
+            if value not in (None, '') or ids not in (None, []):
+                raise RuleRefused('按人的属性的规则对所有人生效，不写取值、不点名')
+            clean.append({'column': column, 'value': '', 'user_ids': [], 'user_attr': attr})
+            continue
         everything = column in (None, '') and value in (None, '')   # no condition: these people see all rows
         if everything:
             column, value = '', ''
@@ -142,22 +161,26 @@ def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
         known = {x for (x,) in conn.execute(f'SELECT id FROM user WHERE id IN ({",".join("?" * len(ids))})', ids)}
         if set(ids) - known:
             raise RuleRefused('名单里有不存在的账号')
-        clean.append({'column': column, 'value': value, 'user_ids': ids})
+        clean.append({'column': column, 'value': value, 'user_ids': ids, 'user_attr': None})
+    if len({json.dumps(r, sort_keys=True) for r in clean}) < len(clean):
+        raise RuleRefused('有两条一模一样的规则，去掉一条')
     used = _actions_writing(conn, element_id)
     clash = sorted({r['column'] for r in clean} & set(used))
     if clash:
         raise RuleRefused(f'“{"、".join(clash)}”被行为“{"、".join(sorted({n for c in clash for n in used[c]}))}”改写：规则读的属性不能同时被行为改写，一次改写就能把一行移进或移出某个人看得到的范围', 409)
     before = rules_of(conn, element_id)
-    if [{k: r[k] for k in ('column', 'value', 'user_ids')} for r in before] == clean:
+    if [{k: r[k] for k in ('column', 'value', 'user_ids', 'user_attr')} for r in before] == clean:
         return {'rules': before}
     conn.execute('BEGIN IMMEDIATE')
     try:
         conn.execute('DELETE FROM row_rule WHERE type_id = ?', (element_id,))
-        conn.executemany('INSERT INTO row_rule(type_id, column_name, value, user_ids_json) VALUES (?, ?, ?, ?)',
-                         [(element_id, r['column'], r['value'], json.dumps(r['user_ids'])) for r in clean])
+        conn.executemany('INSERT INTO row_rule(type_id, column_name, value, user_ids_json, user_attr) VALUES (?, ?, ?, ?, ?)',
+                         [(element_id, r['column'], r['value'], json.dumps(r['user_ids']), r['user_attr']) for r in clean])
         names = lambda ids: [n for (n,) in conn.execute(f'SELECT display_name FROM user WHERE id IN ({",".join("?" * len(ids))}) ORDER BY display_name', ids)]
-        say = lambda rs: [{'column': r['column'], 'value': r['value'], 'users': names(r['user_ids'])} for r in rs]
-        summary = '；'.join(f"{'、'.join(r['users'])} 看{(' ' + r['column'] + ' = ' + r['value'] + ' 的行') if r['column'] else '全部行'}" for r in say(clean)) or '行规则全部去掉了'
+        say = lambda rs: [{'column': r['column'], 'value': r['value'], 'users': names(r['user_ids']) if r['user_ids'] else [], **({'user_attr': r['user_attr']} if r['user_attr'] else {})} for r in rs]
+        line = lambda r: (f"每个人看 {r['column']} = 自己的{r['user_attr']} 的行" if r.get('user_attr') else
+                          f"{'、'.join(r['users'])} 看{(' ' + r['column'] + ' = ' + r['value'] + ' 的行') if r['column'] else '全部行'}")
+        summary = '；'.join(line(r) for r in say(clean)) or '行规则全部去掉了'
         log_line(conn, who or '未署名', element_id, 'row_rules_changed', before={'rules': say(before)}, after={'rules': say(clean), 'summary': f'行规则：{summary}'})
         conn.execute('COMMIT')
     except BaseException:

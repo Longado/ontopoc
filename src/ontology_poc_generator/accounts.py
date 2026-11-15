@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS sign_in_limit_last ON sign_in_limit(last);
 CREATE TABLE IF NOT EXISTS user (
     id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('viewer', 'builder', 'admin')), password_hash TEXT, disabled INTEGER NOT NULL DEFAULT 0,
-    must_change INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, last_login_at TEXT, provider TEXT NOT NULL DEFAULT 'local');
+    must_change INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, last_login_at TEXT, provider TEXT NOT NULL DEFAULT 'local', attrs_json TEXT);
 CREATE TABLE IF NOT EXISTS session (
     token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES user(id), created_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
     expires_at TEXT NOT NULL);
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS api_token (
     created_at TEXT NOT NULL, last_used_at TEXT, revoked_at TEXT, scope TEXT, expires_at TEXT);
 '''
 
-_USER_KEYS = ('id', 'username', 'display_name', 'role', 'disabled', 'must_change', 'created_at', 'last_login_at', 'provider')
+_USER_KEYS = ('id', 'username', 'display_name', 'role', 'disabled', 'must_change', 'created_at', 'last_login_at', 'provider', 'attrs_json')
 _USER_COLUMNS = ', '.join(_USER_KEYS)
 _JOINED = ', '.join(f'u.{k}' for k in _USER_KEYS)   # for queries that also read session or api_token, which have columns of the same names
 
@@ -264,7 +264,8 @@ class LoginLimiter:
 
 def _public(row: sqlite3.Row | tuple) -> dict:
     user = dict(zip(_USER_KEYS, row))
-    return {**user, 'disabled': bool(user['disabled']), 'must_change': bool(user['must_change'])}
+    attrs = json.loads(user.pop('attrs_json') or '{}')
+    return {**user, 'disabled': bool(user['disabled']), 'must_change': bool(user['must_change']), 'attrs': attrs}
 
 
 def _printable(text: str) -> str:
@@ -441,6 +442,40 @@ def set_disabled(conn, actor: dict, user_id, disabled) -> dict:
         end_sessions(conn, target['id'])
         revoke_tokens(conn, target['id'])
     _log(conn, actor['username'], f'user:{target["id"]}', 'user_disabled' if disabled else 'user_enabled')
+    return get_user(conn, target['id'])
+
+
+MAX_ATTRS, MAX_ATTR_NAME, MAX_ATTR_VALUE = 5, 20, 100
+
+
+def clean_attrs(attrs) -> dict:
+    """A person's attributes as stored: {name: value}, at most MAX_ATTRS, names and values printable on one line; an empty value drops the name."""
+    if not isinstance(attrs, dict):
+        raise AccountError('属性要写成 {名字: 值}')
+    out = {}
+    for name, value in attrs.items():
+        name = name.strip() if isinstance(name, str) else ''
+        if not name or len(name) > MAX_ATTR_NAME or not name.isprintable():
+            raise AccountError(f'属性名要写 1 到 {MAX_ATTR_NAME} 个字，不能有换行和控制字符')
+        if value is None:
+            continue
+        if not isinstance(value, str) or len(value.strip()) > MAX_ATTR_VALUE or not value.strip().isprintable():
+            raise AccountError(f'“{name}”的值最多 {MAX_ATTR_VALUE} 个字，不能有换行和控制字符')
+        if value.strip():
+            out[name] = value.strip()
+    if len(out) > MAX_ATTRS:
+        raise AccountError(f'一个人最多 {MAX_ATTRS} 个属性')
+    return dict(sorted(out.items()))
+
+
+def set_attrs(conn, actor: dict, user_id, attrs) -> dict:
+    """Replace a person's attributes (部门、岗位…). A row rule may compare a property with them, so a change can move rows into or out of their view: it is logged."""
+    target = _target(conn, user_id)
+    clean = clean_attrs(attrs)
+    if clean == target['attrs']:
+        return target
+    conn.execute('UPDATE user SET attrs_json = ? WHERE id = ?', (json.dumps(clean, ensure_ascii=False) if clean else None, target['id']))
+    _log(conn, actor['username'], f'user:{target["id"]}', 'user_attrs_changed', {'from': target['attrs'], 'to': clean})
     return get_user(conn, target['id'])
 
 

@@ -184,8 +184,8 @@ def set_values_hidden(conn, english_name: str, column: str, hidden: bool, who: s
 
 def access_table(conn) -> dict:
     """The admin's page: every type with who sees it, and the people (not disabled) a list can name."""
-    people = [{'id': i, 'name': n, 'role': r} for i, n, r in conn.execute(
-        'SELECT id, display_name, role FROM user WHERE disabled = 0 ORDER BY role DESC, display_name')]
+    people = [{'id': i, 'name': n, 'role': r, 'attrs': json.loads(a or '{}')} for i, n, r, a in conn.execute(
+        'SELECT id, display_name, role, attrs_json FROM user WHERE disabled = 0 ORDER BY role DESC, display_name')]
     types = []
     for element_id, state, content in conn.execute("SELECT element_id, state, content_json FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
         allowed = allowed_ids(conn, element_id)
