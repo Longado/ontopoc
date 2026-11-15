@@ -770,7 +770,20 @@ def reason_for(conn, row: dict, user: dict | None) -> tuple[str | None, str | No
         return None, None
     if row['state'] == 'needs_look' and row['reason'] and limited_on(conn, row, user):
         return None, HIDDEN_REASON
-    return row['reason'], None
+    return (_settled_since(conn, row) if row['state'] == 'needs_look' and row['reason'] else row['reason']), None
+
+
+def _settled_since(conn, row: dict) -> str:
+    """The reason as it reads now: each "它用的X需要再看（原因见…）" the store wrote when X went to needs_look says, once X has been confirmed again, who confirmed it
+    and that this element still waits for its own confirmation. Only the words read on the pages change; the stored reason, the log and the graph's cause
+    (which reads the stored sentence) stay as written."""
+    reason = row['reason']
+    for (parent,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (row['element_id'],)).fetchall():
+        said = f'它用的{_label(conn, parent)}需要再看' if (held := element_row(conn, parent)) and held['state'] == 'confirmed' else None
+        if said and said in reason:
+            who = conn.execute('SELECT confirmed_by FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (parent,)).fetchone()
+            reason = re.sub(re.escape(said) + r'(（原因见[^）]*）)?', f'它用的{_label(conn, parent)}已经由 {who[0] if who and who[0] else "另一位"} 重新确认，这一项还要再确认一次', reason)
+    return reason
 
 
 def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
