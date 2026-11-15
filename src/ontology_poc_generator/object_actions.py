@@ -26,9 +26,10 @@ import json
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.object_types import (
     ACTION_PREFIX, MAX_DESCRIPTION, MAX_NAME, TYPE_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
-    element_row, enum_id, log_entries, recheck_after_write, type_id, write_confirmation, write_elements)
+    element_row, enum_id, log_entries, recheck_after_write, type_id, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.object_views import meaning_labels
 from ontology_poc_generator.row_rules import conflict_with_actions, keeps, restriction
+from ontology_poc_generator.type_access import reads_hidden
 from ontology_poc_generator.workspace_store import (
     _canonical, _key_of, apply_upload, current_dataset, dataset_records, infer_type, log_line, now_text, plan_upload)
 
@@ -50,7 +51,7 @@ def check_definition(conn, payload: dict, user: dict | None, name: str | None = 
     property of the object. TypeRefused says what is wrong."""
     name = _text(payload.get('name') if name is None else name, '行为的名字', MAX_NAME)
     description = _text(payload.get('description') or '', '说明', MAX_DESCRIPTION, required=False)
-    t = _content(_type_row(conn, payload.get('type'), user))
+    t = _content(whole_type_row(conn, payload.get('type'), user))
     columns = payload.get('properties')
     if not isinstance(columns, list) or not columns or len(columns) > MAX_PROPERTIES or not all(isinstance(c, str) for c in columns) or len(set(columns)) != len(columns):
         raise TypeRefused(f'要选 1 到 {MAX_PROPERTIES} 个要改的属性，不重复')
@@ -198,7 +199,7 @@ def action_visible(conn, row: dict, user: dict | None) -> bool:
     if user is not None and user['role'] == 'viewer':
         return False
     type_row = element_row(conn, type_id(_content(row)['type']))
-    return type_row is not None and _visible(conn, type_row, user)
+    return type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, row['element_id'], user, _content(row))
 
 
 def action_state(conn, row: dict, user: dict | None) -> dict:
@@ -240,7 +241,7 @@ def list_actions(conn, english_name: str, user: dict | None) -> list[dict]:
 
 def action_form(conn, english_name: str, user: dict | None) -> dict:
     """What the form for a new action offers: the type's properties (not the key) with whether each is a code column, and the code columns' meanings."""
-    t = _content(_type_row(conn, english_name, user))
+    t = _content(whole_type_row(conn, english_name, user))
     return {'properties': [{'column': p['column'], 'name': p['name'], 'enum': p['enum'], 'labels': sorted(set(meaning_labels(conn, english_name, p['column']).values())) if p['enum'] else None,
                             'values': [{'value': v, 'label': l} for v, l in sorted(meaning_labels(conn, english_name, p['column']).items())] if p['enum'] else None}
                            for p in t['properties'] if p['column'] not in t['key']]}

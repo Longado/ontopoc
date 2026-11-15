@@ -27,6 +27,7 @@ from ontology_poc_generator.pipeline_expr import NUMBER_TYPES
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, _aggregate_sql, aggregation_options
 from ontology_poc_generator.row_rules import keeps, restriction
+from ontology_poc_generator.type_access import hidden_columns
 from ontology_poc_generator.workspace_store import FAN_NOTE, _canonical, current_dataset, dataset_records, fan_marks
 
 FILTER_OPS = {'eq': '等于', 'ne': '不等于', 'contains': '包含', 'gt': '大于', 'ge': '不小于', 'lt': '小于', 'le': '不大于', 'empty': '为空', 'filled': '有值'}
@@ -55,6 +56,8 @@ def _load(conn, user: dict | None, english: str) -> dict:
     the rows this person may read, and the fields in the order a page lists them: derived properties first, then the type's own."""
     row = _type_row(conn, english, user)
     content = _content(row)
+    hidden = hidden_columns(conn, row['element_id'], user)   # kept from this person: not a field, and not in the stored rows they are given
+    content = {**content, 'properties': [p for p in content['properties'] if p['column'] not in hidden]}
     dataset = current_dataset(conn, content['dataset'])
     if dataset is None:
         raise TypeRefused(f'数据集“{content["dataset"]}”已经不在了', 409)
@@ -63,7 +66,7 @@ def _load(conn, user: dict | None, english: str) -> dict:
     if gone:
         raise TypeRefused(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{"、".join(gone)}', 409)
     limit = restriction(conn, row['element_id'], user)
-    kept = [(i, r) for i, r in enumerate(dataset_records(conn, dataset), 1) if keeps(r, limit)]
+    kept = [(i, {c: v for c, v in r.items() if c not in hidden} if hidden else r) for i, r in enumerate(dataset_records(conn, dataset), 1) if keeps(r, limit)]
     derived = confirmed_columns(conn, english, user)
     rows = [{'n': n, 'pos': pos, 'rec': rec, 'derived': {f'derived:{d["english_name"]}': d['values'].get(pos) for d in derived},
              'outside': {f'derived:{d["english_name"]}' for d in derived if pos in d['outside']}} for n, (pos, rec) in enumerate(kept, 1)]
@@ -537,7 +540,7 @@ def reach_options(conn, user: dict | None, english: str) -> list[dict]:
         other = _content(element_row(conn, type_id(rel['other'])))
         link = _content(element_row(conn, relation_id(rel['id'])))[f'{"to" if rel["side"] == "from" else "from"}_column']
         out += [{'key': f'{VIA}{rel["id"]}:{p["column"]}', 'name': f'{rel["other_name"]}的{p["name"]}', 'relation': rel['id'], 'relation_name': rel['name'], 'other': rel['other'], 'column': p['column']}
-                for p in other['properties'] if p['column'] != link]
+                for p in other['properties'] if p['column'] != link and p['column'] not in hidden_columns(conn, type_id(rel['other']), user)]
     return out
 
 

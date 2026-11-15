@@ -44,7 +44,7 @@ export function logText(e) {
     const hit = DATASET_LINE.map(([re, say]) => [re.exec(e.change), say]).find(([m]) => m);
     return { who: e.who, text: hit ? hit[1](hit[0]) : e.change };
   }
-  if (e.change.startsWith("action_") || e.change === "row_rules_changed" || e.change === "run" || e.change === "run_failed") return { who: e.who, text: e.text };   // the service writes these lines as sentences
+  if (e.change.startsWith("action_") || e.change === "row_rules_changed" || e.change === "column_access_changed" || e.change === "run" || e.change === "run_failed") return { who: e.who, text: e.text };   // the service writes these lines as sentences
   if (e.change === "needs_look") return { who: "系统", text: `${what}需再看：${e.reason}${e.caused_by ? `（${e.caused_by} 的上传）` : ""}` };
   if (e.change === "confirmed") return { who: e.who, text: `确认了${what}${e.self_confirmed ? "（自己提的；只有一位建设者，两人确认没有生效）" : ""}` };
   if (e.change === "confirmed_together") return { who: e.who, text: e.text };   // the service writes it as a sentence: 和另外 3 项一起确认

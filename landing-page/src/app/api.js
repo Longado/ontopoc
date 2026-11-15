@@ -190,6 +190,7 @@ export const getPermissions = () => request("/api/workspace/permissions");
 export const setPermission = (type, visibleTo) => send("/api/workspace/permissions", { type, visible_to: visibleTo });
 /** `rules`: the whole list of one type, [{column, value, user_ids}]: these people see the rows where the property equals the value. */
 export const setRowRules = (type, rules) => send("/api/workspace/row-rules", { type, rules });
+export const setColumnAccess = (type, column, visibleTo) => send("/api/workspace/column-access", { type, column, visible_to: visibleTo });
 
 // Q&A: the scope line with the person's own history, one saved answer as it stands now, a new question
 export const getAsk = () => request("/api/workspace/ask");

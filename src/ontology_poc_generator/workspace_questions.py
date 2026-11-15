@@ -27,7 +27,7 @@ from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, 
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
 from ontology_poc_generator.row_rules import describe as describe_limit, limit_as_list, positions as row_positions, restriction
-from ontology_poc_generator.type_access import hidden_values, visible_type_ids
+from ontology_poc_generator.type_access import hidden_columns, hidden_values, reads_hidden, visible_type_ids
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
 MAX_QUESTION = 300
@@ -69,7 +69,9 @@ def scope(conn, user: dict | None) -> dict:
         dataset = current_dataset(conn, content['dataset'])
         if dataset is None:
             continue
-        types[name] = {'row': row, 'content': content, 'dataset': dataset, 'limit': restriction(conn, row['element_id'], user)}   # the rows a row rule lets this person read, or None
+        hidden = hidden_columns(conn, row['element_id'], user)   # a column kept from this person: for them the type has no such property
+        content = {**content, 'properties': [p for p in content['properties'] if p['column'] not in hidden]}
+        types[name] = {'row': row, 'content': content, 'dataset': dataset, 'limit': restriction(conn, row['element_id'], user), 'hidden': hidden}   # the rows a row rule lets this person read, or None
         for p in content['properties']:
             held = element_row(conn, enum_id(name, p['column'])) if p['enum'] else None
             if held and held['state'] == 'confirmed':
@@ -77,7 +79,7 @@ def scope(conn, user: dict | None) -> dict:
     for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'relation:%' AND state = 'confirmed' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
         content = _content(row)
-        if content['from'] in types and content['to'] in types:
+        if content['from'] in types and content['to'] in types and not reads_hidden(conn, element_id, user, content):
             relations[content['english_name']] = {'row': row, 'content': content}
     for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' AND state = 'confirmed' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
@@ -286,7 +288,8 @@ def _readable_rows(conn, sc: dict, name: str, dataset: dict) -> list[tuple[int, 
         if t['dataset']['name'] == name and t['limit'] is not None:
             allowed = row_positions(records, t['limit'])
             kept = allowed if kept is None else kept & allowed
-    return [(i, r) for i, r in enumerate(records, 1) if kept is None or i in kept]
+    hidden = set().union(*(t['hidden'] for t in sc['types'].values() if t['dataset']['name'] == name))   # columns kept from this person leave the rows here, before anything reads them
+    return [(i, {c: v for c, v in r.items() if c not in hidden} if hidden else r) for i, r in enumerate(records, 1) if kept is None or i in kept]
 
 
 def _engine_views(conn, sc: dict, alias: dict, sources: dict) -> list[dict]:
@@ -492,6 +495,11 @@ def _rules_read(sc: dict, result: dict) -> dict:
     return {t['id']: _limit_list(sc['types'][t['id']]['limit']) for t in result.get('types', []) if t['id'] in sc['types']}
 
 
+def _hidden_read(sc: dict, result: dict) -> dict:
+    """{type id: the columns kept from the asker then}, for the types an answer read: a column kept from them later withholds it."""
+    return {t['id']: sorted(sc['types'][t['id']]['hidden']) for t in result.get('types', []) if t['id'] in sc['types']}
+
+
 def ask(conn, gateway, user: dict | None, question) -> dict:
     """Answer one question from what this person may see and what is confirmed, keep it with the definitions and dataset versions it used, and return it.
     QaRefused (503 without a model, 502 when it failed) when no answer could be worked out at all; a refusal to answer is an answer, saved like the rest."""
@@ -511,7 +519,7 @@ def ask(conn, gateway, user: dict | None, question) -> dict:
         result = _strip_rows(result)
     now = _now()
     cursor = conn.execute('INSERT INTO qa_question(user_id, asked_by, question, asked_at, status, answer_json, definitions_json, dataset_versions_json, types_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                          (user['id'] if user else None, user['display_name'] if user else None, question, now, result['status'], json.dumps({**result, 'named': _named_ids(result, sc), 'rules': _rules_read(sc, result)}, ensure_ascii=False),
+                          (user['id'] if user else None, user['display_name'] if user else None, question, now, result['status'], json.dumps({**result, 'named': _named_ids(result, sc), 'rules': _rules_read(sc, result), 'hidden_columns': _hidden_read(sc, result)}, ensure_ascii=False),
                            json.dumps(result['definitions'], ensure_ascii=False), json.dumps(result['datasets'], ensure_ascii=False), json.dumps(result['types'], ensure_ascii=False)))
     return {'id': cursor.lastrowid, 'question': question, 'asked_at': now, **result}
 
@@ -543,7 +551,7 @@ def _may_see(conn, user: dict | None, element_id: str) -> bool:
     if element_id.startswith(DERIVED_PREFIX):
         return derived_visible(conn, row, user)
     type_row = element_row(conn, type_id(_content(row)['type']))
-    return type_row is not None and _visible(conn, type_row, user)
+    return type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, element_id, user)   # a meaning of a column kept from them is not theirs
 
 
 def reopen(conn, user: dict | None, question_id: int) -> dict:
@@ -563,6 +571,11 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
                 'reason': f'这条回答用到的对象类型你现在看不到了：{"、".join(types)}，所以不再显示它。' if types else '这条回答说到的定义你现在看不到了，所以不再显示它。'}
     rules = record.pop('rules', {})
     moved = [t['name'] for t in record['types'] if t['id'] in rules and _limit_list(restriction(conn, type_id(t['id']), user)) != rules[t['id']]]
+    hidden_then = record.pop('hidden_columns', {})
+    kept_now = [t['name'] for t in record['types'] if not hidden_columns(conn, type_id(t['id']), user) <= set(hidden_then.get(t['id'], []))]
+    if kept_now:   # a column read then may now be kept from this person: the answer may hold its values
+        return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': kept_now},
+                'reason': f'“{"、".join(kept_now)}”有属性后来不让你看了，这条回答可能用到它，所以不再显示，请重新问一次。'}
     if moved:   # the answer was worked out from the rows a rule let this person read then: a different rule, a different set of rows
         return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': moved},
                 'reason': f'这条回答算的是你当时能看到的行；“{"、".join(moved)}”的行规则后来变了，所以不再显示它，请重新问一次。'}

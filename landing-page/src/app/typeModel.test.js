@@ -76,3 +76,7 @@ test("a viewer's type whose data moved says who it waits for, or that anyone wit
   assert.equal(reconfirmText(["Bob", "Ann"]), "数据更新了，正在等 Bob、Ann 再确认");
   assert.equal(reconfirmText([]), "数据更新了，正在等 有权限确认的人 再确认");
 });
+
+test("a change to who sees a column is shown as the sentence the service wrote", () => {
+  assert.deepEqual(logText({ element: "type", change: "column_access_changed", who: "管理员", text: "金额：只给 Ann 看（还有管理员）" }), { who: "管理员", text: "金额：只给 Ann 看（还有管理员）" });
+});

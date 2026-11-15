@@ -32,11 +32,14 @@ NO_TOKEN = '这个操作要用登录后的页面做，不能用令牌'
 
 
 def limited_anywhere(conn, user: dict | None) -> bool:
-    """Whether any type list leaves this person off or any row rule keeps rows from them. An admin and the local no-sign-in person never are."""
+    """Whether any type list leaves this person off, any row rule keeps rows from them, or any column is kept from them. An admin and the local no-sign-in
+    person never are."""
     if user is None or user['role'] == 'admin':
         return False
     from ontology_poc_generator.row_rules import restriction   # imported here: row_rules is not needed by the rest of the gate
     if any(user['id'] not in json.loads(ids) for (ids,) in conn.execute('SELECT user_ids_json FROM type_access').fetchall()):
+        return True
+    if any(user['id'] not in json.loads(ids) for (ids,) in conn.execute('SELECT user_ids_json FROM column_access').fetchall()):
         return True
     return any(restriction(conn, type_id, user) is not None for (type_id,) in conn.execute('SELECT DISTINCT type_id FROM row_rule').fetchall())
 

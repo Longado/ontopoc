@@ -52,7 +52,8 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/sources/(pull|refresh)', 'builder'),   # reading a table into a dataset is a builder's, like an upload
     ('POST', r'/api/workspace/sources(/(update|delete|test))?', 'admin'),   # a new outbound connection, and the password for it: the admin's
     ('POST', r'/api/workspace/schedules(/(update|delete))?', 'builder'),   # a schedule repeats what a builder may already do by hand
-    ('POST', r'/api/workspace/row-rules', 'admin'),   # who sees which rows of a type: the admin's, with the permissions page
+    ('POST', r'/api/workspace/row-rules', 'admin'),
+    ('POST', r'/api/workspace/column-access', 'admin'),   # who sees a column of a type: the admin's, with the permissions page   # who sees which rows of a type: the admin's, with the permissions page
     ('POST', r'/api/ontology/library/import', 'builder'),
     ('POST', r'/api/ontology/(build|jobs|preview|compare|variants|requery)', UNLIMITED),
     ('POST', r'/api/ontology/reference/(preview|confirm)', UNLIMITED),

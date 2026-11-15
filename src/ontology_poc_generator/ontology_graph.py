@@ -22,7 +22,7 @@ from ontology_poc_generator.object_types import (
     ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _type_row, _types_read, _visible, element_row, hidden_type_count, type_id)
 from ontology_poc_generator.object_views import view_visible
 from ontology_poc_generator.row_rules import positions, restriction
-from ontology_poc_generator.type_access import dataset_hidden
+from ontology_poc_generator.type_access import dataset_hidden, hidden_columns
 from ontology_poc_generator.workspace_pipelines import pipeline_visible
 from ontology_poc_generator.workspace_questions import _mine, reopen
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
@@ -149,7 +149,8 @@ def _type_nodes(conn, user: dict | None) -> list[dict]:
             'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None,
             'objects': None if dataset is None else dataset['rows_stored'] if limit is None else len(positions(dataset_records(conn, dataset), limit)), 'rows_limited': limit is not None,
             'dataset': {'name': content['dataset'], 'version': dataset['version'] if dataset else None},
-            'key_columns': content['key'], 'properties': [{'name': p['name'], 'column': p['column'], 'type': p['type'], 'key': p['column'] in content['key']} for p in content['properties']],
+            'key_columns': content['key'], 'properties': [{'name': p['name'], 'column': p['column'], 'type': p['type'], 'key': p['column'] in content['key']} for p in content['properties']
+                                                          if p['column'] not in hidden_columns(conn, element_id, user)],
             'confirmed_by': confirmed[0] if confirmed else None, 'confirmed_at': confirmed[1] if confirmed else None, 'confirmed_on': json.loads(confirmed[2]) if confirmed else None,
             'proposed_by': row['proposed_by'],
             'stale': stale_cause(conn, row, user),

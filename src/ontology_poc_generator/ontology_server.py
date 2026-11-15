@@ -72,7 +72,7 @@ from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.sources_http import schedules_get, schedules_post, sources_get, sources_post
 from ontology_poc_generator.workspace_schedules import schedule_loop, tick as schedule_tick
 from ontology_poc_generator.workspace_sources import interrupted_runs
-from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, hidden_type_count, key_preview, list_types, propose_meanings, type_detail, type_log, type_page, type_objects, update_type
+from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, hidden_type_count, key_preview, list_types, propose_meanings, type_detail, type_log, type_page, type_id, type_objects, update_type, whole_type_row
 from ontology_poc_generator.object_type_suggest import suggest_types
 from ontology_poc_generator.pipeline_llm import LlmService
 from ontology_poc_generator.workspace_ai import draft as ai_draft, explain_steps as ai_explain, parse as ai_parse
@@ -92,7 +92,7 @@ from ontology_poc_generator.batch_confirm import confirm_group, group_detail, qu
 from ontology_poc_generator.review_queue import confirm_item, send_back
 from ontology_poc_generator import ask_budget, use_layer
 from ontology_poc_generator.dashboards import DashboardRefused
-from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, set_access, set_values_hidden
+from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, hidden_columns, set_access, set_column_access, set_values_hidden
 
 ROOT = Path(__file__).resolve().parents[2]
 KEPT_VIEW_CONTEXTS = 6   # runs whose views, row counts and graphs built from them are kept until a definition changes
@@ -1275,11 +1275,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif len(parts) == 2 and parts[1] == 'uses':   # what uses this type, and the data it stands on
                     body = type_uses(conn, parts[0], self.user)
                 elif len(parts) == 2 and parts[1] == 'views':   # the views of this type and, for a builder, what a form for a new one offers
-                    body = {'views': list_views(conn, parts[0], self.user), 'form': None if self.user is not None and self.user['role'] == 'viewer' else view_form(conn, parts[0], self.user)}
+                    body = {'views': list_views(conn, parts[0], self.user), 'form': None if self.user is not None and self.user['role'] == 'viewer' or self._kept(conn, parts[0]) else view_form(conn, parts[0], self.user)}
                 elif len(parts) == 2 and parts[1] == 'derived':   # the derived properties of this type and, for a builder, what a form for a new one offers
                     with derived_time_limit(conn):
                         listed = list_derived(conn, parts[0], self.user)
-                    body = {'derived': listed, 'form': None if self.user is not None and self.user['role'] == 'viewer' else derived_form(conn, parts[0], self.user)}
+                    body = {'derived': listed, 'form': None if self.user is not None and self.user['role'] == 'viewer' or self._kept(conn, parts[0]) else derived_form(conn, parts[0], self.user)}
                 elif len(parts) == 4 and parts[1] == 'derived' and parts[3] == 'log':   # what happened to one of them and the confirmations it has had
                     body = derived_log(conn, parts[0], parts[2], self.user)
                 else:
@@ -1337,7 +1337,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                             elif route == '/key-check':
                                 body = key_preview(conn, payload.get('dataset'), payload.get('key'), self.user)
                             elif route == '/privacy':
-                                _type_row(conn, payload.get('id'), self.user)   # a type this person may not see is not there for them
+                                whole_type_row(conn, payload.get('id'), self.user)   # a type this person may not see is not there for them; one with a column kept from them is not theirs to mark
                                 body = set_values_hidden(conn, str(payload.get('id')), str(payload.get('column')), payload.get('hide_values'), who)
                             else:
                                 self.reply(404, {'error': 'Unknown workspace endpoint'})
@@ -1363,7 +1363,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             try:
                 if not parts:
                     english = (parse_qs(url.query).get('type') or [''])[0]
-                    body = {'actions': list_actions(conn, english, self.user), 'form': action_form(conn, english, self.user)}
+                    body = {'actions': list_actions(conn, english, self.user), 'form': None if self._kept(conn, english) else action_form(conn, english, self.user)}
                 elif len(parts) == 1:
                     body = action_detail(conn, parts[0], self.user)
                 else:
@@ -1642,6 +1642,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             else:
                 self.reply(200, body)
 
+        def _kept(self, conn, english) -> bool:
+            """Whether a column of this type is kept from the person: no form to define anything on it (whole_type_row refuses the definition too)."""
+            return bool(hidden_columns(conn, type_id(str(english)), self.user))
+
         def relations_post(self):
             """POST /api/workspace/relations (create), /relations/update, /relations/confirm, /queue/confirm, /queue/confirm-group, /queue/send-back, /permissions (admin): see
             object_relations.py, review_queue.py and type_access.py. Refusals are 403 (of who), 409 (the data or the version moved) or a 400 that says what is wrong."""
@@ -1670,6 +1674,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                             body = set_access(conn, str(payload.get('type')), payload.get('visible_to'), who)
                         elif route == 'row-rules':
                             body = set_rules(conn, str(payload.get('type')), payload.get('rules'), who)
+                        elif route == 'column-access':
+                            body = set_column_access(conn, str(payload.get('type')), str(payload.get('column')), payload.get('visible_to'), who)
                         else:
                             self.reply(404, {'error': 'Unknown workspace endpoint'})
                             return
@@ -1922,7 +1928,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.ask_post()
                 return
             if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
-                             '/api/workspace/queue/confirm-group', '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules'):
+                             '/api/workspace/queue/confirm-group', '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules', '/api/workspace/column-access'):
                 self.relations_post()
                 return
             if self.path == '/api/workspace/pipelines' or self.path.startswith('/api/workspace/pipelines/'):

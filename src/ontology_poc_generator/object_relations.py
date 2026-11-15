@@ -20,9 +20,10 @@ import re
 
 from ontology_poc_generator.object_types import (
     RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _edit_names, _flag_readers, _state_view, _text, _visible, dataset_columns, element_row, log_entries, refuse_if_limited, type_id,
-    write_confirmation, write_elements, MAX_DESCRIPTION, MAX_NAME, ENGLISH_NAME)
+    write_confirmation, write_elements, MAX_DESCRIPTION, MAX_NAME, ENGLISH_NAME, KEPT_COLUMNS)
 from ontology_poc_generator.relation_checks import _side_numbers
 from ontology_poc_generator.row_rules import positions, restriction
+from ontology_poc_generator.type_access import hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_store import SAMPLE_LIMIT, _quote, current_dataset, dataset_records, record_result
 
 CARDINALITY = {'many_to_one': '多对一', 'one_to_many': '一对多', 'one_to_one': '一对一'}
@@ -62,13 +63,14 @@ def check_relation(conn, content: dict, record: bool = True, user: dict | None =
                 conn.execute(f'CREATE TEMP TABLE {name} AS SELECT * FROM {_quote(dataset["table_name"])} WHERE rowid IN ({",".join(map(str, keep)) or "NULL"}) ORDER BY rowid')
                 made.append(name)
                 copies[end] = {**dataset, 'table_name': name, 'rows_stored': len(keep)}
-        return _check_relation(conn, content, record, copies, examples)
+        hide = {end: hidden_columns(conn, type_id(content[end]), user) for end in ('from', 'to')}   # the rows that repeat show no column kept from them
+        return _check_relation(conn, content, record, copies, examples, hide)
     finally:
         for name in made:
             conn.execute(f'DROP TABLE IF EXISTS temp.{name}')
 
 
-def _check_relation(conn, content: dict, record: bool, copies: dict, examples: bool = True) -> dict:
+def _check_relation(conn, content: dict, record: bool, copies: dict, examples: bool = True, hide: dict | None = None) -> dict:
     ends = {end: element_row(conn, type_id(content[end])) for end in ('from', 'to')}
     problems = [f'对象类型“{content[end]}”已经不在了' for end, row in ends.items() if row is None]
     if problems:
@@ -86,7 +88,7 @@ def _check_relation(conn, content: dict, record: bool, copies: dict, examples: b
     m_ds, o_ds = datasets[many_end], datasets[one_end]
     m_col, o_col = content[f'{many_end}_column'], content[f'{one_end}_column']
     shown = list(dict.fromkeys([*m['key'], m_col]))
-    repeated_shown = list(dict.fromkeys([o_col, *[p['column'] for p in o['properties']]]))[:SHOWN_COLUMNS]
+    repeated_shown = list(dict.fromkeys([o_col, *[p['column'] for p in o['properties'] if p['column'] not in (hide or {}).get(one_end, set())]]))[:SHOWN_COLUMNS]
     gone = [f'{ds["name"]} 第 {ds["version"]} 版里没有“{c}”这一列' for ds, wanted, end in ((m_ds, shown, many_end), (o_ds, repeated_shown, one_end))
             for c in wanted if c not in columns[end]]   # a column in double quotes that is not there would be read by SQLite as its own name, as a value
     if gone:
@@ -209,6 +211,8 @@ def check_definition(conn, payload: dict, user: dict | None, english_name: str |
         row = element_row(conn, type_id(str(payload.get(end))))
         if row is None or not _visible(conn, row, user):
             raise TypeRefused(f'没有“{payload.get(end)}”这个对象类型', 404)
+        if hidden_columns(conn, row['element_id'], user):
+            raise TypeRefused(KEPT_COLUMNS, 403)
     if payload.get('cardinality') == 'many_to_many':
         raise TypeRefused('多对多要靠一张把两边连起来的表，一对列写不出来，这一版还不能建')
     if payload.get('cardinality') not in CARDINALITY:
@@ -328,7 +332,8 @@ def _relation_visible(conn, row: dict, user: dict | None) -> bool:
     content = _content(row)
     if user is not None and user['role'] == 'viewer' and row['state'] != 'confirmed':
         return False
-    return all((r := element_row(conn, type_id(content[e]))) is not None and _visible(conn, r, user) for e in ('from', 'to'))
+    return all((r := element_row(conn, type_id(content[e]))) is not None and _visible(conn, r, user) for e in ('from', 'to')) \
+        and not reads_hidden(conn, row['element_id'], user, content)   # a join column kept from them
 
 
 def relation_view(conn, row: dict, user: dict | None) -> dict:
@@ -378,7 +383,7 @@ def relation_columns(conn, user: dict | None) -> list[dict]:
     out = []
     for element_id, in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
-        if not _visible(conn, row, user):
+        if not _visible(conn, row, user) or hidden_columns(conn, element_id, user):   # a type with a column kept from them: no relation of theirs to define on it
             continue
         content = _content(row)
         dataset = current_dataset(conn, content['dataset'])

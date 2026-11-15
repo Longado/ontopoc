@@ -26,7 +26,7 @@ import re
 from ontology_poc_generator.explorer import explore_chart, explore_meta, explore_table, normalize_chart, normalize_query
 from ontology_poc_generator.object_types import TypeRefused, _confirmers, _content, _type_row, element_row, type_id, was_confirmed, waiting_for_viewer
 from ontology_poc_generator.object_views import view_id
-from ontology_poc_generator.type_access import can_access
+from ontology_poc_generator.type_access import can_access, hidden_columns
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS dashboard (
@@ -261,7 +261,8 @@ def delete_dashboard(conn, user: dict | None, payload: dict) -> dict:
 def _with_bar(conn, user: dict | None, component: dict, bar: dict) -> dict:
     """The component's query with the filter bar's picks added for the fields its type has (a pick for a field it does not have leaves it alone)."""
     query = component['query']
-    own = {p['column'] for p in _content(_type_row(conn, query['type'], user))['properties']}
+    row = _type_row(conn, query['type'], user)
+    own = {p['column'] for p in _content(row)['properties']} - hidden_columns(conn, row['element_id'], user)
     added = [{'field': f, 'op': 'eq', 'value': v} for f, v in bar.items() if f in own]
     return {**query, 'filters': [*query['filters'], *added]}
 
