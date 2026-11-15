@@ -62,7 +62,7 @@ class RouteTableTests(unittest.TestCase):
                 ('POST', '/api/ontology/review/confirm', UNLIMITED), ('POST', '/api/ontology/requery', UNLIMITED), ('POST', '/api/ontology/library/import', 'builder'),
                 ('GET', '/api/workspace/pipelines', 'builder'), ('GET', '/api/workspace/pipelines/options', 'builder'), ('GET', '/api/workspace/pipelines/x/runs/2', 'builder'),
                 ('POST', '/api/workspace/pipelines', 'builder'), ('POST', '/api/workspace/pipelines/run', 'builder'), ('POST', '/api/workspace/pipelines/expression/trial', 'builder'),
-                ('POST', '/api/workspace/pipelines/delete', 'admin'),
+                ('POST', '/api/workspace/pipelines/delete', 'admin'), ('POST', '/api/workspace/actions/undo', 'builder'),
                 ('GET', '/api/users', 'admin'), ('POST', '/api/users/disable', 'admin'),
                 ('POST', '/api/auth/login', PUBLIC), ('GET', '/api/ontology/health', PUBLIC), ('GET', '/api/auth/me', SESSION), ('POST', '/api/auth/tokens/revoke', SESSION)):
             self.assertEqual(required_role(method, path), role, (method, path))

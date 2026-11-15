@@ -724,6 +724,45 @@ class ActionTests(SigningTestCase):
         column = next(c for c in client.get(DATASET_URL)[1]['columns'] if c['name'] == '状态码')
         return column['values']
 
+    def test_an_approved_change_is_undone_by_a_new_request_that_another_builder_approves(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.confirmed_action(team)
+            record = self.submit(ann)[1]['record']
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[1]['version'], 2)
+            self.assertEqual(vera.post('/api/workspace/actions/undo', {'id': record})[0], 403)   # a viewer changes nothing
+            status, body = ann.post('/api/workspace/actions/undo', {'id': record, 'reason': '签收单写错了'})
+            self.assertEqual((status, body['state'], body['undo_of']), (200, 'pending', record), body)
+            undo = body['record']
+            self.assertEqual(ann.post('/api/workspace/actions/undo', {'id': record})[0], 409)   # one undo waits at a time
+            self.assertEqual(ann.post('/api/workspace/actions/decide', {'id': undo, 'decision': 'approve'})[0], 403)   # her own request
+            self.assertEqual(self.status_counts(ann)['1'], STATUS_COUNTS['1'] - 1)   # nothing written until it is approved
+            status, body = bob.post('/api/workspace/actions/decide', {'id': undo, 'decision': 'approve'})
+            self.assertEqual((status, body['state'], body['version']), (200, 'approved', 3), body)
+            self.assertEqual(self.status_counts(ann), STATUS_COUNTS)   # back to how it was
+            records = {r['id']: r for r in ann.get(ACTION_URL)[1]['records']}
+            self.assertEqual((records[undo]['undo_of'], records[record]['can_undo']), (record, False))   # undone once; the undo itself is a change like any other
+            self.assertTrue(any(e['change'] == 'action_submitted' and f'撤销 #{record}' in e['text'] for e in self.log(ann)))
+            pending = self.submit(ann)[1]['record']
+            status, body = ann.post('/api/workspace/actions/undo', {'id': pending})
+            self.assertEqual(status, 409)
+            self.assertIn('已批准', body['error'])
+
+    def test_an_undo_is_refused_once_the_object_was_changed_again_after_the_approval(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.confirmed_action(team)
+            record = self.submit(ann)[1]['record']
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[0], 200)
+            changed = lambda r, i: {**r, '状态码': '2'} if r['订单号'] == IN_PRODUCTION['订单号'] else r   # cancelled since, by an upload
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(changed)]})[0], 200)
+            status, body = ann.post('/api/workspace/actions/undo', {'id': record})
+            self.assertEqual(status, 409)
+            self.assertIn('批准后又改过', body['error'])
+            self.assertEqual([r['state'] for r in ann.get(ACTION_URL)[1]['records']], ['approved'])   # no request was made
+
     def test_ann_defines_bob_confirms_ann_submits_and_cannot_approve_bob_approves_and_the_order_has_a_new_version_with_the_action_on_it(self):
         with self.service() as (base, out):
             team = self.team(base)
