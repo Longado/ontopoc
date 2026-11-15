@@ -193,7 +193,8 @@ def columns_read(conn, element_id: str, content: dict | None = None) -> set[tupl
     if kind == 'relation':
         return {(t(content['from']), content['from_column']), (t(content['to']), content['to_column'])}
     if kind == 'objaction':
-        return {(t(content['type']), c) for c in [*content['properties'], *([content['condition']['column']] if content.get('condition') else [])]}
+        return ({(t(content['type']), c) for c in [*content['properties'], *([content['condition']['column']] if content.get('condition') else [])]}
+                | {(t(s['type']), s['column']) for s in (content.get('choices') or {}).values()})   # the values it offers are that column's
     if kind == 'derived':
         measured = t(content['types'][-1]) if content.get('types') else t(content['type'])
         latest = content.get('latest') or {}

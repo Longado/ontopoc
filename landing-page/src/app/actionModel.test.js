@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { actionFits, actionPayload, actionProblem, emptyActionForm, recordStateText, rowKey } from "./actionModel.js";
-import { notifyRecipient } from "./actionModel.js";
+import { notifyRecipient, choicesPayload } from "./actionModel.js";
 
 test("an action form needs a name, a property to change, and a value when a condition column is picked", () => {
   const form = emptyActionForm();
@@ -48,4 +48,10 @@ test("a notice recipient from the form is whole or nothing", () => {
   assert.deepEqual(notifyRecipient({ kind: "via", relation: "order_customer", column: "城市", attr: "城市" }), { kind: "via", relation: "order_customer", column: "城市", user_attr: "城市" });
   assert.equal(notifyRecipient({ kind: "via", relation: "", column: "城市", attr: "城市" }), null);
   assert.equal(notifyRecipient({ kind: "attr", column: "", attr: "部门" }), null);
+});
+
+test("only whole choices of a written property are sent", () => {
+  const form = { properties: ["客户编号"], choices: { 客户编号: { type: "customer", column: " 客户编号 " }, 金额: { type: "customer", column: "x" }, 数量: { type: "", column: "y" } } };
+  assert.deepEqual(choicesPayload(form), { 客户编号: { type: "customer", column: "客户编号" } });
+  assert.deepEqual(choicesPayload({ properties: [], choices: undefined }), {});
 });

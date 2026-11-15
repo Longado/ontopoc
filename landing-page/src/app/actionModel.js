@@ -7,7 +7,11 @@ export const recordStateText = (r) =>
   (r.stale && r.state === "pending" ? "等批准（数据已变）" : RECORD_STATE[r.state] ?? r.state) + (r.undo_of ? `（撤销 #${r.undo_of}）` : "");
 
 /** A fresh form: no name, nothing ticked, no condition. */
-export const emptyActionForm = () => ({ name: "", description: "", properties: [], condition: { column: "", value: "" } });
+export const emptyActionForm = () => ({ name: "", description: "", properties: [], condition: { column: "", value: "" }, choices: {} });
+
+/** The choices the service is sent: only those of a written property with both a type and a column. */
+export const choicesPayload = (form) =>
+  Object.fromEntries(Object.entries(form.choices ?? {}).filter(([c, s]) => form.properties.includes(c) && s.type && s.column.trim()).map(([c, s]) => [c, { type: s.type, column: s.column.trim() }]));
 
 /** The first thing missing before the form can be sent; "" when it can. */
 export function actionProblem(form) {
@@ -20,6 +24,7 @@ export function actionProblem(form) {
 export const actionPayload = (type, form) => ({
   name: form.name.trim(), type, description: form.description.trim(), properties: form.properties,
   condition: form.condition.column ? { column: form.condition.column, value: form.condition.value.trim() } : null,
+  ...(Object.keys(choicesPayload(form)).length ? { choices: choicesPayload(form) } : {}),
 });
 
 /** The object an objects-tab row stands for: its key {column: value} from the row and the columns the service sent, and a name for it. */

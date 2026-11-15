@@ -77,7 +77,52 @@ def check_definition(conn, payload: dict, user: dict | None, name: str | None = 
     clash = conflict_with_actions(conn, type_id(t['english_name']), columns)
     if clash:
         raise TypeRefused(clash, 409)
-    return {'name': name, 'description': description, 'type': t['english_name'], 'properties': list(columns), 'condition': condition}
+    choices = _check_choices(conn, payload.get('choices'), columns, props, user)
+    return {'name': name, 'description': description, 'type': t['english_name'], 'properties': list(columns), 'condition': condition, **({'choices': choices} if choices else {})}
+
+
+def _check_choices(conn, choices, columns: list[str], props: dict, user: dict | None) -> dict:
+    """{column: {type, column}}: a written property whose new value must be one of a column of a type (another, or its own). A code column picks from its meanings
+    already, so it has none."""
+    if choices in (None, {}):
+        return {}
+    if not isinstance(choices, dict) or len(choices) > MAX_PROPERTIES:
+        raise TypeRefused('可选值要写成 {属性: {type, column}}')
+    out = {}
+    for column, source in choices.items():
+        if column not in columns:
+            raise TypeRefused(f'“{column}”不是这个行为要改的属性')
+        if props[column]['enum']:
+            raise TypeRefused(f'“{column}”是代码列，参数已经从含义里选')
+        if not isinstance(source, dict) or not isinstance(source.get('type'), str) or not isinstance(source.get('column'), str):
+            raise TypeRefused(f'“{column}”的可选值要写明从哪个对象类型的哪一列来')
+        other = _content(whole_type_row(conn, source['type'], user))
+        if source['column'] not in {p['column'] for p in other['properties']}:
+            raise TypeRefused(f'“{source["column"]}”不是“{other["name"]}”的属性')
+        out[column] = {'type': other['english_name'], 'column': source['column']}
+    return out
+
+
+MAX_OPTIONS = 500
+
+
+def _allowed_values(conn, source: dict, user: dict | None, everyone: bool = False) -> tuple[list[str], dict | None]:
+    """(the distinct values of the source column, its type's content or None when the type is gone): over the rows this person may read, or with `everyone`
+    over all of them (what an approval checks against: whether the value exists, not who may see it)."""
+    row = element_row(conn, type_id(source['type']))
+    if row is None:
+        return [], None
+    other = _content(row)
+    dataset = current_dataset(conn, other['dataset'])
+    if dataset is None:
+        return [], other
+    limit = None if everyone else restriction(conn, row['element_id'], user)
+    values: dict = {}
+    for r in dataset_records(conn, dataset):
+        text = str(r.get(source['column']) or '').strip()
+        if text and keeps(r, limit):
+            values.setdefault(_canonical(text), text)   # 1 and 1.0 are one value: the first spelling met is offered
+    return sorted(values.values()), other
 
 
 def check_names_free(conn, content: dict) -> None:
@@ -88,7 +133,7 @@ def check_names_free(conn, content: dict) -> None:
 
 
 def _reset_reasons(old: dict, new: dict) -> list[str]:
-    return [label for key, label in (('type', '对象类型'), ('properties', '要改的属性'), ('condition', '条件')) if old[key] != new[key]]
+    return [label for key, label in (('type', '对象类型'), ('properties', '要改的属性'), ('condition', '条件'), ('choices', '可选值')) if old.get(key) != new.get(key)]
 
 
 def _enum_columns(content: dict) -> list[str]:
@@ -98,7 +143,8 @@ def _enum_columns(content: dict) -> list[str]:
 def _reads(conn, content: dict) -> list[str]:
     t = _content(element_row(conn, type_id(content['type'])))
     coded = {p['column'] for p in t['properties'] if p['enum']}
-    return [type_id(content['type']), *(enum_id(content['type'], c) for c in _enum_columns(content) if c in coded)]
+    return list(dict.fromkeys([type_id(content['type']), *(enum_id(content['type'], c) for c in _enum_columns(content) if c in coded),
+                               *(type_id(src['type']) for src in (content.get('choices') or {}).values())]))   # the type its choices come from
 
 
 def waiting_on(conn, content: dict) -> list[dict]:
@@ -120,7 +166,13 @@ def describe(conn, content: dict) -> str:
     when = ''
     if cond:
         when = f'；只在 {names[cond["column"]]} 是「{_label(conn, content["type"], cond["column"], cond["value"])}」时可以提交'
-    return f'改 {t["name"]} 的{"、".join(f"「{names[c]}」" for c in content["properties"])}{when}'
+    picks = ''.join(f'；「{names[c]}」从 {_type_name(conn, s["type"])} 的 {s["column"]} 里选' for c, s in (content.get('choices') or {}).items())
+    return f'改 {t["name"]} 的{"、".join(f"「{names[c]}」" for c in content["properties"])}{picks}{when}'
+
+
+def _type_name(conn, english: str) -> str:
+    row = element_row(conn, type_id(english))
+    return _content(row)['name'] if row else english
 
 
 def _label(conn, english: str, column: str, value) -> str:
@@ -198,8 +250,11 @@ def action_visible(conn, row: dict, user: dict | None) -> bool:
     """Actions are for builders (a viewer can run nothing): those who may see the action's type."""
     if user is not None and user['role'] == 'viewer':
         return False
-    type_row = element_row(conn, type_id(_content(row)['type']))
-    return type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, row['element_id'], user, _content(row))
+    content = _content(row)
+    type_row = element_row(conn, type_id(content['type']))
+    sources = [element_row(conn, type_id(s['type'])) for s in (content.get('choices') or {}).values()]   # the types its values are offered from: theirs to see too
+    return (type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, row['element_id'], user, content)
+            and all(s is not None and _visible(conn, s, user) for s in sources))
 
 
 def action_state(conn, row: dict, user: dict | None) -> dict:
@@ -208,14 +263,23 @@ def action_state(conn, row: dict, user: dict | None) -> dict:
     return {**state, 'can_confirm': state['can_confirm'] and not waiting, 'waiting_on': waiting}
 
 
-def parameters(conn, content: dict) -> list[dict]:
-    """The parameters the action asks for: each written property with its type and, for a code column, the meanings to pick from."""
+def parameters(conn, content: dict, user: dict | None = None) -> list[dict]:
+    """The parameters the action asks for: each written property with its type and, for a code column, the meanings to pick from; for a property with choices, the
+    values of the source column over the rows this person may read (at most MAX_OPTIONS)."""
     t = _content(element_row(conn, type_id(content['type'])))
     props = {p['column']: p for p in t['properties']}
     out = []
     for column in content['properties']:
+        source = (content.get('choices') or {}).get(column)
+        if source:
+            values, other = _allowed_values(conn, source, user)
+            out.append({'column': column, 'name': props[column]['name'], 'type': props[column]['type'], 'type_name': TYPE_NAME[props[column]['type']],
+                        'choices_from': {'type': source['type'], 'type_name': other['name'] if other else source['type'], 'column': source['column']},
+                        'options': [{'value': v, 'label': v} for v in values[:MAX_OPTIONS]], 'options_cut': len(values) > MAX_OPTIONS})
+            continue
         labels = meaning_labels(conn, content['type'], column) if props[column]['enum'] else None
         out.append({'column': column, 'name': props[column]['name'], 'type': props[column]['type'], 'type_name': TYPE_NAME[props[column]['type']],
+                    'choices_from': None,
                     'options': None if labels is None else [{'value': v, 'label': labels[v]} for v in sorted(labels, key=lambda v: (not v.lstrip('-').isdigit(), int(v) if v.lstrip('-').isdigit() else 0, v))]})
     return out
 
@@ -226,7 +290,7 @@ def _line(conn, row: dict, user: dict | None) -> dict:
     cond = content['condition']
     return {'id': content['name'], 'name': content['name'], 'description': content['description'], 'type': content['type'], 'type_name': t['name'], 'properties': content['properties'],
             'condition': cond and {**cond, 'label': _label(conn, content['type'], cond['column'], cond['value']), 'name': next(p['name'] for p in t['properties'] if p['column'] == cond['column'])},
-            'says': describe(conn, content), 'parameters': parameters(conn, content), **action_state(conn, row, user)}
+            'says': describe(conn, content), 'parameters': parameters(conn, content, user), **action_state(conn, row, user)}
 
 
 def list_actions(conn, english_name: str, user: dict | None) -> list[dict]:
@@ -371,7 +435,7 @@ def _fits(kind: str, wanted: str) -> bool:
     return wanted == 'text' or kind == wanted or (wanted == 'decimal' and kind == 'integer') or (wanted == 'datetime' and kind == 'date')
 
 
-def _check_values(conn, content: dict, t: dict, params) -> tuple[dict, str | None]:
+def _check_values(conn, content: dict, t: dict, params, user: dict | None = None, everyone: bool = True) -> tuple[dict, str | None]:
     """(the values as strings, what is wrong in words or None): a value for every written property and no other, of the property's type, a code column's from its
     meanings."""
     if not isinstance(params, dict):
@@ -394,6 +458,11 @@ def _check_values(conn, content: dict, t: dict, params) -> tuple[dict, str | Non
                 return {}, f'“{props[column]["name"]}”的值“{text}”不是它的含义里的取值：{"、".join(f"{v}（{l}）" for v, l in sorted(labels.items()))}'
         elif not _fits(infer_type([text]), props[column]['type']):
             return {}, f'“{props[column]["name"]}”的值“{text}”不能当{TYPE_NAME.get(props[column]["type"], props[column]["type"])}用'
+        source = (content.get('choices') or {}).get(column)
+        if source:
+            values, other = _allowed_values(conn, source, user, everyone)
+            if _canonical(text) not in {_canonical(v) for v in values}:
+                return {}, f'“{props[column]["name"]}”的值“{text}”不在“{other["name"] if other else source["type"]}”的“{source["column"]}”里'
         out[column] = text
     return out, None
 
@@ -424,7 +493,7 @@ def submit(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     reason = reason.strip() if isinstance(reason, str) else ''
     if len(reason) > MAX_REASON or '\n' in reason:
         refuse(f'理由最多 {MAX_REASON} 个字，不能换行', 400)
-    after, wrong = _check_values(conn, content, t, payload.get('params'))
+    after, wrong = _check_values(conn, content, t, payload.get('params'), user, everyone=False)   # only the values they may read: a refusal tells nothing of the rest
     if wrong:
         refuse(wrong, 400)
     clash = conflict_with_actions(conn, type_row['element_id'], content['properties'])
