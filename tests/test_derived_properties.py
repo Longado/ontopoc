@@ -190,9 +190,23 @@ class AcceptanceTests(DerivedTestCase):
             self.assertEqual([(d['name'], d['confirmed_by'], d['state']) for d in cited], [('客户.已取消订单数', 'Bob', 'confirmed')])
             self.assertIn('已取消', cited[0]['says'])
             attribute = next(a for t in model.requests[0]['ontology']['object_types'] if t['key'] == 'customer' for a in t['attributes'] if a['path'] == '已取消订单数')
-            self.assertEqual((attribute['type'], '已取消' in attribute['derived']), ('integer', True))   # the model reads the name, the type and what it says, never a value
+            self.assertEqual((attribute['type'], '已取消' in attribute['computed_as'], 'derived' in attribute), ('integer', True, False))   # the model reads the name, the type and what it says, never a value
             self.assertNotIn('values', attribute)
             self.assertEqual(self.line(ann, 'customer', 'cancelled_orders')['used_by']['answers'], 1)
+
+    def test_a_confirmed_property_the_model_writes_as_a_derived_measure_is_still_cited(self):
+        query = {'start': 'customer', 'where': [{'field': '客户编号', 'equals': 'KH026'}], 'via': [], 'group_by': None, 'share': None,
+                 'measure': {'derived': '已取消订单数', 'op': 'sum'}}   # how DeepSeek V4.1 Flash wrote it in a real run
+        model = AskModel({'reasoning': '客户的已取消订单数是一个派生属性', 'query': query, 'definitions_used': []})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
+            self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
+            status, answer = ann.post('/api/workspace/ask', {'question': '客户 KH026 的已取消订单数是多少？'})
+            self.assertEqual((status, answer['status'], answer['answer']['measure']['value']), (200, 'answered', 3), answer)
+            self.assertEqual([(d['name'], d['confirmed_by']) for d in answer['definitions'] if d['kind'] == 'derived'], [('客户.已取消订单数', 'Bob')])
 
     def test_a_property_that_counts_rows_by_a_column_kept_from_the_model_is_left_out_of_what_the_model_is_told(self):
         query = {'start': 'customer', 'where': [{'field': '客户编号', 'equals': 'KH026'}], 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '已取消订单数', 'op': 'sum'}}

@@ -14,7 +14,7 @@ from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview, to_number
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 
-QUESTION_PROMPT_VERSION = 'company_questions.v16'
+QUESTION_PROMPT_VERSION = 'company_questions.v17'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
 MAX_MERGED = 20             # groups named in `evidence`: a pointer to where to look, not the full list
@@ -68,7 +68,8 @@ quantity × (1 − discount), or price − cost), propose it in `derive` on that
 of that object's fields, a factor with "complement": true meaning (1 − field). No constants, no division. Then start
 the query from that object and use {{"derived": "<its label>"}} as the measure, walking group_by to whatever the question
 groups by. An object's `derived` list holds measures a person has already confirmed: use them by name, do not propose
-them again. In reasoning, call objects and relations by their Chinese labels.
+them again. An attribute that carries `computed_as` is a value a person confirmed, worked out for each object (`computed_as` says how): it is
+a field like any other, so write its path as "field" (in a measure, a group_by or a where), never as a derived measure. In reasoning, call objects and relations by their Chinese labels.
 Use only type keys, relation keys and attribute paths listed in the ontology, and filter values from an attribute's
 `values` when it lists them (an attribute may also list `meanings`: what each code value stands for. The filter value is
 still the code, so for "cancelled orders" with {{"2": "已取消"}} write "equals": "2"). When a question cannot be written as one query, keep it, set "query" to null, say why in reasoning, and set
@@ -335,10 +336,11 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             return gap(f'不支持的算法 {measure.get("op")}，只能是 sum 或 average')
         if measure.get('derived') is not None:   # an amount computed from a formula a person confirmed
             formula = next((d for d in derived or [] if d['type'] == start and d['label'] == measure['derived']), None)
-            if formula is None:
+            field = _resolve_field(types[start], measure['derived']) if formula is None else None   # a derived property the workspace lists as an attribute
+            if formula is None and field is None:
                 return gap(f'要先确认{label(start)}的指标“{measure["derived"]}”，才能对它求和或求平均')
             # field is written '.<label>' so the naming below, which reads what follows the table's dot, shows the label
-            measure = {'field': f'.{formula["label"]}', 'op': measure['op'], 'derived': formula}
+            measure = {'field': field, 'op': measure['op']} if field else {'field': f'.{formula["label"]}', 'op': measure['op'], 'derived': formula}
         else:
             field = _resolve_field(types[start], measure.get('field'))
             if field is None:
@@ -659,6 +661,8 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         return {**out, 'error': '模型返回的不是 JSON'}
     reply = judgement.reply
     raw = reply.get('questions') if isinstance(reply, dict) else None
+    if raw is None and question and isinstance(reply, dict) and 'query' in reply:   # one asked question answered as a bare object, not in a list
+        raw = [{**reply, 'question': reply['question'] if isinstance(reply.get('question'), str) else question}]
     if not isinstance(raw, list):
         return {**out, 'error': '模型没有返回问题列表'}
     graph = build_graph(ontology, bundle)

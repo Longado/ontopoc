@@ -324,7 +324,7 @@ def _catalog_for_model(conn, sc: dict, parts: dict) -> tuple[dict, list[dict]]:
             if a['path'] in kinds:
                 a['type'] = kinds[a['path']]
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in parts['derived']:   # a derived value: its kind and what it says, never its values (they are worked out from rows)
-                a.update(type=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['type'], derived=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['says'])
+                a.update(type=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['type'], computed_as=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['says'])   # not `derived`: that word is the query's formula measure
                 a.pop('values', None)
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in hidden or a['path'] in t['content']['key']:
                 a.pop('values', None)
@@ -364,8 +364,9 @@ def _reads(sc: dict, parts: dict, query, used: list, spec) -> tuple[list[str], l
     read = list(dict.fromkeys([query['start'], *[end for k in walked for end in (relations[k]['from'], relations[k]['to'])]]))
     fields = {f for f, _, _ in _uses(query, types, relations) if f} | {u['id'].rpartition('=')[0] for u in used if isinstance(u.get('id'), str)}
     measure = query.get('measure')
-    if isinstance(measure, dict) and isinstance(measure.get('field'), str) and query['start'] in types:   # the amount an answer adds up is a use too (a derived value is cited by it)
-        fields |= {f for f in [_resolve_field(types[query['start']], measure['field'])] if f}
+    if isinstance(measure, dict) and query['start'] in types:   # the amount an answer adds up is a use too (a derived value is cited by it)
+        named = measure.get('field') if isinstance(measure.get('field'), str) else measure.get('derived') if isinstance(measure.get('derived'), str) else None
+        fields |= {f for f in [_resolve_field(types[query['start']], named) if named else None] if f}   # run_query reads a derived name as the attribute too
     return read, walked, fields
 
 
@@ -504,7 +505,7 @@ def ask(conn, gateway, user: dict | None, question) -> dict:
                   'definitions': [], 'types': [], 'datasets': {}, 'steps': []}
     else:
         if gateway is None:
-            raise QaRefused('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。', 503)
+            raise QaRefused('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。', 503)
         result = _answered(conn, gateway, user, question, sc)
     if user is not None and user['role'] == 'viewer':
         result = _strip_rows(result)
