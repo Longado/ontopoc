@@ -35,7 +35,7 @@ class ChoiceTests(NoticeTests):
             order = next(r for r in ORDERS if r['客户编号'] == 'KH001')
             submit = lambda value: bob.post('/api/workspace/actions/submit', {'action': PICK['name'], 'key': {'订单号': order['订单号']}, 'params': {'客户编号': value}, 'reason': '转单'})
             status, body = submit('KH999')
-            self.assertEqual(status, 409, body)
+            self.assertEqual(status, 400, body)   # a value that is not allowed, like any other bad value
             self.assertIn('不在“客户”的“客户编号”里', body['error'])
             status, body = submit('KH002')
             self.assertEqual(status, 200, body)
