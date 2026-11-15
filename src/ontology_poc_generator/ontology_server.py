@@ -113,7 +113,7 @@ class RunChanged(ValueError):
 
 SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
 JOB_ID = re.compile(r'^[0-9a-f]{12}$')
-NO_KEY = '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。'
+NO_KEY = '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。'
 INTERRUPTED = '建模服务在这次建模途中重启过，这次作业中断了。请重新上传文件。'
 
 
@@ -126,11 +126,16 @@ def prices_from_env() -> tuple[float | None, float | None]:
 
 
 def gateway_from_env():
+    """The model the service asks: DeepSeek's own API with DEEPSEEK_API_KEY (or EIP_MODEL_API_KEY), else OpenRouter with OPENROUTER_API_KEY and DeepSeek
+    V4.1 Flash there. EIP_MODEL_API_BASE and EIP_MODEL_NAME name another OpenAI-compatible endpoint or model. None without a key."""
     key = os.environ.get('DEEPSEEK_API_KEY') or os.environ.get('EIP_MODEL_API_KEY')
+    base, model = 'https://api.deepseek.com', 'deepseek-flash'
+    if not key and os.environ.get('OPENROUTER_API_KEY'):
+        key, base, model = os.environ['OPENROUTER_API_KEY'], 'https://openrouter.ai/api/v1', 'deepseek/deepseek-v4.1-flash'
     if not key:
         return None
-    return OpenAICompatibleGateway(api_base='https://api.deepseek.com', api_key=key,
-                                   model=os.environ.get('EIP_MODEL_NAME', 'deepseek-flash'), timeout_seconds=180, temperature=0)
+    return OpenAICompatibleGateway(api_base=os.environ.get('EIP_MODEL_API_BASE') or base, api_key=key,
+                                   model=os.environ.get('EIP_MODEL_NAME') or model, timeout_seconds=180, temperature=0)
 
 
 def code_fingerprint(code_dir: Path) -> str:
@@ -3073,7 +3078,7 @@ def main(argv=None):
     except ValueError as exc:
         parser.error(str(exc))
     print(f'Ontology API: http://127.0.0.1:{server.server_port}'
-          + ('' if gateway else '  (no model key: set DEEPSEEK_API_KEY to build ontologies)'), flush=True)
+          + ('' if gateway else '  (no model key: set DEEPSEEK_API_KEY or OPENROUTER_API_KEY to build ontologies)'), flush=True)
     if args.no_auth:
         print('Sign-in is OFF (--no-auth): every request is the local admin. Do not use this on a shared machine.', flush=True)
     elif server.gate.needs_first_admin():

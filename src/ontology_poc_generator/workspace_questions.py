@@ -504,7 +504,7 @@ def ask(conn, gateway, user: dict | None, question) -> dict:
                   'definitions': [], 'types': [], 'datasets': {}, 'steps': []}
     else:
         if gateway is None:
-            raise QaRefused('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 后重启 ontology_server。', 503)
+            raise QaRefused('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。', 503)
         result = _answered(conn, gateway, user, question, sc)
     if user is not None and user['role'] == 'viewer':
         result = _strip_rows(result)
