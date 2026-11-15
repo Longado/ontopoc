@@ -41,5 +41,14 @@ class ExcelCapTests(unittest.TestCase):
         opened.assert_not_called()
 
 
+    def test_a_csv_with_more_cells_than_the_cap_is_refused_too_and_the_caps_fit_a_ten_megabyte_upload(self):
+        data = ('a,b\n' + ''.join(f'{i},x\n' for i in range(60))).encode()
+        with mock.patch.object(company_sources, 'MAX_CELLS', 100):
+            with self.assertRaises(SourceFileError) as raised:
+                load_table_file('t.csv', data)
+        self.assertIn('单元格', str(raised.exception))
+        self.assertLessEqual(company_sources.MAX_CELLS, 1_000_000)        # the security review's file: a million rows of two cells
+        self.assertLessEqual(company_sources.MAX_UNPACKED, 50 * 1024 * 1024)
+
 if __name__ == '__main__':
     unittest.main()
