@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { confirmAction, createAction, getAction, getActions, getRelations, setActionNotify, submitAction, undoRecord, withdrawRecord } from "./api.js";
+import { confirmAction, createAction, getAction, getActions, getRelations, getTypes, setActionNotify, submitAction, undoRecord, withdrawRecord } from "./api.js";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
 import { State } from "./TypesPage.jsx";
@@ -161,6 +161,7 @@ function ActionCard({ action, type, mayBuild, onChanged }) {
 
 function NewAction({ type, form: options, onSaved }) {
   const [form, setForm] = useState(emptyActionForm());
+  const [types] = useLoad(getTypes, []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const problem = actionProblem(form);
@@ -196,6 +197,26 @@ function NewAction({ type, form: options, onSaved }) {
           ))}
         </div>
       </div>
+      {options.properties.filter((p) => form.properties.includes(p.column) && !p.values).length > 0 && (
+        <div className="field">
+          <span className="caption">新值只能从某个对象类型的一列里选（可以不写）</span>
+          {options.properties.filter((p) => form.properties.includes(p.column) && !p.values).map((p) => {
+            const pick = form.choices?.[p.column] ?? { type: "", column: "" };
+            const put = (next) => setForm({ ...form, choices: { ...form.choices, [p.column]: { ...pick, ...next } } });
+            return (
+              <div className="inline wide" key={p.column}>
+                <span>{p.name} 从</span>
+                <Select label={`${p.name}：可选值来自的类型`} value={pick.type} onChange={(t) => put({ type: t })}>
+                  <option value="">不限</option>
+                  {(types.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </Select>
+                {pick.type && <input type="text" aria-label={`${p.name}：可选值来自的列`} placeholder="那个类型的列名" value={pick.column} onChange={(e) => put({ column: e.target.value })} />}
+                {pick.type && <span>里选</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="field">
         <span className="caption">只在对象满足这个条件时可以提交（可以不写）</span>
         <div className="inline wide">
