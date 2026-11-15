@@ -6,6 +6,8 @@ and every request is the built-in local admin: for trials and tests on one's own
 """
 from __future__ import annotations
 
+import json
+
 import os
 from http.cookies import CookieError, SimpleCookie
 from urllib.parse import urlsplit
@@ -13,7 +15,7 @@ from urllib.parse import urlsplit
 from ontology_poc_generator import accounts
 from ontology_poc_generator.accounts import transaction
 from ontology_poc_generator.actor import set_actor
-from ontology_poc_generator.access import PUBLIC, allows, read_token_allows, required_role
+from ontology_poc_generator.access import PUBLIC, UNLIMITED, allows, read_token_allows, required_role
 from ontology_poc_generator.workspace_store import open_workspace
 
 COOKIE = 'ontopoc_session'
@@ -27,6 +29,16 @@ STILL_NEEDED = ('/api/auth/me', '/api/auth/logout', '/api/auth/password')   # wh
 NOT_HERE = '这个服务没有开登录（--no-auth），没有账号可管理'
 NO_TOKEN = '这个操作要用登录后的页面做，不能用令牌'
 
+
+
+def limited_anywhere(conn, user: dict | None) -> bool:
+    """Whether any type list leaves this person off or any row rule keeps rows from them. An admin and the local no-sign-in person never are."""
+    if user is None or user['role'] == 'admin':
+        return False
+    from ontology_poc_generator.row_rules import restriction   # imported here: row_rules is not needed by the rest of the gate
+    if any(user['id'] not in json.loads(ids) for (ids,) in conn.execute('SELECT user_ids_json FROM type_access').fetchall()):
+        return True
+    return any(restriction(conn, type_id, user) is not None for (type_id,) in conn.execute('SELECT DISTINCT type_id FROM row_rule').fetchall())
 
 class Gate:
     def __init__(self, db_path, port: int, origins=(), no_auth: bool = False, trusted_proxies=None):
@@ -128,6 +140,15 @@ class Gate:
         if not allows(user['role'], needed):
             h.reply(403, {'error': '你的角色不能做这个'})
             return False
+        if needed == UNLIMITED:
+            conn = self.connect()
+            try:
+                limited = limited_anywhere(conn, user)
+            finally:
+                conn.close()
+            if limited:
+                h.reply(403, {'error': '你受类型名单或行规则限制，早期界面的运行存的是整张表，不能看：请在团队应用里查看和提问'})
+                return False
         if user.get('token_scope') == 'read' and not read_token_allows(method, path):
             h.reply(403, {'error': '这个令牌只能读和提问，不能做这个。需要别的权限请让管理员另发一个。'})
             return False

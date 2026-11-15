@@ -9,6 +9,8 @@ from pathlib import PurePath
 import zipfile
 
 MAX_BYTES = 10 * 1024 * 1024  # ponytail: whole file in memory; stream rows if customers bring bigger exports
+MAX_UNPACKED = 50 * 1024 * 1024    # what an .xlsx may unpack to: a few hundred KB of zip can hold a sheet of a million rows
+MAX_CELLS = 1_000_000              # cells read from one file, CSV or Excel: about 10 MB of ordinary rows; each kept cell costs memory
 DEFAULT_PURPOSE = '描述这家公司的业务：有哪些对象（如客户、产品、订单）、它们之间怎样关联，让管理者的业务问题能在数据上回答。'
 TABLE_SUFFIXES = ('.csv', '.xlsx')
 
@@ -75,14 +77,40 @@ def _decode(data: bytes) -> str:
     raise SourceFileError('CSV 文件不是 UTF-8 或 GBK 编码，请另存为 UTF-8 后再上传')
 
 
+def _capped(rows) -> list[list]:
+    """The rows of a CSV, refused in words past MAX_CELLS cells."""
+    out, cells = [], 0
+    for r in rows:
+        cells += len(r)
+        if cells > MAX_CELLS:
+            raise SourceFileError(f'这个 CSV 文件超过 {MAX_CELLS:,} 个单元格，读不完：请拆成几个文件，或只留要用的列')
+        out.append(r)
+    return out
+
+
 def _read_xlsx(data: bytes) -> dict[str, tuple[list[dict], dict]]:
-    from openpyxl import load_workbook
+    import openpyxl
     try:
-        book = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        unpacked = sum(i.file_size for i in zipfile.ZipFile(io.BytesIO(data)).infolist())
+    except (zipfile.BadZipFile, OSError, ValueError) as exc:
+        raise SourceFileError(f'无法作为 Excel（.xlsx）读取：{exc}') from None
+    if unpacked > MAX_UNPACKED:
+        raise SourceFileError(f'这个 Excel 文件解压后有 {unpacked // 1024 // 1024} MB，上限 {MAX_UNPACKED // 1024 // 1024} MB：请另存为 CSV 或拆成几个文件')
+    try:
+        book = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except (zipfile.BadZipFile, KeyError, OSError, ValueError) as exc:
         raise SourceFileError(f'无法作为 Excel（.xlsx）读取：{exc}') from None
     try:
-        return {sheet.title: _records([list(r) for r in sheet.iter_rows(values_only=True)]) for sheet in book.worksheets}
+        cells, sheets = 0, {}
+        for sheet in book.worksheets:
+            rows = []
+            for r in sheet.iter_rows(values_only=True):
+                cells += len(r)
+                if cells > MAX_CELLS:
+                    raise SourceFileError(f'这个 Excel 文件超过 {MAX_CELLS:,} 个单元格，读不完：请拆成几个文件，或只留要用的列')
+                rows.append(list(r))
+            sheets[sheet.title] = _records(rows)
+        return sheets
     finally:
         book.close()
 
@@ -96,7 +124,7 @@ def _sheets(filename: str, data: bytes) -> dict:
         raise SourceFileError('文件是空的')
     if suffix == '.csv':
         try:
-            return {PurePath(filename).stem: _records(list(csv.reader(io.StringIO(_decode(data)))))}
+            return {PurePath(filename).stem: _records(_capped(csv.reader(io.StringIO(_decode(data)))))}
         except csv.Error as exc:   # a cell longer than the reader allows, a stray quote that runs to the end of the file
             raise SourceFileError(f'无法作为 CSV 读取（可能有单元格超过 {csv.field_size_limit()} 个字符，或引号没有配对）：{exc}') from None
     return _read_xlsx(data)
