@@ -50,5 +50,11 @@ class ExcelCapTests(unittest.TestCase):
         self.assertLessEqual(company_sources.MAX_CELLS, 1_000_000)        # the security review's file: a million rows of two cells
         self.assertLessEqual(company_sources.MAX_UNPACKED, 50 * 1024 * 1024)
 
+    def test_blank_rows_count_toward_the_cap(self):
+        data = b'a,b\n1,2\n' + b'\n' * 200   # a file of empty lines holds no cells but costs a row each
+        with mock.patch.object(company_sources, 'MAX_CELLS', 100):
+            with self.assertRaises(SourceFileError):
+                load_table_file('t.csv', data)
+
 if __name__ == '__main__':
     unittest.main()
