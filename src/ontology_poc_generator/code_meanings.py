@@ -207,6 +207,17 @@ def codes_for_label(meanings: dict | None, field: str, value) -> list:
     return [c for c, label in code['labels'].items() if label == value] or [value]
 
 
+def exclusion_text(meanings: dict | None, field: str, codes: list) -> str:
+    """A condition that leaves codes out, with what it lets in: "状态码 不是 2（已取消）：算进 0 已交付、1 生产中" (the codes with a meaning on file
+    that it does not name). The wording the named views already use."""
+    labels = (meanings or {}).get(field, {}).get('labels', {})
+    order = lambda code: (0, float(code), code) if re.fullmatch(r'[0-9]+(\.[0-9]+)?', code) else (1, 0.0, code)
+    left_out = [str(c) for c in codes]
+    said = '、'.join(f'{c}（{labels[c]}）' if labels.get(c) else c for c in sorted(left_out, key=order))
+    rest = '、'.join(f'{c} {label}' for c, label in sorted(labels.items(), key=lambda item: order(item[0])) if label and c not in left_out)
+    return f'{field.partition(".")[2]} 不是 {said}' + (f'：算进 {rest}' if rest else '')
+
+
 def shown_codes(meanings: dict | None, field: str, codes: list) -> str:
     """One code as shown(); several that were confirmed to mean the same as "0, 1 = 已交付"."""
     code = (meanings or {}).get(field)

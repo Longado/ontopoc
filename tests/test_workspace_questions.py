@@ -297,6 +297,61 @@ class QuestionTests(SigningTestCase):
             self.assertNotIn('answer', body)
             self.assertEqual(body['refusal']['definitions'][0]['definition'], '已取消')
 
+    def not_cancelled(self, *labels, measure=None, direction='exclude'):
+        where = [{'field': '状态码', 'not_equals': labels[0] if len(labels) == 1 else list(labels)}]
+        return cancelled(query={**ALL_ORDERS, 'where': where, 'measure': measure},
+                         used=[{'id': f'订单.状态码={label}', 'direction': direction, 'basis': f'不算{label}'} for label in labels])
+
+    def test_orders_that_are_not_cancelled_are_answered_by_leaving_the_confirmed_meaning_out_and_the_answer_says_which_codes_count(self):
+        amount = self.not_cancelled('已取消', measure={'field': '金额', 'op': 'sum'})
+        model = AskModel(amount)
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask(team['ann'], '没取消的订单金额一共多少？')
+            self.assertEqual((status, body['status']), (200, 'answered'), body)
+            self.assertEqual((body['answer']['total'], body['answer']['measure']['value']), (144, 2426560))
+            self.assertEqual(sum(int(r['金额']) for r in ORDERS if r['状态码'] != '2'), 2426560)
+            self.assertIn('状态码 不是 2（已取消）：算进 0 已交付、1 生产中', body['path'])
+            self.assertEqual([(u['definition'], u['direction'], u['how']) for u in body['understood']], [('已取消', 'exclude', '状态码 不是 2（已取消）')])
+            self.assertEqual([d['name'] for d in body['definitions']], ['订单', '订单.状态码'])   # the meaning it left a code out by is a definition the answer stands on
+            self.assertNotIn('not_in_question', json.dumps(body['evidence']))   # 没取消 is the question saying it, though not in the label's words
+            model.item = self.not_cancelled('已取消')
+            status, body = self.ask(team['ann'], '没取消的订单有多少？')
+            self.assertEqual((body['status'], body['answer']['total']), ('answered', 144))
+            # leaving out two meanings at once: only the 96 delivered ones stay
+            model.item = self.not_cancelled('已取消', '生产中')
+            status, body = self.ask(team['ann'], '不算已取消和生产中的订单有多少？')
+            self.assertEqual((body['status'], body['answer']['total']), ('answered', 96), body)
+            self.assertIn('状态码 不是 1（生产中）、2（已取消）：算进 0 已交付', body['path'])
+
+    def test_a_query_that_leaves_a_meaning_out_while_the_model_says_include_or_nothing_is_refused(self):
+        for direction, how in (('include', '问题要把它算进来，这条查询却把它排除了'), ('mention', '却按它筛选了行')):
+            with self.subTest(direction=direction), self.service(gateway=AskModel(self.not_cancelled('已取消', direction=direction))) as (base, out):
+                team = self.team(base)
+                self.confirmed_orders(team)
+                status, body = self.ask(team['ann'], '没取消的订单有多少？')
+                self.assertEqual((status, body['status']), (200, 'definition_unmet'), body)
+                self.assertNotIn('answer', body)
+                self.assertIn(how, body['reason'])
+        with self.service(gateway=AskModel(cancelled(query={**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': '已取消'}]}, used=[]))) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask(team['ann'], '没取消的订单有多少？')
+            self.assertEqual(body['status'], 'definition_unmet', body)
+            self.assertIn('没有说明问题是要包含还是排除它', body['reason'])
+
+    def test_a_code_nobody_confirmed_a_meaning_for_stops_an_exclusion_question_before_the_model_is_asked(self):
+        model = AskModel(self.not_cancelled('已取消'))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)   # 3 appears, with no meaning
+            status, body = self.ask(team['ann'], '没取消的订单金额一共多少？')
+            self.assertEqual((status, body['status'], len(model.requests)), (200, 'refused', 0), body)
+            self.assertIn('新出现 3（16 行，没有含义）', json.dumps(body['refusal'], ensure_ascii=False))
+            self.assertNotIn('answer', body)
+
     def test_a_column_marked_not_to_send_values_goes_to_the_model_without_its_values_or_meanings(self):
         model = AskModel(cancelled())
         with self.service(gateway=model) as (base, out):
@@ -359,6 +414,31 @@ class QuestionTests(SigningTestCase):
             status, viewer_body = self.ask(team['vera'], question)
             self.assertEqual(viewer_body['answer']['relation_gap'].get('keys'), None)   # a viewer reads the count, not which customers
             self.assertEqual(viewer_body['answer']['total'], 3)
+
+    def test_a_confirmed_relation_a_query_cannot_walk_is_named_with_why_when_a_question_needs_it(self):
+        gap = {'reasoning': '要按客户分组，但订单和客户之间没有关系', 'query': None, 'missing': 'ontology', 'definitions_used': []}
+        model = AskModel(gap)
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.assertEqual(ann.post('/api/workspace/types', {k: v for k, v in ORDER.items() if k != 'enums'} | {'properties': [{'column': '订单号'}, {'column': '金额'}]})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types', CUSTOMER)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/relations', RELATION)[0], 200)
+            for name in ('order', 'customer'):
+                self.confirm(bob, name)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
+            shown = bob.get('/api/workspace/relations/order_customer')[1]
+            self.assertEqual(bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': shown['version'], 'seen': shown['check']['signature']})[0], 200)
+            for who in (ann, vera):
+                status, body = self.ask(who, '订单金额最高的三个客户是谁？')
+                self.assertEqual((status, body['status']), (200, 'ontology_gap'), body)
+                named = [d for d in body['refusal']['left_out'] if d['id'] == 'relation:order_customer']
+                self.assertEqual(len(named), 1, body['refusal'])
+                self.assertEqual((named[0]['kind'], named[0]['name'], named[0]['state']), ('relation', '订单属于客户', 'confirmed'))
+                self.assertIn('客户编号 + 城市', named[0]['reason'])   # why a query cannot walk it: the customer is keyed on more than the joined column
+                scope = who.get('/api/workspace/ask')[1]
+                self.assertIn('relation:order_customer', [d['id'] for d in scope['left_out']])
+                self.assertNotIn('order_customer', [r['id'] for r in scope['relations']])
 
     def test_a_row_rule_limits_what_a_question_counts_and_a_relation_shows_the_answer_says_so_and_a_saved_answer_is_withheld_when_the_rule_changes(self):
         orders = {**ORDER, 'properties': [*ORDER['properties'], {'column': '客户编号'}]}

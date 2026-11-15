@@ -116,9 +116,9 @@ def scope_line(conn, user: dict | None) -> dict:
     """What the Q&A page says about what may be asked: the confirmed types in scope, the relations, and (for builders) what is left out and why."""
     sc = scope(conn, user)
     return {'types': [{'id': k, 'name': v['content']['name']} for k, v in sc['types'].items()],
-            'relations': [{'id': k, 'name': v['content']['name']} for k, v in sc['relations'].items()],
+            'relations': [{'id': k, 'name': v['content']['name']} for k, v in sc['relations'].items() if not _walk_problem(sc, v['content'])],
             'views': [{'id': k, 'name': k, 'type': v['content']['type']} for k, v in sc['views'].items()],
-            'left_out': _unsettled(conn, user)}
+            'left_out': [*_unsettled(conn, user), *_unwalkable(sc)]}
 
 
 # --- definitions that are not settled -----------------------------------------------------------------------------------------------------------------
@@ -215,6 +215,30 @@ def _kind_word(kind: str) -> str:
 
 # --- what the engine reads ----------------------------------------------------------------------------------------------------------------------------
 
+def _ends(c: dict) -> tuple[str, str]:
+    """('from', 'to') named as (the many side, the one side)."""
+    return ('from', 'to') if c['cardinality'] in ('many_to_one', 'one_to_one') else ('to', 'from')
+
+
+def _walk_problem(sc: dict, c: dict) -> str | None:
+    """Why a query cannot walk this confirmed relation, or None when it can."""
+    if c['from'] == c['to']:
+        return '两端是同一个对象类型：问答不沿这种关系走'
+    many, one = _ends(c)
+    one_type = sc['types'][c[one]]['content']
+    if one_type['key'] != [c[f'{one}_column']]:
+        return (f'它连的是“{c[f"{one}_column"]}”，而“{one_type["name"]}”的主键是“{" + ".join(one_type["key"])}”：问答只能沿连到整个主键的关系走。'
+                f'如果“{c[f"{one}_column"]}”一个就能认出一个{one_type["name"]}，把主键改成它再确认')
+    return None
+
+
+def _unwalkable(sc: dict) -> list[dict]:
+    """The confirmed relations in scope that a query cannot walk, each as a refusal names a definition, with why."""
+    return [{'id': r['row']['element_id'], 'kind': 'relation', 'name': r['content']['name'], 'state': 'confirmed', 'reason': why, 'reason_hidden': False,
+             'stale_word': None, 'cause_word': None, 'proposed_by': r['row']['proposed_by'], 'who_can_confirm': []}
+            for r in sc['relations'].values() if (why := _walk_problem(sc, r['content']))]
+
+
 def _inputs(conn, sc: dict) -> dict:
     """The ontology, the rows and the meanings in the shape the engine reads: a dataset is a source (its name without dots, which the engine reads as the end of
     a table name), a type is read from its dataset by its key, a property is an attribute, a confirmed relation binds its one side by the key and the many
@@ -240,9 +264,9 @@ def _inputs(conn, sc: dict) -> dict:
     relations, unusable = [], []
     for k, r in sc['relations'].items():
         c = r['content']
-        many, one = ('from', 'to') if c['cardinality'] in ('many_to_one', 'one_to_one') else ('to', 'from')
+        many, one = _ends(c)
         one_key = sc['types'][c[one]]['content']['key']
-        if c['from'] == c['to'] or one_key != [c[f'{one}_column']]:
+        if _walk_problem(sc, c):
             unusable.append(k)
             continue
         relations.append({'key': k, 'from': c['from'], 'to': c['to'], 'label': c['name'], 'meaning': c.get('description') or '',
@@ -438,7 +462,7 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
     lines, types, datasets = _used_definitions(conn, sc, parts, read, walked, fields, applied if item['status'] in ('answered', 'no_data') else [])
     result = {key: item[key] for key in ('status', 'answer', 'path', 'reason', 'reasoning', 'query', 'evidence', 'understood', 'unmet', 'definitions_used') if key in item}
     if item['status'] in ('ontology_gap', 'query_limit') and not item.get('from_relation_check'):
-        result['refusal'] = {'kind': 'not_in_scope', 'in_scope': [t['content']['name'] for t in sc['types'].values()], 'left_out': _unsettled(conn, user)}
+        result['refusal'] = {'kind': 'not_in_scope', 'in_scope': [t['content']['name'] for t in sc['types'].values()], 'left_out': [*_unsettled(conn, user), *_unwalkable(sc)]}
     elif item['status'] == 'definition_unmet':
         result['refusal'] = {'kind': 'definition_unmet', 'definitions': item.get('unmet') or []}
     limited = [{'type': t['id'], 'name': t['name'], 'rule': describe_limit(sc['types'][t['id']]['limit'])} for t in types if sc['types'][t['id']]['limit'] is not None]

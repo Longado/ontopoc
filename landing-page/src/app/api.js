@@ -179,6 +179,10 @@ export const getQueue = () => request("/api/workspace/queue");
 export const getQueueCount = () => request("/api/workspace/queue?count=1").then((b) => b.count);
 /** Confirms one queue item as the version the person saw, with the item's `seen` (what it showed of the data: the connected-row counts of a relation, the version and rows of a type's dataset). */
 export const confirmItem = (element, version, seen = undefined) => send("/api/workspace/queue/confirm", { element, version, ...(seen ? { seen } : {}) });
+/** The items one version of a dataset moved, in the order they are confirmed in, each with what its own screen shows. */
+export const getQueueGroup = (dataset, version) => request(`/api/workspace/queue/group?dataset=${encodeURIComponent(dataset)}&version=${version}`);
+/** Confirms them in one action: `items` [{element, version, seen, new_values?}], what the person looked at. All or nothing. */
+export const confirmGroup = (dataset, version, items) => send("/api/workspace/queue/confirm-group", { dataset, version, items });
 export const sendBack = (element, version, reason) => send("/api/workspace/queue/send-back", { element, version, reason });
 export const getPermissions = () => request("/api/workspace/permissions");
 /** `visibleTo`: "everyone" or the ids of the people who may see the type. */

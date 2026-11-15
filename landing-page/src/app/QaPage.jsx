@@ -22,7 +22,7 @@ function Named({ list, mayBuild }) {
           {d.who_can_confirm?.length > 0 && <p className="muted small">可以确认的人：{d.who_can_confirm.join("、")}</p>}
         </li>
       ))}
-      {mayBuild && list.length > 0 && <li><a href="#/confirm">去待确认</a></li>}
+      {mayBuild && list.some((d) => d.state !== "confirmed") && <li><a href="#/confirm">去待确认</a></li>}
     </ul>
   );
 }
@@ -40,7 +40,8 @@ function Refusal({ record, mayBuild }) {
       )}
       {r?.kind === "not_in_scope" && (
         <>
-          <p>{record.reason}</p>
+          {r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") && <p>有已确认的关系问答用不上（原因在下面），模型看不到它，所以下面说“没有关系”。</p>}
+          <p className={r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") ? "muted" : undefined}>{record.reason}</p>
           <p className="muted">你能问的是 {r.in_scope.length ? r.in_scope.join("、") : "（还没有已确认的对象类型）"}，回答它需要的东西不在里面。</p>
           {r.left_out?.length > 0 && (
             <>

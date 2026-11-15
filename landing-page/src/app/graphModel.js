@@ -9,6 +9,7 @@ export const SIZE = {
   relation: { w: 156, h: 48 },
   view: { w: 156, h: 48 },
   action: { w: 156, h: 48 },
+  derived: { w: 156, h: 48 },
   answer: { w: 196, h: 48 },
 };
 const MARGIN = 40;

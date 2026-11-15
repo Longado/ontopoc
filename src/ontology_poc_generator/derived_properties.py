@@ -777,7 +777,7 @@ def confirm_derived(conn, payload: dict, who: str | None, user: dict | None) -> 
     content = _content(row)
     waiting = waiting_on(conn, content)
     if waiting:
-        raise TypeRefused(f'它用到的{"、".join(f"“{w["name"]}”" for w in waiting)}还没有确认，要先确认它们', 409)
+        raise TypeRefused(f'它用到的{"、".join("“" + w["name"] + "”" for w in waiting)}还没有确认，要先确认它们', 409)
     chain = _chain(conn, content, user)
     if chain['problems']:
         raise TypeRefused(f'按现在的数据算不出来，不能确认：{"；".join(chain["problems"])}', 409)

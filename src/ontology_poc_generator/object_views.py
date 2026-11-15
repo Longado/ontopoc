@@ -22,7 +22,7 @@ import json
 
 from ontology_poc_generator.named_views import NUMERIC, orderable
 from ontology_poc_generator.object_types import (
-    LIMITED_NOTE, MAX_DESCRIPTION, MAX_NAME, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
+    LIMITED_NOTE, MAX_DESCRIPTION, MAX_NAME, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _label, _state_view, _text, _type_row, _visible,
     dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, write_confirmation, write_elements)
 from ontology_poc_generator.public_ontology import normalize_value
 from ontology_poc_generator.row_rules import positions as row_positions, restriction
@@ -303,7 +303,7 @@ def confirm_view(conn, payload: dict, who: str | None, user: dict | None) -> dic
     content = _content(row)
     waiting = waiting_on(conn, content)
     if waiting:
-        raise TypeRefused(f'视图用到的{"、".join(f"“{w["name"]}”" for w in waiting)}还没有确认，要先确认它们', 409)
+        raise TypeRefused(f'视图用到的{"、".join("“" + w["name"] + "”" for w in waiting)}还没有确认，要先确认它们', 409)
     summary = view_summary(conn, content)
     if summary['problems']:
         raise TypeRefused(f'按现在的数据过不了检查，不能确认：{"；".join(summary["problems"])}', 409)
@@ -366,6 +366,58 @@ def open_new_values(conn, row: dict, summary: dict) -> list[dict]:
                 out.append({'column': column, 'value': value, 'label': labels.get(value, ''), 'rows': summary['codes'][column][value]})
     return out
 
+
+
+def new_value_reason(conn, row: dict) -> str | None:
+    """Why a view waits on values its condition columns have now that they did not have when it was confirmed, written from the meanings on file now: each new
+    value with its meaning once someone wrote one, whether the condition as written lets it in, and whether a meaning is still to be written; the meanings'
+    own needs-a-look only while they are not confirmed again. None when no condition column has a new value (or the view was confirmed before codes were kept)."""
+    was = json.loads(row['anchors_json']).get('codes') if row['anchors_json'] else None
+    if was is None:
+        return None
+    content = _content(row)
+    summary = view_summary(conn, content)
+    if summary['problems']:
+        return None
+    said = []
+    for column in dict.fromkeys(f['column'] for f in content['filters']):
+        now = summary['codes'].get(column) or {}
+        new = sorted(set(now) - set(was.get(column, [])), key=lambda v: _by_code((v,)))
+        if not new:
+            continue
+        labels = meaning_labels(conn, content['type'], column)
+        wanted = {f['label'] for f in content['filters'] if f['column'] == column and f['op'] == 'is'}
+        kept_out = {f['label'] for f in content['filters'] if f['column'] == column and f['op'] == 'is_not'}
+        comes_in = {v: (not wanted or labels.get(v) in wanted) and labels.get(v) not in kept_out for v in new}
+        meanings = element_row(conn, enum_id(content['type'], column))
+        state = meanings['state'] if meanings else 'confirmed'
+        named = _label(conn, meanings['element_id']) if meanings else ''
+        head = {'confirmed': '', 'needs_look': f'它用的{named}需要再看（原因见那一组含义）。',
+                'rejected': f'它用的{named}被退回了，要先按退回的理由改。'}.get(state, f'它用的{named}已经重写，在等另一位确认。')
+        listed = '、'.join(f'{v}（{labels[v]}，{now[v]} 行）' if labels.get(v) else f'{v}（{now[v]} 行）' for v in new)
+        if len(set(comes_in.values())) == 1:
+            default = f'{"它们" if len(new) > 1 else "它"}{"会算进来" if comes_in[new[0]] else "不会算进来"}'
+        else:
+            default = f'{"、".join(v for v in new if comes_in[v])} 会算进来，{"、".join(v for v in new if not comes_in[v])} 不会'
+        unnamed = [v for v in new if not labels.get(v)]
+        said.append(f'{head}“{column}”出现了新值 {listed}：新值 {"、".join(new)} 算不算进来？按现在的写法（{in_out_text(conn, content)}），{default}。'
+                    + (f'请先给新值 {"、".join(unnamed)} 写含义，再决定' if unnamed else ''))
+    return '；'.join(said) or None
+
+
+def refresh_new_value_reasons(conn, english_name: str, column: str) -> None:
+    """After the meanings of one code column were written or confirmed: the views on that type that need another look and read the column get their reason
+    written again from the meanings as they are now, so none of them keeps quoting meanings from before (or asking for one that has been written). The state,
+    version and log stay: only the words of the reason change."""
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE substr(element_id, 1, ?) = ? AND state = 'needs_look'",
+                                      (len(VIEW_PREFIX), VIEW_PREFIX)).fetchall():
+        row = element_row(conn, element_id)
+        content = _content(row)
+        if content['type'] != english_name or column not in {f['column'] for f in content['filters']}:
+            continue
+        reason = new_value_reason(conn, row)
+        if reason and reason != row['reason']:
+            conn.execute("UPDATE element_state SET reason = ? WHERE element_id = ? AND version = ? AND state = 'needs_look'", (reason, element_id, row['version']))
 
 def _choices(asked, open_: list[dict]) -> dict[tuple, str]:
     """{(column, value): 'in' | 'out'} from the request; 409 naming what is still unanswered."""

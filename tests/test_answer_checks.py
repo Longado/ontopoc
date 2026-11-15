@@ -358,7 +358,7 @@ class ServerAnswersTests(unittest.TestCase):
         excluded = self.ask('已取消的不算，有多少订单？')
         self.assertEqual(excluded['understood'], [{'definition': '已取消', 'direction': 'exclude', 'how': '读视图 有效订单'}])
         refused = self.ask('已取消的不算，有多少订单？（带筛选）')
-        self.assertEqual((refused['status'], refused['understood'][0]['how']), ('definition_unmet', '查询做不到排除'))
+        self.assertEqual((refused['status'], refused['understood'][0]['how']), ('definition_unmet', '查询没有把它排除'))
         self.assertNotIn('understood', self.ask('订单有多少？'))
         self.assertEqual(sorted(included['definitions_told']), ['有效订单', '订单.状态码=已取消'])
 

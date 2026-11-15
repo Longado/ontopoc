@@ -174,7 +174,7 @@ def confirm_action(conn, payload: dict, who: str | None, user: dict | None) -> d
     content = _content(row)
     waiting = waiting_on(conn, content)
     if waiting:
-        raise TypeRefused(f'行为用到的{"、".join(f"“{w["name"]}”" for w in waiting)}还没有确认，要先确认它们', 409)
+        raise TypeRefused(f'行为用到的{"、".join("“" + w["name"] + "”" for w in waiting)}还没有确认，要先确认它们', 409)
     clash = conflict_with_actions(conn, type_id(content['type']), content['properties'])
     if clash:
         raise TypeRefused(f'不能确认：{clash}', 409)

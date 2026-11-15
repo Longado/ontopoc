@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { confirmItem, decideRecord, getQueue, sendBack, withdrawRecord } from "./api.js";
+import { KIND, groupTitle } from "./batchModel.js";
 import { timeText } from "./format.js";
 import { itemAction, itemHref, waitingText } from "./relationModel.js";
+import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
 import { confirmersText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
@@ -9,7 +11,6 @@ import { useLoad } from "./useLoad.js";
 import { waitingText as derivedWaitingText } from "./derivedModel.js";
 import { viewWaitingText } from "./viewModel.js";
 
-const KIND = { type: "对象类型", meaning: "取值含义", relation: "关系", view: "视图", derived: "派生属性", action: "行为", approval: "行为提交", pipeline: "管道" };
 
 function Card({ item, onChanged }) {
   const [asking, setAsking] = useState(false);
@@ -85,6 +86,27 @@ function Card({ item, onChanged }) {
   );
 }
 
+/** What one upload moved, as one card: the things it sent back, and the way into the screen that confirms them together. */
+function GroupCard({ group, items }) {
+  const byElement = Object.fromEntries(items.map((i) => [i.element, i]));
+  return (
+    <section className="card">
+      <div className="page-head">
+        <h2 className="item-title">{groupTitle(group.dataset, group.version, group.items.length)}</h2>
+        <span className="muted small">{group.uploaded_by ?? "未署名"} 上传 {timeText(group.uploaded_at)}</span>
+      </div>
+      <ul className="checks">
+        {group.items.map((element) => {
+          const item = byElement[element];
+          return <li key={element}>{KIND[item.kind]} <a href={itemHref(item)}>{item.title}</a> <State item={item} /></li>;
+        })}
+      </ul>
+      {group.hidden > 0 && <p className="warn">还有 {group.hidden} 项你看不到</p>}
+      <p><a className="button primary" href={hrefFor({ page: "confirmgroup", dataset: group.dataset, version: group.version })}>一起看</a></p>
+    </section>
+  );
+}
+
 export function ConfirmPage() {
   const [state, reload] = useLoad(getQueue, []);
   const [mineOnly, setMineOnly] = useState(false);
@@ -103,7 +125,8 @@ export function ConfirmPage() {
       {state.data?.hidden_by_rules > 0 && <p className="warn">有 {state.data.hidden_by_rules} 项因为行规则你看不到。要看，请管理员在权限页给你开“全部行”。</p>}
       {state.data && !state.data.items.length && !state.data.hidden_by_rules && <p className="muted">没有要确认的。新提出的定义、数据变了需要再看的，会出现在这里。</p>}
       <div className="cards">
-        {items.map((item) => <Card key={`${item.element}@${item.version}@${item.state}`} item={item} onChanged={reload} />)}
+        {(state.data?.groups ?? []).map((g) => <GroupCard key={g.key} group={g} items={state.data.items} />)}
+        {items.filter((i) => !i.group).map((item) => <Card key={`${item.element}@${item.version}@${item.state}`} item={item} onChanged={reload} />)}
       </div>
     </main>
   );

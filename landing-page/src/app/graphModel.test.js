@@ -33,6 +33,15 @@ test("a pipeline sits between the datasets it reads and the dataset it writes, w
   assert.equal(positions["pipeline:合计"].w, SIZE.pipeline.w);
 });
 
+test("a derived property sits after the types and the relation it reads, at its own size", () => {
+  const nodes = [node("objtype:order", "type", "订单"), node("objtype:customer", "type", "客户"), node("relation:r", "relation", "订单属于客户"), node("derived:customer:n", "derived", "已取消订单数")];
+  const edges = [{ from: "objtype:order", to: "relation:r" }, { from: "objtype:customer", to: "relation:r" }, { from: "objtype:order", to: "derived:customer:n" },
+    { from: "objtype:customer", to: "derived:customer:n" }, { from: "relation:r", to: "derived:customer:n" }];
+  const { positions } = layeredLayout(nodes, edges);
+  assert.equal(Math.round(positions["derived:customer:n"].x / 252), 2);
+  assert.deepEqual([positions["derived:customer:n"].w, positions["derived:customer:n"].h], [SIZE.derived.w, SIZE.derived.h]);
+});
+
 test("a cycle in the edges does not make the layout run for ever", () => {
   const nodes = [node("a", "type"), node("b", "type")];
   const { positions } = layeredLayout(nodes, [{ from: "a", to: "b" }, { from: "b", to: "a" }]);
