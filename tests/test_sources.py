@@ -472,7 +472,7 @@ class SourceServerTests(SourceCase):
             self.pull(ann)
             self.ask(ann, 'post', '/api/workspace/schedules', {'name': '每小时', 'kind': 'source', 'target': '订单库', 'cadence': 'hourly', 'minute': 0, 'tz': 'UTC'})
             self.db = None
-            later = datetime.now(timezone.utc) + timedelta(hours=2)
+            later = (datetime.now(timezone.utc) + timedelta(hours=2)).replace(minute=5, second=0, microsecond=0)   # not :59, where a minute later is the next hour's run
             self.assertEqual([r['status'] for r in self.server.run_schedules(later)], ['failed'])
             self.assertEqual(self.server.run_schedules(later + timedelta(minutes=1)), [])
             runs = self.ask(ann, 'get', '/api/workspace/schedules/1/runs')[1]['runs']
