@@ -303,7 +303,7 @@ def confirm_view(conn, payload: dict, who: str | None, user: dict | None) -> dic
     content = _content(row)
     waiting = waiting_on(conn, content)
     if waiting:
-        raise TypeRefused(f'视图用到的{"、".join(f"“{w["name"]}”" for w in waiting)}还没有确认，要先确认它们', 409)
+        raise TypeRefused(f'视图用到的{"、".join("“" + w["name"] + "”" for w in waiting)}还没有确认，要先确认它们', 409)
     summary = view_summary(conn, content)
     if summary['problems']:
         raise TypeRefused(f'按现在的数据过不了检查，不能确认：{"；".join(summary["problems"])}', 409)

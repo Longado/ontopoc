@@ -105,7 +105,7 @@ def _list(items: list[str]) -> str:
 def _latest_select(base: dict, keys: list[str], order: str) -> str:
     row = f't.{_q(base["row"])}' if base['has_row'] else 't.rowid'
     blank = f"(t.{_q(order)} IS NOT NULL AND t.{_q(order)} <> '')"
-    inner = (f'SELECT {_list(["t." + _q(n) for n in base["names"]] + [f"{row} AS {_q(base['row'])}"])},\n'
+    inner = (f'SELECT {_list(["t." + _q(n) for n in base["names"]] + [row + " AS " + _q(base["row"])])},\n'
              f'  ROW_NUMBER() OVER (PARTITION BY {", ".join("t." + _q(k) for k in keys)}\n'
              f'    ORDER BY {blank} DESC, {_order_expression(order, base["types"])} DESC, {row} DESC) AS {_q(base["rank"])}\n'
              f'FROM {base["ref"]} AS t')
