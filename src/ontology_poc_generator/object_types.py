@@ -782,7 +782,8 @@ def _settled_since(conn, row: dict) -> str:
         said = f'它用的{_label(conn, parent)}需要再看' if (held := element_row(conn, parent)) and held['state'] == 'confirmed' else None
         if said and said in reason:
             who = conn.execute('SELECT confirmed_by FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (parent,)).fetchone()
-            reason = re.sub(re.escape(said) + r'(（原因见[^）]*）)?', f'它用的{_label(conn, parent)}已经由 {who[0] if who and who[0] else "另一位"} 重新确认，这一项还要再确认一次', reason)
+            now = f'它用的{_label(conn, parent)}已经由 {who[0] if who and who[0] else "另一位"} 重新确认，这一项还要再确认一次'
+            reason = re.sub(re.escape(said) + r'(（原因见[^）]*）)?', lambda _: now, reason)   # a function: names are text, not a replacement pattern
     return reason
 
 

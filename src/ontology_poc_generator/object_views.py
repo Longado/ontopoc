@@ -413,8 +413,8 @@ def refresh_new_value_reasons(conn, english_name: str, column: str) -> None:
                                       (len(VIEW_PREFIX), VIEW_PREFIX)).fetchall():
         row = element_row(conn, element_id)
         content = _content(row)
-        if content['type'] != english_name or column not in {f['column'] for f in content['filters']}:
-            continue
+        if content['type'] != english_name or column not in {f['column'] for f in content['filters']} or '出现了新值' not in (row['reason'] or ''):
+            continue   # a view sent back for its rows, its type or an edit keeps its own reason
         reason = new_value_reason(conn, row)
         if reason and reason != row['reason']:
             conn.execute("UPDATE element_state SET reason = ? WHERE element_id = ? AND version = ? AND state = 'needs_look'", (reason, element_id, row['version']))
