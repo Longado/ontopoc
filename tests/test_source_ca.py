@@ -55,6 +55,9 @@ class ContextTests(unittest.TestCase):
             with self.subTest(bad=bad[:20]), self.assertRaises(source_connect.SourceError):
                 source_connect.check_ca(bad)
         source_connect.check_ca(ca_pem())
+        with self.assertRaises(source_connect.SourceError) as raised:   # a key pasted with the certificate would be stored as it is
+            source_connect.check_ca(ca_pem() + '-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n')
+        self.assertIn('私钥', str(raised.exception))
 
 
 class SourceCaApiTests(SourceCase):
@@ -79,6 +82,9 @@ class SourceCaApiTests(SourceCase):
             self.assertEqual(self.ca_seen, pem)
             listed = {s['name']: s for s in self.ask(admin, 'get', '/api/workspace/sources')[1]['sources']}
             self.assertTrue(listed['corp']['custom_ca'])
+            self.assertEqual(self.ask(admin, 'post', '/api/workspace/sources/update', {'name': 'corp', 'tls': 'none'})[0], 200)   # turning encryption off drops the CA
+            self.assertFalse({s['name']: s for s in self.ask(admin, 'get', '/api/workspace/sources')[1]['sources']}['corp']['custom_ca'])
+            self.assertEqual(self.ask(admin, 'post', '/api/workspace/sources/update', {'name': 'corp', 'tls': 'required', 'ca_pem': pem})[0], 200)
             self.assertEqual(self.ask(admin, 'post', '/api/workspace/sources/update', {'name': 'corp', 'ca_pem': ''})[0], 200)
             self.assertFalse({s['name']: s for s in self.ask(admin, 'get', '/api/workspace/sources')[1]['sources']}['corp']['custom_ca'])
             self.ask(admin, 'post', '/api/workspace/sources/test', {'name': 'corp'})
