@@ -178,7 +178,10 @@ def _tls(payload: dict, host: str, current: str | None = None) -> str:
 
 
 def _ca(payload: dict, tls: str, current: str | None = None) -> str | None:
-    """The source's own CA certificate: what the request says ('' takes it away), else what the source had. Only with encryption on."""
+    """The source's own CA certificate: what the request says ('' takes it away), else what the source had. Only with encryption on: turning it off drops
+    the saved CA, and a CA sent together with "none" is refused."""
+    if tls != 'required' and not payload.get('ca_pem'):
+        return None
     ca = payload.get('ca_pem', current)
     if ca in (None, ''):
         return None

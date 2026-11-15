@@ -319,6 +319,8 @@ def check_ca(pem) -> None:
     """SourceError in words unless `pem` is one or more PEM certificates a TLS context can load."""
     if not isinstance(pem, str) or len(pem) > MAX_CA or '-----BEGIN CERTIFICATE-----' not in pem:
         raise SourceError('CA 证书要贴 PEM 格式的文字（以 -----BEGIN CERTIFICATE----- 开头，至多 64 KB）')
+    if 'PRIVATE KEY' in pem:
+        raise SourceError('这段文字里有私钥：只贴 CA 证书（BEGIN CERTIFICATE 那几段），私钥不要贴到这里')
     try:
         ssl.create_default_context(cadata=pem)
     except (ssl.SSLError, ValueError):
