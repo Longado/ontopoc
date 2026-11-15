@@ -737,6 +737,8 @@ class ActionTests(SigningTestCase):
             undo = body['record']
             self.assertEqual(ann.post('/api/workspace/actions/undo', {'id': record})[0], 409)   # one undo waits at a time
             self.assertEqual(ann.post('/api/workspace/actions/decide', {'id': undo, 'decision': 'approve'})[0], 403)   # her own request
+            card = next(i for i in bob.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'approval' and i['record'] == undo)
+            self.assertIn(f'撤销 #{record}', card['lines'][0]['text'])   # the approver sees it undoes an approved change
             self.assertEqual(self.status_counts(ann)['1'], STATUS_COUNTS['1'] - 1)   # nothing written until it is approved
             status, body = bob.post('/api/workspace/actions/decide', {'id': undo, 'decision': 'approve'})
             self.assertEqual((status, body['state'], body['version']), (200, 'approved', 3), body)
