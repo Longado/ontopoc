@@ -141,3 +141,13 @@ class ColumnAccessTests(ActionTests):
             self.assertIn('状态码', json.dumps(node['stale'], ensure_ascii=False))
             bob_node = next(n for n in bob.get('/api/workspace/graph/relations')[1]['nodes'] if n['key'] == 'order')
             self.assertIsNotNone(bob_node['stale'])
+
+    def test_a_kept_column_cannot_be_the_key_of_another_type_on_the_dataset(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, admin = team['ann'], team['admin']
+            self.assertEqual(self.keep(admin, '金额', 'ann')[0], 200)
+            keyed = {'english_name': 'by_amount', 'name': '按金额', 'dataset': '订单', 'key': ['金额', '订单号'], 'description': '', 'properties': [{'column': '订单号'}]}
+            status, body = ann.post('/api/workspace/types', keyed)
+            self.assertEqual(status, 409, body)
+            self.assertIn('不能当编号', body['error'])

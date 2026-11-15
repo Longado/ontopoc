@@ -290,7 +290,7 @@ def _kept_from(conn, user: dict | None, component: dict) -> set[str]:
 def _failed(conn, user: dict | None, component: dict, exc: Exception) -> dict:
     base = {'id': component['id'], 'title': component['title'], 'chart': component['chart']}
     if _kept_from(conn, user, component):   # the reason may name a column kept from them: say only that they cannot read it
-        return {**base, 'chart': None, 'status': 'unavailable', 'message': '这个组件用到了你看不到的属性'}
+        return {**base, 'chart': {'kind': component['chart'].get('kind')}, 'status': 'unavailable', 'message': '这个组件用到了你看不到的属性'}   # the kind only: the rest names columns
     waiting = _waiting_on(conn, user, component) if isinstance(exc, TypeRefused) else None
     if waiting is not None:
         who = '、'.join(waiting) or '有权限确认的人'

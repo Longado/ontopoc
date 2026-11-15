@@ -20,7 +20,7 @@ import re
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator.row_rules import keeps, positions, restriction
-from ontology_poc_generator.type_access import can_access, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
+from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
 from ontology_poc_generator.workspace_store import FAN_NOTE, StaleElement, _canonical, _key_of, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line
 
 TYPE_PREFIX = 'objtype:'
@@ -213,6 +213,11 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
         raise TypeRefused(f'没有叫“{payload.get("dataset")}”的数据集', 404)
     cols = dataset_columns(conn, dataset['id'])
     key = payload.get('key')
+    kept = {c for (t,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' AND json_extract(content_json, '$.dataset') = ?", (dataset['name'],))
+            for c in column_allowed(conn, t)} if isinstance(key, list) else set()
+    named = {k for k in key if isinstance(k, str)} if isinstance(key, list) else set()
+    if kept & named:   # a column kept from some people binds the dataset: it cannot name the objects of another type over it
+        raise TypeRefused(f'“{"、".join(sorted(kept & named))}”在这个数据集上只给部分人看，不能当编号；先在“权限”页让所有人看它', 409)
     key_check, warnings = check_key_choice(conn, dataset, cols, key)
     wanted = payload.get('properties') or []
     if not isinstance(wanted, list) or not all(isinstance(p, dict) for p in wanted):
