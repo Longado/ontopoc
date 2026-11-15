@@ -88,7 +88,8 @@ from ontology_poc_generator.row_rules import RuleRefused, set_rules
 from ontology_poc_generator.object_relations import (
     confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
 from ontology_poc_generator.ontology_graph import lineage_graph, relation_graph, type_uses
-from ontology_poc_generator.review_queue import confirm_item, queue, send_back
+from ontology_poc_generator.batch_confirm import confirm_group, group_detail, queue_with_groups
+from ontology_poc_generator.review_queue import confirm_item, send_back
 from ontology_poc_generator import ask_budget, use_layer
 from ontology_poc_generator.dashboards import DashboardRefused
 from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, set_access, set_values_hidden
@@ -1562,7 +1563,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     body = {'types': relation_columns(conn, self.user)}
                 elif parts == ['queue']:   # ?count=1: only how many this person may confirm, read from the states (the navigation item asks on every page)
                     with derived_time_limit(conn):
-                        body = queue(conn, self.user, light='count' in parse_qs(url.query))
+                        body = queue_with_groups(conn, self.user, light='count' in parse_qs(url.query))
+                elif parts == ['queue', 'group']:   # ?dataset=订单&version=2: the items one upload moved, in the order they are confirmed in
+                    asked = parse_qs(url.query)
+                    version = (asked.get('version') or [''])[0]
+                    if not asked.get('dataset') or not version.isdigit():
+                        raise TypeRefused('要写明是哪个数据集的哪一版')
+                    with derived_time_limit(conn):
+                        body = group_detail(conn, self.user, asked['dataset'][0], int(version))
                 elif parts == ['permissions']:
                     body = access_table(conn)
                 else:
@@ -1620,7 +1628,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(200, body)
 
         def relations_post(self):
-            """POST /api/workspace/relations (create), /relations/update, /relations/confirm, /queue/confirm, /queue/send-back, /permissions (admin): see
+            """POST /api/workspace/relations (create), /relations/update, /relations/confirm, /queue/confirm, /queue/confirm-group, /queue/send-back, /permissions (admin): see
             object_relations.py, review_queue.py and type_access.py. Refusals are 403 (of who), 409 (the data or the version moved) or a 400 that says what is wrong."""
             route = self.path[len('/api/workspace/'):]
             try:
@@ -1639,6 +1647,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                             body = confirm_relation(conn, payload, who, self.user)
                         elif route == 'queue/confirm':
                             body = confirm_item(conn, payload, who, self.user)
+                        elif route == 'queue/confirm-group':
+                            body = confirm_group(conn, payload, who, self.user)
                         elif route == 'queue/send-back':
                             body = send_back(conn, payload, who, self.user)
                         elif route == 'permissions':
@@ -1679,7 +1689,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path.split('?')[0] == '/api/workspace/pipelines' or self.path.startswith('/api/workspace/pipelines/'):
                 self.pipelines_get()
                 return
-            if self.path.split('?')[0] in ('/api/workspace/relations', '/api/workspace/relation-form', '/api/workspace/queue', '/api/workspace/permissions') \
+            if self.path.split('?')[0] in ('/api/workspace/relations', '/api/workspace/relation-form', '/api/workspace/queue', '/api/workspace/queue/group', '/api/workspace/permissions') \
                     or self.path.startswith('/api/workspace/relations/'):
                 self.relations_get()
                 return
@@ -1890,7 +1900,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.ask_post()
                 return
             if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
-                             '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules'):
+                             '/api/workspace/queue/confirm-group', '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules'):
                 self.relations_post()
                 return
             if self.path == '/api/workspace/pipelines' or self.path.startswith('/api/workspace/pipelines/'):

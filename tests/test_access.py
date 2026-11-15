@@ -53,6 +53,7 @@ class RouteTableTests(unittest.TestCase):
                 ('GET', '/api/workspace/types', 'viewer'), ('GET', '/api/workspace/types/order/objects', 'viewer'),
                 ('POST', '/api/workspace/types', 'builder'), ('POST', '/api/workspace/types/confirm', 'builder'), ('POST', '/api/workspace/types/suggest', 'builder'),
                 ('GET', '/api/workspace/relations', 'viewer'), ('GET', '/api/workspace/relations/order_customer/log', 'viewer'), ('GET', '/api/workspace/queue', 'builder'),
+                ('GET', '/api/workspace/queue/group', 'builder'), ('POST', '/api/workspace/queue/confirm-group', 'builder'),
                 ('GET', '/api/workspace/relation-form', 'builder'), ('POST', '/api/workspace/relations/confirm', 'builder'), ('POST', '/api/workspace/queue/send-back', 'builder'),
                 ('GET', '/api/workspace/permissions', 'admin'), ('POST', '/api/workspace/permissions', 'admin'),
                 ('POST', '/api/workspace/datasets/upload', 'builder'), ('POST', '/api/workspace/datasets/delete', 'builder'), ('POST', '/api/ontology/build', 'builder'),

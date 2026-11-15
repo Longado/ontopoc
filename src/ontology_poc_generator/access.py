@@ -22,7 +22,7 @@ ROUTES: list[tuple[str, str, str]] = [
     # read
     ('GET', r'/api/workspace/(datasets|types|relations)(/.+)?', 'viewer'),   # what a person sees of types and relations is filtered by who they are (type_access)
     ('GET', r'/api/workspace/graph/(relations|lineage)', 'viewer'),   # the drawings leave out what this person may not see, like the pages they are made of (ontology_graph)
-    ('GET', r'/api/workspace/(tasks|relation-form|queue)', 'builder'),   # the task list quotes keys and the reasons the model's suggestions were dropped, which carry values
+    ('GET', r'/api/workspace/(tasks|relation-form|queue(/group)?)', 'builder'),   # the task list quotes keys and the reasons the model's suggestions were dropped, which carry values
     ('GET', r'/api/workspace/actions(/.+)?', 'builder'),   # actions are for builders: a viewer runs and reads none (object_actions.action_visible)
     ('GET', r'/api/workspace/pipelines(/.+)?', 'builder'),   # pipelines are for builders: their steps and previews quote the data (workspace_pipelines.pipeline_visible)
     ('GET', r'/api/workspace/(sources|schedules)(/.+)?', 'builder'),   # a builder picks a source's tables and sets schedules; the connection details are shown to an admin only (workspace_sources.public_source)
@@ -45,7 +45,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
     ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?))?', 'builder'),
     ('POST', r'/api/workspace/relations(/(update|confirm))?', 'builder'),
-    ('POST', r'/api/workspace/queue/(confirm|send-back)', 'builder'),
+    ('POST', r'/api/workspace/queue/(confirm|confirm-group|send-back)', 'builder'),
     ('POST', r'/api/workspace/actions(/(update|confirm|submit|decide|withdraw))?', 'builder'),   # a person may not approve their own submission (object_actions.decide)
     ('POST', r'/api/workspace/pipelines(/(update|confirm|preview|summary|columns|review|run|format-guess|expression/(check|trial)|llm/(state|trial|label|review|clear-cache)|ai/(parse|draft|explain)))?', 'builder'),   # confirming needs a second person who did not edit it (workspace_pipelines.confirm_pipeline)
     ('POST', r'/api/workspace/sources/(pull|refresh)', 'builder'),   # reading a table into a dataset is a builder's, like an upload

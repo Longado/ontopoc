@@ -47,6 +47,7 @@ export function logText(e) {
   if (e.change.startsWith("action_") || e.change === "row_rules_changed" || e.change === "run" || e.change === "run_failed") return { who: e.who, text: e.text };   // the service writes these lines as sentences
   if (e.change === "needs_look") return { who: "系统", text: `${what}需再看：${e.reason}${e.caused_by ? `（${e.caused_by} 的上传）` : ""}` };
   if (e.change === "confirmed") return { who: e.who, text: `确认了${what}${e.self_confirmed ? "（自己提的；只有一位建设者，两人确认没有生效）" : ""}` };
+  if (e.change === "confirmed_together") return { who: e.who, text: e.text };   // the service writes it as a sentence: 和另外 3 项一起确认
   if (e.change === "sent_back") return { who: e.who, text: `退回了${what}：${e.reason}` };
   if (e.change === "access_changed") return { who: e.who, text: `改了可见范围：${e.visible_to === "everyone" ? "所有人" : e.visible_to?.length ? e.visible_to.join("、") : "只有管理员"}` };
   if (e.change === "meanings_retired") return { who: e.who, text: `去掉了这些列的含义（${e.reason}）：${e.text}` };

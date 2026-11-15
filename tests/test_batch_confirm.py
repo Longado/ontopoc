@@ -5,8 +5,9 @@ import json
 import sqlite3
 import unittest
 from unittest import mock
+from urllib.parse import quote
 
-from ontology_poc_generator import batch_confirm
+from ontology_poc_generator import batch_confirm, review_queue
 from ontology_poc_generator.accounts import get_user
 from ontology_poc_generator.actor import set_actor
 from ontology_poc_generator.workspace_store import open_workspace
@@ -16,8 +17,9 @@ from tests.test_two_person import SigningTestCase
 
 ORDER_ELEMENTS = ['enum:order:状态码', 'objtype:order', 'objview:有效订单', 'relation:order_customer']   # the order they are confirmed in
 NEW_MEANINGS = [{'value': '0', 'label': ''}, {'value': '1', 'label': '已交付'}, {'value': '2', 'label': '已取消'}, {'value': '3', 'label': '已发货待签收'}]
+REWRITTEN = [{'value': m['value'], 'label': m['label'] + ('（新）' if m['value'] == '1' else '')} for m in NEW_MEANINGS if m['label']]   # the meanings written again (0 is not in the data any more, so not in the list); 已取消 stays what the view's condition names
 NEW_ROWS = sum(r['状态码'] == '2' for r in ORDERS)   # the old 2 is the new 3
-GROUP = '/api/workspace/queue/group?dataset=订单&version=2'
+GROUP = f'/api/workspace/queue/group?dataset={quote("订单")}&version=2'
 CONFIRM = '/api/workspace/queue/confirm-group'
 
 
@@ -142,7 +144,7 @@ class BatchConfirmTests(SigningTestCase):
             self.assertEqual(team['bob'].post(CONFIRM, self.request(self.group(team['bob'])))[0], 200)
             conn = sqlite3.connect(out / 'workspace.sqlite')
             for element in ORDER_ELEMENTS:
-                lines = conn.execute("SELECT change, who, after_json FROM log WHERE element_id = ? AND who = 'Bob' ORDER BY id", (element,)).fetchall()[-2:]   # the earlier confirmation on version 1 stays above
+                lines = conn.execute("SELECT change, who, after_json FROM log WHERE element_id = ? AND who = 'Bob' ORDER BY rowid", (element,)).fetchall()[-2:]   # the earlier confirmation on version 1 stays above
                 self.assertEqual([c for c, _, _ in lines], ['confirmed', 'confirmed_together'], element)
                 self.assertEqual(json.loads(lines[1][2]), {'with': 3, 'text': '和另外 3 项一起确认'})
             conn.close()
@@ -167,7 +169,7 @@ class BatchConfirmTests(SigningTestCase):
             kept = {k: v for k, v in conn.execute('SELECT element_id, version FROM element_state')}
             user = get_user(conn, next(i for i, in conn.execute("SELECT id FROM user WHERE username = 'bob'")))
             set_actor(user)
-            with mock.patch.object(batch_confirm, 'confirm_relation', side_effect=RuntimeError('disk gone')):   # an error nobody foresaw, after three were written
+            with mock.patch.object(review_queue, 'confirm_relation', side_effect=RuntimeError('disk gone')):   # an error nobody foresaw, after three were written
                 with self.assertRaises(RuntimeError):
                     batch_confirm.confirm_group(conn, self.request(group), 'Bob', user)
             set_actor(None)
@@ -183,7 +185,7 @@ class BatchConfirmTests(SigningTestCase):
             team = self.ops_overwrite(base)
             bob = team['bob']
             group = self.group(bob)
-            self.assertEqual(team['ann'].post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': [{**m, 'label': m['label'] + '。'} if m['label'] else m for m in NEW_MEANINGS]})[0], 200)
+            self.assertEqual(team['ann'].post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': REWRITTEN})[0], 200)
             before = self.states(bob)
             status, body = bob.post(CONFIRM, self.request(group))   # the meanings he looked at were written again
             self.assertEqual(status, 409, body)
@@ -219,7 +221,7 @@ class BatchConfirmTests(SigningTestCase):
         with self.service() as (base, out):
             team = self.ops_overwrite(base)
             bob = team['bob']
-            self.assertEqual(bob.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': [{**m, 'label': m['label'] + '，'} if m['label'] else m for m in NEW_MEANINGS]})[0], 200)   # Bob wrote the meanings
+            self.assertEqual(bob.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': REWRITTEN})[0], 200)   # Bob wrote the meanings
             group = self.group(bob)
             self.assertEqual([(i['element'], i['ready']) for i in group['items']], [(e, False) for e in ORDER_ELEMENTS])   # the type, the view and the relation stand on them
             self.assertIn('要先确认', group['items'][1]['why_not'])
@@ -254,6 +256,17 @@ class BatchConfirmTests(SigningTestCase):
             self.assertEqual((moved['state'], moved['proposed_by'], moved['can_confirm']), ('checked', 'Bob', False))
             self.assertEqual(self.group(team['cat'])['items'][0]['element'], 'objview:有效订单')
 
+    def test_a_view_whose_condition_lost_its_meaning_is_still_listed_with_the_reason(self):
+        with self.service() as (base, out):
+            team = self.ops_overwrite(base)
+            gone = [{'value': '1', 'label': '已交付'}, {'value': '2', 'label': '已作废'}, {'value': '3', 'label': '已发货待签收'}]   # 已取消 is not a meaning any more
+            self.assertEqual(team['ann'].post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': gone})[0], 200)
+            status, queue = team['bob'].get('/api/workspace/queue')
+            self.assertEqual(status, 200, queue)
+            view = next(i for i in queue['items'] if i['kind'] == 'view')
+            self.assertTrue(any(not l['ok'] and '已取消' in l['text'] for l in view['lines']), view['lines'])
+            self.assertEqual(team['bob'].get(GROUP)[0], 200)
+
     def test_one_item_left_is_not_a_group(self):
         with self.service() as (base, out):
             team = self.ops_overwrite(base)
@@ -272,9 +285,9 @@ class BatchConfirmTests(SigningTestCase):
         with self.service() as (base, out):
             team = self.ops_overwrite(base)
             bob = team['bob']
-            self.assertEqual(bob.get('/api/workspace/queue/group?dataset=订单&version=1')[0], 404)
-            self.assertEqual(bob.get('/api/workspace/queue/group?dataset=客户&version=2')[0], 404)
-            self.assertEqual(bob.get('/api/workspace/queue/group?dataset=订单')[0], 400)
+            self.assertEqual(bob.get(GROUP.replace('version=2', 'version=1'))[0], 404)
+            self.assertEqual(bob.get(GROUP.replace(quote('订单'), quote('客户')))[0], 404)
+            self.assertEqual(bob.get(GROUP.split('&')[0])[0], 400)
             request = self.request(self.group(bob))
             self.assertEqual(bob.post(CONFIRM, {**request, 'items': [*request['items'], {'element': 'objtype:customer', 'version': 1, 'seen': {}}]})[0], 404)
             self.assertEqual(bob.post(CONFIRM, {**request, 'items': request['items'] + request['items'][:1]})[0], 400)
