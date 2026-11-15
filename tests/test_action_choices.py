@@ -64,3 +64,14 @@ class ChoiceTests(NoticeTests):
             shown = ann.get(URL)[1]
             self.assertNotEqual(shown['state'], 'confirmed')   # what may be written changed: it is looked at again
             self.assertIsNone(shown['parameters'][0]['choices_from'])
+
+    def test_a_person_who_may_not_see_the_source_type_is_not_shown_the_action(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.ready(team)
+            self.define(team)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'customer', 'visible_to': [self.user_id(admin, 'ann')]})[0], 200)
+            self.assertEqual(bob.get(URL)[0], 404)   # its values are customer values: not his to read
+            self.assertNotIn(PICK['name'], [a['name'] for a in bob.get('/api/workspace/actions?type=order')[1]['actions']])
+            self.assertEqual(ann.get(URL)[0], 200)
