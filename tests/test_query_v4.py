@@ -119,12 +119,13 @@ class SmallestFirstTests(unittest.TestCase):
 
 class PromptTests(unittest.TestCase):
     def test_the_prompt_version_moves_and_describes_both_forms(self):
-        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v16')
+        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v17')
         self.assertIn('"share"', QUESTION_SYSTEM_PROMPT)
         self.assertIn('"group_by": [{', QUESTION_SYSTEM_PROMPT)
         self.assertIn('"not_equals"', QUESTION_SYSTEM_PROMPT)
         self.assertIn('"top"', QUESTION_SYSTEM_PROMPT)
         self.assertIn('"order"', QUESTION_SYSTEM_PROMPT)
+        self.assertIn('`computed_as`', QUESTION_SYSTEM_PROMPT)   # a confirmed derived property is a field, not a derived measure
         self.assertNotIn('is not something the query can say', QUESTION_SYSTEM_PROMPT)
 
 

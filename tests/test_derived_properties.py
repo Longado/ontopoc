@@ -190,7 +190,7 @@ class AcceptanceTests(DerivedTestCase):
             self.assertEqual([(d['name'], d['confirmed_by'], d['state']) for d in cited], [('客户.已取消订单数', 'Bob', 'confirmed')])
             self.assertIn('已取消', cited[0]['says'])
             attribute = next(a for t in model.requests[0]['ontology']['object_types'] if t['key'] == 'customer' for a in t['attributes'] if a['path'] == '已取消订单数')
-            self.assertEqual((attribute['type'], '已取消' in attribute['derived']), ('integer', True))   # the model reads the name, the type and what it says, never a value
+            self.assertEqual((attribute['type'], '已取消' in attribute['computed_as'], 'derived' in attribute), ('integer', True, False))   # the model reads the name, the type and what it says, never a value
             self.assertNotIn('values', attribute)
             self.assertEqual(self.line(ann, 'customer', 'cancelled_orders')['used_by']['answers'], 1)
 
