@@ -22,6 +22,12 @@ test("a row's key comes from the key columns only", () => {
   assert.deepEqual(rowKey(columns, ["DD1", "10", "1"]), { key: { 订单号: "DD1" }, text: "DD1" });
 });
 
+test("a record that undoes another says which, after its state", () => {
+  assert.equal(recordStateText({ state: "pending", undo_of: 7 }), "等批准（撤销 #7）");
+  assert.equal(recordStateText({ state: "approved", undo_of: 7 }), "已批准（撤销 #7）");
+  assert.equal(recordStateText({ state: "approved" }), "已批准");
+});
+
 test("a pending record whose data moved says so", () => {
   assert.equal(recordStateText({ state: "pending", stale: false }), "等批准");
   assert.equal(recordStateText({ state: "pending", stale: true }), "等批准（数据已变）");
