@@ -323,7 +323,8 @@ def record_view(conn, rec: dict, user: dict | None, light: bool = False) -> dict
             'state': rec['state'], 'submitted_by': rec['submitted_by'], 'submitted_at': rec['submitted_at'], 'decided_by': rec['decided_by'], 'decided_at': rec['decided_at'],
             'note': rec['note'], 'why': rec['why'], 'new_version': rec['new_version'], 'dataset': rec['dataset'], 'dataset_version': rec['dataset_version'],
             'dataset_now': dataset['version'] if dataset else None, 'stale': rec['state'] == 'pending' and (dataset is None or dataset['version'] != rec['dataset_version']),
-            'can_decide': can_decide, 'can_withdraw': rec['state'] in ('pending', 'needs_look') and same_person}
+            'can_decide': can_decide, 'can_withdraw': rec['state'] in ('pending', 'needs_look') and same_person, 'undo_of': rec.get('undo_of'),
+            'can_undo': rec['state'] == 'approved' and user is not None and user['role'] != 'viewer' and _undone_by(conn, rec['id']) is None}
 
 
 def open_records(conn, user: dict | None) -> list[dict]:
@@ -357,7 +358,7 @@ def expire_old(conn) -> None:
 
 def _refuse(conn, who: str | None, element_id: str, message: str, attempt: dict, status: int = 409, change: str = 'action_refused', record: int | None = None):
     """Write the refused attempt to the action's log (who, what was asked, why), then raise it."""
-    what = {'submit': '提交', 'approve': '批准', 'reject': '驳回'}[attempt['op']]
+    what = {'submit': '提交', 'approve': '批准', 'reject': '驳回', 'undo': '撤销'}[attempt['op']]
     log_line(conn, who or '未署名', element_id, change, after={'record': record, 'text': f'{who or "未署名"} 的{what}被拒：{message}', 'reason': message, 'attempt': attempt})
     raise TypeRefused(message, status)
 
@@ -560,6 +561,63 @@ def decide(conn, payload: dict, who: str | None, user: dict | None) -> dict:
         raise
     problem = recheck_after_write(conn, dataset['name'], who or '未署名')   # as after an upload, once the version stands
     return {'state': 'approved', 'version': version, 'dataset': dataset['name'], 'recheck_error': problem}
+
+
+def _undone_by(conn, record_id: int) -> int | None:
+    """The request that undoes this one and is waiting, needs another look, or was approved; None when there is none."""
+    found = conn.execute("SELECT id FROM action_record WHERE undo_of = ? AND state IN ('pending', 'needs_look', 'approved') ORDER BY id DESC LIMIT 1", (record_id,)).fetchone()
+    return found[0] if found else None
+
+
+def undo(conn, payload: dict, who: str | None, user: dict | None) -> dict:
+    """{id, reason?}: a new pending request that writes back what an approved request changed, for another builder to approve like any other (decide). Refused
+    when the request is not approved, when an undo of it already waits or was approved, or when the object was changed again since: then the values to write back
+    are no longer the whole story, and a person submits what they want from what is there now."""
+    rec = _record(conn, payload.get('id'), user)
+    attempt = {'op': 'undo', 'record': rec['id']}
+    refuse = lambda message, status=409: _refuse(conn, who, rec['action_id'], message, attempt, status, record=rec['id'])
+    if rec['state'] != 'approved':
+        refuse('只有已批准的提交可以撤销：还在等批准的，提交的人可以撤回，别人可以驳回')
+    if _undone_by(conn, rec['id']) is not None:
+        refuse(f'#{rec["id"]} 已经撤销过，或者有一条撤销在等批准')
+    action = element_row(conn, rec['action_id'])
+    content = _content(action)
+    if action['state'] != 'confirmed':
+        refuse(f'这个行为现在{STATE_WORDS.get(action["state"], action["state"])}，要回到已确认才能提交撤销')
+    type_row = element_row(conn, rec['type_id'])
+    t = _content(type_row)
+    dataset = current_dataset(conn, rec['dataset'])
+    key = json.loads(rec['key_json'])
+    found = _find(conn, t, dataset, key) if dataset else None
+    if not _may_read(conn, type_row, found, user):
+        refuse('没有这个对象，或者你看不到它', 404)
+    shown = _object_text(t, key)
+    if found is None:
+        refuse(f'{shown} 已经不在数据里了，没法撤销')
+    was, wrote = json.loads(rec['before_json']), json.loads(rec['after_json'])
+    moved = [f'“{c}”批准时写成“{_label(conn, t["english_name"], c, wrote[c])}”，现在是“{_label(conn, t["english_name"], c, found.get(c))}”'
+             for c in wrote if _canonical(found.get(c)) != _canonical(wrote[c])]
+    if moved:
+        refuse(f'{shown} 批准后又改过：{"；".join(moved)}。不能直接撤销，请按现在的值另外提交')
+    reason = payload.get('reason')
+    reason = reason.strip() if isinstance(reason, str) else ''
+    if len(reason) > MAX_REASON or '\n' in reason:
+        refuse(f'理由最多 {MAX_REASON} 个字，不能换行', 400)
+    now = {c: found.get(c) for c in wrote}
+    text = f'{who} 提交撤销 #{rec["id"]}（“{content["name"]}”）：{shown}，{_pairs(conn, content, now)} → {_pairs(conn, content, was)}' + (f'（{reason}）' if reason else '')
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        record_id = conn.execute('INSERT INTO action_record(action_id, action_version, type_id, dataset, dataset_version, key_json, before_json, after_json, reason, state, submitted_by,'
+                                 " submitted_by_user_id, submitted_at, undo_of) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)",
+                                 (rec['action_id'], action['version'], rec['type_id'], dataset['name'], dataset['version'], rec['key_json'], json.dumps(now, ensure_ascii=False),
+                                  json.dumps(was, ensure_ascii=False), reason or f'撤销 #{rec["id"]}', who, user['id'] if user else None, now_text(), rec['id'])).lastrowid
+        log_line(conn, who or '未署名', rec['action_id'], 'action_submitted',
+                 after={'record': record_id, 'undo_of': rec['id'], 'text': text, 'object': shown, 'before': now, 'after': was, 'dataset_version': dataset['version']})
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    return {'record': record_id, 'state': 'pending', 'undo_of': rec['id']}
 
 
 def withdraw(conn, payload: dict, who: str | None, user: dict | None) -> dict:
