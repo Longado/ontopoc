@@ -247,8 +247,9 @@ class SourceCase(SigningTestCase):
         self.addCleanup(patcher.stop)
         self.said = []   # everything the service answered, to look for the password in
 
-    def open_db(self, host, address, port, database, user, password, tls):
+    def open_db(self, host, address, port, database, user, password, tls, ca_pem=None):
         self.opened.append((address, port, database, user, password, host, tls))
+        self.ca_seen = ca_pem
         if self.db is None:
             raise Exception(f'FATAL: connection to {address} with password={password} failed')
         return self.db
