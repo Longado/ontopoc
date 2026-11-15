@@ -72,6 +72,18 @@ class AskTests(unittest.TestCase):
         out = ask_questions(PROPOSAL, BUNDLE, self.Model({'nope': 1}))
         self.assertEqual((out['items'], out['error']), ([], '模型没有返回问题列表'))
 
+    def test_one_asked_question_answered_as_a_bare_object_is_read_as_that_question(self):
+        bare = {k: v for k, v in self.REPLY['questions'][0].items() if k != 'question'}   # seen from a real model: no list, no question text
+        out = ask_questions(PROPOSAL, BUNDLE, self.Model(bare), question='哪个城市订单最多？')
+        self.assertEqual((out['error'], [i['status'] for i in out['items']], out['items'][0]['question']), (None, ['answered'], '哪个城市订单最多？'))
+        self.assertEqual(ask_questions(PROPOSAL, BUNDLE, self.Model(bare))['error'], '模型没有返回问题列表')   # a round of its own questions still needs the list
+
+    def test_an_attribute_written_as_a_derived_measure_is_read_as_the_attribute(self):
+        written = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'measure': {'derived': '金额', 'op': 'sum'}})   # a confirmed derived property is an attribute in the workspace
+        plain = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'measure': {'field': '金额', 'op': 'sum'}})
+        self.assertEqual((written['status'], written['answer']['measure']['value']), ('answered', plain['answer']['measure']['value']))
+        self.assertEqual(run_query(PROPOSAL, BUNDLE, {'start': 'order', 'measure': {'derived': '没有这个', 'op': 'sum'}})['status'], 'ontology_gap')
+
     def test_the_model_sees_the_few_values_a_category_field_takes_when_they_repeat_or_a_person_gave_them_meanings(self):
         values = categorical_values(PROPOSAL, BUNDLE)
         self.assertNotIn('客户.城市', values)   # three rows, three cities: listing them would hand over the table
