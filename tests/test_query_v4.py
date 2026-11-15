@@ -88,11 +88,13 @@ class SmallestFirstTests(unittest.TestCase):
         self.assertEqual(result['answer']['order'], 'smallest')
         self.assertIn('取最低的 1 个', result['path'])
         self.assertNotIn('取最高', result['path'])
+        self.assertIn('只排有订单的组', result['path'])   # a group with no 订单 at all is not ranked: the path says so
 
     def test_order_smallest_without_top_lists_every_group_from_the_lowest(self):
         result = run_query(PROPOSAL, BUNDLE, {**self.SUM_BY_CUSTOMER, 'order': 'smallest'})
         self.assertEqual([g[0] for g in result['answer']['groups']], ['乙', '甲'])
         self.assertIn('从低到高', result['path'])
+        self.assertIn('只排有订单的组', result['path'])
 
     def test_a_share_ranked_from_the_lowest_puts_the_lowest_rate_first(self):
         result = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'group_by': [BY_CUSTOMER], 'order': 'smallest',
@@ -109,6 +111,7 @@ class SmallestFirstTests(unittest.TestCase):
         written = run_query(PROPOSAL, BUNDLE, {**self.SUM_BY_CUSTOMER, 'order': 'largest', 'top': 1})
         default = run_query(PROPOSAL, BUNDLE, {**self.SUM_BY_CUSTOMER, 'top': 1})
         self.assertEqual(written['answer']['groups'], default['answer']['groups'])
+        self.assertNotIn('只排有', default['path'])
         self.assertNotIn('order', default['answer'])
 
     def test_order_needs_a_group_and_one_of_the_two_words(self):

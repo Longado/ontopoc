@@ -138,6 +138,16 @@ def gateway_from_env():
                                    model=os.environ.get('EIP_MODEL_NAME') or model, timeout_seconds=180, temperature=0)
 
 
+def model_setting_problem() -> str | None:
+    """A model setting that will fail at the first question, in a sentence for the start of the service; None when there is none. OpenRouter names a
+    model as vendor/model, so a DeepSeek name (deepseek-flash) set beside only an OpenRouter key is refused by OpenRouter."""
+    name = os.environ.get('EIP_MODEL_NAME')
+    via_openrouter = not (os.environ.get('DEEPSEEK_API_KEY') or os.environ.get('EIP_MODEL_API_KEY')) and os.environ.get('OPENROUTER_API_KEY')
+    if via_openrouter and not os.environ.get('EIP_MODEL_API_BASE') and name and '/' not in name:
+        return f'EIP_MODEL_NAME={name} 不是 OpenRouter 的模型名（形如 deepseek/deepseek-v4.1-flash）：去掉它用默认模型，或写成 OpenRouter 的名字'
+    return None
+
+
 def code_fingerprint(code_dir: Path) -> str:
     """What the service's Python files hold right now. Taken once at start and again on every health check: when the
     two differ, the files changed after the service started and it is still running the old code."""
@@ -3079,6 +3089,9 @@ def main(argv=None):
         parser.error(str(exc))
     print(f'Ontology API: http://127.0.0.1:{server.server_port}'
           + ('' if gateway else '  (no model key: set DEEPSEEK_API_KEY or OPENROUTER_API_KEY to build ontologies)'), flush=True)
+    problem = model_setting_problem()
+    if problem:
+        print(f'Model setting: {problem}', flush=True)
     if args.no_auth:
         print('Sign-in is OFF (--no-auth): every request is the local admin. Do not use this on a shared machine.', flush=True)
     elif server.gate.needs_first_admin():

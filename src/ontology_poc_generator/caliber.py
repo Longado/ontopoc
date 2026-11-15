@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 
 from ontology_poc_generator.derived_properties import describe as describe_derived
-from ontology_poc_generator.object_types import DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _content, element_row, stale_word
+from ontology_poc_generator.object_types import DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _content, _settled_since, element_row, stale_word
 from ontology_poc_generator.object_views import in_out_text
 
 STATE_WORDS = {'proposed': '模型提出了，还没有人确认', 'checked': '已经提出，还没有另一位确认', 'needs_look': '需要再看', 'rejected': '被退回了'}
@@ -73,7 +73,8 @@ def line_of(conn, element_id: str) -> dict:
     by, on = (last[0], ' '.join(f'{n} v{v}' for n, v in json.loads(last[1]).items())) if last else (None, None)
     text = _text(conn, element_id, content)
     confirmed = row['state'] == 'confirmed'
-    reason = None if confirmed else (row['reason'] if row['state'] in ('needs_look', 'rejected') and row['reason'] else STATE_WORDS.get(row['state'], row['state']))
+    stored = _settled_since(conn, row) if row['state'] == 'needs_look' and row['reason'] else row['reason']   # as the pages read it: a parent confirmed again says so
+    reason = None if confirmed else (stored if row['state'] in ('needs_look', 'rejected') and stored else STATE_WORDS.get(row['state'], row['state']))
     sentence = f'{text}，{by} 确认于 {on}' if confirmed and by and on else text if confirmed else f'{text}（{reason}）'
     return {'id': element_id, 'kind': _kind(element_id), 'name': _name(conn, element_id, content), 'state': row['state'], 'confirmed': confirmed, 'text': text,
             'by': by, 'on': on, 'line': sentence, 'reason': reason, 'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None}

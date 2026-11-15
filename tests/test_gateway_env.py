@@ -3,7 +3,7 @@ OPENROUTER_API_KEY (DeepSeek V4.1 Flash by default), and the operator's own base
 import unittest
 from unittest import mock
 
-from ontology_poc_generator.ontology_server import gateway_from_env
+from ontology_poc_generator.ontology_server import gateway_from_env, model_setting_problem
 
 
 def gateway(env):
@@ -28,6 +28,17 @@ class GatewayFromEnvTests(unittest.TestCase):
         self.assertEqual(gateway({'DEEPSEEK_API_KEY': 'a', 'OPENROUTER_API_KEY': 'b'})._api_base, 'https://api.deepseek.com')
         self.assertIsNone(gateway({}))
 
+
+class ModelSettingTests(unittest.TestCase):
+    def test_a_deepseek_model_name_with_only_an_openrouter_key_is_named_at_start(self):
+        with mock.patch.dict('os.environ', {'OPENROUTER_API_KEY': 'k', 'EIP_MODEL_NAME': 'deepseek-flash'}, clear=True):
+            said = model_setting_problem()
+        self.assertIn('deepseek-flash', said)
+        self.assertIn('deepseek/deepseek-v4.1-flash', said)   # what an OpenRouter name looks like
+        for env in ({'OPENROUTER_API_KEY': 'k'}, {'OPENROUTER_API_KEY': 'k', 'EIP_MODEL_NAME': 'deepseek/deepseek-v4-pro'},
+                    {'DEEPSEEK_API_KEY': 'k', 'EIP_MODEL_NAME': 'deepseek-flash'}, {}):
+            with self.subTest(env=env), mock.patch.dict('os.environ', env, clear=True):
+                self.assertIsNone(model_setting_problem())
 
 if __name__ == '__main__':
     unittest.main()

@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from ontology_poc_generator import object_views
+from ontology_poc_generator.caliber import line_of
 from ontology_poc_generator.object_types import _settled_since, element_row
 from ontology_poc_generator.workspace_store import open_workspace
 
@@ -23,6 +24,18 @@ class SettledSinceTests(unittest.TestCase):
         conn.execute("INSERT INTO confirmation (element_id, confirmed_by, confirmed_at) VALUES ('objtype:x', 'B\\1ob', '2026-11-15')")
         self.assertEqual(_settled_since(conn, element_row(conn, 'objview:v')), '它用的“a\\d”类型已经由 B\\1ob 重新确认，这一项还要再确认一次')
 
+
+class LineOfTests(unittest.TestCase):
+    def test_the_line_an_agent_reads_says_a_parent_was_confirmed_again_as_the_pages_do(self):
+        conn = open_workspace(':memory:')
+        element(conn, 'objtype:order', 'confirmed', {'name': '订单', 'english_name': 'order', 'dataset': '订单', 'key': ['订单号'], 'properties': [], 'description': ''})
+        element(conn, 'objview:v', 'needs_look', {'name': '有效订单', 'type': 'order', 'filters': [{'column': '状态码', 'op': 'is_not', 'label': '已取消'}]},
+                reason='它用的“订单”类型需要再看（原因见那个对象类型）')
+        conn.execute("INSERT INTO element_dep VALUES ('objview:v', 'objtype:order')")
+        conn.execute("INSERT INTO confirmation (element_id, confirmed_by, confirmed_at) VALUES ('objtype:order', 'Bob', '2026-11-15')")
+        line = line_of(conn, 'objview:v')
+        self.assertEqual(line['reason'], '它用的“订单”类型已经由 Bob 重新确认，这一项还要再确认一次')
+        self.assertIn(line['reason'], line['line'])
 
 class RefreshTests(unittest.TestCase):
     def test_only_a_reason_about_a_new_value_is_written_again(self):
