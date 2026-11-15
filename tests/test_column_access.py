@@ -107,3 +107,37 @@ class ColumnAccessTests(ActionTests):
             self.assertEqual(self.keep(admin, '金额')[0], 200)   # nobody but admins
             order = next(t for t in admin.get('/api/workspace/permissions')[1]['types'] if t['id'] == 'order')
             self.assertEqual(order['column_access'], {'金额': []})
+
+    def test_review_fixes_a_pending_record_a_second_type_on_the_dataset_and_the_lineage_cause_keep_the_column_from_the_person(self):
+        from tests.test_object_types import orders_upload
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.confirmed_action(team)
+            record = self.submit(ann)[1]['record']
+            self.assertTrue([i for i in bob.get('/api/workspace/queue')[1]['items'] if i.get('kind') == 'approval'])
+            # a second type over the same table, with 金额 among its properties: keeping 状态码 and 金额 on 订单 binds the table's columns
+            second = {'english_name': 'order_copy', 'name': '订单副本', 'dataset': '订单', 'key': ['订单号'], 'description': '同一张表', 'properties': [{'column': '订单号'}, {'column': '金额'}]}
+            self.assertEqual(ann.post('/api/workspace/types', second)[0], 200)
+            self.assertEqual(self.keep(admin, '订单号', 'ann')[0], 400)   # a key of the type
+            self.assertEqual(self.keep(admin, '状态码', 'ann')[0], 200)
+            self.assertEqual(self.keep(admin, '金额', 'ann')[0], 200)
+            # the pending record is about a column kept from Bob: no card for him
+            items = bob.get('/api/workspace/queue')[1]['items']
+            self.assertFalse([i for i in items if i.get('kind') == 'approval'], items)
+            self.assertNotIn('状态码', json.dumps(items, ensure_ascii=False))
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[0], 404)
+            self.assertNotIn('金额', [p['column'] for p in bob.get('/api/workspace/types/order_copy')[1]['properties']])
+            self.assertIn('金额', [p['column'] for p in ann.get('/api/workspace/types/order_copy')[1]['properties']])
+            # new values under 状态码 send its meanings to another look: the lineage does not name the column to Bob
+            moved = orders_upload(lambda r, i: {**r, '状态码': '3'} if i == 0 else r, target='订单', mode='update_by_key', key_columns=['订单号'])
+            status, body = admin.post('/api/workspace/datasets/upload', {'files': [moved]})
+            self.assertEqual(status, 200, body)
+            for path in ('/api/workspace/graph/relations', '/api/workspace/graph/lineage', '/api/workspace/types/order', '/api/workspace/queue'):
+                self.assertNotIn('状态码', json.dumps(bob.get(path)[1], ensure_ascii=False), path)
+            self.assertIn('状态码', json.dumps(ann.get('/api/workspace/graph/relations')[1], ensure_ascii=False))
+            node = next(n for n in ann.get('/api/workspace/graph/relations')[1]['nodes'] if n['key'] == 'order')
+            self.assertIsNotNone(node['stale'])   # the chain is really there: Ann is told what moved
+            self.assertIn('状态码', json.dumps(node['stale'], ensure_ascii=False))
+            bob_node = next(n for n in bob.get('/api/workspace/graph/relations')[1]['nodes'] if n['key'] == 'order')
+            self.assertIsNotNone(bob_node['stale'])
