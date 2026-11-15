@@ -1,7 +1,7 @@
 """The outbound side of a data source: which addresses may be dialled, the PostgreSQL and MySQL connections (read-only sessions, TLS by default), the table list,
 the privilege check and one table's rows as text. Nothing here knows about datasets or the workspace file.
 
-The drivers (pg8000 for PostgreSQL, PyMySQL for MySQL) are pure Python and optional: `pip install "ontopoc[sources]"`. They are imported when a connection is
+The drivers (pg8000 for PostgreSQL, PyMySQL for MySQL) are pure Python (PyMySQL also takes `cryptography` for MySQL 8 logins without TLS) and optional: `pip install "ontopoc[sources]"`. They are imported when a connection is
 opened, so a service without them runs and the source page says which package is missing.
 
 Passwords: every message that leaves this module (and so reaches a page, a refresh log or a log line) has the password taken out of it first (scrub); the
@@ -197,8 +197,11 @@ def text_of(value) -> str | None:
         return value.isoformat(sep=' ')
     if isinstance(value, (date, time)):
         return value.isoformat()
-    if isinstance(value, timedelta):
-        return str(value)
+    if isinstance(value, timedelta):   # a MySQL TIME (-838:59:59 to 838:59:59), which PyMySQL hands over as a timedelta: the clock reading, not '34 days, 22:59:59'
+        hours, rest = divmod(abs(value // timedelta(microseconds=1)), 3_600_000_000)
+        minutes, rest = divmod(rest, 60_000_000)
+        seconds, micro = divmod(rest, 1_000_000)
+        return f'{"-" if value < timedelta(0) else ""}{hours:02d}:{minutes:02d}:{seconds:02d}' + (f'.{micro:06d}' if micro else '')
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     if isinstance(value, UUID):
@@ -427,7 +430,11 @@ class MySql(_Sql):
                         return
                     yield batch
             finally:
-                self.raw.close()   # an unfinished streamed result would be read to its end before the cursor closes: closing the connection is what stops it
+                # An unfinished streamed result would be read to its end before the cursor closes: closing the connection is what stops it. PyMySQL would still try to
+                # drain what is left (when the cursor is collected) off the closed socket and print a traceback, so it is told there is nothing left to drain.
+                if getattr(cursor, '_result', None) is not None:
+                    cursor._result.unbuffered_active = False
+                self.raw.close()
         return columns, batches()
 
     def writes(self) -> tuple[bool, str]:

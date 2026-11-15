@@ -168,6 +168,28 @@ class ValueTests(unittest.TestCase):
                                                datetime(2026, 1, 5, 8, 30, tzinfo=timezone(timedelta(hours=8))), {'b': 1, 'a': '中'})],
                          ['100', '12.50', '3', '0.00001', 'true', None, '2026-01-05', '2026-01-05 08:30:00', '2026-01-05 00:30:00', '{"a": "中", "b": 1}'])
 
+    def test_a_mysql_time_is_written_as_the_clock_reading_it_is(self):
+        """PyMySQL hands a TIME over as a timedelta, and MySQL's TIME runs from -838:59:59 to 838:59:59: str(timedelta) would write '-1 day, 22:30:00' and '34 days, 22:59:59'."""
+        self.assertEqual([text_of(v) for v in (timedelta(hours=10, minutes=11, seconds=12), -timedelta(hours=1, minutes=30), timedelta(hours=838, minutes=59, seconds=59),
+                                               timedelta(seconds=1, microseconds=500000), timedelta(0))],
+                         ['10:11:12', '-01:30:00', '838:59:59', '00:00:01.500000', '00:00:00'])
+
+    def test_closing_a_capped_mysql_read_leaves_nothing_for_the_driver_to_drain(self):
+        """A pull stopped by the byte cap drops the connection with rows still unread; PyMySQL must not then try to read the rest off the closed socket when the cursor is
+        collected (it printed a traceback to the service's log each time)."""
+        result = mock.Mock(unbuffered_active=True)
+        cursor = mock.Mock(description=[('id',)], _result=result)
+        cursor.fetchmany.return_value = [(1,)]
+        raw = mock.Mock()
+        raw.cursor.return_value = cursor
+        live = source_connect.MySql(raw, PASSWORD)
+        live._cursors = mock.Mock()
+        columns, batches = live._batches('SELECT 1')
+        next(batches)
+        batches.close()
+        raw.close.assert_called_once()
+        self.assertFalse(result.unbuffered_active)
+
     def test_a_column_of_bytes_is_left_out_and_named(self):
         records, left_out = records_of(['id', 'photo'], [(1, b'\x00'), (2, None)])
         self.assertEqual((records, left_out), ([{'id': '1'}, {'id': '2'}], ['photo']))
