@@ -6,8 +6,8 @@
 </p>
 
 <h1 align="center">OntoPoc</h1>
-<p align="center"><strong>还在开发中的方向：从业务数据起草本体，用代码对照数据检查，由人逐项确认。</strong></p>
-<p align="center">设想中的使用者是数据平台的实施顾问：第一次拿到客户数据时，用它梳理业务对象及其关系。</p>
+<p align="center"><strong>团队用的本体平台：每个定义都对照数据检查、由一位具名的人确认；没确认的、数据变了之后过时的，问答拒答并说明原因。</strong></p>
+<p align="center">数据集 → 管道 → 对象类型、关系、视图、行为、派生属性 → 问答、看板、智能体（MCP）。</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="MIT"></a>
@@ -33,9 +33,96 @@
 </p>
 <p align="center"><sub>功能主题插画 · <a href="docs/media/ontopoc-poster.png">静态版</a> · <a href="docs/media/ontopoc-motion.mp4">MP4</a></sub></p>
 
-OntoPoc 是一个还在开发中的方向，不是成品。在试的是：从几张业务表或一份文档起草本体，由代码对照数据检查草稿，再由人逐项确认并存下来。现在没有作者以外的用户，也还没和直接用通用编程助手（例如 Claude Code 加 pandas、DuckDB）做同样的事比过。
+OntoPoc 还在开发中，还没有作者以外的用户。现在的主线是一个团队用的应用（页面根地址 `/`）：上传表格或只读连接 PostgreSQL / MySQL，建数据集和管道，从数据建对象类型、关系、视图、行为和派生属性；每一项都由代码对照数据检查，由另一位建设者确认，并记下确认时的数据版本。问答、看板和智能体只用已确认的定义；数据变了，受影响的定义回到“需要再看”，用到它们的问题拒答并说出是哪一项、谁能确认。
 
-## 简介
+## 团队应用
+
+| 部分 | 做什么 |
+|---|---|
+| 账号与权限 | 本机账号（管理员、建设、查看三种角色），服务端会话；管理员可按对象类型限定人、按行限定人（只有允许清单），可以让某列的值不发给模型 |
+| 数据 | 数据集：上传 CSV / Excel，按主键更新或覆盖，每次一个新版本；数据源：只读连接 PostgreSQL、MySQL，可校验证书；调度：按小时、每天定时拉取或运行管道 |
+| 管道 | 过滤、连接、分组统计、去重、计算列等算子，表达式编辑器；AI 步骤逐行问模型，要抽样复核、另一位确认后它写出的列才能当主键或代码含义用 |
+| 本体 | 对象类型（属性、主键、代码列的含义）、关系（检查连上多少行、声明的基数是否成立）、视图（如“有效订单”）、行为（参数、提交条件，经审批才写数据）、派生属性（同一行的公式，或经关系的统计） |
+| 确认 | 提出 → 代码检查 → 另一位建设者确认（只有一位建设者时自动放开并记下）；确认时存下数据版本和锚点；新版本上传后重新检查，对不上的回到“需要再看”，读它的东西跟着一起，原因写明是数据变了、定义改了还是上游过时；一次上传引出的几项可以在一个页面里一起确认 |
+| 问答 | 范围只含此人能看的已确认类型；问题提到未确认或需再看的定义，先拒答再说原因，不去问模型；模型看结构、含义和取值不多的列的取值，不看行数据，写出结构化查询，代码执行并核对用到的定义；支持排除某个含义（“没取消的”）、取最高或最低的前 N 个；回答连同定义、确认人和数据版本存下 |
+| 使用 | 对象浏览、看板、给智能体的 MCP 工具（用个人令牌，默认只读）、关系图和血缘图（按“数据变了 / 定义改了 / 上一步过时 / 更上游过时”着色） |
+
+早期按“一次运行”组织的界面还在 `legacy.html`，见下文[早期界面](#早期界面按运行建模)。
+
+## 快速开始
+
+环境要求：Python 3.11+、Node 22+，以及模型 key：DeepSeek（`DEEPSEEK_API_KEY`）或 OpenRouter（`OPENROUTER_API_KEY`，默认用 DeepSeek V4.1 Flash）。上传 PDF 另需本机装有 `pdftotext`（poppler）。
+
+### 方式 A：由 AI 助手安装
+
+将以下内容粘贴至 Claude Code 或 Codex：
+
+```text
+请在本机安装并运行 OntoPoc（https://github.com/Longado/ontopoc）：
+1. 阅读仓库的 README.md，按"快速开始"操作。
+2. 检查 python3 --version ≥ 3.11、node --version ≥ 22；不满足时告诉我安装方法，并暂停后续步骤。
+3. 克隆仓库，在仓库根目录执行 python3 -m pip install -e '.[sources]'（[sources] 另装连 PostgreSQL / MySQL 的驱动；系统 Python 不允许直接安装时，先建虚拟环境），在 landing-page 目录执行 npm ci。
+4. 向我索取模型 key（DeepSeek 或 OpenRouter），仅写入当前终端的环境变量 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY，不要写入任何文件。
+5. 在仓库根目录先建管理员：PYTHONPATH=src python3 -m ontology_poc_generator.accounts create-admin（账号和密码由我自己输入）。
+6. 再启动服务：PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http://127.0.0.1:5178
+7. 另开一个终端启动页面：cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
+8. 打开 http://127.0.0.1:5178/ 登录团队应用，上传 examples/company/demo_company.xlsx，告诉我数据集页上看到几张表。
+```
+
+### 方式 B：手动安装
+
+```bash
+git clone https://github.com/Longado/ontopoc.git && cd ontopoc
+python3 -m pip install -e '.[sources]'   # sources：连 PostgreSQL / MySQL 的驱动；系统 Python 不允许时先 python3 -m venv .venv && . .venv/bin/activate
+(cd landing-page && npm ci)
+
+# 第一次：在服务所在的机器上建管理员（问账号和密码，至少 12 个字符）
+PYTHONPATH=src python3 -m ontology_poc_generator.accounts create-admin
+
+# 终端 1：服务（端口 8767，数据在 output/ontology-runs/workspace.sqlite；--data-dir 可换目录）
+export OPENROUTER_API_KEY=你的key          # 或 DEEPSEEK_API_KEY
+PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http://127.0.0.1:5178
+
+# 终端 2：页面
+cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
+```
+
+访问 `http://127.0.0.1:5178/` 是团队应用；早期界面在 `http://127.0.0.1:5178/legacy.html`。管理员登录后在“用户”里建其他人。未配置 key 时其余功能照常，问答和建模会说明缺 key。修改后端代码后需重启服务，页面检测到服务运行旧代码时会提示。
+
+模型：`DEEPSEEK_API_KEY` 走 DeepSeek 自己的接口；只有 `OPENROUTER_API_KEY` 时走 OpenRouter，默认 `deepseek/deepseek-v4.1-flash`；`EIP_MODEL_API_BASE` 和 `EIP_MODEL_NAME` 可以换成别的 OpenAI 兼容接口和模型名。
+
+页面代码：团队应用在 `landing-page/src/app/`，只用工作空间接口 `/api/workspace/*`；早期界面在 `landing-page/src/legacy/`（入口 `legacy.html`，旧首页文字是 `legacy.html?landing`）。
+
+## 用 MCP / Claude 接入
+
+OntoPoc 的一部分功能封装为 38 个 MCP 工具，也可作为 Claude Code 插件安装。工具与页面共用本机服务：先启动服务，再接入客户端。给外部智能体用个人令牌（`ONTOPOC_TOKEN`）时默认只给 4 个只读工具：读定义、提问、列出未确认项、读派生属性。
+
+### 作为 Claude Code 插件安装
+
+仓库本身就是一个 Claude Code 插件。安装后可在 Claude Code 里直接建本体、逐项确认；建模、核验和确认记录仍在本机 OntoPoc 服务里完成，使用前需要先启动它（见上文）。
+
+```bash
+claude plugin marketplace add Longado/ontopoc
+claude plugin install ontopoc@ontopoc
+```
+
+新开一个会话后可用两个命令：`/ontopoc:ontopoc-build`（上传文件建本体）与 `/ontopoc:ontopoc-review`（逐项确认）。会话开始时，若本机服务没有运行，插件会提示一行。插件按 `ONTOPOC_PYTHON`、`python3`、`python` 的顺序寻找 Python。
+
+### 接入 Claude Code 或其他 MCP 客户端
+
+这 38 个工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用（在仓库根目录运行）。其中 34 个对应早期界面的运行（建模、查看、问答、确认、导出），4 个对应团队应用：读已确认的定义、提问、列出未确认项、读派生属性。团队应用里的上传、写定义和确认还没有 MCP 工具，在页面或 HTTP 接口里做。
+
+```bash
+claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
+```
+
+工具清单见 [docs/MCP.md](docs/MCP.md)。
+
+## 早期界面：按运行建模
+
+这一节说的是早期界面（`legacy.html`）：上传一次是一次运行，结果存在 `output/ontology-runs/`。
+
+### 简介
 
 用户上传若干业务表（Excel、CSV）或一份流程文档后，OntoPoc 生成本体草案，包括业务中的对象、各对象的识别字段以及对象之间的关系。起草时，代码先在全部行上数出每列有几种值、哪些列每行都不同、哪些列的值能在别的列里找到，模型看字段名、至多 3 个示例值和这些计数起草；代码再按 14 类错误检查草稿，例如字段是否存在、识别字段是否有值、关系有没有连上的行，不通过就退回，至多 3 轮。在此基础上，系统执行数据质量检查，并基于数据回答业务问题。文档也可按「组织架构」读，梳理出组织单元、岗位、人与工作环节及其隶属、协作、交接关系，每条都附原文出处。顾问逐项确认后，结果将被保存；同一文件或其新版本再次上传时，系统以此为基准进行比对。
 
@@ -45,9 +132,9 @@ OntoPoc 是一个还在开发中的方向，不是成品。在试的是：从几
 
 建模结果可按数据平台的对象表单导出，可导出给搭数据管道的人看的编排需求单和一页会议纪要，也可按 W3C 标准导出为 Turtle（OWL 与 SHACL）；部分功能已封装为 MCP 工具，可供其他 Agent 调用（新增的定义与连接功能暂无）。
 
-> **早期版本。** 目前只在公开数据和合成数据上试过（美国联邦采购、芝加哥市政合同、Northwind、BART 地铁、台湾公司登记、CMS 医院等）。尚无作者以外的用户独立完成全流程，也还没和通用编程助手直接做同一件事比过。页面仅在 macOS 上实际用过；尚未在任何数据平台上实测批量导入。单个文件，或一次上传的多张表合计，不超过 10 MB；模型只接 DeepSeek 的托管接口，没有本地模型选项。详见[已知问题](#已知问题)。
+> **早期版本。** 目前只在公开数据和合成数据上试过（美国联邦采购、芝加哥市政合同、Northwind、BART 地铁、台湾公司登记、CMS 医院等）。尚无作者以外的用户独立完成全流程，也还没和通用编程助手直接做同一件事比过。页面仅在 macOS 上实际用过；尚未在任何数据平台上实测批量导入。单个文件，或一次上传的多张表合计，不超过 10 MB；模型走 DeepSeek 的托管接口或 OpenRouter（任何 OpenAI 兼容的接口都可以配置），没有本地模型选项。详见[已知问题](#已知问题)。
 
-## 界面预览
+### 界面预览
 
 <p align="center"><img src="docs/images/readme-confirm.png" alt="要确认的事：代码汇总、可以直接问客户的事" width="880"></p>
 <p align="center"><sub>要确认的事：示例工作簿上汇总出 8 件，每件附依据和一句可以直接问客户的话（截图是上一版的清单样式，现在是逐张卡片）。</sub></p>
@@ -69,7 +156,7 @@ OntoPoc 是一个还在开发中的方向，不是成品。在试的是：从几
 
 以上截图均基于仓库内置的合成示例 `examples/company/demo_company.xlsx`，由无头浏览器离屏渲染。
 
-## 工作原理
+### 工作原理
 
 | 操作 | 系统行为 |
 |---|---|
@@ -95,9 +182,9 @@ OntoPoc 是一个还在开发中的方向，不是成品。在试的是：从几
 
 模型只负责判断，循环与计算均由代码完成；模型调用串联至多 3 步，每次调用都对应一个需要人来做的判断。系统共有 6 个 Agent，定义见 [docs/AGENTS.md](docs/AGENTS.md)。
 
-## 快速体验
+### 快速体验
 
-完成安装（见[快速开始](#快速开始)）后，可用仓库内置的合成示例体验：
+完成安装（见[快速开始](#快速开始)）后，打开 `legacy.html`，可用仓库内置的合成示例体验：
 
 | 操作 | 预期结果 |
 |---|---|
@@ -108,72 +195,7 @@ OntoPoc 是一个还在开发中的方向，不是成品。在试的是：从几
 | 本体关系 → 实例图谱，选择一个客户 | 以图谱展示该客户及其订单，点击订单可继续展开产品 |
 | 点击右上角"⤓ 表单" | 下载压缩包，内含 4 份对象表单 CSV 及一份导入说明 |
 
-## 快速开始
-
-环境要求：Python 3.11+、Node 22+，以及 DeepSeek API key。上传 PDF 另需本机装有 `pdftotext`（poppler）。
-
-### 方式 A：由 AI 助手安装
-
-将以下内容粘贴至 Claude Code 或 Codex：
-
-```text
-请在本机安装并运行 OntoPoc（https://github.com/Longado/ontopoc）：
-1. 阅读仓库的 README.md，按"快速开始"操作。
-2. 检查 python3 --version ≥ 3.11、node --version ≥ 22；不满足时告诉我安装方法，并暂停后续步骤。
-3. 克隆仓库，在仓库根目录执行 python3 -m pip install -e .（安装读 Excel 用的 openpyxl；系统 Python 不允许直接安装时，先建虚拟环境），在 landing-page 目录执行 npm ci。
-4. 向我索取 DeepSeek API key，仅写入当前终端的环境变量 DEEPSEEK_API_KEY，不要写入任何文件。
-5. 在仓库根目录启动建模服务：PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
-6. 另开一个终端启动页面：cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
-7. 打开 http://127.0.0.1:5178/legacy.html，上传 examples/company/demo_company.xlsx，告诉我"数据体检"通过了几项。
-```
-
-### 方式 B：手动安装
-
-```bash
-git clone https://github.com/Longado/ontopoc.git && cd ontopoc
-python3 -m pip install -e .        # 读 Excel 用的 openpyxl；系统 Python 不允许时先 python3 -m venv .venv && . .venv/bin/activate
-(cd landing-page && npm ci)
-
-# 终端 1：建模服务（端口 8767，结果保存在 output/ontology-runs/）
-export DEEPSEEK_API_KEY=你的key
-PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
-
-# 终端 2：页面
-cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
-```
-
-访问 `http://127.0.0.1:5178/legacy.html`（按“运行”操作的界面，上面的快速开始用的就是它）。未配置 key 时仍可查看内置示例。修改后端代码后需重启建模服务，页面检测到服务运行旧代码时会提示。
-
-### 页面布局（重建中）
-
-`http://127.0.0.1:5178/` 是按“一个工作空间、没有运行”重做的新界面：左侧按首页、任务、数据、本体、应用、血缘分组。目前能用的是数据集（上传、按主键更新或覆盖、字段、预览、版本）和任务（建模作业与上传记录），其余是灰色占位。新界面在 `landing-page/src/app/`，只读工作空间接口 `/api/workspace/*`，不引用旧代码；旧界面整体在 `landing-page/src/legacy/`（入口 `legacy.html`，旧首页文字是 `legacy.html?landing`），新界面里对应的页面做完一块，就删旧的一块。部署时注意：原来的 `/landing` 现在要写成 `legacy.html?landing`，站点配置没有改。
-
-## 用 MCP / Claude 接入
-
-OntoPoc 的一部分功能封装为 32 个 MCP 工具，也可作为 Claude Code 插件安装（新增功能还没有对应工具，见下）。工具与页面共用本机建模服务：先启动服务，再接入客户端。
-
-### 作为 Claude Code 插件安装
-
-仓库本身就是一个 Claude Code 插件。安装后可在 Claude Code 里直接建本体、逐项确认；建模、核验和确认记录仍在本机 OntoPoc 服务里完成，使用前需要先启动它（见上文）。
-
-```bash
-claude plugin marketplace add Longado/ontopoc
-claude plugin install ontopoc@ontopoc
-```
-
-新开一个会话后可用两个命令：`/ontopoc:ontopoc-build`（上传文件建本体）与 `/ontopoc:ontopoc-review`（逐项确认）。会话开始时，若本机服务没有运行，插件会提示一行。插件按 `ONTOPOC_PYTHON`、`python3`、`python` 的顺序寻找 Python。
-
-### 接入 Claude Code 或其他 MCP 客户端
-
-这 32 个工具覆盖建模、查看、问答、确认和导出，与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用（在仓库根目录运行）。新增的下列功能还没有 MCP 工具，目前只能在页面或 HTTP 接口里用：保存代码含义、保存重复编号的取法、命名视图、两表连接、对重新上传后“需要再看一眼”的确认再确认；要确认的事和问答的核对结果会经现有工具带出，但这些改动本身不能通过 MCP 做。
-
-```bash
-claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
-```
-
-工具清单见 [docs/MCP.md](docs/MCP.md)。
-
-## 功能模块
+### 功能模块
 
 | 模块 | 内容 |
 |---|---|
@@ -205,16 +227,17 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 
 ### 什么是 ontology MCP？可以怎么用？
 
-这里的 ontology MCP 指通过 MCP 工具调用本体相关功能。OntoPoc 把页面上的部分能力做成 MCP 工具（共 32 个，新增的代码含义、重复编号取法、命名视图、两表连接还没有），供 Claude Code、Claude Desktop、Cursor 等支持 MCP 的客户端调用。工具走本机 stdio，调用的是本机正在运行的建模服务。Claude Code 也可直接装仓库插件后使用 `/ontopoc:ontopoc-build` 与 `/ontopoc:ontopoc-review`。接法见[用 MCP / Claude 接入](#用-mcp--claude-接入)，工具清单见 [docs/MCP.md](docs/MCP.md)。
+这里的 ontology MCP 指通过 MCP 工具调用本体相关功能。OntoPoc 把页面上的部分能力做成 MCP 工具（共 38 个，其中 4 个给团队应用：读定义、提问、列出未确认项、读派生属性），供 Claude Code、Claude Desktop、Cursor 等支持 MCP 的客户端调用。工具走本机 stdio，调用的是本机正在运行的建模服务。Claude Code 也可直接装仓库插件后使用 `/ontopoc:ontopoc-build` 与 `/ontopoc:ontopoc-review`。接法见[用 MCP / Claude 接入](#用-mcp--claude-接入)，工具清单见 [docs/MCP.md](docs/MCP.md)。
 
 ### OntoPoc 现在适合谁用？
 
-设想中的使用者是数据平台的实施顾问：第一次拿到客户数据时，用它梳理业务对象及其关系。现在没有作者以外的用户独立完成全流程；页面仅在 macOS 上实际用过。更多边界见[已知问题](#已知问题)。
+团队应用设想给一个数据团队用：建设者从数据建定义、互相确认，查看者只问问题、看看板。早期界面设想给数据平台的实施顾问：第一次拿到客户数据时梳理业务对象及其关系。两者都还没有作者以外的用户独立用过；页面仅在 macOS 上实际用过。更多边界见[已知问题](#已知问题)。
 
 ## 隐私
 
 - 上传的文件及全部结果仅保存在本机 `output/ontology-runs/` 目录。
-- 发送给模型（DeepSeek）的内容仅包括：建模目的；每张表的行数、各列字段名、至多 3 个示例值、代码数出的计数（有值个数、不同值个数、是否各不相同）、每张表每行都不同的列或两列组合、可能的连接（包括指向本表的）；像类别那样反复出现的列的全部取值；生成问题时，取值不超过 12 种的列的全部取值，以及你在问答里输入的问题原文；点“起草”字段释义时，各字段的类型和最长长度；点“找出可能的对应”时，只用一个字段识别、取值 2–200 个的对象的全部识别值及各值出现的行数；文档则为正文，每次至多 12 段。建模时将发送的内容，上传前可在页面逐列查看。
+- 团队应用里，模型看对象类型、属性的名字和类型、已确认的代码含义、关系和派生属性的说明，以及取值种类不多的列（如城市、等级）的全部取值；主键列和管理员标为“不发取值”的列不发取值。不发行数据。
+- 早期界面发送给模型（DeepSeek 或 OpenRouter 上的模型）的内容仅包括：建模目的；每张表的行数、各列字段名、至多 3 个示例值、代码数出的计数（有值个数、不同值个数、是否各不相同）、每张表每行都不同的列或两列组合、可能的连接（包括指向本表的）；像类别那样反复出现的列的全部取值；生成问题时，取值不超过 12 种的列的全部取值，以及你在问答里输入的问题原文；点“起草”字段释义时，各字段的类型和最长长度；点“找出可能的对应”时，只用一个字段识别、取值 2–200 个的对象的全部识别值及各值出现的行数；文档则为正文，每次至多 12 段。建模时将发送的内容，上传前可在页面逐列查看。
 - 每次模型调用在本机 `output/ontology-runs/model_calls.jsonl` 记录一行（Agent、耗时、成功与否），不记录调用内容。
 - 服务仅接受本机请求。
 
@@ -225,7 +248,9 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 - **新旧版本的识别字段可能变化。** 芝加哥合同数据曾有一次由"合同号 + 修订号"改为仅用合同号识别，此时只能比较数量，无法逐一比对，页面会注明"识别方式已变更"。
 - **关系检查只要求至少连上一行。** 数据体检里关系那一项，每条关系只要连上一行就算通过，连上的比例很低也一样；页面会写出连上了多少行，请看这个数。
 - **定义与连接的范围很窄。** 代码含义只处理一列里的几个取值；重复编号的取法只有三种；表连接只有“输入、连接、输出”三类步骤，连接结果超过行数上限会拒绝运行；名字对算法的检查只认 P50、P90、平均、合计、最大、最小这几类，且需要另一张表里有同名的原始列。以上都只在合成的埋错表和公开数据上试过，没有真实客户数据。
-- **答案核对依赖模型如实声明。** 模型说了怎么读定义，代码只核对实际执行的查询有没有用上；模型把读法说错而查询恰好相符时，核对看不出来。查询语言只能表达“某字段等于某值”，“不算已取消”必须有一个已命名的视图才能执行，否则拒答。
+- **答案核对依赖模型如实声明。** 模型说了怎么读定义，代码只核对实际执行的查询有没有用上；模型把读法说错而查询恰好相符时，核对看不出来。查询语言能表达“等于某值”“不是某些值”和取最高或最低的前 N 个，不能按数值范围或时间段筛选。
+- **“最低”只在有数据的组里排。** 例如“订单金额最低的客户”只排有订单的客户，没下过单的客户不在里面。
+- **真实模型的回答会变。** 同一问题多问几次，偶尔会写出代码拒绝的查询（结果是拒答，不是错数）。每轮结束用 `scripts/real_model_check.py` 在内置数据上对照 SQL 跑一遍。
 - **“需要再看一眼”按数据占比判断。** 某个值的行数占比翻倍或减半（且至少差 5 行）才算变了，这两个数是定的，不是测出来的；变化小于这个线的错位不会被发现。
 - **关系推断的召回有限。** 在 17 份已保存的运行（公开数据与合成数据）上逐条移除关系后重新推断，33 条中找回 24 条；在完整本体上未出现误报。
 - **查询能力的限制。** 暂不支持按数值条件筛选、限定时间范围、单个问题返回两个数值，以及"哪些项目经常同时出现"一类问题；遇到时系统会如实说明。
@@ -258,7 +283,7 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http:/
 
 管理员在页面“用户”里建其他人：**查看**只能看和提问，**建设**还能上传数据、改定义，**管理员**还能管人。新账号第一次登录必须先改掉管理员给的临时密码。每一次操作都记在登录的人名下，请求里自己写的名字会被忽略。脚本和 MCP 用“我的账号”里创建的令牌（给 MCP 设环境变量 `ONTOPOC_TOKEN`），权限和令牌主人的角色一样。
 
-**两人确认**：有两个以上的人能确认时，一个人提交的视图要另一个人确认才生效，提交的人自己不能确认；只有一个人能确认时自动不生效，日志里会标出自己确认自己的那几条。管理员可以在“用户”页关掉。目前只管视图，其余的确认还是一步完成。
+**两人确认**：有两个以上的人能确认时，一个人提出的定义（含义、对象类型、关系、视图、行为、派生属性、管道）要另一个人确认才生效，提出的人自己不能确认；只有一个人能确认时自动不生效，日志里会标出自己确认自己的那几条。管理员可以在“用户”页关掉。
 
 **给团队用**：服务本身只听本机，不处理 HTTPS。前面放一个做 HTTPS 的代理，例如 Caddy：
 
@@ -275,8 +300,9 @@ ontopoc.example.com {
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（1424 个；先 pip install -e ".[check]"，否则 TTL 校验的 9 个跳过）
-npm --prefix landing-page run test:unit                       # 前端测试（369 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（约 2000 个；先 pip install -e ".[check,sources]"，否则 TTL 校验等会跳过）
+npm --prefix landing-page run test:unit                       # 前端测试（约 530 个）
+PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # 真实模型对照 SQL 的检查（要模型 key；只有错数才算失败）
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录，不动已有运行
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合成示例工作簿
@@ -287,7 +313,7 @@ PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合�
 | [docs/PRODUCT.md](docs/PRODUCT.md) | 开发方向与边界 |
 | [docs/PLAYGROUND_INTERNALIZATION.md](docs/PLAYGROUND_INTERNALIZATION.md) | 本体库来源、RDF/XML 导入边界与后续轮次 |
 | [docs/AGENTS.md](docs/AGENTS.md) | 6 个 Agent 的定义与调用记录 |
-| [docs/MCP.md](docs/MCP.md) | 32 个 MCP 工具 |
+| [docs/MCP.md](docs/MCP.md) | MCP 工具清单 |
 | [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | 数据平台对象表单对照 |
 | [docs/PRD_ITERATION_9.md](docs/PRD_ITERATION_9.md) | 最近一份迭代计划（第 9 轮，闭环）；之后各轮的改动见已合并 PR 的说明 |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 开发红线与待触发的方向 |
