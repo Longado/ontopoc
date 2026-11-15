@@ -81,7 +81,7 @@ def _capped(rows) -> list[list]:
     """The rows of a CSV, refused in words past MAX_CELLS cells."""
     out, cells = [], 0
     for r in rows:
-        cells += len(r)
+        cells += max(len(r), 1)   # an empty line costs a row
         if cells > MAX_CELLS:
             raise SourceFileError(f'这个 CSV 文件超过 {MAX_CELLS:,} 个单元格，读不完：请拆成几个文件，或只留要用的列')
         out.append(r)
@@ -91,7 +91,8 @@ def _capped(rows) -> list[list]:
 def _read_xlsx(data: bytes) -> dict[str, tuple[list[dict], dict]]:
     import openpyxl
     try:
-        unpacked = sum(i.file_size for i in zipfile.ZipFile(io.BytesIO(data)).infolist())
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            unpacked = sum(i.file_size for i in archive.infolist())
     except (zipfile.BadZipFile, OSError, ValueError) as exc:
         raise SourceFileError(f'无法作为 Excel（.xlsx）读取：{exc}') from None
     if unpacked > MAX_UNPACKED:
@@ -105,7 +106,7 @@ def _read_xlsx(data: bytes) -> dict[str, tuple[list[dict], dict]]:
         for sheet in book.worksheets:
             rows = []
             for r in sheet.iter_rows(values_only=True):
-                cells += len(r)
+                cells += max(len(r), 1)
                 if cells > MAX_CELLS:
                     raise SourceFileError(f'这个 Excel 文件超过 {MAX_CELLS:,} 个单元格，读不完：请拆成几个文件，或只留要用的列')
                 rows.append(list(r))
