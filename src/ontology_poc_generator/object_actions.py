@@ -251,7 +251,10 @@ def action_detail(conn, name: str, user: dict | None) -> dict:
     row = _action_row(conn, name, user)
     expire_old(conn)
     records = [record_view(conn, r, user) for r in _records(conn, 'action_id = ?', (row['element_id'],), limit=50)]
-    return {**_line(conn, row, user), 'records': [r for r in records if r], 'log': log_entries(conn, [row['element_id']], user)}
+    from ontology_poc_generator.notices import lines, recipients_of
+    told = recipients_of(conn, row['element_id'])
+    return {**_line(conn, row, user), 'records': [r for r in records if r], 'log': log_entries(conn, [row['element_id']], user),
+            'notify': {'recipients': told, 'lines': lines(conn, told, _content(row)['type'])}}
 
 
 # --- records -------------------------------------------------------------------------------------------------------------------------------------------
@@ -548,6 +551,9 @@ def decide(conn, payload: dict, who: str | None, user: dict | None) -> dict:
         version = done['dataset']['version']
         _write_state(conn, rec, 'approved', who, user, note, None, 'action_approved',
                      f'{who} 批准了 #{rec["id"]}（{rec["submitted_by"]} 提交）：{shown}，{_pairs(conn, content, before)} → {_pairs(conn, content, after)}；{dataset["name"]} 有了第 {version} 版', version)
+        from ontology_poc_generator.notices import deliver   # notices reads this module's records
+        deliver(conn, action, rec['id'], {**found, **written},
+                f'“{content["name"]}”：{shown}，{_pairs(conn, content, before)} → {_pairs(conn, content, after)}（{rec["submitted_by"]} 提交，{who} 批准）', user)
         conn.execute('COMMIT')
     except TypeRefused:   # the record was decided by someone else in between
         conn.execute('ROLLBACK')

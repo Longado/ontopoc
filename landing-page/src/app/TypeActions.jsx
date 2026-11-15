@@ -1,18 +1,74 @@
 import React, { useState } from "react";
-import { confirmAction, createAction, getAction, getActions, submitAction, undoRecord, withdrawRecord } from "./api.js";
+import { confirmAction, createAction, getAction, getActions, getRelations, setActionNotify, submitAction, undoRecord, withdrawRecord } from "./api.js";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
 import { State } from "./TypesPage.jsx";
 import { confirmersText, logText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
-import { actionProblem, emptyActionForm, actionPayload, recordStateText } from "./actionModel.js";
+import { actionProblem, emptyActionForm, actionPayload, notifyRecipient, recordStateText } from "./actionModel.js";
 
-function Records({ name }) {
+/** Who the action tells when a change is approved: named people (kept as they are: an admin names them), people by an attribute equal to a column of the row, or
+ * people by an attribute equal to a column of the object the row points to through a relation. Saved at once; not part of what is confirmed. */
+function Notify({ name, type, notify, mayBuild, onSaved }) {
+  const [relations] = useLoad(getRelations, []);
+  const [f, setF] = useState({ kind: "attr", column: "", relation: "", attr: "" });
+  const [error, setError] = useState("");
+  const mine = (relations.data ?? []).filter((r) => (r.from === type.id) !== (r.to === type.id));
+  const save = async (recipients) => {
+    setError("");
+    try {
+      await setActionNotify(name, recipients);
+      setF({ kind: f.kind, column: "", relation: "", attr: "" });
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const fresh = notifyRecipient(f);
+  return (
+    <div className="trace">
+      <p className="small"><strong>批准后通知：</strong>{notify.lines.length ? notify.lines.join("；") : "不通知任何人"}</p>
+      {mayBuild && notify.recipients.length > 0 && (
+        <ul className="checks">
+          {notify.recipients.map((r, i) => <li key={i} className="small">{notify.lines[i]} <button className="plain" onClick={() => save(notify.recipients.filter((_, j) => j !== i))}>去掉</button></li>)}
+        </ul>
+      )}
+      {mayBuild && notify.recipients.length < 5 && (
+        <div className="inline wide" style={{ flexWrap: "wrap" }}>
+          <Select label={`${name}：通知谁`} value={f.kind} onChange={(kind) => setF({ ...f, kind })}>
+            <option value="attr">这一行的某列 = 人的属性</option>
+            <option value="via">经关系找到的对象的某列 = 人的属性</option>
+          </Select>
+          {f.kind === "via" && (
+            <Select label={`${name}：经哪个关系`} value={f.relation} onChange={(relation) => setF({ ...f, relation })}>
+              <option value="">选关系</option>
+              {mine.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </Select>
+          )}
+          {f.kind === "attr" ? (
+            <Select label={`${name}：哪一列`} value={f.column} onChange={(column) => setF({ ...f, column })}>
+              <option value="">选列</option>
+              {type.properties.map((p) => <option key={p.column} value={p.column}>{p.name}</option>)}
+            </Select>
+          ) : (
+            <input type="text" aria-label={`${name}：另一端的列`} placeholder="另一端的列名" value={f.column} onChange={(e) => setF({ ...f, column: e.target.value })} />
+          )}
+          <span>= 人的</span>
+          <input type="text" aria-label={`${name}：人的属性名`} placeholder="如 部门" maxLength={20} value={f.attr} onChange={(e) => setF({ ...f, attr: e.target.value })} />
+          <button className="secondary" disabled={!fresh} onClick={() => save([...notify.recipients, fresh])}>加上</button>
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
+function Records({ name, type, mayBuild }) {
   const [state, reload] = useLoad(() => getAction(name), [name]);
   const [error, setError] = useState("");
   if (state.status === "error") return <p className="error">{state.error}</p>;
   if (!state.data) return <p className="muted">加载中</p>;
-  const { records, log } = state.data;
+  const { records, log, notify } = state.data;
   const act = (call) => async (id) => {
     setError("");
     try {
@@ -26,6 +82,7 @@ function Records({ name }) {
   const undo = act(undoRecord);   // a new request that writes the before-values back; another builder approves it
   return (
     <>
+      {notify && type && <Notify name={name} type={type} notify={notify} mayBuild={mayBuild} onSaved={reload} />}
       {records.length > 0 && (
         <div className="table-wrap">
           <table>
@@ -67,7 +124,7 @@ function Records({ name }) {
   );
 }
 
-function ActionCard({ action, mayBuild, onChanged }) {
+function ActionCard({ action, type, mayBuild, onChanged }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const confirm = async () => {
@@ -97,7 +154,7 @@ function ActionCard({ action, mayBuild, onChanged }) {
       {action.state === "needs_look" && action.reason && <div className="reason"><strong>为什么需要再看</strong><p>{action.reason}</p></div>}
       {mayBuild && action.can_confirm && <div className="inline"><button className="primary" onClick={confirm} disabled={busy}>确认这个行为</button></div>}
       {error && <p className="error">{error}</p>}
-      <Records name={action.id} />
+      <Records name={action.id} type={type} mayBuild={mayBuild} />
     </section>
   );
 }
@@ -174,7 +231,7 @@ export function TypeActions({ type, mayBuild }) {
     <>
       {!actions.length && <p className="muted">还没有行为。行为是改数据的唯一办法：一个人提交，另一位建设者批准，才会写成数据集的新版本。</p>}
       <div className="cards">
-        {actions.map((a) => <ActionCard key={`${a.id}@${a.version}`} action={a} mayBuild={mayBuild} onChanged={reload} />)}
+        {actions.map((a) => <ActionCard key={`${a.id}@${a.version}`} action={a} type={type} mayBuild={mayBuild} onChanged={reload} />)}
       </div>
       {mayBuild && form && <NewAction type={type.id} form={form} onSaved={reload} />}
     </>

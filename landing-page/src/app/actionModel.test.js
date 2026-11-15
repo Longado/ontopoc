@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { actionFits, actionPayload, actionProblem, emptyActionForm, recordStateText, rowKey } from "./actionModel.js";
+import { notifyRecipient } from "./actionModel.js";
 
 test("an action form needs a name, a property to change, and a value when a condition column is picked", () => {
   const form = emptyActionForm();
@@ -40,4 +41,11 @@ test("an action is offered only on rows that meet its condition", () => {
   assert.equal(actionFits(action, columns, ["DD1", "1"]), true);
   assert.equal(actionFits(action, columns, ["DD2", "0"]), false);
   assert.equal(actionFits({ condition: null }, columns, ["DD2", "0"]), true);
+});
+
+test("a notice recipient from the form is whole or nothing", () => {
+  assert.deepEqual(notifyRecipient({ kind: "attr", column: "客户编号", attr: " 负责客户 " }), { kind: "attr", column: "客户编号", user_attr: "负责客户" });
+  assert.deepEqual(notifyRecipient({ kind: "via", relation: "order_customer", column: "城市", attr: "城市" }), { kind: "via", relation: "order_customer", column: "城市", user_attr: "城市" });
+  assert.equal(notifyRecipient({ kind: "via", relation: "", column: "城市", attr: "城市" }), null);
+  assert.equal(notifyRecipient({ kind: "attr", column: "", attr: "部门" }), null);
 });

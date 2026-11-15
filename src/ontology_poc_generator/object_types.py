@@ -1047,7 +1047,7 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
                     'caused_by': after.get('caused_by'), 'self_confirmed': bool(after.get('self_confirmed')),
                     'visible_to': after.get('visible_to') if change == 'access_changed' else None,
                     'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(c for c in after['columns'] if c not in hidden(element)) or '你看不到的列' if change == 'meanings_retired'
-                    else after.get('text') if change.startswith('action_') or change == 'confirmed_together' else after.get('summary') if change == 'row_rules_changed'
+                    else after.get('text') if change.startswith('action_') or change == 'confirmed_together' else after.get('summary') if change in ('row_rules_changed', 'notify_changed')
                     else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed'
                     else f'{after["column"]}：{"所有人都能看" if after["visible_to"] == "everyone" else "只给 " + "、".join(after["visible_to"]) + " 看（还有管理员）" if after["visible_to"] else "只有管理员能看"}' if change == 'column_access_changed'
                     else f'第 {after["run"]} 次运行，写了 {"、".join(after["outputs"]) or "没有数据集"}' if change == 'run'

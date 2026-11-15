@@ -3,7 +3,8 @@ import { AccountPage } from "./AccountPage.jsx";
 import { AgentsPage } from "./AgentsPage.jsx";
 import { BoardEditor } from "./BoardEditor.jsx";
 import { BoardPage, BoardsPage } from "./BoardsPage.jsx";
-import { WORKSPACE_CHANGED, getQueueCount } from "./api.js";
+import { WORKSPACE_CHANGED, getNotices, getQueueCount } from "./api.js";
+import { NoticesPage } from "./NoticesPage.jsx";
 import { useAuth } from "./Auth.jsx";
 import { canBuild, isAdmin, roleLabel } from "./authModel.js";
 import { ConfirmGroupPage } from "./ConfirmGroupPage.jsx";
@@ -63,7 +64,26 @@ function useQueueCount(route) {
   return count;
 }
 
-function Navigation({ active, open, onPick, count }) {
+/** How many of this person's notices are unread; read again whenever the page changes. */
+function useNoticeCount(route) {
+  const [count, setCount] = useState(0);
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    const again = () => setRound((n) => n + 1);
+    window.addEventListener(WORKSPACE_CHANGED, again);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, again);
+  }, []);
+  useEffect(() => {
+    let live = true;
+    getNotices().then((b) => live && setCount(b.unread), () => live && setCount(0));
+    return () => {
+      live = false;
+    };
+  }, [route.page, route.id, route.name, round]);
+  return count;
+}
+
+function Navigation({ active, open, onPick, count, unread = 0 }) {
   const { user } = useAuth();
   return (
     <nav className={`nav${open ? " open" : ""}`} aria-label="主导航">
@@ -75,6 +95,7 @@ function Navigation({ active, open, onPick, count }) {
               aria-current={item.key === active ? "page" : undefined} onClick={onPick}>
               {item.label}
               {item.key === "confirm" && countText(count) && <span className="count" aria-label={`${count} 项等你确认`}>{countText(count)}</span>}
+              {item.key === "notices" && countText(unread) && <span className="count" aria-label={`${unread} 条未读消息`}>{countText(unread)}</span>}
             </a>
           ))}
         </div>
@@ -144,6 +165,7 @@ const VIEWS = {
   users: () => <UsersPage />,
   permissions: () => <PermissionsPage />,
   account: () => <AccountPage />,
+  notices: () => <NoticesPage />,
   planned: (route) => <Planned route={route} />,
 };
 
@@ -152,6 +174,7 @@ export function Shell() {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
   const [menu, setMenu] = useState(false);
   const queueCount = useQueueCount(route);
+  const unread = useNoticeCount(route);
   useEffect(() => {
     const onChange = () => setRoute(parseRoute(window.location.hash));
     window.addEventListener("hashchange", onChange);
@@ -171,7 +194,7 @@ export function Shell() {
           <strong className="brand">OntoPoc</strong>
           <button className="plain menu-button" onClick={() => setMenu(!menu)} aria-expanded={menu}>菜单</button>
         </div>
-        <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} />
+        <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} unread={unread} />
       </aside>
       {!VIEWS[route.page] ? <NotFound /> : mayOpen(route.page, user) ? VIEWS[route.page](route) : <Forbidden />}
     </div>
