@@ -73,7 +73,7 @@ class NoticeTests(DerivedTestCase):
             rule = [{'column': '客户编号', 'value': 'KH002', 'user_ids': [ids['vera']]}, {'user_ids': [ids['ann'], ids['bob']]}]
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': rule})[0], 200)
             self.change(bob, ann, days='50')
-            self.assertEqual(len(self.notices(vera)['notices']), 1)
+            self.assertEqual(self.notices(vera)['notices'], [])   # not told of the new one, and the old one about that row is no longer hers to read
             self.assertEqual(len(self.notices(admin)['notices']), 2)
             conn_log = [e for e in ann.get(ACTION_URL)[1]['log'] if e['change'] == 'notify_changed']
             self.assertEqual(len(conn_log), 1)
@@ -94,3 +94,20 @@ class NoticeTests(DerivedTestCase):
             self.assertEqual(ann.post('/api/workspace/actions/notify', {'action': '不存在', 'recipients': []})[0], 404)
             self.assertEqual(ann.post('/api/workspace/actions/notify', {'action': ACTION['name'], 'recipients': []})[0], 200)   # nobody: the default
             self.assertEqual(self.notices(ann), {'notices': [], 'unread': 0})
+
+    def test_a_notice_is_checked_again_when_it_is_read_and_a_broken_recipient_does_not_stop_the_change(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, vera, admin = team['ann'], team['bob'], team['vera'], team['admin']
+            self.ready(team)
+            vera_id = self.user_id(admin, 'vera')
+            recipients = [{'kind': 'people', 'user_ids': [vera_id]}, {'kind': 'via', 'relation': 'order_customer', 'column': '城市', 'user_attr': '城市'}]
+            self.assertEqual(ann.post('/api/workspace/actions/notify', {'action': ACTION['name'], 'recipients': recipients})[0], 200)
+            conn = __import__('ontology_poc_generator.workspace_store', fromlist=['open_workspace']).open_workspace(out / 'workspace.sqlite')
+            conn.execute("UPDATE element_state SET content_json = json_set(content_json, '$.from', 'gone') WHERE element_id = 'relation:order_customer'")   # a relation that no longer fits
+            conn.commit()
+            conn.close()
+            self.change(bob, ann)   # still approved
+            self.assertEqual(self.notices(vera)['unread'], 1)
+            self.assertEqual(admin.post('/api/workspace/column-access', {'type': 'order', 'column': '交付天数', 'visible_to': [self.user_id(admin, 'ann')]})[0], 200)
+            self.assertEqual(self.notices(vera), {'notices': [], 'unread': 0})   # the column it quotes is kept from her now
