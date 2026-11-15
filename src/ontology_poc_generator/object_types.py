@@ -834,7 +834,8 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
             'cause': row['cause'] if row['state'] == 'needs_look' else None, 'via': row['via'] if row['state'] == 'needs_look' else None,
             'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None,
             'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None, 'pipelines_blocking': producers,
-            'confirmers': others if waiting and not blocked else [], 'meanings_blocking': meanings,
+            'confirmers': others if waiting and not blocked else [],
+            'meanings_blocking': [c for c in meanings if c not in kept] if meanings and (kept := hidden_columns(conn, row['element_id'], user)) else meanings,   # a column kept from them is not named
             'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None,
             'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at']}
 
@@ -1016,13 +1017,14 @@ def _action_line_readable(conn, element: str, after: dict, user: dict | None) ->
 def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
     """The log lines about these elements, newest first (the caller has checked that this person may read them). A line of an action about a row a row rule keeps
     from `user` is left out altogether."""
-    out, limited, kept_from = [], {}, {}
+    out, limited, kept_from, hidden_of = [], {}, {}, {}
+    hidden = lambda element: hidden_of.setdefault(element, hidden_columns(conn, element, user))
     for at, who, element, change, before, after in conn.execute(
             f'SELECT time, who, element_id, change, before_json, after_json FROM log WHERE element_id IN ({",".join("?" * len(ids))}) ORDER BY time DESC, rowid DESC', ids):
         after = json.loads(after) if after else {}
         if element not in kept_from:   # a meaning, view, relation, derived property or action that reads a column kept from this person: none of its lines
             kept_from[element] = element.startswith((ENUM_PREFIX, VIEW_PREFIX, RELATION_PREFIX, DERIVED_PREFIX, ACTION_PREFIX)) and reads_hidden(conn, element, user)
-        if kept_from[element] or (change in ('values_privacy_changed', 'column_access_changed') and after.get('column') in hidden_columns(conn, element, user)):
+        if kept_from[element] or (change in ('values_privacy_changed', 'column_access_changed') and after.get('column') in hidden(element)):
             continue
         if change == 'needs_look' and after.get('reason'):   # a reason that quotes counts of the whole data
             if element not in limited:
@@ -1039,7 +1041,7 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
                     'caused_by': after.get('caused_by'), 'self_confirmed': bool(after.get('self_confirmed')),
                     'visible_to': after.get('visible_to') if change == 'access_changed' else None,
-                    'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(after['columns']) if change == 'meanings_retired'
+                    'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(c for c in after['columns'] if c not in hidden(element)) or '你看不到的列' if change == 'meanings_retired'
                     else after.get('text') if change.startswith('action_') or change == 'confirmed_together' else after.get('summary') if change == 'row_rules_changed'
                     else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed'
                     else f'{after["column"]}：{"所有人都能看" if after["visible_to"] == "everyone" else "只给 " + "、".join(after["visible_to"]) + " 看（还有管理员）" if after["visible_to"] else "只有管理员能看"}' if change == 'column_access_changed'

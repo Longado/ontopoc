@@ -308,7 +308,7 @@ def record_view(conn, rec: dict, user: dict | None, light: bool = False) -> dict
     """One record as a page shows it; None when this person may not read the object it is about (a person never reads a row a rule keeps from them)."""
     action = element_row(conn, rec['action_id'])
     type_row = element_row(conn, rec['type_id'])
-    if action is None or type_row is None:
+    if action is None or type_row is None or reads_hidden(conn, rec['action_id'], user, _content(action)):   # an action on a column kept from them: none of its records
         return None
     content, t = _content(action), _content(type_row)
     dataset = current_dataset(conn, rec['dataset'])

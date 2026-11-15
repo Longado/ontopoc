@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from ontology_poc_generator.row_rules import has_rules, holds_all_rows, rules_of
+from ontology_poc_generator.row_rules import has_rules, holds_all_rows, rules_of, types_on_dataset_of
 from ontology_poc_generator.workspace_store import log_line
 
 TYPE_PREFIX = 'objtype:'
@@ -160,10 +160,14 @@ def column_allowed(conn, type_element_id: str) -> dict[str, list[int]]:
 
 
 def hidden_columns(conn, type_element_id: str, user: dict | None) -> set[str]:
-    """The columns of this type kept from this person: for them the type is the type without these properties. Admins and the local no-sign-in person: none."""
+    """The columns of this type kept from this person: for them the type is the type without these properties. Admins and the local no-sign-in person: none.
+    Like a row rule, keeping a column binds the dataset's column: a column kept on any type reading the same dataset is kept on this one too, so a second type
+    over the same table is no way round."""
     if user is None or user['role'] == 'admin':
         return set()
-    return {c for c, ids in column_allowed(conn, type_element_id).items() if user['id'] not in ids}
+    if not conn.execute('SELECT 1 FROM column_access LIMIT 1').fetchone():
+        return set()
+    return {c for t in types_on_dataset_of(conn, type_element_id) for c, ids in column_allowed(conn, t).items() if user['id'] not in ids}
 
 
 def _content(conn, element_id: str) -> dict | None:
@@ -175,10 +179,12 @@ def columns_read(conn, element_id: str, content: dict | None = None) -> set[tupl
     """The (type element id, column) pairs an element reads: a meaning its column, a view its conditions and "latest" columns, a relation its two join columns,
     an action the columns it writes and tests, a derived property its inputs, what it counts, its conditions and the join columns of every relation on its path."""
     content = content if content is not None else _content(conn, element_id)
-    if content is None:
-        return set()
     kind = element_id.partition(':')[0]
     t = lambda english: f'{TYPE_PREFIX}{english}'
+    if kind == 'enum' and content is None and element_id.count(':') >= 2:   # a retired set of meanings keeps no content: its id still names the column
+        return {(t(element_id.split(':')[1]), element_id.split(':', 2)[2])}
+    if content is None:
+        return set()
     if kind == 'enum':
         return {(t(content['type']), content['column'])} if 'type' in content and 'column' in content else {(t(element_id.split(':')[1]), element_id.split(':', 2)[2])}
     if kind == 'objview':
@@ -215,7 +221,7 @@ def set_column_access(conn, english_name: str, column: str, visible_to, who: str
         raise AccessRefused('没有这个对象类型', 404)
     if column not in {p['column'] for p in content['properties']}:
         raise AccessRefused(f'“{column}”不是这个对象类型的属性')
-    if column in content['key']:
+    if any(column in (_content(conn, t) or {}).get('key', []) for t in types_on_dataset_of(conn, element_id)):
         raise AccessRefused(f'“{column}”是编号列，标明每个对象是谁，不能只对一部分人藏起来；要藏就把整个类型对他们藏起来')
     before = column_allowed(conn, element_id).get(column)
     if visible_to == 'everyone':

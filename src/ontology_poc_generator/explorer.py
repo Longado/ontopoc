@@ -539,8 +539,9 @@ def reach_options(conn, user: dict | None, english: str) -> list[dict]:
             continue
         other = _content(element_row(conn, type_id(rel['other'])))
         link = _content(element_row(conn, relation_id(rel['id'])))[f'{"to" if rel["side"] == "from" else "from"}_column']
+        kept = hidden_columns(conn, type_id(rel['other']), user)
         out += [{'key': f'{VIA}{rel["id"]}:{p["column"]}', 'name': f'{rel["other_name"]}的{p["name"]}', 'relation': rel['id'], 'relation_name': rel['name'], 'other': rel['other'], 'column': p['column']}
-                for p in other['properties'] if p['column'] != link and p['column'] not in hidden_columns(conn, type_id(rel['other']), user)]
+                for p in other['properties'] if p['column'] != link and p['column'] not in kept]
     return out
 
 
