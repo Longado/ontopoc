@@ -1,6 +1,8 @@
 """A source can carry its own CA certificate, for a company database whose certificate an internal CA signed: the connection then trusts that CA
 (and only it) for this source, the host name is still checked, and the certificate text is never sent back or written to the log."""
 import datetime
+import socket
+import sqlite3
 import ssl
 import unittest
 from unittest import mock
@@ -60,7 +62,11 @@ class SourceCaApiTests(SourceCase):
 
     def test_an_admin_saves_a_ca_that_is_used_to_connect_shown_only_as_set_and_cleared_with_an_empty_text(self):
         pem = ca_pem('Corp Root')
-        with self.service() as (base_url, out):
+        self.ca_seen = 'not opened'
+        real = socket.getaddrinfo
+        lookup = lambda host, port, *args, **kwargs: ([(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('10.0.0.5', port))] if host == 'db.example.com'
+                                                      else real(host, port, *args, **kwargs))   # db.example.com without the network; everything else as it is
+        with self.service() as (base_url, out), mock.patch.object(source_connect.socket, 'getaddrinfo', side_effect=lookup):
             admin = self.team(base_url)['admin']
             status, body = self.ask(admin, 'post', '/api/workspace/sources', {**self.FIELDS, 'name': 'bad', 'ca_pem': 'nope'})
             self.assertEqual(status, 400)
@@ -77,9 +83,14 @@ class SourceCaApiTests(SourceCase):
             self.assertFalse({s['name']: s for s in self.ask(admin, 'get', '/api/workspace/sources')[1]['sources']}['corp']['custom_ca'])
             self.ask(admin, 'post', '/api/workspace/sources/test', {'name': 'corp'})
             self.assertIsNone(self.ca_seen)
-            self.assertFalse(any('BEGIN CERTIFICATE' in said for said in self.said))   # never sent back
-            log = (out / 'workspace.sqlite').read_bytes()
-            self.assertNotIn(b'"ca_pem"', log)
+            body = pem.splitlines()[1]   # a line of the certificate itself (the error text may name the PEM header, not this)
+            self.assertFalse(any(body in said for said in self.said))   # never sent back
+            self.assertEqual(self.ask(admin, 'post', '/api/workspace/sources/update', {'name': 'corp', 'ca_pem': pem})[0], 200)
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            logged = ' '.join(str(r) for r in conn.execute('SELECT * FROM log').fetchall())
+            conn.close()
+            self.assertNotIn(body, logged)   # the log says a CA is set, not what it is
+            self.assertIn('custom_ca', logged)
 
 
 if __name__ == '__main__':
