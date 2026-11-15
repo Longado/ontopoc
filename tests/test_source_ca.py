@@ -1,29 +1,29 @@
 """A source can carry its own CA certificate, for a company database whose certificate an internal CA signed: the connection then trusts that CA
 (and only it) for this source, the host name is still checked, and the certificate text is never sent back or written to the log."""
-import datetime
 import socket
 import sqlite3
 import ssl
 import unittest
 from unittest import mock
 
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.x509.oid import NameOID
-
 from ontology_poc_generator import source_connect
 from tests.test_sources import SourceCase
 
+# A throwaway self-signed CA (EC P-256, valid 2026-2125), made once for these tests; its private key was never kept. Fixed text, so the tests need no
+# certificate library.
+TEST_CA = """-----BEGIN CERTIFICATE-----
+MIIBODCB3qADAgECAgEBMAoGCCqGSM49BAMCMBoxGDAWBgNVBAMMD09udG9Qb2Mg
+VGVzdCBDQTAgFw0yNjAxMDEwMDAwMDBaGA8yMTI1MTIwODAwMDAwMFowGjEYMBYG
+A1UEAwwPT250b1BvYyBUZXN0IENBMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
+p1dbvulqHi8qRftPZs4YtjHQYRjd/zpqNYLn9HWH8nZIbXCDTMfB91qcLbF2soAS
+8nredPF91yLbcMvf2f9mBqMTMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD
+AgNJADBGAiEA+hIDUqqIcjmzgnKzwRUBcg58L0SbxeJPm9mIjk3C3BYCIQC6dPw0
+AJO8UVbHN8mR2Vldh2L0x8rtnSo8xszSWDzjOg==
+-----END CERTIFICATE-----"""
 
-def ca_pem(name='Internal CA') -> str:
-    key = ec.generate_private_key(ec.SECP256R1())
-    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)])
-    now = datetime.datetime.now(datetime.timezone.utc)
-    cert = (x509.CertificateBuilder().subject_name(subject).issuer_name(subject).public_key(key.public_key()).serial_number(x509.random_serial_number())
-            .not_valid_before(now - datetime.timedelta(days=1)).not_valid_after(now + datetime.timedelta(days=30))
-            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True).sign(key, hashes.SHA256()))
-    return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+def ca_pem(name=None) -> str:
+    return TEST_CA
 
 
 def common_names(context: ssl.SSLContext) -> list[str]:
@@ -33,7 +33,7 @@ def common_names(context: ssl.SSLContext) -> list[str]:
 class ContextTests(unittest.TestCase):
     def test_the_sources_own_ca_is_the_one_trusted_and_the_name_is_still_checked(self):
         context = source_connect._tls_context(ca_pem('Internal CA'))
-        self.assertEqual(common_names(context), ['Internal CA'])
+        self.assertEqual(common_names(context), ['OntoPoc Test CA'])
         self.assertEqual((context.verify_mode, context.check_hostname), (ssl.CERT_REQUIRED, True))
 
     def test_both_drivers_are_given_the_context_with_the_ca(self):
@@ -48,7 +48,7 @@ class ContextTests(unittest.TestCase):
                     opener('db.internal', '10.0.0.5', 5432, 'd', 'u', 'p', 'required', ca_pem=pem)
                 except Exception:
                     pass   # what happens after the driver is called is not this test's
-        self.assertEqual([common_names(made[0]['ssl_context']), common_names(made[1]['ssl'])], [['Pinned'], ['Pinned']])
+        self.assertEqual([common_names(made[0]['ssl_context']), common_names(made[1]['ssl'])], [['OntoPoc Test CA'], ['OntoPoc Test CA']])
 
     def test_a_text_that_is_not_a_certificate_is_refused_in_words(self):
         for bad in ('hello', '-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----', 'x' * 70000):
