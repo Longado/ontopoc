@@ -1,11 +1,11 @@
 // Browser geometry regression. Run against a local server with agent-browser installed:
-// ONTOPOC_LAYOUT_URL=http://127.0.0.1:5178 node --test tests/ontology-library-layout.test.mjs
+// ONTOPOC_LAYOUT_URL=http://127.0.0.1:5178/legacy.html node --test tests/ontology-library-layout.test.mjs
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { after, test } from "node:test";
 
-const url = process.env.ONTOPOC_LAYOUT_URL || "http://127.0.0.1:5178";
+const url = process.env.ONTOPOC_LAYOUT_URL || "http://127.0.0.1:5178/legacy.html";
 const browser = process.env.AGENT_BROWSER || `${homedir()}/.local/bin/agent-browser`;
 const session = `ontopoc-layout-${process.pid}`;
 function ab(...args) {

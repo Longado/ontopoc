@@ -37,11 +37,16 @@ class OpenAICompatibleGateway:
         self._opener = opener
         self._temperature = temperature
 
+    @property
+    def model(self) -> str:
+        return self._model
+
     def complete_json(
         self,
         *,
         system_prompt: str,
         user_prompt: str,
+        timeout_seconds: float | None = None,
     ) -> ModelCompletion:
         payload = {
             "model": self._model,
@@ -64,7 +69,7 @@ class OpenAICompatibleGateway:
                 },
                 method="POST",
             )
-            with self._opener(request, timeout=self._timeout_seconds) as response:
+            with self._opener(request, timeout=timeout_seconds or self._timeout_seconds) as response:   # a call may ask for its own limit
                 payload = json.loads(response.read().decode("utf-8"))
             content = payload["choices"][0]["message"]["content"]
             served_model = payload.get("model", self._model)

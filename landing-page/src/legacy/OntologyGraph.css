@@ -1,0 +1,96 @@
+.og-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.og-canvas { min-width: 0; display: flex; flex-direction: column; background: var(--canvas); }
+.og-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 10px 16px; background: var(--surface); color: var(--text-2); border-bottom: 1px solid var(--edge); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; }
+.og-scroll { overflow: auto; padding: 8px; background-color: var(--canvas);
+  /* edge shadows appear only while there is more graph to scroll to */
+  background-image: linear-gradient(to right, var(--canvas) 30%, transparent), linear-gradient(to left, var(--canvas) 30%, transparent),
+    radial-gradient(farthest-side at 0 50%, rgba(20, 24, 40, 0.22), transparent), radial-gradient(farthest-side at 100% 50%, rgba(20, 24, 40, 0.22), transparent),
+    radial-gradient(var(--edge) 1px, transparent 1px);
+  background-position: left center, right center, left center, right center, 0 0;
+  background-size: 40px 100%, 40px 100%, 16px 100%, 16px 100%, 16px 16px;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  background-attachment: local, local, scroll, scroll, local; }
+.og-scroll svg { display: block; max-width: none; }
+.og-edge path { fill: none; stroke: var(--blue); stroke-width: 2; }
+.og-edge.is-partial path { stroke-dasharray: 6 4; }
+.og-edge text { fill: var(--ink); font-size: 12px; paint-order: stroke; stroke: var(--canvas); stroke-width: 4px; stroke-linejoin: round; }
+.og-edge.is-selected path { stroke-width: 3.5; }
+.og-arrowhead { fill: var(--blue); }
+.og-node, .og-edge { cursor: pointer; outline: none; }
+.og-node-box { fill: var(--surface); stroke: var(--blue); stroke-width: 1.5; }
+.og-node-side { fill: var(--blue); }
+.og-node-key { fill: var(--text-2); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.og-node-label { fill: var(--ink); font-size: 15px; font-weight: 700; }
+.og-node.is-selected .og-node-box { fill: var(--blue); }
+.og-node.is-selected .og-node-key, .og-node.is-selected .og-node-label { fill: #fff; }
+.og-node:focus-visible .og-node-box { stroke: var(--amber); stroke-width: 5; }
+.og-edge:focus-visible path { stroke: var(--amber); stroke-width: 5; }
+.og-badge { fill: var(--red); }
+.og-badge-note { fill: var(--amber); }
+.og-findings .og-note { color: var(--amber); }
+.og-badge-text { fill: #fff; font-size: 11px; font-weight: 700; }
+.og-inspector { border-left: 1px solid var(--edge); display: flex; flex-direction: column; min-width: 0; }
+.og-inspector-head { padding: 10px 16px; border-bottom: 1px solid var(--edge); color: var(--blue); font-size: 12px; font-weight: 700; }
+.og-inspector-body { padding: 14px 16px; display: grid; gap: 8px; overflow-wrap: anywhere; }
+.og-inspector-body h3 { margin: 0; font-size: 17px; }
+.og-inspector-body h4 { margin: 8px 0 0; font-size: 13px; }
+.og-inspector-body p { margin: 0; color: var(--text-2); font-size: 13px; }
+.og-kicker { color: var(--text-2); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.og-kv { margin: 0; display: grid; gap: 6px; }
+.og-kv div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; font-size: 13px; }
+.og-kv dt { color: var(--text-2); }
+.og-kv dd { margin: 0; }
+.og-warn { color: var(--red); }
+.og-findings { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--red); font-size: 13px; }
+.og-ok { color: var(--ok) !important; }
+.og-toggle { display: inline-flex; border: 1px solid var(--edge-strong); border-radius: 8px; overflow: hidden; }
+.og-toggle button { padding: 6px 14px; border: 0; background: var(--surface); color: var(--text-2); font-weight: 600; }
+.og-toggle button[aria-pressed="true"] { background: var(--primary-soft, var(--ink)); color: var(--primary-ink, #fff); }
+@media (max-width: 900px) {
+  .og-wrap { grid-template-columns: minmax(0, 1fr); }
+  .og-inspector { border-left: 0; border-top: 1px solid var(--edge); }
+}
+.og-ask { margin-top: auto; padding: 12px 16px; border: 0; border-top: 1px solid var(--edge); background: var(--blue); color: #fff; font-weight: 700; text-align: left; cursor: pointer; }
+.og-ask:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.og-quotes { display: grid; gap: 6px; }
+.og-quotes blockquote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--blue); background: var(--canvas); font-size: 12.5px; color: var(--ink); }
+.og-node, .og-edge { transition: opacity 0.15s; }
+.og-node.is-dim, .og-edge.is-dim { opacity: 0.22; }
+.og-edge.is-path path { stroke: var(--amber); stroke-width: 3.5; }
+.og-node.is-path .og-node-box { stroke: var(--amber); stroke-width: 3; }
+.og-path { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 8px 16px; background: var(--amber-soft); color: var(--ink); font-size: 13px; }
+.og-path .pr-link { padding: 0; }
+.og-legend { list-style: none; margin: auto 0 0; padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 6px 16px; border-top: 1px solid var(--edge); color: var(--text-2); font-size: 12px; }
+.og-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.og-legend-badge { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+.og-legend-badge.og-badge-note { background: var(--amber); }
+.og-legend-dash { width: 22px; border-top: 2px dashed var(--blue); }
+@media (prefers-reduced-motion: reduce) { .og-node, .og-edge { transition: none; } }
+.og-swipe { display: none; }
+@media (max-width: 700px) { .og-swipe { display: inline; } }
+.og-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; }
+.og-inline { justify-self: start; padding: 0; text-align: left; }
+.og-node.is-unsteady .og-node-box { stroke-dasharray: 6 4; stroke-width: 2; }
+.og-node.is-unsteady .og-node-side { fill: var(--text-2); }
+.og-edge.is-unsteady path { stroke-dasharray: 2 5; stroke-linecap: round; }
+.og-legend-unsteady { width: 18px; height: 12px; border: 2px dashed var(--blue); border-radius: 2px; }
+.og-focusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 16px; border-bottom: 1px solid var(--edge); background: var(--surface); font-size: 13px; }
+.og-focusbar > span { flex: 1 1 260px; }
+.og-focusbar .pr-link { padding: 0; font-weight: 700; }
+.og-find { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.og-find input { width: 150px; padding: 4px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
+.og-find input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.og-verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.og-verdict button { padding: 3px 12px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer; }
+.og-verdict button.og-v-ok[aria-pressed="true"] { border-color: var(--ok); background: var(--ok); color: #fff; }
+.og-verdict button.og-v-wrong[aria-pressed="true"] { border-color: var(--red); background: var(--red); color: #fff; }
+.og-verdict button:focus-visible, .og-verdict input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.og-saved { flex-basis: 100%; max-width: 400px; margin: 2px 0 0; white-space: normal; font-size: 12px; color: var(--text-2); }
+.og-saved span { display: block; overflow-wrap: anywhere; }
+.og-verdict input { flex: 1 1 120px; min-width: 0; padding: 3px 8px; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
+.og-mark { font-size: 11px; font-weight: 700; fill: var(--ok); }
+.og-node.is-wrong .og-mark { fill: var(--red); }
+.og-node.is-wrong .og-node-box { stroke: var(--red); }
+.og-node.is-selected .og-mark { fill: #fff; }
+/* the wide invisible line that takes the clicks; state styles for the drawn line must not repaint it */
+.og-edge path.og-edge-hit { stroke: transparent !important; stroke-width: 16 !important; stroke-dasharray: none !important; pointer-events: stroke; }

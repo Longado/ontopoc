@@ -12,7 +12,7 @@ test('QA response preserves the draft while explicit save and changed ontology r
     let answer = await getRun();
     await page.route('**/api/ontology/health', route => route.fulfill({ json: { model_ready: true, stale: false } }));
     await page.route('**/api/ontology/ask', route => route.fulfill({ json: structuredClone(answer) }));
-    await page.goto(url);
+    await page.goto(`${url}/legacy.html`);
     await page.evaluate(run => localStorage.setItem('ontopoc.studio.last-result', JSON.stringify(run)), answer);
     await page.reload();
     const click = name => page.getByRole('button', { name, exact: true }).click();

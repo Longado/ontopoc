@@ -21,6 +21,13 @@ def call(service, name, arguments):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_a_token_is_not_sent_to_a_service_that_is_not_this_machine_over_plain_http(self):
+        with self.assertRaises(ValueError):
+            LocalService('http://ontopoc.example.com', token='otp_x')
+        LocalService('https://ontopoc.example.com', token='otp_x')
+        LocalService('http://127.0.0.1:8767', token='otp_x')
+        LocalService('http://ontopoc.example.com')   # no token, nothing to leak
+
     def test_the_handshake_says_it_serves_tools(self):
         reply = handle(rpc('initialize', {'protocolVersion': '2025-06-18', 'capabilities': {}, 'clientInfo': {'name': 't', 'version': '0'}}), None)
         self.assertEqual(reply['result']['protocolVersion'], '2025-06-18')

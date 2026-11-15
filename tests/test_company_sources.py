@@ -40,7 +40,7 @@ class TableFileTests(unittest.TestCase):
     def test_csv_becomes_one_source_named_after_the_file(self):
         bundle = load_table_file('orders.csv', '﻿订单号,金额\nO1,100\nO2,\n'.encode('utf-8'))
         self.assertEqual(bundle['sources'], {'orders': {'records': [{'订单号': 'O1', '金额': '100'}, {'订单号': 'O2', '金额': None}],
-                                                        'requests': []}})
+                                                        'requests': [], 'rows_read': 2}})
 
     def test_gbk_csv_is_read(self):
         bundle = load_table_file('客户.csv', '编号,名称\nC1,甲公司\n'.encode('gb18030'))
@@ -49,6 +49,20 @@ class TableFileTests(unittest.TestCase):
     def test_blank_and_repeated_headers_get_names(self):
         bundle = load_table_file('t.csv', 'a,,a\n1,2,3\n'.encode('utf-8'))
         self.assertEqual(bundle['sources']['t']['records'], [{'a': '1', '列2': '2', 'a_2': '3'}])
+
+    def test_rows_in_the_file_are_counted_before_blank_and_title_rows_are_dropped(self):
+        data = xlsx({'订单': [['订单明细 2026'], [None], ['订单号', '客户编号', '金额'], ['O1', 'C1', 1], [None, None, None],
+                             ['O2', 'C2', 2], ['O3', 'C3', 3], [None, None, None]]})
+        source = load_table_file('订单.xlsx', data)['sources']['订单']
+        self.assertEqual(len(source['records']), 3)
+        self.assertEqual(source['rows_read'], 7)   # eight rows, one of them the header
+        self.assertEqual(source['dropped_rows'], {'blank': 3, 'title': 1})
+        self.assertEqual(source['skipped_rows'], ['订单明细 2026'])
+        self.assertEqual(source['rows_read'], len(source['records']) + sum(source['dropped_rows'].values()))
+
+    def test_column_names_that_differ_only_in_case_are_made_distinct(self):
+        bundle = load_table_file('t.csv', 'ID,id\n1,2\n'.encode('utf-8'))
+        self.assertEqual(bundle['sources']['t']['records'], [{'ID': '1', 'id_2': '2'}])
 
     def test_the_purpose_line_is_kept(self):
         self.assertEqual(load_table_file('t.csv', b'a\n1\n', purpose='看售后')['decision'], '看售后')

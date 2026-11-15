@@ -54,7 +54,7 @@ class AutoBuildOntologyTests(unittest.TestCase):
         o = self.api().auto_build_ontology(self.bundle, FakeGateway(self.recorded))
         self.assertEqual(o['source_bundle_hash'], bundle_content_hash(self.bundle))
         self.assertEqual(o['model'], 'deepseek-flash')
-        self.assertEqual(o['prompt_version'], 'public_ontology_modeler.v4')
+        self.assertEqual(o['prompt_version'], 'public_ontology_modeler.v5')
         self.assertEqual(o['evidence_scope'], 'public_data')
         self.assertEqual([t['key'] for t in o['object_types']], [t['key'] for t in self.recorded[1]['object_types']])
         self.assertEqual(o['data_gaps'], self.recorded[1]['open_questions'])
@@ -74,6 +74,25 @@ class AutoBuildOntologyTests(unittest.TestCase):
         o = self.api().auto_build_ontology(self.bundle, failing)
         self.assertEqual(o['status'], 'blocked')
         self.assertEqual(o['attempts'][0]['errors'][0]['code'], 'model_request_failed')
+
+    def test_a_reply_that_is_not_json_is_asked_again_without_using_up_a_draft(self):
+        """recorded[0] has errors, recorded[1] fixes them: with a garbled reply between them the draft is still sent back for
+        repair (the third call is the second draft) and the garbled reply is not one of the three."""
+        gw = FakeGateway([self.recorded[0], 'not json', self.recorded[1]])
+        o = self.api().auto_build_ontology(self.bundle, gw)
+        self.assertEqual(o['status'], 'auto_built_verified')
+        self.assertEqual(len(gw.calls), 3)
+        self.assertEqual([a.get('unreadable', False) for a in o['attempts']], [False, True, False])
+        self.assertEqual(json.loads(gw.calls[1]['user']), json.loads(gw.calls[0]['user']) | {'previous_proposal': self.recorded[0],
+                         'errors_found_by_code': o['attempts'][0]['errors']})   # asked again as the first retry was
+        self.assertEqual(gw.calls[2]['user'], gw.calls[1]['user'])
+
+    def test_a_garbled_reply_does_not_take_the_drafts_errors_away(self):
+        gw = FakeGateway([self.recorded[0], 'not json', 'not json again'])
+        o = self.api().auto_build_ontology(self.bundle, gw)
+        self.assertEqual(o['status'], 'blocked')
+        self.assertEqual(len(gw.calls), 3)
+        self.assertEqual([e['code'] for e in o['verification']['errors']], [e['code'] for e in o['attempts'][0]['errors']])
 
     def test_model_sees_field_catalog_not_full_records(self):
         gw = FakeGateway(self.recorded)

@@ -4,7 +4,9 @@ Each tool calls the local modelling service (ontology_server, the one the page c
 counts and records whichever way a person or an agent comes in. The protocol part is the few JSON-RPC methods a tool
 server needs — initialize, ping, tools/list, tools/call — written out here rather than adding a dependency.
 
-Run: PYTHONPATH=src python -m ontology_poc_generator.mcp_server   (ONTOPOC_URL defaults to http://127.0.0.1:8767)
+Run: PYTHONPATH=src python -m ontology_poc_generator.mcp_server   (ONTOPOC_URL defaults to http://127.0.0.1:8767;
+ONTOPOC_TOKEN is a personal token from the account page: the service then signs what this server does with the token owner's name;
+with a token the server offers the read tools only, unless ONTOPOC_TOOLSET=all; with no token it offers all of them)
 """
 from __future__ import annotations
 
@@ -15,8 +17,8 @@ from pathlib import Path
 import sys
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.parse import quote, urlsplit
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from ontology_poc_generator.ontology_card import SAYS
 from ontology_poc_generator.ontology_confirm import without_wrong
@@ -54,9 +56,16 @@ INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判
   问人客户怎么答的，人说了再用 save_card 记；card_blank 用 get_card 看哪几格没说清。
   unlinked 答“数据没导全”，服务会把另一端对象在卡上自动记成“只有一部分”，改答复时撤回，不用另发那一格。
 判断只归人
-- confirm_ontology、fix_question、set_rules、confirm_derived、save_form、save_card 只在人明确说了之后调用，不替人编判断。
+- confirm_ontology、fix_question、set_rules、confirm_derived、save_form、save_card、confirm_proposed_view 只在人明确说了之后调用，不替人编判断。
+- confirm_proposed_view 确认的是另一个人提出的视图，要带上 list_proposed_views 里那条的 version；提出的人自己确认会被拒绝（403），定义在你看过之后被改了会被拒绝（409）。
 - save_card 只记人说的客户答复：by、basis 都来自人，不替客户填格、不替他答。
 - 拿不准的事写成问题交给人，不要当成结论。"""
+READ_INSTRUCTIONS = """本机 OntoPoc 的只读入口：团队已经确认的业务定义，和用它们回答问题。你以令牌主人的身份看，只看得到他看得到的。
+1. describe_definitions 看定义（对象、代码含义、关系、视图、派生属性）和拒答规则。没写在里面的东西没有定义，不要猜。
+2. ask 问业务问题。答得出来会带上用到的定义；被拒绝（status 不是 answered）就把 reason 原样转告人，不要换问法绕过，也不要自己编一个答案。
+3. list_unconfirmed 看现在不是已确认的定义：不要用它们回答。
+4. read_derived_property 读一个已确认的派生属性的值；没确认就不给值。
+ask 会调用模型，慢且花钱；其余工具只是读。"""
 
 
 class ToolError(Exception):
@@ -67,14 +76,25 @@ class ToolError(Exception):
         self.status = status
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None   # a redirect would carry the token to wherever it points
+
+
 class LocalService:
-    def __init__(self, base: str, poll_seconds: float = 2.0):
-        self.base, self.poll_seconds = base.rstrip('/'), poll_seconds
-        self._open = build_opener(ProxyHandler({})).open   # a system proxy must not carry calls to this machine
+    def __init__(self, base: str, poll_seconds: float = 2.0, token: str | None = None):
+        self.base, self.poll_seconds, self.token = base.rstrip('/'), poll_seconds, token
+        where = urlsplit(self.base)
+        if token and where.scheme != 'https' and where.hostname not in ('127.0.0.1', 'localhost', '::1'):
+            raise ValueError(f'{self.base} 不是本机，也不是 https：令牌不能走明文')
+        self._open = build_opener(ProxyHandler({}), _NoRedirect).open   # a system proxy must not carry calls to this machine
 
     def request(self, path: str, payload: dict | None = None):
         data = None if payload is None else json.dumps(payload).encode()
-        req = Request(self.base + path, data=data, headers={'Content-Type': 'application/json'} if data else {})
+        headers = {'Content-Type': 'application/json'} if data else {}
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'   # the service signs what this server does with its owner's name
+        req = Request(self.base + path, data=data, headers=headers)
         try:
             with self._open(req, timeout=600) as response:
                 return json.load(response)
@@ -451,8 +471,43 @@ def save_card(s, a):
     return s.request('/api/ontology/card', payload)
 
 
+def list_proposed_views(s, a):
+    waiting = s.request(f"/api/ontology/runs/{quote(_text(a.get('saved_as'), 'saved_as'))}/open-items").get('proposed_views')
+    return {'proposed_views': waiting or []}
+
+
+def confirm_proposed_view(s, a):
+    version = a.get('version')
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise ToolError('version 要写成整数：用 list_proposed_views 里这条的 version')
+    reply = s.request('/api/ontology/views', {'saved_as': _text(a.get('saved_as'), 'saved_as'), 'confirm': _text(a.get('name'), 'name'), 'version': version})
+    return {'message': reply['message'], 'proposed_views': reply.get('proposed_views', [])}
+
+
 def find_name_variants(s, a):
     return s.request('/api/ontology/variants', {'saved_as': _text(a.get('saved_as'), 'saved_as')})['evaluation']['variants']
+
+
+def describe_definitions(s, a):
+    return s.request('/api/workspace/agent/definitions')
+
+
+def ask(s, a):
+    body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
+    return {k: body[k] for k in ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'definitions', 'datasets', 'limited_by_rule') if k in body}
+
+
+def list_unconfirmed(s, a):
+    return s.request('/api/workspace/agent/unconfirmed')
+
+
+def read_derived_property(s, a):
+    body = {'type': _text(a.get('type'), 'type'), 'name': _text(a.get('name'), 'name')}   # in the body, not the address: the key of the object is data
+    if a.get('key') is not None:
+        body['key'] = a['key']
+    if a.get('page') is not None:
+        body['page'] = int(a['page'])
+    return s.request('/api/workspace/agent/derived', body)
 
 
 WRONG = {'include_wrong': {'type': 'boolean', 'description': '连人判错的也给（默认不给）'}}
@@ -572,14 +627,32 @@ TOOLS = [
                                                                 'text': {'type': 'string', 'maxLength': 300, 'description': '客户的答复原话；没有 choice 时必填'},
                                                                 'basis': {'type': 'string', 'maxLength': 200, 'description': '出处，来自人（可不写）'}}, 'required': ['id']}}},
           ('saved_as', 'by')),
+    _tool(list_proposed_views, '别人提出、等另一个人确认的视图：{name, definition, proposed_by, proposed_at, version}。definition 是要确认的内容，version 是确认时要带回的版本。', RUN, ('saved_as',)),
+    _tool(confirm_proposed_view, '确认别人提出的一个视图：带上你看过的那一版（version）。提出的人自己不能确认（403）；这一条在你看过之后被改了（409）要重新看一遍。'
+          '只在人看过 definition、明确说了之后调用。确认人是令牌的主人。',
+          {**RUN, 'name': {'type': 'string', 'description': '视图的名字，来自 list_proposed_views'},
+           'version': {'type': 'integer', 'minimum': 1, 'description': '你看过的那一版，来自 list_proposed_views 里这条的 version'}}, ('saved_as', 'name', 'version')),
     _tool(find_name_variants, '找出同一类对象里可能是同一个东西的不同写法，只给建议、不合并。会调用模型。', RUN, ('saved_as',)),
+    _tool(describe_definitions, '团队已经确认的业务定义：对象类型（属性、主键、代码的含义）、关系、视图（取哪些行）、派生属性（怎么算），每条带谁确认、确认于哪个数据版本；还有拒答规则 rules。'
+          '只有已确认的、令牌的主人看得到的；没有数据行，没有全部数据的行数。不在这里的东西没有定义：不要猜，照 rules 拒答。'),
+    _tool(ask, '用已确认的定义回答一个业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
+          'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。会调用模型，慢且花钱。',
+          {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
+    _tool(list_unconfirmed, '现在不是“已确认”的定义（提出了还没确认、需要再看、被退回），每条有状态、原因和可以确认它的人。这些不能拿来回答问题。令牌的主人是只读的人时这里是空的。'),
+    _tool(read_derived_property, '读一个已确认的派生属性（例如 客户的已取消订单数）：给 key（主键列 → 取值）就是那一个对象的值，不给就是一页对象的值。'
+          '派生属性没确认或现在算不出来时不给值，错误里说它的状态和原因。只算令牌的主人看得到的行。',
+          {'type': {'type': 'string', 'description': '对象类型的英文名，来自 describe_definitions'}, 'name': {'type': 'string', 'description': '派生属性的英文名，来自 describe_definitions'},
+           'key': {'type': 'object', 'description': '主键列 → 取值，例如 {"客户编号": "KH022"}；不写就给一页'}, 'page': {'type': 'integer', 'minimum': 1, 'description': '第几页，从 1 起'}},
+          ('type', 'name')),
 ]
+READ_TOOLS = ('describe_definitions', 'ask', 'list_unconfirmed', 'read_derived_property')   # what an outside agent is given (a token and no ONTOPOC_TOOLSET, or ONTOPOC_TOOLSET=read): no uploading, no confirming, no writing
 BY_NAME = {t['name']: t for t in TOOLS}
 
 
-def handle(message: dict, service) -> dict | None:
-    """One JSON-RPC message in, its reply out; None for a notification."""
+def handle(message: dict, service, only: tuple | None = None) -> dict | None:
+    """One JSON-RPC message in, its reply out; None for a notification. `only` names the tools this server offers (None: all of them)."""
     method, mid = message.get('method'), message.get('id')
+    offered = [t for t in TOOLS if only is None or t['name'] in only]
     reply = lambda result: {'jsonrpc': '2.0', 'id': mid, 'result': result}
     error = lambda code, text: {'jsonrpc': '2.0', 'id': mid, 'error': {'code': code, 'message': text}}
     if 'id' not in message:
@@ -589,14 +662,14 @@ def handle(message: dict, service) -> dict | None:
         return reply({'protocolVersion': asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
                       'capabilities': {'tools': {'listChanged': False}},
                       'serverInfo': {'name': 'ontopoc', 'version': '0.1.0'},
-                      'instructions': INSTRUCTIONS})
+                      'instructions': INSTRUCTIONS if only is None else READ_INSTRUCTIONS})
     if method == 'ping':
         return reply({})
     if method == 'tools/list':
-        return reply({'tools': [{k: t[k] for k in ('name', 'description', 'inputSchema')} for t in TOOLS]})
+        return reply({'tools': [{k: t[k] for k in ('name', 'description', 'inputSchema')} for t in offered]})
     if method == 'tools/call':
         params = message.get('params') or {}
-        tool = BY_NAME.get(params.get('name'))
+        tool = next((t for t in offered if t['name'] == params.get('name')), None)
         if tool is None:
             return error(-32602, f"没有这个工具：{params.get('name')}")
         missing = [k for k in tool['inputSchema']['required'] if (params.get('arguments') or {}).get(k) in (None, '')]
@@ -620,12 +693,38 @@ def check(base: str) -> None:
         print(f'OntoPoc：本机建模服务没有在 {base} 运行，OntoPoc 的工具暂时用不了。在仓库里运行 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server 启动它。')
 
 
+class Toolset:
+    """The tools this server offers. With no token it is the local session's: all of them, or the read tools when ONTOPOC_TOOLSET=read. With a token the service says
+    what the token may do (its scope, from /api/auth/me): the read tools for a read token, all of them for an all token; the environment can narrow that to the read
+    tools and not widen it, because the service refuses what the token may not do. While the service cannot be asked, the read tools."""
+
+    def __init__(self, service, asked: str | None):
+        self.service, self.asked, self.scope = service, asked, None
+
+    def __call__(self) -> tuple | None:
+        if not self.service.token:
+            return READ_TOOLS if self.asked == 'read' else None
+        if self.scope is None:
+            try:
+                self.scope = self.service.request('/api/auth/me')['user'].get('token_scope')
+            except ToolError:
+                return READ_TOOLS   # asked again with the next message
+        return None if self.scope == 'all' and self.asked != 'read' else READ_TOOLS
+
+
 def main():
     base = os.environ.get('ONTOPOC_URL', 'http://127.0.0.1:8767')
     if sys.argv[1:] == ['--check']:
         check(base)
         return
-    service = LocalService(base)
+    try:
+        service = LocalService(base, token=os.environ.get('ONTOPOC_TOKEN'))
+    except ValueError as exc:
+        sys.exit(str(exc))
+    asked = os.environ.get('ONTOPOC_TOOLSET') or None
+    if asked not in (None, 'all', 'read'):
+        sys.exit('ONTOPOC_TOOLSET 要写 all 或 read')
+    offered = Toolset(service, asked)
     for line in sys.stdin:
         if not line.strip():
             continue
@@ -634,7 +733,7 @@ def main():
         except ValueError:
             out = {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': '不是合法的 JSON'}}
         else:
-            out = handle(message, service) if isinstance(message, dict) else {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32600, 'message': '请求必须是 JSON 对象'}}
+            out = handle(message, service, offered()) if isinstance(message, dict) else {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32600, 'message': '请求必须是 JSON 对象'}}
         if out is not None:
             sys.stdout.write(json.dumps(out, ensure_ascii=False) + '\n')
             sys.stdout.flush()

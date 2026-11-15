@@ -7,6 +7,7 @@ import sys
 from ontology_poc_generator.company_ontology import build_and_evaluate
 from ontology_poc_generator.company_sources import SourceFileError, load_table_file
 from ontology_poc_generator.ontology_server import gateway_from_env
+from ontology_poc_generator.public_ontology import kept_attempts
 
 
 def main(argv=None):
@@ -31,7 +32,7 @@ def main(argv=None):
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
     ontology = result['ontology']
-    print(f'{ontology["status"]} after {len(ontology["attempts"])} attempt(s): '
+    print(f'{ontology["status"]} after {len(kept_attempts(ontology))} attempt(s): '
           f'{len(ontology["object_types"])} object types, {len(ontology["relations"])} relations')
     return 0 if ontology['status'] == 'auto_built_verified' else 1
 

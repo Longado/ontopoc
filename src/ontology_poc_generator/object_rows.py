@@ -6,10 +6,14 @@ tables disagree the first filled value is shown — telling them apart is the da
 """
 from __future__ import annotations
 
+from ontology_poc_generator.code_meanings import shown
 from ontology_poc_generator.ontology_eval import NAME_LIKE
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, resolve
+from ontology_poc_generator.repeated_keys import applicable, latest_row, repeated_keys, tie_or_blank
+from ontology_poc_generator.workspace_store import describes_rows
 
 PAGE_SIZE = 20
+REPEAT_EXAMPLES = 3
 
 
 def _type(ontology: dict, type_key: str) -> dict:
@@ -30,14 +34,19 @@ def _read(t: dict) -> dict:
 
 
 def _row(bundle: dict, records_of: dict, read: dict, inst: tuple) -> dict:
+    return _row_from(bundle, records_of[inst], read)
+
+
+def _row_from(bundle: dict, pairs: list, read: dict) -> dict:
+    """One row from these (source, record index) pairs, the first pair filling a field first."""
     row = {}
-    for source, index in records_of[inst]:
+    for source, index in pairs:
         record = bundle['sources'][source]['records'][index]
         for path in read.get(source, []):
             if row.get(path) is None:
                 value = next((v for v in resolve(record, path) if v not in (None, '')), None)
                 if value is not None:
-                    row[path] = str(value)
+                    row[path] = shown(bundle.get('meanings'), f'{source}.{path}', str(value))   # a code reads as its confirmed meaning
     return row
 
 
@@ -63,19 +72,90 @@ def _labeller(t: dict, bundle: dict, records_of: dict):
     return label
 
 
+def _identity_repeats(records_of: dict, found: list, own, rules: dict, groups: dict) -> list[dict]:
+    """Per source table that describes this object (not a table that only mentions it, where repeats are normal): how
+    many of its rows name an object, how many different identities they carry, how many rows carry an identity an earlier
+    row of the same table already had, up to three of those identities, and the rule a person chose for them (None until
+    one is; "latest by a column" says how many keys were decided by a tie or by a blank in the column). `records_of` is
+    every row, also the ones a choice left out of the graph. The graph counts one object per identity; the list below
+    shows its rows by that rule."""
+    rows, objects, examples = {}, {}, {}
+    for inst in found:
+        counts = {}
+        for source, _ in records_of[inst]:
+            if not own(inst[0], source):
+                continue
+            rows[source] = rows.get(source, 0) + 1
+            counts[source] = counts.get(source, 0) + 1
+        for source, n in counts.items():
+            objects[source] = objects.get(source, 0) + 1
+            if n > 1 and len(examples.setdefault(source, [])) < REPEAT_EXAMPLES:
+                examples[source].append('|'.join(str(v) for _, v in inst[1]))
+    return [{'source': s, 'rows': rows[s], 'identities': objects[s], 'repeated': rows[s] - objects[s], 'examples': examples.get(s, []),
+             'rule': _with_unsaid(rules.get(s), groups.get(s))} for s in rows]
+
+
+def _with_unsaid(rule: dict | None, group: tuple | None) -> dict | None:
+    """A "latest by a column" rule with how many keys the column could not settle: `ties` (the later row of the file was
+    taken) and `blank` (a row has no value in the column, which counts as the oldest)."""
+    if not rule or rule['rule'] != 'keep_latest' or group is None:
+        return rule
+    records, objects = group
+    said = [tie_or_blank(records, o['rows'], rule['column']) for o in objects]
+    return {**rule, 'ties': sum('tie' in x for x in said), 'blank': sum('blank' in x for x in said)}
+
+
+def _entries(found: list, records_of: dict, bundle: dict, repeats: dict, rules: dict) -> list[tuple]:
+    """What the list shows, as (instance, (source, record) pairs the row is read from, mark). An object whose key repeats
+    in the table describing it has a row for each of those rows (marked, with the rule chosen so far) until a person says
+    "keep the latest": then one row, the latest by the column they named (the one the graph already keeps; the mark says
+    when a tie or a blank in the column left the choice to file order). The other tables' records fill what the row lacks."""
+    out = []
+    for inst in found:
+        repeated = repeats.get('|'.join(str(v) for _, v in inst[1]))
+        if repeated is None:
+            out.append((inst, records_of[inst], None))
+            continue
+        source, rows = repeated
+        rule = rules.get(source)
+        rest = [p for p in records_of[inst] if p[0] != source]
+        if rule and rule['rule'] == 'keep_latest':
+            keep = latest_row(bundle['sources'][source]['records'], rows, rule['column'])
+            out.append((inst, [(source, keep), *rest], {'repeat': 'keep_latest', 'rows': len(rows), 'column': rule['column'],
+                                                       **tie_or_blank(bundle['sources'][source]['records'], rows, rule['column'])}))
+        else:
+            out += [(inst, [(source, i), *rest], {'repeat': rule['rule'] if rule else 'pending', 'rows': len(rows)}) for i in rows]
+    return out
+
+
 def object_rows(ontology: dict, bundle: dict, type_key: str, page: int = 1, size: int | None = PAGE_SIZE, graph: dict | None = None) -> dict:
-    """size=None hands over every row at once, for a download."""
+    """size=None hands over every row at once, for a download. `objects` is how many objects the graph has, `total` how
+    many rows the list shows (more while some key repeats and no rule is chosen); `mentioned_only` are the objects no table
+    describes, which other tables name (an order's customer that has no customer row); row_marks says, for each row of
+    the page, whether it is one of several rows of a repeated key (and what was decided about them)."""
     t = _type(ontology, type_key)
     if page < 1 or (size is not None and size < 1):
         raise ValueError('page and size start at 1')
     read = _read(t)
     columns = list(dict.fromkeys(path for paths in read.values() for path in paths))
-    records_of = (graph or build_graph(ontology, bundle))['records_of']
+    graph = graph or build_graph(ontology, bundle)
+    records_of = graph['records_of']
     found = [inst for inst in records_of if inst[0] == type_key]   # in the order the data first names them
-    size = size or max(1, len(found))
-    rows = [_row(bundle, records_of, read, inst) for inst in found[(page - 1) * size: page * size]]
-    return {'type': type_key, 'label': t.get('label') or type_key, 'total': len(found), 'page': page, 'size': size,
-            'columns': columns, 'rows': [{c: r[c] for c in columns if c in r} for r in rows]}
+    own = describes_rows(ontology)
+    mine = [g for g in repeated_keys(ontology, bundle, graph) if g['type'] == type_key]
+    chosen = bundle.get('repeat_rules') or {}
+    rules = {g['source']: r for g in mine if (r := applicable(g, chosen.get(g['rule_key'])))}   # by source table; one that cannot be carried out is not a choice
+    repeats = {o['identity']: (g['source'], o['rows']) for g in mine for o in g['objects']}
+    entries = _entries(found, records_of, bundle, repeats, rules)
+    size = size or max(1, len(entries))
+    shown = entries[(page - 1) * size: page * size]
+    rows = [_row_from(bundle, pairs, read) for _, pairs, _ in shown]
+    mentioned = [inst for inst in found if not any(own(type_key, s) for s, _ in records_of[inst])]
+    return {'type': type_key, 'label': t.get('label') or type_key, 'objects': len(found), 'total': len(entries), 'page': page, 'size': size,
+            'mentioned_only': {'count': len(mentioned), 'examples': ['|'.join(str(v) for _, v in i[1]) for i in mentioned[:REPEAT_EXAMPLES]]},
+            'identity_repeats': _identity_repeats(graph.get('records_all', records_of), found, own, rules,
+                                                  {g['source']: (bundle['sources'][g['source']]['records'], g['objects']) for g in mine}),
+            'columns': columns, 'rows': [{c: r[c] for c in columns if c in r} for r in rows], 'row_marks': [mark for _, _, mark in shown]}
 
 
 def find_instances(ontology: dict, bundle: dict, type_key: str, query: str = '', size: int = PAGE_SIZE, graph: dict | None = None) -> dict:

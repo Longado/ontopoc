@@ -14,7 +14,7 @@ class RecallServerTests(unittest.TestCase):
                              'local recall API is not implemented')
         api = importlib.import_module('ontology_poc_generator.recall_server')
         server = api.make_server(port=0)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
         thread.start()
         try:
             yield f'http://127.0.0.1:{server.server_port}'

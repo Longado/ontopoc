@@ -123,6 +123,27 @@ def confirmed_reference(ontology: dict, decisions: dict) -> dict:
             **({'name_variants': variants} if variants else {})}
 
 
+def element_changes(memory_key: str, decisions: dict, key_checks: list, signer: str | None, on_file: list = ()) -> dict:
+    """What a saved confirmation says about each object and relation, as rows for element_state, keyed "types:<key>" /
+    "relations:<key>" as the page reads them. Right is confirmed, wrong is rejected. An object's evidence is the stored
+    key checks of its identity columns (key_checks: the run's data_checks.keys); a relation has none yet. on_file: the
+    element ids already saved for this file; one the decisions no longer judge (the verdict was clicked off) goes back to
+    proposed."""
+    changes = {}
+    for kind, prefix in (('types', 'object_type'), ('relations', 'relation')):
+        for key, d in (decisions.get(kind) or {}).items():
+            ids = sorted({c['check_id'] for c in key_checks if kind == 'types' and c['object_type'] == key and 'check_id' in c})
+            changes[f'{kind}:{key}'] = (f'{prefix}:{memory_key}:{key}', 'confirmed' if d['verdict'] == 'ok' else 'rejected',
+                                        ','.join(f'check_result:{i}' for i in ids) or None, signer)
+    judged = {change[0] for change in changes.values()}
+    for kind, prefix in (('types', 'object_type'), ('relations', 'relation')):
+        head = f'{prefix}:{memory_key}:'
+        for element_id in on_file:
+            if element_id.startswith(head) and element_id not in judged:
+                changes[f'{kind}:{element_id[len(head):]}'] = (element_id, 'proposed', None, signer)
+    return changes
+
+
 def prefill_from_reference(ontology: dict, reference: dict) -> dict:
     """Decisions for a new run of a confirmed file: what matches the confirmation starts as right (with its confirmed
     name); an object the person added that this run now has starts as right too; only the differences are left."""

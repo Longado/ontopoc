@@ -43,14 +43,16 @@ Upload a few business tables (Excel, CSV) or a process document, and OntoPoc dra
 
 Some things the data cannot settle and only the client can. Code gathers them into one list, Items to confirm (要确认的事), each with its basis and a sentence you can ask the client directly. Each table also gets a definition card (口径卡) that says what one row is, what time a date refers to, and whether a number can be added up. You record the client's answers in the meeting, and the questions are then computed with those answers.
 
-The result can be exported in the shape of a data platform's object form; as a pipeline requirements sheet (编排需求单) for whoever builds the data pipeline, and a one-page meeting note; or as W3C Turtle (OWL and SHACL). The main features are also MCP tools other agents can call.
+Every uploaded table is also stored in a local `workspace.sqlite`: one table per version, the row count checked on every import (rows in the file = rows stored + blank and title rows dropped), each check kept with its query and the rows it looked at, and each confirmation kept as a state with who confirmed it and on what. A definition a person confirmed (what status code 2 means, which row to keep for a repeated number, what counts as a valid order) becomes a named view that questions, pipelines and answer checks all read from one place, instead of relying on the model to remember it.
+
+The result can be exported in the shape of a data platform's object form; as a pipeline requirements sheet (编排需求单) for whoever builds the data pipeline, and a one-page meeting note; or as W3C Turtle (OWL and SHACL). Some features are also MCP tools other agents can call (the newer definition and join features have none yet).
 
 > **Early version.** It has been tried on public and synthetic data only (US federal procurement, Chicago city contracts, Northwind, BART transit, the Taiwan company registry, CMS hospitals and more). Nobody but the author has yet used it end to end on their own, and it has not been compared with doing the same thing directly in a general-purpose coding assistant. The page has been used on macOS only. Batch import has not been tested on any data platform. A single file, or several tables uploaded together, may total at most 10 MB; the model is reached only through DeepSeek's hosted API, with no local-model option. See [Known issues](#known-issues).
 
 ## Screenshots
 
 <p align="center"><img src="docs/images/readme-confirm.png" alt="Items to confirm: what code gathered for the client" width="880"></p>
-<p align="center"><sub>Items to confirm (要确认的事): 8 items on the sample workbook, each with its basis and a sentence you can ask the client; click "记下客户的回答" in the meeting.</sub></p>
+<p align="center"><sub>Items to confirm (要确认的事): 8 items on the sample workbook, each with its basis and a sentence you can ask the client (the screenshot shows the earlier list; it is now one card at a time).</sub></p>
 
 <p align="center"><img src="docs/images/readme-card.png" alt="Definition cards: one per table" width="880"></p>
 <p align="center"><sub>Definition cards (口径卡): code has already worked out which columns tell each table's rows apart; what one row is and whether a number can be added up are left for the client.</sub></p>
@@ -76,10 +78,12 @@ All screenshots come from the synthetic sample in the repository, `examples/comp
 | Open the ontology library (本体库) in the left sidebar | Search and browse 12 Playground reference ontologies by domain, and see objects, properties and relations on a graph. You can also import `.rdf/.owl` files in RDF/XML format. This is for reading definitions only: import calls no model, and you must pick the file again after a refresh |
 | Upload tables and write the question you want answered | Code first counts every row: how many distinct values each column has, which columns differ on every row, which columns point into another table. The model sees each column's name, up to 3 example values and these counts, and proposes objects, identity fields and relations; code checks 14 kinds of error and sends it back to redo, up to 3 rounds |
 | Wait for the build | Builds the same file 3 times at once and marks where the 3 disagree, for you to decide; only objects and relations are compared, not properties; if your purpose asks a question, it is answered from the data too, ready to keep as an acceptance question |
-| Open Items to confirm (要确认的事) | Code gathers what to confirm with the client from the data, the questions and the confirmation record, for example rows whose relations do not connect, objects with the same name but different numbers, and filters the model added by itself in a question. Each item has its basis and a sentence you can ask the client directly. In the meeting, click "记下客户的回答" (record the client's answer); the answers are saved with the run |
+| Open Items to confirm (要确认的事) | Code gathers what to confirm with the client from the data, the questions and the confirmation record, for example rows whose relations do not connect, objects with the same name but different numbers, and filters the model added by itself in a question. Each item has its basis and a sentence you can ask the client directly. Items come as a stack of cards: the basis, up to 3 example rows from the uploaded table and the check result, a progress line (items left, items decided), keys 1 to 4 to reply (confirm, wrong, not applicable, known exception with its reason, plus the item's own choices) and J / K to move; an item with choices of its own can also be answered in words alone; each reply keeps its own draft; the "left" count leaves out the card to fill in and the objects to judge, which can only be done elsewhere; an answer under 已定 can be taken back and changed with its words in the form, and so can the meanings of a code column, "not a code" and a repeat rule; once a newer version exists, answers and take-backs on the older one are refused. Each reply records who gave it and whether it was decided one by one or in bulk; "not applicable" and "known exception" are not asked again on the next upload unless the data they rest on changes: for a code meaning its values and their share of the rows, for a repeated number the numbers, for unmatched or mismatching rows their share, for the rest that can be counted (conflicting values, groups sharing a name, relations that did not appear often enough, questions that cannot be answered) whether the count has doubled or halved (by at least 5); for what has nothing to count (a model-reported data gap about one column, a column with no table to work it out from) the decision holds until the person takes it back. Only the one-click approval can record "bulk". Only what code can verify completely is listed to approve together: a relation whose two objects are judged right, whose every row connects, whose target table has no repeated numbers, and whose direction is either declared and holds in the data or undeclared but computed one-to-one or many-to-one (the list says which). After you have looked, approving records a bulk confirmation for those items only; what others signed and their versions stay as they were. The service works the list out again inside the write transaction and approves nothing if it changed. A code meaning is a person's reading of the data, which the data cannot prove, so it is never in the list and is confirmed one by one. Approved relations show under 已定 with who approved and "bulk". Columns whose name does not match their arithmetic are here too: a column called 交付天数P50 is worked out again from the rows in another table, and if it is really the mean, it becomes an item (rename it or keep it). Confirmed code meanings, repeated-number rules, named views and relations remember the data they were confirmed on; when a later upload moves it (say the status codes shift), the confirmation is marked "needs another look" (需要再看一眼) and is not used as confirmed until a person confirms it again |
+| Open Data (数据接入) | Each table is checked for row count and key on import (empty numbers, repeated numbers), and the rows dropped are listed with the reason. Code finds columns that look like codes (status 1/2/3), each value with its row count and evidence, and you write what it means. A repeated number in the table that describes an object becomes an item to confirm: keep every row, keep the latest by a column, or call it a data error. Confirmed definitions generate named views (such as "valid orders" or "latest snapshot") listed with their SQL and row count; a definition that no longer holds is marked unavailable with the reason. Every relation is checked on the stored tables: how many rows connect, which keys do not (3 orders name KH099, which the customer table lacks), whether the described end repeats a key, and whether the declared cardinality holds |
+| Join two tables on Data (数据接入) | Pick two tables (or views) and the join columns. Every node shows its rows in and out; when the join makes more rows than the left table, it names the keys that repeat on the right and the sums that would be counted twice. In the synthetic test tables, 160 orders left-joined to tickets become 169 rows |
 | Open Definition cards (口径卡) | One per table: what one row is, what time a date column refers to, whether a numeric column can be added up. Code fills in what it can work out; only the cells the client can answer are left for the meeting. The answers you fill in are used when questions are computed, and are written into the pipeline requirements sheet |
 | Open the data check (数据体检) | Code runs 7 checks on the data, e.g. whether one number carries conflicting details, whether every uploaded table is used. The relation check only requires each relation to connect at least one row; the page states how many rows connect |
-| Ask a question (智能问答) | The model writes a structured query and code computes the answer on the data; when it cannot, it says whether the ontology lacks something, the data lacks it, or the question is beyond the query. An amount that needs a formula (unit price × quantity × (1 − discount)) is proposed by the model, tried by code on every row, and once you confirm it the question is recomputed and answered. If an answer carries a filter the model added by itself, the filter is listed separately and you can drop it and recompute. The model can also write a round of 6 questions on request |
+| Ask a question (智能问答) | The model writes a structured query and code computes the answer on the data; each answer says "理解为…" (read as…): which confirmed definition the model used for the question, including its direction ("cancelled", "not cancelled"), and code checks that against the query that actually ran. One that is undeclared, unused or whose name matches nothing is refused with how it was read; when it cannot, it says whether the ontology lacks something, the data lacks it, or the question is beyond the query. An amount that needs a formula (unit price × quantity × (1 − discount)) is proposed by the model, tried by code on every row, and once you confirm it the question is recomputed and answered. If an answer carries a filter the model added by itself, the filter is listed separately and you can drop it and recompute. The model can also write a round of 6 questions on request |
 | Look at a relation's binding | Shows the source table and the two end ID columns, e.g. `EmployeeId → ReportsTo`. An endpoint reference connects only to objects that exist and never writes a subordinate's attributes onto the superior. When verification fails, it shows where, why and what to change |
 | Judge each part, rename, add what is missing | Saved as this file's reference ontology; the next upload is compared against it and prefilled |
 | Fix up to 3 questions as acceptance questions (验收问题) | Every rerun computes them with the same query and tells you which changed |
@@ -122,7 +126,7 @@ Install and run OntoPoc (https://github.com/Longado/ontopoc) on this machine:
 4. Ask me for a DeepSeek API key and put it only in this terminal's DEEPSEEK_API_KEY; do not write it to any file.
 5. From the repository root, start the modelling service: PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 6. In another terminal, start the page: cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
-7. Open http://127.0.0.1:5178, upload examples/company/demo_company.xlsx, and tell me how many checks passed in the data check (数据体检).
+7. Open http://127.0.0.1:5178/legacy.html, upload examples/company/demo_company.xlsx, and tell me how many checks passed in the data check (数据体检).
 ```
 
 ### Option B: install it yourself
@@ -140,11 +144,15 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server
 cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-Open `http://127.0.0.1:5178`. The bundled samples open without a key. After changing backend code, restart the modelling service; the page says so when it finds the service running old code.
+Open `http://127.0.0.1:5178/legacy.html` (the screen organised around runs, which the quick start above uses). The bundled samples open without a key. After changing backend code, restart the modelling service; the page says so when it finds the service running old code.
+
+### Page layout (being rebuilt)
+
+`http://127.0.0.1:5178/` is the new screen, built around one workspace with no runs: the left navigation is grouped as Home, Tasks, Data, Ontology, Apps and Lineage. What works today is Datasets (upload, update by key or overwrite, fields, preview, versions) and Tasks (modelling jobs and upload records); the rest is greyed out. The new screen lives in `landing-page/src/app/`, reads only the workspace API `/api/workspace/*` and never imports the old code. The old screen is all in `landing-page/src/legacy/` (entry `legacy.html`; the old landing text is `legacy.html?landing`), and each old piece goes once the new page that replaces it works. For deployment: what used to be `/landing` is now `legacy.html?landing`; the site configuration has not been changed.
 
 ## Use with MCP / Claude
 
-The main features are exposed as 32 MCP tools, and the repository is also a Claude Code plugin. The tools share the local modelling service with the page: start the service first, then connect a client.
+Some features are exposed as 32 MCP tools, and the repository is also a Claude Code plugin (the newer features have no tool yet, see below). The tools share the local modelling service with the page: start the service first, then connect a client.
 
 ### Install as a Claude Code plugin
 
@@ -159,7 +167,7 @@ In a new session there are two commands: `/ontopoc:ontopoc-build` (upload files 
 
 ### Connect Claude Code or another MCP client
 
-The main features on the page each have a matching MCP tool, 32 in all. The tools share the same local service as the page and can be called directly from Claude Code and other clients (run this in the repository root):
+The 32 tools cover building, browsing, questions, confirmation and export. They share the same local service as the page and can be called directly from Claude Code and other clients (run this in the repository root). These newer features have no MCP tool yet and can only be used on the page or over HTTP: saving a code meaning, saving a repeated-number rule, named views, the two-table join, and confirming again a definition marked "needs another look". Items to confirm and the answer checks do come through the existing tools, but the changes themselves cannot be made over MCP.
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -172,9 +180,9 @@ The tool list is in [docs/MCP.md](docs/MCP.md).
 | Module | What is in it |
 |---|---|
 | Ontology library (本体库) | 12 Playground reference ontologies, browsed by domain, with objects and relations on a graph; import `.rdf/.owl` files in RDF/XML format |
-| Items to confirm (要确认的事) | What to confirm with the client, each with its basis, a sentence you can ask the client directly and "记下客户的回答" (record the client's answer); the meeting note can be downloaded |
+| Items to confirm (要确认的事) | What to confirm with the client, a stack of cards with the basis, example rows and check result, answered with keys 1 to 4; the meeting note can be downloaded |
 | Definition cards (口径卡) | One per table: what one row is, what time a date column refers to, whether a numeric column can be added up, whether the objects are all there; records who answered and the source |
-| Data (数据接入) | Each uploaded table: rows, skipped title lines, each column's type, length and fill; when tables are left unconnected, the column that would connect them |
+| Data (数据接入) | Each uploaded table: rows, skipped title lines, each column's type, length and fill; the import row-count and key checks, code meanings, repeated-number rules, named views, two-table join and relation checks; when tables are left unconnected, the column that would connect them |
 | Ontology (本体管理) | Object cards (search, filter by your verdict, cards or list); each object's page: overview, fields (the object form), rows (paged, CSV download), confirmation; plus item-by-item confirmation, stability, last-run comparison (和上次比), new version (新版本) and build record |
 | Relations (本体关系) | A graph that lays itself out (drag, zoom), the instance graph, the relation list; relations code sees in the data but the ontology lacks are drawn as dashed suggestions |
 | Organisation (组织架构) | Choose "组织架构" when uploading a public study: the organisation tree, collaboration and handover (the arrow says what is handed over), a role table, periods, and what the material does not state; export Mermaid organisation charts, one chart per year range |
@@ -199,7 +207,7 @@ A semantic layer often sits on a warehouse or metrics platform and defines busin
 
 ### What is an ontology MCP, and how do I use it here?
 
-Here, ontology MCP means calling ontology-related functions through MCP tools. OntoPoc exposes the main page features as MCP tools (32 in all) for clients such as Claude Code, Claude Desktop, and Cursor. The tools use local stdio and talk to the modelling service already running on this machine. Claude Code can also install the repository as a plugin and use `/ontopoc:ontopoc-build` and `/ontopoc:ontopoc-review`. Setup is under [Use with MCP / Claude](#use-with-mcp--claude); the tool list is in [docs/MCP.md](docs/MCP.md).
+Here, ontology MCP means calling ontology-related functions through MCP tools. OntoPoc exposes some page features as MCP tools (32 in all; code meanings, repeated-number rules, named views and the two-table join are not among them yet) for clients such as Claude Code, Claude Desktop, and Cursor. The tools use local stdio and talk to the modelling service already running on this machine. Claude Code can also install the repository as a plugin and use `/ontopoc:ontopoc-build` and `/ontopoc:ontopoc-review`. Setup is under [Use with MCP / Claude](#use-with-mcp--claude); the tool list is in [docs/MCP.md](docs/MCP.md).
 
 ### Who is OntoPoc for today?
 
@@ -218,6 +226,9 @@ The intended user is an implementation consultant on a data platform, sorting bu
 - **The model builds differently each time.** Three builds of one file often differ, now mainly in the relations: in one measurement on Northwind on 10-28 (8 kinds of object, 7 relations), 4 relations differed across the 3 builds, nearly all because the same relation ran the other way (order → customer / customer → order). The page marks where they disagree for you to decide.
 - **A new version may come with a different way of telling objects apart.** Once, Chicago's contracts went from "number + revision" to number alone; then only counts can be compared, not objects one by one, and the page says so ("识别方式已变更", identification changed).
 - **The relation check only requires one connected row.** In the data check, a relation passes as soon as it connects one row, even if the share of rows that connect is very low; the page states how many rows connect, so look at that number.
+- **Definitions and joins are narrow.** A code meaning covers a few values of one column; a repeated number has three ways to be read; a join has only input, join and output steps and refuses to run past a row cap; the name-versus-calculation check knows only P50, P90, mean, total, max and min, and needs a same-named source column in another table. All of this has been tried only on synthetic planted tables and public data, never on a real client's data.
+- **Answer checks rely on the model declaring honestly.** Code checks that the query that ran matches how the model said it read the question; if the model misstates the reading and the query happens to match, the check cannot see it. The query language can only say "a field equals a value", so "not cancelled" runs only through a named view, and is refused otherwise.
+- **"Needs another look" is judged by share of the table.** A value's rows must more than double or fall below half, and by at least 5 rows. These two numbers are chosen, not measured; a shift smaller than that goes unnoticed.
 - **Code finds only some missing relations.** Removing each relation in turn on 17 saved runs (public and synthetic data), it found 24 of 33 again; on complete ontologies it has not suggested a false one.
 - **Queries cannot yet** filter by a numeric condition, limit to a time range, give two numbers in one question, or say which things tend to appear together. It says so when asked.
 - **Batch import is untested.** The exported form columns follow what data platforms usually ask for; import format, key rules and how relations are expressed differ by platform and have not been tested on any, so no relation table is exported.
@@ -238,11 +249,36 @@ The intended user is an implementation consultant on a data platform, sorting bu
 
 Issues and pull requests are welcome. Read the [development guardrails](docs/DEVELOPMENT_GUARDRAILS.md) first.
 
+### Sign-in and accounts
+
+The service asks for a sign-in by default, and there is no default account or password. Make the first admin on the machine that runs the service:
+
+```bash
+PYTHONPATH=src python3 -m ontology_poc_generator.accounts create-admin     # asks for a name and a password (12 characters or more); reset-password in the same tool if it is forgotten
+PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http://127.0.0.1:5178   # --origin: the address the page is served from (here the dev server); repeatable
+```
+
+An admin makes everyone else on the Users page: **viewer** reads and asks, **builder** also uploads data and changes definitions, **admin** also manages people. A new account must change the temporary password at its first sign-in. Every action is recorded under the signed-in person; a name typed into a request is ignored. Scripts and the MCP server use a token made under My account (set `ONTOPOC_TOKEN` for MCP); it has its owner's role.
+
+**Two-person confirmation**: while two or more people can confirm, a view one person submits takes effect only when another confirms it, and the submitter cannot confirm their own. With one person who can confirm it switches itself off, and the log marks each self-confirmation. An admin can turn it off on the Users page. Today it covers views only; other confirmations are still one step.
+
+**For a team**: the service listens on this machine only and does not do HTTPS. Put a proxy that does in front of it, for example Caddy:
+
+```
+ontopoc.example.com {
+    reverse_proxy 127.0.0.1:8767
+}
+```
+
+Start the service with `--origin https://ontopoc.example.com`: only that address is accepted, the sign-in cookie is Secure, and the sign-in attempt limit counts the address the proxy saw. A non-local http address is refused. `workspace.sqlite` holds password hashes and sign-in records; it is readable by its owner only, and copying it to someone shares the hashes. The proxy must put the address it saw into X-Forwarded-For (nginx: `proxy_set_header X-Forwarded-For $remote_addr;`); the service believes only the last address in that header, and only from the proxies named with `--trusted-proxy` (by default this machine once an https `--origin` is set).
+
+**Trying it on your own machine**: `--no-auth` turns sign-in off and treats every request as the local admin. Do not use it on a shared machine. It needs the environment variable `ONTOPOC_DEV=1`, is refused together with `--origin`, and refuses any request that carries a proxy header (X-Forwarded-For and the like).
+
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1083; install ".[check]" first, or 9 TTL checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (331)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (1424; install ".[check]" first, or 9 TTL checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (369)
 PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
 PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook
