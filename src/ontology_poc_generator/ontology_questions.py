@@ -14,7 +14,7 @@ from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview, to_number
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 
-QUESTION_PROMPT_VERSION = 'company_questions.v17'
+QUESTION_PROMPT_VERSION = 'company_questions.v18'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
 MAX_MERGED = 20             # groups named in `evidence`: a pointer to where to look, not the full list
@@ -63,6 +63,12 @@ Groups come back ranked from the largest (by the measure, the share or the count
 measure sum and "top": 1, and "the five biggest" is "top": 5; code says when more groups tie with the last one kept. For "the least", "the smallest",
 "the lowest" or "the five worst", add "order": "smallest": the ranking then starts from the lowest, and "top" keeps the N lowest. "top" and "order"
 need a group_by. A group with no value to rank is never counted as the lowest.
+To add up an amount that other objects carry for each object they belong to ("which customer's orders total the most",
+"the three customers with the lowest order amount"), start from the objects that carry it and group by the related type through
+the relation. For example, with an order type whose amount field is 金额 and a customer type: start the order type, measure 金额
+with "op": "sum", and group_by [{{"via": [<the relation from order to customer>], "field": <the customer's name attribute>}}]. When
+the amount is on the other type, do not start from the type the totals are for and reach for that field: a measure, and a
+formula in `derive`, read only the start type's own fields. An amount on the start type itself is measured directly, as before.
 When the amount a question needs is not one column but a formula over one object's own fields (unit price ×
 quantity × (1 − discount), or price − cost), propose it in `derive` on that object: a sum of terms, each term a product
 of that object's fields, a factor with "complement": true meaning (1 − field). No constants, no division. Then start
