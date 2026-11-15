@@ -335,10 +335,11 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             return gap(f'不支持的算法 {measure.get("op")}，只能是 sum 或 average')
         if measure.get('derived') is not None:   # an amount computed from a formula a person confirmed
             formula = next((d for d in derived or [] if d['type'] == start and d['label'] == measure['derived']), None)
-            if formula is None:
+            field = _resolve_field(types[start], measure['derived']) if formula is None else None   # a derived property the workspace lists as an attribute
+            if formula is None and field is None:
                 return gap(f'要先确认{label(start)}的指标“{measure["derived"]}”，才能对它求和或求平均')
             # field is written '.<label>' so the naming below, which reads what follows the table's dot, shows the label
-            measure = {'field': f'.{formula["label"]}', 'op': measure['op'], 'derived': formula}
+            measure = {'field': field, 'op': measure['op']} if field else {'field': f'.{formula["label"]}', 'op': measure['op'], 'derived': formula}
         else:
             field = _resolve_field(types[start], measure.get('field'))
             if field is None:
@@ -659,6 +660,8 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         return {**out, 'error': '模型返回的不是 JSON'}
     reply = judgement.reply
     raw = reply.get('questions') if isinstance(reply, dict) else None
+    if raw is None and question and isinstance(reply, dict) and 'query' in reply:   # one asked question answered as a bare object, not in a list
+        raw = [{**reply, 'question': reply['question'] if isinstance(reply.get('question'), str) else question}]
     if not isinstance(raw, list):
         return {**out, 'error': '模型没有返回问题列表'}
     graph = build_graph(ontology, bundle)
