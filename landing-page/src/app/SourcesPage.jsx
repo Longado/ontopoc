@@ -5,7 +5,7 @@ import { isAdmin } from "./authModel.js";
 import { timeText } from "./format.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
-import { KINDS, TLS_MODES, TLS_WARNING, kindPort, sourceProblem, statusText, tlsDefault } from "./sourceModel.js";
+import { KINDS, TLS_MODES, TLS_WARNING, kindPort, sourceBody, sourceProblem, statusText, tlsDefault } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
 import { FormDialog } from "./FormDialog.jsx";
 
@@ -20,11 +20,12 @@ export function SourceForm({ source, onClose, onDone }) {
   const [f, setF] = useState({
     name: source?.name ?? "", kind: source?.kind ?? "postgresql", host: source?.host ?? "", port: String(source?.port ?? 5432),
     database: source?.database ?? "", username: source?.username ?? "", password: "", tls: source?.tls ?? null,   // null: the default for this host until one is chosen
+    ca: "", dropCa: false,   // the CA is never sent back: a saved one shows as set, a pasted one replaces it
   });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const problem = sourceProblem(f, editing, source);
   const tls = f.tls ?? tlsDefault(f.host);
-  const body = { ...f, tls, port: Number(f.port), ...(f.password ? {} : { password: undefined }) };
+  const body = sourceBody(f, tls);
   return (
     <FormDialog title={editing ? `修改“${source.name}”` : "新建数据源"} submitLabel={editing ? "保存" : "创建"} onClose={onClose} valid={!problem}
       onSubmit={async () => { await (editing ? updateSource(body) : createSource(body)); onDone(); }}>
@@ -52,6 +53,15 @@ export function SourceForm({ source, onClose, onDone }) {
         </Select>
       </div>
       {tls === "none" && <p className="warn">{TLS_WARNING}</p>}
+      {tls === "required" && (
+        <label className="field">
+          <span className="caption">{source?.custom_ca ? "CA 证书（已设置；贴新的会替换它）" : "CA 证书（可选：数据库的证书由公司内部 CA 签发时，贴这个 CA 的 PEM）"}</span>
+          <textarea rows={4} value={f.ca} placeholder="-----BEGIN CERTIFICATE-----" spellCheck={false} onChange={set("ca")} />
+        </label>
+      )}
+      {tls === "required" && source?.custom_ca && !f.ca.trim() && (
+        <label className="check"><input type="checkbox" checked={f.dropCa} onChange={(e) => setF({ ...f, dropCa: e.target.checked })} /> 不再用这张 CA，改回用系统的证书核对</label>
+      )}
       <p className="hint">密码在这台服务器上加密保存，页面和接口都读不出来；但能拿到服务器上文件的人，有办法还原它，所以请用只读账号。读数据时用只读会话。</p>
       {problem && <p className="hint">{problem}</p>}
     </FormDialog>

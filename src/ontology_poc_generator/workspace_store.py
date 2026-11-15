@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS check_result (
 CREATE TABLE IF NOT EXISTS data_source (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('postgresql', 'mysql')),
     host TEXT NOT NULL, port INTEGER NOT NULL, database TEXT NOT NULL, username TEXT NOT NULL, secret TEXT NOT NULL,
-    tls TEXT NOT NULL DEFAULT 'required', status TEXT NOT NULL DEFAULT 'untested' CHECK (status IN ('untested', 'ok', 'failed')), status_at TEXT, status_note TEXT, can_write INTEGER, write_note TEXT,
+    tls TEXT NOT NULL DEFAULT 'required', ca_pem TEXT, status TEXT NOT NULL DEFAULT 'untested' CHECK (status IN ('untested', 'ok', 'failed')), status_at TEXT, status_note TEXT, can_write INTEGER, write_note TEXT,
     created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS source_table (
     id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NOT NULL REFERENCES data_source(id), table_name TEXT NOT NULL, dataset TEXT NOT NULL UNIQUE,
@@ -150,7 +150,7 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id'),
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
                           ('api_token', 'scope'), ('api_token', 'expires_at'),
-                          ('data_source', 'tls'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id')):
+                          ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows") or column.endswith("user_id") else "TEXT"}')
     _never_reuse_ids(conn)

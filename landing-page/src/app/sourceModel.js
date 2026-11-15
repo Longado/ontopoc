@@ -65,6 +65,7 @@ export function sourceProblem(form, editing, saved) {
   if (!editing && !form.name.trim()) return "要填名字";
   if (!form.host.trim()) return "要填主机";
   if (/[\s/@?#]/.test(form.host.trim()) || form.host.includes("://")) return "主机只写地址，不要带协议、路径或账号";
+  if (form.host.includes(":") && !/^\[?[0-9a-fA-F:.]+\]?$/.test(form.host.trim())) return "主机里不要写端口，端口有单独的一格";
   const port = Number(form.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) return "端口要写成 1 到 65535 的整数";
   if (!form.database.trim()) return "要填数据库名";
@@ -72,7 +73,19 @@ export function sourceProblem(form, editing, saved) {
   if (!editing && !form.password) return "要填密码";
   const moved = editing && saved ? MOVES.filter(([k]) => String(form[k]).trim() !== String(saved[k])).map(([, label]) => label) : [];
   if (moved.length && !form.password) return `改了${moved.join("、")}，要重新填密码：保存的密码不会自己送到新的地方去`;
+  const ca = String(form.ca ?? "").trim();
+  if (ca && !ca.includes("-----BEGIN CERTIFICATE-----")) return "CA 证书要贴 PEM 格式的文字（以 -----BEGIN CERTIFICATE----- 开头）";
+  if (ca && (form.tls ?? tlsDefault(form.host)) === "none") return "不加密时用不上 CA 证书：要按证书核对数据库，加密选“必须”";
   return "";
+}
+
+/** The request for saving a source: the port as a number, no password when it is blank (the saved one stays), and ca_pem only when a CA was pasted
+ * ("" when it is taken away; nothing with encryption off). */
+export function sourceBody(form, tls) {
+  const { ca, dropCa, password, ...rest } = form;
+  const pasted = String(ca ?? "").trim();
+  return { ...rest, tls, port: Number(form.port), ...(password ? { password } : {}),
+    ...(tls === "required" && pasted ? { ca_pem: pasted } : tls === "required" && dropCa ? { ca_pem: "" } : {}) };
 }
 
 /** What is missing from a schedule form before it is sent; "" when nothing. */

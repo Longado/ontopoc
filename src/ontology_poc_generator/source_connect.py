@@ -312,20 +312,36 @@ def _dial(address: str, port: int) -> socket.socket:
     return sock
 
 
-def _tls_context() -> ssl.SSLContext:
-    return ssl.create_default_context()   # certificate and host name are checked
+MAX_CA = 64 * 1024   # a CA certificate, or a short chain of them, is a few KB
+
+
+def check_ca(pem) -> None:
+    """SourceError in words unless `pem` is one or more PEM certificates a TLS context can load."""
+    if not isinstance(pem, str) or len(pem) > MAX_CA or '-----BEGIN CERTIFICATE-----' not in pem:
+        raise SourceError('CA 证书要贴 PEM 格式的文字（以 -----BEGIN CERTIFICATE----- 开头，至多 64 KB）')
+    if 'PRIVATE KEY' in pem:
+        raise SourceError('这段文字里有私钥：只贴 CA 证书（BEGIN CERTIFICATE 那几段），私钥不要贴到这里')
+    try:
+        ssl.create_default_context(cadata=pem)
+    except (ssl.SSLError, ValueError):
+        raise SourceError('这段 CA 证书读不出来：请贴完整的 PEM 证书，不要贴私钥') from None
+
+
+def _tls_context(ca_pem: str | None = None) -> ssl.SSLContext:
+    """Certificate and host name are checked: against the system's CAs, or, for a source that carries its own CA, against that CA only."""
+    return ssl.create_default_context(cadata=ca_pem) if ca_pem else ssl.create_default_context()
 
 
 class Postgres(_Sql):
     _SYSTEM = "('pg_catalog', 'information_schema')"
 
     @classmethod
-    def open(cls, host: str, address: str, port: int, database: str, user: str, password: str, tls: str) -> 'Postgres':
+    def open(cls, host: str, address: str, port: int, database: str, user: str, password: str, tls: str, ca_pem: str | None = None) -> 'Postgres':
         driver = _driver('pg8000.dbapi', 'pg8000', 'postgresql')
         sock = _dial(address, port)   # the checked address is dialled; the name is only what the certificate is checked against
         try:
             raw = driver.connect(host=host, port=port, database=database, user=user, password=password, sock=sock,
-                                                                        ssl_context=_tls_context() if tls == 'required' else False, application_name='ontopoc')
+                                                                        ssl_context=_tls_context(ca_pem) if tls == 'required' else False, application_name='ontopoc')
         except BaseException:
             sock.close()
             raise
@@ -385,13 +401,13 @@ class MySql(_Sql):
     _WRITE = {'ALL PRIVILEGES', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'FILE', 'SUPER', 'GRANT OPTION'}
 
     @classmethod
-    def open(cls, host: str, address: str, port: int, database: str, user: str, password: str, tls: str) -> 'MySql':
+    def open(cls, host: str, address: str, port: int, database: str, user: str, password: str, tls: str, ca_pem: str | None = None) -> 'MySql':
         driver = _driver('pymysql', 'PyMySQL', 'mysql')
         sock = _dial(address, port)
         try:
             raw = driver.connect(host=host, port=port, database=database, user=user, password=password, charset='utf8mb4', connect_timeout=CONNECT_SECONDS,
                                  read_timeout=STATEMENT_SECONDS + 5, write_timeout=STATEMENT_SECONDS + 5, autocommit=True, defer_connect=True,
-                                 **({'ssl': _tls_context()} if tls == 'required' else {'ssl_disabled': True}))
+                                 **({'ssl': _tls_context(ca_pem)} if tls == 'required' else {'ssl_disabled': True}))
             raw.connect(sock)
         except BaseException:
             sock.close()
@@ -452,7 +468,7 @@ class MySql(_Sql):
 OPENERS = {'postgresql': Postgres.open, 'mysql': MySql.open}   # a test replaces an entry with a function that returns its own Connection
 
 
-def connect(kind: str, host: str, port: int, database: str, user: str, password: str, tls: str = 'required') -> Connection:
+def connect(kind: str, host: str, port: int, database: str, user: str, password: str, tls: str = 'required', ca_pem: str | None = None) -> Connection:
     """An open, read-only connection; SourceError (a safe sentence, and a public one) for anything that stops it."""
     if kind not in OPENERS:
         raise SourceError(f'不认识的数据库类型“{kind}”，只有 PostgreSQL 和 MySQL')
@@ -460,7 +476,7 @@ def connect(kind: str, host: str, port: int, database: str, user: str, password:
         raise SourceError('加密只能选“必须”或“不用”')
     address = resolve(host, port)
     try:
-        return OPENERS[kind](host, address, port, database, user, password, tls)
+        return OPENERS[kind](host, address, port, database, user, password, tls, ca_pem=ca_pem)
     except SourceError:
         raise
     except Exception as exc:   # nothing of the driver's own exception travels on: its arguments can carry the password

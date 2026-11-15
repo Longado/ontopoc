@@ -24,7 +24,7 @@ from pathlib import Path
 from ontology_poc_generator.object_actions import overwritten_by_upload
 from ontology_poc_generator.object_types import recheck_after_write
 from ontology_poc_generator.source_connect import (
-    DEFAULT_PORTS, GENERIC, KINDS, MAX_PULL_ROWS, TLS_MODES, SourceError, connect, describe, records_of, screen_host)
+    DEFAULT_PORTS, GENERIC, KINDS, MAX_PULL_ROWS, TLS_MODES, SourceError, check_ca, connect, describe, records_of, screen_host)
 from ontology_poc_generator.source_vault import seal, unseal
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_store import (
@@ -117,7 +117,8 @@ def public_source(conn, row: dict, user: dict | None) -> dict:
            'can_write': None if row['can_write'] is None else bool(row['can_write']), 'tls': row['tls'] or 'required', 'tables': bound_for(conn, row['id'], user)}
     if admin:
         out |= {'write_note': row['write_note'], 'host': row['host'], 'port': row['port'], 'database': row['database'], 'username': row['username'], 'has_password': True,
-                'local': row['host'].strip('[]').lower() in LOCAL_HOSTS, 'created_by': row['created_by'], 'created_at': row['created_at']}
+                'local': row['host'].strip('[]').lower() in LOCAL_HOSTS, 'created_by': row['created_by'], 'created_at': row['created_at'],
+                'custom_ca': bool(row.get('ca_pem'))}   # whether the source carries its own CA, never the certificate
     return out
 
 
@@ -186,6 +187,23 @@ def _tls(payload: dict, host: str, current: str | None = None) -> str:
     return tls
 
 
+def _ca(payload: dict, tls: str, current: str | None = None) -> str | None:
+    """The source's own CA certificate: what the request says ('' takes it away), else what the source had. Only with encryption on: turning it off drops
+    the saved CA, and a CA sent together with "none" is refused."""
+    if tls != 'required' and not payload.get('ca_pem'):
+        return None
+    ca = payload.get('ca_pem', current)
+    if ca in (None, ''):
+        return None
+    try:
+        check_ca(ca)
+    except SourceError as exc:
+        raise ValueError(str(exc)) from None
+    if tls != 'required':
+        raise ValueError('不加密时用不上 CA 证书：要按这张证书核对数据库，加密选“必须”')
+    return ca
+
+
 def _name_taken(conn, name: str) -> bool:
     return conn.execute('SELECT 1 FROM data_source WHERE name = ?', (name,)).fetchone() is not None
 
@@ -200,6 +218,7 @@ def create_source(conn, payload: dict, who: str | None) -> dict:
         raise ValueError('数据库类型只能选 PostgreSQL 或 MySQL')
     fields = _connection_fields(payload, kind)
     tls = _tls(payload, fields['host'])
+    ca = _ca(payload, tls)
     password = payload.get('password')
     if not isinstance(password, str) or not password:
         raise ValueError('要填密码')
@@ -207,11 +226,11 @@ def create_source(conn, payload: dict, who: str | None) -> dict:
         raise ValueError(f'已经有叫“{name}”的数据源')
     stamp, signer = now_text(), str(who or '').strip() or '未署名'
     try:
-        conn.execute('INSERT INTO data_source(name, kind, host, port, database, username, secret, tls, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                     (name, kind, fields['host'], fields['port'], fields['database'], fields['username'], seal(_directory(conn), password), tls, signer, stamp, stamp))
+        conn.execute('INSERT INTO data_source(name, kind, host, port, database, username, secret, tls, ca_pem, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                     (name, kind, fields['host'], fields['port'], fields['database'], fields['username'], seal(_directory(conn), password), tls, ca, signer, stamp, stamp))
     except sqlite3.IntegrityError:   # another request made the same name between the check and the write
         raise ValueError(f'已经有叫“{name}”的数据源') from None
-    log_write(conn, signer, f'source:{name}', 'created', {'kind': kind, 'host': fields['host'], 'port': fields['port'], 'database': fields['database'], 'tls': tls})
+    log_write(conn, signer, f'source:{name}', 'created', {'kind': kind, 'host': fields['host'], 'port': fields['port'], 'database': fields['database'], 'tls': tls, 'custom_ca': bool(ca)})
     return public_source(conn, _row(conn, name), None)
 
 
@@ -231,12 +250,13 @@ def update_source(conn, payload: dict, who: str | None) -> dict:
     if moved and not password:
         raise ValueError(f'改了{"、".join(moved)}，要重新填密码：保存的密码不会自己送到新的地方去')
     tls = _tls(payload, fields['host'], row['tls'] or 'required')
+    ca = _ca(payload, tls, row.get('ca_pem'))
     secret = seal(_directory(conn), password) if password else row['secret']
     signer = str(who or '').strip() or '未署名'
-    conn.execute("UPDATE data_source SET host = ?, port = ?, database = ?, username = ?, secret = ?, tls = ?, status = 'untested', status_at = NULL, status_note = NULL, can_write = NULL, "
-                 'write_note = NULL, updated_at = ? WHERE id = ?', (fields['host'], fields['port'], fields['database'], fields['username'], secret, tls, now_text(), row['id']))
+    conn.execute("UPDATE data_source SET host = ?, port = ?, database = ?, username = ?, secret = ?, tls = ?, ca_pem = ?, status = 'untested', status_at = NULL, status_note = NULL, "
+                 'can_write = NULL, write_note = NULL, updated_at = ? WHERE id = ?', (fields['host'], fields['port'], fields['database'], fields['username'], secret, tls, ca, now_text(), row['id']))
     _table_cache.pop(row['name'], None)
-    log_write(conn, signer, f'source:{row["name"]}', 'updated', {'host': fields['host'], 'port': fields['port'], 'database': fields['database'], 'tls': tls, 'password_changed': bool(password)})
+    log_write(conn, signer, f'source:{row["name"]}', 'updated', {'host': fields['host'], 'port': fields['port'], 'database': fields['database'], 'tls': tls, 'custom_ca': bool(ca), 'password_changed': bool(password)})
     return public_source(conn, _row(conn, row['name']), None)
 
 
@@ -267,7 +287,7 @@ def delete_source(conn, name: str, who: str | None) -> dict:
 def _open(conn, row: dict):
     """An open connection to the source, with every failure turned into a SourceError whose text holds no password (and whose `public` text holds nothing of the database)."""
     password = unseal(_directory(conn), row['secret'])
-    live = connect(row['kind'], row['host'], row['port'], row['database'], row['username'], password, row['tls'] or 'required')
+    live = connect(row['kind'], row['host'], row['port'], row['database'], row['username'], password, row['tls'] or 'required', row.get('ca_pem'))
     try:
         yield live
     except SourceError:
