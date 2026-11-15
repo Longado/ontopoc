@@ -26,7 +26,6 @@ class JudgeTests(unittest.TestCase):
         self.assertEqual(judge({'expect': 'count', 'truth': 16}, None, None), 'error')
 
 
-
 class DataDirTests(unittest.TestCase):
     def test_the_check_empties_only_a_folder_of_its_own_inside_out(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -38,6 +37,7 @@ class DataDirTests(unittest.TestCase):
             again = fresh_data_dir(out)
             self.assertEqual((made, again, list(again.iterdir())), (out / 'real-model-check-data', out / 'real-model-check-data', []))
             self.assertTrue((out / 'data' / 'keep.txt').exists())
+
 
 if __name__ == '__main__':
     unittest.main()
