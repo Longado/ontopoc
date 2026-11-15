@@ -163,20 +163,25 @@ def deliver(conn, action_row: dict, record_id: int, row: dict, text: str, approv
     return told
 
 
-def _still_readable(conn, record_id: int | None, user: dict) -> bool:
+def _still_readable(conn, record_id: int | None, user: dict, cache: dict | None = None) -> bool:
     """Whether this person may still read what a notice quotes: the action (its columns not kept from them), its type, and the object's row as it is now (a row rule
     added since keeps it from them: not shown). A notice whose record or action is gone is not shown either."""
-    from ontology_poc_generator.object_actions import _find
+    cache = {} if cache is None else cache
     rec = conn.execute('SELECT action_id, type_id, dataset, key_json FROM action_record WHERE id = ?', (record_id,)).fetchone() if record_id is not None else None
     action, type_row = (element_row(conn, rec[0]), element_row(conn, rec[1])) if rec else (None, None)
     if action is None or type_row is None or not _visible(conn, type_row, user) or reads_hidden(conn, rec[0], user, _content(action)):
         return False
-    limit = restriction(conn, type_row['element_id'], user)
+    if type_row['element_id'] not in cache:   # once per type in one listing: the limit and the rows it keeps, by key
+        limit = restriction(conn, type_row['element_id'], user)
+        dataset = current_dataset(conn, rec[2]) if limit is not None else None
+        key = _content(type_row)['key']
+        kept = {tuple(_canonical(r.get(c)) for c in key) for r in dataset_records(conn, dataset) if keeps(r, limit)} if dataset else set()
+        cache[type_row['element_id']] = (limit, key, kept)
+    limit, key, kept = cache[type_row['element_id']]
     if limit is None:
         return True
-    dataset = current_dataset(conn, rec[2])
-    now = _find(conn, _content(type_row), dataset, json.loads(rec[3])) if dataset else None
-    return now is not None and keeps(now, limit)
+    wanted = json.loads(rec[3])
+    return tuple(_canonical(wanted.get(c)) for c in key) in kept
 
 
 def list_notices(conn, user: dict | None) -> dict:
@@ -185,7 +190,8 @@ def list_notices(conn, user: dict | None) -> dict:
     if user is None or user.get('id') is None:
         return {'notices': [], 'unread': 0}
     rows = conn.execute('SELECT id, at, action_name, record_id, text, read_at FROM notice WHERE user_id = ? ORDER BY id DESC LIMIT ?', (user['id'], LISTED)).fetchall()
-    shown = [{'id': i, 'at': at, 'action': a, 'record': r, 'text': t, 'read': read is not None} for i, at, a, r, t, read in rows if _still_readable(conn, r, user)]
+    cache: dict = {}
+    shown = [{'id': i, 'at': at, 'action': a, 'record': r, 'text': t, 'read': read is not None} for i, at, a, r, t, read in rows if _still_readable(conn, r, user, cache)]
     return {'notices': shown, 'unread': sum(1 for n in shown if not n['read'])}
 
 
