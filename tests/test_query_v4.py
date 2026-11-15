@@ -76,13 +76,56 @@ class TopTests(unittest.TestCase):
                 self.assertEqual(run_query(PROPOSAL, BUNDLE, query)['status'], 'query_limit')
 
 
+
+class SmallestFirstTests(unittest.TestCase):
+    SUM_BY_CUSTOMER = TopTests.SUM_BY_CUSTOMER
+
+    def test_order_smallest_with_top_keeps_the_lowest_groups_and_says_so(self):
+        result = run_query(PROPOSAL, BUNDLE, {**self.SUM_BY_CUSTOMER, 'order': 'smallest', 'top': 1})
+        self.assertEqual(result['status'], 'answered')
+        self.assertEqual(result['answer']['groups'], [['乙', 50, 1]])
+        self.assertEqual(result['answer']['total_groups'], 2)
+        self.assertEqual(result['answer']['order'], 'smallest')
+        self.assertIn('取最低的 1 个', result['path'])
+        self.assertNotIn('取最高', result['path'])
+
+    def test_order_smallest_without_top_lists_every_group_from_the_lowest(self):
+        result = run_query(PROPOSAL, BUNDLE, {**self.SUM_BY_CUSTOMER, 'order': 'smallest'})
+        self.assertEqual([g[0] for g in result['answer']['groups']], ['乙', '甲'])
+        self.assertIn('从低到高', result['path'])
+
+    def test_a_share_ranked_from_the_lowest_puts_the_lowest_rate_first(self):
+        result = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'group_by': [BY_CUSTOMER], 'order': 'smallest',
+                                              'share': {'field': '订单.金额', 'equals': '100'}})
+        self.assertEqual(result['answer']['groups'], [['乙', 0, 1], ['甲', 1, 1]])
+
+    def test_a_group_tied_with_the_last_lowest_kept_is_said_not_cut_silently(self):
+        result = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'group_by': [BY_CUSTOMER], 'via': ['order_customer'],
+                                              'order': 'smallest', 'top': 1})
+        self.assertEqual(len(result['answer']['groups']), 1)
+        self.assertEqual(result['answer']['tied_beyond_top'], 1)
+
+    def test_largest_is_the_default_and_may_be_written_out(self):
+        written = run_query(PROPOSAL, BUNDLE, {**self.SUM_BY_CUSTOMER, 'order': 'largest', 'top': 1})
+        default = run_query(PROPOSAL, BUNDLE, {**self.SUM_BY_CUSTOMER, 'top': 1})
+        self.assertEqual(written['answer']['groups'], default['answer']['groups'])
+        self.assertNotIn('order', default['answer'])
+
+    def test_order_needs_a_group_and_one_of_the_two_words(self):
+        for query in ({'start': 'order', 'order': 'smallest'}, {**self.SUM_BY_CUSTOMER, 'order': 'asc'},
+                      {**self.SUM_BY_CUSTOMER, 'order': True}, {**self.SUM_BY_CUSTOMER, 'order': ['smallest']}):
+            with self.subTest(query=query):
+                self.assertEqual(run_query(PROPOSAL, BUNDLE, query)['status'], 'query_limit')
+
 class PromptTests(unittest.TestCase):
     def test_the_prompt_version_moves_and_describes_both_forms(self):
-        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v15')
+        self.assertEqual(QUESTION_PROMPT_VERSION, 'company_questions.v16')
         self.assertIn('"share"', QUESTION_SYSTEM_PROMPT)
         self.assertIn('"group_by": [{', QUESTION_SYSTEM_PROMPT)
         self.assertIn('"not_equals"', QUESTION_SYSTEM_PROMPT)
         self.assertIn('"top"', QUESTION_SYSTEM_PROMPT)
+        self.assertIn('"order"', QUESTION_SYSTEM_PROMPT)
+        self.assertNotIn('is not something the query can say', QUESTION_SYSTEM_PROMPT)
 
 
 if __name__ == '__main__':
