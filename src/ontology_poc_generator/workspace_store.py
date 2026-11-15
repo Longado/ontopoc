@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS action_record (
     id INTEGER PRIMARY KEY AUTOINCREMENT, action_id TEXT NOT NULL, action_version INTEGER NOT NULL, type_id TEXT NOT NULL, dataset TEXT NOT NULL, dataset_version INTEGER NOT NULL,
     key_json TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL, reason TEXT,
     state TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'rejected', 'withdrawn', 'expired', 'needs_look')),
-    submitted_by TEXT, submitted_by_user_id INTEGER, submitted_at TEXT NOT NULL, decided_by TEXT, decided_by_user_id INTEGER, decided_at TEXT, note TEXT, why TEXT, new_version INTEGER);
+    submitted_by TEXT, submitted_by_user_id INTEGER, submitted_at TEXT NOT NULL, decided_by TEXT, decided_by_user_id INTEGER, decided_at TEXT, note TEXT, why TEXT, new_version INTEGER,
+    undo_of INTEGER);
 CREATE TABLE IF NOT EXISTS pipeline_version (
     pipeline_id TEXT NOT NULL, version INTEGER NOT NULL, definition_json TEXT NOT NULL, saved_by TEXT, saved_by_user_id INTEGER, saved_at TEXT NOT NULL,
     PRIMARY KEY (pipeline_id, version));
@@ -149,10 +150,10 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('element_state', 'content_json'), ('element_state', 'anchors_json'), ('element_state', 'proposed_by'), ('element_state', 'reason'),
                           ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id'),
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
-                          ('api_token', 'scope'), ('api_token', 'expires_at'),
+                          ('api_token', 'scope'), ('api_token', 'expires_at'), ('action_record', 'undo_of'),
                           ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
-            conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows") or column.endswith("user_id") else "TEXT"}')
+            conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows", "undo_of") or column.endswith("user_id") else "TEXT"}')
     _never_reuse_ids(conn)
     _allow_needs_look(conn)
     conn.execute('INSERT OR IGNORE INTO current_dataset SELECT name, id FROM dataset WHERE version = '

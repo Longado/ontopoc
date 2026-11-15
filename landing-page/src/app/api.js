@@ -121,6 +121,7 @@ export const confirmAction = (id, version) => send("/api/workspace/actions/confi
 export const submitAction = (action, key, params, reason) => send("/api/workspace/actions/submit", { action, key, params, reason });
 export const decideRecord = (id, decision, note = "") => send("/api/workspace/actions/decide", { id, decision, note });
 export const withdrawRecord = (id) => send("/api/workspace/actions/withdraw", { id });
+export const undoRecord = (id) => send("/api/workspace/actions/undo", { id });
 
 // pipelines. A try (preview, summary, expression trial) writes nothing, so it does not tell the navigation to count again.
 const pipelinePath = (name, tail = "") => `/api/workspace/pipelines/${encodeURIComponent(name)}${tail}`;
