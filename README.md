@@ -285,7 +285,7 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http:/
 
 **两人确认**：有两个以上的人能确认时，一个人提出的定义（含义、对象类型、关系、视图、行为、派生属性、管道）要另一个人确认才生效，提出的人自己不能确认；只有一个人能确认时自动不生效，日志里会标出自己确认自己的那几条。管理员可以在“用户”页关掉。
 
-**给团队用**：服务本身只听本机，不处理 HTTPS。前面放一个做 HTTPS 的代理，例如 Caddy：
+**给团队用**：服务本身只听本机，不处理 HTTPS。前面放一个做 HTTPS 的代理，例如 Caddy（完整步骤、备份和权限要点见 [docs/DEPLOY.md](docs/DEPLOY.md)）：
 
 ```
 ontopoc.example.com {
