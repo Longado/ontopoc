@@ -1,3 +1,5 @@
+import { canBuild, isAdmin } from "./authModel.js";
+
 // The app's addresses (#/datasets/订单/preview?v=2&p=3, #/account, #/users) and its left navigation, as plain data so both can be tested without a browser.
 export const TABS = ["fields", "preview", "versions"];
 export const TAB_LABEL = { fields: "字段", preview: "预览", versions: "版本" };
@@ -131,6 +133,31 @@ export const NAV = [
 /** What only an admin sees. */
 export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户"), item("permissions", "权限")] }];
 
+/** Every page the app draws, once: the sidebar item it lives under (null: none) and the role it needs (none: anyone signed in). A new page is one entry here
+ * and one view in Shell.jsx; routeModel.test.js fails when the two differ or an address opens a page that is not here. The service checks roles again. */
+export const PAGES = {
+  qa: { nav: "qa" },
+  tasks: { nav: "tasks" },
+  datasets: { nav: "datasets" }, dataset: { nav: "datasets" },
+  pipelines: { nav: "pipelines", role: "builder" }, pipelinenew: { nav: "pipelines", role: "builder" }, pipeline: { nav: "pipelines", role: "builder" },
+  sources: { nav: "sources", role: "builder" }, source: { nav: "sources", role: "builder" },
+  schedules: { nav: "schedules", role: "builder" },
+  types: { nav: "types" }, type: { nav: "types" }, typenew: { nav: "types" }, typeedit: { nav: "types" }, object: { nav: "types" },
+  relations: { nav: "relations" }, relation: { nav: "relations" }, relationnew: { nav: "relations" }, relationedit: { nav: "relations" },
+  confirm: { nav: "confirm", role: "builder" }, confirmgroup: { nav: "confirm", role: "builder" },
+  agents: { nav: "agents", role: "builder" },
+  boards: { nav: "boards" }, board: { nav: "boards" }, boardnew: { nav: "boards", role: "builder" }, boardedit: { nav: "boards", role: "builder" },
+  lineage: { nav: "lineage" },
+  users: { nav: "users", role: "admin" }, permissions: { nav: "permissions", role: "admin" },
+  account: { nav: null },
+  planned: { nav: null },   // a page not built yet lives under its own key (navKeyOf)
+};
+
+/** Whether this person may open the page (the table's role); a page not in the table is not found, which the shell says. */
+export const mayOpen = (page, user) => {
+  const role = PAGES[page]?.role;
+  return role === "admin" ? isAdmin(user) : role === "builder" ? canBuild(user) : true;
+};
+
 /** Which navigation item a route lives under. */
-export const navKeyOf = (route) =>
-  route.page === "dataset" ? "datasets" : route.page === "planned" ? route.key : ["type", "typenew", "typeedit", "object"].includes(route.page) ? "types" : ["board", "boardnew", "boardedit"].includes(route.page) ? "boards" : ["pipeline", "pipelinenew"].includes(route.page) ? "pipelines" : route.page === "source" ? "sources" : route.page === "account" ? null : route.page === "confirmgroup" ? "confirm" : ["relation", "relationnew", "relationedit"].includes(route.page) ? "relations" : route.page;
+export const navKeyOf = (route) => (route.page === "planned" ? route.key : route.page in PAGES ? PAGES[route.page].nav : route.page);

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ADMIN_NAV, NAV, PLANNED, hrefFor, navKeyOf, parseRoute } from "./routeModel.js";
+import { readFileSync } from "node:fs";
+import { ADMIN_NAV, NAV, PAGES, PLANNED, hrefFor, mayOpen, navKeyOf, parseRoute } from "./routeModel.js";
 
 test("the empty address is the Q&A page, a saved answer has an address, and the list address is the dataset list", () => {
   assert.deepEqual(parseRoute(""), { page: "qa", id: null });
@@ -127,4 +128,32 @@ test("the screen that confirms what one dataset version moved has an address und
   assert.deepEqual(parseRoute(hrefFor(route)), route);
   assert.equal(navKeyOf(route), "confirm");
   for (const hash of ["#/confirm/group/订单", "#/confirm/group/订单/0", "#/confirm/group/订单/x", "#/confirm/other/订单/2"]) assert.deepEqual(parseRoute(hash), { page: "notfound" }, hash);
+});
+
+const ADDRESSES = ["#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
+  "#/relations", "#/relations/new", "#/relations/x", "#/relations/x/edit", "#/lineage", "#/confirm", "#/confirm/group/x/2", "#/pipelines", "#/pipelines/new",
+  "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents"];
+
+test("every page an address can open has one entry in the page table, and the table has no page no address opens", () => {
+  const opened = new Set(ADDRESSES.map((a) => parseRoute(a).page));
+  for (const page of opened) assert.ok(PAGES[page], `no entry for ${page}`);
+  assert.deepEqual(Object.keys(PAGES).filter((p) => p !== "planned").sort(), [...opened].sort());
+});
+
+test("who may open which page comes from the table", () => {
+  const viewer = { role: "viewer" }, builder = { role: "builder" }, admin = { role: "admin" };
+  for (const page of ["qa", "datasets", "types", "type", "relations", "lineage", "boards", "board", "account"]) assert.ok(mayOpen(page, viewer), page);
+  for (const page of ["boardnew", "boardedit", "agents", "confirm", "confirmgroup", "pipelines", "pipelinenew", "pipeline", "sources", "source", "schedules"]) {
+    assert.ok(!mayOpen(page, viewer), page);
+    assert.ok(mayOpen(page, builder), page);
+  }
+  for (const page of ["permissions", "users"]) assert.deepEqual([mayOpen(page, builder), mayOpen(page, admin)], [false, true], page);
+  assert.ok(Object.keys(PAGES).every((page) => mayOpen(page, admin)));
+});
+
+test("the shell draws a view for every page in the table and for no other", () => {
+  const shell = readFileSync(new URL("./Shell.jsx", import.meta.url), "utf8");
+  const block = shell.slice(shell.indexOf("const VIEWS = {"), shell.indexOf("};", shell.indexOf("const VIEWS = {")));
+  const drawn = [...block.matchAll(/^\s+(\w+): /gm)].map((m) => m[1]);
+  assert.deepEqual(drawn.sort(), Object.keys(PAGES).sort());
 });
