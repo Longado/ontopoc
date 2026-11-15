@@ -65,9 +65,10 @@ measure sum and "top": 1, and "the five biggest" is "top": 5; code says when mor
 need a group_by. A group with no value to rank is never counted as the lowest.
 To add up an amount that other objects carry for each object they belong to ("which customer's orders total the most",
 "the three customers with the lowest order amount"), start from the objects that carry it and group by the related type through
-the relation: start the 订单 type, measure its 金额 with "op": "sum", and group_by [{{"via": [<the relation from 订单 to 客户>],
-"field": <客户's name attribute>}}]. Do not start from the type the totals are for (客户) and reach for a field of the other type: a
-measure, and a formula in `derive`, read only the start type's own fields.
+the relation. For example, with an order type whose amount field is 金额 and a customer type: start the order type, measure 金额
+with "op": "sum", and group_by [{{"via": [<the relation from order to customer>], "field": <the customer's name attribute>}}]. When
+the amount is on the other type, do not start from the type the totals are for and reach for that field: a measure, and a
+formula in `derive`, read only the start type's own fields. An amount on the start type itself is measured directly, as before.
 When the amount a question needs is not one column but a formula over one object's own fields (unit price ×
 quantity × (1 − discount), or price − cost), propose it in `derive` on that object: a sum of terms, each term a product
 of that object's fields, a factor with "complement": true meaning (1 − field). No constants, no division. Then start
