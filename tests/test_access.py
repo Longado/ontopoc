@@ -14,7 +14,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from ontology_poc_generator import accounts, auth_http, ontology_server
-from ontology_poc_generator.access import PUBLIC, SESSION, required_role, route_role
+from ontology_poc_generator.access import PUBLIC, SESSION, required_role, route_role, UNLIMITED
 from ontology_poc_generator.auth_http import Gate
 from ontology_poc_generator.workspace_store import open_workspace
 
@@ -46,8 +46,9 @@ class RouteTableTests(unittest.TestCase):
     def test_who_may_do_what(self):
         for method, path, role in (
                 ('GET', '/api/workspace/datasets', 'viewer'), ('GET', '/api/workspace/datasets/%E8%AE%A2%E5%8D%95', 'viewer'), ('GET', '/api/workspace/tasks', 'builder'),
-                ('GET', '/api/ontology/runs', 'viewer'), ('GET', '/api/ontology/runs/a.json/objects/x', 'viewer'), ('GET', '/api/ontology/jobs/abc', 'viewer'),
-                ('POST', '/api/ontology/ask', 'viewer'), ('POST', '/api/workspace/ask', 'viewer'), ('GET', '/api/workspace/ask', 'viewer'), ('GET', '/api/workspace/ask/3', 'viewer'),
+                ('GET', '/api/ontology/runs', UNLIMITED), ('GET', '/api/ontology/runs/a.json/objects/x', UNLIMITED), ('GET', '/api/ontology/jobs/abc', UNLIMITED),
+                ('POST', '/api/ontology/ask', UNLIMITED), ('GET', '/api/ontology/library', 'viewer'),   # the early screen's runs hold whole tables: only someone no rule limits
+                ('POST', '/api/workspace/ask', 'viewer'), ('GET', '/api/workspace/ask', 'viewer'), ('GET', '/api/workspace/ask/3', 'viewer'),
                 ('POST', '/api/workspace/types/privacy', 'builder'), ('POST', '/api/workspace/types/views', 'builder'), ('POST', '/api/workspace/types/views/update', 'builder'),
                 ('POST', '/api/workspace/types/views/confirm', 'builder'), ('GET', '/api/workspace/types/order/views', 'viewer'),
                 ('GET', '/api/workspace/types', 'viewer'), ('GET', '/api/workspace/types/order/objects', 'viewer'),
@@ -56,9 +57,9 @@ class RouteTableTests(unittest.TestCase):
                 ('GET', '/api/workspace/queue/group', 'builder'), ('POST', '/api/workspace/queue/confirm-group', 'builder'),
                 ('GET', '/api/workspace/relation-form', 'builder'), ('POST', '/api/workspace/relations/confirm', 'builder'), ('POST', '/api/workspace/queue/send-back', 'builder'),
                 ('GET', '/api/workspace/permissions', 'admin'), ('POST', '/api/workspace/permissions', 'admin'),
-                ('POST', '/api/workspace/datasets/upload', 'builder'), ('POST', '/api/workspace/datasets/delete', 'builder'), ('POST', '/api/ontology/build', 'builder'),
-                ('POST', '/api/ontology/confirm', 'builder'), ('POST', '/api/ontology/code-meanings/withdraw', 'builder'), ('POST', '/api/ontology/pipelines/run', 'builder'),
-                ('POST', '/api/ontology/review/confirm', 'builder'), ('POST', '/api/ontology/requery', 'builder'), ('POST', '/api/ontology/library/import', 'builder'),
+                ('POST', '/api/workspace/datasets/upload', 'builder'), ('POST', '/api/workspace/datasets/delete', 'builder'), ('POST', '/api/ontology/build', UNLIMITED),
+                ('POST', '/api/ontology/confirm', UNLIMITED), ('POST', '/api/ontology/code-meanings/withdraw', UNLIMITED), ('POST', '/api/ontology/pipelines/run', UNLIMITED),
+                ('POST', '/api/ontology/review/confirm', UNLIMITED), ('POST', '/api/ontology/requery', UNLIMITED), ('POST', '/api/ontology/library/import', 'builder'),
                 ('GET', '/api/workspace/pipelines', 'builder'), ('GET', '/api/workspace/pipelines/options', 'builder'), ('GET', '/api/workspace/pipelines/x/runs/2', 'builder'),
                 ('POST', '/api/workspace/pipelines', 'builder'), ('POST', '/api/workspace/pipelines/run', 'builder'), ('POST', '/api/workspace/pipelines/expression/trial', 'builder'),
                 ('POST', '/api/workspace/pipelines/delete', 'admin'),
