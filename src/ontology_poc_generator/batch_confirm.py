@@ -62,7 +62,7 @@ def _in_order(conn, rows: list[dict]) -> list[dict]:
 
 def _why_not_theirs(conn, row: dict, user: dict | None) -> str | None:
     if limited_on(conn, row, user):
-        return '你受行规则限制，看不到全部数据：要不受限制的建设者来确认'
+        return '你受行规则或列的限制，看不到全部数据：要不受限制的建设者来确认'
     if user is not None and user['role'] == 'viewer':
         return '你是只读成员，不能确认'
     if not _confirmers(conn, row, user)[0]:

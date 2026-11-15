@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS confirmation (
     confirmed_at TEXT NOT NULL, content_json TEXT, evidence_ref TEXT, dataset_versions_json TEXT, self_confirmed INTEGER NOT NULL DEFAULT 0, snapshot_json TEXT);
 CREATE TABLE IF NOT EXISTS type_access (
     type_id TEXT PRIMARY KEY, user_ids_json TEXT NOT NULL);
+-- a property only the people listed (and admins) may see: for anyone else the type is the type without it (type_access.hidden_columns)
+CREATE TABLE IF NOT EXISTS column_access (
+    type_id TEXT NOT NULL, column_name TEXT NOT NULL, user_ids_json TEXT NOT NULL, PRIMARY KEY (type_id, column_name));
 CREATE TABLE IF NOT EXISTS value_privacy (
     type_id TEXT NOT NULL, column_name TEXT NOT NULL, PRIMARY KEY (type_id, column_name));
 -- what a pipeline's output column was made from, kept with the dataset it wrote: 'unsent' (made from a column kept from the model), 'ai' (made from a model's answer)

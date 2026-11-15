@@ -13,7 +13,7 @@ export function BoardCards({ data }) {
   return (
     <div className="board-grid">
       {data.components.map((c) => (
-        <section key={c.id} className={`board-card kind-${c.chart.kind}`}>
+        <section key={c.id} className={`board-card kind-${c.chart?.kind}`}>
           <h2 className="item-title">{c.title}</h2>
           {c.status === "waiting" ? (
             <>

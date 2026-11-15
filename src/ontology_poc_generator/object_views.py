@@ -23,9 +23,10 @@ import json
 from ontology_poc_generator.named_views import NUMERIC, orderable
 from ontology_poc_generator.object_types import (
     LIMITED_NOTE, MAX_DESCRIPTION, MAX_NAME, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _label, _state_view, _text, _type_row, _visible,
-    dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, write_confirmation, write_elements)
+    dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.public_ontology import normalize_value
 from ontology_poc_generator.row_rules import positions as row_positions, restriction
+from ontology_poc_generator.type_access import reads_hidden
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
 OPS = {'is': '是', 'is_not': '不是'}
@@ -182,7 +183,7 @@ def check_definition(conn, payload: dict, user: dict | None, name: str | None = 
     written, and/or a latest rule on columns of its dataset that can be put in order. TypeRefused says what is wrong."""
     name = _text(payload.get('name') if name is None else name, '视图的名字', MAX_NAME)
     description = _text(payload.get('description') or '', '说明', MAX_DESCRIPTION, required=False)
-    type_row = _type_row(conn, payload.get('type'), user)
+    type_row = whole_type_row(conn, payload.get('type'), user)
     type_content = _content(type_row)
     dataset = current_dataset(conn, type_content['dataset'])
     if dataset is None:
@@ -333,7 +334,7 @@ def view_visible(conn, row: dict, user: dict | None) -> bool:
     if user is not None and user['role'] == 'viewer' and row['state'] != 'confirmed':
         return False
     type_row = element_row(conn, type_id(_content(row)['type']))
-    return type_row is not None and _visible(conn, type_row, user)
+    return type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, row['element_id'], user, _content(row))
 
 
 def waiting_on(conn, content: dict) -> list[dict]:
@@ -484,7 +485,7 @@ def list_views(conn, english_name: str, user: dict | None) -> list[dict]:
 def view_form(conn, english_name: str, user: dict | None) -> dict:
     """What the form for a new view offers on this type: the code columns with the meanings written for them, and the columns of its dataset with whether
     they can be put in order."""
-    type_row = _type_row(conn, english_name, user)
+    type_row = whole_type_row(conn, english_name, user)
     content = _content(type_row)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id']) if dataset else {}

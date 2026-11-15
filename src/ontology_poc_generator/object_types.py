@@ -20,7 +20,7 @@ import re
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator.row_rules import keeps, positions, restriction
-from ontology_poc_generator.type_access import can_access, dataset_hidden, hidden_values, visible_to
+from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
 from ontology_poc_generator.workspace_store import FAN_NOTE, StaleElement, _canonical, _key_of, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line
 
 TYPE_PREFIX = 'objtype:'
@@ -167,6 +167,18 @@ def _type_row(conn, english_name, user: dict | None) -> dict:
     return row
 
 
+KEPT_COLUMNS = '这个对象类型有属性不让你看：它的定义、含义和建在它上面的东西，要由看得到全部属性的人来写'
+
+
+def whole_type_row(conn, english_name, user: dict | None) -> dict:
+    """_type_row for writing a definition or opening a form on the type: refused (403) to a person kept from any of its columns, who would otherwise name,
+    or be shown, a column they may not see."""
+    row = _type_row(conn, english_name, user)
+    if hidden_columns(conn, row['element_id'], user):
+        raise TypeRefused(KEPT_COLUMNS, 403)
+    return row
+
+
 def refuse_ai_columns(conn, dataset_name: str, columns, what: str) -> None:
     """A column an LLM step wrote cannot be a key or a confirmed code meaning until its sample review has passed and the pipeline is confirmed by a second person."""
     from ontology_poc_generator.workspace_pipelines import ai_uncleared   # the pipelines read types, so the import is made here
@@ -201,6 +213,11 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
         raise TypeRefused(f'没有叫“{payload.get("dataset")}”的数据集', 404)
     cols = dataset_columns(conn, dataset['id'])
     key = payload.get('key')
+    kept = {c for (t,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' AND json_extract(content_json, '$.dataset') = ?", (dataset['name'],))
+            for c in column_allowed(conn, t)} if isinstance(key, list) else set()
+    named = {k for k in key if isinstance(k, str)} if isinstance(key, list) else set()
+    if kept & named:   # a column kept from some people binds the dataset: it cannot name the objects of another type over it
+        raise TypeRefused(f'“{"、".join(sorted(kept & named))}”在这个数据集上只给部分人看，不能当编号；先在“权限”页让所有人看它', 409)
     key_check, warnings = check_key_choice(conn, dataset, cols, key)
     wanted = payload.get('properties') or []
     if not isinstance(wanted, list) or not all(isinstance(p, dict) for p in wanted):
@@ -352,7 +369,7 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     the description keeps its state and only goes to the log. Meanings in the payload are put forward like propose_meanings does; the meanings of a column
     that is no longer a code column, or of a dataset the type no longer reads, are taken away (post them again to keep them). Everything is written in one
     transaction, with what a confirmed element that stopped being confirmed moves. Returns {'id', 'state', 'reset', 'warnings'}."""
-    row = _type_row(conn, payload.get('id'), user)
+    row = whole_type_row(conn, payload.get('id'), user)
     if payload.get('version') != row['version']:
         raise TypeRefused('这个对象类型在你打开之后被改了，请刷新后再改', 409)
     old = _content(row)
@@ -415,7 +432,7 @@ def propose_meanings(conn, payload: dict, who: str | None, user: dict | None = N
     """{id: the type, column, values: [{value, label, description}]}: what some values of one code column mean, put over what is on file (a blank label
     takes a value's meaning back). The meanings become the person's proposal: checked, and another builder confirms them. Meanings that were confirmed and
     are changed move the type that reads them, and the relations on it, to needs_look (in the same write). Returns {'changed': bool}."""
-    row = _type_row(conn, payload.get('id'), user)
+    row = whole_type_row(conn, payload.get('id'), user)
     content, column = _content(row), payload.get('column')
     if not any(p['column'] == column and p['enum'] for p in content['properties']):
         raise TypeRefused(f'“{column}”不是这个类型里的代码列')
@@ -757,7 +774,7 @@ def _types_read(row: dict) -> list[str]:
 def limited_on(conn, row: dict, person: dict | None) -> bool:
     """Whether a row rule limits this person to some of the rows of what the element is about: they do not see all the data, and what confirming a type, its
     meanings, a view or a relation quotes (counts of the whole data) is not theirs to read. An action's definition quotes no counts."""
-    return not row['element_id'].startswith(ACTION_PREFIX) and any(restriction(conn, t, person) is not None for t in _types_read(row))
+    return not row['element_id'].startswith(ACTION_PREFIX) and any(restriction(conn, t, person) is not None or hidden_columns(conn, t, person) for t in _types_read(row))   # a column kept from them: not all the data either
 
 
 HIDDEN_REASON = '原因里有全部数据的统计，你受行规则限制，看不到'
@@ -789,7 +806,7 @@ def _settled_since(conn, row: dict) -> str:
 
 def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
     if limited_on(conn, row, user):
-        raise TypeRefused('你受行规则限制，只看得到一部分行，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的建设者来确认', 403)
+        raise TypeRefused('你受行规则或列的限制，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的建设者来确认', 403)
 
 
 def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
@@ -822,7 +839,8 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
             'cause': row['cause'] if row['state'] == 'needs_look' else None, 'via': row['via'] if row['state'] == 'needs_look' else None,
             'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None,
             'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None, 'pipelines_blocking': producers,
-            'confirmers': others if waiting and not blocked else [], 'meanings_blocking': meanings,
+            'confirmers': others if waiting and not blocked else [],
+            'meanings_blocking': [c for c in meanings if c not in kept] if meanings and (kept := hidden_columns(conn, row['element_id'], user)) else meanings,   # a column kept from them is not named
             'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None,
             'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at']}
 
@@ -915,6 +933,8 @@ def type_page(conn, english_name: str, user: dict | None) -> dict:
 def type_detail(conn, english_name: str, user: dict | None) -> dict:
     row = _type_row(conn, english_name, user)
     content = _content(row)
+    hidden = hidden_columns(conn, row['element_id'], user)   # kept from this person: for them the type has no such property, and the dataset's list leaves it out
+    content = {**content, 'properties': [p for p in content['properties'] if p['column'] not in hidden]}
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
     unsent = hidden_values(conn, row['element_id'])
@@ -926,7 +946,8 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
             'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
             **({'limited_note': LIMITED_NOTE} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),
-            'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items()]}
+            'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items() if n not in hidden],
+            'columns_kept': len(hidden)}
 
 
 def type_objects(conn, english_name: str, page: int, user: dict | None) -> dict:
@@ -1001,10 +1022,15 @@ def _action_line_readable(conn, element: str, after: dict, user: dict | None) ->
 def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
     """The log lines about these elements, newest first (the caller has checked that this person may read them). A line of an action about a row a row rule keeps
     from `user` is left out altogether."""
-    out, limited = [], {}
+    out, limited, kept_from, hidden_of = [], {}, {}, {}
+    hidden = lambda element: hidden_of.setdefault(element, hidden_columns(conn, element, user))
     for at, who, element, change, before, after in conn.execute(
             f'SELECT time, who, element_id, change, before_json, after_json FROM log WHERE element_id IN ({",".join("?" * len(ids))}) ORDER BY time DESC, rowid DESC', ids):
         after = json.loads(after) if after else {}
+        if element not in kept_from:   # a meaning, view, relation, derived property or action that reads a column kept from this person: none of its lines
+            kept_from[element] = element.startswith((ENUM_PREFIX, VIEW_PREFIX, RELATION_PREFIX, DERIVED_PREFIX, ACTION_PREFIX)) and reads_hidden(conn, element, user)
+        if kept_from[element] or (change in ('values_privacy_changed', 'column_access_changed') and after.get('column') in hidden(element)):
+            continue
         if change == 'needs_look' and after.get('reason'):   # a reason that quotes counts of the whole data
             if element not in limited:
                 held = element_row(conn, element)
@@ -1020,9 +1046,10 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
                     'caused_by': after.get('caused_by'), 'self_confirmed': bool(after.get('self_confirmed')),
                     'visible_to': after.get('visible_to') if change == 'access_changed' else None,
-                    'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(after['columns']) if change == 'meanings_retired'
+                    'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(c for c in after['columns'] if c not in hidden(element)) or '你看不到的列' if change == 'meanings_retired'
                     else after.get('text') if change.startswith('action_') or change == 'confirmed_together' else after.get('summary') if change == 'row_rules_changed'
                     else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed'
+                    else f'{after["column"]}：{"所有人都能看" if after["visible_to"] == "everyone" else "只给 " + "、".join(after["visible_to"]) + " 看（还有管理员）" if after["visible_to"] else "只有管理员能看"}' if change == 'column_access_changed'
                     else f'第 {after["run"]} 次运行，写了 {"、".join(after["outputs"]) or "没有数据集"}' if change == 'run'
                     else f'第 {after["run"]} 次运行失败：{after["error"]}' if change == 'run_failed' else None})
     return out

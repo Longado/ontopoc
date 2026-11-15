@@ -227,15 +227,16 @@ export function TypePage({ route }) {
             <h1 tabIndex={-1}>{t.name} <span className="muted id">{t.id}</span> <State item={t} /></h1>
             {mayBuild && (
               <div className="head-actions">
-                <a className="button secondary" href={hrefFor({ page: "typeedit", id })}>修改</a>
+                {!t.columns_kept && <a className="button secondary" href={hrefFor({ page: "typeedit", id })}>修改</a>}
                 {t.can_confirm && <button className="primary" onClick={confirm} disabled={busy}>确认这个对象类型</button>}
               </div>
             )}
           </div>
           {error && <p className="error">{error}</p>}
           <p className="facts">
-            <span>来源 {t.rows_limited ? t.dataset : <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>} 第 {t.dataset_version} 版{uses.data?.data.uploaded_at && `，上传于 ${ageText(uses.data.data.uploaded_at)}${uses.data.data.who ? `（${uses.data.data.who}）` : ""}`}</span>
+            <span>来源 {t.rows_limited || t.columns_kept ? t.dataset : <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>} 第 {t.dataset_version} 版{uses.data?.data.uploaded_at && `，上传于 ${ageText(uses.data.data.uploaded_at)}${uses.data.data.who ? `（${uses.data.data.who}）` : ""}`}</span>
             <span>{t.rows_limited ? `你能看到 ${t.rows} 个对象` : `${t.rows} 个对象`}</span>
+            {t.columns_kept > 0 && <span className="faint">有 {t.columns_kept} 个属性不让你看</span>}
             {t.description && <span>{t.description}</span>}
             {t.visible_to && t.visible_to !== "everyone" && <span>只有{t.visible_to.length ? t.visible_to.join("、") : "管理员"}看得到</span>}
           </p>

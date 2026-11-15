@@ -26,7 +26,7 @@ import re
 from ontology_poc_generator.explorer import explore_chart, explore_meta, explore_table, normalize_chart, normalize_query
 from ontology_poc_generator.object_types import TypeRefused, _confirmers, _content, _type_row, element_row, type_id, was_confirmed, waiting_for_viewer
 from ontology_poc_generator.object_views import view_id
-from ontology_poc_generator.type_access import can_access
+from ontology_poc_generator.type_access import can_access, hidden_columns
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS dashboard (
@@ -261,7 +261,8 @@ def delete_dashboard(conn, user: dict | None, payload: dict) -> dict:
 def _with_bar(conn, user: dict | None, component: dict, bar: dict) -> dict:
     """The component's query with the filter bar's picks added for the fields its type has (a pick for a field it does not have leaves it alone)."""
     query = component['query']
-    own = {p['column'] for p in _content(_type_row(conn, query['type'], user))['properties']}
+    row = _type_row(conn, query['type'], user)
+    own = {p['column'] for p in _content(row)['properties']} - hidden_columns(conn, row['element_id'], user)
     added = [{'field': f, 'op': 'eq', 'value': v} for f, v in bar.items() if f in own]
     return {**query, 'filters': [*query['filters'], *added]}
 
@@ -281,8 +282,15 @@ def _waiting_on(conn, user: dict | None, component: dict) -> list[str] | None:
     return list(dict.fromkeys(name for r in pending for name in _confirmers(conn, r, user)[1]))
 
 
+def _kept_from(conn, user: dict | None, component: dict) -> set[str]:
+    """The columns of the component's type kept from this person."""
+    return hidden_columns(conn, type_id(str(component['query'].get('type'))), user)
+
+
 def _failed(conn, user: dict | None, component: dict, exc: Exception) -> dict:
     base = {'id': component['id'], 'title': component['title'], 'chart': component['chart']}
+    if _kept_from(conn, user, component):   # the reason may name a column kept from them: say only that they cannot read it
+        return {**base, 'chart': {'kind': component['chart'].get('kind')}, 'status': 'unavailable', 'message': '这个组件用到了你看不到的属性'}   # the kind only: the rest names columns
     waiting = _waiting_on(conn, user, component) if isinstance(exc, TypeRefused) else None
     if waiting is not None:
         who = '、'.join(waiting) or '有权限确认的人'
@@ -318,7 +326,10 @@ def _bar_options(conn, user: dict | None, spec: dict, picked: dict) -> list[dict
     """The filter bar as the page draws it: each field with its name, the values to pick from (read from the first component whose type has the field, over the rows
     this person may read) and the pick."""
     out = []
+    kept = set().union(*(_kept_from(conn, user, c) for c in spec['components'])) if spec['components'] else set()
     for f in spec['filters']:
+        if f['field'] in kept:   # a filter on a column kept from them is not on their bar
+            continue
         options, name = None, f['label']
         for component in spec['components']:
             try:
@@ -355,7 +366,7 @@ def _headline(components: list[dict]) -> dict:
     return {'components': len(components), 'unavailable': unavailable, 'waiting': waiting, 'grey': grey, 'text': '；'.join(said) or '全部按已确认的定义算出'}
 
 
-def _with_last(conn, user: dict | None, board: int, picked: dict, components: list[dict]) -> list[dict]:
+def _with_last(conn, user: dict | None, board: int, picked: dict, components: list[dict], components_spec: list[dict] = ()) -> list[dict]:
     """Each result that stands on confirmed definitions is kept for this reader as the last confirmed one; a component that waits for a confirmation carries the one that
     was kept, {'result', 'at'}, or none when this reader had not read it while it was confirmed."""
     reader, picks, out = user['id'] if user else 0, json.dumps(picked, sort_keys=True, ensure_ascii=False), []
@@ -365,6 +376,8 @@ def _with_last(conn, user: dict | None, board: int, picked: dict, components: li
             conn.execute('INSERT OR REPLACE INTO dashboard_last(dashboard_id, component_id, reader, picks, result_json, at) VALUES (?, ?, ?, ?, ?, ?)',
                          (*key, json.dumps(c['result'], ensure_ascii=False), _now()))
             out.append(c)
+        elif c['status'] == 'waiting' and next((x for x in components_spec if x['id'] == c['id']), None) and _kept_from(conn, user, next(x for x in components_spec if x['id'] == c['id'])):
+            out.append({**c, 'last': None})   # what was kept was worked out before a column was kept from them
         elif c['status'] == 'waiting':
             kept = conn.execute('SELECT result_json, at FROM dashboard_last WHERE dashboard_id = ? AND component_id = ? AND reader = ? AND picks = ?', key).fetchone()
             out.append({**c, 'last': {'result': json.loads(kept[0]), 'at': kept[1]} if kept else None})
@@ -378,7 +391,7 @@ def dashboard_data(conn, user: dict | None, dashboard_id, bar=None) -> dict:
     ensure_schema(conn)
     record = _found(conn, user, dashboard_id)
     picked = _picked(record['spec'], bar)
-    components = _with_last(conn, user, record['id'], picked, evaluate(conn, user, record['spec'], picked))
+    components = _with_last(conn, user, record['id'], picked, evaluate(conn, user, record['spec'], picked), record['spec']['components'])
     return {'id': record['id'], 'name': record['name'], 'bar': _bar_options(conn, user, record['spec'], picked), 'components': components, 'headline': _headline(components),
             'refresh_seconds': record['refresh_seconds'], 'expired': _expired(record), 'read_at': _now(), 'sign_in_note': SIGN_IN_NOTE}
 

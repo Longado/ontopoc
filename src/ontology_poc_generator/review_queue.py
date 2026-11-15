@@ -20,6 +20,7 @@ from ontology_poc_generator.object_views import confirm_view, describe, open_new
 from ontology_poc_generator.workspace_pipelines import (
     _inputs_now, confirm_pipeline, output_states, pipeline_state, pipeline_visible, waiting_on as pipeline_waiting)
 from ontology_poc_generator.row_rules import without_rules
+from ontology_poc_generator.type_access import hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_store import FAN_NOTE, current_dataset, fan_marks, log_line
 
 IN_QUEUE = ('proposed', 'checked', 'needs_look')
@@ -27,7 +28,7 @@ ORDER = {'needs_look': 0, 'pending': 1, 'checked': 1, 'proposed': 2}
 MAX_REASON = 300
 
 
-def _type_lines(conn, row: dict, content: dict, limited: bool = False) -> list[dict]:
+def _type_lines(conn, row: dict, content: dict, limited: bool = False, hidden: frozenset = frozenset()) -> list[dict]:
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else {}
     lines = []
     if limited:   # a row rule keeps part of the data from this person: no count of the whole data
@@ -41,7 +42,8 @@ def _type_lines(conn, row: dict, content: dict, limited: bool = False) -> list[d
     lines += [{'ok': False, 'text': f'“{name}”{FAN_NOTE}（只提醒，不拦着确认）'} for column, name in names.items() if column in fanned]   # not a reason to stop: what is built on it should know
     for column, state in conn.execute("SELECT substr(d.depends_on, ?), s.state FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on "
                                       "WHERE d.element_id = ? AND d.depends_on LIKE 'enum:%'", (len(f'{ENUM_PREFIX}{content["english_name"]}:') + 1, row['element_id'])):
-        lines.append({'ok': state == 'confirmed', 'text': f'“{column}”的含义{"已确认" if state == "confirmed" else "还没有确认"}'})
+        if column not in hidden:   # a column kept from this person is not named to them
+            lines.append({'ok': state == 'confirmed', 'text': f'“{column}”的含义{"已确认" if state == "confirmed" else "还没有确认"}'})
     return lines
 
 
@@ -115,7 +117,7 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
                              *[{'ok': w['state'] == 'confirmed', 'text': f'“{w["name"]}”{"已确认" if w["state"] == "confirmed" else "还没有确认"}'} for w in view['waiting_on']]]
     elif element_id.startswith(ENUM_PREFIX):
         type_row = element_row(conn, f'{TYPE_PREFIX}{content["type"]}')
-        if type_row is None or not _visible(conn, type_row, user):
+        if type_row is None or not _visible(conn, type_row, user) or reads_hidden(conn, element_id, user, content):
             return None
         view = _state_view(conn, row, user)
         view['can_confirm'] = view['can_confirm'] and row['state'] != 'needs_look'   # meanings that need another look are put forward again, not confirmed as they were
@@ -127,10 +129,12 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
     else:
         if not _visible(conn, row, user):
             return None
+        hidden = frozenset(hidden_columns(conn, element_id, user))
+        content = {**content, 'properties': [p for p in content['properties'] if p['column'] not in hidden]}
         view = _state_view(conn, row, user)
         base = {'kind': 'type', 'title': content['name'], 'id': content['english_name'], 'lines': []}
         if not light:
-            base['lines'] = _type_lines(conn, row, content, view['limited_by_rule'])
+            base['lines'] = _type_lines(conn, row, content, view['limited_by_rule'], hidden)
             view['seen'] = None if view['limited_by_rule'] else seen_of_type(current_dataset(conn, content['dataset']))
     if light:
         return {'element': element_id, **base, **view}

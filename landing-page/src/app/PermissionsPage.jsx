@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { getPermissions, setPermission, setRowRules } from "./api.js";
+import { getPermissions, setColumnAccess, setPermission, setRowRules } from "./api.js";
 import { FormDialog } from "./FormDialog.jsx";
 import { attrNames, cutOff, loseAccess, prefilledRule, ruleText } from "./permissionModel.js";
 import { Select } from "./Select.jsx";
@@ -95,6 +95,52 @@ function RowRules({ type, people, onChanged, onError, onSaved }) {
   );
 }
 
+/** Who sees each property of one type: everyone, or the people ticked (admins always). The key names the objects and is not offered. Saved at once, one column at a time. */
+function ColumnAccess({ type, people, onChanged, onError, onSaved }) {
+  const [busy, setBusy] = useState(false);
+  const columns = type.columns.filter((c) => !c.key);
+  const save = async (column, visibleTo) => {
+    setBusy(true);
+    onError("");
+    try {
+      await setColumnAccess(type.id, column, visibleTo);
+      onSaved();
+    } catch (e) {
+      onError(e.message);
+    }
+    setBusy(false);
+    onChanged();
+  };
+  if (!columns.length) return null;
+  return (
+    <section className="card">
+      <h3 className="item-title">{type.name}</h3>
+      <div className="table-wrap">
+        <table className="people">
+          <thead><tr><th>属性</th><th>所有人</th>{people.map((p) => <th key={p.id}>{p.name}</th>)}</tr></thead>
+          <tbody>
+            {columns.map((c) => {
+              const ids = type.column_access?.[c.column];
+              return (
+                <tr key={c.column}>
+                  <td>{c.name}</td>
+                  <td><input type="checkbox" disabled={busy} checked={!ids} aria-label={`${type.name}.${c.name}：所有人能看`} onChange={(e) => save(c.column, e.target.checked ? "everyone" : [])} /></td>
+                  {people.map((p) => (
+                    <td key={p.id}>
+                      <input type="checkbox" disabled={busy || !ids} checked={!ids || ids.includes(p.id)} aria-label={`${type.name}.${c.name}：${p.name}能看`}
+                        onChange={(e) => save(c.column, toggled(ids ?? [], p.id, e.target.checked))} />
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 /** Who sees which object type: everyone, or the people ticked. A change that takes the type from someone asks first, and says who. */
 export function PermissionsPage() {
   const [state, reload] = useLoad(getPermissions, []);
@@ -171,6 +217,10 @@ export function PermissionsPage() {
             点名看“全部行”的人不受它限制：第一次加规则时自动给还没填属性的人加了“全部行”，之后给他们填了属性，要把这条“全部行”里的名字去掉才会按属性看。
             行为（类型页“行为”里定义的、会改某几个属性的值的操作）不能改写规则读的属性：改一次就能把一行移进或移出某个人看得到的范围。有行规则的类型，它的数据集只有管理员和被点名看全部行的人能看。</p>
           {types.map((t) => <RowRules key={t.id} type={t} people={later} onChanged={reload} onError={setError} onSaved={() => setSaved("已保存")} />)}
+          <h2 className="section">属性的可见范围</h2>
+          <p className="muted" style={{ marginBottom: 16 }}>一个属性可以只让勾选的人看（管理员始终看得到）。对没勾上的人，这个类型就像没有这个属性：对象表、探索、图表、问答、关系图里都没有它，读它的视图、派生属性、关系和行为也看不到；
+            这个类型的数据集只有看得到全部属性的人能打开；他们也不能在这个类型上定义或确认东西。编号列标明每个对象是谁，不能单独藏，要藏就把整个类型藏起来。</p>
+          {types.map((t) => <ColumnAccess key={t.id} type={t} people={later} onChanged={reload} onError={setError} onSaved={() => setSaved("已保存")} />)}
         </>
       )}
       {asking && (

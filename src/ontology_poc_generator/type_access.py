@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from ontology_poc_generator.row_rules import has_rules, holds_all_rows, rules_of
+from ontology_poc_generator.row_rules import has_rules, holds_all_rows, rules_of, types_on_dataset_of
 from ontology_poc_generator.workspace_store import log_line
 
 TYPE_PREFIX = 'objtype:'
@@ -51,7 +51,8 @@ def _can(conn, type_element_id: str, user: dict | None, seen: set[str]) -> bool:
 
 
 def _type_hidden(conn, element_id: str, user: dict, seen: set[str]) -> bool:
-    return not _can(conn, element_id, user, seen) or (has_rules(conn, element_id) and not holds_all_rows(conn, element_id, user))   # a row-ruled type holds rows they may not see
+    return (not _can(conn, element_id, user, seen) or (has_rules(conn, element_id) and not holds_all_rows(conn, element_id, user))   # a row-ruled type holds rows they may not see
+            or bool(hidden_columns(conn, element_id, user)))   # and a type with a column kept from them holds values they may not see
 
 
 def _view_hidden(conn, view_element_id: str, user: dict, seen: set[str]) -> bool:
@@ -151,6 +152,104 @@ def set_access(conn, english_name: str, visible_to, who: str | None) -> dict:
     return {'visible_to': 'everyone' if ids is None else _names(conn, ids)}
 
 
+# --- columns kept from people ---------------------------------------------------------------------------------------------------------------------------
+
+def column_allowed(conn, type_element_id: str) -> dict[str, list[int]]:
+    """{column: the user ids who may see it} for the columns of this type that are not everyone's."""
+    return {c: json.loads(ids) for c, ids in conn.execute('SELECT column_name, user_ids_json FROM column_access WHERE type_id = ?', (type_element_id,))}
+
+
+def hidden_columns(conn, type_element_id: str, user: dict | None) -> set[str]:
+    """The columns of this type kept from this person: for them the type is the type without these properties. Admins and the local no-sign-in person: none.
+    Like a row rule, keeping a column binds the dataset's column: a column kept on any type reading the same dataset is kept on this one too, so a second type
+    over the same table is no way round."""
+    if user is None or user['role'] == 'admin':
+        return set()
+    if not conn.execute('SELECT 1 FROM column_access LIMIT 1').fetchone():
+        return set()
+    return {c for t in types_on_dataset_of(conn, type_element_id) for c, ids in column_allowed(conn, t).items() if user['id'] not in ids}
+
+
+def _content(conn, element_id: str) -> dict | None:
+    row = conn.execute('SELECT content_json FROM element_state WHERE element_id = ?', (element_id,)).fetchone()
+    return json.loads(row[0]) if row and row[0] else None
+
+
+def columns_read(conn, element_id: str, content: dict | None = None) -> set[tuple[str, str]]:
+    """The (type element id, column) pairs an element reads: a meaning its column, a view its conditions and "latest" columns, a relation its two join columns,
+    an action the columns it writes and tests, a derived property its inputs, what it counts, its conditions and the join columns of every relation on its path."""
+    content = content if content is not None else _content(conn, element_id)
+    kind = element_id.partition(':')[0]
+    t = lambda english: f'{TYPE_PREFIX}{english}'
+    if kind == 'enum' and content is None and element_id.count(':') >= 2:   # a retired set of meanings keeps no content: its id still names the column
+        return {(t(element_id.split(':')[1]), element_id.split(':', 2)[2])}
+    if content is None:
+        return set()
+    if kind == 'enum':
+        return {(t(content['type']), content['column'])} if 'type' in content and 'column' in content else {(t(element_id.split(':')[1]), element_id.split(':', 2)[2])}
+    if kind == 'objview':
+        latest = content.get('latest') or {}
+        return {(t(content['type']), c) for c in [*(f['column'] for f in content['filters']), *latest.get('key', []), *([latest['order']] if latest.get('order') else [])]}
+    if kind == 'relation':
+        return {(t(content['from']), content['from_column']), (t(content['to']), content['to_column'])}
+    if kind == 'objaction':
+        return {(t(content['type']), c) for c in [*content['properties'], *([content['condition']['column']] if content.get('condition') else [])]}
+    if kind == 'derived':
+        measured = t(content['types'][-1]) if content.get('types') else t(content['type'])
+        latest = content.get('latest') or {}
+        out = {(t(content['type']), i['column']) for i in content.get('inputs') or []}
+        out |= {(measured, c) for c in [(content.get('measure') or {}).get('column'), *(f['column'] for f in content.get('conditions') or []), latest.get('order'), latest.get('tie')] if c}
+        for relation in content.get('path') or []:
+            out |= columns_read(conn, f'relation:{relation}')
+        return out
+    return set()
+
+
+def reads_hidden(conn, element_id: str, user: dict | None, content: dict | None = None) -> bool:
+    """Whether the element reads a column kept from this person: then it is not there for them (what it says, counts or shows comes from that column)."""
+    if user is None or user['role'] == 'admin':
+        return False
+    return any(c in hidden_columns(conn, type_element_id, user) for type_element_id, c in columns_read(conn, element_id, content))
+
+
+def set_column_access(conn, english_name: str, column: str, visible_to, who: str | None) -> dict:
+    """visible_to: 'everyone' or a list of user ids (admins always see it). A key column cannot be kept from anyone: it names the objects; keep the whole type
+    from them instead. Returns {'visible_to': 'everyone' | [names]}."""
+    element_id = f'{TYPE_PREFIX}{english_name}'
+    content = _content(conn, element_id)
+    if content is None:
+        raise AccessRefused('没有这个对象类型', 404)
+    if column not in {p['column'] for p in content['properties']}:
+        raise AccessRefused(f'“{column}”不是这个对象类型的属性')
+    if any(column in (_content(conn, t) or {}).get('key', []) for t in types_on_dataset_of(conn, element_id)):
+        raise AccessRefused(f'“{column}”是编号列，标明每个对象是谁，不能只对一部分人藏起来；要藏就把整个类型对他们藏起来')
+    before = column_allowed(conn, element_id).get(column)
+    if visible_to == 'everyone':
+        ids = None
+    elif isinstance(visible_to, list) and all(isinstance(i, int) and not isinstance(i, bool) for i in visible_to):
+        ids = sorted(set(visible_to))
+        known = {r[0] for r in conn.execute(f'SELECT id FROM user WHERE id IN ({",".join("?" * len(ids))})', ids)} if ids else set()
+        if set(ids) - known:
+            raise AccessRefused('名单里有不存在的账号')
+    else:
+        raise AccessRefused('可见范围要写成 everyone，或一份账号编号的名单')
+    said = lambda v: 'everyone' if v is None else _names(conn, v)
+    if ids == before:
+        return {'visible_to': said(ids)}
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        if ids is None:
+            conn.execute('DELETE FROM column_access WHERE type_id = ? AND column_name = ?', (element_id, column))
+        else:
+            conn.execute('INSERT OR REPLACE INTO column_access(type_id, column_name, user_ids_json) VALUES (?, ?, ?)', (element_id, column, json.dumps(ids)))
+        log_line(conn, who or '未署名', element_id, 'column_access_changed', before={'column': column, 'visible_to': said(before)}, after={'column': column, 'visible_to': said(ids)})
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    return {'visible_to': said(ids)}
+
+
 def hidden_values(conn, type_element_id: str) -> set[str]:
     """The columns of this type whose values are never sent to the model that reads a question (a builder's switch on the type page). Not part of what a
     person confirms: flipping it leaves the state alone and goes to the log."""
@@ -191,5 +290,6 @@ def access_table(conn) -> dict:
         allowed = allowed_ids(conn, element_id)
         c = json.loads(content)
         types.append({'id': element_id[len(TYPE_PREFIX):], 'name': c['name'], 'state': state, 'everyone': allowed is None, 'user_ids': allowed or [],
-                      'columns': [{'column': p['column'], 'name': p['name']} for p in c['properties']], 'row_rules': rules_of(conn, element_id)})
+                      'columns': [{'column': p['column'], 'name': p['name'], 'key': p['column'] in c['key']} for p in c['properties']], 'row_rules': rules_of(conn, element_id),
+                      'column_access': column_allowed(conn, element_id)})
     return {'people': people, 'types': types}

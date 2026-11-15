@@ -22,7 +22,7 @@ from ontology_poc_generator.object_types import (
     ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _label, _type_row, _types_read, _visible, element_row, hidden_type_count, type_id)
 from ontology_poc_generator.object_views import view_visible
 from ontology_poc_generator.row_rules import positions, restriction
-from ontology_poc_generator.type_access import dataset_hidden
+from ontology_poc_generator.type_access import dataset_hidden, hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_pipelines import pipeline_visible
 from ontology_poc_generator.workspace_questions import _mine, reopen
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
@@ -68,12 +68,12 @@ def _chain(conn, element_id: str, path: tuple = ()) -> dict | None:
     return {**best, 'depth': best['depth'] + 1, 'at': element_id}
 
 
-def _cause(conn, chain: dict | None, hide: bool) -> dict | None:
+def _cause(conn, chain: dict | None, hide: bool, root_kept: bool = False) -> dict | None:
     if chain is None:
         return None
     kind = chain['own'] if chain['depth'] == 0 else 'upstream' if chain['depth'] == 1 else 'far_upstream'
     root_row = element_row(conn, chain['root'])
-    root = _label(conn, chain['root']) if root_row and chain.get('at', chain['root']) != chain['root'] else None
+    root = _label(conn, chain['root']) if root_row and not root_kept and chain.get('at', chain['root']) != chain['root'] else None   # a root that reads a column kept from them is not named
     return {'cause': kind, 'label': CAUSE_LABEL[kind], 'root_cause': chain['own'], 'root': root, 'short': None if hide else _short(conn, kind, root_row),
             'text': None if hide else chain['text'], **({'text_hidden': HIDDEN_WORDS} if hide else {})}
 
@@ -90,14 +90,15 @@ def _short(conn, kind: str, root_row: dict | None) -> str | None:
 def _limited(conn, row: dict | None, user: dict | None) -> bool:
     """Whether a row rule limits this person on any type the element is about. Unlike object_types.limited_on this holds for actions too: an action's own definition
     quotes no counts, but the cause on it is the words of the element at the root of the chain, which do."""
-    return row is not None and any(restriction(conn, t, user) is not None for t in _types_read(row))
+    return row is not None and any(restriction(conn, t, user) is not None or hidden_columns(conn, t, user) for t in _types_read(row))   # a column kept from them: not all of it either
 
 
 def stale_cause(conn, row: dict, user: dict | None) -> dict | None:
     """The cause of an element that needs another look, or None when it does not. The words are held back when the person is limited on this element or on the one
     at the root of the chain, whose reason they are."""
     chain = _chain(conn, row['element_id'])
-    return _cause(conn, chain, _limited(conn, row, user) or (chain is not None and _limited(conn, element_row(conn, chain['root']), user)))
+    root_kept = chain is not None and reads_hidden(conn, chain['root'], user)
+    return _cause(conn, chain, root_kept or _limited(conn, row, user) or (chain is not None and _limited(conn, element_row(conn, chain['root']), user)), root_kept)
 
 
 # --- the pieces both graphs draw -----------------------------------------------------------------------------------------------------------------
@@ -143,13 +144,15 @@ def _type_nodes(conn, user: dict | None) -> list[dict]:
         dataset = current_dataset(conn, content['dataset'])
         confirmed = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
         limit = restriction(conn, element_id, user)
+        kept = hidden_columns(conn, element_id, user)
         near = by_type.get(element_id, NEAR())
         nodes.append({
             'id': element_id, 'kind': 'type', 'key': content['english_name'], 'name': content['name'], 'description': content['description'], 'state': row['state'],
             'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None,
             'objects': None if dataset is None else dataset['rows_stored'] if limit is None else len(positions(dataset_records(conn, dataset), limit)), 'rows_limited': limit is not None,
             'dataset': {'name': content['dataset'], 'version': dataset['version'] if dataset else None},
-            'key_columns': content['key'], 'properties': [{'name': p['name'], 'column': p['column'], 'type': p['type'], 'key': p['column'] in content['key']} for p in content['properties']],
+            'key_columns': content['key'], 'properties': [{'name': p['name'], 'column': p['column'], 'type': p['type'], 'key': p['column'] in content['key']} for p in content['properties']
+                                                          if p['column'] not in kept],
             'confirmed_by': confirmed[0] if confirmed else None, 'confirmed_at': confirmed[1] if confirmed else None, 'confirmed_on': json.loads(confirmed[2]) if confirmed else None,
             'proposed_by': row['proposed_by'],
             'stale': stale_cause(conn, row, user),

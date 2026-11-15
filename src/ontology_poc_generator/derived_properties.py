@@ -39,13 +39,14 @@ from ontology_poc_generator.named_views import ORDERED_TEXT, orderable
 from ontology_poc_generator.object_relations import _relation_visible, relation_id
 from ontology_poc_generator.object_types import (
     DERIVED_PREFIX, ENGLISH_NAME, LIMITED_NOTE, MAX_DESCRIPTION, MAX_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
-    dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, write_confirmation, write_elements)
+    dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.object_views import meaning_labels
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, MAX_LENGTH, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipelines import PipelineRunError, deadline
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, NUMBER_TYPES, _aggregate_sql, _q, aggregation_options
 from ontology_poc_generator.row_rules import positions, restriction, types_on_dataset_of
+from ontology_poc_generator.type_access import reads_hidden
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
 KINDS = {'function': '函数', 'statistic': '统计'}
@@ -89,7 +90,8 @@ def derived_visible(conn, row: dict, user: dict | None) -> bool:
     """Seen by those who may see every type on its path (what it says and the values it gives are those types' rows); a viewer also needs it confirmed."""
     if user is not None and user['role'] == 'viewer' and row['state'] != 'confirmed':
         return False
-    return all((r := element_row(conn, type_id(t))) is not None and _visible(conn, r, user) for t in _content(row)['types'])
+    return all((r := element_row(conn, type_id(t))) is not None and _visible(conn, r, user) for t in _content(row)['types']) \
+        and not reads_hidden(conn, row['element_id'], user, _content(row))   # a column kept from them: inputs, what it counts, conditions, or a join on its path
 
 
 # --- walking the path ---------------------------------------------------------------------------------------------------------------------------------
@@ -552,7 +554,7 @@ def check_definition(conn, payload: dict, user: dict | None, english_name: str |
         raise TypeRefused('英文名只能用字母、数字和下划线，字母开头，最多 40 个字符')
     name = _text(payload.get('name'), '名称', MAX_NAME)
     description = _text(payload.get('description') or '', '说明', MAX_DESCRIPTION, required=False)
-    owner_row = _type_row(conn, payload.get('type'), user)
+    owner_row = whole_type_row(conn, payload.get('type'), user)
     owner = _content(owner_row)
     dataset = current_dataset(conn, owner['dataset'])
     if dataset is None:
@@ -598,14 +600,14 @@ def _statistic_body(conn, payload: dict, owner: dict, name: str, user: dict | No
     if problems:
         raise TypeRefused('；'.join(problems), 409)
     measured = hops[-1]['to_type']
-    m_row = _type_row(conn, measured, user)
+    m_row = whole_type_row(conn, measured, user)
     m = _content(m_row)
     m_dataset = current_dataset(conn, m['dataset'])
     if m_dataset is None:
         raise TypeRefused(f'数据集“{m["dataset"]}”已经不在了', 409)
     cols = dataset_columns(conn, m_dataset['id'])
     for h in hops:   # each type on the path must be readable by this person
-        _type_row(conn, h['to_type'], user)
+        whole_type_row(conn, h['to_type'], user)
     many = any(h['toward'] == 'many' for h in hops)
     posted = payload.get('measure') if isinstance(payload.get('measure'), dict) else {}
     column, fn = posted.get('column') or None, payload.get('fn') or None
@@ -857,14 +859,14 @@ def derived_log(conn, english_type: str, english_name: str, user: dict | None) -
 def derived_shape(conn, payload: dict, user: dict | None) -> dict:
     """What a form needs to offer after the person chose a path: the hops with the way each goes, whether an aggregation is required, the measured type's columns with the
     aggregations each may have, and the layers (snapshot or version) of a many side."""
-    owner = _content(_type_row(conn, payload.get('type'), user))
+    owner = _content(whole_type_row(conn, payload.get('type'), user))
     path = payload.get('path') if isinstance(payload.get('path'), list) else []
     hops, problems = _walk(conn, owner['english_name'], [p for p in path if isinstance(p, str)][:MAX_HOPS], user, confirmed_only=True)
     out = {'hops': [{k: h[k] for k in ('relation', 'name', 'from_type', 'to_type', 'toward')} for h in hops], 'problems': problems, 'many': any(h['toward'] == 'many' for h in hops),
            'measured': None}
     if not hops or problems:
         return out
-    m_row = _type_row(conn, hops[-1]['to_type'], user)
+    m_row = whole_type_row(conn, hops[-1]['to_type'], user)
     m = _content(m_row)
     dataset = current_dataset(conn, m['dataset'])
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
@@ -882,7 +884,7 @@ def derived_shape(conn, payload: dict, user: dict | None) -> dict:
 def derived_form(conn, english_type: str, user: dict | None) -> dict:
     """What the form for a new derived property offers on this type: its columns (with a sample value, 样本) for a formula, the functions the editor lists, the
     confirmed relations a path is made of, and the hint that a formula over the type's own columns is better made in a pipeline."""
-    owner = _content(_type_row(conn, english_type, user))
+    owner = _content(whole_type_row(conn, english_type, user))
     dataset = current_dataset(conn, owner['dataset'])
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
     limit = restriction(conn, type_id(english_type), user)
@@ -908,7 +910,7 @@ def derived_form(conn, english_type: str, user: dict | None) -> dict:
 
 def check_expression(conn, payload: dict, user: dict | None) -> dict:
     """校验 of an expression written for a formula, without trying it on rows: {'ok', 'errors': [{message, pos}], 'column_type'} over the columns of the type's dataset."""
-    owner = _content(_type_row(conn, payload.get('type'), user))
+    owner = _content(whole_type_row(conn, payload.get('type'), user))
     dataset = current_dataset(conn, owner['dataset'])
     if dataset is None:
         raise TypeRefused(f'数据集“{owner["dataset"]}”已经不在了', 409)
