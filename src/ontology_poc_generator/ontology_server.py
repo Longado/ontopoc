@@ -58,7 +58,7 @@ from ontology_poc_generator.ontology_confirm import confirmed_reference, element
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
-from ontology_poc_generator.workspace_questions import QaRefused, ask as ask_workspace, history as question_history, reopen as reopen_question, scope_line
+from ontology_poc_generator.workspace_questions import QaRefused, ask as ask_workspace, query_as_text, run_text as run_query_text, history as question_history, reopen as reopen_question, scope_line
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
@@ -1563,6 +1563,25 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, body)
 
+        def query_post(self):
+            """POST /api/workspace/query {text, params?}: an OntoPoc Query run as this person, by the Q&A engine, with no model (see ontopoc_query.py).
+            POST /api/workspace/query/text {query}: a structured query as OntoPoc Query text in this person's names."""
+            payload = self.read_json()
+            if payload is None:
+                return
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if self.path == '/api/workspace/query':
+                    body = run_query_text(conn, self.user, payload.get('text'), payload.get('params'))
+                else:
+                    body = {'text': query_as_text(conn, self.user, payload.get('query'))}
+            except QaRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
         def relations_get(self):
             """/api/workspace/relations, /relations/<id>, /relations/<id>/log, /relation-form (the types and columns a relation can be made from), /queue (待确认),
             /permissions (admin): what this person may see of them (type_access, relation_visible)."""
@@ -1936,6 +1955,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/ask':
                 self.ask_post()
+                return
+            if self.path in ('/api/workspace/query', '/api/workspace/query/text'):
+                self.query_post()
                 return
             if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
                              '/api/workspace/queue/confirm-group', '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules', '/api/workspace/column-access'):
