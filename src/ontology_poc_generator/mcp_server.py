@@ -61,11 +61,12 @@ INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判
 - save_card 只记人说的客户答复：by、basis 都来自人，不替客户填格、不替他答。
 - 拿不准的事写成问题交给人，不要当成结论。"""
 READ_INSTRUCTIONS = """本机 OntoPoc 的只读入口：团队已经确认的业务定义，和用它们回答问题。你以令牌主人的身份看，只看得到他看得到的。
-1. describe_definitions 看定义（对象、代码含义、关系、视图、派生属性）和拒答规则。没写在里面的东西没有定义，不要猜。
-2. ask 问业务问题。答得出来会带上用到的定义；被拒绝（status 不是 answered）就把 reason 原样转告人，不要换问法绕过，也不要自己编一个答案。
-3. list_unconfirmed 看现在不是已确认的定义：不要用它们回答。
-4. read_derived_property 读一个已确认的派生属性的值；没确认就不给值。
-ask 会调用模型，慢且花钱；其余工具只是读。"""
+1. describe_definitions 看定义（对象、代码含义、关系、视图、派生属性）和拒答规则。没写在里面的东西没有定义，不要猜。定义多时用 types 只取要用的类型。
+2. 要一个数：先用 ontopoc_query 写本体查询（像 SQL），代码直接算，不调用模型。写错了错误里会说能写什么，照着改。
+3. 只有写不出查询时（问题里的说法对不上任何定义）才用 ask 问一句话：它调用模型，慢、花钱，每问一次都记进问答历史。回答里的 query_text 可以拿去 ontopoc_query 改条件再跑。
+4. 被拒绝（status 不是 answered）就把 reason 原样转告人，不要换写法、换问法绕过，也不要自己编一个答案。
+5. list_unconfirmed 看现在不是已确认的定义：不要用它们回答。read_derived_property 读一个已确认的派生属性的值；没确认就不给值。
+除了 ask，这些工具只是读，可以重试，结果不变（除非数据或定义变了）。"""
 
 
 class ToolError(Exception):
@@ -488,13 +489,50 @@ def find_name_variants(s, a):
     return s.request('/api/ontology/variants', {'saved_as': _text(a.get('saved_as'), 'saved_as')})['evaluation']['variants']
 
 
+AGENT_GROUPS = 50   # groups an agent is given in one answer; the count of all of them is kept, with how to narrow the query
+
+
+def _property(p: dict) -> dict:
+    """A property as an agent needs it: its column and type, its name only when that differs from the column, `code` only when it is a code column."""
+    return {'column': p['column'], **({'name': p['name']} if p.get('name') != p['column'] else {}), 'type': p['type'], **({'code': True} if p.get('code') else {})}
+
+
 def describe_definitions(s, a):
-    return s.request('/api/workspace/agent/definitions')
+    d = s.request('/api/workspace/agent/definitions')
+    d['types'] = [{**{k: v for k, v in t.items() if not (k == 'description' and not v)}, 'properties': [_property(p) for p in t['properties']]} for t in d['types']]
+    wanted = a.get('types')
+    if wanted is None:
+        return d
+    if isinstance(wanted, str):
+        wanted = [wanted]
+    if not isinstance(wanted, list) or not all(isinstance(w, str) for w in wanted):
+        raise ToolError('types 要写成类型的英文名或中文名的列表，例如 ["order", "客户"]')
+    named = {**{t['name']: t['id'] for t in d['types']}, **{t['id']: t['id'] for t in d['types']}}
+    unknown = [w for w in wanted if w not in named]
+    if unknown:
+        raise ToolError(f'没有已确认的类型「{"、".join(unknown)}」。有的类型：' + '、'.join(f'{t["name"]}（{t["id"]}）' for t in d['types']))
+    keep = {named[w] for w in wanted}
+    return {'types': [t for t in d['types'] if t['id'] in keep], 'relations': [r for r in d['relations'] if r['from'] in keep or r['to'] in keep],
+            'views': [v for v in d['views'] if v['type'] in keep], 'derived': [x for x in d['derived'] if x['type'] in keep], 'rules': d['rules']}
+
+
+def _lean(body: dict, keys: tuple) -> dict:
+    """An answer as an agent is given it: each definition once and short (no confirmation time; its state only when it is not confirmed), and at most AGENT_GROUPS
+    groups, with the count of all of them and how to narrow the query."""
+    out = {k: body[k] for k in keys if k in body}
+    if isinstance(out.get('definitions'), list):
+        out['definitions'] = [{k: d[k] for k in ('id', 'kind', 'name', 'state', 'version', 'confirmed_by') if k in d and not (k == 'state' and d[k] == 'confirmed')}
+                              for d in out['definitions']]
+    answer = out.get('answer')
+    if isinstance(answer, dict) and isinstance(answer.get('groups'), list) and len(answer['groups']) > AGENT_GROUPS:
+        out['answer'] = {**answer, 'groups': answer['groups'][:AGENT_GROUPS],
+                         'groups_cut': f'只给了前 {AGENT_GROUPS} 组，一共 {answer.get("total_groups", len(answer["groups"]))} 组：要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE'}
+    return out
 
 
 def ask(s, a):
     body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
-    return {k: body[k] for k in ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'definitions', 'datasets', 'limited_by_rule') if k in body}
+    return _lean(body, ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'))
 
 
 def ontopoc_query(s, a):
@@ -502,7 +540,7 @@ def ontopoc_query(s, a):
     if a.get('params') is not None:
         body['params'] = a['params']
     body = s.request('/api/workspace/query', body)
-    return {k: body[k] for k in ('status', 'answer', 'reason', 'refusal', 'text', 'query', 'definitions', 'datasets', 'limited_by_rule') if k in body}
+    return _lean(body, ('status', 'answer', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'))   # text, not the compiled query: it compiles to it
 
 
 def list_unconfirmed(s, a):
@@ -642,9 +680,12 @@ TOOLS = [
            'version': {'type': 'integer', 'minimum': 1, 'description': '你看过的那一版，来自 list_proposed_views 里这条的 version'}}, ('saved_as', 'name', 'version')),
     _tool(find_name_variants, '找出同一类对象里可能是同一个东西的不同写法，只给建议、不合并。会调用模型。', RUN, ('saved_as',)),
     _tool(describe_definitions, '团队已经确认的业务定义：对象类型（属性、主键、代码的含义）、关系、视图（取哪些行）、派生属性（怎么算），每条带谁确认、确认于哪个数据版本；还有拒答规则 rules。'
-          '只有已确认的、令牌的主人看得到的；没有数据行，没有全部数据的行数。不在这里的东西没有定义：不要猜，照 rules 拒答。'),
-    _tool(ask, '用已确认的定义回答一个业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
-          'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。会调用模型，慢且花钱。',
+          '属性只有 column 和 type；name 只在和列名不同时给，code 只在是代码列时给。定义多时给 types，只取这几个类型和连着它们的关系、视图、派生属性。只是读，可以重试。'
+          '只有已确认的、令牌的主人看得到的；没有数据行，没有全部数据的行数。不在这里的东西没有定义：不要猜，照 rules 拒答。',
+          {'types': {'type': 'array', 'items': {'type': 'string'}, 'description': '只要这几个类型（英文名或中文名），不写就是全部'}}),
+    _tool(ask, '只在写不出 ontopoc_query 时用（问题里的说法对不上任何属性或关系，要模型来理解）：用已确认的定义回答一句话问的业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
+          'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。'
+          'query_text 是这道题写成的本体查询，改条件、重跑都用 ontopoc_query，不再调用模型。会调用模型，慢且花钱；每问一次都记进问答历史、算一次提问，不要为了重试再问。',
           {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
     _tool(ontopoc_query, '用本体查询（OntoPoc Query，像 SQL）直接算一个数：代码按令牌主人能看的行和已确认的定义算，不调用模型，快，结果和 ask 一样带 definitions 和 limited_by_rule。'
           '写法：SELECT 分组列, 一个数 FROM 路径 [WHERE 条件 AND …] [GROUP BY 分组列] [ORDER BY 那个数 DESC|ASC] [LIMIT n]。'
@@ -654,12 +695,13 @@ TOOLS = [
           '日期可以按月、按年分组：SELECT month(o.下单日期), sum(o.金额) … GROUP BY month(o.下单日期)。'
           '例：SELECT p.品类, count(o) AS 数量 FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类 ORDER BY 数量 DESC LIMIT 3。'
           '类型、属性、关系的名字来自 describe_definitions。写错或写了还不支持的（OR、LIKE、跨对象的条件）会报错并说明能写什么；'
-          'status 是 refused 时把 reason 原样转告人，不要换写法绕过。',
+          'status 是 refused 时把 reason 原样转告人，不要换写法绕过。分组超过 50 组只给前 50 组，groups_cut 说一共几组、怎么收窄。'
+          '不记进问答历史、不算提问次数，可以重试：同样的查询在数据和定义没变时结果相同。',
           {'text': {'type': 'string', 'maxLength': 4000, 'description': '一条本体查询'},
            'params': {'type': 'object', 'description': '参数名 → 值（文字或数字），对应查询里的 $名字'}}, ('text',)),
-    _tool(list_unconfirmed, '现在不是“已确认”的定义（提出了还没确认、需要再看、被退回），每条有状态、原因和可以确认它的人。这些不能拿来回答问题。令牌的主人是只读的人时这里是空的。'),
+    _tool(list_unconfirmed, '现在不是“已确认”的定义（提出了还没确认、需要再看、被退回），每条有状态、原因和可以确认它的人。这些不能拿来回答问题。令牌的主人是只读的人时这里是空的。只是读，可以重试。'),
     _tool(read_derived_property, '读一个已确认的派生属性（例如 客户的已取消订单数）：给 key（主键列 → 取值）就是那一个对象的值，不给就是一页对象的值。'
-          '派生属性没确认或现在算不出来时不给值，错误里说它的状态和原因。只算令牌的主人看得到的行。',
+          '派生属性没确认或现在算不出来时不给值，错误里说它的状态和原因。只算令牌的主人看得到的行。只是读，可以重试。',
           {'type': {'type': 'string', 'description': '对象类型的英文名，来自 describe_definitions'}, 'name': {'type': 'string', 'description': '派生属性的英文名，来自 describe_definitions'},
            'key': {'type': 'object', 'description': '主键列 → 取值，例如 {"客户编号": "KH022"}；不写就给一页'}, 'page': {'type': 'integer', 'minimum': 1, 'description': '第几页，从 1 起'}},
           ('type', 'name')),

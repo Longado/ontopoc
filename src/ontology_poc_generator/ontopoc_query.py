@@ -112,7 +112,7 @@ class _Reader:
         if k == 'param':
             self.i += 1
             if v[1:] not in self.params:
-                raise QueryError(f'缺少参数 {v}：调用时要给它一个值', at)
+                raise QueryError(f'缺少参数 {v}：调用时在 params 里给它一个值，例如 "params": {{"{v[1:]}": "…"}}', at)
             given = self.params[v[1:]]
             if isinstance(given, bool) or not isinstance(given, (str, int, float)):
                 raise QueryError(f'参数 {v} 要是一个文字或数字', at)

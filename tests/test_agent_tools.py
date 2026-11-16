@@ -126,7 +126,7 @@ class SizeTests(AgentCase):
                                                                                      ('describe_definitions', {'types': ['订单']})])
             size = lambda r: len(json.dumps(self.payload(r), ensure_ascii=False))
             self.assertLess(size(replies[10]), 250)   # was 424: the compiled query and the confirmation times are gone
-            self.assertLess(size(replies[11]), 3600)   # was 4,620 on this world
+            self.assertLess(size(replies[11]), 3900)   # was 4,620 on this world; the rest is who confirmed what and the refusal rules, which stay
             self.assertLess(size(replies[12]), size(replies[11]) * 2 // 3)
 
 
