@@ -72,9 +72,11 @@ class GraphServiceTests(QueryCase):
             self.assertEqual(sorted((d['kind'], d['name']) for d in body['definitions']),
                              [('meaning', '订单.状态码'), ('relation', '订单属于客户'), ('type', '客户'), ('type', '订单')])
             self.assertTrue(body['text'].startswith('SELECT GRAPH'))
+            self.assertIn(f'画出全部 {len(cancelled)} 个', body['path'])   # found in the review of PR #88: every one drawn is not "the first 16"
             # LIMIT keeps the first start objects and says how many there were
             few = self.graph(team['ann'], CANCELLED_GRAPH + ' LIMIT 3')['answer']['graph']
             self.assertEqual((few['starts'], few['shown'], sum(n['start'] for n in few['nodes'])), (len(cancelled), 3, 3))
+            self.assertIn('画出前 3 个', self.graph(team['ann'], CANCELLED_GRAPH + ' LIMIT 3')['path'])
 
     def test_a_viewer_is_told_a_graph_is_for_builders_and_sees_no_object(self):
         with self.service(gateway=None) as (base, out):
