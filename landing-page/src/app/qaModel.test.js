@@ -63,4 +63,5 @@ test("a range says what it could not read, and nothing is said when it read ever
   const record = { evidence: { filters: [{ field: "金额", range: "金额 > 1000", unreadable: 2, unreadable_examples: ["待定", "n/a"] }, { field: "下单日期", range: "下单日期 >= 2026-01-01" }, { field: "状态码", equals: "2" }] } };
   assert.deepEqual(rangeNotes(record), ["金额 > 1000：2 个值读不成数字或日期，没有算进去（例如 待定、n/a）"]);
   assert.deepEqual(rangeNotes({}), []);
+  assert.deepEqual(rangeNotes({ evidence: { filters: [{ range: "金额 > 1", unreadable: 1 }] } }), ["金额 > 1：1 个值读不成数字或日期，没有算进去"]);   // a viewer gets the count, not the values
 });

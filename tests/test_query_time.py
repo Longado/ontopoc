@@ -103,6 +103,13 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(run(group_by=[{'via': [], 'field': '订单.下单日期', 'by': 'week'}])['status'], 'query_limit')
 
 
+class ViewerTests(unittest.TestCase):
+    def test_a_viewer_reads_how_many_values_a_range_could_not_read_but_not_the_values(self):
+        from ontology_poc_generator.workspace_questions import _strip_rows
+        result = {'evidence': {'filters': [{'range': '金额 > 1000', 'unreadable': 1, 'unreadable_examples': ['待定'], 'examples': ['O1']}]}}
+        self.assertEqual(_strip_rows(result), {'evidence': {'filters': [{'range': '金额 > 1000', 'unreadable': 1}]}})
+
+
 class ServiceTests(QueryCase):
     """On the planted workspace, against SQL on the same rows: the same numbers where SQL is written with care, and the trap of text columns."""
 
@@ -133,7 +140,7 @@ class ServiceTests(QueryCase):
 
 def load_tests(loader, standard, pattern):
     suite = unittest.TestSuite()
-    for cls in (CompileTests, EngineTests, ServiceTests):
+    for cls in (CompileTests, EngineTests, ViewerTests, ServiceTests):
         suite.addTests(cls(name) for name in vars(cls) if name.startswith('test_'))
     return suite
 
