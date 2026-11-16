@@ -4,6 +4,7 @@ import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText } from "./format.js";
 import { answerView, definitionHref, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
+import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
 import { useLoad } from "./useLoad.js";
 
@@ -73,6 +74,7 @@ export function Answer({ record }) {
       {then && <p className="warn">{staleHeading(record)}</p>}
       <div className="big">{then && <span className="small muted">当时的答案 </span>}{view.big}</div>
       {view.note && <p className="muted">{view.note}</p>}
+      {view.graph && <ObjectGraph graph={view.graph} />}
       {view.table && (
         <div className="table-wrap">
           <table>

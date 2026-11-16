@@ -46,6 +46,25 @@ LIMIT 3
 - `$名字` 是参数，调用时用 `params` 传值。参数只能当值用，不会被当成查询文字：在看板上输入 `KH001' OR '1'='1`，查的就是编号为这串字的客户，结果是没有数据；把值直接拼进 SQL 字符串的模板会因此数出全部 160 张订单。
 - `SELECT count(c) FROM (o:订单)-[:订单属于客户]->(c:客户) WHERE o.状态码 = '已取消'` 数的是有已取消订单的客户。
 
+## 画成图：SELECT GRAPH（第 5 步）
+
+不算数，而是把对象本身和它们之间的关系画出来：
+
+```sql
+SELECT GRAPH
+FROM (o:订单)-[:订单属于客户]->(c:客户)
+WHERE o.状态码 = '已取消'
+LIMIT 10
+```
+
+- FROM 里的第一个节点是起点。`WHERE` 只能写在起点上，和算数时一样。满足条件的起点对象按数据里的顺序取前 `LIMIT` 个，不写就是 20 个，最多 100 个。
+- 每条路径从这些起点走出去，走到的对象和连线都画出来。一张图最多 400 个对象，超过了就停下，并注明“只画了一部分”。
+- 回答里写着一共有多少个起点对象满足条件，画了其中几个。
+- 按提问人能读的行和属性画：有行规则就只画他的行；藏起来的列不出现在节点上，比如客户名称对他藏起来，客户节点只显示编号。
+- 用到的含义和关系都要是确认过的，和算数一样。订单里写的客户编号在客户表里找不到时，这张订单连不到客户。
+- 浏览者只能看数，看不到一个个对象，所以对浏览者拒绝（403）。看板组件和问答模型也只用算数的查询，`SELECT GRAPH` 只在问答页的“写查询”里用。
+- 在页面上，起点在左边一列，往右每一列多走一步。点一个对象，和它相连的线会亮起来。
+
 ## 现在不支持的写法
 
 下面这些写法会直接拒绝，并说明原因，不会被理解成别的意思：
@@ -62,6 +81,7 @@ LIMIT 3
 
 ```
 query     := SELECT item {, item} FROM chain {, chain} [WHERE cond {AND cond}] [GROUP BY group {, group}] [ORDER BY target [ASC|DESC]] [LIMIT n]
+           | SELECT GRAPH FROM chain {, chain} [WHERE cond {AND cond}] [LIMIT n]
 item      := group | agg [AS name]
 group     := ref | month(ref) | year(ref)
 agg       := count(var) | count(*) | sum(ref) | avg(ref) | share(ref = value)

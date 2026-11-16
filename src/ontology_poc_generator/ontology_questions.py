@@ -316,6 +316,127 @@ def _shape_limit(query: dict) -> str | None:
     return f'求和、求平均只能直接算一个字段，这道题用了 {"、".join(extra)}：查询语言还表达不了' if extra else None
 
 
+def _conditions(types: dict, start: str, raw, meanings, label) -> tuple[list[dict], str | None]:
+    """The where conditions as run_query reads them: fields resolved on the start type, a meaning read as its codes, a range with the kind it compares as.
+    (conditions, None), or ([], why) when a field is not there."""
+    where = []
+    for w in raw or []:
+        field = _resolve_field(types[start], w.get('field'))
+        if field is None:
+            return [], f'本体里的 {label(start)} 没有属性 {w.get("field")}，无法按它筛选'
+        if any(k in w for k in RANGES):   # a range of numbers or dates: compared as such, never as text
+            where.append({'field': field, 'range': {k: w[k] for k in RANGES if k in w}, 'kind': _bound_kind(w)})
+            continue
+        negated = 'not_equals' in w   # a field that is not one of these values: the model's word for leaving a confirmed meaning out
+        given = w['not_equals'] if negated else w.get('equals')
+        codes = list(dict.fromkeys(c for v in (given if isinstance(given, list) else [given]) for c in codes_for_label(meanings, field, v)))
+        where.append({'field': field, 'equals': codes[0], **({'codes': codes} if len(codes) > 1 else {}), **({'not': True} if negated else {})})
+    return where, None
+
+
+def _matcher(types: dict, bundle: dict, graph: dict):
+    """(values(inst, field), has(inst, condition), unreadable): how an object's values are read and a condition tested on them; `unreadable` collects, per range
+    condition (by id), the values it could not read as numbers or dates."""
+    identity = {(k, f): logical for k, t in types.items() for f, logical in _identity_fields(t).items()}
+
+    def values(inst, field):   # identity fields read the object's own identity, so objects seen only in another table count too
+        logical = identity.get((inst[0], field))
+        return {str(v) for k, v in inst[1] if k == logical and v not in (None, '')} if logical else _values(bundle, graph, inst, field)
+    read_as = lambda kind, v: to_number(v) if kind == 'number' else as_date(v)
+    unreadable = {}   # id(range condition) -> [objects whose values it could not read as numbers or dates, their values]
+
+    def in_range(inst, cond):
+        got = values(inst, cond['field'])
+        read = [r for r in (read_as(cond['kind'], v) for v in got) if r is not None]
+        if got and not read:
+            unreadable.setdefault(id(cond), []).append(sorted(got)[0])
+        bound = {k: bound_value(cond['kind'], k, b) for k, b in cond['range'].items()}
+        tests = {'more_than': lambda x, b: x > b, 'at_least': lambda x, b: x >= b, 'less_than': lambda x, b: x < b, 'at_most': lambda x, b: x <= b}
+        return any(all(tests[k](x, b) for k, b in bound.items()) for x in read)
+
+    def has(inst, cond):
+        if 'range' in cond:
+            return in_range(inst, cond)
+        return bool({normalize_value(c) for c in cond.get('codes', [cond['equals']])} & {normalize_value(v) for v in values(inst, cond['field'])})
+    return values, has, unreadable
+
+
+GRAPH_STARTS = 20   # start objects a SELECT GRAPH draws when it says no LIMIT
+GRAPH_NODES = 400   # objects one graph draws at most, start objects included: past that the drawing stops and says it was cut
+
+
+def graph_objects(ontology: dict, bundle: dict, query: dict, graph: dict | None = None) -> dict:
+    """SELECT GRAPH (see ontopoc_query): the start objects that match every `where`, the first `top` of them (GRAPH_STARTS when None) in the order the data
+    names them, and every object each path in `query['graph']` reaches from them, with the edges walked. Each node: id, type, its key as written, a name-like
+    value when the type has one. 'no_data' when no start object matches."""
+    from ontology_poc_generator.object_rows import _labeller, node_id   # object_rows reads the graph this module does; imported here to keep the modules apart
+    p = normalize_proposal(ontology)
+    types, relations = _types(p), {r['key']: r for r in p['relations']}
+    label = lambda k: types[k].get('label') or k
+    start = query.get('start')
+    if start not in types:
+        return {'status': 'ontology_gap', 'reason': f'本体里没有对象类型 {start}'}
+    top = query.get('top')
+    if top is not None and (isinstance(top, bool) or not isinstance(top, int) or top < 1):
+        return {'status': 'query_limit', 'reason': '画几个起点对象要写成一个大于 0 的整数'}
+    reason = _shape_limit({**{k: v for k, v in query.items() if k != 'graph'}, 'top': None})   # `top` here is how many start objects are drawn, not a ranking
+    if reason:
+        return {'status': 'query_limit', 'reason': reason}
+    where, reason = _conditions(types, start, query.get('where'), bundle.get('meanings'), label)
+    paths = [list(path) for path in query.get('graph') or []]
+    for path in paths:
+        reason = reason or _walk(relations, start, path, label)[1]
+    if reason:
+        return {'status': 'ontology_gap', 'reason': reason}
+    graph = graph or build_graph(ontology, bundle)
+    values, has, unreadable = _matcher(types, bundle, graph)
+    starts = [i for i in graph['sources_of'] if i[0] == start]
+    for w in where:
+        starts = [i for i in starts if has(i, w) != w.get('not', False)]
+    shown = starts[:query.get('top') or GRAPH_STARTS]
+    drawn, edges, cut = dict.fromkeys(shown), {}, False
+    adjacent = {}
+    for key in {k for path in paths for k in path}:
+        for a, b, _ in graph['edges'][key]:
+            adjacent.setdefault(key, {}).setdefault(a, set()).add((a, b))
+            adjacent[key].setdefault(b, set()).add((a, b))
+    for path in paths:
+        frontier = list(shown)
+        for key in path:
+            reached = []
+            for here in frontier:
+                for a, b in sorted(adjacent.get(key, {}).get(here, ()), key=lambda e: (node_id(e[0]), node_id(e[1]))):
+                    there = b if a == here else a
+                    if there not in drawn:
+                        if len(drawn) >= GRAPH_NODES:
+                            cut = True
+                            continue
+                        drawn[there] = None
+                    edges[(a, b, key)] = None
+                    reached.append(there)
+            frontier = list(dict.fromkeys(reached))
+    labellers = {k: _labeller(types[k], bundle, graph['records_of']) for k in {i[0] for i in drawn}}
+    nodes = []
+    first = set(shown)
+    for inst in drawn:
+        key, name, _ = labellers[inst[0]](inst)
+        nodes.append({'id': node_id(inst), 'type': inst[0], 'type_name': label(inst[0]), 'key': key, **({'name': name} if name else {}), 'start': inst in first})
+    lines = [{'from': node_id(a), 'to': node_id(b), 'relation': k, 'name': relations[k].get('label') or k} for a, b, k in edges]
+    kept = '、'.join(range_text(w['field'].partition('.')[2], w['range']) if 'range' in w else f'“{w["field"].partition(".")[2]}”{"不是" if w.get("not") else "为"}“{shown_codes(bundle.get("meanings"), w["field"], w.get("codes", [w["equals"]]))}”'
+                    for w in where)
+    head = f'{"只看" + kept + "的" if kept else ""}{label(start)}'
+    walked = '；'.join(' → '.join([label(start), *(label(k) for k in _walk(relations, start, path, label)[0][1])]) for path in paths if path)
+    result = {'status': 'answered' if starts else 'no_data', 'path': f'{head}，画出前 {len(shown)} 个' + (f'，沿 {walked}' if walked else ''),
+              'answer': {'total': len(starts), 'graph': {'nodes': nodes, 'edges': lines, 'starts': len(starts), 'shown': len(shown), 'cut': cut}}}
+    if not starts:
+        result.pop('answer')
+        result['reason'] = '没有满足条件的对象'
+    skipped = [v for vals in unreadable.values() for v in vals]
+    if skipped:
+        result['evidence'] = {'unreadable': {'count': len(skipped), 'examples': skipped[:5]}}
+    return result
+
+
 def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, measure: dict) -> tuple[str | None, dict]:
     """How the measure reads on the start objects: (why it cannot be added up, notes for the check pack). _values()
     keeps an object's distinct values, so an object owning several rows of the measure's table, or a list in one row,
@@ -408,18 +529,9 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     if reason:
         return {'status': 'query_limit', 'reason': reason}
     meanings = bundle.get('meanings')   # the confirmed meanings of code columns: a question may say "已取消" for the code 2, and codes are shown with theirs
-    where = []
-    for w in query.get('where') or []:
-        field = _resolve_field(types[start], w.get('field'))
-        if field is None:
-            return gap(f'本体里的 {label(start)} 没有属性 {w.get("field")}，无法按它筛选')
-        if any(k in w for k in RANGES):   # a range of numbers or dates: compared as such, never as text
-            where.append({'field': field, 'range': {k: w[k] for k in RANGES if k in w}, 'kind': _bound_kind(w)})
-            continue
-        negated = 'not_equals' in w   # a field that is not one of these values: the model's word for leaving a confirmed meaning out
-        given = w['not_equals'] if negated else w.get('equals')
-        codes = list(dict.fromkeys(c for v in (given if isinstance(given, list) else [given]) for c in codes_for_label(meanings, field, v)))
-        where.append({'field': field, 'equals': codes[0], **({'codes': codes} if len(codes) > 1 else {}), **({'not': True} if negated else {})})
+    where, reason = _conditions(types, start, query.get('where'), meanings, label)
+    if reason:
+        return gap(reason)
     measure = query.get('measure') if isinstance(query.get('measure'), dict) else None
     if measure:
         if measure.get('op') not in ('sum', 'average'):
@@ -476,27 +588,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
         for a, b, _ in graph['edges'][key]:
             adj.setdefault(a, set()).add(b)
             adj.setdefault(b, set()).add(a)
-    identity = {(k, f): logical for k, t in types.items() for f, logical in _identity_fields(t).items()}
-
-    def values(inst, field):   # identity fields read the object's own identity, so objects seen only in another table count too
-        logical = identity.get((inst[0], field))
-        return {str(v) for k, v in inst[1] if k == logical and v not in (None, '')} if logical else _values(bundle, graph, inst, field)
-    read_as = lambda kind, v: to_number(v) if kind == 'number' else as_date(v)
-    unreadable = {}   # id(range condition) -> [objects whose values it could not read as numbers or dates, their values]
-
-    def in_range(inst, cond):
-        got = values(inst, cond['field'])
-        read = [r for r in (read_as(cond['kind'], v) for v in got) if r is not None]
-        if got and not read:
-            unreadable.setdefault(id(cond), []).append(sorted(got)[0])
-        bound = {k: bound_value(cond['kind'], k, b) for k, b in cond['range'].items()}
-        tests = {'more_than': lambda x, b: x > b, 'at_least': lambda x, b: x >= b, 'less_than': lambda x, b: x < b, 'at_most': lambda x, b: x <= b}
-        return any(all(tests[k](x, b) for k, b in bound.items()) for x in read)
-
-    def has(inst, cond):
-        if 'range' in cond:
-            return in_range(inst, cond)
-        return bool({normalize_value(c) for c in cond.get('codes', [cond['equals']])} & {normalize_value(v) for v in values(inst, cond['field'])})
+    values, has, unreadable = _matcher(types, bundle, graph)
     everyone = [i for i in graph['sources_of'] if i[0] == start]
     starts, stages = everyone, []   # stages: (condition, objects before it, objects left, objects it removed), for the check pack
     for w in where:

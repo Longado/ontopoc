@@ -32,7 +32,7 @@ import re
 from ontology_poc_generator.explorer import _standing, explore_chart, explore_meta, explore_table, normalize_chart, normalize_query
 from ontology_poc_generator.object_types import TypeRefused, _confirmers, _content, _type_row, element_row, type_id, was_confirmed, waiting_for_viewer
 from ontology_poc_generator.object_views import view_id
-from ontology_poc_generator.ontopoc_query import QueryError, param_names
+from ontology_poc_generator.ontopoc_query import QueryError, is_graph, param_names
 from ontology_poc_generator.type_access import can_access, hidden_columns
 
 SCHEMA = '''
@@ -221,6 +221,8 @@ def _query_text(c: dict, title: str) -> str:
         param_names(text)
     except QueryError as exc:
         raise DashboardRefused(f'“{title}”：{exc}') from None
+    if is_graph(text):   # a board shows numbers to everyone it is shared with, viewers too; a graph shows objects one by one
+        raise DashboardRefused(f'“{title}”：看板组件要算一个数，SELECT GRAPH 画的是一个个对象，请在问答页的“写查询”里看')
     return text
 
 
