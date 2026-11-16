@@ -58,7 +58,8 @@ class CompileTests(unittest.TestCase):
                 ('SELECT count(o) FROM (o:订单) GROUP BY week(o.下单日期)', 'month'),
                 ("SELECT count(o) FROM (o:订单) WHERE o.金额 > '1000' AND o.金额 > '2000' OR o.金额 < '5'", 'OR'),
                 ("SELECT count(o) FROM (o:订单) WHERE o.下单日期 BETWEEN '2026-01-01'", 'AND'),
-                ("SELECT count(o) FROM (o:订单) WHERE o.下单日期 LIKE '2026%'", '模糊匹配')):
+                ("SELECT count(o) FROM (o:订单) WHERE o.下单日期 LIKE '2026%'", '模糊匹配'),
+                ('SELECT count(o) FROM (o:订单) WHERE o.下单日期 >= 2026-01-01', "加引号")):
             with self.assertRaises(QueryError, msg=text) as caught:
                 compile_query(text, CATALOG)
             self.assertIn(word, str(caught.exception), text)
@@ -88,6 +89,25 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(run(where=[{'field': '订单.下单日期', 'at_least': '2026-03-01'}])['answer']['total'], 1)   # a date and time on the day counts
         self.assertEqual(run(where=[{'field': '订单.下单日期', 'less_than': '2026-02'}])['answer']['total'], 2)   # a month is its first day
 
+    def test_a_month_bound_covers_the_whole_month_on_either_edge(self):
+        self.assertEqual(run(where=[{'field': '订单.下单日期', 'at_most': '2026-01'}])['answer']['total'], 2)   # all of January
+        self.assertEqual(run(where=[{'field': '订单.下单日期', 'at_least': '2026-01', 'at_most': '2026-02'}])['answer']['total'], 3)   # January and February
+        self.assertEqual(run(where=[{'field': '订单.下单日期', 'more_than': '2026-02'}])['answer']['total'], 1)   # after February: March
+        self.assertEqual(run(where=[{'field': '订单.下单日期', 'less_than': '2026-02'}])['answer']['total'], 2)   # before February
+        self.assertEqual(run(where=[{'field': '订单.下单日期', 'at_least': '2026-02'}])['answer']['total'], 2)
+
+    def test_only_one_way_of_writing_a_date_at_a_time_reads_as_a_date(self):
+        from ontology_poc_generator.ontology_questions import as_date
+        self.assertEqual([as_date(v) for v in ('2026-01-02', '2026/1/2', '2026.01.02', '2026年1月2日', '2026-03-01 09:30:00', '2026-01-31T23:30:00-05:00', '2026-02', '2026年2月')],
+                         [(2026, 1, 2), (2026, 1, 2), (2026, 1, 2), (2026, 1, 2), (2026, 3, 1), (2026, 1, 31), (2026, 2, 1), (2026, 2, 1)])
+        self.assertEqual([as_date(v) for v in ('2026.5', '1999.12', '2026-01/02', '2026-13-01', '12/31/2026', '20260102', '2026', '', None, '２０２６-01-02')], [None] * 10)
+
+    def test_bounds_the_wrong_way_round_are_refused(self):
+        for cond in ({'field': '订单.金额', 'at_least': '9', 'at_most': '1'}, {'field': '订单.下单日期', 'more_than': '2026-03-01', 'less_than': '2026-01-01'}):
+            result = run(where=[cond])
+            self.assertEqual(result['status'], 'query_limit', cond)
+            self.assertIn('下限', result['reason'])
+
     def test_a_bound_that_is_neither_a_number_nor_a_date_or_two_kinds_at_once_is_refused_before_counting(self):
         for cond in ({'field': '订单.金额', 'more_than': '很多'}, {'field': '订单.下单日期', 'at_least': '2026-01-01', 'at_most': '5'},
                      {'field': '订单.金额', 'more_than': ['1']}, {'field': '订单.金额', 'more_than': '1', 'equals': '2'}):
@@ -98,6 +118,7 @@ class EngineTests(unittest.TestCase):
         result = run(group_by=[{'via': [], 'field': '订单.下单日期', 'by': 'month'}])
         self.assertEqual(result['answer']['groups'], [['2026-01', 2], ['2026-02', 1], ['2026-03', 1]])
         self.assertEqual(result['answer']['without_value'], 1)
+        self.assertEqual(result['answer']['unreadable'], {'field': '下单日期', 'count': 1, 'unreadable_examples': ['待定']})   # not a missing date: one that does not read as a date
         self.assertIn('按月', result['path'])
         self.assertEqual(run(group_by=[{'via': [], 'field': '订单.下单日期', 'by': 'year'}], measure={'field': '订单.金额', 'op': 'sum'})['answer']['groups'], [['2026', 4700, 4]])
         self.assertEqual(run(group_by=[{'via': [], 'field': '订单.下单日期', 'by': 'week'}])['status'], 'query_limit')

@@ -65,3 +65,7 @@ test("a range says what it could not read, and nothing is said when it read ever
   assert.deepEqual(rangeNotes({}), []);
   assert.deepEqual(rangeNotes({ evidence: { filters: [{ range: "金额 > 1", unreadable: 1 }] } }), ["金额 > 1：1 个值读不成数字或日期，没有算进去"]);   // a viewer gets the count, not the values
 });
+
+test("a month or year grouping says how many dates it could not read", () => {
+  assert.deepEqual(rangeNotes({ answer: { unreadable: { field: "下单日期", count: 3, unreadable_examples: ["待定"] } } }), ["下单日期：3 个值读不成日期，没有分到哪个月或哪一年（例如 待定）"]);
+});
