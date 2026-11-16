@@ -193,3 +193,27 @@ class ServiceTests(SigningTestCase):
             self.assertEqual((status, run['status']), (200, 'success'), run)
             written = ann.get(f'/api/workspace/datasets/{quote("分开又合起来")}')[1]
             self.assertEqual(written['rows'], 160)
+
+
+class ReviewTests(UnionSplitCase):
+    """Found in the review of PR #85."""
+
+    def test_a_union_of_computed_columns_works_and_is_not_a_crash(self):
+        count = lambda sid: {'id': sid, 'type': 'transform', 'from': 'orders', 'operators': [{'op': 'aggregate', 'group_by': ['状态码'], 'aggregations': [{'fn': 'count', 'as': 'n'}]}]}
+        n = self.run_spec([orders(), count('a'), count('b'), {'id': 'u', 'type': 'union', 'inputs': ['a', 'b']}])
+        self.assertEqual(n['u']['rows_out'], 2 * n['a']['rows_out'])
+
+    def test_a_source_column_called_like_the_split_marker_loses_no_rows(self):
+        rows = [{'__branch': str(v), 'x': str(i)} for i, v in enumerate((7, 8, 9))]
+        ids = {'怪列名': import_records(self.conn, '怪列名', rows, 'test', records_sha256(rows))['id']}
+        datasets = {**self.datasets, **workspace_datasets(self.conn, ids)}
+        got = {n['id']: n for n in run_pipeline(self.conn, {'steps': [{'id': 't', 'type': 'input', 'dataset': '怪列名'},
+                                                                       {'id': 's', 'type': 'split', 'from': 't', 'branches': [{'id': 'a', 'where': {'all': [{'column': 'x', 'cmp': 'le', 'value': '1'}]}}, {'id': 'r', 'rest': True}]},
+                                                                       {'id': 'u', 'type': 'union', 'inputs': ['a', 'r']}]}, datasets)['nodes']}
+        self.assertEqual([(b['id'], b['rows']) for b in got['s']['split']['branches']], [('a', 2), ('r', 1)])
+        self.assertEqual(got['u']['rows_out'], 3)
+
+    def test_a_union_that_checked_two_sides_meanings_stands_on_both(self):
+        ctx = new_context(meanings={'订单.状态码': MEANINGS, '旧订单.状态码': MEANINGS}, codes={'订单.状态码', '旧订单.状态码'})
+        check_pipeline({'steps': [orders(), {'id': 'old', 'type': 'input', 'dataset': '旧订单'}, {'id': 'u', 'type': 'union', 'inputs': ['orders', 'old']}]}, self.datasets, ctx=ctx)
+        self.assertEqual(ctx['used'] >= {'订单.状态码', '旧订单.状态码'}, True)   # either meaning changing sends the pipeline back for a look

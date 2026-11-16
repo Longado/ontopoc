@@ -65,3 +65,15 @@ test("a step added while a split is selected reads its branches, never the split
   assert.equal(newStep(steps, "join", "s1").left, "大单");
   assert.equal(newStep(steps, "llm", "s1").from, "大单");
 });
+
+test("a step reading a branch sees the split's columns, and renaming a branch renames it where it is read", async () => {
+  const { withBranchNodes, renameBranch, newBranchId } = await import("./pipelineModel.js");
+  const nodes = withBranchNodes({ s1: { id: "s1", column_types: [{ name: "金额" }], split: { branches: [{ id: "大单", rows: 57 }, { id: "其余", rows: 103 }] } } }, STEPS);
+  assert.deepEqual(nodes["大单"].column_types, [{ name: "金额" }]);
+  assert.equal(nodes["其余"].rows_out, 103);
+  const renamed = renameBranch({ steps: STEPS }, "s1", "大单", "高额");
+  assert.deepEqual(renamed.steps[1].branches.map((b) => b.id), ["高额", "其余"]);
+  assert.deepEqual(renamed.steps[2].inputs, ["高额", "其余"]);
+  const split = { id: "s1", branches: [{ id: "s1_1" }, { id: "s1_3" }] };
+  assert.ok(!["s1_1", "s1_3"].includes(newBranchId(split, STEPS)));
+});
