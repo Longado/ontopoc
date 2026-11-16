@@ -56,3 +56,12 @@ test("the confirm screen says what a union and a split do, branch by branch", ()
   assert.deepEqual(stepSummary({ ...STEPS[2], missing: "empty", source_column: "来源" }, STEPS), ["把 大单、其余 的行接在一起，按列名对上", "缺的列留空", "加一列「来源」标出每行来自哪一步"]);
   assert.deepEqual(stepSummary(STEPS[1], STEPS), ["读 订单，每行进第一个满足条件的分支", `大单：${operatorTitle({ op: "filter", where: STEPS[1].branches[0].where })}`, "其余：其余的行"]);
 });
+
+test("a step added while a split is selected reads its branches, never the split itself", () => {
+  const steps = STEPS.slice(0, 2);
+  assert.deepEqual(newStep(steps, "union", "s1").inputs, ["大单", "其余"]);   // putting the branches back together
+  assert.equal(newStep(steps, "transform", "s1").from, "大单");
+  assert.equal(newStep(steps, "output", "s1").from, "大单");
+  assert.equal(newStep(steps, "join", "s1").left, "大单");
+  assert.equal(newStep(steps, "llm", "s1").from, "大单");
+});
