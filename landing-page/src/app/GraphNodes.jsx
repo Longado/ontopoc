@@ -1,5 +1,5 @@
 import React from "react";
-import { KIND_LABEL, SIZE, ageText, cameFromText, edgeLabel, fitText, leaves, sourceLines } from "./graphModel.js";
+import { KIND_LABEL, SIZE, ageText, cameFromText, datedText, edgeLabel, fitText, leaves, sourceLines } from "./graphModel.js";
 import { stateText } from "./typeModel.js";
 
 const stateClass = (node) => `s-${node.model_draft ? "proposed" : node.state ?? "none"}`;
@@ -15,7 +15,7 @@ function lines(node) {
     return [{ text: objects }, secondLine(node), ...(node.stale?.short ? [{ text: node.stale.short }] : [])];   // what moved, in a few words, under the cause
   }
   if (node.kind === "source") return sourceLines(node);
-  if (node.kind === "dataset") return [{ text: [`第 ${node.version} 版`, cameFromText(node.came_from)].filter(Boolean).join("，") }, ...(node.uploaded_at ? [{ text: `${node.came_from?.kind === "upload" ? "上传" : "更新"}于 ${ageText(node.uploaded_at)}` }] : [])];   // a dataset this person may not open does not say when it came
+  if (node.kind === "dataset") return [{ text: [`第 ${node.version} 版`, cameFromText(node.came_from)].filter(Boolean).join("，") }, ...(node.uploaded_at ? [{ text: `${datedText(node.came_from)} ${ageText(node.uploaded_at)}` }] : [])];   // a dataset this person may not open does not say when it came
   if (node.stale) return [{ text: node.stale.label, cause: true }];
   return [{ text: node.state ? `${KIND_LABEL[node.kind]} ${stateText(node)}` : KIND_LABEL[node.kind], word: node.state }];   // an answer is nobody's confirmation: it has no state word
 }

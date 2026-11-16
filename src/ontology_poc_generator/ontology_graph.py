@@ -23,7 +23,7 @@ from ontology_poc_generator.object_types import (
 from ontology_poc_generator.object_views import view_visible
 from ontology_poc_generator.row_rules import positions, restriction
 from ontology_poc_generator.type_access import dataset_hidden, hidden_columns, reads_hidden
-from ontology_poc_generator.workspace_pipelines import pipeline_visible
+from ontology_poc_generator.workspace_pipelines import pipeline_id, pipeline_visible
 from ontology_poc_generator.workspace_questions import _mine, reopen
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
@@ -210,9 +210,15 @@ def relation_graph(conn, user: dict | None) -> dict:
 
 # --- the lineage graph ---------------------------------------------------------------------------------------------------------------------------
 
-def _came_from(origin, told: bool) -> dict:
+def _may_see(conn, element_id: str, check, user: dict | None) -> bool:
+    row = element_row(conn, element_id)
+    return row is not None and check(conn, row, user)
+
+
+def _came_from(conn, origin, told: bool, user: dict | None = None) -> dict:
     """Where the current version of a dataset came from: {'kind': upload | source | pipeline | action | other}, with the source and table, the pipeline or the action named
-    only when `told` (a builder who may open the dataset: a source and a pipeline are pages of theirs, not a viewer's)."""
+    only when `told` (a builder who may open the dataset: a source and a pipeline are pages of theirs, not a viewer's) and, for a pipeline or an action, only when this
+    person may see that pipeline or action now (the version keeps the name it was written by, which may be one kept from them, or gone)."""
     origin = str(origin or '')
     if origin == 'upload':
         return {'kind': 'upload'}
@@ -220,9 +226,11 @@ def _came_from(origin, told: bool) -> dict:
         source, _, table = origin[len('source:'):].partition('/')
         return {'kind': 'source', **({'source': source, 'table': table} if told else {})}
     if origin.startswith('pipeline:'):
-        return {'kind': 'pipeline', **({'pipeline': origin[len('pipeline:'):].rsplit('@run', 1)[0]} if told else {})}
+        name = origin[len('pipeline:'):].rsplit('@run', 1)[0]
+        return {'kind': 'pipeline', **({'pipeline': name} if told and _may_see(conn, pipeline_id(name), pipeline_visible, user) else {})}
     if origin.startswith('action:'):
-        return {'kind': 'action', **({'action': origin[len('action:'):]} if told else {})}
+        name = origin[len('action:'):]
+        return {'kind': 'action', **({'action': name} if told and _may_see(conn, f'{ACTION_PREFIX}{name}', action_visible, user) else {})}
     return {'kind': 'other'}
 
 
@@ -231,7 +239,7 @@ def _dataset_node(conn, name: str, readers: list[dict], user: dict | None) -> di
     hidden = dataset_hidden(conn, name, user)   # not found to this person: who uploaded it and when are not theirs (the type page already names its version)
     told = not hidden and (user is None or user['role'] != 'viewer')
     return {'id': f'dataset:{name}', 'kind': 'dataset', 'key': name, 'name': name, 'state': None, 'version': dataset['version'], 'uploaded_at': None if hidden else dataset['imported_at'],
-            'who': None if hidden else dataset['who'], 'used_for': [r['name'] for r in readers], 'link': not hidden, 'stale': None, 'came_from': _came_from(dataset['origin'], told)}
+            'who': None if hidden else dataset['who'], 'used_for': [r['name'] for r in readers], 'link': not hidden, 'stale': None, 'came_from': _came_from(conn, dataset['origin'], told, user)}
 
 
 def _source_nodes(conn, user: dict | None) -> list[dict]:

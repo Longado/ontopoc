@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { timeText } from "./format.js";
-import { KIND_LABEL, ageText, cameFromText, confirmedText, edgeLabel, verdictText } from "./graphModel.js";
+import { KIND_LABEL, ageText, cameFromText, datedText, confirmedText, edgeLabel, verdictText } from "./graphModel.js";
 import { CARDINALITY_LABEL, keyPairText } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
@@ -74,7 +74,7 @@ function DatasetBody({ node }) {
   const came = cameFromText(node.came_from, true);
   return (
     <>
-      <p className="muted">第 {node.version} 版{came && `，${came}`}{node.uploaded_at && `，${node.came_from?.kind === "upload" ? "上传" : "更新"}于 ${ageText(node.uploaded_at)}（${timeText(node.uploaded_at)}${node.who ? `，${node.who}` : ""}）`}</p>
+      <p className="muted">第 {node.version} 版{came && `，${came}`}{node.uploaded_at && `，${datedText(node.came_from)} ${ageText(node.uploaded_at)}（${timeText(node.uploaded_at)}${node.who ? `，${node.who}` : ""}）`}</p>
       <List title="用于对象类型" empty="还没有对象类型用它" items={node.used_for.map((n) => ({ key: n, name: n }))} />
       {node.link && <p><a href={hrefFor({ page: "dataset", name: node.key, tab: "fields" })}>进入 {node.name}</a></p>}
     </>

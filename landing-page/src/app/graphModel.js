@@ -199,6 +199,9 @@ export function cameFromText(came, full = false) {
   return "";
 }
 
+/** How a dataset's date is said: an upload (or a version whose origin was not recorded) was uploaded, the rest were updated. */
+export const datedText = (came) => (!came || came.kind === "upload" || came.kind === "other" ? "上传于" : "更新于");
+
 /** The two lines under a source's name: its kind and whether its last test or pull worked (a failure stands out), and what it fills. */
 export function sourceLines(node) {
   const filled = node.tables?.length ?? 0;
