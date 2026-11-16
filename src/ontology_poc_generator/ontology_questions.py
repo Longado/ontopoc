@@ -426,7 +426,7 @@ def graph_objects(ontology: dict, bundle: dict, query: dict, graph: dict | None 
                     for w in where)
     head = f'{"只看" + kept + "的" if kept else ""}{label(start)}'
     walked = '；'.join(' → '.join([label(start), *(label(k) for k in _walk(relations, start, path, label)[0][1])]) for path in paths if path)
-    result = {'status': 'answered' if starts else 'no_data', 'path': f'{head}，画出前 {len(shown)} 个' + (f'，沿 {walked}' if walked else ''),
+    result = {'status': 'answered' if starts else 'no_data', 'path': f'{head}，画出{"全部" if len(shown) == len(starts) else "前"} {len(shown)} 个' + (f'，沿 {walked}' if walked else ''),
               'answer': {'total': len(starts), 'graph': {'nodes': nodes, 'edges': lines, 'starts': len(starts), 'shown': len(shown), 'cut': cut}}}
     if not starts:
         result.pop('answer')
