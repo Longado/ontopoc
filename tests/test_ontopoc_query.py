@@ -105,6 +105,8 @@ class CompileTests(unittest.TestCase):
             ('SELECT count(o) FROM (o:订单) LIMIT 0', '大于 0 的整数'),
             ('SELECT count(o) FROM (o:订单) garbage', '多出来了'),
             ('', '请写一条查询'),
+            ('SELECT count(o) FROM (o:订单) GROUP BY x.金额', '简称 x 没有在 FROM 里出现'),
+            ('SELECT x.金额, count(o) FROM (o:订单) GROUP BY x.金额', '简称 x 没有在 FROM 里出现'),
         ]
         for text, *words in cases:
             self.refused(text, *words)
@@ -134,6 +136,12 @@ class RoundTripTests(unittest.TestCase):
         for query in self.QUERIES:
             text = to_text(query, CATALOG)
             self.assertEqual(compile_query(text, CATALOG), canonical(query), text)
+
+    def test_a_structured_query_missing_a_part_is_refused_rather_than_written_as_text_that_does_not_read_back(self):
+        for broken in ({'start': 'order', 'where': [{'field': '状态码'}]}, {'start': 'order', 'measure': {'op': 'sum'}},
+                       {'start': 'order', 'where': [{'field': '状态码', 'not_equals': []}]}, {'start': 'order', 'share': {'field': '状态码'}}):
+            with self.assertRaises(QueryError, msg=broken):
+                to_text(broken, CATALOG)
 
     def test_the_text_reads_like_the_sketch(self):
         query = compile_query(TOP3, CATALOG)
