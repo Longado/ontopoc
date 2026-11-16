@@ -19,6 +19,7 @@
 
 <p align="center">
   <a href="README.md">中文</a> ·
+  <a href="https://longado.github.io/ontopoc/">Docs</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#try-it">Try it</a> ·
   <a href="#use-with-mcp--claude">MCP / Claude</a> ·
@@ -26,14 +27,14 @@
   <a href="#contributing">Contributing</a>
 </p>
 
-<p align="center"><sub>Ontology engineering · Follow on X: <a href="https://x.com/linyutai120479">@linyutai120479</a></sub></p>
+<p align="center"><sub>Ontology tool for MCP / Claude · Docs: <a href="https://longado.github.io/ontopoc/">longado.github.io/ontopoc</a> · Follow on X: <a href="https://x.com/linyutai120479">@linyutai120479</a></sub></p>
 
 <p align="center">
   <img src="docs/media/ontopoc-hero.gif" alt="OntoPoc companion connects business tables into a draft ontology for review" width="960">
 </p>
 <p align="center"><sub>Concept illustration · <a href="docs/media/ontopoc-poster.png">Still image</a> · <a href="docs/media/ontopoc-motion.mp4">MP4</a></sub></p>
 
-OntoPoc is still in development and nobody but the author uses it yet. The main line is now a team app (the page root, `/`). Upload tables or connect read-only to PostgreSQL or MySQL, build datasets and pipelines, and build object types, relations, views, actions and derived properties from the data. Code checks each one against the data, another builder confirms it, and the data version it was confirmed on is kept. Q&A, boards and agents use confirmed definitions only. When the data changes, the affected definitions go back to "needs another look", and questions that use them are refused, naming which one and who can confirm it.
+OntoPoc is an ontology tool for teams and for MCP / Claude clients. It is still in development and nobody but the author uses it yet. The main line is now a team app (the page root, `/`). Upload tables or connect read-only to PostgreSQL or MySQL, build datasets and pipelines, and build object types, relations, views, actions and derived properties from the data. Code checks each one against the data, another builder confirms it, and the data version it was confirmed on is kept. Q&A, boards and agents use confirmed definitions only. When the data changes, the affected definitions go back to "needs another look", and questions that use them are refused, naming which one and who can confirm it. It is not a knowledge-graph platform; this is schema work ahead of a knowledge graph or semantic layer.
 
 The interface is in Chinese only. This page gives the Chinese label in parentheses the first time it names a screen, tab or button.
 
@@ -97,7 +98,7 @@ Page code: the team app is in `landing-page/src/app/` and uses only the workspac
 
 ## Use with MCP / Claude
 
-Some features are exposed as 38 MCP tools, and the repository is also a Claude Code plugin. The tools share the local service with the page: start the service first, then connect a client. An outside agent using a personal token (`ONTOPOC_TOKEN`) gets the 4 read-only tools by default: read definitions, ask, list unconfirmed items, read a derived property.
+Some features are exposed as 39 MCP tools, and the repository is also a Claude Code plugin. The tools share the local service with the page: start the service first, then connect a client. An outside agent using a personal token (`ONTOPOC_TOKEN`) gets the 5 read-only tools by default: read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property.
 
 ### Install as a Claude Code plugin
 
@@ -112,7 +113,7 @@ In a new session there are two commands: `/ontopoc:ontopoc-build` (upload files 
 
 ### Connect Claude Code or another MCP client
 
-The 38 tools share the same local service as the page and can be called directly from Claude Code and other clients (run this in the repository root). 34 of them work on the earlier screen's runs (building, browsing, questions, confirmation, export) and 4 on the team app: read confirmed definitions, ask, list unconfirmed items, read a derived property. Uploading, writing definitions and confirming in the team app have no MCP tool yet; use the page or HTTP.
+The 39 tools share the same local service as the page and can be called directly from Claude Code and other clients (run this in the repository root). 34 of them work on the earlier screen's runs (building, browsing, questions, confirmation, export) and 5 on the team app: read confirmed definitions, ask, run an OntoPoc Query ([QUERY.md](docs/QUERY.md)), list unconfirmed items, read a derived property. Uploading, writing definitions and confirming in the team app have no MCP tool yet; use the page or HTTP.
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -229,7 +230,7 @@ A semantic layer often sits on a warehouse or metrics platform and defines busin
 
 ### What is an ontology MCP, and how do I use it here?
 
-Here, ontology MCP means calling ontology-related functions through MCP tools. OntoPoc exposes some page features as MCP tools (38 in all, 4 of them for the team app: read definitions, ask, list unconfirmed items, read a derived property) for clients such as Claude Code, Claude Desktop, and Cursor. The tools use local stdio and talk to the modelling service already running on this machine. Claude Code can also install the repository as a plugin and use `/ontopoc:ontopoc-build` and `/ontopoc:ontopoc-review`. Setup is under [Use with MCP / Claude](#use-with-mcp--claude); the tool list is in [docs/MCP.md](docs/MCP.md).
+Here, ontology MCP means calling ontology-related functions through MCP tools. OntoPoc exposes some page features as MCP tools (39 in all, 5 of them for the team app: read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property) for clients such as Claude Code, Claude Desktop, and Cursor. The tools use local stdio and talk to the modelling service already running on this machine. Claude Code can also install the repository as a plugin and use `/ontopoc:ontopoc-build` and `/ontopoc:ontopoc-review`. Setup is under [Use with MCP / Claude](#use-with-mcp--claude); the tool list is in [docs/MCP.md](docs/MCP.md).
 
 ### Who is OntoPoc for today?
 
