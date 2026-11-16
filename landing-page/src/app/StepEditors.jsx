@@ -262,6 +262,17 @@ function useSourceColumns(name, draft, step) {
   return state;
 }
 
+/** A branch's name, renamed when the person leaves the box or presses Enter: an empty name or one already taken goes back to what it was. */
+function BranchName({ label, id, onRename }) {
+  const [text, setText] = useState(id);
+  useEffect(() => setText(id), [id]);
+  const done = () => {
+    if (text.trim() && text !== id) onRename(text.trim());
+    setText(id);   // a refused name goes back; an accepted one comes back as the new id
+  };
+  return <input type="text" aria-label={label} value={text} onChange={(e) => setText(e.target.value)} onBlur={done} onKeyDown={(e) => e.key === "Enter" && done()} />;
+}
+
 /** 拆分: each row goes to the first branch whose condition holds; a last 其余 branch takes the rest. Each branch has a name later steps read. */
 function SplitEditor({ step, draft, setDraft, nodes, name }) {
   const set = (patch) => setDraft(updateStep(draft, step.id, patch));
@@ -283,7 +294,7 @@ function SplitEditor({ step, draft, setDraft, nodes, name }) {
         <fieldset className="component" key={i}>
           <span className="caption">分支 {i + 1} 的名字（后面的步骤按它读）</span>
           <div className="inline wide">
-            <input type="text" aria-label={`分支 ${i + 1} 的名字`} value={b.id} onChange={(e) => setDraft(renameBranch(draft, step.id, b.id, e.target.value))} />
+            <BranchName label={`分支 ${i + 1} 的名字`} id={b.id} onRename={(to) => setDraft(renameBranch(draft, step.id, b.id, to))} />
             <button className="plain" disabled={ruled.length === 1 || readBy(b.id).length > 0} title={readBy(b.id).length ? `${readBy(b.id).join("、")} 在读这个分支，先改它们` : ""} onClick={() => set({ branches: branches.filter((x) => x !== b) })}>去掉这个分支</button>
           </div>
           {source.cols && <FilterForm op={{ where: b.where ?? { all: [] } }} cols={source.cols} onChange={(op) => setBranch(branches.indexOf(b), { where: op.where })} lead="满足" tail="条件的行进这个分支" />}
@@ -295,7 +306,7 @@ function SplitEditor({ step, draft, setDraft, nodes, name }) {
       </div>
       {rest && (
         <label className="field"><span className="caption">“其余”分支的名字</span>
-          <input type="text" value={rest.id} onChange={(e) => setDraft(renameBranch(draft, step.id, rest.id, e.target.value))} />
+          <BranchName label="“其余”分支的名字" id={rest.id} onRename={(to) => setDraft(renameBranch(draft, step.id, rest.id, to))} />
         </label>
       )}
       <p className="hint">一行只进第一个满足条件的分支。{rest ? "" : "没有“其余”分支时，哪个条件都不满足的行不会往下走。"}后面的步骤按分支的名字读。</p>

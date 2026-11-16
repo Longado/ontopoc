@@ -273,6 +273,8 @@ export function withBranchNodes(nodes, steps) {
 
 /** A branch renamed, and every step that reads it reading the new name. */
 export function renameBranch(spec, splitId, from, to) {
+  const taken = new Set([...spec.steps.map((s) => s.id), ...spec.steps.flatMap((s) => (s.branches ?? []).map((b) => b.id))]);
+  if (!from || !String(to ?? "").trim() || taken.has(to)) return spec;   // nothing, or a name that is already a step's or a branch's: left as it was
   const swap = (v) => (v === from ? to : v);
   return {
     ...spec,
