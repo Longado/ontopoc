@@ -456,3 +456,5 @@ table.wraps td.keep { white-space: nowrap; }
 .query textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; width: 100%; box-sizing: border-box; }
 .query button { align-self: flex-start; }
 .query-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre-wrap; margin: 0 0 4px; }
+.object-graph { margin: 12px 0; }
+.object-graph .canvas { height: 460px; min-height: 0; }

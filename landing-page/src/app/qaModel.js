@@ -1,4 +1,5 @@
 // The words of the Q&A page, as plain functions of what the service sends, so they can be tested without a browser.
+import { graphNote } from "./objectGraphModel.js";
 import { STATE_LABEL } from "./typeModel.js";
 
 const count = (n) => Number(n).toLocaleString("en-US");
@@ -9,6 +10,7 @@ export function answerView(record) {
   const a = record.answer;
   if (!a) return record.status === "no_data" ? { big: "没有数据", note: record.reason ?? "", table: null } : null;   // a query that found nothing has no answer, only why
   const unit = a.relation_gap?.many ?? record.types?.[0]?.name ?? "";
+  if (a.graph) return { big: `${count(a.graph.starts)} 个${unit}`, note: graphNote(a.graph), table: null, graph: a.graph };   // SELECT GRAPH: the objects, drawn
   if (a.groups) {
     const shape = a.measure ? null : a.share ? "share" : a.groups[0]?.length === 3 ? "measure" : "count";
     const head = shape === "share" ? ["分组", `${a.share.field} = ${a.share.equals}`, "总数"] : shape === "measure" ? ["分组", "合计或平均", "取到数的对象"] : ["分组", `${unit}数`];

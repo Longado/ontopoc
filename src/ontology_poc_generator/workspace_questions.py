@@ -22,10 +22,10 @@ from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, reason_for, stale_word, type_id)
-from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, parse as parse_query, to_text
+from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible
 from ontology_poc_generator.agent_harness import ask_model
-from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions
+from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions, graph_objects
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
@@ -366,7 +366,8 @@ def _reads(sc: dict, parts: dict, query, used: list, spec) -> tuple[list[str], l
     types = {t['key']: t for t in ontology['object_types']}
     relations = {r['key']: r for r in ontology['relations']}
     dims = query.get('group_by') if isinstance(query.get('group_by'), list) else []
-    walked = sorted({k for k in [*(query.get('via') or []), *(k for d in dims if isinstance(d, dict) for k in d.get('via') or [])] if k in relations})
+    drawn = [k for path in query.get('graph') or [] if isinstance(path, list) for k in path]   # SELECT GRAPH: every path it draws
+    walked = sorted({k for k in [*(query.get('via') or []), *(k for d in dims if isinstance(d, dict) for k in d.get('via') or []), *drawn] if k in relations})
     read = list(dict.fromkeys([query['start'], *[end for k in walked for end in (relations[k]['from'], relations[k]['to'])]]))
     fields = {f for f, _, _ in _uses(query, types, relations) if f} | {u['id'].rpartition('=')[0] for u in used if isinstance(u.get('id'), str)}
     measure = query.get('measure')
@@ -547,6 +548,8 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
     cannot be walked) is an answer that says why, with no number."""
     if params is not None and not isinstance(params, dict):
         raise QaRefused('params 要是一个对象，例如 {"start": "2026-01-01"}')
+    if is_graph(text) and user is not None and user['role'] == 'viewer':   # a graph shows the objects one by one: a viewer reads numbers
+        raise QaRefused('SELECT GRAPH 画的是一个个对象，浏览者只能看数：请用 count()、sum() 这类写法，或请搭建者来看', 403)
     sc = scope(conn, user)
     try:
         parsed = parse_query(text, params)
@@ -571,19 +574,33 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
 def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '', views: tuple = ()) -> dict:
     """A compiled OntoPoc Query run as this person: refused naming the relation when one it walks cannot be walked, else run by the Q&A engine with the meanings
     the text uses (read from the text) and the views named. `asked`: the question it answers, so a meaning the question names and the text leaves out is caught."""
-    walks = [k for k in dict.fromkeys([*query['via'], *(k for d in query['group_by'] or [] for k in d['via'])])]
+    walks = [k for k in dict.fromkeys([*query['via'], *(k for d in query['group_by'] or [] for k in d['via']), *(k for path in query.get('graph') or [] for k in path)])]
     stuck = [(k, why) for k in walks if (why := _walk_problem(sc, sc['relations'][k]['content']))]
     if stuck:
         reason = '；'.join(f'关系「{sc["relations"][k]["content"]["name"]}」现在不能走：{why}' for k, why in stuck)
         return {'status': 'refused', 'reason': f'没有计算：{reason}', 'query': query, 'refusal': {'kind': 'unwalkable', 'definitions': [d for d in _unwalkable(sc) if d['id'] in {relation_id(k) for k, _ in stuck}]},
                 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': '找关系', 'text': reason, 'failed': True}]}
     parts = _inputs(conn, sc)
-    answer = _engine(sc, parts, _checked_relations(conn, sc, parts))
     used = [*_query_used(parts, query), *({'id': v, 'direction': 'include', 'basis': '模型说问题要这个视图'} for v in views)]
+    if query.get('graph') is not None:
+        return _finish(conn, user, sc, parts, {**_graph_answer(parts, query, asked, used), 'query': query, 'definitions_used': used}, [])
+    answer = _engine(sc, parts, _checked_relations(conn, sc, parts))
     item = {**answer(query, asked, used), 'query': query, 'definitions_used': used}
     if item['status'] == 'query_limit':
         return {'status': 'query_limit', 'reason': item['reason'], 'query': query, 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': '结果', 'text': item['reason'], 'failed': True}]}
     return _finish(conn, user, sc, parts, item, answer.applied)
+
+
+def _graph_answer(parts: dict, query: dict, asked: str, used: list) -> dict:
+    """SELECT GRAPH on the rows this person may read, after the same check of the definitions a number gets: the meanings its WHERE uses are confirmed
+    ones (a graph applies no view: it draws the objects as they are)."""
+    ontology, bundle = parts['ontology'], parts['bundle']
+    as_number = {**{k: v for k, v in query.items() if k != 'graph'}, 'top': None}   # the conditions checked as those of a count, which they are
+    checked = definition_check(asked, as_number, ontology, [], bundle['meanings'], used)
+    if checked['unmet']:
+        return {**refusal(checked['unmet']), 'understood': checked['understood']}
+    drawn = graph_objects(ontology, bundle, query)
+    return {**drawn, 'understood': checked['understood']} if checked['understood'] else drawn
 
 
 # --- Q&A where the model writes OntoPoc Query (R10 step 4) -----------------------------------------------------------------------------------------------
@@ -674,6 +691,9 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
         item = {'status': status, 'reason': reasoning or '模型认为写不成一条查询', 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said}
     known = {v['name'] for v in parts['views'] if v['definition'] is not None}   # the views this person may see: a name the model made up is left out, not held against the query
+    if is_graph(text):   # a question is answered with a number; a graph is for 写查询
+        item = {'status': 'query_limit', 'reason': '模型写了 SELECT GRAPH：问答只回答数，要看对象和关系，请在“写查询”里写', 'reasoning': reasoning}
+        return {**_finish(conn, user, sc, parts, item, []), **said, 'written': text}
     views = tuple(dict.fromkeys(v for v in (reply['views'] if isinstance(reply.get('views'), list) else []) if isinstance(v, str) and v in known))
     try:
         query = compile_query(text, query_catalog(sc))
