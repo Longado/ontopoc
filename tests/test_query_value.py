@@ -15,6 +15,7 @@ import unittest
 from scripts.real_model_check import build_workspace
 from tests import test_workspace_store as planted
 from tests.test_derived_properties import CUSTOMER, ORDER, RELATIONS, TABLES
+from tests.test_object_relations import customers_mended
 from tests.test_object_types import shifted_orders_csv
 from tests.test_two_person import SigningTestCase
 
@@ -33,7 +34,6 @@ def sql_db(customers=None, orders=None) -> sqlite3.Connection:
 
 
 def mended_customers() -> list[dict]:
-    from tests.test_object_relations import customers_mended
     return list(csv.DictReader(io.StringIO(base64.b64decode(customers_mended()['content_base64']).decode('utf-8'))))
 
 
@@ -143,16 +143,31 @@ class SqlComparisonTests(QueryCase):
             self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': TABLES})[0], 200)
             for t in (ORDER, CUSTOMER):   # 客户 keyed on 客户编号 + 城市, as the table needs while KH012 is there twice
                 self.assertEqual(ann.post('/api/workspace/types', t)[0], 200)
-                shown = bob.get(f'/api/workspace/types/{t["english_name"]}')[1]
-                self.assertEqual(bob.post('/api/workspace/types/confirm', {'id': t['english_name'], 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+                for column in (('状态码',) if t is ORDER else ()) + (None,):   # the meanings of 状态码 first, then the type
+                    shown = bob.get(f'/api/workspace/types/{t["english_name"]}')[1]
+                    shown = next(p for p in shown['properties'] if p['column'] == column)['meanings'] if column else shown
+                    status, body = bob.post('/api/workspace/types/confirm', {'id': t['english_name'], 'version': shown['version'], 'seen': shown['seen'], **({'column': column} if column else {})})
+                    self.assertEqual(status, 200, body)
             relation = RELATIONS[0]
             self.assertEqual(ann.post('/api/workspace/relations', relation)[0], 200)
             detail = bob.get('/api/workspace/relations/order_customer')[1]
-            self.assertEqual(bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': detail['version'], 'seen': detail['check']['signature']})[0], 200)
+            status, body = bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': detail['version'], 'seen': detail['check']['signature']})
+            self.assertEqual(status, 409, body)   # the relation check sees what the JOIN would do, and the relation is not confirmed
+            self.assertIn('KH012', body['error'])
+            self.assertIn('重复算', body['error'])
             status, body = self.query(ann, 'SELECT c.客户等级, sum(o.金额) FROM (o:订单)-[:订单属于客户]->(c:客户) GROUP BY c.客户等级')
             self.assertEqual(status, 200, body)
             self.assertEqual(body['status'], 'refused', body)
+            self.assertNotIn('answer', body)
+            self.assertIn('订单属于客户', body['reason'])
+            # KH012 once: the relation is confirmed, but 客户 is still keyed on 客户编号 + 城市, so a walk could still meet two customers for one number
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
+            detail = bob.get('/api/workspace/relations/order_customer')[1]
+            self.assertEqual(bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': detail['version'], 'seen': detail['check']['signature']})[0], 200)
+            status, body = self.query(ann, 'SELECT c.客户等级, sum(o.金额) FROM (o:订单)-[:订单属于客户]->(c:客户) GROUP BY c.客户等级')
+            self.assertEqual((status, body['status']), (200, 'refused'), body)
             self.assertIn('客户编号 + 城市', body['reason'])
+            self.assertEqual(body['refusal']['definitions'][0]['id'], 'relation:order_customer')
             self.assertEqual(self.query(ann, 'SELECT sum(o.金额) FROM (o:订单)')[1]['answer']['measure']['value'], truth)
 
     def test_a_hidden_type_or_property_reads_like_one_that_does_not_exist(self):
