@@ -3,7 +3,9 @@ import { ChartResult, Standing } from "./ChartView.jsx";
 import { deleteBoard, getBoard, getBoardData, getBoards } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
-import { SCOPE_LABEL, expiryText, headlineStands, refreshText, scopeText, shareLink, unavailableText } from "./boardModel.js";
+import { SCOPE_LABEL, expiryText, headlineStands, paramValues, refreshText, scopeText, shareLink, unavailableText } from "./boardModel.js";
+import { Answer, Basis } from "./QaPage.jsx";
+import { queryRecord } from "./qaModel.js";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
@@ -26,7 +28,12 @@ export function BoardCards({ data }) {
                 </div>
               ) : <p className="muted small">还没有一个确认过的数可以给你看</p>}
             </>
-          ) : c.status !== "ok" ? <p className="muted">{unavailableText(c)}</p> : (
+          ) : c.status !== "ok" ? <p className="muted">{unavailableText(c)}</p> : c.chart?.kind === "query" ? (
+            <>
+              <Answer record={queryRecord(c.result)} />
+              <Basis record={queryRecord({ ...c.result, query_text: c.result.text })} />
+            </>
+          ) : (
             <>
               <ChartResult result={c.result} withStanding={false} />
               {c.result.standing.lines.length ? <Standing standing={c.result.standing} /> : (
@@ -62,15 +69,34 @@ function BarPicks({ bar, picked, setPicked }) {
   );
 }
 
+/** The board's parameters: typed once at the top, sent to every query card when the reader presses Enter or leaves the box; empty is the default. */
+function ParamInputs({ params, typed, setTyped }) {
+  const [draft, setDraft] = useState(typed);
+  if (!params?.length) return null;
+  const apply = () => setTyped(paramValues(params, draft));
+  return (
+    <form className="inline wide board-bar" role="group" aria-label="参数" onSubmit={(e) => { e.preventDefault(); apply(); }}>
+      {params.map((p) => (
+        <label key={p.name} className="field">
+          <span className="caption">{p.label}</span>
+          <input type="text" aria-label={p.label} placeholder={p.default} value={draft[p.name] ?? ""} onChange={(e) => setDraft({ ...draft, [p.name]: e.target.value })} onBlur={apply} />
+        </label>
+      ))}
+      <button className="secondary" type="submit">按这些值算</button>
+    </form>
+  );
+}
+
 export function BoardPage({ route }) {
   const { id } = route;
   const { user } = useAuth();
   const [picked, setPicked] = useState({});
+  const [typed, setTyped] = useState({});
   const [tick, setTick] = useState(0);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [board] = useLoad(() => getBoard(id), [id]);
-  const [data] = useLoad(() => getBoardData(id, picked), [id, JSON.stringify(picked), tick]);
+  const [data] = useLoad(() => getBoardData(id, picked, typed), [id, JSON.stringify(picked), JSON.stringify(typed), tick]);
   const seconds = board.data?.refresh_seconds ?? 0;
   useEffect(() => {
     if (!seconds) return undefined;
@@ -128,6 +154,7 @@ export function BoardPage({ route }) {
         <>
           <p className={headlineStands(data.data.headline) ? "grey-banner" : "muted small"}>{data.data.headline.text}</p>
           <BarPicks bar={data.data.bar} picked={picked} setPicked={setPicked} />
+          <ParamInputs params={data.data.params} typed={typed} setTyped={setTyped} />
           <BoardCards data={data.data} />
           <p className="muted small">读于 {timeText(data.data.read_at)}，数字是按你能看到的行算的</p>
         </>
