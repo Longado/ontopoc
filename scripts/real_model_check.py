@@ -9,6 +9,9 @@ counted, never a wrong number: the run fails only when an answer gives a number 
 
     hk run "OpenRouter" -- sh -c 'PYTHONPATH=src:. .venv/bin/python scripts/real_model_check.py --out /tmp/check'
 
+--writes both asks every question twice, once with the model writing the JSON query and once writing OntoPoc Query text (R10 step 4), and counts each
+form on its own.
+
 The model comes from the environment (DEEPSEEK_API_KEY, or OPENROUTER_API_KEY for DeepSeek V4.1 Flash through OpenRouter; see gateway_from_env).
 Writes report.json and report.md to --out.
 """
@@ -136,10 +139,27 @@ def build_workspace(ann, bob) -> None:
     ok(bob.post('/api/workspace/types/views/confirm', {'id': VALID['name'], 'version': view['version'], 'seen': view['seen']}), 'confirm view')
 
 
-def ask(person, question: str) -> tuple[int | None, dict | None, float]:
+FORM_NAMES = {'json': 'JSON', 'query': 'OntoPoc Query'}
+
+
+def forms(writes: str) -> list[str]:
+    """The forms a run asks in: 'json', 'query' or 'both'."""
+    return ['json', 'query'] if writes == 'both' else [writes]
+
+
+def tally(results: list[dict]) -> dict:
+    """{form: {verdict: n}}: each form counted on its own."""
+    out = {}
+    for r in results:
+        form = out.setdefault(r.get('writes', 'json'), {})
+        form[r['verdict']] = form.get(r['verdict'], 0) + 1
+    return out
+
+
+def ask(person, question: str, writes: str = 'json') -> tuple[int | None, dict | None, float]:
     started = time.time()
     try:
-        status, body = person.post('/api/workspace/ask', {'question': question})
+        status, body = person.post('/api/workspace/ask', {'question': question, 'writes': writes})
     except (OSError, URLError, ValueError) as exc:   # a timeout, a dropped connection or a reply that is not JSON: an error for this question, not the run
         return None, {'error': repr(exc)}, round(time.time() - started, 1)
     return status, body, round(time.time() - started, 1)
@@ -149,7 +169,7 @@ def summary(body: dict | None) -> dict:
     if not isinstance(body, dict):
         return {}
     answer = body.get('answer') or {}
-    return {'status': body.get('status'), 'path': body.get('path'), 'reason': body.get('reason') or body.get('error'),
+    return {'status': body.get('status'), 'path': body.get('path'), 'reason': body.get('reason') or body.get('error'), 'written': body.get('written'),
             'answer': {k: (answer[k][:5] if k == 'groups' else answer[k]) for k in ('total', 'groups', 'measure', 'order', 'tied_beyond_top') if k in answer},
             'definitions': [d.get('name') for d in body.get('definitions') or []]}
 
@@ -157,11 +177,13 @@ def summary(body: dict | None) -> dict:
 def markdown(report: dict) -> str:
     counts = report['counts']
     lines = [f'# Real-model check {report["at"]}', '', f'Model: `{report["model"] or "?"}`. '
-             f'Right {counts.get("right", 0)}, wrong {counts.get("wrong", 0)}, missed {counts.get("missed", 0)}, error {counts.get("error", 0)}.', '',
-             '| Question | Verdict | Seconds | Got | Truth |', '|---|---|---|---|---|']
+             f'Right {counts.get("right", 0)}, wrong {counts.get("wrong", 0)}, missed {counts.get("missed", 0)}, error {counts.get("error", 0)}.', '']
+    for form, c in (report.get('by_form') or {}).items():
+        lines.append(f'- {FORM_NAMES.get(form, form)}: right {c.get("right", 0)}, wrong {c.get("wrong", 0)}, missed {c.get("missed", 0)}, error {c.get("error", 0)}')
+    lines += ['', '| Question | Form | Verdict | Seconds | Got | Truth |', '|---|---|---|---|---|---|']
     for r in report['results']:
         got = r['got'].get('answer') or r['got'].get('reason') or ''
-        lines.append(f'| {r["question"]} | {r["verdict"]} | {r["seconds"]} | {json.dumps(got, ensure_ascii=False)[:120]} | {json.dumps(r["truth"], ensure_ascii=False)[:80]} |')
+        lines.append(f'| {r["question"]} | {r.get("writes", "json")} | {r["verdict"]} | {r["seconds"]} | {json.dumps(got, ensure_ascii=False)[:120]} | {json.dumps(r["truth"], ensure_ascii=False)[:80]} |')
     return '\n'.join(lines) + '\n'
 
 
@@ -169,6 +191,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('--out', required=True, help=f'folder for the report, the server log and a {DATA_FOLDER} folder (only that one is emptied first)')
     parser.add_argument('--repeat', type=int, default=1, help='ask each question this many times')
+    parser.add_argument('--writes', choices=('json', 'query', 'both'), default='json', help='what the model writes: the JSON query, OntoPoc Query text, or each in turn')
     args = parser.parse_args(argv)
     from ontology_poc_generator import accounts
     from ontology_poc_generator.ontology_server import gateway_from_env
@@ -221,15 +244,17 @@ def main(argv=None) -> int:
         results = []
         for question, expect, key in QUESTIONS:
             for _ in range(args.repeat):
-                status, body, seconds = ask(ann, question)
-                case = {'expect': expect, 'truth': truth[key]}
-                results.append({'question': question, 'verdict': judge(case, status, body), 'seconds': seconds, 'http': status, 'truth': truth[key], 'got': summary(body)})
+                for form in forms(args.writes):   # in turn, so a slow or flaky stretch of the model falls on both forms alike
+                    status, body, seconds = ask(ann, question, form)
+                    case = {'expect': expect, 'truth': truth[key]}
+                    results.append({'question': question, 'writes': form, 'verdict': judge(case, status, body), 'seconds': seconds, 'http': status, 'truth': truth[key], 'got': summary(body)})
         status, body = ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})
         if status != 200:
             raise RuntimeError(f'shifted upload: {status} {body}')
-        status, body, seconds = ask(ann, QUESTIONS[0][0])
-        results.append({'question': f'{QUESTIONS[0][0]}（状态码错位上传之后）', 'verdict': judge({'expect': 'refuse'}, status, body), 'seconds': seconds, 'http': status,
-                        'truth': 'refused', 'got': summary(body)})
+        for form in forms(args.writes):
+            status, body, seconds = ask(ann, QUESTIONS[0][0], form)
+            results.append({'question': f'{QUESTIONS[0][0]}（状态码错位上传之后）', 'writes': form, 'verdict': judge({'expect': 'refuse'}, status, body), 'seconds': seconds, 'http': status,
+                            'truth': 'refused', 'got': summary(body)})
     finally:
         server.terminate()
         try:
@@ -241,7 +266,7 @@ def main(argv=None) -> int:
     counts = defaultdict(int)
     for r in results:
         counts[r['verdict']] += 1
-    report = {'at': time.strftime('%Y-%m-%d %H:%M'), 'model': gateway.model, 'counts': dict(counts), 'results': results}
+    report = {'at': time.strftime('%Y-%m-%d %H:%M'), 'model': gateway.model, 'counts': dict(counts), 'by_form': tally(results), 'results': results}
     (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding='utf-8')
     (out / 'report.md').write_text(markdown(report), encoding='utf-8')
     print(markdown(report))
