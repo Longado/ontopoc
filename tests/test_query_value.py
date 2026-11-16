@@ -160,6 +160,8 @@ class SqlComparisonTests(QueryCase):
             self.assertEqual(body['status'], 'refused', body)
             self.assertNotIn('answer', body)
             self.assertIn('订单属于客户', body['reason'])
+            self.assertIn('KH012', body['reason'])   # the refusal says what the data does, not only that nobody confirmed it
+            self.assertIn('重复算', body['reason'])
             # KH012 once: the relation is confirmed, but 客户 is still keyed on 客户编号 + 城市, so a walk could still meet two customers for one number
             self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
             detail = bob.get('/api/workspace/relations/order_customer')[1]
