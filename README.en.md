@@ -50,7 +50,7 @@ The interface is in Chinese only. This page gives the Chinese label in parenthes
 | Q&A | Scope is the confirmed types the person may see. A question that names an unconfirmed or stale definition is refused before the model is asked, with the reason. The model sees structure, meanings and the values of columns with few distinct values, never rows, and writes a structured query; code runs it and checks the definitions it used. It can leave a meaning out ("not cancelled") and take the top or bottom N. Each answer is kept with its definitions, who confirmed them and the data versions |
 | Use | Object explorer, boards, MCP tools for agents (personal token, read-only by default), the relation graph and lineage graph (coloured by data changed, definition changed, one step behind, further upstream) |
 
-The earlier screen organised around runs is still at `legacy.html`; see [The earlier screen](docs/LEGACY_SCREEN.en.md) below.
+The earlier screen organised around runs is still at `legacy.html`; see [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md).
 
 ## Quick start
 

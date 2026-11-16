@@ -1,6 +1,6 @@
 # OntoPoc 是什么 · 开发方向与边界
 
-这份文档写不常变的东西：这个方向在试什么、站在哪一层、产出什么、一份定义怎么走完一生。现状看 README 的“工作原理”和“已知问题”，开发红线看 `DEVELOPMENT_GUARDRAILS.md`。定位改了就改这份，不要在新文档里重新写一遍。
+这份文档写不常变的东西：这个方向在试什么、站在哪一层、产出什么、一份定义怎么走完一生。现状看 [LEGACY_SCREEN.md](LEGACY_SCREEN.md#工作原理) 的“工作原理”和 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)，开发红线看 `DEVELOPMENT_GUARDRAILS.md`。定位改了就改这份，不要在新文档里重新写一遍。
 
 ## 1. 这个方向在试什么
 
@@ -53,4 +53,4 @@ OntoPoc 是一个还在开发中的方向。在试的是：从客户的几张业
 
 ## 6. 现在到哪一步
 
-看 README 的“工作原理”和“已知问题”：一次上传会发生什么、验证到哪一步、已知的边界。还没有真实客户用过，没有部署。
+看 [LEGACY_SCREEN.md](LEGACY_SCREEN.md#工作原理) 的“工作原理”和 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)：一次上传会发生什么、验证到哪一步、已知的边界。还没有真实客户用过，没有部署。
