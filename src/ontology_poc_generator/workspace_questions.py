@@ -19,7 +19,7 @@ import re
 from ontology_poc_generator.answer_checks import _use, _uses, choose_rows, definition_catalog, definition_check, refusal
 from ontology_poc_generator.derived_properties import derived_visible, describe as describe_derived, evaluate as evaluate_derived, text_of
 from ontology_poc_generator.named_views import name_views
-from ontology_poc_generator.object_relations import _relation_visible, check_relation, relation_id
+from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, reason_for, stale_word, type_id)
 from ontology_poc_generator.ontopoc_query import QueryError, compile_query, parse as parse_query, to_text
@@ -512,6 +512,13 @@ def _query_blockers(conn, user: dict | None, parsed: dict) -> list[dict]:
         content = _content(element_row(conn, line['id']))
         names = {content.get('name'), content.get('english_name')}
         if (line['kind'] == 'type' and names & named_types) or (line['kind'] == 'relation' and names & named_relations):
+            if line['kind'] == 'relation' and not line['reason']:   # why it is still waiting, when the data says why: the check a confirmer would be refused by
+                checked = check_relation(conn, content, record=False, user=user)
+                false = [] if checked['problems'] else cardinality_false(checked)
+                said = checked['problems'] or false
+                if said:
+                    head = '过不了检查' if checked['problems'] else '，' + CARDINALITY[content['cardinality']] + '不成立'
+                    line = {**line, 'reason': f'按现在的数据{head}，确认不了：{"；".join(said)}'}
             out.append({**line, 'because': _causes(conn, element_row(conn, line['id']), user)})
     return out
 
