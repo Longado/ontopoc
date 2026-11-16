@@ -19,6 +19,7 @@
 
 <p align="center">
   <a href="README.en.md">English</a> ·
+  <a href="https://longado.github.io/ontopoc/">Docs</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#快速体验">快速体验</a> ·
   <a href="#用-mcp--claude-接入">MCP / Claude</a> ·
@@ -26,12 +27,14 @@
   <a href="#参与共建">参与共建</a>
 </p>
 
-<p align="center"><sub>Ontology engineering · 在 X 跟进：<a href="https://x.com/linyutai120479">@linyutai120479</a></sub></p>
+<p align="center"><sub>Ontology tool for MCP / Claude · Docs: <a href="https://longado.github.io/ontopoc/">longado.github.io/ontopoc</a> · Follow on X: <a href="https://x.com/linyutai120479">@linyutai120479</a></sub></p>
 
 <p align="center">
   <img src="docs/media/ontopoc-hero.gif" alt="OntoPoc 蓝色角色将业务表格连接为等待确认的本体关系草案" width="960">
 </p>
 <p align="center"><sub>功能主题插画 · <a href="docs/media/ontopoc-poster.png">静态版</a> · <a href="docs/media/ontopoc-motion.mp4">MP4</a></sub></p>
+
+OntoPoc is an ontology tool for MCP / Claude: it drafts object types, relations and definitions from business tables or a database, checks them against the data, and lets a named person confirm each one. It is not a knowledge-graph platform and has no durable instance store; it sits ahead of a knowledge graph or semantic layer, so Q&A and agents use only confirmed definitions.
 
 OntoPoc 还在开发中，还没有作者以外的用户。现在的主线是一个团队用的应用（页面根地址 `/`）：上传表格或只读连接 PostgreSQL / MySQL，建数据集和管道，从数据建对象类型、关系、视图、行为和派生属性；每一项都由代码对照数据检查，由另一位建设者确认，并记下确认时的数据版本。问答、看板和智能体只用已确认的定义；数据变了，受影响的定义回到“需要再看”，用到它们的问题拒答并说出是哪一项、谁能确认。
 
@@ -95,7 +98,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 ## 用 MCP / Claude 接入
 
-OntoPoc 的一部分功能封装为 38 个 MCP 工具，也可作为 Claude Code 插件安装。工具与页面共用本机服务：先启动服务，再接入客户端。给外部智能体用个人令牌（`ONTOPOC_TOKEN`）时默认只给 4 个只读工具：读定义、提问、列出未确认项、读派生属性。
+OntoPoc 的一部分功能封装为 39 个 MCP 工具，也可作为 Claude Code 插件安装。工具与页面共用本机服务：先启动服务，再接入客户端。给外部智能体用个人令牌（`ONTOPOC_TOKEN`）时默认只给 5 个只读工具：读定义、提问、写本体查询、列出未确认项、读派生属性。
 
 ### 作为 Claude Code 插件安装
 
@@ -110,7 +113,7 @@ claude plugin install ontopoc@ontopoc
 
 ### 接入 Claude Code 或其他 MCP 客户端
 
-这 38 个工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用（在仓库根目录运行）。其中 34 个对应早期界面的运行（建模、查看、问答、确认、导出），4 个对应团队应用：读已确认的定义、提问、列出未确认项、读派生属性。团队应用里的上传、写定义和确认还没有 MCP 工具，在页面或 HTTP 接口里做。
+这 39 个工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用（在仓库根目录运行）。其中 34 个对应早期界面的运行（建模、查看、问答、确认、导出），5 个对应团队应用：读已确认的定义、提问、写本体查询（[QUERY.md](docs/QUERY.md)）、列出未确认项、读派生属性。团队应用里的上传、写定义和确认还没有 MCP 工具，在页面或 HTTP 接口里做。
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -227,7 +230,7 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 
 ### 什么是 ontology MCP？可以怎么用？
 
-这里的 ontology MCP 指通过 MCP 工具调用本体相关功能。OntoPoc 把页面上的部分能力做成 MCP 工具（共 38 个，其中 4 个给团队应用：读定义、提问、列出未确认项、读派生属性），供 Claude Code、Claude Desktop、Cursor 等支持 MCP 的客户端调用。工具走本机 stdio，调用的是本机正在运行的建模服务。Claude Code 也可直接装仓库插件后使用 `/ontopoc:ontopoc-build` 与 `/ontopoc:ontopoc-review`。接法见[用 MCP / Claude 接入](#用-mcp--claude-接入)，工具清单见 [docs/MCP.md](docs/MCP.md)。
+这里的 ontology MCP 指通过 MCP 工具调用本体相关功能。OntoPoc 把页面上的部分能力做成 MCP 工具（共 39 个，其中 5 个给团队应用：读定义、提问、写本体查询、列出未确认项、读派生属性），供 Claude Code、Claude Desktop、Cursor 等支持 MCP 的客户端调用。工具走本机 stdio，调用的是本机正在运行的建模服务。Claude Code 也可直接装仓库插件后使用 `/ontopoc:ontopoc-build` 与 `/ontopoc:ontopoc-review`。接法见[用 MCP / Claude 接入](#用-mcp--claude-接入)，工具清单见 [docs/MCP.md](docs/MCP.md)。
 
 ### OntoPoc 现在适合谁用？
 
