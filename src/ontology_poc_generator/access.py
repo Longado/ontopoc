@@ -86,7 +86,7 @@ def route_role(method: str, path: str) -> str | None:
 
 
 # What a token made with scope 'read' may call besides every GET: ask a question and look at data (nothing here changes a definition, a rule, a dataset or an account;
-# an answer is kept with the question, as for a person at the page).
+# an answer is kept with the question, as for a person at the page; an OntoPoc Query is not kept and asks no model, so it takes no ask budget).
 READ_TOKEN_POSTS = ('/api/workspace/ask', '/api/workspace/query', '/api/workspace/query/text', '/api/workspace/explore/table', '/api/workspace/explore/chart', '/api/workspace/dashboards/data', '/api/workspace/dashboards/preview',
                     '/api/workspace/agent/derived')
 

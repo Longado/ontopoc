@@ -390,6 +390,9 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
     if counted not in types:
         raise QueryError(f'简称 {counted} 没有在 FROM 里出现', agg['at'])
     group = parsed['group']
+    for v in [g['var'] for g in group] + [f['var'] for f in fields]:
+        if v not in types:
+            raise QueryError(f'简称 {v} 没有在 FROM 里出现')
     grouped = {(g['var'], g['prop']) for g in group}
     for f in fields:
         if (f['var'], f['prop']) not in grouped:
@@ -532,17 +535,25 @@ def to_text(query: dict, catalog: dict) -> str:
         if fn is None:
             raise QueryError(f'不支持的算法 {m.get("op")}')
         field = m.get('field') or m.get('derived')
+        if not isinstance(field, str) or not field:
+            raise QueryError('求和、求平均没有写字段')
         agg, alias = f'{fn}({start_var}.{_ident(str(field))})', ALIASES[m['op']]
     elif s:
+        if not isinstance(s.get('field'), str) or 'equals' not in s:
+            raise QueryError('占比要写字段和它等于的值')
         agg, alias = f'share({start_var}.{_ident(str(s["field"]))} = {_literal(s["equals"])})', ALIASES['share']
     else:
         agg, alias = f'count({counted})', ALIASES['count']
     lines = [f'SELECT {", ".join([*(f"{v}.{_ident(f)}" for v, f in dims), f"{agg} AS {alias}"])}', f'FROM {", ".join(chains)}']
     conds = []
     for w in q['where']:
+        if not isinstance(w, dict) or not isinstance(w.get('field'), str) or not ('equals' in w or 'not_equals' in w):
+            raise QueryError('筛选要写成“某个字段等于（或不等于）某个值”')
         f = f'{start_var}.{_ident(str(w["field"]))}'
         if 'not_equals' in w:
             v = w['not_equals']
+            if v in ([], None, ''):
+                raise QueryError('“不等于”后面要写一个值，或一个值的列表')
             conds.append(f'{f} NOT IN ({", ".join(map(_literal, v))})' if isinstance(v, list) and len(v) != 1 else f'{f} <> {_literal(v[0] if isinstance(v, list) else v)}')
         else:
             conds.append(f'{f} = {_literal(w.get("equals"))}')

@@ -552,6 +552,8 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
         query = None if blockers else compile_query(text, query_catalog(sc), params)
     except QueryError as exc:
         raise QaRefused(str(exc)) from exc
+    except (KeyError, TypeError, AttributeError) as exc:   # a shape the checks above missed is still a 400 that says so, never a 500
+        raise QaRefused('这条查询读不了，请检查写法') from exc
     if blockers:
         result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': '核对定义', 'text': '查询用到的定义还没有确认，没有计算', 'failed': True}]}
     else:
