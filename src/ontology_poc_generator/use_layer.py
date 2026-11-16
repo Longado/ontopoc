@@ -69,7 +69,7 @@ def post(conn, user: dict | None, path: str, payload: dict):
     if route == '/api/workspace/dashboards/delete':
         return dashboards.delete_dashboard(conn, user, payload)
     if route == '/api/workspace/dashboards/data':
-        return dashboards.dashboard_data(conn, user, payload.get('id'), payload.get('bar'))
+        return dashboards.dashboard_data(conn, user, payload.get('id'), payload.get('bar'), payload.get('params'))
     if route == '/api/workspace/dashboards/preview':
         return dashboards.preview(conn, user, payload)
     if route == '/api/workspace/agent/derived':

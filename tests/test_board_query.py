@@ -59,7 +59,7 @@ class QueryCardTests(BoardCase):
             body = self.params_data(team['ann'], board['id'], {'who': "KH001' OR '1'='1"})
             got = self.card(body, 'who')
             self.assertEqual(got['status'], 'ok')
-            self.assertEqual(got['result']['answer']['total'], 0)   # a SQL template that pastes the value in would count all 160
+            self.assertEqual((got['result']['status'], got['result']['reason']), ('no_data', '数据里没有满足筛选条件的对象'))   # a SQL template that pastes the value in counts all 160
 
     def test_a_card_and_its_parameters_are_checked_when_the_board_is_saved(self):
         with self.service() as (base, out):
@@ -88,19 +88,19 @@ class QueryCardTests(BoardCase):
             admin, ann, vera = team['admin'], team['ann'], team['vera']
             ids = self.ids(admin)
             board = self.make(ann, spec=spec(card('who', WHO), card('amount', AMOUNT)), scope='everyone')
+            amount = self.card(self.params_data(ann, board['id'], {'who': 'KH026'}), 'amount')['result']['answer']['measure']['value']   # before any row rule: with one, a person no rule names reads no rows
+            self.assertEqual(amount, sum(int(r['金额']) for r in ORDERS if r['客户编号'] == 'KH026'))
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH026', 'user_ids': [ids['vera']]}]})[0], 200)
             self.assertEqual(admin.post('/api/workspace/column-access', {'type': 'order', 'column': '金额', 'visible_to': [ids['ann']]})[0], 200)
             seen = self.params_data(vera, board['id'], {'who': 'KH026'})
             got = self.card(seen, 'who')['result']
             self.assertEqual(got['answer']['total'], mine('KH026'))
             self.assertEqual([l['rule'] for l in got['limited_by_rule']], ['客户编号 = KH026'])
-            self.assertEqual(self.card(self.params_data(vera, board['id'], {'who': 'KH001'}), 'who')['result']['answer']['total'], 0)   # not her rows
+            self.assertEqual(self.card(self.params_data(vera, board['id'], {'who': 'KH001'}), 'who')['result']['status'], 'no_data')   # not her rows
             hidden = self.card(seen, 'amount')
             self.assertEqual(hidden['status'], 'unavailable')
             self.assertNotIn('金额', str(hidden))   # the card is there; what it reads is not told to someone who may not read it
             self.assertIn('你现在看不到', seen['headline']['text'])
-            self.assertEqual(self.card(self.params_data(ann, board['id'], {'who': 'KH026'}), 'amount')['result']['answer']['measure']['value'],
-                             sum(int(r['金额']) for r in ORDERS if r['客户编号'] == 'KH026'))
             reader = vera.get(f'/api/workspace/dashboards/{board["id"]}')[1]
             self.assertNotIn('spec', reader)   # a reader gets the board worked out, not its texts
 

@@ -13,6 +13,12 @@ a viewer opens the board after the data under it moved, the type is not theirs t
 them and shows that number, labelled with when it was confirmed. It is the number that was shown, never one worked out again from the new data, and only the reader's
 own (over the rows their rules let them read). A change to the board's spec drops what it stored.
 
+A card can also be an OntoPoc Query (`text`, chart kind 'query'): a saved query, worked out the same way, by the person who opens the board, through the same engine as a
+question (workspace_questions.run_text), with no model. The board's parameters ({name, label, default}) are asked once at the top of the board and passed to every
+query card as values for its $names: a value is compared as a value, never read as query text. Each one has a default, so the board always shows a number, and every
+$name a card uses must be one of them. Someone who opens the board but did not make it is not told what a query card that they cannot work out reads (a property
+kept from them reads like one that does not exist, so the reason would name it): they are told the card is closed to them.
+
 A share link is the board's address in the app. It opens only for someone who is signed in and may see the board: there is no anonymous access.
 Visibility: the owner and admins always; `everyone` is every signed-in person; `named` the people listed; `private` (the default, a draft) the owner. After
 `expires_at` only the owner and admins can still open it, and it says it expired.
@@ -23,9 +29,10 @@ from datetime import date, datetime, timezone
 import json
 import re
 
-from ontology_poc_generator.explorer import explore_chart, explore_meta, explore_table, normalize_chart, normalize_query
+from ontology_poc_generator.explorer import _standing, explore_chart, explore_meta, explore_table, normalize_chart, normalize_query
 from ontology_poc_generator.object_types import TypeRefused, _confirmers, _content, _type_row, element_row, type_id, was_confirmed, waiting_for_viewer
 from ontology_poc_generator.object_views import view_id
+from ontology_poc_generator.ontopoc_query import QueryError, param_names
 from ontology_poc_generator.type_access import can_access, hidden_columns
 
 SCHEMA = '''
@@ -39,6 +46,9 @@ CREATE TABLE IF NOT EXISTS dashboard_last (
 SCOPES = {'private': '只有我', 'named': '指定的人', 'everyone': '所有登录的人'}
 REFRESH = (0, 60, 300, 900, 3600)   # seconds between two reads of the data; 0 is "only when the page is opened or the person asks"
 MAX_COMPONENTS, MAX_BAR, MAX_NAME, MAX_TITLE = 12, 4, 40, 40
+MAX_PARAMS, MAX_VALUE, MAX_TEXT = 4, 200, 4000   # parameters on a board, characters in a parameter's value, characters in a query card
+PARAM_NAME = re.compile(r'[A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff]{0,19}')   # as the query reads a $name
+CLOSED_TEXT = '这个组件你现在算不了：它用到的对象类型、属性或关系你看不到，或者现在不在了'
 ROW_LIMIT = 10   # an instance table on a board shows this many rows
 SIGN_IN_NOTE = '分享链接打开时仍然要先登录，并且要在看板的发布范围里；没有匿名访问。'
 
@@ -95,6 +105,10 @@ def _reads_nothing(conn, user: dict | None, record: dict) -> bool:
     if _is_admin(user) or _owns(user, record):
         return False
     for component in record['spec']['components']:
+        if 'text' in component:
+            if _text_opens(conn, user, component, _defaults(record['spec'])):
+                return False
+            continue
         try:
             _type_row(conn, component['query']['type'], user)
             return False
@@ -165,16 +179,19 @@ def normalize_spec(raw) -> dict:
             raise DashboardRefused('组件要写成对象')
         title = _clean_name(c.get('title'), f'第 {i} 个组件的标题', MAX_TITLE)
         raw_chart = c.get('chart')
+        ident = c.get('id') if isinstance(c.get('id'), str) and re.fullmatch(r'[A-Za-z0-9_-]{1,20}', c['id']) else f'c{i}'
+        if ident in seen:
+            raise DashboardRefused(f'组件编号“{ident}”重复了')
+        seen.add(ident)
+        if 'text' in c or (isinstance(raw_chart, dict) and raw_chart.get('kind') == 'query'):
+            components.append({'id': ident, 'title': title, 'text': _query_text(c, title), 'chart': {'kind': 'query'}})
+            continue
         rows = isinstance(raw_chart, dict) and raw_chart.get('kind') == 'rows'
         try:
             query = normalize_query(c.get('query'))
             chart = {'kind': 'rows'} if rows else normalize_chart(raw_chart)
         except TypeRefused as exc:
             raise DashboardRefused(f'“{title}”：{exc}') from None
-        ident = c.get('id') if isinstance(c.get('id'), str) and re.fullmatch(r'[A-Za-z0-9_-]{1,20}', c['id']) else f'c{i}'
-        if ident in seen:
-            raise DashboardRefused(f'组件编号“{ident}”重复了')
-        seen.add(ident)
         components.append({'id': ident, 'title': title, 'query': query, 'chart': chart})
     bar = raw.get('filters') or []
     if not isinstance(bar, list) or len(bar) > MAX_BAR or not all(isinstance(f, dict) for f in bar):
@@ -182,7 +199,66 @@ def normalize_spec(raw) -> dict:
     filters = [{'field': _clean_name(f.get('field'), '筛选项的字段', 60), 'label': _clean_name(f.get('label') or f.get('field'), '筛选项的名字', MAX_TITLE)} for f in bar]
     if len({f['field'] for f in filters}) != len(filters):
         raise DashboardRefused('筛选条里一个字段只能出现一次')
-    return {'components': components, 'filters': filters}
+    params = _params(raw.get('params'))
+    declared = {p['name'] for p in params}
+    for c in components:
+        missing = [n for n in param_names(c['text']) if n not in declared] if 'text' in c else []
+        if missing:
+            raise DashboardRefused(f'“{c["title"]}”用到了 {"、".join("$" + n for n in missing)}：要在看板的参数里加上它和默认值')
+    return {'components': components, 'filters': filters, 'params': params}
+
+
+def _query_text(c: dict, title: str) -> str:
+    """A query card's text, checked for what can be checked without the data: one query of at most MAX_TEXT characters that can be read into words."""
+    text = c.get('text')
+    if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:
+        raise DashboardRefused(f'“{title}”：要写一条本体查询，最多 {MAX_TEXT} 个字符')
+    if not isinstance(c.get('chart'), dict) or c['chart'].get('kind') != 'query':
+        raise DashboardRefused(f'“{title}”：本体查询组件的种类是 query，它的结果按查询自己的样子显示')
+    try:
+        param_names(text)
+    except QueryError as exc:
+        raise DashboardRefused(f'“{title}”：{exc}') from None
+    return text
+
+
+def _params(raw) -> list[dict]:
+    """The board's parameters, [{name, label, default}]: at most MAX_PARAMS, each name once, each with a default (the board is worked out with it until a reader
+    types another value)."""
+    if raw in (None, ''):
+        return []
+    if not isinstance(raw, list) or not all(isinstance(p, dict) for p in raw):
+        raise DashboardRefused('参数要写成 [{"name": 名字, "label": 显示的名字, "default": 默认值}]')
+    if len(raw) > MAX_PARAMS:
+        raise DashboardRefused(f'一个看板最多 {MAX_PARAMS} 个参数')
+    out = []
+    for p in raw:
+        name = p['name'].strip() if isinstance(p.get('name'), str) else ''
+        if not PARAM_NAME.fullmatch(name):
+            raise DashboardRefused(f'参数名“{name}”要以字母、下划线或汉字开头，只有字母、数字、下划线和汉字，最多 20 个字符，不写 $')
+        if name in {q['name'] for q in out}:
+            raise DashboardRefused(f'参数名 ${name} 重复了')
+        default = p.get('default')
+        default = str(default).strip() if isinstance(default, (str, int, float)) and not isinstance(default, bool) else ''
+        if not default or len(default) > MAX_VALUE:
+            raise DashboardRefused(f'参数 ${name} 要写默认值，最多 {MAX_VALUE} 个字符：看板打开时先用它算')
+        label = p['label'] if isinstance(p.get('label'), str) and p['label'].strip() else name
+        out.append({'name': name, 'label': _clean_name(label, f'参数 ${name} 的名字', MAX_TITLE), 'default': default})
+    return out
+
+
+def _defaults(spec: dict) -> dict:
+    return {p['name']: p['default'] for p in spec.get('params', [])}
+
+
+def _values(spec: dict, given) -> dict:
+    """The parameters a board is worked out with: what the reader typed for a parameter the board has, the default for one left empty; other names are ignored."""
+    if given in (None, ''):
+        given = {}
+    if not isinstance(given, dict) or not all(isinstance(k, str) and isinstance(v, (str, int, float)) and not isinstance(v, bool) and len(str(v)) <= MAX_VALUE for k, v in given.items()):
+        raise DashboardRefused(f'参数要写成 {{名字: 取值}}，取值是文字或数字，最多 {MAX_VALUE} 个字符')
+    typed = {k: str(v).strip() for k, v in given.items()}
+    return {p['name']: typed.get(p['name']) or p['default'] for p in spec.get('params', [])}
 
 
 def _publish(conn, payload: dict) -> dict:
@@ -216,7 +292,7 @@ def _publish(conn, payload: dict) -> dict:
 def _checked(conn, user: dict | None, payload: dict) -> tuple[str, dict, dict]:
     name = _clean_name(payload.get('name'), '看板的名字', MAX_NAME)
     spec = normalize_spec(payload.get('spec'))
-    problem = next((c for c in evaluate(conn, user, spec, {}) if c['status'] != 'ok'), None)   # a component that cannot be worked out is refused here, not found out by the readers
+    problem = next((c for c in evaluate(conn, user, spec, {}, _defaults(spec)) if c['status'] != 'ok'), None)   # a component that cannot be worked out is refused here, not found out by the readers
     if problem:
         raise DashboardRefused(f'“{problem["title"]}”：{problem["message"]}')
     return name, spec, _publish(conn, payload)
@@ -283,7 +359,9 @@ def _waiting_on(conn, user: dict | None, component: dict) -> list[str] | None:
 
 
 def _kept_from(conn, user: dict | None, component: dict) -> set[str]:
-    """The columns of the component's type kept from this person."""
+    """The columns of the component's type kept from this person (none for a query card: it is told it is closed, not which columns)."""
+    if 'text' in component:
+        return set()
     return hidden_columns(conn, type_id(str(component['query'].get('type'))), user)
 
 
@@ -310,11 +388,41 @@ def _work_out(conn, user: dict | None, component: dict, bar: dict) -> dict:
     return {'id': component['id'], 'title': component['title'], 'chart': component['chart'], 'status': 'ok', 'result': result}
 
 
-def evaluate(conn, user: dict | None, spec: dict, bar: dict) -> list[dict]:
+def _text_opens(conn, user: dict | None, component: dict, values: dict) -> bool:
+    """Whether a query card can be read into a query over what this person may see (not yet whether its definitions answer)."""
+    from ontology_poc_generator.ontopoc_query import compile_query
+    from ontology_poc_generator.workspace_questions import query_catalog, scope
+    try:
+        compile_query(component['text'], query_catalog(scope(conn, user)), values)
+        return True
+    except (QueryError, KeyError, TypeError, AttributeError):
+        return False
+
+
+def _work_out_text(conn, user: dict | None, component: dict, values: dict, author: bool) -> dict:
+    """A query card worked out for this person: the answer as a question's (status, answer, text with the values in it, definitions, limited_by_rule) and its standing.
+    A refusal says why; one that comes from what the text names says it only to the board's author."""
+    from ontology_poc_generator.workspace_questions import QaRefused, run_text
+    base = {'id': component['id'], 'title': component['title'], 'chart': component['chart']}
+    try:
+        got = run_text(conn, user, component['text'], values)
+    except QaRefused as exc:
+        return {**base, 'status': 'unavailable', 'message': str(exc) if author else CLOSED_TEXT}
+    if got['status'] not in ('answered', 'no_data'):
+        return {**base, 'status': 'unavailable', 'message': got.get('reason') or '没有算出来'}
+    result = {k: got[k] for k in ('status', 'answer', 'reason', 'text', 'definitions', 'limited_by_rule', 'types', 'datasets') if k in got}
+    return {**base, 'status': 'ok', 'result': {**result, 'standing': _standing(conn, [d['id'] for d in got.get('definitions', [])])}}
+
+
+def evaluate(conn, user: dict | None, spec: dict, bar: dict, values: dict | None = None, author: bool = True) -> list[dict]:
     """Every component worked out for this person: {'id', 'title', 'chart', 'status': 'ok', 'result'} or {..., 'status': 'unavailable', 'message'}. A component that
-    cannot be read by this person (a type they may not see, a view or column that is gone) says why and the others still show."""
+    cannot be read by this person (a type they may not see, a view or column that is gone) says why and the others still show. `values` are the parameters the query
+    cards are worked out with; `author` is whether this person made the board (or may change it): only they are told what a query card that fails reads."""
     out = []
     for component in spec['components']:
+        if 'text' in component:
+            out.append(_work_out_text(conn, user, component, values if values is not None else _defaults(spec), author))
+            continue
         try:
             out.append(_work_out(conn, user, component, bar))
         except TypeRefused as exc:
@@ -326,12 +434,12 @@ def _bar_options(conn, user: dict | None, spec: dict, picked: dict) -> list[dict
     """The filter bar as the page draws it: each field with its name, the values to pick from (read from the first component whose type has the field, over the rows
     this person may read) and the pick."""
     out = []
-    kept = set().union(*(_kept_from(conn, user, c) for c in spec['components'])) if spec['components'] else set()
+    kept = set().union(set(), *(_kept_from(conn, user, c) for c in spec['components']))
     for f in spec['filters']:
         if f['field'] in kept:   # a filter on a column kept from them is not on their bar
             continue
         options, name = None, f['label']
-        for component in spec['components']:
+        for component in (c for c in spec['components'] if 'query' in c):
             try:
                 fields = explore_meta(conn, user, component['query']['type'])['fields']
             except TypeRefused:
@@ -386,13 +494,21 @@ def _with_last(conn, user: dict | None, board: int, picked: dict, components: li
     return out
 
 
-def dashboard_data(conn, user: dict | None, dashboard_id, bar=None) -> dict:
-    """The board worked out for this person with the filter bar's picks."""
+def _param_options(spec: dict, values: dict) -> list[dict]:
+    return [{**p, 'value': values[p['name']]} for p in spec.get('params', [])]
+
+
+def dashboard_data(conn, user: dict | None, dashboard_id, bar=None, params=None) -> dict:
+    """The board worked out for this person with the filter bar's picks and the parameters they typed (the defaults for the rest)."""
     ensure_schema(conn)
     record = _found(conn, user, dashboard_id)
     picked = _picked(record['spec'], bar)
-    components = _with_last(conn, user, record['id'], picked, evaluate(conn, user, record['spec'], picked), record['spec']['components'])
-    return {'id': record['id'], 'name': record['name'], 'bar': _bar_options(conn, user, record['spec'], picked), 'components': components, 'headline': _headline(components),
+    values = _values(record['spec'], params)
+    kept_as = {'bar': picked, 'params': values} if values else picked   # a board with no parameters keeps what it kept before under the same key
+    author = _owns(user, record) or _is_admin(user)
+    components = _with_last(conn, user, record['id'], kept_as, evaluate(conn, user, record['spec'], picked, values, author), record['spec']['components'])
+    return {'id': record['id'], 'name': record['name'], 'bar': _bar_options(conn, user, record['spec'], picked), 'params': _param_options(record['spec'], values),
+            'components': components, 'headline': _headline(components),
             'refresh_seconds': record['refresh_seconds'], 'expired': _expired(record), 'read_at': _now(), 'sign_in_note': SIGN_IN_NOTE}
 
 
@@ -400,5 +516,6 @@ def preview(conn, user: dict | None, payload: dict) -> dict:
     """A board that is not saved, worked out for its author: what the editor shows beside the form."""
     spec = normalize_spec(payload.get('spec'))
     picked = _picked(spec, payload.get('bar'))
-    components = evaluate(conn, user, spec, picked)
-    return {'bar': _bar_options(conn, user, spec, picked), 'components': components, 'headline': _headline(components)}
+    values = _values(spec, payload.get('params'))
+    components = evaluate(conn, user, spec, picked, values)
+    return {'bar': _bar_options(conn, user, spec, picked), 'params': _param_options(spec, values), 'components': components, 'headline': _headline(components)}
