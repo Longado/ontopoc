@@ -236,6 +236,11 @@ def _condition(r: _Reader) -> dict:
     raise QueryError(f'第 {here + 1} 个字附近应该是 =、<>、IN、NOT IN、>、>=、<、<= 或 BETWEEN', here)
 
 
+def param_names(text: str) -> list[str]:
+    """The $names a query uses, each once, in order of first use; none inside a quoted value or a comment. QueryError when the text cannot be read at all."""
+    return list(dict.fromkeys(v[1:] for k, v, _ in _tokens(text) if k == 'param'))
+
+
 def parse(text: str, params: dict | None = None) -> dict:
     """The text as its parts (no names are looked up yet): select, chains, where, group, order, limit."""
     if not isinstance(text, str) or not text.strip():

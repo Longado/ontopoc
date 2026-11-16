@@ -7,7 +7,7 @@ const SHOWN_GROUPS = 20;
 /** An answer from the engine (a count, a share, a total, or groups) as what the card shows: {big, note, table: {head, rows, total} | null}. */
 export function answerView(record) {
   const a = record.answer;
-  if (!a) return null;
+  if (!a) return record.status === "no_data" ? { big: "没有数据", note: record.reason ?? "", table: null } : null;   // a query that found nothing has no answer, only why
   const unit = a.relation_gap?.many ?? record.types?.[0]?.name ?? "";
   if (a.groups) {
     const shape = a.measure ? null : a.share ? "share" : a.groups[0]?.length === 3 ? "measure" : "count";
@@ -74,6 +74,21 @@ export function standingText(d) {
 export function queryExample(scope) {
   const first = scope?.types?.[0];
   return first ? `SELECT count(x) AS 数量\nFROM (x:${first.name})` : "";
+}
+
+/** The $names a query uses, each once, in order; one inside a quoted value, a `name` or a -- comment is not a parameter (as the service reads it). */
+export function paramsIn(text) {
+  const names = [];
+  for (const m of String(text ?? "").matchAll(/'(?:[^']|'')*'|`[^`]*`|--[^\n]*|\$([A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff]*)/g)) {
+    if (m[1] && !names.includes(m[1])) names.push(m[1]);
+  }
+  return names;
+}
+
+/** The parameters a query box sends: a value for each $name its text uses (empty when not typed yet), or undefined when it uses none. */
+export function queryParams(text, values) {
+  const names = paramsIn(text);
+  return names.length ? Object.fromEntries(names.map((n) => [n, values?.[n] ?? ""])) : undefined;
 }
 
 /** A query's result as the record the answer and refusal cards read (a refusal before anything ran has no definitions, steps or datasets). */

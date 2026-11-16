@@ -15,6 +15,26 @@ function ComponentForm({ c, metas, types, onChange, onRemove }) {
   const needsNumber = c.kind === "histogram" || c.kind === "table";
   const measure = fields.find((f) => f.key === c.measure);
   const set = (patch) => onChange({ ...c, ...patch });
+  const kinds = (
+    <Select label="种类" value={c.kind} onChange={(v) => set({ kind: v, type: v === "query" ? c.type : c.type || types[0]?.id || "", group: ["histogram", "number", "rows", "query"].includes(v) ? "" : c.group, measure: v === "histogram" || v === "table" ? (numeric[0]?.key ?? "") : c.measure })}>
+      {COMPONENT_KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+    </Select>
+  );
+  if (c.kind === "query") {
+    return (
+      <fieldset className="component">
+        <div className="inline wide">
+          <input type="text" aria-label="组件标题" placeholder="标题，例如 某客户的订单数" value={c.title} onChange={(e) => set({ title: e.target.value })} />
+          {kinds}
+          <button className="plain" onClick={onRemove}>去掉</button>
+        </div>
+        <div className="query">
+          <textarea aria-label="本体查询" rows={4} spellCheck={false} value={c.text} placeholder={"SELECT count(o) AS 数量\nFROM (o:订单)\nWHERE o.客户编号 = $客户"} onChange={(e) => set({ text: e.target.value })} />
+        </div>
+        <p className="muted small">$名字 是参数：在下面“参数”里写上它的默认值，看的人可以在看板上方改。按看的人能看的行算，不调用模型。</p>
+      </fieldset>
+    );
+  }
   return (
     <fieldset className="component">
       <div className="inline wide">
@@ -29,9 +49,7 @@ function ComponentForm({ c, metas, types, onChange, onRemove }) {
           <option value="">全部行</option>
           {(meta?.views ?? []).map((v) => <option key={v.id} value={v.id}>{v.name}{v.state === "confirmed" ? "" : "（未确认）"}</option>)}
         </Select>
-        <Select label="种类" value={c.kind} onChange={(v) => set({ kind: v, group: ["histogram", "number", "rows"].includes(v) ? "" : c.group, measure: v === "histogram" || v === "table" ? (numeric[0]?.key ?? "") : c.measure })}>
-          {COMPONENT_KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-        </Select>
+        {kinds}
       </div>
       {["bar", "pie", "table"].includes(c.kind) && (
         <div className="op-row inline wide">
@@ -72,13 +90,14 @@ function Editor({ id, board }) {
   const [draft, setDraft] = useState(() => (board ? draftOf(board) : emptyDraft()));
   const [types] = useLoad(() => getTypes(), []);
   const [people] = useLoad(() => getBoards().then((b) => b.people), []);
-  const used = [...new Set(draft.components.map((c) => c.type))];
+  const used = [...new Set(draft.components.filter((c) => c.kind !== "query" && c.type).map((c) => c.type))];
   const [metas] = useLoad(() => Promise.all(used.map((t) => getExploreMeta(t))).then((all) => Object.fromEntries(all.map((m) => [m.type.id, m]))), [used.join("|")]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const usable = (types.data ?? []);
   const problem = draftProblem(draft);
-  const preview = useSettled(() => (draft.components.length && draft.components.every((c) => c.title.trim()) ? previewBoard(specOf(draft)) : Promise.resolve(null)), JSON.stringify(specOf(draft)), 600);
+  const ready = draft.components.length && draft.components.every((c) => c.title.trim() && (c.kind !== "query" || c.text.trim())) && !/参数|查询里用到/.test(problem);
+  const preview = useSettled(() => (ready ? previewBoard(specOf(draft)) : Promise.resolve(null)), JSON.stringify(specOf(draft)), 600);
   const set = (patch) => setDraft({ ...draft, ...patch });
   const allFields = [...new Map(Object.values(metas.data ?? {}).flatMap((m) => m.fields.filter((f) => !f.derived).map((f) => [f.key, f.name]))).entries()];
   const save = async () => {
@@ -124,6 +143,17 @@ function Editor({ id, board }) {
           </div>
         ))}
         <div className="inline"><button className="secondary" disabled={draft.filters.length >= 4 || !allFields.length} onClick={() => set({ filters: [...draft.filters, { field: "", label: "" }] })}>加筛选项</button></div>
+        <h2 className="section">参数</h2>
+        <p className="muted small">查询组件里的 $名字。每个都要有默认值：看板打开时先用它算，看的人可以在看板上方换一个值。</p>
+        {(draft.params ?? []).map((p, i) => (
+          <div className="inline wide" key={i}>
+            <input type="text" aria-label="参数名" placeholder="名字，不写 $" value={p.name} onChange={(e) => set({ params: draft.params.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
+            <input type="text" aria-label="参数显示的名字" placeholder="显示的名字" value={p.label} onChange={(e) => set({ params: draft.params.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
+            <input type="text" aria-label="默认值" placeholder="默认值" value={p.default} onChange={(e) => set({ params: draft.params.map((x, j) => (j === i ? { ...x, default: e.target.value } : x)) })} />
+            <button className="plain" onClick={() => set({ params: draft.params.filter((_, j) => j !== i) })}>去掉</button>
+          </div>
+        ))}
+        <div className="inline"><button className="secondary" disabled={(draft.params ?? []).length >= 4} onClick={() => set({ params: [...(draft.params ?? []), { name: "", label: "", default: "" }] })}>加参数</button></div>
         <h2 className="section">发布</h2>
         <fieldset className="ways">
           {Object.entries(SCOPE_LABEL).map(([k, label]) => (
