@@ -1,5 +1,5 @@
 import React from "react";
-import { KIND_LABEL, SIZE, ageText, edgeLabel, fitText, leaves } from "./graphModel.js";
+import { KIND_LABEL, SIZE, ageText, cameFromText, datedText, edgeLabel, fitText, leaves, sourceLines } from "./graphModel.js";
 import { stateText } from "./typeModel.js";
 
 const stateClass = (node) => `s-${node.model_draft ? "proposed" : node.state ?? "none"}`;
@@ -14,7 +14,8 @@ function lines(node) {
     const objects = node.objects == null ? "" : node.rows_limited ? `你能看到 ${node.objects} 个对象` : `${node.objects} 个对象`;
     return [{ text: objects }, secondLine(node), ...(node.stale?.short ? [{ text: node.stale.short }] : [])];   // what moved, in a few words, under the cause
   }
-  if (node.kind === "dataset") return [{ text: `第 ${node.version} 版` }, ...(node.uploaded_at ? [{ text: `上传于 ${ageText(node.uploaded_at)}` }] : [])];   // a dataset this person may not open does not say when it came
+  if (node.kind === "source") return sourceLines(node);
+  if (node.kind === "dataset") return [{ text: [`第 ${node.version} 版`, cameFromText(node.came_from)].filter(Boolean).join("，") }, ...(node.uploaded_at ? [{ text: `${datedText(node.came_from)} ${ageText(node.uploaded_at)}` }] : [])];   // a dataset this person may not open does not say when it came
   if (node.stale) return [{ text: node.stale.label, cause: true }];
   return [{ text: node.state ? `${KIND_LABEL[node.kind]} ${stateText(node)}` : KIND_LABEL[node.kind], word: node.state }];   // an answer is nobody's confirmation: it has no state word
 }
@@ -23,14 +24,14 @@ function lines(node) {
 export function GraphNode({ node, box, picked, faded, onPick }) {
   const { w, h } = SIZE[node.kind];
   const inner = w - 24;
-  const kindClass = node.kind === "dataset" ? "dataset" : "";
+  const kindClass = node.kind === "dataset" || node.kind === "source" ? "dataset" : "";
   const shown = lines(node);
   const hint = [KIND_LABEL[node.kind], node.name, node.stale ? `${node.stale.label}${node.stale.root ? `：${node.stale.root}` : ""}` : ""].filter(Boolean).join("，");
   return (
     <g className={`g-node ${stateClass(node)} ${kindClass}${picked ? " picked" : ""}${faded ? " faded" : ""}`} transform={`translate(${box.x} ${box.y})`} tabIndex={0} role="button" aria-label={hint} aria-pressed={picked}
       onClick={(e) => { e.stopPropagation(); onPick(); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(); } }}>
       <title>{hint}</title>
-      <rect className="box" width={w} height={h} rx={node.kind === "dataset" ? 2 : 6} />
+      <rect className="box" width={w} height={h} rx={node.kind === "dataset" ? 2 : node.kind === "source" ? 12 : 6} />
       {node.kind === "type" ? (
         <>
           <path className="head" d={`M0 24 V6 a6 6 0 0 1 6 -6 H${w - 6} a6 6 0 0 1 6 6 V24 Z`} />
