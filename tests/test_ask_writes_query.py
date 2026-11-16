@@ -152,3 +152,14 @@ class WritesQueryTests(QuestionTests):
             self.assertEqual(status, 200, body)
             self.assertEqual((body['status'], body['answer']['total'], body['writes']), ('answered', 3, 'query'), body)
             self.assertEqual(sorted(d['name'] for d in body['definitions']), ['客户', '订单', '订单属于客户'])
+
+    def test_views_that_are_not_a_list_of_known_names_are_left_out_rather_than_crashing_or_sinking_the_query(self):
+        """Found in the review of PR #87: "views": 5 dropped the connection, "views": "有效订单" read each character as a view."""
+        replies = [{'reasoning': '', 'query': COUNT_CANCELLED, 'views': bad} for bad in (5, True, '有效订单', {'a': 1}, ['不存在', 3])]
+        model = TextModel(*replies)
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            for bad in replies:
+                status, body = self.ask_text(team['ann'])
+                self.assertEqual((status, body.get('status'), (body.get('answer') or {}).get('total')), (200, 'answered', CANCELLED), (bad['views'], body))
