@@ -62,8 +62,10 @@ class GraphServiceTests(QueryCase):
             customers = {n['id']: n for n in g['nodes'] if n['type'] == 'customer'}
             self.assertEqual(sorted(n['key'] for n in orders), sorted(r['订单号'] for r in cancelled))
             self.assertTrue(all(n['start'] for n in orders) and not any(n['start'] for n in customers.values()))
-            self.assertEqual({n['name'] for n in customers.values()}, {names[r['客户编号']] for r in cancelled})
-            self.assertEqual(len(g['edges']), len(cancelled))   # each order belongs to one customer
+            known = [r for r in cancelled if r['客户编号'] in names]   # an order naming a customer the customer table lacks (KH099) reaches no customer
+            self.assertLess(len(known), len(cancelled))
+            self.assertEqual({n['name'] for n in customers.values()}, {names[r['客户编号']] for r in known})
+            self.assertEqual(len(g['edges']), len(known))   # each order belongs to one customer
             by_id = {n['id']: n for n in g['nodes']}
             for e in g['edges']:
                 self.assertEqual((by_id[e['from']]['type'], by_id[e['to']]['type'], e['name']), ('order', 'customer', '订单属于客户'))
