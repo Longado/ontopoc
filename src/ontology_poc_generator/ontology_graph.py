@@ -210,11 +210,39 @@ def relation_graph(conn, user: dict | None) -> dict:
 
 # --- the lineage graph ---------------------------------------------------------------------------------------------------------------------------
 
+def _came_from(origin, told: bool) -> dict:
+    """Where the current version of a dataset came from: {'kind': upload | source | pipeline | action | other}, with the source and table, the pipeline or the action named
+    only when `told` (a builder who may open the dataset: a source and a pipeline are pages of theirs, not a viewer's)."""
+    origin = str(origin or '')
+    if origin == 'upload':
+        return {'kind': 'upload'}
+    if origin.startswith('source:'):
+        source, _, table = origin[len('source:'):].partition('/')
+        return {'kind': 'source', **({'source': source, 'table': table} if told else {})}
+    if origin.startswith('pipeline:'):
+        return {'kind': 'pipeline', **({'pipeline': origin[len('pipeline:'):].rsplit('@run', 1)[0]} if told else {})}
+    if origin.startswith('action:'):
+        return {'kind': 'action', **({'action': origin[len('action:'):]} if told else {})}
+    return {'kind': 'other'}
+
+
 def _dataset_node(conn, name: str, readers: list[dict], user: dict | None) -> dict:
     dataset = current_dataset(conn, name)
     hidden = dataset_hidden(conn, name, user)   # not found to this person: who uploaded it and when are not theirs (the type page already names its version)
+    told = not hidden and (user is None or user['role'] != 'viewer')
     return {'id': f'dataset:{name}', 'kind': 'dataset', 'key': name, 'name': name, 'state': None, 'version': dataset['version'], 'uploaded_at': None if hidden else dataset['imported_at'],
-            'who': None if hidden else dataset['who'], 'used_for': [r['name'] for r in readers], 'link': not hidden, 'stale': None}
+            'who': None if hidden else dataset['who'], 'used_for': [r['name'] for r in readers], 'link': not hidden, 'stale': None, 'came_from': _came_from(dataset['origin'], told)}
+
+
+def _source_nodes(conn, user: dict | None) -> list[dict]:
+    """The data sources, for a builder or an admin (a viewer has no sources page): name, kind, whether its last test or pull worked, and the tables it fills that this
+    person may see. What the source page keeps for an admin (host, port, database, account) is not on the graph."""
+    if user is not None and user['role'] == 'viewer':
+        return []
+    from ontology_poc_generator.workspace_sources import list_sources   # it reads object_types, which this module is read by
+    return [{'id': f'source:{s["name"]}', 'kind': 'source', 'key': s['name'], 'name': s['name'], 'kind_label': s['kind_label'], 'status': s['status'],
+             'status_label': s['status_label'], 'status_at': s['status_at'], 'tables': [{'table': t['table'], 'dataset': t['dataset']} for t in s['tables']],
+             'state': None, 'stale': None, 'link': True} for s in list_sources(conn, user)]
 
 
 def _answer_node(conn, user: dict | None, answer_id: int, question: str, asked_at: str) -> tuple[dict, list[str]] | None:
@@ -253,7 +281,7 @@ def _pipeline_nodes(conn, user: dict | None) -> list[dict]:
 
 
 def lineage_graph(conn, user: dict | None) -> dict:
-    """Datasets -> pipelines -> the datasets they write -> object types -> relations, views, actions and derived properties -> the person's saved answers, from
+    """Data sources -> datasets -> pipelines -> the datasets they write -> object types -> relations, views, actions and derived properties -> the person's saved answers, from
     element_dep and the answers' own record. A derived property comes after every type and relation it walks; its data comes in through those types. A dataset is drawn when a type this person may see reads it (a builder also sees one nothing reads); a hidden type is not there at all. A pipeline is
     drawn for the people who may see it, between what it reads (datasets, views) and what it writes."""
     drawn_relations = relation_graph(conn, user)
@@ -274,8 +302,11 @@ def lineage_graph(conn, user: dict | None) -> dict:
             nodes.append(_dataset_node(conn, name, readers, user))
     pipelines = _pipeline_nodes(conn, user)
     nodes += pipelines
+    sources = _source_nodes(conn, user)
+    nodes += sources
     ids = {n['id'] for n in nodes}
     edges = [{'from': t, 'to': r['id']} for r in relations for t in (r['from'], r['to'])]
+    edges += [{'from': s['id'], 'to': f'dataset:{t["dataset"]}'} for s in sources for t in s['tables'] if f'dataset:{t["dataset"]}' in ids]   # a source fills the datasets read from its tables
     for p in pipelines:   # what it reads (datasets, views) into the pipeline, and the pipeline into the datasets it writes
         edges += [{'from': parent, 'to': p['id']} for (parent,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ?', (p['id'],)).fetchall() if parent in ids and parent.startswith(('dataset:', VIEW_PREFIX))]
         edges += [{'from': p['id'], 'to': written} for (written,) in conn.execute("SELECT element_id FROM element_dep WHERE depends_on = ? AND element_id LIKE 'dataset:%'", (p['id'],)).fetchall() if written in ids]
