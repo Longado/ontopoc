@@ -673,7 +673,8 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
         status = 'query_limit' if reply.get('missing') == 'query_language' else 'ontology_gap'
         item = {'status': status, 'reason': reasoning or '模型认为写不成一条查询', 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said}
-    views = tuple(v for v in reply.get('views') or [] if isinstance(v, str))
+    known = {v['name'] for v in parts['views'] if v['definition'] is not None}   # the views this person may see: a name the model made up is left out, not held against the query
+    views = tuple(dict.fromkeys(v for v in (reply['views'] if isinstance(reply.get('views'), list) else []) if isinstance(v, str) and v in known))
     try:
         query = compile_query(text, query_catalog(sc))
     except QueryError as exc:
