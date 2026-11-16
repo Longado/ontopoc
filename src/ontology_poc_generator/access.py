@@ -42,6 +42,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/ontology/library(/.+)?', 'viewer'),   # reference ontologies, no company data
     ('POST', r'/api/ontology/ask', UNLIMITED),
     ('POST', r'/api/workspace/ask', 'viewer'),
+    ('POST', r'/api/workspace/query(/text)?', 'viewer'),   # OntoPoc Query: run a text, or read a structured query back as text, within what the person may see (no model)
     # change data, start model work, write definitions
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
     ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?))?', 'builder'),
@@ -85,8 +86,8 @@ def route_role(method: str, path: str) -> str | None:
 
 
 # What a token made with scope 'read' may call besides every GET: ask a question and look at data (nothing here changes a definition, a rule, a dataset or an account;
-# an answer is kept with the question, as for a person at the page).
-READ_TOKEN_POSTS = ('/api/workspace/ask', '/api/workspace/explore/table', '/api/workspace/explore/chart', '/api/workspace/dashboards/data', '/api/workspace/dashboards/preview',
+# an answer is kept with the question, as for a person at the page; an OntoPoc Query is not kept and asks no model, so it takes no ask budget).
+READ_TOKEN_POSTS = ('/api/workspace/ask', '/api/workspace/query', '/api/workspace/query/text', '/api/workspace/explore/table', '/api/workspace/explore/chart', '/api/workspace/dashboards/data', '/api/workspace/dashboards/preview',
                     '/api/workspace/agent/derived')
 
 

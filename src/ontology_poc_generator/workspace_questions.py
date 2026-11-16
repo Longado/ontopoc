@@ -16,12 +16,13 @@ from datetime import datetime, timezone
 import json
 import re
 
-from ontology_poc_generator.answer_checks import _uses, choose_rows, definition_catalog, definition_check, refusal
+from ontology_poc_generator.answer_checks import _use, _uses, choose_rows, definition_catalog, definition_check, refusal
 from ontology_poc_generator.derived_properties import derived_visible, describe as describe_derived, evaluate as evaluate_derived, text_of
 from ontology_poc_generator.named_views import name_views
-from ontology_poc_generator.object_relations import _relation_visible, check_relation, relation_id
+from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, reason_for, stale_word, type_id)
+from ontology_poc_generator.ontopoc_query import QueryError, compile_query, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible
 from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
@@ -424,13 +425,11 @@ def _clean_question(question) -> str:
     return question.strip()
 
 
-def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict:
-    parts = _inputs(conn, sc)
+def _engine(sc: dict, parts: dict, relations: list[dict]):
+    """answer(query, asked, used=None, check=True, told=None): one structured query run on the rows this person may read, with the definitions checked, the
+    views it names applied and what it stood on said; the views the last run read are kept in answer.applied. The same for Q&A and OntoPoc Query."""
     ontology, bundle = parts['ontology'], parts['bundle']
-    catalog, definitions = _catalog_for_model(conn, sc, parts)
-    relations = _checked_relations(conn, sc, parts)
     graph = build_graph(ontology, bundle)
-
     applied = []   # the views the last answer was worked out from, kept for the definitions it stood on
 
     def answer(query, asked, used=None, check=True, told=None):
@@ -451,18 +450,14 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
         if (now.get('evidence') or {}).get('views'):   # the answer says who stands behind each view it read
             now = {**now, 'evidence': {**now['evidence'], 'views': [{**v, 'confirmed_by': by[v['name']]} for v in now['evidence']['views']]}}
         return {**now, 'understood': checked['understood']} if checked['understood'] else now
-    spoken = {}   # what the model said the question asks of a relation, kept for the definitions an answer from the relation check stands on
+    answer.applied = applied
+    return answer
 
-    def unmatched(spec):
-        spoken['spec'] = spec
-        return unmatched_answer({**ontology, 'relations': [{'key': k, 'from': r['content']['from'], 'to': r['content']['to']} for k, r in sc['relations'].items()]}, relations, spec)   # also a relation a query cannot walk (its one side is keyed on more than the joined column): the relation check counts it all the same
-    answer.unmatched = unmatched
-    asked = ask_questions(ontology, bundle, gateway, question, answerer=answer, definitions=definitions, catalog=catalog)
-    if asked['error'] or not asked['items']:
-        raise QaRefused(asked['error'] or '模型没有给出回答', 502)
-    item = asked['items'][0]
+
+def _finish(conn, user: dict | None, sc: dict, parts: dict, item: dict, applied: list, spec=None) -> dict:
+    """The answer as it is returned and kept: what it read, the definitions it stood on, the refusal's scope, the row rules that limited it, the steps."""
     query = item.get('query') if isinstance(item.get('query'), dict) and item['query'].get('start') in sc['types'] else None
-    read, walked, fields = _reads(sc, parts, query, item.get('definitions_used') or [], spoken.get('spec')) if item['status'] in ('answered', 'no_data') else ([], [], set())
+    read, walked, fields = _reads(sc, parts, query, item.get('definitions_used') or [], spec) if item['status'] in ('answered', 'no_data') else ([], [], set())
     lines, types, datasets = _used_definitions(conn, sc, parts, read, walked, fields, applied if item['status'] in ('answered', 'no_data') else [])
     result = {key: item[key] for key in ('status', 'answer', 'path', 'reason', 'reasoning', 'query', 'evidence', 'understood', 'unmet', 'definitions_used') if key in item}
     if item['status'] in ('ontology_gap', 'query_limit') and not item.get('from_relation_check'):
@@ -472,7 +467,122 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
     limited = [{'type': t['id'], 'name': t['name'], 'rule': describe_limit(sc['types'][t['id']]['limit'])} for t in types if sc['types'][t['id']]['limit'] is not None]
     if limited and item['status'] in ('answered', 'no_data'):   # the rows were limited before anything was counted: the answer says so
         result['limited_by_rule'] = limited
-    return {**result, 'model': asked['model'], 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets}
+    return {**result, 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets}
+
+
+def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict:
+    parts = _inputs(conn, sc)
+    ontology = parts['ontology']
+    catalog, definitions = _catalog_for_model(conn, sc, parts)
+    relations = _checked_relations(conn, sc, parts)
+    answer = _engine(sc, parts, relations)
+    spoken = {}   # what the model said the question asks of a relation, kept for the definitions an answer from the relation check stands on
+
+    def unmatched(spec):
+        spoken['spec'] = spec
+        return unmatched_answer({**ontology, 'relations': [{'key': k, 'from': r['content']['from'], 'to': r['content']['to']} for k, r in sc['relations'].items()]}, relations, spec)   # also a relation a query cannot walk (its one side is keyed on more than the joined column): the relation check counts it all the same
+    answer.unmatched = unmatched
+    asked = ask_questions(ontology, parts['bundle'], gateway, question, answerer=answer, definitions=definitions, catalog=catalog)
+    if asked['error'] or not asked['items']:
+        raise QaRefused(asked['error'] or '模型没有给出回答', 502)
+    return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec')), 'model': asked['model']}
+
+
+# --- OntoPoc Query ---------------------------------------------------------------------------------------------------------------------------------
+
+def query_catalog(sc: dict) -> dict:
+    """What OntoPoc Query may name for this person (see ontopoc_query): the confirmed types in scope with the properties they may read (their own, the key, the
+    confirmed derived ones), and every confirmed relation between them, a relation a query cannot walk included (it is refused when walked, saying why)."""
+    types = {}
+    for k, t in sc['types'].items():
+        props = [p['column'] for p in t['content']['properties']]
+        props += [c for c in t['content']['key'] if c not in props and c not in t['hidden']]
+        props += [d['content']['name'] for d in sc['derived'].values() if d['content']['type'] == k and d['content']['name'] not in props]
+        types[k] = {'name': t['content']['name'], 'properties': props}
+    relations = {k: {'name': r['content']['name'], 'from': r['content']['from'], 'to': r['content']['to']} for k, r in sc['relations'].items()}
+    return {'types': types, 'relations': relations}
+
+
+def _query_blockers(conn, user: dict | None, parsed: dict) -> list[dict]:
+    """The unsettled definitions this person may see that the query names: a type in a node, a relation on an edge."""
+    named_types = {n['type'] for chain in parsed['chains'] for n in chain[0::2] if n['type']}
+    named_relations = {e['relation'] for chain in parsed['chains'] for e in chain[1::2]}
+    out = []
+    for line in _unsettled(conn, user):
+        content = _content(element_row(conn, line['id']))
+        names = {content.get('name'), content.get('english_name')}
+        if (line['kind'] == 'type' and names & named_types) or (line['kind'] == 'relation' and names & named_relations):
+            if line['kind'] == 'relation' and not line['reason']:   # why it is still waiting, when the data says why: the check a confirmer would be refused by
+                checked = check_relation(conn, content, record=False, user=user)
+                false = [] if checked['problems'] else cardinality_false(checked)
+                said = checked['problems'] or false
+                if said:
+                    head = '过不了检查' if checked['problems'] else '，' + CARDINALITY[content['cardinality']] + '不成立'
+                    line = {**line, 'reason': f'按现在的数据{head}，确认不了：{"；".join(said)}'}
+            out.append({**line, 'because': _causes(conn, element_row(conn, line['id']), user)})
+    return out
+
+
+def _query_used(parts: dict, query: dict) -> list[dict]:
+    """The meanings the query reads, each with the direction the text says: = is include, <> and NOT IN exclude, share mention. The text says it outright, so
+    nothing is guessed from words."""
+    ontology = normalize_proposal(parts['ontology'])
+    types, relations = {t['key']: t for t in ontology['object_types']}, {r['key']: r for r in ontology['relations']}
+    uses = _uses(query, types, relations)
+    out = []
+    for field, meaning in sorted(parts['bundle']['meanings'].items()):
+        for label in sorted({x for x in meaning['labels'].values() if x}):
+            use = _use(uses, field, meaning['labels'], label)
+            direction = {'filter': 'include', 'exclude': 'exclude', 'share': 'mention'}.get(use)
+            if direction:
+                out.append({'id': f'{field}={label}', 'direction': direction, 'basis': '查询里写明的条件'})
+    return out
+
+
+def run_text(conn, user: dict | None, text, params=None) -> dict:
+    """Run an OntoPoc Query text as this person: compiled against what they may see, run by the same engine and on the same rows as a question, with no model.
+    QaRefused (400) when the text cannot be read or names what is not there for them; a refusal on the definitions (one not confirmed, a relation that
+    cannot be walked) is an answer that says why, with no number."""
+    if params is not None and not isinstance(params, dict):
+        raise QaRefused('params 要是一个对象，例如 {"start": "2026-01-01"}')
+    sc = scope(conn, user)
+    try:
+        parsed = parse_query(text, params)
+        blockers = _query_blockers(conn, user, parsed)
+        query = None if blockers else compile_query(text, query_catalog(sc), params)
+    except QueryError as exc:
+        raise QaRefused(str(exc)) from exc
+    except (KeyError, TypeError, AttributeError) as exc:   # a shape the checks above missed is still a 400 that says so, never a 500
+        raise QaRefused('这条查询读不了，请检查写法') from exc
+    if blockers:
+        result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': '核对定义', 'text': '查询用到的定义还没有确认，没有计算', 'failed': True}]}
+    else:
+        walks = [k for k in dict.fromkeys([*query['via'], *(k for d in query['group_by'] or [] for k in d['via'])])]
+        stuck = [(k, why) for k in walks if (why := _walk_problem(sc, sc['relations'][k]['content']))]
+        if stuck:
+            reason = '；'.join(f'关系「{sc["relations"][k]["content"]["name"]}」现在不能走：{why}' for k, why in stuck)
+            result = {'status': 'refused', 'reason': f'没有计算：{reason}', 'query': query, 'refusal': {'kind': 'unwalkable', 'definitions': [d for d in _unwalkable(sc) if d['id'] in {relation_id(k) for k, _ in stuck}]},
+                      'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': '找关系', 'text': reason, 'failed': True}]}
+        else:
+            parts = _inputs(conn, sc)
+            answer = _engine(sc, parts, _checked_relations(conn, sc, parts))
+            used = _query_used(parts, query)
+            item = {**answer(query, '', used), 'query': query, 'definitions_used': used}
+            result = _finish(conn, user, sc, parts, item, answer.applied)
+        result['text'] = to_text(query, query_catalog(sc))
+    if user is not None and user['role'] == 'viewer':
+        result = _strip_rows(result)
+    return result
+
+
+def query_as_text(conn, user: dict | None, query) -> str:
+    """A structured query (the one an answer kept, one the model wrote) as OntoPoc Query text in this person's names. QaRefused when it names what they may not see."""
+    if not isinstance(query, dict):
+        raise QaRefused('query 要是一个结构化查询（start、where、group_by…）')
+    try:
+        return to_text(query, query_catalog(scope(conn, user)))
+    except (QueryError, KeyError, TypeError, AttributeError) as exc:
+        raise QaRefused(str(exc) if isinstance(exc, QueryError) else '这个结构化查询读不了') from exc
 
 
 def _named_ids(result: dict, sc: dict) -> list[str]:
