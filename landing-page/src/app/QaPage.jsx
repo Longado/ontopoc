@@ -3,7 +3,7 @@ import { askQuestion, getAnswer, getAsk, runQuery } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText } from "./format.js";
-import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryRecord, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryRecord, rangeNotes, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
 import { State } from "./TypesPage.jsx";
 import { useLoad } from "./useLoad.js";
 
@@ -82,6 +82,7 @@ function Answer({ record }) {
           {view.table.total > view.table.rows.length && <p className="muted small">只显示前 {view.table.rows.length} 组，共 {view.table.total} 组</p>}
         </div>
       )}
+      {rangeNotes(record).map((n) => <p className="warn" key={n}>{n}</p>)}
       {notes.length > 0 && <p className="warn">{then ? "" : `${staleHeading(record)}：`}{notes.join("；")}</p>}
     </div>
   );

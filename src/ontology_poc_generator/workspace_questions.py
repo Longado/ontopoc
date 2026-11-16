@@ -33,7 +33,7 @@ from ontology_poc_generator.workspace_store import current_dataset, dataset_reco
 
 MAX_QUESTION = 300
 HISTORY_LIMIT = 100
-ROW_KEYS = {'examples', 'without_value_examples', 'keys', 'samples'}   # the objects behind a count: a viewer reads the counts and not these
+ROW_KEYS = {'examples', 'without_value_examples', 'unreadable_examples', 'keys', 'samples'}   # the objects behind a count: a viewer reads the counts and not these
 STATE_WORDS = {'proposed': '模型提出了，还没有人确认', 'checked': '已经提出，还没有另一位确认', 'needs_look': '需要再看', 'rejected': '被退回了'}
 
 
@@ -568,6 +568,8 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
             answer = _engine(sc, parts, _checked_relations(conn, sc, parts))
             used = _query_used(parts, query)
             item = {**answer(query, '', used), 'query': query, 'definitions_used': used}
+            if item['status'] == 'query_limit':   # what the writer wrote and the engine cannot run (a bound that is no number or date): theirs to fix, said as such
+                raise QaRefused(item['reason'])
             result = _finish(conn, user, sc, parts, item, answer.applied)
         result['text'] = to_text(query, query_catalog(sc))
     if user is not None and user['role'] == 'viewer':

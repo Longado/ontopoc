@@ -78,3 +78,7 @@ export function queryExample(scope) {
 
 /** A query's result as the record the answer and refusal cards read (a refusal before anything ran has no definitions, steps or datasets). */
 export const queryRecord = (body) => ({ definitions: [], steps: [], datasets: {}, ...body });
+
+/** The values a range could not read as numbers or dates, one line per range: they are not counted, and the answer says so. */
+export const rangeNotes = (record) =>
+  (record.evidence?.filters ?? []).filter((f) => f.range && f.unreadable).map((f) => `${f.range}：${f.unreadable} 个值读不成数字或日期，没有算进去${f.unreadable_examples?.length ? `（例如 ${f.unreadable_examples.join("、")}）` : ""}`);

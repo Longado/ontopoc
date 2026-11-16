@@ -650,9 +650,10 @@ TOOLS = [
           '写法：SELECT 分组列, 一个数 FROM 路径 [WHERE 条件 AND …] [GROUP BY 分组列] [ORDER BY 那个数 DESC|ASC] [LIMIT n]。'
           '路径沿已确认的关系走，不写 JOIN：(o:订单)-[:订单买的产品]->(p:产品)，几条路径用逗号隔开，(o) 再次出现是同一个对象。'
           '一个数是 count(o)、sum(o.金额)、avg(o.金额) 或 share(o.状态码 = \'已取消\')（占比）；SELECT 里其余的列要写进 GROUP BY。'
-          'WHERE 只写在被数或被算的对象上，用 =、<>、NOT IN (…)，代码列可以直接写含义（\'已取消\'）；值可以写 $名字，放在 params 里传。'
+          'WHERE 只写在被数或被算的对象上，用 =、<>、NOT IN (…)、>、>=、<、<=、BETWEEN 下限 AND 上限（数字或日期），代码列可以直接写含义（\'已取消\'）；值可以写 $名字，放在 params 里传。'
+          '日期可以按月、按年分组：SELECT month(o.下单日期), sum(o.金额) … GROUP BY month(o.下单日期)。'
           '例：SELECT p.品类, count(o) AS 数量 FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类 ORDER BY 数量 DESC LIMIT 3。'
-          '类型、属性、关系的名字来自 describe_definitions。写错或写了还不支持的（>、BETWEEN、OR、跨对象的条件）会报错并说明能写什么；'
+          '类型、属性、关系的名字来自 describe_definitions。写错或写了还不支持的（OR、LIKE、跨对象的条件）会报错并说明能写什么；'
           'status 是 refused 时把 reason 原样转告人，不要换写法绕过。',
           {'text': {'type': 'string', 'maxLength': 4000, 'description': '一条本体查询'},
            'params': {'type': 'object', 'description': '参数名 → 值（文字或数字），对应查询里的 $名字'}}, ('text',)),

@@ -17,7 +17,7 @@ LIMIT 3
 
 **平常的问题，两边数字一样。** 5 道题（计数、带条件求和、前三名、按客户等级分组、售后工单经过订单到产品品类的两步路径）结果完全相同。本体查询不是一种新的出错方式。
 
-**四个陷阱。SQL 都给了一个数字，没有任何提醒：**
+**五个陷阱。SQL 都给了一个数字，没有任何提醒：**
 
 | 情况 | 手写 SQL | 本体查询 |
 |---|---|---|
@@ -25,6 +25,7 @@ LIMIT 3
 | 代码换了含义：新上传的订单表里状态码整体加 1 | `状态码 = '2'` = **48**，数的其实是生产中的订单 | 拒绝，并指出“状态码”的取值变了：新出现 3，不再出现 0，要谁再确认 |
 | 连接把行算两遍：客户表里 KH012 有两行 | `JOIN` 后合计 **2,737,200**，真实订单总额是 2,726,470 | 拒绝，并说明 KH012 重复 2 次，连上的 2 行会多出 2 行，按客户汇总会重复算 |
 | 隐藏的列：金额只给 Ann 看，Carl 来问 | `sum(金额)` 照样读出来 | 对 Carl 来说没有这个属性，回答和写错属性名一样，不透露它存在 |
+| 列存成文字（DIP 的数据集除主键外都是 text）：金额超过 20000 的订单 | `金额 > 20000` = **160**，因为文字永远“大于”数字 | **57**，按数字比。读不成数字的值会单独数出来，不会悄悄算进去或丢掉 |
 
 把 JSON 换成本体查询，写同样 5 道题要写的字从 902 个降到 423 个，和 SQL（424 个）差不多。模型写它是不是更少出错，还要用真实模型测（第 4 步），现在不下结论。
 
@@ -34,6 +35,11 @@ LIMIT 3
 - 对象类型和关系可以写中文名，也可以写英文名（`order`、`order_customer`）。
 - `SELECT` 里只算一个数：`count(o)`、`count(*)`、`sum(o.金额)`、`avg(o.金额)`、`share(o.状态码 = '已取消')`（占比）。其余的列要写进 `GROUP BY`，和 SQL 一样。
 - `WHERE` 写在被数或被算的对象上，可以用 `=`、`<>`、`NOT IN (…)`，多个条件用 `AND` 连起来。代码列直接写含义，例如 `'已取消'`，查询会换成它的代码，并在结果里注明用了这个含义。
+- 范围：`o.金额 > 20000`、`>=`、`<`、`<=`、`o.下单日期 BETWEEN '2026-01-01' AND '2026-03-31'`（两头都算）。
+  - 两边都能读成数字就按数字比，都能读成日期就按日期比。
+  - 日期认 `2026-01-02`、`2026/1/2`、`2026.01.02`、`2026年1月2日`，带不带时间都行，按那一天算。只写月份 `'2026-02'` 表示那个月的第一天。
+  - 边界既不是数字也不是日期时，直接拒绝。数据里读不成数字或日期的值不算符合，并在结果里单独数出来，附上几个例子。
+- 按月、按年：`SELECT month(o.下单日期), sum(o.金额) … GROUP BY month(o.下单日期)`，`year()` 同理。没有日期或读不成日期的对象算在“没有可分的值”里。
 - `ORDER BY` 按算出来的那个数排（`DESC` 从高到低，`ASC` 从低到高），`LIMIT n` 只留前 n 组。
 - `$名字` 是参数，调用时用 `params` 传值。参数只能当值用，不会被当成查询文字。
 - `SELECT count(c) FROM (o:订单)-[:订单属于客户]->(c:客户) WHERE o.状态码 = '已取消'` 数的是有已取消订单的客户。
@@ -42,8 +48,8 @@ LIMIT 3
 
 下面这些写法会直接拒绝，并说明原因，不会被理解成别的意思：
 
-- `>`、`<`、`BETWEEN`：要等时间列（第 3 步）；
 - `OR`、`IN` 多个值、`LIKE`、`IS NULL`、`HAVING`、`JOIN`；
+- 按周、按季度分组（现在只有 `month()` 和 `year()`）；
 - 条件写在另一个对象上（例如按客户等级筛订单）；
 - 一次算两个数；
 - `FROM` 里写了但没用到的节点。SQL 多连一张表会悄悄去掉连不上的行，这里不会，所以要求删掉它。
@@ -53,13 +59,15 @@ LIMIT 3
 `src/ontology_poc_generator/ontopoc_query.py` 只依赖 Python 标准库。它的输入是一份目录（类型 → 属性，关系 → 两端），输出是一个结构化查询。有测试保证它不引用 OntoPoc 的其他模块，以后要单独拿出去，复制这一个文件就够了。
 
 ```
-query     := SELECT item {, item} FROM chain {, chain} [WHERE cond {AND cond}] [GROUP BY ref {, ref}] [ORDER BY target [ASC|DESC]] [LIMIT n]
-item      := ref | agg [AS name]
+query     := SELECT item {, item} FROM chain {, chain} [WHERE cond {AND cond}] [GROUP BY group {, group}] [ORDER BY target [ASC|DESC]] [LIMIT n]
+item      := group | agg [AS name]
+group     := ref | month(ref) | year(ref)
 agg       := count(var) | count(*) | sum(ref) | avg(ref) | share(ref = value)
 chain     := node {edge node}
 node      := (var[:type])
 edge      := -[:relation]-> | <-[:relation]- | -[:relation]-
 cond      := ref = value | ref <> value | ref != value | ref [NOT] IN (value {, value})
+           | ref (> | >= | < | <=) value | ref BETWEEN value AND value
 ref       := var.property
 value     := 'text' | number | $param
 target    := name | agg
