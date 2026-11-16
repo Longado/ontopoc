@@ -591,11 +591,29 @@ def _query_text_of(sc: dict, query) -> str | None:
     try:
         q = canonical_query(query)
         start = q['start']
-        q['where'] = [{**w, 'field': plain(start, w.get('field'))} if isinstance(w, dict) else w for w in q['where']]
+        meanings = sc['meanings'].get(start, {})
+
+        def said(field, value):
+            """A code as its confirmed meaning, when that meaning stands for this one code only (so the query reads the same rows)."""
+            labels = (meanings.get(field) or {}).get('labels') or {}
+            label = labels.get(str(value)) if not isinstance(value, (list, dict)) else None
+            return label if label and [c for c, l in labels.items() if l == label] == [str(value)] else value
+        where = []
+        for w in q['where']:
+            if isinstance(w, dict):
+                field = plain(start, w.get('field'))
+                w = {**w, 'field': field}
+                if 'equals' in w:
+                    w['equals'] = said(field, w['equals'])
+                if 'not_equals' in w:
+                    w['not_equals'] = [said(field, v) for v in w['not_equals']] if isinstance(w['not_equals'], list) else said(field, w['not_equals'])
+            where.append(w)
+        q['where'] = where
         if isinstance(q['measure'], dict) and 'field' in q['measure']:
             q['measure'] = {**q['measure'], 'field': plain(start, q['measure']['field'])}
         if isinstance(q['share'], dict):
-            q['share'] = {**q['share'], 'field': plain(start, q['share'].get('field'))}
+            field = plain(start, q['share'].get('field'))
+            q['share'] = {**q['share'], 'field': field, **({'equals': said(field, q['share']['equals'])} if 'equals' in q['share'] else {})}
         dims = []
         for d in q['group_by'] or []:
             here = start

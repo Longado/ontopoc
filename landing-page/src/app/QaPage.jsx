@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { askQuestion, getAnswer, getAsk } from "./api.js";
+import { askQuestion, getAnswer, getAsk, runQuery } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText } from "./format.js";
-import { answerView, definitionHref, isAnswer, isThenAnswer, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryRecord, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
 import { State } from "./TypesPage.jsx";
 import { useLoad } from "./useLoad.js";
 
@@ -88,11 +88,20 @@ function Answer({ record }) {
 }
 
 /** How the question was read, what it stood on, what it read, and the steps: under every answer and every refusal. */
-function Basis({ record }) {
+function Basis({ record, onEdit }) {
   const read = readText(record.datasets);
   return (
     <>
       <dl className="defs">
+        {record.query_text && (
+          <>
+            <dt>写成查询</dt>
+            <dd>
+              <pre className="query-text">{record.query_text}</pre>
+              {onEdit && <button className="plain" onClick={() => onEdit(record.query_text)}>改成查询</button>}
+            </dd>
+          </>
+        )}
         {record.reasoning && (
           <>
             <dt>理解为</dt>
@@ -141,7 +150,7 @@ function Basis({ record }) {
   );
 }
 
-function Saved({ id, mayBuild }) {
+function Saved({ id, mayBuild, onEdit }) {
   const [state] = useLoad(() => getAnswer(id), [id]);
   const r = state.data;
   if (state.status === "error") return <p className="error">{state.missing ? "没有这条问题" : state.error}</p>;
@@ -153,10 +162,47 @@ function Saved({ id, mayBuild }) {
       {r.withheld ? <p className="warn">{r.reason}</p> : (
         <>
           {isAnswer(r) ? <Answer record={r} /> : <Refusal record={r} mayBuild={mayBuild} />}
-          <Basis record={r} />
+          <Basis record={r} onEdit={onEdit} />
         </>
       )}
     </section>
+  );
+}
+
+/** The query box: OntoPoc Query run as this person, by the same engine as a question, with no model; nothing is kept. */
+function QueryBox({ scope, text, setText, mayBuild }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
+  const run = async (e) => {
+    e.preventDefault();
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    setResult(null);
+    try {
+      setResult(queryRecord(await runQuery(text)));
+    } catch (err) {
+      setError(err.message);
+    }
+    setBusy(false);
+  };
+  return (
+    <>
+      <form className="query" onSubmit={run}>
+        <textarea aria-label="本体查询" rows={6} value={text} spellCheck={false} placeholder={queryExample(scope) || "SELECT count(x) FROM (x:对象类型)"} disabled={busy} onChange={(e) => setText(e.target.value)} />
+        <button className="primary" type="submit" disabled={busy || !text.trim()}>运行</button>
+      </form>
+      <p className="hint">像 SQL 一样写，沿关系走、不写 JOIN：<code>{"SELECT p.品类, count(o) FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类"}</code>。按你能看的行和已确认的定义算，不调用模型，不记入“我问过的”。<a href="https://github.com/Longado/ontopoc/blob/main/docs/QUERY.md" target="_blank" rel="noreferrer">写法</a></p>
+      {busy && <p className="muted" role="status">正在算</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      {result && (
+        <section className="turn">
+          {isAnswer(result) ? <Answer record={result} /> : <Refusal record={result} mayBuild={mayBuild} />}
+          <Basis record={result} />
+        </section>
+      )}
+    </>
   );
 }
 
@@ -166,7 +212,13 @@ export function QaPage({ route }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [mode, setMode] = useState("ask");
+  const [query, setQuery] = useState("");
   const scope = info.data;
+  const edit = (t) => {
+    setQuery(t);
+    setMode("query");
+  };
   const ask = async (e) => {
     e.preventDefault();
     if (!text.trim() || busy) return;
@@ -191,7 +243,7 @@ export function QaPage({ route }) {
           <h2 className="small">我问过的</h2>
           {scope && scope.history.length === 0 && <p className="muted small">还没有</p>}
           {scope?.history.map((h) => (
-            <a key={h.id} href={`#/qa/${h.id}`} aria-current={h.id === route.id ? "page" : undefined} className={h.id === route.id ? "active" : ""}>
+            <a key={h.id} href={`#/qa/${h.id}`} onClick={() => setMode("ask")} aria-current={h.id === route.id ? "page" : undefined} className={h.id === route.id ? "active" : ""}>
               {h.question}
               <span className="muted small block">{timeText(h.asked_at)} {statusText(h.status)}</span>
             </a>
@@ -213,14 +265,22 @@ export function QaPage({ route }) {
               )}
             </details>
           )}
-          <form className="ask" onSubmit={ask}>
-            <input type="text" aria-label="问题" value={text} maxLength={300} placeholder="问一个问题" disabled={busy} onChange={(e) => setText(e.target.value)} />
-            <button className="primary" type="submit" disabled={busy || !text.trim()}>提问</button>
-          </form>
-          <p className="hint">模型只看到类型、属性、含义，以及取值不多又重复出现的列的取值，看不到数据行。</p>
-          {busy && <p className="muted" role="status">正在回答，通常几秒到半分钟</p>}
-          {error && <p className="error" role="alert">{error}</p>}
-          {route.id && <Saved key={route.id} id={route.id} mayBuild={mayBuild} />}
+          <div className="seg" role="group" aria-label="怎么问">
+            <button className={mode === "ask" ? "on" : ""} aria-pressed={mode === "ask"} onClick={() => setMode("ask")}>提问</button>
+            <button className={mode === "query" ? "on" : ""} aria-pressed={mode === "query"} onClick={() => setMode("query")}>写查询</button>
+          </div>
+          {mode === "query" ? <QueryBox scope={scope} text={query} setText={setQuery} mayBuild={mayBuild} /> : (
+            <>
+              <form className="ask" onSubmit={ask}>
+                <input type="text" aria-label="问题" value={text} maxLength={300} placeholder="问一个问题" disabled={busy} onChange={(e) => setText(e.target.value)} />
+                <button className="primary" type="submit" disabled={busy || !text.trim()}>提问</button>
+              </form>
+              <p className="hint">模型只看到类型、属性、含义，以及取值不多又重复出现的列的取值，看不到数据行。</p>
+              {busy && <p className="muted" role="status">正在回答，通常几秒到半分钟</p>}
+              {error && <p className="error" role="alert">{error}</p>}
+            </>
+          )}
+          {mode === "ask" && route.id && <Saved key={route.id} id={route.id} mayBuild={mayBuild} onEdit={edit} />}
         </section>
       </div>
     </main>
