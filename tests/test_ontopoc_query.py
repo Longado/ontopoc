@@ -88,8 +88,7 @@ class CompileTests(unittest.TestCase):
 
     def test_what_the_checked_query_cannot_say_is_refused_in_words_not_read_as_something_else(self):
         cases = [
-            ("SELECT count(o) FROM (o:订单) WHERE o.金额 > 1000", '只能写 =、<>、IN、NOT IN', '时间列'),
-            ("SELECT count(o) FROM (o:订单) WHERE o.下单日期 BETWEEN '2026-01-01' AND '2026-03-31'", '时间列'),
+            ("SELECT count(o) FROM (o:订单) WHERE o.金额 IS NULL", '空值'),
             ("SELECT count(o) FROM (o:订单) WHERE o.状态码 = '0' OR o.状态码 = '1'", 'OR 还不支持'),
             ("SELECT c.城市, count(o) FROM (o:订单)-[:订单属于客户]->(c:客户) WHERE c.客户等级 = 'A' GROUP BY c.城市", '条件只能写在被数或被算的对象（o）上', '跨对象'),
             ('SELECT count(o) FROM (o:订单)-[:订单属于客户]->(c:客户)', '(c:客户) 没有用到', '悄悄去掉'),
