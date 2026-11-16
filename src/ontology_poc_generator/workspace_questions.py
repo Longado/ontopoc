@@ -578,7 +578,7 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
 def _query_text_of(sc: dict, query) -> str | None:
     """The query a Q&A answer ran, as OntoPoc Query text in the asker's names, or None when the text would not run as the same query. A field the model wrote as
     "table.column" is written as the column of the type it is read on."""
-    if not isinstance(query, dict) or query.get('start') not in sc['types']:
+    if not isinstance(query, dict) or not isinstance(query.get('start'), str) or query['start'] not in sc['types']:
         return None
     catalog = query_catalog(sc)
 
@@ -597,7 +597,8 @@ def _query_text_of(sc: dict, query) -> str | None:
             """A code as its confirmed meaning, when that meaning stands for this one code only (so the query reads the same rows)."""
             labels = (meanings.get(field) or {}).get('labels') or {}
             label = labels.get(str(value)) if not isinstance(value, (list, dict)) else None
-            return label if label and [c for c, l in labels.items() if l == label] == [str(value)] else value
+            own = label and [c for c, l in labels.items() if l == label] == [str(value)] and label not in labels   # a meaning that is also a code would be read as that code
+            return label if own else value
         where = []
         for w in q['where']:
             if isinstance(w, dict):
@@ -624,7 +625,7 @@ def _query_text_of(sc: dict, query) -> str | None:
         q['group_by'] = dims or None
         text = to_text(q, catalog)
         return text if compile_query(text, catalog) == canonical_query(q) else None
-    except (QueryError, KeyError, TypeError, AttributeError):
+    except Exception:   # noqa: BLE001 — the text is a reading aid: whatever the model wrote, the answer is kept without it rather than lost
         return None
 
 
