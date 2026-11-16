@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryRecord, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -57,4 +57,10 @@ test("a query's result reads as an answer card, and a refusal with no definition
   assert.equal(ran.text, "SELECT count(o) AS 数量\nFROM (o:订单)");
   const refused = queryRecord({ status: "refused", reason: "没有计算：关系「订单属于客户」现在不能走" });
   assert.deepEqual([refused.definitions, refused.steps, refused.datasets, isAnswer(refused)], [[], [], {}, false]);
+});
+
+test("a range says what it could not read, and nothing is said when it read everything", () => {
+  const record = { evidence: { filters: [{ field: "金额", range: "金额 > 1000", unreadable: 2, unreadable_examples: ["待定", "n/a"] }, { field: "下单日期", range: "下单日期 >= 2026-01-01" }, { field: "状态码", equals: "2" }] } };
+  assert.deepEqual(rangeNotes(record), ["金额 > 1000：2 个值读不成数字或日期，没有算进去（例如 待定、n/a）"]);
+  assert.deepEqual(rangeNotes({}), []);
 });
