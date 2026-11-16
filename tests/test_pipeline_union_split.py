@@ -8,11 +8,16 @@ A split sends each row to the first branch whose condition holds, and the rest t
 branches and the rows in no branch add up to the rows in, a row whose condition field is empty is counted (it is not "false"), and a row that met a branch's
 condition but went to an earlier one is counted on that branch. Each branch has its own id that later steps read."""
 import unittest
+from urllib.parse import quote
 
 from ontology_poc_generator.pipeline_ops import new_context
 from ontology_poc_generator.pipelines import check_pipeline, needed_steps, run_pipeline, workspace_datasets
 from ontology_poc_generator.workspace_store import import_records, records_sha256
+from tests.test_object_types import TABLES
+from tests.test_pipeline_server import PIPELINES
 from tests.test_pipelines import PipelineTestCase
+from tests.test_two_person import SigningTestCase
+from tests.test_workspace_questions import AskModel, cancelled
 from tests.test_workspace_store import planted_bundle
 
 ORDERS = planted_bundle()['sources']['订单']['records']
@@ -41,7 +46,7 @@ class UnionSplitCase(PipelineTestCase):
         super().setUpClass()
         extra = {'旧订单': [{**r, '状态码': SHIFT[r['状态码']]} for r in ORDERS[:20]],
                  '外部订单': [{'订单号': f'W{i}', '金额': f'{i},200'} for i in range(5)],   # 金额 written with a thousands comma: text
-                 '小表': [{'编号': '1', '值': '5'}, {'编号': '2', '值': ''}, {'编号': '3', '值': '20'}]}
+                 '小表': [{'编号': '1', '值': '5'}, {'编号': '2', '值': None}, {'编号': '3', '值': '20'}]}
         ids = {name: import_records(cls.conn, name, rows, 'test', records_sha256(rows))['id'] for name, rows in extra.items()}
         cls.datasets = {**cls.datasets, **workspace_datasets(cls.conn, ids)}
 
@@ -86,7 +91,7 @@ class UnionTests(UnionSplitCase):
                               {'id': 'u', 'type': 'union', 'inputs': ['orders', 'w'], 'missing': 'empty'}])
         self.assertIn('金额', words)
         self.assertIn('整数', words)
-        self.assertIn('文字', words)
+        self.assertIn('文本', words)
         self.assertIn('字段转换', words)
 
     def test_a_code_column_whose_meanings_differ_between_inputs_is_refused(self):
@@ -154,3 +159,36 @@ class SplitTests(UnionSplitCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class OddValueTests(UnionSplitCase):
+    def test_a_value_of_the_wrong_kind_in_a_union_or_a_split_is_refused_in_words(self):
+        base = [orders(), orders('b')]
+        for odd in (None, 3, 'x', {'a': 1}, [1, 2], [['orders'], 'b']):
+            self.refused([*base, {'id': 'u', 'type': 'union', 'inputs': odd}])
+            self.refused([*base, {'id': 's', 'type': 'split', 'from': 'orders', 'branches': odd}])
+            self.refused([*base, {'id': 's', 'type': 'split', 'from': 'orders', 'branches': [{'id': odd, 'where': amount('ge', '1')}, {'id': 'r', 'rest': True}]}])
+            self.refused([*base, {'id': 's', 'type': 'split', 'from': 'orders', 'branches': [{'id': 'a', 'where': odd}, {'id': 'r', 'rest': True}]}])
+            if odd is not None:
+                self.refused([*base, {'id': 'u', 'type': 'union', 'inputs': ['orders', 'b'], 'source_column': odd}])
+        self.assertIn('missing', self.refused([*base, {'id': 'u', 'type': 'union', 'inputs': ['orders', 'b'], 'missing': 'drop'}]))
+
+
+class ServiceTests(SigningTestCase):
+    def test_a_pipeline_with_a_split_and_a_union_is_saved_previewed_and_run_through_the_service(self):
+        spec = {'steps': [orders(), {'id': 's', 'type': 'split', 'from': 'orders', 'branches': [{'id': 'big', 'where': amount('ge', '20000')}, {'id': 'rest', 'rest': True}]},
+                          {'id': 'u', 'type': 'union', 'inputs': ['big', 'rest'], 'source_column': '来源'},
+                          {'id': 'out', 'type': 'output', 'from': 'u', 'name': '分开又合起来', 'key': {'columns': ['订单号']}}]}
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            ann = self.people(base, 'ann', 'bob')['ann']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': TABLES})[0], 200)
+            status, body = ann.post(PIPELINES, {'name': '拆了又合', 'description': '试拆分和合并', 'spec': spec})
+            self.assertEqual(status, 200, body)
+            status, split = ann.post(f'{PIPELINES}/preview', {'id': '拆了又合', 'node': 's'})
+            self.assertEqual(status, 200, split)
+            self.assertEqual([(b['id'], b['rows']) for b in split['node']['split']['branches']], [('big', BIG), ('rest', 160 - BIG)])
+            self.assertNotIn('__branch', [c['name'] for c in split['columns']])
+            status, run = ann.post(f'{PIPELINES}/run', {'id': '拆了又合'})
+            self.assertEqual((status, run['status']), (200, 'success'), run)
+            written = ann.get(f'/api/workspace/datasets/{quote("分开又合起来")}')[1]
+            self.assertEqual(written['rows'], 160)
