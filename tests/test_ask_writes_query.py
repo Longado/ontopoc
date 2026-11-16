@@ -163,3 +163,13 @@ class WritesQueryTests(QuestionTests):
             for bad in replies:
                 status, body = self.ask_text(team['ann'])
                 self.assertEqual((status, body.get('status'), (body.get('answer') or {}).get('total')), (200, 'answered', CANCELLED), (bad['views'], body))
+
+    def test_a_graph_the_model_writes_is_a_miss_since_a_question_is_answered_with_a_number(self):
+        model = TextModel({'reasoning': '', 'query': "SELECT GRAPH FROM (o:订单) WHERE o.状态码 = '已取消'"})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask_text(team['ann'])
+            self.assertEqual((status, body['status']), (200, 'query_limit'), body)
+            self.assertIn('SELECT GRAPH', body['reason'])
+            self.assertNotIn('answer', body)
