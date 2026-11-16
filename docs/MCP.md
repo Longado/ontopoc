@@ -43,6 +43,8 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 | `fix_question` | 存为验收问题（答案里有模型自己加的条件时，要写口径说明才放行） | 否 |
 | `confirm_ontology` | 逐项确认 · 保存 | 否 |
 | `compare_reference` | 数据体检 · 对照标准 | 否 |
+| `list_proposed_views` | 本体 · 视图：别人提出、等另一个人确认的视图（带版本） | 否 |
+| `confirm_proposed_view` | 本体 · 视图：确认别人提出的视图（带上看过的版本；提出人自己不能确认） | 否 |
 | `find_name_variants` | 找出可能的对应 | 是 |
 | `export_forms` | 右上角 ⤓ 表单：按对象表单导出 | 否 |
 | `export_ttl` | 右上角 ⤓ TTL：按 W3C 标准导出 OWL 本体、数据与 SHACL 规则 | 否 |
