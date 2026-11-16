@@ -43,7 +43,7 @@ class WritesQueryTests(QuestionTests):
             self.assertEqual(body['query_text'], "SELECT count(o) AS 数量\nFROM (o:订单)\nWHERE o.状态码 = '已取消'")
             self.assertEqual(body['written'], COUNT_CANCELLED)   # what the model wrote, kept beside the canonical text
             self.assertIn(('meaning', '订单.状态码'), [(d['kind'], d['name']) for d in body['definitions']])
-            self.assertEqual(body['query']['where'], [{'field': '状态码', 'equals': '2'}])   # the meaning became its code
+            self.assertEqual(body['query']['where'], [{'field': '状态码', 'equals': '已取消'}])   # the meaning as written: the engine reads it as its confirmed code
             # the model was told the grammar, the same catalog as for JSON (meanings, no rows) and the question
             self.assertIn('OntoPoc Query', model.prompts[0])
             self.assertIn('GROUP BY', model.prompts[0])
@@ -131,3 +131,24 @@ class WritesQueryTests(QuestionTests):
             status, body = self.ask_text(team['ann'], writes='sql')
             self.assertEqual(status, 400, body)
             self.assertIn('query', body['error'])
+
+    def test_orders_whose_customer_is_missing_are_answered_from_the_relation_check_as_in_the_json_form(self):
+        from tests.test_object_relations import CUSTOMER, RELATION, customers_mended
+        from tests.test_object_types import ORDER
+        model = TextModel({'reasoning': '订单里客户编号在客户表里找不到的', 'query': None, 'missing': 'query_language',
+                           'unmatched_relation': {'relation': 'order_customer', 'direction': 'many_without_one', 'other_conditions': False}})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types', {k: v for k, v in ORDER.items() if k != 'enums'} | {'properties': [{'column': '订单号'}, {'column': '金额'}]})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types', CUSTOMER)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/relations', RELATION)[0], 200)
+            for name in ('order', 'customer'):
+                self.confirm(bob, name)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
+            shown = bob.get('/api/workspace/relations/order_customer')[1]
+            self.assertEqual(bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': shown['version'], 'seen': shown['check']['signature']})[0], 200)
+            status, body = self.ask_text(ann, '有多少订单的客户在客户表里找不到？')
+            self.assertEqual(status, 200, body)
+            self.assertEqual((body['status'], body['answer']['total'], body['writes']), ('answered', 3, 'query'), body)
+            self.assertEqual(sorted(d['name'] for d in body['definitions']), ['客户', '订单', '订单属于客户'])

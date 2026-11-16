@@ -47,6 +47,8 @@
 | 不许做 | 引用本体里没有的东西；替查询格式做它做不到的事（时间段、数值区间） |
 | 提示词 | `company_questions.v7` |
 
+工作区问答还可以让出题员改写本体查询（`POST /api/workspace/ask {question, writes: "query"}`，提示词 `workspace_query_text.v1`）。给它看的和写 JSON 时一样，也不给数据行。它交出一段查询文字，代码按 `POST /api/workspace/query` 的规则编译并运行。查询用了哪些确认过的含义，从文字里读出来，不信模型自己说的。文字编译不过，就算“问法不支持”，并写明原因和模型写的原文，不重试。
+
 ### 名称对应员（`variant_matcher`）
 
 | | |
