@@ -497,6 +497,14 @@ def ask(s, a):
     return {k: body[k] for k in ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'definitions', 'datasets', 'limited_by_rule') if k in body}
 
 
+def ontopoc_query(s, a):
+    body = {'text': _text(a.get('text'), 'text')}
+    if a.get('params') is not None:
+        body['params'] = a['params']
+    body = s.request('/api/workspace/query', body)
+    return {k: body[k] for k in ('status', 'answer', 'reason', 'refusal', 'text', 'query', 'definitions', 'datasets', 'limited_by_rule') if k in body}
+
+
 def list_unconfirmed(s, a):
     return s.request('/api/workspace/agent/unconfirmed')
 
@@ -638,6 +646,16 @@ TOOLS = [
     _tool(ask, '用已确认的定义回答一个业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
           'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。会调用模型，慢且花钱。',
           {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
+    _tool(ontopoc_query, '用本体查询（OntoPoc Query，像 SQL）直接算一个数：代码按令牌主人能看的行和已确认的定义算，不调用模型，快，结果和 ask 一样带 definitions 和 limited_by_rule。'
+          '写法：SELECT 分组列, 一个数 FROM 路径 [WHERE 条件 AND …] [GROUP BY 分组列] [ORDER BY 那个数 DESC|ASC] [LIMIT n]。'
+          '路径沿已确认的关系走，不写 JOIN：(o:订单)-[:订单买的产品]->(p:产品)，几条路径用逗号隔开，(o) 再次出现是同一个对象。'
+          '一个数是 count(o)、sum(o.金额)、avg(o.金额) 或 share(o.状态码 = \'已取消\')（占比）；SELECT 里其余的列要写进 GROUP BY。'
+          'WHERE 只写在被数或被算的对象上，用 =、<>、NOT IN (…)，代码列可以直接写含义（\'已取消\'）；值可以写 $名字，放在 params 里传。'
+          '例：SELECT p.品类, count(o) AS 数量 FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类 ORDER BY 数量 DESC LIMIT 3。'
+          '类型、属性、关系的名字来自 describe_definitions。写错或写了还不支持的（>、BETWEEN、OR、跨对象的条件）会报错并说明能写什么；'
+          'status 是 refused 时把 reason 原样转告人，不要换写法绕过。',
+          {'text': {'type': 'string', 'maxLength': 4000, 'description': '一条本体查询'},
+           'params': {'type': 'object', 'description': '参数名 → 值（文字或数字），对应查询里的 $名字'}}, ('text',)),
     _tool(list_unconfirmed, '现在不是“已确认”的定义（提出了还没确认、需要再看、被退回），每条有状态、原因和可以确认它的人。这些不能拿来回答问题。令牌的主人是只读的人时这里是空的。'),
     _tool(read_derived_property, '读一个已确认的派生属性（例如 客户的已取消订单数）：给 key（主键列 → 取值）就是那一个对象的值，不给就是一页对象的值。'
           '派生属性没确认或现在算不出来时不给值，错误里说它的状态和原因。只算令牌的主人看得到的行。',
@@ -645,7 +663,7 @@ TOOLS = [
            'key': {'type': 'object', 'description': '主键列 → 取值，例如 {"客户编号": "KH022"}；不写就给一页'}, 'page': {'type': 'integer', 'minimum': 1, 'description': '第几页，从 1 起'}},
           ('type', 'name')),
 ]
-READ_TOOLS = ('describe_definitions', 'ask', 'list_unconfirmed', 'read_derived_property')   # what an outside agent is given (a token and no ONTOPOC_TOOLSET, or ONTOPOC_TOOLSET=read): no uploading, no confirming, no writing
+READ_TOOLS = ('describe_definitions', 'ask', 'ontopoc_query', 'list_unconfirmed', 'read_derived_property')   # what an outside agent is given (a token and no ONTOPOC_TOOLSET, or ONTOPOC_TOOLSET=read): no uploading, no confirming, no writing
 BY_NAME = {t['name']: t for t in TOOLS}
 
 
