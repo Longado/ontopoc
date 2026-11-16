@@ -1,7 +1,7 @@
 // What the pipeline pages decide without a browser: the graph's layout, the card texts, how a draft definition is changed (always into a new object), the operator
 // picker's filtering, the simple expression form, what a confirm screen counts as seen. The service's own words are shown as they come.
 
-export const KIND_LABEL = { input: "输入", join: "关联", transform: "转换", llm: "AI 判断", output: "输出" };
+export const KIND_LABEL = { input: "输入", join: "关联", transform: "转换", llm: "AI 判断", union: "合并", split: "拆分", output: "输出" };
 export const HOW_LABEL = { left: "保留左边全部", inner: "只留两边都对上的", anti: "只留左边没对上的", semi: "只留左边对上的" };
 export const NULL_KEYS_LABEL = { no_match: "空值不匹配", equal: "空值相等" };
 export const STATUS_LABEL = { success: "成功", failed: "失败", running: "运行中", cancelled: "已取消" };
@@ -12,7 +12,7 @@ export const CAST_LABEL = { date: "日期", datetime: "日期时间", decimal: "
 export const CLEAN_LABEL = { trim: "去首尾空格", whitespace: "合并多余空白", upper: "转大写", lower: "转小写", replace: "替换文字" };
 export const UNMAPPED_LABEL = { null: "留空", keep: "保留原代码", other: "写成指定文字" };
 const CATEGORY_ORDER = ["常用", "清洗", "类型", "日期", "数值", "文本", "汇总"];
-const PREFIX = { input: "in", join: "j", transform: "t", llm: "ai", output: "out" };
+const PREFIX = { input: "in", join: "j", transform: "t", llm: "ai", union: "u", split: "s", output: "out" };
 
 const STATE_WORD = { proposed: "已提出", checked: "已检查", confirmed: "已确认", needs_look: "需再看", rejected: "已退回" };
 /** The state chip of a pipeline or of one of its outputs: a pipeline that needs another look says why (数据变了 / 定义改了). */
@@ -21,13 +21,24 @@ export const pipelineStateText = (item) => (item.state === "needs_look" && item.
 export const numberText =(value) => (typeof value === "number" ? value.toLocaleString("en-US") : value == null ? "—" : String(value));
 export const rowsText = (n) => `${numberText(n)} 行`;
 
-/** The ids of the steps a step reads. */
-export const inputsOf = (step) => (step.type === "join" ? [step.left, step.right] : step.type === "input" ? [] : [step.from]).filter(Boolean);
+/** The ids a step reads (a branch id stands for the split that makes it). */
+export const inputsOf = (step) => (step.type === "join" ? [step.left, step.right] : step.type === "union" ? [...(step.inputs ?? [])] : step.type === "input" ? [] : [step.from]).filter(Boolean);
+
+/** {branch id: the id of the split that makes it}. */
+export const branchOwners = (steps) => Object.fromEntries(steps.filter((s) => s.type === "split").flatMap((s) => (s.branches ?? []).map((b) => [b.id, s.id])));
+
+/** The steps a step reads, as steps: a branch is its split. */
+const readsOf = (step, owners) => [...new Set(inputsOf(step).map((i) => owners[i] ?? i))];
+
+/** What a step can read, in order: every step but a split and an output, and each branch of a split, with the words of a picker. */
+export const readableSteps = (steps) => steps.flatMap((s) => (s.type === "split" ? (s.branches ?? []).map((b) => ({ id: b.id, label: `拆分的分支：${b.id}` }))
+  : s.type === "output" ? [] : [{ id: s.id, label: `${KIND_LABEL[s.type]}：${stepTitle(s, steps)}` }]));
 
 /** Where each card goes, left to right: a step stands one column right of the furthest step it reads; the order of the steps decides the order in a column. */
 export function layout(steps, size = { w: 208, h: 116, gx: 56, gy: 16 }) {
   const column = {};
-  for (const s of steps) column[s.id] = Math.max(-1, ...inputsOf(s).map((i) => column[i] ?? -1)) + 1;
+  const owners = branchOwners(steps);
+  for (const s of steps) column[s.id] = Math.max(-1, ...readsOf(s, owners).map((i) => column[i] ?? -1)) + 1;
   const used = {};
   const nodes = {};
   for (const s of steps) {
@@ -35,7 +46,7 @@ export function layout(steps, size = { w: 208, h: 116, gx: 56, gy: 16 }) {
     used[column[s.id]] = row + 1;
     nodes[s.id] = { col: column[s.id], row, x: column[s.id] * (size.w + size.gx), y: row * (size.h + size.gy) };
   }
-  const edges = steps.flatMap((s) => inputsOf(s).filter((i) => nodes[i]).map((from) => ({ from, to: s.id })));
+  const edges = steps.flatMap((s) => readsOf(s, owners).filter((i) => nodes[i]).map((from) => ({ from, to: s.id })));
   const cols = Math.max(0, ...Object.values(column)) + 1;
   const rows = Math.max(1, ...Object.values(used));
   return { nodes, edges, size, width: steps.length ? cols * size.w + (cols - 1) * size.gx : 0, height: rows * size.h + (rows - 1) * size.gy };
@@ -45,11 +56,12 @@ export function layout(steps, size = { w: 208, h: 116, gx: 56, gy: 16 }) {
 export function orphans(steps) {
   if (!steps.some((s) => s.type === "output")) return [];
   const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
+  const owners = branchOwners(steps);
   const live = new Set();
   const walk = (id) => {
     if (live.has(id) || !byId[id]) return;
     live.add(id);
-    inputsOf(byId[id]).forEach(walk);
+    readsOf(byId[id], owners).forEach(walk);
   };
   steps.filter((s) => s.type === "output").forEach((s) => walk(s.id));
   return steps.filter((s) => !live.has(s.id)).map((s) => s.id);
@@ -69,6 +81,8 @@ export function stepTitle(step, steps = []) {
   if (step.type === "input") return `${step.dataset ?? step.view ?? "（还没选）"}${step.version ? ` 第 ${step.version} 版` : ""}`;
   if (step.type === "output") return step.name || "（还没写名字）";
   if (step.type === "join") return `${nameOf(step.left, steps)} 和 ${nameOf(step.right, steps)}`;
+  if (step.type === "union") return (step.inputs ?? []).map((i) => (branchOwners(steps)[i] ? i : nameOf(i, steps))).join("、") || "（还没选）";
+  if (step.type === "split") return (step.branches ?? []).map((b) => b.id).join(" / ") || "（还没有分支）";
   if (step.type === "llm") return step.name || "（还没写新列的名字）";
   const n = step.operators?.length ?? 0;
   return n ? step.operators.map(operatorName).join("、") : "（还没有操作）";
@@ -107,14 +121,23 @@ const unusedId = (steps, kind) => {
 /** A new step after the others. `near` is the step selected now: a join reads it and, as its right side, the nearest other step that reads data; a transform or an output reads it. */
 export function newStep(steps, kind, near, datasets = [], model = "") {
   const id = unusedId(steps, kind);
-  const last = near ?? steps[steps.length - 1]?.id ?? null;
+  const picked = near ?? steps[steps.length - 1]?.id ?? null;
+  const split = steps.find((s) => s.id === picked && s.type === "split");
+  const branches = (split?.branches ?? []).map((b) => b.id);
+  const last = split ? branches[0] ?? null : picked;   // a split is read through its branches
   if (kind === "input") return { id, type: "input", dataset: datasets[0] ?? "" };
   if (kind === "join") {
-    const right = [...steps].reverse().find((s) => s.id !== last && s.type === "input") ?? [...steps].reverse().find((s) => s.id !== last);
+    const right = [...steps].reverse().find((s) => s.id !== picked && s.type === "input") ?? [...steps].reverse().find((s) => s.id !== picked && s.type !== "split" && s.type !== "output");
     return { id, type: "join", left: last, right: right?.id ?? null, how: "left", on: [{ left: "", right: "" }], null_keys: "no_match" };
   }
   if (kind === "transform") return { id, type: "transform", from: last, operators: [] };
-  if (kind === "llm") return { id, type: "llm", from: near ?? [...steps].reverse().find((s) => s.type !== "output")?.id ?? last, model, name: "", template: "classify", context: "", column: "", categories: ["其他"], multiple: false };
+  if (kind === "union") {
+    if (split) return { id, type: "union", inputs: branches, missing: "error" };
+    const other = [...steps].reverse().find((s) => s.id !== last && s.type !== "output" && s.type !== "split");
+    return { id, type: "union", inputs: [last, other?.id].filter(Boolean), missing: "error" };
+  }
+  if (kind === "split") return { id, type: "split", from: last, branches: [{ id: `${id}_甲`, where: { all: [{ column: "", cmp: "eq", value: "" }] } }, { id: `${id}_其余`, rest: true }] };
+  if (kind === "llm") return { id, type: "llm", from: near ? last : [...steps].reverse().find((s) => s.type !== "output" && s.type !== "split")?.id ?? last, model, name: "", template: "classify", context: "", column: "", categories: ["其他"], multiple: false };
   return { id, type: "output", from: last, name: "" };
 }
 
@@ -128,7 +151,8 @@ export const updateStep = (spec, id, patch) => ({ ...spec, steps: spec.steps.map
 
 /** Removes a step; refused (spec unchanged, `blocked` the ids that read it) while another step reads it. */
 export function removeStep(spec, id) {
-  const blocked = spec.steps.filter((s) => inputsOf(s).includes(id)).map((s) => s.id);
+  const owners = branchOwners(spec.steps);
+  const blocked = spec.steps.filter((s) => s.id !== id && readsOf(s, owners).includes(id)).map((s) => s.id);
   return blocked.length ? { spec, blocked } : { spec: { ...spec, steps: spec.steps.filter((s) => s.id !== id) }, blocked };
 }
 
@@ -235,6 +259,23 @@ export function fanOutLines(join) {
   return [...side(join?.fan_out, "左边"), ...side(join?.right_fan_out, "右边")];
 }
 
+/** What a union did besides stacking rows: rows found in more than one input, and the rows a missing column was left empty on. */
+export function unionLines(union) {
+  if (!union) return [];
+  const same = union.same_rows?.count ? [`${numberText(union.same_rows.count)} 行在不止一个输入里都有，后面求和会算两次`] : [];
+  return [...same, ...Object.entries(union.filled_empty ?? {}).map(([col, n]) => `${col}：${numberText(n)} 行没有这一列，留空`)];
+}
+
+/** Where a split sent the rows: each branch with its rows, the rows whose condition field was empty, the rows that met it after an earlier branch took them, and the rows in no branch. */
+export function splitLines(split) {
+  if (!split) return [];
+  const branch = (b) => {
+    const notes = [b.empty_condition ? `${numberText(b.empty_condition)} 行条件字段是空的，没进这个分支` : "", b.also_matched ? `${numberText(b.also_matched)} 行也满足，但已经进了前面的分支` : ""].filter(Boolean);
+    return `${b.id}：${rowsText(b.rows)}${notes.length ? `（${notes.join("；")}）` : ""}`;
+  };
+  return [...split.branches.map(branch), ...(split.unassigned ? [`${numberText(split.unassigned)} 行没进任何分支，不会往下走`] : [])];
+}
+
 /** What the card carries beside its counts: {level: "warn" | "bad", text}. */
 export function cardFlags(node) {
   if (!node) return [];
@@ -244,6 +285,8 @@ export function cardFlags(node) {
     if (fanOutLines(node.join).length) out.push({ level: "warn", text: "合计会被重复计算" });
     if (node.join.left_unmatched > 0 && node.join.how !== "semi") out.push({ level: "note", text: `${node.join.left_unmatched} 行左边没有对上` });
   }
+  if (node.union?.same_rows?.count) out.push({ level: "warn", text: `${numberText(node.union.same_rows.count)} 行重复` });
+  if (node.split?.unassigned) out.push({ level: "warn", text: `${numberText(node.split.unassigned)} 行没进任何分支` });
   const doubled = (node.operators ?? []).flatMap(doubledGroupLines);
   if (doubled.length) out.push({ level: "warn", text: `${(node.operators ?? []).reduce((n, o) => n + (o.double_counted ?? []).reduce((m, d) => Math.max(m, d.groups), 0), 0)} 组的合计重复计算了行` });
   if (node.llm?.pending > 0) out.push({ level: "note", text: `${numberText(node.llm.pending)} 行 AI 还没跑` });
@@ -297,6 +340,10 @@ export function stepSummary(step, steps = []) {
     ...(step.right_columns ? [`右边只带 ${list(step.right_columns)}`] : [])];
   if (step.type === "transform") return [`读 ${nameOf(step.from, steps)}`, ...(step.operators ?? []).map(operatorTitle)];
   if (step.type === "llm") return [`读 ${nameOf(step.from, steps)}，让 AI 写「${step.name}」（${LLM_TEMPLATE[step.template ?? "empty"]}）`, `模型 ${step.model}`, ...llmSettingLines(step)];
+  if (step.type === "union") return [`把 ${stepTitle(step, steps)} 的行接在一起，按列名对上`, step.missing === "empty" ? "缺的列留空" : "有一步缺列就不合并",
+    ...(step.source_column ? [`加一列「${step.source_column}」标出每行来自哪一步`] : [])];
+  if (step.type === "split") return [`读 ${nameOf(step.from, steps)}，每行进第一个满足条件的分支`,
+    ...(step.branches ?? []).map((b) => `${b.id}：${b.rest ? "其余的行" : operatorTitle({ op: "filter", where: b.where })}`)];
   return [`读 ${nameOf(step.from, steps)}，写到「${step.name}」`, ...(step.key ? [`主键 ${list(step.key.columns)}`] : []), ...(step.columns ? [`只留 ${list(step.columns)}`] : [])];
 }
 

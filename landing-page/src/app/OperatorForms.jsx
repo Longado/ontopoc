@@ -32,21 +32,21 @@ function ColChecks({ cols, value, onChange, legend, only }) {
 
 const Row = ({ children }) => <div className="inline wide op-row">{children}</div>;
 
-function FilterForm({ op, cols, onChange, where }) {
+export function FilterForm({ op, cols, onChange, where, lead = "留下", tail = "这些条件的行" }) {
   const group = op.where.any ? "any" : "all";
   const rows = op.where[group] ?? [];
   const setRows = (next, g = group) => onChange({ ...op, where: { [g]: next } });
   const setRow = (i, row) => setRows(rows.map((r, k) => (k === i ? row : r)));
   return (
     <div className="op-form">
-      <AiBox where={where} kind="filter" onApply={(d) => onChange({ ...op, where: d.where })} />
+      {where && <AiBox where={where} kind="filter" onApply={(d) => onChange({ ...op, where: d.where })} />}
       <div className="inline">
-        <span>留下</span>
+        <span>{lead}</span>
         <Select label="条件之间的关系" value={group} onChange={(g) => setRows(rows, g)}>
           <option value="all">全部满足</option>
           <option value="any">任一满足</option>
         </Select>
-        <span>这些条件的行</span>
+        <span>{tail}</span>
       </div>
       {rows.map((row, i) => {
         if (row.all || row.any) return <Row key={i}><span className="muted">一组嵌套的条件，这里不能编辑</span><button className="plain" onClick={() => setRows(rows.filter((_, k) => k !== i))}>删除</button></Row>;

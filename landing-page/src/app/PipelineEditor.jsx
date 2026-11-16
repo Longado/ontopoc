@@ -9,7 +9,7 @@ import { hrefFor } from "./routeModel.js";
 import { StepEditor } from "./StepEditors.jsx";
 import { useSettled } from "./useSettled.js";
 
-const ADDABLE = ["input", "join", "transform", "llm", "output"];
+const ADDABLE = ["input", "join", "transform", "llm", "union", "split", "output"];
 const LEAVE_ASK = "有改动还没保存，离开会丢掉这些改动。要离开吗？";
 
 /** While there are unsaved changes: closing or reloading the tab asks, and so does following a link to another page of the app. (The browser's back button cannot be stopped from here.) */
