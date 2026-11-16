@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { KIND_LABEL, cardFlags, inputsOf, kindLine, layout, newStep, orphans, readableSteps, removeStep, splitLines, stepTitle, unionLines } from "./pipelineModel.js";
+import { KIND_LABEL, cardFlags, inputsOf, kindLine, layout, newStep, operatorTitle, orphans, readableSteps, removeStep, splitLines, stepSummary, stepTitle, unionLines } from "./pipelineModel.js";
 
 const STEPS = [
   { id: "o", type: "input", dataset: "订单" },
@@ -49,4 +49,10 @@ test("what a union and a split did, in words, and the card's warnings", () => {
   const split = { type: "split", rows_in: [160], split: { branches: [{ id: "大单", rows: 57, empty_condition: 2, also_matched: 0 }, { id: "超大单", rows: 0, empty_condition: 0, also_matched: 9 }], unassigned: 101 } };
   assert.deepEqual(splitLines(split.split), ["大单：57 行（2 行条件字段是空的，没进这个分支）", "超大单：0 行（9 行也满足，但已经进了前面的分支）", "101 行没进任何分支，不会往下走"]);
   assert.deepEqual(cardFlags(split).map((f) => f.text), ["101 行没进任何分支"]);
+});
+
+test("the confirm screen says what a union and a split do, branch by branch", () => {
+  assert.deepEqual(stepSummary(STEPS[2], STEPS), ["把 大单、其余 的行接在一起，按列名对上", "有一步缺列就不合并"]);
+  assert.deepEqual(stepSummary({ ...STEPS[2], missing: "empty", source_column: "来源" }, STEPS), ["把 大单、其余 的行接在一起，按列名对上", "缺的列留空", "加一列「来源」标出每行来自哪一步"]);
+  assert.deepEqual(stepSummary(STEPS[1], STEPS), ["读 订单，每行进第一个满足条件的分支", `大单：${operatorTitle({ op: "filter", where: STEPS[1].branches[0].where })}`, "其余：其余的行"]);
 });
