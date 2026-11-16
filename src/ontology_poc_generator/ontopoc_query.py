@@ -106,6 +106,8 @@ class _Reader:
         k, v, at = self.tokens[self.i]
         if k in ('string', 'number'):
             self.i += 1
+            if k == 'number' and self.tokens[self.i][0] == 'number' and self.tokens[self.i][1].startswith('-'):   # 2026-01-01 read as 2026, -01, -01
+                raise QueryError(f'第 {at + 1} 个字附近：日期要加引号，例如 \'2026-01-01\'', at)
             return v
         if k == 'param':
             self.i += 1
