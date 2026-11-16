@@ -167,9 +167,10 @@ class OddValueTests(UnionSplitCase):
         for odd in (None, 3, 'x', {'a': 1}, [1, 2], [['orders'], 'b']):
             self.refused([*base, {'id': 'u', 'type': 'union', 'inputs': odd}])
             self.refused([*base, {'id': 's', 'type': 'split', 'from': 'orders', 'branches': odd}])
-            self.refused([*base, {'id': 's', 'type': 'split', 'from': 'orders', 'branches': [{'id': odd, 'where': amount('ge', '1')}, {'id': 'r', 'rest': True}]}])
+            if not isinstance(odd, str):   # any text is a name a branch may have
+                self.refused([*base, {'id': 's', 'type': 'split', 'from': 'orders', 'branches': [{'id': odd, 'where': amount('ge', '1')}, {'id': 'r', 'rest': True}]}])
             self.refused([*base, {'id': 's', 'type': 'split', 'from': 'orders', 'branches': [{'id': 'a', 'where': odd}, {'id': 'r', 'rest': True}]}])
-            if odd is not None:
+            if odd is not None and not isinstance(odd, str):   # any text is a column name it may add
                 self.refused([*base, {'id': 'u', 'type': 'union', 'inputs': ['orders', 'b'], 'source_column': odd}])
         self.assertIn('missing', self.refused([*base, {'id': 'u', 'type': 'union', 'inputs': ['orders', 'b'], 'missing': 'drop'}]))
 
