@@ -505,8 +505,8 @@ def describe_definitions(s, a):
         return d
     if isinstance(wanted, str):
         wanted = [wanted]
-    if not isinstance(wanted, list) or not all(isinstance(w, str) for w in wanted):
-        raise ToolError('types 要写成类型的英文名或中文名的列表，例如 ["order", "客户"]')
+    if not isinstance(wanted, list) or not wanted or not all(isinstance(w, str) for w in wanted):   # [] is not "all": that is leaving types out
+        raise ToolError('types 要写成类型的英文名或中文名的列表，例如 ["order", "客户"]；要全部就不写 types')
     named = {**{t['name']: t['id'] for t in d['types']}, **{t['id']: t['id'] for t in d['types']}}
     unknown = [w for w in wanted if w not in named]
     if unknown:
@@ -516,23 +516,24 @@ def describe_definitions(s, a):
             'views': [v for v in d['views'] if v['type'] in keep], 'derived': [x for x in d['derived'] if x['type'] in keep], 'rules': d['rules']}
 
 
-def _lean(body: dict, keys: tuple) -> dict:
-    """An answer as an agent is given it: each definition once and short (no confirmation time; its state only when it is not confirmed), and at most AGENT_GROUPS
-    groups, with the count of all of them and how to narrow the query."""
+def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT n') -> dict:
+    """An answer as an agent is given it: each definition once and short (no confirmation time; its state only when it is not confirmed; a derived property's
+    formula kept, as it is part of what the number stands on), and at most AGENT_GROUPS groups, with the count of all of them and how to narrow the query."""
     out = {k: body[k] for k in keys if k in body}
     if isinstance(out.get('definitions'), list):
-        out['definitions'] = [{k: d[k] for k in ('id', 'kind', 'name', 'state', 'version', 'confirmed_by') if k in d and not (k == 'state' and d[k] == 'confirmed')}
-                              for d in out['definitions']]
+        out['definitions'] = [{k: d[k] for k in ('id', 'kind', 'name', 'state', 'version', 'confirmed_by', 'says') if k in d and not (k == 'state' and d[k] == 'confirmed')}
+                              if isinstance(d, dict) else d for d in out['definitions']]
     answer = out.get('answer')
     if isinstance(answer, dict) and isinstance(answer.get('groups'), list) and len(answer['groups']) > AGENT_GROUPS:
         out['answer'] = {**answer, 'groups': answer['groups'][:AGENT_GROUPS],
-                         'groups_cut': f'只给了前 {AGENT_GROUPS} 组，一共 {answer.get("total_groups", len(answer["groups"]))} 组：要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE'}
+                         'groups_cut': f'只给了前 {AGENT_GROUPS} 组，一共 {answer.get("total_groups", len(answer["groups"]))} 组：{narrow}'}
     return out
 
 
 def ask(s, a):
     body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
-    return _lean(body, ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'))
+    return _lean(body, ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
+                 '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
 
 
 def ontopoc_query(s, a):
@@ -540,7 +541,7 @@ def ontopoc_query(s, a):
     if a.get('params') is not None:
         body['params'] = a['params']
     body = s.request('/api/workspace/query', body)
-    return _lean(body, ('status', 'answer', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'))   # text, not the compiled query: it compiles to it
+    return _lean(body, ('status', 'answer', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'), '要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE')   # text, not the compiled query: it compiles to it
 
 
 def list_unconfirmed(s, a):
