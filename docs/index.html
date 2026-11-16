@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OntoPoc — Ontology engineering from business tables</title>
-  <meta name="description" content="OntoPoc: ontology engineering for implementation consultants. LLM drafts an ontology from business tables or docs; code validates against data; a human confirms item by item. MCP tools and Claude Code plugin included.">
-  <meta name="keywords" content="ontology, ontology engineering, ontology mcp, knowledge graph, semantic layer, OWL, SHACL, Claude, MCP">
+  <title>OntoPoc — Ontology tool for MCP / Claude</title>
+  <meta name="description" content="OntoPoc is an ontology tool for MCP and Claude: draft, check, and confirm ontologies from business tables. Not a knowledge-graph platform — schema work ahead of a knowledge graph or semantic layer.">
+  <meta name="keywords" content="ontology tool, ontology, ontology engineering, ontology mcp, knowledge graph, semantic layer, OWL, SHACL, Claude, MCP">
   <link rel="canonical" href="https://longado.github.io/ontopoc/">
   <meta name="robots" content="index,follow">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="OntoPoc">
-  <meta property="og:title" content="OntoPoc — Ontology engineering from business tables">
-  <meta property="og:description" content="Draft ontologies from business tables or docs. Code checks against data. Humans confirm item by item. MCP + Claude Code plugin.">
+  <meta property="og:title" content="OntoPoc — Ontology tool for MCP / Claude">
+  <meta property="og:description" content="An ontology tool for MCP / Claude. Draft, check, and confirm definitions from business data. Ahead of a knowledge graph or semantic layer.">
   <meta property="og:url" content="https://longado.github.io/ontopoc/">
   <meta property="og:image" content="https://longado.github.io/ontopoc/media/ontopoc-poster.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="OntoPoc — Ontology engineering from business tables">
-  <meta name="twitter:description" content="Ontology engineering: draft from tables/docs, validate with code, confirm with a human. MCP tools for agents.">
+  <meta name="twitter:title" content="OntoPoc — Ontology tool for MCP / Claude">
+  <meta name="twitter:description" content="Ontology tool for MCP / Claude: checkable schemas from business tables, ahead of a knowledge graph or semantic layer.">
   <meta name="twitter:image" content="https://longado.github.io/ontopoc/media/ontopoc-poster.png">
   <meta name="theme-color" content="#0b1220">
   <link rel="icon" type="image/png" href="assets/ontopoc-logo.png">
@@ -157,9 +157,20 @@
         </article>
         <article class="card">
           <h3>Ontology MCP</h3>
-          <p>32 MCP tools share the local modelling service with the UI. Claude Code plugin commands: build and review.</p>
+          <p>MCP tools (listed in <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">docs/MCP.md</a>) share the local modelling service with the UI. Claude Code plugin commands: build and review.</p>
         </article>
       </div>
+
+      <section id="ontology-tool">
+        <h2>An ontology tool, ahead of a knowledge graph</h2>
+        <p>
+          OntoPoc is an ontology tool you can run locally and call from MCP / Claude.
+          It helps a team turn business tables into checkable object types, relations and definitions.
+          It is not a knowledge-graph platform and does not keep a durable instance store.
+          The work sits ahead of a knowledge graph or semantic layer: once a named person confirms a definition,
+          Q&amp;A, boards and agents may use it; if it is unconfirmed or stale, questions are refused with the reason.
+        </p>
+      </section>
 
       <section id="mcp">
         <h2>Use with MCP / Claude</h2>
@@ -189,7 +200,7 @@ claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_genera
         </details>
         <details>
           <summary>What is ontology MCP in OntoPoc?</summary>
-          <p>Calling ontology-related features through the Model Context Protocol. OntoPoc exposes 32 local MCP tools for Claude Code, Claude Desktop, Cursor and similar clients.</p>
+          <p>Calling ontology-related features through the Model Context Protocol. OntoPoc exposes local MCP tools (listed in the repository docs) for Claude Code, Claude Desktop, Cursor and similar clients.</p>
         </details>
       </section>
 

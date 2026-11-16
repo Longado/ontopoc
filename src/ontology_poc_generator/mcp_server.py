@@ -680,7 +680,7 @@ def handle(message: dict, service, only: tuple | None = None) -> dict | None:
         asked = (message.get('params') or {}).get('protocolVersion')
         return reply({'protocolVersion': asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
                       'capabilities': {'tools': {'listChanged': False}},
-                      'serverInfo': {'name': 'ontopoc', 'version': '0.1.0'},
+                      'serverInfo': {'name': 'ontopoc', 'version': '0.2.0'},
                       'instructions': INSTRUCTIONS if only is None else READ_INSTRUCTIONS})
     if method == 'ping':
         return reply({})
