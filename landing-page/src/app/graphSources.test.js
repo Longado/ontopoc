@@ -10,7 +10,8 @@ test("a source is a node of its own on the lineage", () => {
 
 test("a dataset says where its current version came from, in words", () => {
   assert.equal(cameFromText({ kind: "upload" }), "上传的");
-  assert.equal(cameFromText({ kind: "source", source: "订单库", table: "orders" }), "从 订单库 的 orders 拉取");
+  assert.equal(cameFromText({ kind: "source", source: "订单库", table: "orders" }), "从 订单库 拉取");   // short enough for the node
+  assert.equal(cameFromText({ kind: "source", source: "订单库", table: "orders" }, true), "从 订单库 的表 orders 拉取");   // the panel names the table
   assert.equal(cameFromText({ kind: "source" }), "从数据源拉取");   // a viewer is not told which
   assert.equal(cameFromText({ kind: "pipeline", pipeline: "客户合计" }), "管道 客户合计 写的");
   assert.equal(cameFromText({ kind: "pipeline" }), "管道写的");

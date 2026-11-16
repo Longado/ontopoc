@@ -3,6 +3,7 @@ import { timeText } from "./format.js";
 import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY } from "d3-force";
 
 export const SIZE = {
+  source: { w: 172, h: 64 },
   type: { w: 216, h: 80 },
   dataset: { w: 172, h: 64 },
   pipeline: { w: 172, h: 48 },
@@ -186,7 +187,23 @@ export function confirmedText(node) {
   return `${node.confirmed_by} 于 ${timeText(node.confirmed_at)} 确认${on ? `，依据 ${on}` : ""}`;
 }
 
-export const KIND_LABEL = { dataset: "数据集", pipeline: "管道", type: "对象类型", relation: "关系", view: "视图", action: "行为", derived: "派生属性", answer: "回答" };
+export const KIND_LABEL = { source: "数据源", dataset: "数据集", pipeline: "管道", type: "对象类型", relation: "关系", view: "视图", action: "行为", derived: "派生属性", answer: "回答" };
+
+/** Where the current version of a dataset came from, in a few words; "" when the service does not say. */
+export function cameFromText(came, full = false) {
+  if (!came) return "";
+  if (came.kind === "upload") return "上传的";
+  if (came.kind === "source") return came.source ? `从 ${came.source}${full ? ` 的表 ${came.table}` : ""} 拉取` : "从数据源拉取";
+  if (came.kind === "pipeline") return came.pipeline ? `管道 ${came.pipeline} 写的` : "管道写的";
+  if (came.kind === "action") return came.action ? `行为 ${came.action} 改过` : "行为改过";
+  return "";
+}
+
+/** The two lines under a source's name: its kind and whether its last test or pull worked (a failure stands out), and what it fills. */
+export function sourceLines(node) {
+  const filled = node.tables?.length ?? 0;
+  return [{ text: `${node.kind_label}，${node.status_label}`, ...(node.status === "failed" ? { cause: true } : {}) }, { text: filled ? `填 ${filled} 个数据集` : "还没有读进数据集的表" }];
+}
 
 /** `text` cut with "…" so it fits `maxPx` at font size `size`: a Chinese character is as wide as the size, a Latin one about 0.58 of it. */
 export function fitText(text, maxPx, size) {
