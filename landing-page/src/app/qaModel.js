@@ -78,3 +78,12 @@ export function queryExample(scope) {
 
 /** A query's result as the record the answer and refusal cards read (a refusal before anything ran has no definitions, steps or datasets). */
 export const queryRecord = (body) => ({ definitions: [], steps: [], datasets: {}, ...body });
+
+/** The values a range could not read as numbers or dates, one line per range, and the dates a month or year grouping could not read: they are not counted,
+ * and the answer says so. */
+export function rangeNotes(record) {
+  const eg = (list) => (list?.length ? `（例如 ${list.join("、")}）` : "");
+  const ranges = (record.evidence?.filters ?? []).filter((f) => f.range && f.unreadable).map((f) => `${f.range}：${f.unreadable} 个值读不成数字或日期，没有算进去${eg(f.unreadable_examples)}`);
+  const u = record.answer?.unreadable;
+  return u ? [...ranges, `${u.field}：${u.count} 个值读不成日期，没有分到哪个月或哪一年${eg(u.unreadable_examples)}`] : ranges;
+}

@@ -28,6 +28,8 @@ import re
 
 AGGREGATES = {'count': 'count', 'sum': 'sum', 'avg': 'average', 'average': 'average', 'share': 'share'}
 ALIASES = {'count': '数量', 'sum': '合计', 'average': '平均', 'share': '占比'}
+BUCKETS = ('month', 'year')   # GROUP BY month(o.下单日期): a date read as its month or its year
+COMPARE = {'>': 'more_than', '>=': 'at_least', '<': 'less_than', '<=': 'at_most'}
 KEYWORDS = {'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'GROUP', 'BY', 'ORDER', 'ASC', 'DESC', 'LIMIT', 'AS', 'IN', 'NOT', 'BETWEEN', 'LIKE', 'IS', 'NULL', 'JOIN', 'ON', 'HAVING'}
 MAX_TEXT = 4000
 QUERY_KEYS = ('start', 'where', 'via', 'group_by', 'share', 'measure', 'top', 'order')
@@ -104,6 +106,8 @@ class _Reader:
         k, v, at = self.tokens[self.i]
         if k in ('string', 'number'):
             self.i += 1
+            if k == 'number' and self.tokens[self.i][0] == 'number' and self.tokens[self.i][1].startswith('-'):   # 2026-01-01 read as 2026, -01, -01
+                raise QueryError(f'第 {at + 1} 个字附近：日期要加引号，例如 \'2026-01-01\'', at)
             return v
         if k == 'param':
             self.i += 1
@@ -120,6 +124,19 @@ def _ref(r: _Reader) -> tuple[str, str]:
     var = r.name('对象的简称，例如 o')
     r.take('op', '.', '“.”，写成 简称.属性，例如 o.金额')
     return var, r.name('属性名')
+
+
+def _group_ref(r: _Reader) -> tuple[str, str, str | None]:
+    """o.城市, or month(o.下单日期) / year(o.下单日期): (var, property, 'month' | 'year' | None)."""
+    if r.peek('name') and r.peek('op', '(', 1):
+        at, fn = r.at(), r.take().lower()
+        if fn not in BUCKETS:
+            raise QueryError(f'不认识的函数 {fn}：要算的数用 count、sum、avg、share，日期可以按 month 或 year 分组', at)
+        r.take('op', '(')
+        var, prop = _ref(r)
+        r.take('op', ')')
+        return var, prop, fn
+    return (*_ref(r), None)
 
 
 def _select_item(r: _Reader) -> dict:
@@ -144,8 +161,8 @@ def _select_item(r: _Reader) -> dict:
             item = {'kind': 'agg', 'fn': fn, 'var': var, 'prop': prop}
         r.take('op', ')')
     else:
-        var, prop = _ref(r)
-        item = {'kind': 'field', 'var': var, 'prop': prop}
+        var, prop, by = _group_ref(r)
+        item = {'kind': 'field', 'var': var, 'prop': prop, 'by': by}
     if r.peek('kw', 'AS'):
         r.take()
         item['alias'] = r.name('别名')
@@ -193,6 +210,14 @@ def _condition(r: _Reader) -> dict:
     if r.peek('op', '<>') or r.peek('op', '!='):
         r.take()
         return {'var': var, 'prop': prop, 'not': True, 'values': [r.value()], 'at': at}
+    if r.tokens[r.i][1] in COMPARE and r.tokens[r.i][0] == 'op':
+        op = r.take()
+        return {'var': var, 'prop': prop, 'range': {COMPARE[op]: r.value()}, 'at': at}
+    if r.peek('kw', 'BETWEEN'):
+        r.take()
+        low = r.value()
+        r.take('kw', 'AND', 'AND：BETWEEN 下限 AND 上限')
+        return {'var': var, 'prop': prop, 'range': {'at_least': low, 'at_most': r.value()}, 'at': at}
     negated = r.peek('kw', 'NOT')
     if negated:
         r.take()
@@ -206,10 +231,9 @@ def _condition(r: _Reader) -> dict:
         r.take('op', ')')
         return {'var': var, 'prop': prop, 'not': negated, 'values': values, 'at': at}
     k, v, here = r.tokens[r.i]
-    if v in ('>', '<', '>=', '<=', 'BETWEEN', 'LIKE', 'IS'):
-        raise QueryError(f'{var}.{prop} 用了 {v}：现在只能写 =、<>、IN、NOT IN。'
-                         f'{"范围和日期区间要等时间列（R10 第 3 步）" if v not in ("LIKE", "IS") else "模糊匹配和空值判断还不支持"}', here)
-    raise QueryError(f'第 {here + 1} 个字附近应该是 =、<>、IN 或 NOT IN', here)
+    if v in ('LIKE', 'IS'):
+        raise QueryError(f'{var}.{prop} 用了 {v}：{"模糊匹配" if v == "LIKE" else "空值判断"}还不支持；能写 =、<>、IN、NOT IN、>、>=、<、<=、BETWEEN', here)
+    raise QueryError(f'第 {here + 1} 个字附近应该是 =、<>、IN、NOT IN、>、>=、<、<= 或 BETWEEN', here)
 
 
 def parse(text: str, params: dict | None = None) -> dict:
@@ -249,10 +273,10 @@ def parse(text: str, params: dict | None = None) -> dict:
     if r.peek('kw', 'GROUP'):
         r.take()
         r.take('kw', 'BY', 'BY')
-        group.append({**dict(zip(('var', 'prop'), _ref(r)))})
+        group.append(dict(zip(('var', 'prop', 'by'), _group_ref(r))))
         while r.peek('op', ','):
             r.take()
-            group.append(dict(zip(('var', 'prop'), _ref(r))))
+            group.append(dict(zip(('var', 'prop', 'by'), _group_ref(r))))
     if r.peek('kw', 'HAVING'):
         raise QueryError('HAVING 还不支持：要“前几名”或“最少的几个”，用 ORDER BY 和 LIMIT', r.at())
     order = None
@@ -393,10 +417,11 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
     for v in [g['var'] for g in group] + [f['var'] for f in fields]:
         if v not in types:
             raise QueryError(f'简称 {v} 没有在 FROM 里出现')
-    grouped = {(g['var'], g['prop']) for g in group}
+    grouped = {(g['var'], g['prop'], g.get('by')) for g in group}
     for f in fields:
-        if (f['var'], f['prop']) not in grouped:
-            raise QueryError(f'{f["var"]}.{f["prop"]} 在 SELECT 里，也要写进 GROUP BY（和 SQL 一样）', f['at'])
+        if (f['var'], f['prop'], f.get('by')) not in grouped:
+            shown = f'{f["by"]}({f["var"]}.{f["prop"]})' if f.get('by') else f'{f["var"]}.{f["prop"]}'
+            raise QueryError(f'{shown} 在 SELECT 里，也要写进 GROUP BY（和 SQL 一样，写法也要一样）', f['at'])
     filtered = {c['var'] for c in parsed['where']}
     group = parsed['group']
     if agg['fn'] == 'count' and not group and len(filtered) == 1 and filtered != {counted}:
@@ -422,6 +447,9 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
     where = []
     for c in parsed['where']:
         prop = prop_of(c['var'], c['prop'], c['at'])
+        if 'range' in c:
+            where.append({'field': prop, **{k: str(v) for k, v in c['range'].items()}})
+            continue
         values = list(dict.fromkeys(str(v) for v in c['values']))
         if not c['not'] and len(values) > 1:
             raise QueryError(f'{c["var"]}.{prop} IN 几个值还不支持（“不在这几个值里”可以写 NOT IN）；分成几条查询，或者确认一个视图', c['at'])
@@ -430,7 +458,7 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
     for g in group:
         if g['var'] not in types:
             raise QueryError(f'简称 {g["var"]} 没有在 FROM 里出现')
-        group_by.append({'via': paths[g['var']], 'field': prop_of(g['var'], g['prop'])})
+        group_by.append({'via': paths[g['var']], 'field': prop_of(g['var'], g['prop']), **({'by': g['by']} if g.get('by') else {})})
     measure = share = None
     if agg['fn'] in ('sum', 'average'):
         measure = {'field': prop_of(agg['var'], agg['prop'], agg['at']), 'op': agg['fn']}
@@ -466,7 +494,7 @@ def canonical(query: dict) -> dict:
     if isinstance(gb, str):
         gb = [{'via': q['via'], 'field': gb}]
         q['via'] = []
-    q['group_by'] = [{'via': list(d.get('via') or []), 'field': d['field']} for d in gb] if gb else None
+    q['group_by'] = [{'via': list(d.get('via') or []), 'field': d['field'], **({'by': d['by']} if d.get('by') else {})} for d in gb] if gb else None
     return q
 
 
@@ -525,7 +553,8 @@ def to_text(query: dict, catalog: dict) -> str:
 
     head = f'({start_var}:{_ident(_shown_name(catalog["types"], q["start"]))})'
     chains.append(head)
-    dims = [(walk(d['via']), d['field']) for d in q['group_by'] or []]
+    dims = [(walk(d['via']), d['field'], d.get('by')) for d in q['group_by'] or []]
+    dim_text = lambda v, f, by: f'{by}({v}.{_ident(f)})' if by else f'{v}.{_ident(f)}'
     counted = walk(q['via']) if q['via'] else start_var
     if chains[0] == head and len(chains) > 1 and chains[1].startswith(f'({start_var})'):
         chains[0] = head + chains.pop(1)[len(f'({start_var})'):]
@@ -544,12 +573,20 @@ def to_text(query: dict, catalog: dict) -> str:
         agg, alias = f'share({start_var}.{_ident(str(s["field"]))} = {_literal(s["equals"])})', ALIASES['share']
     else:
         agg, alias = f'count({counted})', ALIASES['count']
-    lines = [f'SELECT {", ".join([*(f"{v}.{_ident(f)}" for v, f in dims), f"{agg} AS {alias}"])}', f'FROM {", ".join(chains)}']
+    lines = [f'SELECT {", ".join([*(dim_text(*d) for d in dims), f"{agg} AS {alias}"])}', f'FROM {", ".join(chains)}']
     conds = []
+    bound = lambda v: str(v) if re.fullmatch(r'-?\d+(\.\d+)?', str(v)) else _literal(v)
     for w in q['where']:
-        if not isinstance(w, dict) or not isinstance(w.get('field'), str) or not ('equals' in w or 'not_equals' in w):
-            raise QueryError('筛选要写成“某个字段等于（或不等于）某个值”')
+        ranged = [k for k in COMPARE.values() if isinstance(w, dict) and k in w]
+        if not isinstance(w, dict) or not isinstance(w.get('field'), str) or not ('equals' in w or 'not_equals' in w or ranged):
+            raise QueryError('筛选要写成“某个字段等于（或不等于）某个值”，或一个范围')
         f = f'{start_var}.{_ident(str(w["field"]))}'
+        if ranged:
+            if set(ranged) == {'at_least', 'at_most'}:
+                conds.append(f'{f} BETWEEN {bound(w["at_least"])} AND {bound(w["at_most"])}')
+            else:
+                conds += [f'{f} {op} {bound(w[k])}' for op, k in COMPARE.items() if k in w]
+            continue
         if 'not_equals' in w:
             v = w['not_equals']
             if v in ([], None, ''):
@@ -560,7 +597,7 @@ def to_text(query: dict, catalog: dict) -> str:
     if conds:
         lines.append('WHERE ' + '\n  AND '.join(conds))
     if dims:
-        lines.append('GROUP BY ' + ', '.join(f'{v}.{_ident(f)}' for v, f in dims))
+        lines.append('GROUP BY ' + ', '.join(dim_text(*d) for d in dims))
     if q['order']:
         lines.append(f'ORDER BY {alias} {"DESC" if q["order"] == "largest" else "ASC"}')
     if q['top']:

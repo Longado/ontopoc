@@ -314,7 +314,7 @@ def _on_one_period(cells: dict, bundle: dict, field: str, where: list, dims: lis
     source = field.partition('.')[0]
     dates = _period_columns(cells, bundle, source)
     dated = lambda f: f.partition('.')[0] == source and f.partition('.')[2] in dates
-    return any(dated(w['field']) for w in where) or any(not d['via'] and dated(d['field']) for d in dims)
+    return any(dated(w['field']) for w in where if 'range' not in w) or any(not d['via'] and not d.get('by') and dated(d['field']) for d in dims)   # a range or a month spans several periods
 
 
 def refusal(cells: dict, bundle: dict, measure: dict, where: list, dims: list) -> dict | None:

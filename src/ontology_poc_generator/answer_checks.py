@@ -36,7 +36,7 @@ from collections import Counter
 
 from ontology_poc_generator.code_meanings import codes_for_label
 from ontology_poc_generator.named_views import query_tables, query_types
-from ontology_poc_generator.ontology_questions import _fields, _resolve_field, _shape_limit, _types, clean_used
+from ontology_poc_generator.ontology_questions import RANGES, _fields, _resolve_field, _shape_limit, _types, clean_used
 from ontology_poc_generator.public_ontology import normalize_proposal, normalize_value
 from ontology_poc_generator.repeated_keys import rule_key
 from ontology_poc_generator.workspace_store import describes_rows
@@ -263,6 +263,8 @@ def filter_conditions(ontology: dict, query: dict, meanings: dict | None) -> dic
     start = types.get(query.get('start'))
     out: dict[str, list[tuple[str, set]]] = {}
     for w in (query.get('where') or []) if start else []:
+        if isinstance(w, dict) and any(k in w for k in RANGES):   # a range names no value to look rows up by
+            continue
         field = _resolve_field(start, w.get('field')) if isinstance(w, dict) else None
         if field:
             table, _, column = field.partition('.')

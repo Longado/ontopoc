@@ -150,6 +150,12 @@ def main(argv=None) -> int:
                                        'same': mine == want, 'stood_on': [d['name'] for d in got.get('definitions') or []]})
 
 
+        text = 'SELECT count(o) FROM (o:订单) WHERE o.金额 > 20000'
+        report['traps'].append({'case': '文字列当数字比：数据集的列存成文字（DIP 除主键外都是 text）', 'question': '金额超过 20000 的订单有多少？',
+                                'sql': 'SELECT count(*) FROM 订单 WHERE 金额 > 20000', 'sql_gives': db.execute('SELECT count(*) FROM 订单 WHERE 金额 > 20000').fetchone()[0],
+                                'query': text, 'query_gives': said(query(ann, text)),
+                                'truth': f'{sum(int(r["金额"]) > 20000 for r in tables["订单"])} 张（SQL 写成 CAST(金额 AS INTEGER) > 20000 也能得到；不写就是每一行都“大于”）'})
+
         ids = {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
         ok(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH001', 'user_ids': [ids['vera']]}]}), 'row rule')
         report['traps'].append({'case': '行规则：Vera 只能看客户 KH001 的订单', 'question': '一共有多少订单？',
