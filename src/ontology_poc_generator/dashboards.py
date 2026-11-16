@@ -49,6 +49,8 @@ MAX_COMPONENTS, MAX_BAR, MAX_NAME, MAX_TITLE = 12, 4, 40, 40
 MAX_PARAMS, MAX_VALUE, MAX_TEXT = 4, 200, 4000   # parameters on a board, characters in a parameter's value, characters in a query card
 PARAM_NAME = re.compile(r'[A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff]{0,19}')   # as the query reads a $name
 CLOSED_TEXT = '这个组件你现在算不了：它用到的对象类型、属性或关系你看不到，或者现在不在了'
+UNSETTLED_TEXT = '这个组件现在算不了：它用到的定义现在不是已确认的状态，要等有权限的人再确认'   # a reader is not told which: the reason can name a column kept from them
+BAD_VALUE_TEXT = '你填的参数值在这里用不了（例如要数字或日期的地方填了文字），请换一个值，或者清空用默认值'
 ROW_LIMIT = 10   # an instance table on a board shows this many rows
 SIGN_IN_NOTE = '分享链接打开时仍然要先登录，并且要在看板的发布范围里；没有匿名访问。'
 
@@ -399,19 +401,32 @@ def _text_opens(conn, user: dict | None, component: dict, values: dict) -> bool:
         return False
 
 
-def _work_out_text(conn, user: dict | None, component: dict, values: dict, author: bool) -> dict:
+def _work_out_text(conn, user: dict | None, component: dict, values: dict, author: bool, defaults: dict) -> dict:
     """A query card worked out for this person: the answer as a question's (status, answer, text with the values in it, definitions, limited_by_rule) and its standing.
-    A refusal says why; one that comes from what the text names says it only to the board's author."""
+    A refusal says why to the board's author. Anyone else is told only which kind of trouble it is (closed to them, not confirmed now, or a value they typed that
+    the card cannot use, when the same card works with the defaults): a reason can name a column or type kept from them."""
     from ontology_poc_generator.workspace_questions import QaRefused, run_text
     base = {'id': component['id'], 'title': component['title'], 'chart': component['chart']}
     try:
         got = run_text(conn, user, component['text'], values)
     except QaRefused as exc:
-        return {**base, 'status': 'unavailable', 'message': str(exc) if author else CLOSED_TEXT}
+        if author:
+            return {**base, 'status': 'unavailable', 'message': str(exc)}
+        return {**base, 'status': 'unavailable', 'message': BAD_VALUE_TEXT if values != defaults and _runs(conn, user, component, defaults) else CLOSED_TEXT}
     if got['status'] not in ('answered', 'no_data'):
-        return {**base, 'status': 'unavailable', 'message': got.get('reason') or '没有算出来'}
+        return {**base, 'status': 'unavailable', 'message': (got.get('reason') or '没有算出来') if author else UNSETTLED_TEXT}
     result = {k: got[k] for k in ('status', 'answer', 'reason', 'text', 'definitions', 'limited_by_rule', 'types', 'datasets') if k in got}
     return {**base, 'status': 'ok', 'result': {**result, 'standing': _standing(conn, [d['id'] for d in got.get('definitions', [])])}}
+
+
+def _runs(conn, user: dict | None, component: dict, values: dict) -> bool:
+    """Whether a query card is worked out with these values for this person without being refused as written."""
+    from ontology_poc_generator.workspace_questions import QaRefused, run_text
+    try:
+        run_text(conn, user, component['text'], values)
+        return True
+    except QaRefused:
+        return False
 
 
 def evaluate(conn, user: dict | None, spec: dict, bar: dict, values: dict | None = None, author: bool = True) -> list[dict]:
@@ -421,7 +436,7 @@ def evaluate(conn, user: dict | None, spec: dict, bar: dict, values: dict | None
     out = []
     for component in spec['components']:
         if 'text' in component:
-            out.append(_work_out_text(conn, user, component, values if values is not None else _defaults(spec), author))
+            out.append(_work_out_text(conn, user, component, values if values is not None else _defaults(spec), author, _defaults(spec)))
             continue
         try:
             out.append(_work_out(conn, user, component, bar))
@@ -480,7 +495,9 @@ def _with_last(conn, user: dict | None, board: int, picked: dict, components: li
     reader, picks, out = user['id'] if user else 0, json.dumps(picked, sort_keys=True, ensure_ascii=False), []
     for c in components:
         key = (board, c['id'], reader, picks)
-        if c['status'] == 'ok' and c['result']['standing']['confirmed']:
+        if c['chart'].get('kind') == 'query':   # never "waiting" (a query card says why it is refused): what it kept would not be read back
+            out.append(c)
+        elif c['status'] == 'ok' and c['result']['standing']['confirmed']:
             conn.execute('INSERT OR REPLACE INTO dashboard_last(dashboard_id, component_id, reader, picks, result_json, at) VALUES (?, ?, ?, ?, ?, ?)',
                          (*key, json.dumps(c['result'], ensure_ascii=False), _now()))
             out.append(c)

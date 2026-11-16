@@ -32,7 +32,7 @@ export const draftOf = (board) => ({
   params: (board.spec.params ?? []).map((p) => ({ ...p })),
   components: board.spec.components.map((c) => (c.text !== undefined ? { ...emptyComponent("", 0), id: c.id, title: c.title, kind: "query", text: c.text } : {
     id: c.id, title: c.title, type: c.query.type, view: c.query.view ?? "", kind: c.chart.kind, group: c.chart.group ?? "", measure: c.chart.measure ?? "", fn: c.chart.fn ?? "count", bins: c.chart.bins ?? 10, top: c.chart.top ? String(c.chart.top) : "", order: c.chart.order ?? "",
-    filters: c.query.filters ?? [],
+    filters: c.query.filters ?? [], text: "",
   })),
 });
 
