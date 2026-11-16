@@ -24,3 +24,11 @@ test("a source node says its kind, whether it works and how many datasets it fil
   assert.deepEqual(sourceLines({ kind_label: "PostgreSQL", status: "ok", status_label: "正常", tables: [{ table: "orders", dataset: "订单" }] }), [{ text: "PostgreSQL，正常" }, { text: "填 1 个数据集" }]);
   assert.deepEqual(sourceLines({ kind_label: "MySQL", status: "failed", status_label: "失败", tables: [] }), [{ text: "MySQL，失败", cause: true }, { text: "还没有读进数据集的表" }]);
 });
+
+test("a dataset whose origin is not recorded says it was uploaded, as before", async () => {
+  const { datedText } = await import("./graphModel.js");
+  assert.equal(datedText({ kind: "other" }), "上传于");
+  assert.equal(datedText(undefined), "上传于");
+  assert.equal(datedText({ kind: "upload" }), "上传于");
+  assert.equal(datedText({ kind: "source" }), "更新于");
+});

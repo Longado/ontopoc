@@ -11,7 +11,7 @@ LINEAGE = '/api/workspace/graph/lineage'
 
 
 def load_tests(loader, standard, pattern):
-    return unittest.TestSuite(LineageSourceTests(name) for name in vars(LineageSourceTests) if name.startswith('test_'))
+    return unittest.TestSuite(cls(name) for cls in (LineageSourceTests, CameFromNamingTests) for name in vars(cls) if name.startswith('test_'))
 
 
 class LineageSourceTests(SourceCase):
@@ -67,3 +67,22 @@ class LineageSourceTests(SourceCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CameFromNamingTests(unittest.TestCase):
+    """Found in the review of PR #86: a pipeline or an action is named only to someone who may see it, whatever the dataset version says."""
+
+    def test_a_pipeline_or_action_this_person_may_not_see_is_not_named(self):
+        from unittest import mock
+        from ontology_poc_generator import ontology_graph as g
+        builder = {'id': 2, 'role': 'builder'}
+        with mock.patch.object(g, 'element_row', return_value={'element_id': 'x'}), \
+                mock.patch.object(g, 'pipeline_visible', return_value=False), mock.patch.object(g, 'action_visible', return_value=False):
+            self.assertEqual(g._came_from(None, 'pipeline:客户合计@run3', True, builder), {'kind': 'pipeline'})
+            self.assertEqual(g._came_from(None, 'action:改状态', True, builder), {'kind': 'action'})
+        with mock.patch.object(g, 'element_row', return_value={'element_id': 'x'}), \
+                mock.patch.object(g, 'pipeline_visible', return_value=True), mock.patch.object(g, 'action_visible', return_value=True):
+            self.assertEqual(g._came_from(None, 'pipeline:客户合计@run3', True, builder), {'kind': 'pipeline', 'pipeline': '客户合计'})
+            self.assertEqual(g._came_from(None, 'action:改状态', True, builder), {'kind': 'action', 'action': '改状态'})
+        with mock.patch.object(g, 'element_row', return_value=None):
+            self.assertEqual(g._came_from(None, 'pipeline:已删除@run1', True, builder), {'kind': 'pipeline'})   # one that is gone is not named either
