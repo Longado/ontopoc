@@ -77,3 +77,12 @@ test("a step reading a branch sees the split's columns, and renaming a branch re
   const split = { id: "s1", branches: [{ id: "s1_1" }, { id: "s1_3" }] };
   assert.ok(!["s1_1", "s1_3"].includes(newBranchId(split, STEPS)));
 });
+
+test("a branch is not renamed to nothing or to a name already taken", async () => {
+  const { renameBranch } = await import("./pipelineModel.js");
+  const spec = { steps: [...STEPS, { id: "t9", type: "transform", from: "", operators: [] }] };
+  assert.equal(renameBranch(spec, "s1", "大单", ""), spec);
+  assert.equal(renameBranch(spec, "s1", "大单", "其余"), spec);
+  assert.equal(renameBranch(spec, "s1", "大单", "o"), spec);
+  assert.equal(renameBranch(spec, "s1", "大单", "高额").steps[4].from, "");   // a step with no source yet is left alone
+});
