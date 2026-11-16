@@ -58,7 +58,7 @@ class QueryAgentTests(AgentCase):
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': kh, 'user_ids': [ids['vera']]}]})[0], 200)
             replies = self.mcp(base, self.token_for(admin, 'vera')['token'], [
                 ('ontopoc_query', {'text': 'SELECT count(o) FROM (o:订单)'}),
-                ('ontopoc_query', {'text': TOP3}),
+                ('ontopoc_query', {'text': TOP3.rsplit(' ORDER BY', 1)[0]}),   # every category: the groups add up to her orders
                 ('ontopoc_query', {'text': 'SELECT count(o) FROM (o:订单)-[:下单]->(p:产品)'}),
                 ('ontopoc_query', {'text': 'SELECT count(o) FROM (o:订单) WHERE o.状态码 = $state', 'params': {'state': '已取消'}})])
             self.assertIn('ontopoc_query', [t['name'] for t in replies[2]['result']['tools']])
