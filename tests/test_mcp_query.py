@@ -82,14 +82,14 @@ class QueryAgentTests(AgentCase):
             self.world(team)
             status, body = team['ann'].post('/api/workspace/ask', {'question': QUESTION})
             self.assertEqual((status, body['status']), (200, 'answered'), body)
-            self.assertEqual(body['query_text'], "SELECT count(o) AS 数量\nFROM (o:订单)\nWHERE o.状态码 = '2'")
+            self.assertEqual(body['query_text'], "SELECT count(o) AS 数量\nFROM (o:订单)\nWHERE o.状态码 = '已取消'")   # the confirmed meaning, not the code: after a shift it is refused
             status, ran = team['ann'].post('/api/workspace/query', {'text': body['query_text']})
             self.assertEqual((status, ran['answer']['total']), (200, body['answer']['total']))
             self.assertEqual(team['ann'].get(f'/api/workspace/ask/{body["id"]}')[1]['query_text'], body['query_text'])   # kept with the answer
             # a query the text cannot say the same way (a field written as table.column by the model) is still shown, in the type's own names
             model.item = cancelled(query={'start': 'order', 'where': [{'field': '订单.状态码', 'equals': '2'}], 'via': [], 'group_by': None, 'share': None, 'measure': None})
             body = team['ann'].post('/api/workspace/ask', {'question': QUESTION})[1]
-            self.assertEqual(body['query_text'], "SELECT count(o) AS 数量\nFROM (o:订单)\nWHERE o.状态码 = '2'")
+            self.assertEqual(body['query_text'], "SELECT count(o) AS 数量\nFROM (o:订单)\nWHERE o.状态码 = '已取消'")
 
     def test_an_answer_whose_query_cannot_be_written_back_has_no_query_text_rather_than_a_wrong_one(self):
         model = AskModel(cancelled(query={'start': 'order', 'where': [{'field': '不存在的列', 'equals': '2'}], 'via': [], 'group_by': None, 'share': None, 'measure': None}))
