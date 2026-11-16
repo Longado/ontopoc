@@ -68,6 +68,20 @@ class LeanOutputTests(unittest.TestCase):
         self.assertEqual(out['definitions'], [{'id': 'objtype:order', 'kind': 'type', 'name': '订单', 'version': 2, 'confirmed_by': 'Bob'}])
         self.assertEqual(out['query_text'], body['query_text'])   # so the agent can rerun or change it with ontopoc_query, without the model
 
+    def test_a_derived_property_keeps_its_formula_and_a_refusal_keeps_its_states(self):
+        line = used(id='derived:customer:cancelled_orders', kind='derived', name='客户.已取消订单数', type='customer', says='每个客户的已取消订单数')
+        out = mcp_server.ontopoc_query(Session({'status': 'answered', 'answer': {'total': 1}, 'text': 'x', 'definitions': [line]}), {'text': 'x'})
+        self.assertEqual(out['definitions'][0]['says'], '每个客户的已取消订单数')   # a number is reported with its basis (refusal rule 4): the formula is part of it
+        refusal = {'status': 'refused', 'reason': 'r', 'refusal': {'kind': 'unconfirmed', 'definitions': [used('needs_review')]}, 'definitions': [used('needs_review')]}
+        out = mcp_server.ask(Session(refusal), {'question': 'q'})
+        self.assertEqual(out['refusal'], refusal['refusal'])
+        self.assertEqual(out['definitions'][0]['state'], 'needs_review')
+
+    def test_an_ask_answer_cut_says_to_narrow_its_query_text_with_ontopoc_query(self):
+        groups = [[f'客户{i:03d}', i] for i in range(60)]
+        body = {'status': 'answered', 'answer': {'groups': groups, 'total_groups': 60}, 'query_text': 'SELECT …', 'definitions': []}
+        self.assertIn('query_text', mcp_server.ask(Session(body), {'question': 'q'})['answer']['groups_cut'])
+
     def test_a_long_list_of_groups_is_cut_with_the_count_kept_and_a_way_to_narrow_it(self):
         groups = [[f'客户{i:03d}', i] for i in range(120)]
         body = {'status': 'answered', 'answer': {'groups': groups, 'total_groups': 120, 'without_value': 0}, 'text': 'x', 'definitions': []}
@@ -101,6 +115,13 @@ class DefinitionsTests(unittest.TestCase):
         self.assertEqual([d['id'] for d in out['derived']], ['cancelled_orders'])
         self.assertEqual(out['rules'], ['r'])
         self.assertIn('types', tools()['describe_definitions']['inputSchema']['properties'])
+
+    def test_an_empty_or_odd_types_filter_is_an_error_not_an_empty_answer(self):
+        for odd in ([], {'order': 1}, [1]):
+            with self.assertRaises(ToolError, msg=odd):
+                mcp_server.describe_definitions(Session(json.loads(json.dumps(self.BODY))), {'types': odd})
+        one = mcp_server.describe_definitions(Session(json.loads(json.dumps(self.BODY))), {'types': '订单'})   # one name on its own is read as a list of one
+        self.assertEqual([t['id'] for t in one['types']], ['order'])
 
     def test_a_type_that_is_not_there_is_named_with_the_ones_that_are(self):
         with self.assertRaises(ToolError) as caught:
