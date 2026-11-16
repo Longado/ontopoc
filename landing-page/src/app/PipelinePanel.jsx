@@ -1,7 +1,7 @@
 import React from "react";
 import { getPipelineLog } from "./api.js";
 import { timeText, typeLabel } from "./format.js";
-import { doubledGroupLines, failureLines, friendlyError, joinVerdictLines, numberText, operatorTitle, stepTitle } from "./pipelineModel.js";
+import { doubledGroupLines, failureLines, friendlyError, joinVerdictLines, numberText, operatorTitle, splitLines, stepTitle, unionLines } from "./pipelineModel.js";
 import { logText } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
@@ -70,6 +70,8 @@ function Log({ name, step, steps, node }) {
   const [log] = useLoad(() => getPipelineLog(name), [name]);
   const lines = [
     ...(node?.join ? joinVerdictLines(node.join) : []),
+    ...unionLines(node?.union),
+    ...splitLines(node?.split),
     ...(node?.operators ?? []).flatMap((op, i) => [`${i + 1}. ${op.text ?? ""}`, ...(op.failed ?? []).slice(0, 5).map((f) => `　第 ${f.row} 行没转成功：${f.value}`), ...doubledGroupLines(op)]),
     ...failureLines(node),
   ].filter(Boolean);

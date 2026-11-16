@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { llmClearCache, llmLabel, llmReview, llmState, llmTrial, previewNode } from "./api.js";
 import {
-  LLM_OUTPUT, LLM_TEMPLATE, TRIAL_MODE, estimateText, fieldCells, friendlyError, insertField, llmRunText, numberText, offListLines, reviewText, stepTitle, updateStep,
+  LLM_OUTPUT, LLM_TEMPLATE, TRIAL_MODE, estimateText, fieldCells, friendlyError, insertField, llmRunText, numberText, offListLines, readableSteps, reviewText, stepTitle, updateStep,
 } from "./pipelineModel.js";
 import { Select } from "./Select.jsx";
 import { useSettled } from "./useSettled.js";
@@ -54,7 +54,7 @@ function ConfigTab({ step, draft, setDraft, names, options, state }) {
       </div>
       <div className="field"><span className="caption">读哪一步</span>
         <Select label="读哪一步" value={step.from ?? ""} onChange={(from) => set({ from })}>
-          {earlier(draft, step).map((s) => <option key={s.id} value={s.id}>{stepTitle(s, draft.steps)}</option>)}
+          {readableSteps(earlier(draft, step)).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
         </Select>
       </div>
       <label className="field"><span className="caption">{template === "extract" ? "说明列的名字（错误说明列叫“名字_错误”）" : "新列的名字（错误说明列叫“名字_错误”）"}</span>
