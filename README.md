@@ -98,7 +98,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 ## 用 MCP / Claude 接入
 
-OntoPoc 的一部分功能封装为 39 个 MCP 工具，也可作为 Claude Code 插件安装。工具与页面共用本机服务：先启动服务，再接入客户端。给外部智能体用个人令牌（`ONTOPOC_TOKEN`）时默认只给 5 个只读工具：读定义、提问、写本体查询、列出未确认项、读派生属性。
+OntoPoc 的一部分功能封装为 39 个 MCP 工具，也可作为 Claude Code 插件安装。工具与页面共用本机服务：先启动服务，再接入客户端。给外部智能体用个人令牌（`ONTOPOC_TOKEN`）时默认只给 5 个只读工具：读定义、提问、用本体查询直接算、列出未确认项、读派生属性。
 
 ### 作为 Claude Code 插件安装
 
@@ -113,7 +113,7 @@ claude plugin install ontopoc@ontopoc
 
 ### 接入 Claude Code 或其他 MCP 客户端
 
-这 39 个工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用（在仓库根目录运行）。其中 34 个对应早期界面的运行（建模、查看、问答、确认、导出），5 个对应团队应用：读已确认的定义、提问、写本体查询（[QUERY.md](docs/QUERY.md)）、列出未确认项、读派生属性。团队应用里的上传、写定义和确认还没有 MCP 工具，在页面或 HTTP 接口里做。
+这 39 个工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用（在仓库根目录运行）。其中 34 个对应早期界面的运行（建模、查看、问答、确认、导出），5 个对应团队应用：读已确认的定义、提问、用本体查询直接算（[QUERY.md](docs/QUERY.md)）、列出未确认项、读派生属性。团队应用里的上传、写定义和确认还没有 MCP 工具，在页面或 HTTP 接口里做。
 
 ```bash
 claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -230,7 +230,7 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 
 ### 什么是 ontology MCP？可以怎么用？
 
-这里的 ontology MCP 指通过 MCP 工具调用本体相关功能。OntoPoc 把页面上的部分能力做成 MCP 工具（共 39 个，其中 5 个给团队应用：读定义、提问、写本体查询、列出未确认项、读派生属性），供 Claude Code、Claude Desktop、Cursor 等支持 MCP 的客户端调用。工具走本机 stdio，调用的是本机正在运行的建模服务。Claude Code 也可直接装仓库插件后使用 `/ontopoc:ontopoc-build` 与 `/ontopoc:ontopoc-review`。接法见[用 MCP / Claude 接入](#用-mcp--claude-接入)，工具清单见 [docs/MCP.md](docs/MCP.md)。
+这里的 ontology MCP 指通过 MCP 工具调用本体相关功能。OntoPoc 把页面上的部分能力做成 MCP 工具（共 39 个，其中 5 个给团队应用：读定义、提问、用本体查询直接算、列出未确认项、读派生属性），供 Claude Code、Claude Desktop、Cursor 等支持 MCP 的客户端调用。工具走本机 stdio，调用的是本机正在运行的建模服务。Claude Code 也可直接装仓库插件后使用 `/ontopoc:ontopoc-build` 与 `/ontopoc:ontopoc-review`。接法见[用 MCP / Claude 接入](#用-mcp--claude-接入)，工具清单见 [docs/MCP.md](docs/MCP.md)。
 
 ### OntoPoc 现在适合谁用？
 
