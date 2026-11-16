@@ -259,6 +259,40 @@ export function fanOutLines(join) {
   return [...side(join?.fan_out, "左边"), ...side(join?.right_fan_out, "右边")];
 }
 
+/** The summary's nodes with one for each branch of a split, so that a step reading a branch sees its columns: the split's columns, the branch's rows. */
+export function withBranchNodes(nodes, steps) {
+  const out = { ...nodes };
+  for (const s of steps.filter((x) => x.type === "split" && nodes[x.id])) {
+    for (const b of s.branches ?? []) {
+      const counted = nodes[s.id].split?.branches?.find((x) => x.id === b.id);
+      out[b.id] = { id: b.id, type: "branch", column_types: nodes[s.id].column_types, columns: nodes[s.id].columns, rows_in: [nodes[s.id].rows_out], rows_out: counted?.rows };
+    }
+  }
+  return out;
+}
+
+/** A branch renamed, and every step that reads it reading the new name. */
+export function renameBranch(spec, splitId, from, to) {
+  const swap = (v) => (v === from ? to : v);
+  return {
+    ...spec,
+    steps: spec.steps.map((s) => (s.id === splitId ? { ...s, branches: s.branches.map((b) => (b.id === from ? { ...b, id: to } : b)) }
+      : { ...s, ...(s.left !== undefined ? { left: swap(s.left) } : {}), ...(s.right !== undefined ? { right: swap(s.right) } : {}), ...(s.from !== undefined ? { from: swap(s.from) } : {}),
+        ...(Array.isArray(s.inputs) ? { inputs: s.inputs.map(swap) } : {}) })),
+  };
+}
+
+/** A name for a new branch that no step or branch has. */
+export function newBranchId(split, steps) {
+  const taken = new Set([...steps.map((s) => s.id), ...steps.flatMap((s) => (s.branches ?? []).map((b) => b.id)), ...(split.branches ?? []).map((b) => b.id)]);
+  let n = (split.branches ?? []).length + 1;
+  while (taken.has(`${split.id}_${n}`)) n += 1;
+  return `${split.id}_${n}`;
+}
+
+/** The steps that read a branch. */
+export const branchReaders = (steps, id) => steps.filter((s) => [s.left, s.right, s.from, ...(s.inputs ?? [])].includes(id)).map((s) => s.id);
+
 /** What a union did besides stacking rows: rows found in more than one input, and the rows a missing column was left empty on. */
 export function unionLines(union) {
   if (!union) return [];

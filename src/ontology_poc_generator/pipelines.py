@@ -270,8 +270,9 @@ def _union_columns(step: dict, sid: str, sources: list[tuple[str, list[dict]]], 
             if not all(meanings) or any(m != meanings[0] for m in meanings):
                 raise ValueError(f'步骤 {sid}：列「{n}」是代码列，来自 {"、".join(str(o) for o in origins)}，它们确认过的代码含义不一样（或有一边没有确认）：'
                                  '合并后同一个代码会是两个意思。先用“打标签”把代码换成含义，再合并')
+            ctx.setdefault('used', set()).update(origins)   # the union stands on every side's meanings: one of them changing sends it back for a look
         first = have[0][1]
-        out.append({'name': n, 'type': types[0], **({'origin': first['origin']} if len(origins) == 1 or first.get('origin') else {}), **carry(*(c for _, c in have))})
+        out.append({'name': n, 'type': types[0], **({'origin': first['origin']} if first.get('origin') else {}), **carry(*(c for _, c in have))})   # a computed column has no origin
     added = step.get('source_column')
     if added is not None:
         if not isinstance(added, str) or not added.strip() or len(added) > 60 or added in names or added.startswith('__'):
@@ -430,13 +431,15 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
             ruled = [b for b in made if not b['rest']]
             case = ' '.join(f'WHEN ({b["cond"]}) THEN {i}' for i, b in enumerate(ruled))
             params = [p for b in ruled for p in b['params']]
-            sql = f'CREATE TEMP TABLE {table} AS SELECT *, CASE {case} ELSE -1 END AS {BRANCH} FROM {src}'
             names = ', '.join(_q(c['name']) for c in columns)
+            taken = {c['name'] for c in columns}
+            marker = next(m for m in (BRANCH, *(f'{BRANCH}_{k}' for k in range(1, len(taken) + 2))) if m not in taken)   # never one of the source's own columns
+            sql = f'CREATE TEMP TABLE {table} AS SELECT {names}, CASE {case} ELSE -1 END AS {_q(marker)} FROM {src}'
             split = []
             for i, b in enumerate(made):
                 btable = f'{table}_b{i}'
-                split.append({**b, 'index': -1 if b['rest'] else i, 'table': btable,
-                              'sql': f'CREATE TEMP TABLE {btable} AS SELECT {names} FROM {table} WHERE {BRANCH} = {-1 if b["rest"] else i}'})
+                split.append({**b, 'index': -1 if b['rest'] else i, 'table': btable, 'marker': marker,
+                              'sql': f'CREATE TEMP TABLE {btable} AS SELECT {names} FROM {table} WHERE {_q(marker)} = {-1 if b["rest"] else i}'})
                 kept[b['id']] = (btable, columns)
         elif step['type'] == 'llm':
             src, source_columns = kept[step['from']]
@@ -644,12 +647,13 @@ def _split_report(conn, table: str, branches: list[dict]) -> dict:
         rows = conn.execute(f'SELECT COUNT(*) FROM {b["table"]}').fetchone()[0]
         entry = {'id': b['id'], 'rest': b['rest'], 'rows': rows}
         if not b['rest']:
-            empty, also = conn.execute(f'SELECT COALESCE(SUM(({b["cond"]}) IS NULL), 0), COALESCE(SUM(({b["cond"]}) AND {BRANCH} >= 0 AND {BRANCH} < {b["index"]}), 0) FROM {table}',
+            marker = _q(b['marker'])
+            empty, also = conn.execute(f'SELECT COALESCE(SUM(({b["cond"]}) IS NULL), 0), COALESCE(SUM(({b["cond"]}) AND {marker} >= 0 AND {marker} < {b["index"]}), 0) FROM {table}',
                                        b['params'] + b['params']).fetchone()
             entry.update({'empty_condition': empty, 'also_matched': also})
         out.append(entry)
     rest = any(b['rest'] for b in branches)
-    unassigned = 0 if rest else conn.execute(f'SELECT COUNT(*) FROM {table} WHERE {BRANCH} = -1').fetchone()[0]
+    unassigned = 0 if rest else conn.execute(f'SELECT COUNT(*) FROM {table} WHERE {_q(branches[0]["marker"])} = -1').fetchone()[0]
     return {'branches': out, 'unassigned': unassigned}
 
 

@@ -4,7 +4,7 @@ import { LlmEditor } from "./LlmEditor.jsx";
 import { FilterForm, OperatorForm } from "./OperatorForms.jsx";
 import {
   HOW_LABEL, KIND_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, catalogView, copyOperator, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, moveOperator, newOperator,
-  operatorName, operatorTitle, readableSteps, removeOperator, removeStep, setOperator, splitLines, stepTitle, unionLines, updateStep,
+  branchReaders, newBranchId, operatorName, operatorTitle, readableSteps, removeOperator, removeStep, renameBranch, setOperator, splitLines, stepTitle, unionLines, updateStep,
 } from "./pipelineModel.js";
 import { Select } from "./Select.jsx";
 
@@ -270,8 +270,7 @@ function SplitEditor({ step, draft, setDraft, nodes, name }) {
   const ruled = branches.filter((b) => !b.rest);
   const rest = branches.find((b) => b.rest);
   const source = useSourceColumns(name, draft, step);
-  const reads = (s, id) => [s.left, s.right, s.from, ...(s.inputs ?? [])].includes(id);
-  const readers = draft.steps.filter((s) => s.id !== step.id && branches.some((b) => reads(s, b.id)));
+  const readBy = (id) => branchReaders(draft.steps, id);
   const lines = splitLines(nodes[step.id]?.split);
   const withRest = (list) => [...list, ...(rest ? [rest] : [])];
   return (
@@ -284,19 +283,19 @@ function SplitEditor({ step, draft, setDraft, nodes, name }) {
         <fieldset className="component" key={i}>
           <span className="caption">分支 {i + 1} 的名字（后面的步骤按它读）</span>
           <div className="inline wide">
-            <input type="text" aria-label={`分支 ${i + 1} 的名字`} value={b.id} onChange={(e) => setBranch(branches.indexOf(b), { id: e.target.value })} />
-            <button className="plain" disabled={ruled.length === 1 || readers.some((s) => reads(s, b.id))} title={readers.some((s) => reads(s, b.id)) ? "后面有步骤在读这个分支" : ""} onClick={() => set({ branches: branches.filter((x) => x !== b) })}>去掉这个分支</button>
+            <input type="text" aria-label={`分支 ${i + 1} 的名字`} value={b.id} onChange={(e) => setDraft(renameBranch(draft, step.id, b.id, e.target.value))} />
+            <button className="plain" disabled={ruled.length === 1 || readBy(b.id).length > 0} title={readBy(b.id).length ? `${readBy(b.id).join("、")} 在读这个分支，先改它们` : ""} onClick={() => set({ branches: branches.filter((x) => x !== b) })}>去掉这个分支</button>
           </div>
           {source.cols && <FilterForm op={{ where: b.where ?? { all: [] } }} cols={source.cols} onChange={(op) => setBranch(branches.indexOf(b), { where: op.where })} lead="满足" tail="条件的行进这个分支" />}
         </fieldset>
       ))}
       <div className="inline">
-        <button className="plain" disabled={branches.length >= 10} onClick={() => set({ branches: withRest([...ruled, { id: `${step.id}_${ruled.length + 1}`, where: { all: [{ column: "", cmp: "eq", value: "" }] } }]) })}>加一个分支</button>
-        <label className="check"><input type="checkbox" checked={Boolean(rest)} onChange={(e) => set({ branches: e.target.checked ? [...ruled, { id: `${step.id}_其余`, rest: true }] : ruled })} />其余的行进“其余”分支</label>
+        <button className="plain" disabled={branches.length >= 10} onClick={() => set({ branches: withRest([...ruled, { id: newBranchId(step, draft.steps), where: { all: [{ column: "", cmp: "eq", value: "" }] } }]) })}>加一个分支</button>
+        <label className="check" title={rest && readBy(rest.id).length ? `${readBy(rest.id).join("、")} 在读“其余”分支，先改它们` : ""}><input type="checkbox" checked={Boolean(rest)} disabled={Boolean(rest) && readBy(rest.id).length > 0} onChange={(e) => set({ branches: e.target.checked ? [...ruled, { id: `${step.id}_其余`, rest: true }] : ruled })} />其余的行进“其余”分支</label>
       </div>
       {rest && (
         <label className="field"><span className="caption">“其余”分支的名字</span>
-          <input type="text" value={rest.id} onChange={(e) => setBranch(branches.indexOf(rest), { id: e.target.value })} />
+          <input type="text" value={rest.id} onChange={(e) => setDraft(renameBranch(draft, step.id, rest.id, e.target.value))} />
         </label>
       )}
       <p className="hint">一行只进第一个满足条件的分支。{rest ? "" : "没有“其余”分支时，哪个条件都不满足的行不会往下走。"}后面的步骤按分支的名字读。</p>
