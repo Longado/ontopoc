@@ -16,7 +16,7 @@ TOP3 = 'SELECT p.品类, count(o) AS 数量 FROM (o:订单)-[:订单买的产品
 def load_tests(loader, standard, pattern):
     """Only the tests written here (the agent case brings the signing tests' own)."""
     suite = unittest.TestSuite(QueryToolTests(name) for name in vars(QueryToolTests) if name.startswith('test_'))
-    for cls in (QueryAgentTests, GrammarIsStandaloneTests):
+    for cls in (QueryAgentTests, QueryTextTests, GrammarIsStandaloneTests):
         suite.addTests(cls(name) for name in vars(cls) if name.startswith('test_'))
     return suite
 
@@ -99,6 +99,28 @@ class QueryAgentTests(AgentCase):
             body = team['ann'].post('/api/workspace/ask', {'question': QUESTION})[1]
             self.assertNotEqual(body['status'], 'answered')
             self.assertNotIn('query_text', body)
+
+
+class QueryTextTests(unittest.TestCase):
+    """query_text of a scope written by hand: a code becomes its meaning only when that cannot read other rows, and nothing the model writes makes it fail."""
+    @staticmethod
+    def scope(labels):
+        order = {'content': {'name': '订单', 'key': ['订单号'], 'properties': [{'column': '订单号'}, {'column': '状态码'}]}, 'hidden': set()}
+        return {'types': {'order': order}, 'relations': {}, 'derived': {}, 'meanings': {'order': {'状态码': {'labels': labels}}}}
+
+    def test_a_code_is_written_as_its_meaning_only_when_the_meaning_is_not_also_a_code(self):
+        from ontology_poc_generator.workspace_questions import _query_text_of
+        query = {'start': 'order', 'where': [{'field': '状态码', 'equals': 'A'}]}
+        self.assertIn("= '已取消'", _query_text_of(self.scope({'A': '已取消', 'B': '生产中'}), query))
+        self.assertIn("= 'A'", _query_text_of(self.scope({'A': '1', '1': 'X'}), query))   # '1' would be read as the code 1
+        self.assertIn("= 'A'", _query_text_of(self.scope({'A': '已取消', 'C': '已取消'}), query))   # a meaning of two codes would read both
+
+    def test_a_query_the_text_cannot_hold_gives_no_text_and_never_an_error(self):
+        from ontology_poc_generator.workspace_questions import _query_text_of
+        sc = self.scope({})
+        for odd in ({'start': ['order']}, {'start': {'x': 1}}, {'start': 'order', 'where': 'x'}, {'start': 'order', 'group_by': [{'via': ['nope'], 'field': 'x'}]},
+                    {'start': 'order', 'measure': 3}, None, 'SELECT'):
+            self.assertIsNone(_query_text_of(sc, odd), odd)
 
 
 class GrammarIsStandaloneTests(unittest.TestCase):
