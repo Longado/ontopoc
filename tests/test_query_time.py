@@ -136,6 +136,10 @@ class ServiceTests(QueryCase):
             careless = db.execute('SELECT count(*) FROM 订单 WHERE 金额 > 20000').fetchone()[0]   # the columns are text, as DIP keeps them: text sorts above any number
             self.assertNotEqual(careless, big)
             self.assertEqual(careless, len(ORDERS))
+            # a bound that is no number or date is the writer's mistake: a 400 with the reason, not a refusal about what is in scope
+            status, body = self.query(ann, "SELECT count(o) FROM (o:订单) WHERE o.金额 > '很多'")
+            self.assertEqual(status, 400, body)
+            self.assertIn('都是数字或都是日期', body['error'])
 
 
 def load_tests(loader, standard, pattern):
