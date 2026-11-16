@@ -450,3 +450,9 @@ table.wraps td.keep { white-space: nowrap; }
 
 .token-form { flex-wrap: wrap; }
 .token-form input[type="text"] { flex: 1 1 220px; min-width: 200px; }
+
+/* OntoPoc Query on the Q&A page */
+.query { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.query textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; width: 100%; box-sizing: border-box; }
+.query button { align-self: flex-start; }
+.query-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre-wrap; margin: 0 0 4px; }

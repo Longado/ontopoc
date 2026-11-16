@@ -48,11 +48,36 @@ LIMIT 3
 - 一次算两个数；
 - `FROM` 里写了但没用到的节点。SQL 多连一张表会悄悄去掉连不上的行，这里不会，所以要求删掉它。
 
+## 语法（和 OntoPoc 无关的部分）
+
+`src/ontology_poc_generator/ontopoc_query.py` 只依赖 Python 标准库。它的输入是一份目录（类型 → 属性，关系 → 两端），输出是一个结构化查询。有测试保证它不引用 OntoPoc 的其他模块，以后要单独拿出去，复制这一个文件就够了。
+
+```
+query     := SELECT item {, item} FROM chain {, chain} [WHERE cond {AND cond}] [GROUP BY ref {, ref}] [ORDER BY target [ASC|DESC]] [LIMIT n]
+item      := ref | agg [AS name]
+agg       := count(var) | count(*) | sum(ref) | avg(ref) | share(ref = value)
+chain     := node {edge node}
+node      := (var[:type])
+edge      := -[:relation]-> | <-[:relation]- | -[:relation]-
+cond      := ref = value | ref <> value | ref != value | ref [NOT] IN (value {, value})
+ref       := var.property
+value     := 'text' | number | $param
+target    := name | agg
+```
+
+名字可以是中文，也可以用反引号括起来。关键字不分大小写，`--` 后面是注释。
+
 ## 接口
 
 - `POST /api/workspace/query {text, params?}`：按提问人的权限运行，返回 `status`、`answer`、`definitions`（用到的确认定义，带确认人）、`limited_by_rule`、`query`（编译后的结构化查询）和 `text`（规范写法）。写错时返回 400，并说明能写什么，例如这个类型有哪些关系、有哪些属性。
 - `POST /api/workspace/query/text {query}`：把结构化查询（问答里模型写的那种）写回成本体查询文字。
 - 浏览者和只读令牌都可以用，不调用模型，也不记入问答历史。
+- MCP：外部智能体用 `ontopoc_query` 工具，见 [MCP.md](MCP.md)。
+- 问答的每个回答都带着 `query_text`，也就是这道题写成本体查询的样子。代码列写的是确认过的含义（`'已取消'`），不是代码本身。只有这段文字能跑出同一个查询时才会带上。
+
+## 在页面上
+
+问答页有“提问 / 写查询”两种方式。“写查询”按你能看的行算，结果用和回答一样的卡片显示，包括用到的定义、谁确认的、行规则限制了哪些行。每个回答下面有“写成查询”和“改成查询”：点“改成查询”会把这道题的查询放进查询框，改完可以接着跑。
 
 ## 和别的做法比
 

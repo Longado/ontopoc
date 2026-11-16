@@ -229,6 +229,8 @@ const readPost = (path, payload) => request(path, { method: "POST", headers: { "
 export const getExploreMeta = (type) => request(`/api/workspace/explore/${encodeURIComponent(type)}`);
 export const exploreTable = (query, page = 1) => readPost("/api/workspace/explore/table", { query, page });
 export const exploreChart = (query, chart) => readPost("/api/workspace/explore/chart", { query, chart });
+/** OntoPoc Query: run a text as this person (no model, nothing kept). A text that cannot be read is an error saying what can be written. */
+export const runQuery = (text, params) => readPost("/api/workspace/query", params ? { text, params } : { text });
 export const getExploreObject = (type, n) => request(`/api/workspace/explore/${encodeURIComponent(type)}/object/${n}`);
 
 export const getBoards = () => request("/api/workspace/dashboards");

@@ -22,7 +22,7 @@ from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, reason_for, stale_word, type_id)
-from ontology_poc_generator.ontopoc_query import QueryError, compile_query, parse as parse_query, to_text
+from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible
 from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
@@ -575,6 +575,60 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
     return result
 
 
+def _query_text_of(sc: dict, query) -> str | None:
+    """The query a Q&A answer ran, as OntoPoc Query text in the asker's names, or None when the text would not run as the same query. A field the model wrote as
+    "table.column" is written as the column of the type it is read on."""
+    if not isinstance(query, dict) or not isinstance(query.get('start'), str) or query['start'] not in sc['types']:
+        return None
+    catalog = query_catalog(sc)
+
+    def plain(type_key, field):
+        props = catalog['types'].get(type_key, {}).get('properties', [])
+        if not isinstance(field, str) or field in props:
+            return field
+        rest = field.partition('.')[2]
+        return rest if rest in props else field
+    try:
+        q = canonical_query(query)
+        start = q['start']
+        meanings = sc['meanings'].get(start, {})
+
+        def said(field, value):
+            """A code as its confirmed meaning, when that meaning stands for this one code only (so the query reads the same rows)."""
+            labels = (meanings.get(field) or {}).get('labels') or {}
+            label = labels.get(str(value)) if not isinstance(value, (list, dict)) else None
+            own = label and [c for c, l in labels.items() if l == label] == [str(value)] and label not in labels   # a meaning that is also a code would be read as that code
+            return label if own else value
+        where = []
+        for w in q['where']:
+            if isinstance(w, dict):
+                field = plain(start, w.get('field'))
+                w = {**w, 'field': field}
+                if 'equals' in w:
+                    w['equals'] = said(field, w['equals'])
+                if 'not_equals' in w:
+                    w['not_equals'] = [said(field, v) for v in w['not_equals']] if isinstance(w['not_equals'], list) else said(field, w['not_equals'])
+            where.append(w)
+        q['where'] = where
+        if isinstance(q['measure'], dict) and 'field' in q['measure']:
+            q['measure'] = {**q['measure'], 'field': plain(start, q['measure']['field'])}
+        if isinstance(q['share'], dict):
+            field = plain(start, q['share'].get('field'))
+            q['share'] = {**q['share'], 'field': field, **({'equals': said(field, q['share']['equals'])} if 'equals' in q['share'] else {})}
+        dims = []
+        for d in q['group_by'] or []:
+            here = start
+            for key in d['via']:
+                r = catalog['relations'][key]
+                here = r['to'] if r['from'] == here else r['from']
+            dims.append({**d, 'field': plain(here, d['field'])})
+        q['group_by'] = dims or None
+        text = to_text(q, catalog)
+        return text if compile_query(text, catalog) == canonical_query(q) else None
+    except Exception:   # noqa: BLE001 — the text is a reading aid: whatever the model wrote, the answer is kept without it rather than lost
+        return None
+
+
 def query_as_text(conn, user: dict | None, query) -> str:
     """A structured query (the one an answer kept, one the model wrote) as OntoPoc Query text in this person's names. QaRefused when it names what they may not see."""
     if not isinstance(query, dict):
@@ -625,6 +679,9 @@ def ask(conn, gateway, user: dict | None, question) -> dict:
         if gateway is None:
             raise QaRefused('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。', 503)
         result = _answered(conn, gateway, user, question, sc)
+        text = _query_text_of(sc, result.get('query')) if result['status'] in ('answered', 'no_data') else None
+        if text:   # the question as a query a person can read, check and edit (docs/QUERY.md)
+            result['query_text'] = text
     if user is not None and user['role'] == 'viewer':
         result = _strip_rows(result)
     now = _now()

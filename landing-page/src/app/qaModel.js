@@ -69,3 +69,12 @@ export function standingText(d) {
   if (d.state === "checked") return `${d.proposed_by ? `${d.proposed_by} 提出，` : ""}还没有另一位确认`;
   return STATE_LABEL[d.state] ?? d.state;
 }
+
+/** What the query box starts from: a count of the first type in scope, which runs as written; empty when nothing is in scope. */
+export function queryExample(scope) {
+  const first = scope?.types?.[0];
+  return first ? `SELECT count(x) AS 数量\nFROM (x:${first.name})` : "";
+}
+
+/** A query's result as the record the answer and refusal cards read (a refusal before anything ran has no definitions, steps or datasets). */
+export const queryRecord = (body) => ({ definitions: [], steps: [], datasets: {}, ...body });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, definitionHref, isAnswer, isThenAnswer, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryRecord, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -43,4 +43,18 @@ test("a definition links to its own page and a refusal says where it stands", ()
   assert.equal(standingText({ state: "needs_look", reason: "取值变了" }), "取值变了");
   assert.equal(standingText({ state: "checked", proposed_by: "Ann" }), "Ann 提出，还没有另一位确认");
   assert.equal(scopeText({ types: [1, 2, 3] }), "范围：3 个已确认的对象类型");
+});
+
+test("the query box starts from a query that runs on the first type in scope, and none when nothing is in scope", () => {
+  assert.equal(queryExample({ types: [{ id: "order", name: "订单" }, { id: "customer", name: "客户" }] }), "SELECT count(x) AS 数量\nFROM (x:订单)");
+  assert.equal(queryExample({ types: [] }), "");
+  assert.equal(queryExample(null), "");
+});
+
+test("a query's result reads as an answer card, and a refusal with no definitions or steps still reads", () => {
+  const ran = queryRecord({ status: "answered", answer: { total: 5 }, types, definitions: [{ id: "objtype:order" }], steps: [], datasets: { 订单: 1 }, text: "SELECT count(o) AS 数量\nFROM (o:订单)" });
+  assert.equal(answerView(ran).big, "5 个订单");
+  assert.equal(ran.text, "SELECT count(o) AS 数量\nFROM (o:订单)");
+  const refused = queryRecord({ status: "refused", reason: "没有计算：关系「订单属于客户」现在不能走" });
+  assert.deepEqual([refused.definitions, refused.steps, refused.datasets, isAnswer(refused)], [[], [], {}, false]);
 });

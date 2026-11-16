@@ -59,6 +59,20 @@ claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_
 
 "下载纪要"没有单独的工具：纪要是页面把上面这些数据排版成的一页，开头就是 `run_overview` 里的 `open_items`。
 
+## 给外部智能体的只读工具
+
+管理员给一个人发令牌（`ONTOPOC_TOKEN`）以后，工具服务默认只给这几个，按令牌主人的权限算：
+
+| 工具 | 做什么 | 调用模型 |
+|---|---|---|
+| `describe_definitions` | 已确认的对象类型、属性、代码含义、关系、视图、派生属性和拒答规则 | 否 |
+| `ask` | 用一句话问，模型写成查询，代码算 | 是 |
+| `ontopoc_query` | 直接写本体查询（像 SQL，见 [QUERY.md](QUERY.md)），代码算；写错时说明能写什么 | 否 |
+| `list_unconfirmed` | 还不能用的定义，以及原因 | 否 |
+| `read_derived_property` | 读一个已确认的派生属性的值 | 否 |
+
+`ask` 的回答带着 `query_text`，也就是这道题写成本体查询的样子。智能体可以先用 `ask` 学写法，再用 `ontopoc_query` 改条件、重复跑，后面这些都不再调用模型。
+
 ## 口径卡和客户的答复
 
 口径卡是每张上传的表一张：代码能算的先算好（一行按哪几列唯一、日期列的最早最晚和空值），只有人能答的留空，也就是一行是什么、日期列是什么时间、数值列能不能相加、对象在数据里全不全。`get_card` 读整张卡，每一格有稳定的 id，已答复的格带 `answer`（`value`、`says`、`by`、`basis`、`at`）。文档运行没有卡，返回空的 `tables`。
