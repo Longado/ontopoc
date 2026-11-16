@@ -3,7 +3,10 @@
 A query card is a saved query: its text is kept on the board and worked out each time someone opens it, by that person, over the rows and properties they may
 read, with no model. A parameter is a value only: whatever a reader types is compared as a value, never read as query text. Every $name a card uses must be
 declared on the board with a default, so the board always has a number to show and the save checks it."""
+import sqlite3
+
 from tests.test_dashboards import BoardCase
+from tests.test_object_types import shifted_orders_csv
 from tests.test_explorer import ORDERS
 
 WHO = "SELECT count(o) AS 数量 FROM (o:订单) WHERE o.客户编号 = $who"
@@ -116,3 +119,46 @@ class QueryCardTests(BoardCase):
             self.assertEqual(self.card(body, 'status')['status'], 'ok')
             status, preview = team['ann'].post('/api/workspace/dashboards/preview', {'spec': spec(card('who', WHO))})
             self.assertEqual((status, self.card(preview, 'who')['result']['answer']['total']), (200, mine('KH001')))
+
+
+class ReaderRefusalTests(BoardCase):
+    """What a card that is refused or cannot use a typed value tells someone who did not make the board (review of PR #84)."""
+    params_data = QueryCardTests.params_data
+
+    def test_a_refusal_on_the_definitions_names_nothing_to_a_reader_and_everything_to_the_author(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            admin, ann, bob = team['admin'], team['ann'], team['bob']
+            ids = self.ids(admin)
+            board = self.make(ann, spec=spec(card('who', WHO), card('cust', 'SELECT count(c) FROM (c:客户)')), scope='everyone')
+            self.assertEqual(admin.post('/api/workspace/column-access', {'type': 'order', 'column': '状态码', 'visible_to': [ids['ann']]})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)   # 订单 and its 状态码 meaning need another look
+            seen = self.params_data(bob, board['id'], {})
+            refused = self.card(seen, 'who')
+            self.assertEqual(refused['status'], 'unavailable')
+            self.assertNotIn('状态码', str(seen))   # kept from Bob: not in the card, not in the headline
+            self.assertEqual(self.card(seen, 'cust')['status'], 'ok')
+            told = self.card(self.params_data(ann, board['id'], {}), 'who')
+            self.assertIn('状态码', told['message'])   # the author is told why
+
+    def test_a_value_the_card_cannot_use_says_so_rather_than_that_the_card_is_closed(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            board = self.make(team['ann'], spec=spec(card('big', BIG)), scope='everyone')
+            got = self.card(self.params_data(team['bob'], board['id'], {'min': 'abc'}), 'big')
+            self.assertEqual(got['status'], 'unavailable')
+            self.assertIn('参数', got['message'])
+            self.assertNotIn('看不到', got['message'])
+
+    def test_query_cards_keep_no_last_result(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            board = self.make(team['ann'], spec=spec(card('who', WHO)))
+            for kh in ('KH001', 'KH026', 'KH002'):
+                self.params_data(team['ann'], board['id'], {'who': kh})
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            self.assertEqual(conn.execute('SELECT count(*) FROM dashboard_last').fetchone()[0], 0)   # nothing reads it back: a query card is never "waiting"
+            conn.close()

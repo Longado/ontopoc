@@ -88,3 +88,9 @@ test("the $names a query uses, and the values a board is worked out with", () =>
   assert.deepEqual(paramsIn("SELECT count(o) FROM (o:订单) WHERE o.备注 = '$not' -- $nor"), []);   // inside a quoted value or a comment it is not a parameter
   assert.deepEqual(paramValues([{ name: "who", default: "KH001" }, { name: "min", default: "1" }], { who: "KH026", min: "", other: "x" }), { who: "KH026" });
 });
+
+test("a saved card switched to a query in the form has an empty query, not none", () => {
+  const card = draftOf(SAVED).components[0];
+  assert.equal(card.text, "");
+  assert.equal(draftProblem({ ...draftOf(SAVED), visible_to: [3], components: [{ ...card, kind: "query" }] }), "第 1 个组件要写查询");
+});
