@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -68,4 +68,9 @@ test("a range says what it could not read, and nothing is said when it read ever
 
 test("a month or year grouping says how many dates it could not read", () => {
   assert.deepEqual(rangeNotes({ answer: { unreadable: { field: "下单日期", count: 3, unreadable_examples: ["待定"] } } }), ["下单日期：3 个值读不成日期，没有分到哪个月或哪一年（例如 待定）"]);
+});
+
+test("the query box asks for the parameters its text uses and sends only those", () => {
+  assert.deepEqual(queryParams("SELECT count(o) FROM (o:订单) WHERE o.客户编号 = $who", { who: "KH001", old: "x" }), { who: "KH001" });
+  assert.equal(queryParams("SELECT count(o) FROM (o:订单)", { who: "KH001" }), undefined);   // nothing to send
 });
