@@ -41,3 +41,22 @@ class DataDirTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class WritesTests(unittest.TestCase):
+    """R10 step 4: the check can ask each question in both forms, the JSON query and OntoPoc Query text, and counts each form on its own."""
+
+    def test_each_form_is_counted_on_its_own_and_the_report_says_both(self):
+        from scripts.real_model_check import markdown, tally
+        results = [{'question': 'q', 'writes': 'json', 'verdict': 'right', 'seconds': 1, 'truth': 1, 'got': {}},
+                   {'question': 'q', 'writes': 'query', 'verdict': 'missed', 'seconds': 1, 'truth': 1, 'got': {}},
+                   {'question': 'q', 'writes': 'query', 'verdict': 'right', 'seconds': 1, 'truth': 1, 'got': {}}]
+        self.assertEqual(tally(results), {'json': {'right': 1}, 'query': {'missed': 1, 'right': 1}})
+        text = markdown({'at': 'now', 'model': 'm', 'counts': {'right': 2, 'missed': 1}, 'by_form': tally(results), 'results': results})
+        self.assertIn('JSON: right 1', text)
+        self.assertIn('OntoPoc Query: right 1, wrong 0, missed 1', text)
+        self.assertIn('| q | query | missed |', text)
+
+    def test_the_forms_asked_are_json_query_or_both(self):
+        from scripts.real_model_check import forms
+        self.assertEqual((forms('json'), forms('query'), forms('both')), (['json'], ['query'], ['json', 'query']))
