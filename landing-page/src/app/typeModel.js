@@ -123,3 +123,26 @@ export function meaningsSummary(meanings) {
   if (!values.length) return "没有取值";
   return `${values.length} 个取值，${values.filter((v) => (v.label ?? "").trim()).length} 个写了含义`;
 }
+
+// Chinese words the English-name suggestion knows; a name made only of these gets a name, anything else is left for the person to write.
+const WORDS = {
+  售后: "after_sales", 工单: "ticket", 订单: "order", 客户: "customer", 产品: "product", 商品: "product", 员工: "employee", 工程师: "engineer", 供应商: "supplier",
+  发票: "invoice", 付款: "payment", 支付: "payment", 退款: "refund", 库存: "inventory", 门店: "store", 用户: "user", 部门: "department", 合同: "contract",
+  项目: "project", 地区: "region", 物流: "shipment", 采购: "purchase", 销售: "sales", 明细: "item", 订阅: "subscription", 设备: "device", 任务: "task", 事件: "event",
+};
+const WORD_LIST = Object.keys(WORDS).sort((a, b) => b.length - a.length);
+
+/** An English name for an object type from its Chinese name: known words joined by underscores (售后工单 → after_sales_ticket), a name already in letters tidied up, and "" when a word is not known. */
+export function suggestEnglish(name) {
+  let rest = String(name ?? "").trim().replace(/表$/, "");
+  if (!rest) return "";
+  if (/^[\x20-\x7e]+$/.test(rest)) return rest.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const out = [];
+  while (rest) {
+    const word = WORD_LIST.find((w) => rest.startsWith(w));
+    if (!word) return "";
+    out.push(WORDS[word]);
+    rest = rest.slice(word.length);
+  }
+  return out.join("_");
+}

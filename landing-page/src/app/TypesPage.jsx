@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { getDatasets, getTypeList, suggestTypes } from "./api.js";
+import { getDatasets, getModelReady, getTypeList, suggestTypes } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { hrefFor } from "./routeModel.js";
@@ -23,9 +23,14 @@ function SuggestDialog({ onClose, onDone }) {
   const [result, setResult] = useState(null);
   const [sending, setSending] = useState(false);
   const [waited, setWaited] = useState(0);
+  const [modelReady, setModelReady] = useState(true);
   useEffect(() => {
     ref.current.showModal();
-    getDatasets().then(setDatasets, (e) => setError(e.message));
+    getDatasets().then((list) => {
+      setDatasets(list);
+      if (list.length === 1) setChosen([list[0].name]);   // the only dataset is the one to read
+    }, (e) => setError(e.message));
+    getModelReady().then(setModelReady);
   }, []);
   useEffect(() => {
     if (!sending) return undefined;
@@ -54,6 +59,7 @@ function SuggestDialog({ onClose, onDone }) {
     <dialog ref={ref} className="upload" onCancel={(e) => { e.preventDefault(); close(); }}>
       <div className="dialog-body">
         <h2>从数据集建议对象类型</h2>
+        {!result && !modelReady && <p className="warn">这台服务还没有配置 AI 模型，所以不能自动建议。可以直接“新建对象类型”，自己选数据集、主键和属性。</p>}
         {!result && (
           <>
             <fieldset className="keys">
@@ -97,7 +103,7 @@ function SuggestDialog({ onClose, onDone }) {
           <>
             {sending && <span className="muted">模型在看，通常 15–40 秒，已等 {waited} 秒</span>}
             <button className="plain" onClick={close} disabled={sending}>取消</button>
-            <button className="primary" onClick={send} disabled={sending || !chosen.length}>{sending ? "模型在看" : "开始"}</button>
+            <button className="primary" onClick={send} disabled={sending || !chosen.length || !modelReady}>{sending ? "模型在看" : "开始"}</button>
           </>
         )}
       </div>

@@ -20,3 +20,15 @@ export function timeParts(time) {
 }
 
 export const timeFromParts = (h, m) => `${h}:${m}`;
+
+const COMMON_ZONES = ["Asia/Shanghai", "Asia/Hong_Kong", "Asia/Singapore", "Asia/Tokyo", "UTC", "Europe/London", "America/New_York", "America/Los_Angeles"];
+const ZONE_WORD = {
+  "Asia/Shanghai": "北京时间", "Asia/Hong_Kong": "香港时间", "Asia/Singapore": "新加坡时间", "Asia/Tokyo": "东京时间", UTC: "世界协调时间",
+  "Europe/London": "伦敦时间", "America/New_York": "纽约时间", "America/Los_Angeles": "洛杉矶时间",
+};
+
+/** The zones to pick from: the common ones, with the browser's in front when it is not among them. */
+export const zoneChoices = (browser) => (COMMON_ZONES.includes(browser) || !browser ? [...COMMON_ZONES] : [browser, ...COMMON_ZONES]);
+
+/** A zone as the person reads it: 北京时间（Asia/Shanghai）; a zone with no Chinese word keeps its own name. */
+export const zoneLabel = (zone) => (ZONE_WORD[zone] ? `${ZONE_WORD[zone]}（${zone}）` : zone);

@@ -87,7 +87,7 @@ export function LineagePage() {
             )}
           </div>
           <div className={`graph-layout${node ? " with-drawer" : ""}`}>
-            <GraphCanvas width={layout.width} height={layout.height} label="从数据源到回答的血缘，按列分层" fileName="血缘.png" onBlank={() => setPicked(null)}>
+            <GraphCanvas width={layout.width} height={layout.height} label="从数据源到回答的血缘，按列分层" fileName="血缘.png" onBlank={() => setPicked(null)} fit="width">
               {layout.columns.map((c) => (
                 <g key={c.key + c.x} aria-hidden="true">
                   <rect className="col-band" x={c.x - 12} y="0" width={c.w - 8} height={layout.height} rx="6" />

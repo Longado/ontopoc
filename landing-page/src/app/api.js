@@ -259,3 +259,5 @@ export async function fileToBase64(file) {
 
 /** {model_ready, running, on_disk, stale}: the service is up, whether a model is configured, and the build it runs (a fingerprint of its code). */
 export const getHealth = () => request("/api/ontology/health");
+/** Whether the service has a model to call (the AI buttons need one): false when it has no credentials. */
+export const getModelReady = () => request("/api/ontology/health").then((b) => Boolean(b.model_ready), () => true);

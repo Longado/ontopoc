@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createPipeline, getDatasets, getPipelines } from "./api.js";
 import { timeText } from "./format.js";
 import { STATUS_LABEL, pipelineStateText } from "./pipelineModel.js";
-import { hrefFor } from "./routeModel.js";
+import { hrefFor, parseRoute } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
 import { PageHeader } from "./ui/PageHeader.jsx";
@@ -63,9 +63,10 @@ export function PipelinesPage() {
 /** A pipeline starts as one input step; everything else is added on its page. */
 export function PipelineNew() {
   const [datasets, setDatasets] = useState([]);
-  const [name, setName] = useState("");
+  const start = parseRoute(window.location.hash).dataset ?? "";   // 用它建管道 arrives with the dataset
+  const [name, setName] = useState(start ? `${start} 加工` : "");
   const [description, setDescription] = useState("");
-  const [dataset, setDataset] = useState("");
+  const [dataset, setDataset] = useState(start);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
