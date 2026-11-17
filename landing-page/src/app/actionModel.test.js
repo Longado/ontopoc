@@ -107,3 +107,9 @@ test("a condition reads numbers the way the service does (found in the review of
   assert.equal(holds({ op: "gt", value: "5" }, "abc"), false);   // not a number: not more than 5
   assert.equal(holds({ op: "gt", value: "2026-01-01" }, "2026-03-20"), true);   // dates compare as written
 });
+
+test("long numbers keep every digit, as the service keeps them", () => {
+  assert.equal(holds({ op: "eq", value: "123456789012345678" }, "123456789012345679"), false);
+  assert.equal(holds({ op: "eq", value: "12.50" }, "12.5"), true);
+  assert.equal(holds({ op: "eq", value: "-0.0" }, "0"), true);
+});
