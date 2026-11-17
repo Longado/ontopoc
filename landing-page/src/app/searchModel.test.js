@@ -54,7 +54,7 @@ test("an english id also finds a type", () => {
 
 test("pageEntries lists the pages this person's navigation offers, plus the account page", () => {
   const viewer = pageEntries({ role: "viewer" }).map((e) => e.label);
-  assert.deepEqual(viewer, ["首页", "问数", "看板", "消息", "我的账号"]);
+  assert.deepEqual(viewer, ["首页", "助手", "看板", "消息", "我的账号"]);
   const admin = pageEntries({ role: "admin" }).map((e) => e.label);
   assert.ok(admin.includes("用户") && admin.includes("AI 工具接入") && admin.includes("血缘"));
   assert.ok(pageEntries({ role: "viewer" }).every((e) => e.kind === "页面"));

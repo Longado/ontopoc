@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { getDatasets, getPipelineOptions, getPipelineRun, pipelineSummary, previewNode, runPipeline, savePipeline } from "./api.js";
 import { AiDraftPanel, RunDialog } from "./AiDraftPanel.jsx";
+import { takeDraft } from "./assistantModel.js";
 import { t } from "./i18n/index.js";
 import { PipelineBar } from "./PipelineBar.jsx";
 import { PipelineGraph } from "./PipelineGraph.jsx";
@@ -98,6 +99,7 @@ function RunToast({ name, run, onClose }) {
 export function PipelineEditor({ detail, reload }) {
   useFullBleed();
   const name = detail.name;
+  const handed = useRef(undefined);
   const [draft, setDraft] = useState(detail.spec);
   const [selected, setSelected] = useState(detail.spec.steps[detail.spec.steps.length - 1]?.id ?? null);
   const [tab, setTab] = useState("rows");
@@ -117,6 +119,15 @@ export function PipelineEditor({ detail, reload }) {
   useEffect(() => {
     setDraft(detail.spec);
   }, [detail.version]);
+  useEffect(() => {
+    // steps the assistant handed over wait in this tab until the editor opens: they are applied the way the AI panel's Apply does, as an unsaved draft
+    if (handed.current === undefined) handed.current = takeDraft(window.sessionStorage, name);   // taken once, even if the effects run twice (development)
+    const steps = handed.current;
+    if (!steps) return;
+    setDraft(applyDraft(detail.spec, steps));
+    setSelected(steps[0].id);
+    setUpto(null);
+  }, []);
   useEffect(() => {
     getDatasets().then(setDatasets, () => {});
     getPipelineOptions().then(setOptions, () => {});

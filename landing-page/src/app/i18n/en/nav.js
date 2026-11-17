@@ -1,7 +1,7 @@
 // The sidebar, the page tabs and the explainer line under each group (routeModel.js).
 export default {
   "home": "Home",
-  "qa": "Ask",
+  "qa": "Assistant",
   "boards": "Boards",
   "notices": "Notifications",
   "group.data": "Data",

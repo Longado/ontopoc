@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createPipeline, getDatasets, getPipelines } from "./api.js";
+import { moveDraft } from "./assistantModel.js";
 import { formatDateTime, t } from "./i18n/index.js";
 import { PIcon } from "./PipelineIcons.jsx";
 import { STATUS_LABEL, pipelineStateText } from "./pipelineModel.js";
@@ -100,6 +101,7 @@ export function PipelineNew() {
     setError("");
     try {
       const made = await createPipeline(name.trim(), description.trim(), { steps: [{ id: "in1", type: "input", dataset }] });
+      moveDraft(window.sessionStorage, `new:${dataset}`, made.id);   // steps the assistant drafted for this dataset go to the new pipeline's editor
       window.location.hash = hrefFor({ page: "pipeline", name: made.id, view: "edit" });
     } catch (err) {
       setError(err.message);
