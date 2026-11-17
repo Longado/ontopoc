@@ -1,6 +1,6 @@
 export default {
   "home": "首页",
-  "qa": "问数",
+  "qa": "助手",
   "boards": "看板",
   "notices": "消息",
   "group.data": "数据",

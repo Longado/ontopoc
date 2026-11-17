@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getDatasets, getPipelineOptions, getPipelineRun, pipelineSummary, previewNode, runPipeline, savePipeline } from "./api.js";
 import { AiDraftPanel, RunDialog } from "./AiDraftPanel.jsx";
+import { takeDraft } from "./assistantModel.js";
 import { t } from "./i18n/index.js";
 import { PipelineBar } from "./PipelineBar.jsx";
 import { PipelineGraph } from "./PipelineGraph.jsx";
@@ -117,6 +118,14 @@ export function PipelineEditor({ detail, reload }) {
   useEffect(() => {
     setDraft(detail.spec);
   }, [detail.version]);
+  useEffect(() => {
+    // steps the assistant handed over wait in this tab until the editor opens: they are applied the way the AI panel's Apply does, as an unsaved draft
+    const steps = takeDraft(window.sessionStorage, name);
+    if (!steps) return;
+    setDraft(applyDraft(detail.spec, steps));
+    setSelected(steps[0].id);
+    setUpto(null);
+  }, []);
   useEffect(() => {
     getDatasets().then(setDatasets, () => {});
     getPipelineOptions().then(setOptions, () => {});

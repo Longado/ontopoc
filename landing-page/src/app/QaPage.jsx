@@ -1,13 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
-import { askQuestion, getAnswer, getAsk, runQuery } from "./api.js";
+import { aiDraft, askQuestion, getAnswer, getAsk, getDatasets, getModelReady, getPipeline, getPipelines, getType, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
-import { canBuild } from "./authModel.js";
+import { canBuild, isAdmin } from "./authModel.js";
+import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, modesFor, parseCommand, privacyKey, proposePayload, scopeKind, stashDraft } from "./assistantModel.js";
+import { NoModel, PlanCard, ProposalCard } from "./AssistantCards.jsx";
 import { timeText } from "./format.js";
 import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
 import { formatDate, useT } from "./i18n/index.js";
+import { hrefFor } from "./routeModel.js";
 import { Icon } from "./ui/Icon.jsx";
 import { useLoad } from "./useLoad.js";
 
@@ -184,12 +187,13 @@ function AnswerCard({ record, mayBuild, onEdit }) {
 }
 
 /** The person's side of a turn: a plain bubble, the query in monospace. */
-function UserBubble({ text, query }) {
+function UserBubble({ text, query, mode }) {
   const t = useT();
+  const tag = query ? t("ask.chat.queryTurn") : mode === "model" || mode === "pipeline" ? t(`ask.assistant.turn.${mode}`) : "";
   return (
     <div className="msg msg-user">
       <div className={query ? "bubble bubble-query" : "bubble"}>
-        {query && <span className="bubble-tag">{t("ask.chat.queryTurn")}</span>}
+        {tag && <span className="bubble-tag">{tag}</span>}
         {query ? <pre>{text}</pre> : text}
       </div>
     </div>
@@ -207,7 +211,7 @@ function AssistantMsg({ children, label }) {
   );
 }
 
-function Thinking({ query }) {
+function Thinking({ query, mode }) {
   const t = useT();
   return (
     <AssistantMsg>
@@ -215,7 +219,7 @@ function Thinking({ query }) {
         <span className="typing" aria-hidden="true"><i /><i /><i /></span>
         <span>{t("ask.chat.thinking")}</span>
       </div>
-      <p className="muted small">{query ? t("ask.query.busy") : t("ask.input.busy")}</p>
+      <p className="muted small">{query ? t("ask.query.busy") : mode === "model" || mode === "pipeline" ? t(`ask.assistant.busy.${mode}`) : t("ask.input.busy")}</p>
     </AssistantMsg>
   );
 }
@@ -249,8 +253,23 @@ function SavedTurn({ turn, mayBuild, onEdit, followUps, onAsk, last, onLoaded })
   );
 }
 
-function TurnView({ turn, mayBuild, onEdit, followUps, onAsk, busy, last, onLoaded }) {
+function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last, onLoaded, cards }) {
   if (turn.kind === "saved") return <SavedTurn turn={turn} mayBuild={mayBuild} onEdit={onEdit} followUps={followUps} onAsk={onAsk} last={last} onLoaded={onLoaded} />;
+  if (turn.kind === "model" || turn.kind === "pipeline") {
+    return (
+      <>
+        <UserBubble text={turn.text} mode={turn.kind} />
+        {turn.status === "thinking" && <Thinking mode={turn.kind} />}
+        {turn.status === "error" && <AssistantMsg>{turn.noModel ? <NoModel admin={admin} /> : <p className="error" role="alert">{turn.error}</p>}</AssistantMsg>}
+        {turn.status === "done" && (
+          <AssistantMsg>
+            {turn.kind === "pipeline" ? <PlanCard plan={turn.plan} busy={turn.plan.busy || busy} onAnswer={(id, values) => cards.answer(turn, id, values)} onApply={() => cards.apply(turn)} onRevise={() => cards.revise(turn)} />
+              : <ProposalCard proposal={turn.proposal} busy={turn.proposal.busy} onPropose={() => cards.propose(turn)} />}
+          </AssistantMsg>
+        )}
+      </>
+    );
+  }
   const r = turn.record;
   const unanswered = r && (!isAnswer(r) || r.status === "no_data");
   return (
@@ -265,6 +284,62 @@ function TurnView({ turn, mayBuild, onEdit, followUps, onAsk, busy, last, onLoad
         </AssistantMsg>
       )}
     </>
+  );
+}
+
+/** A scope chip that opens a small popover: shared by the three kinds of scope. */
+function ChipPop({ label, aria, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="scope-chip-wrap">
+      <button type="button" className="scope-chip" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+        {label}
+        <Icon name="chevron-down" size={12} />
+      </button>
+      {open && <div className="scope-pop" role="dialog" aria-label={aria}>{children(() => setOpen(false))}</div>}
+    </span>
+  );
+}
+
+/** Model mode: the datasets the model may read about. */
+function DatasetsChip({ datasets, chosen, setChosen }) {
+  const t = useT();
+  const toggle = (name, on) => setChosen(on ? [...chosen, name] : chosen.filter((x) => x !== name));
+  return (
+    <ChipPop label={chosen.length ? t("ask.assistant.scope.datasets", { count: chosen.length }) : t("ask.assistant.scope.datasets.none")} aria={t("ask.assistant.scope.datasets.title")}>
+      {() => (
+        <>
+          <p className="muted small">{t("ask.assistant.scope.datasets.title")}</p>
+          {datasets.length === 0 && <p>{t("ask.assistant.scope.datasets.empty")}</p>}
+          <div className="as-pick">
+            {datasets.map((d) => <label key={d.name}><input type="checkbox" checked={chosen.includes(d.name)} onChange={(e) => toggle(d.name, e.target.checked)} />{d.name}</label>)}
+          </div>
+        </>
+      )}
+    </ChipPop>
+  );
+}
+
+/** Pipeline mode: one pipeline to draft over, or one dataset to start a new pipeline from. */
+function TargetChip({ pipelines, datasets, target, setTarget }) {
+  const t = useT();
+  const label = !target ? t("ask.assistant.scope.target.none") : t(target.kind === "pipeline" ? "ask.assistant.scope.target.pipeline" : "ask.assistant.scope.target.dataset", { name: target.name });
+  return (
+    <ChipPop label={label} aria={t("ask.assistant.scope.target.none")}>
+      {(close) => (
+        <>
+          {pipelines.length === 0 && datasets.length === 0 && <p>{t("ask.assistant.scope.target.empty")}</p>}
+          {pipelines.length > 0 && <p className="muted small">{t("ask.assistant.scope.target.pipelines")}</p>}
+          <div className="as-pick">
+            {pipelines.map((p) => <button type="button" key={p.id} className={target?.kind === "pipeline" && target.name === p.id ? "on" : ""} onClick={() => { setTarget({ kind: "pipeline", name: p.id, label: p.name }); close(); }}>{p.name}</button>)}
+          </div>
+          {datasets.length > 0 && <p className="muted small scope-sub">{t("ask.assistant.scope.target.datasets")}</p>}
+          <div className="as-pick">
+            {datasets.map((d) => <button type="button" key={d.name} className={target?.kind === "dataset" && target.name === d.name ? "on" : ""} onClick={() => { setTarget({ kind: "dataset", name: d.name, label: d.name }); close(); }}>{d.name}</button>)}
+          </div>
+        </>
+      )}
+    </ChipPop>
   );
 }
 
@@ -297,14 +372,18 @@ function ScopeChip({ scope }) {
   );
 }
 
-/** The sticky composer: a growing textarea (Enter sends, Shift+Enter breaks the line), the scope chip, and for a builder the Query toggle. */
-function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQuery, busy, onSend, onRun }) {
+/** The sticky composer: a growing textarea (Enter sends, Shift+Enter breaks the line), the mode chips (a viewer has Ask only), the scope chip of the mode,
+ * and the privacy line of the mode. "/model", "/pipeline", "/query" and "/ask" switch the mode. */
+function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQuery, busy, onSend, onRun, scopes }) {
   const t = useT();
   const box = useRef(null);
   const [values, setValues] = useState({});
   const isQuery = mode === "query";
   const value = isQuery ? query : text;
   const names = isQuery ? paramsIn(query) : [];
+  const typed = isQuery ? query : text;
+  const choices = commandChoices(typed, mayBuild);
+  const modes = modesFor(mayBuild);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -314,12 +393,26 @@ function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQue
   useEffect(() => {
     if (!busy) box.current?.focus({ preventScroll: true });
   }, [busy, mode]);
+  const switchTo = (next, rest = "") => {
+    setMode(next);
+    if (next === "query") { setQuery(rest); setText(""); } else { setText(rest); }
+  };
+  const change = (v) => {
+    const c = /^\s*\/[a-z]+\s/i.test(v) ? parseCommand(v, mayBuild) : null;   // "/model " with the space: the command is complete
+    if (c) switchTo(c.mode, c.text);
+    else if (isQuery) setQuery(v);
+    else setText(v);
+  };
   const submit = (e) => {
     e?.preventDefault();
-    if (!value.trim() || busy) return;
+    const c = parseCommand(value, mayBuild);
+    if (c) return switchTo(c.mode, c.text);   // "/model" alone only switches
+    if (!value.trim() && mode !== "model") return;
+    if (busy) return;
     if (isQuery) onRun(query, queryParams(query, values));
-    else onSend(text);
+    else onSend(mode, text);
   };
+  const empty = mode === "model" ? false : !value.trim();
   return (
     <form className="composer" onSubmit={submit}>
       {names.length > 0 && (
@@ -332,6 +425,11 @@ function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQue
           ))}
         </div>
       )}
+      {choices.length > 0 && (
+        <div className="as-commands" role="listbox" aria-label={t("ask.assistant.commands")}>
+          {choices.map((m) => <button type="button" role="option" key={m} onClick={() => switchTo(m)}><code>/{m}</code> <span className="muted">{t(`ask.assistant.mode.${m}.hint`)}</span></button>)}
+        </div>
+      )}
       <textarea
         ref={box}
         className={isQuery ? "composer-input mono" : "composer-input"}
@@ -340,24 +438,26 @@ function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQue
         value={value}
         maxLength={isQuery ? undefined : 300}
         spellCheck={false}
-        placeholder={isQuery ? queryExample(scope) || t("ask.chat.composer.queryPlaceholder") : t("ask.chat.composer.placeholder")}
+        placeholder={isQuery ? queryExample(scope) || t("ask.chat.composer.queryPlaceholder") : mayBuild ? t(`ask.assistant.placeholder.${mode}`) : t("ask.chat.composer.placeholder")}
         disabled={busy}
-        onChange={(e) => (isQuery ? setQuery(e.target.value) : setText(e.target.value))}
+        onChange={(e) => change(e.target.value)}
         onKeyDown={(e) => {
           if (sendsOn({ key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, mode)) submit(e);
         }}
       />
       <div className="composer-bar">
         <div className="composer-tools">
-          {mayBuild && (
-            <button type="button" className={isQuery ? "tool on" : "tool"} aria-pressed={isQuery} title={t("ask.chat.composer.queryOn")} onClick={() => setMode(isQuery ? "ask" : "query")}>
-              <Icon name="edit" size={13} /> {t("ask.chat.composer.query")}
-            </button>
+          {modes.length > 1 && (
+            <div className="mode-chips" role="group" aria-label={t("ask.assistant.mode.aria")}>
+              {modes.map((m) => <button key={m} type="button" className={m === mode ? "mode on" : "mode"} aria-pressed={m === mode} title={t(`ask.assistant.mode.${m}.hint`)} onClick={() => switchTo(m, m === "query" ? query : text)}>{t(`ask.assistant.mode.${m}`)}</button>)}
+            </div>
           )}
-          <ScopeChip scope={scope} />
+          {scopeKind(mode) === "types" && <ScopeChip scope={scope} />}
+          {scopeKind(mode) === "datasets" && <DatasetsChip datasets={scopes.datasets} chosen={scopes.chosen} setChosen={scopes.setChosen} />}
+          {scopeKind(mode) === "target" && <TargetChip pipelines={scopes.pipelines} datasets={scopes.datasets} target={scopes.target} setTarget={scopes.setTarget} />}
         </div>
         {isQuery && <span className="composer-hint muted small">{t("ask.chat.composer.hintQuery")}</span>}
-        <button className="primary send" type="submit" disabled={busy || !value.trim()} aria-label={isQuery ? t("ask.chat.composer.run") : t("ask.chat.composer.send")}>
+        <button className="primary send" type="submit" disabled={busy || empty} aria-label={isQuery ? t("ask.chat.composer.run") : t("ask.chat.composer.send")}>
           <Icon name={isQuery ? "play" : "send"} size={16} />
         </button>
       </div>
@@ -406,13 +506,18 @@ export function QaPage({ route }) {
   const [query, setQuery] = useState("");
   const [turns, setTurns] = useState([]);
   const [rail, setRail] = useState(false);
+  const admin = isAdmin(useAuth().user);
+  const [datasets] = useLoad(() => (mayBuild ? getDatasets() : Promise.resolve([])), [mayBuild]);
+  const [pipelines] = useLoad(() => (mayBuild ? getPipelines() : Promise.resolve([])), [mayBuild]);
+  const [chosen, setChosen] = useState([]);   // Model mode: the datasets the model may read about
+  const [target, setTarget] = useState(null);   // Pipeline mode: {kind: "pipeline" | "dataset", name, label}
   const scope = info.data;
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
   const own = useRef(new Set());   // saved ids this session's thread already holds: opening one of them must not replace the thread
   const thread = useRef(null);
   const busy = isThinking(turns);
-  const queryMode = mayBuild ? mode : "ask";
+  const queryMode = allowedMode(mode, mayBuild);
 
   const add = (turn) => setTurns((ts) => [...ts, turn]);
   const finish = (turn, patch) => setTurns((ts) => settle(ts, turn.id, patch));
@@ -434,6 +539,91 @@ export function QaPage({ route }) {
       finish(turn, { status: "error", error: err.message });
     }
   };
+  /** The three model-backed modes over their existing endpoints. Nothing is saved or run by the assistant itself: a card is pending until the person acts on it. */
+  const sendIn = (inMode, raw) => {
+    if (inMode === "ask") return send(raw);
+    if (isThinking(turnsRef.current)) return;
+    const question = String(raw ?? "").trim();
+    const noModel = (turn) => finish(turn, { status: "error", noModel: true });
+    if (inMode === "model") {
+      if (!chosen.length) { add({ ...newTurn("model", question || chosen.join(", ")), status: "error", error: t("ask.assistant.error.pickDatasets") }); return; }
+      const turn = newTurn("model", question || chosen.join(t("ask.sep")));
+      add(turn);
+      setText("");
+      (async () => {
+        try {
+          if (!(await getModelReady())) return noModel(turn);
+          const result = await suggestTypes(chosen, question);
+          const details = await Promise.all(result.proposed.map((p) => getType(p.id).catch(() => null)));
+          finish(turn, { status: "done", proposal: { result, details, datasets: chosen, proposed: 0, busy: false, error: "" } });
+        } catch (err) {
+          if (isNoModel(err.message)) noModel(turn); else finish(turn, { status: "error", error: err.message });
+        }
+      })();
+      return;
+    }
+    if (!target) { add({ ...newTurn("pipeline", question), status: "error", error: t("ask.assistant.error.pickTarget") }); return; }
+    const turn = newTurn("pipeline", question);
+    add(turn);
+    setText("");
+    (async () => {
+      try {
+        if (!(await getModelReady())) return noModel(turn);
+        const spec = target.kind === "pipeline" ? (await getPipeline(target.name)).spec : datasetSpec(target.name);
+        const selected = target.kind === "pipeline" ? defaultSelected(spec) : "in1";
+        if (!selected) throw new Error(t("ask.assistant.error.pickTarget"));
+        const draft = await aiDraft(target.kind === "pipeline" ? target.name : undefined, spec, [selected], question);
+        finish(turn, { status: "done", plan: { draft, answers: {}, spec, selected, target, scopeLabel: target.label, newPipeline: target.kind === "dataset", busy: false } });
+      } catch (err) {
+        if (isNoModel(err.message)) noModel(turn); else finish(turn, { status: "error", error: err.message });
+      }
+    })();
+  };
+  const patchPlan = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, plan: { ...x.plan, ...patch } } : x)));
+  const patchProposal = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, proposal: { ...x.proposal, ...patch } } : x)));
+  const cards = {
+    // answering a question re-checks the draft with the person's own words; the service calls no model for it
+    answer: async (turn, id, values) => {
+      const plan = turn.plan;
+      const answers = { ...plan.answers, [id]: values };
+      patchPlan(turn, { answers, busy: true });
+      try {
+        const draft = await aiDraft(plan.target.kind === "pipeline" ? plan.target.name : undefined, plan.spec, [plan.selected], turn.text, { raw: plan.draft.raw, answers });
+        patchPlan(turn, { draft, busy: false });
+      } catch (err) {
+        patchPlan(turn, { busy: false, answers: plan.answers });
+      }
+    },
+    // Apply: the steps wait for the editor, which applies them the way its own AI panel does; nothing is saved
+    apply: (turn) => {
+      const plan = turn.plan;
+      const name = plan.target.kind === "pipeline" ? plan.target.name : `new:${plan.target.name}`;
+      stashDraft(window.sessionStorage, name, plan.draft.steps);
+      window.location.hash = plan.target.kind === "pipeline" ? hrefFor({ page: "pipeline", name: plan.target.name, view: "edit" }) : hrefFor({ page: "pipelinenew", dataset: plan.target.name });
+    },
+    revise: (turn) => {
+      setTarget(turn.plan.target);
+      setMode("pipeline");
+      setText(turn.text);
+    },
+    // Propose: the model drafts become this person's proposals through the normal update path; a second person confirms in the review queue
+    propose: async (turn) => {
+      patchProposal(turn, { busy: true, error: "" });
+      let count = 0;
+      try {
+        for (const ty of turn.proposal.details.filter(Boolean)) {
+          const payload = proposePayload(ty);
+          if (!payload) continue;
+          await updateType(payload);
+          count += 1;
+        }
+        patchProposal(turn, { busy: false, proposed: count });
+        reload();
+      } catch (err) {
+        patchProposal(turn, { busy: false, proposed: count, error: err.message });
+      }
+    },
+  };
   const run = async (queryText, params) => {
     if (!queryText.trim() || isThinking(turnsRef.current)) return;
     const turn = newTurn("query", queryText);
@@ -454,6 +644,10 @@ export function QaPage({ route }) {
     setRail(false);
     if (window.location.hash !== "#/qa") window.location.hash = "#/qa";
   };
+
+  useEffect(() => {
+    if (datasets.data?.length === 1 && !chosen.length) setChosen([datasets.data[0].name]);   // the only dataset is the one to read
+  }, [datasets.data]);
 
   const was = useRef(route.id);
   useEffect(() => {
@@ -497,9 +691,14 @@ export function QaPage({ route }) {
             {turns.length === 0 ? (
               <div className="chat-empty">
                 <span className="bot-mark big" aria-hidden="true" />
-                <h2>{t("ask.chat.emptyTitle")}</h2>
-                <p className="muted">{scope && scope.types.length === 0 ? t("ask.chat.emptyNoScope") : t("ask.sub")}</p>
-                {ideas.length > 0 && (
+                <h2>{mayBuild ? t("ask.assistant.empty.title") : t("ask.chat.emptyTitle")}</h2>
+                <p className="muted">{mayBuild ? t("ask.assistant.empty.sub") : scope && scope.types.length === 0 ? t("ask.chat.emptyNoScope") : t("ask.sub")}</p>
+                {mayBuild && (
+                  <div className="chips" aria-label={t("ask.assistant.mode.aria")}>
+                    {["ask", "model", "pipeline"].map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
+                  </div>
+                )}
+                {ideas.length > 0 && queryMode === "ask" && (
                   <div className="chips" aria-label={t("ask.chat.try")}>
                     {ideas.map((q) => <button key={q} className="chip" disabled={busy} onClick={() => send(q)}>{q}</button>)}
                   </div>
@@ -507,13 +706,14 @@ export function QaPage({ route }) {
               </div>
             ) : (
               <div className="turns" role="log" aria-label={t("ask.chat.thread")} aria-live="polite">
-                {turns.map((turn, i) => <TurnView key={turn.id} turn={turn} mayBuild={mayBuild} onEdit={mayBuild ? edit : undefined} followUps={ideas} onAsk={send} busy={busy} last={i === turns.length - 1} onLoaded={(id, patch) => setTurns((ts) => settle(ts, id, patch))} />)}
+                {turns.map((turn, i) => <TurnView key={turn.id} turn={turn} mayBuild={mayBuild} onEdit={mayBuild ? edit : undefined} admin={admin} cards={cards} followUps={ideas} onAsk={send} busy={busy} last={i === turns.length - 1} onLoaded={(id, patch) => setTurns((ts) => settle(ts, id, patch))} />)}
               </div>
             )}
           </div>
           <div className="composer-wrap">
-            <Composer scope={scope} mayBuild={mayBuild} mode={queryMode} setMode={setMode} text={text} setText={setText} query={query} setQuery={setQuery} busy={busy} onSend={send} onRun={run} />
-            <p className="composer-fine muted small" title={t("ask.input.hint")}>{t("ask.chat.privacy")}</p>
+            <Composer scope={scope} mayBuild={mayBuild} mode={queryMode} setMode={setMode} text={text} setText={setText} query={query} setQuery={setQuery} busy={busy} onSend={sendIn} onRun={run}
+              scopes={{ datasets: datasets.data ?? [], pipelines: pipelines.data ?? [], chosen, setChosen, target, setTarget }} />
+            <p className="composer-fine muted small">{t(privacyKey(queryMode))}</p>
           </div>
         </section>
       </div>

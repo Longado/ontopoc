@@ -82,7 +82,7 @@ test("a page not built yet has an address of its own and says what it will do", 
 
 test("the sidebar groups what the product has, and marks what is built", () => {
   assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "数据", "业务对象", "应用"]);
-  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "问数", "看板", "消息", "数据集", "数据源", "管道", "调度", "血缘", "任务", "待确认", "对象类型", "关系", "AI 工具接入"]);
+  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "助手", "看板", "消息", "数据集", "数据源", "管道", "调度", "血缘", "任务", "待确认", "对象类型", "关系", "AI 工具接入"]);
   for (const g of [...NAV, ...ADMIN_NAV].filter((g) => g.label)) assert.ok(g.hint && g.icon, g.label);   // a one-line grey explainer and an icon under each group
   for (const i of [...NAV, ...ADMIN_NAV].flatMap((g) => g.items)) assert.ok(i.icon, i.key);
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
@@ -90,7 +90,7 @@ test("the sidebar groups what the product has, and marks what is built", () => {
 
 test("a viewer sees four items, a builder the three groups more, an admin settings too", () => {
   const names = (user) => navFor(user).map((g) => [g.label ?? null, g.items.map((i) => i.label)]);
-  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "问数", "看板", "消息"]]]);
+  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板", "消息"]]]);
   assert.deepEqual(names({ role: "builder" }).map((g) => g[0]), [null, "数据", "业务对象", "应用"]);
   assert.deepEqual(names({ role: "admin" }).map((g) => g[0]), [null, "数据", "业务对象", "应用", "设置"]);
   assert.deepEqual(names({ role: "admin" })[4][1], ["工作区", "用户", "权限"]);
@@ -191,7 +191,7 @@ test("the shell draws a view for every page in the table and for no other", () =
 });
 
 test("a route's sidebar word names the place in the recent list", () => {
-  assert.equal(navLabelOf({ page: "qa", id: 3 }), "问数");
+  assert.equal(navLabelOf({ page: "qa", id: 3 }), "助手");
   assert.equal(navLabelOf({ page: "pipeline", name: "x", view: "edit" }), "管道");
   assert.equal(navLabelOf({ page: "account" }), "");
 });
