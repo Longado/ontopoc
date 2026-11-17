@@ -2,12 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 import { fileToBase64, getDataset, getDatasets, previewUpload, uploadDatasets } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { Select } from "./Select.jsx";
-import { ACCEPT, changesExisting, firstChoice, movedLines, sizeText, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget, resultLine } from "./uploadModel.js";
+import { ACCEPT, afterUpload, updateWays, waysFor, changesExisting, firstChoice, movedLines, sizeText, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget, resultLine } from "./uploadModel.js";
 
-const WAYS = [["new", "新数据集"], ["update_by_key", "按主键更新"], ["overwrite", "覆盖"]];
 const WHO_KEY = "ontopoc.who";
 
 function FileChoice({ file, choice, names, columns, refused, onChange, onRemove }) {
+  const ways = waysFor(names);
   const taken = choice.kind === "new" && names.includes(choice.name.trim());
   return (
     <section className={`file${refused ? " refused" : ""}`}>
@@ -17,12 +17,23 @@ function FileChoice({ file, choice, names, columns, refused, onChange, onRemove 
         <button className="plain" onClick={onRemove}>移除</button>
       </div>
       <div className="ways" role="radiogroup" aria-label={`${file.name} 的处理方式`}>
-        {WAYS.map(([kind, label]) => (
-          <label key={kind}>
-            <input type="radio" name={`way-${file.name}`} checked={choice.kind === kind} onChange={() => onChange(withKind(choice, kind))} />
-            {label}
+        {ways.primary.map((w) => (
+          <label key={w.kind} className="way">
+            <input type="radio" name={`way-${file.name}`} checked={choice.kind === w.kind} onChange={() => onChange(withKind(choice, w.kind))} />
+            <span><strong>{w.label}</strong><span className="muted small block">{w.consequence}</span></span>
           </label>
         ))}
+        {ways.folded.length > 0 && (
+          <details className="way-fold" open={updateWays(choice).open}>
+            <summary>更新已有数据集</summary>
+            {ways.folded.map((w) => (
+              <label key={w.kind} className="way">
+                <input type="radio" name={`way-${file.name}`} checked={choice.kind === w.kind} onChange={() => onChange(withKind(choice, w.kind))} />
+                <span><strong>{w.label}</strong><span className="muted small block">{w.consequence}</span></span>
+              </label>
+            ))}
+          </details>
+        )}
       </div>
       {choice.kind === "new" && (
         <label className="field">
@@ -109,7 +120,6 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
   const problem = loaded ? uploadProblem(files, choices, names) : "";
   const close = () => {
     ref.current.close();
-    if (phase === "done") onDone();
     onClose();
   };
 
@@ -131,6 +141,7 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
       window.localStorage.setItem(WHO_KEY, who.trim());
       setResults(saved);
       setPhase("done");
+      onDone();   // the list behind the dialog is up to date before the person has pressed anything
     } catch (e) {
       setError(e.message);
       setRefused(e.files ?? {});
@@ -186,7 +197,11 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
           <button className="primary" onClick={() => send()} disabled={!files.length || !!problem || phase === "sending"}>{phase === "sending" ? "上传中" : "上传"}</button>
         </div>
       ) : (
-        <div className="actions"><span></span><button className="primary" onClick={close}>完成</button></div>
+        <div className="actions">
+          <span className="muted">下一步：把数据变成业务里的东西，比如“订单”“客户”。</span>
+          <button className="plain" onClick={close}>完成</button>
+          {afterUpload(results).map((a, i, all) => <a key={a.label} className={`button${i === all.length - 1 ? " primary" : " secondary"}`} href={a.href} onClick={close}>{a.label}</a>)}
+        </div>
       )}
     </dialog>
   );

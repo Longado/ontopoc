@@ -2,16 +2,46 @@ import React, { useState } from "react";
 import { createSource, getSources, updateSource } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { isAdmin } from "./authModel.js";
+import { CopyButton } from "./CopyButton.jsx";
+import { portAfterKind } from "./connectModel.js";
 import { timeText } from "./format.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
-import { KINDS, TLS_MODES, TLS_WARNING, kindPort, sourceBody, sourceProblem, statusText, tlsDefault } from "./sourceModel.js";
+import { SourceWizard } from "./SourceWizard.jsx";
+import { KINDS, TLS_MODES, TLS_WARNING, sourceBody, sourceProblem, statusText, tlsDefault } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
 import { FormDialog } from "./FormDialog.jsx";
+import { EmptyState } from "./ui/EmptyState.jsx";
+import { PageHeader } from "./ui/PageHeader.jsx";
+import { StatusChip } from "./ui/StatusChip.jsx";
+
+const CHIP = { ok: "confirmed", failed: "failed", untested: "draft" };
 
 export function SourceState({ source }) {
-  const cls = source.status === "ok" ? "state-confirmed" : source.status === "failed" ? "state-rejected" : "";
-  return <span className={`state ${cls}`}>{statusText(source)}</span>;
+  return <StatusChip state={CHIP[source.status] ?? source.status} label={statusText(source)} />;
+}
+
+const ASK_ADMIN = [
+  "请帮我把一个数据库接进 OntoPoc（只读）。请提供：",
+  "1. 数据库类型（PostgreSQL 或 MySQL）",
+  "2. 主机地址和端口（运行 OntoPoc 的服务器要能访问到）",
+  "3. 数据库名",
+  "4. 一个只有 SELECT 权限的账号和密码",
+  "5. 如果数据库用公司内部证书：公司 CA 证书",
+].join("\n");
+
+/** What a builder who is not an admin sees instead of the 新建 button: who connects databases and what to ask them. */
+function AskAdmin() {
+  return (
+    <section className="card ask-admin">
+      <h2>数据库由管理员接入</h2>
+      <p>连接数据库要用到数据库的账号密码，所以只有管理员能建数据源。你可以先把想用的库告诉管理员，接好之后，数据源里的表就能在这里读成数据集。</p>
+      <p className="muted">发给管理员的话（点一下复制）：</p>
+      <pre className="ask-text">{ASK_ADMIN}</pre>
+      <CopyButton text={ASK_ADMIN} label="复制这段话" />
+      <p className="hint">只有 Excel 或 CSV 的话，不用等管理员：到“数据集”直接上传。</p>
+    </section>
+  );
 }
 
 /** Make a source, or (with `source`) change its connection. The password is never filled in: a blank one keeps the saved one. */
@@ -33,7 +63,7 @@ export function SourceForm({ source, onClose, onDone }) {
       {!editing && (
         <div className="field">
           <span className="caption">数据库类型</span>
-          <Select label="数据库类型" value={f.kind} onChange={(kind) => setF({ ...f, kind, port: String(kindPort(kind)) })}>
+          <Select label="数据库类型" value={f.kind} onChange={(kind) => setF({ ...f, kind, port: portAfterKind(kind) })}>
             {KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
           </Select>
         </div>
@@ -52,6 +82,7 @@ export function SourceForm({ source, onClose, onDone }) {
           {TLS_MODES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
         </Select>
       </div>
+      <p className="hint">内网的库报证书错误时，选“不用”（只限内网），或在下面贴公司 CA。</p>
       {tls === "none" && <p className="warn">{TLS_WARNING}</p>}
       {tls === "required" && (
         <label className="field">
@@ -75,13 +106,13 @@ export function SourcesPage() {
   const sources = state.data ?? [];
   return (
     <main className="page">
-      <div className="page-head">
-        <h1 tabIndex={-1}>数据源</h1>
-        {admin && <button className="primary" onClick={() => setMaking(true)}>新建数据源</button>}
-      </div>
+      <PageHeader crumbs={[{ label: "数据" }, { label: "数据源" }]} title="数据源" sub="连上公司的数据库（只读），把里面的表读成数据集。"
+        actions={admin && <button className="primary" onClick={() => setMaking(true)}>接入数据库</button>} />
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
-      {state.data && !sources.length && <p className="muted">还没有数据源。{admin ? "新建一个，把库里的表读成数据集。" : "要接数据库，请管理员先建一个。"}</p>}
+      {state.data && !admin && <AskAdmin />}
+      {state.data && !sources.length && admin && <EmptyState icon="plug" title="还没有数据源" text="按向导走五步：选类型、填连接、测试、选表、定时同步。只读，不会改库里的数据。" action={{ label: "接入数据库", onClick: () => setMaking(true) }} />}
+      {state.data && !sources.length && !admin && <EmptyState icon="plug" title="还没有数据源" text="管理员接入数据库后，会出现在这里。" />}
       {sources.length > 0 && (
         <div className="table-wrap">
           <table>
@@ -104,7 +135,7 @@ export function SourcesPage() {
           </table>
         </div>
       )}
-      {making && <SourceForm onClose={() => setMaking(false)} onDone={reload} />}
+      {making && <SourceWizard onClose={() => setMaking(false)} onDone={reload} />}
     </main>
   );
 }

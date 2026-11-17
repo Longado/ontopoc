@@ -6,6 +6,9 @@ import { timeText } from "./format.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { SourceForm, SourceState } from "./SourcesPage.jsx";
+import { ConnectFailure } from "./ConnectFailure.jsx";
+import { errorReport } from "./connectModel.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
 import { estimateText, keyColumnsFrom, reasonText, runStatusText, runSummary } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
 import { FormDialog } from "./FormDialog.jsx";
@@ -36,15 +39,6 @@ function PullDialog({ source, table, onClose, onDone }) {
       {mode === "update_by_key" && (
         <label className="field"><span className="caption">主键列（多列用逗号隔开）</span><input type="text" value={keys} placeholder="订单号" onChange={(e) => setKeys(e.target.value)} /></label>
       )}
-    </FormDialog>
-  );
-}
-
-function DeleteSource({ source, onClose }) {
-  return (
-    <FormDialog title={`删除“${source.name}”`} submitLabel="删除" onClose={onClose} valid
-      onSubmit={async () => { await deleteSource(source.name); window.location.hash = hrefFor({ page: "sources" }); }}>
-      <p>数据源和它的调度会删掉。还有数据集来自它时删不了：先删掉那些数据集。</p>
     </FormDialog>
   );
 }
@@ -143,20 +137,28 @@ export function SourcePage({ route }) {
     reload();
   };
   const afterPull = () => { reload(); look(); };
+  const removeSource = async () => {
+    try {
+      await deleteSource(name);
+      window.location.hash = hrefFor({ page: "sources" });
+    } catch (e) {
+      setMessage(e.message);
+    }
+  };
+  // a failed connection is explained once: after a test or a look, what that said; before either, what the last test left on the source
+  const failure = live?.status === "error" ? live.error : !live && source?.status === "failed" ? source.status_note : null;
+  const report = source && admin && failure ? errorReport({ source: name, kind: source.kind_label, host: source.host, port: source.port, database: source.database, username: source.username, tls: source.tls, message: failure, at: timeText(new Date().toISOString()) }) : "";
 
   return (
     <main className="page">
-      <a className="back" href={hrefFor({ page: "sources" })}>数据源</a>
-      <div className="page-head">
-        <h1 tabIndex={-1}>{name}</h1>
-        {source && admin && (
-          <div className="head-actions">
-            <button className="plain" onClick={() => setDialog("delete")}>删除</button>
+      <PageHeader crumbs={[{ label: "数据" }, { label: "数据源", href: hrefFor({ page: "sources" }) }, { label: name }]} title={name} status={source && <SourceState source={source} />}
+        actions={source && admin && (
+          <>
             <button className="secondary" onClick={() => setDialog("edit")}>修改连接</button>
             <button className="primary" onClick={test}>测试连接</button>
-          </div>
+          </>
         )}
-      </div>
+        more={source && admin ? [{ label: "删除数据源", danger: true, confirmText: `删除“${name}”？它的调度会一起删掉；还有数据集来自它时删不了，要先删那些数据集。`, onClick: removeSource }] : undefined} />
       {state.status === "error" && <p className="error">{state.error} {!state.missing && <button className="plain" onClick={reload}>重试</button>}</p>}
       {state.status === "loading" && !source && <p className="muted">加载中</p>}
       {source && (
@@ -164,17 +166,23 @@ export function SourcePage({ route }) {
           <p className="facts">
             <span>{source.kind_label}</span>
             {admin && <span>{source.host}:{source.port}/{source.database}，账号 {source.username}</span>}
-            <span><SourceState source={source} />{source.status_at && ` ${timeText(source.status_at)}`}</span>
+            {source.status_at && <span>上次测试 {timeText(source.status_at)}</span>}
           </p>
           {admin && source.local && <p className="hint">这个数据库在运行本服务的这台机器上。</p>}
-          {source.status === "failed" && source.status_note && <p className="error">{source.status_note}</p>}
+          {failure && admin && (
+            <ConnectFailure message={failure} report={report}>
+              <button className="secondary" onClick={() => setDialog("edit")}>修改连接</button>
+              <button className="primary" onClick={test}>重新测试</button>
+            </ConnectFailure>
+          )}
+          {failure && !admin && <p className="error">{failure}</p>}
           {source.can_write && <p className="warn">这个账号不是只读的：{source.write_note}。服务只用只读会话读数据，但建议换成只有 SELECT 权限的账号。</p>}
           {message && <p className="muted">{message}</p>}
 
           <h2 className="section">库里的表</h2>
           {!live && <p><button className="secondary" onClick={look}>查看库里的表</button></p>}
           {live?.status === "loading" && <p className="muted">正在连接，读表的列表</p>}
-          {live?.status === "error" && <p className="error">{live.error} <button className="plain" onClick={look}>重试</button></p>}
+          {live?.status === "error" && <p className="muted">连不上，原因在上面。<button className="plain" onClick={look}>重试</button></p>}
           {live?.status === "ready" && (live.tables.length ? <Tables name={name} tables={live.tables} reload={afterPull} /> : <p className="muted">库里没有表，或这个账号看不到。</p>)}
 
           <h2 className="section">已读成的数据集</h2>
@@ -208,7 +216,6 @@ export function SourcePage({ route }) {
         </>
       )}
       {dialog === "edit" && <SourceForm source={source} onClose={() => setDialog(null)} onDone={reload} />}
-      {dialog === "delete" && <DeleteSource source={source} onClose={() => setDialog(null)} />}
     </main>
   );
 }

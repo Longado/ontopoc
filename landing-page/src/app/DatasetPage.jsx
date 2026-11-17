@@ -1,13 +1,14 @@
 import React, { useState } from "react";
-import { csvHref, getDataset } from "./api.js";
+import { csvHref, getDataset, getTypes } from "./api.js";
 import { DeleteDialog } from "./DeleteDialog.jsx";
-import { isNumeric, keyText, originText, percentText, timeText, typeLabel } from "./format.js";
+import { originLink, readerLinks } from "./datasetModel.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
+import { isNumeric, keyText, percentText, timeText, typeLabel } from "./format.js";
 import { Select } from "./Select.jsx";
 import { TABS, TAB_LABEL, hrefFor } from "./routeModel.js";
 import { UploadDialog } from "./UploadDialog.jsx";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
-import { sourceOrigin } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
 import { keyListText, noChangeText, timeline, versionChangeText, versionWay } from "./versionText.js";
 
@@ -63,7 +64,7 @@ function Preview({ page, name }) {
         <a className="download" href={csvHref(name, page.version === page.current_version ? null : page.version)} download>下载 CSV</a>
         <span className="muted">以 = + - @ 开头的文字，下载时前面会多一个 '</span>
       </div>
-      <div className="table-wrap tall">
+      <div className="table-wrap tall dense">
         <table>
           <thead>
             <tr>{preview.columns.map((c, i) => <th key={c} className={numeric[i] ? "num" : ""}>{c}</th>)}</tr>
@@ -139,36 +140,46 @@ export function DatasetPage({ route }) {
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const mayBuild = canBuild(useAuth().user);
+  const [types] = useLoad(getTypes, []);
   const page = state.data;
-  const at = (t) => hrefFor({ page: "dataset", name, tab: t, version });
+  const origin = originLink(page?.origin);
+  const readers = readerLinks(page?.readers ?? [], Object.fromEntries((types.data ?? []).map((t) => [t.name, t.id])));
+  const at =(t) => hrefFor({ page: "dataset", name, tab: t, version });
   return (
     <main className="page">
-      <a className="back" href="#/datasets">
-        <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        数据集
-      </a>
-      <div className="page-head">
-        <h1 tabIndex={-1}>{name}</h1>
-        {page && mayBuild && (
-          <div className="head-actions">
-            <button className="plain" onClick={() => setDeleting(true)}>删除</button>
+      <PageHeader crumbs={[{ label: "数据" }, { label: "数据集", href: hrefFor({ page: "datasets" }) }, { label: name }]} title={name}
+        sub={page && `${page.rows} 行，${page.columns.length} 列，第 ${page.version} 版`}
+        actions={page && mayBuild && (
+          <>
+            <a className="button secondary" href="#/pipelines/new">用它建管道</a>
+            <a className="button secondary" href="#/types/new">用它建对象类型</a>
             <button className="primary" onClick={() => setUploading(true)}>上传新版本</button>
-          </div>
+          </>
         )}
-      </div>
+        more={page && mayBuild ? [{ label: "删除数据集", onClick: () => setDeleting(true) }] : undefined} />
       {state.status === "error" && <p className="error">{state.error} {!state.missing && <button className="plain" onClick={reload}>重试</button>}</p>}
       {state.status === "loading" && !page && <p className="muted">加载中</p>}
       {page && (
         <>
-          <p className="facts">
-            <span>{page.rows} 行</span>
-            <span>{page.columns.length} 列</span>
-            <span>第 {page.version} 版</span>
-            <span>{page.version === page.current_version ? `更新于 ${timeText(page.updated_at)}` : `这一版导入于 ${timeText(page.version_at)}`}</span>
-            <span>来源 {sourceOrigin(page.origin) ? <>数据源“{mayBuild ? <a href={hrefFor({ page: "source", name: sourceOrigin(page.origin).source })}>{sourceOrigin(page.origin).source}</a> : sourceOrigin(page.origin).source}”的表 {sourceOrigin(page.origin).table}，拉取于 {timeText(page.version_at)}</> : originText(page.origin)}</span>
-            {page.versions.find((v) => v.version === page.version)?.source?.left_out?.length > 0 && <span className="warn">没读的二进制列：{page.versions.find((v) => v.version === page.version).source.left_out.join("、")}</span>}
-            {page.readers.length > 0 && <span>被 {page.readers.map((r) => r.name).join("、")} 用到</span>}
-          </p>
+          <dl className="ds-facts">
+            <div><dt>更新</dt><dd>{page.version === page.current_version ? timeText(page.updated_at) : `这一版导入于 ${timeText(page.version_at)}`}</dd></div>
+            <div>
+              <dt>来源</dt>
+              <dd>
+                {origin.href && mayBuild ? <a href={origin.href}>{origin.label}</a> : origin.label}
+                {origin.kind === "source" && <span className="muted">，拉取于 {timeText(page.version_at)}</span>}
+              </dd>
+            </div>
+            <div>
+              <dt>被用到</dt>
+              <dd>
+                {!readers.length ? <span className="muted">还没有对象类型或管道在用它</span> : readers.map((r, i) => (
+                  <span key={`${r.kind}${r.name}`}>{i > 0 && "、"}<span className="muted">{r.kind} </span>{r.href ? <a href={r.href}>{r.name}</a> : r.name}</span>
+                ))}
+              </dd>
+            </div>
+            {page.versions.find((v) => v.version === page.version)?.source?.left_out?.length > 0 && <div><dt>没读的列</dt><dd className="warn">二进制列：{page.versions.find((v) => v.version === page.version).source.left_out.join("、")}</dd></div>}
+          </dl>
           {page.version !== page.current_version && (
             <p className="viewing">正在看第 {page.version} 版，当前是第 {page.current_version} 版。 <a href={hrefFor({ page: "dataset", name, tab, version: null })}>回到当前版本</a></p>
           )}
