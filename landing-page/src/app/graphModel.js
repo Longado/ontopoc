@@ -1,5 +1,6 @@
 // The two graphs as plain functions of what the service sends: where each node goes, what lights up when one is clicked, the words on an edge. No browser needed.
 import { timeText } from "./format.js";
+import { t } from "./i18n/index.js";
 import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY } from "d3-force";
 
 export const SIZE = {
@@ -14,6 +15,31 @@ export const SIZE = {
   answer: { w: 196, h: 48 },
 };
 const MARGIN = 40;
+
+/** The lineage draws every node as the same card (a column of mixed shapes reads as noise). The relation graph keeps SIZE. */
+export const LINEAGE_SIZE = { w: 220, h: 56 };
+
+/** The chip colour and the icon of each kind of node (a 24-unit line icon): the same in the graph, the legend and the panel. */
+export const KIND_STYLE = {
+  source: { colour: "#00a396", icon: "M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4" },
+  dataset: { colour: "#2d72d2", icon: "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14" },
+  pipeline: { colour: "#7961db", icon: "M3 6h5v5H3zM16 13h5v5h-5zM8 8.5h4a2 2 0 012 2V13" },
+  type: { colour: "#c87619", icon: "M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5" },
+  relation: { colour: "#9d3f9d", icon: "M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3A4 4 0 0011 18.7l1-1" },
+  view: { colour: "#5f6b7c", icon: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 100-6 3 3 0 000 6" },
+  action: { colour: "#db2c6f", icon: "M13 3L5 14h6l-1 7 8-11h-6z" },
+  derived: { colour: "#d1980b", icon: "M18 5H7l6 7-6 7h11" },
+  answer: { colour: "#238551", icon: "M4 5h16v11H9l-5 4z" },
+};
+/** The colour of a node's state dot and left bar (never the only sign: the state word is on the card's tooltip, in the panel and in the legend). */
+export const STATE_COLOUR = { confirmed: "#238551", needs_look: "#c87619", rejected: "#cd4246", none: "#8f99a8" };
+/** Which of the four state colours a node shows: its state, a failed source is a failure, anything unconfirmed or stateless is grey. */
+export function stateTone(node) {
+  if (node.status === "failed") return "rejected";
+  if (node.model_draft) return "none";
+  if (node.stale || node.state === "needs_look") return "needs_look";
+  return node.state === "confirmed" || node.state === "rejected" ? node.state : "none";
+}
 
 /** Where the types go in the relation graph: a force layout run to rest, so the same data always draws the same picture. Returns {positions: {id: {x, y, w, h}}, width, height}. */
 export function forceLayout(nodes, edges) {
@@ -126,19 +152,12 @@ export function litDepth(id, edges, mode = "both", depth = null) {
 }
 
 /** The lineage's fixed columns, left to right: what each holds, with the words of its header. */
-export const LAYERS = [
-  { key: "source", label: "数据源" },
-  { key: "dataset", label: "数据集" },
-  { key: "pipeline", label: "管道" },
-  { key: "written", label: "数据集（产出）" },
-  { key: "type", label: "对象类型" },
-  { key: "model", label: "关系 / 行为 / 视图" },
-  { key: "derived", label: "派生 / 回答" },
-];
+export const LAYERS = ["source", "dataset", "pipeline", "written", "type", "model", "derived"].map((key) => ({ key, get label() { return t(`lineage.layer.${key}`); } }));
 const LAYER_OF = { source: 0, dataset: 1, pipeline: 2, type: 4, relation: 5, view: 5, action: 5, derived: 6, answer: 6 };
 
-/** Where the nodes of the lineage go: each kind in its own column (a dataset a pipeline writes goes in the column after the pipelines), a header over each column that has
- * nodes, the columns packed left to right. Within a column the order follows where what it reads sits. Returns {positions, columns: [{key, label, x, w, count}], width, height, headerHeight}. */
+/** Where the nodes of the lineage go: each kind in its own column (a dataset a pipeline writes goes in the column after the pipelines), the columns packed left to right with no
+ * gap between them (the page paints each as a band), every node a LINEAGE_SIZE card inset in its column. The header over each column is drawn by the page, as a sticky strip,
+ * so the graph starts at `TOP`. Within a column the order follows where what it reads sits. Returns {positions, columns: [{key, label, x, w, count}], width, height}. */
 export function lineageColumns(nodes, edges) {
   const ids = new Set(nodes.map((n) => n.id));
   const kind = Object.fromEntries(nodes.map((n) => [n.id, n.kind]));
@@ -160,21 +179,22 @@ export function lineageColumns(nodes, edges) {
       list.forEach((n, i) => { row[n.id] = i; });
     }
   }
-  const GAP = 14;
-  const COLUMN = 236;
-  const HEADER = 44;
-  const columns = used.map((c, i) => ({ key: LAYERS[c.layer].key, label: LAYERS[c.layer].label, x: MARGIN + i * COLUMN, w: COLUMN, count: c.list.length }));
+  const GAP = 12;
+  const INSET = 16;
+  const COLUMN = LINEAGE_SIZE.w + INSET * 2;
+  const TOP = 20;
+  const columns = used.map((c, i) => ({ key: LAYERS[c.layer].key, get label() { return LAYERS[c.layer].label; }, x: i * COLUMN, w: COLUMN, count: c.list.length }));
   const positions = {};
-  let tallest = MARGIN + HEADER;
+  let tallest = TOP;
   used.forEach((c, i) => {
-    let y = MARGIN + HEADER;
+    let y = TOP;
     for (const n of c.list) {
-      positions[n.id] = { x: columns[i].x, y, ...SIZE[n.kind] };
-      y += SIZE[n.kind].h + GAP;
+      positions[n.id] = { x: columns[i].x + INSET, y, ...LINEAGE_SIZE };
+      y += LINEAGE_SIZE.h + GAP;
     }
     tallest = Math.max(tallest, y - GAP);
   });
-  return { positions, columns, headerHeight: HEADER, width: MARGIN * 2 + used.length * COLUMN, height: tallest + MARGIN };
+  return { positions, columns, width: used.length * COLUMN, height: tallest + TOP };
 }
 
 /** The picked node and the nodes one edge away from it: what the relation graph lights. */
@@ -211,26 +231,27 @@ export function leaves(box, toward) {
 
 /** The label on a relation's line: how many rows of the many side find the one side. A person a row rule limits reads it of the rows they can see. */
 export function edgeLabel(edge) {
-  if (edge.connected == null) return "查不了";
-  return `${edge.rows_limited ? "你能看到的 " : ""}连上 ${edge.connected} / ${edge.of} 行`;
+  if (edge.connected == null) return t("lineage.edge.unknown");
+  return t(edge.rows_limited ? "lineage.edge.connected_limited" : "lineage.edge.connected", { connected: edge.connected, of: edge.of });
 }
 
 /** What the colours of the relation graph mean: the word is the state chip's, the colour the line's and the box's. */
 export const LEGEND = [
-  { word: "已确认", key: "confirmed", colour: "#2b7a4b", text: "有人看过，按当时的数据确认了" },
-  { word: "待确认", key: "proposed", colour: "#6b6b66", text: "刚提出，等另一位建设者确认" },
-  { word: "需再看", key: "needs_look", colour: "#a35f00", text: "确认之后数据变了，要再看一次" },
-  { word: "已退回", key: "rejected", colour: "#a8271a", text: "被退回了，改好再提" },
-];
+  { key: "confirmed", colour: "#2b7a4b" },
+  { key: "proposed", colour: "#6b6b66" },
+  { key: "needs_look", colour: "#a35f00" },
+  { key: "rejected", colour: "#a8271a" },
+].map((l) => ({ ...l, get word() { return t(`lineage.legend.${l.key}.word`); }, get text() { return t(`lineage.legend.${l.key}.text`); } }));
 
 /** What "连上 157 / 161 行" counts, in a sentence for the legend and the drawer: of the rows on the many side, how many find a row on the one side. */
 export function connectedMeaning(edge) {
-  if (edge.connected == null) return "现在查不了";
-  return `${edge.from_name}一共 ${edge.of} 行，其中 ${edge.connected} 行在${edge.to_name}里找到了对应的一行${edge.of > edge.connected ? `；还有 ${edge.of - edge.connected} 行找不到` : ""}`;
+  if (edge.connected == null) return t("lineage.edge.meaning_unknown");
+  const found = t("lineage.edge.meaning", { from: edge.from_name, of: edge.of, connected: edge.connected, to: edge.to_name });
+  return edge.of > edge.connected ? `${found}${t("lineage.edge.meaning_missing", { missing: edge.of - edge.connected })}` : found;
 }
 
 /** The text on a relation's line: how many rows connect, or how many relations there are between the two types. */
-export const groupLabel = (group) => (group.edges.length > 1 ? `${group.edges.length} 个关系` : edgeLabel(group.edges[0]));
+export const groupLabel = (group) => (group.edges.length > 1 ? t("lineage.edge.relations", { count: group.edges.length }) : edgeLabel(group.edges[0]));
 
 /** The width of a label's pill: a character is about 12 wide, with room at the ends. */
 export const labelWidth = (label) => Math.max(56, [...label].length * 12 + 16);
@@ -274,20 +295,20 @@ export function placeLabels(groups, positions, widthOf) {
 
 /** The words that say whether the cardinality holds, for the drawer; "" when the check could not run. */
 export function verdictText(edge) {
-  if (edge.cardinality_ok == null) return edge.rows_limited ? "受行规则限制，只数了你能看到的行，不判断基数是否成立" : edge.problems?.join("；") ?? "";
-  return edge.cardinality_ok ? `${edge.cardinality_label}成立` : `${edge.cardinality_label}不成立：${edge.cardinality_text}`;
+  if (edge.cardinality_ok == null) return edge.rows_limited ? t("lineage.edge.verdict_limited") : edge.problems?.join(t("lineage.list.separator")) ?? "";
+  return edge.cardinality_ok ? t("lineage.edge.holds", { cardinality: edge.cardinality_label }) : t("lineage.edge.fails", { cardinality: edge.cardinality_label, text: edge.cardinality_text });
 }
 
-/** "3 天前", "刚刚": how long ago an ISO time was. */
+/** "3 d ago", "just now": how long ago an ISO time was, in the biggest whole unit. */
 export function ageText(iso, now = Date.now()) {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
   const minutes = Math.max(0, Math.floor((now - then) / 60000));
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} 小时前`;
-  if (minutes < 60 * 24 * 60) return `${Math.floor(minutes / (60 * 24))} 天前`;
-  return `${Math.floor(minutes / (60 * 24 * 30))} 个月前`;
+  if (minutes < 1) return t("lineage.age.now");
+  if (minutes < 60) return t("lineage.age.minutes", { count: minutes });
+  if (minutes < 60 * 24) return t("lineage.age.hours", { count: Math.floor(minutes / 60) });
+  if (minutes < 60 * 24 * 60) return t("lineage.age.days", { count: Math.floor(minutes / (60 * 24)) });
+  return t("lineage.age.months", { count: Math.floor(minutes / (60 * 24 * 30)) });
 }
 
 /** Whether a node stays in full colour under the cause filter ("data", "definition" or "" for all) and the search words. */
@@ -302,35 +323,36 @@ export function shown(node, filter, query) {
 export function causeLine(node) {
   const s = node.stale;
   if (!s) return "";
-  return s.root ? `${s.label}：${s.root}` : s.label;
+  return s.root ? t("lineage.cause", { label: s.label, root: s.root }) : s.label;
 }
 
 /** Who confirmed a node and on which data, in one sentence; "" when nobody has. */
 export function confirmedText(node) {
   if (!node.confirmed_by) return "";
-  const on = Object.entries(node.confirmed_on ?? {}).map(([name, v]) => `${name} 第 ${v} 版`).join("、");
-  return `${node.confirmed_by} 于 ${timeText(node.confirmed_at)} 确认${on ? `，依据 ${on}` : ""}`;
+  const on = Object.entries(node.confirmed_on ?? {}).map(([name, v]) => t("lineage.version_of", { name, version: v })).join(t("lineage.list.separator"));
+  return t(on ? "lineage.confirmed_on" : "lineage.confirmed", { who: node.confirmed_by, time: timeText(node.confirmed_at), on });
 }
 
-export const KIND_LABEL = { source: "数据源", dataset: "数据集", pipeline: "管道", type: "对象类型", relation: "关系", view: "视图", action: "行为", derived: "派生属性", answer: "回答" };
+export const KIND_LABEL = Object.fromEntries(Object.keys(KIND_STYLE).map((kind) => [kind, undefined]));
+for (const kind of Object.keys(KIND_LABEL)) Object.defineProperty(KIND_LABEL, kind, { enumerable: true, get: () => t(`lineage.kind.${kind}`) });
 
 /** Where the current version of a dataset came from, in a few words; "" when the service does not say. */
 export function cameFromText(came, full = false) {
   if (!came) return "";
-  if (came.kind === "upload") return "上传的";
-  if (came.kind === "source") return came.source ? `从 ${came.source}${full ? ` 的表 ${came.table}` : ""} 拉取` : "从数据源拉取";
-  if (came.kind === "pipeline") return came.pipeline ? `管道 ${came.pipeline} 写的` : "管道写的";
-  if (came.kind === "action") return came.action ? `行为 ${came.action} 改过` : "行为改过";
+  if (came.kind === "upload") return t("lineage.came.upload");
+  if (came.kind === "source") return came.source ? t(full ? "lineage.came.source_table" : "lineage.came.source", { source: came.source, table: came.table }) : t("lineage.came.source_unnamed");
+  if (came.kind === "pipeline") return came.pipeline ? t("lineage.came.pipeline", { name: came.pipeline }) : t("lineage.came.pipeline_unnamed");
+  if (came.kind === "action") return came.action ? t("lineage.came.action", { name: came.action }) : t("lineage.came.action_unnamed");
   return "";
 }
 
 /** How a dataset's date is said: an upload (or a version whose origin was not recorded) was uploaded, the rest were updated. */
-export const datedText = (came) => (!came || came.kind === "upload" || came.kind === "other" ? "上传于" : "更新于");
+export const datedText = (came) => (!came || came.kind === "upload" || came.kind === "other" ? t("lineage.dated.uploaded") : t("lineage.dated.updated"));
 
 /** The two lines under a source's name: its kind and whether its last test or pull worked (a failure stands out), and what it fills. */
 export function sourceLines(node) {
   const filled = node.tables?.length ?? 0;
-  return [{ text: `${node.kind_label}，${node.status_label}`, ...(node.status === "failed" ? { cause: true } : {}) }, { text: filled ? `填 ${filled} 个数据集` : "还没有读进数据集的表" }];
+  return [{ text: t("lineage.source.line", { kind: node.kind_label, status: node.status_label }), ...(node.status === "failed" ? { cause: true } : {}) }, { text: filled ? t("lineage.source.fills", { count: filled }) : t("lineage.source.empty") }];
 }
 
 /** `text` cut with "…" so it fits `maxPx` at font size `size`: a Chinese character is as wide as the size, a Latin one about 0.58 of it. */
@@ -350,11 +372,16 @@ export function fitText(text, maxPx, size) {
   return chars.join("");
 }
 
-const FIT_CAP = 1.5;
-const TOOLS_ROOM = 44;   // the zoom buttons float over the top right corner
-/** Where the picture sits in its frame. "all" shows the whole of it, centred, never larger than life; "width" fills the frame's width (up to 1.5 times) and starts just under the zoom buttons, so a long wide picture is readable on open and the reader scrolls or drags down. */
+const READABLE_FLOOR = 0.7;   // below this the text of a card is too small to read: the picture is cut off at the edge and the reader drags for the rest
+/** Where the picture sits in its frame. "all" shows the whole of it, centred, never larger than life. "readable" (the lineage) fits the whole picture but never zooms in past 100% or out past
+ * 70%, keeps `content.top` pixels clear for the sticky column header, centres what fits and starts at the left edge what does not. */
 export function fitView(frame, content, mode = "all") {
-  if (mode === "width") return { k: Math.min(frame.w / content.width, FIT_CAP), x: 0, y: TOOLS_ROOM };
+  if (mode === "width") return { k: Math.min(frame.w / content.width, 1.5), x: 0, y: 44 };   // the old lineage fit, kept for its test: fill the width, up to 150%
+  if (mode === "readable") {
+    const top = content.top ?? 0;
+    const k = Math.min(1, Math.max(READABLE_FLOOR, Math.min(frame.w / content.width, (frame.h - top) / content.height)));
+    return { k, x: Math.max(0, (frame.w - content.width * k) / 2), y: top };
+  }
   const k = Math.min(frame.w / content.width, frame.h / content.height, 1);
   return { k, x: (frame.w - content.width * k) / 2, y: (frame.h - content.height * k) / 2 };
 }

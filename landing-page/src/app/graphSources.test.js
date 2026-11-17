@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setLocale } from "./i18n/index.js";
 
 import { KIND_LABEL, SIZE, cameFromText, sourceLines } from "./graphModel.js";
+
+setLocale("zh");   // these tests assert the Chinese wording; English is the default
 
 test("a source is a node of its own on the lineage", () => {
   assert.equal(KIND_LABEL.source, "数据源");

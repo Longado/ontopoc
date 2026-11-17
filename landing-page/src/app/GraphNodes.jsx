@@ -1,52 +1,63 @@
 import React from "react";
-import { KIND_LABEL, SIZE, ageText, cameFromText, datedText, fitText, labelWidth, leaves, sourceLines } from "./graphModel.js";
+import { t } from "./i18n/index.js";
+import { KIND_LABEL, KIND_STYLE, STATE_COLOUR, ageText, fitText, labelWidth, leaves, sourceLines, stateTone } from "./graphModel.js";
 import { lineLabel, matchRateText } from "./relationModel.js";
-import { stateText } from "./typeModel.js";
+import { statusOf } from "./statusModel.js";
 
-const stateClass = (node) => `s-${node.model_draft ? "proposed" : node.state ?? "none"}`;
+const DOT = " · ";
+const stateWord = (node) => statusOf(node.state, { modelDraft: node.model_draft }).label;
 
-function secondLine(node) {
-  if (node.stale) return { text: `需再看，${node.stale.label}`, cause: true };
-  return { text: stateText(node), word: node.state };
-}
-
+/** The lines under a node's name: the kind first, then what is worth knowing at a glance. `cause` marks a line that says something needs another look. */
 function lines(node) {
+  const kind = KIND_LABEL[node.kind];
   if (node.kind === "type") {
-    const objects = node.objects == null ? "" : node.rows_limited ? `你能看到 ${node.objects} 个对象` : `${node.objects} 个对象`;
-    return [{ text: objects }, secondLine(node), ...(node.stale?.short ? [{ text: node.stale.short }] : [])];   // what moved, in a few words, under the cause
+    const objects = node.objects == null ? "" : t(node.rows_limited ? "lineage.node.objects_limited" : "lineage.node.objects", { count: node.objects });
+    const more = node.stale ? [{ text: t("lineage.node.needs_look", { label: node.stale.label }), cause: true }] : node.state && node.state !== "confirmed" ? [{ text: stateWord(node) }] : [];
+    return [{ text: [kind, objects].filter(Boolean).join(DOT) }, ...more];
   }
-  if (node.kind === "source") return sourceLines(node);
-  if (node.kind === "dataset") return [{ text: [`第 ${node.version} 版`, cameFromText(node.came_from)].filter(Boolean).join("，") }, ...(node.uploaded_at ? [{ text: `${datedText(node.came_from)} ${ageText(node.uploaded_at)}` }] : [])];   // a dataset this person may not open does not say when it came
-  if (node.stale) return [{ text: node.stale.label, cause: true }];
-  return [{ text: node.state ? `${KIND_LABEL[node.kind]} ${stateText(node)}` : KIND_LABEL[node.kind], word: node.state }];   // an answer is nobody's confirmation: it has no state word
+  if (node.kind === "source") {
+    const [first, second] = sourceLines(node);
+    return [{ text: `${kind}${DOT}${first.text}`, cause: first.cause }, ...(second ? [{ text: second.text }] : [])];
+  }
+  if (node.kind === "dataset") {
+    return [{ text: [kind, t("lineage.node.version", { version: node.version }), node.uploaded_at ? ageText(node.uploaded_at) : ""].filter(Boolean).join(DOT) }];   // a dataset this person may not open does not say when it came
+  }
+  if (node.stale) return [{ text: kind }, { text: t("lineage.node.needs_look", { label: node.stale.label }), cause: true }];
+  return [{ text: node.state && node.state !== "confirmed" ? `${kind}${DOT}${stateWord(node)}` : kind }];   // an answer is nobody's confirmation: it has no state word
 }
 
-/** One node of either graph, at `box`: a type is a card with a header, a dataset a flat box, the rest small boxes. A click or Enter picks it. */
+/** The words of a node's state, for its tooltip and screen-reader label: the colours of the dot and the bar are never the only sign. */
+function stateName(node) {
+  if (node.status === "failed") return t("status.failed");
+  if (node.stale) return t("lineage.node.needs_look", { label: node.stale.label });
+  return node.state || node.model_draft ? stateWord(node) : "";
+}
+
+/** One node of either graph, at `box`, as a card: a coloured chip with the kind's icon, the name, a line or two of what matters, and a dot and a bar on the left in the state's colour.
+ * A click or Enter picks it. The card is as big as `box` says (the lineage's cards are all one size, the relation graph's types are taller). */
 export function GraphNode({ node, box, picked, faded, onPick }) {
-  const { w, h } = SIZE[node.kind];
-  const inner = w - 24;
-  const kindClass = node.kind === "dataset" || node.kind === "source" ? "dataset" : "";
+  const { w, h } = box;
+  const style = KIND_STYLE[node.kind] ?? KIND_STYLE.view;
+  const tone = stateTone(node);
+  const colour = STATE_COLOUR[tone];
   const shown = lines(node);
-  const hint = [KIND_LABEL[node.kind], node.name, node.stale ? `${node.stale.label}${node.stale.root ? `：${node.stale.root}` : ""}` : ""].filter(Boolean).join("，");
+  const hint = [KIND_LABEL[node.kind], node.name, stateName(node), node.stale?.root ? t("lineage.cause", { label: node.stale.label, root: node.stale.root }) : ""].filter(Boolean).join(", ");
+  const two = shown.length > 1;
+  const x = 46;
+  const nameY = two ? h / 2 - 6 : h / 2 - 1;
+  const metaY = nameY + 15;
   return (
-    <g className={`g-node ${stateClass(node)} ${kindClass}${picked ? " picked" : ""}${faded ? " faded" : ""}`} transform={`translate(${box.x} ${box.y})`} tabIndex={0} role="button" aria-label={hint} aria-pressed={picked}
+    <g className={`g-node s-${tone}${picked ? " picked" : ""}${faded ? " faded" : ""}`} transform={`translate(${box.x} ${box.y})`} tabIndex={0} role="button" aria-label={hint} aria-pressed={picked}
       onClick={(e) => { e.stopPropagation(); onPick(); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(); } }}>
       <title>{hint}</title>
-      {node.kind === "pipeline"
-        ? <path className="box" d={`M14 0 H${w - 14} L${w} ${h / 2} L${w - 14} ${h} H14 L0 ${h / 2} Z`} />   // a pipeline is a hexagon: a thing that does work, not one that holds data
-        : <rect className="box" width={w} height={h} rx={node.kind === "dataset" ? 2 : node.kind === "source" ? 12 : 6} />}
-      {node.kind === "type" ? (
-        <>
-          <path className="head" d={`M0 24 V6 a6 6 0 0 1 6 -6 H${w - 6} a6 6 0 0 1 6 6 V24 Z`} />
-          <text className="name" x="12" y="17">{fitText(node.name, inner, 14)}</text>
-          {shown.map((l, i) => <text key={i} className={l.cause ? "cause" : `line${l.word ? ` word-${l.word}` : ""}`} x="12" y={41 + i * 15}>{fitText(l.text, inner, 12)}</text>)}
-        </>
-      ) : (
-        <>
-          <text className="name" x={node.kind === "pipeline" ? 20 : 12} y="21">{fitText(node.name, node.kind === "pipeline" ? inner - 16 : inner, 14)}</text>
-          {shown.map((l, i) => <text key={i} className={l.cause ? "cause" : `line${l.word ? ` word-${l.word}` : ""}`} x={node.kind === "pipeline" ? 20 : 12} y={h - 12 - (shown.length - 1 - i) * 15}>{fitText(l.text, node.kind === "pipeline" ? inner - 16 : inner, 12)}</text>)}
-        </>
-      )}
+      {picked && <rect className="ring" x="-3" y="-3" width={w + 6} height={h + 6} rx="9" />}
+      <rect className="card" width={w} height={h} rx="6" />
+      <path className="bar" d={`M0 6 A6 6 0 0 1 6 0 H8 V${h} H6 A6 6 0 0 1 0 ${h - 6} Z`} fill={colour} />
+      <rect x="16" y={h / 2 - 12} width="24" height="24" rx="5" fill={style.colour} />
+      <path className="glyph" d={style.icon} transform={`translate(${16 + 5} ${h / 2 - 12 + 5}) scale(0.58)`} />
+      <circle cx={w - 14} cy="14" r="4" fill={colour} />
+      <text className="name" x={x} y={nameY}>{fitText(node.name, w - x - 28, 13)}</text>
+      {shown.map((l, i) => <text key={i} className={`meta${l.cause ? " cause" : ""}`} x={x} y={metaY + i * 14}>{fitText(l.text, w - x - 10, 11)}</text>)}
     </g>
   );
 }
@@ -69,11 +80,11 @@ export function RelationLine({ group, from, to, picked, faded, lit, onPick, labe
   const toward = !many && first.arrow_to ? (first.arrow_to === group.to ? "marker-end" : "marker-start") : null;
   const marker = lit ? "blue" : colour(state);
   return (
-    <g className={`g-edge s-${state}${failing && !many ? " dashed" : ""}${lit ? " lit" : ""}${picked ? " picked" : ""}${faded ? " faded" : ""}`} tabIndex={0} role="button" aria-label={`${first.from_name} 和 ${first.to_name}：${label}，点开看详情`}
+    <g className={`g-edge s-${state}${failing && !many ? " dashed" : ""}${lit ? " lit" : ""}${picked ? " picked" : ""}${faded ? " faded" : ""}`} tabIndex={0} role="button" aria-label={t("lineage.line.aria", { from: first.from_name, to: first.to_name, label })}
       onClick={(e) => { e.stopPropagation(); onPick(); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(); } }}>
       {part !== "label" && <line className="line" x1={a.x} y1={a.y} x2={b.x} y2={b.y} {...(toward ? { [toward === "marker-end" ? "markerEnd" : "markerStart"]: `url(#arrow-${marker})` } : {})} />}
       {part !== "label" && <line className="hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth="20" pointerEvents="stroke" style={{ cursor: "pointer" }} />}
-      <title>{many ? label : `${first.name}：${matchRateText(first)}。点开看详情`}</title>
+      <title>{many ? label : t("lineage.line.title", { name: first.name, rate: matchRateText(first) })}</title>
       {part !== "line" && <rect className="pill" x={mx - width / 2} y={my - 11} width={width} height="22" rx="4" />}
       {part !== "line" && <text x={mx} y={my + 4} textAnchor="middle">{label}</text>}
     </g>
@@ -86,9 +97,9 @@ export function FlowLine({ from, to, lit, faded }) {
   const y1 = from.y + from.h / 2;
   const x2 = to.x;
   const y2 = to.y + to.h / 2;
-  const bend = Math.max(30, (x2 - x1) / 2);
+  const bend = Math.max(24, (x2 - x1) / 2);
   return (
-    <g className={`g-edge${lit ? " lit" : ""}${faded ? " faded" : ""}`}>
+    <g className={`g-edge flow${lit ? " lit" : ""}${faded ? " faded" : ""}`}>
       <path className="line" d={`M${x1} ${y1} C${x1 + bend} ${y1} ${x2 - bend} ${y2} ${x2} ${y2}`} markerEnd={`url(#arrow-${lit ? "blue" : "grey"})`} />
     </g>
   );

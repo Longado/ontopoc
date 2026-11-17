@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setLocale } from "./i18n/index.js";
 
-import { LAYERS, SIZE, ageText, lineageColumns, litDepth, causeLine, edgeLabel, fitText, forceLayout, groupEdges, layeredLayout, leaves, lit, neighbours, shown, verdictText } from "./graphModel.js";
+import { LAYERS, SIZE, ageText, fitView, lineageColumns, litDepth, causeLine, edgeLabel, fitText, forceLayout, groupEdges, layeredLayout, leaves, lit, neighbours, shown, verdictText } from "./graphModel.js";
+
+setLocale("zh");   // these tests assert the Chinese wording; English is the default
 
 const node = (id, kind, name = id, extra = {}) => ({ id, kind, name, ...extra });
 const LINEAGE = {
@@ -161,4 +164,23 @@ test("the depth control lights only N steps around the picked node", () => {
   assert.deepEqual(ids(1, "down"), ["dataset:汇总", "pipeline:p"]);
   assert.deepEqual(ids(2, "down"), ["dataset:汇总", "objtype:order", "pipeline:p"]);
   assert.equal(litDepth("pipeline:p", CHAIN.edges, "both", null).size, 10);
+});
+
+test("the lineage draws every node as a 220 x 56 card, in contiguous columns that start at the left edge", () => {
+  const { positions, columns, width } = lineageColumns(CHAIN.nodes, CHAIN.edges);
+  assert.ok(CHAIN.nodes.every((n) => positions[n.id].w === 220 && positions[n.id].h === 56));
+  assert.equal(columns[0].x, 0);
+  columns.slice(1).forEach((c, i) => assert.equal(c.x, columns[i].x + columns[i].w));
+  assert.equal(width, columns.at(-1).x + columns.at(-1).w);
+  assert.ok(CHAIN.nodes.every((n) => positions[n.id].x >= columns.find((c) => positions[n.id].x >= c.x && positions[n.id].x < c.x + c.w).x));
+  assert.ok(Object.values(positions).every((p) => p.y >= 16));   // the sticky header strip sits above the graph, not inside it
+});
+
+test("a readable fit never zooms in past 100% or out past 70%, leaves room for the sticky header and centres what fits", () => {
+  const content = { width: 1000, height: 400, top: 28 };
+  assert.deepEqual(fitView({ w: 2000, h: 1200 }, content, "readable"), { k: 1, x: 500, y: 28 });
+  const small = fitView({ w: 600, h: 300 }, content, "readable");
+  assert.equal(small.k, 0.7);
+  assert.equal(small.x, 0);   // wider than the frame at the floor: starts at the left edge, the reader drags for the rest
+  assert.equal(fitView({ w: 900, h: 900 }, content, "readable").k, 0.9);
 });
