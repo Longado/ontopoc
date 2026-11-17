@@ -13,6 +13,7 @@ from ontology_poc_generator.pipeline_funcs import number_text
 from ontology_poc_generator.pipeline_llm import (
     LlmError, LlmService, MAX_FIELD_CHARS, _blank, cache_get, cache_put, call_many, compile_prompt, contract_of, effective, prompt_sent, refuse_over, request_of, row_hash)
 from ontology_poc_generator.workspace_store import now_text
+from ontology_poc_generator.lang import tr
 
 SAMPLE_ROWS = 20   # the sample a person is shown to label when they do not say how many
 MIN_LABELLED = 20   # the rows that have to be labelled for a review to pass (every different row the step reads, when there are fewer)
@@ -51,21 +52,21 @@ def check_expected(eff: dict, expected):
     kind = eff['kind']
     if kind == 'extract':
         if not isinstance(expected, dict):
-            raise LlmError('抽取的标注要写成 {字段名: 值}')
+            raise LlmError(tr('抽取的标注要写成 {字段名: 值}', 'The label for an extraction must be {field name: value}'))
         return {f['name']: expected.get(f['name']) for f in eff['fields']}
     if kind == 'number':
         if isinstance(expected, bool) or not _is_number(expected):
-            raise LlmError(f'标注要写一个数，写的是「{expected}」')
+            raise LlmError(tr(f'标注要写一个数，写的是「{expected}」', f'The label must be a number, and it says "{expected}"'))
         return expected
     if not isinstance(expected, str) or not expected.strip():
-        raise LlmError('标注要写期望的答案')
+        raise LlmError(tr('标注要写期望的答案', 'The label must give the expected answer'))
     expected = expected.strip()
     if kind == 'choice' and expected not in eff['choices']:
-        raise LlmError(f'标注「{expected}」不在可选的答案里：{"、".join(eff["choices"])}')
+        raise LlmError(tr(f'标注「{expected}」不在可选的答案里：{"、".join(eff["choices"])}', f'The label "{expected}" is not among the possible answers: {", ".join(eff["choices"])}'))
     if kind == 'choices':
         picked = [p.strip() for p in expected.replace('；', ';').split(';') if p.strip()]
         if not picked or any(p not in eff['choices'] for p in picked):
-            raise LlmError(f'标注要从可选的答案里选，几个用“；”隔开：{"、".join(eff["choices"])}')
+            raise LlmError(tr(f'标注要从可选的答案里选，几个用“；”隔开：{"、".join(eff["choices"])}', f'The label must be chosen from the possible answers, separated by "; " when there are several: {", ".join(eff["choices"])}'))
     return expected
 
 
@@ -87,10 +88,11 @@ def draw(rows: list[tuple[int, dict]], fields: list[str], n: int, seed, skip: se
     return random.Random(seed).sample(list(pool.values()), min(n, len(pool)))
 
 
-def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: list[str], rows: list[tuple[int, dict]], what: str = '这次试跑') -> list[dict]:
+def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: list[str], rows: list[tuple[int, dict]], what: str | None = None) -> list[dict]:
     """The step applied to these (row number, values) rows; `names` are the columns the step reads. For each {'row', 'fields', 'status', 'values', 'message', 'raw', 'cached', 'prompt'}. A row with
     nothing in its prompt fields is skipped without a call. Answers that are answers are kept for later runs, each batch as it comes back. This calls the model, for at most
     MAX_TRIAL_CALLS rows (refused before the first call, in words that start with `what`)."""
+    what = what or tr('这次试跑', 'this trial run')
     eff = effective(step)
     parts, fields = compile_prompt(eff['prompt'], names)
     model = service.model or step.get('model')
@@ -103,14 +105,14 @@ def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: lis
     todo = {k: request_of(eff, parts, v) for k, v in asked.items() if k not in kept and all(len(x or '') <= MAX_FIELD_CHARS for x in v.values())}
     refuse_over(len(todo), pipeline_llm.MAX_TRIAL_CALLS, what)
     if todo and service.gateway is None:
-        raise LlmError('本机服务没有模型凭据，不能调用模型')
+        raise LlmError(tr('本机服务没有模型凭据，不能调用模型', 'This server has no model credentials, so the model cannot be called'))
     got = call_many(service.gateway, eff, todo, lambda batch: cache_put(conn, pipeline_id, step['id'], contract, model, {k: g for k, g in batch.items() if g['status'] == 'ok'})) if todo else {}
     out = []
     for position, values in rows:
         shown = {f: values.get(f) for f in fields}
         request = request_of(eff, parts, values)
         if all(_blank(values.get(f)) for f in fields):
-            out.append({'row': position, 'fields': shown, 'status': 'skipped', 'values': None, 'message': '跳过：提示用到的列都是空的', 'raw': None, 'cached': False, 'prompt': None})
+            out.append({'row': position, 'fields': shown, 'status': 'skipped', 'values': None, 'message': tr('跳过：提示用到的列都是空的', 'Skipped: every column the prompt uses is empty'), 'raw': None, 'cached': False, 'prompt': None})
             continue
         key = row_hash(values, fields)
         if key in kept:
@@ -119,7 +121,7 @@ def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: lis
             g = got[key]
             out.append({'row': position, 'fields': shown, 'status': g['status'], 'values': g['values'], 'message': g['message'], 'raw': g['raw'], 'cached': False, 'prompt': prompt_sent(request)})
         else:
-            out.append({'row': position, 'fields': shown, 'status': 'failed', 'values': None, 'message': f'内容超过 {MAX_FIELD_CHARS} 字，没有发送', 'raw': None, 'cached': False, 'prompt': None})
+            out.append({'row': position, 'fields': shown, 'status': 'failed', 'values': None, 'message': tr(f'内容超过 {MAX_FIELD_CHARS} 字，没有发送', f'The content is over {MAX_FIELD_CHARS} characters and was not sent'), 'raw': None, 'cached': False, 'prompt': None})
     return out
 
 
@@ -135,12 +137,12 @@ def save_labels(conn, pipeline_id: str, step: dict, names: list[str], labels, wh
     eff = effective(step)
     _, fields = compile_prompt(eff['prompt'], names)
     if not isinstance(labels, list) or not labels:
-        raise LlmError('要写至少一行的标注（labels）')
+        raise LlmError(tr('要写至少一行的标注（labels）', 'Write labels for at least one row (labels)'))
     rows = []
     for item in labels:
         values = item.get('fields') if isinstance(item, dict) else None
         if not isinstance(values, dict) or set(values) != set(fields):
-            raise LlmError(f'每条标注要带上这一行提示里用到的列：{"、".join(fields)}')
+            raise LlmError(tr(f'每条标注要带上这一行提示里用到的列：{"、".join(fields)}', f'Each label must include the columns the prompt uses for that row: {", ".join(fields)}'))
         rows.append((row_hash(values, fields), json.dumps(values, ensure_ascii=False), json.dumps(check_expected(eff, item.get('expected')), ensure_ascii=False)))
     conn.execute('BEGIN IMMEDIATE')
     try:
@@ -165,10 +167,10 @@ def run_review(conn, service: LlmService, pipeline_id: str, step: dict, names: l
     eff = effective(step)
     labels = labels_of(conn, pipeline_id, step['id'])
     if not labels:
-        raise LlmError('还没有标注：先抽一批行，写下你期望的答案')
+        raise LlmError(tr('还没有标注：先抽一批行，写下你期望的答案', 'No labels yet: pull a batch of rows and write the answers you expect'))
     real = [l for l in labels if l['row_hash'] in present]
-    done = dict(zip((l['row_hash'] for l in real), run_rows(conn, service, pipeline_id, step, names, [(i, l['fields']) for i, l in enumerate(real)], '这次样本审核')))
-    absent = {'values': None, 'status': 'absent', 'message': '这一行不在这一步读到的数据里，算没对上'}
+    done = dict(zip((l['row_hash'] for l in real), run_rows(conn, service, pipeline_id, step, names, [(i, l['fields']) for i, l in enumerate(real)], tr('这次样本审核', 'this sample review'))))
+    absent = {'values': None, 'status': 'absent', 'message': tr('这一行不在这一步读到的数据里，算没对上', 'This row is not in the data this step read, so it counts as a mismatch')}
     detail = [{'fields': l['fields'], 'expected': l['expected'], 'values': (r := done.get(l['row_hash'], absent))['values'], 'matched': matches(eff, l['expected'], r['values']),
                'status': r['status'], 'message': r['message'], 'row_hash': l['row_hash']} for l in labels]
     matched = sum(d['matched'] for d in detail)

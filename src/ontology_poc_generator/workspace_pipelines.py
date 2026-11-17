@@ -38,6 +38,7 @@ from ontology_poc_generator.type_access import dataset_hidden, view_input_hidden
 from ontology_poc_generator.workspace_store import (
     SelfConfirmation, StaleElement, apply_upload, current_dataset, element_state_writes, log_line, now_text, plan_upload)
 from ontology_poc_generator.object_views import view_summary, view_visible
+from ontology_poc_generator.lang import tr
 
 PREVIEW_ROWS = 100
 TRIAL_ROWS = 100
@@ -78,29 +79,29 @@ def resolve_inputs(conn, engine, spec, user: dict | None) -> dict:
         if isinstance(step.get('dataset'), str):
             name = step['dataset']
             if dataset_hidden(conn, name, user):
-                raise TypeRefused(f'没有叫“{name}”的数据集', 404)
+                raise TypeRefused(tr(f'没有叫“{name}”的数据集', f'There is no dataset called "{name}"'), 404)
             if _row_ruled(conn, name):
-                raise TypeRefused(f'“{name}”的行受行规则限制，不能做管道的输入：管道会把没权限看的行带到别的数据集里', 409)
+                raise TypeRefused(tr(f'“{name}”的行受行规则限制，不能做管道的输入：管道会把没权限看的行带到别的数据集里', f'The rows of "{name}" are limited by a row rule, so it cannot be a pipeline input: the pipeline would carry rows you may not see into another dataset'), 409)
             pinned = step.get('version')
             found = conn.execute('SELECT id, version FROM dataset WHERE name = ? AND version = ?', (name, pinned)).fetchone() if isinstance(pinned, int) and not isinstance(pinned, bool) \
                 else (lambda d: (d['id'], d['version']) if d else None)(current_dataset(conn, name))
             if found is None:
-                raise TypeRefused(f'没有叫“{name}”的数据集' + (f'的第 {pinned} 版' if pinned is not None else ''), 404)
+                raise TypeRefused(tr(f'没有叫“{name}”的数据集', f'There is no dataset called "{name}"') + (tr(f'的第 {pinned} 版', f' version {pinned}') if pinned is not None else ''), 404)
             ids[dataset_key(step)] = found[0]
             versions[dataset_key(step)] = found[1]
             reads.append(f'dataset:{name}')
         elif isinstance(step.get('view'), str):
             view = element_row(conn, f'{VIEW_PREFIX}{step["view"]}')
             if view is None or not view_visible(conn, view, user) or view_input_hidden(conn, view['element_id'], user):
-                raise TypeRefused(f'没有叫“{step["view"]}”的视图', 404)
+                raise TypeRefused(tr(f'没有叫“{step["view"]}”的视图', f'There is no view called "{step["view"]}"'), 404)
             if view['state'] != 'confirmed':
-                raise TypeRefused(f'视图“{step["view"]}”还没有确认（{view["state"]}），不能做管道的输入', 409)
+                raise TypeRefused(tr(f'视图“{step["view"]}”还没有确认（{view["state"]}），不能做管道的输入', f'The view "{step["view"]}" is not confirmed ({view["state"]}), so it cannot be a pipeline input'), 409)
             content = _content(view)
             summary = view_summary(conn, content)
             if summary['problems']:
-                raise TypeRefused(f'视图“{step["view"]}”现在读不了：{"；".join(summary["problems"])}', 409)
+                raise TypeRefused(tr(f'视图“{step["view"]}”现在读不了：{"；".join(summary["problems"])}', f'The view "{step["view"]}" cannot be read now: {"; ".join(summary["problems"])}'), 409)
             if _row_ruled(conn, summary['dataset']):
-                raise TypeRefused(f'视图“{step["view"]}”的数据集受行规则限制，不能做管道的输入', 409)
+                raise TypeRefused(tr(f'视图“{step["view"]}”的数据集受行规则限制，不能做管道的输入', f'The dataset of the view "{step["view"]}" is limited by a row rule, so it cannot be a pipeline input'), 409)
             dataset = current_dataset(conn, summary['dataset'])
             table = f'pv_{len(cleanup)}'
             engine.execute(f'DROP TABLE IF EXISTS temp.{table}')
@@ -172,7 +173,7 @@ def pipeline_visible(conn, row: dict, user: dict | None) -> bool:
 def _pipeline_row(conn, name, user: dict | None) -> dict:
     row = element_row(conn, pipeline_id(str(name)))
     if row is None or not pipeline_visible(conn, row, user):
-        raise TypeRefused('没有这条管道', 404)
+        raise TypeRefused(tr('没有这条管道', 'No such pipeline'), 404)
     return row
 
 
@@ -204,17 +205,17 @@ def _check_outputs(conn, spec: dict, own: str, user: dict | None) -> None:
             continue
         name, mode = step['name'], step.get('mode')
         if mode not in (None, 'new', 'new_version'):
-            raise TypeRefused(f'输出“{name}”的 mode 只能是 new（新数据集）或 new_version（接管已有的数据集写新版本）')
+            raise TypeRefused(tr(f'输出“{name}”的 mode 只能是 new（新数据集）或 new_version（接管已有的数据集写新版本）', f'The mode of the output "{name}" must be new (a new dataset) or new_version (take over an existing dataset and write new versions)'))
         if dataset_hidden(conn, name, user):
-            raise TypeRefused(f'没有叫“{name}”的数据集可以写入，也不能用这个名字新建', 409)
+            raise TypeRefused(tr(f'没有叫“{name}”的数据集可以写入，也不能用这个名字新建', f'There is no dataset called "{name}" to write to, and this name cannot be used to create one'), 409)
         producer = producer_of(conn, name)
         if producer not in (None, own):
-            raise TypeRefused(f'数据集“{name}”已经是管道“{_content(element_row(conn, producer))["name"]}”的输出，一个数据集只能有一条管道写', 409)
+            raise TypeRefused(tr(f'数据集“{name}”已经是管道“{_content(element_row(conn, producer))["name"]}”的输出，一个数据集只能有一条管道写', f'The dataset "{name}" is already an output of the pipeline "{_content(element_row(conn, producer))["name"]}", and a dataset can only be written by one pipeline'), 409)
         if current_dataset(conn, name) is not None and producer is None and mode != 'new_version':
-            raise TypeRefused(f'已经有叫“{name}”的数据集，不是管道写的。要让这条管道接管它、以后写它的新版本，输出里写 "mode": "new_version"；要新建，请换一个名字', 409)
+            raise TypeRefused(tr(f'已经有叫“{name}”的数据集，不是管道写的。要让这条管道接管它、以后写它的新版本，输出里写 "mode": "new_version"；要新建，请换一个名字', f'A dataset called "{name}" already exists and was not written by a pipeline. To let this pipeline take it over and write its new versions from now on, write "mode": "new_version" in the output; to create a new one, use another name'), 409)
         upstream = reads | {n for r in reads for n in _upstream(conn, r, set())}
         if name in upstream:
-            raise TypeRefused(f'输出“{name}”也是这条管道（或它上游的管道）要读的数据，会绕成一圈', 409)
+            raise TypeRefused(tr(f'输出“{name}”也是这条管道（或它上游的管道）要读的数据，会绕成一圈', f'The output "{name}" is also data this pipeline (or a pipeline upstream of it) reads, which would go in a circle'), 409)
 
 
 # --- the definition a person writes -------------------------------------------------------------------------------------------------------------------
@@ -223,13 +224,13 @@ def check_definition(conn, engine, payload: dict, user: dict | None, name: str |
     """{'content' (name, description, spec), 'reads', 'outputs', 'versions', 'ctx', 'resolved'} for a pipeline as a person wrote it: its inputs may be used, every step
     and operator checks against the columns it reads (names and types), the outputs are free to write (unless `outputs_free` is off: a preview of a draft does not write).
     TypeRefused says what is wrong. The caller drops the temporary tables (drop_temporary) when done."""
-    name = _text(payload.get('name') if name is None else name, '管道的名字', MAX_NAME)
+    name = _text(payload.get('name') if name is None else name, tr('管道的名字', 'the pipeline name'), MAX_NAME)
     if ':' in name or '/' in name or '?' in name or '#' in name or name in ('options', 'new'):
-        raise TypeRefused('管道的名字不能有冒号、斜杠、问号、井号，也不能叫 options 或 new')
-    description = _text(payload.get('description') or '', '说明', MAX_DESCRIPTION, required=False)
+        raise TypeRefused(tr('管道的名字不能有冒号、斜杠、问号、井号，也不能叫 options 或 new', 'A pipeline name cannot contain a colon, slash, question mark or hash, and cannot be called options or new'))
+    description = _text(payload.get('description') or '', tr('说明', 'description'), MAX_DESCRIPTION, required=False)
     spec = payload.get('spec')
     if not isinstance(spec, dict) or len(_canonical(spec)) > MAX_BODY_SPEC:
-        raise TypeRefused('管道要写成 {"steps": […]}，不能太大')
+        raise TypeRefused(tr('管道要写成 {"steps": […]}，不能太大', 'A pipeline must be written as {"steps": [...]} and cannot be too big'))
     resolved = resolve_inputs(conn, engine, spec, user)
     try:
         ctx, meaning_ids = build_context(conn)
@@ -267,7 +268,7 @@ def _flag_takeover(conn, name: str, datasets: list[str]) -> None:
     """A pipeline nobody has confirmed writes (or is now to write) these datasets: what is confirmed on them, types, views, other pipelines, goes to needs_look for new
     data and says which pipeline, since confirming a type means confirming the pipeline under it too (unconfirmed_producers). Inside the caller's transaction."""
     for dataset in datasets:
-        _flag(conn, f'dataset:{dataset}', f'数据集“{dataset}”现在由管道“{name}”写，这条管道还没有确认', pipeline_id(name), [], 'data', 'self')
+        _flag(conn, f'dataset:{dataset}', tr(f'数据集“{dataset}”现在由管道“{name}”写，这条管道还没有确认', f'The dataset "{dataset}" is now written by the pipeline "{name}", which is not confirmed yet'), pipeline_id(name), [], 'data', 'self')
 
 
 def _version_row(element_id: str, version: int, content: dict, who: str | None) -> tuple:
@@ -286,10 +287,10 @@ def create_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
     try:
         element_id = pipeline_id(found['content']['name'])
         if element_row(conn, element_id):
-            raise TypeRefused(f'已经有叫“{found["content"]["name"]}”的管道', 409)
+            raise TypeRefused(tr(f'已经有叫“{found["content"]["name"]}”的管道', f'A pipeline called "{found["content"]["name"]}" already exists'), 409)
         for (other,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'pipeline:%'"):
             if other.casefold() == element_id.casefold():
-                raise TypeRefused(f'已经有叫“{other[len(PIPELINE_PREFIX):]}”的管道（名字不分大小写）', 409)
+                raise TypeRefused(tr(f'已经有叫“{other[len(PIPELINE_PREFIX):]}”的管道（名字不分大小写）', f'A pipeline called "{other[len(PIPELINE_PREFIX):]}" already exists (names are not case-sensitive)'), 409)
         _write(conn, _change(found['content'], 1, found['versions'], who), found['reads'], found['outputs'], _version_row(element_id, 1, found['content'], who), None,
                lambda c: _flag_takeover(c, found['content']['name'], found['outputs']))
     finally:
@@ -304,7 +305,7 @@ def update_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
     engine = engine or conn
     row = _pipeline_row(conn, payload.get('id'), user)
     if payload.get('version') != row['version']:
-        raise TypeRefused('这条管道在你打开之后被改了，请刷新后再改', 409)
+        raise TypeRefused(tr('这条管道在你打开之后被改了，请刷新后再改', 'This pipeline was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
     found = check_definition(conn, engine, {**payload, 'spec': payload.get('spec', old['spec'])}, user, old['name'], row['element_id'])
     try:
@@ -312,7 +313,7 @@ def update_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
         changed = _canonical(new['spec']) != _canonical(old['spec'])
         if changed or row['state'] in ('proposed', 'rejected'):
             version = old['definition_version'] + (1 if changed else 0)
-            after = (lambda c: _flag_readers(c, element_id, f'管道“{old["name"]}”的定义改了（第 {version} 版）', [], 'definition')) if changed else None
+            after = (lambda c: _flag_readers(c, element_id, tr(f'管道“{old["name"]}”的定义改了（第 {version} 版）', f'The definition of the pipeline "{old["name"]}" changed (version {version})'), [], 'definition')) if changed else None
             _write(conn, _change(new, version, found['versions'], who), found['reads'], found['outputs'], _version_row(element_id, version, new, who) if changed else None,
                    {element_id: row['version']}, after)
             return {'id': old['name'], 'state': 'checked', 'definition_version': version, 'changed': changed}
@@ -385,12 +386,12 @@ def preview(conn, engine, payload: dict, user: dict | None, llm: LlmService | No
     spec, name = _spec_of(conn, payload, user)
     node = payload.get('node')
     if not isinstance(node, str) or node not in {s['id'] for s in spec.get('steps', []) if isinstance(s, dict)}:
-        raise TypeRefused('要写预览哪一个步骤（node）')
+        raise TypeRefused(tr('要写预览哪一个步骤（node）', 'Say which step to preview (node)'))
     spec = {**copy.deepcopy(spec), 'steps': [s for s in copy.deepcopy(spec['steps']) if s.get('id') in needed_steps(spec, [node])]}   # what the node reads and nothing after it: a step further down that is wrong does not stop this one
     if payload.get('operator') is not None:
         step = next(s for s in spec['steps'] if s['id'] == node)
         if step.get('type') != 'transform' or not isinstance(payload['operator'], int) or not 0 <= payload['operator'] < len(step['operators']):
-            raise TypeRefused('预览到第几个操作（operator）要写成这个转换步骤里的序号，从 0 数起')
+            raise TypeRefused(tr('预览到第几个操作（operator）要写成这个转换步骤里的序号，从 0 数起', 'The operator to preview up to must be its position in this transform step, counting from 0'))
         step['operators'] = step['operators'][:payload['operator'] + 1]
     found = check_definition(conn, engine, {'name': name or 'preview', 'spec': spec}, user, outputs_free=False)
     captured = {}
@@ -469,7 +470,7 @@ def _spec_of(conn, payload: dict, user: dict | None) -> tuple[dict, str | None]:
     if isinstance(payload.get('spec'), dict):
         return payload['spec'], _content(saved)['name'] if saved else None
     if saved is None:
-        raise TypeRefused('要写是哪条管道（id），或者一份还没保存的定义（spec）')
+        raise TypeRefused(tr('要写是哪条管道（id），或者一份还没保存的定义（spec）', 'Say which pipeline (id), or give a definition that is not saved yet (spec)'))
     return _content(saved)['spec'], _content(saved)['name']
 
 
@@ -484,10 +485,10 @@ def output_status(conn, report: dict, step: dict) -> dict:
     dropped = len(report['dropped'])
     if matched < len(required):
         missing = [r for r in required if r not in shown]
-        return {'state': 'error', 'matched': matched, 'required': len(required), 'dropped': dropped, 'missing': missing, 'text': f'错误 ({matched}/{len(required)})：缺 {"、".join(missing)}'}
+        return {'state': 'error', 'matched': matched, 'required': len(required), 'dropped': dropped, 'missing': missing, 'text': tr(f'错误 ({matched}/{len(required)})：缺 {"、".join(missing)}', f'Error ({matched}/{len(required)}): missing {", ".join(missing)}')}
     if dropped:
-        return {'state': 'dropped', 'matched': matched, 'required': len(required), 'dropped': dropped, 'missing': [], 'text': f'丢列 ({matched}/{len(required)}, {dropped} 列丢弃)'}
-    return {'state': 'match', 'matched': matched, 'required': len(required), 'dropped': 0, 'missing': [], 'text': f'匹配 ({matched}/{len(required)} 必需列)'}
+        return {'state': 'dropped', 'matched': matched, 'required': len(required), 'dropped': dropped, 'missing': [], 'text': tr(f'丢列 ({matched}/{len(required)}, {dropped} 列丢弃)', f'Columns dropped ({matched}/{len(required)}, {dropped} dropped)')}
+    return {'state': 'match', 'matched': matched, 'required': len(required), 'dropped': 0, 'missing': [], 'text': tr(f'匹配 ({matched}/{len(required)} 必需列)', f'Match ({matched}/{len(required)} required columns)')}
 
 
 def _compact(nodes: list[dict]) -> list[dict]:
@@ -556,11 +557,11 @@ def _dry_run(conn, engine, row: dict, user: dict | None, llm: LlmService | None 
                           llm_run(conn, llm, pipeline_id(content['name']), 'cache'))
         problems = _output_problems(conn, result['nodes'], content['spec'])
         if problems:
-            raise TypeRefused('；'.join(problems), 409)
+            raise TypeRefused(tr('；', '; ').join(problems), 409)
     except TypeRefused:
         raise
     except (ValueError, PipelineRunError) as exc:
-        raise TypeRefused(f'按现在的数据运行不了：{exc}', 409) from None
+        raise TypeRefused(tr(f'按现在的数据运行不了：{exc}', f'It cannot run on the data as it is now: {exc}'), 409) from None
     finally:
         drop_temporary(engine, resolved)
     return {'stats': stats, 'rows': {n['id']: n.get('rows_out') for n in result['nodes']}, 'inputs': resolved['versions'],
@@ -576,14 +577,14 @@ def _output_problems(conn, nodes: list[dict], spec: dict) -> list[str]:
         out, name = n['output'], _output_step(spec, n['id'])['name']
         status = output_status(conn, out, _output_step(spec, n['id']))
         if status['state'] == 'error':
-            problems.append(f'输出“{name}”{status["text"]}')
+            problems.append(tr(f'输出“{name}”{status["text"]}', f'Output "{name}" {status["text"]}'))
         if out['duplicate_keys']:
-            shown = '、'.join(f'{" + ".join(map(str, e["key"]))}（{e["rows"]} 行）' for e in out['duplicate_keys']['examples'][:10])
-            problems.append(f'输出“{name}”的主键有 {out["duplicate_keys"]["count"]} 个重复：{shown}' + ('等' if out['duplicate_keys']['count'] > 10 else ''))
+            shown = '、'.join(tr(f'{" + ".join(map(str, e["key"]))}（{e["rows"]} 行）', f'{" + ".join(map(str, e["key"]))} ({e["rows"]} rows)') for e in out['duplicate_keys']['examples'][:10])
+            problems.append(tr(f'输出“{name}”的主键有 {out["duplicate_keys"]["count"]} 个重复：{shown}', f'The key of the output "{name}" has {out["duplicate_keys"]["count"]} repeats: {shown}') + (tr('等', 'etc.') if out['duplicate_keys']['count'] > 10 else ''))
         if out['empty_keys']:
-            problems.append(f'输出“{name}”有 {out["empty_keys"]} 行的主键是空的')
+            problems.append(tr(f'输出“{name}”有 {out["empty_keys"]} 行的主键是空的', f'The output "{name}" has {out["empty_keys"]} rows with an empty key'))
         if not n['rows_out']:
-            problems.append(f'输出“{name}”没有一行，没有写数据集')
+            problems.append(tr(f'输出“{name}”没有一行，没有写数据集', f'The output "{name}" has no rows, so no dataset was written'))
     return problems
 
 
@@ -652,7 +653,7 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm
             if report['type'] == 'output':
                 held = sum(len(r) for r in outputs.values()) + report['rows_out']
                 if held > OUTPUT_CAP:   # said before the rows are read into memory
-                    raise PipelineRunError(f'输出一共 {held:,} 行，超过一次运行最多 {OUTPUT_CAP:,} 行，没有写数据集。先在前面过滤，或汇总后再输出')
+                    raise PipelineRunError(tr(f'输出一共 {held:,} 行，超过一次运行最多 {OUTPUT_CAP:,} 行，没有写数据集。先在前面过滤，或汇总后再输出', f'The output has {held:,} rows in all, more than the {OUTPUT_CAP:,} allowed in one run, so no dataset was written. Filter earlier, or summarize before the output'))
                 cols = compiled['output']['columns']
                 outputs[report['id']] = [[_as_text(v, col['type']) for v, col in zip(r, cols)]
                                          for r in c.execute(f'SELECT {", ".join(_q(col["name"]) for col in cols)} FROM {compiled["table"]} ORDER BY rowid')]
@@ -660,7 +661,7 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm
         with deadline(engine, RUN_SECONDS):
             result = _execute(engine, content['spec'], resolved, ctx, feeds, take, llm_run(conn, llm, element_id, 'cache', known=filled))
         if any((n.get('llm') or {}).get('pending') for n in result['nodes']):   # rows that arrived after the model was asked have no answer
-            raise PipelineRunError('数据在问模型的这段时间里变了，有的行还没有答案，没有写数据集。请再运行一次')
+            raise PipelineRunError(tr('数据在问模型的这段时间里变了，有的行还没有答案，没有写数据集。请再运行一次', 'The data changed while the model was being asked, and some rows have no answer yet, so no dataset was written. Run it again'))
         problems = _output_problems(conn, result['nodes'], content['spec'])
         if problems:
             raise PipelineRunError('；'.join(problems))
@@ -670,7 +671,7 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm
         log_line(conn, who or '未署名', element_id, 'run_failed', after={'run': run_id, 'error': str(exc)})
         return run_detail(conn, content['name'], run_id, user)
     except BaseException as exc:   # something not ours (the database): the run is not left "running"
-        _record(conn, run_id, status='failed', error=f'运行出错：{exc}', finished_at=now_text(), duration_ms=round((time.monotonic() - started) * 1000))
+        _record(conn, run_id, status='failed', error=tr(f'运行出错：{exc}', f'Run failed: {exc}'), finished_at=now_text(), duration_ms=round((time.monotonic() - started) * 1000))
         raise
     finally:
         if resolved:
@@ -759,24 +760,24 @@ def confirm_pipeline(conn, payload: dict, who: str | None, user: dict | None, en
     engine = engine or conn
     row = _pipeline_row(conn, payload.get('id'), user)
     if payload.get('version') != row['version']:
-        raise TypeRefused('确认要带上你看到的那一版；它在你看过之后被改了，请刷新后重新看一遍', 409)
+        raise TypeRefused(tr('确认要带上你看到的那一版；它在你看过之后被改了，请刷新后重新看一遍', 'Confirming needs the version you saw, and it was changed after you looked. Refresh and look again'), 409)
     if row['state'] == 'confirmed':
-        raise TypeRefused('已经确认过了', 409)
+        raise TypeRefused(tr('已经确认过了', 'Already confirmed'), 409)
     if row['state'] == 'rejected':
-        raise TypeRefused('已经被退回了：要先按退回的理由改，再重新提出', 409)
+        raise TypeRefused(tr('已经被退回了：要先按退回的理由改，再重新提出', 'It was sent back: change it as the reason says, then propose it again'), 409)
     content, element_id = _content(row), row['element_id']
     if two_person(conn)['active'] and user is not None and user.get('id') in _editors(conn, element_id):
-        raise SelfConfirmation('这条管道的定义你改过，要另一位来确认')
+        raise SelfConfirmation(tr('这条管道的定义你改过，要另一位来确认', 'You changed the definition of this pipeline, so someone else has to confirm it'))
     waiting = waiting_on(conn, content)
     if waiting:
-        names = '、'.join(f'“{w["name"]}”' for w in waiting)
-        raise TypeRefused(f'管道用到的{names}还没有确认，要先确认它们', 409)
+        names = tr('、', ', ').join(f'“{w["name"]}”' for w in waiting)
+        raise TypeRefused(tr(f'管道用到的{names}还没有确认，要先确认它们', f'The pipeline uses {names}, which is not confirmed yet. Confirm it first'), 409)
     if not isinstance(payload.get('seen'), dict):
-        raise TypeRefused('确认要带上你看到的输入数据版本（seen）')
+        raise TypeRefused(tr('确认要带上你看到的输入数据版本（seen）', 'Confirming needs the input data versions you saw (seen)'))
     now = _inputs_now(conn, content)
     if payload['seen'].get('inputs') != now:
-        read = '、'.join(f'{k} 第 {v} 版' for k, v in now.items())
-        raise TypeRefused(f'数据在你看过之后变了：现在读的是 {read}，和你看到的不一样，请刷新后重新看一遍', 409)
+        read = '、'.join(tr(f'{k} 第 {v} 版', f'{k} version {v}') for k, v in now.items())
+        raise TypeRefused(tr(f'数据在你看过之后变了：现在读的是 {read}，和你看到的不一样，请刷新后重新看一遍', f'The data changed after you looked: what it reads now is {read}, which is not what you saw. Refresh and look again'), 409)
     dry = _dry_run(conn, engine, row, user, llm)
     anchors = {'definition_version': content['definition_version'], 'inputs': dry['inputs']}
     write_confirmation(conn, element_id, content, f'pipeline:{content["name"]}@d{content["definition_version"]}', who, anchors, dry['inputs'], row['version'],
@@ -794,9 +795,9 @@ def pipeline_problems(conn, row: dict) -> list[str]:
             continue
         now = current_dataset(conn, key)
         if now is None:
-            problems.append(f'数据集“{key}”已经不在了')
+            problems.append(tr(f'数据集“{key}”已经不在了', f'The dataset "{key}" no longer exists'))
         elif now['version'] != version:
-            problems.append(f'数据变了：{key} 第 {version} 版 → 第 {now["version"]} 版（{now["who"] or "未署名"}上传），管道读的是它')
+            problems.append(tr(f'数据变了：{key} 第 {version} 版 → 第 {now["version"]} 版（{now["who"] or "未署名"}上传），管道读的是它', f'The data changed: {key} version {version} → version {now["version"]} (uploaded by {now["who"] or "unsigned"}), which the pipeline reads'))
     if not problems:
         resolved = None
         try:
@@ -804,7 +805,7 @@ def pipeline_problems(conn, row: dict) -> list[str]:
             ctx, _ = build_context(conn)
             check_pipeline(_content(row)['spec'], resolved['datasets'], resolved['views'], ctx)
         except (ValueError, TypeRefused) as exc:
-            problems.append(f'按现在的数据，管道过不了检查：{exc}')
+            problems.append(tr(f'按现在的数据，管道过不了检查：{exc}', f'On the data as it is now, the pipeline fails its checks: {exc}'))
         finally:
             if resolved:
                 drop_temporary(conn, resolved)
@@ -846,8 +847,8 @@ def ai_uncleared(conn, dataset_name: str, model: str | None = None, _seen: froze
         return {}
     feeding = [n for n in ai_nodes(conn, content, model) if n['id'] in needed_steps(spec, [out['id']])]
     unreviewed = [n['name'] for n in feeding if not n['review']['passed']]
-    why = f'AI 生成的列：{content["name"]} 里的「{"、".join(unreviewed)}」样本审核还没有通过' if unreviewed else \
-        f'AI 生成的列：管道“{content["name"]}”还没有另一位确认' if row['state'] != 'confirmed' else None
+    why = tr(f'AI 生成的列：{content["name"]} 里的「{"、".join(unreviewed)}」样本审核还没有通过', f'AI-generated column: the sample review of "{", ".join(unreviewed)}" in {content["name"]} has not passed yet') if unreviewed else \
+        tr(f'AI 生成的列：管道“{content["name"]}”还没有另一位确认', f'AI-generated column: the pipeline "{content["name"]}" is not confirmed by a second person yet') if row['state'] != 'confirmed' else None
     for upstream in _datasets_of(spec):
         if why is None:
             why = next(iter(ai_uncleared(conn, upstream, model, _seen | {dataset_name}).values()), None)
@@ -880,10 +881,10 @@ def output_states(conn, row: dict) -> list[dict]:
         if last and current:
             was = json.loads(last[2] or '{}')
             if last[1] != content['definition_version']:
-                state |= {'stale': True, 'cause': 'definition', 'word': '定义改了', 'reason': f'管道的定义从第 {last[1]} 版改成了第 {content["definition_version"]} 版，这份数据还是旧定义算的'}
+                state |= {'stale': True, 'cause': 'definition', 'word': tr('定义改了', 'Definition changed'), 'reason': tr(f'管道的定义从第 {last[1]} 版改成了第 {content["definition_version"]} 版，这份数据还是旧定义算的', f'The definition of the pipeline changed from version {last[1]} to version {content["definition_version"]}, and this data was still worked out from the old definition')}
             elif any(now.get(k) != v for k, v in was.items() if '@v' not in k):
                 moved = next(k for k, v in was.items() if '@v' not in k and now.get(k) != v)
-                state |= {'stale': True, 'cause': 'data', 'word': '数据变了', 'reason': f'{moved} 从第 {was[moved]} 版变成了第 {now.get(moved)} 版，这份数据还是旧数据算的'}
+                state |= {'stale': True, 'cause': 'data', 'word': tr('数据变了', 'Data changed'), 'reason': tr(f'{moved} 从第 {was[moved]} 版变成了第 {now.get(moved)} 版，这份数据还是旧数据算的', f'{moved} changed from version {was[moved]} to version {now.get(moved)}, and this data was still worked out from the old data')}
         out.append(state)
     return out
 
@@ -922,7 +923,7 @@ def pipeline_versions(conn, name: str, user: dict | None, frm=None, to=None) -> 
     out = {'versions': [{'version': v, 'saved_by': kept[v][1], 'saved_at': kept[v][2], 'steps': len(kept[v][0]['spec']['steps'])} for v in sorted(kept, reverse=True)]}
     if frm is not None and to is not None:
         if frm not in kept or to not in kept:
-            raise TypeRefused('没有这个定义版本', 404)
+            raise TypeRefused(tr('没有这个定义版本', 'No such definition version'), 404)
         out['changes'] = diff_specs(kept[frm][0]['spec'], kept[to][0]['spec'])
         out['spec'] = kept[to][0]['spec']
     return out
@@ -940,7 +941,7 @@ def run_detail(conn, name: str, run_id: int, user: dict | None) -> dict:
     found = conn.execute(f'SELECT {RUN_COLUMNS}, input_versions_json, nodes_json, failures_json, outputs_json, error FROM pipeline_run WHERE id = ? AND pipeline_id = ?',
                          (run_id, row['element_id'])).fetchone()
     if found is None:
-        raise TypeRefused('没有这次运行', 404)
+        raise TypeRefused(tr('没有这次运行', 'No such run'), 404)
     loads = lambda text: json.loads(text) if text else None
     return {**_run_line(found), 'input_versions': loads(found[7]), 'nodes': loads(found[8]) or [], 'failures': loads(found[9]) or {}, 'outputs': loads(found[10]) or [], 'error': found[11]}
 
@@ -969,7 +970,7 @@ def _columns_before(conn, engine, payload: dict, user: dict | None):
     steps = spec.get('steps') if isinstance(spec.get('steps'), list) else []
     step = next((s for s in steps if isinstance(s, dict) and s.get('id') == step_id and s.get('type') == 'transform'), None)
     if step is None:
-        raise TypeRefused('要写表达式在哪个转换步骤里（step）')
+        raise TypeRefused(tr('要写表达式在哪个转换步骤里（step）', 'Say which transform step the expression is in (step)'))
     spec = {**copy.deepcopy(spec), 'steps': [s for s in copy.deepcopy(steps) if s.get('id') in needed_steps(spec, [step_id])]}
     at = payload.get('operator')
     next(s for s in spec['steps'] if s['id'] == step_id)['operators'] = step['operators'][:at] if isinstance(at, int) and not isinstance(at, bool) and at >= 0 else step['operators']
@@ -1003,7 +1004,7 @@ def trial_expression(conn, engine, payload: dict, user: dict | None, llm: LlmSer
         columns = [{'name': c['name'], 'type': c['type']} for c in visible(compiled['columns'])]
         result = compile_expression(payload.get('expression'), columns)
         if not result['ok']:
-            return {'ok': False, 'errors': result['errors'], 'basis': '样本'}
+            return {'ok': False, 'errors': result['errors'], 'basis': tr('样本', 'Sample')}
         sample = min(max(int(payload.get('rows') or TRIAL_ROWS), 1), 1000)
         out = {}
 
@@ -1023,7 +1024,7 @@ def trial_expression(conn, engine, payload: dict, user: dict | None, llm: LlmSer
                                                 [by_name[f] for f in fields if by_name[f]['type'] in ('date', 'datetime')], result['truncates'])
         register(engine)
         _execute(engine, found['content']['spec'], found['resolved'], found['ctx'], needed_steps(found['content']['spec'], [step_id]), take, llm_run(conn, llm, llm_scope(payload.get('id'), user, found['content']['spec']), 'cache'))
-        return {'ok': True, 'type': result['type'], 'errors': out['errors'], 'rows': out['rows'], 'rows_tried': out['rows_tried'], 'notices': out.get('notices', []), 'basis': '样本'}
+        return {'ok': True, 'type': result['type'], 'errors': out['errors'], 'rows': out['rows'], 'rows_tried': out['rows_tried'], 'notices': out.get('notices', []), 'basis': tr('样本', 'Sample')}
     except (ValueError, PipelineRunError) as exc:
         raise TypeRefused(str(exc), 409) from None
     finally:
@@ -1034,5 +1035,5 @@ def format_guess(payload: dict) -> dict:
     """{examples: [text]}: how many of the examples each known date format reads, best first."""
     examples = payload.get('examples')
     if not isinstance(examples, list) or not examples or len(examples) > 200 or not all(isinstance(e, str) for e in examples):
-        raise TypeRefused('要贴几个日期的样例（examples），最多 200 个')
+        raise TypeRefused(tr('要贴几个日期的样例（examples），最多 200 个', 'Give a few example dates (examples), at most 200'))
     return {'formats': guess_formats(examples)[:6]}

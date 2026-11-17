@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 
+from ontology_poc_generator.lang import tr
 from ontology_poc_generator import pipeline_llm
 from ontology_poc_generator.object_types import TypeRefused
 from ontology_poc_generator.pipeline_funcs import register
@@ -24,7 +25,7 @@ EXPECTED_TOKENS_OUT = 80   # what an answer is reckoned to cost to write, for th
 def _step(spec: dict, step_id) -> dict:
     found = next((s for s in spec.get('steps', []) if isinstance(s, dict) and s.get('id') == step_id and s.get('type') == 'llm'), None)
     if found is None:
-        raise TypeRefused('要写是哪个 AI 步骤（step）')
+        raise TypeRefused(tr('要写是哪个 AI 步骤（step）', 'Say which AI step (step)'))
     return found
 
 
@@ -89,12 +90,12 @@ def state(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
         drop_temporary(engine, found['resolved'])
     report = next(n for n in result['nodes'] if n['id'] == step['id'])['llm']
     kept = cache_counts(conn, scope, step['id'], contract)
-    why = [*([f'记的模型是 {step["model"]}，现在用的是 {model}'] if model != step.get('model') else []),
-           *([f'提示、模型或输出改过：以前记下的 {kept["stale"]} 条答案不再用'] if kept['stale'] else [])]
+    why = [*([tr(f'记的模型是 {step["model"]}，现在用的是 {model}', f'The step records model {step["model"]}, but {model} is in use now')] if model != step.get('model') else []),
+           *([tr(f'提示、模型或输出改过：以前记下的 {kept["stale"]} 条答案不再用', f'The prompt, model or output changed, so the {kept["stale"]} answers kept before are no longer used')] if kept['stale'] else [])]
     return {'step': step['id'], 'name': step['name'], 'template': eff['template'], 'kind': eff['kind'], 'choices': eff['choices'], 'fields': eff['fields'], 'prompt': eff['prompt'],
             'columns': [c['name'] for c in eff['columns']], 'inputs': compile_prompt(eff['prompt'], names)[1], 'model_now': model, 'model_node': step.get('model'), 'contract': contract, 'report': report, 'cache': kept,
             'recompute': {'rows': report['to_call'], 'why': why} if why else None, 'estimate': _estimate(report, llm), 'review': review_state(conn, scope, step, model),
-            'labels': labels_of(conn, scope, step['id']) if name else [], 'basis': '全部行'}
+            'labels': labels_of(conn, scope, step['id']) if name else [], 'basis': tr('全部行', 'All rows')}
 
 
 def trial(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
@@ -111,21 +112,21 @@ def trial(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
     if mode == 'values':
         values = payload.get('values')
         if not isinstance(values, dict) or set(values) - set(fields) or not all(v is None or isinstance(v, str) for v in values.values()):
-            raise TypeRefused(f'要填提示里用到的列的值：{"、".join(fields)}')
-        chosen, basis = [(0, {f: values.get(f) for f in fields})], '输入的值'
+            raise TypeRefused(tr(f'要填提示里用到的列的值：{"、".join(fields)}', f'Fill in values for the columns the prompt uses: {", ".join(fields)}'))
+        chosen, basis = [(0, {f: values.get(f) for f in fields})], tr('输入的值', 'Entered values')
     elif mode == 'rows':
         wanted = payload.get('rows')
         if not isinstance(wanted, list) or not 1 <= len(wanted) <= MAX_TRIAL_ROWS or not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(rows) for i in wanted):
-            raise TypeRefused(f'要选 1 到 {MAX_TRIAL_ROWS} 行，行号从 0 数起，不超过这一步的行数 {len(rows)}')
-        chosen, basis = [(i, rows[i][1]) for i in dict.fromkeys(wanted)], '选的行'
+            raise TypeRefused(tr(f'要选 1 到 {MAX_TRIAL_ROWS} 行，行号从 0 数起，不超过这一步的行数 {len(rows)}', f'Pick 1 to {MAX_TRIAL_ROWS} rows. Row numbers count from 0 and stay below the row count of this step, {len(rows)}'))
+        chosen, basis = [(i, rows[i][1]) for i in dict.fromkeys(wanted)], tr('选的行', 'Chosen rows')
     elif mode in ('sample', 'draw'):
         n = payload.get('n', SAMPLE_ROWS)
         if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= MAX_TRIAL_ROWS:
-            raise TypeRefused(f'样本要 1 到 {MAX_TRIAL_ROWS} 行')
+            raise TypeRefused(tr(f'样本要 1 到 {MAX_TRIAL_ROWS} 行', f'A sample must be 1 to {MAX_TRIAL_ROWS} rows'))
         skip = {l['row_hash'] for l in labels_of(conn, scope, step['id'])} if payload.get('exclude_labelled') and name else set()
-        chosen, basis = draw(rows, fields, n, payload.get('seed'), skip), '样本'
+        chosen, basis = draw(rows, fields, n, payload.get('seed'), skip), tr('样本', 'Sample')
     else:
-        raise TypeRefused('试跑的方式（mode）只有 values、rows、sample、draw')
+        raise TypeRefused(tr('试跑的方式（mode）只有 values、rows、sample、draw', 'The trial mode (mode) is one of values, rows, sample, draw'))
     if mode == 'draw':   # the rows to label, without the model's answers: a person writes what they expect before they see what it said
         return {'trials': [{'row': i, 'fields': v, 'row_hash': row_hash(v, fields)} for i, v in chosen], 'fields': fields, 'columns': [c['name'] for c in eff['columns']], 'basis': basis,
                 'rows_in_input': len(rows), 'model': None}
@@ -166,7 +167,7 @@ def review_rerun(conn, engine, payload: dict, who: str | None, user: dict | None
     found, step, eff, names, _ = _checked(conn, engine, payload, user)
     try:
         if eff['template'] == 'summary':
-            raise TypeRefused('概括没有标准答案，不做样本审核')
+            raise TypeRefused(tr('概括没有标准答案，不做样本审核', 'A summary has no right answer, so there is no sample review'))
         fields, rows = _rows(engine, found, step, names)
     finally:
         drop_temporary(engine, found['resolved'])

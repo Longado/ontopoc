@@ -12,6 +12,7 @@ import math
 import re
 
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
+from ontology_poc_generator.lang import tr
 
 MAX_LABEL, MAX_TERMS, MAX_FACTORS = 20, 4, 4   # what a person reads as one formula on one line
 EXAMPLES = 3
@@ -33,28 +34,28 @@ def parse_derived(ontology: dict, raw) -> tuple[dict | None, str | None]:
     from ontology_poc_generator import ontology_questions as questions   # questions imports this module: resolve at call time
     types = {t['key']: t for t in normalize_proposal(ontology)['object_types']}
     if not isinstance(raw, dict):
-        return None, '指标要写成 {type, label, terms}'
+        return None, tr('指标要写成 {type, label, terms}', 'A measure must be written as {type, label, terms}')
     t = types.get(raw.get('type'))
     if t is None:
-        return None, f"本体里没有对象 {raw.get('type')}"
+        return None, tr(f"本体里没有对象 {raw.get('type')}", f"There is no object {raw.get('type')} in the ontology")
     label = raw.get('label')
     if not isinstance(label, str) or not label.strip() or len(label.strip()) > MAX_LABEL:
-        return None, f'指标名要写 1–{MAX_LABEL} 个字'
+        return None, tr(f'指标名要写 1–{MAX_LABEL} 个字', f'A measure name must be 1 to {MAX_LABEL} characters')
     terms = raw.get('terms')
     if not isinstance(terms, list) or not 0 < len(terms) <= MAX_TERMS:
-        return None, f'公式要有 1–{MAX_TERMS} 项'
+        return None, tr(f'公式要有 1–{MAX_TERMS} 项', f'A formula needs 1 to {MAX_TERMS} terms')
     out = []
     for term in terms:
         factors = term.get('factors') if isinstance(term, dict) else None
         if factors is None or term.get('sign', 1) not in (1, -1) or not isinstance(factors, list) or not 0 < len(factors) <= MAX_FACTORS:
-            return None, f'公式每一项要写 sign（1 或 −1）和 1–{MAX_FACTORS} 个因子'
+            return None, tr(f'公式每一项要写 sign（1 或 −1）和 1–{MAX_FACTORS} 个因子', f'Each term of a formula needs a sign (1 or −1) and 1 to {MAX_FACTORS} factors')
         read = []
         for f in factors:
             if not isinstance(f, dict) or set(f) - {'field', 'complement'}:
-                return None, '因子只能是一个字段，或"1 − 字段"'
+                return None, tr('因子只能是一个字段，或"1 − 字段"', 'A factor can only be one field, or "1 − field"')
             field = questions._resolve_field(t, f.get('field'))
             if field is None:
-                return None, f"{t.get('label') or t['key']} 没有字段 {f.get('field')}"
+                return None, tr(f"{t.get('label') or t['key']} 没有字段 {f.get('field')}", f"{t.get('label') or t['key']} has no field {f.get('field')}")
             read.append({'field': field, 'complement': bool(f.get('complement'))})
         out.append({'sign': term.get('sign', 1), 'factors': read})
     return {'type': t['key'], 'label': label.strip(), 'terms': out}, None
@@ -64,7 +65,7 @@ def formula_text(derived: dict) -> str:
     """The formula as a person writes it: 单价 × 数量 ×（1 − 折扣）."""
     def factor(f):
         name = f['field'].partition('.')[2]
-        return f'（1 − {name}）' if f['complement'] else name
+        return tr(f'（1 − {name}）', f'(1 − {name})') if f['complement'] else name
     text = ''
     for i, term in enumerate(derived['terms']):
         product = ' × '.join(factor(f) for f in term['factors']).replace(' × （', ' ×（')
@@ -100,12 +101,12 @@ def compute(ontology: dict, bundle: dict, derived: dict, graph: dict | None = No
                 found = values(inst, f['field'])
                 field = f['field'].partition('.')[2]
                 if len(found) != 1:
-                    problem = f'{name}：{field} {"没有值" if not found else f"有 {len(found)} 个不同的值"}'
+                    problem = tr(f'{name}：{field} {"没有值" if not found else f"有 {len(found)} 个不同的值"}', f'{name}: {field} {"has no value" if not found else f"has {len(found)} different values"}')
                     break
                 raw = next(iter(found))
                 number = to_number(raw)
                 if number is None:
-                    problem = f'{name}：{field} = {raw} 不是数字'
+                    problem = tr(f'{name}：{field} = {raw} 不是数字', f'{name}: {field} = {raw} is not a number')
                     break
                 product *= (1 - number) if f['complement'] else number
             if problem:

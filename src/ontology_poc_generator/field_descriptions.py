@@ -5,11 +5,14 @@ when the headers are English. One call, on request. Code keeps only what names a
 ontology and says why the rest was dropped; a person edits it before it goes anywhere."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import english, tr
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.public_ontology import normalize_proposal, resolve
 from ontology_poc_generator.recognition import model_failure_text
 
 DESCRIBE_PROMPT_VERSION = 'company_field_descriptions.v1'
+ENGLISH_NOTE = '\n\nThe person asking works in English: write every label and description in English.'   # appended only for an English asker; the Chinese prompt is unchanged
+
 EXAMPLES = 3            # the same sample the modeller sees for a column; no rows
 MAX_LABEL, MAX_DESCRIPTION = 40, 200   # what a form cell holds; longer is refused, not cut
 
@@ -55,16 +58,16 @@ def draft_descriptions(ontology: dict, bundle: dict, handover: dict, gateway, pu
                                                        'examples': _examples(bundle, sources.get(key, []), x['path'])} for x in f['fields']]}
         for key, f in forms.items()]}
     out = {'prompt_version': DESCRIBE_PROMPT_VERSION, 'model': None, 'types': {}, 'rejected': [], 'error': None}
-    judgement = ask_model(gateway, 'field_describer', DESCRIBE_PROMPT_VERSION, DESCRIBE_SYSTEM_PROMPT, request)
+    judgement = ask_model(gateway, 'field_describer', DESCRIBE_PROMPT_VERSION, describe_prompt(), request)
     out['model'] = judgement.model
     if judgement.failure == 'request':
         return {**out, 'error': model_failure_text(judgement.message)}
     if judgement.failure == 'not_json' or not isinstance(judgement.reply, dict) or not isinstance(judgement.reply.get('types'), list):
-        return {**out, 'error': '模型返回的不是约定的 JSON'}
+        return {**out, 'error': tr('模型返回的不是约定的 JSON', 'The model did not return the agreed JSON')}
     for t in judgement.reply['types']:
         key = t.get('type') if isinstance(t, dict) else None
         if key not in forms:
-            out['rejected'].append({'item': str(key), 'reason': f'本体里没有对象 {key}'})
+            out['rejected'].append({'item': str(key), 'reason': tr(f'本体里没有对象 {key}', f'The ontology has no object type {key}')})
             continue
         paths = [x['path'] for x in forms[key]['fields']]
         entry = {'label': _text(t.get('label'), MAX_LABEL), 'description': _text(t.get('description'), MAX_DESCRIPTION),
@@ -72,16 +75,20 @@ def draft_descriptions(ontology: dict, bundle: dict, handover: dict, gateway, pu
         if t.get('display_field') in paths:
             entry['display_field'] = t['display_field']
         elif t.get('display_field') is not None:
-            out['rejected'].append({'item': f"{key}.display_field", 'reason': f"展示字段 {t.get('display_field')} 不是这个对象的字段"})
+            out['rejected'].append({'item': f"{key}.display_field", 'reason': tr(f"展示字段 {t.get('display_field')} 不是这个对象的字段", f"Display property {t.get('display_field')} is not a property of this object type")})
         for f in t.get('fields') if isinstance(t.get('fields'), list) else []:
             path = f.get('path') if isinstance(f, dict) else None
             if path not in paths:
-                out['rejected'].append({'item': f'{key}.{path}', 'reason': f'{forms[key]["label"]} 没有字段 {path}'})
+                out['rejected'].append({'item': f'{key}.{path}', 'reason': tr(f'{forms[key]["label"]} 没有字段 {path}', f'{forms[key]["label"]} has no property {path}')})
                 continue
             label, description = _text(f.get('label'), MAX_LABEL), _text(f.get('description') or '', MAX_DESCRIPTION)
             if label is None or description is None:
-                out['rejected'].append({'item': f'{key}.{path}', 'reason': '中文名或描述不是一段短文字'})
+                out['rejected'].append({'item': f'{key}.{path}', 'reason': tr('中文名或描述不是一段短文字', 'The name or description is not a short piece of text')})
                 continue
             entry['fields'][path] = {'label': label, 'description': description, 'drafted': True}
         out['types'][key] = entry
     return out
+
+
+def describe_prompt() -> str:
+    return DESCRIBE_SYSTEM_PROMPT + ENGLISH_NOTE if english() else DESCRIBE_SYSTEM_PROMPT
