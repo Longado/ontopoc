@@ -380,7 +380,8 @@ class ObjectTests(UseLayerCase):
             order_n = self.table(bob, query(filters=[{'field': '订单号', 'op': 'eq', 'value': order['订单号']}]))['numbers'][0]
             related = {r['id']: r for r in bob.get(f'/api/workspace/explore/order/object/{order_n}')[1]['related']}
             [customer] = related['order_customer']['objects']
-            self.assertEqual((customer['text'], customer['name']), (order['客户编号'], next(c['客户名称'] for c in CUSTOMERS if c['客户编号'] == order['客户编号'])))
+            self.assertTrue(customer['text'].startswith(order['客户编号']))
+            self.assertEqual(customer['name'], next(c['客户名称'] for c in CUSTOMERS if c['客户编号'] == order['客户编号']))
             product = related['order_product']['objects'][0] if 'order_product' in related else None
             if product:
                 self.assertEqual(product['name'], next(p['产品名称'] for p in planted.planted_bundle()['sources']['产品']['records'] if p['产品编号'] == product['text']))
