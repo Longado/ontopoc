@@ -56,18 +56,22 @@ export function layout(steps, size = { w: 208, h: 116, gx: 56, gy: 16 }) {
   return { nodes, edges, size, width: steps.length ? cols * size.w + (cols - 1) * size.gx : 0, height: rows * size.h + (rows - 1) * size.gy };
 }
 
-/** A drag position on the 8px grid, never off the top or left edge. */
-export const snap = (v, grid = 8) => Math.max(0, Math.round(v / grid) * grid);
+/** A drag position on the 8px grid. */
+export const snap = (v, grid = 8) => Math.round(v / grid) * grid;
 
-/** The layout with the cards the reader dragged at their own places (`moved` is {step id: {x, y}}; ids of removed steps are ignored);
- * the picture grows to hold every card. With nothing moved it is the layout itself. */
+/** The layout with the cards the reader dragged at their own places (`moved` is {step id: {x, y}} in layout coordinates, which may be negative;
+ * ids of removed steps are ignored). Everything shifts by `shift` so the top-left card sits at 0, and the picture grows to hold every card.
+ * With nothing moved it is the layout itself. */
 export function placed(lay, moved) {
   const ids = Object.keys(moved ?? {}).filter((id) => lay.nodes[id]);
   if (!ids.length) return lay;
-  const nodes = { ...lay.nodes };
-  for (const id of ids) nodes[id] = { ...nodes[id], x: moved[id].x, y: moved[id].y };
-  const all = Object.values(nodes);
-  return { ...lay, nodes, width: Math.max(...all.map((n) => n.x)) + lay.size.w, height: Math.max(...all.map((n) => n.y)) + lay.size.h };
+  const raw = { ...lay.nodes };
+  for (const id of ids) raw[id] = { ...raw[id], x: moved[id].x, y: moved[id].y };
+  const all = Object.values(raw);
+  const shift = { x: Math.max(0, -Math.min(...all.map((n) => n.x))), y: Math.max(0, -Math.min(...all.map((n) => n.y))) };
+  const nodes = Object.fromEntries(Object.entries(raw).map(([id, n]) => [id, { ...n, x: n.x + shift.x, y: n.y + shift.y }]));
+  const shifted = Object.values(nodes);
+  return { ...lay, nodes, shift, width: Math.max(...shifted.map((n) => n.x)) + lay.size.w, height: Math.max(...shifted.map((n) => n.y)) + lay.size.h };
 }
 
 /** The steps that feed no output, when there is an output at all: they are drawn and marked "will not run". */

@@ -67,12 +67,24 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
   const [k, setK] = useState(1);
   const [fitted, setFitted] = useState(true);   // until the reader zooms, the picture follows the pane
   const full = { w: lay.width + PAD * 2, h: lay.height + PAD * 2 };
+  // a movable graph sits in open space a pane wide on every side, so the view can be dragged anywhere and a card can go above or left of the rest
+  const [slack, setSlack] = useState({ x: 0, y: 0 });
+  const center = useRef(false);
   const fit = useCallback(() => {
     const box = pane.current;
     if (!box || !full.w) return;
     setK(Math.max(FIT_FLOOR, Math.min(1, (box.clientWidth - 2) / full.w, (box.clientHeight - 2) / full.h)));
+    if (place) setSlack({ x: box.clientWidth, y: box.clientHeight });
+    center.current = true;
     setFitted(true);
-  }, [full.w, full.h]);
+  }, [full.w, full.h, place]);
+  useLayoutEffect(() => {
+    const box = pane.current;
+    if (!center.current || !box || !place) return;
+    center.current = false;   // after a fit: the picture in the middle of the view (or its left and top edge, when it is bigger)
+    box.scrollLeft = slack.x - Math.max(0, (box.clientWidth - full.w * k) / 2);
+    box.scrollTop = slack.y - Math.max(0, (box.clientHeight - full.h * k) / 2);
+  });
   useLayoutEffect(() => {
     if (fitted) fit();
   }, [fit, fitted, steps.length]);
@@ -85,7 +97,9 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
   }, [fit, fitted]);
   const press = (e, id) => {
     if (!place || e.button !== 0) return;
-    drag.current = { id, x0: e.clientX, y0: e.clientY, nx: at(id).x, ny: at(id).y, moving: false };
+    const sh = lay.shift ?? { x: 0, y: 0 };   // drag in layout coordinates, before the picture shifts to hold cards above or left of the rest
+    drag.current = { id, x0: e.clientX, y0: e.clientY, nx: at(id).x - sh.x, ny: at(id).y - sh.y, moving: false };
+    e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
   const move = (e) => {
@@ -113,6 +127,38 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
     }
     drag.current = null;
     onSelect(id);
+  };
+  // when a card goes above or left of the rest the picture grows that way; scroll by as much, so nothing jumps under the pointer
+  const sx = lay.shift?.x ?? 0;
+  const sy = lay.shift?.y ?? 0;
+  const lastShift = useRef({ x: sx, y: sy });
+  useLayoutEffect(() => {
+    const box = pane.current;
+    const prev = lastShift.current;
+    lastShift.current = { x: sx, y: sy };
+    if (!box || (prev.x === sx && prev.y === sy)) return;
+    box.scrollLeft += (sx - prev.x) * k;
+    box.scrollTop += (sy - prev.y) * k;
+  }, [sx, sy, k]);
+  // pressing on the empty canvas and dragging moves the view (the camera); the wheel and the scrollbars still scroll
+  const pan = useRef(null);
+  const [panning, setPanning] = useState(false);
+  const panStart = (e) => {
+    if (e.button !== 0 || e.target.closest?.(".pl-node")) return;
+    const box = pane.current;
+    pan.current = { x0: e.clientX, y0: e.clientY, sl: box.scrollLeft, st: box.scrollTop };
+    box.setPointerCapture?.(e.pointerId);
+    setPanning(true);
+  };
+  const panMove = (e) => {
+    const p = pan.current;
+    if (!p) return;
+    pane.current.scrollLeft = p.sl - (e.clientX - p.x0);
+    pane.current.scrollTop = p.st - (e.clientY - p.y0);
+  };
+  const panEnd = () => {
+    pan.current = null;
+    setPanning(false);
   };
   const anyMoved = Object.keys(moved).some((id) => steps.some((s) => s.id === id));
   const zoom = (factor) => {
@@ -160,9 +206,9 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
         <button type="button" onClick={fit} aria-label={t("pipeline.graph.fit")} title={t("pipeline.graph.fit")}><PIcon name="fit" /></button>
         {place && anyMoved && <><span className="graph-zoom-sep" aria-hidden="true" /><button type="button" className="graph-reset" onClick={() => keep({})} title={t("pipeline.graph.resetLayoutHint")}>{t("pipeline.graph.resetLayout")}</button></>}
       </div>
-      <div className="graph-pane" ref={pane}>
-        <div className="graph-sizer" style={{ width: full.w * k, height: full.h * k }}>
-          <div className="graph" style={{ width: full.w, height: full.h, transform: `scale(${k})`, transformOrigin: "0 0" }}>
+      <div className={`graph-pane pannable${panning ? " panning" : ""}`} ref={pane} onPointerDown={panStart} onPointerMove={panMove} onPointerUp={panEnd} onPointerCancel={panEnd} title={t("pipeline.graph.panHint")}>
+        <div className="graph-sizer" style={{ width: full.w * k + slack.x * 2, height: full.h * k + slack.y * 2 }}>
+          <div className="graph" style={{ width: full.w, height: full.h, transform: `scale(${k})`, transformOrigin: "0 0", left: slack.x, top: slack.y }}>
             <svg width={full.w} height={full.h} aria-hidden="true">
               <defs>
                 {[["", "pl-arrow"], ["-on", "pl-arrow pl-arrow-on"]].map(([id, cls]) => (

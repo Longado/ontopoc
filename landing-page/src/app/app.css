@@ -2222,3 +2222,6 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 /* R16 pipeline drag: the reset button in the zoom pill, a card while dragged */
 .graph-zoom button.graph-reset { width: auto; padding: 0 8px; font-size: 12px; }
 .pl-node:active { cursor: grabbing; }
+.graph-pane.pannable { cursor: grab; }
+.graph-pane.pannable.panning { cursor: grabbing; user-select: none; }
+.graph-pane.pannable .pl-node { cursor: pointer; }

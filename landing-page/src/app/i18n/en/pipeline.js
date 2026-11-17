@@ -337,6 +337,7 @@ export default {
   "graph.zoomIn": "Zoom in",
   "graph.resetLayout": "Reset layout",
   "graph.resetLayoutHint": "Put every card back in its automatic place",
+  "graph.panHint": "Drag the empty canvas to move the view; drag a card to move it",
   "graph.fit": "Fit to view",
   "graph.wontRun": "will not run",
   "graph.unconfigured": "Unconfigured",
