@@ -1,11 +1,19 @@
 // The words and payload of the 行为 tab and the approval cards, as plain functions of what the service sends, so they can be tested without a browser.
 import { timeText } from "./format.js";
+import { t } from "./i18n/index.js";
 
-export const RECORD_STATE = { pending: "等批准", approved: "已批准", rejected: "已驳回", withdrawn: "已撤回", expired: "已过期", needs_look: "需再看" };
+/** An object whose keys read their words from the dictionary at the moment they are read, so the words follow the language. */
+const worded = (keys, prefix) => {
+  const o = {};
+  for (const k of keys) Object.defineProperty(o, k, { get: () => t(`${prefix}.${k}`), enumerable: true });
+  return o;
+};
+
+export const RECORD_STATE = worded(["pending", "approved", "rejected", "withdrawn", "expired", "needs_look"], "actions.state");
 
 /** A record's state in words; a pending one whose dataset moved says so, and one that undoes another names it. */
 export const recordStateText = (r) =>
-  (r.stale && r.state === "pending" ? "等批准（数据已变）" : RECORD_STATE[r.state] ?? r.state) + (r.undo_of ? `（撤销 #${r.undo_of}）` : "");
+  (r.stale && r.state === "pending" ? t("actions.state.stale") : RECORD_STATE[r.state] ?? r.state) + (r.undo_of ? t("actions.state.undoes", { id: r.undo_of }) : "");
 
 /** A fresh form: an edit, no name, nothing ticked, no condition, anyone who may see it may submit it. */
 export const emptyActionForm = () => ({ kind: "edit", name: "", description: "", properties: [], conditions: [], choices: {}, submitters: [] });
@@ -13,8 +21,8 @@ export const emptyActionForm = () => ({ kind: "edit", name: "", description: "",
 export const emptyCondition = () => ({ column: "", op: "eq", value: "" });
 
 /** The words of each operator and kind, as the form shows them. */
-export const OP_WORD = { eq: "等于", ne: "不等于", gt: "大于", ge: "大于等于", lt: "小于", le: "小于等于", in: "是其中之一", empty: "为空", not_empty: "不为空" };
-export const KIND_WORD = { edit: "改对象", create: "新建对象", delete: "删除对象" };
+export const OP_WORD = worded(["eq", "ne", "gt", "ge", "lt", "le", "in", "empty", "not_empty"], "actions.op");
+export const KIND_WORD = worded(["edit", "create", "delete"], "actions.kind");
 const NO_VALUE = ["empty", "not_empty"];
 const ORDERED = ["gt", "ge", "lt", "le"];
 
@@ -28,21 +36,21 @@ export const choicesPayload = (form) =>
 
 /** The first thing missing before the form can be sent; "" when it can. */
 export function actionProblem(form) {
-  if (!form.name.trim()) return "要写行为的名字";
-  if ((form.kind ?? "edit") === "edit" && !form.properties.length) return "要选至少一个要改的属性";
+  if (!form.name.trim()) return t("actions.problem.name");
+  if ((form.kind ?? "edit") === "edit" && !form.properties.length) return t("actions.problem.properties");
   if (form.kind !== "create") {
     for (const c of form.conditions ?? []) {
-      if (!c.column) return "每个条件要选属性";
-      if (!NO_VALUE.includes(c.op) && !String(c.value ?? "").trim()) return "条件要写取值，或者去掉这个条件";
+      if (!c.column) return t("actions.problem.conditionColumn");
+      if (!NO_VALUE.includes(c.op) && !String(c.value ?? "").trim()) return t("actions.problem.conditionValue");
     }
   }
   return "";
 }
 
-/** One condition as the service takes it: "one of" is a list (split on commas or 、), empty / not empty carry no value. */
+/** One condition as the service takes it: "one of" is a list (split on commas), empty / not empty carry no value. */
 const conditionPayload = (c) => {
   if (NO_VALUE.includes(c.op)) return { column: c.column, op: c.op };
-  if (c.op === "in") return { column: c.column, op: c.op, value: String(c.value ?? "").split(/[,，、]/).map((v) => v.trim()).filter(Boolean) };
+  if (c.op === "in") return { column: c.column, op: c.op, value: String(c.value ?? "").split(/[,\uff0c\u3001]/).map((v) => v.trim()).filter(Boolean) };
   return { column: c.column, op: c.op, value: String(c.value ?? "").trim() };
 };
 
@@ -112,8 +120,8 @@ export function runPayload(action, values) {
 
 /** The first thing missing before a run can be sent; "" when it can. */
 export function runProblem(action, values, reason) {
-  if (action.parameters.some((p) => !plain(values[p.column]))) return "每一项都要填";
-  if (action.kind === "delete" && !plain(reason)) return "删除要写理由";
+  if (action.parameters.some((p) => !plain(values[p.column]))) return t("actions.problem.fill");
+  if (action.kind === "delete" && !plain(reason)) return t("actions.problem.reason");
   return "";
 }
 
@@ -130,12 +138,11 @@ export function notifyRecipient({ kind, column, relation, attr }) {
   return null;
 }
 
-const KIND_SHORT = { edit: "改", create: "新建", delete: "删除" };
 
 /** The last record of an action in one cell: who, when, how it stands. "" while the records are not read. */
 export function lastRecordText(records) {
   if (!records) return "";
-  if (!records.length) return "还没有提交";
+  if (!records.length) return t("actions.last.none");
   const [r] = records;
   return `${r.submitted_by} · ${timeText(r.submitted_at).slice(5)} · ${recordStateText(r)}`;
 }
@@ -143,14 +150,14 @@ export function lastRecordText(records) {
 /** An action as one row of the 行为 table. `records` are its records (newest first) or null; `mayBuild` whether this person builds. A create runs from here; an edit and a delete run from the object. */
 export function actionRow(action, records, mayBuild) {
   return {
-    id: action.id, name: action.name, kind: KIND_SHORT[action.kind] ?? action.kind, says: action.says, state: action.state, last: lastRecordText(records),
+    id: action.id, name: action.name, kind: ["edit", "create", "delete"].includes(action.kind) ? t(`actions.short.${action.kind}`) : action.kind, says: action.says, state: action.state, last: lastRecordText(records),
     canRun: Boolean(mayBuild) && action.kind === "create" && action.state === "confirmed" && action.can_submit !== false,
   };
 }
 
 /** Whether the form's save is off, and the sentence that says why (shown beside the button, not only grey). */
 export function saveBlock(form, busy) {
-  if (busy) return { disabled: true, reason: "正在保存" };
+  if (busy) return { disabled: true, reason: t("actions.saving") };
   const reason = actionProblem(form);
   return { disabled: Boolean(reason), reason };
 }

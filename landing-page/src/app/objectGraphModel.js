@@ -1,3 +1,5 @@
+import { t } from "./i18n/index.js";
+
 /** SELECT GRAPH answers: the objects a query drew and how they are related, laid out from the start objects (first column) a step at a time. */
 
 export const OBJECT_BOX = { w: 176, h: 48 };
@@ -52,6 +54,6 @@ export const nodeLines = (n) => (n.name ? [n.name, `${n.type_name} ${n.key}`] : 
 /** The line under a graph answer: how many start objects are drawn, and the objects they reach. */
 export function graphNote(g) {
   const reached = g.nodes.length - g.nodes.filter((n) => n.start).length;
-  const head = g.shown < g.starts ? `画出前 ${g.shown} 个` : `画出全部 ${g.shown} 个`;
-  return `${head}，和它们连到的 ${reached} 个对象${g.cut ? "；连到的对象太多，只画了一部分" : ""}`;
+  const head = t(g.shown < g.starts ? "objects.graph.head.some" : "objects.graph.head.all", { shown: g.shown });
+  return t("objects.graph.note", { head, count: reached, cut: g.cut ? t("objects.graph.cut") : "" });
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { checkTypeKey, createType, getDataset, getDatasets, getType, updateType } from "./api.js";
 import { typeLabel } from "./format.js";
+import { t } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
 import { hrefFor, parseRoute } from "./routeModel.js";
 import { TYPE_CHOICES, keyProblem, suggestEnglish, typePayload } from "./typeModel.js";
@@ -29,8 +30,8 @@ function KeyResult({ result }) {
         <p className="error">{result.error}</p>
         {k?.repeated?.length > 0 && (
           <ul className="readers">
-            {k.repeated.map((r, i) => <li key={i}>{r.key.join(" + ")}，{r.rows} 行</li>)}
-            {k.repeated_values > k.repeated.length && <li className="muted">还有 {k.repeated_values - k.repeated.length} 个重复的值</li>}
+            {k.repeated.map((r, i) => <li key={i}>{t("types.form.keyRepeat", { key: r.key.join(" + "), rows: r.rows })}</li>)}
+            {k.repeated_values > k.repeated.length && <li className="muted">{t("types.form.keyRepeatMore", { count: k.repeated_values - k.repeated.length })}</li>}
           </ul>
         )}
       </div>
@@ -38,7 +39,7 @@ function KeyResult({ result }) {
   }
   return (
     <div>
-      <p>查了全部 {result.rows_checked} 行，没有重复，没有空值。</p>
+      <p>{t("types.form.keyOk", { rows: result.rows_checked })}</p>
       {result.warnings.map((w, i) => <p key={i} className="warn">{w}</p>)}
     </div>
   );
@@ -59,8 +60,8 @@ export function TypeForm({ id }) {
 
   useEffect(() => {
     if (ready && editing && !form) {
-      const t = saved.data;
-      getDataset(t.dataset).then((d) => setForm({ english: t.id, name: t.name, description: t.description, dataset: t.dataset, key: t.key, columns: columnRows(d, t) }),
+      const ty = saved.data;
+      getDataset(ty.dataset).then((d) => setForm({ english: ty.id, name: ty.name, description: ty.description, dataset: ty.dataset, key: ty.key, columns: columnRows(d, ty) }),
         (e) => setError({ message: e.message }));
     } else if (ready && !editing && !form) {
       const list = datasets.data;
@@ -117,61 +118,61 @@ export function TypeForm({ id }) {
     <main className="page">
       <a className="back" href={editing ? hrefFor({ page: "type", id, tab: "props" }) : hrefFor({ page: "types" })}>
         <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        {editing ? saved.data?.name ?? "对象类型" : "对象类型"}
+        {editing ? saved.data?.name ?? t("types.form.back") : t("types.form.back")}
       </a>
-      <div className="page-head"><h1 tabIndex={-1}>{editing ? "修改对象类型" : "新建对象类型"}</h1></div>
+      <div className="page-head"><h1 tabIndex={-1}>{editing ? t("types.form.titleEdit") : t("types.form.titleNew")}</h1></div>
       {[saved, datasets].map((s, i) => s.status === "error" && <p key={i} className="error">{s.error}</p>)}
       {form && (
         <div className="stack wide">
           <label className="field">
-            <span className="caption">名称</span>
-            <input type="text" value={form.name} placeholder="例如：订单" onChange={(e) => setName(e.target.value)} />
+            <span className="caption">{t("types.form.name")}</span>
+            <input type="text" value={form.name} placeholder={t("types.form.namePlaceholder")} onChange={(e) => setName(e.target.value)} />
           </label>
           <label className="field">
-            <span className="caption">英文名（程序里用的名字，字母、数字、下划线；{editing ? "建好后不能改" : "确认前也不能再改"}）</span>
-            <input type="text" value={form.english} disabled={editing} placeholder="例如：order、customer_ticket" onChange={(e) => { setEnglishTyped(true); setForm({ ...form, english: e.target.value }); }} />
+            <span className="caption">{t("types.form.english", { fixed: editing ? t("types.form.fixedEdit") : t("types.form.fixedNew") })}</span>
+            <input type="text" value={form.english} disabled={editing} placeholder={t("types.form.englishPlaceholder")} onChange={(e) => { setEnglishTyped(true); setForm({ ...form, english: e.target.value }); }} />
             {!editing && (form.english
-              ? <span className="muted small">按名称自动写了“{form.english}”，不合适可以改。</span>
-              : <span className="muted small">{form.name.trim() ? "没认出这个词，请自己写一个英文名，比如“订单”写 order。" : "写好名称后会自动给一个建议。"}</span>)}
+              ? <span className="muted small">{t("types.form.englishAuto", { english: form.english })}</span>
+              : <span className="muted small">{form.name.trim() ? t("types.form.englishUnknown") : t("types.form.englishWait")}</span>)}
           </label>
           <details className="fold" open={Boolean(form.description)}>
-            <summary>说明（可以不写）</summary>
-            <input type="text" aria-label="说明" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <summary>{t("types.form.description")}</summary>
+            <input type="text" aria-label={t("types.form.descriptionAria")} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </details>
           <div className="field">
-            <span className="caption">来自哪个数据集（用它现在的版本）</span>
-            <Select label="数据集" value={form.dataset} disabled={editing} onChange={pickDataset}>
-              <option value="">请选择</option>
-              {datasets.data.map((d) => <option key={d.name} value={d.name}>{d.name}（{d.rows} 行）</option>)}
+            <span className="caption">{t("types.form.dataset")}</span>
+            <Select label={t("types.form.datasetLabel")} value={form.dataset} disabled={editing} onChange={pickDataset}>
+              <option value="">{t("types.form.pick")}</option>
+              {datasets.data.map((d) => <option key={d.name} value={d.name}>{t("types.form.datasetRows", { name: d.name, rows: d.rows })}</option>)}
             </Select>
           </div>
 
           {form.columns.length > 0 && (
             <>
-              <h2 className="section">属性</h2>
-              <p className="hint">通常选能唯一认出每一行的那一列做主键（比如订单号），其余列都勾上做属性。</p>
+              <h2 className="section">{t("types.form.properties")}</h2>
+              <p className="hint">{t("types.form.propertiesHint")}</p>
               <div className="table-wrap">
                 <table className="props">
                   <thead>
-                    <tr><th>主键</th><th>列</th><th>用作属性</th><th>属性名称</th>{advanced && <th>类型</th>}{advanced && <th>代码列</th>}</tr>
+                    <tr><th>{t("types.form.col.key")}</th><th>{t("types.form.col.column")}</th><th>{t("types.form.col.use")}</th><th>{t("types.form.col.label")}</th>{advanced && <th>{t("types.form.col.type")}</th>}{advanced && <th>{t("types.form.col.code")}</th>}</tr>
                   </thead>
                   <tbody>
                     {form.columns.map((c) => {
                       const isKey = form.key.includes(c.name);
                       return (
                         <tr key={c.name}>
-                          <td><input type="checkbox" aria-label={`${c.name} 做主键`} checked={isKey} onChange={(e) => toggleKey(c, e.target.checked)} /></td>
+                          <td><input type="checkbox" aria-label={t("types.form.keyAria", { name: c.name })} checked={isKey} onChange={(e) => toggleKey(c, e.target.checked)} /></td>
                           <td>{c.name} <span className="muted small">{typeLabel(c.type)}</span></td>
-                          <td><input type="checkbox" aria-label={`${c.name} 做属性`} checked={c.include || isKey} disabled={isKey} onChange={(e) => setColumn(c.name, { include: e.target.checked })} /></td>
-                          <td><input type="text" aria-label={`${c.name} 的属性名称`} value={c.label} placeholder={c.name} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { label: e.target.value })} /></td>
+                          <td><input type="checkbox" aria-label={t("types.form.useAria", { name: c.name })} checked={c.include || isKey} disabled={isKey} onChange={(e) => setColumn(c.name, { include: e.target.checked })} /></td>
+                          <td><input type="text" aria-label={t("types.form.labelAria", { name: c.name })} value={c.label} placeholder={c.name} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { label: e.target.value })} /></td>
                           {advanced && <td>
-                            <Select label={`${c.name} 的类型`} value={c.declared} disabled={!(c.include || isKey) || c.enum} onChange={(v) => setColumn(c.name, { declared: v })}>
-                              {TYPE_CHOICES[c.type].map((t) => <option key={t} value={t}>{typeLabel(t)}</option>)}
+                            <Select label={t("types.form.typeAria", { name: c.name })} value={c.declared} disabled={!(c.include || isKey) || c.enum} onChange={(v) => setColumn(c.name, { declared: v })}>
+                              {TYPE_CHOICES[c.type].map((choice) => <option key={choice} value={choice}>{typeLabel(choice)}</option>)}
                             </Select>
                           </td>}
                           {advanced && <td>
                             {c.candidate ? (
-                              <input type="checkbox" aria-label={`${c.name} 是代码列`} checked={c.enum} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { enum: e.target.checked })} />
+                              <input type="checkbox" aria-label={t("types.form.codeAria", { name: c.name })} checked={c.enum} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { enum: e.target.checked })} />
                             ) : <span className="faint">—</span>}
                           </td>}
                         </tr>
@@ -180,34 +181,34 @@ export function TypeForm({ id }) {
                   </tbody>
                 </table>
               </div>
-              <div className="inline"><button className="plain" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>{advanced ? "收起高级设置" : "高级设置：属性类型、代码列"}</button></div>
+              <div className="inline"><button className="plain" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>{advanced ? t("types.form.advancedHide") : t("types.form.advancedShow")}</button></div>
               {problems.map((p, i) => <p key={i} className="error">{p}</p>)}
               <div className="inline">
-                <button className="secondary" onClick={check} disabled={!form.key.length || problems.length > 0}>检查主键</button>
-                <span className="muted small">按全部行查有没有重复和空值；保存时也会查一遍</span>
+                <button className="secondary" onClick={check} disabled={!form.key.length || problems.length > 0}>{t("types.form.checkKey")}</button>
+                <span className="muted small">{t("types.form.checkKeyHint")}</span>
               </div>
               <KeyResult result={keyResult} />
-              {advanced && <p className="hint">代码列不会存成是/否：0、1、2 这样的取值保持整数，由人给每个取值写含义。</p>}
+              {advanced && <p className="hint">{t("types.form.codeHint")}</p>}
 
               {form.columns.filter((c) => c.enum && (c.include || form.key.includes(c.name))).map((c) => (
                 <section key={c.name}>
-                  <h2 className="section">{c.name} 的含义</h2>
+                  <h2 className="section">{t("types.form.meaningsOf", { name: c.name })}</h2>
                   <div className="table-wrap">
                     <table>
-                      <thead><tr><th>取值</th><th className="num">行数</th><th>含义</th></tr></thead>
+                      <thead><tr><th>{t("types.form.value")}</th><th className="num">{t("types.form.rows")}</th><th>{t("types.form.meaning")}</th></tr></thead>
                       <tbody>
                         {Object.entries(c.values).map(([value, rows]) => (
                           <tr key={value}>
                             <td>{value}</td>
                             <td className="num">{rows}</td>
-                            <td><input type="text" aria-label={`${c.name} = ${value} 的含义`} value={c.meanings[value] ?? ""} placeholder="还没有含义"
+                            <td><input type="text" aria-label={t("types.meanings.inputAria", { column: c.name, value })} value={c.meanings[value] ?? ""} placeholder={t("types.meanings.placeholder")}
                               onChange={(e) => setColumn(c.name, { meanings: { ...c.meanings, [value]: e.target.value } })} /></td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <p className="hint">没写含义的取值保持“含义未确认”。写了的，要另一位建设者确认才算数。</p>
+                  <p className="hint">{t("types.form.meaningsHint")}</p>
                 </section>
               ))}
             </>
@@ -216,12 +217,12 @@ export function TypeForm({ id }) {
           {error && (
             <div className="refusal">
               <p className="error">{error.message}</p>
-              {error.keyCheck?.repeated?.length > 0 && <ul className="readers">{error.keyCheck.repeated.map((r, i) => <li key={i}>{r.key.join(" + ")}，{r.rows} 行</li>)}</ul>}
+              {error.keyCheck?.repeated?.length > 0 && <ul className="readers">{error.keyCheck.repeated.map((r, i) => <li key={i}>{t("types.form.keyRepeat", { key: r.key.join(" + "), rows: r.rows })}</li>)}</ul>}
             </div>
           )}
           <div className="inline">
-            <button className="primary" onClick={save} disabled={!complete || sending}>{sending ? "保存中" : editing ? "保存" : "创建"}</button>
-            <a href={editing ? hrefFor({ page: "type", id, tab: "props" }) : hrefFor({ page: "types" })}>取消</a>
+            <button className="primary" onClick={save} disabled={!complete || sending}>{sending ? t("types.form.saving") : editing ? t("common.save") : t("types.form.create")}</button>
+            <a href={editing ? hrefFor({ page: "type", id, tab: "props" }) : hrefFor({ page: "types" })}>{t("common.cancel")}</a>
           </div>
         </div>
       )}

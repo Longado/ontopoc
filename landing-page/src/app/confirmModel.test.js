@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { batchPlan, batchSummary, queueCounts, queueRow, rejectProblem, sortByProblem } from "./confirmModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 const rel = { element: "relation:order_customer", kind: "relation", title: "订单 → 客户（订单属于客户）", state: "needs_look", can_confirm: true, version: 3, seen: "sig",
   lines: [{ ok: false, text: "数据变了：订单 第 2 版" }, { ok: false, text: "157 行连上了" }, { ok: false, strong: true, text: "3 行订单找不到客户：KH099" }, { ok: true, text: "客户里没有重复" }] };

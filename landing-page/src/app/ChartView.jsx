@@ -1,5 +1,5 @@
 import React from "react";
-import { GROUP_ORDERS, GROUP_TOPS, NOT_OFFICIAL, barRows, formatNumber, greyText, histogramBars, leftOutLines, pieSlices, sliceColor } from "./explorerModel.js";
+import { GROUP_ORDERS, GROUP_TOPS, barRows, formatNumber, greyText, histogramBars, leftOutLines, notOfficial, pieSlices, sliceColor } from "./explorerModel.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { codeCell } from "./typeModel.js";
@@ -38,7 +38,7 @@ export function GroupColumns({ fields, reach, current = "" }) {
 
 /** Said in words beside a grey result, so a forwarded screenshot is not read as an official number; nothing when it stands on confirmed definitions. */
 export function NotOfficial({ standing }) {
-  return standing && !standing.confirmed ? <p className="not-official">{NOT_OFFICIAL}</p> : null;
+  return standing && !standing.confirmed ? <p className="not-official">{notOfficial()}</p> : null;
 }
 
 /** What a result stands on, one line for each definition (the caliber), and, when any is not confirmed, why the result is grey. */

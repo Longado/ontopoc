@@ -21,6 +21,11 @@ import enSettings from "./en/settings.js"; // areas
 import enShell from "./en/shell.js"; // areas
 import enStatus from "./en/status.js"; // areas
 import enUi from "./en/ui.js"; // areas
+import enActions from "./en/actions.js"; // areas
+import enObjects from "./en/objects.js"; // areas
+import enRelations from "./en/relations.js"; // areas
+import enReview from "./en/review.js"; // areas
+import enTypes from "./en/types.js"; // areas
 import zhAccount from "./zh/account.js"; // areas
 import zhAuth from "./zh/auth.js"; // areas
 import zhCommon from "./zh/common.js"; // areas
@@ -30,11 +35,16 @@ import zhSettings from "./zh/settings.js"; // areas
 import zhShell from "./zh/shell.js"; // areas
 import zhStatus from "./zh/status.js"; // areas
 import zhUi from "./zh/ui.js"; // areas
+import zhActions from "./zh/actions.js"; // areas
+import zhObjects from "./zh/objects.js"; // areas
+import zhRelations from "./zh/relations.js"; // areas
+import zhReview from "./zh/review.js"; // areas
+import zhTypes from "./zh/types.js"; // areas
 
 /** The dictionaries: AREAS[locale][area] is a flat { key: text } object. */
 export const AREAS = {
-  en: { account: enAccount, auth: enAuth, common: enCommon, home: enHome, nav: enNav, settings: enSettings, shell: enShell, status: enStatus, ui: enUi }, // areas
-  zh: { account: zhAccount, auth: zhAuth, common: zhCommon, home: zhHome, nav: zhNav, settings: zhSettings, shell: zhShell, status: zhStatus, ui: zhUi }, // areas
+  en: { account: enAccount, auth: enAuth, common: enCommon, home: enHome, nav: enNav, settings: enSettings, shell: enShell, status: enStatus, ui: enUi, actions: enActions, objects: enObjects, relations: enRelations, review: enReview, types: enTypes }, // areas
+  zh: { account: zhAccount, auth: zhAuth, common: zhCommon, home: zhHome, nav: zhNav, settings: zhSettings, shell: zhShell, status: zhStatus, ui: zhUi, actions: zhActions, objects: zhObjects, relations: zhRelations, review: zhReview, types: zhTypes }, // areas
 };
 
 export const LOCALES = ["en", "zh"];

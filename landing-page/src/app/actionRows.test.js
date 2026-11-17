@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { actionRow, emptyActionForm, lastRecordText, saveBlock } from "./actionModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 test("an action is one row of the table: its name, a one-word kind, what it says, its state, its last record (W3)", () => {
   const edit = { id: "改订单状态", name: "改订单状态", kind: "edit", says: "改 状态码", state: "confirmed" };

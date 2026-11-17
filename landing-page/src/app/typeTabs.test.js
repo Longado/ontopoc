@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { meaningsSummary, tabCounts, typeSub, usesSummary } from "./typeModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 const USES = { used_by: [{ kind: "views", label: "视图", count: 1, items: [] }, { kind: "actions", label: "行为", count: 3, items: [] }, { kind: "relations", label: "关系", count: 4, items: [] }, { kind: "answers", label: "回答", count: 2, items: [] }] };
 

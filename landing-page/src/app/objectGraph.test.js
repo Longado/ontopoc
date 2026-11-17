@@ -3,6 +3,9 @@ import test from "node:test";
 
 import { OBJECT_BOX, nodeLines, objectGraphLayout } from "./objectGraphModel.js";
 import { answerView } from "./qaModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 const GRAPH = {
   nodes: [

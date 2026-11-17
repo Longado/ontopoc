@@ -1,7 +1,22 @@
 // The explorer and the charts, as plain functions of what the service sends, so the words, the arithmetic of the drawings and the grey rule can be tested without a browser.
+import { t } from "./i18n/index.js";
+import { joinList } from "./typeModel.js";
 
-export const OPS = { eq: "等于", ne: "不等于", contains: "包含", gt: "大于", ge: "不小于", lt: "小于", le: "不大于", empty: "为空", filled: "有值" };
-export const CHART_KINDS = [["number", "数字"], ["bar", "柱状图"], ["pie", "饼图"], ["histogram", "直方图"], ["table", "统计表"]];
+/** An object whose keys read their words when they are read, so they follow the language. */
+const worded = (keys, prefix) => {
+  const o = {};
+  for (const k of keys) Object.defineProperty(o, k, { get: () => t(`${prefix}.${k}`), enumerable: true });
+  return o;
+};
+/** [value, word] pairs whose word is read when it is used. */
+const pair = (value, key) => {
+  const a = [value];
+  Object.defineProperty(a, 1, { get: () => t(key), enumerable: true });
+  return a;
+};
+
+export const OPS = worded(["eq", "ne", "contains", "gt", "ge", "lt", "le", "empty", "filled"], "objects.op");
+export const CHART_KINDS = ["number", "bar", "pie", "histogram", "table"].map((k) => pair(k, `objects.chart.${k}`));
 const NUMERIC_ONLY = ["sum", "avg", "median", "p25", "p75"];
 
 /** The ways a filter on this field may compare: size only where the service can put the values in order (numbers, years-months, dates). */
@@ -27,30 +42,30 @@ export function fnOptions(measure, aggregations) {
 
 /** What is still missing before a chart of this kind can be asked for, in words; "" when nothing is. */
 export function chartMissing({ kind, group, measure, fn }) {
-  if ((kind === "bar" || kind === "pie") && !group) return "选按哪一列分组";
-  if ((kind === "histogram" || kind === "table") && !measure) return "选一个数字列来量";
-  if (fn !== "count" && !measure && kind !== "histogram" && kind !== "table") return "选要统计的列";
+  if ((kind === "bar" || kind === "pie") && !group) return t("objects.missing.group");
+  if ((kind === "histogram" || kind === "table") && !measure) return t("objects.missing.number");
+  if (fn !== "count" && !measure && kind !== "histogram" && kind !== "table") return t("objects.missing.measure");
   return "";
 }
 
 export const chartSpec = ({ kind, group, measure, fn, bins, top, order }) => ({ kind, group: group || null, measure: measure || null, fn: fn || "count", bins: bins ?? 10, top: top ? Number(top) : null, order: order || null });
 
-export const GROUP_TOPS = [["", "全部"], ["5", "前 5"], ["10", "前 10"], ["20", "前 20"]];
-export const GROUP_ORDERS = [["", "默认顺序"], ["desc", "从大到小"], ["asc", "从小到大"]];
+export const GROUP_TOPS = [["", "all"], ["5", "5"], ["10", "10"], ["20", "20"]].map(([v, k]) => pair(v, `objects.top.${k}`));
+export const GROUP_ORDERS = [["", "default"], ["desc", "desc"], ["asc", "asc"]].map(([v, k]) => pair(v, `objects.order.${k}`));
 
 /** The sentences under a bar, a pie or a statistics table about what it did not draw: the groups past the cap or the top N, and the rows whose key has no match on the other end of the relation the group goes through. */
 export function leftOutLines(result) {
   const measured = Boolean(result.measure) && result.chart?.kind !== "table";
-  const one = (g) => `${g.label}（${g.rows} 行${measured && g.value !== null && g.value !== undefined ? `，${formatNumber(g.value)}` : ""}）`;
+  const one = (g) => t("objects.left.group", { label: g.label, rows: g.rows, value: measured && g.value !== null && g.value !== undefined ? t("objects.left.value", { value: formatNumber(g.value) }) : "" });
   const lines = [];
   const hidden = result.hidden_groups ?? [];
   if (result.groups_hidden > 0) {
     const named = hidden.slice(0, 5);
-    lines.push(`没画出来的：${named.map(one).join("、")}${result.groups_hidden > named.length ? `，等 ${result.groups_hidden} 组共 ${result.rows_hidden} 行` : ""}`);
+    lines.push(t("objects.left.hidden", { list: joinList(named.map(one)), more: result.groups_hidden > named.length ? t("objects.left.hiddenMore", { groups: result.groups_hidden, rows: result.rows_hidden }) : "" }));
   }
   if (result.unplaced_rows > 0) {
     const named = (result.unplaced ?? []).slice(0, 5);
-    lines.push(`没画出来的：${named.map(one).join("、")}${result.unplaced_groups > named.length ? `，等 ${result.unplaced_groups} 个` : ""}，在「${result.unplaced_through}」里找不到对应的行`);
+    lines.push(t("objects.left.unplaced", { list: joinList(named.map(one)), more: result.unplaced_groups > named.length ? t("objects.left.unplacedMore", { count: result.unplaced_groups }) : "", through: result.unplaced_through }));
   }
   return lines;
 }
@@ -64,10 +79,10 @@ export function formatNumber(value) {
 }
 
 /** Said beside a result that is not in colour, with the number itself. */
-export const NOT_OFFICIAL = "待确认，不是正式数";
+export const notOfficial = () => t("objects.notOfficial");
 
 /** The line under a result that is not in colour: why, from the definition at the bottom of the chain. "" when it is. */
-export const greyText = (standing) => (standing?.confirmed ? "" : standing?.why ?? "用到的定义现在不是已确认的状态");
+export const greyText = (standing) => (standing?.confirmed ? "" : standing?.why ?? t("objects.grey"));
 
 // bars, one row for each group: the width is the share of the biggest value
 export function barRows(groups) {
@@ -105,10 +120,10 @@ export function pieSlices(groups, r = 80) {
 /** The query that opens the linked set of another type: the objects of `relation.other` that the rows `source` selects link to. */
 export const pivotQuery = (source, relation) => ({ type: relation.other, view: null, filters: [], rows: null, pivot: { relation: relation.id, side: relation.side, source } });
 
-/** What the pivot of a query says in words: 经过 订单属于客户，从 订单 的 N 个筛选条件。 */
+/** What the pivot of a query says in words: through "Order belongs to customer", from N filters of Order. */
 export function pivotText(query, relationName, sourceName) {
   const n = query.pivot?.source?.filters?.length ?? 0;
-  return `与「${sourceName}」${n ? `（${n} 个条件）` : ""}关联，经过 ${relationName}`;
+  return t("objects.pivot.text", { source: sourceName, conditions: n ? t("objects.pivot.conditions", { count: n }) : "", relation: relationName });
 }
 
 /** The query kept in an address (the explorer opens from a link with its pivot already set) and read back; anything unreadable is no query. */
