@@ -104,3 +104,41 @@ export function rangeNotes(record) {
   const u = record.answer?.unreadable;
   return u ? [...ranges, `${u.field}：${u.count} 个值读不成日期，没有分到哪个月或哪一年${eg(u.unreadable_examples)}`] : ranges;
 }
+
+const TIME_WORD = /(本月|上个?月|这个月|今年|去年|今天|昨天|前天|本周|这周|上个?周|本季度|上季度|(?:最近|近|过去)\s*\d+\s*(?:天|日|个月|月|周|年)|\d{4}\s*年(?:\s*\d{1,2}\s*月)?|\d{1,2}\s*月份?|[一二三四五六七八九十]{1,2}月份?)/;
+/** The time word in a question ("本月", "最近30天", "2026年3月"), or null. */
+export function timeWord(question) {
+  const m = TIME_WORD.exec(String(question ?? ""));
+  return m ? m[1].replace(/\s+/g, "") : null;
+}
+
+const DATEISH = /日期|时间|创建|下单|发生|\bdate|time|\d{4}-\d{1,2}|\d{4}\/\d{1,2}|月份|年份/i;
+/** True when the answered query has a condition on a date or time (in its filters, or in the written query's WHERE/GROUP BY part). */
+function usesTime(record) {
+  const filters = [...(record.query?.filters ?? []), ...(record.evidence?.filters ?? [])];
+  if (filters.some((f) => DATEISH.test(`${f.field ?? ""} ${f.range ?? ""} ${f.value ?? ""}`))) return true;
+  const text = String(record.query_text ?? "");
+  const i = text.search(/\bWHERE\b|\bGROUP BY\b/i);
+  return i >= 0 && DATEISH.test(text.slice(i));
+}
+
+/** The warning on an answer whose question carried a time word the query did not use, else null. */
+export function timeWarning(record) {
+  if (!isAnswer(record)) return null;
+  const word = timeWord(record.question);
+  return word && !usesTime(record) ? `问题里的「${word}」没有用上：这个数是全部时间的` : null;
+}
+
+/** The one-line caliber under an answer: what was counted by which definitions, and the data as of when. Empty when the answer carries no written query. */
+export function criteriaLine(record, asOf) {
+  const text = String(record.query_text ?? "");
+  const aliases = [...text.matchAll(/\(\s*(\w+)\s*:\s*([^)\s]+)\s*\)/g)];
+  if (!aliases.length) return "";
+  const alias = new Map(aliases.map((m) => [m[1], m[2]]));
+  const where = /\bWHERE\b([\s\S]*?)(?:\bGROUP BY\b|\bORDER BY\b|\bLIMIT\b|$)/i.exec(text)?.[1]?.trim();
+  const cond = where ? where.replace(/\b(\w+)\.(?=[^\s.])/g, (s, a) => (alias.has(a) ? `${alias.get(a)}.` : s)).replace(/'((?:[^']|'')*)'/g, "$1").replace(/\s+/g, " ") : `全部${aliases[0][2]}`;
+  return `按已确认的定义：${cond}${asOf ? `，数据截至 ${asOf}` : ""}`;
+}
+
+/** A row of "我问过的": the question and one grey line (when, and how it went). */
+export const historyView = (h, whenText) => ({ id: h.id, question: h.question, meta: `${whenText} ${statusText(h.status)}`.trim() });

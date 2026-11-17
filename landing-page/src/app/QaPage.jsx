@@ -3,9 +3,10 @@ import { askQuestion, getAnswer, getAsk, runQuery } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText } from "./format.js";
-import { answerView, definitionHref, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
+import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
+import { PageHeader } from "./ui/PageHeader.jsx";
 import { useLoad } from "./useLoad.js";
 
 const KIND = { type: "对象类型", meaning: "含义", relation: "关系", view: "视图", derived: "派生属性" };
@@ -153,23 +154,35 @@ export function Basis({ record, onEdit }) {
   );
 }
 
+/** An answer as a card: the figure or table first, the time-word warning when the question's time was not used, one caliber line, and the technical basis folded. */
+function AnswerCard({ record, mayBuild, onEdit, title }) {
+  const warning = isAnswer(record) ? timeWarning(record) : null;
+  const line = isAnswer(record) ? criteriaLine(record, record.asked_at ? timeText(record.asked_at) : "") : "";
+  return (
+    <section className="turn qa-card">
+      {title && <h2 className="question">{title}</h2>}
+      {record.asked_at && <p className="muted small">{timeText(record.asked_at)}</p>}
+      {record.withheld ? <p className="warn">{record.reason}</p> : (
+        <>
+          {isAnswer(record) ? <Answer record={record} /> : <Refusal record={record} mayBuild={mayBuild} />}
+          {warning && <p className="time-warn" role="alert">{warning}</p>}
+          {line && <p className="criteria">{line}</p>}
+          <details className="basis">
+            <summary>查看依据</summary>
+            <Basis record={record} onEdit={onEdit} />
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
 function Saved({ id, mayBuild, onEdit }) {
   const [state] = useLoad(() => getAnswer(id), [id]);
   const r = state.data;
   if (state.status === "error") return <p className="error">{state.missing ? "没有这条问题" : state.error}</p>;
   if (!r) return <p className="muted">加载中</p>;
-  return (
-    <section className="turn">
-      <h2 className="question">{r.question}</h2>
-      <p className="muted small">{timeText(r.asked_at)}</p>
-      {r.withheld ? <p className="warn">{r.reason}</p> : (
-        <>
-          {isAnswer(r) ? <Answer record={r} /> : <Refusal record={r} mayBuild={mayBuild} />}
-          <Basis record={r} onEdit={onEdit} />
-        </>
-      )}
-    </section>
-  );
+  return <AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} title={r.question} />;
 }
 
 /** The query box: OntoPoc Query run as this person, by the same engine as a question, with no model; nothing is kept. */
@@ -186,7 +199,7 @@ function QueryBox({ scope, text, setText, mayBuild }) {
     setError("");
     setResult(null);
     try {
-      setResult(queryRecord(await runQuery(text, queryParams(text, values))));
+      setResult(queryRecord({ query_text: text, ...(await runQuery(text, queryParams(text, values))) }));
     } catch (err) {
       setError(err.message);
     }
@@ -208,14 +221,13 @@ function QueryBox({ scope, text, setText, mayBuild }) {
         )}
         <button className="primary" type="submit" disabled={busy || !text.trim()}>运行</button>
       </form>
-      <p className="hint">像 SQL 一样写，沿关系走、不写 JOIN：<code>{"SELECT p.品类, count(o) FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类"}</code>。按你能看的行和已确认的定义算，不调用模型，不记入“我问过的”。<a href="https://github.com/Longado/ontopoc/blob/main/docs/QUERY.md" target="_blank" rel="noreferrer">写法</a></p>
+      {mayBuild
+        ? <details className="query-help"><summary>写法说明</summary><p className="hint">像 SQL 一样写，沿关系走、不写 JOIN：<code>{"SELECT p.品类, count(o) FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类"}</code>。按你能看的行和已确认的定义算，不调用模型，不记入“我问过的”。<a href="https://github.com/Longado/ontopoc/blob/main/docs/QUERY.md" target="_blank" rel="noreferrer">完整写法</a></p></details>
+        : <p className="hint">按你能看的行和已确认的定义算，不记入“我问过的”。</p>}
       {busy && <p className="muted" role="status">正在算</p>}
       {error && <p className="error" role="alert">{error}</p>}
       {result && (
-        <section className="turn">
-          {isAnswer(result) ? <Answer record={result} /> : <Refusal record={result} mayBuild={mayBuild} />}
-          <Basis record={result} />
-        </section>
+        <AnswerCard record={result} mayBuild={mayBuild} />
       )}
     </>
   );
@@ -258,18 +270,25 @@ export function QaPage({ route }) {
   }, [route.ask]);
   return (
     <main className="page">
-      <h1 tabIndex={-1}>问数</h1>
+      <PageHeader title="问数" sub="用业务词提问，答案按已确认的定义算。" />
       {info.status === "error" && <p className="error">{info.error}</p>}
       <div className="qa">
         <aside className="history" aria-label="我问过的问题">
           <h2 className="small">我问过的</h2>
-          {scope && scope.history.length === 0 && <p className="muted small">还没有</p>}
-          {scope?.history.map((h) => (
-            <a key={h.id} href={`#/qa/${h.id}`} onClick={() => setMode("ask")} aria-current={h.id === route.id ? "page" : undefined} className={h.id === route.id ? "active" : ""}>
-              {h.question}
-              <span className="muted small block">{timeText(h.asked_at)} {statusText(h.status)}</span>
-            </a>
-          ))}
+          {scope && scope.history.length === 0 && <p className="muted small">还没有问过</p>}
+          <ul className="history-list">
+            {scope?.history.map((h) => {
+              const v = historyView(h, timeText(h.asked_at));
+              return (
+                <li key={h.id}>
+                  <a href={`#/qa/${h.id}`} onClick={() => setMode("ask")} aria-current={h.id === route.id ? "page" : undefined} className={h.id === route.id ? "active" : ""}>
+                    <span className="hq">{v.question}</span>
+                    <span className="muted small block">{v.meta}</span>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
         </aside>
         <section>
           {scope && (

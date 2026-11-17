@@ -863,3 +863,29 @@ ul.related-list { list-style: none; padding: 0; margin: 4px 0 8px; display: flex
 .page.has-bar > .queue, .page.has-bar > .cards { flex: none; }
 .page.has-bar > .batch-bar { margin-top: auto; }
 .confirm-step .checks .warn.strong { color: var(--red-ink); }
+
+/* F2: 问数 and 消息 in the platform style */
+.qa-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--s3); margin-top: var(--s3); max-width: 720px; }
+.qa-card .question { font-size: 16px; margin-bottom: 2px; }
+.qa-card .answer { margin: var(--s2) 0 var(--s1); }
+.qa-card .answer .big { font-size: 32px; letter-spacing: -0.01em; }
+.qa-card .criteria { color: var(--muted); font-size: var(--small); margin-top: var(--s1); }
+.time-warn { margin-top: var(--s1); padding: var(--s1) var(--s2); border-radius: var(--radius); background: var(--orange-soft); color: var(--orange-ink); font-weight: 600; }
+details.basis { margin-top: var(--s2); border-top: 1px solid var(--line); padding-top: var(--s1); }
+details.basis > summary { cursor: pointer; color: var(--muted); font-size: var(--small); }
+details.basis[open] > summary { margin-bottom: var(--s1); }
+details.query-help { margin-top: var(--s1); }
+details.query-help > summary { cursor: pointer; color: var(--muted); font-size: var(--small); }
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.history-list a { display: block; padding: 8px 10px; border-radius: var(--radius); color: var(--ink); }
+.history-list a:hover { background: var(--hover); text-decoration: none; }
+.history-list a.active { background: var(--accent-soft); }
+.history-list .hq { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notice-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); max-width: 760px; }
+.notice { display: flex; align-items: flex-start; gap: var(--s2); padding: var(--s2) var(--s3); border-top: 1px solid var(--line); }
+.notice:first-child { border-top: 0; }
+.notice-dot { flex: none; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--accent); }
+.notice.read .notice-dot { background: transparent; border: 1px solid var(--border-strong); }
+.notice-body { flex: 1; min-width: 0; }
+.notice.read .notice-body > p:first-child { color: var(--muted); }
+.notice.unread .notice-body > p:first-child { font-weight: 600; }
