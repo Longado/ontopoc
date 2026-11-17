@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { relatedCard, unconfirmedNote } from "./objectModel.js";
+import { objectName, relatedCard, unconfirmedNote } from "./objectModel.js";
+
+test("an object's own name is read from its name-like column, when it has one (W3)", () => {
+  const columns = [{ name: "客户编号", key: true }, { name: "客户名称", key: false }, { name: "城市", key: true }];
+  assert.equal(objectName(columns, ["KH022", "苏州家电客户22", "苏州"]), "苏州家电客户22");
+  assert.equal(objectName(columns, ["KH022", null, "苏州"]), "");
+  assert.equal(objectName([{ name: "订单号", key: true }, { name: "金额", key: false }], ["DD1", "5"]), "");
+  assert.equal(objectName([{ name: "产品名称", key: false, derived: true }], ["x"]), "");   // a derived value is not a name
+});
 
 const related = [
   { id: "order_customer", name: "订单属于客户", other: "customer", other_name: "客户", count: 1, confirmed: false, objects: [{ n: 3, text: "KH022 + 苏州", name: "苏州家电客户22" }] },
