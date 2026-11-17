@@ -111,3 +111,10 @@ test("number cards come from confirmed types that have rows, each with when the 
   assert.equal(kpiCards(types, datasets, 1).length, 1);
   assert.deepEqual(kpiCards([], []), []);
 });
+
+test("quick actions are for builders only: upload data, new pipeline, new object type, review queue", async () => {
+  const { quickActions } = await import("./homeModel.js");
+  assert.deepEqual(quickActions(false), []);
+  assert.deepEqual(quickActions(true).map((a) => a.href), ["#/datasets", "#/pipelines/new", "#/types/new", "#/confirm"]);
+  assert.ok(quickActions(true).every((a) => a.key && a.label && a.icon));
+});
