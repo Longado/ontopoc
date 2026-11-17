@@ -263,7 +263,6 @@ export default {
   "assistant.model.key": "Key",
   "assistant.model.dataset": "Dataset",
   "assistant.model.props": "Properties",
-  "assistant.model.noBasis": "The model gave no basis.",
   "assistant.model.for": "needed for: {text}",
   "assistant.model.open": "Open the type",
   "assistant.model.rejected_one": "{count} suggestion was dropped",

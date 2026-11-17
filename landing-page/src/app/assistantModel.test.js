@@ -92,7 +92,7 @@ test("a draft that failed its check cannot be applied and says why under not don
 });
 
 test("a step with failures is counted under not done and no row flow is claimed without counts", () => {
-  const c = planCard(draft({ steps: [{ id: "ai1", summary: "x", step: {}, rows_in: null, rows_out: null, failures: ["bad"] }] }));
+  const c = planCard(draft({ steps: [{ id: "ai1", summary: "x", step: {}, rows_in: null, rows_out: null, failures: { "no_value": 3 } }] }));
   assert.deepEqual(c.flow, []);
   assert.ok(c.notDone.some((x) => x.key === "stepFailures" && x.count === 1));
   assert.ok(!c.done.some((x) => x.key === "counts"));
@@ -101,7 +101,7 @@ test("a step with failures is counted under not done and no row flow is claimed 
 test("a proposal card lists each type with its key, properties and basis, and each rejected one with its reason", () => {
   const c = proposalCard(
     { proposed: [{ id: "order", name: "Order" }, { id: "customer", name: "Customer" }], rejected: [{ name: "Product", reason: "key repeats" }] },
-    [{ id: "order", dataset: "orders", key: ["order_no"], basis: "one row per order", version: 3, properties: [{ column: "amount", name: "amount", needed_for: "totals" }, { column: "ship", name: "Ship date" }] }],
+    [{ id: "order", dataset: "orders", key: ["order_no"], basis: "one row per order", version: 3, properties: [{ column: "order_no", name: "order_no", key: true }, { column: "amount", name: "amount", needed_for: "totals" }, { column: "ship", name: "Ship date" }] }],
   );
   assert.equal(c.types.length, 2);
   assert.deepEqual(c.types[0].properties, [{ column: "amount", name: "", why: "totals" }, { column: "ship", name: "Ship date", why: "" }]);

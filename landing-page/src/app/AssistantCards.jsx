@@ -2,7 +2,7 @@ import React from "react";
 import { QuestionList, SeesNote } from "./AiBox.jsx";
 import { planCard, proposalCard } from "./assistantModel.js";
 import { formatNumber, useT } from "./i18n/index.js";
-import { friendlyError, kindLine } from "./pipelineModel.js";
+import { failureLines, friendlyError, kindLine } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { Icon } from "./ui/Icon.jsx";
 
@@ -69,7 +69,7 @@ export function PlanCard({ plan, busy, onAnswer, onApply, onRevise }) {
                     <p><strong>{s.summary}</strong> <span className="muted small">{kindLine(draft.steps[i].step)}</span></p>
                     {s.rowsIn && <p className="muted small">{t("ask.assistant.plan.stepRows", { from: s.rowsIn.map(n).join(" + "), to: s.rowsOut == null ? "?" : n(s.rowsOut) })}{s.calls != null && t("ask.draft.calls", { n: n(s.calls) })}</p>}
                     {s.operators.map((o, k) => <p key={k} className="muted small">{o}</p>)}
-                    {s.failures.map((l) => <p key={l} className="warn small">{l}</p>)}
+                    {failureLines({ failures: s.failures }).map((l) => <p key={l} className="warn small">{l}</p>)}
                   </div>
                 </li>
               ))}
@@ -120,7 +120,7 @@ export function ProposalCard({ proposal, busy, onPropose }) {
               <li key={x.id}>
                 <p className="as-type-head"><strong>{x.name}</strong> <code>{x.id}</code> <a className="small" href={hrefFor({ page: "type", id: x.id, tab: "props" })}>{t("ask.assistant.model.open")}</a></p>
                 <p className="small"><span className="muted">{t("ask.assistant.model.dataset")}</span> {x.dataset} <span className="muted as-gap">{t("ask.assistant.model.key")}</span> {x.key.map((k) => <code key={k} className="as-key">{k}</code>)}</p>
-                <p className="small as-basis"><span className="muted">{t("ask.assistant.card.basis")}</span> {x.basis || <span className="muted">{t("ask.assistant.model.noBasis")}</span>}</p>
+                {x.basis && <p className="small as-basis"><span className="muted">{t("ask.assistant.card.basis")}</span> {x.basis}</p>}
                 {x.properties.length > 0 && (
                   <ul className="as-props">
                     {x.properties.map((p) => <li key={p.column}><code>{p.column}</code>{p.name && <span className="muted"> {p.name}</span>}{p.why && <span className="muted small"> · {t("ask.assistant.model.for", { text: p.why })}</span>}</li>)}

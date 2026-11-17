@@ -290,8 +290,15 @@ function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last,
 /** A scope chip that opens a small popover: shared by the three kinds of scope. */
 function ChipPop({ label, aria, children }) {
   const [open, setOpen] = useState(false);
+  const wrap = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => !wrap.current?.contains(e.target) && setOpen(false);   // a click anywhere else closes it
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
   return (
-    <span className="scope-chip-wrap">
+    <span className="scope-chip-wrap" ref={wrap}>
       <button type="button" className="scope-chip" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
         {label}
         <Icon name="chevron-down" size={12} />
@@ -670,7 +677,12 @@ export function QaPage({ route }) {
 
   useEffect(() => {
     const el = thread.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    if (!el) return;
+    const last = turns[turns.length - 1];
+    const card = last?.status === "done" && (last.kind === "pipeline" || last.kind === "model") ? el.querySelector(".msg-bot:last-child .as-card") : null;
+    // a plan or proposal card is read from its top; everything else follows the end of the thread
+    if (card) el.scrollTo({ top: Math.max(0, card.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 72), behavior: "smooth" });
+    else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [turns.length, turns[turns.length - 1]?.status]);
 
   const ideas = suggestions(scope, []);

@@ -44,7 +44,7 @@ export function planCard(draft, answers = {}) {
   const d = draft ?? {};
   const steps = (d.steps ?? []).map((s) => ({
     id: s.id, summary: s.summary, kind: s.step?.type ?? "", rowsIn: s.rows_in ?? null, rowsOut: s.rows_out ?? null, calls: s.to_call ?? null,
-    operators: (s.operators ?? []).map((o) => o.text), failures: s.failures ?? [],
+    operators: (s.operators ?? []).map((o) => o.text), failures: s.failures ?? {},
   }));
   const counted = steps.length > 0 && steps.every((s) => s.rowsOut != null && s.rowsIn);
   const flow = counted ? [sum(steps[0].rowsIn), ...steps.map((s) => s.rowsOut)] : [];
@@ -64,7 +64,7 @@ export function planCard(draft, answers = {}) {
   if ((d.cites ?? []).length) done.push({ key: "cites", count: d.cites.length });
   if (!ok) notDone.push({ key: "failed", text: d.check?.error ?? "" });
   if (open.length) notDone.push({ key: "open", count: open.length });
-  const failing = steps.filter((s) => s.failures.length).length;
+  const failing = steps.filter((s) => Object.keys(s.failures).length).length;
   if (failing) notDone.push({ key: "stepFailures", count: failing });
   notDone.push({ key: "fullRun" }, { key: "saved" });
   const canApply = ok && steps.length > 0 && open.length === 0;
@@ -73,14 +73,15 @@ export function planCard(draft, answers = {}) {
 }
 
 /** The proposal card for the type suggester's answer ({proposed: [{id, name}], rejected: [{name, reason}]}) and each proposed type as read back
- * (the type's own page data: key, properties with what each is needed for, basis). Each type carries its basis; the rejected carry their reasons. */
+ * (the type's own page data: key, properties with what each is needed for; `basis` too when the page data carries it). Each type carries its basis; the rejected carry their reasons. */
 export function proposalCard(result, details = []) {
   const byId = Object.fromEntries((details ?? []).filter(Boolean).map((x) => [x.id, x]));
   const types = (result?.proposed ?? []).map((p) => {
     const x = byId[p.id] ?? {};
     return {
       id: p.id, name: p.name, dataset: x.dataset ?? "", key: x.key ?? [], basis: x.basis ?? "", version: x.version ?? null,
-      properties: (x.properties ?? []).map((q) => ({ column: q.column, name: q.name && q.name !== q.column ? q.name : "", why: q.needed_for ?? "" })),
+      // the key columns are shown as the key, not as properties
+      properties: (x.properties ?? []).filter((q) => !q.key).map((q) => ({ column: q.column, name: q.name && q.name !== q.column ? q.name : "", why: q.needed_for ?? "" })),
       loaded: Boolean(byId[p.id]),
     };
   });

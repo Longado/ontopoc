@@ -263,7 +263,6 @@ export default {
   "assistant.model.key": "主键",
   "assistant.model.dataset": "数据集",
   "assistant.model.props": "属性",
-  "assistant.model.noBasis": "模型没有给出依据。",
   "assistant.model.for": "用于：{text}",
   "assistant.model.open": "打开这个类型",
   "assistant.model.rejected_one": "{count} 条建议被剔除",
