@@ -725,7 +725,7 @@ export function QaPage({ route }) {
           <div className="composer-wrap">
             <Composer scope={scope} mayBuild={mayBuild} mode={queryMode} setMode={setMode} text={text} setText={setText} query={query} setQuery={setQuery} busy={busy} onSend={sendIn} onRun={run}
               scopes={{ datasets: datasets.data ?? [], pipelines: pipelines.data ?? [], chosen, setChosen, target, setTarget }} />
-            <p className="composer-fine muted small">{t(privacyKey(queryMode))}</p>
+            <p className="composer-fine muted small" title={t(privacyKey(queryMode))}>{t(`${privacyKey(queryMode)}Short`)}</p>
           </div>
         </section>
       </div>
