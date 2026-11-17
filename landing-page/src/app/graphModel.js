@@ -21,15 +21,15 @@ export const LINEAGE_SIZE = { w: 220, h: 56 };
 
 /** The chip colour and the icon of each kind of node (a 24-unit line icon): the same in the graph, the legend and the panel. */
 export const KIND_STYLE = {
-  source: { colour: "#00a396", icon: "M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4" },
-  dataset: { colour: "#2d72d2", icon: "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14" },
-  pipeline: { colour: "#7961db", icon: "M3 6h5v5H3zM16 13h5v5h-5zM8 8.5h4a2 2 0 012 2V13" },
-  type: { colour: "#c87619", icon: "M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5" },
+  source: { colour: "#7961db", icon: "M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4" },
+  dataset: { colour: "#238551", icon: "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14" },
+  pipeline: { colour: "#00a396", icon: "M3 6h5v5H3zM16 13h5v5h-5zM8 8.5h4a2 2 0 012 2V13" },
+  type: { colour: "#2d72d2", icon: "M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5" },
   relation: { colour: "#9d3f9d", icon: "M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3A4 4 0 0011 18.7l1-1" },
   view: { colour: "#5f6b7c", icon: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 100-6 3 3 0 000 6" },
-  action: { colour: "#db2c6f", icon: "M13 3L5 14h6l-1 7 8-11h-6z" },
+  action: { colour: "#c87619", icon: "M13 3L5 14h6l-1 7 8-11h-6z" },
   derived: { colour: "#d1980b", icon: "M18 5H7l6 7-6 7h11" },
-  answer: { colour: "#238551", icon: "M4 5h16v11H9l-5 4z" },
+  answer: { colour: "#738091", icon: "M4 5h16v11H9l-5 4z" },
 };
 /** The colour of a node's state dot and left bar (never the only sign: the state word is on the card's tooltip, in the panel and in the legend). */
 export const STATE_COLOUR = { confirmed: "#238551", needs_look: "#c87619", rejected: "#cd4246", none: "#8f99a8" };

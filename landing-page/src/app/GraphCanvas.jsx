@@ -49,7 +49,7 @@ const MAX = 3;
 
 /** Saves the picture as a PNG at twice its size: the SVG without the zoom and pan, drawn onto a white canvas. `top` is room kept above the picture for the column headings, which
  * the page draws for the file as part of the graph (`data-export-only`) instead of as the sticky strip (`data-live`). */
-function exportPng(svg, width, height, fileName, top) {
+export function exportPng(svg, width, height, fileName, top) {
   const clone = svg.cloneNode(true);
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("width", width);
