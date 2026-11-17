@@ -12,6 +12,7 @@ database's address, account or server text.
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import importlib
 import ipaddress
 import json
@@ -32,7 +33,10 @@ MAX_TABLES = 500
 MAX_PULL_ROWS = 500_000   # rows one pull reads into memory; more is refused, with the count, rather than cut
 MAX_PULL_BYTES = 200 * 1024 * 1024   # the payload one pull reads (the text and bytes of the cells, counted as they arrive); more is refused
 FETCH_ROWS = 2000
-GENERIC = '连不上这个数据源，或读取时出了错。请让管理员看详情'
+GENERIC = '连不上这个数据源，或读取时出了错。请让管理员看详情'   # what the tests and the Chinese page read
+
+def generic_failure() -> str:
+    return tr(GENERIC, 'Cannot connect to this source, or an error happened while reading. Ask an admin to look at the details')
 
 # Addresses a data source may never point at: a cloud's metadata service hands out the machine's credentials to whoever asks. localhost is allowed (this is a
 # local tool and a database on the same machine is the common case), but the page says so.
@@ -69,14 +73,14 @@ def _embedded(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> list:
 def _check_address(address) -> None:
     for each in _embedded(address):
         if each in _BLOCKED_ADDRESSES or any(each in net for net in _BLOCKED_NETWORKS):
-            raise SourceError('这个地址是云服务商的内部地址（元数据服务，169.254 开头一类），机器用它领取自己的凭据，不能当数据源。换成数据库自己的地址')
+            raise SourceError(tr('这个地址是云服务商的内部地址（元数据服务，169.254 开头一类），机器用它领取自己的凭据，不能当数据源。换成数据库自己的地址', 'This address is the cloud provider\'s internal address (the metadata service, one starting with 169.254); machines use it to fetch their own credentials, so it cannot be a source. Use the database\'s own address'))
 
 
 def check_host(host: str) -> None:
     """The early check, with no lookup: an address written out, or a metadata name. connect() checks again on what the name resolves to."""
     name = host.strip().lower().rstrip('.')
     if name in _BLOCKED_NAMES or name.endswith('.metadata.google.internal'):
-        raise SourceError('这个主机名是云服务商的内部服务（元数据服务），机器用它领取自己的凭据，不能当数据源。换成数据库自己的地址')
+        raise SourceError(tr('这个主机名是云服务商的内部服务（元数据服务），机器用它领取自己的凭据，不能当数据源。换成数据库自己的地址', 'This host name is the cloud provider\'s internal service (the metadata service); machines use it to fetch their own credentials, so it cannot be a source. Use the database\'s own address'))
     try:
         literal = ipaddress.ip_address(name.strip('[]'))
     except ValueError:
@@ -112,9 +116,9 @@ def resolve(host: str, port: int) -> str:
         try:
             addresses = _checked_addresses(host, port)
         except socket.gaierror:
-            raise SourceError('找不到这个主机名：名字解析不出地址') from None
+            raise SourceError(tr('找不到这个主机名：名字解析不出地址', 'Could not resolve this host name: it does not map to an address')) from None
     except SourceError as exc:
-        raise SourceError(str(exc), GENERIC) from None
+        raise SourceError(str(exc), generic_failure()) from None
     return str(min(addresses, key=lambda a: a.version))   # IPv4 first: a database published on 127.0.0.1 is not always on ::1
 
 
@@ -133,7 +137,7 @@ def _driver(module: str, package: str, kind: str):
     try:
         return importlib.import_module(module)
     except ImportError:
-        raise SourceError(f"这台服务器还连不了 {KINDS[kind]}：少了连接它用的程序包 {package}。请运维人员在服务器上执行 pip install 'ontopoc[sources]'（或单独 pip install {package}），装好后重启服务") from None
+        raise SourceError(tr(f"这台服务器还连不了 {KINDS[kind]}：少了连接它用的程序包 {package}。请运维人员在服务器上执行 pip install 'ontopoc[sources]'（或单独 pip install {package}），装好后重启服务", f"This server cannot reach {KINDS[kind]} yet: the driver package {package} is missing. Ask your operator to run pip install 'ontopoc[sources]' (or pip install {package} alone) on the server, then restart the service")) from None
 
 
 def describe(exc: BaseException, password: str) -> str:
@@ -145,39 +149,39 @@ def describe(exc: BaseException, password: str) -> str:
     while (cause.__cause__ or cause.__context__) is not None:   # pg8000 chains the socket error to its own InterfaceError (cause), PyMySQL to its OperationalError (context)
         cause = cause.__cause__ or cause.__context__
     if isinstance(cause, ssl.SSLCertVerificationError):
-        return f'TLS 证书验证没通过，连接已拒绝：{scrub(cause.verify_message or cause, password)}。用公认机构签的证书，或在服务所在的机器上把签发机构加进信任（SSL_CERT_FILE）'
+        return tr(f'TLS 证书验证没通过，连接已拒绝：{scrub(cause.verify_message or cause, password)}。用公认机构签的证书，或在服务所在的机器上把签发机构加进信任（SSL_CERT_FILE）', f'The TLS certificate check failed and the connection was stopped: {scrub(cause.verify_message or cause, password)}. Use a certificate signed by a public authority, or add the issuing authority to the trusted list on the machine that runs the service (SSL_CERT_FILE)')
     if isinstance(cause, ssl.SSLError):
-        return f'TLS 握手失败：{scrub(cause, password)}'
+        return tr(f'TLS 握手失败：{scrub(cause, password)}', f'The TLS handshake failed: {scrub(cause, password)}')
     arg = exc.args[0] if exc.args else None
     if isinstance(arg, str) and 'refuses SSL' in arg:
-        return '数据库不支持 TLS：让 DBA 开启它，或把这个数据源的加密改成“不用”（密码和数据会明文过网络）'
+        return tr('数据库不支持 TLS：让 DBA 开启它，或把这个数据源的加密改成“不用”（密码和数据会明文过网络）', 'The database does not support TLS: ask your DBA to turn it on, or set this source\'s encryption to "Off" (the password and data would cross the network in clear text)')
     if isinstance(arg, dict):   # pg8000: the server's error fields, C is the SQLSTATE and M the message
         code, message = str(arg.get('C', '')), str(arg.get('M', ''))
         if code in ('28P01', '28000'):
-            return '用户名或密码不对，或这个账号不让从这台机器登录'
+            return tr('用户名或密码不对，或这个账号不让从这台机器登录', 'Wrong username or password, or this account may not sign in from this machine')
         if code == '3D000':
-            return '没有这个数据库'
+            return tr('没有这个数据库', 'No such database')
         if code == '57014':
-            return f'查询超过时限，已被数据库停掉'
-        return f'数据库说：{scrub(message, password)}'
+            return tr(f'查询超过时限，已被数据库停掉', f'The query ran past the time limit and the database stopped it')
+        return tr(f'数据库说：{scrub(message, password)}', f'The database said: {scrub(message, password)}')
     if isinstance(cause, (TimeoutError, socket.timeout)):   # before the (number, text) branch below: an OS error has args of that shape too
-        return f'连接超时或读取超时（连接 {CONNECT_SECONDS} 秒、读取 {STATEMENT_SECONDS} 秒没有应答）'
+        return tr(f'连接超时或读取超时（连接 {CONNECT_SECONDS} 秒、读取 {STATEMENT_SECONDS} 秒没有应答）', f'The connection or the read timed out (no answer within {CONNECT_SECONDS} seconds to connect or {STATEMENT_SECONDS} seconds to read)')
     if isinstance(cause, ConnectionRefusedError):
-        return '连接被对方拒绝：地址或端口不对，或数据库没有在听'
+        return tr('连接被对方拒绝：地址或端口不对，或数据库没有在听', 'The other side refused the connection: the address or port is wrong, or the database is not listening')
     if isinstance(arg, int) and len(exc.args) > 1:   # PyMySQL: (error number, message)
         if arg == 1045:
-            return '用户名或密码不对，或这个账号不让从这台机器登录'
+            return tr('用户名或密码不对，或这个账号不让从这台机器登录', 'Wrong username or password, or this account may not sign in from this machine')
         if arg == 1049:
-            return '没有这个数据库'
+            return tr('没有这个数据库', 'No such database')
         if arg in (2003, 2002, 2013):
-            return '连不上：对方没有应答，或连接中途断了'
+            return tr('连不上：对方没有应答，或连接中途断了', 'Cannot connect: no answer from the other side, or the connection dropped midway')
         if arg in (3024, 1317, 1969):
-            return '查询超过时限，已被数据库停掉'
-        return f'数据库说：{scrub(exc.args[1], password)}'
+            return tr('查询超过时限，已被数据库停掉', 'The query ran past the time limit and the database stopped it')
+        return tr(f'数据库说：{scrub(exc.args[1], password)}', f'The database said: {scrub(exc.args[1], password)}')
     text = scrub(cause, password)
     if 'cryptography' in text:
-        return '这个账号用 caching_sha2_password 认证，PyMySQL 在不加密的连接上需要 cryptography 包才能登录：把加密设成“必须”，或 pip install cryptography，或让 DBA 给这个账号改用 mysql_native_password'
-    return f'{type(cause).__name__}：{text}'
+        return tr('这个账号用 caching_sha2_password 认证，PyMySQL 在不加密的连接上需要 cryptography 包才能登录：把加密设成“必须”，或 pip install cryptography，或让 DBA 给这个账号改用 mysql_native_password', 'This account uses caching_sha2_password authentication, and PyMySQL needs the cryptography package to sign in over an unencrypted connection: set encryption to "Required", or pip install cryptography, or ask your DBA to switch the account to mysql_native_password')
+    return tr(f'{type(cause).__name__}：{text}', f'{type(cause).__name__}: {text}')
 
 
 def text_of(value) -> str | None:
@@ -279,8 +283,8 @@ class _Sql(Connection):
             found = self._listed()[:MAX_TABLES]
         finally:
             self._within(STATEMENT_SECONDS)
-        return [{'name': t['name'], 'kind': '视图' if t['kind'] == 'VIEW' else '表', 'rows': t['rows'], 'approx': True, 'supported': self._supported(t['parts']),
-                 'note': None if self._supported(t['parts']) else '模式名或表名里有点或引号，分不清是哪张表，不支持读取'} for t in found]
+        return [{'name': t['name'], 'kind': tr('视图', 'View') if t['kind'] == 'VIEW' else tr('表', 'Table'), 'rows': t['rows'], 'approx': True, 'supported': self._supported(t['parts']),
+                 'note': None if self._supported(t['parts']) else tr('模式名或表名里有点或引号，分不清是哪张表，不支持读取', 'The schema or table name has a dot or a quote, so it is unclear which table it is, and reading it is not supported')} for t in found]
 
     def _supported(self, parts: tuple) -> bool:
         return not any('.' in p or '"' in p or '`' in p for p in parts)
@@ -288,14 +292,14 @@ class _Sql(Connection):
     def read(self, table: str, limit: int) -> tuple[list[str], list[tuple]]:
         found = next((t for t in self._listed() if t['name'] == table), None)   # only a name the database itself listed is ever put into SQL
         if found is None or not self._supported(found['parts']):
-            raise SourceError(f'数据源里没有“{table}”这张表，或这个账号读不了它，或它的名字里有点或引号，不支持读取')
+            raise SourceError(tr(f'数据源里没有“{table}”这张表，或这个账号读不了它，或它的名字里有点或引号，不支持读取', f'The source has no table "{table}", or this account cannot read it, or its name has a dot or a quote, which is not supported'))
         columns, batches = self._batches(f'SELECT * FROM {self._quoted(found["parts"])} LIMIT {int(limit)}')
         rows, weight = [], 0
         try:
             for batch in batches:
                 weight += sum(_weigh(r) for r in batch)
                 if weight > MAX_PULL_BYTES:
-                    raise SourceError(f'“{table}”超过约 {MAX_PULL_BYTES // 1024 // 1024} MB，一次读不完。在数据库里建一个只含需要的行和列的视图，再读那个视图')
+                    raise SourceError(tr(f'“{table}”超过约 {MAX_PULL_BYTES // 1024 // 1024} MB，一次读不完。在数据库里建一个只含需要的行和列的视图，再读那个视图', f'"{table}" is over about {MAX_PULL_BYTES // 1024 // 1024} MB and cannot be read in one go. Create a view with only the rows and columns you need in the database, and read that view'))
                 rows.extend(batch)
         finally:
             batches.close()
@@ -318,13 +322,13 @@ MAX_CA = 64 * 1024   # a CA certificate, or a short chain of them, is a few KB
 def check_ca(pem) -> None:
     """SourceError in words unless `pem` is one or more PEM certificates a TLS context can load."""
     if not isinstance(pem, str) or len(pem) > MAX_CA or '-----BEGIN CERTIFICATE-----' not in pem:
-        raise SourceError('CA 证书要贴 PEM 格式的文字（以 -----BEGIN CERTIFICATE----- 开头，至多 64 KB）')
+        raise SourceError(tr('CA 证书要贴 PEM 格式的文字（以 -----BEGIN CERTIFICATE----- 开头，至多 64 KB）', 'Paste the CA certificate as PEM text (starting with -----BEGIN CERTIFICATE-----, at most 64 KB)'))
     if 'PRIVATE KEY' in pem:
-        raise SourceError('这段文字里有私钥：只贴 CA 证书（BEGIN CERTIFICATE 那几段），私钥不要贴到这里')
+        raise SourceError(tr('这段文字里有私钥：只贴 CA 证书（BEGIN CERTIFICATE 那几段），私钥不要贴到这里', 'This text contains a private key. Paste only the CA certificate (the BEGIN CERTIFICATE parts), never a private key'))
     try:
         ssl.create_default_context(cadata=pem)
     except (ssl.SSLError, ValueError):
-        raise SourceError('这段 CA 证书读不出来：请贴完整的 PEM 证书，不要贴私钥') from None
+        raise SourceError(tr('这段 CA 证书读不出来：请贴完整的 PEM 证书，不要贴私钥', 'This CA certificate cannot be read. Paste the whole PEM certificate, not a private key')) from None
 
 
 def _tls_context(ca_pem: str | None = None) -> ssl.SSLContext:
@@ -393,8 +397,8 @@ class Postgres(_Sql):
             "OR has_table_privilege(c.oid, 'DELETE') OR has_table_privilege(c.oid, 'TRUNCATE'))) AS tables, "
             f"EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname NOT IN {self._SYSTEM} AND n.nspname NOT LIKE 'pg\\_%' AND has_schema_privilege(n.oid, 'CREATE')) AS schemas")[1][0]
         super_user, on_tables, on_schemas = (bool(v) for v in found)
-        reasons = [r for r, on in (('是超级用户', super_user), ('能改某些表的数据', on_tables), ('能在某个模式里建表', on_schemas)) if on]
-        return bool(reasons), '、'.join(reasons)
+        reasons = [r for r, on in ((tr('是超级用户', 'it is a superuser'), super_user), (tr('能改某些表的数据', 'it can change data in some tables'), on_tables), (tr('能在某个模式里建表', 'it can create tables in a schema'), on_schemas)) if on]
+        return bool(reasons), tr('、', ', ').join(reasons)
 
 
 class MySql(_Sql):
@@ -462,7 +466,7 @@ class MySql(_Sql):
             if 'WITH GRANT OPTION' in str(line):
                 granted.add('GRANT OPTION')
         write = sorted(granted & self._WRITE)
-        return bool(write), '、'.join(write)
+        return bool(write), tr('、', ', ').join(write)
 
 
 OPENERS = {'postgresql': Postgres.open, 'mysql': MySql.open}   # a test replaces an entry with a function that returns its own Connection
@@ -471,13 +475,13 @@ OPENERS = {'postgresql': Postgres.open, 'mysql': MySql.open}   # a test replaces
 def connect(kind: str, host: str, port: int, database: str, user: str, password: str, tls: str = 'required', ca_pem: str | None = None) -> Connection:
     """An open, read-only connection; SourceError (a safe sentence, and a public one) for anything that stops it."""
     if kind not in OPENERS:
-        raise SourceError(f'不认识的数据库类型“{kind}”，只有 PostgreSQL 和 MySQL')
+        raise SourceError(tr(f'不认识的数据库类型“{kind}”，只有 PostgreSQL 和 MySQL', f'Unknown database type "{kind}"; only PostgreSQL and MySQL are supported'))
     if tls not in TLS_MODES:
-        raise SourceError('加密只能选“必须”或“不用”')
+        raise SourceError(tr('加密只能选“必须”或“不用”', 'Encryption can only be "Required" or "Off"'))
     address = resolve(host, port)
     try:
         return OPENERS[kind](host, address, port, database, user, password, tls, ca_pem=ca_pem)
     except SourceError:
         raise
     except Exception as exc:   # nothing of the driver's own exception travels on: its arguments can carry the password
-        raise SourceError(describe(exc, password), GENERIC) from None
+        raise SourceError(describe(exc, password), generic_failure()) from None

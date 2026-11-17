@@ -15,6 +15,7 @@ from datetime import date
 import itertools
 import re
 
+from ontology_poc_generator.lang import TrMap, tr
 from ontology_poc_generator.derived_measures import to_number
 from ontology_poc_generator.handover_form import _PADDED, source_profile
 from ontology_poc_generator.ontology_confirm import without_wrong
@@ -29,12 +30,14 @@ NOT_BUSINESS_TIME = ('fetched', 'system')   # a date column answered like this s
 
 # the words a person reads for each value of each kind of cell: the page, the minutes and the MCP tools all use these
 SAYS = {
-    'grain': {'one_object': '一行就是一个对象', 'event': '一行是一次事件或一次修改（同一个东西有多行）',
-              'period': '一行是一段时期的汇总', 'unsure': '说不清'},
-    'date': {'business': '业务发生的日期', 'system': '系统录入或修改的时间', 'fetched': '取数的时间', 'unsure': '说不清'},
-    'amount': {'flow': '每行是这一笔自己的数，可以跨行相加', 'running': '每次事件后的累计值', 'latest': '截至最近一次的值',
-               'period_to_date': '期初到期末的累计值', 'not_amount': '不是数量（编号或代码）', 'unsure': '说不清'},
-    'complete': {'full': '数据里是全的', 'partial': '数据里只有一部分', 'unsure': '说不清'},
+    'grain': TrMap({'one_object': ('一行就是一个对象', 'One row is one object'), 'event': ('一行是一次事件或一次修改（同一个东西有多行）', 'One row is one event or one change (the same thing has several rows)'),
+                    'period': ('一行是一段时期的汇总', 'One row is the total for a period'), 'unsure': ('说不清', 'Not sure')}),
+    'date': TrMap({'business': ('业务发生的日期', 'The date the business happened'), 'system': ('系统录入或修改的时间', 'The time the system entered or changed it'),
+                   'fetched': ('取数的时间', 'The time the data was pulled'), 'unsure': ('说不清', 'Not sure')}),
+    'amount': TrMap({'flow': ('每行是这一笔自己的数，可以跨行相加', "Each row's own figure, which can be added across rows"), 'running': ('每次事件后的累计值', 'A running total after each event'),
+                     'latest': ('截至最近一次的值', 'The value as of the latest event'), 'period_to_date': ('期初到期末的累计值', 'A total from the start of the period to the end'),
+                     'not_amount': ('不是数量（编号或代码）', 'Not a quantity (an ID or a code)'), 'unsure': ('说不清', 'Not sure')}),
+    'complete': TrMap({'full': ('数据里是全的', 'All of it is in the data'), 'partial': ('数据里只有一部分', 'Only part of it is in the data'), 'unsure': ('说不清', 'Not sure')}),
 }
 
 NO_CARD = {'tables': [], 'objects': [], 'cells': 0, 'blank': 0}   # a document, or an ontology that did not pass verification: nothing to ask
@@ -48,7 +51,7 @@ def says(cell_id: str, value) -> str:
     kind = cell_id.partition(':')[0]
     if kind == 'range':
         start, end = value.get('from'), value.get('to')
-        return f'声明覆盖 {start} 至 {end}' if start and end else f'声明覆盖到 {end}' if end else f'声明从 {start} 起'
+        return tr(f'声明覆盖 {start} 至 {end}', f'Declared to cover {start} to {end}') if start and end else tr(f'声明覆盖到 {end}', f'Declared to cover up to {end}') if end else tr(f'声明从 {start} 起', f'Declared to cover from {start}')
     return SAYS[kind].get(value, str(value))
 
 
@@ -192,7 +195,7 @@ def live_cells(stored: dict, ontology: dict, bundle: dict, decisions: dict | Non
 
 def check_by(by) -> str:
     if not isinstance(by, str) or not 0 < len(by.strip()) <= MAX_BY:
-        raise CardError(f'答复人要写 1–{MAX_BY} 个字')
+        raise CardError(tr(f'答复人要写 1–{MAX_BY} 个字', f'The name of who answers must be 1 to {MAX_BY} characters'))
     return by.strip()
 
 
@@ -201,9 +204,9 @@ def clean_text(value, limit: int, what: str) -> str:
     if value is None:
         return ''
     if not isinstance(value, str):
-        raise CardError(f'{what}要写成文字')
+        raise CardError(tr(f'{what}要写成文字', f'{what} must be text'))
     if len(value.strip()) > limit:
-        raise CardError(f'{what}最多 {limit} 个字')
+        raise CardError(tr(f'{what}最多 {limit} 个字', f'{what} must be at most {limit} characters'))
     return value.strip()
 
 
@@ -220,7 +223,7 @@ def _day(value) -> bool:
 def _range(cell_id: str, value, where: str) -> dict | None:
     """The covered period a person declared: either end may be left open, both left open says nothing. `where` names the
     column the way the page shows it, for the one mistake the page lets a person make (an end before the start)."""
-    bad = CardError(f'「{cell_id}」的时段要写成 {{"from": 日期, "to": 日期}}，日期写 YYYY-MM-DD，可以只写一头')
+    bad = CardError(tr(f'「{cell_id}」的时段要写成 {{"from": 日期, "to": 日期}}，日期写 YYYY-MM-DD，可以只写一头', f'The period of "{cell_id}" must be written as {{"from": date, "to": date}}, with dates as YYYY-MM-DD; either end may be left out'))
     if value is None:
         return None
     if not isinstance(value, dict) or set(value) - {'from', 'to'}:
@@ -231,7 +234,7 @@ def _range(cell_id: str, value, where: str) -> dict | None:
     if start is None and end is None:
         return None
     if start and end and start > end:
-        raise CardError(f'{where}声明的覆盖时段，起始日期晚于结束日期')
+        raise CardError(tr(f'{where}声明的覆盖时段，起始日期晚于结束日期', f'The covered period declared for {where}starts after it ends'))
     return {'from': start, 'to': end}
 
 
@@ -240,25 +243,25 @@ def check_cells(card: dict, raw, by, at: str) -> dict:
     CardError and nothing is returned, so a request is kept whole or not at all."""
     by = check_by(by)
     if not isinstance(raw, list):
-        raise CardError('cells 要写成列表')
+        raise CardError(tr('cells 要写成列表', 'cells must be a list'))
     on_card = card_ids(card)
     out = {}
     for entry in raw:
         if not isinstance(entry, dict):
-            raise CardError('每一格的写法不对，要写成 {"id": …, "value": …}')
+            raise CardError(tr('每一格的写法不对，要写成 {"id": …, "value": …}', 'Each cell is written wrongly; write it as {"id": …, "value": …}'))
         cell_id = entry.get('id')
         if not isinstance(cell_id, str) or cell_id not in on_card:
-            raise CardError(f'口径卡上没有这一格：{cell_id}')
+            raise CardError(tr(f'口径卡上没有这一格：{cell_id}', f'The data-meaning card has no such cell: {cell_id}'))
         if 'value' not in entry:
-            raise CardError('每一格都要写 value（清空就写 null）')
+            raise CardError(tr('每一格都要写 value（清空就写 null）', 'Each cell needs a value (write null to clear it)'))
         value = entry['value']
         kind = cell_id.partition(':')[0]
         if kind == 'range':
-            where = next(f"{t['source']} 的 {d['field']} " for t in card['tables'] for d in t['dates'] if d['range_id'] == cell_id)
+            where = next(tr(f"{t['source']} 的 {d['field']} ", f"{d['field']} of {t['source']} ") for t in card['tables'] for d in t['dates'] if d['range_id'] == cell_id)
             value = _range(cell_id, value, where)
         elif value is not None and not (isinstance(value, str) and value in SAYS[kind]):
-            raise CardError(f'「{cell_id}」的答复只能是：{"、".join(SAYS[kind])}')
-        note, basis = clean_text(entry.get('note'), MAX_NOTE, f'「{cell_id}」的备注'), clean_text(entry.get('basis'), MAX_BASIS, f'「{cell_id}」的出处')
+            raise CardError(tr(f'「{cell_id}」的答复只能是：{tr("、", ", ").join(SAYS[kind])}', f'The answer for "{cell_id}" must be one of: {", ".join(SAYS[kind])}'))
+        note, basis = clean_text(entry.get('note'), MAX_NOTE, tr(f'「{cell_id}」的备注', f'The note for "{cell_id}"')), clean_text(entry.get('basis'), MAX_BASIS, tr(f'「{cell_id}」的出处', f'The source for "{cell_id}"'))
         out[cell_id] = None if value is None else {'value': value, 'note': note, 'by': by, 'basis': basis, 'at': at}
     return out
 
@@ -327,10 +330,10 @@ def refusal(cells: dict, bundle: dict, measure: dict, where: list, dims: list) -
         cell_id, column = f'amount:{field}', field.partition('.')[2]
         meaning = (cells.get(cell_id) or {}).get('value')
         if meaning == 'running':
-            reason = f'「{column}」在口径卡里是“{SAYS["amount"]["running"]}”：一行已经包含之前的数，跨行相加会重复。可以改问某一次（某个对象、某一天）的值。'
+            reason = tr(f'「{column}」在口径卡里是“{SAYS["amount"]["running"]}”：一行已经包含之前的数，跨行相加会重复。可以改问某一次（某个对象、某一天）的值。', f'On the data-meaning card, "{column}" is "{SAYS["amount"]["running"]}": a row already includes the earlier ones, so adding across rows would count twice. Ask for the value at one point (one object, one day) instead.')
         elif meaning == 'period_to_date' and not _on_one_period(cells, bundle, field, where, dims):
-            reason = (f'「{column}」在口径卡里是“{SAYS["amount"]["period_to_date"]}”：要先固定在一期上'
-                      '（按同一张表里一个不是取数或录入时间的日期列，筛一个日期或按它分组），才能相加。')
+            reason = (tr(f'「{column}」在口径卡里是“{SAYS["amount"]["period_to_date"]}”：要先固定在一期上', f'On the data-meaning card, "{column}" is "{SAYS["amount"]["period_to_date"]}": it has to be pinned to one period first') +
+                      tr('（按同一张表里一个不是取数或录入时间的日期列，筛一个日期或按它分组），才能相加。', ' (filter on one date, or group by a date column of the same table that is not a pull or entry time) before it can be added up.'))
         else:
             continue
         return {'status': 'query_limit', 'reason': reason, 'refused_by_card': cell_id}

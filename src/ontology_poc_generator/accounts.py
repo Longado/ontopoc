@@ -9,6 +9,7 @@ Everything here takes a workspace connection and returns plain dicts; HTTP lives
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import TrMap, tr
 import argparse
 import getpass
 import hashlib
@@ -28,7 +29,7 @@ from pathlib import Path
 
 ROLES = ('viewer', 'builder', 'admin')
 RANK = {role: i for i, role in enumerate(ROLES, 1)}
-ROLE_LABEL = {'viewer': '查看者', 'builder': '建设者', 'admin': '管理员'}
+ROLE_LABEL = TrMap({'viewer': ('查看者', 'Viewer'), 'builder': ('建设者', 'Builder'), 'admin': ('管理员', 'Admin')})
 
 SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 15, 8, 3   # stored with each hash (OWASP's minimum for scrypt); a hash made with lower ones is made again at the next sign-in
 HASHING_AT_ONCE, HASHING_WAIT = 3, 3.0   # one hash takes 32 MiB, so only this many run together; another waits this many seconds, then is told the service is busy
@@ -36,8 +37,12 @@ MIN_PASSWORD, MAX_PASSWORD = 12, 1024   # the cap keeps a huge "password" from b
 IDLE, ABSOLUTE = timedelta(hours=8), timedelta(days=14)
 MAX_SESSIONS = 10   # signed in at once per person
 TOUCH_EVERY = timedelta(seconds=60)   # last-seen is written at most this often, not on every request
-GENERIC = '账号或密码不对'
-DISABLED = '这个账号已停用，找管理员'   # said only after the password was verified
+GENERIC = '账号或密码不对'   # what the tests and the Chinese page read
+
+def generic_failure() -> str:
+    return tr(GENERIC, 'Wrong username or password')
+def disabled_failure() -> str:
+    return tr('这个账号已停用，找管理员', 'This account is disabled. Ask an admin')   # said only after the password was verified
 USERNAME = re.compile(r'[\w.@+-]{1,64}')
 
 
@@ -108,7 +113,7 @@ _hashing = threading.BoundedSemaphore(HASHING_AT_ONCE)
 
 def _scrypt(password: str, salt: bytes, n: int, r: int, p: int) -> bytes:
     if not _hashing.acquire(timeout=HASHING_WAIT):   # scrypt lets go of the GIL: unlimited parallel hashes would use all the memory before anyone is signed in
-        raise Busy('服务现在很忙，请稍后再试', 503)
+        raise Busy(tr('服务现在很忙，请稍后再试', 'The service is busy. Try again in a moment'), 503)
     try:
         return hashlib.scrypt(unicodedata.normalize('NFC', password).encode(), salt=salt, n=n, r=r, p=p, dklen=32, maxmem=256 * n * r * p)
     finally:
@@ -166,15 +171,15 @@ COMMON_PASSWORDS = frozenset(('password1234', 'password12345', 'password123456',
 
 def password_problem(password, username: str = '') -> str | None:
     if not isinstance(password, str):
-        return '密码要写成文字'
+        return tr('密码要写成文字', 'The password must be text')
     if len(password) < MIN_PASSWORD or len(password.strip()) < MIN_PASSWORD:
-        return f'密码至少 {MIN_PASSWORD} 个字符，不算头尾的空格'
+        return tr(f'密码至少 {MIN_PASSWORD} 个字符，不算头尾的空格', f'The password must be at least {MIN_PASSWORD} characters, not counting spaces at either end')
     if len(password) > MAX_PASSWORD:
-        return f'密码最多 {MAX_PASSWORD} 个字符'
+        return tr(f'密码最多 {MAX_PASSWORD} 个字符', f'The password must be at most {MAX_PASSWORD} characters')
     if username and password.strip().lower() == username.strip().lower():
-        return '密码不能和账号一样'
+        return tr('密码不能和账号一样', 'The password cannot be the same as the username')
     if password.strip().lower() in COMMON_PASSWORDS or len(set(password)) == 1:
-        return '这个密码太常见了，换一个'
+        return tr('这个密码太常见了，换一个', 'That password is too common. Pick another')
     return None
 
 
@@ -299,34 +304,34 @@ def _active_admins(conn) -> int:
 
 
 MAX_DISPLAY = 40   # what a signature may be anywhere a name is kept (a client's answer, a confirmer)
-RESERVED_NAMES = ('system', '本机', '未署名', 'host')   # signatures the service writes itself
+RESERVED_NAMES = ('system', '本机', '未署名', 'host', 'local', 'unsigned')   # signatures the service writes itself
 
 
 def _name(value, what: str, limit: int = 64) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise AccountError(f'要写{what}')
+        raise AccountError(tr(f'要写{what}', f'{what} is required'))
     value = value.strip()
     if len(value) > limit or not value.isprintable():
-        raise AccountError(f'{what}最多 {limit} 个字，不能有换行和控制字符')
+        raise AccountError(tr(f'{what}最多 {limit} 个字，不能有换行和控制字符', f'{what} must be at most {limit} characters, with no line breaks or control characters'))
     return value
 
 
 def _display_name(conn, value, owner: int | None) -> str:
     """A display name is what every signature shows, so it must name one person: not another's (case aside) and not one the service signs with."""
-    name = _name(value, '显示名', MAX_DISPLAY)
+    name = _name(value, tr('显示名', 'The display name'), MAX_DISPLAY)
     taken = [fold(r[0]) for r in conn.execute('SELECT display_name FROM user WHERE id IS NOT ?', (owner,))] + [fold(n) for n in RESERVED_NAMES]
     if fold(name) in taken:
-        raise AccountError(f'“{name}”已经是别人的显示名，或是服务自己用的名字，换一个', 409)
+        raise AccountError(tr(f'“{name}”已经是别人的显示名，或是服务自己用的名字，换一个', f'"{name}" is already someone else\'s display name, or a name the service signs with. Pick another'), 409)
     return name
 
 
 def create_user(conn, username, display_name, role, password, by: str, must_change: bool = True, provider: str = 'local') -> dict:
-    username = fold(_name(username, '账号'))
+    username = fold(_name(username, tr('账号', 'The username')))
     if not USERNAME.fullmatch(username):
-        raise AccountError('账号只能用字母、数字、汉字和 . _ @ + -')
+        raise AccountError(tr('账号只能用字母、数字、汉字和 . _ @ + -', 'A username may use only letters, digits, Chinese characters and . _ @ + -'))
     display_name = _display_name(conn, display_name or username, None)
     if role not in ROLES:
-        raise AccountError('角色要从 查看者、建设者、管理员 里选')
+        raise AccountError(tr('角色要从 查看者、建设者、管理员 里选', 'The role must be viewer, builder or admin'))
     if provider == 'local':
         problem = password_problem(password, username)
         if problem:
@@ -335,7 +340,7 @@ def create_user(conn, username, display_name, role, password, by: str, must_chan
         cursor = conn.execute('INSERT INTO user(username, display_name, role, password_hash, must_change, created_at, provider) VALUES (?, ?, ?, ?, ?, ?, ?)',
                               (username, display_name, role, hash_password(password) if provider == 'local' else None, int(must_change), _stamp(_now()), provider))
     except sqlite3.IntegrityError:
-        raise AccountError(f'已经有叫“{username}”的账号', 409) from None
+        raise AccountError(tr(f'已经有叫“{username}”的账号', f'There is already an account named "{username}"'), 409) from None
     _log(conn, by, f'user:{cursor.lastrowid}', 'user_created', {'username': username, 'role': role})
     return get_user(conn, cursor.lastrowid)
 
@@ -349,10 +354,10 @@ def authenticate(conn, limiter: LoginLimiter, username, password, client: str) -
         name = '(invalid)'   # counted, but under a key no real account or limiter key can have (pw:<id> has a colon, which a name cannot)
     client = client[:64]
     if not isinstance(password, str) or len(password) > MAX_PASSWORD:
-        raise AccountError(GENERIC, 401)
+        raise AccountError(generic_failure(), 401)
     seconds = limiter.begin(conn, name, client)
     if seconds:
-        raise AccountError(f'试得太多了，请 {seconds} 秒后再试', 429)
+        raise AccountError(tr(f'试得太多了，请 {seconds} 秒后再试', f'Too many tries. Try again in {seconds} seconds'), 429)
     try:
         row = conn.execute(f'SELECT {_USER_COLUMNS}, password_hash FROM user WHERE username = ?', (name,)).fetchone()
         stored = row[-1] if row and row[-1] else None
@@ -369,9 +374,9 @@ def authenticate(conn, limiter: LoginLimiter, username, password, client: str) -
         return _public(row[:-1])
     if row and good and stored and row[4]:
         limiter.refund(conn, name, client)   # the password was right: not a failed try, and the person is told why they cannot come in
-        raise AccountError(DISABLED, 403)
+        raise AccountError(disabled_failure(), 403)
     _log(conn, '(sign-in)', 'login', 'login_failed', {'name': _printable(typed), 'client': _printable(client)})   # what a stranger typed is data, not a signature
-    raise AccountError(GENERIC, 401)
+    raise AccountError(generic_failure(), 401)
 
 
 def change_password(conn, user: dict, current, new, keep_token: str | None = None, limiter: LoginLimiter | None = None, client: str = '') -> None:
@@ -380,7 +385,7 @@ def change_password(conn, user: dict, current, new, keep_token: str | None = Non
     if limiter:
         seconds = limiter.begin(conn, key, client[:64])
         if seconds:
-            raise AccountError(f'试得太多了，请 {seconds} 秒后再试', 429)
+            raise AccountError(tr(f'试得太多了，请 {seconds} 秒后再试', f'Too many tries. Try again in {seconds} seconds'), 429)
     row = conn.execute('SELECT password_hash FROM user WHERE id = ?', (user['id'],)).fetchone()
     try:
         right = bool(row and row[0] and isinstance(current, str) and len(current) <= MAX_PASSWORD and verify_password(current, row[0]))
@@ -389,7 +394,7 @@ def change_password(conn, user: dict, current, new, keep_token: str | None = Non
             limiter.refund(conn, key, client[:64])
         raise
     if not right:
-        raise AccountError('现在的密码不对', 403)
+        raise AccountError(tr('现在的密码不对', 'The current password is wrong'), 403)
     if limiter:
         limiter.refund(conn, key, client[:64])
     problem = password_problem(new, user['username'])
@@ -406,18 +411,18 @@ def change_password(conn, user: dict, current, new, keep_token: str | None = Non
 def _target(conn, user_id) -> dict:
     target = get_user(conn, user_id) if isinstance(user_id, int) and not isinstance(user_id, bool) else None
     if target is None:
-        raise AccountError('没有这个账号', 404)
+        raise AccountError(tr('没有这个账号', 'There is no such account'), 404)
     return target
 
 
 def set_role(conn, actor: dict, user_id, role) -> dict:
     target = _target(conn, user_id)
     if role not in ROLES:
-        raise AccountError('角色要从 查看者、建设者、管理员 里选')
+        raise AccountError(tr('角色要从 查看者、建设者、管理员 里选', 'The role must be viewer, builder or admin'))
     if target['id'] == actor['id']:
-        raise AccountError('不能改自己的角色，请另一位管理员来改')
+        raise AccountError(tr('不能改自己的角色，请另一位管理员来改', 'You cannot change your own role. Ask another admin'))
     if target['role'] == 'admin' and role != 'admin' and not target['disabled'] and _active_admins(conn) <= 1:
-        raise AccountError('至少要留一位启用的管理员')
+        raise AccountError(tr('至少要留一位启用的管理员', 'At least one admin must stay enabled'))
     conn.execute('UPDATE user SET role = ? WHERE id = ?', (role, target['id']))
     end_sessions(conn, target['id'])   # the person signs in again, and tokens are made again: nothing issued under the old role survives
     revoke_tokens(conn, target['id'])
@@ -436,11 +441,11 @@ def set_display_name(conn, actor: dict, user_id, display_name) -> dict:
 def set_disabled(conn, actor: dict, user_id, disabled) -> dict:
     target = _target(conn, user_id)
     if not isinstance(disabled, bool):
-        raise AccountError('要写明停用还是启用（true 或 false）')
+        raise AccountError(tr('要写明停用还是启用（true 或 false）', 'Say whether to disable or enable (true or false)'))
     if disabled and target['id'] == actor['id']:
-        raise AccountError('不能停用自己')
+        raise AccountError(tr('不能停用自己', 'You cannot disable yourself'))
     if disabled and target['role'] == 'admin' and not target['disabled'] and _active_admins(conn) <= 1:
-        raise AccountError('至少要留一位启用的管理员')
+        raise AccountError(tr('至少要留一位启用的管理员', 'At least one admin must stay enabled'))
     conn.execute('UPDATE user SET disabled = ? WHERE id = ?', (int(disabled), target['id']))
     if disabled:
         end_sessions(conn, target['id'])
@@ -455,20 +460,20 @@ MAX_ATTRS, MAX_ATTR_NAME, MAX_ATTR_VALUE = 5, 20, 100
 def clean_attrs(attrs) -> dict:
     """A person's attributes as stored: {name: value}, at most MAX_ATTRS, names and values printable on one line; an empty value drops the name."""
     if not isinstance(attrs, dict):
-        raise AccountError('属性要写成 {名字: 值}')
+        raise AccountError(tr('属性要写成 {名字: 值}', 'Attributes must be written as {name: value}'))
     out = {}
     for name, value in attrs.items():
         name = name.strip() if isinstance(name, str) else ''
         if not name or len(name) > MAX_ATTR_NAME or not name.isprintable():
-            raise AccountError(f'属性名要写 1 到 {MAX_ATTR_NAME} 个字，不能有换行和控制字符')
+            raise AccountError(tr(f'属性名要写 1 到 {MAX_ATTR_NAME} 个字，不能有换行和控制字符', f'An attribute name must be 1 to {MAX_ATTR_NAME} characters, with no line breaks or control characters'))
         if value is None:
             continue
         if not isinstance(value, str) or len(value.strip()) > MAX_ATTR_VALUE or not value.strip().isprintable():
-            raise AccountError(f'“{name}”的值最多 {MAX_ATTR_VALUE} 个字，不能有换行和控制字符')
+            raise AccountError(tr(f'“{name}”的值最多 {MAX_ATTR_VALUE} 个字，不能有换行和控制字符', f'The value of "{name}" must be at most {MAX_ATTR_VALUE} characters, with no line breaks or control characters'))
         if value.strip():
             out[name] = value.strip()
     if len(out) > MAX_ATTRS:
-        raise AccountError(f'一个人最多 {MAX_ATTRS} 个属性')
+        raise AccountError(tr(f'一个人最多 {MAX_ATTRS} 个属性', f'A person can have at most {MAX_ATTRS} attributes'))
     return dict(sorted(out.items()))
 
 
@@ -551,7 +556,7 @@ def two_person(conn) -> dict:
 
 def set_two_person(conn, enabled, by: str) -> dict:
     if not isinstance(enabled, bool):
-        raise AccountError('two_person 要写 true 或 false')
+        raise AccountError(tr('two_person 要写 true 或 false', 'two_person must be true or false'))
     conn.execute("INSERT OR REPLACE INTO setting(key, value) VALUES ('two_person', ?)", ('on' if enabled else 'off',))
     _log(conn, by, 'setting:two_person', 'setting_changed', {'two_person': enabled})
     return two_person(conn)
@@ -566,7 +571,7 @@ EXPIRY_DAYS = (7, 30, 90, 365)   # what an admin may choose for a token made on 
 
 def _scope(value) -> str:
     if value not in TOKEN_SCOPES:
-        raise AccountError('令牌的权限要写 read（只读）或 all（全部）')
+        raise AccountError(tr('令牌的权限要写 read（只读）或 all（全部）', 'A token scope must be read (read only) or all (everything)'))
     return value
 
 
@@ -577,7 +582,7 @@ def revoke_tokens(conn, user_id: int) -> None:
 def create_token(conn, user: dict, label, now: datetime | None = None, by: dict | None = None, scope='all', days: int | None = None) -> tuple[dict, str]:
     """(the token's record, the token itself). The token is shown once; only its hash is kept. `by` is the admin who made it for `user` (the log says so). `scope` is
     what it may do (read or all), `days` how long it works (None: no end)."""
-    label, scope = _name(label, '用途说明'), _scope(scope)
+    label, scope = _name(label, tr('用途说明', 'The purpose note')), _scope(scope)
     token = TOKEN_PREFIX + secrets.token_urlsafe(32)
     made = now or _now()
     expires = None if days is None else _stamp(made + timedelta(days=days))
@@ -592,11 +597,11 @@ def issue_token(conn, admin: dict, target_id, label, scope='read', days=90) -> t
     after `days`. Not for a disabled account and not for an admin's: a leaked token would then be the whole service."""
     target = get_user(conn, target_id) if isinstance(target_id, int) and not isinstance(target_id, bool) else None
     if target is None or target['disabled']:
-        raise AccountError('没有这个在用的账号', 404)
+        raise AccountError(tr('没有这个在用的账号', 'There is no such active account'), 404)
     if target['role'] == 'admin':
-        raise AccountError('管理员的账号不发给智能体用的令牌：给它一个建设者或查看者的账号', 400)
+        raise AccountError(tr('管理员的账号不发给智能体用的令牌：给它一个建设者或查看者的账号', 'An admin account is not given an agent token: give it a builder or viewer account'), 400)
     if days not in EXPIRY_DAYS or isinstance(days, bool):
-        raise AccountError(f'有效期要选 {"、".join(map(str, EXPIRY_DAYS))} 天之一')
+        raise AccountError(tr(f'有效期要选 {tr("、", ", ").join(map(str, EXPIRY_DAYS))} 天之一', f'The expiry must be one of {", ".join(map(str, EXPIRY_DAYS))} days'))
     record, token = create_token(conn, target, label, by=admin, scope=scope, days=days)
     return {**record, 'user_id': target['id'], 'username': target['username'], 'display_name': target['display_name'], 'role': target['role']}, token
 
@@ -613,7 +618,7 @@ def list_all_tokens(conn) -> list[dict]:
 def revoke_any_token(conn, admin: dict, token_id) -> None:
     done = conn.execute('UPDATE api_token SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL', (_stamp(_now()), token_id))
     if not done.rowcount:
-        raise AccountError('没有这个令牌', 404)
+        raise AccountError(tr('没有这个令牌', 'There is no such token'), 404)
     _log(conn, admin['username'], f'token:{token_id}', 'token_revoked')
 
 
@@ -640,7 +645,7 @@ def list_tokens(conn, user_id: int) -> list[dict]:
 def revoke_token(conn, user: dict, token_id) -> None:
     done = conn.execute('UPDATE api_token SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL', (_stamp(_now()), token_id, user['id']))
     if not done.rowcount:
-        raise AccountError('没有这个令牌', 404)
+        raise AccountError(tr('没有这个令牌', 'There is no such token'), 404)
 
 
 # on the host

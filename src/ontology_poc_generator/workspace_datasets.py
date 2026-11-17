@@ -5,6 +5,7 @@ Nothing here knows about runs: a dataset is a name with versions in the workspac
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import base64
 import binascii
 import csv
@@ -19,7 +20,7 @@ from ontology_poc_generator.object_actions import overwritten_by_upload
 from ontology_poc_generator.object_types import dataset_readers_of, element_row, recheck_after_write
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_store import (
-    DELETED, FAN_NOTE, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, dataset_records, fan_marks, now_text as _now_text, plan_upload)
+    DELETED, fan_note, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, dataset_records, fan_marks, now_text as _now_text, plan_upload)
 
 PREVIEW_ROWS = 50   # rows on one page of the preview
 MAX_NAME = 100
@@ -144,7 +145,7 @@ def dataset_detail(conn, name: str, version: int | None = None, page: int = 1, u
     checks = _key_checks(conn, shown['id'], name)
     single = {c['columns'][0]: c for c in checks if len(c['columns']) == 1}
     fanned = fan_marks(conn, shown['id'])
-    columns = [{'name': c['name'], 'type': c['inferred_type'], 'distinct': c['distinct_count'], 'missing': c['missing_count'], 'fan': FAN_NOTE if c['name'] in fanned else None,
+    columns = [{'name': c['name'], 'type': c['inferred_type'], 'distinct': c['distinct_count'], 'missing': c['missing_count'], 'fan': fan_note() if c['name'] in fanned else None,
                 'fill_rate': (total - c['missing_count']) / total if total else None,
                 'possible_key': bool(total) and c['missing_count'] == 0 and c['distinct_count'] == total,
                 'key_check': single.get(c['name']), 'near_key': _near_key(conn, _quote(shown['table_name']), c, total),
@@ -187,26 +188,26 @@ def dataset_csv(conn, name: str, version: int | None = None, user: dict | None =
     writer = csv.writer(out)
     writer.writerow(_csv_cell(c[0]) for c in cursor.description)
     writer.writerows(map(_csv_cell, row) for row in cursor)
-    return f'{name}-第{shown["version"]}版.csv', out.getvalue().encode('utf-8-sig')
+    return tr(f'{name}-第{shown["version"]}版.csv', f'{name}-v{shown["version"]}.csv'), out.getvalue().encode('utf-8-sig')
 
 
 def _decode(part: dict) -> tuple[str, bytes]:
     filename = str(part.get('filename') or '')
     if not isinstance(part.get('content_base64'), str):
-        raise SourceFileError(f'{PurePath(filename).name or "文件"}：请求缺少 content_base64（文件内容）')
+        raise SourceFileError(tr(f'{PurePath(filename).name or "文件"}：请求缺少 content_base64（文件内容）', f'{PurePath(filename).name or "file"}: the request is missing content_base64 (the file content)'))
     try:
         data = base64.b64decode(part['content_base64'], validate=True)
     except (binascii.Error, ValueError):
-        raise SourceFileError(f'{PurePath(filename).name}：文件内容不是有效的 base64') from None
+        raise SourceFileError(tr(f'{PurePath(filename).name}：文件内容不是有效的 base64', f'{PurePath(filename).name}: the file content is not valid base64')) from None
     if PurePath(filename).suffix.lower() not in TABLE_SUFFIXES:
-        raise SourceFileError(f'{PurePath(filename).name or "文件"}：数据集只支持 {" / ".join(TABLE_SUFFIXES)} 文件')
+        raise SourceFileError(tr(f'{PurePath(filename).name or "文件"}：数据集只支持 {" / ".join(TABLE_SUFFIXES)} 文件', f'{PurePath(filename).name or "file"}: a dataset takes only {" / ".join(TABLE_SUFFIXES)} files'))
     return filename, data
 
 
 def _name(value) -> str:
     text = str(value or '').strip()
     if not text or len(text) > MAX_NAME:
-        raise ValueError(f'数据集名字要写 1 到 {MAX_NAME} 个字')
+        raise ValueError(tr(f'数据集名字要写 1 到 {MAX_NAME} 个字', f'The dataset name must be 1 to {MAX_NAME} characters'))
     return text
 
 
@@ -225,45 +226,45 @@ def _part_jobs(conn, part, taken: dict, user: dict | None = None) -> list[dict]:
     name otherwise). A name that is taken is never decided by guessing: without a target and a mode it is refused, naming the dataset.
     Every message starts with the file's name."""
     if not isinstance(part, dict):
-        raise ValueError('每个文件要写成 {"filename": …, "content_base64": …}')
+        raise ValueError(tr('每个文件要写成 {"filename": …, "content_base64": …}', 'Each file must be written as {"filename": …, "content_base64": …}'))
     filename, data = _decode(part)
     label = PurePath(filename).name
     mode, target = part.get('mode') or None, part.get('target') or None
     if mode and mode not in UPLOAD_MODES:
-        raise ValueError(f'{label}：导入方式只有按主键更新（update_by_key）和覆盖（overwrite）两种')
+        raise ValueError(tr(f'{label}：导入方式只有按主键更新（update_by_key）和覆盖（overwrite）两种', f'{label}: the import mode can only be update by key (update_by_key) or overwrite (overwrite)'))
     for field in ('target', 'name', 'mode'):
         if part.get(field) is not None and not isinstance(part[field], str):
-            raise ValueError(f'{label}：{field} 要写成文字')
+            raise ValueError(tr(f'{label}：{field} 要写成文字', f'{label}: {field} must be text'))
     keys = part.get('key_columns')
     if keys is not None and not (isinstance(keys, list) and keys and all(isinstance(c, str) and c for c in keys)):
-        raise ValueError(f'{label}：主键列（key_columns）要写成列名的列表，例如 ["订单号"]')
+        raise ValueError(tr(f'{label}：主键列（key_columns）要写成列名的列表，例如 ["订单号"]', f'{label}: the key columns (key_columns) must be a list of column names, for example ["Order ID"]'))
     if keys is not None and len(set(keys)) != len(keys):
-        raise ValueError(f'{label}：主键列里有重复的列：{"、".join(c for c in dict.fromkeys(keys) if keys.count(c) > 1)}')
+        raise ValueError(tr(f'{label}：主键列里有重复的列：{tr("、", ", ").join(c for c in dict.fromkeys(keys) if keys.count(c) > 1)}', f'{label}: the key columns repeat a column: {", ".join(c for c in dict.fromkeys(keys) if keys.count(c) > 1)}'))
     if bool(mode) != bool(target):
-        raise ValueError(f'{label}：要更新已有的数据集，数据集（target）和方式（mode）要一起写；不要靠文件名猜')
+        raise ValueError(tr(f'{label}：要更新已有的数据集，数据集（target）和方式（mode）要一起写；不要靠文件名猜', f'{label}: to update an existing dataset, write the dataset (target) and the mode together; do not rely on guessing from the file name'))
     if mode == 'update_by_key' and not part.get('key_columns'):
-        raise ValueError(f'{label}：按主键更新要先选出主键列（key_columns）')
+        raise ValueError(tr(f'{label}：按主键更新要先选出主键列（key_columns）', f'{label}: updating by key needs the key columns (key_columns) chosen first'))
     try:
         sources = load_table_file(filename, data)['sources']
     except SourceFileError as exc:
-        raise ValueError(f'{label}：{exc}') from None
+        raise ValueError(tr(f'{label}：{exc}', f'{label}: {exc}')) from None
     if not sources:
-        raise ValueError(f'{label}：文件里没有数据行：第一行应是表头，下面是数据')
+        raise ValueError(tr(f'{label}：文件里没有数据行：第一行应是表头，下面是数据', f'{label}: the file has no data rows: the first row should be the header, with data below it'))
     if len(sources) > 1 and (target or part.get('name')):
-        raise ValueError(f'{label}：文件里有 {len(sources)} 个工作表（{"、".join(sources)}），更新或改名只能用于只有一个工作表的文件')
+        raise ValueError(tr(f'{label}：文件里有 {len(sources)} 个工作表（{tr("、", ", ").join(sources)}），更新或改名只能用于只有一个工作表的文件', f'{label}: the file has {len(sources)} sheets ({", ".join(sources)}); updating or renaming works only for a file with one sheet'))
     jobs = []
     for sheet, source in sources.items():
         name = _name(target or (part.get('name') if len(sources) == 1 and part.get('name') else None)
                      or (PurePath(filename).stem if len(sources) == 1 else sheet))
         if name in taken:
-            raise ValueError(f'{label}：和“{taken[name]}”都要写入数据集“{name}”，一次上传里一个数据集只能写一次')
+            raise ValueError(tr(f'{label}：和“{taken[name]}”都要写入数据集“{name}”，一次上传里一个数据集只能写一次', f'{label}: it and "{taken[name]}" both write to the dataset "{name}", and one upload may write a dataset only once'))
         if dataset_hidden(conn, name, user):   # not theirs to see, so not theirs to write to; the name is not said to be taken either
-            raise ValueError(f'{label}：没有叫“{name}”的数据集可以写入，也不能用这个名字新建')
+            raise ValueError(tr(f'{label}：没有叫“{name}”的数据集可以写入，也不能用这个名字新建', f'{label}: there is no dataset named "{name}" to write to, and it cannot be created with this name'))
         try:
             plan = plan_upload(conn, name, source['records'], mode=mode, key_columns=part.get('key_columns'),
                                rows_in=source.get('rows_read'), dropped=source.get('dropped_rows'))
         except ValueError as exc:
-            raise ValueError(f'{label}：{exc}') from None
+            raise ValueError(tr(f'{label}：{exc}', f'{label}: {exc}')) from None
         taken[name] = label   # only a write that will happen takes the name
         jobs.append({'file': label, 'plan': plan})
     return jobs
@@ -278,10 +279,10 @@ def _jobs(conn, parts: list, user: dict | None = None) -> list[dict]:
             jobs += _part_jobs(conn, part, taken, user)
         except ValueError as exc:
             label = PurePath(str(part.get('filename') or '')).name if isinstance(part, dict) else ''
-            problems[i] = str(exc).removeprefix(f'{label}：')
+            problems[i] = str(exc).removeprefix(tr(f'{label}：', f'{label}: '))
     if problems:
         names = [PurePath(str(p.get('filename') or '')).name if isinstance(p, dict) else '' for p in parts]
-        raise UploadRefused('；'.join(f'{names[i]}：{m}' if names[i] else m for i, m in problems.items()), problems)
+        raise UploadRefused(tr('；', '; ').join(tr(f'{names[i]}：{m}' if names[i] else m, f'{names[i]}: {m}' if names[i] else m) for i, m in problems.items()), problems)
     return jobs
 
 
@@ -297,9 +298,9 @@ def upload(conn, parts: list, who: str | None, user: dict | None = None) -> list
     checked first (ValueError in plain Chinese, nothing written); then each is written as one version. A dataset a type this person may not see reads
     cannot be written to by them (dataset_hidden). Each outcome says `recheck_error` when the checks behind what reads the dataset could not run."""
     if not parts:
-        raise ValueError('没有选择文件')
+        raise ValueError(tr('没有选择文件', 'No file was chosen'))
     jobs = _jobs(conn, parts, user)
-    signer = str(who or '').strip() or '未署名'
+    signer = str(who or '').strip() or tr('未署名', 'unsigned')
     outcomes = []
     for job in jobs:
         plan = job['plan']
@@ -319,8 +320,8 @@ def delete_dataset(conn, name: str, who: str | None, readers: list[dict]) -> dic
     if not versions:
         raise KeyError(name)
     if readers:
-        raise ValueError(f'有 {len(readers)} 处在读“{name}”，先处理它们：' + '、'.join(f'{r["kind"]}「{r["name"]}」' for r in readers))
-    signer = str(who or '').strip() or '未署名'
+        raise ValueError(tr(f'有 {len(readers)} 处在读“{name}”，先处理它们：' + tr('、', ', ').join(f'{r["kind"]}「{r["name"]}」' for r in readers), f'{len(readers)} things read "{name}"; deal with them first: ' + ', '.join(f'{ {"对象类型": "object type", "管道": "pipeline"}.get(r["kind"], r["kind"]) } "{r["name"]}"' for r in readers)))
+    signer = str(who or '').strip() or tr('未署名', 'unsigned')
     stamp = _now_text()
     conn.execute('BEGIN IMMEDIATE')
     try:

@@ -19,6 +19,7 @@ they looked at, with the query that was run. An end no other table describes (th
 against and is not reported; a relation whose columns are not in the stored tables is left out, as for key checks."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 from ontology_poc_generator.pipelines import _as_number
 from ontology_poc_generator.public_ontology import normalize_proposal
 from ontology_poc_generator.workspace_store import SAMPLE_LIMIT, _quote, describes_rows, record_result
@@ -186,7 +187,7 @@ def unmatched_answer(ontology: dict, relations: list[dict] | None, spec) -> dict
         return None
     side = found['sides'][0]
     if spec.get('direction') != 'many_without_one' or spec.get('other_conditions') is not False:
-        return {'status': 'query_limit', 'reason': f'关系检查只能数「{found["source"]} 表里的{"、".join(side["columns"])}在 {side["lookup"]} 表里找不到」的行；'
-                                                   '这个问法反过来问，或带了别的条件，现在算不出来', 'from_relation_check': True}
+        return {'status': 'query_limit', 'reason': tr(f'关系检查只能数「{found["source"]} 表里的{tr("、", ", ").join(side["columns"])}在 {side["lookup"]} 表里找不到」的行；', f'The relation check can only count the rows where {", ".join(side["columns"])} of the table {found["source"]} is not found in the table {side["lookup"]}; ') +
+                                                   tr('这个问法反过来问，或带了别的条件，现在算不出来', 'asking it the other way round, or with other conditions, cannot be computed now'), 'from_relation_check': True}
     return {'status': 'answered', 'answer': {'total': side['unmatched'], 'relation_gap': _gap(ontology, found, side, 'asked')},
-            'path': f'关系检查：{found["source"]} 表里的{"、".join(side["columns"])}，在 {side["lookup"]} 表里找不到的行', 'from_relation_check': True}
+            'path': tr(f'关系检查：{found["source"]} 表里的{tr("、", ", ").join(side["columns"])}，在 {side["lookup"]} 表里找不到的行', f'Relation check: rows where {", ".join(side["columns"])} of the table {found["source"]} is not found in the table {side["lookup"]}'), 'from_relation_check': True}

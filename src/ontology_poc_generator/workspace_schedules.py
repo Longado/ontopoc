@@ -32,7 +32,7 @@ from ontology_poc_generator.accounts import get_user, user_count
 from ontology_poc_generator.object_types import PIPELINE_PREFIX, element_row
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_sources import (
-    INTERNAL_ERROR, NAME_LIMIT, NotFound, _binding, _row as _source_row, claimed, finish_run, is_admin, log_write, now_text, refresh_runs, refresh_table, start_run)
+    internal_error, NAME_LIMIT, NotFound, _binding, _row as _source_row, claimed, finish_run, is_admin, log_write, now_text, refresh_runs, refresh_table, start_run)
 
 CADENCES = ('hourly', 'daily', 'weekly', 'upstream')
 WEEKDAYS = ('周一', '周二', '周三', '周四', '周五', '周六', '周日')
@@ -358,7 +358,7 @@ def _run_pipeline(conn, s: dict, reason: str, lock, engine, llm, user: dict) -> 
         except ValueError as exc:   # a refusal in words: the cap, a step that cannot run, a pipeline that changed since
             return [finish_run(conn, run_id, 'failed', error=str(exc))]
         except BaseException:
-            finish_run(conn, run_id, 'failed', error=INTERNAL_ERROR)
+            finish_run(conn, run_id, 'failed', error=internal_error())
             raise
         written = done.get('outputs') or []
         return [finish_run(conn, run_id, 'success' if done['status'] == 'success' else 'failed', rows=sum(w['rows'] for w in written) if written else None,

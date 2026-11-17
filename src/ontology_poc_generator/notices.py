@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 
+from ontology_poc_generator.lang import current, speaking, tr
 from ontology_poc_generator.accounts import MAX_ATTR_NAME, list_users
 from ontology_poc_generator.object_types import TypeRefused, _content, _visible, element_row, type_id, whole_type_row
 from ontology_poc_generator.row_rules import keeps, restriction
@@ -22,6 +23,7 @@ from ontology_poc_generator.workspace_store import _canonical, current_dataset, 
 
 MAX_RECIPIENTS = 5
 LISTED = 100
+NOTICE_SEPARATOR = '\x1f'
 
 
 def recipients_of(conn, action_element_id: str) -> list[dict]:
@@ -48,13 +50,13 @@ def lines(conn, recipients: list[dict], type_name: str) -> list[str]:
     out = []
     for r in recipients:
         if r['kind'] == 'people':
-            out.append('、'.join(names.get(i, f'#{i}') for i in r['user_ids']))
+            out.append(tr('、', ', ').join(names.get(i, f'#{i}') for i in r['user_ids']))
         elif r['kind'] == 'attr':
-            out.append(f'{r["column"]} = 自己的{r["user_attr"]} 的人')
+            out.append(tr(f'{r["column"]} = 自己的{r["user_attr"]} 的人', f'people whose {r["user_attr"]} equals {r["column"]}'))
         else:
             relation = _relation(conn, r['relation']) or {}
             other = element_row(conn, type_id(relation.get('to') if relation.get('from') == type_name else relation.get('from', '')))
-            out.append(f'经关系“{relation.get("name", r["relation"])}”，{_content(other)["name"] if other else "另一端"}的 {r["column"]} = 自己的{r["user_attr"]} 的人')
+            out.append(tr(f'经关系“{relation.get("name", r["relation"])}”，{_content(other)["name"] if other else "另一端"}的 {r["column"]} = 自己的{r["user_attr"]} 的人', f'through the relation "{relation.get("name", r["relation"])}", people whose {r["user_attr"]} equals {r["column"]} of {_content(other)["name"] if other else "the other end"}'))
     return out
 
 
@@ -66,7 +68,7 @@ def set_notify(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     t = _content(whole_type_row(conn, content['type'], user))   # a type with a column kept from them: not theirs to name people on
     recipients = payload.get('recipients')
     if not isinstance(recipients, list) or len(recipients) > MAX_RECIPIENTS or not all(isinstance(r, dict) for r in recipients):
-        raise TypeRefused(f'通知对象要写成列表，最多 {MAX_RECIPIENTS} 项')
+        raise TypeRefused(tr(f'通知对象要写成列表，最多 {MAX_RECIPIENTS} 项', f'Who to notify must be a list of at most {MAX_RECIPIENTS}'))
     properties = {p['column'] for p in t['properties']}
     known = {u['id'] for u in list_users(conn) if not u['disabled']}
     clean = []
@@ -76,27 +78,27 @@ def set_notify(conn, payload: dict, who: str | None, user: dict | None) -> dict:
         if kind == 'people':
             ids = r.get('user_ids')
             if not isinstance(ids, list) or not ids or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids) or set(ids) - known:
-                raise TypeRefused('点名要选至少一个在用的账号')
+                raise TypeRefused(tr('点名要选至少一个在用的账号', 'Naming people needs at least one active account'))
             clean.append({'kind': 'people', 'user_ids': sorted(set(ids))})
             continue
         if kind not in ('attr', 'via'):
-            raise TypeRefused('通知对象只能是点名的人、按人的属性，或经一个关系按人的属性')
+            raise TypeRefused(tr('通知对象只能是点名的人、按人的属性，或经一个关系按人的属性', 'Who to notify can only be named people, a person attribute, or a person attribute through a relation'))
         if not attr or len(attr) > MAX_ATTR_NAME or not attr.isprintable():
-            raise TypeRefused(f'人的属性名要写 1 到 {MAX_ATTR_NAME} 个字，不能换行')
+            raise TypeRefused(tr(f'人的属性名要写 1 到 {MAX_ATTR_NAME} 个字，不能换行', f'A person attribute name must be 1 to {MAX_ATTR_NAME} characters, on one line'))
         if kind == 'attr':
             if r.get('column') not in properties:
-                raise TypeRefused(f'“{r.get("column")}”不是“{t["name"]}”的属性')
+                raise TypeRefused(tr(f'“{r.get("column")}”不是“{t["name"]}”的属性', f'"{r.get("column")}" is not a property of "{t["name"]}"'))
             clean.append({'kind': 'attr', 'column': r['column'], 'user_attr': attr})
             continue
         relation = _relation(conn, r.get('relation'))
         if relation and relation['from'] == relation['to']:
-            raise TypeRefused(f'关系“{relation["name"]}”两端都是“{t["name"]}”，分不清从哪一端找人，这一版还不能用')
+            raise TypeRefused(tr(f'关系“{relation["name"]}”两端都是“{t["name"]}”，分不清从哪一端找人，这一版还不能用', f'Both ends of the relation "{relation["name"]}" are "{t["name"]}", so it is unclear which end to find people from; this version cannot use it'))
         ends = _other_end(relation, content['type']) if relation else None
         if ends is None:
-            raise TypeRefused(f'没有一端是“{t["name"]}”的关系“{r.get("relation")}”', 400)
+            raise TypeRefused(tr(f'没有一端是“{t["name"]}”的关系“{r.get("relation")}”', f'There is no relation "{r.get("relation")}" with an end at "{t["name"]}"'), 400)
         other = _content(whole_type_row(conn, ends[1], user))
         if r.get('column') not in {p['column'] for p in other['properties']}:
-            raise TypeRefused(f'“{r.get("column")}”不是“{other["name"]}”的属性')
+            raise TypeRefused(tr(f'“{r.get("column")}”不是“{other["name"]}”的属性', f'"{r.get("column")}" is not a property of "{other["name"]}"'))
         clean.append({'kind': 'via', 'relation': r['relation'], 'column': r['column'], 'user_attr': attr})
     before = recipients_of(conn, row['element_id'])
     if clean != before:
@@ -106,8 +108,8 @@ def set_notify(conn, payload: dict, who: str | None, user: dict | None) -> dict:
             if clean:
                 conn.execute('INSERT INTO action_notify(action_id, spec_json) VALUES (?, ?)', (row['element_id'], json.dumps(clean, ensure_ascii=False)))
             said = lines(conn, clean, content['type'])
-            log_line(conn, who or '未署名', row['element_id'], 'notify_changed', before={'lines': lines(conn, before, content['type'])},
-                     after={'lines': said, 'summary': '批准后通知：' + ('；'.join(said) or '不通知任何人')})
+            log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'notify_changed', before={'lines': lines(conn, before, content['type'])},
+                     after={'lines': said, 'summary': tr('批准后通知：' + (tr('；', '; ').join(said) or '不通知任何人'), 'Notify after approval: ' + ('; '.join(said) or 'nobody'))})
             conn.execute('COMMIT')
         except BaseException:
             conn.execute('ROLLBACK')
@@ -120,8 +122,26 @@ def _matching(people: list[dict], attr: str, value) -> list[dict]:
     return [p for p in people if wanted not in (None, '') and _canonical((p.get('attrs') or {}).get(attr)) == wanted]
 
 
-def deliver(conn, action_row: dict, record_id: int, row: dict, text: str, approver: dict | None) -> int:
+def kept_in_both(text) -> str:
+    """The text of a notice to keep: written in each language the page speaks, joined by a unit separator, so each reader gets it in theirs. A plain string is kept as it is."""
+    if isinstance(text, str):
+        return text
+    said = {}
+    for code in ('zh', 'en'):
+        with speaking(code):
+            said[code] = text()
+    return said['zh'] if said['zh'] == said['en'] else said['zh'] + NOTICE_SEPARATOR + said['en']
+
+
+def in_language(text: str) -> str:
+    """One of the two texts a notice keeps: the one in this reader's language."""
+    zh, _, en = text.partition(NOTICE_SEPARATOR)
+    return en if en and current() == 'en' else zh
+
+
+def deliver(conn, action_row: dict, record_id: int, row: dict, text, approver: dict | None) -> int:
     """Tell the people the action names that this change (to `row`, as it is after the change) was approved. Runs inside the approval's write. Returns how many."""
+    text = kept_in_both(text)
     recipients = recipients_of(conn, action_row['element_id'])
     if not recipients:
         return 0
@@ -191,7 +211,7 @@ def list_notices(conn, user: dict | None) -> dict:
         return {'notices': [], 'unread': 0}
     rows = conn.execute('SELECT id, at, action_name, record_id, text, read_at FROM notice WHERE user_id = ? ORDER BY id DESC LIMIT ?', (user['id'], LISTED)).fetchall()
     cache: dict = {}
-    shown = [{'id': i, 'at': at, 'action': a, 'record': r, 'text': t, 'read': read is not None} for i, at, a, r, t, read in rows if _still_readable(conn, r, user, cache)]
+    shown = [{'id': i, 'at': at, 'action': a, 'record': r, 'text': in_language(t), 'read': read is not None} for i, at, a, r, t, read in rows if _still_readable(conn, r, user, cache)]
     return {'notices': shown, 'unread': sum(1 for n in shown if not n['read'])}
 
 
@@ -204,7 +224,7 @@ def mark_read(conn, user: dict | None, payload: dict) -> dict:
     else:
         ids = payload.get('ids')
         if not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids) or len(ids) > LISTED:
-            raise TypeRefused(f'要写 ids（最多 {LISTED} 个）或 all: true')
+            raise TypeRefused(tr(f'要写 ids（最多 {LISTED} 个）或 all: true', f'Write ids (at most {LISTED}) or all: true'))
         if ids:
             conn.execute(f'UPDATE notice SET read_at = ? WHERE user_id = ? AND read_at IS NULL AND id IN ({",".join("?" * len(ids))})', (now_text(), user['id'], *ids))
     return list_notices(conn, user)

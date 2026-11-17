@@ -15,18 +15,19 @@ description are edits only. Many-to-many is not offered: it needs a table that j
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import TrMap, tr
 import json
 import re
 
 from ontology_poc_generator.object_types import (
     RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _edit_names, _flag_readers, _state_view, _text, _visible, dataset_columns, element_row, log_entries, refuse_if_limited, type_id,
-    write_confirmation, write_elements, MAX_DESCRIPTION, MAX_NAME, ENGLISH_NAME, KEPT_COLUMNS)
+    write_confirmation, write_elements, MAX_DESCRIPTION, MAX_NAME, ENGLISH_NAME, kept_columns)
 from ontology_poc_generator.relation_checks import _side_numbers
 from ontology_poc_generator.row_rules import positions, restriction
 from ontology_poc_generator.type_access import hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_store import SAMPLE_LIMIT, _quote, current_dataset, dataset_records, record_result
 
-CARDINALITY = {'many_to_one': '多对一', 'one_to_many': '一对多', 'one_to_one': '一对一'}
+CARDINALITY = TrMap({'many_to_one': ('多对一', 'many to one'), 'one_to_many': ('一对多', 'one to many'), 'one_to_one': ('一对一', 'one to one')})
 ROW_SAMPLE = 10   # rows shown for the keys that miss and for the keys that repeat
 SHOWN_COLUMNS = 6
 
@@ -72,14 +73,14 @@ def check_relation(conn, content: dict, record: bool = True, user: dict | None =
 
 def _check_relation(conn, content: dict, record: bool, copies: dict, examples: bool = True, hide: dict | None = None) -> dict:
     ends = {end: element_row(conn, type_id(content[end])) for end in ('from', 'to')}
-    problems = [f'对象类型“{content[end]}”已经不在了' for end, row in ends.items() if row is None]
+    problems = [tr(f'对象类型“{content[end]}”已经不在了', f'The object type "{content[end]}" is gone') for end, row in ends.items() if row is None]
     if problems:
         return {'problems': problems}
     types = {end: _content(row) for end, row in ends.items()}
     datasets = {end: current_dataset(conn, types[end]['dataset']) for end in ends}
-    problems = [f'数据集“{types[end]["dataset"]}”已经不在了' for end, d in datasets.items() if d is None]
+    problems = [tr(f'数据集“{types[end]["dataset"]}”已经不在了', f'The dataset "{types[end]["dataset"]}" is gone') for end, d in datasets.items() if d is None]
     columns = {end: dataset_columns(conn, datasets[end]['id']) for end in ends if datasets[end]}
-    problems += [f'{datasets[end]["name"]} 第 {datasets[end]["version"]} 版里没有“{content[f"{end}_column"]}”这一列' for end in columns if content[f'{end}_column'] not in columns[end]]
+    problems += [tr(f'{datasets[end]["name"]} 第 {datasets[end]["version"]} 版里没有“{content[f"{end}_column"]}”这一列', f'{datasets[end]["name"]} version {datasets[end]["version"]} has no column "{content[f"{end}_column"]}"') for end in columns if content[f'{end}_column'] not in columns[end]]
     if problems:
         return {'problems': problems}
     datasets = {end: copies.get(end, d) for end, d in datasets.items()}   # the rows a row rule leaves this person, when it limits an end
@@ -89,7 +90,7 @@ def _check_relation(conn, content: dict, record: bool, copies: dict, examples: b
     m_col, o_col = content[f'{many_end}_column'], content[f'{one_end}_column']
     shown = list(dict.fromkeys([*m['key'], m_col]))
     repeated_shown = list(dict.fromkeys([o_col, *[p['column'] for p in o['properties'] if p['column'] not in (hide or {}).get(one_end, set())]]))[:SHOWN_COLUMNS]
-    gone = [f'{ds["name"]} 第 {ds["version"]} 版里没有“{c}”这一列' for ds, wanted, end in ((m_ds, shown, many_end), (o_ds, repeated_shown, one_end))
+    gone = [tr(f'{ds["name"]} 第 {ds["version"]} 版里没有“{c}”这一列', f'{ds["name"]} version {ds["version"]} has no column "{c}"') for ds, wanted, end in ((m_ds, shown, many_end), (o_ds, repeated_shown, one_end))
             for c in wanted if c not in columns[end]]   # a column in double quotes that is not there would be read by SQLite as its own name, as a value
     if gone:
         return {'problems': gone}
@@ -105,7 +106,7 @@ def _check_relation(conn, content: dict, record: bool, copies: dict, examples: b
     rows, empty, unmatched = m_ds['rows_stored'], found['empty'], found['unmatched']
     numbers = {'rows': rows, 'matched': rows - empty - unmatched, 'unmatched': unmatched, 'fan_keys': found['fan_keys'], 'extra_rows': found['extra_rows'], 'many_repeats': many_repeats}
     warnings = [] if {o_col} == set(o['key']) else [   # unique today is not unique for good unless the column is what the one side is keyed on
-        f'“{o["name"]}”的主键是{" + ".join(f"“{k}”" for k in o["key"])}，这里连的是“{o_col}”：它现在{"有重复" if found["fan_keys"] else "没有重复"}，但没有什么保证它以后一直不重复']
+        tr(f'“{o["name"]}”的主键是{" + ".join(f"“{k}”" for k in o["key"])}，这里连的是“{o_col}”：它现在{"有重复" if found["fan_keys"] else "没有重复"}，但没有什么保证它以后一直不重复', f'The key of "{o["name"]}" is {" + ".join(o["key"])}, but this connects on "{o_col}": it has {"repeats" if found["fan_keys"] else "no repeats"} now, but nothing guarantees it stays free of repeats')]
     ids = []
     if record:
         element = relation_id(content['english_name'])
@@ -128,20 +129,20 @@ def evidence_lines(result: dict) -> list[dict]:
     if result['problems']:
         return [{'ok': False, 'text': p} for p in result['problems']]
     n, many, one = result['numbers'], result['many'], result['one']
-    lines = [{'ok': n['unmatched'] == 0 and n['matched'] == n['rows'], 'text': f'{many["dataset"]} 第 {many["version"]} 版的 {n["rows"]} 行里，{n["matched"]} 行用“{many["column"]}”连上了 {one["dataset"]} 的“{one["column"]}”'}]
+    lines = [{'ok': n['unmatched'] == 0 and n['matched'] == n['rows'], 'text': tr(f'{many["dataset"]} 第 {many["version"]} 版的 {n["rows"]} 行里，{n["matched"]} 行用“{many["column"]}”连上了 {one["dataset"]} 的“{one["column"]}”', f'Of the {n["rows"]} rows in {many["dataset"]} version {many["version"]}, {n["matched"]} connected through "{many["column"]}" to "{one["column"]}" in {one["dataset"]}')}]
     if n['unmatched']:
-        keys = '、'.join(s['key'] for s in result['samples'])
-        etc = f' 等 {result["unmatched_keys"]} 个编号' if result['unmatched_keys'] > len(result['samples']) else ''
+        keys = tr('、', ', ').join(s['key'] for s in result['samples'])
+        etc = tr(f' 等 {result["unmatched_keys"]} 个编号', f' and {result["unmatched_keys"] - len(result["samples"])} more keys') if result['unmatched_keys'] > len(result['samples']) else ''
         lines.append({'ok': False, 'strong': True,   # the rows that belong to nobody are what a person confirming this has to see first: they are in no statistic through the relation
-                      'text': f'{n["unmatched"]} 行{many["name"]}找不到{one["name"]}' + (f'：{keys}{etc}' if keys else '')
-                              + (f'；其中 {result["if_trimmed"]} 行去掉空格、忽略大小写后能对上' if result['if_trimmed'] else '')})
+                      'text': tr(f'{n["unmatched"]} 行{many["name"]}找不到{one["name"]}', f'{n["unmatched"]} {many["name"]} rows have no {one["name"]}') + (tr(f'：{keys}{etc}', f': {keys}{etc}') if keys else '')
+                              + (tr(f'；其中 {result["if_trimmed"]} 行去掉空格、忽略大小写后能对上', f'; {result["if_trimmed"]} of them would match once spaces and letter case are ignored') if result['if_trimmed'] else '')})
     if result['empty']:
-        lines.append({'ok': False, 'text': f'{result["empty"]} 行的“{many["column"]}”是空的，没有连任何{one["name"]}'})
+        lines.append({'ok': False, 'text': tr(f'{result["empty"]} 行的“{many["column"]}”是空的，没有连任何{one["name"]}', f'{result["empty"]} rows have an empty "{many["column"]}" and connect to no {one["name"]}')})
     f = result['fanout']
     lines += [{'ok': False, 'text': text} for text in (_fanout_line(result), _repeat_line(result)) if text]
     if not f['keys'] and not n['many_repeats']:
-        lines.append({'ok': True, 'text': f'{one["dataset"]} 里“{one["column"]}”没有重复，一个{many["name"]}只会连上一个{one["name"]}'})
-    lines += [{'ok': False, 'text': f'提醒：{w}'} for w in result.get('warnings', [])]
+        lines.append({'ok': True, 'text': tr(f'{one["dataset"]} 里“{one["column"]}”没有重复，一个{many["name"]}只会连上一个{one["name"]}', f'"{one["column"]}" in {one["dataset"]} has no repeats, so one {many["name"]} connects to only one {one["name"]}')})
+    lines += [{'ok': False, 'text': tr(f'提醒：{w}', f'Note: {w}')} for w in result.get('warnings', [])]
     return lines
 
 
@@ -150,17 +151,17 @@ def _fanout_line(result: dict) -> str | None:
     f, one = result['fanout'], result['one']
     if not f['keys']:
         return None
-    keys = '、'.join(f'{s["key"]}（{s["rows"]} 次）' for s in f['samples'])
-    head = f'{one["dataset"]} 里“{one["column"]}”有 {f["keys"]} 个值重复{f"：{keys}" if keys else ""}'
+    keys = tr('、', ', ').join(tr(f'{s["key"]}（{s["rows"]} 次）', f'{s["key"]} ({s["rows"]} times)') for s in f['samples'])
+    head = tr(f'{one["dataset"]} 里“{one["column"]}”有 {f["keys"]} 个值重复{f"：{keys}" if keys else ""}', f'"{one["column"]}" in {one["dataset"]} has {f["keys"]} repeated value{"" if f["keys"] == 1 else "s"}{f": {keys}" if keys else ""}')
     if not f['extra_rows']:
-        return f'{head}；现在没有行连上它们，但以后连上就会多出行，按{one["name"]}汇总会重复算'
-    return f'{head}；连上它们的 {f["source_rows"]} 行会多出 {f["extra_rows"]} 行，按{one["name"]}汇总会重复算'
+        return tr(f'{head}；现在没有行连上它们，但以后连上就会多出行，按{one["name"]}汇总会重复算', f'{head}; no rows connect to them now, but any that do later will add rows, and totals by {one["name"]} will count twice')
+    return tr(f'{head}；连上它们的 {f["source_rows"]} 行会多出 {f["extra_rows"]} 行，按{one["name"]}汇总会重复算', f'{head}; the {f["source_rows"]} rows that connect to them gain {f["extra_rows"]} extra rows, and totals by {one["name"]} will count twice')
 
 
 def _repeat_line(result: dict) -> str | None:
     """For one-to-one: the values of the many side that appear more than once; None when none does."""
     n, many = result['numbers'], result['many']
-    return f'一对一不成立：{many["dataset"]} 里“{many["column"]}”有 {n["many_repeats"]} 个值出现了不止一次' if n['many_repeats'] else None
+    return tr(f'一对一不成立：{many["dataset"]} 里“{many["column"]}”有 {n["many_repeats"]} 个值出现了不止一次', f'One to one does not hold: "{many["column"]}" in {many["dataset"]} has {n["many_repeats"]} values that appear more than once') if n['many_repeats'] else None
 
 
 def cardinality_false(result: dict) -> list[str]:
@@ -178,7 +179,7 @@ def counts_only(result: dict) -> dict:
 
 
 def _describe(numbers: dict, many: str, one: str) -> str:
-    return f'{numbers["matched"]} / {numbers["rows"]} 行连上{one}，{numbers["fan_keys"]} 个重复的{one}键'
+    return tr(f'{numbers["matched"]} / {numbers["rows"]} 行连上{one}，{numbers["fan_keys"]} 个重复的{one}键', f'{numbers["matched"]} / {numbers["rows"]} rows connect to {one}, {numbers["fan_keys"]} repeated {one} keys')
 
 
 def relation_problems(conn, row: dict) -> list[str]:
@@ -191,8 +192,8 @@ def relation_problems(conn, row: dict) -> list[str]:
     if result['numbers'] == was['numbers']:   # by name: the anchors are stored with their keys sorted, the signature is in the order the page reads it
         return []
     many, one = result['many'], result['one']
-    moved = '、'.join(f'{name} 第 {v} 版' for name, v in result['datasets'].items() if was['datasets'].get(name) != v)
-    return [f'{moved}之后，连接的行变了：确认时 {_describe(was["numbers"], many["name"], one["name"])}，现在 {_describe(result["numbers"], many["name"], one["name"])}']
+    moved = tr('、', ', ').join(tr(f'{name} 第 {v} 版', f'{name} version {v}') for name, v in result['datasets'].items() if was['datasets'].get(name) != v)
+    return [tr(f'{moved}之后，连接的行变了：确认时 {_describe(was["numbers"], many["name"], one["name"])}，现在 {_describe(result["numbers"], many["name"], one["name"])}', f'After {moved}, the connected rows changed: when confirmed, {_describe(was["numbers"], many["name"], one["name"])}; now, {_describe(result["numbers"], many["name"], one["name"])}')]
 
 
 # --- the definition a person writes -------------------------------------------------------------------------------------------------------------
@@ -202,36 +203,36 @@ def check_definition(conn, payload: dict, user: dict | None, english_name: str |
     each type's dataset. TypeRefused says what is wrong."""
     english = payload.get('english_name') if english_name is None else english_name
     if not isinstance(english, str) or not ENGLISH_NAME.fullmatch(english):
-        raise TypeRefused('英文名只能用字母、数字和下划线，字母开头，最多 40 个字符')
+        raise TypeRefused(tr('英文名只能用字母、数字和下划线，字母开头，最多 40 个字符', 'The English name may use only letters, digits and underscores, must start with a letter, and is at most 40 characters'))
     if english.casefold() == 'new':
-        raise TypeRefused('英文名不能叫 new：页面的“新建”用了这个地址')
-    name = _text(payload.get('name'), '名称', MAX_NAME)
-    description = _text(payload.get('description') or '', '说明', MAX_DESCRIPTION, required=False)
+        raise TypeRefused(tr('英文名不能叫 new：页面的“新建”用了这个地址', 'The English name cannot be "new": the New page uses that address'))
+    name = _text(payload.get('name'), tr('名称', 'The name'), MAX_NAME)
+    description = _text(payload.get('description') or '', tr('说明', 'The description'), MAX_DESCRIPTION, required=False)
     for end in ('from', 'to'):
         row = element_row(conn, type_id(str(payload.get(end))))
         if row is None or not _visible(conn, row, user):
-            raise TypeRefused(f'没有“{payload.get(end)}”这个对象类型', 404)
+            raise TypeRefused(tr(f'没有“{payload.get(end)}”这个对象类型', f'There is no object type "{payload.get(end)}"'), 404)
         if hidden_columns(conn, row['element_id'], user):
-            raise TypeRefused(KEPT_COLUMNS, 403)
+            raise TypeRefused(kept_columns(), 403)
     if payload.get('cardinality') == 'many_to_many':
-        raise TypeRefused('多对多要靠一张把两边连起来的表，一对列写不出来，这一版还不能建')
+        raise TypeRefused(tr('多对多要靠一张把两边连起来的表，一对列写不出来，这一版还不能建', 'Many to many needs a table that joins the two sides, which a pair of columns cannot express, so it cannot be created yet'))
     if payload.get('cardinality') not in CARDINALITY:
-        raise TypeRefused('基数要选多对一、一对多或一对一')
+        raise TypeRefused(tr('基数要选多对一、一对多或一对一', 'Pick many to one, one to many or one to one for the cardinality'))
     for end in ('from', 'to'):
         if not isinstance(payload.get(f'{end}_column'), str) or not payload[f'{end}_column']:
-            raise TypeRefused('两边各要选一列')
+            raise TypeRefused(tr('两边各要选一列', 'Pick one column on each side'))
     content = {'name': name, 'english_name': english, 'description': description, 'from': payload['from'], 'to': payload['to'], 'cardinality': payload['cardinality'],
                'from_column': payload['from_column'], 'to_column': payload['to_column']}
     problems = check_relation(conn, content, record=False)['problems']
     if problems:
-        raise TypeRefused('；'.join(problems), 409)
+        raise TypeRefused(tr('；', '; ').join(problems), 409)
     return content
 
 
 def preview_relation(conn, payload: dict, user: dict | None) -> dict:
     """How many rows would connect for a relation not yet saved: the same check a save runs, on the rows this person may read, kept nowhere. Names are not needed.
     TypeRefused says what is wrong (a type that is not theirs, a column that is not there)."""
-    content = check_definition(conn, {**payload, 'english_name': 'preview', 'name': '预览'}, user)
+    content = check_definition(conn, {**payload, 'english_name': 'preview', 'name': tr('预览', 'Preview')}, user)
     result = check_relation(conn, content, record=False, user=user)
     n = result['numbers']
     return {'rows': n['rows'], 'matched': n['matched'], 'unmatched': n['unmatched'], 'empty': result['empty'], 'samples': result['samples'],
@@ -244,14 +245,14 @@ def check_names_free(conn, content: dict) -> None:
         if element_id == mine:
             continue
         if element_id.casefold() == mine.casefold():
-            raise TypeRefused(f'英文名“{content["english_name"]}”和已有的“{element_id[len(RELATION_PREFIX):]}”只差大小写', 409)
+            raise TypeRefused(tr(f'英文名“{content["english_name"]}”和已有的“{element_id[len(RELATION_PREFIX):]}”只差大小写', f'The English name "{content["english_name"]}" differs from the existing "{element_id[len(RELATION_PREFIX):]}" only in case'), 409)
         if json.loads(other)['name'].casefold() == content['name'].casefold():
-            raise TypeRefused(f'已经有叫“{content["name"]}”的关系', 409)
+            raise TypeRefused(tr(f'已经有叫“{content["name"]}”的关系', f'There is already a relation named "{content["name"]}"'), 409)
 
 
 def reset_reasons(old: dict, new: dict) -> list[str]:
     """What changed that a confirmation was about: the two types, the cardinality, the key columns. Names and the description are not on the list."""
-    names = {'from': '起点类型', 'to': '终点类型', 'cardinality': '基数', 'from_column': '起点的列', 'to_column': '终点的列'}
+    names = {'from': tr('起点类型', 'the start type'), 'to': tr('终点类型', 'the end type'), 'cardinality': tr('基数', 'the cardinality'), 'from_column': tr('起点的列', 'the start column'), 'to_column': tr('终点的列', 'the end column')}
     return [label for key, label in names.items() if old[key] != new[key]]
 
 
@@ -272,7 +273,7 @@ def create_relation(conn, payload: dict, who: str | None, user: dict | None) -> 
     """Put a relation forward (state checked, the person its proposer): the check runs on the full data now. Returns {'id', 'numbers'}."""
     content = check_definition(conn, payload, user)
     if element_row(conn, relation_id(content['english_name'])):
-        raise TypeRefused(f'已经有英文名“{content["english_name"]}”的关系', 409)
+        raise TypeRefused(tr(f'已经有英文名“{content["english_name"]}”的关系', f'There is already a relation with the English name "{content["english_name"]}"'), 409)
     check_names_free(conn, content)
     result = check_relation(conn, content)
     write_elements(conn, [_change(content, result, who)], {relation_id(content['english_name']): _reads(content, result)})
@@ -284,16 +285,16 @@ def update_relation(conn, payload: dict, who: str | None, user: dict | None) -> 
     moves to needs_look); so does saving a draft that was sent back; names and the description keep the state. 409 when the version has moved."""
     row = element_row(conn, relation_id(str(payload.get('id'))))
     if row is None or not _relation_visible(conn, row, user):
-        raise TypeRefused('没有这个关系', 404)
+        raise TypeRefused(tr('没有这个关系', 'There is no such relation'), 404)
     if payload.get('version') != row['version']:
-        raise TypeRefused('这个关系在你打开之后被改了，请刷新后再改', 409)
+        raise TypeRefused(tr('这个关系在你打开之后被改了，请刷新后再改', 'This relation was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
     content = check_definition(conn, payload, user, old['english_name'])
     check_names_free(conn, content)
     reset = reset_reasons(old, content)
     if reset or row['state'] in ('proposed', 'rejected'):
         result = check_relation(conn, content)
-        after = (lambda c: _flag_readers(c, row['element_id'], f'它用的“{old["name"]}”关系改了{"、".join(reset)}，要重新确认', [])) if reset and row['state'] == 'confirmed' else None
+        after = (lambda c: _flag_readers(c, row['element_id'], tr(f'它用的“{old["name"]}”关系改了{tr("、", ", ").join(reset)}，要重新确认', f'The relation "{old["name"]}" it uses changed ({", ".join(reset)}) and needs confirming again'), [])) if reset and row['state'] == 'confirmed' else None
         write_elements(conn, [_change(content, result, who)], {row['element_id']: _reads(content, result)}, {row['element_id']: row['version']}, after)
         warnings = result['warnings']
     else:
@@ -308,28 +309,28 @@ def confirm_relation(conn, payload: dict, who: str | None, user: dict | None) ->
     data as it is and the confirmation is refused (409) when the counts are not those: the data moved after they looked. Both endpoint types must be confirmed."""
     row = element_row(conn, relation_id(str(payload.get('id'))))
     if row is None or not _relation_visible(conn, row, user):
-        raise TypeRefused('没有这个关系', 404)
+        raise TypeRefused(tr('没有这个关系', 'There is no such relation'), 404)
     refuse_if_limited(conn, row, user)
     if payload.get('version') != row['version']:
-        raise TypeRefused('确认要带上你看到的那一版；它在你看过之后被改了，请刷新后重新看一遍', 409)
+        raise TypeRefused(tr('确认要带上你看到的那一版；它在你看过之后被改了，请刷新后重新看一遍', 'Confirming needs the version you saw; it was changed after you looked, so refresh and look again'), 409)
     if row['state'] == 'confirmed':
-        raise TypeRefused('已经确认过了', 409)
+        raise TypeRefused(tr('已经确认过了', 'Already confirmed'), 409)
     if row['state'] == 'rejected':
-        raise TypeRefused('已经被退回了：要先按退回的理由改，再重新提出', 409)
+        raise TypeRefused(tr('已经被退回了：要先按退回的理由改，再重新提出', 'It was sent back: change it as the reason says, then put it forward again'), 409)
     if not isinstance(payload.get('seen'), list):
-        raise TypeRefused('确认要带上你看到的连接行数（seen）')
+        raise TypeRefused(tr('确认要带上你看到的连接行数（seen）', 'Confirming needs the connected row counts you saw (seen)'))
     content = _content(row)
     unconfirmed = [_content(r)['name'] for r in (element_row(conn, type_id(content[e])) for e in ('from', 'to')) if r['state'] != 'confirmed']
     if unconfirmed:
-        raise TypeRefused(f'关系要连接的对象类型都确认之后才能确认：“{"”、“".join(unconfirmed)}”还没有确认', 409)
+        raise TypeRefused(tr(f'关系要连接的对象类型都确认之后才能确认：“{"”、“".join(unconfirmed)}”还没有确认', f'A relation can be confirmed only after the object types it connects are confirmed: {", ".join(unconfirmed)} not confirmed yet'), 409)
     result = check_relation(conn, content)
     if result['problems']:
-        raise TypeRefused(f'按现在的数据过不了检查，不能确认：{"；".join(result["problems"])}', 409)
+        raise TypeRefused(tr(f'按现在的数据过不了检查，不能确认：{tr("；", "; ").join(result["problems"])}', f'It fails the checks on the current data and cannot be confirmed: {"; ".join(result["problems"])}'), 409)
     if payload['seen'] != result['signature']:
-        raise TypeRefused('数据在你看过之后变了，连接的行数和你看到的不一样，请刷新后重新看一遍', 409)
+        raise TypeRefused(tr('数据在你看过之后变了，连接的行数和你看到的不一样，请刷新后重新看一遍', 'The data changed after you looked, and the connected row counts are not what you saw. Refresh and look again'), 409)
     false = cardinality_false(result)
     if false:   # saving such a relation is allowed (the evidence is what a person comes to read); standing behind it is not
-        raise TypeRefused(f'按现在的数据，{CARDINALITY[content["cardinality"]]}不成立，不能确认：{"；".join(false)}', 409)
+        raise TypeRefused(tr(f'按现在的数据，{CARDINALITY[content["cardinality"]]}不成立，不能确认：{tr("；", "; ").join(false)}', f'On the current data, {CARDINALITY[content["cardinality"]]} does not hold, so it cannot be confirmed: {"; ".join(false)}'), 409)
     write_confirmation(conn, row['element_id'], content, _evidence(result), who, {'numbers': result['numbers'], 'datasets': result['datasets']}, result['datasets'],
                        row['version'], _reads(content, result))   # what it reads is taken from its two types as they are now
     return {'state': 'confirmed'}
@@ -376,7 +377,7 @@ def list_relations(conn, user: dict | None) -> list[dict]:
 def relation_detail(conn, english_name: str, user: dict | None) -> dict:
     row = element_row(conn, relation_id(english_name))
     if row is None or not _relation_visible(conn, row, user):
-        raise TypeRefused('没有这个关系', 404)
+        raise TypeRefused(tr('没有这个关系', 'There is no such relation'), 404)
     content = _content(row)
     result = check_relation(conn, content, record=False, user=user)
     if user is not None and user['role'] == 'viewer':   # a viewer reads the counts; the rows and keys behind them are data
@@ -406,5 +407,5 @@ def relation_columns(conn, user: dict | None) -> list[dict]:
 def relation_log(conn, english_name: str, user: dict | None) -> list[dict]:
     relation_detail_row = element_row(conn, relation_id(english_name))
     if relation_detail_row is None or not _relation_visible(conn, relation_detail_row, user):
-        raise TypeRefused('没有这个关系', 404)
+        raise TypeRefused(tr('没有这个关系', 'There is no such relation'), 404)
     return log_entries(conn, [relation_id(english_name)])

@@ -1,4 +1,5 @@
 """Local-only upload API: a business file in, a verified company ontology and its evaluation out."""
+from ontology_poc_generator.lang import tr
 import argparse
 import base64
 import binascii
@@ -114,8 +115,10 @@ class RunChanged(ValueError):
 
 SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
 JOB_ID = re.compile(r'^[0-9a-f]{12}$')
-NO_KEY = '本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。'
-INTERRUPTED = '建模服务在这次建模途中重启过，这次作业中断了。请重新上传文件。'
+def no_key() -> str:
+    return tr('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。', 'This service has no model credentials: set DEEPSEEK_API_KEY or OPENROUTER_API_KEY and restart ontology_server.')
+def interrupted() -> str:
+    return tr('建模服务在这次建模途中重启过，这次作业中断了。请重新上传文件。', 'The modeling service restarted partway through this job, so it was interrupted. Upload the file again.')
 
 
 def prices_from_env() -> tuple[float | None, float | None]:
@@ -145,7 +148,7 @@ def model_setting_problem() -> str | None:
     name = os.environ.get('EIP_MODEL_NAME')
     via_openrouter = not (os.environ.get('DEEPSEEK_API_KEY') or os.environ.get('EIP_MODEL_API_KEY')) and os.environ.get('OPENROUTER_API_KEY')
     if via_openrouter and not os.environ.get('EIP_MODEL_API_BASE') and name and '/' not in name:
-        return f'EIP_MODEL_NAME={name} 不是 OpenRouter 的模型名（形如 deepseek/deepseek-v4.1-flash）：去掉它用默认模型，或写成 OpenRouter 的名字'
+        return tr(f'EIP_MODEL_NAME={name} 不是 OpenRouter 的模型名（形如 deepseek/deepseek-v4.1-flash）：去掉它用默认模型，或写成 OpenRouter 的名字', f'EIP_MODEL_NAME={name} is not an OpenRouter model name (like deepseek/deepseek-v4.1-flash): remove it to use the default model, or write an OpenRouter name')
     return None
 
 
@@ -205,7 +208,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return None
         if not isinstance(name, str) or not SAVED_NAME.match(name) or not (output_dir / name).exists() \
                 or not (output_dir / name.replace('.json', '.bundle.json')).exists():
-            raise ValueError('previous 要写一次保存过的运行名')
+            raise ValueError(tr('previous 要写一次保存过的运行名', 'previous must be the name of a saved run'))
         return name
 
     def form_path(result):
@@ -225,24 +228,24 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         """A form sent by the page: every object and field must exist, every text short, the display field its own."""
         fields = {t['type']: {f['path'] for f in t['fields']} for t in handover.get('types', [])}
         if not isinstance(form, dict) or not isinstance(form.get('types'), dict):
-            raise ValueError('form 要写 {"types": {对象: …}}')
+            raise ValueError(tr('form 要写 {"types": {对象: …}}', 'form must be written as {"types": {object: …}}'))
         out = {}
         for key, t in form['types'].items():
             if key not in fields or not isinstance(t, dict):
-                raise ValueError(f'本体里没有对象 {key}')
+                raise ValueError(tr(f'本体里没有对象 {key}', f'The ontology has no object {key}'))
             def text(v, limit, what):
                 if v is None or (isinstance(v, str) and len(v) <= limit):
                     return v
-                raise ValueError(f'{key} 的{what}太长或不是文字')
+                raise ValueError(tr(f'{key} 的{what}太长或不是文字', f'The {what} of {key} is too long or not text'))
             if t.get('display_field') not in (None, *fields[key]):
-                raise ValueError(f"{key} 的展示字段 {t.get('display_field')} 不是它的字段")
-            entry = {'label': text(t.get('label'), MAX_LABEL, '中文名'), 'description': text(t.get('description'), MAX_DESCRIPTION, '描述'),
+                raise ValueError(tr(f"{key} 的展示字段 {t.get('display_field')} 不是它的字段", f"The display field {t.get('display_field')} of {key} is not one of its fields"))
+            entry = {'label': text(t.get('label'), MAX_LABEL, tr('中文名', 'name')), 'description': text(t.get('description'), MAX_DESCRIPTION, tr('描述', 'description')),
                      'display_field': t.get('display_field'), 'drafted': bool(t.get('drafted')), 'fields': {}}
             for path, f in (t.get('fields') or {}).items():
                 if path not in fields[key] or not isinstance(f, dict):
-                    raise ValueError(f'{key} 没有字段 {path}')
-                entry['fields'][path] = {'label': text(f.get('label'), MAX_LABEL, f'字段 {path} 的中文名'),
-                                         'description': text(f.get('description'), MAX_DESCRIPTION, f'字段 {path} 的描述'), 'drafted': bool(f.get('drafted'))}
+                    raise ValueError(tr(f'{key} 没有字段 {path}', f'{key} has no field {path}'))
+                entry['fields'][path] = {'label': text(f.get('label'), MAX_LABEL, tr(f'字段 {path} 的中文名', f'name of field {path}')),
+                                         'description': text(f.get('description'), MAX_DESCRIPTION, tr(f'字段 {path} 的描述', f'description of field {path}')), 'drafted': bool(f.get('drafted'))}
             out[key] = entry
         return {'types': out}
 
@@ -297,7 +300,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
     def blocked_text(result, what):
         """Why a draft that did not pass the checks cannot do `what`, with the checks it failed (the first two)."""
         errors = [f'{e["code"]}: {e["message"]}' for e in (result['ontology'].get('verification') or {}).get('errors', [])[:2]]
-        return f'本体没有通过结构核验，{what}' + (f'。没通过的核验：{"；".join(errors)}' if errors else '')
+        return tr(f'本体没有通过结构核验，{what}', f'The ontology did not pass the structure check; {what}') + (tr(f'。没通过的核验：{tr("；", "; ").join(errors)}', f'. Checks that failed: {"; ".join(errors)}') if errors else '')
 
     code_cache, code_lock = {}, threading.Lock()   # a run's code columns are worked out once: its rows never change
 
@@ -407,7 +410,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             return {'views': context['views'], 'view_tables': context['view_tables'], 'proposed_views': waiting}
         except Exception as exc:
-            return {'views': [], 'view_tables': [], 'proposed_views': [], 'views_error': f'视图没有读出来：{type(exc).__name__}: {exc}'[:300]}
+            return {'views': [], 'view_tables': [], 'proposed_views': [], 'views_error': tr(f'视图没有读出来：{type(exc).__name__}: {exc}', f'The views could not be read: {type(exc).__name__}: {exc}')[:300]}
 
     def rows_kept(result, context, view):
         """The positions of the rows a view keeps in its table, read once per version of the definitions."""
@@ -457,7 +460,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         try:   # the workspace file is a second store: failing to read it must not stop an answer that the rows alone can give
             context, unread = view_context(result), None
         except Exception as exc:
-            context, unread = None, f'视图没有读出来，这次读的是原表的行：{type(exc).__name__}: {exc}'[:300]
+            context, unread = None, tr(f'视图没有读出来，这次读的是原表的行：{type(exc).__name__}: {exc}', f'The views could not be read, so this run read the rows of the original table: {type(exc).__name__}: {exc}')[:300]
 
         def rows_of(applied):
             """(bundle, graph) holding only the rows the views in `applied` keep, per table (a row all of them keep)."""
@@ -471,7 +474,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 kept_rows[v['source']] = rows if v['source'] not in kept_rows else kept_rows[v['source']] & rows
             for table in kept_rows:
                 if len(bundle['sources'][table]['records']) != context['tables'][table]['rows']:
-                    raise ValueError(f'「{table}」表在工作区里是 {context["tables"][table]["rows"]} 行，这次运行的数据是 {len(bundle["sources"][table]["records"])} 行，对不上')
+                    raise ValueError(tr(f'「{table}」表在工作区里是 {context["tables"][table]["rows"]} 行，这次运行的数据是 {len(bundle["sources"][table]["records"])} 行，对不上', f'The table "{table}" has {context["tables"][table]["rows"]} rows in the workspace but this run has {len(bundle["sources"][table]["records"])} rows, which does not match'))
             chosen = choose_rows(reviewed, bundle, kept_rows)
             reading = {**bundle, 'sources': {**bundle['sources'], **{t: {**bundle['sources'][t], 'records': r} for t, r in chosen.items()}}}
             built = (reading, build_graph(result['ontology'], reading))
@@ -485,16 +488,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             checked = definition_check(question, query, reviewed, views, meanings, used, told, bundle.get('waiting')) if check and isinstance(query, dict) else {'unmet': [], 'apply': [], 'understood': []}
             if checked['unmet']:
                 return {**refusal(checked['unmet']), 'understood': checked['understood']}
-            broken = [f'「{v["name"]}」{v["why"]}' for v in views if v['kind'] == 'current' and v['state'] != 'confirmed']
+            broken = [tr(f'「{v["name"]}」{v["why"]}', f'"{v["name"]}" {v["why"]}') for v in views if v['kind'] == 'current' and v['state'] != 'confirmed']
             if broken and not problem:   # the rule still picks the rows (by its own code), but the view that should say so cannot be used
-                problem = f'视图用不了，这次读的是原表的行，由确认过的规则取最新：{"；".join(broken)}'[:300]
+                problem = tr(f'视图用不了，这次读的是原表的行，由确认过的规则取最新：{tr("；", "; ").join(broken)}', f'The views cannot be used, so this run read the rows of the original table, taking the latest by the confirmed rules: {"; ".join(broken)}')[:300]
             applied = [v for v in views if v['kind'] == 'current' and v['state'] == 'confirmed'] + checked['apply']
             reading, reading_graph = bundle, graph
             if applied:
                 try:
                     reading, reading_graph = rows_of(applied)
                 except (sqlite3.Error, ValueError, KeyError) as exc:   # the views chose rows that this run's rows do not line up with
-                    applied, problem = [], f'视图没有用上，这次读的是原表的行：{exc}'[:300]
+                    applied, problem = [], tr(f'视图没有用上，这次读的是原表的行：{exc}', f'The views were not used, so this run read the rows of the original table: {exc}')[:300]
             now = answer_query(reviewed, reading, query, question, reading_graph, derived, cells)
             if now.get('status') == 'no_data':   # only a filter that found nothing is looked at, and rows are read only then
                 records = {t: v['records'] for t, v in bundle['sources'].items()}
@@ -517,11 +520,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 drop_views_except(conn, {run_id(p.name) for p in output_dir.glob('*.json') if SAVED_NAME.match(p.name)})
             finally:
                 conn.close()
-            return '；'.join(f'{n}：{e}' for n, e in refused.items()) or None
+            return tr('；', '; ').join(tr(f'{n}：{e}', f'{n}: {e}') for n, e in refused.items()) or None
         except Exception as exc:
             return f'{type(exc).__name__}: {exc}'[:300]
 
-    views_warning = lambda problem: f'已记下，但工作区里的视图没有更新：{problem}' if problem else None
+    views_warning = lambda problem: tr(f'已记下，但工作区里的视图没有更新：{problem}', f'Saved, but the views in the workspace were not updated: {problem}') if problem else None
 
     def settled_definitions(result, profiles, enums, rules, open_ids):
         """What a person decided through the code-meaning and repeat-rule endpoints and no item asks about any more, as the list of
@@ -530,13 +533,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         for p in profiles:
             kept = enums.get(p['field'])
             if p['id'] not in open_ids and kept:
-                out.append({'id': p['id'], 'kind': 'code_meaning', 'ask': f'「{p["source"]}」的「{p["column"]}」是代码',
-                            'answer': {'says': '含义已确认', 'text': '、'.join(f'{e["value"]} = {e["label"]}' for e in kept['values'] if e.get('label')),
+                out.append({'id': p['id'], 'kind': 'code_meaning', 'ask': tr(f'「{p["source"]}」的「{p["column"]}」是代码', f'"{p["column"]}" of "{p["source"]}" is a code'),
+                            'answer': {'says': tr('含义已确认', 'Meanings confirmed'), 'text': tr('、', ', ').join(f'{e["value"]} = {e["label"]}' for e in kept['values'] if e.get('label')),
                                        'by': kept['confirmed_by'], 'at': kept['confirmed_at'], 'mode': kept.get('mode')}})
         for key, rule in rules.items():
             if f'repeated_key:{key}' not in open_ids:
-                said = {'keep_both': '每一行都留', 'data_error': '当作数据错误'}.get(rule['rule'], f'只留「{rule.get("column")}」最新的一行')
-                out.append({'id': f'repeated_key:{key}', 'kind': 'repeated_key', 'ask': f'{key.partition(".")[2]}表重复的编号怎么算',
+                said = {'keep_both': tr('每一行都留', 'Keep every row'), 'data_error': tr('当作数据错误', 'Treat it as a data error')}.get(rule['rule'], tr(f'只留「{rule.get("column")}」最新的一行', f'Keep only the latest row by "{rule.get("column")}"'))
+                out.append({'id': f'repeated_key:{key}', 'kind': 'repeated_key', 'ask': tr(f'{key.partition(".")[2]}表重复的编号怎么算', f'How to treat the repeated keys of the table {key.partition(".")[2]}'),
                             'answer': {'says': said, 'text': '', 'by': rule['confirmed_by'], 'at': rule['confirmed_at'], 'mode': rule.get('mode')}})
         conn = open_workspace(output_dir / 'workspace.sqlite')
         try:
@@ -548,11 +551,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         label = lambda key: next((t.get('label') or key for t in p['object_types'] if t['key'] == key), key)
         for r in (r for r in p['relations'] if ((approved.get(r['key']) or {}).get('content') or {}).get('mode') == 'bulk'):   # judged right with others in one action: the one judgement the person did not make on a card
             row = approved[r['key']]
-            out.append({'id': f'relation:{r["key"]}', 'kind': 'relation', 'ask': f'关系 {label(r["from"])} {r.get("label") or r["key"]} {label(r["to"])}',
-                        'answer': {'says': '判对', 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': 'bulk'}})
+            out.append({'id': f'relation:{r["key"]}', 'kind': 'relation', 'ask': tr(f'关系 {label(r["from"])} {r.get("label") or r["key"]} {label(r["to"])}', f'Relation {label(r["from"])} {r.get("label") or r["key"]} {label(r["to"])}'),
+                        'answer': {'says': tr('判对', 'Judged right'), 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': 'bulk'}})
         for field, row in said_no.items():
-            out.append({'id': f'code_meaning:{field}', 'kind': 'code_meaning', 'ask': f'「{field.partition(".")[0]}」的「{field.partition(".")[2]}」是代码',
-                        'answer': {'says': '不是代码', 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': (row['content'] or {}).get('mode')}})
+            out.append({'id': f'code_meaning:{field}', 'kind': 'code_meaning', 'ask': tr(f'「{field.partition(".")[0]}」的「{field.partition(".")[2]}」是代码', f'"{field.partition(".")[2]}" of "{field.partition(".")[0]}" is a code'),
+                        'answer': {'says': tr('不是代码', 'Not a code'), 'text': '', 'by': row['confirmed_by'], 'at': row['confirmed_at'], 'mode': (row['content'] or {}).get('mode')}})
         return out
 
     def bulk_band_of(result, newer):
@@ -724,7 +727,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         older ones (an anchor taken from old rows would make the newer run read it as confirmed on its own)."""
         newer = newer_run(result)
         if newer:
-            raise ValueError(f'有更新的版本（{newer}）：定义请在那一次运行里确认或修改，这里的数据已经过时')
+            raise ValueError(tr(f'有更新的版本（{newer}）：定义请在那一次运行里确认或修改，这里的数据已经过时', f'There is a newer version ({newer}): confirm or change the definitions in that run; the data here is out of date'))
 
     def relation_labels(ontology):
         types = {t['key']: t.get('label') or t['key'] for t in normalize_proposal(ontology)['object_types']}
@@ -767,9 +770,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             raise FileNotFoundError(name)
         saved = json.loads(path.read_text(encoding='utf-8'))
         if saved['file'].get('kind') == 'document':
-            raise ValueError('文档没有数据行，没有编排需求单')
+            raise ValueError(tr('文档没有数据行，没有编排需求单', 'The document has no data rows, so there is no pipeline brief'))
         if saved['ontology']['status'] != 'auto_built_verified':
-            raise ValueError(blocked_text(saved, '没有编排需求单；先看退回的原因'))
+            raise ValueError(blocked_text(saved, tr('没有编排需求单；先看退回的原因', 'There is no pipeline brief; look at the reason it was sent back first')))
         result, bundle, graph = kept(name)
         key = memory_key(result)
         stored = card_file(key)
@@ -792,7 +795,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             raise FileNotFoundError(name)
         result = json.loads((output_dir / name).read_text(encoding='utf-8'))
         if result['file'].get('kind') == 'document':
-            raise ValueError('文档没有数据行')
+            raise ValueError(tr('文档没有数据行', 'The document has no data rows'))
         with graphs_lock:
             if name not in graphs:
                 raw = json.loads(bundle_path.read_text(encoding='utf-8'))
@@ -824,47 +827,47 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return None
         job = {**json.loads(path.read_text(encoding='utf-8')), 'result': None}
         if job['state'] == 'running':   # nothing in this process is running it: the service restarted in the middle
-            return {**job, 'state': 'interrupted', 'error': INTERRUPTED}
+            return {**job, 'state': 'interrupted', 'error': interrupted()}
         run = output_dir / (job.pop('saved_as') or '')
         if job['state'] == 'done':
             if not SAVED_NAME.match(run.name) or not run.exists():
-                return {**job, 'state': 'failed', 'error': '这次作业的结果文件已经不在了，请重新上传文件'}
+                return {**job, 'state': 'failed', 'error': tr('这次作业的结果文件已经不在了，请重新上传文件', 'The result file of this job is gone. Upload the file again')}
             job['result'] = json.loads(run.read_text(encoding='utf-8'))
         return job
 
     def decode_part(part):
         if not isinstance(part.get('content_base64'), str):
-            raise SourceFileError('请求缺少 content_base64（文件内容）')
+            raise SourceFileError(tr('请求缺少 content_base64（文件内容）', 'The request is missing content_base64 (the file content)'))
         try:
             data = base64.b64decode(part['content_base64'], validate=True)
         except (binascii.Error, ValueError):
-            raise SourceFileError('文件内容不是有效的 base64') from None
+            raise SourceFileError(tr('文件内容不是有效的 base64', 'The file content is not valid base64')) from None
         filename = str(part.get('filename') or '')
         suffix = Path(filename).suffix.lower()
         if suffix not in DOCUMENT_SUFFIXES + TABLE_SUFFIXES:
-            raise SourceFileError(f'只支持数据表（{" / ".join(TABLE_SUFFIXES)}）或文档（{" / ".join(DOCUMENT_SUFFIXES)}），不支持 {suffix or "无扩展名"} 文件')
+            raise SourceFileError(tr(f'只支持数据表（{" / ".join(TABLE_SUFFIXES)}）或文档（{" / ".join(DOCUMENT_SUFFIXES)}），不支持 {suffix or "无扩展名"} 文件', f'Only data tables ({" / ".join(TABLE_SUFFIXES)}) or documents ({" / ".join(DOCUMENT_SUFFIXES)}) are supported, not {suffix or "files without an extension"}'))
         return filename, data, suffix in DOCUMENT_SUFFIXES
 
     def parse_upload(payload):
         mode = payload.get('mode')
         if mode not in (None, 'org'):
-            raise SourceFileError('mode 只能不写，或写 org（组织架构）')
+            raise SourceFileError(tr('mode 只能不写，或写 org（组织架构）', 'mode can be left out or be org (organization chart)'))
         files = payload.get('files')
         if not isinstance(files, list):
             filename, data, is_document = decode_part(payload)
             if mode == 'org' and not is_document:
-                raise SourceFileError(f'组织架构模式目前只收文档（{" / ".join(DOCUMENT_SUFFIXES)}），不收数据表')
+                raise SourceFileError(tr(f'组织架构模式目前只收文档（{" / ".join(DOCUMENT_SUFFIXES)}），不收数据表', f'Organization chart mode takes only documents ({" / ".join(DOCUMENT_SUFFIXES)}), not data tables'))
             bundle = (load_document_file if is_document else load_table_file)(filename, data, payload.get('purpose'))
             return ({**bundle, 'mode': mode} if mode else bundle), is_document
         if mode == 'org':
-            raise SourceFileError('组织架构模式一次只收一份文档')
+            raise SourceFileError(tr('组织架构模式一次只收一份文档', 'Organization chart mode takes one document at a time'))
         if not files:
-            raise SourceFileError('没有选择文件')
+            raise SourceFileError(tr('没有选择文件', 'No file was chosen'))
         parts = []
         for part in files:
             filename, data, is_document = decode_part(part if isinstance(part, dict) else {})
             if is_document:
-                raise SourceFileError(f'{Path(filename).name}：一次只能传数据表，或者单独传一份文档，不能混在一起')
+                raise SourceFileError(tr(f'{Path(filename).name}：一次只能传数据表，或者单独传一份文档，不能混在一起', f'{Path(filename).name}: upload data tables, or a single document, not a mix'))
             parts.append((filename, data))
         return load_table_files(parts, payload.get('purpose')), False
 
@@ -898,12 +901,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 calls = result['ontology']['attempts']
                 if len(calls) >= MAX_MODELER_ATTEMPTS:
                     from_data = sum(1 for a in calls if a.get('data_retry'))
-                    used = f'本次建模已用满 {MAX_MODELER_ATTEMPTS} 次调用' if not from_data else \
-                        f'本次建模已调用模型 {len(calls)} 次（其中 {from_data} 次是按数据检查结果重试），已到 {MAX_MODELER_ATTEMPTS} 次上限'
+                    used = tr(f'本次建模已用满 {MAX_MODELER_ATTEMPTS} 次调用', f'This modeling run has used all {MAX_MODELER_ATTEMPTS} calls') if not from_data else \
+                        tr(f'本次建模已调用模型 {len(calls)} 次（其中 {from_data} 次是按数据检查结果重试），已到 {MAX_MODELER_ATTEMPTS} 次上限', f'This modeling run has called the model {len(calls)} times ({from_data} of them retries after data checks), reaching the limit of {MAX_MODELER_ATTEMPTS}')
                     answered = {'prompt_version': QUESTION_PROMPT_VERSION, 'model': None,
                                 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                 'items': [], 'answered': 0, 'total': 0,
-                                'error': f'{used}，目的问题尚未回答。可在“智能问答”中单独提问。'}
+                                'error': tr(f'{used}，目的问题尚未回答。可在“智能问答”中单独提问。', f'{used}; the goal question is not answered yet. Ask it on its own in Ask.')}
                 else:
                     key = memory_key(json.loads((output_dir / previous).read_text(encoding='utf-8'))) if previous else bundle['file']['sha256']
                     # the person's own question is answered with what was already confirmed for this file: its codes' meanings and its repeated-key rules
@@ -962,7 +965,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         if confirmed.exists() and result['ontology']['status'] == 'auto_built_verified':
             # a person confirmed an earlier run of this file: compare against that judgement without being asked
             ref = json.loads(confirmed.read_text(encoding='utf-8'))
-            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': ref['confirmed_at'], 'confirmed_by': ref.get('confirmed_by'),
+            result['evaluation']['reference'] = {'name': tr('你确认过的本体', 'The ontology you confirmed'), 'confirmed': True, 'confirmed_at': ref['confirmed_at'], 'confirmed_by': ref.get('confirmed_by'),
                                                  'purpose': ref.get('purpose'),   # what the judgement was made for; this upload may be for something else
                                                  'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                                  'diff': compare_ontologies(parse_reference(ref['reference']), result['ontology']),
@@ -1050,7 +1053,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return None   # a blocked draft has no answers to work out again
             answers_again(name, because)
         except Exception as exc:
-            return f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {exc}'[:300]
+            return tr(f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {exc}', f'Saved, but the answers already in this run could not be recomputed with it: {type(exc).__name__}: {exc}')[:300]
         return None
 
     gate = Gate(output_dir / 'workspace.sqlite', port, origins, no_auth, trusted_proxies)
@@ -1086,16 +1089,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             """/api/ontology/runs/<run>/export/mermaid?years=2016-2022&format=json: the organisation map as Mermaid."""
             path = output_dir / name
             if not SAVED_NAME.match(name) or not path.exists():
-                self.reply(404, {'error': '找不到这次运行'})
+                self.reply(404, {'error': tr('找不到这次运行', 'Run not found')})
                 return
             result = json.loads(path.read_text(encoding='utf-8'))
             if result.get('mode') != 'org':
-                self.reply(400, {'error': '只有组织架构模式的运行能导出组织图'})
+                self.reply(400, {'error': tr('只有组织架构模式的运行能导出组织图', 'Only a run in organization chart mode can export an org chart')})
                 return
             span = (query.get('years') or [''])[0]
             found = re.fullmatch(r'(\d{4})-(\d{4})', span)
             if span and not found:
-                self.reply(400, {'error': 'years 写成 2016-2022 这样的年份段'})
+                self.reply(400, {'error': tr('years 写成 2016-2022 这样的年份段', 'years must be a span like 2016-2022')})
                 return
             files = org_mermaid(result['ontology'], (result.get('confirmation') or {}).get('decisions'),
                                 (int(found[1]), int(found[2])) if found else None)
@@ -1106,7 +1109,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as z:
                 for file_name, text in files.items():
                     z.writestr(file_name, text.encode('utf-8'))
-            self.reply_file(packed.getvalue(), 'application/zip', f"{name.split('.')[0]}-组织图{('-' + span) if span else ''}.zip")
+            self.reply_file(packed.getvalue(), 'application/zip', tr(f"{name.split('.')[0]}-组织图{('-' + span) if span else ''}.zip", f"{name.split('.')[0]}-org-chart{('-' + span) if span else ''}.zip"))
 
         def card_page(self, name, tail):
             """/api/ontology/runs/<run>/open-items: what is still to be settled with the client, and what the client has
@@ -1115,7 +1118,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 found = workspace_run(name) if tail == 'open-items' else card_run(name)
                 body = code_reply(found) if tail == 'open-items' else card_for(found)[0]
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             self.reply(200, body)
 
@@ -1149,7 +1152,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     raise ValueError('local only')
                 return True
             except ValueError:
-                self.reply(403, {'error': '仅允许本机请求。'})
+                self.reply(403, {'error': tr('仅允许本机请求。', 'Only requests from this machine are allowed.')})
                 return False
 
         def workspace_get(self):
@@ -1171,24 +1174,24 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     query = parse_qs(url.query)
                     version, page = (query.get('version') or [None])[0], (query.get('page') or ['1'])[0]
                     if any(v is not None and not re.fullmatch(r'[0-9]{1,9}', v) for v in (version, page)):
-                        self.reply(400, {'error': '版本和页码要写成数字'})
+                        self.reply(400, {'error': tr('版本和页码要写成数字', 'The version and page must be numbers')})
                         return
                     name = unquote(url.path[len('/api/workspace/datasets/'):])
                     if (query.get('format') or [''])[0] == 'csv':
                         if dataset_hidden(conn, name, self.user):   # not found, before anything is said about what a viewer may do with it
-                            self.reply(404, {'error': '没有这个数据集或这个版本'})
+                            self.reply(404, {'error': tr('没有这个数据集或这个版本', 'There is no such dataset or version')})
                             return
                         if self.user['role'] == 'viewer':
-                            self.reply(403, {'error': '查看者读不到数据集的行：数据要通过你能看到的对象类型来读'})
+                            self.reply(403, {'error': tr('查看者读不到数据集的行：数据要通过你能看到的对象类型来读', 'A viewer cannot read the rows of a dataset: read data through the object types you can see')})
                             return
                         csv_file = dataset_csv(conn, name, int(version) if version else None, self.user)
                         if csv_file is None:
-                            self.reply(404, {'error': '没有这个数据集或这个版本'})
+                            self.reply(404, {'error': tr('没有这个数据集或这个版本', 'There is no such dataset or version')})
                         else:
                             self.reply_file(csv_file[1], 'text/csv; charset=utf-8', csv_file[0])
                         return
                     found = dataset_detail(conn, name, int(version) if version else None, int(page), self.user)
-                    self.reply(*((200, found) if found else (404, {'error': '没有这个数据集或这个版本'})))
+                    self.reply(*((200, found) if found else (404, {'error': tr('没有这个数据集或这个版本', 'There is no such dataset or version')})))
                     return
             finally:
                 conn.close()
@@ -1203,7 +1206,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 parts = payload.get('files')
                 if not isinstance(parts, list):
-                    raise ValueError('请求里要有 files 列表')
+                    raise ValueError(tr('请求里要有 files 列表', 'The request needs a files list'))
                 if preview:
                     with runs_lock:   # no write lands while the file is copied and the upload is tried on the copy
                         answer = moved_by_upload(output_dir / 'workspace.sqlite', parts, self.signer(payload, 'who'), self.user)
@@ -1231,18 +1234,18 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 name = payload.get('name')
                 if not isinstance(name, str) or not name:
-                    raise ValueError('要写明数据集的名字（name）')
+                    raise ValueError(tr('要写明数据集的名字（name）', 'Say the dataset name (name)'))
                 with runs_lock:
                     conn = open_workspace(output_dir / 'workspace.sqlite')
                     try:
                         if dataset_hidden(conn, name, self.user):   # a dataset they may not see is not there to delete, and its readers are not named to them
-                            self.reply(404, {'error': '没有这个数据集'})
+                            self.reply(404, {'error': tr('没有这个数据集', 'There is no such dataset')})
                             return
                         readers = dataset_readers(conn, [p for p in output_dir.glob('*.json') if SAVED_NAME.match(p.name)], name, self.user)
                         try:
                             deleted = delete_dataset(conn, name, self.signer(payload, 'who'), readers)
                         except KeyError:
-                            self.reply(404, {'error': '没有这个数据集'})
+                            self.reply(404, {'error': tr('没有这个数据集', 'There is no such dataset')})
                             return
                         except ValueError as exc:
                             self.reply(409, {'error': str(exc), 'readers': readers})
@@ -1260,7 +1263,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             parts = [unquote(p) for p in url.path[len('/api/workspace/types'):].split('/') if p]
             page = (parse_qs(url.query).get('page') or ['1'])[0]
             if not re.fullmatch(r'[0-9]{1,9}', page):
-                self.reply(400, {'error': '页码要写成数字'})
+                self.reply(400, {'error': tr('页码要写成数字', 'The page must be a number')})
                 return
             conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
@@ -1307,7 +1310,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 try:
                     if route == '/suggest':   # the model takes up to two minutes: asked without the lock, its answer is written under it (suggest_types)
                         if gateway is None:
-                            self.reply(503, {'error': NO_KEY})
+                            self.reply(503, {'error': no_key()})
                             return
                         body = suggest_types(conn, gateway, payload.get('datasets'), payload.get('purpose') or '', who, datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                              self.user, runs_lock)
@@ -1522,7 +1525,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             except Exception as exc:   # never a dropped connection: the person is told something went wrong, and what it was goes to the service's log
                 print(f'{self.path} stopped with {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
-                self.reply(500, {'error': '服务出了内部错误，详情见服务日志'})
+                self.reply(500, {'error': tr('服务出了内部错误，详情见服务日志', 'The service had an internal error; see the service log for details')})
                 return
             self.reply(*reply)
 
@@ -1553,7 +1556,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if payload is None:
                     return
                 if payload.get('writes', 'json') not in ASK_WRITES:   # said before the budget is spent on a question that would not be asked
-                    raise QaRefused('writes 只能是 "json"（模型写结构化查询，默认）或 "query"（模型写本体查询）')
+                    raise QaRefused(tr('writes 只能是 "json"（模型写结构化查询，默认）或 "query"（模型写本体查询）', 'writes can only be "json" (the model writes a structured query; the default) or "query" (the model writes an ontology query)'))
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
                     ask_budget.take(conn, self.user)   # before the model is asked: a token and a person may ask so many questions an hour
@@ -1606,7 +1609,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     asked = parse_qs(url.query)
                     version = (asked.get('version') or [''])[0]
                     if not asked.get('dataset') or not version.isdigit():
-                        raise TypeRefused('要写明是哪个数据集的哪一版')
+                        raise TypeRefused(tr('要写明是哪个数据集的哪一版', 'Say which dataset and which version'))
                     with derived_time_limit(conn):
                         body = group_detail(conn, self.user, asked['dataset'][0], int(version))
                 elif parts == ['permissions']:
@@ -1658,7 +1661,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             except (ValueError, TypeError, AttributeError):   # a field of a type the route does not read, that its own checks did not name: the person is told plainly, the cause is logged
                 traceback.print_exc()
-                self.reply(400, {'error': '请求的内容不对：有字段的类型写错了'})
+                self.reply(400, {'error': tr('请求的内容不对：有字段的类型写错了', 'The request content is wrong: a field has the wrong type')})
                 return
             if isinstance(body, tuple):   # a download: (content type, file name, bytes)
                 self.reply_file(body[2], body[0], body[1])
@@ -1762,7 +1765,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     self.reply(200, library_catalogue() if self.path == '/api/ontology/library'
                                else library_definition(unquote(self.path[len('/api/ontology/library/'):])))
                 except KeyError:
-                    self.reply(404, {'error': '本体库里没有这一项。'})
+                    self.reply(404, {'error': tr('本体库里没有这一项。', 'The ontology library has no such item.')})
                 except (ValueError, OSError) as exc:
                     self.reply(400, {'error': str(exc)})
                 return
@@ -1771,7 +1774,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if JOB_ID.match(job_id):
                     self.job_status(job_id)
                 else:
-                    self.reply(404, {'error': '找不到这个任务'})
+                    self.reply(404, {'error': tr('找不到这个任务', 'Job not found')})
                 return
             if self.path == '/api/ontology/runs':
                 self.list_runs()
@@ -1825,7 +1828,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             try:
                 if tail == 'export/pipeline':
-                    self.reply_files(pipeline_files(pipeline_for(name)), query, name, '编排需求单')
+                    self.reply_files(pipeline_files(pipeline_for(name)), query, name, tr('编排需求单', 'pipeline-brief'))
                     return
                 result, bundle, graph = kept(name)
                 if tail.startswith('objects/'):
@@ -1844,7 +1847,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     kept_types = {t['key'] for t in reviewed['object_types']}
                     handover = {**handover, 'types': [t for t in handover.get('types', []) if t['type'] in kept_types]}
                     if tail == 'export/forms':
-                        files, zip_name = form_files(reviewed, handover, form), '对象表单'
+                        files, zip_name = form_files(reviewed, handover, form), tr('对象表单', 'object-forms')
                     else:
                         files, zip_name = ttl_files(reviewed, bundle, handover, form, decisions,
                                                     rules_state(result, bundle, graph)['adopted'], f'urn:ontopoc:{memory_key(result)}/', graph), 'TTL'
@@ -1858,16 +1861,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 else:
                     self.reply(404, {'error': 'Unknown ontology endpoint'})
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
             except KeyError as exc:
-                self.reply(404, {'error': f'这份本体里没有 {exc.args[0]}'})
+                self.reply(404, {'error': tr(f'这份本体里没有 {exc.args[0]}', f'This ontology has no {exc.args[0]}')})
             except ValueError as exc:
                 self.reply(400, {'error': str(exc)})
 
         def open_run(self, name):
             path = output_dir / name
             if not SAVED_NAME.match(name) or not path.exists():
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             self.reply(200, json.loads(path.read_text(encoding='utf-8')))
 
@@ -1882,12 +1885,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         definition = library_definition(record['reference_id'])
                         stale = stale_reasons(definition, result, record)
                     except (KeyError, ValueError, OSError):
-                        stale = ['参考版本已不可用，请重新选择本体库参考。']
-                blocked = None if result['ontology']['status'] == 'auto_built_verified' else blocked_text(result, '不能对照领域参考')
+                        stale = [tr('参考版本已不可用，请重新选择本体库参考。', 'The reference version is no longer available. Choose a reference from the ontology library again.')]
+                blocked = None if result['ontology']['status'] == 'auto_built_verified' else blocked_text(result, tr('不能对照领域参考', 'cannot be compared with a domain reference'))
                 self.reply(200, {'run_sha256': run_fingerprint(result), 'local': local_schema(result),
                                  'record': record, 'definition': definition, 'stale': stale, 'blocked': blocked})
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，请重新打开。'})
+                self.reply(404, {'error': tr('找不到这次运行，请重新打开。', 'Run not found. Open it again.')})
             except ValueError as exc:
                 self.reply(400, {'error': str(exc)})
 
@@ -1902,19 +1905,19 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return value
             if required:
                 if not isinstance(value, str) or not value.strip() or len(value.strip()) > 40:
-                    raise ValueError('要写确认人，最多 40 个字')
+                    raise ValueError(tr('要写确认人，最多 40 个字', 'Write who confirms, at most 40 characters'))
             elif value is not None and (not isinstance(value, str) or len(value.strip()) > 40):
-                raise ValueError('确认人最多写 40 个字')
+                raise ValueError(tr('确认人最多写 40 个字', 'The confirmer name is at most 40 characters'))
             return (value or '').strip() or None
 
         def read_json(self, limit=MAX_BODY):
             try:
                 length = int(self.headers.get('Content-Length', '0'))
             except ValueError:
-                self.reply(400, {'error': '请求的长度（Content-Length）不是数字，读不了这个 JSON。'})
+                self.reply(400, {'error': tr('请求的长度（Content-Length）不是数字，读不了这个 JSON。', 'The request length (Content-Length) is not a number, so this JSON cannot be read.')})
                 return None
             if not 0 < length <= limit:
-                self.reply(413, {'error': f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。' if limit == MAX_BODY else '请求太大。'})
+                self.reply(413, {'error': tr(f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。', f'The file is too large; the limit is {MAX_BYTES // 1024 // 1024} MB.') if limit == MAX_BODY else tr('请求太大。', 'The request is too large.')})
                 return None
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                 self.reply(415, {'error': 'Expected application/json'})
@@ -1922,12 +1925,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             try:
                 payload = json.loads(self.rfile.read(length))
             except RecursionError:
-                raise ValueError('请求的嵌套层数太多') from None
+                raise ValueError(tr('请求的嵌套层数太多', 'The request is nested too deeply')) from None
             except ValueError:   # not JSON, or not UTF-8: answered here, whichever route asked
-                self.reply(400, {'error': '请求不是有效的 JSON。'})
+                self.reply(400, {'error': tr('请求不是有效的 JSON。', 'The request is not valid JSON.')})
                 return None
             if not isinstance(payload, dict):
-                raise ValueError('请求必须是 JSON 对象')
+                raise ValueError(tr('请求必须是 JSON 对象', 'The request must be a JSON object'))
             self.payload = payload
             return payload
 
@@ -2102,7 +2105,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             if gateway is None:
-                self.reply(503, {'error': NO_KEY})
+                self.reply(503, {'error': no_key()})
                 return
             self.reply(*finish_build(bundle, is_document, None, previous, self.user))
 
@@ -2128,7 +2131,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             if gateway is None:
-                self.reply(503, {'error': NO_KEY})
+                self.reply(503, {'error': no_key()})
                 return
             job_id = uuid.uuid4().hex[:12]
             job = {'state': 'running', 'events': [], 'result': None, 'error': None}
@@ -2148,7 +2151,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 try:
                     status, body = finish_build(bundle, is_document, report, previous, starter)
                 except Exception as exc:  # the job must end in a state the page can show; the server log keeps the rest
-                    status, body = 500, {'error': f'建模时出错：{exc}'}
+                    status, body = 500, {'error': tr(f'建模时出错：{exc}', f'An error happened while modeling: {exc}')}
                 report('done' if status == 200 else 'failed', {})
                 with jobs_lock:
                     job['state'] = 'done' if status == 200 else 'failed'
@@ -2162,14 +2165,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 job = jobs.get(job_id)
                 snapshot = job_from_disk(job_id) if job is None else json.loads(json.dumps(job))
             if snapshot is None:
-                self.reply(404, {'error': '找不到这个任务'})
+                self.reply(404, {'error': tr('找不到这个任务', 'Job not found')})
                 return
             self.reply(200, snapshot)
 
         def load_run(self, payload):
             name = str(payload.get('saved_as') or '')
             if not SAVED_NAME.match(name):
-                raise ValueError('saved_as 不是这个服务保存的结果名')
+                raise ValueError(tr('saved_as 不是这个服务保存的结果名', 'saved_as is not a result name this service saved'))
             return output_dir / name
 
         def compare(self):
@@ -2183,14 +2186,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             if not result_path.exists():
-                self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                self.reply(404, {'error': tr('找不到这次上传的结果，请重新上传文件', 'The result of this upload was not found. Upload the file again')})
                 return
             result = json.loads(result_path.read_text(encoding='utf-8'))
             if result['ontology']['status'] != 'auto_built_verified':
-                self.reply(400, {'error': blocked_text(result, '不能对照参考本体')})
+                self.reply(400, {'error': blocked_text(result, tr('不能对照参考本体', 'cannot be compared with a reference ontology'))})
                 return
             result['evaluation']['reference'] = {
-                'name': str(payload.get('reference_name') or '参考本体')[:120],
+                'name': str(payload.get('reference_name') or tr('参考本体', 'Reference ontology'))[:120],
                 'compared_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 'diff': compare_ontologies(reference, result['ontology'])}
             write_run(result_path, result)
@@ -2204,14 +2207,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 path = self.load_run(payload)
                 result = json.loads(path.read_text(encoding='utf-8'))
                 if result['ontology']['status'] != 'auto_built_verified':
-                    raise ValueError(blocked_text(result, '不能对照领域参考'))
+                    raise ValueError(blocked_text(result, tr('不能对照领域参考', 'cannot be compared with a domain reference')))
                 definition = library_definition(payload.get('reference_id'))
                 stale = stale_reasons(definition, result, payload)
                 if stale:
                     self.reply(409, {'error': ' '.join(stale)})
                     return
                 if save and payload.get('confirmed') is not True:
-                    raise ValueError('请先人工确认本次对应关系，再保存。')
+                    raise ValueError(tr('请先人工确认本次对应关系，再保存。', 'Confirm this mapping by hand first, then save.'))
                 mappings = payload.get('mappings')
                 diff = compare_definition(definition, result, mappings)
                 if not save:
@@ -2226,9 +2229,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 write_run(path, result)
                 self.reply(200, result)
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，请重新打开。'})
+                self.reply(404, {'error': tr('找不到这次运行，请重新打开。', 'Run not found. Open it again.')})
             except KeyError:
-                self.reply(404, {'error': '本体库里没有这一项。'})
+                self.reply(404, {'error': tr('本体库里没有这一项。', 'The ontology library has no such item.')})
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
 
@@ -2243,14 +2246,14 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             bundle_path = output_dir / result_path.name.replace('.json', '.bundle.json')
             if not result_path.exists() or not bundle_path.exists():
-                self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                self.reply(404, {'error': tr('找不到这次上传的结果，请重新上传文件', 'The result of this upload was not found. Upload the file again')})
                 return
             if gateway is None:
-                self.reply(503, {'error': NO_KEY})
+                self.reply(503, {'error': no_key()})
                 return
             result = json.loads(result_path.read_text(encoding='utf-8'))
             if result['ontology']['status'] != 'auto_built_verified':
-                self.reply(400, {'error': blocked_text(result, '先看退回的原因')})
+                self.reply(400, {'error': blocked_text(result, tr('先看退回的原因', 'look at the reason it was sent back first'))})
                 return
             bundle = with_rules(result, json.loads(bundle_path.read_text(encoding='utf-8')))
             found = propose_name_variants(result['ontology'], bundle, gateway)
@@ -2266,12 +2269,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 result_path = self.load_run(payload)
                 if not result_path.exists():
-                    self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                    self.reply(404, {'error': tr('找不到这次上传的结果，请重新上传文件', 'The result of this upload was not found. Upload the file again')})
                     return
                 result = json.loads(result_path.read_text(encoding='utf-8'))
                 bundle_path = output_dir / result['saved_as'].replace('.json', '.bundle.json')
                 if not bundle_path.exists():
-                    self.reply(404, {'error': '找不到这次上传的数据，请重新上传文件'})
+                    self.reply(404, {'error': tr('找不到这次上传的数据，请重新上传文件', 'The data of this upload was not found. Upload the file again')})
                     return
                 items = parse_acceptance(payload.get('items')) if payload.get('items') else []
                 existing = {item['question']: item for item in (result['evaluation'].get('acceptance') or {}).get('items', [])}
@@ -2329,7 +2332,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 card, items, answered = card_for(found)
                 cells_raw, items_raw = payload.get('cells') or [], payload.get('items') or []
                 if not cells_raw and not items_raw:
-                    raise ValueError('cells、items 至少要给一样')
+                    raise ValueError(tr('cells、items 至少要给一样', 'Give at least one of cells and items'))
                 if items_raw:
                     stale_check(found[0])   # an answer keeps what the item was about on these rows: not older ones, and a reopen must not wipe the newest run's
                 now = datetime.now(timezone.utc).isoformat(timespec='seconds')
@@ -2337,7 +2340,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 cells = check_cells(card, cells_raw, by, now)
                 answers = check_answers([*items, *answered], items_raw, by, now)
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
@@ -2375,16 +2378,16 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return None
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
-                    raise ValueError('这份运行没有数据表，没有代码列')
+                    raise ValueError(tr('这份运行没有数据表，没有代码列', 'This run has no data tables, so there are no code columns'))
                 profiles, enums = code_state(found[0], found[1])
                 profile = next((p for p in profiles if p['id'] == payload.get('id')), None)
                 if profile is None:
-                    raise ValueError('这一列已经不在清单上了')
+                    raise ValueError(tr('这一列已经不在清单上了', 'This column is no longer on the list'))
                 signer = self.signer(payload)
                 check_mode(payload)
                 return found, profile, enums, signer, payload
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
             return None
@@ -2401,7 +2404,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
-                self.reply(500, {'error': f'{what}没有保存：{type(exc).__name__}: {exc}'[:300]})
+                self.reply(500, {'error': tr(f'{what}没有保存：{type(exc).__name__}: {exc}', f'{what} was not saved: {type(exc).__name__}: {exc}')[:300]})
                 return
             warning = recompute_warning(found[0]['saved_as'], because) or views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
@@ -2427,8 +2430,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             given = [f'{e["value"]} = {e["label"]}' for e in posted if e['label']]
             held = {e['value'] for e in (enums.get(profile['field']) or {}).get('values', []) if e['label']}
             taken = [e['value'] for e in posted if not e['label'] and e['value'] in held]   # a blank for a value never confirmed takes nothing back
-            what = '，'.join([*([f'已确认（{"、".join(given)}）'] if given else []), *([f'已收回（{"、".join(taken)}）'] if taken else [])])
-            self.keep_code_state(found, change, '含义', f'「{profile["column"]}」的含义{what}')
+            what = tr('，', ', ').join([*([tr(f'已确认（{tr("、", ", ").join(given)}）', f'confirmed ({", ".join(given)})')] if given else []), *([tr(f'已收回（{tr("、", ", ").join(taken)}）', f'taken back ({", ".join(taken)})')] if taken else [])])
+            self.keep_code_state(found, change, tr('含义', 'meanings'), tr(f'「{profile["column"]}」的含义{what}', f'The meanings of "{profile["column"]}": {what}'))
 
         def save_repeat_rule(self):
             """A person says how the rows of a repeated key are read: both kept, the latest by a column, or a data error.
@@ -2441,24 +2444,24 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 name = str(payload.get('saved_as') or '')
                 found = card_run(name)
                 if found is None:
-                    raise ValueError('这份运行没有数据表')
+                    raise ValueError(tr('这份运行没有数据表', 'This run has no data tables'))
                 result, bundle, graph = found
                 names = {t['key']: t.get('label') or t['key'] for t in normalize_proposal(result['ontology'])['object_types']}
                 group = next((g for g in repeated_keys(result['ontology'], bundle, graph) if g['id'] == payload.get('id')), None)
                 if group is None:
-                    raise ValueError('这个重复的编号已经不在清单上了')
+                    raise ValueError(tr('这个重复的编号已经不在清单上了', 'This repeated key is no longer on the list'))
                 signer = self.signer(payload)
                 element = f'repeat_rule:{memory_key(result)}:{group["rule_key"]}'
                 stale_check(result)
                 if 'rule' in payload and payload['rule'] is None:
                     change = (element, 'proposed', None, signer)
-                    because = f'{names[group["type"]]}（{group["source"]}表）重复编号的处理办法已收回'
+                    because = tr(f'{names[group["type"]]}（{group["source"]}表）重复编号的处理办法已收回', f'The way to treat repeated keys of {names[group["type"]]} (table {group["source"]}) was taken back')
                 else:
                     change = (element, 'confirmed', f'open_item:{group["id"]}', signer, {**check_rule(group, payload), 'mode': check_mode(payload)})
-                    said = {'keep_both': '每一行都留', 'data_error': '当作数据错误', 'keep_latest': f'只留「{change[4].get("column")}」最新的一行'}[change[4]['rule']]
-                    because = f'{names[group["type"]]}（{group["source"]}表）重复的编号已选「{said}」'
+                    said = {'keep_both': tr('每一行都留', 'Keep every row'), 'data_error': tr('当作数据错误', 'Treat it as a data error'), 'keep_latest': tr(f'只留「{change[4].get("column")}」最新的一行', f'Keep only the latest row by "{change[4].get("column")}"')}[change[4]['rule']]
+                    because = tr(f'{names[group["type"]]}（{group["source"]}表）重复的编号已选「{said}」', f'The repeated keys of {names[group["type"]]} (table {group["source"]}) were set to "{said}"')
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
@@ -2474,7 +2477,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
-                self.reply(500, {'error': f'处理办法没有保存：{type(exc).__name__}: {exc}'[:300]})
+                self.reply(500, {'error': tr(f'处理办法没有保存：{type(exc).__name__}: {exc}', f'The way of treating them was not saved: {type(exc).__name__}: {exc}')[:300]})
                 return
             warning = recompute_warning(name, because) or views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
@@ -2490,11 +2493,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
-                    raise ValueError('这份运行没有数据表')
+                    raise ValueError(tr('这份运行没有数据表', 'This run has no data tables'))
                 signer = self.signer(payload)
                 asked = re.fullmatch(r'review:(property|repeat_rule|view|relation):(.+)', str(payload.get('id') or ''), re.S)
                 if asked is None:
-                    raise ValueError('这一项不在“需要再看一眼”的清单上')
+                    raise ValueError(tr('这一项不在“需要再看一眼”的清单上', 'This item is not on the "needs another look" list'))
                 prefix, name = asked.groups()
                 result, bundle, graph = found
                 stale_check(result)
@@ -2502,39 +2505,39 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 try:
                     row = element_rows(conn, f'{prefix}:{memory_key(result)}:', 'checked').get(name)
                     if row is None:
-                        raise ValueError('这一项已经不在“需要再看一眼”的清单上了')
+                        raise ValueError(tr('这一项已经不在“需要再看一眼”的清单上了', 'This item is no longer on the "needs another look" list'))
                     content, anchors = row['content'], None
                     if prefix == 'property':
                         profile = next((p for p in code_candidates(result, bundle) if p['field'] == name), None)
                         if profile is None:
-                            raise ValueError('这一列现在不再像一列代码，没法照旧确认；要改就去改它的含义')
+                            raise ValueError(tr('这一列现在不再像一列代码，没法照旧确认；要改就去改它的含义', 'This column no longer looks like a code column, so it cannot be confirmed as before; to change it, change its meanings'))
                         anchors = code_anchor(profile, bundle['sources'][profile['source']]['records'], key_columns(result['ontology'], profile['source']))
                     elif prefix == 'repeat_rule':
                         group = next((g for g in repeated_keys(result['ontology'], bundle, graph or build_graph(result['ontology'], bundle)) if g['rule_key'] == name), None)
                         content = {**content, 'covers': sorted(o['identity'] for o in group['objects']) if group else []}
                         why = unmet(group, content) if group else None
                         if why:
-                            raise ValueError(f'{why}没法照旧确认，请重新选一种处理办法')
+                            raise ValueError(tr(f'{why}没法照旧确认，请重新选一种处理办法', f'{why}, so it cannot be confirmed as before. Pick a way of treating them again'))
                     elif prefix == 'view':
                         versions = {t['dataset']: t['version'] for t in (result.get('data_checks') or {}).get('tables', []) if t.get('status') == 'ok'}
                         anchors = view_anchor_now(conn, memory_key(result), run_id(result['saved_as']), result['ontology'], stored_tables(conn, result), name, content, versions)
                     else:
                         now = next((r for r in (result.get('data_checks') or {}).get('relations') or [] if r['key'] == name), None)
                         if now is None:
-                            raise ValueError('这次的数据里查不出这条关系，没法照旧确认')
+                            raise ValueError(tr('这次的数据里查不出这条关系，没法照旧确认', 'This relation cannot be found in this data, so it cannot be confirmed as before'))
                         anchors = relation_anchor(now)
                 finally:
                     conn.close()
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             except sqlite3.Error as exc:
-                self.reply(500, {'error': f'再确认没有保存：{type(exc).__name__}: {exc}'[:300]})
+                self.reply(500, {'error': tr(f'再确认没有保存：{type(exc).__name__}: {exc}', f'Confirming again was not saved: {type(exc).__name__}: {exc}')[:300]})
                 return
-            self.keep_code_state(found, (row['element_id'], 'confirmed', row['evidence_ref'], signer, content, stored_anchors(anchors)), '再确认', f'「{name}」的定义照旧再确认了')
+            self.keep_code_state(found, (row['element_id'], 'confirmed', row['evidence_ref'], signer, content, stored_anchors(anchors)), tr('再确认', 'confirmed again'), tr(f'「{name}」的定义照旧再确认了', f'The definition of "{name}" was confirmed again as before'))
 
         def save_view(self):
             """A person defines a named view from confirmed meanings ("有效订单": 状态码 is not 已取消) or for the latest row per key
@@ -2546,7 +2549,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
-                    raise ValueError('这份运行没有数据表')
+                    raise ValueError(tr('这份运行没有数据表', 'This run has no data tables'))
                 signer = self.signer(payload)
                 stale_check(found[0])
                 conn = open_workspace(output_dir / 'workspace.sqlite')
@@ -2558,7 +2561,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 finally:
                     conn.close()
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except SelfConfirmation as exc:
                 self.reply(403, {'error': str(exc)})
@@ -2570,7 +2573,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             except sqlite3.Error as exc:
-                self.reply(500, {'error': f'视图没有保存：{type(exc).__name__}: {exc}'[:300]})
+                self.reply(500, {'error': tr(f'视图没有保存：{type(exc).__name__}: {exc}', f'The view was not saved: {type(exc).__name__}: {exc}')[:300]})
                 return
             warning = views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), 'message': message, **({'warning': warning} if warning else {})})
@@ -2588,7 +2591,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     raise FileNotFoundError(name)
                 result = json.loads((output_dir / name).read_text(encoding='utf-8'))
                 if not (result.get('data_checks') or {}).get('tables'):
-                    raise ValueError('这次运行没有存进工作区的表，没有数据可以编排')
+                    raise ValueError(tr('这次运行没有存进工作区的表，没有数据可以编排', 'This run has no tables stored in the workspace, so there is no data to build a pipeline on'))
                 found = card_run(name)   # None when the draft did not pass the checks: its tables are still stored and can be joined, but it has no definitions to read
                 listed, codes = [], frozenset()
                 if found is not None:
@@ -2603,7 +2606,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 finally:
                     conn.close()
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
@@ -2621,8 +2624,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             except ValueError as exc:
                 self.reply(400, {'error': str(exc)})
                 return
-            self.keep_code_state(found, (f'property:{memory_key(found[0])}:{profile["field"]}', 'rejected', f'open_item:{profile["id"]}', signer, {'mode': check_mode(payload)}), '“不是代码”',
-                                 f'「{profile["column"]}」被说成不是代码列')
+            self.keep_code_state(found, (f'property:{memory_key(found[0])}:{profile["field"]}', 'rejected', f'open_item:{profile["id"]}', signer, {'mode': check_mode(payload)}), tr('“不是代码”', '"not a code"'),
+                                 tr(f'「{profile["column"]}」被说成不是代码列', f'"{profile["column"]}" was said not to be a code column'))
 
         def withdraw_code_decision(self):
             """{"saved_as", "id": "code_meaning:<table>.<column>", "confirmed_by"}: take back what was decided about a code column, whether its
@@ -2633,7 +2636,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
-                    raise ValueError('这份运行没有数据表，没有代码列')
+                    raise ValueError(tr('这份运行没有数据表，没有代码列', 'This run has no data tables, so there are no code columns'))
                 signer = self.signer(payload)
                 stale_check(found[0])
                 prefix = f'property:{memory_key(found[0])}:'
@@ -2644,15 +2647,15 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 finally:
                     conn.close()
                 if field not in decided:
-                    raise ValueError('这一列没有定过什么，没有可收回的')
+                    raise ValueError(tr('这一列没有定过什么，没有可收回的', 'Nothing was set for this column, so there is nothing to take back'))
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             column = field.partition('.')[2]
-            self.keep_code_state(found, (f'{prefix}{field}', 'proposed', None, signer), '收回', f'「{column}」的判断已收回')
+            self.keep_code_state(found, (f'{prefix}{field}', 'proposed', None, signer), tr('收回', 'taken back'), tr(f'「{column}」的判断已收回', f'The judgement on "{column}" was taken back'))
 
         def bulk_approve(self):
             """{"saved_as", "ids", "confirmed_by"}: approve together what is in the clean band (review_stack.relation_band): relations code
@@ -2667,21 +2670,21 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 name = str(payload.get('saved_as') or '')
                 found = workspace_run(name)
                 if found is None:
-                    raise ValueError('这份运行没有数据表')
+                    raise ValueError(tr('这份运行没有数据表', 'This run has no data tables'))
                 if payload.get('mode', 'bulk') != 'bulk':
-                    raise ValueError('一起通过的 mode 只能是 bulk')
+                    raise ValueError(tr('一起通过的 mode 只能是 bulk', 'The mode for approving together can only be bulk'))
                 signer = self.signer(payload, required=True)
                 ids = payload.get('ids')
                 if not isinstance(ids, list) or not ids or len(ids) > MAX_BULK or not all(isinstance(i, str) for i in ids):
-                    raise ValueError(f'ids 要写成列表，至少一项，最多 {MAX_BULK} 项')
+                    raise ValueError(tr(f'ids 要写成列表，至少一项，最多 {MAX_BULK} 项', f'ids must be a list of 1 to {MAX_BULK} items'))
                 stale_check(found[0])
                 ids = list(dict.fromkeys(ids))
                 in_band = {b['id'] for b in bulk_band_of(found[0], None)}
                 outside = [i for i in ids if i not in in_band]
                 if outside:
-                    raise ValueError(f'有 {len(outside)} 件不在可以一起通过的范围里（有检查没通过，或已经定了）：{"、".join(i[:60] for i in outside[:5])}{"等" if len(outside) > 5 else ""}')
+                    raise ValueError(tr(f'有 {len(outside)} 件不在可以一起通过的范围里（有检查没通过，或已经定了）：{tr("、", ", ").join(i[:60] for i in outside[:5])}{"等" if len(outside) > 5 else ""}', f'{len(outside)} items are outside what can be approved together (a check failed, or they are already decided): {", ".join(i[:60] for i in outside[:5])}{" and more" if len(outside) > 5 else ""}'))
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
@@ -2696,7 +2699,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
-                self.reply(500, {'error': f'批量通过没有保存：{type(exc).__name__}: {exc}'[:300]})
+                self.reply(500, {'error': tr(f'批量通过没有保存：{type(exc).__name__}: {exc}', f'The bulk approval was not saved: {type(exc).__name__}: {exc}')[:300]})
                 return
             warning = views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
@@ -2715,7 +2718,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 with element_state_writes(conn, changes) as rows:
                     result = json.loads(path.read_text(encoding='utf-8'))   # as it is now, with the write lock held
                     if newer_run(result) or not set(ids) <= {b['id'] for b in bulk_band_of(result, None)}:
-                        raise RunChanged('这期间清单变了，什么都没有通过；请再看一遍清单')
+                        raise RunChanged(tr('这期间清单变了，什么都没有通过；请再看一遍清单', 'The list changed in the meantime and nothing was approved. Look at the list again'))
                     confirmation = result['confirmation']
                     decisions = {**confirmation['decisions'], 'relations': {**(confirmation['decisions'].get('relations') or {}), **{k: {'verdict': 'ok'} for k in keys}}}
                     reference = confirmed_reference(result['ontology'], decisions)
@@ -2741,15 +2744,15 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 found = workspace_run(str(payload.get('saved_as') or ''))
                 if found is None:
-                    raise ValueError('这份运行没有数据表，没有代码列')
+                    raise ValueError(tr('这份运行没有数据表，没有代码列', 'This run has no data tables, so there are no code columns'))
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             if gateway is None:
-                self.reply(503, {'error': NO_KEY})
+                self.reply(503, {'error': no_key()})
                 return
             result, bundle, graph = found
             profiles, enums = code_state(result, bundle)
@@ -2773,13 +2776,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 name = str(payload.get('saved_as') or '')
                 result, bundle, _ = kept(name)
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             if gateway is None:
-                self.reply(503, {'error': NO_KEY})
+                self.reply(503, {'error': no_key()})
                 return
             handover = result['evaluation'].get('handover') or handover_form(result['ontology'], bundle)
             drafted = draft_descriptions(result['ontology'], bundle, handover, gateway, result.get('purpose') or '')
@@ -2818,7 +2821,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 handover = result['evaluation'].get('handover') or handover_form(result['ontology'], bundle)
                 form = parse_form(payload.get('form'), handover)
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
@@ -2842,9 +2845,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 result, bundle, graph = kept(name)
                 adopted, declined = payload.get('adopted') or [], payload.get('declined') or []
                 if not all(isinstance(x, str) for x in [*adopted, *declined]):
-                    raise ValueError('adopted 和 declined 要写规则 id')
+                    raise ValueError(tr('adopted 和 declined 要写规则 id', 'adopted and declined must be rule ids'))
             except FileNotFoundError:
-                self.reply(404, {'error': '找不到这次运行，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
                 return
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
@@ -2853,7 +2856,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             known = {r['id']: {k: v for k, v in r.items() if k != 'violations'} for r in now['candidates'] + now['adopted']}
             missing = [x for x in adopted if x not in known]
             if missing:
-                self.reply(400, {'error': f'这份数据里没有这条规则：{missing[0]}'})
+                self.reply(400, {'error': tr(f'这份数据里没有这条规则：{missing[0]}', f'This data has no such rule: {missing[0]}')})
                 return
             stored = output_dir / 'rules' / f"{memory_key(result)}.json"
             stored.parent.mkdir(parents=True, exist_ok=True)
@@ -2870,7 +2873,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 result_path = self.load_run(payload)
                 if not result_path.exists():
-                    self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                    self.reply(404, {'error': tr('找不到这次上传的结果，请重新上传文件', 'The result of this upload was not found. Upload the file again')})
                     return
                 result = json.loads(result_path.read_text(encoding='utf-8'))
                 reference = confirmed_reference(result['ontology'], payload.get('decisions'))
@@ -2879,7 +2882,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     stale_check(result)
                 cleared = payload.get('cleared') or []   # relations the page held a verdict on (as kept) and clicked off: a verdict taken back, not silence
                 if not isinstance(cleared, list) or not all(isinstance(k, str) for k in cleared):
-                    raise ValueError('cleared 要写成关系编号的列表')
+                    raise ValueError(tr('cleared 要写成关系编号的列表', 'cleared must be a list of relation ids'))
                 kept_bulk = bulk_judged(result)   # a page that loaded before a bulk approval does not have it: its silence about it is not a verdict
                 silent = {k for k in kept_bulk if k not in cleared and not ((payload['decisions'].get('relations') or {}).get(k) or {}).get('verdict')}
                 if silent:
@@ -2907,7 +2910,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         changes[f'relations:{k}'] = (changes[f'relations:{k}'][0], 'confirmed', None, kept_bulk[k]['confirmed_by'], {'mode': 'bulk'}, stored_anchors(relation_anchor(seen[k])))
                     with element_state_writes(conn, list(changes.values())) as rows:
                         if json.loads(result_path.read_text(encoding='utf-8')).get('confirmation') != result.get('confirmation'):   # read again with the write lock held
-                            raise RunChanged('这期间这次运行的确认有了变化（比如别人批量通过了关系），什么都没有保存；请刷新页面后再确认')
+                            raise RunChanged(tr('这期间这次运行的确认有了变化（比如别人批量通过了关系），什么都没有保存；请刷新页面后再确认', 'The confirmations of this run changed in the meantime (for example someone approved relations in bulk) and nothing was saved. Refresh the page and confirm again'))
                         result = self.keep_confirmation(result, result_path, payload, reference, signer, rules, {
                             name: {k: rows[change[0]][k] for k in ('state', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'version')}
                             for name, change in changes.items()})
@@ -2920,7 +2923,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:   # whatever failed, the person is told and nothing of the confirmation is kept
-                self.reply(500, {'error': f'确认没有保存：{type(exc).__name__}: {exc}'[:300]})
+                self.reply(500, {'error': tr(f'确认没有保存：{type(exc).__name__}: {exc}', f'The confirmation was not saved: {type(exc).__name__}: {exc}')[:300]})
                 return
             self.reply(200, result)
 
@@ -2942,7 +2945,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             stored.write_text(json.dumps(
                 {'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'saved_as': result['saved_as'], 'file': result['file'], 'reference': reference}, ensure_ascii=False, indent=1), encoding='utf-8')
             result['confirmation'] = {'confirmed_at': now, 'confirmed_by': signer, 'decisions': payload['decisions'], 'reference': reference, 'elements': elements}
-            result['evaluation']['reference'] = {'name': '你确认过的本体', 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'compared_at': now,
+            result['evaluation']['reference'] = {'name': tr('你确认过的本体', 'The ontology you confirmed'), 'confirmed': True, 'confirmed_at': now, 'confirmed_by': signer, 'purpose': result.get('purpose'), 'compared_at': now,
                                                  'diff': compare_ontologies(parse_reference(reference), result['ontology'])}
             acceptance = result['evaluation'].get('acceptance')
             bundle_path = output_dir / result['saved_as'].replace('.json', '.bundle.json')
@@ -2962,11 +2965,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 result_path = self.load_run(payload)
                 if not result_path.exists():
-                    self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                    self.reply(404, {'error': tr('找不到这次上传的结果，请重新上传文件', 'The result of this upload was not found. Upload the file again')})
                     return
                 result = json.loads(result_path.read_text(encoding='utf-8'))
                 if result['file'].get('kind') == 'document':
-                    raise ValueError('文档没有数据行，不能定义指标')
+                    raise ValueError(tr('文档没有数据行，不能定义指标', 'The document has no data rows, so no measure can be defined'))
                 formula, why = parse_derived(result['ontology'], payload.get('derive'))
                 if formula is None:
                     raise ValueError(why)
@@ -3006,20 +3009,20 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 result_path = self.load_run(payload)
                 question, drop = payload.get('question'), payload.get('drop')
                 if not isinstance(question, str) or not isinstance(drop, dict) or not {'field', 'equals'} <= drop.keys():
-                    raise ValueError('要写清题目原文，和要去掉的条件 {"field": …, "equals": …}')
+                    raise ValueError(tr('要写清题目原文，和要去掉的条件 {"field": …, "equals": …}', 'Give the original question and the condition to remove {"field": …, "equals": …}'))
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             bundle_path = output_dir / result_path.name.replace('.json', '.bundle.json')
             if not result_path.exists() or not bundle_path.exists():
-                self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                self.reply(404, {'error': tr('找不到这次上传的结果，请重新上传文件', 'The result of this upload was not found. Upload the file again')})
                 return
             result = json.loads(result_path.read_text(encoding='utf-8'))
             if result['file'].get('kind') == 'document':
-                self.reply(400, {'error': '文档没有数据行可以查询；评测二只对数据表可用'})
+                self.reply(400, {'error': tr('文档没有数据行可以查询；评测二只对数据表可用', 'The document has no data rows to query; evaluation two works only on data tables')})
                 return
             if result['ontology']['status'] != 'auto_built_verified':
-                self.reply(400, {'error': blocked_text(result, '不能出题')})
+                self.reply(400, {'error': blocked_text(result, tr('不能出题', 'cannot set questions'))})
                 return
             evaluation = result['evaluation']
             accepted = (evaluation.get('acceptance') or {}).get('items') or []
@@ -3028,11 +3031,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             own_round = [i for i in (evaluation.get('questions') or {}).get('items') or [] if i['question'] == question]
             candidates = asked + own_round + [i for i in accepted if i['question'] == question]
             if not candidates:
-                self.reply(404, {'error': '找不到这道题，可能已经被删掉了'})
+                self.reply(404, {'error': tr('找不到这道题，可能已经被删掉了', 'Question not found; it may have been deleted')})
                 return
             queried = [i for i in candidates if isinstance(i.get('query'), dict)]
             if not queried:
-                self.reply(400, {'error': '这道题没有查询，不能去掉条件重算'})
+                self.reply(400, {'error': tr('这道题没有查询，不能去掉条件重算', 'This question has no query, so a condition cannot be removed and recomputed')})
                 return
             where_of = lambda i: i['query'].get('where') if isinstance(i['query'].get('where'), list) else []
             # the check pack names a field without its table, the query may carry it ("orders.地区")
@@ -3041,7 +3044,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             # the latest version still holding the condition: an accepted question keeps it after the ask was edited
             found = next((i for i in queried if any(map(same, where_of(i)))), None)
             if found is None:
-                self.reply(400, {'error': '这道题的查询里没有这个条件'})
+                self.reply(400, {'error': tr('这道题的查询里没有这个条件', 'The query of this question has no such condition')})
                 return
             query = {**found['query'], 'where': [w for w in where_of(found) if not same(w)]}
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
@@ -3062,27 +3065,27 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
                 name = str(payload.get('saved_as') or '')
                 if not SAVED_NAME.match(name):
-                    raise ValueError('saved_as 不是这个服务保存的结果名')
+                    raise ValueError(tr('saved_as 不是这个服务保存的结果名', 'saved_as is not a result name this service saved'))
                 question = payload.get('question')
                 if question is not None and (not isinstance(question, str) or not 0 < len(question.strip()) <= 300):
-                    raise ValueError('问题要写 1–300 个字')
+                    raise ValueError(tr('问题要写 1–300 个字', 'The question must be 1 to 300 characters'))
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)})
                 return
             result_path, bundle_path = output_dir / name, output_dir / name.replace('.json', '.bundle.json')
             if not result_path.exists() or not bundle_path.exists():
-                self.reply(404, {'error': '找不到这次上传的结果，请重新上传文件'})
+                self.reply(404, {'error': tr('找不到这次上传的结果，请重新上传文件', 'The result of this upload was not found. Upload the file again')})
                 return
             if gateway is None:
-                self.reply(503, {'error': NO_KEY})
+                self.reply(503, {'error': no_key()})
                 return
             with runs_lock:
                 result = json.loads(result_path.read_text(encoding='utf-8'))
             if result['file'].get('kind') == 'document':
-                self.reply(400, {'error': '文档没有数据行可以查询；评测二只对数据表可用'})
+                self.reply(400, {'error': tr('文档没有数据行可以查询；评测二只对数据表可用', 'The document has no data rows to query; evaluation two works only on data tables')})
                 return
             if result['ontology']['status'] != 'auto_built_verified':
-                self.reply(400, {'error': blocked_text(result, '不能出题')})
+                self.reply(400, {'error': blocked_text(result, tr('不能出题', 'cannot set questions'))})
                 return
             bundle = with_meanings(result, json.loads(bundle_path.read_text(encoding='utf-8')))
             reviewed = without_wrong(result['ontology'], (result.get('confirmation') or {}).get('decisions'))
@@ -3097,7 +3100,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             with runs_lock:
                 latest = json.loads(result_path.read_text(encoding='utf-8'))
                 if (latest.get('confirmation') or {}).get('decisions') != (result.get('confirmation') or {}).get('decisions'):
-                    self.reply(409, {'error': '等待回答期间，本体的人工确认已改变。这次回答没有保存，请按最新确认重新提问。'})
+                    self.reply(409, {'error': tr('等待回答期间，本体的人工确认已改变。这次回答没有保存，请按最新确认重新提问。', 'The ontology confirmations changed while waiting for the answer. This answer was not saved; ask again on the latest confirmations.')})
                     return
                 if keeps:
                     answered = {**answered, 'asked_by': self.user['display_name'], 'asked_by_id': self.user['id']}   # who put the question to the run

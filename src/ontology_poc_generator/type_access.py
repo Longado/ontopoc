@@ -7,6 +7,7 @@ task list, the question scope) asks can_access / visible_type_ids here, so there
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import json
 
 from ontology_poc_generator.row_rules import has_rules, holds_all_rows, rules_of, types_on_dataset_of
@@ -123,7 +124,7 @@ def set_access(conn, english_name: str, visible_to, who: str | None) -> dict:
     """visible_to: 'everyone' or a list of user ids. Returns {'visible_to': 'everyone' | [names]}."""
     element_id = f'{TYPE_PREFIX}{english_name}'
     if conn.execute('SELECT 1 FROM element_state WHERE element_id = ?', (element_id,)).fetchone() is None:
-        raise AccessRefused('没有这个对象类型', 404)
+        raise AccessRefused(tr('没有这个对象类型', 'There is no such object type'), 404)
     before = allowed_ids(conn, element_id)
     if visible_to == 'everyone':
         ids = None
@@ -131,9 +132,9 @@ def set_access(conn, english_name: str, visible_to, who: str | None) -> dict:
         ids = sorted(set(visible_to))
         known = {r[0] for r in conn.execute(f'SELECT id FROM user WHERE id IN ({",".join("?" * len(ids))})', ids)} if ids else set()
         if set(ids) - known:
-            raise AccessRefused('名单里有不存在的账号')
+            raise AccessRefused(tr('名单里有不存在的账号', 'The list has an account that does not exist'))
     else:
-        raise AccessRefused('可见范围要写成 everyone，或一份账号编号的名单')
+        raise AccessRefused(tr('可见范围要写成 everyone，或一份账号编号的名单', 'Visibility must be everyone, or a list of account ids'))
     if ids == before:
         return {'visible_to': 'everyone' if ids is None else _names(conn, ids)}
     conn.execute('BEGIN IMMEDIATE')
@@ -142,7 +143,7 @@ def set_access(conn, english_name: str, visible_to, who: str | None) -> dict:
             conn.execute('DELETE FROM type_access WHERE type_id = ?', (element_id,))
         else:
             conn.execute('INSERT OR REPLACE INTO type_access(type_id, user_ids_json) VALUES (?, ?)', (element_id, json.dumps(ids)))
-        log_line(conn, who or '未署名', element_id, 'access_changed',
+        log_line(conn, who or tr('未署名', 'unsigned'), element_id, 'access_changed',
                  before={'visible_to': 'everyone' if before is None else _names(conn, before)},
                  after={'visible_to': 'everyone' if ids is None else _names(conn, ids)})
         conn.execute('COMMIT')
@@ -223,11 +224,11 @@ def set_column_access(conn, english_name: str, column: str, visible_to, who: str
     element_id = f'{TYPE_PREFIX}{english_name}'
     content = _content(conn, element_id)
     if content is None:
-        raise AccessRefused('没有这个对象类型', 404)
+        raise AccessRefused(tr('没有这个对象类型', 'There is no such object type'), 404)
     if column not in {p['column'] for p in content['properties']}:
-        raise AccessRefused(f'“{column}”不是这个对象类型的属性')
+        raise AccessRefused(tr(f'“{column}”不是这个对象类型的属性', f'"{column}" is not a property of this object type'))
     if any(column in (_content(conn, t) or {}).get('key', []) for t in types_on_dataset_of(conn, element_id)):
-        raise AccessRefused(f'“{column}”是编号列，标明每个对象是谁，不能只对一部分人藏起来；要藏就把整个类型对他们藏起来')
+        raise AccessRefused(tr(f'“{column}”是编号列，标明每个对象是谁，不能只对一部分人藏起来；要藏就把整个类型对他们藏起来', f'"{column}" is a key column that says who each object is, so it cannot be hidden from only some people; to hide it, hide the whole type from them'))
     before = column_allowed(conn, element_id).get(column)
     if visible_to == 'everyone':
         ids = None
@@ -235,9 +236,9 @@ def set_column_access(conn, english_name: str, column: str, visible_to, who: str
         ids = sorted(set(visible_to))
         known = {r[0] for r in conn.execute(f'SELECT id FROM user WHERE id IN ({",".join("?" * len(ids))})', ids)} if ids else set()
         if set(ids) - known:
-            raise AccessRefused('名单里有不存在的账号')
+            raise AccessRefused(tr('名单里有不存在的账号', 'The list has an account that does not exist'))
     else:
-        raise AccessRefused('可见范围要写成 everyone，或一份账号编号的名单')
+        raise AccessRefused(tr('可见范围要写成 everyone，或一份账号编号的名单', 'Visibility must be everyone, or a list of account ids'))
     said = lambda v: 'everyone' if v is None else _names(conn, v)
     if ids == before:
         return {'visible_to': said(ids)}
@@ -247,7 +248,7 @@ def set_column_access(conn, english_name: str, column: str, visible_to, who: str
             conn.execute('DELETE FROM column_access WHERE type_id = ? AND column_name = ?', (element_id, column))
         else:
             conn.execute('INSERT OR REPLACE INTO column_access(type_id, column_name, user_ids_json) VALUES (?, ?, ?)', (element_id, column, json.dumps(ids)))
-        log_line(conn, who or '未署名', element_id, 'column_access_changed', before={'column': column, 'visible_to': said(before)}, after={'column': column, 'visible_to': said(ids)})
+        log_line(conn, who or tr('未署名', 'unsigned'), element_id, 'column_access_changed', before={'column': column, 'visible_to': said(before)}, after={'column': column, 'visible_to': said(ids)})
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
@@ -265,11 +266,11 @@ def set_values_hidden(conn, english_name: str, column: str, hidden: bool, who: s
     element_id = f'{TYPE_PREFIX}{english_name}'
     row = conn.execute('SELECT content_json FROM element_state WHERE element_id = ?', (element_id,)).fetchone()
     if row is None:
-        raise AccessRefused('没有这个对象类型', 404)
+        raise AccessRefused(tr('没有这个对象类型', 'There is no such object type'), 404)
     if column not in {p['column'] for p in json.loads(row[0])['properties']}:
-        raise AccessRefused(f'这个对象类型没有属性“{column}”')
+        raise AccessRefused(tr(f'这个对象类型没有属性“{column}”', f'This object type has no property "{column}"'))
     if not isinstance(hidden, bool):
-        raise AccessRefused('hide_values 要写成 true 或 false')
+        raise AccessRefused(tr('hide_values 要写成 true 或 false', 'hide_values must be true or false'))
     if hidden == (column in hidden_values(conn, element_id)):
         return {'hide_values': hidden}
     conn.execute('BEGIN IMMEDIATE')
@@ -278,7 +279,7 @@ def set_values_hidden(conn, english_name: str, column: str, hidden: bool, who: s
             conn.execute('INSERT OR IGNORE INTO value_privacy(type_id, column_name) VALUES (?, ?)', (element_id, column))
         else:
             conn.execute('DELETE FROM value_privacy WHERE type_id = ? AND column_name = ?', (element_id, column))
-        log_line(conn, who or '未署名', element_id, 'values_privacy_changed', after={'column': column, 'hide_values': hidden})
+        log_line(conn, who or tr('未署名', 'unsigned'), element_id, 'values_privacy_changed', after={'column': column, 'hide_values': hidden})
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')

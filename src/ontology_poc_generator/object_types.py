@@ -14,6 +14,7 @@ person who confirmed, and when, are read from the confirmation snapshots.
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import TrMap, current, speaking, tr
 import json
 import re
 
@@ -21,7 +22,7 @@ from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
-from ontology_poc_generator.workspace_store import FAN_NOTE, StaleElement, _canonical, _key_of, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line
+from ontology_poc_generator.workspace_store import fan_note, StaleElement, _canonical, _key_of, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line
 
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
@@ -33,14 +34,15 @@ DERIVED_PREFIX = 'derived:'
 ENGLISH_NAME = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,39}')
 MAX_NAME, MAX_DESCRIPTION = 40, 200
 OBJECT_PAGE = 50
-TYPE_NAME = {'integer': '整数', 'decimal': '小数', 'text': '文本', 'date': '日期', 'month': '月份', 'datetime': '日期时间', 'boolean': '是否'}
+TYPE_NAME = TrMap({'integer': ('整数', 'integer'), 'decimal': ('小数', 'decimal'), 'text': ('文本', 'text'), 'date': ('日期', 'date'), 'month': ('月份', 'month'), 'datetime': ('日期时间', 'date and time'), 'boolean': ('是否', 'yes/no')})
 KEY_REFUSED = ('decimal', 'boolean')   # a real number or a two-valued column is not an identity
 KEY_WARNED = ('date', 'datetime', 'month')
 FITS = {'integer': ('integer', 'decimal', 'text'), 'decimal': ('decimal', 'text'), 'text': ('text',), 'date': ('date', 'datetime', 'text'),
         'month': ('month', 'text'), 'datetime': ('datetime', 'text'), 'boolean': ('boolean', 'text')}   # what a column of this inferred type may be declared as
 CODE_TYPES = ('integer', 'text')   # a code column is one of these, never boolean
 WAITING = ('proposed', 'checked')
-LIMITED_NOTE = '受行规则限制，看不到全部数据的统计'
+def limited_note() -> str:
+    return tr('受行规则限制，看不到全部数据的统计', 'A row rule limits you, so you cannot see statistics over all the data')
 
 
 class TypeRefused(ValueError):
@@ -78,7 +80,7 @@ def dataset_columns(conn, dataset_id: int) -> dict[str, dict]:
 def _text(value, what: str, limit: int, required: bool = True) -> str:
     text = value.strip() if isinstance(value, str) else ''
     if (required and not text) or len(text) > limit or '\n' in text:
-        raise TypeRefused(f'{what}要写 1 到 {limit} 个字，不能换行' if required else f'{what}最多 {limit} 个字，不能换行')
+        raise TypeRefused(tr(f'{what}要写 1 到 {limit} 个字，不能换行', f'{what} must be 1 to {limit} characters, on one line') if required else tr(f'{what}最多 {limit} 个字，不能换行', f'{what} must be at most {limit} characters, on one line'))
     return text
 
 
@@ -95,7 +97,8 @@ def _add_dep(conn, element_id: str, depends_on: str) -> None:
     conn.execute('INSERT OR IGNORE INTO element_dep(element_id, depends_on) VALUES (?, ?)', (element_id, depends_on))
 
 
-STALE = '它在你看过之后被改了，请刷新后重新看一遍'
+def stale_note() -> str:
+    return tr('它在你看过之后被改了，请刷新后重新看一遍', 'It was changed after you looked at it. Refresh and look again')
 
 
 def write_elements(conn, changes: list[tuple], reads: dict[str, list[str]], versions: dict[str, int] | None = None, after=None) -> None:
@@ -112,7 +115,7 @@ def write_elements(conn, changes: list[tuple], reads: dict[str, list[str]], vers
             if after:
                 after(conn)
     except StaleElement:
-        raise TypeRefused(STALE, 409) from None
+        raise TypeRefused(stale_note(), 409) from None
 
 
 # --- the definition a person writes -------------------------------------------------------------------------------------------------------------
@@ -123,34 +126,34 @@ def _key_failure(conn, result: dict) -> tuple[str, dict]:
     count = conn.execute(f'SELECT COUNT(*) FROM ({result["query"]})').fetchone()[0]
     parts = []
     if result['violations']:
-        shown = '、'.join(f'{" + ".join(r["key"])}（{r["rows"]} 行）' for r in repeated[:5])
-        parts.append(f'{count} 个值重复，多出 {result["violations"]} 行，例如 {shown}')
+        shown = tr('、', ', ').join(tr(f'{" + ".join(r["key"])}（{r["rows"]} 行）', f'{" + ".join(r["key"])} ({r["rows"]} rows)') for r in repeated[:5])
+        parts.append(tr(f'{count} 个值重复，多出 {result["violations"]} 行，例如 {shown}', f'{count} values are repeated, {result["violations"]} extra rows, for example {shown}'))
     if result['null_key_rows']:
-        parts.append(f'{result["null_key_rows"]} 行是空的')
+        parts.append(tr(f'{result["null_key_rows"]} 行是空的', f'{result["null_key_rows"]} rows are empty'))
     detail = {'key_check': {'status': result['status'], 'rows_checked': result['rows_checked'], 'violations': result['violations'],
                             'null_key_rows': result['null_key_rows'], 'repeated_values': count, 'repeated': repeated}}
-    return f'查了全部 {result["rows_checked"]} 行，{"；".join(parts)}', detail
+    return tr(f'查了全部 {result["rows_checked"]} 行，{tr("；", "; ").join(parts)}', f'Checked all {result["rows_checked"]} rows: {"; ".join(parts)}'), detail
 
 
 def check_key_choice(conn, dataset: dict, cols: dict, key) -> tuple[dict, list[str]]:
     """(the key check, warnings) for these columns as the key of a type on this dataset version: no decimal or yes/no column, unique and filled on every row
     (the check is recorded: it is the evidence), a date column warns. TypeRefused names the repeated keys when it fails."""
     if not isinstance(key, list) or not key or not all(isinstance(c, str) for c in key) or len(set(key)) != len(key):
-        raise TypeRefused('主键要选一列或几列，不能重复')
+        raise TypeRefused(tr('主键要选一列或几列，不能重复', 'Pick one or more columns for the key, without repeats'))
     if set(key) - set(cols):
-        raise TypeRefused(f'数据集里没有这些列：{"、".join(sorted(set(key) - set(cols)))}')
-    refuse_ai_columns(conn, dataset['name'], key, '主键')
+        raise TypeRefused(tr(f'数据集里没有这些列：{tr("、", ", ").join(sorted(set(key) - set(cols)))}', f'The dataset has no such columns: {", ".join(sorted(set(key) - set(cols)))}'))
+    refuse_ai_columns(conn, dataset['name'], key, tr('主键', 'a key'))
     warnings = []
     for column in key:
         kind = cols[column]['type']
         if kind in KEY_REFUSED:
-            raise TypeRefused(f'“{column}”是{TYPE_NAME[kind]}列，不能做主键：{"小数会因为取整或精度对不上" if kind == "decimal" else "只有两个取值，最多对应两个对象"}')
+            raise TypeRefused(tr(f'“{column}”是{TYPE_NAME[kind]}列，不能做主键：{"小数会因为取整或精度对不上" if kind == "decimal" else "只有两个取值，最多对应两个对象"}', f'"{column}" is a {TYPE_NAME[kind]} column and cannot be a key: {"decimals stop matching once they are rounded" if kind == "decimal" else "it has only two values, so it can name at most two objects"}'))
         if kind in KEY_WARNED:
-            warnings.append(f'“{column}”是日期，用日期做主键容易重复，也容易被改；确认前请再想一下')
+            warnings.append(tr(f'“{column}”是日期，用日期做主键容易重复，也容易被改；确认前请再想一下', f'"{column}" is a date. A date is easily repeated and easily changed as a key, so think again before you confirm'))
     key_check = check_key(conn, dataset['id'], key)
     if key_check['status'] != 'passed':
         why, detail = _key_failure(conn, key_check)
-        raise TypeRefused(f'这个主键不行：{why}。请换一个主键，或先处理数据里的重复', detail=detail)
+        raise TypeRefused(tr(f'这个主键不行：{why}。请换一个主键，或先处理数据里的重复', f'This key does not work: {why}. Pick another key, or deal with the repeats in the data first'), detail=detail)
     return key_check, warnings
 
 
@@ -163,11 +166,12 @@ def _type_row(conn, english_name, user: dict | None) -> dict:
     """The row of an object type this person may see; a type they may not see is not there for them (404), whatever they try to do to it."""
     row = element_row(conn, type_id(str(english_name)))
     if row is None or not _visible(conn, row, user):
-        raise TypeRefused('没有这个对象类型', 404)
+        raise TypeRefused(tr('没有这个对象类型', 'There is no such object type'), 404)
     return row
 
 
-KEPT_COLUMNS = '这个对象类型有属性不让你看：它的定义、含义和建在它上面的东西，要由看得到全部属性的人来写'
+def kept_columns() -> str:
+    return tr('这个对象类型有属性不让你看：它的定义、含义和建在它上面的东西，要由看得到全部属性的人来写', 'This object type has properties you cannot see: its definition, its meanings and what is built on it must be written by someone who can see every property')
 
 
 def whole_type_row(conn, english_name, user: dict | None) -> dict:
@@ -175,7 +179,7 @@ def whole_type_row(conn, english_name, user: dict | None) -> dict:
     or be shown, a column they may not see."""
     row = _type_row(conn, english_name, user)
     if hidden_columns(conn, row['element_id'], user):
-        raise TypeRefused(KEPT_COLUMNS, 403)
+        raise TypeRefused(kept_columns(), 403)
     return row
 
 
@@ -185,14 +189,14 @@ def refuse_ai_columns(conn, dataset_name: str, columns, what: str) -> None:
     held = {c: why for c, why in ai_uncleared(conn, dataset_name).items() if c in columns}
     if held:
         column, why = next(iter(held.items()))
-        raise TypeRefused(f'“{column}”不能当{what}：{why}', 409)
+        raise TypeRefused(tr(f'“{column}”不能当{what}：{why}', f'"{column}" cannot be {what}: {why}'), 409)
 
 
 def key_preview(conn, dataset_name, key, user: dict | None = None) -> dict:
     """The wizard's check of a chosen key before anything is saved: {'rows_checked', 'warnings'}, or TypeRefused (with the repeated keys in its detail)."""
     dataset = _readable_dataset(conn, dataset_name, user)
     if dataset is None:
-        raise TypeRefused(f'没有叫“{dataset_name}”的数据集', 404)
+        raise TypeRefused(tr(f'没有叫“{dataset_name}”的数据集', f'There is no dataset named "{dataset_name}"'), 404)
     check, warnings = check_key_choice(conn, dataset, dataset_columns(conn, dataset['id']), key)
     return {'rows_checked': check['rows_checked'], 'warnings': warnings}
 
@@ -203,31 +207,31 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
     columns with few enough values. Raises TypeRefused."""
     english = payload.get('english_name') if english_name is None else english_name
     if not isinstance(english, str) or not ENGLISH_NAME.fullmatch(english):
-        raise TypeRefused('英文名只能用字母、数字和下划线，字母开头，最多 40 个字符')
+        raise TypeRefused(tr('英文名只能用字母、数字和下划线，字母开头，最多 40 个字符', 'The English name may use only letters, digits and underscores, must start with a letter, and is at most 40 characters'))
     if english.casefold() == 'new':
-        raise TypeRefused('英文名不能叫 new：页面的“新建”用了这个地址')
-    name = _text(payload.get('name'), '名称', MAX_NAME)
-    description = _text(payload.get('description') or '', '说明', MAX_DESCRIPTION, required=False)
+        raise TypeRefused(tr('英文名不能叫 new：页面的“新建”用了这个地址', 'The English name cannot be "new": the New page uses that address'))
+    name = _text(payload.get('name'), tr('名称', 'The name'), MAX_NAME)
+    description = _text(payload.get('description') or '', tr('说明', 'The description'), MAX_DESCRIPTION, required=False)
     dataset = _readable_dataset(conn, payload.get('dataset'), user)
     if dataset is None:
-        raise TypeRefused(f'没有叫“{payload.get("dataset")}”的数据集', 404)
+        raise TypeRefused(tr(f'没有叫“{payload.get("dataset")}”的数据集', f'There is no dataset named "{payload.get("dataset")}"'), 404)
     cols = dataset_columns(conn, dataset['id'])
     key = payload.get('key')
     kept = {c for (t,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' AND json_extract(content_json, '$.dataset') = ?", (dataset['name'],))
             for c in column_allowed(conn, t)} if isinstance(key, list) else set()
     named = {k for k in key if isinstance(k, str)} if isinstance(key, list) else set()
     if kept & named:   # a column kept from some people binds the dataset: it cannot name the objects of another type over it
-        raise TypeRefused(f'“{"、".join(sorted(kept & named))}”在这个数据集上只给部分人看，不能当编号；先在“权限”页让所有人看它', 409)
+        raise TypeRefused(tr(f'“{tr("、", ", ").join(sorted(kept & named))}”在这个数据集上只给部分人看，不能当编号；先在“权限”页让所有人看它', f'"{", ".join(sorted(kept & named))}" is shown to only some people on this dataset, so it cannot be a key. Let everyone see it on the Access page first'), 409)
     key_check, warnings = check_key_choice(conn, dataset, cols, key)
     wanted = payload.get('properties') or []
     if not isinstance(wanted, list) or not all(isinstance(p, dict) for p in wanted):
-        raise TypeRefused('属性要写成列表')
+        raise TypeRefused(tr('属性要写成列表', 'Properties must be a list'))
     by_column: dict[str, dict] = {}
     for p in wanted:
         if p.get('column') not in cols:
-            raise TypeRefused(f'数据集里没有这一列：{p.get("column")}')
+            raise TypeRefused(tr(f'数据集里没有这一列：{p.get("column")}', f'The dataset has no column "{p.get("column")}"'))
         if p['column'] in by_column:
-            raise TypeRefused(f'列“{p["column"]}”写了两次')
+            raise TypeRefused(tr(f'列“{p["column"]}”写了两次', f'The column "{p["column"]}" is listed twice'))
         by_column[p['column']] = p
     for column in key:
         by_column.setdefault(column, {'column': column})
@@ -236,22 +240,22 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
         col = cols[column]
         kind = p.get('type') or col['type']
         if kind not in FITS[col['type']]:
-            raise TypeRefused(f'“{column}”里是{TYPE_NAME[col["type"]]}，不能当{TYPE_NAME.get(kind, kind)}用')
+            raise TypeRefused(tr(f'“{column}”里是{TYPE_NAME[col["type"]]}，不能当{TYPE_NAME.get(kind, kind)}用', f'"{column}" holds {TYPE_NAME[col["type"]]} values and cannot be used as {TYPE_NAME.get(kind, kind)}'))
         enum = p.get('enum') is True
         if enum and (kind not in CODE_TYPES or not col['counts']):
-            raise TypeRefused(f'“{column}”不能当代码列：代码列要是整数或文本，而且取值不超过 20 个')
-        shown = _text(p.get('name') or column, '属性名称', MAX_NAME)
+            raise TypeRefused(tr(f'“{column}”不能当代码列：代码列要是整数或文本，而且取值不超过 20 个', f'"{column}" cannot be a code column: a code column must be integer or text, with at most 20 values'))
+        shown = _text(p.get('name') or column, tr('属性名称', 'The property name'), MAX_NAME)
         if shown.casefold() in shown_names:
-            raise TypeRefused(f'属性名称“{shown}”重复了')
+            raise TypeRefused(tr(f'属性名称“{shown}”重复了', f'The property name "{shown}" is repeated'))
         shown_names.add(shown.casefold())
         properties.append({'column': column, 'name': shown, 'type': kind, 'enum': enum})
     content = {'name': name, 'english_name': english, 'description': description, 'dataset': dataset['name'], 'key': list(key), 'properties': properties}
     posted = payload.get('enums') or {}
     if not isinstance(posted, dict):
-        raise TypeRefused('含义要写成 {列名: [{value, label}]}')
+        raise TypeRefused(tr('含义要写成 {列名: [{value, label}]}', 'Meanings must be written as {column: [{value, label}]}'))
     for column in posted:
         if not any(p['column'] == column and p['enum'] for p in properties):
-            raise TypeRefused(f'“{column}”不是这个类型里的代码列，没法写含义')
+            raise TypeRefused(tr(f'“{column}”不是这个类型里的代码列，没法写含义', f'"{column}" is not a code column of this type, so it cannot have meanings'))
     return content, posted, warnings, key_check
 
 
@@ -278,9 +282,9 @@ def check_names_free(conn, content: dict) -> None:
         if element_id == mine:
             continue
         if element_id.casefold() == mine.casefold():
-            raise TypeRefused(f'英文名“{content["english_name"]}”和已有的“{element_id[len(TYPE_PREFIX):]}”只差大小写', 409)
+            raise TypeRefused(tr(f'英文名“{content["english_name"]}”和已有的“{element_id[len(TYPE_PREFIX):]}”只差大小写', f'The English name "{content["english_name"]}" differs from the existing "{element_id[len(TYPE_PREFIX):]}" only in case'), 409)
         if json.loads(other)['name'].casefold() == content['name'].casefold():
-            raise TypeRefused(f'已经有叫“{content["name"]}”的对象类型', 409)
+            raise TypeRefused(tr(f'已经有叫“{content["name"]}”的对象类型', f'There is already an object type named "{content["name"]}"'), 409)
 
 
 def _type_change(content: dict, dataset: dict, key_check: dict, who: str | None) -> tuple:
@@ -293,7 +297,7 @@ def _meaning_change(conn, content: dict, column: str, values: list[dict], datase
     unchanged does not reset it). `fresh`: what is on file belongs to another dataset and is not compared."""
     row = element_row(conn, enum_id(content['english_name'], column))
     if not values:
-        raise TypeRefused(f'“{column}”至少要有一个取值写了含义')
+        raise TypeRefused(tr(f'“{column}”至少要有一个取值写了含义', f'At least one value of "{column}" needs a meaning'))
     if not fresh and row and row['state'] in (*WAITING, 'confirmed') and values == _content(row)['values']:
         return None
     meaning = {'type': content['english_name'], 'column': column, 'dataset': dataset['name'], 'values': values}
@@ -306,7 +310,7 @@ def create_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     Returns {'id', 'warnings'}."""
     content, posted, warnings, key_check = check_definition(conn, payload, user=user)
     if element_row(conn, type_id(content['english_name'])):
-        raise TypeRefused(f'已经有英文名“{content["english_name"]}”的对象类型', 409)
+        raise TypeRefused(tr(f'已经有英文名“{content["english_name"]}”的对象类型', f'There is already an object type with the English name "{content["english_name"]}"'), 409)
     check_names_free(conn, content)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id'])
@@ -325,12 +329,12 @@ def reset_reasons(old: dict, new: dict) -> list[str]:
     the description are not on the list. (The meanings of a code column are their own element and reset themselves when their values change.)"""
     reasons = []
     if old['key'] != new['key']:
-        reasons.append('主键')
+        reasons.append(tr('主键', 'the key'))
     if old['dataset'] != new['dataset']:
-        reasons.append('来源数据集')
+        reasons.append(tr('来源数据集', 'the source dataset'))
     kinds = lambda c: {p['column']: (p['type'], p['enum']) for p in c['properties']}
     if kinds(old) != kinds(new):
-        reasons.append('属性的类型')
+        reasons.append(tr('属性的类型', 'a property type'))
     return reasons
 
 
@@ -348,7 +352,7 @@ def _retire_meanings(conn, english_name: str, columns: list[str], who: str | Non
         conn.execute('DELETE FROM element_dep WHERE element_id = ? OR depends_on = ?', (element, element))
         conn.execute('DELETE FROM element_state WHERE element_id = ?', (element,))
     if columns:
-        log_line(conn, who or '未署名', type_id(english_name), 'meanings_retired', after={'columns': columns, 'reason': why})
+        log_line(conn, who or tr('未署名', 'unsigned'), type_id(english_name), 'meanings_retired', after={'columns': columns, 'reason': why})
 
 
 def _confirmed_meaning(conn, english_name: str, column: str) -> bool:
@@ -360,7 +364,7 @@ def _meaning_reset_flags(conn, columns: list[str], english_name: str) -> None:
     """A confirmed set of meanings was changed (inside the caller's transaction): what reads it, the type and through it the relations, is not confirmed on them any more."""
     moved: list[str] = []
     for column in columns:
-        _flag_readers(conn, enum_id(english_name, column), f'“{column}”的含义改了，要重新确认', moved)
+        _flag_readers(conn, enum_id(english_name, column), tr(f'“{column}”的含义改了，要重新确认', f'The meanings of "{column}" changed and need confirming again'), moved)
 
 
 def update_type(conn, payload: dict, who: str | None, user: dict | None = None) -> dict:
@@ -371,7 +375,7 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     transaction, with what a confirmed element that stopped being confirmed moves. Returns {'id', 'state', 'reset', 'warnings'}."""
     row = whole_type_row(conn, payload.get('id'), user)
     if payload.get('version') != row['version']:
-        raise TypeRefused('这个对象类型在你打开之后被改了，请刷新后再改', 409)
+        raise TypeRefused(tr('这个对象类型在你打开之后被改了，请刷新后再改', 'This object type was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
     content, posted, warnings, key_check = check_definition(conn, {**payload, 'english_name': old['english_name']}, old['english_name'], user)
     check_names_free(conn, content)
@@ -403,9 +407,9 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
 
     def after(c):
         if reset and row['state'] == 'confirmed':   # the type is not confirmed any more: what reads it (the relations) cannot stand on it
-            _flag_readers(c, row['element_id'], f'它连接的“{old["name"]}”类型改了{"、".join(reset)}，要重新确认', [])
+            _flag_readers(c, row['element_id'], tr(f'它连接的“{old["name"]}”类型改了{tr("、", ", ").join(reset)}，要重新确认', f'The type "{old["name"]}" it connects to changed ({", ".join(reset)}) and needs confirming again'), [])
         _meaning_reset_flags(c, was_confirmed, english)
-        _retire_meanings(c, english, retire, who, '来源数据集换了' if moved_dataset else '不再是代码列')
+        _retire_meanings(c, english, retire, who, tr('来源数据集换了' if moved_dataset else '不再是代码列', 'the source dataset changed' if moved_dataset else 'it is no longer a code column'))
 
     write_elements(conn, changes, reads, {row['element_id']: row['version']}, after)
     if not reset and (old['name'], old['description']) != (content['name'], content['description']):
@@ -420,7 +424,7 @@ def _edit_names(conn, row: dict, content: dict, who: str | None) -> None:
     try:
         conn.execute('UPDATE element_state SET content_json = ?, version = version + 1 WHERE element_id = ?',
                      (json.dumps({**old, 'name': content['name'], 'description': content['description']}, ensure_ascii=False, sort_keys=True), row['element_id']))
-        log_line(conn, who or '未署名', row['element_id'], 'edited', before={'name': old['name'], 'description': old['description']},
+        log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'edited', before={'name': old['name'], 'description': old['description']},
                  after={'name': content['name'], 'description': content['description'], 'state': row['state']})
         conn.execute('COMMIT')
     except BaseException:
@@ -435,11 +439,11 @@ def propose_meanings(conn, payload: dict, who: str | None, user: dict | None = N
     row = whole_type_row(conn, payload.get('id'), user)
     content, column = _content(row), payload.get('column')
     if not any(p['column'] == column and p['enum'] for p in content['properties']):
-        raise TypeRefused(f'“{column}”不是这个类型里的代码列')
+        raise TypeRefused(tr(f'“{column}”不是这个类型里的代码列', f'"{column}" is not a code column of this type'))
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
     if column not in cols:
-        raise TypeRefused(f'数据集里已经没有“{column}”这一列', 409)
+        raise TypeRefused(tr(f'数据集里已经没有“{column}”这一列', f'The dataset no longer has the column "{column}"'), 409)
     values = _meanings(_kept_meanings(conn, content['english_name'], column), column, cols[column], payload.get('values'))
     change = _meaning_change(conn, content, column, values, dataset, cols, who)
     if change is None:
@@ -462,16 +466,16 @@ def _type_problems(conn, content: dict) -> tuple[list[str], int | None]:
     """(what is wrong now, the id of the key check that ran) for a type, read from the current version of its dataset."""
     dataset = current_dataset(conn, content['dataset'])
     if dataset is None:
-        return [f'数据集“{content["dataset"]}”已经不在了'], None
+        return [tr(f'数据集“{content["dataset"]}”已经不在了', f'The dataset "{content["dataset"]}" is gone')], None
     cols = dataset_columns(conn, dataset['id'])
     gone = [p['column'] for p in content['properties'] if p['column'] not in cols]
     if gone:
-        return [f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{"、".join(gone)}'], None
-    problems = [f'“{p["column"]}”现在的内容是{TYPE_NAME[cols[p["column"]]["type"]]}，装不进{TYPE_NAME[p["type"]]}'
+        return [tr(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{tr("、", ", ").join(gone)}', f'{dataset["name"]} version {dataset["version"]} no longer has these columns: {", ".join(gone)}')], None
+    problems = [tr(f'“{p["column"]}”现在的内容是{TYPE_NAME[cols[p["column"]]["type"]]}，装不进{TYPE_NAME[p["type"]]}', f'"{p["column"]}" now holds {TYPE_NAME[cols[p["column"]]["type"]]} values, which do not fit {TYPE_NAME[p["type"]]}')
                 for p in content['properties'] if p['type'] not in FITS[cols[p['column']]['type']]]
     key_check = check_key(conn, dataset['id'], content['key'])
     if key_check['status'] != 'passed':
-        problems.append(f'主键“{" + ".join(content["key"])}”现在不唯一或有空值：{_key_failure(conn, key_check)[0]}')
+        problems.append(tr(f'主键“{" + ".join(content["key"])}”现在不唯一或有空值：{_key_failure(conn, key_check)[0]}', f'The key "{" + ".join(content["key"])}" is no longer unique or has empty values: {_key_failure(conn, key_check)[0]}'))
     return problems, key_check['id']
 
 
@@ -494,11 +498,11 @@ def _new_value_question(conn, view: dict, moved: list[str]) -> str | None:
         meanings = element_row(conn, enum_id(content['type'], f['column']))
         new = _new_codes(conn, meanings) if meanings and meanings['element_id'] in moved and meanings['anchors_json'] else {}
         if new:
-            values = '、'.join(new)
-            default = '会算进来' if f['op'] == 'is_not' else '不会算进来'
-            said.append(f'它用的{_label(conn, meanings["element_id"])}需要再看（原因见那一组含义）。“{f["column"]}”出现了新值 {"、".join(f"{v}（{n} 行）" for v, n in new.items())}：新值 {values} 算不算进来？'
-                        f'按现在的写法（{in_out_text(conn, content)}），{"它们" if len(new) > 1 else "它"}{default}。请先给新值写含义，再决定')
-    return '；'.join(said) or None
+            values = tr('、', ', ').join(new)
+            default = tr('会算进来' if f['op'] == 'is_not' else '不会算进来', 'they are counted' if f['op'] == 'is_not' else 'they are left out')
+            said.append(tr(f'它用的{_label(conn, meanings["element_id"])}需要再看（原因见那一组含义）。“{f["column"]}”出现了新值 {tr("、", ", ").join(f"{v}（{n} 行）" for v, n in new.items())}：新值 {values} 算不算进来？', f'It uses {_label(conn, meanings["element_id"])}, which needs review (see the reason on that set of meanings). "{f["column"]}" has new values {", ".join(f"{v} ({n} rows)" for v, n in new.items())}: should the new values {values} be counted? ') +
+                        tr(f'按现在的写法（{in_out_text(conn, content)}），{"它们" if len(new) > 1 else "它"}{default}。请先给新值写含义，再决定', f'As it is written now ({in_out_text(conn, content)}), {default}. Write meanings for the new values first, then decide'))
+    return tr('；', '; ').join(said) or None
 
 
 def _enum_problems(conn, row: dict) -> list[str]:
@@ -508,27 +512,27 @@ def _enum_problems(conn, row: dict) -> list[str]:
     dataset = current_dataset(conn, content['dataset'])
     col = (dataset_columns(conn, dataset['id']) if dataset else {}).get(content['column'])
     if col is None or col['counts'] is None:
-        return [f'“{content["column"]}”现在不再是一列只有几个取值的代码列']
+        return [tr(f'“{content["column"]}”现在不再是一列只有几个取值的代码列', f'"{content["column"]}" is no longer a code column with only a few values')]
     now = col['counts']
     labels = {e['value']: e['label'] for e in content['values']}
-    new = [f'{v}（{now[v]} 行，没有含义）' for v in _by_value(set(now) - set(was))]
-    gone = [f'{v}（原来是「{labels[v]}」）' for v in _by_value(set(was) - set(now)) if v in labels]
+    new = [tr(f'{v}（{now[v]} 行，没有含义）', f'{v} ({now[v]} rows, no meaning)') for v in _by_value(set(now) - set(was))]
+    gone = [tr(f'{v}（原来是「{labels[v]}」）', f'{v} (was "{labels[v]}")') for v in _by_value(set(was) - set(now)) if v in labels]
     if not new and not gone:
         return []
-    said = [*([f'新出现 {"、".join(new)}'] if new else []), *([f'不再出现 {"、".join(gone)}'] if gone else [])]
-    return [f'{dataset["name"]} 第 {dataset["version"]} 版（{dataset["who"] or "未署名"}上传）里，“{content["column"]}”的取值变了：{"；".join(said)}。确认时的取值是 {"、".join(_by_value(was))}']
+    said = [*([tr(f'新出现 {tr("、", ", ").join(new)}', f'new: {", ".join(new)}')] if new else []), *([tr(f'不再出现 {tr("、", ", ").join(gone)}', f'gone: {", ".join(gone)}')] if gone else [])]
+    return [tr(f'{dataset["name"]} 第 {dataset["version"]} 版（{dataset["who"] or "未署名"}上传）里，“{content["column"]}”的取值变了：{tr("；", "; ").join(said)}。确认时的取值是 {tr("、", ", ").join(_by_value(was))}', f'In {dataset["name"]} version {dataset["version"]} (uploaded by {dataset["who"] or "unsigned"}) the values of "{content["column"]}" changed: {"; ".join(said)}. The values when it was confirmed: {", ".join(_by_value(was))}')]
 
 
 def _label(conn, element_id: str) -> str:
     content = _content(element_row(conn, element_id))
-    return (f'“{content["name"]}”类型' if element_id.startswith(TYPE_PREFIX) else f'“{content["name"]}”关系' if element_id.startswith(RELATION_PREFIX)
-            else f'“{content["name"]}”视图' if element_id.startswith(VIEW_PREFIX) else f'“{content["name"]}”行为' if element_id.startswith(ACTION_PREFIX)
-            else f'“{content["name"]}”管道' if element_id.startswith(PIPELINE_PREFIX) else f'“{content["name"]}”派生属性' if element_id.startswith(DERIVED_PREFIX)
-            else f'“{content["column"]}”的含义')
+    return (tr(f'“{content["name"]}”类型', f'the type "{content["name"]}"') if element_id.startswith(TYPE_PREFIX) else tr(f'“{content["name"]}”关系', f'the relation "{content["name"]}"') if element_id.startswith(RELATION_PREFIX)
+            else tr(f'“{content["name"]}”视图', f'the view "{content["name"]}"') if element_id.startswith(VIEW_PREFIX) else tr(f'“{content["name"]}”行为', f'the action "{content["name"]}"') if element_id.startswith(ACTION_PREFIX)
+            else tr(f'“{content["name"]}”管道', f'the pipeline "{content["name"]}"') if element_id.startswith(PIPELINE_PREFIX) else tr(f'“{content["name"]}”派生属性', f'the derived property "{content["name"]}"') if element_id.startswith(DERIVED_PREFIX)
+            else tr(f'“{content["column"]}”的含义', f'the meanings of "{content["column"]}"'))
 
 
-CAUSE_WORDS = {'data': '数据变了', 'definition': '定义改了'}   # why something needs another look: what changed at the root
-VIA_WORDS = {'parent': '上一步过时', 'ancestor': '更上游过时'}   # and how far away that root is: its direct parent, or further up
+CAUSE_WORDS = TrMap({'data': ('数据变了', 'Data changed'), 'definition': ('定义改了', 'Definition changed')})   # why something needs another look: what changed at the root
+VIA_WORDS = TrMap({'parent': ('上一步过时', 'Upstream'), 'ancestor': ('更上游过时', 'Far upstream')})   # and how far away that root is: its direct parent, or further up
 
 
 def stale_word(cause: str | None, via: str | None) -> str | None:
@@ -563,7 +567,7 @@ def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list
              after={'state': 'needs_look', 'reason': reason, 'caused_by': caused_by, 'cause': cause, 'via': via}, user_id=None)
     moved.append(element_id)
     for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
-        _flag(conn, reader, f'它用的{_label(conn, element_id)}需要再看（原因见{"那一组含义" if element_id.startswith(ENUM_PREFIX) else "那条管道" if element_id.startswith(PIPELINE_PREFIX) else "那个对象类型"}）',
+        _flag(conn, reader, tr(f'它用的{_label(conn, element_id)}需要再看（原因见{"那一组含义" if element_id.startswith(ENUM_PREFIX) else "那条管道" if element_id.startswith(PIPELINE_PREFIX) else "那个对象类型"}）', f'It uses {_label(conn, element_id)}, which needs review (see the reason on {"that set of meanings" if element_id.startswith(ENUM_PREFIX) else "that pipeline" if element_id.startswith(PIPELINE_PREFIX) else "that object type"})'),
               caused_by, moved, cause, 'parent' if via == 'self' else 'ancestor')
 
 
@@ -615,7 +619,7 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
                         else derived_problems(conn, row) if element_id.startswith(DERIVED_PREFIX)
                         else _type_problems(conn, _content(row))[0])
             if problems:
-                _flag(conn, element_id, '；'.join(problems), caused_by, moved, 'data')
+                _flag(conn, element_id, tr('；', '; ').join(problems), caused_by, moved, 'data')
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
@@ -630,7 +634,7 @@ def recheck_after_write(conn, name: str, signer: str) -> str | None:
     try:
         recheck_dependents(conn, name, signer)
     except Exception as exc:   # whatever went wrong, the readers are flagged and the person is told
-        flag_dataset_readers(conn, name, f'“{name}”有了新版本，重新检查出了错（{exc}），没法确认它还成立，请再看一遍', signer)
+        flag_dataset_readers(conn, name, tr(f'“{name}”有了新版本，重新检查出了错（{exc}），没法确认它还成立，请再看一遍', f'"{name}" has a new version and the re-check failed ({exc}), so it cannot be confirmed to still hold. Please look again'), signer)
         return str(exc)
     return None
 
@@ -654,11 +658,11 @@ def dataset_readers_of(conn, name: str, user: dict | None = None, everyone: bool
 def _enum_now_problems(conn, content: dict) -> list[str]:
     dataset = current_dataset(conn, content['dataset'])
     if dataset is None:
-        return [f'数据集“{content["dataset"]}”已经不在了']
+        return [tr(f'数据集“{content["dataset"]}”已经不在了', f'The dataset "{content["dataset"]}" is gone')]
     col = dataset_columns(conn, dataset['id']).get(content['column'])
     if col is None or col['counts'] is None:
-        return [f'“{content["column"]}”现在不再是一列只有几个取值的代码列']
-    return [f'含义里的取值 {e["value"]} 现在的数据里没有' for e in content['values'] if e['value'] not in col['counts']]
+        return [tr(f'“{content["column"]}”现在不再是一列只有几个取值的代码列', f'"{content["column"]}" is no longer a code column with only a few values')]
+    return [tr(f'含义里的取值 {e["value"]} 现在的数据里没有', f'The value {e["value"]} in the meanings is not in the data now') for e in content['values'] if e['value'] not in col['counts']]
 
 
 def seen_of_type(dataset: dict | None) -> dict | None:
@@ -695,44 +699,44 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
     if payload.get('column') is not None:
         row = element_row(conn, enum_id(row['element_id'][len(TYPE_PREFIX):], str(payload.get('column'))))
         if row is None:
-            raise TypeRefused('这一列还没有人提出含义', 404)
+            raise TypeRefused(tr('这一列还没有人提出含义', 'Nobody has put forward meanings for this column yet'), 404)
     refuse_if_limited(conn, row, user)
     if payload.get('version') != row['version']:
-        raise TypeRefused('确认要带上你看到的那一版；它在你看过之后被改了，请刷新后重新看一遍', 409)
+        raise TypeRefused(tr('确认要带上你看到的那一版；它在你看过之后被改了，请刷新后重新看一遍', 'Confirming needs the version you saw; it was changed after you looked, so refresh and look again'), 409)
     element_id, content, is_type = row['element_id'], _content(row), row['element_id'].startswith(TYPE_PREFIX)
     if row['state'] == 'confirmed':
-        raise TypeRefused('已经确认过了', 409)
+        raise TypeRefused(tr('已经确认过了', 'Already confirmed'), 409)
     if row['state'] == 'rejected':
-        raise TypeRefused('已经被退回了：要先按退回的理由改，再重新提出', 409)
+        raise TypeRefused(tr('已经被退回了：要先按退回的理由改，再重新提出', 'It was sent back: change it as the reason says, then put it forward again'), 409)
     if row['state'] == 'needs_look' and not is_type:
-        raise TypeRefused('这组含义需要再看：请按现在的数据重新提出含义，由另一位确认', 409)
+        raise TypeRefused(tr('这组含义需要再看：请按现在的数据重新提出含义，由另一位确认', 'These meanings need review: put them forward again on the current data, for someone else to confirm'), 409)
     seen = payload.get('seen')
     if not isinstance(seen, dict):
-        raise TypeRefused('确认要带上你看到的数据版本和行数（seen）')
+        raise TypeRefused(tr('确认要带上你看到的数据版本和行数（seen）', 'Confirming needs the data version and row count you saw (seen)'))
     dataset = current_dataset(conn, content['dataset'])
     if is_type:
-        refuse_ai_columns(conn, content['dataset'], content['key'], '主键')
+        refuse_ai_columns(conn, content['dataset'], content['key'], tr('主键', 'a key'))
         problems, check_id = _type_problems(conn, content)
         waiting = _unconfirmed_meanings(conn, element_id)
         if waiting:
-            raise TypeRefused(f'它的{"、".join(f"“{c}”" for c in waiting)}的含义还没有确认，要先确认含义', 409)
+            raise TypeRefused(tr(f'它的{tr("、", ", ").join(f"“{c}”" for c in waiting)}的含义还没有确认，要先确认含义', f'The meanings of {", ".join(waiting)} are not confirmed yet. Confirm the meanings first'), 409)
         unsettled = unconfirmed_producers(conn, content['dataset'])
         if unsettled:
-            raise TypeRefused(f'“{content["dataset"]}”是管道{"、".join(f"“{n}”" for n in unsettled)}写出来的数据，管道还没有确认，要先确认管道', 409)
+            raise TypeRefused(tr(f'“{content["dataset"]}”是管道{tr("、", ", ").join(f"“{n}”" for n in unsettled)}写出来的数据，管道还没有确认，要先确认管道', f'"{content["dataset"]}" is data written by the pipeline {", ".join(unsettled)}, which is not confirmed yet. Confirm the pipeline first'), 409)
         anchors = {'dataset': dataset['name'], 'version': dataset['version']} if dataset else None
         evidence = f'check_result:{check_id},dataset:{dataset["name"]}@v{dataset["version"]}' if check_id else row['evidence_ref']
         now = seen_of_type(dataset)
     else:
-        refuse_ai_columns(conn, content['dataset'], [content['column']], '已确认的代码含义')
+        refuse_ai_columns(conn, content['dataset'], [content['column']], tr('已确认的代码含义', 'a confirmed code meaning'))
         problems = _enum_now_problems(conn, content)
         col = dataset_columns(conn, dataset['id']).get(content['column']) if dataset else None
         anchors = {'dataset': dataset['name'], 'version': dataset['version'], 'counts': col['counts']} if not problems else None
         evidence = f'dataset:{dataset["name"]}@v{dataset["version"]}' if dataset else None
         now = seen_of_meaning(dataset, col)
     if problems:
-        raise TypeRefused(f'按现在的数据过不了检查，不能确认：{"；".join(problems)}', 409)
+        raise TypeRefused(tr(f'按现在的数据过不了检查，不能确认：{tr("；", "; ").join(problems)}', f'It fails the checks on the current data and cannot be confirmed: {"; ".join(problems)}'), 409)
     if seen != now:
-        raise TypeRefused(f'数据在你看过之后变了：{dataset["name"]} 现在是第 {dataset["version"]} 版，和你看到的不一样，请刷新后重新看一遍', 409)
+        raise TypeRefused(tr(f'数据在你看过之后变了：{dataset["name"]} 现在是第 {dataset["version"]} 版，和你看到的不一样，请刷新后重新看一遍', f'The data changed after you looked: {dataset["name"]} is now version {dataset["version"]}, not what you saw. Refresh and look again'), 409)
     write_confirmation(conn, element_id, content, evidence, who, anchors, {dataset['name']: dataset['version']}, row['version'])
     if not is_type:
         _refresh_view_reasons(conn, element_id[len(ENUM_PREFIX):].partition(':')[0], content['column'])
@@ -756,7 +760,7 @@ def write_confirmation(conn, element_id: str, content: dict, evidence: str | Non
             if reads is not None:
                 _set_deps(conn, element_id, reads)
     except StaleElement:
-        raise TypeRefused(STALE, 409) from None
+        raise TypeRefused(stale_note(), 409) from None
 
 
 # --- what the pages read ------------------------------------------------------------------------------------------------------------------------
@@ -777,7 +781,8 @@ def limited_on(conn, row: dict, person: dict | None) -> bool:
     return not row['element_id'].startswith(ACTION_PREFIX) and any(restriction(conn, t, person) is not None or hidden_columns(conn, t, person) for t in _types_read(row))   # a column kept from them: not all the data either
 
 
-HIDDEN_REASON = '原因里有全部数据的统计，你受行规则限制，看不到'
+def hidden_reason() -> str:
+    return tr('原因里有全部数据的统计，你受行规则限制，看不到', 'The reason has statistics over all the data, which a row rule keeps you from seeing')
 
 
 def reason_for(conn, row: dict, user: dict | None) -> tuple[str | None, str | None]:
@@ -786,7 +791,7 @@ def reason_for(conn, row: dict, user: dict | None) -> tuple[str | None, str | No
     if row['state'] not in ('needs_look', 'rejected'):
         return None, None
     if row['state'] == 'needs_look' and row['reason'] and limited_on(conn, row, user):
-        return None, HIDDEN_REASON
+        return None, hidden_reason()
     return (_settled_since(conn, row) if row['state'] == 'needs_look' and row['reason'] else row['reason']), None
 
 
@@ -795,18 +800,26 @@ def _settled_since(conn, row: dict) -> str:
     and that this element still waits for its own confirmation. Only the words read on the pages change; the stored reason, the log and the graph's cause
     (which reads the stored sentence) stay as written."""
     reason = row['reason']
+    reader = current()
     for (parent,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (row['element_id'],)).fetchall():
-        said = f'它用的{_label(conn, parent)}需要再看' if (held := element_row(conn, parent)) and held['state'] == 'confirmed' else None
-        if said and said in reason:
-            who = conn.execute('SELECT confirmed_by FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (parent,)).fetchone()
-            now = f'它用的{_label(conn, parent)}已经由 {who[0] if who and who[0] else "另一位"} 重新确认，这一项还要再确认一次'
-            reason = re.sub(re.escape(said) + r'(（原因见[^）]*）)?', lambda _: now, reason)   # a function: names are text, not a replacement pattern
+        if not ((held := element_row(conn, parent)) and held['state'] == 'confirmed'):
+            continue
+        for written in ('zh', 'en'):   # the reason was stored in the language of whoever wrote it
+            with speaking(written):
+                said = tr(f'它用的{_label(conn, parent)}需要再看', f'It uses {_label(conn, parent)}, which needs review')
+                tail = tr(r'(（原因见[^）]*）)?', r'( \(see the reason on [^)]*\))?')
+            if said in reason:
+                who = conn.execute('SELECT confirmed_by FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (parent,)).fetchone()
+                with speaking(reader):
+                    now = tr(f'它用的{_label(conn, parent)}已经由 {who[0] if who and who[0] else "另一位"} 重新确认，这一项还要再确认一次',
+                             f'It uses {_label(conn, parent)}, which {who[0] if who and who[0] else "someone else"} has confirmed again; this one still needs its own confirmation')
+                reason = re.sub(re.escape(said) + tail, lambda _: now, reason)   # a function: names are text, not a replacement pattern
     return reason
 
 
 def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
     if limited_on(conn, row, user):
-        raise TypeRefused('你受行规则或列的限制，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的建设者来确认', 403)
+        raise TypeRefused(tr('你受行规则或列的限制，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的建设者来确认', 'A row rule or a column limit keeps you from seeing all the data. Confirming needs a look at all of it, so ask a builder without the limit'), 403)
 
 
 def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
@@ -920,7 +933,7 @@ def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | N
         values = [{'value': v, 'label': labels[v]['label'] if v in labels else '', 'description': labels[v]['description'] if v in labels else '',
                    'rows': now.get(v), 'rows_at_confirmation': was.get(v), 'in_data': v in now} for v in _by_value({*now, *labels})]
     return {'column': prop['column'], 'values': values, 'seen': None if limited else seen_of_meaning(dataset, cols.get(prop['column'])),
-            **({'limited_note': LIMITED_NOTE} if limited else {}), **(_state_view(conn, row, user) if row else {'state': None, 'can_confirm': False})}
+            **({'limited_note': limited_note()} if limited else {}), **(_state_view(conn, row, user) if row else {'state': None, 'can_confirm': False})}
 
 
 def type_page(conn, english_name: str, user: dict | None) -> dict:
@@ -939,12 +952,12 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
     unsent = hidden_values(conn, row['element_id'])
     fanned = fan_marks(conn, dataset['id']) if dataset else set()
-    props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'fan': FAN_NOTE if p['column'] in fanned else None, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
+    props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'fan': fan_note() if p['column'] in fanned else None, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
     limited = restriction(conn, row['element_id'], user) is not None
     from ontology_poc_generator.derived_properties import limited_reads   # derived_properties reads this module: imported here, where it is used
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),
             'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
-            **({'limited_note': LIMITED_NOTE} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
+            **({'limited_note': limited_note()} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),
             'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items() if n not in hidden],
             'columns_kept': len(hidden)}
@@ -955,11 +968,11 @@ def type_objects(conn, english_name: str, page: int, user: dict | None) -> dict:
     detail = type_detail(conn, english_name, user)
     dataset = current_dataset(conn, detail['dataset'])
     if dataset is None:
-        raise TypeRefused(f'数据集“{detail["dataset"]}”已经不在了', 409)
+        raise TypeRefused(tr(f'数据集“{detail["dataset"]}”已经不在了', f'The dataset "{detail["dataset"]}" is gone'), 409)
     present = dataset_columns(conn, dataset['id'])
     gone = [p['column'] for p in detail['properties'] if p['column'] not in present]
     if gone:   # an unknown column in double quotes would be read by SQLite as the text of its name
-        raise TypeRefused(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{"、".join(gone)}', 409)
+        raise TypeRefused(tr(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{tr("、", ", ").join(gone)}', f'{dataset["name"]} version {dataset["version"]} no longer has these columns: {", ".join(gone)}'), 409)
     limit = restriction(conn, type_id(english_name), user)
     q = lambda name: '"' + name.replace('"', '""') + '"'
     if limit is None:
@@ -1036,7 +1049,7 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
                 held = element_row(conn, element)
                 limited[element] = held is not None and held['content_json'] is not None and limited_on(conn, held, user)
             if limited[element]:
-                after = {**after, 'reason': HIDDEN_REASON}
+                after = {**after, 'reason': hidden_reason()}
         if change.startswith('action_') and not _action_line_readable(conn, element, after, user):
             continue
         kind = ('dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX)
@@ -1046,10 +1059,10 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
                     'caused_by': after.get('caused_by'), 'self_confirmed': bool(after.get('self_confirmed')),
                     'visible_to': after.get('visible_to') if change == 'access_changed' else None,
-                    'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else '、'.join(c for c in after['columns'] if c not in hidden(element)) or '你看不到的列' if change == 'meanings_retired'
+                    'text': after.get('name') if change == 'edited' else change if kind == 'dataset' else tr('、', ', ').join(c for c in after['columns'] if c not in hidden(element)) or tr('你看不到的列', 'columns you cannot see') if change == 'meanings_retired'
                     else after.get('text') if change.startswith('action_') or change == 'confirmed_together' else after.get('summary') if change in ('row_rules_changed', 'notify_changed')
-                    else f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型' if change == 'values_privacy_changed'
-                    else f'{after["column"]}：{"所有人都能看" if after["visible_to"] == "everyone" else "只给 " + "、".join(after["visible_to"]) + " 看（还有管理员）" if after["visible_to"] else "只有管理员能看"}' if change == 'column_access_changed'
-                    else f'第 {after["run"]} 次运行，写了 {"、".join(after["outputs"]) or "没有数据集"}' if change == 'run'
-                    else f'第 {after["run"]} 次运行失败：{after["error"]}' if change == 'run_failed' else None})
+                    else tr(f'{after["column"]}：{"不再" if after["hide_values"] else "重新"}把取值发给模型', f'{after["column"]}: values are {"no longer" if after["hide_values"] else "again"} sent to the model') if change == 'values_privacy_changed'
+                    else tr(f'{after["column"]}：{"所有人都能看" if after["visible_to"] == "everyone" else "只给 " + tr("、", ", ").join(after["visible_to"]) + " 看（还有管理员）" if after["visible_to"] else "只有管理员能看"}', f'{after["column"]}: {"everyone can see it" if after["visible_to"] == "everyone" else "only " + ", ".join(after["visible_to"]) + " (and admins) can see it" if after["visible_to"] else "only admins can see it"}') if change == 'column_access_changed'
+                    else tr(f'第 {after["run"]} 次运行，写了 {tr("、", ", ").join(after["outputs"]) or "没有数据集"}', f'Run {after["run"]} wrote {", ".join(after["outputs"]) or "no datasets"}') if change == 'run'
+                    else tr(f'第 {after["run"]} 次运行失败：{after["error"]}', f'Run {after["run"]} failed: {after["error"]}') if change == 'run_failed' else None})
     return out

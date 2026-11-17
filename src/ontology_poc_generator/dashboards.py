@@ -25,6 +25,7 @@ Visibility: the owner and admins always; `everyone` is every signed-in person; `
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import TrMap, tr
 from datetime import date, datetime, timezone
 import json
 import re
@@ -43,16 +44,20 @@ CREATE TABLE IF NOT EXISTS dashboard_last (
     dashboard_id INTEGER NOT NULL, component_id TEXT NOT NULL, reader INTEGER NOT NULL, picks TEXT NOT NULL, result_json TEXT NOT NULL, at TEXT NOT NULL,
     PRIMARY KEY (dashboard_id, component_id, reader, picks));
 '''
-SCOPES = {'private': '只有我', 'named': '指定的人', 'everyone': '所有登录的人'}
+SCOPES = TrMap({'private': ('只有我', 'Only me'), 'named': ('指定的人', 'Named people'), 'everyone': ('所有登录的人', 'Everyone who signs in')})
 REFRESH = (0, 60, 300, 900, 3600)   # seconds between two reads of the data; 0 is "only when the page is opened or the person asks"
 MAX_COMPONENTS, MAX_BAR, MAX_NAME, MAX_TITLE = 12, 4, 40, 40
 MAX_PARAMS, MAX_VALUE, MAX_TEXT = 4, 200, 4000   # parameters on a board, characters in a parameter's value, characters in a query card
 PARAM_NAME = re.compile(r'[A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff]{0,19}')   # as the query reads a $name
-CLOSED_TEXT = '这个组件你现在算不了：它用到的对象类型、属性或关系你看不到，或者现在不在了'
-UNSETTLED_TEXT = '这个组件现在算不了：它用到的定义现在不是已确认的状态，要等有权限的人再确认'   # a reader is not told which: the reason can name a column kept from them
-BAD_VALUE_TEXT = '你填的参数值在这里用不了（例如要数字或日期的地方填了文字），请换一个值，或者清空用默认值'
+def closed_text() -> str:
+    return tr('这个组件你现在算不了：它用到的对象类型、属性或关系你看不到，或者现在不在了', 'You cannot compute this component now: you cannot see an object type, property or relation it uses, or it is gone')
+def unsettled_text() -> str:
+    return tr('这个组件现在算不了：它用到的定义现在不是已确认的状态，要等有权限的人再确认', 'This component cannot be computed now: a definition it uses is not confirmed, and someone with the right must confirm it again')   # a reader is not told which: the reason can name a column kept from them
+def bad_value_text() -> str:
+    return tr('你填的参数值在这里用不了（例如要数字或日期的地方填了文字），请换一个值，或者清空用默认值', 'The parameter value you entered cannot be used here (for example text where a number or date is needed). Use another value, or clear it to use the default')
 ROW_LIMIT = 10   # an instance table on a board shows this many rows
-SIGN_IN_NOTE = '分享链接打开时仍然要先登录，并且要在看板的发布范围里；没有匿名访问。'
+def sign_in_note() -> str:
+    return tr('分享链接打开时仍然要先登录，并且要在看板的发布范围里；没有匿名访问。', 'A shared link still needs sign-in, and the person must be within the board\'s audience; there is no anonymous access.')
 
 
 class DashboardRefused(ValueError):
@@ -125,8 +130,8 @@ def _found(conn, user: dict | None, dashboard_id) -> dict:
     record = _record(row) if row else None
     if record is None or not _may_open(user, record) or _reads_nothing(conn, user, record):
         if record is not None and _expired(record) and _published_to(user, record):   # only someone it was published to is told that it has ended: to anyone else it is not there
-            raise DashboardRefused('这个看板已经过期，不再开放了', 410)
-        raise DashboardRefused('没有这个看板', 404)
+            raise DashboardRefused(tr('这个看板已经过期，不再开放了', 'This board has expired and is no longer open'), 410)
+        raise DashboardRefused(tr('没有这个看板', 'There is no such board'), 404)
     return record
 
 
@@ -154,9 +159,9 @@ def dashboard_detail(conn, user: dict | None, dashboard_id: int) -> dict:
     record = _found(conn, user, dashboard_id)
     if not (_owns(user, record) or _is_admin(user)):   # a reader gets the board worked out (dashboard_data), not what it is made of or who else it went to
         return {**{k: record[k] for k in ('id', 'name', 'owner', 'scope', 'expires_at', 'refresh_seconds', 'version', 'updated_at')}, **_summary(record, user),
-                'owner_id': None, 'sign_in_note': SIGN_IN_NOTE}
+                'owner_id': None, 'sign_in_note': sign_in_note()}
     names = {i: n for i, n in conn.execute('SELECT id, display_name FROM user')}
-    return {**record, **_summary(record, user), 'visible_names': [names.get(i, '（已删除）') for i in record['visible_to']], 'sign_in_note': SIGN_IN_NOTE, 'owner_id': record['owner_id']}
+    return {**record, **_summary(record, user), 'visible_names': [names.get(i, tr('（已删除）', '(deleted)')) for i in record['visible_to']], 'sign_in_note': sign_in_note(), 'owner_id': record['owner_id']}
 
 
 # --- what a board is made of ---------------------------------------------------------------------------------------------------------------------------
@@ -164,7 +169,7 @@ def dashboard_detail(conn, user: dict | None, dashboard_id: int) -> dict:
 def _clean_name(value, what: str, limit: int) -> str:
     text = value.strip() if isinstance(value, str) else ''
     if not text or len(text) > limit or '\n' in text:
-        raise DashboardRefused(f'{what}要写一行字，最多 {limit} 个字符')
+        raise DashboardRefused(tr(f'{what}要写一行字，最多 {limit} 个字符', f'{what} must be one line of at most {limit} characters'))
     return text
 
 
@@ -172,18 +177,18 @@ def normalize_spec(raw) -> dict:
     """{'components': [{'id', 'title', 'query', 'chart'}], 'filters': [{'field', 'label'}]} from what a page sent. A component's chart kind is one of the explorer's, or
     'rows' for a list of the first rows."""
     if not isinstance(raw, dict) or not isinstance(raw.get('components'), list) or not raw['components']:
-        raise DashboardRefused('看板里至少要有一个组件')
+        raise DashboardRefused(tr('看板里至少要有一个组件', 'A board needs at least one component'))
     if len(raw['components']) > MAX_COMPONENTS:
-        raise DashboardRefused(f'一个看板最多 {MAX_COMPONENTS} 个组件')
+        raise DashboardRefused(tr(f'一个看板最多 {MAX_COMPONENTS} 个组件', f'A board can have at most {MAX_COMPONENTS} components'))
     components, seen = [], set()
     for i, c in enumerate(raw['components'], 1):
         if not isinstance(c, dict):
-            raise DashboardRefused('组件要写成对象')
-        title = _clean_name(c.get('title'), f'第 {i} 个组件的标题', MAX_TITLE)
+            raise DashboardRefused(tr('组件要写成对象', 'A component must be written as an object'))
+        title = _clean_name(c.get('title'), tr(f'第 {i} 个组件的标题', f'The title of component {i}'), MAX_TITLE)
         raw_chart = c.get('chart')
         ident = c.get('id') if isinstance(c.get('id'), str) and re.fullmatch(r'[A-Za-z0-9_-]{1,20}', c['id']) else f'c{i}'
         if ident in seen:
-            raise DashboardRefused(f'组件编号“{ident}”重复了')
+            raise DashboardRefused(tr(f'组件编号“{ident}”重复了', f'The component id "{ident}" is repeated'))
         seen.add(ident)
         if 'text' in c or (isinstance(raw_chart, dict) and raw_chart.get('kind') == 'query'):
             components.append({'id': ident, 'title': title, 'text': _query_text(c, title), 'chart': {'kind': 'query'}})
@@ -193,20 +198,20 @@ def normalize_spec(raw) -> dict:
             query = normalize_query(c.get('query'))
             chart = {'kind': 'rows'} if rows else normalize_chart(raw_chart)
         except TypeRefused as exc:
-            raise DashboardRefused(f'“{title}”：{exc}') from None
+            raise DashboardRefused(tr(f'“{title}”：{exc}', f'"{title}": {exc}')) from None
         components.append({'id': ident, 'title': title, 'query': query, 'chart': chart})
     bar = raw.get('filters') or []
     if not isinstance(bar, list) or len(bar) > MAX_BAR or not all(isinstance(f, dict) for f in bar):
-        raise DashboardRefused(f'筛选条最多 {MAX_BAR} 项')
-    filters = [{'field': _clean_name(f.get('field'), '筛选项的字段', 60), 'label': _clean_name(f.get('label') or f.get('field'), '筛选项的名字', MAX_TITLE)} for f in bar]
+        raise DashboardRefused(tr(f'筛选条最多 {MAX_BAR} 项', f'The filter bar can have at most {MAX_BAR} items'))
+    filters = [{'field': _clean_name(f.get('field'), tr('筛选项的字段', 'The filter field'), 60), 'label': _clean_name(f.get('label') or f.get('field'), tr('筛选项的名字', 'The filter name'), MAX_TITLE)} for f in bar]
     if len({f['field'] for f in filters}) != len(filters):
-        raise DashboardRefused('筛选条里一个字段只能出现一次')
+        raise DashboardRefused(tr('筛选条里一个字段只能出现一次', 'A field can appear only once in the filter bar'))
     params = _params(raw.get('params'))
     declared = {p['name'] for p in params}
     for c in components:
         missing = [n for n in param_names(c['text']) if n not in declared] if 'text' in c else []
         if missing:
-            raise DashboardRefused(f'“{c["title"]}”用到了 {"、".join("$" + n for n in missing)}：要在看板的参数里加上它和默认值')
+            raise DashboardRefused(tr(f'“{c["title"]}”用到了 {tr("、", ", ").join("$" + n for n in missing)}：要在看板的参数里加上它和默认值', f'"{c["title"]}" uses {", ".join("$" + n for n in missing)}: add it with a default value to the board parameters'))
     return {'components': components, 'filters': filters, 'params': params}
 
 
@@ -214,15 +219,15 @@ def _query_text(c: dict, title: str) -> str:
     """A query card's text, checked for what can be checked without the data: one query of at most MAX_TEXT characters that can be read into words."""
     text = c.get('text')
     if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:
-        raise DashboardRefused(f'“{title}”：要写一条本体查询，最多 {MAX_TEXT} 个字符')
+        raise DashboardRefused(tr(f'“{title}”：要写一条本体查询，最多 {MAX_TEXT} 个字符', f'"{title}": write an ontology query of at most {MAX_TEXT} characters'))
     if not isinstance(c.get('chart'), dict) or c['chart'].get('kind') != 'query':
-        raise DashboardRefused(f'“{title}”：本体查询组件的种类是 query，它的结果按查询自己的样子显示')
+        raise DashboardRefused(tr(f'“{title}”：本体查询组件的种类是 query，它的结果按查询自己的样子显示', f'"{title}": an ontology query component has the kind query, and its result is shown as the query gives it'))
     try:
         param_names(text)
     except QueryError as exc:
-        raise DashboardRefused(f'“{title}”：{exc}') from None
+        raise DashboardRefused(tr(f'“{title}”：{exc}', f'"{title}": {exc}')) from None
     if is_graph(text):   # a board shows numbers to everyone it is shared with, viewers too; a graph shows objects one by one
-        raise DashboardRefused(f'“{title}”：看板组件要算一个数，SELECT GRAPH 画的是一个个对象，请在问答页的“写查询”里看')
+        raise DashboardRefused(tr(f'“{title}”：看板组件要算一个数，SELECT GRAPH 画的是一个个对象，请在问答页的“写查询”里看', f'"{title}": a board component computes a number, while SELECT GRAPH draws individual objects; look at it under Write a query on the Ask page'))
     return text
 
 
@@ -232,22 +237,22 @@ def _params(raw) -> list[dict]:
     if raw in (None, ''):
         return []
     if not isinstance(raw, list) or not all(isinstance(p, dict) for p in raw):
-        raise DashboardRefused('参数要写成 [{"name": 名字, "label": 显示的名字, "default": 默认值}]')
+        raise DashboardRefused(tr('参数要写成 [{"name": 名字, "label": 显示的名字, "default": 默认值}]', 'Parameters must be written as [{"name": name, "label": display name, "default": default value}]'))
     if len(raw) > MAX_PARAMS:
-        raise DashboardRefused(f'一个看板最多 {MAX_PARAMS} 个参数')
+        raise DashboardRefused(tr(f'一个看板最多 {MAX_PARAMS} 个参数', f'A board can have at most {MAX_PARAMS} parameters'))
     out = []
     for p in raw:
         name = p['name'].strip() if isinstance(p.get('name'), str) else ''
         if not PARAM_NAME.fullmatch(name):
-            raise DashboardRefused(f'参数名“{name}”要以字母、下划线或汉字开头，只有字母、数字、下划线和汉字，最多 20 个字符，不写 $')
+            raise DashboardRefused(tr(f'参数名“{name}”要以字母、下划线或汉字开头，只有字母、数字、下划线和汉字，最多 20 个字符，不写 $', f'The parameter name "{name}" must start with a letter, underscore or Chinese character, use only letters, digits, underscores and Chinese characters, be at most 20 characters, and omit the $'))
         if name in {q['name'] for q in out}:
-            raise DashboardRefused(f'参数名 ${name} 重复了')
+            raise DashboardRefused(tr(f'参数名 ${name} 重复了', f'The parameter name ${name} is repeated'))
         default = p.get('default')
         default = str(default).strip() if isinstance(default, (str, int, float)) and not isinstance(default, bool) else ''
         if not default or len(default) > MAX_VALUE:
-            raise DashboardRefused(f'参数 ${name} 要写默认值，最多 {MAX_VALUE} 个字符：看板打开时先用它算')
+            raise DashboardRefused(tr(f'参数 ${name} 要写默认值，最多 {MAX_VALUE} 个字符：看板打开时先用它算', f'The parameter ${name} needs a default of at most {MAX_VALUE} characters: the board is computed with it when opened'))
         label = p['label'] if isinstance(p.get('label'), str) and p['label'].strip() else name
-        out.append({'name': name, 'label': _clean_name(label, f'参数 ${name} 的名字', MAX_TITLE), 'default': default})
+        out.append({'name': name, 'label': _clean_name(label, tr(f'参数 ${name} 的名字', f'The name of parameter ${name}'), MAX_TITLE), 'default': default})
     return out
 
 
@@ -260,7 +265,7 @@ def _values(spec: dict, given) -> dict:
     if given in (None, ''):
         given = {}
     if not isinstance(given, dict) or not all(isinstance(k, str) and isinstance(v, (str, int, float)) and not isinstance(v, bool) and len(str(v)) <= MAX_VALUE for k, v in given.items()):
-        raise DashboardRefused(f'参数要写成 {{名字: 取值}}，取值是文字或数字，最多 {MAX_VALUE} 个字符')
+        raise DashboardRefused(tr(f'参数要写成 {{名字: 取值}}，取值是文字或数字，最多 {MAX_VALUE} 个字符', f'Parameters must be written as {{name: value}}, where a value is text or a number of at most {MAX_VALUE} characters'))
     typed = {k: str(v).strip() for k, v in given.items()}
     return {p['name']: typed.get(p['name']) or p['default'] for p in spec.get('params', [])}
 
@@ -268,37 +273,37 @@ def _values(spec: dict, given) -> dict:
 def _publish(conn, payload: dict) -> dict:
     scope = payload.get('scope', 'private')
     if not isinstance(scope, str) or scope not in SCOPES:
-        raise DashboardRefused(f'发布范围要是 {"、".join(SCOPES)} 之一')
+        raise DashboardRefused(tr(f'发布范围要是 {tr("、", ", ").join(SCOPES)} 之一', f'The audience must be one of: {", ".join(SCOPES)}'))
     visible = payload.get('visible_to') or []
     if scope == 'named':
         active = {i for (i,) in conn.execute('SELECT id FROM user WHERE disabled = 0')}
         if not isinstance(visible, list) or not visible or not all(isinstance(i, int) and not isinstance(i, bool) and i in active for i in visible):
-            raise DashboardRefused('指定的人要写成在用账号的编号列表，至少一个')
+            raise DashboardRefused(tr('指定的人要写成在用账号的编号列表，至少一个', 'Named people must be a list of active account ids, at least one'))
         visible = sorted(set(visible))
     else:
         visible = []
     expires = payload.get('expires_at') or None
     if expires is not None:
         if not isinstance(expires, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', expires):
-            raise DashboardRefused('到期日要写成 年-月-日')
+            raise DashboardRefused(tr('到期日要写成 年-月-日', 'The expiry date must be written as YYYY-MM-DD'))
         try:
             date.fromisoformat(expires)
         except ValueError:
-            raise DashboardRefused('到期日不是一个真实的日期') from None
+            raise DashboardRefused(tr('到期日不是一个真实的日期', 'The expiry date is not a real date')) from None
         if expires < date.today().isoformat():
-            raise DashboardRefused('到期日不能早于今天')
+            raise DashboardRefused(tr('到期日不能早于今天', 'The expiry date cannot be before today'))
     refresh = payload.get('refresh_seconds', 0)
     if refresh not in REFRESH or isinstance(refresh, bool):
-        raise DashboardRefused(f'刷新间隔要是 {"、".join(str(r) for r in REFRESH)} 秒之一（0 是只在打开时读）')
+        raise DashboardRefused(tr(f'刷新间隔要是 {tr("、", ", ").join(str(r) for r in REFRESH)} 秒之一（0 是只在打开时读）', f'The refresh interval must be one of {", ".join(str(r) for r in REFRESH)} seconds (0 reads only when opened)'))
     return {'scope': scope, 'visible_to': visible, 'expires_at': expires, 'refresh_seconds': refresh}
 
 
 def _checked(conn, user: dict | None, payload: dict) -> tuple[str, dict, dict]:
-    name = _clean_name(payload.get('name'), '看板的名字', MAX_NAME)
+    name = _clean_name(payload.get('name'), tr('看板的名字', 'The board name'), MAX_NAME)
     spec = normalize_spec(payload.get('spec'))
     problem = next((c for c in evaluate(conn, user, spec, {}, _defaults(spec)) if c['status'] != 'ok'), None)   # a component that cannot be worked out is refused here, not found out by the readers
     if problem:
-        raise DashboardRefused(f'“{problem["title"]}”：{problem["message"]}')
+        raise DashboardRefused(tr(f'“{problem["title"]}”：{problem["message"]}', f'"{problem["title"]}": {problem["message"]}'))
     return name, spec, _publish(conn, payload)
 
 
@@ -307,7 +312,7 @@ def create_dashboard(conn, user: dict | None, payload: dict) -> dict:
     name, spec, published = _checked(conn, user, payload)
     now = _now()
     cursor = conn.execute('INSERT INTO dashboard(name, owner_id, owner, spec_json, scope, visible_to_json, expires_at, refresh_seconds, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
-                          (name, user['id'] if user else 0, user['display_name'] if user else '本机', json.dumps(spec, ensure_ascii=False), published['scope'],
+                          (name, user['id'] if user else 0, user['display_name'] if user else tr('本机', 'local'), json.dumps(spec, ensure_ascii=False), published['scope'],
                            json.dumps(published['visible_to']), published['expires_at'], published['refresh_seconds'], now, now))
     return dashboard_detail(conn, user, cursor.lastrowid)
 
@@ -316,9 +321,9 @@ def update_dashboard(conn, user: dict | None, payload: dict) -> dict:
     ensure_schema(conn)
     record = _found(conn, user, payload.get('id'))
     if not (_owns(user, record) or _is_admin(user)):
-        raise DashboardRefused('只有看板的主人或管理员能改它', 403)
+        raise DashboardRefused(tr('只有看板的主人或管理员能改它', 'Only the board owner or an admin can change it'), 403)
     if payload.get('version') != record['version']:
-        raise DashboardRefused('这个看板在你打开之后被改过，请刷新后再改', 409)
+        raise DashboardRefused(tr('这个看板在你打开之后被改过，请刷新后再改', 'This board was changed after you opened it. Refresh and edit again'), 409)
     name, spec, published = _checked(conn, user, payload)
     conn.execute('UPDATE dashboard SET name = ?, spec_json = ?, scope = ?, visible_to_json = ?, expires_at = ?, refresh_seconds = ?, version = version + 1, updated_at = ? WHERE id = ?',
                  (name, json.dumps(spec, ensure_ascii=False), published['scope'], json.dumps(published['visible_to']), published['expires_at'], published['refresh_seconds'], _now(), record['id']))
@@ -330,7 +335,7 @@ def delete_dashboard(conn, user: dict | None, payload: dict) -> dict:
     ensure_schema(conn)
     record = _found(conn, user, payload.get('id'))
     if not (_owns(user, record) or _is_admin(user)):
-        raise DashboardRefused('只有看板的主人或管理员能删它', 403)
+        raise DashboardRefused(tr('只有看板的主人或管理员能删它', 'Only the board owner or an admin can delete it'), 403)
     conn.execute('DELETE FROM dashboard WHERE id = ?', (record['id'],))
     conn.execute('DELETE FROM dashboard_last WHERE dashboard_id = ?', (record['id'],))
     return {'deleted': record['id']}
@@ -372,13 +377,13 @@ def _kept_from(conn, user: dict | None, component: dict) -> set[str]:
 def _failed(conn, user: dict | None, component: dict, exc: Exception) -> dict:
     base = {'id': component['id'], 'title': component['title'], 'chart': component['chart']}
     if _kept_from(conn, user, component):   # the reason may name a column kept from them: say only that they cannot read it
-        return {**base, 'chart': {'kind': component['chart'].get('kind')}, 'status': 'unavailable', 'message': '这个组件用到了你看不到的属性'}   # the kind only: the rest names columns
+        return {**base, 'chart': {'kind': component['chart'].get('kind')}, 'status': 'unavailable', 'message': tr('这个组件用到了你看不到的属性', 'This component uses a property you cannot see')}   # the kind only: the rest names columns
     waiting = _waiting_on(conn, user, component) if isinstance(exc, TypeRefused) else None
     if waiting is not None:
-        who = '、'.join(waiting) or '有权限确认的人'
-        return {**base, 'status': 'waiting', 'message': f'数据更新了，正在等 {who} 再确认', 'waiting_on': waiting}
+        who = tr('、', ', ').join(waiting) or tr('有权限确认的人', 'someone who may confirm')
+        return {**base, 'status': 'waiting', 'message': tr(f'数据更新了，正在等 {who} 再确认', f'The data was updated and is waiting for {who} to confirm again'), 'waiting_on': waiting}
     status = getattr(exc, 'status', None)
-    message = '你现在看不到这个对象类型：它还没有确认，或者没有开放给你' if isinstance(exc, TypeRefused) and status == 404 and str(exc) == '没有这个对象类型' else str(exc)
+    message = tr('你现在看不到这个对象类型：它还没有确认，或者没有开放给你', 'You cannot see this object type now: it is not confirmed yet, or it is not open to you') if isinstance(exc, TypeRefused) and status == 404 and str(exc) in ('没有这个对象类型', 'There is no such object type') else str(exc)
     return {**base, 'status': 'unavailable', 'message': message}
 
 
@@ -414,9 +419,9 @@ def _work_out_text(conn, user: dict | None, component: dict, values: dict, autho
     except QaRefused as exc:
         if author:
             return {**base, 'status': 'unavailable', 'message': str(exc)}
-        return {**base, 'status': 'unavailable', 'message': BAD_VALUE_TEXT if values != defaults and _runs(conn, user, component, defaults) else CLOSED_TEXT}
+        return {**base, 'status': 'unavailable', 'message': bad_value_text() if values != defaults and _runs(conn, user, component, defaults) else closed_text()}
     if got['status'] not in ('answered', 'no_data'):
-        return {**base, 'status': 'unavailable', 'message': (got.get('reason') or '没有算出来') if author else UNSETTLED_TEXT}
+        return {**base, 'status': 'unavailable', 'message': (got.get('reason') or tr('没有算出来', 'It could not be computed')) if author else unsettled_text()}
     result = {k: got[k] for k in ('status', 'answer', 'reason', 'text', 'definitions', 'limited_by_rule', 'types', 'datasets') if k in got}
     return {**base, 'status': 'ok', 'result': {**result, 'standing': _standing(conn, [d['id'] for d in got.get('definitions', [])])}}
 
@@ -474,7 +479,7 @@ def _picked(spec: dict, bar) -> dict:
     if bar in (None, ''):
         return {}
     if not isinstance(bar, dict) or not all(isinstance(k, str) and isinstance(v, str) and len(v) <= 200 for k, v in bar.items()):
-        raise DashboardRefused('筛选条的取值要写成 {字段: 取值}')
+        raise DashboardRefused(tr('筛选条的取值要写成 {字段: 取值}', 'Filter bar values must be written as {field: value}'))
     fields = {f['field'] for f in spec['filters']}
     return {k: v for k, v in bar.items() if k in fields and v.strip()}
 
@@ -485,10 +490,10 @@ def _headline(components: list[dict]) -> dict:
     grey = [c['title'] for c in ok if not c['result']['standing']['confirmed']]
     waiting = [c['title'] for c in components if c['status'] == 'waiting']
     unavailable = [c['title'] for c in components if c['status'] == 'unavailable']
-    said = [*([f'{len(grey)} 个组件用到了现在不是“已确认”的定义，灰色显示：{"、".join(grey)}'] if grey else []),
-            *([f'{len(waiting)} 个组件的数据更新了，在等再确认：{"、".join(waiting)}'] if waiting else []),
-            *([f'{len(unavailable)} 个组件你现在看不到：{"、".join(unavailable)}'] if unavailable else [])]
-    return {'components': len(components), 'unavailable': unavailable, 'waiting': waiting, 'grey': grey, 'text': '；'.join(said) or '全部按已确认的定义算出'}
+    said = [*([tr(f'{len(grey)} 个组件用到了现在不是“已确认”的定义，灰色显示：{tr("、", ", ").join(grey)}', f'{len(grey)} components use definitions that are not confirmed now and are shown grey: {", ".join(grey)}')] if grey else []),
+            *([tr(f'{len(waiting)} 个组件的数据更新了，在等再确认：{tr("、", ", ").join(waiting)}', f'{len(waiting)} components had their data updated and are waiting to be confirmed again: {", ".join(waiting)}')] if waiting else []),
+            *([tr(f'{len(unavailable)} 个组件你现在看不到：{tr("、", ", ").join(unavailable)}', f'You cannot see {len(unavailable)} components now: {", ".join(unavailable)}')] if unavailable else [])]
+    return {'components': len(components), 'unavailable': unavailable, 'waiting': waiting, 'grey': grey, 'text': tr('；'.join(said) or '全部按已确认的定义算出', '; '.join(said) or 'All computed from confirmed definitions')}
 
 
 def _with_last(conn, user: dict | None, board: int, picked: dict, components: list[dict], components_spec: list[dict] = ()) -> list[dict]:
@@ -528,7 +533,7 @@ def dashboard_data(conn, user: dict | None, dashboard_id, bar=None, params=None)
     components = _with_last(conn, user, record['id'], kept_as, evaluate(conn, user, record['spec'], picked, values, author), record['spec']['components'])
     return {'id': record['id'], 'name': record['name'], 'bar': _bar_options(conn, user, record['spec'], picked), 'params': _param_options(record['spec'], values),
             'components': components, 'headline': _headline(components),
-            'refresh_seconds': record['refresh_seconds'], 'expired': _expired(record), 'read_at': _now(), 'sign_in_note': SIGN_IN_NOTE}
+            'refresh_seconds': record['refresh_seconds'], 'expired': _expired(record), 'read_at': _now(), 'sign_in_note': sign_in_note()}
 
 
 def preview(conn, user: dict | None, payload: dict) -> dict:

@@ -6,6 +6,7 @@ Each request sets it from its Accept-Language header; code that writes a sentenc
 
 With no header (the tests, scripts, the MCP tools) the language stays Chinese, so existing callers see what they saw before.
 """
+import contextlib
 import contextvars
 
 _LANG = contextvars.ContextVar('ontopoc_lang', default='zh')
@@ -33,3 +34,29 @@ def english():
 def tr(zh, en):
     """The sentence in the asker's language."""
     return en if _LANG.get() == 'en' else zh
+
+
+class TrMap(dict):
+    """A dictionary of display words kept as (Chinese, English) pairs: reading a key gives the word in the asker's language."""
+
+    def __getitem__(self, key):
+        return tr(*super().__getitem__(key))
+
+    def get(self, key, default=None):
+        return tr(*super().get(key)) if key in self else default
+
+    def items(self):
+        return [(key, self[key]) for key in self]
+
+    def values(self):
+        return [self[key] for key in self]
+
+
+@contextlib.contextmanager
+def speaking(code):
+    """Write or compare text in one language for a moment (for example to find a stored sentence written in either language)."""
+    token = use(code)
+    try:
+        yield
+    finally:
+        _LANG.reset(token)
