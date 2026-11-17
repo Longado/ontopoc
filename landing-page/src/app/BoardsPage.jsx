@@ -177,7 +177,7 @@ export function BoardsPage() {
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
       {state.data && boards.length === 0 && (canBuild(user)
         ? <EmptyState icon="board" title="还没有看板" text="新建一个，指标和图都从已确认的定义算。" action={{ label: "新建看板", href: "#/boards/new" }} />
-        : <EmptyState icon="board" title="还没有看板" text="还没有人给你发布看板。" />)}
+        : <EmptyState icon="board" title="还没有看板" text="看板由建设者发布。请让建设者把看板发布给你；在那之前，可以直接去问数。" action={{ label: "去问数", href: "#/qa" }} />)}
       {boards.length > 0 && (
         <div className="table-wrap">
           <table>
