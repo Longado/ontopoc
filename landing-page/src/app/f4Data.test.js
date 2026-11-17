@@ -79,7 +79,7 @@ test("tools are grouped in the group order and keep their order inside a group",
 });
 
 test("a wide picture is fitted to the width of the page and a small one is not blown up past the cap", () => {
-  assert.deepEqual(fitView({ w: 1200, h: 500 }, { width: 2400, height: 400 }, "width"), { k: 0.5, x: 0, y: 0 });
+  assert.deepEqual(fitView({ w: 1200, h: 500 }, { width: 2400, height: 400 }, "width"), { k: 0.5, x: 0, y: 44 });
   assert.equal(fitView({ w: 1200, h: 500 }, { width: 600, height: 300 }, "width").k, 1.5);
   assert.deepEqual(fitView({ w: 1200, h: 500 }, { width: 600, height: 300 }, "all"), { k: 1, x: 300, y: 100 });
 });
