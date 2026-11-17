@@ -532,7 +532,7 @@ def _label(conn, element_id: str) -> str:
 
 
 CAUSE_WORDS = TrMap({'data': ('数据变了', 'Data changed'), 'definition': ('定义改了', 'Definition changed')})   # why something needs another look: what changed at the root
-VIA_WORDS = TrMap({'parent': ('上一步过时', 'Previous step out of date'), 'ancestor': ('更上游过时', 'Further upstream out of date')})   # and how far away that root is: its direct parent, or further up
+VIA_WORDS = TrMap({'parent': ('上一步过时', 'Upstream'), 'ancestor': ('更上游过时', 'Far upstream')})   # and how far away that root is: its direct parent, or further up
 
 
 def stale_word(cause: str | None, via: str | None) -> str | None:

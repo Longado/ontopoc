@@ -28,7 +28,7 @@ from ontology_poc_generator.workspace_pipelines import pipeline_id, pipeline_vis
 from ontology_poc_generator.workspace_questions import _mine, reopen
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
-CAUSE_LABEL = TrMap({'data': ('数据变了', 'Data changed'), 'definition': ('定义改了', 'Definition changed'), 'upstream': ('上一步过时', 'Previous step out of date'), 'far_upstream': ('更上游过时', 'Further upstream out of date')})
+CAUSE_LABEL = TrMap({'data': ('数据变了', 'Data changed'), 'definition': ('定义改了', 'Definition changed'), 'upstream': ('上一步过时', 'Upstream'), 'far_upstream': ('更上游过时', 'Far upstream')})
 ANSWER_NODES = 15   # the latest saved answers of the person, drawn in the lineage
 ANSWER_LOOK = 100   # and how many of the newest are looked at to find them: reopening one reads the answer and every dataset it used
 def hidden_words() -> str:

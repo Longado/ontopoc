@@ -33,8 +33,8 @@ class EnglishWorkspaceTest(unittest.TestCase):
                          ('数据变了', '定义改了', '上一步过时', '更上游过时'))
         lang.use('en')
         self.assertEqual((stale_word('data', 'self'), stale_word('definition', 'self'), stale_word('definition', 'parent'), stale_word('data', 'ancestor')),
-                         ('Data changed', 'Definition changed', 'Previous step out of date', 'Further upstream out of date'))
-        self.assertEqual((CAUSE_LABEL['upstream'], CAUSE_LABEL['far_upstream'], CAUSE_WORDS.get('nothing'), VIA_WORDS.get('parent')), ('Previous step out of date', 'Further upstream out of date', None, 'Previous step out of date'))
+                         ('Data changed', 'Definition changed', 'Upstream', 'Far upstream'))
+        self.assertEqual((CAUSE_LABEL['upstream'], CAUSE_LABEL['far_upstream'], CAUSE_WORDS.get('nothing'), VIA_WORDS.get('parent')), ('Upstream', 'Far upstream', None, 'Upstream'))
 
     def test_cardinality_types_and_the_chart_words_read_in_english_and_keep_their_keys(self):
         self.assertEqual((CARDINALITY['many_to_one'], CARDINALITY_NAME['one_to_many'], TYPE_NAME['decimal']), ('多对一', '一对多', '小数'))
@@ -138,12 +138,12 @@ class EnglishWorkspaceHttpTest(types.ObjectTypeTests):
             self.assertIn('new: 3 (16 rows, no meaning)', meaning['reason'])
             self.assertIn('gone: 0 (was "已交付")', meaning['reason'])
             self.assertIn('version 2 (uploaded by Ann)', meaning['reason'])
-            self.assertEqual((detail['state'], detail['stale_word']), ('needs_look', 'Previous step out of date'))
+            self.assertEqual((detail['state'], detail['stale_word']), ('needs_look', 'Upstream'))
             self.assertEqual(detail['reason'], 'It uses the meanings of "状态码", which needs review (see the reason on that set of meanings)')
             self.assertEqual(bob.get('/api/workspace/types/order')[1]['stale_word'], '上一步过时')   # without the header the words are Chinese
             queue = bob.get('/api/workspace/queue', headers=EN)[1]['items']
             card = next(i for i in queue if i['element'] == 'objtype:order')
-            self.assertEqual(card['stale_word'], 'Previous step out of date')
+            self.assertEqual(card['stale_word'], 'Upstream')
             self.assertEqual(card['lines'][0]['text'], 'It uses the meanings of "状态码", which needs review (see the reason on that set of meanings)')
             names = sorted(['订单属于客户', '订单', '客户', '状态码', '已交付', '生产中', '已取消', '客户编号', '城市'], key=len, reverse=True)
             words = [re.sub('|'.join(names), '', line['text']) for item in queue for line in item['lines'] + [{'text': item['title']}]]
