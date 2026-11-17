@@ -1,20 +1,35 @@
 import React from "react";
+import { t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { PipelineState } from "./PipelinesPage.jsx";
-import { PageHeader } from "./ui/PageHeader.jsx";
+import { MoreMenu } from "./ui/MoreMenu.jsx";
 
-const VIEWS = [["edit", "编辑"], ["runs", "运行记录"], ["history", "历史"], ["confirm", "确认"]];
+const VIEWS = ["edit", "runs", "history", "confirm"];
 
-/** The head over every pipeline screen: the breadcrumb (数据 / 管道 / name), the title with its one state chip, the other screens of this pipeline, and on the right the actions of the screen
- * (`actions`, the main one last) and the "⋯" menu (`more`). */
-export function PipelineBar({ detail, view, actions, more }) {
+/** The head over every pipeline screen, kept to two thin rows so that the canvas gets the height: the breadcrumb, the name with its one state chip and `meta` (the saved / unsaved note),
+ * the actions of the screen on the right (`actions`, the main one last) and the "..." menu (`more`); then the other screens of this pipeline as tabs. */
+export function PipelineBar({ detail, view, meta, actions, more }) {
   const here = view === "run" ? "runs" : view;
   return (
     <div className="pl-bar">
-      <PageHeader crumbs={[{ label: "数据" }, { label: "管道", href: hrefFor({ page: "pipelines" }) }, { label: detail.name }]} title={detail.name} status={<PipelineState item={detail} />} actions={actions} more={more} />
-      <nav className="pl-bar-views" aria-label="这条管道的页面">
-        {VIEWS.filter(([k]) => k !== "confirm" || detail.state !== "confirmed").map(([k, label]) => (
-          <a key={k} href={hrefFor({ page: "pipeline", name: detail.name, view: k })} className={here === k ? "active" : ""} aria-current={here === k ? "page" : undefined}>{label}</a>
+      <header className="pl-head">
+        <nav className="pl-crumbs" aria-label={t("ui.crumbs.aria")}>
+          <span>{t("pipeline.bar.data")}</span>
+          <span className="crumb-sep" aria-hidden="true">/</span>
+          <a href={hrefFor({ page: "pipelines" })}>{t("pipeline.bar.pipelines")}</a>
+          <span className="crumb-sep" aria-hidden="true">/</span>
+        </nav>
+        <h1 className="pl-title" tabIndex={-1} title={detail.name}>{detail.name}</h1>
+        <PipelineState item={detail} />
+        {meta}
+        <div className="pl-head-actions">
+          {actions}
+          <MoreMenu items={more} />
+        </div>
+      </header>
+      <nav className="pl-bar-views" aria-label={t("pipeline.bar.viewsAria")}>
+        {VIEWS.filter((k) => k !== "confirm" || detail.state !== "confirmed").map((k) => (
+          <a key={k} href={hrefFor({ page: "pipeline", name: detail.name, view: k })} className={here === k ? "active" : ""} aria-current={here === k ? "page" : undefined}>{t(`pipeline.bar.view.${k}`)}</a>
         ))}
       </nav>
     </div>

@@ -1,17 +1,42 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { cardFlags, countsText, kindLine, layout, numberText, orphans, rowChangeText, stepTitle } from "./pipelineModel.js";
-import { Icon } from "./ui/Icon.jsx";
+import { t } from "./i18n/index.js";
+import { KindChip, PIcon, kindOf } from "./PipelineIcons.jsx";
+import { branchOwners, cardFlags, countsShort, kindLine, layout, numberText, orphans, rowChangeText, rowsText, stepTitle } from "./pipelineModel.js";
 
-const PAD = 16;
-const MIN = 0.4;
-const MAX = 1.6;
+export const NODE = { w: 200, h: 64, gx: 72, gy: 24 };   // the card: 200 x 64, a gap of 72 between columns and 24 between rows
+const PAD = 24;
+const MIN = 0.25;
+const MAX = 2;
+const FIT_FLOOR = 0.7;   // opening the graph fits it, but never below 70%: the text stays readable and a wider graph scrolls
+const RADIUS = 8;
 
-/** The pipeline as a left-to-right graph of cards, laid out by the steps (a click selects the step). It fits the pane when it opens and when the number of steps changes, and has
- * zoom in, zoom out and 适应 buttons; the cards are never cut off. Each card shows rows in → rows out, how many rows it added or dropped, a warning icon when something is off,
- * 待配置 while the step is not set up, and (after a run) the rows the run wrote there. `issues` is {step id: [what is missing]}, `results` {step id: {rows, warn}}. */
+/** A line from an out-port to an in-port with right-angled bends, each bend rounded by `RADIUS`. */
+export function edgePath(x1, y1, x2, y2, r = RADIUS) {
+  const dy = y2 - y1;
+  if (Math.abs(dy) < 1) return `M${x1} ${y1} H${x2}`;
+  const mx = x1 + (x2 - x1) / 2;
+  const rr = Math.max(0, Math.min(r, Math.abs(dy) / 2, Math.abs(x2 - x1) / 4));
+  const d = dy > 0 ? 1 : -1;
+  return `M${x1} ${y1} H${mx - rr} Q${mx} ${y1} ${mx} ${y1 + d * rr} V${y2 - d * rr} Q${mx} ${y2} ${mx + rr} ${y2} H${x2}`;
+}
+
+/** What a card says about its step, from what is known: the dot, the bar and the badges. level: ok | warn | bad | idle. */
+function stateOf({ node, flags, todo, lost, result }) {
+  if (flags.some((f) => f.level === "bad")) return "bad";
+  if (flags.some((f) => f.level === "warn") || result?.warn) return "warn";
+  if (todo.length || lost) return "idle";
+  if (result) return "ok";
+  return "idle";
+}
+
+/** The pipeline as a left-to-right graph of 200 x 64 cards, laid out by the steps (a click selects the step). It fits the pane when it opens and when the number of steps changes (never
+ * zoomed in beyond 100%, never out beyond 70% on its own), and has a zoom pill (zoom out, the level, zoom in, fit); the cards are never cut off. A card shows the step's kind (icon chip), its
+ * title, a dot for its state, the rows in and out, how many rows it added or dropped, a count of warnings, "Unconfigured" while the step is not set up, and (after a run) the rows the run
+ * wrote there. `issues` is {step id: [what is missing]}, `results` {step id: {rows, warn}}. */
 export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, results = {} }) {
-  const lay = layout(steps);
+  const lay = layout(steps, NODE);
   const lost = new Set(orphans(steps));
+  const owners = branchOwners(steps);
   const { w, h } = lay.size;
   const at = (id) => lay.nodes[id];
   const pane = useRef(null);
@@ -21,7 +46,7 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
   const fit = useCallback(() => {
     const box = pane.current;
     if (!box || !full.w) return;
-    setK(Math.max(MIN, Math.min(1, (box.clientWidth - 2) / full.w, (box.clientHeight - 2) / full.h)));
+    setK(Math.max(FIT_FLOOR, Math.min(1, (box.clientWidth - 2) / full.w, (box.clientHeight - 2) / full.h)));
     setFitted(true);
   }, [full.w, full.h]);
   useLayoutEffect(() => {
@@ -39,10 +64,7 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
     setK((v) => Math.min(MAX, Math.max(MIN, Math.round(v * factor * 100) / 100)));
   };
   const chosen = useRef(null);
-  const shown = useRef(selected);
-  useEffect(() => {
-    if (shown.current === selected) return;   // a step picked after the graph opened is brought into view
-    shown.current = selected;
+  const reveal = useCallback(() => {
     const card = chosen.current;
     const box = pane.current;
     if (!card || !box) return;
@@ -52,43 +74,99 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
     else if (a.right > b.right) box.scrollLeft += a.right - b.right + PAD;
     if (a.top < b.top) box.scrollTop -= b.top - a.top + PAD;
     else if (a.bottom > b.bottom) box.scrollTop += a.bottom - b.bottom + PAD;
-  }, [selected]);
+  }, []);
+  const shown = useRef(null);
+  useEffect(() => {
+    if (shown.current === selected) return undefined;   // a step picked after the graph opened (or the one it opened on) is brought into view
+    const first = shown.current === null;
+    shown.current = selected;
+    if (!first) {
+      reveal();
+      return undefined;
+    }
+    const frame = requestAnimationFrame(reveal);   // on opening: after the first fit has been drawn
+    return () => cancelAnimationFrame(frame);
+  }, [selected, reveal]);
+  const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
+  const portY = (edge) => {
+    const step = byId[edge.to];
+    if (step?.type !== "join") return at(edge.to).y + h / 2 + PAD;
+    const leftOwner = owners[step.left] ?? step.left;
+    return at(edge.to).y + h * (edge.from === leftOwner ? 0.33 : 0.67) + PAD;
+  };
   return (
     <div className="graph-area">
-      <div className="graph-zoom" role="group" aria-label="画布">
-        <button className="secondary" onClick={() => zoom(0.8)} aria-label="缩小">−</button>
-        <span className="muted small" aria-live="polite">{Math.round(k * 100)}%</span>
-        <button className="secondary" onClick={() => zoom(1.25)} aria-label="放大">+</button>
-        <button className="secondary" onClick={fit}>适应</button>
+      <div className="graph-zoom" role="group" aria-label={t("pipeline.graph.canvas")}>
+        <button type="button" onClick={() => zoom(0.8)} aria-label={t("pipeline.graph.zoomOut")} title={t("pipeline.graph.zoomOut")}><PIcon name="minus" /></button>
+        <span className="graph-zoom-level" aria-live="polite">{Math.round(k * 100)}%</span>
+        <button type="button" onClick={() => zoom(1.25)} aria-label={t("pipeline.graph.zoomIn")} title={t("pipeline.graph.zoomIn")}><PIcon name="plus" /></button>
+        <span className="graph-zoom-sep" aria-hidden="true" />
+        <button type="button" onClick={fit} aria-label={t("pipeline.graph.fit")} title={t("pipeline.graph.fit")}><PIcon name="fit" /></button>
       </div>
       <div className="graph-pane" ref={pane}>
         <div className="graph-sizer" style={{ width: full.w * k, height: full.h * k }}>
           <div className="graph" style={{ width: full.w, height: full.h, transform: `scale(${k})`, transformOrigin: "0 0" }}>
             <svg width={full.w} height={full.h} aria-hidden="true">
+              <defs>
+                {[["", "pl-arrow"], ["-on", "pl-arrow pl-arrow-on"]].map(([id, cls]) => (
+                  <marker key={id} id={`pl-arrow${id}`} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path className={cls} d="M0.5 0.5 L7 4 L0.5 7.5 z" /></marker>
+                ))}
+              </defs>
               {lay.edges.map((e) => {
                 const x1 = at(e.from).x + w + PAD;
                 const y1 = at(e.from).y + h / 2 + PAD;
-                const x2 = at(e.to).x + PAD;
-                const y2 = at(e.to).y + h / 2 + PAD;
-                const mid = (x1 + x2) / 2;
-                return <path key={`${e.from}-${e.to}`} d={`M${x1} ${y1} C${mid} ${y1} ${mid} ${y2} ${x2} ${y2}`} />;
+                const x2 = at(e.to).x + PAD - 1;
+                const y2 = portY(e);
+                const on = selected != null && (e.from === selected || e.to === selected);
+                const d = edgePath(x1, y1, x2, y2);
+                return (
+                  <g key={`${e.from}-${e.to}`} className={`pl-edge${on ? " on" : ""}`}>
+                    <path className="pl-edge-hit" d={d} />
+                    <path className="pl-edge-line" d={d} markerEnd={`url(#pl-arrow${on ? "-on" : ""})`} />
+                  </g>
+                );
               })}
             </svg>
+            {k >= 0.75 && lay.edges.map((e) => {
+              const rows = nodes[e.from]?.rows_out;
+              if (rows == null) return null;
+              const x1 = at(e.from).x + w + PAD;
+              const x2 = at(e.to).x + PAD;
+              return <span key={`${e.from}-${e.to}`} className="pl-edge-label" style={{ left: (x1 + x2) / 2, top: (at(e.from).y + at(e.to).y) / 2 + h / 2 + PAD }}>{rowsText(rows)}</span>;
+            })}
             {steps.map((s) => {
               const node = nodes[s.id];
               const flags = cardFlags(node);
               const todo = issues[s.id] ?? [];
               const result = results[s.id];
-              const trouble = flags.some((f) => f.level !== "note");
-              const change = rowChangeText(node);
+              const trouble = flags.filter((f) => f.level !== "note");
+              const changed = node?.rows_in?.length > 0 && node.rows_out != null && node.rows_out !== node.rows_in[0];
+              const delta = changed ? node.rows_out - node.rows_in[0] : 0;   // "No change" is not worth a badge
+              const state = stateOf({ node, flags, todo, lost: lost.has(s.id), result });
+              const kind = kindOf(s);
+              const isLost = lost.has(s.id);
+              const tip = [trouble.map((f) => f.text).join("; "), todo.length ? todo.join("; ") : ""].filter(Boolean).join(" · ");
               return (
-                <button key={s.id} ref={selected === s.id ? chosen : null} type="button" className={`card-node${selected === s.id ? " on" : ""}${lost.has(s.id) ? " lost" : ""}${todo.length ? " todo" : ""}`} aria-pressed={selected === s.id}
-                  style={{ left: at(s.id).x + PAD, top: at(s.id).y + PAD, width: w, height: h }} onClick={() => onSelect(s.id)}>
-                  <span className="card-kind">{kindLine(s)}{lost.has(s.id) && "，不会运行"}{todo.length > 0 && <span className="card-todo">待配置</span>}{trouble && <span className="card-warn" title={flags.filter((f) => f.level !== "note").map((f) => f.text).join("；")}><Icon name="alert" size={14} /></span>}</span>
-                  <span className="card-title">{stepTitle(s, steps)}</span>
-                  <span className="card-counts">{node ? countsText(node) : "—"}{change && <span className="card-delta"> {change}</span>}</span>
-                  {todo.length > 0 ? <span className="card-flag flag-todo">{todo[0]}</span> : flags.slice(0, 1).map((f, i) => <span key={i} className={`card-flag flag-${f.level}`}>{f.text}</span>)}
-                  {result && <span className={`card-ran${result.warn ? " warn" : ""}`}><Icon name="check" size={12} /> 运行：{numberText(result.rows)} 行</span>}
+                <button key={s.id} ref={selected === s.id ? chosen : null} type="button" title={tip || undefined}
+                  className={`pl-node k-${kind} st-${state}${selected === s.id ? " on" : ""}${isLost ? " lost" : ""}${todo.length ? " todo" : ""}${s.type === "input" ? " no-in" : ""}${s.type === "output" ? " no-out" : ""}`}
+                  aria-pressed={selected === s.id} style={{ left: at(s.id).x + PAD, top: at(s.id).y + PAD, width: w, height: h }} onClick={() => onSelect(s.id)}>
+                  {s.type !== "input" && (s.type === "join" ? <><i className="pl-port in" style={{ top: "33%" }} /><i className="pl-port in" style={{ top: "67%" }} /></> : <i className="pl-port in" />)}
+                  {s.type !== "output" && <i className="pl-port out" />}
+                  <span className="pl-node-top">
+                    <KindChip step={s} />
+                    <span className="pl-node-text">
+                      <span className="pl-node-name">{stepTitle(s, steps)}</span>
+                      <span className="pl-node-sub">{kindLine(s)}{isLost && ` · ${t("pipeline.graph.wontRun")}`}</span>
+                    </span>
+                    <span className={`pl-dot st-${state}`} aria-hidden="true" />
+                  </span>
+                  <span className="pl-node-foot">
+                    <span className="pl-counts">{node ? countsShort(node) : "—"}</span>
+                    {delta !== 0 && <span className={`pl-badge ${delta > 0 ? "warn" : "neutral"}`} title={rowChangeText(node)}>{delta > 0 ? "+" : "\u2212"}{numberText(Math.abs(delta))}</span>}
+                    {todo.length > 0 && <span className="pl-badge neutral">{t("pipeline.graph.unconfigured")}</span>}
+                    {trouble.length > 0 && <span className={`pl-badge ${trouble.some((f) => f.level === "bad") ? "bad" : "warn"}`}><PIcon name="alert" size={11} />{trouble.length}</span>}
+                    {result && <span className={`pl-badge ${result.warn ? "warn" : "ok"}`} title={t("pipeline.graph.ranRows", { rows: rowsText(result.rows) })}><PIcon name="check" size={11} />{numberText(result.rows)}</span>}
+                  </span>
                 </button>
               );
             })}

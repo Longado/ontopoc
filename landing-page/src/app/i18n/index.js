@@ -23,11 +23,13 @@ import enData from "./en/data.js"; // areas
 import enHome from "./en/home.js"; // areas
 import enLineage from "./en/lineage.js"; // areas
 import enNav from "./en/nav.js"; // areas
+import enPipeline from "./en/pipeline.js"; // areas
 import enSettings from "./en/settings.js"; // areas
 import enShell from "./en/shell.js"; // areas
 import enSources from "./en/sources.js"; // areas
 import enStatus from "./en/status.js"; // areas
 import enUsers from "./en/users.js"; // areas
+import enSteps from "./en/steps.js"; // areas
 import enUi from "./en/ui.js"; // areas
 import zhAgents from "./zh/agents.js"; // areas
 import zhAsk from "./zh/ask.js"; // areas
@@ -40,17 +42,19 @@ import zhData from "./zh/data.js"; // areas
 import zhHome from "./zh/home.js"; // areas
 import zhLineage from "./zh/lineage.js"; // areas
 import zhNav from "./zh/nav.js"; // areas
+import zhPipeline from "./zh/pipeline.js"; // areas
 import zhSettings from "./zh/settings.js"; // areas
 import zhShell from "./zh/shell.js"; // areas
 import zhSources from "./zh/sources.js"; // areas
 import zhStatus from "./zh/status.js"; // areas
 import zhUsers from "./zh/users.js"; // areas
+import zhSteps from "./zh/steps.js"; // areas
 import zhUi from "./zh/ui.js"; // areas
 
 /** The dictionaries: AREAS[locale][area] is a flat { key: text } object. */
 export const AREAS = {
-  en: { account: enAccount, auth: enAuth, common: enCommon, data: enData, home: enHome, lineage: enLineage, nav: enNav, settings: enSettings, shell: enShell, sources: enSources, status: enStatus, ui: enUi, users: enUsers }, // areas
-  zh: { account: zhAccount, auth: zhAuth, common: zhCommon, data: zhData, home: zhHome, lineage: zhLineage, nav: zhNav, settings: zhSettings, shell: zhShell, sources: zhSources, status: zhStatus, ui: zhUi, users: zhUsers }, // areas
+  en: { account: enAccount, auth: enAuth, common: enCommon, data: enData, home: enHome, lineage: enLineage, nav: enNav, pipeline: enPipeline, settings: enSettings, shell: enShell, sources: enSources, status: enStatus, steps: enSteps, ui: enUi, users: enUsers }, // areas
+  zh: { account: zhAccount, auth: zhAuth, common: zhCommon, data: zhData, home: zhHome, lineage: zhLineage, nav: zhNav, pipeline: zhPipeline, settings: zhSettings, shell: zhShell, sources: zhSources, status: zhStatus, steps: zhSteps, ui: zhUi, users: zhUsers }, // areas
 };
 
 Object.assign(AREAS.en, { agents: enAgents, ask: enAsk, boards: enBoards, notices: enNotices }); // areas (T3)
