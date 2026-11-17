@@ -62,10 +62,14 @@ export function rowKey(columns, row) {
 }
 
 const plain = (v) => (v === null || v === undefined ? "" : String(v).trim());
-const sameValue = (a, b) => {
-  const [x, y] = [plain(a), plain(b)];
-  return x === y || (x !== "" && y !== "" && !Number.isNaN(Number(x)) && !Number.isNaN(Number(y)) && Number(x) === Number(y) && !/^0\d/.test(x) && !/^0\d/.test(y));
+/** A plain number as the service reads one: digits, an optional minus and decimals; a leading zero (007) keeps a code a code, and 1e3 or 0x10 are text. */
+const isNumber = (t) => /^-?\d+(\.\d+)?$/.test(t) && !/^-?0\d/.test(t);
+/** A value in the form it is matched in: a number by its value (1000.0 is 1000), anything else as written. */
+const canonical = (v) => {
+  const t = plain(v);
+  return isNumber(t) ? String(Number(t)) : t;
 };
+const sameValue = (a, b) => canonical(a) === canonical(b);
 
 /** Whether one condition holds for a value of the object, as the service decides it (the service checks again at submit). */
 export function holds(cond, value) {
@@ -77,8 +81,8 @@ export function holds(cond, value) {
   if (cond.op === "eq") return sameValue(value, cond.value);
   if (cond.op === "in") return (cond.value ?? []).some((v) => sameValue(value, v));
   const [x, y] = [plain(value), plain(cond.value)];
-  const numbers = x !== "" && y !== "" && !Number.isNaN(Number(x)) && !Number.isNaN(Number(y));
-  const [a, b] = numbers ? [Number(x), Number(y)] : [x, y];
+  if (isNumber(y) !== isNumber(x)) return false;   // a number against text is neither more nor less (the service checks the column's type)
+  const [a, b] = isNumber(y) ? [Number(x), Number(y)] : [x, y];
   return { gt: a > b, ge: a >= b, lt: a < b, le: a <= b }[cond.op] ?? false;
 }
 

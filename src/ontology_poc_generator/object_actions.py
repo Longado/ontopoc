@@ -38,7 +38,7 @@ from ontology_poc_generator.object_views import meaning_labels
 from ontology_poc_generator.row_rules import conflict_with_actions, keeps, restriction
 from ontology_poc_generator.type_access import hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_store import (
-    _canonical, _key_of, apply_upload, current_dataset, dataset_records, infer_type, log_line, now_text, plan_upload)
+    _DECIMAL, _INTEGER, _canonical, _key_of, apply_upload, current_dataset, dataset_records, infer_type, log_line, now_text, plan_upload)
 
 EXPIRE_DAYS = 14
 MAX_PROPERTIES = 5
@@ -202,10 +202,9 @@ def _holds(cond: dict, value, ptype: str) -> bool:
     if op == 'in':
         return _canonical(value) in {_canonical(v) for v in cond['value']}
     if ptype in NUMBER_TYPES:
-        try:
-            a, b = float(value), float(cond['value'])
-        except (TypeError, ValueError):
-            return False
+        if not all(_INTEGER.fullmatch(str(v).strip()) or _DECIMAL.fullmatch(str(v).strip()) for v in (value, cond['value'])):
+            return False   # not a plain number: not more or less than one (1e3, inf and 1_0 are text here, as everywhere a value is matched)
+        a, b = float(str(value).strip()), float(str(cond['value']).strip())
     else:
         a, b = str(value).strip(), str(cond['value']).strip()
     return {'gt': a > b, 'ge': a >= b, 'lt': a < b, 'le': a <= b}[op]
@@ -451,6 +450,7 @@ def _line(conn, row: dict, user: dict | None) -> dict:
     return {'id': content['name'], 'name': content['name'], 'description': content['description'], 'kind': kind_of(content), 'type': content['type'], 'type_name': t['name'],
             'properties': content['properties'], 'conditions': [_condition_view(conn, content['type'], names, c) for c in conditions_of(content)],
             'submitters': [{'id': i, 'name': people[i]['display_name'] if i in people else f'#{i}'} for i in content.get('submitters') or []],
+            'can_submit': not content.get('submitters') or (user is not None and user['id'] in content['submitters']),
             'says': describe(conn, content), 'parameters': parameters(conn, content, user), **action_state(conn, row, user)}
 
 
@@ -549,6 +549,19 @@ def _shown_columns(conn, t: dict, user: dict | None, values: dict) -> list[str]:
     return [p['column'] for p in t['properties'] if p['column'] not in t['key'] and p['column'] in values and p['column'] not in hidden]
 
 
+def _named_columns(content: dict, t: dict, values: dict) -> list[str]:
+    """The properties a log line or a notice about this action may name, in the type's order: what the action reads (a delete reads them all), since the log and
+    the notices go to everyone who may see the action, and seeing it says nothing about other columns."""
+    allowed = None if kind_of(content) == 'delete' else set(content['properties'])
+    return [p['column'] for p in t['properties'] if p['column'] not in t['key'] and p['column'] in values and (allowed is None or p['column'] in allowed)]
+
+
+def _of_type(t: dict, values: dict) -> dict:
+    """Only the type's own properties of a stored row: the dataset may hold columns the type does not take up, and a request shows nothing beyond the type."""
+    columns = {p['column'] for p in t['properties']}
+    return {c: v for c, v in values.items() if c in columns}
+
+
 def _subject(op: str, current: dict | None, key: dict, before: dict, after: dict) -> dict | None:
     """The row a request is about, for who may read it: the object as it is now; while it is not there, the row a create would add or a delete removed."""
     if current is not None:
@@ -588,7 +601,7 @@ def record_view(conn, rec: dict, user: dict | None, light: bool = False) -> dict
     if not _may_read(conn, type_row, _subject(op, current, key, before, after), user):
         return None
     hidden = hidden_columns(conn, type_row['element_id'], user) if user is not None else set()
-    before, after = ({c: v for c, v in d.items() if c not in hidden} for d in (before, after))
+    before, after = ({c: v for c, v in _of_type(t, d).items() if c not in hidden} for d in (before, after))
     before_text, after_text, change_text = _texts(conn, op, t, user, before, after)
     same_person = user is not None and rec['submitted_by_user_id'] is not None and user['id'] == rec['submitted_by_user_id']
     rule = two_person(conn)
@@ -645,6 +658,8 @@ def _fits(kind: str, wanted: str) -> bool:
 def _check_values(conn, content: dict, t: dict, params, user: dict | None = None, everyone: bool = True) -> tuple[dict, str | None]:
     """(the values as strings, what is wrong in words or None): a value for every written property and no other, of the property's type, a code column's from its
     meanings."""
+    if params is None and not content['properties']:   # a create that asks for the key alone
+        params = {}
     if not isinstance(params, dict):
         return {}, '要给出每个属性的新值'
     props = {p['column']: p for p in t['properties']}
@@ -740,6 +755,9 @@ def submit(conn, payload: dict, who: str | None, user: dict | None) -> dict:
         for c in t['key']:
             if len(keyed[c]) > MAX_VALUE or '\n' in keyed[c] or not _fits(infer_type([keyed[c]]), props[c]['type']):
                 refuse(f'主键“{names[c]}”的值“{keyed[c][:40]}”不能当{TYPE_NAME.get(props[c]["type"], props[c]["type"])}用', 400)
+            labels = meaning_labels(conn, english, c) if props[c]['enum'] else None
+            if labels is not None and keyed[c] not in labels:
+                refuse(f'主键“{names[c]}”的值“{keyed[c][:40]}”不是它的含义里的取值：{"、".join(f"{v}（{l}）" for v, l in sorted(labels.items()))}', 400)
         after, wrong = _check_values(conn, content, t, payload.get('params'), user, everyone=False)
         if wrong:
             refuse(wrong, 400)
@@ -773,11 +791,11 @@ def submit(conn, payload: dict, who: str | None, user: dict | None) -> dict:
             if payload.get('params') not in (None, {}):
                 refuse('删除行为不带参数：删掉的是整个对象', 400)
             before, after = dict(found), {}   # the whole row, every column: an undo puts this back
-            text = f'{who} 提交“{content["name"]}”：删除 {shown}（{_pairs(conn, english, _shown_columns(conn, t, None, before), before)}）'
+            text = f'{who} 提交“{content["name"]}”：删除 {shown}（{_pairs(conn, english, _named_columns(content, t, before), before)}）'
     text += f'（{reason}）' if reason else ''
     record_id = _insert(conn, {'action_id': element_id, 'action_version': row['version'], 'type_id': type_row['element_id'], 'dataset': dataset['name'],
                                'dataset_version': dataset['version'], 'key': keyed, 'before': before, 'after': after, 'reason': reason, 'op': kind}, who, user,
-                        {'text': text, 'object': shown, 'before': before, 'after': after, 'dataset_version': dataset['version'], 'kind': kind})
+                        {'text': text, 'object': shown, 'before': _of_type(t, before), 'after': _of_type(t, after), 'dataset_version': dataset['version'], 'kind': kind})
     return {'record': record_id, 'state': 'pending'}
 
 
@@ -890,10 +908,10 @@ def decide(conn, payload: dict, who: str | None, user: dict | None) -> dict:
             raise TypeRefused(why, 409)
     if op == 'create':
         row_now = {**written, **key}
-        what = f'新建 {shown}，{_pairs(conn, english, _shown_columns(conn, t, None, row_now), row_now)}'
+        what = f'新建 {shown}，{_pairs(conn, english, _named_columns(content, t, row_now), row_now)}'
     elif op == 'delete':
         row_now = found
-        what = f'删除 {shown}（{_pairs(conn, english, _shown_columns(conn, t, None, found), found)}）'
+        what = f'删除 {shown}（{_pairs(conn, english, _named_columns(content, t, found), found)}）'
     else:
         row_now = {**found, **written}
         what = f'{shown}，{_pairs(conn, english, list(before), before)} → {_pairs(conn, english, list(after), after)}'
@@ -963,6 +981,10 @@ def undo(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     content = _content(action)
     if action['state'] != 'confirmed':
         refuse(f'这个行为现在{STATE_WORDS.get(action["state"], action["state"])}，要回到已确认才能提交撤销')
+    submitters = content.get('submitters') or []
+    if submitters and (user is None or user['id'] not in submitters):   # an undo is a submit like any other
+        people = {u['id']: u['display_name'] for u in list_users(conn)}
+        refuse(f'只有{"、".join(people.get(i, f"#{i}") for i in submitters)}可以提交这个行为，撤销也一样', 403)
     shown = _object_text(t, key)
     english = t['english_name']
     reason = _reason(payload)
@@ -993,7 +1015,7 @@ def undo(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     record_id = _insert(conn, {'action_id': rec['action_id'], 'action_version': action['version'], 'type_id': rec['type_id'], 'dataset': dataset['name'],
                                'dataset_version': dataset['version'], 'key': key, 'before': before, 'after': after, 'reason': reason or f'撤销 #{rec["id"]}',
                                'op': new_op, 'undo_of': rec['id']}, who, user,
-                        {'undo_of': rec['id'], 'text': text, 'object': shown, 'before': before, 'after': after, 'dataset_version': dataset['version'], 'kind': new_op})
+                        {'undo_of': rec['id'], 'text': text, 'object': shown, 'before': _of_type(t, before), 'after': _of_type(t, after), 'dataset_version': dataset['version'], 'kind': new_op})
     return {'record': record_id, 'state': 'pending', 'undo_of': rec['id']}
 
 

@@ -155,7 +155,7 @@ function ActionCard({ action, type, mayBuild, onChanged }) {
       {action.state === "needs_look" && action.reason && <div className="reason"><strong>为什么需要再看</strong><p>{action.reason}</p></div>}
       {action.submitters?.length > 0 && <p className="muted small">只有 {action.submitters.map((p) => p.name).join("、")} 可以提交</p>}
       {mayBuild && action.can_confirm && <div className="inline"><button className="primary" onClick={confirm} disabled={busy}>确认这个行为</button></div>}
-      {mayBuild && action.kind === "create" && action.state === "confirmed" && !creating && (
+      {mayBuild && action.kind === "create" && action.state === "confirmed" && action.can_submit !== false && !creating && (
         <div className="inline"><button className="secondary" onClick={() => setCreating(true)}>{action.name}</button></div>
       )}
       {creating && <RunAction action={action} objectText={`新的${action.type_name}`} onDone={onChanged} onCancel={() => setCreating(false)} />}

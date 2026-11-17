@@ -19,7 +19,7 @@ export function ObjectPage({ route }) {
   const [running, setRunning] = useState(null);
   const o = state.data;
   const back = hrefFor({ page: "type", id, tab: "objects", pageNo: 1 });
-  const runnable = o ? (actions.data?.actions ?? []).filter((a) => a.state === "confirmed" && actionFits(a, o.columns, o.row)) : [];
+  const runnable = o ? (actions.data?.actions ?? []).filter((a) => a.state === "confirmed" && a.can_submit !== false && actionFits(a, o.columns, o.row)) : [];
   return (
     <main className="page">
       <a className="back" href={back}>
