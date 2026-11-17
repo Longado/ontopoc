@@ -2067,3 +2067,93 @@ td .check, .table-wrap label.check { white-space: nowrap; }
   .composer-hint { display: none; }
   .bubble { max-width: 92%; }
 }
+
+/* R16 r16-e3: the lineage as a twin-view map (toolbar, search, node types, selection bar, minimap, trace dialog). The map's own drawing is styled inside its SVG (TwinMap.jsx STYLE). */
+.tw-page { max-width: none; height: calc(100vh - var(--topbar)); display: flex; flex-direction: column; padding: 16px 24px; }
+.tw-page.full { position: fixed; inset: 0; z-index: 60; height: auto; padding: 0; background: var(--bg-surface); }
+.tw-page .ph { flex: none; margin-bottom: 12px; }
+.tw-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-surface); overflow: hidden; }
+.tw-page.full .tw-shell { border: 0; border-radius: 0; }
+.tw-toolbar { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--bg-surface); }
+.tw-spacer { flex: 1; }
+.tw-icon { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.tw-group { display: inline-flex; align-items: center; height: var(--control); border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-surface); overflow: hidden; }
+.tw-group .tw-btn { border-radius: 0; height: calc(var(--control) - 2px); }
+.tw-group .tw-btn + .tw-btn { border-left: 1px solid var(--border); }
+.tw-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 28px; height: var(--control); padding: 0 6px; border: 0; background: none; color: var(--text-muted); font-size: 13px; line-height: 1; cursor: pointer; transition: background 100ms, color 100ms; }
+.tw-btn:hover { background: var(--bg-subtle); color: var(--text-main); }
+.tw-btn.on { background: var(--accent-bg); color: var(--accent-600); }
+.tw-btn.text { padding: 0 10px; }
+.tw-pop-holder > .tw-btn { border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-surface); }
+.tw-pop-holder > .tw-btn.on { border-color: var(--accent-300); background: var(--accent-bg); }
+.tw-zoom { min-width: 46px; text-align: center; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; border-left: 1px solid var(--border); border-right: 1px solid var(--border); line-height: calc(var(--control) - 2px); }
+.tw-badge { padding: 1px 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; }
+.tw-chip-warn { padding: 3px 10px; border-radius: 999px; background: var(--orange-soft); color: var(--orange-ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.tw-chip-btn { height: 24px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--bg-surface); color: var(--text-muted); font-size: 12px; cursor: pointer; }
+.tw-chip-btn:hover { background: var(--bg-subtle); color: var(--text-main); }
+.tw-seg { display: inline-flex; align-items: center; height: var(--control); border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-surface); }
+.tw-seg button { height: calc(var(--control) - 2px); padding: 0 10px; border: 0; border-radius: 0; background: none; font-size: 13px; color: var(--text-main); white-space: nowrap; cursor: pointer; }
+.tw-seg button + button { border-left: 1px solid var(--border); }
+.tw-seg button:hover { background: var(--bg-subtle); }
+.tw-seg button.on { background: var(--accent-bg); color: var(--accent-600); font-weight: 600; }
+.tw-seg-lead { display: inline-flex; align-items: center; height: calc(var(--control) - 2px); padding: 0 10px; border-right: 1px solid var(--border); background: var(--bg-app); color: var(--text-muted); font-size: 12px; }
+.tw-context { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--bg-app); }
+.tw-context-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.tw-link { margin-left: auto; padding: 0 6px; border: 0; background: none; color: var(--accent-600); font-size: 13px; cursor: pointer; }
+.tw-link:hover { text-decoration: underline; }
+.tw-search { position: relative; width: 300px; max-width: 100%; }
+.tw-search-box { display: flex; align-items: center; gap: 6px; height: var(--control); padding: 0 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-faint); }
+.tw-search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+.tw-search-box input { flex: 1; min-width: 0; height: 24px; padding: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 13px; color: var(--text-main); }
+.tw-search-clear { display: inline-flex; width: 18px; height: 18px; padding: 0; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: var(--bg-muted); color: var(--text-muted); cursor: pointer; }
+.tw-matches { position: absolute; z-index: 30; top: calc(var(--control) + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none; border-radius: var(--radius-md); background: var(--bg-surface); box-shadow: var(--shadow-2); }
+.tw-matches li { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; border-radius: var(--radius); font-size: 13px; cursor: pointer; }
+.tw-matches li.on { background: var(--accent-bg); color: var(--accent-600); }
+.tw-matches li.none { color: var(--text-muted); cursor: default; }
+.tw-match-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tw-match-kind { margin-left: auto; flex: none; font-size: 12px; color: var(--text-muted); }
+.tw-dot { flex: none; width: 8px; height: 8px; border-radius: 2px; }
+.tw-pop-holder { position: relative; }
+.tw-pop { position: absolute; z-index: 30; top: calc(var(--control) + 4px); right: 0; width: 300px; padding: 12px; border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-2); }
+.tw-pop h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.tw-pop h3 { margin: 14px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.tw-pop-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.4; color: var(--text-muted); }
+.tw-kinds { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.tw-kinds button { width: 100%; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); font-size: 13px; color: var(--text-main); cursor: pointer; text-align: left; }
+.tw-kinds button:hover { background: var(--bg-subtle); }
+.tw-kinds button.off { color: var(--text-faint); background: var(--bg-app); }
+.tw-kinds button.off .tw-chip { opacity: 0.35; }
+.tw-kind-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tw-kind-count { margin-left: auto; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tw-chip { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--radius); }
+.tw-chip svg { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.tw-tones { margin: 0; padding: 0; list-style: none; }
+.tw-tones li { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px; }
+.tw-tones li.zero { opacity: 0.55; }
+.tw-tone-dot { flex: none; width: 8px; height: 8px; margin: 0 6px; border-radius: 50%; }
+.tw-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.tw-body.with-panel { grid-template-columns: minmax(0, 1fr) 340px; }
+.tw-body .drawer { height: 100%; max-height: none; width: 100%; }
+.tw-stage { position: relative; min-width: 0; min-height: 0; }
+.tw-canvas { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+.tw-canvas svg { display: block; cursor: default; }
+.tw-canvas [data-bg] { cursor: grab; }
+.tw-canvas.hand svg, .tw-canvas.hand svg * { cursor: grab; }
+.tw-minimap { position: absolute; right: 12px; bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); box-shadow: var(--shadow-1); cursor: pointer; overflow: hidden; }
+.tw-minimap svg { display: block; }
+.tw-selbar { position: absolute; z-index: 5; transform: translate(-50%, -100%); display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-2); white-space: nowrap; }
+.tw-selbar.below { transform: translate(-50%, 0); }
+.tw-selbar button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-md); background: none; color: var(--text-main); font-size: 13px; cursor: pointer; }
+.tw-selbar button:hover { background: var(--bg-subtle); }
+.tw-selbar button.primary { background: var(--accent); color: #fff; }
+.tw-selbar button.primary:hover { background: var(--accent-600); }
+.tw-modal-back { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(17, 20, 24, 0.45); }
+.tw-modal { display: flex; flex-direction: column; width: min(1120px, 92vw); height: min(640px, 82vh); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-3); overflow: hidden; }
+.tw-modal.full { width: 100vw; height: 100vh; border-radius: 0; }
+.tw-modal header { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.tw-modal h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.tw-modal-sub { font-size: 13px; color: var(--text-muted); }
+.tw-modal-count { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--bg-subtle); font-size: 12px; color: var(--text-muted); }
+.tw-modal header .tw-btn { border-radius: var(--radius-md); }
+.tw-modal-body { position: relative; flex: 1; min-height: 0; }
+@media (max-width: 1100px) { .tw-pop { right: auto; left: 0; } .tw-search { width: 220px; } .tw-body.with-panel { grid-template-columns: minmax(0, 1fr) 300px; } }
