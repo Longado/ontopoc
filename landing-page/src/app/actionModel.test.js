@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { actionFits, actionPayload, actionProblem, emptyActionForm, emptyCondition, opsFor, recordChangeText, recordStateText, rowKey, runPayload, runProblem } from "./actionModel.js";
+import { actionFits, actionPayload, actionProblem, emptyActionForm, emptyCondition, holds, opsFor, recordChangeText, recordStateText, rowKey, runPayload, runProblem } from "./actionModel.js";
 import { notifyRecipient, choicesPayload } from "./actionModel.js";
 
 test("an action form needs a name, a property for an edit, and a value for each condition that takes one", () => {
@@ -97,4 +97,13 @@ test("only whole choices of a written property are sent", () => {
   const form = { properties: ["客户编号"], choices: { 客户编号: { type: "customer", column: " 客户编号 " }, 金额: { type: "customer", column: "x" }, 数量: { type: "", column: "y" } } };
   assert.deepEqual(choicesPayload(form), { 客户编号: { type: "customer", column: "客户编号" } });
   assert.deepEqual(choicesPayload({ properties: [], choices: undefined }), {});
+});
+
+test("a condition reads numbers the way the service does (found in the review of R12a)", () => {
+  assert.equal(holds({ op: "eq", value: "1000" }, "1e3"), false);   // written that way it is text, not 1000
+  assert.equal(holds({ op: "eq", value: "1000" }, "1000.0"), true);
+  assert.equal(holds({ op: "eq", value: "-7" }, "-007"), false);   // a leading zero keeps a code a code
+  assert.equal(holds({ op: "in", value: ["16"] }, "0x10"), false);
+  assert.equal(holds({ op: "gt", value: "5" }, "abc"), false);   // not a number: not more than 5
+  assert.equal(holds({ op: "gt", value: "2026-01-01" }, "2026-03-20"), true);   // dates compare as written
 });

@@ -8,6 +8,7 @@ page said 更新出错; its delete took no reason, was not logged, and could not
   record, so undoing it is a request that puts the same row back. A delete reads every column of the row, so a person kept from one of them is not shown the action.
 - conditions: up to MAX_CONDITIONS, all of which must hold: =, ≠, >, ≥, <, ≤ (numbers and dates), empty, not empty, one of. The old single `condition` still reads.
 - who may submit: an action can name the people who may submit it; anyone else is refused (and logged)."""
+import base64
 import json
 import unittest
 from urllib.parse import quote
@@ -258,6 +259,61 @@ class KindTests(ActionTests):
             self.assertEqual(self.submit(bob)[0], 200)
             status, body = ann.post('/api/workspace/actions', {**STATUS_ACTION, 'name': '另一个', 'submitters': [999999]})
             self.assertEqual(status, 400, body)
+
+
+    # --- found in the review of R12a ------------------------------------------------------------------------------------------------------------------------
+
+    def one_row_update(self, client, row):
+        text = ','.join(row) + '\n' + ','.join(row.values()) + '\n'
+        upload = {'filename': '订单.csv', 'content_base64': base64.b64encode(text.encode('utf-8')).decode(), 'target': '订单', 'mode': 'update_by_key', 'key_columns': ['订单号']}
+        status, body = client.post('/api/workspace/datasets/upload', {'files': [upload]})
+        self.assertEqual(status, 200, body)
+
+    def test_an_approval_says_nothing_of_a_column_kept_from_a_reader_of_the_action(self):
+        small = {**NEW_ORDER, 'properties': ['金额', '状态码']}   # reads 金额 and 状态码 only: Bob, kept from 客户编号, still sees it
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.confirmed_action(team, small)
+            record = ann.post('/api/workspace/actions/submit', {'action': small['name'], 'key': {'订单号': FRESH_KEY}, 'params': {'金额': '1200', '状态码': '1'}})[1]['record']
+            bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})
+            self.one_row_update(ann, {'订单号': FRESH_KEY, '客户编号': 'KH009'})
+            self.assertEqual(admin.post('/api/workspace/column-access', {'type': 'order', 'column': '客户编号', 'visible_to': [self.user_id(admin, 'ann')]})[0], 200)
+            undo = ann.post('/api/workspace/actions/undo', {'id': record})[1]['record']
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': undo, 'decision': 'approve'})[1]['state'], 'approved')
+            seen = json.dumps(bob.get(url(small['name']))[1], ensure_ascii=False)
+            self.assertNotIn('KH009', seen)   # not in the records, not in the log lines
+
+    def test_a_request_shows_only_the_properties_of_its_type(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann = team['ann']
+            self.confirmed_action(team, DROP_ORDER)
+            record_id = self.drop(ann)[1]['record']
+            record = next(r for r in ann.get(url(DROP_ORDER['name']))[1]['records'] if r['id'] == record_id)
+            self.assertLessEqual(set(record['before']), {'订单号', '金额', '状态码', '客户编号'})
+            for column in ('产品编号', '数量', '下单日期'):   # columns of the dataset that the type does not take up
+                self.assertNotIn(column, json.dumps(record, ensure_ascii=False))
+                self.assertNotIn(column, json.dumps(ann.get(url(DROP_ORDER['name']))[1]['log'], ensure_ascii=False))
+
+    def test_an_undo_is_refused_to_someone_the_action_does_not_let_submit(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.confirmed_action(team, {**DROP_ORDER, 'submitters': [self.user_id(admin, 'ann')]})
+            record = self.drop(ann)[1]['record']
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[1]['state'], 'approved')
+            status, body = bob.post('/api/workspace/actions/undo', {'id': record})
+            self.assertEqual(status, 403, body)
+            self.assertEqual(ann.post('/api/workspace/actions/undo', {'id': record})[0], 200)
+
+    def test_a_create_that_asks_for_the_key_alone_needs_no_values(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann = team['ann']
+            self.confirmed_action(team, {**NEW_ORDER, 'properties': []})
+            status, body = ann.post('/api/workspace/actions/submit', {'action': NEW_ORDER['name'], 'key': {'订单号': FRESH_KEY}})
+            self.assertEqual(status, 200, body)
 
 
 if __name__ == '__main__':
