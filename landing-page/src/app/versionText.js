@@ -1,29 +1,31 @@
-// The 版本 tab: each version's mode and counts in words, and the updates that wrote no version, in time order with them.
-export const MODE_LABEL = { new: "新建", update_by_key: "按主键更新", overwrite: "覆盖", upload: "导入" };
+// The Versions tab: each version's mode and counts in words, and the updates that wrote no version, in time order with them.
+import { t } from "./i18n/index.js";
 
-export const modeLabel = (mode) => MODE_LABEL[mode] ?? "导入";
+const MODES = ["new", "update_by_key", "overwrite", "upload"];
+
+export const modeLabel = (mode) => t(`data.mode.${MODES.includes(mode) ? mode : "upload"}`);
 
 /** How a version was made: by the old screen's modelling run (it never moves the current version) or the way it was uploaded. */
 export const versionWay = (v) =>
-  v.action ? `行为“${v.action.id}”（${v.action.submitted_by} 提交，${v.action.approved_by} 批准）` : v.origin && v.origin !== "upload" ? "建模运行" : modeLabel(v.mode);
+  v.action ? t("data.way.action", { id: v.action.id, by: v.action.submitted_by, approver: v.action.approved_by }) : v.origin && v.origin !== "upload" ? t("data.origin.modeling") : modeLabel(v.mode);
 
-const sameAs = (v) => (v.same_as ? `，内容同第 ${v.same_as} 版` : "");
+const sameAs = (v) => (v.same_as ? t("data.sameAs", { n: v.same_as }) : "");
 
 /** What a version changed, as the row of the version list says it. */
 export function versionChangeText(v) {
-  if (v.mode === "update_by_key") return `改 ${v.changed}，增 ${v.added}，未变 ${v.unchanged}${v.blank_kept ? `，${v.blank_kept} 个空格子保留原值` : ""}`;
-  if (v.mode === "overwrite" && v.replaced_rows != null) return `原 ${v.replaced_rows} 行，现 ${v.rows} 行${sameAs(v)}`;
-  return `${v.rows} 行${sameAs(v)}`;
+  if (v.mode === "update_by_key") return `${t("data.change.update", { changed: v.changed, added: v.added, unchanged: v.unchanged })}${v.blank_kept ? t("data.change.blankKept", { count: v.blank_kept }) : ""}`;
+  if (v.mode === "overwrite" && v.replaced_rows != null) return `${t("data.change.replaced", { before: v.replaced_rows, count: v.rows })}${sameAs(v)}`;
+  return `${t("data.n.rows", { count: v.rows })}${sameAs(v)}`;
 }
 
-/** The keys of the rows an update changed or added: the ones kept, and "等 N 行" when there are more than were kept. */
-export const keyListText = (keys, total) => keys.join("、") + (total > keys.length ? ` 等 ${total} 行` : "");
+/** The keys of the rows an update changed or added: the ones kept, and "and more" when there are more than were kept. */
+export const keyListText = (keys, total) => keys.join(t("data.listSep")) + (total > keys.length ? t("data.keysMore", { total }) : "");
 
 /** An update that matched every row and changed none: one plain sentence. */
 export const noChangeText = (u) =>
   u.mode === "overwrite"
-    ? "覆盖：内容和当前版本完全一样，没有新版本"
-    : `按主键更新（${(u.key_columns ?? []).join("、")}）：没有变化，没有新版本${u.blank_kept ? `（${u.blank_kept} 个空格子保留原值）` : ""}`;
+    ? t("data.noChange.overwrite")
+    : `${t("data.noChange.update", { keys: (u.key_columns ?? []).join(t("data.listSep")) })}${u.blank_kept ? t("data.noChange.blank", { count: u.blank_kept }) : ""}`;
 
 /** Versions and skipped updates as one list, newest first; an update skipped in the same second as a version comes first. */
 export function timeline(versions, skipped) {

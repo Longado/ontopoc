@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { t } from "./i18n/index.js";
 
 /** Copies text to the clipboard. Works on a page served over plain http on a company network too, where navigator.clipboard is missing: it falls back to a hidden text box. */
 export async function copyText(text) {
@@ -14,11 +15,11 @@ export async function copyText(text) {
   box.select();
   const ok = document.execCommand("copy");
   box.remove();
-  if (!ok) throw new Error("复制没有成功，请手动选中文字复制");
+  if (!ok) throw new Error(t("sources.copy.error"));
 }
 
 /** A button that copies `text` and says so for two seconds. `label` is its name, `done` what it says after. */
-export function CopyButton({ text, label = "复制", done = "已复制", className = "secondary" }) {
+export function CopyButton({ text, label = t("sources.copy.label"), done = t("sources.copy.done"), className = "secondary" }) {
   const [state, setState] = useState("idle");   // idle | done | failed
   const go = async () => {
     try {
@@ -29,5 +30,5 @@ export function CopyButton({ text, label = "复制", done = "已复制", classNa
     }
     setTimeout(() => setState("idle"), 2000);
   };
-  return <button type="button" className={className} onClick={go} aria-live="polite">{state === "done" ? done : state === "failed" ? "复制失败，请手动复制" : label}</button>;
+  return <button type="button" className={className} onClick={go} aria-live="polite">{state === "done" ? done : state === "failed" ? t("sources.copy.failed") : label}</button>;
 }

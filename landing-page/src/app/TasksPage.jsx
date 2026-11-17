@@ -1,10 +1,13 @@
 import React, { useEffect } from "react";
 import { getTasks } from "./api.js";
 import { timeText } from "./format.js";
+import { t, useT } from "./i18n/index.js";
 import { anyRunning, taskRow } from "./taskModel.js";
 import { useLoad } from "./useLoad.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
 
 export function TasksPage() {
+  useT();
   const [state, reload] = useLoad(getTasks, []);
   const tasks = state.data?.tasks ?? [];
   const rows = tasks.map(taskRow);
@@ -17,19 +20,17 @@ export function TasksPage() {
 
   return (
     <main className="page">
-      <div className="page-head">
-        <h1 tabIndex={-1}>任务</h1>
-        <button className="secondary" onClick={reload}>刷新</button>
-      </div>
-      {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
-      {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
-      {state.data?.unreadable > 0 && <p className="muted">有 {state.data.unreadable} 个任务记录读不了。</p>}
-      {state.data && !rows.length && <p className="muted">还没有任务。上传数据集或起草本体后会出现在这里。</p>}
+      <PageHeader crumbs={[{ label: t("data.crumb.data") }, { label: t("data.tasks.title") }]} title={t("data.tasks.title")} sub={t("data.tasks.sub")}
+        actions={<button className="secondary" onClick={reload}>{t("data.tasks.refresh")}</button>} />
+      {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>{t("common.retry")}</button></p>}
+      {state.status === "loading" && !state.data && <p className="muted">{t("common.loading")}</p>}
+      {state.data?.unreadable > 0 && <p className="muted">{t("data.tasks.unreadable", { count: state.data.unreadable })}</p>}
+      {state.data && !rows.length && <p className="muted">{t("data.tasks.empty")}</p>}
       {rows.length > 0 && (
         <div className="table-wrap">
           <table className="tasks">
             <thead>
-              <tr><th>时间</th><th>类型</th><th>名称</th><th>状态</th><th>操作人</th><th>说明</th></tr>
+              <tr><th>{t("data.tasks.time")}</th><th>{t("data.tasks.type")}</th><th>{t("data.tasks.name")}</th><th>{t("data.tasks.state")}</th><th>{t("data.tasks.by")}</th><th>{t("data.tasks.note")}</th></tr>
             </thead>
             <tbody>
               {rows.map((r) => (

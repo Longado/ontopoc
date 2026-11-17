@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { afterUpload, updateWays, waysFor } from "./uploadModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 test("on an empty workspace only a new dataset is offered; the updates are folded away", () => {
   assert.deepEqual(waysFor([]).primary.map((w) => w.kind), ["new"]);

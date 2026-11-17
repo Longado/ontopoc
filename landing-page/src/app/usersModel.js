@@ -1,11 +1,9 @@
 // The users page's words and small decisions, as plain data so they can be tested without a browser.
 import { roleLabel } from "./authModel.js";
+import { t } from "./i18n/index.js";
 
-export const ROLE_CARDS = [
-  { key: "viewer", label: "查看者", rights: "只能看和提问，看不到原始数据行" },
-  { key: "builder", label: "建设者", rights: "还能上传数据、建和改对象类型、管道，并确认别人建的" },
-  { key: "admin", label: "管理员", rights: "再加管理用户、连接数据库、设置权限" },
-];
+/** The three roles with what each may do, in the current language (getters: read at use time). */
+export const ROLE_CARDS = ["viewer", "builder", "admin"].map((key) => ({ key, get label() { return roleLabel(key); }, get rights() { return t(`users.role.${key}.rights`); } }));
 
 const LOWER = "abcdefghijkmnpqrstuvwxyz";   // no l, o
 const UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";   // no I, O
@@ -33,11 +31,11 @@ export const secureRandom = () => {
 /** The message to send a new colleague: where to log in, the account and the first password. */
 export function inviteText({ origin, username, display_name, password, role }) {
   return [
-    `${display_name || username}，你好。我给你开了 OntoPoc 的账号（${roleLabel(role)}）：`,
-    `登录地址：${origin}`,
-    `账号：${username}`,
-    `初始密码：${password}`,
-    "第一次登录时系统会要你改一个新密码，请改掉初始密码。",
+    t("users.invite.hello", { name: display_name || username, role: roleLabel(role) }),
+    t("users.invite.url", { origin }),
+    t("users.invite.username", { username }),
+    t("users.invite.password", { password }),
+    t("users.invite.change"),
   ].join("\n");
 }
 
@@ -45,26 +43,26 @@ export const MIN_PASSWORD = 12;
 
 /** What is missing from the new-user form; "" when nothing. */
 export function newUserProblem(f) {
-  if (!String(f.username ?? "").trim()) return "要填账号";
-  if (String(f.password ?? "").length < MIN_PASSWORD) return `初始密码至少 ${MIN_PASSWORD} 个字符`;
+  if (!String(f.username ?? "").trim()) return t("users.problem.username");
+  if (String(f.password ?? "").length < MIN_PASSWORD) return t("users.problem.password", { min: MIN_PASSWORD });
   return "";
 }
 
 /** The two-person rule as a banner: {tone: off | waiting | on, text (the state, whole), from (what changes from now on, one line)}. */
-export function twoPersonBanner(t) {
-  if (!t.enabled) {
-    return { tone: "off", text: "两人确认：关着。一个人建的东西，自己确认就算数。", from: "从现在起：谁建的都可以自己确认，没有第二个人把关。" };
+export function twoPersonBanner(tp) {
+  if (!tp.enabled) {
+    return { tone: "off", text: t("users.two.off.text"), from: t("users.two.off.from") };
   }
-  if (!t.active) {
+  if (!tp.active) {
     return {
       tone: "waiting",
-      text: `两人确认：开着，但现在能确认的只有 ${t.builders} 人，所以暂时自己确认自己建的也算数。有第二个人能确认时，自动按两人确认来`,
-      from: "从现在起：再加一位建设者，两人确认就自动生效。",
+      text: t("users.two.waiting.text", { count: tp.builders }),
+      from: t("users.two.waiting.from"),
     };
   }
   return {
     tone: "on",
-    text: `两人确认：开着。一个人建的东西，要另一个建设者确认才算数。现在能确认的有 ${t.builders} 人`,
-    from: "从现在起：谁建的，谁不能自己确认，要由另一位建设者确认。",
+    text: t("users.two.on.text", { count: tp.builders }),
+    from: t("users.two.on.from"),
   };
 }

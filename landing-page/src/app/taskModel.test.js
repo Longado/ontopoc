@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { anyRunning, durationText, taskRow } from "./taskModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 const draft = (extra) => ({ kind: "draft", id: "abc", title: "订单.xlsx", state: "done", at: "2026-11-13T10:00:00+00:00", ended_at: "2026-11-13T10:01:30+00:00", ...extra });
 const upload = (extra) => ({ kind: "upload", id: "订单@2", title: "订单", state: "done", at: "2026-11-13T10:00:00+00:00", who: "小王", mode: "update_by_key", version: 2, rows: 163, created_version: true, changes: { changed: 2, added: 3, unchanged: 1 }, ...extra });

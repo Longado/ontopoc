@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { CHECKS, STEPS, diagnose, errorReport, portAfterKind } from "./connectModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 test("each failure the server words maps to its likely cause", () => {
   assert.equal(diagnose("找不到这个主机名：名字解析不出地址").kind, "host");

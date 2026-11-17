@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { filterDatasets, originLink, readerLinks, sortDatasets } from "./datasetModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 const list = [
   { name: "订单", rows: 160, columns: 8, version: 2, updated_at: "2026-11-15T10:00:00", origin: "upload" },
