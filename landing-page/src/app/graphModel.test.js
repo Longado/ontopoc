@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { SIZE, ageText, causeLine, edgeLabel, fitText, forceLayout, groupEdges, layeredLayout, leaves, lit, neighbours, shown, verdictText } from "./graphModel.js";
+import { LAYERS, SIZE, ageText, lineageColumns, litDepth, causeLine, edgeLabel, fitText, forceLayout, groupEdges, layeredLayout, leaves, lit, neighbours, shown, verdictText } from "./graphModel.js";
 
 const node = (id, kind, name = id, extra = {}) => ({ id, kind, name, ...extra });
 const LINEAGE = {
@@ -127,4 +127,38 @@ test("a name too wide for its box is cut with an ellipsis and a short one is lef
   assert.equal(fitText("", 60, 12), "");
   const cut = fitText("订单属于客户的关系名称很长很长很长", 100, 14);
   assert.ok([...cut].length * 14 <= 100 + 14);
+});
+
+const CHAIN = {
+  nodes: [node("source:db", "source"), node("dataset:订单", "dataset"), node("dataset:工单", "dataset"), node("pipeline:p", "pipeline", "关联管道"), node("dataset:汇总", "dataset"),
+    node("objtype:order", "type", "订单"), node("relation:r", "relation"), node("action:a", "action"), node("derived:d", "derived"), node("answer:1", "answer")],
+  edges: [{ from: "source:db", to: "dataset:订单" }, { from: "dataset:订单", to: "pipeline:p" }, { from: "dataset:工单", to: "pipeline:p" }, { from: "pipeline:p", to: "dataset:汇总" }, { from: "dataset:汇总", to: "objtype:order" },
+    { from: "objtype:order", to: "relation:r" }, { from: "objtype:order", to: "action:a" }, { from: "relation:r", to: "derived:d" }, { from: "derived:d", to: "answer:1" }],
+};
+
+test("the lineage has fixed columns: source, dataset read, pipeline, dataset written, type, relation or action or view, derived", () => {
+  const { positions, columns } = lineageColumns(CHAIN.nodes, CHAIN.edges);
+  assert.deepEqual(columns.map((c) => c.label), ["数据源", "数据集", "管道", "数据集（产出）", "对象类型", "关系 / 行为 / 视图", "派生 / 回答"]);
+  const col = (id) => columns.findIndex((c) => positions[id].x >= c.x && positions[id].x < c.x + c.w);
+  assert.deepEqual(CHAIN.nodes.map((n) => col(n.id)), [0, 1, 1, 2, 3, 4, 5, 5, 6, 6]);
+});
+
+test("a column nobody is in is left out, and no two nodes overlap", () => {
+  const nodes = [node("dataset:a", "dataset"), node("objtype:t", "type")];
+  const { positions, columns, width, height } = lineageColumns(nodes, [{ from: "dataset:a", to: "objtype:t" }]);
+  assert.deepEqual(columns.map((c) => c.label), ["数据集", "对象类型"]);
+  const boxes = Object.values(positions);
+  assert.ok(boxes.every((b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= width && b.y + b.h <= height));
+  const all = lineageColumns(CHAIN.nodes, CHAIN.edges).positions;
+  const list = Object.values(all);
+  for (const [i, a] of list.entries()) for (const b of list.slice(i + 1)) assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, "two nodes overlap");
+  assert.ok(Array.isArray(LAYERS) && LAYERS.length === 7);
+});
+
+test("the depth control lights only N steps around the picked node", () => {
+  const ids = (n, mode = "both") => [...litDepth("pipeline:p", CHAIN.edges, mode, n)].sort();
+  assert.deepEqual(ids(1), ["dataset:工单", "dataset:汇总", "dataset:订单", "pipeline:p"]);
+  assert.deepEqual(ids(1, "down"), ["dataset:汇总", "pipeline:p"]);
+  assert.deepEqual(ids(2, "down"), ["dataset:汇总", "objtype:order", "pipeline:p"]);
+  assert.equal(litDepth("pipeline:p", CHAIN.edges, "both", null).size, 10);
 });

@@ -109,6 +109,74 @@ export function lit(id, edges, mode = "both") {
   return out;
 }
 
+/** The ids lit when `id` is picked, no further than `depth` edges away (null: as far as the edges go). */
+export function litDepth(id, edges, mode = "both", depth = null) {
+  if (depth == null) return lit(id, edges, mode);
+  const out = new Set([id]);
+  for (const [direction, from, to] of [["up", "to", "from"], ["down", "from", "to"]]) {
+    if (mode !== "both" && mode !== direction) continue;
+    let frontier = [id];
+    for (let step = 0; step < depth && frontier.length; step += 1) {
+      const next = [];
+      for (const at of frontier) for (const e of edges) if (e[from] === at && !out.has(e[to])) { out.add(e[to]); next.push(e[to]); }
+      frontier = next;
+    }
+  }
+  return out;
+}
+
+/** The lineage's fixed columns, left to right: what each holds, with the words of its header. */
+export const LAYERS = [
+  { key: "source", label: "数据源" },
+  { key: "dataset", label: "数据集" },
+  { key: "pipeline", label: "管道" },
+  { key: "written", label: "数据集（产出）" },
+  { key: "type", label: "对象类型" },
+  { key: "model", label: "关系 / 行为 / 视图" },
+  { key: "derived", label: "派生 / 回答" },
+];
+const LAYER_OF = { source: 0, dataset: 1, pipeline: 2, type: 4, relation: 5, view: 5, action: 5, derived: 6, answer: 6 };
+
+/** Where the nodes of the lineage go: each kind in its own column (a dataset a pipeline writes goes in the column after the pipelines), a header over each column that has
+ * nodes, the columns packed left to right. Within a column the order follows where what it reads sits. Returns {positions, columns: [{key, label, x, w, count}], width, height, headerHeight}. */
+export function lineageColumns(nodes, edges) {
+  const ids = new Set(nodes.map((n) => n.id));
+  const kind = Object.fromEntries(nodes.map((n) => [n.id, n.kind]));
+  const live = edges.filter((e) => ids.has(e.from) && ids.has(e.to));
+  const written = new Set(live.filter((e) => kind[e.from] === "pipeline" && kind[e.to] === "dataset").map((e) => e.to));
+  const layerById = Object.fromEntries(nodes.map((n) => [n.id, n.kind === "dataset" && written.has(n.id) ? 3 : LAYER_OF[n.kind] ?? 6]));
+  const byLayer = LAYERS.map(() => []);
+  for (const n of [...nodes].sort((a, b) => a.name.localeCompare(b.name, "zh"))) byLayer[layerById[n.id]].push(n);
+  const used = byLayer.map((list, layer) => ({ layer, list })).filter((c) => c.list.length);
+  const row = {};
+  used.forEach((c) => c.list.forEach((n, i) => { row[n.id] = i; }));
+  for (let sweep = 0; sweep < 3; sweep += 1) {   // each column follows the average place of what it reads in the columns before it
+    for (const { layer, list } of used) {
+      const mean = (id) => {
+        const near = live.filter((e) => e.to === id && layerById[e.from] < layer).map((e) => row[e.from]);
+        return near.length ? near.reduce((a, b) => a + b, 0) / near.length : row[id];
+      };
+      list.sort((a, b) => mean(a.id) - mean(b.id) || a.name.localeCompare(b.name, "zh"));
+      list.forEach((n, i) => { row[n.id] = i; });
+    }
+  }
+  const GAP = 14;
+  const COLUMN = 236;
+  const HEADER = 44;
+  const columns = used.map((c, i) => ({ key: LAYERS[c.layer].key, label: LAYERS[c.layer].label, x: MARGIN + i * COLUMN, w: COLUMN, count: c.list.length }));
+  const positions = {};
+  let tallest = MARGIN + HEADER;
+  used.forEach((c, i) => {
+    let y = MARGIN + HEADER;
+    for (const n of c.list) {
+      positions[n.id] = { x: columns[i].x, y, ...SIZE[n.kind] };
+      y += SIZE[n.kind].h + GAP;
+    }
+    tallest = Math.max(tallest, y - GAP);
+  });
+  return { positions, columns, headerHeight: HEADER, width: MARGIN * 2 + used.length * COLUMN, height: tallest + MARGIN };
+}
+
 /** The picked node and the nodes one edge away from it: what the relation graph lights. */
 export function neighbours(id, edges) {
   const out = new Set([id]);

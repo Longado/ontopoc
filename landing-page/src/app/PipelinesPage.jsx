@@ -69,10 +69,7 @@ export function PipelineNew() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    getDatasets().then((d) => {
-      setDatasets(d);
-      setDataset((now) => now || d[0]?.name || "");
-    }, (e) => setError(e.message));
+    getDatasets().then(setDatasets, (e) => setError(e.message));
   }, []);
   const create = async (e) => {
     e.preventDefault();
@@ -88,8 +85,7 @@ export function PipelineNew() {
   };
   return (
     <main className="page">
-      <a className="back" href={hrefFor({ page: "pipelines" })}>管道</a>
-      <h1 tabIndex={-1}>新建管道</h1>
+      <PageHeader crumbs={[{ label: "数据" }, { label: "管道", href: hrefFor({ page: "pipelines" }) }, { label: "新建" }]} title="新建管道" />
       <form className="stack wide" onSubmit={create}>
         <label className="field">
           <span className="caption">名称</span>
@@ -102,6 +98,7 @@ export function PipelineNew() {
         <div className="field">
           <span className="caption">第一个输入的数据集</span>
           <Select label="第一个输入的数据集" value={dataset} onChange={setDataset}>
+            <option value="">选一个数据集</option>
             {datasets.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
           </Select>
         </div>

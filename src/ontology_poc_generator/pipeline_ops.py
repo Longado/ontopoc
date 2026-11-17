@@ -71,6 +71,8 @@ def _by_name(columns: list[dict]) -> dict[str, dict]:
 def _col(columns: list[dict], name, label: str, what: str = '列') -> dict:
     found = _by_name(columns).get(name) if isinstance(name, str) else None
     if found is None:
+        if name in (None, ''):
+            raise OpError(f'{label}：没选{what}')
         near = difflib.get_close_matches(str(name), list(_by_name(columns)), n=3, cutoff=0.5)
         raise OpError(f'{label}：没有{what}「{name}」' + (f'，是不是{"、".join(f"「{n}」" for n in near)}？' if near else ''))
     return found

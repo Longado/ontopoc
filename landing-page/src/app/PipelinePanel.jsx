@@ -89,20 +89,29 @@ function Log({ name, step, steps, node }) {
   );
 }
 
-/** The bottom panel: the selected step's rows, columns, statistics and log. `preview` is {status, data, error}; `upto` the operator the preview stops at. */
-export function PipelinePanel({ tab, setTab, preview, upto, onClearUpto, name, step, steps, node }) {
+/** The bottom panel: the selected step's rows, columns, statistics and log. `preview` is {status, data, error}; `upto` the operator the preview stops at; `todo` what the step still
+ * needs (an error from a step that is not set up yet is shown grey, as 待配置); `size` normal / tall / max, changed by `setSize`. */
+export function PipelinePanel({ tab, setTab, preview, upto, onClearUpto, name, step, steps, node, todo = [], size = "normal", setSize }) {
   return (
     <div className="panel">
       <div className="panel-tabs" role="tablist" aria-label="这一步的内容">
         {PANEL_TABS.map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label}</button>)}
         {step && <span className="panel-title muted">{stepTitle(step, steps)}{upto != null && step.operators?.[upto] && `，到第 ${upto + 1} 个操作（${operatorTitle(step.operators[upto]).slice(0, 18)}）`}{upto != null && <button className="plain" onClick={onClearUpto}>看这一步的最终结果</button>}</span>}
+        {setSize && (
+          <span className="panel-size" role="group" aria-label="预览区大小">
+            {size !== "normal" && <button className="plain" onClick={() => setSize("normal")}>还原</button>}
+            {size === "normal" && <button className="plain" onClick={() => setSize("tall")}>拉高</button>}
+            {size !== "max" && <button className="plain" onClick={() => setSize("max")}>最大化</button>}
+          </span>
+        )}
       </div>
       <div className="panel-body">
         {!step && <p className="muted">选一个步骤，这里显示它的前 100 行。</p>}
         {step && tab === "log" && <Log name={name} step={step} steps={steps} node={node} />}
         {step && tab !== "log" && preview.status === "loading" && !preview.data && <p className="muted">加载中</p>}
-        {step && tab !== "log" && preview.status === "error" && <p className="error">{friendlyError(preview.error, steps)}</p>}
-        {step && tab !== "log" && preview.data && (
+        {step && tab !== "log" && todo.length > 0 && <p className="todo-note">待配置：{todo.join("；")}</p>}
+        {step && tab !== "log" && !todo.length && preview.status === "error" && <p className="error">{friendlyError(preview.error, steps)}</p>}
+        {step && tab !== "log" && !todo.length && preview.data && (
           <>
             {tab === "rows" && <p className="muted small">前 {preview.data.rows.length} 行，这一步共 {numberText(preview.data.node.rows_out)} 行</p>}
             {tab === "stats" && <p className="muted small">按这一步的全部 {numberText(preview.data.node.rows_out)} 行算</p>}
