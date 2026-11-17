@@ -193,7 +193,11 @@ def columns_read(conn, element_id: str, content: dict | None = None) -> set[tupl
     if kind == 'relation':
         return {(t(content['from']), content['from_column']), (t(content['to']), content['to_column'])}
     if kind == 'objaction':
-        return ({(t(content['type']), c) for c in [*content['properties'], *([content['condition']['column']] if content.get('condition') else [])]}
+        from ontology_poc_generator.object_actions import conditions_of, kind_of
+        written = list(content['properties'])
+        if kind_of(content) == 'delete':   # a delete reads the whole row: it removes every column, and shows them on the request
+            written = [p['column'] for p in (_content(conn, t(content['type'])) or {}).get('properties', [])]
+        return ({(t(content['type']), c) for c in [*written, *(c['column'] for c in conditions_of(content))]}
                 | {(t(s['type']), s['column']) for s in (content.get('choices') or {}).values()})   # the values it offers are that column's
     if kind == 'derived':
         measured = t(content['types'][-1]) if content.get('types') else t(content['type'])

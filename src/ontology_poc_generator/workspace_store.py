@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS action_record (
     key_json TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL, reason TEXT,
     state TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'rejected', 'withdrawn', 'expired', 'needs_look')),
     submitted_by TEXT, submitted_by_user_id INTEGER, submitted_at TEXT NOT NULL, decided_by TEXT, decided_by_user_id INTEGER, decided_at TEXT, note TEXT, why TEXT, new_version INTEGER,
-    undo_of INTEGER);
+    undo_of INTEGER, op TEXT);   -- op: edit (or NULL, before R12a), create or delete
 CREATE TABLE IF NOT EXISTS pipeline_version (
     pipeline_id TEXT NOT NULL, version INTEGER NOT NULL, definition_json TEXT NOT NULL, saved_by TEXT, saved_by_user_id INTEGER, saved_at TEXT NOT NULL,
     PRIMARY KEY (pipeline_id, version));
@@ -158,7 +158,7 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('element_state', 'content_json'), ('element_state', 'anchors_json'), ('element_state', 'proposed_by'), ('element_state', 'reason'),
                           ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id'),
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
-                          ('api_token', 'scope'), ('api_token', 'expires_at'), ('action_record', 'undo_of'),
+                          ('api_token', 'scope'), ('api_token', 'expires_at'), ('action_record', 'undo_of'), ('action_record', 'op'),
                           ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id'), ('user', 'attrs_json'), ('row_rule', 'user_attr')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows", "undo_of") or column.endswith("user_id") else "TEXT"}')

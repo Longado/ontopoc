@@ -110,7 +110,7 @@ def _actions_writing(conn, type_element_id: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for content, in conn.execute("SELECT content_json FROM element_state WHERE element_id LIKE 'objaction:%' AND state != 'rejected'"):
         c = json.loads(content)
-        if c['type'] in english:
+        if c['type'] in english and (c.get('kind') or 'edit') == 'edit':   # a create adds a row its submitter may read, a delete removes one: neither moves a row across a rule
             for column in c['properties']:
                 out.setdefault(column, []).append(c['name'])
     return out

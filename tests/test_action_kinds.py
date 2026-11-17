@@ -129,6 +129,17 @@ class KindTests(ActionTests):
             version, rows = self.rows(out)
             self.assertEqual((version, len(rows), FRESH_KEY in rows), (3, len(ORDERS), False))
 
+    def test_a_create_must_make_an_object_its_submitter_may_read(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, admin = team['ann'], team['admin']
+            self.confirmed_action(team, NEW_ORDER)
+            self.assertEqual(self.rule(admin, 'ann', value='KH001')[0], 200)   # Ann reads KH001's orders only
+            status, body = self.create(ann, 客户编号='KH002')
+            self.assertEqual(status, 409, body)
+            self.assertIn('看得到的范围', body['error'])
+            self.assertEqual(self.create(ann, 客户编号='KH001')[0], 200)
+
     # --- delete -----------------------------------------------------------------------------------------------------------------------------------------------
 
     def test_a_delete_needs_a_reason_and_its_condition_and_removes_the_object_after_approval_and_an_undo_puts_the_same_row_back(self):
