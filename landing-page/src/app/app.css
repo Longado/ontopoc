@@ -1829,3 +1829,88 @@ td .check, .table-wrap label.check { white-space: nowrap; }
   .rel-arrow { display: none; }
   .ui-drawer-body .field .inline.wide:has(input[type="radio"]) { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* R15 r15-c: Ask as an agent chat. A history rail, a conversation thread, and a sticky composer. */
+.page.chat-page { padding: 0; max-width: none; height: calc(100vh - var(--topbar)); overflow: hidden; }
+.chat { display: grid; grid-template-columns: 260px minmax(0, 1fr); height: 100%; position: relative; }
+.chat-rail { display: flex; flex-direction: column; min-height: 0; padding: var(--s2) var(--s1) var(--s1); background: var(--bg-app); border-right: 1px solid var(--border); }
+.chat-new { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: var(--control-lg); margin-bottom: var(--s2); background: var(--surface); border: 1px solid var(--border-input); border-radius: var(--radius-md); color: var(--ink); font-weight: 500; box-shadow: var(--shadow-card); }
+.chat-new:hover { background: var(--hover); }
+.rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 2px; }
+.rail-group + .rail-group { margin-top: var(--s2); }
+.chat-rail .history-title { margin: 0 0 4px; padding: 0 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--nav-label); }
+.chat-rail .history-list a { padding: 6px 8px; font-size: 13px; line-height: 20px; border-radius: var(--radius-md); }
+.chat-rail .history-list a:hover { background: var(--bg-subtle); }
+.chat-rail .history-list a.active { background: var(--nav-active-bg); color: var(--nav-active-ink); font-weight: 500; box-shadow: none; }
+.rail-empty { padding: 0 8px; }
+.rail-dim, .chat-head .rail-toggle { display: none; }
+
+.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); }
+.chat-head { display: flex; align-items: center; gap: var(--s1); height: 44px; flex: none; padding: 0 var(--s3); border-bottom: 1px solid var(--border); }
+.chat-head h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0; }
+.chat-head h1:focus { outline: none; }
+.chat-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: var(--s1); border-left: 1px solid var(--border); }
+.thread { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s4) var(--s3) var(--s3); }
+.turns { display: flex; flex-direction: column; gap: var(--s3); max-width: 760px; margin: 0 auto; }
+
+.msg { display: flex; gap: var(--s1); min-width: 0; }
+.msg-user { justify-content: flex-end; }
+.bubble { max-width: 80%; padding: 8px 14px; background: var(--bg-subtle); border-radius: 16px 16px 4px 16px; color: var(--ink); font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble-query { max-width: 90%; background: var(--side); border: 1px solid var(--border); }
+.bubble-query pre { margin: 4px 0 0; font: 12px / 1.5 var(--mono); white-space: pre-wrap; }
+.bubble-tag { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.bot-mark { flex: none; width: 24px; height: 24px; margin-top: 2px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface) url(/favicon.svg) center / 14px no-repeat; }
+.bot-mark.big { width: 44px; height: 44px; background-size: 24px; box-shadow: var(--shadow-card); }
+.bot-body { flex: 1; min-width: 0; }
+.bot-body > .error { margin: 4px 0; }
+.thinking { display: inline-flex; align-items: center; gap: var(--s1); padding-top: 3px; color: var(--muted); font-weight: 500; }
+.typing { display: inline-flex; gap: 3px; }
+.typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-faint); }
+@media (prefers-reduced-motion: no-preference) { .typing i { animation: chat-dot 1.2s ease-in-out infinite; } .typing i:nth-child(2) { animation-delay: 0.15s; } .typing i:nth-child(3) { animation-delay: 0.3s; } }
+@keyframes chat-dot { 0%, 60%, 100% { opacity: 0.25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+
+.bot-body .qa-card { max-width: none; margin: 0; padding: var(--s2) var(--s3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+.bot-body .qa-card .answer { margin-top: 0; }
+.qa-when { margin: var(--s1) 0 0; text-align: right; }
+.followups { margin-top: var(--s2); display: flex; flex-direction: column; gap: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.chip { padding: 5px 12px; background: var(--surface); border: 1px solid var(--border-input); border-radius: 999px; color: var(--ink); font-size: 13px; text-align: left; transition: background-color 100ms var(--ease), border-color 100ms var(--ease); }
+.chip:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--blue-line); color: var(--accent-700); }
+.chip:disabled { color: var(--text-disabled); }
+
+.chat-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s1); max-width: 640px; margin: 8vh auto 0; text-align: center; }
+.chat-empty h2 { margin: var(--s1) 0 0; font-size: 24px; font-weight: 600; letter-spacing: -0.015em; }
+.chat-empty p { margin: 0 0 var(--s1); }
+.chat-empty .chips { justify-content: center; margin-top: var(--s1); }
+
+.composer-wrap { flex: none; padding: 0 var(--s3) var(--s2); background: linear-gradient(to bottom, transparent, var(--surface) 12px); }
+.composer { display: flex; flex-direction: column; gap: 6px; max-width: 760px; margin: 0 auto; padding: 10px 10px 8px 14px; background: var(--surface); border: 1px solid var(--border-input); border-radius: 14px; box-shadow: var(--shadow-1); transition: border-color 100ms var(--ease), box-shadow 100ms var(--ease); }
+.composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(45, 114, 210, 0.2); }
+.composer-input, .composer-input:hover, .composer-input:focus { width: 100%; min-height: 24px; max-height: 220px; padding: 0; border: 0; outline: none; box-shadow: none; background: none; resize: none; font-size: 14px; line-height: 1.5; color: var(--ink); }
+.composer-input:disabled { background: none; opacity: 0.6; }
+.composer-input.mono { font: 13px / 1.5 var(--mono); }
+.composer-params { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s2); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.composer-bar { display: flex; align-items: center; gap: var(--s1); }
+.composer-tools { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.composer-hint { margin-left: auto; white-space: nowrap; }
+.tool, .scope-chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; background: none; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.tool:hover, .scope-chip:hover { background: var(--bg-subtle); color: var(--ink); }
+.tool.on { background: var(--accent-bg); border-color: var(--blue-line); color: var(--accent-700); }
+.composer .send { flex: none; width: 32px; min-height: 32px; height: 32px; padding: 0; border-radius: 50%; }
+.scope-chip-wrap { position: relative; }
+.scope-pop { position: absolute; z-index: 10; left: 0; bottom: calc(100% + 8px); width: 320px; max-height: 260px; overflow-y: auto; padding: var(--s1) var(--s2); background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); font-size: 13px; }
+.scope-pop p { margin: 4px 0; }
+.composer-fine { max-width: 760px; margin: 6px auto 0; text-align: center; }
+
+@media (max-width: 1100px) {
+  .chat { grid-template-columns: minmax(0, 1fr); }
+  .chat-rail { position: absolute; z-index: 30; top: 0; bottom: 0; left: 0; width: min(280px, 86vw); transform: translateX(-102%); transition: transform 150ms var(--ease); box-shadow: var(--shadow-pop); }
+  .chat.rail-open .chat-rail { transform: none; }
+  .rail-dim { display: block; position: absolute; z-index: 25; inset: 0; background: rgba(20, 20, 18, 0.3); }
+  .chat-head .rail-toggle { display: inline-flex; }
+  .chat-head, .thread, .composer-wrap { padding-left: var(--s2); padding-right: var(--s2); }
+}
+@media (max-width: 760px) {
+  .composer-hint { display: none; }
+  .bubble { max-width: 92%; }
+}

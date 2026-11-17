@@ -3,11 +3,12 @@ import { askQuestion, getAnswer, getAsk, runQuery } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText } from "./format.js";
-import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
+import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
+import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
-import { useT } from "./i18n/index.js";
-import { PageHeader } from "./ui/PageHeader.jsx";
+import { formatDate, useT } from "./i18n/index.js";
+import { Icon } from "./ui/Icon.jsx";
 import { useLoad } from "./useLoad.js";
 
 const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived" };
@@ -159,15 +160,13 @@ export function Basis({ record, onEdit }) {
   );
 }
 
-/** An answer as a card: the figure or table first, the time-word warning when the question's time was not used, one caliber line, and the technical basis folded. */
-function AnswerCard({ record, mayBuild, onEdit, title }) {
+/** An answer as a message: the figure or table first, the time-word warning when the question's time was not used, one caliber line, and the technical basis folded. */
+function AnswerCard({ record, mayBuild, onEdit }) {
   const t = useT();
   const warning = isAnswer(record) ? timeWarning(record) : null;
   const line = isAnswer(record) ? criteriaLine(record, record.asked_at ? timeText(record.asked_at) : "") : "";
   return (
-    <section className="turn qa-card">
-      {title && <h2 className="question">{title}</h2>}
-      {record.asked_at && <p className="muted small">{timeText(record.asked_at)}</p>}
+    <section className="qa-card">
       {record.withheld ? <p className="warn">{record.reason}</p> : (
         <>
           {isAnswer(record) ? <Answer record={record} /> : <Refusal record={record} mayBuild={mayBuild} />}
@@ -177,67 +176,224 @@ function AnswerCard({ record, mayBuild, onEdit, title }) {
             <summary>{t("ask.card.basis")}</summary>
             <Basis record={record} onEdit={onEdit} />
           </details>
+          {record.asked_at && <p className="muted small qa-when">{timeText(record.asked_at)}</p>}
         </>
       )}
     </section>
   );
 }
 
-function Saved({ id, mayBuild, onEdit }) {
+/** The person's side of a turn: a plain bubble, the query in monospace. */
+function UserBubble({ text, query }) {
   const t = useT();
-  const [state] = useLoad(() => getAnswer(id), [id]);
-  const r = state.data;
-  if (state.status === "error") return <p className="error">{state.missing ? t("ask.saved.missing") : state.error}</p>;
-  if (!r) return <p className="muted">{t("ask.loading")}</p>;
-  return <AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} title={r.question} />;
+  return (
+    <div className="msg msg-user">
+      <div className={query ? "bubble bubble-query" : "bubble"}>
+        {query && <span className="bubble-tag">{t("ask.chat.queryTurn")}</span>}
+        {query ? <pre>{text}</pre> : text}
+      </div>
+    </div>
+  );
 }
 
-/** The query box: OntoPoc Query run as this person, by the same engine as a question, with no model; nothing is kept. */
-function QueryBox({ scope, text, setText, mayBuild }) {
+/** The assistant's side of a turn: the OntoPoc mark, then what it says. */
+function AssistantMsg({ children, label }) {
   const t = useT();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState(null);
-  const [values, setValues] = useState({});
-  const names = paramsIn(text);
-  const run = async (e) => {
-    e.preventDefault();
-    if (!text.trim() || busy) return;
-    setBusy(true);
-    setError("");
-    setResult(null);
-    try {
-      setResult(queryRecord({ query_text: text, ...(await runQuery(text, queryParams(text, values))) }));
-    } catch (err) {
-      setError(err.message);
-    }
-    setBusy(false);
-  };
+  return (
+    <div className="msg msg-bot">
+      <span className="bot-mark" aria-hidden="true" />
+      <div className="bot-body" aria-label={label ?? t("ask.chat.assistant")}>{children}</div>
+    </div>
+  );
+}
+
+function Thinking({ query }) {
+  const t = useT();
+  return (
+    <AssistantMsg>
+      <div className="thinking" role="status">
+        <span className="typing" aria-hidden="true"><i /><i /><i /></span>
+        <span>{t("ask.chat.thinking")}</span>
+      </div>
+      <p className="muted small">{query ? t("ask.query.busy") : t("ask.input.busy")}</p>
+    </AssistantMsg>
+  );
+}
+
+function FollowUps({ list, onAsk, disabled }) {
+  const t = useT();
+  if (!list.length) return null;
+  return (
+    <div className="followups">
+      <span className="muted small">{t("ask.chat.followUp")}</span>
+      <div className="chips">{list.map((q) => <button key={q} className="chip" disabled={disabled} onClick={() => onAsk(q)}>{q}</button>)}</div>
+    </div>
+  );
+}
+
+/** A saved answer opened on its own: its question as the person's message, then the answer card. */
+function SavedTurn({ turn, mayBuild, onEdit, followUps, onAsk, last, onLoaded }) {
+  const t = useT();
+  const [state] = useLoad(() => getAnswer(turn.savedId), [turn.savedId]);
+  const r = state.data;
+  useEffect(() => {
+    if (state.status !== "loading") onLoaded(turn.id, state.status === "error" ? { status: "error", error: state.error } : { status: "done", record: state.data });
+  }, [state.status]);
+  if (state.status === "error") return <AssistantMsg><p className="error">{state.missing ? t("ask.saved.missing") : state.error}</p></AssistantMsg>;
+  if (!r) return <Thinking />;
   return (
     <>
-      <form className="query" onSubmit={run}>
-        <textarea aria-label={t("ask.query.aria")} rows={6} value={text} spellCheck={false} placeholder={queryExample(scope) || t("ask.query.placeholder")} disabled={busy} onChange={(e) => setText(e.target.value)} />
-        {names.length > 0 && (
-          <div className="inline wide" role="group" aria-label={t("ask.query.params")}>
-            {names.map((n) => (
-              <label key={n} className="field">
-                <span className="caption">${n}</span>
-                <input type="text" aria-label={t("ask.query.param", { name: n })} value={values[n] ?? ""} disabled={busy} onChange={(e) => setValues({ ...values, [n]: e.target.value })} />
-              </label>
-            ))}
-          </div>
-        )}
-        <button className="primary" type="submit" disabled={busy || !text.trim()}>{t("ask.query.run")}</button>
-      </form>
-      {mayBuild
-        ? <details className="query-help"><summary>{t("ask.query.help")}</summary><p className="hint">{t("ask.query.helpBefore")}<code>{t("ask.query.sample")}</code>{t("ask.query.helpAfter")}<a href="https://github.com/Longado/ontopoc/blob/main/docs/QUERY.md" target="_blank" rel="noreferrer">{t("ask.query.helpLink")}</a></p></details>
-        : <p className="hint">{t("ask.query.viewerHint")}</p>}
-      {busy && <p className="muted" role="status">{t("ask.query.busy")}</p>}
-      {error && <p className="error" role="alert">{error}</p>}
-      {result && (
-        <AnswerCard record={result} mayBuild={mayBuild} />
+      <UserBubble text={r.question} />
+      <AssistantMsg><AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} /><FollowUps list={last && !isAnswer(r) ? followUps : []} onAsk={onAsk} /></AssistantMsg>
+    </>
+  );
+}
+
+function TurnView({ turn, mayBuild, onEdit, followUps, onAsk, busy, last, onLoaded }) {
+  if (turn.kind === "saved") return <SavedTurn turn={turn} mayBuild={mayBuild} onEdit={onEdit} followUps={followUps} onAsk={onAsk} last={last} onLoaded={onLoaded} />;
+  const r = turn.record;
+  const unanswered = r && (!isAnswer(r) || r.status === "no_data");
+  return (
+    <>
+      <UserBubble text={turn.text} query={turn.kind === "query"} />
+      {turn.status === "thinking" && <Thinking query={turn.kind === "query"} />}
+      {turn.status === "error" && <AssistantMsg><p className="error" role="alert">{turn.error}</p></AssistantMsg>}
+      {turn.status === "done" && r && (
+        <AssistantMsg>
+          <AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} />
+          {last && unanswered && turn.kind === "ask" && <FollowUps list={followUps} onAsk={onAsk} disabled={busy} />}
+        </AssistantMsg>
       )}
     </>
+  );
+}
+
+/** What can be asked about: a chip in the composer that opens the list of types in scope, the views, and what is left out. */
+function ScopeChip({ scope }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  if (!scope) return null;
+  return (
+    <span className="scope-chip-wrap">
+      <button type="button" className="scope-chip" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+        {t("ask.chat.scope", { count: scope.types.length })}
+        <Icon name="chevron-down" size={12} />
+      </button>
+      {open && (
+        <div className="scope-pop" role="dialog" aria-label={t("ask.chat.scope.aria")}>
+          <p>{scope.types.length ? scope.types.map((type) => type.name).join(t("ask.sep")) : t("ask.scope.empty")}</p>
+          {scope.views?.length > 0 && <p className="muted">{t("ask.scope.views", { names: scope.views.map((v) => v.name).join(t("ask.sep")) })}</p>}
+          {scope.left_out.length > 0 && (
+            <>
+              <p className="muted scope-sub">{t("ask.scope.leftOut")}</p>
+              <ul className="named">
+                {scope.left_out.map((d) => <li key={d.id}><a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} /></li>)}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** The sticky composer: a growing textarea (Enter sends, Shift+Enter breaks the line), the scope chip, and for a builder the Query toggle. */
+function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQuery, busy, onSend, onRun }) {
+  const t = useT();
+  const box = useRef(null);
+  const [values, setValues] = useState({});
+  const isQuery = mode === "query";
+  const value = isQuery ? query : text;
+  const names = isQuery ? paramsIn(query) : [];
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [value, mode]);
+  useEffect(() => {
+    if (!busy) box.current?.focus({ preventScroll: true });
+  }, [busy, mode]);
+  const submit = (e) => {
+    e?.preventDefault();
+    if (!value.trim() || busy) return;
+    if (isQuery) onRun(query, queryParams(query, values));
+    else onSend(text);
+  };
+  return (
+    <form className="composer" onSubmit={submit}>
+      {names.length > 0 && (
+        <div className="composer-params" role="group" aria-label={t("ask.query.params")}>
+          {names.map((n) => (
+            <label key={n} className="field">
+              <span className="caption">${n}</span>
+              <input type="text" aria-label={t("ask.query.param", { name: n })} value={values[n] ?? ""} disabled={busy} onChange={(e) => setValues({ ...values, [n]: e.target.value })} />
+            </label>
+          ))}
+        </div>
+      )}
+      <textarea
+        ref={box}
+        className={isQuery ? "composer-input mono" : "composer-input"}
+        aria-label={isQuery ? t("ask.query.aria") : t("ask.input.aria")}
+        rows={isQuery ? 3 : 1}
+        value={value}
+        maxLength={isQuery ? undefined : 300}
+        spellCheck={false}
+        placeholder={isQuery ? queryExample(scope) || t("ask.chat.composer.queryPlaceholder") : t("ask.chat.composer.placeholder")}
+        disabled={busy}
+        onChange={(e) => (isQuery ? setQuery(e.target.value) : setText(e.target.value))}
+        onKeyDown={(e) => {
+          if (sendsOn({ key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, mode)) submit(e);
+        }}
+      />
+      <div className="composer-bar">
+        <div className="composer-tools">
+          {mayBuild && (
+            <button type="button" className={isQuery ? "tool on" : "tool"} aria-pressed={isQuery} title={t("ask.chat.composer.queryOn")} onClick={() => setMode(isQuery ? "ask" : "query")}>
+              <Icon name="edit" size={13} /> {t("ask.chat.composer.query")}
+            </button>
+          )}
+          <ScopeChip scope={scope} />
+        </div>
+        <span className="composer-hint muted small">{isQuery ? t("ask.chat.composer.hintQuery") : t("ask.chat.composer.hintAsk")}</span>
+        <button className="primary send" type="submit" disabled={busy || !value.trim()} aria-label={isQuery ? t("ask.chat.composer.run") : t("ask.chat.composer.send")}>
+          <Icon name={isQuery ? "play" : "send"} size={16} />
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** The history rail: New chat, then the saved questions grouped by the day they were asked. */
+function Rail({ scope, activeId, onNew, onPick }) {
+  const t = useT();
+  const groups = groupByDay(scope?.history ?? []);
+  const label = (g) => (g.key === "today" ? t("ask.chat.today") : g.key === "yesterday" ? t("ask.chat.yesterday") : g.key === "undated" ? t("ask.chat.undated") : formatDate(g.when));
+  return (
+    <aside className="chat-rail" aria-label={t("ask.history.aria")}>
+      <button className="chat-new" onClick={onNew}><Icon name="plus" size={14} /> {t("ask.chat.new")}</button>
+      <div className="rail-scroll">
+        {scope && scope.history.length === 0 && <p className="muted small rail-empty">{t("ask.history.empty")}</p>}
+        {groups.map((g) => (
+          <section key={g.key} className="rail-group">
+            <h2 className="history-title">{label(g)}</h2>
+            <ul className="history-list">
+              {g.items.map((h) => {
+                const v = historyView(h, timeText(h.asked_at));
+                return (
+                  <li key={h.id}>
+                    <a href={`#/qa/${h.id}`} title={v.meta} onClick={onPick} aria-current={h.id === activeId ? "page" : undefined} className={h.id === activeId ? "active" : ""}>
+                      <span className="hq">{v.question}</span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -246,91 +402,119 @@ export function QaPage({ route }) {
   const mayBuild = canBuild(useAuth().user);
   const [info, reload] = useLoad(getAsk, []);
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
   const [mode, setMode] = useState("ask");
   const [query, setQuery] = useState("");
+  const [turns, setTurns] = useState([]);
+  const [rail, setRail] = useState(false);
   const scope = info.data;
-  const edit = (text) => {
-    setQuery(text);
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
+  const own = useRef(new Set());   // saved ids this session's thread already holds: opening one of them must not replace the thread
+  const thread = useRef(null);
+  const busy = isThinking(turns);
+  const queryMode = mayBuild ? mode : "ask";
+
+  const add = (turn) => setTurns((ts) => [...ts, turn]);
+  const finish = (turn, patch) => setTurns((ts) => settle(ts, turn.id, patch));
+
+  const send = async (question) => {
+    const q = String(question ?? "").trim();
+    if (!q || isThinking(turnsRef.current)) return;
+    const turn = newTurn("ask", q);
+    add(turn);
+    setText("");
+    setMode("ask");
+    try {
+      const saved = await askQuestion(q);
+      own.current.add(saved.id);
+      finish(turn, { status: "done", record: saved });
+      reload();
+      if (turnsRef.current.some((x) => x.id === turn.id)) window.location.hash = `#/qa/${saved.id}`;
+    } catch (err) {
+      finish(turn, { status: "error", error: err.message });
+    }
+  };
+  const run = async (queryText, params) => {
+    if (!queryText.trim() || isThinking(turnsRef.current)) return;
+    const turn = newTurn("query", queryText);
+    add(turn);
+    try {
+      finish(turn, { status: "done", record: queryRecord({ query_text: queryText, ...(await runQuery(queryText, params)) }) });
+    } catch (err) {
+      finish(turn, { status: "error", error: err.message });
+    }
+  };
+  const edit = (queryText) => {
+    setQuery(queryText);
     setMode("query");
   };
-  const ask = async (e, question = text) => {
-    e?.preventDefault();
-    if (!question.trim() || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const saved = await askQuestion(question);
-      setText("");
-      reload();
-      window.location.hash = `#/qa/${saved.id}`;
-    } catch (err) {
-      setError(err.message);
-    }
-    setBusy(false);
+  const newChat = () => {
+    setTurns([]);
+    setText("");
+    setRail(false);
+    if (window.location.hash !== "#/qa") window.location.hash = "#/qa";
   };
+
+  const was = useRef(route.id);
+  useEffect(() => {
+    const before = was.current;
+    was.current = route.id;
+    if (route.id == null) {
+      if (before != null) setTurns([]);   // back to a new chat
+    } else if (!own.current.has(route.id)) {
+      setTurns([savedTurn(route.id)]);   // a past question opens as a thread of one
+      setMode("ask");
+    }
+  }, [route.id]);
+
   const asked = useRef("");
   useEffect(() => {
     if (!route.ask || asked.current === route.ask) return;
     asked.current = route.ask;   // a question from the home page is asked once as this page opens (the address then becomes the saved answer's)
-    setText(route.ask);
-    ask(null, route.ask);
+    send(route.ask);
   }, [route.ask]);
+
+  useEffect(() => {
+    const el = thread.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [turns.length, turns[turns.length - 1]?.status]);
+
+  const ideas = suggestions(scope, [], 4);
+  const title = threadTitle(turns);
   return (
-    <main className="page">
-      <PageHeader title={t("ask.title")} sub={t("ask.sub")} />
-      {info.status === "error" && <p className="error">{info.error}</p>}
-      <div className="qa">
-        <aside className="history" aria-label={t("ask.history.aria")}>
-          <h2 className="history-title">{t("ask.history.title")}</h2>
-          {scope && scope.history.length === 0 && <p className="muted small">{t("ask.history.empty")}</p>}
-          <ul className="history-list">
-            {scope?.history.map((h) => {
-              const v = historyView(h, timeText(h.asked_at));
-              return (
-                <li key={h.id}>
-                  <a href={`#/qa/${h.id}`} onClick={() => setMode("ask")} aria-current={h.id === route.id ? "page" : undefined} className={h.id === route.id ? "active" : ""}>
-                    <span className="hq">{v.question}</span>
-                    <span className="muted small block">{v.meta}</span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </aside>
-        <section>
-          {scope && (
-            <details className="scope">
-              <summary>{scopeText(scope)}</summary>
-              <p className="muted">{scope.types.length ? scope.types.map((type) => type.name).join(t("ask.sep")) : t("ask.scope.empty")}</p>
-              {scope.views?.length > 0 && <p className="muted">{t("ask.scope.views", { names: scope.views.map((v) => v.name).join(t("ask.sep")) })}</p>}
-              {scope.left_out.length > 0 && (
-                <>
-                  <p className="muted scope-sub">{t("ask.scope.leftOut")}</p>
-                  <ul className="named">
-                    {scope.left_out.map((d) => <li key={d.id}><a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} /></li>)}
-                  </ul>
-                </>
-              )}
-            </details>
-          )}
-          <div className="seg" role="group" aria-label={t("ask.mode.aria")}>
-            <button className={mode === "ask" ? "on" : ""} aria-pressed={mode === "ask"} onClick={() => setMode("ask")}>{t("ask.mode.ask")}</button>
-            <button className={mode === "query" ? "on" : ""} aria-pressed={mode === "query"} onClick={() => setMode("query")}>{t("ask.mode.query")}</button>
+    <main className="page chat-page">
+      <div className={rail ? "chat rail-open" : "chat"}>
+        <Rail scope={scope} activeId={route.id} onNew={newChat} onPick={() => setRail(false)} />
+        {rail && <div className="rail-dim" onClick={() => setRail(false)} />}
+        <section className="chat-main">
+          <header className="chat-head">
+            <button className="icon-button secondary rail-toggle" aria-label={t("ask.chat.historyToggle")} aria-expanded={rail} onClick={() => setRail(!rail)}><Icon name="menu" size={16} /></button>
+            <h1 tabIndex={-1}>{t("ask.title")}</h1>
+            <span className="chat-title muted">{title || t("ask.chat.untitled")}</span>
+          </header>
+          <div className="thread" ref={thread}>
+            {info.status === "error" && <p className="error">{info.error}</p>}
+            {turns.length === 0 ? (
+              <div className="chat-empty">
+                <span className="bot-mark big" aria-hidden="true" />
+                <h2>{t("ask.chat.emptyTitle")}</h2>
+                <p className="muted">{scope && scope.types.length === 0 ? t("ask.chat.emptyNoScope") : t("ask.sub")}</p>
+                {ideas.length > 0 && (
+                  <div className="chips" aria-label={t("ask.chat.try")}>
+                    {ideas.map((q) => <button key={q} className="chip" disabled={busy} onClick={() => send(q)}>{q}</button>)}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="turns" role="log" aria-label={t("ask.chat.thread")} aria-live="polite">
+                {turns.map((turn, i) => <TurnView key={turn.id} turn={turn} mayBuild={mayBuild} onEdit={mayBuild ? edit : undefined} followUps={ideas} onAsk={send} busy={busy} last={i === turns.length - 1} onLoaded={(id, patch) => setTurns((ts) => settle(ts, id, patch))} />)}
+              </div>
+            )}
           </div>
-          {mode === "query" ? <QueryBox scope={scope} text={query} setText={setQuery} mayBuild={mayBuild} /> : (
-            <>
-              <form className="ask" onSubmit={ask}>
-                <input type="text" aria-label={t("ask.input.aria")} value={text} maxLength={300} placeholder={t("ask.input.placeholder")} disabled={busy} onChange={(e) => setText(e.target.value)} />
-                <button className="primary" type="submit" disabled={busy || !text.trim()}>{t("ask.input.submit")}</button>
-              </form>
-              <p className="hint">{t("ask.input.hint")}</p>
-              {busy && <p className="muted" role="status">{t("ask.input.busy")}</p>}
-              {error && <p className="error" role="alert">{error}</p>}
-            </>
-          )}
-          {mode === "ask" && route.id && <Saved key={route.id} id={route.id} mayBuild={mayBuild} onEdit={edit} />}
+          <div className="composer-wrap">
+            <Composer scope={scope} mayBuild={mayBuild} mode={queryMode} setMode={setMode} text={text} setText={setText} query={query} setQuery={setQuery} busy={busy} onSend={send} onRun={run} />
+            <p className="composer-fine muted small">{t("ask.input.hint")}</p>
+          </div>
         </section>
       </div>
     </main>
