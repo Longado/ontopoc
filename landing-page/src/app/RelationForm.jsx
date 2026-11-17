@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createRelation, getRelation, getRelationForm, previewRelation, updateRelation } from "./api.js";
 import { typeLabel } from "./format.js";
 import { t } from "./i18n/index.js";
-import { CARDINALITY_LABEL, previewPayload, previewText, relationPayload, relationProblem, suggestedColumns } from "./relationModel.js";
+import { CARDINALITY_LABEL, previewPayload, previewText, relationPayload, relationProblem, sentenceParts, suggestedColumns } from "./relationModel.js";
 import { RelationPage, RelationsPage } from "./RelationsPage.jsx";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
@@ -40,6 +40,14 @@ function Preview({ form }) {
       <span className="muted small">{t("relations.form.previewNote", { many: d.many_name, one: d.one_name, fan: d.fan_keys > 0 ? t("relations.form.previewFan", { one: d.one_name, count: d.fan_keys }) : "" })}</span>
     </div>
   );
+}
+
+/** The sentence the form is building, filled in as the types and the cardinality are picked: "Each Order belongs to one ___". */
+function Building({ form, byId }) {
+  const blank = t("relations.form.blank");
+  const [each, from, mid, to] = sentenceParts({ cardinality: form.cardinality, from_name: byId[form.from]?.name ?? "", to_name: byId[form.to]?.name ?? "" });
+  const name = (value) => (value ? <strong>{value}</strong> : <span className="rel-blank">{blank}</span>);
+  return <>{each}{name(from)}{mid}{name(to)}</>;
 }
 
 /** Making a relation and changing one, in a drawer over the relation's own page: the names, then the two ends side by side (From / To, each a type and its column) with the
@@ -121,6 +129,22 @@ export function RelationForm({ id }) {
         {!form && !(saved.status === "error" || types.status === "error") && <p className="muted">{t("common.loading")}</p>}
         {form && (
           <div className="rel-form">
+            <section className="rel-form-lead" aria-label={t("relations.form.leadAria")}>
+              <p className="caption">{t("relations.form.lead")}</p>
+              <p className="rel-form-sentence"><Building form={form} byId={byId} /></p>
+              <Preview form={form} />
+            </section>
+            <div className="rel-form-ends">
+              {end("from", t("relations.form.from"), t("relations.form.fromHint"))}
+              <span className="rel-arrow" aria-hidden="true">→</span>
+              {end("to", t("relations.form.to"), t("relations.form.toHint"))}
+            </div>
+            <div className="field">
+              <span className="caption">{t("relations.form.cardinality")}</span>
+              <Select label={t("relations.form.cardinalityLabel")} value={form.cardinality} onChange={pickCardinality}>
+                {Object.entries(CARDINALITY_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </Select>
+            </div>
             <div className="rel-form-names">
               <label className="field">
                 <span className="caption">{t("relations.form.name")}</span>
@@ -135,18 +159,6 @@ export function RelationForm({ id }) {
                 <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </label>
             </div>
-            <div className="rel-form-ends">
-              {end("from", t("relations.form.from"), t("relations.form.fromHint"))}
-              <span className="rel-arrow" aria-hidden="true">→</span>
-              {end("to", t("relations.form.to"), t("relations.form.toHint"))}
-            </div>
-            <div className="field">
-              <span className="caption">{t("relations.form.cardinality")}</span>
-              <Select label={t("relations.form.cardinalityLabel")} value={form.cardinality} onChange={pickCardinality}>
-                {Object.entries(CARDINALITY_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-              </Select>
-            </div>
-            <Preview form={form} />
             <p className="hint">{t("relations.form.manyToMany")}</p>
             {error && <div className="refusal"><p className="error">{error}</p></div>}
           </div>

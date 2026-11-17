@@ -109,3 +109,62 @@ export function toggled(ids, id, on) {
   const rest = ids.filter((i) => i !== id);
   return on ? [...rest, id] : rest;
 }
+
+// ---- the relation cards (R15 B) ----
+
+/** The sentence a relation makes, in four pieces so the two type names can be set in bold: ["Each ", "Order", " belongs to one ", "Customer"]. */
+export const sentenceParts = (r) => [t("relations.sentence.each"), r.from_name, t(`relations.sentence.mid.${r.cardinality}`), r.to_name];
+
+/** The ends of a relation by role: the "many" side is the one whose rows are counted. */
+export const manyOne = (r) => (r.cardinality === "one_to_many" ? { many: r.to_name, one: r.from_name } : { many: r.from_name, one: r.to_name });
+
+/** How well the relation matches the data, from its numbers alone: "ok" (every row connects, nothing repeats), "warn" (a few rows don't, or keys repeat), "bad" (under 90% connect), "unknown" (no check). */
+export function healthOf(r) {
+  const n = r.numbers;
+  if (!n || !n.rows) return "unknown";
+  if (n.matched / n.rows < 0.9) return "bad";
+  return n.unmatched > 0 || n.fan_keys > 0 || n.many_repeats > 0 || n.matched < n.rows ? "warn" : "ok";
+}
+
+/** The line under the sentence: "157 of 160 Order find their Customer · 3 don't (KH099)". `samples` are the unmatched keys the relation's own page knows, or []. */
+export function matchLine(r, samples = []) {
+  const n = r.numbers;
+  if (!n) return t("relations.check.cannot");
+  const { many, one } = manyOne(r);
+  const head = n.matched >= n.rows ? t("relations.health.all", { rows: n.rows, many, one }) : t("relations.health.some", { matched: n.matched, rows: n.rows, many, one });
+  const missing = n.rows - n.matched;
+  if (missing <= 0) return head;
+  return head + (samples.length ? t("relations.health.missKeys", { count: missing, keys: joinList(samples.slice(0, 3).map((s) => s.key)) }) : t("relations.health.miss", { count: missing }));
+}
+
+const ATTENTION = { rejected: 0, needs_look: 0 };
+/** 0 needs a look now, 1 has rows that don't match, 2 is waiting for confirmation, 3 is fine. */
+function rank(r) {
+  const health = healthOf(r);
+  if (r.state in ATTENTION || health === "bad") return 0;
+  if (health === "warn") return 1;
+  return r.state === "confirmed" ? 3 : 2;
+}
+
+/** The problems first, each rank keeping the order the service gave. */
+export const sortProblemsFirst = (relations) => relations.map((r, i) => [r, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([r]) => r);
+
+/** The relations grouped by the type they start from, the groups by name: [{id, name, items}]. */
+export function groupByType(relations) {
+  const groups = new Map();
+  for (const r of relations) {
+    if (!groups.has(r.from)) groups.set(r.from, { id: r.from, name: r.from_name, items: [] });
+    groups.get(r.from).items.push(r);
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The numbers over the whole list: how many relations, how many match fully, how many need a look. */
+export function summarise(relations) {
+  const out = { total: relations.length, healthy: 0, attention: 0 };
+  for (const r of relations) {
+    if (rank(r) <= 1) out.attention += 1;
+    else if (healthOf(r) === "ok") out.healthy += 1;
+  }
+  return out;
+}
