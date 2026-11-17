@@ -245,7 +245,7 @@ export function PipelineEditor({ detail, reload }) {
                 ? <p className="pl-note neutral"><PIcon name="info" size={14} /><span><strong>{t("pipeline.graph.unconfigured")}.</strong> {t("pipeline.editor.quiet", { first: firstTodo })}</span></p>
                 : <p className="pl-note bad" role="alert"><PIcon name="alert" size={14} /><span>{friendlyError(problem, draft.steps)}{summary.status === "ready" ? ` ${t("pipeline.editor.laterBlocked")}` : ""}</span></p>)}
             </div>
-            <PipelineGraph steps={draft.steps} nodes={nodes} selected={selected} onSelect={select} issues={issues} results={results} />
+            <PipelineGraph steps={draft.steps} nodes={nodes} selected={selected} onSelect={select} issues={issues} results={results} place={name} />
           </section>
           {step && (
             <section className="pl-bottom" aria-label={t("pipeline.editor.bottomAria")}>

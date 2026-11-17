@@ -335,6 +335,8 @@ export default {
   "graph.canvas": "Canvas",
   "graph.zoomOut": "Zoom out",
   "graph.zoomIn": "Zoom in",
+  "graph.resetLayout": "Reset layout",
+  "graph.resetLayoutHint": "Put every card back in its automatic place",
   "graph.fit": "Fit to view",
   "graph.wontRun": "will not run",
   "graph.unconfigured": "Unconfigured",

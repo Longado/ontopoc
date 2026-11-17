@@ -335,6 +335,8 @@ export default {
   "graph.canvas": "画布",
   "graph.zoomOut": "缩小",
   "graph.zoomIn": "放大",
+  "graph.resetLayout": "恢复排布",
+  "graph.resetLayoutHint": "把所有卡片放回自动排好的位置",
   "graph.fit": "适应",
   "graph.wontRun": "不会运行",
   "graph.unconfigured": "待配置",

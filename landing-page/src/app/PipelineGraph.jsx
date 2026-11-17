@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { t } from "./i18n/index.js";
 import { KindChip, PIcon, kindOf } from "./PipelineIcons.jsx";
-import { branchOwners, cardFlags, countsShort, kindLine, layout, numberText, orphans, rowChangeText, rowsText, stepTitle } from "./pipelineModel.js";
+import { branchOwners, cardFlags, countsShort, kindLine, layout, numberText, orphans, placed, rowChangeText, rowsText, snap, stepTitle } from "./pipelineModel.js";
 
 export const NODE = { w: 200, h: 64, gx: 72, gy: 24 };   // the card: 200 x 64, a gap of 72 between columns and 24 between rows
 const PAD = 24;
@@ -33,8 +33,32 @@ function stateOf({ node, flags, todo, lost, result }) {
  * zoomed in beyond 100%, never out beyond 70% on its own), and has a zoom pill (zoom out, the level, zoom in, fit); the cards are never cut off. A card shows the step's kind (icon chip), its
  * title, a dot for its state, the rows in and out, how many rows it added or dropped, a count of warnings, "Unconfigured" while the step is not set up, and (after a run) the rows the run
  * wrote there. `issues` is {step id: [what is missing]}, `results` {step id: {rows, warn}}. */
-export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, results = {} }) {
-  const lay = layout(steps, NODE);
+const DRAG_START = 4;   // a press that moves less than this is a click
+const placesKey = (place) => `ontopoc.pipeline.places.${place}`;
+function readPlaces(place) {
+  if (!place) return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(placesKey(place)) ?? "{}") ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, results = {}, place = null }) {
+  // `place` names the pipeline: given, the cards can be dragged and their places are kept in this browser for that pipeline
+  const [moved, setMoved] = useState(() => readPlaces(place));
+  useEffect(() => setMoved(readPlaces(place)), [place]);
+  const keep = (next) => {
+    setMoved(next);
+    try {
+      if (Object.keys(next).length) window.localStorage.setItem(placesKey(place), JSON.stringify(next));
+      else window.localStorage.removeItem(placesKey(place));
+    } catch { /* storage may be off: the places last for this visit */ }
+  };
+  const drag = useRef(null);
+  const latest = useRef(moved);
+  latest.current = moved;
+  const lay = placed(layout(steps, NODE), moved);
   const lost = new Set(orphans(steps));
   const owners = branchOwners(steps);
   const { w, h } = lay.size;
@@ -59,6 +83,38 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
     watch.observe(box);
     return () => watch.disconnect();
   }, [fit, fitted]);
+  const press = (e, id) => {
+    if (!place || e.button !== 0) return;
+    drag.current = { id, x0: e.clientX, y0: e.clientY, nx: at(id).x, ny: at(id).y, moving: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const move = (e) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = (e.clientX - d.x0) / k;
+    const dy = (e.clientY - d.y0) / k;
+    if (!d.moving && Math.hypot(dx, dy) * k < DRAG_START) return;
+    if (!d.moving) setFitted(false);   // the zoom holds still while a card is dragged, so the card stays under the pointer
+    d.moving = true;
+    setMoved((m) => ({ ...m, [d.id]: { x: snap(d.nx + dx), y: snap(d.ny + dy) } }));
+  };
+  const release = () => {
+    const d = drag.current;
+    if (d?.moving) {
+      d.done = true;
+      keep(latest.current);
+    }
+    if (d && !d.moving) drag.current = null;
+  };
+  const click = (id) => {
+    if (drag.current?.done) {   // the click that ends a drag does not select
+      drag.current = null;
+      return;
+    }
+    drag.current = null;
+    onSelect(id);
+  };
+  const anyMoved = Object.keys(moved).some((id) => steps.some((s) => s.id === id));
   const zoom = (factor) => {
     setFitted(false);
     setK((v) => Math.min(MAX, Math.max(MIN, Math.round(v * factor * 100) / 100)));
@@ -102,6 +158,7 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
         <button type="button" onClick={() => zoom(1.25)} aria-label={t("pipeline.graph.zoomIn")} title={t("pipeline.graph.zoomIn")}><PIcon name="plus" /></button>
         <span className="graph-zoom-sep" aria-hidden="true" />
         <button type="button" onClick={fit} aria-label={t("pipeline.graph.fit")} title={t("pipeline.graph.fit")}><PIcon name="fit" /></button>
+        {place && anyMoved && <><span className="graph-zoom-sep" aria-hidden="true" /><button type="button" className="graph-reset" onClick={() => keep({})} title={t("pipeline.graph.resetLayoutHint")}>{t("pipeline.graph.resetLayout")}</button></>}
       </div>
       <div className="graph-pane" ref={pane}>
         <div className="graph-sizer" style={{ width: full.w * k, height: full.h * k }}>
@@ -149,7 +206,8 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
               return (
                 <button key={s.id} ref={selected === s.id ? chosen : null} type="button" title={tip || undefined}
                   className={`pl-node k-${kind} st-${state}${selected === s.id ? " on" : ""}${isLost ? " lost" : ""}${todo.length ? " todo" : ""}${s.type === "input" ? " no-in" : ""}${s.type === "output" ? " no-out" : ""}`}
-                  aria-pressed={selected === s.id} style={{ left: at(s.id).x + PAD, top: at(s.id).y + PAD, width: w, height: h }} onClick={() => onSelect(s.id)}>
+                  aria-pressed={selected === s.id} style={{ left: at(s.id).x + PAD, top: at(s.id).y + PAD, width: w, height: h, cursor: place ? "grab" : undefined, touchAction: place ? "none" : undefined }}
+                  onClick={() => click(s.id)} onPointerDown={(e) => press(e, s.id)} onPointerMove={move} onPointerUp={release} onPointerCancel={release}>
                   {s.type !== "input" && (s.type === "join" ? <><i className="pl-port in" style={{ top: "33%" }} /><i className="pl-port in" style={{ top: "67%" }} /></> : <i className="pl-port in" />)}
                   {s.type !== "output" && <i className="pl-port out" />}
                   <span className="pl-node-top">
