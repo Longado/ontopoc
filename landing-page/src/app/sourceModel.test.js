@@ -3,6 +3,9 @@ import test from "node:test";
 import { estimateText, keyColumnsFrom, runSummary, scheduleBody, scheduleProblem, sourceBody, sourceOrigin, sourceProblem, tlsDefault } from "./sourceModel.js";
 import { originText } from "./format.js";
 import { parseRoute, hrefFor, NAV } from "./routeModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 test("a source origin names the source and the table; an upload does not", () => {
   assert.deepEqual(sourceOrigin("source:订单库/public.orders"), { source: "订单库", table: "public.orders" });

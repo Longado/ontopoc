@@ -1,4 +1,6 @@
-// The schedule's clock, as plain functions: the time zone starts as the browser's, and a time of day is picked in 24 hours (a native time box shows 上午/下午 on some computers).
+import { t } from "./i18n/index.js";
+
+// The schedule's clock, as plain functions: the time zone starts as the browser's, and a time of day is picked in 24 hours (a native time box shows AM/PM on some computers).
 const pad = (n) => String(n).padStart(2, "0");
 
 /** The browser's time zone name, "UTC" when it will not say. `intl` is a stand-in for Intl.DateTimeFormat in tests. */
@@ -22,13 +24,13 @@ export function timeParts(time) {
 export const timeFromParts = (h, m) => `${h}:${m}`;
 
 const COMMON_ZONES = ["Asia/Shanghai", "Asia/Hong_Kong", "Asia/Singapore", "Asia/Tokyo", "UTC", "Europe/London", "America/New_York", "America/Los_Angeles"];
-const ZONE_WORD = {
-  "Asia/Shanghai": "北京时间", "Asia/Hong_Kong": "香港时间", "Asia/Singapore": "新加坡时间", "Asia/Tokyo": "东京时间", UTC: "世界协调时间",
-  "Europe/London": "伦敦时间", "America/New_York": "纽约时间", "America/Los_Angeles": "洛杉矶时间",
+const ZONE_KEY = {
+  "Asia/Shanghai": "shanghai", "Asia/Hong_Kong": "hongKong", "Asia/Singapore": "singapore", "Asia/Tokyo": "tokyo", UTC: "utc",
+  "Europe/London": "london", "America/New_York": "newYork", "America/Los_Angeles": "losAngeles",
 };
 
 /** The zones to pick from: the common ones, with the browser's in front when it is not among them. */
 export const zoneChoices = (browser) => (COMMON_ZONES.includes(browser) || !browser ? [...COMMON_ZONES] : [browser, ...COMMON_ZONES]);
 
-/** A zone as the person reads it: 北京时间（Asia/Shanghai）; a zone with no Chinese word keeps its own name. */
-export const zoneLabel = (zone) => (ZONE_WORD[zone] ? `${ZONE_WORD[zone]}（${zone}）` : zone);
+/** A zone as the person reads it: "Beijing time (Asia/Shanghai)"; a zone with no name of its own keeps its zone name. */
+export const zoneLabel = (zone) => (ZONE_KEY[zone] ? t("sources.zone.label", { word: t(`sources.zone.${ZONE_KEY[zone]}`), zone }) : zone);

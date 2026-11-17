@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { attrNames, cutOff, loseAccess, prefilledRule, ruleText, seers } from "./permissionModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 const PEOPLE = [
   { id: 1, name: "管理员", role: "admin" },

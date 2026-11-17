@@ -1,3 +1,6 @@
+import { KEY_SEPARATORS } from "./serverWords.js";
+import { formatNumber, t } from "./i18n/index.js";
+
 // What the sources and schedules pages say and check, as plain data so it can be tested without a browser. The service decides; these choose the words.
 export const KINDS = [
   { key: "postgresql", label: "PostgreSQL", port: 5432 },
@@ -5,47 +8,45 @@ export const KINDS = [
 ];
 export const kindPort = (kind) => KINDS.find((k) => k.key === kind)?.port ?? 5432;
 
+/** Encryption choices in the current language (getters: read at use time). */
 export const TLS_MODES = [
-  { key: "required", label: "必须（核对证书）" },
-  { key: "none", label: "不用" },
+  { key: "required", get label() { return t("sources.tls.required"); } },
+  { key: "none", get label() { return t("sources.tls.none"); } },
 ];
-export const TLS_WARNING = "不加密：密码和读到的数据会明文走网络，被同一网络里的人看到。只在数据库和服务在同一台机器上时这样用。";
+export const tlsWarning = () => t("sources.tls.warning");
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1", "[::1]"];
 /** Encryption to start from: off for a database on this machine, on for any other. */
 export const tlsDefault = (host) => (LOCAL_HOSTS.includes(String(host ?? "").trim().toLowerCase()) ? "none" : "required");
 
-export const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-export const CADENCES = [
-  { key: "hourly", label: "每小时" },
-  { key: "daily", label: "每天" },
-  { key: "weekly", label: "每周" },
-  { key: "upstream", label: "上游更新时" },
-];
+/** Weekday names, Monday first, in the current language. */
+export const weekdayNames = () => ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((d) => t(`sources.weekday.${d}`));
+export const CADENCES = ["hourly", "daily", "weekly", "upstream"].map((key) => ({ key, get label() { return t(`sources.cadence.${key}`); } }));
 
-const STATUS = { untested: "未测试", ok: "正常", failed: "失败" };
-export const statusText = (source) => STATUS[source.status] ?? source.status;
+const word = (area, map, key) => (key in map ? t(`${area}.${key}`) : key);
+const STATUS = { untested: 1, ok: 1, failed: 1 };
+export const statusText = (source) => word("sources.status", STATUS, source.status);
 
-const RUN_STATUS = { running: "进行中", success: "成功", failed: "失败", skipped: "跳过" };
-const REASON = { manual: "手动", schedule: "定时", upstream: "上游更新" };
-export const runStatusText = (run) => RUN_STATUS[run.status] ?? run.status;
-export const reasonText = (run) => REASON[run.reason] ?? run.reason;
+const RUN_STATUS = { running: 1, success: 1, failed: 1, skipped: 1 };
+const REASON = { manual: 1, schedule: 1, upstream: 1 };
+export const runStatusText = (run) => word("sources.run", RUN_STATUS, run.status);
+export const reasonText = (run) => word("sources.reason", REASON, run.reason);
 
 /** The row count of a table the database estimated: said to be an estimate, since it comes from the database's statistics and may be old. */
-export const estimateText = (rows) => (rows == null ? "没有估计" : `约 ${Number(rows).toLocaleString()}（估计）`);
+export const estimateText = (rows) => (rows == null ? t("sources.estimate.none") : t("sources.estimate", { n: formatNumber(rows) }));
 
 /** One run in a line: what it read or wrote, or why it did not. */
 export function runSummary(run) {
   if (run.status === "failed" || run.status === "skipped") return run.error ?? "";
   if (run.status === "running") return "";
-  if (run.hidden) return "写进了一个你看不到的数据集";
+  if (run.hidden) return t("sources.run.hidden");
   const parts = [];
-  if (run.rows != null) parts.push(`${run.rows} 行`);
-  if (run.version != null) parts.push(`第 ${run.version} 版`);
-  if (run.changed === false) parts.push("和上一版一样，没有写新版本");
+  if (run.rows != null) parts.push(t("data.n.rows", { count: run.rows }));
+  if (run.version != null) parts.push(t("sources.run.version", { n: run.version }));
+  if (run.changed === false) parts.push(t("sources.run.same"));
   const flagged = run.detail?.flagged_count ?? run.detail?.flagged?.length ?? 0;
-  if (flagged) parts.push(`${flagged} 项已确认的内容进了“需要再看”`);
-  if (run.detail?.left_out?.length) parts.push(`没读的二进制列：${run.detail.left_out.join("、")}`);
-  return parts.join("，");
+  if (flagged) parts.push(t("sources.run.flagged", { count: flagged }));
+  if (run.detail?.left_out?.length) parts.push(t("sources.run.leftOut", { cols: run.detail.left_out.join(t("data.listSep")) }));
+  return parts.join(t("data.sep"));
 }
 
 /** "source:订单库/orders" -> {source, table}; anything else (an upload, a pipeline run) -> null. */
@@ -55,27 +56,27 @@ export function sourceOrigin(origin) {
 }
 
 /** The key columns a person typed ("订单号, 行号" or "订单号、行号"), as a list. */
-export const keyColumnsFrom = (text) => String(text ?? "").split(/[,，、\s]+/).filter(Boolean);
+export const keyColumnsFrom = (text) => String(text ?? "").split(KEY_SEPARATORS).filter(Boolean);
 
-const MOVES = [["host", "主机"], ["port", "端口"], ["database", "数据库名"], ["username", "账号"]];
+const MOVES = ["host", "port", "database", "username"];
 
 /** What is missing from a source form before it is sent; "" when nothing. A blank password is fine when editing (the one saved is kept) as long as the host, port,
  * database and account are still the saved ones: a saved password is not sent to a new place without being typed again. `saved` is the source being edited. */
 export function sourceProblem(form, editing, saved) {
-  if (!editing && !form.name.trim()) return "要填名字";
-  if (!form.host.trim()) return "要填主机";
-  if (/[\s/@?#]/.test(form.host.trim()) || form.host.includes("://")) return "主机只写地址，不要带协议、路径或账号";
-  if (form.host.includes(":") && !/^\[?[0-9a-fA-F:.]+\]?$/.test(form.host.trim())) return "主机里不要写端口，端口有单独的一格";
+  if (!editing && !form.name.trim()) return t("sources.problem.name");
+  if (!form.host.trim()) return t("sources.problem.host");
+  if (/[\s/@?#]/.test(form.host.trim()) || form.host.includes("://")) return t("sources.problem.hostShape");
+  if (form.host.includes(":") && !/^\[?[0-9a-fA-F:.]+\]?$/.test(form.host.trim())) return t("sources.problem.hostPort");
   const port = Number(form.port);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) return "端口要写成 1 到 65535 的整数";
-  if (!form.database.trim()) return "要填数据库名";
-  if (!form.username.trim()) return "要填账号";
-  if (!editing && !form.password) return "要填密码";
-  const moved = editing && saved ? MOVES.filter(([k]) => String(form[k]).trim() !== String(saved[k])).map(([, label]) => label) : [];
-  if (moved.length && !form.password) return `改了${moved.join("、")}，要重新填密码：保存的密码不会自己送到新的地方去`;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return t("sources.problem.port");
+  if (!form.database.trim()) return t("sources.problem.database");
+  if (!form.username.trim()) return t("sources.problem.username");
+  if (!editing && !form.password) return t("sources.problem.password");
+  const moved = editing && saved ? MOVES.filter((k) => String(form[k]).trim() !== String(saved[k])).map((k) => t(`sources.moved.${k}`)) : [];
+  if (moved.length && !form.password) return t("sources.problem.moved", { what: moved.join(t("data.listSep")) });
   const ca = String(form.ca ?? "").trim();
-  if (ca && !ca.includes("-----BEGIN CERTIFICATE-----")) return "CA 证书要贴 PEM 格式的文字（以 -----BEGIN CERTIFICATE----- 开头）";
-  if (ca && (form.tls ?? tlsDefault(form.host)) === "none") return "不加密时用不上 CA 证书：要按证书核对数据库，加密选“必须”";
+  if (ca && !ca.includes("-----BEGIN CERTIFICATE-----")) return t("sources.problem.caPem");
+  if (ca && (form.tls ?? tlsDefault(form.host)) === "none") return t("sources.problem.caUnused");
   return "";
 }
 
@@ -90,13 +91,13 @@ export function sourceBody(form, tls) {
 
 /** What is missing from a schedule form before it is sent; "" when nothing. */
 export function scheduleProblem(form, sources, pipelines) {
-  if (!form.name.trim()) return "要填名字";
-  if (!form.target) return form.kind === "source" ? "要选一个数据源" : "要选一条管道";
-  if (form.kind === "source" && !sources.find((s) => s.name === form.target)?.tables.length) return "这个数据源还没有读成数据集的表：先到它的页面读一张表";
-  if (form.kind === "pipeline" && !pipelines.some((p) => p.name === form.target)) return "没有这条管道";
-  if (form.cadence === "hourly" && !(Number.isInteger(Number(form.minute)) && form.minute !== "" && form.minute >= 0 && form.minute <= 59)) return "每小时的第几分写 0 到 59";
-  if ((form.cadence === "daily" || form.cadence === "weekly") && !/^([01]\d|2[0-3]):[0-5]\d$/.test(form.time)) return "时间写成 08:30 这样";
-  if (!form.tz.trim()) return "要填时区";
+  if (!form.name.trim()) return t("sources.problem.name");
+  if (!form.target) return form.kind === "source" ? t("sources.problem.pickSource") : t("sources.problem.pickPipeline");
+  if (form.kind === "source" && !sources.find((s) => s.name === form.target)?.tables.length) return t("sources.problem.noTables");
+  if (form.kind === "pipeline" && !pipelines.some((p) => p.name === form.target)) return t("sources.problem.noPipeline");
+  if (form.cadence === "hourly" && !(Number.isInteger(Number(form.minute)) && form.minute !== "" && form.minute >= 0 && form.minute <= 59)) return t("sources.problem.minute");
+  if ((form.cadence === "daily" || form.cadence === "weekly") && !/^([01]\d|2[0-3]):[0-5]\d$/.test(form.time)) return t("sources.problem.time");
+  if (!form.tz.trim()) return t("sources.problem.tz");
   return "";
 }
 

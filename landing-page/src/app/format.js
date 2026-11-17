@@ -1,8 +1,9 @@
+import { t } from "./i18n/index.js";
 import { sourceOrigin } from "./sourceModel.js";
 
-const TYPE_LABEL = { integer: "整数", decimal: "小数", text: "文本", date: "日期", month: "月份", datetime: "日期时间", boolean: "是否" };
+const TYPES = ["integer", "decimal", "text", "date", "month", "datetime", "boolean"];
 
-export const typeLabel = (type) => TYPE_LABEL[type] ?? type;
+export const typeLabel = (type) => (TYPES.includes(type) ? t(`data.type.${type}`) : type);
 export const isNumeric = (type) => type === "integer" || type === "decimal";
 
 /** 1 -> 100%; anything short of full never rounds up to 100%. */
@@ -14,7 +15,7 @@ export function percentText(rate) {
 /** Where a dataset came from, in words: an upload, or (anything else) a modelling run. */
 export const originText = (origin) => {
   const source = sourceOrigin(origin);
-  return origin === "upload" ? "上传" : source ? `数据源“${source.source}”的表 ${source.table}` : "建模运行";
+  return origin === "upload" ? t("data.origin.upload") : source ? t("data.origin.sourceTable", { source: source.source, table: source.table }) : t("data.origin.modeling");
 };
 
 /** An ISO time as the local "2026-11-13 14:05". */
@@ -29,18 +30,18 @@ export function timeText(iso) {
 export function keyText(column) {
   const check = column.key_check;
   if (check) {
-    const parts = [check.violations ? `重复 ${check.violations} 行` : "", check.null_key_rows ? `空 ${check.null_key_rows} 行` : ""].filter(Boolean);
-    if (check.status === "passed") return "唯一，没有空值";
-    const failed = `主键检查没通过：${parts.join("，") || "没有结果"}`;
-    return column.near_key ? `${failed}；${nearKeyText(column.near_key)}` : failed;   // which values repeat, beside the check
+    const parts = [check.violations ? t("data.key.dup", { count: check.violations }) : "", check.null_key_rows ? t("data.key.blank", { count: check.null_key_rows }) : ""].filter(Boolean);
+    if (check.status === "passed") return t("data.key.unique");
+    const failed = t("data.key.failed", { parts: parts.join(t("data.sep")) || t("data.key.noResult") });
+    return column.near_key ? `${failed}${t("data.semi")}${nearKeyText(column.near_key)}` : failed;   // which values repeat, beside the check
   }
-  if (column.possible_key) return "唯一，没有空值";
+  if (column.possible_key) return t("data.key.unique");
   return column.near_key ? nearKeyText(column.near_key) : "—";
 }
 
 /** A column that is almost a key: which values repeat (the worst few) and how many rows are blank. */
 export function nearKeyText(near) {
-  const shown = near.samples.map((s) => `${s.value}，${s.rows} 行`).join("；");
-  const repeated = near.repeated_values ? `重复 ${near.repeated_values} 个值（${shown}${near.repeated_values > near.samples.length ? " 等" : ""}）` : "";
-  return [repeated, near.missing ? `空 ${near.missing} 行` : ""].filter(Boolean).join("，");
+  const shown = near.samples.map((s) => t("data.key.sample", { value: s.value, count: s.rows })).join(t("data.semi"));
+  const repeated = near.repeated_values ? t("data.key.repeated", { count: near.repeated_values, shown, more: near.repeated_values > near.samples.length ? t("data.key.more") : "" }) : "";
+  return [repeated, near.missing ? t("data.key.blank", { count: near.missing }) : ""].filter(Boolean).join(t("data.sep"));
 }

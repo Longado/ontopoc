@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { changesExisting, movedLines, choiceProblem, filesProblem, firstChoice, resultLine, stem, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget } from "./uploadModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 const NAMES = ["订单", "客户"];
 const file = (name, size = 100) => ({ name, size });

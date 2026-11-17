@@ -3,6 +3,9 @@ import test from "node:test";
 
 import { keyText, percentText, typeLabel } from "./format.js";
 import { keyListText, modeLabel, noChangeText, timeline, versionChangeText, versionWay } from "./versionText.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 test("each version says what it did in its own mode", () => {
   assert.equal(versionChangeText({ mode: "new", rows: 160 }), "160 行");

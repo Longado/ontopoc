@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { fileToBase64, getDataset, getDatasets, previewUpload, uploadDatasets } from "./api.js";
 import { useAuth } from "./Auth.jsx";
+import { t, useT } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
 import { ACCEPT, afterUpload, updateWays, waysFor, changesExisting, firstChoice, movedLines, sizeText, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget, resultLine } from "./uploadModel.js";
 
@@ -14,9 +15,9 @@ function FileChoice({ file, choice, names, columns, refused, onChange, onRemove 
       <div className="file-head">
         <strong>{file.name}</strong>
         <span className="muted">{sizeText(file.size)}</span>
-        <button className="plain" onClick={onRemove}>移除</button>
+        <button className="plain" onClick={onRemove}>{t("data.upl.remove")}</button>
       </div>
-      <div className="ways" role="radiogroup" aria-label={`${file.name} 的处理方式`}>
+      <div className="ways" role="radiogroup" aria-label={t("data.upl.waysAria", { file: file.name })}>
         {ways.primary.map((w) => (
           <label key={w.kind} className="way">
             <input type="radio" name={`way-${file.name}`} checked={choice.kind === w.kind} onChange={() => onChange(withKind(choice, w.kind))} />
@@ -25,7 +26,7 @@ function FileChoice({ file, choice, names, columns, refused, onChange, onRemove 
         ))}
         {ways.folded.length > 0 && (
           <details className="way-fold" open={updateWays(choice).open}>
-            <summary>更新已有数据集</summary>
+            <summary>{t("data.upl.updateExisting")}</summary>
             {ways.folded.map((w) => (
               <label key={w.kind} className="way">
                 <input type="radio" name={`way-${file.name}`} checked={choice.kind === w.kind} onChange={() => onChange(withKind(choice, w.kind))} />
@@ -37,39 +38,40 @@ function FileChoice({ file, choice, names, columns, refused, onChange, onRemove 
       </div>
       {choice.kind === "new" && (
         <label className="field">
-          <span className="caption">数据集名称</span>
+          <span className="caption">{t("data.upl.name")}</span>
           <input type="text" value={choice.name} onChange={(e) => onChange({ ...choice, name: e.target.value })} aria-invalid={taken} />
         </label>
       )}
       {(choice.kind === "update_by_key" || choice.kind === "overwrite") && (
         <label className="field">
-          <span className="caption">更新哪个数据集</span>
-          <Select label="目标数据集" value={choice.target ?? ""} onChange={(v) => onChange(withTarget(choice, v || null))}>
-            <option value="">请选择</option>
+          <span className="caption">{t("data.upl.target")}</span>
+          <Select label={t("data.upl.targetAria")} value={choice.target ?? ""} onChange={(v) => onChange(withTarget(choice, v || null))}>
+            <option value="">{t("data.upl.choose")}</option>
             {names.map((n) => <option key={n} value={n}>{n}</option>)}
           </Select>
         </label>
       )}
       {choice.kind === "update_by_key" && choice.target && (
         <fieldset className="keys">
-          <legend>用哪几列对上现有的行（主键）</legend>
-          {!columns && <span className="muted">读取列名</span>}
+          <legend>{t("data.upl.keysLegend")}</legend>
+          {!columns && <span className="muted">{t("data.upl.readingColumns")}</span>}
           {columns?.map((c) => (
             <label key={c.name}>
               <input type="checkbox" checked={choice.keyColumns.includes(c.name)} onChange={(e) => onChange(withKeyColumn(choice, c.name, e.target.checked))} />
-              {c.name}{c.possible_key && <span className="faint"> 唯一</span>}
+              {c.name}{c.possible_key && <span className="faint"> {t("data.upl.unique")}</span>}
             </label>
           ))}
-          <p className="hint">对上的行改成新文件里的值，新的主键追加在后面，不会删除任何行。新文件里的空格子保留原值，想清空一个值要用“覆盖”。</p>
+          <p className="hint">{t("data.upl.keysHint")}</p>
         </fieldset>
       )}
-      {choice.kind === "overwrite" && choice.target && <p className="hint">整表换成新文件，写成新的一版，旧版本还在版本页。</p>}
+      {choice.kind === "overwrite" && choice.target && <p className="hint">{t("data.upl.overwriteHint")}</p>}
       {refused && <p className="error refusal">{refused}</p>}
     </section>
   );
 }
 
 export function UploadDialog({ presetTarget, onClose, onDone }) {
+  useT();
   const ref = useRef(null);
   const input = useRef(null);
   const signedIn = useAuth().auth;   // signed in: the service signs with the account's name; the name box is only for a service run without sign-in
@@ -153,10 +155,10 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
     <dialog ref={ref} className="upload" onCancel={(e) => { e.preventDefault(); close(); }}
       onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (phase === "pick" && loaded) add(e.dataTransfer.files); }}>
       <div className="dialog-body">
-      <h2>{presetTarget ? `上传新版本：${presetTarget}` : "上传数据集"}</h2>
+      <h2>{presetTarget ? t("data.upl.titleVersion", { name: presetTarget }) : t("data.upl.title")}</h2>
       {phase === "ask" && (
         <>
-          <p><strong>这次上传会让 {moved.length} 项回到“需要再看”</strong>，要有人重新确认后，它们和用到它们的数字才又算数：</p>
+          <p><strong>{t("data.upl.askTitle", { count: moved.length })}</strong>{t("data.upl.askText")}</p>
           <ul className="results">
             {movedLines(moved).map((m) => <li key={m.key}>{m.what}<span className="muted small block">{m.reason}</span></li>)}
           </ul>
@@ -166,13 +168,13 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
         <>
           {!signedIn && (
             <label className="field">
-              <span className="caption">你的名字</span>
-              <input type="text" value={who} placeholder="记在每个版本上" onChange={(e) => setWho(e.target.value)} />
+              <span className="caption">{t("data.upl.who")}</span>
+              <input type="text" value={who} placeholder={t("data.upl.whoHint")} onChange={(e) => setWho(e.target.value)} />
             </label>
           )}
           <div className="pick">
-            <button className="secondary" onClick={() => input.current.click()} disabled={phase === "sending" || !loaded}>选择文件</button>
-            <span className="muted">.xlsx 或 .csv，可以一次选几个，也可以拖进来；一次上传合计不超过 10 MB</span>
+            <button className="secondary" onClick={() => input.current.click()} disabled={phase === "sending" || !loaded}>{t("data.upl.chooseFiles")}</button>
+            <span className="muted">{t("data.upl.pickHint")}</span>
             <input ref={input} type="file" multiple accept={ACCEPT} hidden onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
           </div>
           {files.map((f, i) => (
@@ -181,25 +183,25 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
           ))}
         </>
       )}
-      {phase === "done" && <ul className="results">{results.map((r) => <li key={r.name}>{resultLine(r)}{r.recheck_error && <span className="error"> 新版本已保存，但检查依赖它的定义时出错（{r.recheck_error}）；这些定义已标为需再看</span>}
-        {r.overwrites_action_rows?.length > 0 && <span className="warn block"> 这一版改回了行为写过的值：{r.overwrites_action_rows.map((o) => `${o.key}${o.removed ? "（这一行没有了）" : `（${o.columns.join("、")}，行为“${o.action}”，${o.approved_by} 批准）`}`).join("；")}。已经保存，没有拦。</span>}</li>)}</ul>}
+      {phase === "done" && <ul className="results">{results.map((r) => <li key={r.name}>{resultLine(r)}{r.recheck_error && <span className="error"> {t("data.upl.recheck", { error: r.recheck_error })}</span>}
+        {r.overwrites_action_rows?.length > 0 && <span className="warn block"> {t("data.upl.overwroteActions", { rows: r.overwrites_action_rows.map((o) => (o.removed ? t("data.upl.rowGone", { key: o.key }) : t("data.upl.rowChanged", { key: o.key, columns: o.columns.join(t("data.listSep")), action: o.action, approver: o.approved_by }))).join(t("data.semi")) })}</span>}</li>)}</ul>}
       </div>
       {phase === "ask" ? (
         <div className="actions">
-          <span className="muted">继续就会写成新版本，上面这些马上变成需要再看</span>
-          <button className="plain" onClick={() => setPhase("pick")}>返回修改</button>
-          <button className="primary" onClick={() => send(true)}>继续上传</button>
+          <span className="muted">{t("data.upl.askFoot")}</span>
+          <button className="plain" onClick={() => setPhase("pick")}>{t("data.upl.back")}</button>
+          <button className="primary" onClick={() => send(true)}>{t("data.upl.continue")}</button>
         </div>
       ) : phase !== "done" ? (
         <div className="actions">
           {error ? <span className="error">{error}</span> : <span className="muted">{files.length ? problem : ""}</span>}
-          <button className="plain" onClick={close}>取消</button>
-          <button className="primary" onClick={() => send()} disabled={!files.length || !!problem || phase === "sending"}>{phase === "sending" ? "上传中" : "上传"}</button>
+          <button className="plain" onClick={close}>{t("common.cancel")}</button>
+          <button className="primary" onClick={() => send()} disabled={!files.length || !!problem || phase === "sending"}>{phase === "sending" ? t("data.upl.sending") : t("data.upl.submit")}</button>
         </div>
       ) : (
         <div className="actions">
-          <span className="muted">下一步：把数据变成业务里的东西，比如“订单”“客户”。</span>
-          <button className="plain" onClick={close}>完成</button>
+          <span className="muted">{t("data.upl.next")}</span>
+          <button className="plain" onClick={close}>{t("data.upl.done")}</button>
           {afterUpload(results).map((a, i, all) => <a key={a.label} className={`button${i === all.length - 1 ? " primary" : " secondary"}`} href={a.href} onClick={close}>{a.label}</a>)}
         </div>
       )}
