@@ -148,23 +148,18 @@ export function RelationPage({ route }) {
   };
   return (
     <main className="page">
-      <a className="back" href="#/relations">
-        <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        关系
-      </a>
       {state.status === "error" && <p className="error">{state.error}</p>}
       {state.status === "loading" && !r && <p className="muted">加载中</p>}
       {r && (
         <>
-          <div className="page-head">
-            <h1 tabIndex={-1}>{r.from_name} → {r.to_name} <span className="muted id">{r.id}</span> <State item={r} /></h1>
-            {mayBuild && (
-              <div className="head-actions">
+          <PageHeader crumbs={[{ label: "业务对象" }, { label: "关系", href: "#/relations" }, { label: `${r.from_name} → ${r.to_name}` }]} title={`${r.from_name} → ${r.to_name}`} status={<State item={r} />}
+            sub={r.name}
+            actions={mayBuild && (
+              <>
                 <a className="button secondary" href={hrefFor({ page: "relationedit", id })}>修改</a>
                 {r.can_confirm && <button className="primary" onClick={confirm} disabled={busy}>确认这个关系</button>}
-              </div>
-            )}
-          </div>
+              </>
+            )} />
           {error && <p className="error">{error}</p>}
           <p className="facts">
             <span>{CARDINALITY_LABEL[r.cardinality]}</span>

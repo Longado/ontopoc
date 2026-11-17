@@ -1,5 +1,12 @@
 // The object page's related objects as plain functions of what the service sends.
 
+/** The value of the column that names the object (客户名称, name): a column that is not a key and not derived, called ...名称, ...名 or ...name. "" when none, or when it is empty. */
+export function objectName(columns, row) {
+  const i = columns.findIndex((c) => !c.key && !c.derived && /(名称|名|name)$/i.test(c.name));
+  const value = i < 0 ? null : row[i];
+  return value == null ? "" : String(value).trim();
+}
+
 /** One related object's label: its key, and its name beside it when its type has a name column ("KH022 + 苏州 · 苏州家电客户22"). */
 export const objectLabel = (o) => (o.name ? `${o.text} · ${o.name}` : o.text);
 

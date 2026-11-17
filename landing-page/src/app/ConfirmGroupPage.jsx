@@ -6,6 +6,8 @@ import { itemHref } from "./relationModel.js";
 import { State } from "./TypesPage.jsx";
 import { stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
+import { sortByProblem } from "./confirmModel.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
 import { newValueText } from "./viewModel.js";
 
 /** What each value of a set of meanings meant and how many rows had it when it was last confirmed, beside what it says and has now. */
@@ -98,30 +100,27 @@ export function ConfirmGroupPage({ route }) {
   };
   return (
     <main className="page">
-      <a className="back" href="#/confirm">
-        <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        待确认
-      </a>
+      <PageHeader crumbs={[{ label: "业务对象" }, { label: "待确认", href: "#/confirm" }, { label: `${dataset} 第 ${version} 版` }]}
+        title={result ? groupTitle(dataset, version, result.confirmed.length + result.sent_on.length + result.left_out.length) : group ? groupTitle(group.dataset, group.version, group.items.length) : `${dataset} 第 ${version} 版`}
+        sub={group && !result ? `${group.uploaded_by ?? "未署名"} 于 ${timeText(group.uploaded_at)} 上传` : undefined} />
       {state.status === "error" && <p className={state.missing ? "muted" : "error"}>{state.missing ? "这一组已经没有要看的了。" : state.error} <a href="#/confirm">回到待确认</a></p>}
       {state.status === "loading" && !group && <p className="muted">加载中</p>}
-      {result && <><h1 tabIndex={-1}>{groupTitle(dataset, version, result.confirmed.length + result.sent_on.length + result.left_out.length)}</h1><Done result={result} /></>}
+      {result && <Done result={result} />}
       {group && !result && (
         <>
-          <div className="page-head">
-            <h1 tabIndex={-1}>{groupTitle(group.dataset, group.version, group.items.length)}</h1>
-          </div>
-          <p className="muted" style={{ marginBottom: 16 }}>{group.uploaded_by ?? "未署名"} 于 {timeText(group.uploaded_at)} 上传</p>
           {group.hidden > 0 && <p className="warn">有 {group.hidden} 项你看不到</p>}
           <div className="cards">
-            {group.items.map((item) => (
+            {sortByProblem(group.items).map((item) => (
               <Item key={`${item.element}@${item.version}`} item={item} marks={marks} onMark={(i, on) => setMarks(withMark(marks, i, on))}
                 picked={picked[item.element] ?? {}} onPick={(element, key, choice) => setPicked({ ...picked, [element]: { ...(picked[element] ?? {}), [key]: choice } })} />
             ))}
           </div>
-          <div className="inline wide">
-            <button className="primary" disabled={busy || Boolean(lacking)} onClick={confirm}>一起确认 {group.items.filter((i) => i.ready).length} 项</button>
+          <div className="batch-bar" role="region" aria-label="一起确认">
+            <button className="secondary" onClick={() => setMarks(group.items.filter((i) => i.ready).reduce((m, i) => withMark(m, i, true), marks))}>全部标为已看过</button>
+            <span className="batch-spacer" />
             {lacking && <span className="muted small">{lacking}</span>}
             {error && <span className="error">{error}</span>}
+            <button className="primary" disabled={busy || Boolean(lacking)} onClick={confirm}>一起确认 {group.items.filter((i) => i.ready).length} 项</button>
           </div>
         </>
       )}

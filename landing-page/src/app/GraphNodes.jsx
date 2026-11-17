@@ -1,5 +1,5 @@
 import React from "react";
-import { KIND_LABEL, SIZE, ageText, cameFromText, datedText, edgeLabel, fitText, leaves, sourceLines } from "./graphModel.js";
+import { KIND_LABEL, SIZE, ageText, cameFromText, datedText, fitText, groupLabel, labelWidth, leaves, sourceLines } from "./graphModel.js";
 import { stateText } from "./typeModel.js";
 
 const stateClass = (node) => `s-${node.model_draft ? "proposed" : node.state ?? "none"}`;
@@ -52,17 +52,17 @@ const colour = (state) => (state === "needs_look" ? "amber" : state === "rejecte
 
 /** A line between two types of the relation graph: the rows that connect on it, an arrow toward the "one" side, dashed when the cardinality does not hold. Several relations
  * between the same two types are one line with a count. */
-export function RelationLine({ group, from, to, picked, faded, lit, onPick }) {
+export function RelationLine({ group, from, to, picked, faded, lit, onPick, labelAt }) {
   const a = leaves(from, to);
   const b = leaves(to, from);
   const [first] = group.edges;
   const many = group.edges.length > 1;
   const failing = group.edges.some((e) => e.cardinality_ok === false);
   const state = group.edges.find((e) => e.state === "needs_look") ? "needs_look" : first.state;
-  const label = many ? `${group.edges.length} 个关系` : edgeLabel(first);
-  const width = Math.max(56, [...label].length * 12 + 16);
-  const mx = (a.x + b.x) / 2;
-  const my = (a.y + b.y) / 2;
+  const label = groupLabel(group);
+  const width = labelWidth(label);
+  const mx = labelAt?.x ?? (a.x + b.x) / 2;   // the relation graph places labels clear of the boxes; the lineage has none
+  const my = labelAt?.y ?? (a.y + b.y) / 2;
   const toward = !many && first.arrow_to ? (first.arrow_to === group.to ? "marker-end" : "marker-start") : null;
   const marker = lit ? "blue" : colour(state);
   return (

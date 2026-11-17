@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ChartResult, GroupColumns, GroupShape, NotOfficial, Standing } from "./ChartView.jsx";
 import { exploreChart, exploreTable, getExploreMeta } from "./api.js";
-import { CHART_KINDS, OPS, chartMissing, chartSpec, emptyFilter, fnOptions, opsFor, pivotQuery, queryFromParam, queryOf, queryToParam } from "./explorerModel.js";
+import { CHART_KINDS, OPS, chartMissing, chartSpec, emptyFilter, fnOptions, opsFor, pivotQuery, queryFromParam, queryOf, queryToParam, searchWord } from "./explorerModel.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { OUTSIDE_NOTE, codeCell } from "./typeModel.js";
@@ -80,6 +80,7 @@ function TableView({ id, result, page, setPage }) {
       <p className="muted small" style={{ marginBottom: 8 }}>
         来自 {result.dataset} 第 {result.dataset_version} 版，{result.rows_limited ? "你能看到的 " : "共 "}{result.total} 行，第 {result.total ? (result.page - 1) * result.limit + 1 : 0}–{Math.min(result.page * result.limit, result.total)} 行
       </p>
+      {result.total === 0 && <p className="muted" style={{ marginBottom: 8 }}>没有符合的对象。换个搜索词，或去掉一个条件。</p>}
       <div className="table-wrap tall">
         <table>
           <thead>
@@ -90,7 +91,7 @@ function TableView({ id, result, page, setPage }) {
           </thead>
           <tbody>
             {result.rows.map((row, r) => (
-              <tr key={result.numbers[r]}>
+              <tr key={result.numbers[r]} className="click" onClick={(e) => { if (!e.target.closest("a,button")) window.location.assign(hrefFor({ page: "object", id, n: result.numbers[r] })); }}>
                 {row.map((v, i) => {
                   const e = result.enums[result.columns[i].column];
                   if (!e) return <td key={i} className="cell" title={v ?? (result.outside?.[r]?.includes(i) ? OUTSIDE_NOTE : undefined)}>{v ?? <span className="faint">—</span>}</td>;
@@ -122,11 +123,21 @@ export function Explorer({ id, route }) {
   const [view, setView] = useState(first?.view ?? "");
   const [filters, setFilters] = useState(first?.filters ?? []);
   const [pivot, setPivot] = useState(first?.pivot ?? null);
+  const [typed, setTyped] = useState(searchWord(first));   // what is in the box; `search` follows it a moment after the last key
+  const [search, setSearch] = useState(searchWord(first));
   const [mode, setMode] = useState("table");
   const [page, setPage] = useState(route.pageNo ?? 1);
   const [chart, setChart] = useState({ kind: "bar", group: "", measure: "", fn: "count", bins: 10, top: "", order: "" });
   const m = meta.data;
-  const query = queryOf({ type: id, view, filters, pivot });
+  useEffect(() => {
+    if (typed === search) return undefined;
+    const wait = setTimeout(() => {
+      setPage(1);
+      setSearch(typed);
+    }, 300);
+    return () => clearTimeout(wait);
+  }, [typed, search]);
+  const query = queryOf({ type: id, view, filters, pivot, search });
   const missing = chartMissing(chart);
   const table = useSettled(() => exploreTable(query, page), JSON.stringify([query, page, mode === "table"]));
   const drawn = useSettled(() => (mode === "chart" && !missing ? exploreChart(query, chartSpec(chart)) : Promise.resolve(null)), JSON.stringify([query, chart, mode, missing]));
@@ -145,6 +156,7 @@ export function Explorer({ id, route }) {
           <button className={mode === "table" ? "on" : ""} aria-pressed={mode === "table"} onClick={() => setMode("table")}>表格</button>
           <button className={mode === "chart" ? "on" : ""} aria-pressed={mode === "chart"} onClick={() => setMode("chart")}>图表</button>
         </div>
+        <input type="search" className="explore-search" aria-label="搜索对象" placeholder="搜索主键或任意一列" value={typed} maxLength={100} onChange={(e) => setTyped(e.target.value)} />
         <Select label="视图" value={view} onChange={(v) => change(() => setView(v))}>
           <option value="">全部行</option>
           {m.views.map((v) => <option key={v.id} value={v.id}>{v.name}{v.state === "confirmed" ? "" : "（未确认）"}</option>)}

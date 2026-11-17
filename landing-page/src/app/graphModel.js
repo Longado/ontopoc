@@ -161,6 +161,12 @@ export function connectedMeaning(edge) {
   return `${edge.from_name}一共 ${edge.of} 行，其中 ${edge.connected} 行在${edge.to_name}里找到了对应的一行${edge.of > edge.connected ? `；还有 ${edge.of - edge.connected} 行找不到` : ""}`;
 }
 
+/** The text on a relation's line: how many rows connect, or how many relations there are between the two types. */
+export const groupLabel = (group) => (group.edges.length > 1 ? `${group.edges.length} 个关系` : edgeLabel(group.edges[0]));
+
+/** The width of a label's pill: a character is about 12 wide, with room at the ends. */
+export const labelWidth = (label) => Math.max(56, [...label].length * 12 + 16);
+
 const overlaps = (a, b) => !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
 
 /** Where each line's label goes ({key: {x, y}}, the centre of the label): in the middle of the line when that is clear, else the nearest place along it or beside it
