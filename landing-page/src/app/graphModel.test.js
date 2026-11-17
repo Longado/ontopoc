@@ -157,7 +157,7 @@ test("a column nobody is in is left out, and no two nodes overlap", () => {
 
 test("the depth control lights only N steps around the picked node", () => {
   const ids = (n, mode = "both") => [...litDepth("pipeline:p", CHAIN.edges, mode, n)].sort();
-  assert.deepEqual(ids(1), ["dataset:汇总", "dataset:工单", "dataset:订单", "pipeline:p"]);
+  assert.deepEqual(ids(1), ["dataset:工单", "dataset:汇总", "dataset:订单", "pipeline:p"]);
   assert.deepEqual(ids(1, "down"), ["dataset:汇总", "pipeline:p"]);
   assert.deepEqual(ids(2, "down"), ["dataset:汇总", "objtype:order", "pipeline:p"]);
   assert.equal(litDepth("pipeline:p", CHAIN.edges, "both", null).size, 10);

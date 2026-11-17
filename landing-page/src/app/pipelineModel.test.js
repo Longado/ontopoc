@@ -46,7 +46,6 @@ test("a new step reads the selected one; a join takes the nearest other input as
   assert.deepEqual([join.id, join.left, join.right, join.how, join.null_keys], ["j1", "o", "t", "left", "no_match"]);
   assert.equal(newStep(SPEC.steps, "transform", "j").id, "t1");   // "t" is taken by an input; the prefix is the transform's own
   assert.equal(newStep([{ id: "t1", type: "transform", from: "a", operators: [] }], "transform", null).id, "t2");
-  assert.equal(newStep([], "input", null, ["订单", "客户"]).dataset, "订单");
   assert.equal(newStep(SPEC.steps, "output", null).from, "x");   // nothing selected: the last step
 });
 

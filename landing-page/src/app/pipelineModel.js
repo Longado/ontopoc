@@ -91,14 +91,93 @@ export function stepTitle(step, steps = []) {
 export const OP_NAME = { filter: "数据过滤", fill_null: "空值替换", text_clean: "文本清理", cast: "字段转换", calc: "计算列", aggregate: "分组统计", dedupe: "排重", label: "打标签" };
 export const operatorName = (op) => OP_NAME[op.op] ?? op.op;
 
-/** A message from the engine ("步骤 t1 的第 1 个操作（calc）：…") with the step id and the operator id said as a person says them ("转换「计算列」的第 1 个操作（计算列）：…"). An id that is not among `steps` is left as it is. */
+/** The conditions of a filter, flattened in the order the form shows them. */
+const conditionsOf = (node) => (node?.all || node?.any ? (node.all ?? node.any).flatMap(conditionsOf) : node ? [node] : []);
+const VALUE_CMPS = new Set(["eq", "ne", "gt", "lt", "ge", "le"]);
+
+/** A message from the engine ("步骤 t1 的第 1 个操作（filter）：没有列「」") said as a person says it: an operator by its name ("数据过滤：条件 1 没选列"; "分组统计（第 2 个操作）：…" when the step has
+ * several), any other step by its kind and title, no empty quotes. An id that is not among `steps` is left as it is. */
 export function friendlyError(message, steps) {
-  return String(message ?? "").replace(/步骤 ([^\s：，、（）。]+?)(?: 的第 (\d+) 个操作（(\w+)）)?(?=[：，、。 ）]|$)/g, (whole, id, n, op) => {
+  let lastOp = null;
+  const said = String(message ?? "").replace(/步骤 ([^\s：，、（）。]+?)(?: 的第 (\d+) 个操作（(\w+)）)?(?=[：，、。 ）]|$)/g, (whole, id, n, op) => {
     const step = steps.find((s) => s.id === id);
     if (!step) return whole;
+    const operator = n ? step.operators?.[Number(n) - 1] : null;
+    if (operator) {
+      lastOp = operator;
+      return `${OP_NAME[op] ?? op}${step.operators.length > 1 ? `（第 ${n} 个操作）` : ""}`;
+    }
     const head = `${KIND_LABEL[step.type]}「${stepTitle(step, steps.filter((s) => s !== step))}」`;
     return n ? `${head}的第 ${n} 个操作（${OP_NAME[op] ?? op}）` : head;
   });
+  const empty = lastOp?.op === "filter" ? conditionsOf(lastOp.where).findIndex((c) => !c.column) + 1 || 1 : 0;
+  return said
+    .replace(/没有列「」/, empty ? `条件 ${empty} 没选列` : "没选列")
+    .replace(/数据集「」(?:不存在|没有)?/, "数据集还没选")
+    .replace(/没有(\S{0,4}?)「」/, "没选$1")
+    .replace(/「」/g, "");
+}
+
+/** Whether a step is set up so that it can run: what is still missing, in words ("数据过滤：条件 1 没选列"). A step that has none of these may still fail when the service checks it. */
+export function stepIssues(step) {
+  if (step.type === "input") return step.dataset || step.view ? [] : ["还没选数据集"];
+  if (step.type === "join") {
+    return [...(step.left ? [] : ["左边还没选"]), ...(step.right ? [] : ["右边还没选"]), ...((step.on ?? []).some((p) => !p.left || !p.right) ? ["关联的列没选齐"] : [])];
+  }
+  if (step.type === "output") return String(step.name ?? "").trim() ? [] : ["还没写数据集的名字"];
+  if (step.type === "union") return (step.inputs ?? []).length < 2 ? ["合并至少要选两步"] : [];
+  if (step.type !== "transform") return [];
+  if (!step.operators?.length) return ["还没有操作"];
+  return step.operators.flatMap((op) => {
+    const who = operatorName(op);
+    if (op.op === "filter") {
+      return conditionsOf(op.where).flatMap((c, i) => {
+        if (!c.column) return [`${who}：条件 ${i + 1} 没选列`];
+        const open = VALUE_CMPS.has(c.cmp) ? c.value == null || c.value === "" && !("meaning" in c || "meanings" in c)
+          : c.cmp === "in" ? !(c.values ?? []).length && !("meaning" in c || "meanings" in c) : c.cmp === "between" ? c.low == null || c.low === "" || c.high == null || c.high === "" : false;
+        return open ? [`${who}：条件 ${i + 1} 未填`] : [];
+      });
+    }
+    if (op.op === "calc") return [...(op.name ? [] : [`${who}：还没写新列的名字`]), ...(op.expression ? [] : [`${who}：还没写表达式`])];
+    if (["cast", "label"].includes(op.op)) return op.column ? [] : [`${who}：还没选列`];
+    if (["fill_null", "text_clean"].includes(op.op)) return op.columns?.length ? [] : [`${who}：还没选列`];
+    return [];
+  });
+}
+
+/** {step id: what is missing} for the steps that are not set up yet. */
+export function allIssues(steps) {
+  return Object.fromEntries(steps.map((s) => [s.id, stepIssues(s)]).filter(([, list]) => list.length));
+}
+
+const KEY_LIKE = /(号|编号|编码|代码|键|id|key)$/i;
+/** The columns a join can put in as its key: the columns of the same name and type on both sides. `best` is the one most likely the key (a name that ends like one, the first in the left
+ * input); `others` are the other key-like ones, which would make the key longer. A same-name column that does not look like a key (a status, an amount) is not offered. */
+export function suggestJoinKeys(left = [], right = []) {
+  const there = new Map(right.map((c) => [c.name, c]));
+  const same = left.filter((c) => KEY_LIKE.test(c.name) && there.has(c.name) && (!c.type || !there.get(c.name).type || c.type === there.get(c.name).type)).map((c) => ({ left: c.name, right: c.name }));
+  return { best: same[0] ?? null, others: same.slice(1) };
+}
+
+/** Why the run button is grey ("" when it is not). */
+export function runBlockReason({ dirty, hasOutput, todo = 0, running = false }) {
+  if (running) return "正在运行";
+  if (dirty) return "有改动还没保存，先保存";
+  if (!hasOutput) return "要有一个输出步骤才能运行";
+  if (todo > 0) return `还有 ${todo} 处没配好，先配好`;
+  return "";
+}
+
+/** How many rows a step added or dropped, for its card ("" for an input, which has nothing before it). */
+export function rowChangeText(node) {
+  if (!node || node.type === "input" || !node.rows_in?.length || node.rows_out == null) return "";
+  const delta = node.rows_out - node.rows_in[0];
+  return delta === 0 ? "行数不变" : `${delta > 0 ? "+" : "\u2212"}${numberText(Math.abs(delta))} 行`;
+}
+
+/** What a run left on each card: {step id: {rows, warn}}. */
+export function runResults(run) {
+  return Object.fromEntries((run?.nodes ?? []).map((n) => [n.id, { rows: n.rows_out, warn: Object.keys(n.failures ?? {}).length > 0 }]));
 }
 
 /** The picker: the categories present (in the order people look for them), and the operators of the chosen one that match the search. */
@@ -125,7 +204,7 @@ export function newStep(steps, kind, near, datasets = [], model = "") {
   const split = steps.find((s) => s.id === picked && s.type === "split");
   const branches = (split?.branches ?? []).map((b) => b.id);
   const last = split ? branches[0] ?? null : picked;   // a split is read through its branches
-  if (kind === "input") return { id, type: "input", dataset: datasets[0] ?? "" };
+  if (kind === "input") return { id, type: "input", dataset: "" };   // empty: the person picks the data; the first dataset in the list is not a guess worth making
   if (kind === "join") {
     const right = [...steps].reverse().find((s) => s.id !== picked && s.type === "input") ?? [...steps].reverse().find((s) => s.id !== picked && s.type !== "split" && s.type !== "output");
     return { id, type: "join", left: last, right: right?.id ?? null, how: "left", on: [{ left: "", right: "" }], null_keys: "no_match" };
