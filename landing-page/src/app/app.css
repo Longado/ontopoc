@@ -902,3 +902,5 @@ ul.related-list { list-style: none; padding: 0; margin: 4px 0 8px; display: flex
 .setting-row:first-child { border-top: 0; }
 .setting-name { display: flex; align-items: center; gap: var(--s1); }
 .setting-row p { margin: 4px 0 0; }
+.settings .table-wrap { margin: var(--s1) 0 var(--s2); }
+.settings .ph { margin-bottom: 0; }
