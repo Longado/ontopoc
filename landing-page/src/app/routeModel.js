@@ -43,7 +43,10 @@ export function parseRoute(hash) {
   if (parts.length === 1 && Object.hasOwn(PLANNED, parts[0])) return { page: "planned", key: parts[0] };
   if (parts[0] === "lineage" && parts.length === 1) return { page: "lineage" };
   if (parts[0] === "relations") {
-    if (parts.length === 1) return new URLSearchParams(query).get("view") === "list" ? { page: "relations", list: true } : { page: "relations" };   // the graph is the default, the list stays one click away
+    if (parts.length === 1) {
+      const view = new URLSearchParams(query).get("view");
+      return view === "map" ? { page: "relations", map: true } : view === "list" ? { page: "relations", list: true } : { page: "relations" };   // the list of relation cards is the default, the map is one click away
+    }
     if (parts.length === 2 && parts[1] === "new") return { page: "relationnew" };   // the service refuses a relation called new, so this address is never a relation
     if (parts.length === 3 && parts[2] === "edit") return { page: "relationedit", id: parts[1] };
     if (parts.length === 2) return { page: "relation", id: parts[1] };
@@ -104,7 +107,7 @@ export function hrefFor(route) {
   if (route.page === "types") return "#/types";
   if (route.page === "confirm" || route.page === "permissions" || route.page === "lineage") return `#/${route.page}`;
   if (route.page === "confirmgroup") return `#/confirm/group/${encodeURIComponent(route.dataset)}/${route.version}`;
-  if (route.page === "relations") return route.list ? "#/relations?view=list" : "#/relations";
+  if (route.page === "relations") return route.map ? "#/relations?view=map" : route.list ? "#/relations?view=list" : "#/relations";
   if (route.page === "pipelines") return "#/pipelines";
   if (route.page === "pipelinenew") return `#/pipelines/new${datasetQuery(route)}`;
   if (route.page === "pipeline") {

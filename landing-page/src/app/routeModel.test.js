@@ -48,7 +48,7 @@ test("the account page and the users page have addresses; nothing hangs off them
 test("hrefFor is the inverse of parseRoute", () => {
   for (const route of [{ page: "datasets" }, { page: "qa", id: null }, { page: "qa", id: 7 }, { page: "tasks" }, { page: "account" }, { page: "users" }, { page: "dataset", name: "订单 (试)", tab: "preview", version: 3, pageNo: 2 }, { page: "dataset", name: "a/b", tab: "versions", version: null, pageNo: 1 },
     { page: "types" }, { page: "typenew" }, { page: "typeedit", id: "order" }, { page: "type", id: "order", tab: "props", pageNo: 1 }, { page: "type", id: "order", tab: "objects", pageNo: 3 },
-    { page: "relations" }, { page: "relations", list: true }, { page: "lineage" }, { page: "relationnew" }, { page: "relation", id: "order_customer" }, { page: "relationedit", id: "order_customer" }, { page: "confirm" }, { page: "permissions" }]) {
+    { page: "relations" }, { page: "relations", list: true }, { page: "relations", map: true }, { page: "lineage" }, { page: "relationnew" }, { page: "relation", id: "order_customer" }, { page: "relationedit", id: "order_customer" }, { page: "confirm" }, { page: "permissions" }]) {
     assert.deepEqual(parseRoute(hrefFor(route)), route);
   }
 });
@@ -148,6 +148,7 @@ test("relations, the 待确认 queue and the permissions page have addresses; a 
   assert.equal(navKeyOf({ page: "relation", id: "x" }), "relations");
   assert.equal(navKeyOf({ page: "lineage" }), "lineage");
   assert.deepEqual(parseRoute("#/relations?view=list"), { page: "relations", list: true });
+  assert.deepEqual(parseRoute("#/relations?view=map"), { page: "relations", map: true });
   assert.deepEqual(parseRoute("#/relations?view=graph"), { page: "relations" });
   assert.deepEqual(parseRoute("#/lineage/x"), { page: "notfound" });
   assert.equal(navKeyOf({ page: "permissions" }), "permissions");

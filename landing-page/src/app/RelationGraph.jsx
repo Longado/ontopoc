@@ -15,11 +15,14 @@ import { Drawer } from "./ui/Drawer.jsx";
 function Legend({ example }) {
   return (
     <div className="graph-legend" aria-label={t("relations.graph.legend")}>
+      <h2 className="rel-legend-title">{t("relations.graph.title")}</h2>
+      <p className="muted small">{t("relations.graph.legendBoxes")}</p>
       <ul>
         {LEGEND.map((l) => (
           <li key={l.key}><span className="swatch" style={{ background: l.colour }} aria-hidden="true" /><strong>{l.word}</strong> <span className="muted">{l.text}</span></li>
         ))}
       </ul>
+      <p className="muted small">{t("relations.graph.legendLines")}</p>
       <p className="muted small"><strong>{t("relations.graph.clickLine")}</strong>{t("relations.graph.legendRest")}{example ? t("relations.graph.example", { text: connectedMeaning(example) }) : ""}{t("relations.graph.legendEnd")}</p>
     </div>
   );
@@ -65,6 +68,7 @@ export function RelationGraph() {
   const lit = group ? new Set([group.from, group.to]) : node ? neighbours(node.id, graph.edges) : null;
   return (
     <>
+      <p className="muted rel-intro">{t("relations.graph.intro")}</p>
       <div className={`graph-layout rel-graph${node ? " with-drawer" : ""}`}>
         <GraphCanvas width={layout.width} height={layout.height} label={t("relations.graph.canvas")} fileName={t("relations.graph.file")} onBlank={() => setPicked(null)}>
           {["line", "label"].map((part) => groups.map((g) => (
