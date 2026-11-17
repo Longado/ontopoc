@@ -349,6 +349,45 @@ class ObjectTests(UseLayerCase):
             self.assertEqual(bob.get('/api/workspace/explore/customer/object/9999')[0], 404)
             self.assertEqual(bob.get('/api/workspace/explore/customer/object/x')[0], 404)
 
+    def test_a_search_word_keeps_the_rows_where_the_key_or_any_column_holds_it(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            bob = team['bob']
+            word = ORDERS[7]['订单号'][-4:]
+            by_key = self.table(bob, query(search=word))
+            self.assertEqual(by_key['total'], sum(word in ' '.join(str(v) for v in r.values()) for r in ORDERS))
+            self.assertGreaterEqual(by_key['total'], 1)
+            order_no = by_key['columns'].index(next(c for c in by_key['columns'] if c['name'] == '订单号'))
+            self.assertTrue(all(word in ' '.join(str(v) for v in row if v is not None) for row in by_key['rows']))
+            self.assertIn(ORDERS[7]['订单号'], [row[order_no] for row in by_key['rows']])
+            customer = CUSTOMERS[0]['客户名称']
+            named = self.table(bob, {'type': 'customer', 'search': customer[:2].upper()})
+            self.assertEqual(named['total'], sum(customer[:2].upper().casefold() in ' '.join(str(v) for v in r.values()).casefold() for r in CUSTOMERS))
+            narrowed = self.table(bob, query(search=word, filters=[{'field': '状态码', 'op': 'eq', 'value': '2'}]))
+            self.assertLessEqual(narrowed['total'], by_key['total'])
+            self.assertEqual(self.table(bob, query(search='  '))['total'], 160)   # blank is no search
+            self.assertEqual(self.table(bob, query(search='zzz-nobody'))['total'], 0)
+            status, body = bob.post('/api/workspace/explore/table', {'query': query(search=5), 'page': 1})
+            self.assertEqual(status, 400, body)
+
+    def test_a_related_object_carries_a_name_when_its_type_has_a_name_column(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            bob = team['bob']
+            order = ORDERS[0]
+            order_n = self.table(bob, query(filters=[{'field': '订单号', 'op': 'eq', 'value': order['订单号']}]))['numbers'][0]
+            related = {r['id']: r for r in bob.get(f'/api/workspace/explore/order/object/{order_n}')[1]['related']}
+            [customer] = related['order_customer']['objects']
+            self.assertEqual((customer['text'], customer['name']), (order['客户编号'], next(c['客户名称'] for c in CUSTOMERS if c['客户编号'] == order['客户编号'])))
+            product = related['order_product']['objects'][0] if 'order_product' in related else None
+            if product:
+                self.assertEqual(product['name'], next(p['产品名称'] for p in planted.planted_bundle()['sources']['产品']['records'] if p['产品编号'] == product['text']))
+            cn = self.table(bob, {'type': 'customer', 'filters': [{'field': '客户编号', 'op': 'eq', 'value': order['客户编号']}]})['numbers'][0]
+            back = {r['id']: r for r in bob.get(f'/api/workspace/explore/customer/object/{cn}')[1]['related']}
+            self.assertIsNone(back['order_customer']['objects'][0]['name'])   # an order has no name column: the key says it all
+
     def test_a_pivot_goes_from_a_filtered_set_to_the_set_it_links_to(self):
         with self.service() as (base, out):
             team = self.team(base)
