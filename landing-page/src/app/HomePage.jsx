@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { getAsk, getDatasets, getNotices, getPipelines, getQueueCount, getRelations, getSources, getTypes, getUsers } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild, isAdmin } from "./authModel.js";
-import { exampleQuestions, greeting, kpiCards, needsSetup, setupSteps, todoItems, updatedText } from "./homeModel.js";
+import { exampleQuestions, greeting, kpiCards, needsSetup, quickActions, setupSteps, todoItems, updatedText } from "./homeModel.js";
 import { formatDate, formatDateTime, t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
@@ -27,10 +27,13 @@ function Checklist({ steps }) {
   return (
     <section className="card setup" aria-labelledby="setup-title">
       <div className="setup-head">
-        <h2 id="setup-title">{t("home.setup.title")}</h2>
-        <span className="muted">{t("home.setup.progress", { done, total: steps.length })}</span>
+        <div>
+          <h2 id="setup-title">{t("home.setup.title")}</h2>
+          <p className="muted">{t("home.setup.intro")}</p>
+        </div>
+        <span className="setup-count">{t("home.setup.progress", { done, total: steps.length })}</span>
       </div>
-      <p className="muted">{t("home.setup.intro")}</p>
+      <div className="setup-bar" role="progressbar" aria-label={t("home.setup.bar")} aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={done}><span style={{ width: `${(done / steps.length) * 100}%` }} /></div>
       <ol className="steps">
         {steps.map((s, i) => (
           <li key={s.key} className={`step step-${s.state}`}>
@@ -56,9 +59,9 @@ function Kpis({ cards }) {
         {cards.map((c) => (
           <li key={c.key}>
             <a className="kpi" href={c.href}>
-              <span className="kpi-label">{c.label}</span>
+              <span className="kpi-top"><span className="kpi-label">{c.label}</span><Icon name="chevron-right" size={14} /></span>
               <span className="kpi-value">{c.value}</span>
-              <span className="kpi-asof muted small">{c.asOf || t("home.kpi.confirmed")}</span>
+              <span className="kpi-asof">{c.asOf || t("home.kpi.confirmed")}</span>
             </a>
           </li>
         ))}
@@ -75,10 +78,12 @@ function AskBox({ examples, ready }) {
   };
   return (
     <section className="ask-hero" aria-label={t("home.ask.aria")}>
-      <form onSubmit={(e) => { e.preventDefault(); ask(text); }}>
-        <Icon name="search" size={20} />
+      <form className="composer" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
         <input type="text" aria-label={t("home.ask.input")} value={text} maxLength={300} placeholder={t("home.ask.placeholder", { example: examples[0] ?? t("home.ask.defaultExample") })} onChange={(e) => setText(e.target.value)} />
-        <button className="primary" type="submit" disabled={!text.trim()}>{t("home.ask.submit")}</button>
+        <div className="composer-bar">
+          <span className="composer-hint"><Icon name="search" size={14} />{t("home.ask.hint")}</span>
+          <button className="primary" type="submit" disabled={!text.trim()}>{t("home.ask.submit")}<Icon name="send" size={14} /></button>
+        </div>
       </form>
       {examples.length > 0 ? (
         <p className="examples"><span className="muted">{t("home.ask.try")}</span>{examples.map((q) => <button key={q} className="example" onClick={() => ask(q)}>{q}</button>)}</p>
@@ -90,11 +95,11 @@ function AskBox({ examples, ready }) {
 function Todo({ items }) {
   return (
     <section className="card" aria-labelledby="todo-title">
-      <h2 id="todo-title">{t("home.todo.title")}</h2>
+      <div className="card-head"><h2 id="todo-title">{t("home.todo.title")}</h2></div>
       {items.length ? (
         <ul className="rows">
           {items.map((i) => (
-            <li key={i.key}><a href={i.href}><span className={`row-dot dot-${i.key}`} aria-hidden="true" />{i.text}<Icon name="chevron-right" size={16} /></a></li>
+            <li key={i.key}><a href={i.href}><span className={`row-count dot-${i.key}`} aria-hidden="true">{i.count}</span><span className="row-main">{i.text}</span><Icon name="chevron-right" size={16} /></a></li>
           ))}
         </ul>
       ) : <EmptyState icon="check-circle" title={t("home.todo.emptyTitle")} text={t("home.todo.emptyText")} />}
@@ -102,19 +107,24 @@ function Todo({ items }) {
   );
 }
 
-function Recent({ history }) {
+function Recent({ history, examples }) {
   return (
     <section className="card" aria-labelledby="recent-title">
-      <h2 id="recent-title">{t("home.recent.title")}</h2>
+      <div className="card-head"><h2 id="recent-title">{t("home.recent.title")}</h2><a className="card-link" href={hrefFor({ page: "qa", id: null })}>{t("home.recent.all")}<Icon name="chevron-right" size={14} /></a></div>
       {history.length ? (
         <ul className="rows">
           {history.slice(0, 6).map((h) => (
             <li key={h.id}>
-              <a href={hrefFor({ page: "qa", id: h.id })}><span className="row-main">{h.question}</span><span className="muted small">{formatDateTime(h.asked_at)} · {qaStatus(h.status)}</span></a>
+              <a href={hrefFor({ page: "qa", id: h.id })}><span className={`row-dot qa-${h.status}`} aria-hidden="true" /><span className="row-main">{h.question}</span><span className="muted small">{formatDateTime(h.asked_at)} · {qaStatus(h.status)}</span></a>
             </li>
           ))}
         </ul>
-      ) : <EmptyState icon="chat" title={t("home.recent.emptyTitle")} text={t("home.recent.emptyText")} />}
+      ) : (
+        <>
+          <EmptyState icon="chat" title={t("home.recent.emptyTitle")} text={examples.length ? t("home.recent.emptyTry") : t("home.recent.emptyText")} />
+          {examples.length > 0 && <p className="examples examples-center">{examples.slice(0, 3).map((q) => <a key={q} className="example" href={hrefFor({ page: "qa", id: null, ask: q })}>{q}</a>)}</p>}
+        </>
+      )}
     </section>
   );
 }
@@ -132,18 +142,26 @@ export function HomePage() {
   const todos = todoItems({ unread: d.notices?.unread ?? 0, queue: d.queue, failedRuns, mayBuild });
   const examples = exampleQuestions(types, d.relations ?? []);
   const cards = kpiCards(types, d.datasets);
+  const quick = quickActions(mayBuild);
   const today = new Date();
   const fresh = updatedText(d.datasets);
   return (
     <main className="page home">
       <header className="home-head">
-        <h1 tabIndex={-1}>{greeting(today, user?.display_name ?? "")}</h1>
-        <p className="muted">{formatDate(today, { weekday: "long", month: "long", day: "numeric" })}{fresh && ` · ${fresh}`}</p>
+        <div>
+          <h1 tabIndex={-1}>{greeting(today, user?.display_name ?? "")}</h1>
+          <p className="muted">{formatDate(today, { weekday: "long", month: "long", day: "numeric" })}{fresh && ` · ${fresh}`}</p>
+        </div>
+        {quick.length > 0 && (
+          <nav className="quick" aria-label={t("home.quick.aria")}>
+            {quick.map((a) => <a key={a.key} className="quick-link" href={a.href}><Icon name={a.icon} size={14} />{a.label}</a>)}
+          </nav>
+        )}
       </header>
       {setup && <Checklist steps={setupSteps({ datasets: d.datasets, types, users: d.users, sources: d.sources, role: user?.role, meId: user?.id ?? null, canConfirm: d.queue > 0 })} />}
-      {!setup && cards.length > 0 && <Kpis cards={cards} />}
       {!setup || (d.datasets ?? []).length > 0 ? <AskBox examples={examples} ready={types.some((t) => t.state === "confirmed")} /> : null}
-      {(!setup || todos.length > 0) && <div className="home-grid"><Todo items={todos} /><Recent history={d.ask?.history ?? []} /></div>}
+      {!setup && cards.length > 0 && <Kpis cards={cards} />}
+      {(!setup || todos.length > 0) && <div className="home-grid"><Todo items={todos} /><Recent history={d.ask?.history ?? []} examples={examples} /></div>}
     </main>
   );
 }

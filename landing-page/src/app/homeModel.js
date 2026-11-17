@@ -90,3 +90,11 @@ export function todoItems({ unread = 0, queue = 0, failedRuns = 0, mayBuild = fa
   if (unread > 0) items.push({ key: "notices", count: unread, text: t("home.todo.notices", { count: unread }), href: "#/notices" });
   return items;
 }
+
+/** The compact row of shortcuts a builder sees under the greeting: [{key, label, href, icon}]; nothing for a viewer. */
+export const quickActions = (mayBuild) => (mayBuild ? [
+  { key: "upload", label: t("home.quick.upload"), href: "#/datasets", icon: "upload" },
+  { key: "pipeline", label: t("home.quick.pipeline"), href: "#/pipelines/new", icon: "pipeline" },
+  { key: "type", label: t("home.quick.type"), href: "#/types/new", icon: "cube" },
+  { key: "review", label: t("home.quick.review"), href: "#/confirm", icon: "check-circle" },
+] : []);

@@ -96,4 +96,5 @@ export const CONVERTED = [
   "relationModel.js",
   "typeModel.js",
   "viewModel.js",
+  "SourceWays.jsx",
 ];
