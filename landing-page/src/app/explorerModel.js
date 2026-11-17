@@ -14,7 +14,10 @@ export const readyFilters = (filters) =>
   filters.filter((f) => f.field && (f.op === "empty" || f.op === "filled" || String(f.value).trim() !== "")).map((f) => ({ field: f.field, op: f.op, value: f.op === "empty" || f.op === "filled" ? "" : String(f.value) }));
 
 /** The query the service reads. `pivot` is {relation, side, source} or null. */
-export const queryOf = ({ type, view = "", filters = [], pivot = null }) => ({ type, view: view || null, filters: readyFilters(filters), rows: null, pivot });
+export const queryOf = ({ type, view = "", filters = [], pivot = null, search = "" }) => ({ type, view: view || null, filters: readyFilters(filters), rows: null, pivot, ...(String(search).trim() ? { search: String(search).trim() } : {}) });
+
+/** The search word a query carries ("" when none): the box over the table shows it. */
+export const searchWord = (query) => query?.search ?? "";
 
 /** The aggregations a measure may have: a number any; anything else only counting and the extremes. No measure: counting rows. */
 export function fnOptions(measure, aggregations) {

@@ -99,3 +99,27 @@ export function typePayload(form) {
     properties: columns.map((c) => ({ column: c.name, name: c.label.trim() || c.name, type: c.declared, enum: c.enum })), enums,
   };
 }
+
+/** The number on each tab of a type page: properties and objects are the type's own; derived, views and actions come from what uses it (0 when nothing does). Before that is read, only the type's own. */
+export function tabCounts(type, uses) {
+  const own = { props: type.properties?.length ?? 0, objects: type.rows ?? 0 };
+  if (!uses) return own;
+  const of = (kind) => uses.used_by.find((u) => u.kind === kind)?.count ?? 0;
+  return { ...own, derived: of("derived"), views: of("views"), actions: of("actions") };
+}
+
+/** 用到它的 as one line: "视图 1 · 行为 3 · 关系 4"; "" when nothing uses the type. */
+export const usesSummary = (uses) => (uses?.used_by ?? []).map((u) => `${u.label} ${u.count}`).join(" · ");
+
+/** The grey line under a type's title: where it comes from and how many objects it has. `uploaded` ("3 天前，Ann") is added when known. */
+export function typeSub(type, uploaded = "") {
+  const from = `来源 ${type.dataset} 第 ${type.dataset_version} 版${uploaded ? `（上传于 ${uploaded}）` : ""}`;
+  return `${from}${uploaded ? "" : " "}· ${type.rows_limited ? `你能看到 ${type.rows} 个对象` : `${type.rows} 个对象`}`;
+}
+
+/** The head of a code column's meanings: how many values, how many have a meaning written. */
+export function meaningsSummary(meanings) {
+  const values = meanings.values ?? [];
+  if (!values.length) return "没有取值";
+  return `${values.length} 个取值，${values.filter((v) => (v.label ?? "").trim()).length} 个写了含义`;
+}
