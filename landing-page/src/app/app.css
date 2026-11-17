@@ -107,7 +107,7 @@ h1:focus, h1:focus-visible, h2:focus, h2:focus-visible, main:focus-visible { out
 .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: var(--s2); height: var(--topbar); padding: 0 var(--s2) 0 var(--s2); background: var(--surface); border-bottom: 1px solid var(--border); }
 .brand { display: inline-flex; align-items: center; gap: var(--s1); font-weight: 600; font-size: 15px; color: var(--ink); letter-spacing: -0.01em; }
 .brand:hover { text-decoration: none; }
-.brand-mark { width: 18px; height: 18px; background: var(--accent); border-radius: 5px; transform: rotate(45deg) scale(0.78); }
+.brand-mark { width: 20px; height: 20px; flex: none; background: url(/favicon.svg) center / contain no-repeat; }   /* the OntoPoc pixel mark, the same file as the favicon and the README logo */
 .workspace-name { color: var(--muted); padding-left: var(--s2); border-left: 1px solid var(--border); line-height: 20px; font-size: var(--text); }
 .searchbox { display: inline-flex; align-items: center; gap: var(--s1); flex: 0 1 360px; margin: 0 auto 0 var(--s3); height: var(--control-lg); padding: 0 6px 0 10px; background: var(--bg-app); border: 1px solid var(--border-strong); border-radius: var(--radius-md); color: var(--muted); text-align: left; font-size: var(--text); transition: background-color 100ms var(--ease), border-color 100ms var(--ease); }
 .searchbox:hover { border-color: var(--border-input); background: var(--surface); }
