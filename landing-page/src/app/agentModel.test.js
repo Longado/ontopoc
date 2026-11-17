@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { TOKEN_PLACEHOLDER, connectConfig, endText, firstSentence, scopeWord, skillText, tokenState } from "./agentModel.js";
+import { tokenPlaceholder, connectConfig, endText, firstSentence, scopeWord, skillText, tokenState } from "./agentModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in askEnglish.test.js
 
 const COMMAND = { python: "python3", module: "ontology_poc_generator.mcp_server" };
 
@@ -9,7 +12,7 @@ test("the connect entry starts the installed package's server as the token's per
   const config = JSON.parse(connectConfig({ command: COMMAND, origin: "http://127.0.0.1:5302", token: "" }));
   assert.equal(config.mcpServers.ontopoc.command, "python3");
   assert.deepEqual(config.mcpServers.ontopoc.args, ["-m", "ontology_poc_generator.mcp_server"]);
-  assert.deepEqual(config.mcpServers.ontopoc.env, { ONTOPOC_URL: "http://127.0.0.1:5302", ONTOPOC_TOKEN: TOKEN_PLACEHOLDER });
+  assert.deepEqual(config.mcpServers.ontopoc.env, { ONTOPOC_URL: "http://127.0.0.1:5302", ONTOPOC_TOKEN: tokenPlaceholder() });
   assert.equal(JSON.parse(connectConfig({ command: COMMAND, origin: "x", token: "otp_abc" })).mcpServers.ontopoc.env.ONTOPOC_TOKEN, "otp_abc");
 });
 

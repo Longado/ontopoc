@@ -82,6 +82,9 @@ test("a query that finds nothing says so instead of breaking the card", () => {
 });
 
 import { timeWord, timeWarning, criteriaLine, historyView } from "./qaModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in askEnglish.test.js
 
 test("time words in a question are found", () => {
   for (const [q, w] of [["本月已取消订单有多少", "本月"], ["今年的销售额", "今年"], ["最近30天下单客户", "最近30天"], ["最近3个月的订单", "最近3个月"], ["2026年3月订单", "2026年3月"], ["昨天有几单", "昨天"], ["上个月退款", "上个月"], ["3月份订单", "3月份"]]) assert.equal(timeWord(q), w, q);

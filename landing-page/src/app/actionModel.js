@@ -1,5 +1,5 @@
 // The words and payload of the 行为 tab and the approval cards, as plain functions of what the service sends, so they can be tested without a browser.
-import { timeText } from "./format.js";
+import { formatDateTime } from "./i18n/index.js";
 
 export const RECORD_STATE = { pending: "等批准", approved: "已批准", rejected: "已驳回", withdrawn: "已撤回", expired: "已过期", needs_look: "需再看" };
 
@@ -137,7 +137,7 @@ export function lastRecordText(records) {
   if (!records) return "";
   if (!records.length) return "还没有提交";
   const [r] = records;
-  return `${r.submitted_by} · ${timeText(r.submitted_at).slice(5)} · ${recordStateText(r)}`;
+  return `${r.submitted_by} · ${formatDateTime(r.submitted_at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${recordStateText(r)}`;
 }
 
 /** An action as one row of the 行为 table. `records` are its records (newest first) or null; `mayBuild` whether this person builds. A create runs from here; an edit and a delete run from the object. */

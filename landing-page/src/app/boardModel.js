@@ -1,20 +1,29 @@
-// Boards (看板): the words of the list and the page, and the form's draft as plain functions, so they can be tested without a browser.
+// Boards: the words of the list and the page, and the form's draft as plain functions, so they can be tested without a browser.
+import { t } from "./i18n/index.js";
 import { chartSpec, readyFilters } from "./explorerModel.js";
 import { paramsIn } from "./qaModel.js";
 
 export { paramsIn };
 
-export const SCOPE_LABEL = { private: "只有我", named: "指定的人", everyone: "所有登录的人" };
-export const REFRESH_OPTIONS = [[0, "只在打开时读"], [60, "每分钟"], [300, "每 5 分钟"], [900, "每 15 分钟"], [3600, "每小时"]];
-export const COMPONENT_KINDS = [["number", "指标卡"], ["bar", "柱状图"], ["pie", "饼图"], ["histogram", "直方图"], ["table", "统计表"], ["rows", "明细表"], ["query", "本体查询"]];
+const SCOPES = ["private", "named", "everyone"];
+const REFRESH_SECONDS = [0, 60, 300, 900, 3600];
+const KINDS = ["number", "bar", "pie", "histogram", "table", "rows", "query"];
 
-/** Who may open a board, in words; the people are named when the scope names them. */
+/** Who a board is published to, in a word: "private", "named" or "everyone". */
+export const scopeLabel = (scope) => (SCOPES.includes(scope) ? t(`boards.scope.${scope}`) : scope);
+/** The scopes in the order the form lists them: [[key, label]]. */
+export const scopeOptions = () => SCOPES.map((k) => [k, scopeLabel(k)]);
+/** How often a board reads: [[seconds, label]]. */
+export const refreshOptions = () => REFRESH_SECONDS.map((s) => [s, t(`boards.refresh.${s}`)]);
+/** The kinds of component a board holds: [[kind, label]]. */
+export const componentKinds = () => KINDS.map((k) => [k, t(`boards.kind.${k}`)]);
+
 /** Who a board is published to. The names come only to its author and an admin; a reader is told it is for named people. */
-export const scopeText = (board) => (board.scope === "named" ? (board.visible_names ? `指定的人：${board.visible_names.join("、") || "没有人"}` : "指定的人") : SCOPE_LABEL[board.scope] ?? board.scope);
+export const scopeText = (board) => (board.scope === "named" ? (board.visible_names ? t("boards.scope.namedList", { names: board.visible_names.join(t("ask.sep")) || t("boards.scope.nobody") }) : scopeLabel("named")) : scopeLabel(board.scope));
 
-export const expiryText = (board) => (!board.expires_at ? "不过期" : board.expired ? `${board.expires_at} 已过期，只有主人和管理员打得开` : `到 ${board.expires_at}`);
+export const expiryText = (board) => (!board.expires_at ? t("boards.expiry.never") : board.expired ? t("boards.expiry.expired", { date: board.expires_at }) : t("boards.expiry.until", { date: board.expires_at }));
 
-export const refreshText = (seconds) => (REFRESH_OPTIONS.find(([s]) => s === seconds) ?? [0, `每 ${seconds} 秒`])[1];
+export const refreshText = (seconds) => (REFRESH_SECONDS.includes(seconds) ? t(`boards.refresh.${seconds}`) : t("boards.refresh.every", { seconds }));
 
 /** The link a person copies: the board's own address in the app. Opening it asks for a sign-in first. */
 export const shareLink = (origin, id) => `${origin}/#/boards/${id}`;
@@ -51,23 +60,32 @@ export const specOf = (draft) => ({
 /** The payload of a save. */
 export const payloadOf = (draft) => ({ name: draft.name.trim(), spec: specOf(draft), scope: draft.scope, visible_to: draft.scope === "named" ? draft.visible_to : [], expires_at: draft.expires_at || null, refresh_seconds: draft.refresh_seconds });
 
-/** The first thing missing before the form can be saved, in words; "" when it can. */
-export function draftProblem(draft) {
-  if (!draft.name.trim()) return "要写看板的名字";
-  if (!draft.components.length) return "至少加一个组件";
+/** The first thing missing before the form can be saved: {key, vars} (key is a boards.problem.* word), or null when it can be saved. */
+export function draftIssue(draft) {
+  if (!draft.name.trim()) return { key: "name" };
+  if (!draft.components.length) return { key: "components" };
   const bare = draft.components.findIndex((c) => !c.title.trim());
-  if (bare >= 0) return `第 ${bare + 1} 个组件要写标题`;
+  if (bare >= 0) return { key: "title", vars: { n: bare + 1 } };
   const blank = draft.components.findIndex((c) => c.kind === "query" && !c.text.trim());
-  if (blank >= 0) return `第 ${blank + 1} 个组件要写查询`;
+  if (blank >= 0) return { key: "query", vars: { n: blank + 1 } };
   const params = (draft.params ?? []).map(cleanParam);
   const twice = params.find((p, i) => params.findIndex((q) => q.name === p.name) !== i);
-  if (twice) return `参数名 $${twice.name} 重复了`;
+  if (twice) return { key: "paramTwice", vars: { name: twice.name } };
   const bareParam = params.find((p) => !p.name || !p.default);
-  if (bareParam) return bareParam.name ? `参数 $${bareParam.name} 要写默认值` : "参数要写名字";
+  if (bareParam) return bareParam.name ? { key: "paramDefault", vars: { name: bareParam.name } } : { key: "paramName" };
   const missing = draft.components.filter((c) => c.kind === "query").flatMap((c) => paramsIn(c.text)).find((n) => !params.some((p) => p.name === n));
-  if (missing) return `查询里用到 $${missing}，要在参数里加上它和默认值`;
-  if (draft.scope === "named" && !draft.visible_to.length) return "指定的人至少选一位";
-  return "";
+  if (missing) return { key: "paramMissing", vars: { name: missing } };
+  if (draft.scope === "named" && !draft.visible_to.length) return { key: "people" };
+  return null;
+}
+
+/** Whether what is missing is about the parameters (the preview waits for them). */
+export const isParamIssue = (issue) => Boolean(issue?.key.startsWith("param"));
+
+/** The first thing missing before the form can be saved, in words; "" when it can. */
+export function draftProblem(draft) {
+  const issue = draftIssue(draft);
+  return issue ? t(`boards.problem.${issue.key}`, issue.vars) : "";
 }
 
 /** Whether the line at the top of a board should stand out: something on it is grey, waits for a confirmation or cannot be read by this person. */

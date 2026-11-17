@@ -68,14 +68,14 @@ test("every tool the MCP server offers has a Chinese line and a group", () => {
     assert.ok(toolInfo(n).known, `${n} has no Chinese line`);
     assert.ok(TOOL_GROUPS.includes(toolInfo(n).group), n);
   }
-  assert.equal(toolInfo("ontopoc_query").group, "问");
-  assert.equal(toolInfo("describe_definitions").group, "读");
+  assert.equal(toolInfo("ontopoc_query").group, "ask");
+  assert.equal(toolInfo("describe_definitions").group, "read");
   assert.equal(toolInfo("not_a_tool").known, false);
 });
 
 test("tools are grouped in the group order and keep their order inside a group", () => {
   const groups = groupTools([{ name: "ask" }, { name: "describe_definitions" }, { name: "ontopoc_query" }, { name: "mystery" }]);
-  assert.deepEqual(groups.map((g) => [g.group, g.tools.map((t) => t.name)]), [["读", ["describe_definitions"]], ["问", ["ask", "ontopoc_query"]], ["其他", ["mystery"]]]);
+  assert.deepEqual(groups.map((g) => [g.group, g.tools.map((t) => t.name)]), [["read", ["describe_definitions"]], ["ask", ["ask", "ontopoc_query"]], ["other", ["mystery"]]]);
 });
 
 test("a wide picture is fitted to the width of the page and a small one is not blown up past the cap", () => {

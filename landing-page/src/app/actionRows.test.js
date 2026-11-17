@@ -21,7 +21,7 @@ test("only a confirmed create the person may submit has a run button, and only f
 
 test("the last record is who, when and how it stands", () => {
   assert.equal(lastRecordText([]), "还没有提交");
-  assert.match(lastRecordText([{ submitted_by: "Ann", submitted_at: "2026-11-14T08:30:00+00:00", state: "pending" }, { submitted_by: "Bob", submitted_at: "2026-11-01T08:30:00+00:00", state: "approved" }]), /^Ann · \d{2}-\d{2} \d{2}:\d{2} · 等批准$/);
+  assert.match(lastRecordText([{ submitted_by: "Ann", submitted_at: "2026-11-14T08:30:00+00:00", state: "pending" }, { submitted_by: "Bob", submitted_at: "2026-11-01T08:30:00+00:00", state: "approved" }]), /^Ann · [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2}\s[AP]M · 等批准$/);
   assert.equal(lastRecordText(null), "");   // records not read yet
 });
 

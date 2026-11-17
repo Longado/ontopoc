@@ -1,42 +1,44 @@
 // The words of the Q&A page, as plain functions of what the service sends, so they can be tested without a browser.
+import { t } from "./i18n/index.js";
 import { graphNote } from "./objectGraphModel.js";
 import { STATE_LABEL } from "./typeModel.js";
 
 const count = (n) => Number(n).toLocaleString("en-US");
 const SHOWN_GROUPS = 20;
+const countText = (n, unit) => t("ask.count", { n: count(n), unit });
 
 /** An answer from the engine (a count, a share, a total, or groups) as what the card shows: {big, note, table: {head, rows, total} | null}. */
 export function answerView(record) {
   const a = record.answer;
-  if (!a) return record.status === "no_data" ? { big: "没有数据", note: record.reason ?? "", table: null } : null;   // a query that found nothing has no answer, only why
+  if (!a) return record.status === "no_data" ? { big: t("ask.noData"), note: record.reason ?? "", table: null } : null;   // a query that found nothing has no answer, only why
   const unit = a.relation_gap?.many ?? record.types?.[0]?.name ?? "";
-  if (a.graph) return { big: `${count(a.graph.starts)} 个${unit}`, note: graphNote(a.graph), table: null, graph: a.graph };   // SELECT GRAPH: the objects, drawn
+  if (a.graph) return { big: countText(a.graph.starts, unit), note: graphNote(a.graph), table: null, graph: a.graph };   // SELECT GRAPH: the objects, drawn
   if (a.groups) {
     const shape = a.measure ? null : a.share ? "share" : a.groups[0]?.length === 3 ? "measure" : "count";
-    const head = shape === "share" ? ["分组", `${a.share.field} = ${a.share.equals}`, "总数"] : shape === "measure" ? ["分组", "合计或平均", "取到数的对象"] : ["分组", `${unit}数`];
+    const head = shape === "share" ? [t("ask.head.group"), `${a.share.field} = ${a.share.equals}`, t("ask.head.total")] : shape === "measure" ? [t("ask.head.group"), t("ask.head.sumOrAvg"), t("ask.head.withValue")] : [t("ask.head.group"), t("ask.head.count", { unit })];
     const rows = a.groups.slice(0, SHOWN_GROUPS).map((g) => g.map((v, i) => (i && typeof v === "number" ? count(v) : String(v))));
-    return { big: `${count(a.total_groups)} 组`, note: a.without_value ? `${count(a.without_value)} 个${unit}没有可分的值` : "", table: { head, rows, total: a.total_groups } };
+    return { big: t("ask.groups", { count: a.total_groups, n: count(a.total_groups) }), note: a.without_value ? t("ask.withoutValue", { count: a.without_value, n: countText(a.without_value, unit) }) : "", table: { head, rows, total: a.total_groups } };
   }
   if (a.measure) {
     const m = a.measure;
-    if (m.value == null) return { big: "没有能读成数字的值", note: `${m.skipped} 个不是数字或为空`, table: null };
-    return { big: `${m.field}${m.op === "sum" ? "合计" : "平均"} ${count(m.value)}`, note: `${count(m.counted)} 个值参与${m.skipped ? `，${count(m.skipped)} 个读不出` : ""}`, table: null };
+    if (m.value == null) return { big: t("ask.measure.none"), note: t("ask.measure.noneNote", { count: m.skipped }), table: null };
+    return { big: t("ask.measure.big", { field: m.field, op: t(m.op === "sum" ? "ask.op.sum" : "ask.op.avg"), value: count(m.value) }), note: t("ask.measure.counted", { count: m.counted, n: count(m.counted) }) + (m.skipped ? t("ask.measure.skipped", { count: m.skipped, n: count(m.skipped) }) : ""), table: null };
   }
-  if (a.share) return { big: `${count(a.matched)} / ${count(a.total)}`, note: `${a.share.field} = ${a.share.equals} 的${unit}占 ${a.total ? Math.round((a.matched / a.total) * 1000) / 10 : 0}%`, table: null };
-  return { big: unit ? `${count(a.total)} 个${unit}` : count(a.total), note: record.status === "no_data" ? record.reason ?? "" : "", table: null };
+  if (a.share) return { big: `${count(a.matched)} / ${count(a.total)}`, note: t("ask.share.note", { unit, field: a.share.field, equals: a.share.equals, pct: a.total ? Math.round((a.matched / a.total) * 1000) / 10 : 0 }), table: null };
+  return { big: unit ? countText(a.total, unit) : count(a.total), note: record.status === "no_data" ? record.reason ?? "" : "", table: null };
 }
 
 /** The answer, or the refusal, in one word for the history list. */
-export const statusText = (status) => (status === "answered" ? "已回答" : status === "no_data" ? "没有数据" : "没回答");
+export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : "ask.status.refused");
 export const isAnswer = (record) => record.status === "answered" || record.status === "no_data";
 
-/** What an answer read: "订单 第 1 版". */
-export const readText = (datasets) => Object.entries(datasets ?? {}).map(([name, v]) => `${name} 第 ${v} 版`);
+/** What an answer read: "orders v1". */
+export const readText = (datasets) => Object.entries(datasets ?? {}).map(([name, v]) => t("ask.read", { name, version: v }));
 
 /** The banner lines of a saved answer that is no longer as it was: a newer dataset version, a definition that is not as confirmed then. */
 export function staleLines(record) {
-  const data = (record.stale ?? []).map((s) => (s.now == null ? `${s.dataset} 已经不在了，这条回答读的是第 ${s.read} 版` : `${s.dataset} 有新版本：这条回答读的是第 ${s.read} 版，现在是第 ${s.now} 版`));
-  const defs = (record.changed ?? []).map((c) => (!c.state ? `${c.name} 已经不在了` : c.state !== "confirmed" ? `${c.name} 现在${STATE_LABEL[c.state]}` : `${c.name} 在回答之后重新确认过`));
+  const data = (record.stale ?? []).map((s) => (s.now == null ? t("ask.stale.gone", { dataset: s.dataset, read: s.read }) : t("ask.stale.newer", { dataset: s.dataset, read: s.read, now: s.now })));
+  const defs = (record.changed ?? []).map((c) => (!c.state ? t("ask.changed.gone", { name: c.name }) : c.state !== "confirmed" ? t("ask.changed.state", { name: c.name, state: STATE_LABEL[c.state] }) : t("ask.changed.reconfirmed", { name: c.name })));
   return [...data, ...defs];
 }
 
@@ -44,9 +46,9 @@ export function staleLines(record) {
  * confirmed again, or only newer data. Empty when nothing changed. */
 export function staleHeading(record) {
   const changed = record.changed ?? [];
-  if (changed.some((c) => c.state !== "confirmed")) return "依据的定义现在需要再看，下面是当时的答案";
-  if (changed.length) return "依据的定义在回答之后重新确认过，下面是当时的答案";
-  return (record.stale ?? []).length ? "数据有新版本，这条回答是旧的" : "";
+  if (changed.some((c) => c.state !== "confirmed")) return t("ask.heading.needsLook");
+  if (changed.length) return t("ask.heading.reconfirmed");
+  return (record.stale ?? []).length ? t("ask.heading.newerData") : "";
 }
 
 /** The answer's figure is greyed ("当时的答案") when a definition it stood on is no longer confirmed as it was. */
@@ -62,20 +64,20 @@ export function definitionHref(id, type = null) {
 }
 
 /** The line that says what a person may ask about. */
-export const scopeText = (scope) => `范围：${scope.types.length} 个已确认的对象类型`;
+export const scopeText = (scope) => t("ask.scope", { count: scope.types.length });
 
 /** Why a definition cannot be used, in the words of its state: the reason when there is one, else where it stands. */
 export function standingText(d) {
   if (d.reason) return d.reason;
-  if (d.state === "proposed") return "模型提出了，还没有人确认";
-  if (d.state === "checked") return `${d.proposed_by ? `${d.proposed_by} 提出，` : ""}还没有另一位确认`;
+  if (d.state === "proposed") return t("ask.standing.proposed");
+  if (d.state === "checked") return d.proposed_by ? t("ask.standing.checkedBy", { by: d.proposed_by }) : t("ask.standing.checked");
   return STATE_LABEL[d.state] ?? d.state;
 }
 
 /** What the query box starts from: a count of the first type in scope, which runs as written; empty when nothing is in scope. */
 export function queryExample(scope) {
   const first = scope?.types?.[0];
-  return first ? `SELECT count(x) AS 数量\nFROM (x:${first.name})` : "";
+  return first ? `SELECT count(x) AS ${t("ask.query.alias")}\nFROM (x:${first.name})` : "";
 }
 
 /** The $names a query uses, each once, in order; one inside a quoted value, a `name` or a -- comment is not a parameter (as the service reads it). */
@@ -99,20 +101,23 @@ export const queryRecord = (body) => ({ definitions: [], steps: [], datasets: {}
 /** The values a range could not read as numbers or dates, one line per range, and the dates a month or year grouping could not read: they are not counted,
  * and the answer says so. */
 export function rangeNotes(record) {
-  const eg = (list) => (list?.length ? `（例如 ${list.join("、")}）` : "");
-  const ranges = (record.evidence?.filters ?? []).filter((f) => f.range && f.unreadable).map((f) => `${f.range}：${f.unreadable} 个值读不成数字或日期，没有算进去${eg(f.unreadable_examples)}`);
+  const eg = (list) => (list?.length ? t("ask.eg", { list: list.join(t("ask.sep")) }) : "");
+  const ranges = (record.evidence?.filters ?? []).filter((f) => f.range && f.unreadable).map((f) => t("ask.range.unreadable", { count: f.unreadable, range: f.range, eg: eg(f.unreadable_examples) }));
   const u = record.answer?.unreadable;
-  return u ? [...ranges, `${u.field}：${u.count} 个值读不成日期，没有分到哪个月或哪一年${eg(u.unreadable_examples)}`] : ranges;
+  return u ? [...ranges, t("ask.range.undated", { count: u.count, field: u.field, eg: eg(u.unreadable_examples) })] : ranges;
 }
 
-const TIME_WORD = /(本月|上个?月|这个月|今年|去年|今天|昨天|前天|本周|这周|上个?周|本季度|上季度|(?:最近|近|过去)\s*\d+\s*(?:天|日|个月|月|周|年)|\d{4}\s*年(?:\s*\d{1,2}\s*月)?|\d{1,2}\s*月份?|[一二三四五六七八九十]{1,2}月份?)/;
-/** The time word in a question ("本月", "最近30天", "2026年3月"), or null. */
+// The Chinese time words (this month, last month, this year, today, yesterday, this week, last N days, 2026-03 ...) are written as \u escapes so this file holds no Chinese literals.
+const TIME_WORD = /(\b(?:this|last)\s+(?:month|year|week|quarter)\b|\btoday\b|\byesterday\b|\b(?:last|past)\s+\d+\s+(?:days?|weeks?|months?|years?)\b|\u672c\u6708|\u4e0a\u4e2a?\u6708|\u8fd9\u4e2a\u6708|\u4eca\u5e74|\u53bb\u5e74|\u4eca\u5929|\u6628\u5929|\u524d\u5929|\u672c\u5468|\u8fd9\u5468|\u4e0a\u4e2a?\u5468|\u672c\u5b63\u5ea6|\u4e0a\u5b63\u5ea6|(?:\u6700\u8fd1|\u8fd1|\u8fc7\u53bb)\s*\d+\s*(?:\u5929|\u65e5|\u4e2a\u6708|\u6708|\u5468|\u5e74)|\d{4}\s*\u5e74(?:\s*\d{1,2}\s*\u6708)?|\d{1,2}\s*\u6708\u4efd?|[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]{1,2}\u6708\u4efd?)/i;
+/** The time word in a question ("this month", "last 30 days", "本月", "2026年3月"), or null. */
 export function timeWord(question) {
   const m = TIME_WORD.exec(String(question ?? ""));
-  return m ? m[1].replace(/\s+/g, "") : null;
+  if (!m) return null;
+  const word = m[1].replace(/\s+/g, " ").trim();
+  return /[^\x00-\x7f]/.test(word) ? word.replace(/\s+/g, "") : word.toLowerCase();
 }
 
-const DATEISH = /日期|时间|创建|下单|发生|\bdate|time|\d{4}-\d{1,2}|\d{4}\/\d{1,2}|月份|年份/i;
+const DATEISH = /\u65e5\u671f|\u65f6\u95f4|\u521b\u5efa|\u4e0b\u5355|\u53d1\u751f|\bdate|time|created|month|year|\bday|\d{4}-\d{1,2}|\d{4}\/\d{1,2}|\u6708\u4efd|\u5e74\u4efd/i;
 /** True when the answered query has a condition on a date or time (in its filters, or in the written query's WHERE/GROUP BY part). */
 function usesTime(record) {
   const filters = [...(record.query?.filters ?? []), ...(record.evidence?.filters ?? [])];
@@ -126,7 +131,7 @@ function usesTime(record) {
 export function timeWarning(record) {
   if (!isAnswer(record)) return null;
   const word = timeWord(record.question);
-  return word && !usesTime(record) ? `问题里的「${word}」没有用上：这个数是全部时间的` : null;
+  return word && !usesTime(record) ? t("ask.timeWarn", { word }) : null;
 }
 
 /** The one-line caliber under an answer: what was counted by which definitions, and the data as of when. Empty when the answer carries no written query. */
@@ -136,9 +141,9 @@ export function criteriaLine(record, asOf) {
   if (!aliases.length) return "";
   const alias = new Map(aliases.map((m) => [m[1], m[2]]));
   const where = /\bWHERE\b([\s\S]*?)(?:\bGROUP BY\b|\bORDER BY\b|\bLIMIT\b|$)/i.exec(text)?.[1]?.trim();
-  const cond = where ? where.replace(/\b(\w+)\.(?=[^\s.])/g, (s, a) => (alias.has(a) ? `${alias.get(a)}.` : s)).replace(/'((?:[^']|'')*)'/g, "$1").replace(/\s+/g, " ") : `全部${aliases[0][2]}`;
-  return `按已确认的定义：${cond}${asOf ? `，数据截至 ${asOf}` : ""}`;
+  const cond = where ? where.replace(/\b(\w+)\.(?=[^\s.])/g, (s, a) => (alias.has(a) ? `${alias.get(a)}.` : s)).replace(/'((?:[^']|'')*)'/g, "$1").replace(/\s+/g, " ") : t("ask.criteria.all", { type: aliases[0][2] });
+  return t("ask.criteria", { cond, asOf: asOf ? t("ask.criteria.asOf", { when: asOf }) : "" });
 }
 
-/** A row of "我问过的": the question and one grey line (when, and how it went). */
+/** A row of the history list: the question and one grey line (when, and how it went). */
 export const historyView = (h, whenText) => ({ id: h.id, question: h.question, meta: `${whenText} ${statusText(h.status)}`.trim() });
