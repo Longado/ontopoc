@@ -223,6 +223,8 @@ export default {
   "wiz.kindHint.postgresql": "常见端口 5432",
   "wiz.kindHint.mysql": "常见端口 3306（MariaDB 也选这个）",
   "wiz.typeLead": "选你要连的数据库。OntoPoc 只读取它，不会改库里的任何东西。",
+  "wiz.username": "账号",
+  "wiz.usernameHint": "建议只给 SELECT 权限",
   "wiz.excel": "没有数据库、只有 Excel？关掉这个向导，到“数据集”上传 .xlsx 或 .csv。",
   "wiz.namePlaceholder": "例如 销售订单库",
   "wiz.nameLocked": "数据源建好后名字不能改",

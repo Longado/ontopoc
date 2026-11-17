@@ -213,6 +213,7 @@ export default {
   "task.noneProposed": "没有提议能保存的对象类型",
   "task.rejected": "{made}；没通过检查的：{names}",
   "tasks.title": "任务",
+  "tasks.sub": "后台任务：上传、起草本体和建议，最新的在前。",
   "tasks.refresh": "刷新",
   "tasks.unreadable_one": "有 {count} 个任务记录读不了。",
   "tasks.unreadable_other": "有 {count} 个任务记录读不了。",

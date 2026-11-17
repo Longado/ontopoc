@@ -213,6 +213,7 @@ export default {
   "task.noneProposed": "No object types that could be saved were proposed",
   "task.rejected": "{made}; failed checks: {names}",
   "tasks.title": "Tasks",
+  "tasks.sub": "Background jobs: uploads, ontology drafts and suggestions, newest first.",
   "tasks.refresh": "Refresh",
   "tasks.unreadable_one": "{count} task record could not be read.",
   "tasks.unreadable_other": "{count} task records could not be read.",

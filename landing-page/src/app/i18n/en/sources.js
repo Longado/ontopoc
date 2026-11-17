@@ -223,6 +223,8 @@ export default {
   "wiz.kindHint.postgresql": "Usual port 5432",
   "wiz.kindHint.mysql": "Usual port 3306 (choose this for MariaDB too)",
   "wiz.typeLead": "Choose the database you want to connect. OntoPoc only reads from it and never changes anything in it.",
+  "wiz.username": "Username",
+  "wiz.usernameHint": "A SELECT-only account is recommended.",
   "wiz.excel": "No database, only Excel? Close this guide and upload an .xlsx or .csv under Datasets.",
   "wiz.namePlaceholder": "For example, Sales orders DB",
   "wiz.nameLocked": "The name can't be changed once the source is created",

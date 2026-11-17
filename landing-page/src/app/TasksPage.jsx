@@ -4,6 +4,7 @@ import { timeText } from "./format.js";
 import { t, useT } from "./i18n/index.js";
 import { anyRunning, taskRow } from "./taskModel.js";
 import { useLoad } from "./useLoad.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
 
 export function TasksPage() {
   useT();
@@ -19,10 +20,8 @@ export function TasksPage() {
 
   return (
     <main className="page">
-      <div className="page-head">
-        <h1 tabIndex={-1}>{t("data.tasks.title")}</h1>
-        <button className="secondary" onClick={reload}>{t("data.tasks.refresh")}</button>
-      </div>
+      <PageHeader crumbs={[{ label: t("data.crumb.data") }, { label: t("data.tasks.title") }]} title={t("data.tasks.title")} sub={t("data.tasks.sub")}
+        actions={<button className="secondary" onClick={reload}>{t("data.tasks.refresh")}</button>} />
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>{t("common.retry")}</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">{t("common.loading")}</p>}
       {state.data?.unreadable > 0 && <p className="muted">{t("data.tasks.unreadable", { count: state.data.unreadable })}</p>}

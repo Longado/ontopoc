@@ -56,7 +56,7 @@ function ConnectStep({ f, setF, problem, error, locked }) {
       </div>
       <label className="field"><span className="caption">{t("sources.form.database")}</span><input type="text" value={f.database} autoComplete="off" onChange={set("database")} /></label>
       <div className="field-row">
-        <label className="field grow"><span className="caption">{t("sources.form.username")}</span><input type="text" value={f.username} autoComplete="off" onChange={set("username")} /></label>
+        <label className="field grow"><span className="caption">{t("sources.wiz.username")}</span><input type="text" value={f.username} autoComplete="off" onChange={set("username")} /><span className="hint tight">{t("sources.wiz.usernameHint")}</span></label>
         <label className="field grow">
           <span className="caption">{t("sources.form.password")}</span>
           <span className="secret">

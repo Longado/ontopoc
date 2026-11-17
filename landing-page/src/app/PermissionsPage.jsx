@@ -8,6 +8,7 @@ import { toggled } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
 import { useLoad } from "./useLoad.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
 
 const nameList = (people) => people.map((p) => p.name).join(t("data.listSep"));
 
@@ -178,8 +179,7 @@ export function PermissionsPage() {
   const later = people.filter((p) => p.role !== "admin");
   return (
     <main className="page">
-      <div className="page-head"><h1 tabIndex={-1}>{t("users.perm.title")}</h1></div>
-      <p className="muted lead">{t("users.perm.sub")}</p>
+      <PageHeader crumbs={[{ label: t("users.crumb.settings") }, { label: t("users.perm.title") }]} title={t("users.perm.title")} sub={t("users.perm.sub")} />
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>{t("common.retry")}</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">{t("common.loading")}</p>}
       {error && <p className="error" role="alert">{error}</p>}
