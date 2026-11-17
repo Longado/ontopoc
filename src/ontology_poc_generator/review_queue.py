@@ -13,7 +13,7 @@ import json
 from ontology_poc_generator.object_relations import (
     _relation_visible, check_relation, confirm_relation, counts_only, evidence_lines, relation_view)
 from ontology_poc_generator.object_types import (
-    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, LIMITED_NOTE, PIPELINE_PREFIX, RELATION_PREFIX, STALE, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
+    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, LIMITED_NOTE, PIPELINE_PREFIX, RELATION_PREFIX, STALE, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _readers_of_dataset, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
 from ontology_poc_generator.derived_properties import confirm_derived, derived_state, derived_visible, describe as describe_derived, trial as derived_trial
 from ontology_poc_generator.object_actions import action_state, action_visible, confirm_action, describe as describe_action, open_records
 from ontology_poc_generator.object_views import confirm_view, describe, open_new_values, seen_of_view, view_state, view_summary, view_visible
@@ -158,12 +158,12 @@ def queue(conn, user: dict | None, light: bool = False) -> dict:
             items.append(item)
         elif not light and _item(conn, row, without_rules(user), light=True):
             ruled_out += 1
-    items += [approval_item(r) for r in open_records(conn, user)]   # the submissions waiting for a second person: a card each
+    items += [approval_item(r, conn) for r in open_records(conn, user)]   # the submissions waiting for a second person: a card each
     items.sort(key=lambda i: (not i['can_confirm'], ORDER[i['state']], i['element']))
     return {'items': [] if light else items, 'count': sum(1 for i in items if i['can_confirm']), 'hidden_by_rules': ruled_out}
 
 
-def approval_item(rec: dict) -> dict:
+def approval_item(rec: dict, conn=None) -> dict:
     """A submitted action as a card in the queue: what is asked of which object, by whom, and whether the data moved since. Approve and reject are their own
     requests (object_actions.decide), not the confirmation of a definition."""
     said = {'create': f'想新建 {rec["object"]}：{rec["after_text"]}', 'delete': f'想删除 {rec["object"]}：{rec["before_text"]}'}.get(rec.get('kind'), f'想把 {rec["object"]} 的 {rec["change_text"]}')
@@ -176,7 +176,10 @@ def approval_item(rec: dict) -> dict:
         lines.append({'ok': False, 'text': f'{rec["dataset"]} 提交时是第 {rec["dataset_version"]} 版，现在是第 {rec["dataset_now"]} 版：批准时会发现数据变了，不会写入'})
     else:
         lines.append({'ok': True, 'text': f'{rec["dataset"]} 还是提交时读的第 {rec["dataset_version"]} 版，批准时会再对一遍现在的值'})
-    return {'element': f'record:{rec["id"]}', 'kind': 'approval', 'title': f'{rec["action"]}：{rec["object"]}', 'id': rec['type'], 'record': rec['id'], 'lines': lines, 'version': 0,
+    readers = None   # how many confirmed definitions read the dataset an approval would give a new version: they are rechecked and may need another look
+    if conn is not None:
+        readers = sum(1 for e in _readers_of_dataset(conn, rec['dataset']) if (row := element_row(conn, e)) and row['state'] == 'confirmed')
+    return {'element': f'record:{rec["id"]}', 'kind': 'approval', 'dataset': rec['dataset'], 'readers': readers, 'title': f'{rec["action"]}：{rec["object"]}', 'id': rec['type'], 'record': rec['id'], 'lines': lines, 'version': 0,
             'state': rec['state'], 'can_confirm': rec['can_decide'] and rec['state'] == 'pending', 'can_withdraw': rec['can_withdraw'], 'confirmers': [], 'proposed_by': rec['submitted_by'],
             'written_at': rec['submitted_at'], 'reason': rec['why'], 'model_draft': False, 'meanings_blocking': [], 'waiting_on': []}
 

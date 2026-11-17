@@ -174,6 +174,8 @@ export const getRelationLog = (id) => request(relationPath(id, "/log")).then((b)
 export const getRelationForm = () => request("/api/workspace/relation-form").then((b) => b.types);
 export const createRelation = (payload) => send("/api/workspace/relations", payload);
 export const updateRelation = (payload) => send("/api/workspace/relations/update", payload);
+/** How many rows a relation not yet saved would connect: {rows, matched, unmatched, empty, samples, many_name, one_name}. Writes nothing. */
+export const previewRelation = (payload) => send("/api/workspace/relations/preview", payload);
 /** {items, count}: everything waiting to be judged that this person may see, and how many of it they may confirm now. */
 export const getQueue = () => request("/api/workspace/queue");
 /** Only how many items this person may confirm now: read from the states, cheap enough to ask on every page. */

@@ -101,11 +101,11 @@ export function typePayload(form) {
 }
 
 /** The number on each tab of a type page: properties and objects are the type's own; derived, views and actions come from what uses it (0 when nothing does). Before that is read, only the type's own. */
-export function tabCounts(type, uses) {
+export function tabCounts(type, uses, live = {}) {   // `live`: a tab's own list, once read, is the one source of its number
   const own = { props: type.properties?.length ?? 0, objects: type.rows ?? 0 };
-  if (!uses) return own;
+  if (!uses) return { ...own, ...live };
   const of = (kind) => uses.used_by.find((u) => u.kind === kind)?.count ?? 0;
-  return { ...own, derived: of("derived"), views: of("views"), actions: of("actions") };
+  return { ...own, derived: of("derived"), views: of("views"), actions: of("actions"), ...live };
 }
 
 /** 用到它的 as one line: "视图 1 · 行为 3 · 关系 4"; "" when nothing uses the type. */

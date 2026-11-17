@@ -5,6 +5,23 @@ import { itemAction } from "./relationModel.js";
 /** A queue item as a row: its kind in words, one summary line, the problems apart from it (an error is a line the service marks strong: rows that belong to nobody), and the one
  * thing a person may do in the row: "confirm" (a definition), "approve" (a submitted change), "withdraw" (their own submission), "open" (it is confirmed on its own screen),
  * "repropose" (the meanings are written again), "blocked" (something else first) or "wait" (someone else confirms). */
+export const TAG = {
+  approval: "数据改动：批准后写成新版本", pipeline: "管道：打开看改了什么", definition: "定义：确认后问答才会用它",
+};
+
+/** The legend at the top of the queue: which verb is for what. */
+export const QUEUE_LEGEND = "批准：用于行为提交的数据改动，批准后数据集会有新版本。确认：用于对象类型、关系、视图等定义，确认后问答才会用它。管道要打开它的页面看过再确认。";
+
+/** What to say before 批准 on a submitted change, which writes a new version of its dataset: the definitions reading that dataset are checked again and may need another
+ * look. "" for anything else. `item.readers`: how many confirmed definitions read it (null when not known). */
+export function approveWarning(item) {
+  if (item.kind !== "approval") return "";
+  const data = item.dataset ? `“${item.dataset}”数据集` : "数据集";
+  if (item.readers === 0) return `批准后，${data}会有一个新版本。现在没有已确认的定义在用它。`;
+  if (item.readers == null) return `批准后，${data}会有一个新版本，用到它的已确认的定义会重新检查，可能变成需再看。`;
+  return `批准后，${data}会有一个新版本，用到它的 ${item.readers} 个已确认的定义会重新检查，可能变成需再看。`;
+}
+
 export function queueRow(item) {
   const lines = item.lines ?? [];
   const [first] = lines;
@@ -14,7 +31,7 @@ export function queueRow(item) {
   else if (item.kind === "view" && item.can_confirm && item.new_values?.length) mode = "open";   // the new values are picked on the view's own page first
   else mode = itemAction(item);
   return {
-    kind: KIND[item.kind] ?? item.kind, title: item.title, summary: first?.text ?? "", summaryLevel: !first || first.ok ? "ok" : first.strong ? "error" : "warn",
+    kind: KIND[item.kind] ?? item.kind, verb: item.kind === "approval" ? "批准" : "确认", tag: TAG[item.kind] ?? TAG.definition, title: item.title, summary: first?.text ?? "", summaryLevel: !first || first.ok ? "ok" : first.strong ? "error" : "warn",
     problems: lines.slice(1).filter((l) => !l.ok).map((l) => ({ text: l.text, level: l.strong ? "error" : "warn" })),
     hasError: lines.some((l) => l.strong), mode,
     canReject: mode === "confirm" || mode === "approve" || (item.kind === "approval" && item.state === "needs_look" && mode !== "withdraw"),
