@@ -69,8 +69,8 @@ export function logText(e) {
 /** The one line on a type's page for someone a row rule limits: their own rows of this type, and the other types whose rows a derived property of it is worked out over. "" when nothing limits them. */
 export function limitedNote(type) {
   const parts = [
-    ...(type.rows_limited ? [t("types.limited.own", { rows: type.rows })] : []),
-    ...(type.limited_reads ?? []).map((d) => t("types.limited.read", { name: d.name, types: joinList(d.types.map((x) => t("types.limited.type", { name: x.name, rows: x.rows }))) })),
+    ...(type.rows_limited ? [t("types.limited.own", { rows: type.rows, count: type.rows })] : []),
+    ...(type.limited_reads ?? []).map((d) => t("types.limited.read", { name: d.name, types: joinList(d.types.map((x) => t("types.limited.type", { name: x.name, rows: x.rows, count: x.rows }))) })),
   ];
   return parts.length ? t("types.limited.note", { parts: parts.join(t("types.semi")) }) : "";
 }

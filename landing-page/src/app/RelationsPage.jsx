@@ -119,7 +119,7 @@ function Check({ r }) {
         <>
           <h2 className="section">{t("relations.check.fanTitle", { count: c.fanout.keys })}</h2>
           <p className="muted small" style={{ marginBottom: 8 }}>
-            {t("relations.check.fanText", { dataset: c.one.dataset, column: c.one.column, count: c.fanout.keys, samples: !c.counts_only ? t("relations.check.fanSamples", { list: joinList(c.fanout.samples.map((s) => t("relations.check.fanSample", { key: s.key, rows: s.rows }))) }) : "" })}
+            {t("relations.check.fanText", { count: c.fanout.keys, dataset: c.one.dataset, column: c.one.column, samples: !c.counts_only ? t("relations.check.fanSamples", { list: joinList(c.fanout.samples.map((s) => t("relations.check.fanSample", { key: s.key, rows: s.rows }))) }) : "" })}
             {c.fanout.extra_rows > 0 ? t("relations.check.fanExtra", { source: c.fanout.source_rows, extra: c.fanout.extra_rows, one: c.one.name }) : t("relations.check.fanNone")}
           </p>
           {!c.counts_only && <RowsTable table={c.fanout.rows} markColumn={c.one.column} />}

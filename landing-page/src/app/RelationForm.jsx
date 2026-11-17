@@ -137,6 +137,7 @@ export function RelationForm({ id }) {
             </div>
             <div className="rel-form-ends">
               {end("from", t("relations.form.from"), t("relations.form.fromHint"))}
+              <span className="rel-arrow" aria-hidden="true">→</span>
               {end("to", t("relations.form.to"), t("relations.form.toHint"))}
             </div>
             <div className="field">

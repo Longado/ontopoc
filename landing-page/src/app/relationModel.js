@@ -37,7 +37,7 @@ export function matchRateText(edge) {
 export function previewText(p) {
   if (!p) return "";
   const rest = p.rows - p.matched;
-  if (rest <= 0) return t("relations.preview.all", { rows: p.rows });
+  if (rest <= 0) return t("relations.preview.all", { rows: p.rows, count: p.rows });
   const parts = [t("relations.preview.matched", { matched: p.matched, rows: p.rows })];
   if (p.unmatched > 0) parts.push(t("relations.preview.unmatched", { count: p.unmatched, samples: p.samples?.length ? t("relations.preview.samples", { keys: joinList(p.samples.slice(0, 3).map((s) => s.key)) }) : "" }));
   if (p.empty > 0) parts.push(t("relations.preview.empty", { count: p.empty }));

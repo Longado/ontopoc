@@ -56,7 +56,7 @@ export const GROUP_ORDERS = [["", "default"], ["desc", "desc"], ["asc", "asc"]].
 /** The sentences under a bar, a pie or a statistics table about what it did not draw: the groups past the cap or the top N, and the rows whose key has no match on the other end of the relation the group goes through. */
 export function leftOutLines(result) {
   const measured = Boolean(result.measure) && result.chart?.kind !== "table";
-  const one = (g) => t("objects.left.group", { label: g.label, rows: g.rows, value: measured && g.value !== null && g.value !== undefined ? t("objects.left.value", { value: formatNumber(g.value) }) : "" });
+  const one = (g) => t("objects.left.group", { label: g.label, rows: g.rows, count: g.rows, value: measured && g.value !== null && g.value !== undefined ? t("objects.left.value", { value: formatNumber(g.value) }) : "" });
   const lines = [];
   const hidden = result.hidden_groups ?? [];
   if (result.groups_hidden > 0) {

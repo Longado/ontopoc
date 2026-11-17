@@ -90,7 +90,7 @@ test("the explorer and the object page read in English", () => {
   assert.deepEqual(CHART_KINDS.map(([, label]) => label), ["Number", "Bar", "Pie", "Histogram", "Summary table"]);
   assert.deepEqual(GROUP_TOPS.map(([, label]) => label), ["All", "Top 5", "Top 10", "Top 20"]);
   assert.equal(chartMissing({ kind: "bar", group: "" }), "Choose the column to group by");
-  assert.deepEqual(leftOutLines({ groups_hidden: 2, hidden_groups: [{ label: "A", rows: 3 }, { label: "B", rows: 1 }], rows_hidden: 4 }), ["Not drawn: A (3 rows), B (1 rows)"]);
+  assert.deepEqual(leftOutLines({ groups_hidden: 2, hidden_groups: [{ label: "A", rows: 3 }, { label: "B", rows: 1 }], rows_hidden: 4 }), ["Not drawn: A (3 rows), B (1 row)"]);
   assert.equal(graphNote({ nodes: [{ start: true }, {}, {}], starts: 1, shown: 1, cut: true }), "Showing all 1 start objects, and the 2 objects they connect to; too many objects connect, so only some are drawn");
   assert.equal(relatedCard({ count: 12, objects: [{ n: 1, text: "K1", name: "Acme" }] }).more, "and 12 more");
   assert.equal(unconfirmedNote([{ confirmed: false, name: "Order belongs to customer" }]), "1 relation is not confirmed yet: Order belongs to customer. The related objects may change.");

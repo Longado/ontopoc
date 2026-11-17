@@ -324,7 +324,7 @@ export function TypeActions({ type, mayBuild, onCount }) {
     <>
       <div className="tab-bar">
         <span className="muted">{actions.length ? t("actions.tab.count", { count: actions.length }) : ""}</span>
-        {mayBuild && form && <button className="primary" onClick={() => setCreating(true)}><Icon name="plus" size={16} /> {t("actions.tab.new")}</button>}
+        {mayBuild && form && actions.length > 0 && <button className="primary" onClick={() => setCreating(true)}><Icon name="plus" size={16} /> {t("actions.tab.new")}</button>}
       </div>
       {!actions.length && (
         <EmptyState icon="play" title={t("actions.tab.emptyTitle")} text={t("actions.tab.emptyText")}

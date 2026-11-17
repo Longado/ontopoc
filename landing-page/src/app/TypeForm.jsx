@@ -30,7 +30,7 @@ function KeyResult({ result }) {
         <p className="error">{result.error}</p>
         {k?.repeated?.length > 0 && (
           <ul className="readers">
-            {k.repeated.map((r, i) => <li key={i}>{t("types.form.keyRepeat", { key: r.key.join(" + "), rows: r.rows })}</li>)}
+            {k.repeated.map((r, i) => <li key={i}>{t("types.form.keyRepeat", { key: r.key.join(" + "), rows: r.rows, count: r.rows })}</li>)}
             {k.repeated_values > k.repeated.length && <li className="muted">{t("types.form.keyRepeatMore", { count: k.repeated_values - k.repeated.length })}</li>}
           </ul>
         )}
@@ -217,7 +217,7 @@ export function TypeForm({ id }) {
           {error && (
             <div className="refusal">
               <p className="error">{error.message}</p>
-              {error.keyCheck?.repeated?.length > 0 && <ul className="readers">{error.keyCheck.repeated.map((r, i) => <li key={i}>{t("types.form.keyRepeat", { key: r.key.join(" + "), rows: r.rows })}</li>)}</ul>}
+              {error.keyCheck?.repeated?.length > 0 && <ul className="readers">{error.keyCheck.repeated.map((r, i) => <li key={i}>{t("types.form.keyRepeat", { key: r.key.join(" + "), rows: r.rows, count: r.rows })}</li>)}</ul>}
             </div>
           )}
           <div className="inline">
