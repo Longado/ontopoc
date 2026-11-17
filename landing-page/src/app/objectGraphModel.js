@@ -54,6 +54,6 @@ export const nodeLines = (n) => (n.name ? [n.name, `${n.type_name} ${n.key}`] : 
 /** The line under a graph answer: how many start objects are drawn, and the objects they reach. */
 export function graphNote(g) {
   const reached = g.nodes.length - g.nodes.filter((n) => n.start).length;
-  const head = t(g.shown < g.starts ? "ask.graph.some" : "ask.graph.all", { shown: g.shown });
-  return t("ask.graph.note", { head, reached, cut: g.cut ? t("ask.graph.cut") : "" });
+  const head = t(g.shown < g.starts ? "objects.graph.head.some" : "objects.graph.head.all", { shown: g.shown });
+  return t("objects.graph.note", { head, count: reached, cut: g.cut ? t("objects.graph.cut") : "" });
 }
