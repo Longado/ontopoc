@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ROLE_CARDS, inviteText, newUserProblem, randomPassword, twoPersonBanner } from "./usersModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 test("each role card says in one line what the role may do", () => {
   assert.deepEqual(ROLE_CARDS.map((r) => r.key), ["viewer", "builder", "admin"]);

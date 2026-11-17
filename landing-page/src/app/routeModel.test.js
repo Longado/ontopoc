@@ -3,6 +3,9 @@ import test from "node:test";
 
 import { readFileSync } from "node:fs";
 import { ADMIN_NAV, NAV, PAGES, PLANNED, afterSignIn, hrefFor, mayOpen, navFor, navKeyOf, navLabelOf, parseRoute } from "./routeModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 test("the empty address is the home page; the Q&A page, a saved answer and the dataset list have addresses", () => {
   assert.deepEqual(parseRoute(""), { page: "home" });

@@ -1,5 +1,5 @@
 // The home page's words and decisions, as plain functions of what the service sends, so they can be tested without a browser.
-import { timeText } from "./format.js";
+import { formatDateTime, formatNumber, t } from "./i18n/index.js";
 
 const confirmed = (list) => (list ?? []).filter((x) => x.state === "confirmed");
 
@@ -21,21 +21,19 @@ export function setupSteps({ datasets, types, users, role, meId = null, canConfi
   const only = (datasets ?? []).length === 1 ? `?dataset=${encodeURIComponent(datasets[0].name)}` : "";
   const stuck = done.type && !done.confirm && canConfirm === false;   // proposed, and nothing here is this person's to confirm
   const steps = [
-    { key: "data", title: "接入数据", text: admin ? "上传 Excel、CSV，或连一个数据库，把表读进来。" : "上传 Excel 或 CSV 表格。数据库由管理员接入。", button: { label: "去传数据", href: "#/datasets" } },
-    { key: "type", title: "建对象类型", text: "把表变成业务里的东西，比如“订单”“客户”，并写清每一列的含义。", button: { label: "新建对象类型", href: `#/types/new${only}` } },
+    { key: "data", title: t("home.step.data.title"), text: admin ? t("home.step.data.admin") : t("home.step.data.builder"), button: { label: t("home.step.data.button"), href: "#/datasets" } },
+    { key: "type", title: t("home.step.type.title"), text: t("home.step.type.text"), button: { label: t("home.step.type.button"), href: `#/types/new${only}` } },
     stuck
       ? {
-        key: "confirm", title: "请另一位建设者确认",
-        text: admin
-          ? "这个对象类型是你提出的，或现在只有你一位建设者，所以你不能确认。邀请一位建设者，让他登录后在待确认里确认。"
-          : "这个对象类型你不能确认（是你提出的，或只有你一位建设者）。请管理员邀请另一位建设者，或让别的建设者来确认。",
-        button: admin ? { label: "邀请一位建设者", href: "#/users" } : { label: "去待确认", href: "#/confirm" },
-        ...(admin ? { extra: { label: "看待确认队列", href: "#/confirm" } } : {}),
+        key: "confirm", title: t("home.step.confirm.title"),
+        text: admin ? t("home.step.confirm.stuckAdmin") : t("home.step.confirm.stuckBuilder"),
+        button: admin ? { label: t("home.step.confirm.invite"), href: "#/users" } : { label: t("home.step.confirm.button"), href: "#/confirm" },
+        ...(admin ? { extra: { label: t("home.step.confirm.queue"), href: "#/confirm" } } : {}),
       }
-      : { key: "confirm", title: "请另一位建设者确认", text: "确认过的定义才能拿来回答问题。", button: { label: "去待确认", href: "#/confirm" } },
+      : { key: "confirm", title: t("home.step.confirm.title"), text: t("home.step.confirm.text"), button: { label: t("home.step.confirm.button"), href: "#/confirm" } },
     admin
-      ? { key: "invite", title: "邀请同事", text: "建设者能改数据和定义，查看者只提问、看看板。", button: { label: "去用户页", href: "#/users" }, ...(others.length && !done.invite ? { note: `已建 ${others.length} 个同事账号，还没有人登录过` } : {}) }
-      : { key: "invite", title: "邀请同事", text: "新用户由管理员在“设置 · 用户”里添加，请联系管理员。", button: null },
+      ? { key: "invite", title: t("home.step.invite.title"), text: t("home.step.invite.admin"), button: { label: t("home.step.invite.button"), href: "#/users" }, ...(others.length && !done.invite ? { note: t("home.step.invite.note", { count: others.length }) } : {}) }
+      : { key: "invite", title: t("home.step.invite.title"), text: t("home.step.invite.builder"), button: null },
   ];
   let nextFound = false;
   return steps.map((s) => {
@@ -51,43 +49,44 @@ export function setupSteps({ datasets, types, users, role, meId = null, canConfi
   });
 }
 
-/** Up to six questions to try, in a manager's words: "订单一共有多少" for each confirmed type, then "按客户统计订单数量" for each confirmed relation between confirmed types. */
+/** Up to six questions to try, in a manager's words: "How many orders are there?" for each confirmed type, then "Orders by customer" for each confirmed relation between confirmed types. */
 export function exampleQuestions(types, relations, max = 6) {
   const known = confirmed(types);
-  const names = new Set(known.map((t) => t.name));
-  const counts = known.slice(0, 3).map((t) => `${t.name}一共有多少`);
-  const by = confirmed(relations).filter((r) => names.has(r.from_name) && names.has(r.to_name)).map((r) => `按${r.to_name}统计${r.from_name}数量`);
-  const rest = known.slice(3).map((t) => `${t.name}一共有多少`);
+  const names = new Set(known.map((x) => x.name));
+  const count = (x) => t("home.example.count", { name: x.name });
+  const counts = known.slice(0, 3).map(count);
+  const by = confirmed(relations).filter((r) => names.has(r.from_name) && names.has(r.to_name)).map((r) => t("home.example.by", { from: r.from_name, to: r.to_name }));
+  const rest = known.slice(3).map(count);
   return [...counts, ...by, ...rest].slice(0, max);
 }
 
-/** Up to four number cards for the home page: each confirmed type that has rows, as {key, label, value, asOf, href}. `asOf` is "数据截至 …" from the dataset the type reads. */
+/** Up to four number cards for the home page: each confirmed type that has rows, as {key, label, value, asOf, href}. `asOf` is "Data as of …" from the dataset the type reads. */
 export function kpiCards(types, datasets, max = 4) {
   const when = new Map((datasets ?? []).map((d) => [d.name, d.updated_at]));
-  return confirmed(types).filter((t) => Number.isInteger(t.rows)).slice(0, max).map((t) => ({
-    key: t.id, label: t.name, value: t.rows.toLocaleString("en-US"),
-    asOf: when.get(t.dataset) ? `数据截至 ${timeText(when.get(t.dataset))}` : "", href: `#/types/${encodeURIComponent(t.id)}/objects`,
+  return confirmed(types).filter((x) => Number.isInteger(x.rows)).slice(0, max).map((x) => ({
+    key: x.id, label: x.name, value: formatNumber(x.rows),
+    asOf: when.get(x.dataset) ? t("home.asOf", { time: formatDateTime(when.get(x.dataset)) }) : "", href: `#/types/${encodeURIComponent(x.id)}/objects`,
   }));
 }
 
-/** "陈总，早上好" by the hour (before noon morning, before 18:00 afternoon, else evening). */
+/** "Good morning, Ann" by the hour (before noon morning, before 18:00 afternoon, else evening). */
 export function greeting(date, name) {
   const h = date.getHours();
-  const word = h >= 5 && h < 12 ? "早上好" : h >= 12 && h < 18 ? "下午好" : "晚上好";
-  return name ? `${name}，${word}` : word;
+  const word = t(h >= 5 && h < 12 ? "home.greeting.morning" : h >= 12 && h < 18 ? "home.greeting.afternoon" : "home.greeting.evening");
+  return name ? t("home.greeting.named", { greeting: word, name }) : word;
 }
 
-/** "数据更新于 2026-11-16 18:30": the newest dataset's time; empty with no dataset. */
+/** "Data updated Nov 16, 2026, 6:30 PM": the newest dataset's time; empty with no dataset. */
 export function updatedText(datasets) {
   const times = (datasets ?? []).map((d) => d.updated_at).filter(Boolean).sort();
-  return times.length ? `数据更新于 ${timeText(times[times.length - 1])}` : "";
+  return times.length ? t("home.updated", { time: formatDateTime(times[times.length - 1]) }) : "";
 }
 
 /** What waits for this person, most urgent first: [{key, count, text, href}]. Only builders see the confirm queue and failed runs. */
 export function todoItems({ unread = 0, queue = 0, failedRuns = 0, mayBuild = false }) {
   const items = [];
-  if (mayBuild && queue > 0) items.push({ key: "queue", count: queue, text: `${queue} 项等你确认`, href: "#/confirm" });
-  if (mayBuild && failedRuns > 0) items.push({ key: "failed", count: failedRuns, text: `${failedRuns} 次运行失败`, href: "#/tasks" });
-  if (unread > 0) items.push({ key: "notices", count: unread, text: `${unread} 条未读消息`, href: "#/notices" });
+  if (mayBuild && queue > 0) items.push({ key: "queue", count: queue, text: t("home.todo.queue", { count: queue }), href: "#/confirm" });
+  if (mayBuild && failedRuns > 0) items.push({ key: "failed", count: failedRuns, text: t("home.todo.failed", { count: failedRuns }), href: "#/tasks" });
+  if (unread > 0) items.push({ key: "notices", count: unread, text: t("home.todo.notices", { count: unread }), href: "#/notices" });
   return items;
 }

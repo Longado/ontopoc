@@ -6,6 +6,7 @@ import { BoardPage, BoardsPage } from "./BoardsPage.jsx";
 import { WORKSPACE_CHANGED, getNotices, getQueueCount } from "./api.js";
 import { NoticesPage } from "./NoticesPage.jsx";
 import { useAuth } from "./Auth.jsx";
+import { t } from "./i18n/index.js";
 import { canBuild, roleLabel, searchPlaceholder } from "./authModel.js";
 import { SettingsPage } from "./SettingsPage.jsx";
 import { ConfirmGroupPage } from "./ConfirmGroupPage.jsx";
@@ -34,6 +35,7 @@ import { PLANNED, mayOpen, navFor, navKeyOf, navLabelOf, parseRoute } from "./ro
 import { recordVisit } from "./searchModel.js";
 import { CommandPalette } from "./ui/CommandPalette.jsx";
 import { Icon } from "./ui/Icon.jsx";
+import { LanguageSwitch } from "./ui/LanguageSwitch.jsx";
 import { usePopover } from "./ui/MoreMenu.jsx";
 
 /** How many items of 待确认 this person may confirm now; read again whenever the page changes, so a confirmation made anywhere is counted. */
@@ -77,7 +79,6 @@ function useNoticeCount(route) {
   return count;
 }
 
-const WORKSPACE_NAME = "我的工作区";
 const store = {
   read: (key, fallback) => {
     try {
@@ -93,19 +94,20 @@ const store = {
   },
 };
 
-/** The avatar and its menu: the person's name and role, 我的账号, 退出. */
+/** The avatar and its menu: the person's name and role, the language switch, My account, Sign out. */
 function AvatarMenu() {
   const { user, auth, signOut } = useAuth();
   const [open, setOpen, ref] = usePopover();
-  if (!auth) return <span className="top-local muted">本机，没有登录</span>;
+  if (!auth) return <span className="top-local muted">{t("shell.avatar.local")}</span>;
   return (
     <span className="menu-wrap" ref={ref}>
-      <button className="avatar" aria-label={`账号：${user.display_name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>{[...user.display_name][0]}</button>
+      <button className="avatar" aria-label={t("shell.avatar.aria", { name: user.display_name })} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>{[...user.display_name][0]}</button>
       {open && (
         <div className="menu menu-right" role="menu">
           <div className="menu-who"><strong>{user.display_name}</strong><span className="muted small">{roleLabel(user.role)}</span></div>
-          <a role="menuitem" className="menu-item" href="#/account" onClick={() => setOpen(false)}><Icon name="user" />我的账号</a>
-          <button role="menuitem" className="menu-item" onClick={signOut}><Icon name="logout" />退出</button>
+          <a role="menuitem" className="menu-item" href="#/account" onClick={() => setOpen(false)}><Icon name="user" />{t("shell.avatar.account")}</a>
+          <LanguageSwitch />
+          <button role="menuitem" className="menu-item" onClick={signOut}><Icon name="logout" />{t("shell.avatar.signOut")}</button>
         </div>
       )}
     </span>
@@ -117,21 +119,21 @@ function TopBar({ onMenu, menuOpen, onSearch, count, unread }) {
   const mayBuild = canBuild(user);
   return (
     <header className="topbar">
-      <button className="plain icon-button menu-button" onClick={onMenu} aria-expanded={menuOpen} aria-label="菜单"><Icon name="menu" size={20} /></button>
+      <button className="plain icon-button menu-button" onClick={onMenu} aria-expanded={menuOpen} aria-label={t("shell.menu")}><Icon name="menu" size={20} /></button>
       <a className="brand" href="#/home"><span className="brand-mark" aria-hidden="true" />OntoPoc</a>
-      <span className="workspace-name" title="工作区">{WORKSPACE_NAME}</span>
-      <button className="searchbox" onClick={onSearch} aria-label="搜索（⌘K）">
+      <span className="workspace-name" title={t("shell.workspace.title")}>{t("shell.workspace.name")}</span>
+      <button className="searchbox" onClick={onSearch} aria-label={t("shell.search.aria")}>
         <Icon name="search" />
         <span className="searchbox-text">{searchPlaceholder(user)}</span>
         <kbd>⌘K</kbd>
       </button>
       <div className="top-right">
         {mayBuild && (
-          <a className="top-count" href="#/confirm" title="待确认" aria-label={`${count} 项等你确认`}>
+          <a className="top-count" href="#/confirm" title={t("shell.queue.title")} aria-label={t("shell.queue.aria", { count })}>
             <Icon name="check-circle" size={20} />{countText(count) && <span className="count-badge" data-tone="blue">{countText(count)}</span>}
           </a>
         )}
-        <a className="top-count" href="#/notices" title="消息" aria-label={`消息，${unread} 条未读`}>
+        <a className="top-count" href="#/notices" title={t("shell.notices.title")} aria-label={t("shell.notices.aria", { count: unread })}>
           <Icon name="bell" size={20} />{countText(unread) && <span className="count-badge" data-tone="red">{countText(unread)}</span>}
         </a>
         <AvatarMenu />
@@ -149,14 +151,14 @@ function Navigation({ active, open, onPick, count, unread = 0, collapsed, onColl
     store.write("ontopoc.nav.closed", next);
   };
   return (
-    <nav className={`nav${open ? " open" : ""}${collapsed ? " icons" : ""}`} aria-label="主导航">
+    <nav className={`nav${open ? " open" : ""}${collapsed ? " icons" : ""}`} aria-label={t("shell.nav.aria")}>
       {navFor(user).map((group) => {
         const holdsActive = group.items.some((i) => i.key === active);
         const folded = group.label && closed[group.key] && !holdsActive && !collapsed;
         return (
           <div className="nav-group" key={group.key}>
             {group.label && (
-              <button className="nav-heading" onClick={() => toggle(group.key)} aria-expanded={!folded} title={group.hint} aria-label={`${group.label}。${group.hint}`}>
+              <button className="nav-heading" onClick={() => toggle(group.key)} aria-expanded={!folded} title={group.hint} aria-label={t("shell.nav.heading", { label: group.label, hint: group.hint })}>
                 <span>{group.label}</span><Icon name={folded ? "chevron-right" : "chevron-down"} size={14} />
               </button>
             )}
@@ -165,15 +167,15 @@ function Navigation({ active, open, onPick, count, unread = 0, collapsed, onColl
                 aria-current={item.key === active ? "page" : undefined} aria-label={collapsed ? item.label : undefined} onClick={onPick}>
                 <Icon name={item.icon} />
                 <span className="nav-label">{item.label}</span>
-                {item.key === "confirm" && countText(count) && <span className="count" aria-label={`${count} 项等你确认`}>{countText(count)}</span>}
-                {item.key === "notices" && countText(unread) && <span className="count" aria-label={`${unread} 条未读消息`}>{countText(unread)}</span>}
+                {item.key === "confirm" && countText(count) && <span className="count" aria-label={t("shell.nav.queueCount", { count })}>{countText(count)}</span>}
+                {item.key === "notices" && countText(unread) && <span className="count" aria-label={t("shell.nav.noticeCount", { count: unread })}>{countText(unread)}</span>}
               </a>
             ))}
           </div>
         );
       })}
-      <button className="nav-collapse" onClick={onCollapse} aria-label={collapsed ? "展开侧栏" : "收起侧栏"}>
-        <Icon name={collapsed ? "chevrons-right" : "chevrons-left"} /><span className="nav-label">收起</span>
+      <button className="nav-collapse" onClick={onCollapse} aria-label={collapsed ? t("shell.nav.expandSidebar") : t("shell.nav.collapseSidebar")}>
+        <Icon name={collapsed ? "chevrons-right" : "chevrons-left"} /><span className="nav-label">{t("shell.nav.collapse")}</span>
       </button>
     </nav>
   );
@@ -192,8 +194,8 @@ function Planned({ route }) {
 function Forbidden() {
   return (
     <main className="page">
-      <h1 tabIndex={-1}>这个页面需要建设者或管理员权限</h1>
-      <p className="muted">想用它，请联系你们的建设者或管理员。<a href="#/home">回到首页</a></p>
+      <h1 tabIndex={-1}>{t("shell.forbidden.title")}</h1>
+      <p className="muted">{t("shell.forbidden.text")} <a href="#/home">{t("common.backHome")}</a></p>
     </main>
   );
 }
@@ -201,8 +203,8 @@ function Forbidden() {
 function NotFound() {
   return (
     <main className="page">
-      <h1 tabIndex={-1}>没有这个页面</h1>
-      <p className="muted"><a href="#/home">回到首页</a></p>
+      <h1 tabIndex={-1}>{t("shell.notFound.title")}</h1>
+      <p className="muted"><a href="#/home">{t("common.backHome")}</a></p>
     </main>
   );
 }

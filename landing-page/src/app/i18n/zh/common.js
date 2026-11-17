@@ -1,0 +1,15 @@
+export default {
+  "save": "保存",
+  "cancel": "取消",
+  "close": "关闭",
+  "confirm": "确认",
+  "loading": "加载中",
+  "retry": "重试",
+  "backHome": "回到首页",
+  "signedInAs": "当前账号：{name}",
+  "items_one": "{count} 项",
+  "items_other": "{count} 项",
+  "language": "语言",
+  "lang.en": "English",
+  "lang.zh": "中文",
+};

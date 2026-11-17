@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { changePassword, createToken, getTokens, revokeToken } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { roleLabel } from "./authModel.js";
-import { timeText } from "./format.js";
+import { formatDateTime, t } from "./i18n/index.js";
 import { useLoad } from "./useLoad.js";
 
 function PasswordForm({ forced, onChanged }) {
@@ -28,21 +28,21 @@ function PasswordForm({ forced, onChanged }) {
   return (
     <form onSubmit={submit} className="stack">
       <label className="field">
-        <span className="caption">现在的密码</span>
+        <span className="caption">{t("account.password.current")}</span>
         <input type="password" value={current} autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} />
       </label>
       <label className="field">
-        <span className="caption">新密码（至少 12 个字符）</span>
+        <span className="caption">{t("account.password.new")}</span>
         <input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} />
       </label>
       <label className="field">
-        <span className="caption">再输一次新密码</span>
+        <span className="caption">{t("account.password.again")}</span>
         <input type="password" value={again} autoComplete="new-password" aria-invalid={!!mismatch} onChange={(e) => setAgain(e.target.value)} />
       </label>
-      {mismatch && <p className="error">两次输入不一样</p>}
+      {mismatch && <p className="error">{t("account.password.mismatch")}</p>}
       {state.kind === "error" && <p className="error" role="alert">{state.message}</p>}
-      {state.kind === "done" && !forced && <p className="muted">密码已改，其他地方的登录已经退出。</p>}
-      <div><button className="primary" type="submit" disabled={!current || !next || !again || !!mismatch || state.kind === "sending"}>改密码</button></div>
+      {state.kind === "done" && !forced && <p className="muted">{t("account.password.done")}</p>}
+      <div><button className="primary" type="submit" disabled={!current || !next || !again || !!mismatch || state.kind === "sending"}>{t("account.password.submit")}</button></div>
     </form>
   );
 }
@@ -75,30 +75,30 @@ function Tokens() {
   const tokens = state.data ?? [];
   return (
     <>
-      <p className="muted">给脚本和 MCP 用：令牌的权限和你的角色一样，用它做的事记在你的名下。只在创建时显示一次。</p>
+      <p className="muted">{t("account.tokens.intro")}</p>
       <form onSubmit={create} className="inline">
-        <input type="text" value={label} placeholder="用来做什么，例如 MCP" aria-label="令牌用途" onChange={(e) => setLabel(e.target.value)} />
-        <button className="secondary" type="submit" disabled={!label.trim()}>创建令牌</button>
+        <input type="text" value={label} placeholder={t("account.tokens.label")} aria-label={t("account.tokens.labelAria")} onChange={(e) => setLabel(e.target.value)} />
+        <button className="secondary" type="submit" disabled={!label.trim()}>{t("account.tokens.create")}</button>
       </form>
       {error && <p className="error" role="alert">{error}</p>}
       {made && (
         <p className="token">
-          <span className="caption">现在复制，之后看不到了：</span>
-          <input type="text" readOnly value={made.token} aria-label="新令牌" onFocus={(e) => e.target.select()} />
+          <span className="caption">{t("account.tokens.copyNow")}</span>
+          <input type="text" readOnly value={made.token} aria-label={t("account.tokens.newAria")} onFocus={(e) => e.target.select()} />
         </p>
       )}
       {state.status === "error" && <p className="error">{state.error}</p>}
       {tokens.length > 0 && (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>用途</th><th>创建</th><th>最近用过</th><th></th></tr></thead>
+            <thead><tr><th>{t("account.tokens.purpose")}</th><th>{t("account.tokens.created")}</th><th>{t("account.tokens.lastUsed")}</th><th></th></tr></thead>
             <tbody>
-              {tokens.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.label}</td>
-                  <td>{timeText(t.created_at)}</td>
-                  <td>{t.last_used_at ? timeText(t.last_used_at) : <span className="faint">没用过</span>}</td>
-                  <td>{t.revoked ? <span className="muted">已撤销</span> : <button className="plain" onClick={() => revoke(t.id)}>撤销</button>}</td>
+              {tokens.map((tok) => (
+                <tr key={tok.id}>
+                  <td>{tok.label}</td>
+                  <td>{formatDateTime(tok.created_at)}</td>
+                  <td>{tok.last_used_at ? formatDateTime(tok.last_used_at) : <span className="faint">{t("account.tokens.never")}</span>}</td>
+                  <td>{tok.revoked ? <span className="muted">{t("account.tokens.revoked")}</span> : <button className="plain" onClick={() => revoke(tok.id)}>{t("account.tokens.revoke")}</button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -116,23 +116,23 @@ export function AccountPage({ forced = false, user: given, onChanged }) {
   if (!forced && !auth.auth) {
     return (
       <main className="page">
-        <h1 tabIndex={-1}>我的账号</h1>
-        <p className="muted">这个服务没有开登录（用了 --no-auth），没有账号可管理。</p>
+        <h1 tabIndex={-1}>{t("account.title")}</h1>
+        <p className="muted">{t("account.noAuth")}</p>
       </main>
     );
   }
   const body = (
     <>
-      <h1 tabIndex={-1}>{forced ? "先改掉初始密码" : "我的账号"}</h1>
-      {forced && <p className="muted">这是管理员给你的临时密码，改成只有你知道的，才能继续。</p>}
-      {user && <p className="facts"><span>{user.display_name}</span><span>账号 {user.username}</span><span>角色 {roleLabel(user.role)}</span></p>}
+      <h1 tabIndex={-1}>{forced ? t("account.forced.title") : t("account.title")}</h1>
+      {forced && <p className="muted">{t("account.forced.text")}</p>}
+      {user && <p className="facts"><span>{user.display_name}</span><span>{t("account.facts.username", { username: user.username })}</span><span>{t("account.facts.role", { role: roleLabel(user.role) })}</span></p>}
       <section>
-        <h2 className="section">{forced ? "新密码" : "改密码"}</h2>
+        <h2 className="section">{forced ? t("account.password.headingForced") : t("account.password.heading")}</h2>
         <PasswordForm forced={forced} onChanged={onChanged ?? (() => {})} />
       </section>
       {!forced && (
         <section>
-          <h2 className="section">令牌</h2>
+          <h2 className="section">{t("account.tokens.heading")}</h2>
           <Tokens />
         </section>
       )}

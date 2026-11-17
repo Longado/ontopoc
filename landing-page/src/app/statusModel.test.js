@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { STATUS_KEYS, statusOf } from "./statusModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 test("the six words and their colours: 已退回 is its own state, 失败 is for runs and requests that failed", () => {
   assert.deepEqual(STATUS_KEYS.map((k) => [k, statusOf(k).label, statusOf(k).tone]), [

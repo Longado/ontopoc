@@ -1,0 +1,23 @@
+// Roles, account states, the two-person rule line (authModel.js) and the sign-in page.
+export default {
+  "role.viewer": "Viewer",
+  "role.builder": "Builder",
+  "role.admin": "Admin",
+  "account.disabled": "Disabled",
+  "account.mustChange": "Must change initial password",
+  "account.active": "Active",
+  "twoPerson.off": "Two-person review: off. Whoever builds something can confirm it themselves.",
+  "twoPerson.inactive": "Two-person review: on, but only {count} can confirm right now, so confirming your own work is allowed for the moment. It switches to two-person review as soon as a second person can confirm.",
+  "twoPerson.active": "Two-person review: on. Anything one person builds must be confirmed by another builder. {count} can confirm right now.",
+  "login.tagline": "Turn spreadsheets into business data you can ask and explore",
+  "login.intro": "Upload data, define business objects like orders and customers, and your team can ask questions and view boards right away.",
+  "login.title": "Sign in",
+  "login.username": "Username",
+  "login.password": "Password",
+  "login.submit": "Sign in",
+  "login.sending": "Signing in…",
+  "login.ended": "Your session expired. Please sign in again.",
+  "login.help": "No account, or forgot your password? Ask your admin.",
+  "loading": "Loading…",
+  "retry": "Try again",
+};
