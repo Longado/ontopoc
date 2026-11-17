@@ -3,6 +3,7 @@ Kept objects carry the tables and identity fields they were built from, so later
 not by what they are called; renamed objects keep that match. The reference is what evaluation 3 compares against."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 from ontology_poc_generator.ontology_compare import match_types, relation_matches
 
 VERDICTS = ('ok', 'wrong')
@@ -30,19 +31,19 @@ def _label(value, what: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > MAX_LABEL:
-        raise ConfirmError(f'{what}的名字要写 1–{MAX_LABEL} 个字')
+        raise ConfirmError(tr(f'{what}的名字要写 1–{MAX_LABEL} 个字', f'The name of {what} must be 1 to {MAX_LABEL} characters'))
     return value.strip()
 
 
 def _verdicts(given, known: dict, what: str) -> dict:
     if not isinstance(given, dict):
-        raise ConfirmError(f'{what}的判断格式不对')
+        raise ConfirmError(tr(f'{what}的判断格式不对', f'The verdicts for {what} are written wrongly'))
     out = {}
     for key, d in given.items():
         if key not in known:
-            raise ConfirmError(f'本体里没有这个{what}：{key}')
+            raise ConfirmError(tr(f'本体里没有这个{what}：{key}', f'The ontology has no such {what}: {key}'))
         if not isinstance(d, dict) or d.get('verdict') not in VERDICTS:
-            raise ConfirmError(f'{what} {key} 的 verdict 只能是 ok 或 wrong')
+            raise ConfirmError(tr(f'{what} {key} 的 verdict 只能是 ok 或 wrong', f'The verdict of {what} {key} can only be ok or wrong'))
         out[key] = d
     return out
 
@@ -53,19 +54,19 @@ def _variants(given, types: dict, kept_keys: set) -> list:
     if given is None:
         return []
     if not isinstance(given, list) or len(given) > MAX_VARIANT_GROUPS:
-        raise ConfirmError(f'写法对应的格式不对：最多 {MAX_VARIANT_GROUPS} 组')
+        raise ConfirmError(tr(f'写法对应的格式不对：最多 {MAX_VARIANT_GROUPS} 组', f'The variants are written wrongly: at most {MAX_VARIANT_GROUPS} groups'))
     out = []
     for i, g in enumerate(given):
         if not isinstance(g, dict) or not isinstance(g.get('type'), str):
-            raise ConfirmError(f'第 {i + 1} 组写法没有写清是哪个对象的')
+            raise ConfirmError(tr(f'第 {i + 1} 组写法没有写清是哪个对象的', f'Variant group {i + 1} does not say which object it belongs to'))
         key = g['type']
         if key not in types:
-            raise ConfirmError(f'本体里没有这个对象：{key}')
+            raise ConfirmError(tr(f'本体里没有这个对象：{key}', f'The ontology has no such object: {key}'))
         if key not in kept_keys:
-            raise ConfirmError(f'第 {i + 1} 组写法属于{types[key].get("label") or key}，但这个对象没有判“对”')
+            raise ConfirmError(tr(f'第 {i + 1} 组写法属于{types[key].get("label") or key}，但这个对象没有判“对”', f'Variant group {i + 1} belongs to {types[key].get("label") or key}, but that object was not judged ok'))
         values = g.get('values')
         if not isinstance(values, list) or len({v for v in values if isinstance(v, str) and v.strip()}) < 2:
-            raise ConfirmError(f'第 {i + 1} 组写法要给同一个对象的两个或更多写法')
+            raise ConfirmError(tr(f'第 {i + 1} 组写法要给同一个对象的两个或更多写法', f'Variant group {i + 1} needs two or more variants of the same object'))
         out.append({'type': key, 'values': sorted({v.strip() for v in values})})
     return out
 
@@ -81,17 +82,17 @@ def confirmed_reference(ontology: dict, decisions: dict) -> dict:
     types = {t['key']: t for t in ontology['object_types']}
     relations = {r['key']: r for r in ontology['relations']}
     if not isinstance(decisions, dict):
-        raise ConfirmError('判断格式不对')
-    type_d = _verdicts(decisions.get('types') or {}, types, '对象')
-    rel_d = _verdicts(decisions.get('relations') or {}, relations, '关系')
+        raise ConfirmError(tr('判断格式不对', 'The verdicts are written wrongly'))
+    type_d = _verdicts(decisions.get('types') or {}, types, tr('对象', 'object'))
+    rel_d = _verdicts(decisions.get('relations') or {}, relations, tr('关系', 'relation'))
     added = decisions.get('added') or []
     if not isinstance(added, list) or len(added) > MAX_ADDED:
-        raise ConfirmError(f'补充的对象最多 {MAX_ADDED} 个')
+        raise ConfirmError(tr(f'补充的对象最多 {MAX_ADDED} 个', f'At most {MAX_ADDED} objects can be added'))
     kept = []
     for key, d in type_d.items():
         if d['verdict'] == 'ok':
             t = types[key]
-            kept.append({'key': key, 'label': _label(d.get('label'), '对象') or t.get('label') or key,
+            kept.append({'key': key, 'label': _label(d.get('label'), tr('对象', 'object')) or t.get('label') or key,
                          'populated_from': [{'source': p.get('source'), 'identity': p.get('identity') or {}} for p in t.get('populated_from') or []]})
     kept_keys = {t['key'] for t in kept}
     links = []
@@ -101,17 +102,17 @@ def confirmed_reference(ontology: dict, decisions: dict) -> dict:
         r = relations[key]
         dropped = [types[end].get('label') or end for end in (r['from'], r['to']) if end not in kept_keys]
         if dropped:
-            raise ConfirmError(f'关系 {key} 判了"对"，但它连着的{"、".join(dropped)}没有判"对"')
+            raise ConfirmError(tr(f'关系 {key} 判了"对"，但它连着的{tr("、", ", ").join(dropped)}没有判"对"', f'The relation {key} was judged ok, but {", ".join(dropped)} it connects were not'))
         links.append(_relation_reference(r))
     names = {t['label'] for t in kept}
     for i, name in enumerate(added):
-        name = _label(name, f'补充的第 {i + 1} 个对象')
+        name = _label(name, tr(f'补充的第 {i + 1} 个对象', f'added object {i + 1}'))
         if name in names:
-            raise ConfirmError(f'补充的对象“{name}”和已有的对象重名')
+            raise ConfirmError(tr(f'补充的对象“{name}”和已有的对象重名', f'The added object "{name}" has the same name as an existing one'))
         names.add(name)
         kept.append({'key': f'added_{i + 1}', 'label': name, 'populated_from': []})
     if not kept:
-        raise ConfirmError('至少要判一个对象"对"，或补充一个对象')
+        raise ConfirmError(tr('至少要判一个对象"对"，或补充一个对象', 'Judge at least one object ok, or add one'))
     variants = _variants(decisions.get('variants'), types, kept_keys)
     # what a person threw out is a correction too: kept so the next run of this file starts with it thrown out again
     rejected = [{'key': key, 'label': types[key].get('label') or key,

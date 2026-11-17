@@ -20,11 +20,12 @@ changes (sync_views); what the page and the readers of rows read each time is th
 connection (read_views), so listing views never needs the write lock."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import json
 import sqlite3
 
 from ontology_poc_generator.anchors import stored, view_anchor
-from ontology_poc_generator.code_meanings import UNCONFIRMED
+from ontology_poc_generator.code_meanings import unconfirmed
 from ontology_poc_generator.public_ontology import normalize_proposal
 from ontology_poc_generator.repeated_keys import rule_key
 from ontology_poc_generator.workspace_store import element_contents, element_rows, set_element_states
@@ -67,7 +68,7 @@ def _labels(enums: dict, source: str, column: str) -> dict[str, str]:
 
 def _people(entries: list[dict]) -> tuple[str | None, str | None]:
     names = list(dict.fromkeys(e['confirmed_by'] for e in entries if e.get('confirmed_by')))
-    return ('、'.join(names) or None), max((e['confirmed_at'] for e in entries), default=None)
+    return (tr('、', ', ').join(names) or None), max((e['confirmed_at'] for e in entries), default=None)
 
 
 def _view(scope, name, kind, source, select, entries, why=None, from_text='', definition=None, base=None) -> dict:
@@ -89,7 +90,7 @@ def orderable(column_type: str) -> bool:
 
 
 def _cannot_order(column: str, types: dict) -> str:
-    return f'「{column}」是{types.get(column, "不存在的")}类型的列，SQL 里排不出先后（数字、年月、日期才可以）'
+    return tr(f'「{column}」是{types.get(column, "不存在的")}类型的列，SQL 里排不出先后（数字、年月、日期才可以）', f'"{column}" is a {types.get(column, "nonexistent")} column and cannot be put in order in SQL (only numbers, months and dates can)')
 
 
 def _free(alias: str, taken: set) -> str:
@@ -130,14 +131,14 @@ def _bases(scope: str, tables: dict, enums: dict) -> tuple[dict, list[dict]]:
         for column in coded:
             label_column = f'{column}_含义'
             if label_column in names:
-                why = f'表里已经有一列叫「{label_column}」'
+                why = tr(f'表里已经有一列叫「{label_column}」', f'The table already has a column named "{label_column}"')
             whens = ''.join(f'\n    WHEN t.{_q(column)} = {_lit(v)} THEN {_lit(label)}' for v, label in sorted(_labels(enums, source, column).items()))
-            added.append((label_column, f'CASE\n    WHEN t.{_q(column)} IS NULL THEN NULL{whens}\n    ELSE {_lit(UNCONFIRMED)} END'))
+            added.append((label_column, f'CASE\n    WHEN t.{_q(column)} IS NULL THEN NULL{whens}\n    ELSE {_lit(unconfirmed())} END'))
         columns = ['t.' + _q(n) for n in names] + [f'{expression} AS {_q(label)}' for label, expression in added] + [f't.rowid AS {_q(row)}']
         select = f'SELECT {_list(columns)}\nFROM {_q(data["table"])} AS t'
         labelled = {'ref': '', 'names': names + [label for label, _ in added], 'types': {**types, **{label: 'text' for label, _ in added}}, 'has_row': True, 'row': row, 'rank': rank}
         view = _view(scope, source, 'labels', source, select, [enums[f'{source}.{c}'] for c in coded], why,
-                     '、'.join(f'{source}.{c} 的已确认含义' for c in coded), base=labelled)
+                     tr('、', ', ').join(tr(f'{source}.{c} 的已确认含义', f'confirmed meanings of {source}.{c}') for c in coded), base=labelled)
         views.append(view)
         if not why:
             bases[source] = {**labelled, 'ref': _q(view['sql_name'])}
@@ -148,13 +149,13 @@ def _named_view(scope: str, name: str, definition: dict, bases: dict, enums: dic
     source, why, select = definition['base'], None, None
     base = bases.get(source)
     if duplicate:
-        why = f'名字「{name}」和别的视图或表重了（不分大小写）'
+        why = tr(f'名字「{name}」和别的视图或表重了（不分大小写）', f'The name "{name}" is the same as another view or table (names ignore case)')
     elif base is None:
-        why = f'「{source}」这次没有存进工作区'
+        why = tr(f'「{source}」这次没有存进工作区', f'"{source}" was not stored in the workspace this time')
     elif definition['kind'] == 'latest':
         missing = [c for c in [*definition['key'], definition['order']] if c not in base['names']]
         if missing:
-            why = f'表里已经没有列 {"、".join(missing)}'
+            why = tr(f'表里已经没有列 {tr("、", ", ").join(missing)}', f'The table no longer has the columns {", ".join(missing)}')
         elif _order_expression(definition['order'], base['types']) is None:
             why = _cannot_order(definition['order'], base['types'])
         else:
@@ -162,14 +163,14 @@ def _named_view(scope: str, name: str, definition: dict, bases: dict, enums: dic
     else:
         column, label = definition['column'], definition['label']
         if label in _labels(waiting or {}, source, column).values():
-            why = f'「{label}」是「{source}.{column}」的含义，它要你再看一眼才能用（数据变了，见“需要再看一眼”）'
+            why = tr(f'「{label}」是「{source}.{column}」的含义，它要你再看一眼才能用（数据变了，见“需要再看一眼”）', f'"{label}" is a meaning of "{source}.{column}" that needs another look before it can be used (the data changed; see "Needs another look")')
         elif label not in _labels(enums, source, column).values():
-            why = f'「{label}」现在不是「{source}.{column}」已确认的含义'
+            why = tr(f'「{label}」现在不是「{source}.{column}」已确认的含义', f'"{label}" is no longer a confirmed meaning of "{source}.{column}"')
         else:
             select = (f'SELECT {_list([_q(n) for n in [*base["names"], base["row"]]])}\nFROM {base["ref"]}\n'
                       f'WHERE {_q(column + "_含义")} {OPS[definition["op"]]} {_lit(label)}')
-    said = (f'你定义的：{source}里每个「{"」「".join(definition["key"])}」只留「{definition["order"]}」最新的一行' if definition['kind'] == 'latest'
-            else f'你定义的：{source}.{definition["column"]} {"是" if definition["op"] == "is" else "不是"}「{definition["label"]}」的行')
+    said = (tr(f'你定义的：{source}里每个「{"」「".join(definition["key"])}」只留「{definition["order"]}」最新的一行', f'Your definition: in {source}, for each "{", ".join(definition["key"])}" keep only the latest row by "{definition["order"]}"') if definition['kind'] == 'latest'
+            else tr(f'你定义的：{source}.{definition["column"]} {"是" if definition["op"] == "is" else "不是"}「{definition["label"]}」的行', f'Your definition: rows where {source}.{definition["column"]} {"is" if definition["op"] == "is" else "is not"} "{definition["label"]}"'))
     return _view(scope, name, definition['kind'], source, select, [definition], why, said, definition, base)
 
 
@@ -187,19 +188,19 @@ def compile_views(scope: str, ontology: dict, tables: dict, enums: dict, rules: 
                 continue
             source, name, keys, order = pop['source'], f'{pop["source"]}_当前', list(pop['identity'].values()), rule['column']
             base = bases.get(source)
-            why = None if base else f'「{source}」这次没有存进工作区'
+            why = None if base else tr(f'「{source}」这次没有存进工作区', f'"{source}" was not stored in the workspace this time')
             if base and not set(keys) <= set(base['names']):
-                why = f'编号列 {"、".join(keys)} 不是「{source}」里的列'
+                why = tr(f'编号列 {tr("、", ", ").join(keys)} 不是「{source}」里的列', f'The key columns {", ".join(keys)} are not columns of "{source}"')
             elif base and _order_expression(order, base['types']) is None:
                 why = _cannot_order(order, base['types'])
             views.append(_view(scope, name, 'current', source, None if why else _latest_select(base, keys, order), [rule], why,
-                               f'{t.get("label") or t["key"]}（{source}表）重复编号的处理办法：只留「{order}」最新的一行', base=base))
+                               tr(f'{t.get("label") or t["key"]}（{source}表）重复编号的处理办法：只留「{order}」最新的一行', f'How {t.get("label") or t["key"]} (table {source}) treats repeated keys: keep only the latest row by "{order}"'), base=base))
             taken.add(name.lower())
     for name, definition in sorted(named.items()):
         try:
             views.append(_named_view(scope, name, definition, bases, enums, name.lower() in taken, waiting))
         except (KeyError, TypeError) as exc:   # a definition kept in a shape this code does not read: one row saying so, with the way to take it back
-            views.append(_view(scope, name, str(definition.get('kind')) if isinstance(definition, dict) else 'unknown', None, None, [], f'定义读不出来：{type(exc).__name__} {exc}', '', definition))
+            views.append(_view(scope, name, str(definition.get('kind')) if isinstance(definition, dict) else 'unknown', None, None, [], tr(f'定义读不出来：{type(exc).__name__} {exc}', f'The definition cannot be read: {type(exc).__name__} {exc}'), '', definition))
         taken.add(name.lower())
     return views
 
@@ -340,33 +341,33 @@ def check_definition(posted, tables: dict, enums: dict, reserved: set) -> tuple[
     """A person's definition of a view as (name, content to keep). Raises ValueError, with the text the person reads, when
     it cannot be kept."""
     if not isinstance(posted, dict):
-        raise ValueError('视图要写成 {"name": …, "kind": …}')
+        raise ValueError(tr('视图要写成 {"name": …, "kind": …}', 'A view must be written as {"name": …, "kind": …}'))
     name = posted.get('name')
     if not isinstance(name, str) or not name.strip() or len(name.strip()) > MAX_NAME or '"' in name:
-        raise ValueError(f'视图的名字要写 1–{MAX_NAME} 个字，不含引号')
+        raise ValueError(tr(f'视图的名字要写 1–{MAX_NAME} 个字，不含引号', f'The view name must be 1 to {MAX_NAME} characters, without quotes'))
     name = name.strip()
     if name.lower() in {r.lower() for r in reserved}:   # SQLite does not tell view names apart by case
-        raise ValueError(f'「{name}」已经是一张表或一个视图的名字（不分大小写）')
+        raise ValueError(tr(f'「{name}」已经是一张表或一个视图的名字（不分大小写）', f'"{name}" is already the name of a table or a view (names ignore case)'))
     kind, source = posted.get('kind'), posted.get('base')
     if kind not in KINDS:
-        raise ValueError('视图的种类只有：按含义筛行（filter）、每个编号只留最新一行（latest）')
+        raise ValueError(tr('视图的种类只有：按含义筛行（filter）、每个编号只留最新一行（latest）', 'A view can only be of the kind filter (rows by meaning) or latest (only the latest row per key)'))
     if source not in tables:
-        raise ValueError(f'这次运行里没有这张表：{source}')
+        raise ValueError(tr(f'这次运行里没有这张表：{source}', f'This run has no such table: {source}'))
     types = {c['name']: c['type'] for c in tables[source]['columns']}
     if kind == 'filter':
         column, op, label = posted.get('column'), posted.get('op'), posted.get('label')
         if op not in OPS:
-            raise ValueError('条件只能是“是”或“不是”（is、is_not）')
+            raise ValueError(tr('条件只能是“是”或“不是”（is、is_not）', 'A condition must be "is" or "is not" (is, is_not)'))
         if column not in types or not _labels(enums, source, column):
-            raise ValueError(f'「{source}.{column}」还没有已确认的含义，先确认它的含义')
+            raise ValueError(tr(f'「{source}.{column}」还没有已确认的含义，先确认它的含义', f'"{source}.{column}" has no confirmed meanings yet. Confirm its meanings first'))
         if label not in _labels(enums, source, column).values():
-            raise ValueError(f'「{label}」不是「{source}.{column}」已确认的含义：{"、".join(sorted(set(_labels(enums, source, column).values())))}')
+            raise ValueError(tr(f'「{label}」不是「{source}.{column}」已确认的含义：{tr("、", ", ").join(sorted(set(_labels(enums, source, column).values())))}', f'"{label}" is not a confirmed meaning of "{source}.{column}": {", ".join(sorted(set(_labels(enums, source, column).values())))}'))
         return name, {'kind': kind, 'base': source, 'column': column, 'op': op, 'label': label}
     keys, order = posted.get('key'), posted.get('order')
     if not isinstance(keys, list) or not keys or not all(k in types for k in keys) or len(set(keys)) != len(keys):
-        raise ValueError(f'编号列要写成「{source}」里的几列，不重复')
+        raise ValueError(tr(f'编号列要写成「{source}」里的几列，不重复', f'The key columns must be columns of "{source}", without repeats'))
     if order not in types or order in keys:
-        raise ValueError(f'要选「{source}」里的一列来比先后，不能是编号列')
+        raise ValueError(tr(f'要选「{source}」里的一列来比先后，不能是编号列', f'Pick one column of "{source}" to order by; it cannot be a key column'))
     if _order_expression(order, types) is None:
         raise ValueError(_cannot_order(order, types))
     return name, {'kind': kind, 'base': source, 'key': keys, 'order': order}
@@ -418,19 +419,19 @@ def save_definition(conn, key: str, posted, tables: dict, ontology: dict, signer
     if confirming:
         waiting = {v['name']: v for v in proposed_views(conn, key)}.get(posted['confirm'])
         if waiting is None:
-            raise ValueError(f'没有等着确认的视图「{posted["confirm"]}」')
+            raise ValueError(tr(f'没有等着确认的视图「{posted["confirm"]}」', f'There is no view "{posted["confirm"]}" waiting for confirmation'))
         seen = posted.get('version')
         if not isinstance(seen, int) or isinstance(seen, bool):
-            raise ValueError('确认要带上你看到的那一版（version，在待确认的列表里）')
+            raise ValueError(tr('确认要带上你看到的那一版（version，在待确认的列表里）', 'Confirming needs the version you saw (version, in the review queue list)'))
         if seen != waiting['version']:
-            raise StaleProposal(f'视图「{posted["confirm"]}」在你看过之后被改了（你看的是第 {seen} 版，现在是第 {waiting["version"]} 版），请重新看一遍再确认')
+            raise StaleProposal(tr(f'视图「{posted["confirm"]}」在你看过之后被改了（你看的是第 {seen} 版，现在是第 {waiting["version"]} 版），请重新看一遍再确认', f'The view "{posted["confirm"]}" was changed after you looked (you saw version {seen}, it is now version {waiting["version"]}). Look again before confirming'))
         posted = {**waiting['definition'], 'name': posted['confirm']}
     if isinstance(posted, dict) and posted.get('remove') is True:
         name = posted.get('name')
         if name not in element_contents(conn, f'view:{key}:'):
-            raise ValueError(f'没有叫「{name}」的视图可以删')
+            raise ValueError(tr(f'没有叫「{name}」的视图可以删', f'There is no view named "{name}" to delete'))
         set_element_states(conn, [definition_change(key, name, None, signer)])
-        return f'视图「{name}」已收回'
+        return tr(f'视图「{name}」已收回', f'The view "{name}" was taken back')
     others = lambda name: {n for n in element_contents(conn, f'view:{key}:') if n != name}   # a name already defined is redefined, not refused; one that differs only in case is refused
     reserved = set(tables) | {f'{s}_当前' for s in tables}
     name = posted.get('name').strip() if isinstance(posted, dict) and isinstance(posted.get('name'), str) else ''
@@ -438,6 +439,6 @@ def save_definition(conn, key: str, posted, tables: dict, ontology: dict, signer
     anchor = view_anchor_now(conn, key, run_id, ontology, tables, name, content, versions or {})   # a view that cannot be read on the data as it is now is refused either way
     if propose and not confirming:
         set_element_states(conn, [definition_change(key, name, content, signer, state='proposed', author=signer)])
-        return f'视图「{name}」已提交，等另一位确认'
+        return tr(f'视图「{name}」已提交，等另一位确认', f'The view "{name}" was submitted and waits for someone else to confirm')
     set_element_states(conn, [definition_change(key, name, content, signer, anchor, author=None if confirming else signer)])
-    return f'视图「{name}」已确认'
+    return tr(f'视图「{name}」已确认', f'The view "{name}" was confirmed')

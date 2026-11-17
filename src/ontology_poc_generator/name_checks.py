@@ -23,6 +23,7 @@ worked out from are in another table, code works the statistic out again and com
 The model is not asked: the name says the claim and the draft says the link between the tables. Every number comes from the rows."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import TrMap, tr
 import math
 import re
 import statistics
@@ -30,8 +31,8 @@ from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Context, Decimal
 
 from ontology_poc_generator.public_ontology import normalize_proposal, normalize_value
 
-STAT_WORDS = {'median': '中位数', 'mean': '平均数', 'sum': '合计', 'max': '最大值', 'min': '最小值'}
-METHOD_WORDS = {'interpolation': '插值', 'nearest_rank': '最近秩'}
+STAT_WORDS = TrMap({'median': ('中位数', 'median'), 'mean': ('平均数', 'average'), 'sum': ('合计', 'total'), 'max': ('最大值', 'maximum'), 'min': ('最小值', 'minimum')})
+METHOD_WORDS = TrMap({'interpolation': ('插值', 'interpolation'), 'nearest_rank': ('最近秩', 'nearest rank')})
 _PERCENT = re.compile(r'(?<![A-Za-z])P(\d{1,2})(?!\d)', re.I)
 _word = lambda w: rf'(?<![A-Za-z]){w}(?![A-Za-z])'   # \b does not stop at "_": days_avg, total_amount
 _WORDS = {'median': re.compile(rf'中位数|中位|{_word("median")}', re.I),

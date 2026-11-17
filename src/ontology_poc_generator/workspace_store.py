@@ -7,6 +7,7 @@ and how many rows it looked at, so a later stage can show the evidence behind a 
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 import hashlib
@@ -343,13 +344,13 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
             confirmer_id = actor_id if actor_id is not None else before['confirmed_by_user_id'] if before and before['confirmed_by'] == confirmed_by else None   # a re-check by someone else leaves whose confirmation it was
             self_confirmed = state == 'confirmed' and proposer_id is not None and proposer_id == actor_id
             if self_confirmed and two['active']:
-                raise SelfConfirmation('这一条是你自己提的，要另一位来确认')
+                raise SelfConfirmation(tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'))
             after = {'state': state, 'evidence_ref': evidence_ref, 'confirmed_by': confirmed_by, 'confirmed_at': _now(),
                      'version': before['version'] + 1 if before else 1, 'content_json': content, 'anchors_json': anchors}
             conn.execute('INSERT OR REPLACE INTO element_state(element_id, state, evidence_ref, confirmed_by, confirmed_at, version, content_json, anchors_json,'
                          ' proposed_by, confirmed_by_user_id, proposed_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                          (element_id, *after.values(), proposed_by, confirmer_id, proposer_id))
-            _log(conn, confirmed_by or '未署名', element_id, state, before=before and _logged({k: before[k] for k in after}),
+            _log(conn, confirmed_by or tr('未署名', 'unsigned'), element_id, state, before=before and _logged({k: before[k] for k in after}),
                  after={**_logged(after), **({'self_confirmed': True} if self_confirmed else {})}, user_id=confirmer_id)
         rows = {}
         for element_id, *_ in changes:
@@ -417,7 +418,8 @@ def _dataset(conn, where: str, args: tuple) -> dict | None:
     return dict(zip([c[0] for c in cursor.description], row)) if row else None
 
 
-FAN_NOTE = '含重复计算：关联后一行变多行'
+def fan_note() -> str:
+    return tr('含重复计算：关联后一行变多行', 'Counts repeated rows: a join turned one row into several')
 
 
 def fan_marks(conn, dataset_id: int) -> set[str]:
@@ -458,7 +460,7 @@ def import_records(conn, name: str, records, origin: str, file_sha256: str, who:
     expected = len(records)
     rows_in = expected + sum(dropped.values()) if rows_in is None else rows_in
     if rows_in != expected + sum(dropped.values()):
-        raise RowCountMismatch(f'{name}：文件里有 {rows_in} 行，读到 {expected} 行、丢掉 {sum(dropped.values())} 行，对不上，已取消导入')
+        raise RowCountMismatch(tr(f'{name}：文件里有 {rows_in} 行，读到 {expected} 行、丢掉 {sum(dropped.values())} 行，对不上，已取消导入', f'{name}: the file has {rows_in} rows, {expected} were read and {sum(dropped.values())} dropped, which does not add up, so the import was cancelled'))
     existing = _dataset(conn, 'name = ? AND file_sha256 = ? ORDER BY version DESC LIMIT 1', (name, file_sha256)) if reuse else None
     if existing:
         if not (keeps_current and current_dataset(conn, name)):
@@ -485,7 +487,7 @@ def import_records(conn, name: str, records, origin: str, file_sha256: str, who:
                          ([r.get(n) for n in originals] for r in records))
         rows_stored = conn.execute(f'SELECT COUNT(*) FROM {_quote(table)}').fetchone()[0]
         if rows_stored != expected:
-            raise RowCountMismatch(f'{name}：读到 {expected} 行，只存入 {rows_stored} 行，已取消导入')
+            raise RowCountMismatch(tr(f'{name}：读到 {expected} 行，只存入 {rows_stored} 行，已取消导入', f'{name}: {expected} rows were read but only {rows_stored} stored, so the import was cancelled'))
         conn.execute('UPDATE dataset SET rows_stored = ?, table_name = ? WHERE id = ?', (rows_stored, table, dataset_id))
         for position, column in enumerate(names):
             d = _describe([row[0] for row in conn.execute(f'SELECT {_quote(column)} FROM {_quote(table)}')])
@@ -553,29 +555,29 @@ def merge_by_key(current: list[dict], incoming: list[dict], key_columns: list[st
     carries are added (empty for rows it does not touch).
     Raises ValueError, with the reason in plain Chinese, when a key cannot be matched without guessing."""
     if not key_columns:
-        raise ValueError('按主键更新要先选出主键列')
+        raise ValueError(tr('按主键更新要先选出主键列', 'Updating by key needs the key columns chosen first'))
     here = list(dict.fromkeys(k for r in current for k in r))
     there = list(dict.fromkeys(k for r in incoming for k in r))
     for column in key_columns:
         if column not in there:
-            raise ValueError(f'新文件里没有主键列“{column}”，没法按它更新')
+            raise ValueError(tr(f'新文件里没有主键列“{column}”，没法按它更新', f'The new file has no key column "{column}", so it cannot update by it'))
         if column not in here:
-            raise ValueError(f'现有数据里没有“{column}”这一列，没法按它更新')
+            raise ValueError(tr(f'现有数据里没有“{column}”这一列，没法按它更新', f'The existing data has no column "{column}", so it cannot update by it'))
     empty = sum(1 for r in incoming if any(r.get(c) in (None, '') for c in key_columns))
     if empty:
-        raise ValueError(f'新文件里有 {empty} 行的主键是空的，对不上现有的行，请先补上或删掉这些行')
+        raise ValueError(tr(f'新文件里有 {empty} 行的主键是空的，对不上现有的行，请先补上或删掉这些行', f'{empty} rows in the new file have an empty key and cannot be matched to existing rows. Fill them in or remove them first'))
     seen: dict[tuple, int] = {}
     for r in incoming:
         seen[_key_of(r, key_columns)] = seen.get(_key_of(r, key_columns), 0) + 1
     repeated = [k for k, n in seen.items() if n > 1]
     if repeated:
-        raise ValueError(f'新文件里主键“{_shown(repeated[0])}”出现了 {seen[repeated[0]]} 行（共 {len(repeated)} 个主键重复），不知道取哪一行')
+        raise ValueError(tr(f'新文件里主键“{_shown(repeated[0])}”出现了 {seen[repeated[0]]} 行（共 {len(repeated)} 个主键重复），不知道取哪一行', f'In the new file the key "{_shown(repeated[0])}" appears in {seen[repeated[0]]} rows ({len(repeated)} keys repeat in all), so it is unclear which row to take'))
     where: dict[tuple, list[int]] = {}
     for i, r in enumerate(current):
         where.setdefault(_key_of(r, key_columns), []).append(i)
     clash = [k for k in seen if len(where.get(k, ())) > 1]
     if clash:
-        raise ValueError(f'现有数据里主键“{_shown(clash[0])}”有 {len(where[clash[0]])} 行（共 {len(clash)} 个主键），按主键更新会分不清改哪一行')
+        raise ValueError(tr(f'现有数据里主键“{_shown(clash[0])}”有 {len(where[clash[0]])} 行（共 {len(clash)} 个主键），按主键更新会分不清改哪一行', f'In the existing data the key "{_shown(clash[0])}" is in {len(where[clash[0]])} rows ({len(clash)} keys in all), so updating by key could not tell which row to change'))
     columns = here + [c for c in there if c not in here]
     rows = [{c: r.get(c) for c in columns} for r in current]
     changed = added = blank_kept = 0
@@ -613,21 +615,21 @@ def plan_upload(conn, name: str, records: list[dict], *, mode: str | None = None
     Raises ValueError (plain Chinese) for anything that cannot be done without guessing."""
     current = current_dataset(conn, name)
     if mode not in (None, *UPLOAD_MODES):
-        raise ValueError('导入方式只有按主键更新（update_by_key）和覆盖（overwrite）两种')
+        raise ValueError(tr('导入方式只有按主键更新（update_by_key）和覆盖（overwrite）两种', 'The import mode can only be update by key (update_by_key) or overwrite (overwrite)'))
     if mode is None:
         if current:
-            raise ValueError(f'已经有叫“{name}”的数据集。要更新它，请指定数据集和方式：按主键更新或覆盖；要新建，请换一个名字')
+            raise ValueError(tr(f'已经有叫“{name}”的数据集。要更新它，请指定数据集和方式：按主键更新或覆盖；要新建，请换一个名字', f'There is already a dataset named "{name}". To update it, name the dataset and the mode (update by key or overwrite); to create a new one, pick another name'))
         return {'name': name, 'mode': 'new', 'records': records, 'rows_in': rows_in, 'dropped': dropped, 'unchanged': False,
                 'changes': {'changed': 0, 'added': len(records), 'unchanged': 0}}
     if current is None:
-        raise ValueError(f'没有叫“{name}”的数据集，不能{"按主键更新" if mode == "update_by_key" else "覆盖"}它')
+        raise ValueError(tr(f'没有叫“{name}”的数据集，不能{"按主键更新" if mode == "update_by_key" else "覆盖"}它', f'There is no dataset named "{name}", so it cannot be {"updated by key" if mode == "update_by_key" else "overwritten"}'))
     if mode == 'overwrite':
         return {'name': name, 'mode': mode, 'records': records, 'rows_in': rows_in, 'dropped': dropped, 'unchanged': False,
                 'changes': {'replaced_rows': current['rows_stored']}}
     if not isinstance(key_columns, list) or not key_columns or not all(isinstance(c, str) and c for c in key_columns):
-        raise ValueError('主键列要写成列名的列表，例如 ["订单号"]')
+        raise ValueError(tr('主键列要写成列名的列表，例如 ["订单号"]', 'The key columns must be a list of column names, for example ["Order ID"]'))
     if len(set(key_columns)) != len(key_columns):
-        raise ValueError(f'主键列里有重复的列：{"、".join(c for c in dict.fromkeys(key_columns) if key_columns.count(c) > 1)}')
+        raise ValueError(tr(f'主键列里有重复的列：{tr("、", ", ").join(c for c in dict.fromkeys(key_columns) if key_columns.count(c) > 1)}', f'The key columns repeat a column: {", ".join(c for c in dict.fromkeys(key_columns) if key_columns.count(c) > 1)}'))
     merged, counts = merge_by_key(dataset_records(conn, current), records, key_columns)
     file_rows = len(records) + sum((dropped or {}).values())
     return {'name': name, 'mode': mode, 'records': merged, 'rows_in': None, 'dropped': None, 'key_columns': list(key_columns),

@@ -19,6 +19,21 @@ test("each failure the server words maps to its likely cause", () => {
   assert.equal(diagnose("这台服务器还连不了 PostgreSQL：少了连接它用的程序包 pg8000").kind, "driver");
 });
 
+test("the sentences the service writes in English map to the same causes", () => {
+  assert.equal(diagnose("Could not resolve this host name: it does not map to an address").kind, "host");
+  assert.equal(diagnose("The other side refused the connection: the address or port is wrong, or the database is not listening").kind, "port");
+  assert.equal(diagnose("Cannot connect: no answer from the other side, or the connection dropped midway").kind, "port");
+  assert.equal(diagnose("Wrong username or password, or this account may not sign in from this machine").kind, "password");
+  assert.equal(diagnose("No such database").kind, "database");
+  assert.equal(diagnose("The TLS certificate check failed and the connection was stopped: self signed certificate").kind, "cert");
+  assert.equal(diagnose("The TLS handshake failed: EOF").kind, "cert");
+  assert.equal(diagnose("The database does not support TLS: ask your DBA to turn it on").kind, "tls");
+  assert.equal(diagnose("The connection or the read timed out (no answer within 10 seconds to connect or 30 seconds to read)").kind, "timeout");
+  assert.equal(diagnose("The query ran past the time limit and the database stopped it").kind, "timeout");
+  assert.equal(diagnose("This address is the cloud provider's internal address (the metadata service, one starting with 169.254)").kind, "blocked");
+  assert.equal(diagnose("This server cannot reach PostgreSQL yet: the driver package pg8000 is missing").kind, "driver");
+});
+
 test("an unknown message still gets general checks, and an empty one is safe", () => {
   const d = diagnose("数据库说：something odd");
   assert.equal(d.kind, "other");

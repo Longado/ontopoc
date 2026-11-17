@@ -24,7 +24,7 @@ from ontology_poc_generator import pipeline_llm
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.object_types import (
-    MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, STALE, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _flag, _flag_readers, _state_view, _text, dataset_columns,
+    MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _flag, _flag_readers, _state_view, _text, dataset_columns,
     element_row, log_entries, recheck_after_write, unconfirmed_producers, write_confirmation)
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import guess_formats, number_text, register
@@ -261,7 +261,7 @@ def _write(conn, change: tuple, reads: list[str], outputs: list[str], version_ro
             if after:
                 after(conn)
     except StaleElement:
-        raise TypeRefused(STALE, 409) from None
+        raise TypeRefused(stale_note(), 409) from None
 
 
 def _flag_takeover(conn, name: str, datasets: list[str]) -> None:

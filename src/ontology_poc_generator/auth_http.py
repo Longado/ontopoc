@@ -6,6 +6,7 @@ and every request is the built-in local admin: for trials and tests on one's own
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import json
 
 import os
@@ -26,8 +27,10 @@ LOOPBACK_ADDRESSES = ('127.0.0.1', '::1')   # the peer a proxy on this machine c
 PROXY_HEADERS = ('X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'Forwarded', 'X-Real-IP', 'Via')   # a client that reaches the service itself sends none of these
 AUTH_BODY = 4096   # the biggest body any /api/auth/* or /api/users* request needs, read before anyone is signed in
 STILL_NEEDED = ('/api/auth/me', '/api/auth/logout', '/api/auth/password')   # what a person who must change their password may still do
-NOT_HERE = '这个服务没有开登录（--no-auth），没有账号可管理'
-NO_TOKEN = '这个操作要用登录后的页面做，不能用令牌'
+def not_here() -> str:
+    return tr('这个服务没有开登录（--no-auth），没有账号可管理', 'This service runs without sign-in (--no-auth), so there are no accounts to manage')
+def no_token() -> str:
+    return tr('这个操作要用登录后的页面做，不能用令牌', 'This needs the signed-in page; a token cannot do it')
 
 
 
@@ -107,18 +110,18 @@ class Gate:
         set_actor(None)   # this thread served another request before: nothing of that one stays
         if self.no_auth:
             if any(h.headers.get(name) is not None for name in PROXY_HEADERS):   # a request that came through a proxy is not from this machine, whatever its Host says
-                h.reply(403, {'error': '没开登录的服务不接受经过代理的请求。'})
+                h.reply(403, {'error': tr('没开登录的服务不接受经过代理的请求。', 'A service without sign-in does not accept requests that came through a proxy.')})
                 return False
             h.user = LOCAL_USER
             return h.local_request()
         path = urlsplit(h.path).path
         host = urlsplit('http://' + h.headers.get('Host', '')).hostname
         if host not in self.hosts:
-            h.reply(403, {'error': '这个地址不对，请用部署时给的地址访问。'})
+            h.reply(403, {'error': tr('这个地址不对，请用部署时给的地址访问。', 'This address is not right. Use the address given when it was deployed.')})
             return False
         bearer, cookie = self._credentials(h)
         if method == 'POST' and bearer is None and h.headers.get('Origin') not in self.origins:   # a cookie rides along with any page the browser has open
-            h.reply(403, {'error': '请求不是从本站页面发出的。'})
+            h.reply(403, {'error': tr('请求不是从本站页面发出的。', 'The request did not come from this site\'s page.')})
             return False
         conn = self.connect()
         try:
@@ -129,19 +132,19 @@ class Gate:
         h.user, h.session_token = user, None if bearer else cookie
         set_actor(user)
         if empty and path != '/api/ontology/health':   # nothing to sign in to: the only way forward is on the machine
-            h.reply(503, {'error': '还没有账号。请在服务所在的机器上运行：python -m ontology_poc_generator.accounts create-admin', 'setup': True})
+            h.reply(503, {'error': tr('还没有账号。请在服务所在的机器上运行：python -m ontology_poc_generator.accounts create-admin', 'There are no accounts yet. On the machine that runs the service, run: python -m ontology_poc_generator.accounts create-admin'), 'setup': True})
             return False
         needed = required_role(method, path)
         if needed == PUBLIC:
             return True
         if user is None:
-            h.reply(401, {'error': '请先登录', 'login': True})
+            h.reply(401, {'error': tr('请先登录', 'Sign in first'), 'login': True})
             return False
         if user['must_change'] and path not in STILL_NEEDED:
-            h.reply(403, {'error': '请先把初始密码改掉', 'must_change': True})
+            h.reply(403, {'error': tr('请先把初始密码改掉', 'Change the initial password first'), 'must_change': True})
             return False
         if not allows(user['role'], needed):
-            h.reply(403, {'error': '你的角色不能做这个'})
+            h.reply(403, {'error': tr('你的角色不能做这个', 'Your role cannot do this')})
             return False
         if needed == UNLIMITED:
             conn = self.connect()
@@ -150,10 +153,10 @@ class Gate:
             finally:
                 conn.close()
             if limited:
-                h.reply(403, {'error': '你受类型名单或行规则限制，早期界面的运行存的是整张表，不能看：请在团队应用里查看和提问'})
+                h.reply(403, {'error': tr('你受类型名单或行规则限制，早期界面的运行存的是整张表，不能看：请在团队应用里查看和提问', 'You are limited by a type list or row rules, and runs from the early screens hold whole tables, so you cannot see them. Look and ask in the team app')})
                 return False
         if user.get('token_scope') == 'read' and not read_token_allows(method, path):
-            h.reply(403, {'error': '这个令牌只能读和提问，不能做这个。需要别的权限请让管理员另发一个。'})
+            h.reply(403, {'error': tr('这个令牌只能读和提问，不能做这个。需要别的权限请让管理员另发一个。', 'This token can only read and ask questions. For other rights, ask an admin to issue another.')})
             return False
         return True
 
@@ -168,14 +171,14 @@ class Gate:
             if path == '/api/auth/me':
                 h.reply(200, {'user': LOCAL_USER, 'auth': False})
             else:
-                h.reply(400, {'error': NOT_HERE})
+                h.reply(400, {'error': not_here()})
             return True
         try:
             payload = h.read_json(AUTH_BODY) if method == 'POST' else {}
             if payload is None:
                 return True
             if path not in ('/api/auth/login', '/api/auth/me') and h.session_token is None:
-                raise accounts.AccountError(NO_TOKEN, 403)
+                raise accounts.AccountError(no_token(), 403)
             conn = self.connect()
             try:
                 self._route(h, conn, method, path, payload)
@@ -235,14 +238,14 @@ class Gate:
             h.reply(200, {'two_person': accounts.two_person(conn)})
         elif path == '/api/settings':
             if 'two_person' not in payload:
-                raise accounts.AccountError('要写明改什么（two_person）')
+                raise accounts.AccountError(tr('要写明改什么（two_person）', 'Say what to change (two_person)'))
             with transaction(conn):
                 h.reply(200, {'two_person': accounts.set_two_person(conn, payload['two_person'], user['username'])})
         elif path in ('/api/users/update', '/api/users/disable', '/api/users/reset-password'):
             with transaction(conn):
                 h.reply(200, {'user': self._change(conn, user, path, payload)})
         else:
-            h.reply(404, {'error': '没有这个接口'})
+            h.reply(404, {'error': tr('没有这个接口', 'There is no such endpoint')})
 
     @staticmethod
     def _change(conn, actor: dict, path: str, payload: dict) -> dict:
@@ -251,10 +254,10 @@ class Gate:
             return accounts.set_disabled(conn, actor, target, payload.get('disabled'))
         if path == '/api/users/reset-password':
             if target == actor['id']:
-                raise accounts.AccountError('自己的密码要在“我的账号”里改，那里要输入现在的密码', 403)
+                raise accounts.AccountError(tr('自己的密码要在“我的账号”里改，那里要输入现在的密码', 'Change your own password under My account, where you enter the current password'), 403)
             return accounts.reset_password(conn, actor['username'], target, payload.get('password'))
         if 'role' not in payload and 'display_name' not in payload and 'attrs' not in payload:
-            raise accounts.AccountError('要写明改什么（role、display_name 或 attrs）')
+            raise accounts.AccountError(tr('要写明改什么（role、display_name 或 attrs）', 'Say what to change (role, display_name or attrs)'))
         if 'attrs' in payload:
             accounts.set_attrs(conn, actor, target, payload['attrs'])
         if 'display_name' in payload:

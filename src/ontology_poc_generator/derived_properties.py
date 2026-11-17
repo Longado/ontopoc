@@ -38,7 +38,7 @@ from ontology_poc_generator.name_checks import STAT_WORDS, claim_of
 from ontology_poc_generator.named_views import ORDERED_TEXT, orderable
 from ontology_poc_generator.object_relations import _relation_visible, relation_id
 from ontology_poc_generator.object_types import (
-    DERIVED_PREFIX, ENGLISH_NAME, LIMITED_NOTE, MAX_DESCRIPTION, MAX_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
+    DERIVED_PREFIX, ENGLISH_NAME, limited_note, MAX_DESCRIPTION, MAX_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
     dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.object_views import meaning_labels
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, MAX_LENGTH, WordMap, compile_expression, error_condition
@@ -412,7 +412,7 @@ def trial(conn, content: dict, user: dict | None = None) -> dict:
     n, with_value, empty = result['objects'], result['with_value'], result['objects'] - result['with_value']
     lines = [{'ok': result['failed'] == 0, 'text': tr(f'{"你能看到的" if limited else ""}{n} 个{owner_name}里，{with_value} 个算出了值，{empty} 个没有值', f'Of {"the " if limited else ""}{n} {owner_name} objects{" you can see" if limited else ""}, {with_value} got a value and {empty} have none')}]
     if limited:
-        lines.append({'ok': True, 'text': LIMITED_NOTE})
+        lines.append({'ok': True, 'text': limited_note()})
     lines += _failure_lines(content, result, owner_name)
     if result['rows_used'] is not None:
         lines.append({'ok': True, 'text': tr(f'一共用了 {result["rows_used"]} 行{chain["types"][chain["measured"]]["name"]}的数据', f'{result["rows_used"]} {chain["types"][chain["measured"]]["name"]} rows were used in total')})
@@ -423,7 +423,7 @@ def trial(conn, content: dict, user: dict | None = None) -> dict:
     examples = [{'object': labels[i], 'value': text_of(result['values'][i], result['output_type'])} for i in shown]
     numbers = {k: result.get(k) for k in ('objects', 'with_value', 'failed', 'rows_used', 'shared_keys', 'no_value')}
     return {'problems': [], 'lines': lines, 'examples': examples, 'sample': sample, 'numbers': None if limited else numbers, 'datasets': result['datasets'], 'output_type': result['output_type'],
-            'seen': None if limited else seen_of(result), 'limited_note': LIMITED_NOTE if limited else None}
+            'seen': None if limited else seen_of(result), 'limited_note': limited_note() if limited else None}
 
 
 def _failure_lines(content: dict, result: dict, owner_name: str) -> list[dict]:

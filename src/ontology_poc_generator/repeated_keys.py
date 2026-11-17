@@ -9,6 +9,7 @@ This module finds the repeats, checks a choice, picks the row "latest" means and
 open item) is not decided here."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import math
 import re
 from datetime import datetime, timedelta, timezone
@@ -155,10 +156,10 @@ def unmet(group: dict, rule: dict | None) -> str | None:
     if not rule:
         return None
     if rule['rule'] == 'keep_latest' and rule.get('column') not in group['latest_columns']:
-        return f'上次选的是按「{rule.get("column")}」只留最新的，但这一列现在不在表里或分不出先后。'
+        return tr(f'上次选的是按「{rule.get("column")}」只留最新的，但这一列现在不在表里或分不出先后。', f'Last time you chose to keep only the latest by "{rule.get("column")}", but that column is not in the table now or cannot be put in order.')
     new = [o['identity'] for o in group['objects'] if rule.get('covers') is not None and o['identity'] not in set(rule['covers'])]
     if new:
-        return f'上次的选择只管到当时重复的编号，现在又有新的重复编号：{"、".join(new[:EXAMPLES])}{"等" if len(new) > EXAMPLES else ""}。'
+        return tr(f'上次的选择只管到当时重复的编号，现在又有新的重复编号：{tr("、", ", ").join(new[:EXAMPLES])}{"等" if len(new) > EXAMPLES else ""}。', f'Your last choice covered only the keys that repeated then, and there are new repeated keys now: {", ".join(new[:EXAMPLES])}{" and more" if len(new) > EXAMPLES else ""}.')
     return None
 
 
@@ -211,18 +212,18 @@ def check_rule(group: dict, posted) -> dict:
     """A person's choice for one repeated-key group, as {'rule'} or {'rule': 'keep_latest', 'column'}. Raises ValueError
     with the text the person reads when it cannot be kept."""
     if not isinstance(posted, dict) or posted.get('rule') not in RULES:
-        raise ValueError('要选一种处理办法：每一行都留、只留最新的，或当作数据错误')
+        raise ValueError(tr('要选一种处理办法：每一行都留、只留最新的，或当作数据错误', 'Pick a way to treat them: keep every row, keep only the latest, or treat it as a data error'))
     covers = sorted(o['identity'] for o in group['objects'])   # the keys this choice is made for: one that repeats later is asked about again
     if posted['rule'] != 'keep_latest':
         if posted.get('column') is not None:
-            raise ValueError('只有“只留最新的”才要选列')
+            raise ValueError(tr('只有“只留最新的”才要选列', 'Only "keep only the latest" needs a column'))
         return {'rule': posted['rule'], 'covers': covers}
     column = posted.get('column')
     if column not in group['columns']:
-        raise ValueError(f'要选「{group["source"]}」表里的一列，按它的大小定哪一行最新')
-    said = {'text': '不是数字或日期，没法按它定哪一行最新', 'same': '在这些重复的行里取值都一样，分不出哪一行最新',
-            'empty': '在这些重复的行里都是空的，分不出哪一行最新'}.get(group['order'][column])
+        raise ValueError(tr(f'要选「{group["source"]}」表里的一列，按它的大小定哪一行最新', f'Pick a column of the table "{group["source"]}"; its size decides which row is latest'))
+    said = {'text': tr('不是数字或日期，没法按它定哪一行最新', 'is not a number or a date, so it cannot decide which row is latest'), 'same': tr('在这些重复的行里取值都一样，分不出哪一行最新', 'has the same value in all these repeated rows, so it cannot tell which row is latest'),
+            'empty': tr('在这些重复的行里都是空的，分不出哪一行最新', 'is empty in all these repeated rows, so it cannot tell which row is latest')}.get(group['order'][column])
     if said:
         usable = [c for c in group['columns'] if group['order'][c] in ('number', 'date')]
-        raise ValueError(f'「{column}」{said}' + (f'。可以用的有：{"、".join(usable)}' if usable else '。这张表里没有一列能分出先后，只能每一行都留，或当作数据错误'))
+        raise ValueError(tr(f'「{column}」{said}', f'"{column}" {said}') + (tr(f'。可以用的有：{tr("、", ", ").join(usable)}', f'. You can use: {", ".join(usable)}') if usable else tr('。这张表里没有一列能分出先后，只能每一行都留，或当作数据错误', '. No column of this table can put the rows in order; you can only keep every row, or treat it as a data error')))
     return {'rule': 'keep_latest', 'column': column, 'covers': covers}
