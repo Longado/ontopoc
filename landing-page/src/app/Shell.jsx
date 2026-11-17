@@ -99,7 +99,7 @@ function AvatarMenu() {
   if (!auth) return <span className="top-local muted">本机，没有登录</span>;
   return (
     <span className="menu-wrap" ref={ref}>
-      <button className="avatar" aria-label={`${user.display_name}，账号菜单`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>{[...user.display_name][0]}</button>
+      <button className="avatar" aria-label={`账号：${user.display_name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>{[...user.display_name][0]}</button>
       {open && (
         <div className="menu menu-right" role="menu">
           <div className="menu-who"><strong>{user.display_name}</strong><span className="muted small">{roleLabel(user.role)}</span></div>
