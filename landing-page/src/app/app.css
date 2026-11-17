@@ -2217,3 +2217,4 @@ td .check, .table-wrap label.check { white-space: nowrap; }
   .as-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .as-checked { grid-template-columns: minmax(0, 1fr); }
 }
+.bubble > .bubble-tag { display: block; }

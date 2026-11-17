@@ -136,7 +136,7 @@ export function ProposalCard({ proposal, busy, onPropose }) {
           </Row>
         )}
         <Row label={t("ask.assistant.card.checked")}>
-          <Checked done={c.done} notDone={c.notDone} prefix="model" />
+          <Checked done={c.done.filter((x) => !(done && x.key === "kept"))} notDone={c.notDone} prefix="model" />
         </Row>
       </dl>
       {proposal.error && <p className="error" role="alert">{proposal.error}</p>}
