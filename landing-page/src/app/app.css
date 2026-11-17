@@ -101,7 +101,7 @@ button.secondary.icon-button { width: 34px; padding: 0; }
 .nav a.active { color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
 .nav a .icon { flex: none; }
 .nav a .count { margin-left: auto; float: none; min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--blue-soft); color: var(--blue-ink); font-size: 12px; text-align: center; }
-.nav-collapse { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; gap: 10px; margin-top: auto; background: var(--side); padding: 7px var(--s1); border: 0; background: none; color: var(--muted); border-radius: 8px; }
+.nav-collapse { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; gap: 10px; width: 100%; margin-top: auto; background: var(--side); padding: 7px var(--s1); border: 0; border-top: 1px solid var(--line); color: var(--muted); border-radius: 0; }   /* opaque: the groups scroll under it */
 .nav-collapse:hover { background: var(--hover); color: var(--ink); }
 .nav.icons .nav-label, .nav.icons .nav-heading, .nav.icons .nav-hint { display: none; }
 .nav.icons a, .nav.icons .nav-collapse { justify-content: center; padding: 9px 0; position: relative; }
