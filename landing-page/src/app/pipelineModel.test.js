@@ -318,3 +318,20 @@ test("a card dragged on the pipeline graph keeps its new place; the others keep 
   assert.deepEqual(up.shift, { x: 40, y: 80 });
   assert.equal(up.height, base.nodes.b.y + 80 + 64);
 });
+
+test("Add data puts a dataset on the canvas as a new input step, already pointing at it (like DIP's 添加数据)", async () => {
+  const { dataInput } = await import("./pipelineModel.js");
+  const steps = [{ id: "input", type: "input", dataset: "Orders" }];
+  const made = dataInput(steps, "Customers");
+  assert.equal(made.type, "input");
+  assert.equal(made.dataset, "Customers");
+  assert.notEqual(made.id, "input");   // a fresh id
+});
+
+test("the canvas search finds steps by their title or kind, case-insensitively", async () => {
+  const { findSteps } = await import("./pipelineModel.js");
+  const steps = [{ id: "input", type: "input", dataset: "Orders" }, { id: "input2", type: "input", dataset: "After-sales tickets" }, { id: "join", type: "join", left: "input", right: "input2", on: [] }];
+  assert.deepEqual(findSteps(steps, "tick").map((s) => s.id), ["input2"]);
+  assert.deepEqual(findSteps(steps, "ORDERS").map((s) => s.id), ["input"]);
+  assert.deepEqual(findSteps(steps, "  "), []);
+});
