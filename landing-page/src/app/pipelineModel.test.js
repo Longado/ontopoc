@@ -331,7 +331,8 @@ test("Add data puts a dataset on the canvas as a new input step, already pointin
 test("the canvas search finds steps by their title or kind, case-insensitively", async () => {
   const { findSteps } = await import("./pipelineModel.js");
   const steps = [{ id: "input", type: "input", dataset: "Orders" }, { id: "input2", type: "input", dataset: "After-sales tickets" }, { id: "join", type: "join", left: "input", right: "input2", on: [] }];
-  assert.deepEqual(findSteps(steps, "tick").map((s) => s.id), ["input2"]);
-  assert.deepEqual(findSteps(steps, "ORDERS").map((s) => s.id), ["input"]);
+  assert.deepEqual(findSteps(steps, "tick").map((s) => s.id), ["input2", "join"]);   // the join is titled after both its inputs
+  assert.deepEqual(findSteps(steps, "ORDERS").map((s) => s.id), ["input", "join"]);
+  assert.deepEqual(findSteps(steps, "join").map((s) => s.id), ["join"]);
   assert.deepEqual(findSteps(steps, "  "), []);
 });

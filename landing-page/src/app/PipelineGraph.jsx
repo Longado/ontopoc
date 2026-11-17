@@ -44,7 +44,7 @@ function readPlaces(place) {
   }
 }
 
-export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, results = {}, place = null }) {
+export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, results = {}, place = null, relayout = 0 }) {
   // `place` names the pipeline: given, the cards can be dragged and their places are kept in this browser for that pipeline
   const [moved, setMoved] = useState(() => readPlaces(place));
   useEffect(() => setMoved(readPlaces(place)), [place]);
@@ -55,6 +55,13 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
       else window.localStorage.removeItem(placesKey(place));
     } catch { /* storage may be off: the places last for this visit */ }
   };
+  const firstRelayout = useRef(relayout);
+  useEffect(() => {
+    if (relayout === firstRelayout.current) return;
+    firstRelayout.current = relayout;
+    keep({});   // "Auto layout": every card back in its automatic place, and the picture fits again
+    setFitted(true);
+  }, [relayout]);
   const drag = useRef(null);
   const latest = useRef(moved);
   latest.current = moved;
@@ -160,7 +167,6 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
     pan.current = null;
     setPanning(false);
   };
-  const anyMoved = Object.keys(moved).some((id) => steps.some((s) => s.id === id));
   const zoom = (factor) => {
     setFitted(false);
     setK((v) => Math.min(MAX, Math.max(MIN, Math.round(v * factor * 100) / 100)));
@@ -204,7 +210,6 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
         <button type="button" onClick={() => zoom(1.25)} aria-label={t("pipeline.graph.zoomIn")} title={t("pipeline.graph.zoomIn")}><PIcon name="plus" /></button>
         <span className="graph-zoom-sep" aria-hidden="true" />
         <button type="button" onClick={fit} aria-label={t("pipeline.graph.fit")} title={t("pipeline.graph.fit")}><PIcon name="fit" /></button>
-        {place && anyMoved && <><span className="graph-zoom-sep" aria-hidden="true" /><button type="button" className="graph-reset" onClick={() => keep({})} title={t("pipeline.graph.resetLayoutHint")}>{t("pipeline.graph.resetLayout")}</button></>}
       </div>
       <div className={`graph-pane pannable${panning ? " panning" : ""}`} ref={pane} onPointerDown={panStart} onPointerMove={panMove} onPointerUp={panEnd} onPointerCancel={panEnd} title={t("pipeline.graph.panHint")}>
         <div className="graph-sizer" style={{ width: full.w * k + slack.x * 2, height: full.h * k + slack.y * 2 }}>

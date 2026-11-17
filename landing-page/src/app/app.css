@@ -2225,3 +2225,20 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .graph-pane.pannable { cursor: grab; }
 .graph-pane.pannable.panning { cursor: grabbing; user-select: none; }
 .graph-pane.pannable .pl-node { cursor: pointer; }
+
+/* R16 pipeline toolbar like DIP: add data, quick step kinds, delete, auto layout, search */
+.pl-tool-sep { width: 1px; height: 20px; background: var(--pl-border, #dfe3e8); margin: 0 4px; }
+.pl-quick { display: inline-flex; gap: 2px; }
+.pl-tool.icon { padding: 0 6px; min-width: 30px; justify-content: center; }
+.pl-tool.icon:disabled { opacity: 0.4; cursor: not-allowed; }
+.pl-data-menu { min-width: 260px; max-height: 360px; display: flex; flex-direction: column; }
+.pl-data-list { overflow: auto; }
+.pl-data-filter { margin: 6px 8px; }
+.pl-search { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border: 1px solid var(--pl-border, #dfe3e8); border-radius: 6px; background: var(--bg-surface, #fff); color: var(--text-faint); }
+.pl-search input { border: 0; outline: 0; background: none; padding: 0; width: 160px; font-size: 13px; color: var(--text-main); }
+.pl-search-menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 240px; z-index: 30; }
+
+/* a press or drag on a map moves the map; it never starts a text selection that runs into the side panel (Eddie, Lineage) */
+.canvas, .tw-stage, .graph-pane { -webkit-user-select: none; user-select: none; }
+.pl-tools .pl-tool { white-space: nowrap; flex: none; }
+.pl-search input { width: 120px; }

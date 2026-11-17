@@ -624,3 +624,15 @@ export function insertField(text, start, end, name) {
   const to = Math.max(start ?? text.length, end ?? text.length);
   return { text: text.slice(0, from) + insert + text.slice(to), caret: from + insert.length };
 }
+
+/** "Add data": a new input step that already reads `dataset` (the toolbar's dataset menu, as DIP's 添加数据). */
+export function dataInput(steps, dataset) {
+  return { ...newStep(steps, "input", null), dataset };
+}
+
+/** The canvas search: the steps whose title, kind or dataset contains `query`, ignoring case; nothing for an empty query. */
+export function findSteps(steps, query) {
+  const q = String(query ?? "").trim().toLowerCase();
+  if (!q) return [];
+  return steps.filter((s) => [stepTitle(s, steps), KIND_LABEL[s.type] ?? "", s.type, s.dataset ?? ""].some((x) => String(x).toLowerCase().includes(q)));
+}

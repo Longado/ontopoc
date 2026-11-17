@@ -7,7 +7,7 @@ import { PipelineBar } from "./PipelineBar.jsx";
 import { PipelineGraph } from "./PipelineGraph.jsx";
 import { KindChip, PIcon } from "./PipelineIcons.jsx";
 import { PipelinePanel } from "./PipelinePanel.jsx";
-import { KIND_LABEL, addStep, allIssues, applyDraft, cardFlags, durationText, friendlyError, kindLine, newStep, orphans, removeStep, rowsText, runBlockReason, runResults, sameSpec, stepTitle, withBranchNodes } from "./pipelineModel.js";
+import { KIND_LABEL, addStep, allIssues, dataInput, findSteps, applyDraft, cardFlags, durationText, friendlyError, kindLine, newStep, orphans, removeStep, rowsText, runBlockReason, runResults, sameSpec, stepTitle, withBranchNodes } from "./pipelineModel.js";
 import { CHANGED_BY_OTHER } from "./pipelineServerText.js";
 import { hrefFor } from "./routeModel.js";
 import { StepEditor } from "./StepEditors.jsx";
@@ -66,6 +66,48 @@ function AddStep({ onAdd }) {
               ))}
             </div>
           ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** "Add data" (DIP's 添加数据): the workspace's datasets, each put on the canvas as an input step that already reads it; a filter once the list is long;
+ * at the bottom, an empty input to choose later. */
+function AddData({ datasets, onPick }) {
+  const [open, setOpen, ref] = usePopover();
+  const [q, setQ] = useState("");
+  const names = datasets.map((d) => d.name).filter((n) => n.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <span className="menu-wrap" ref={ref}>
+      <button type="button" className="pl-tool" aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(!open); setQ(""); }}><PIcon name="input" /> {t("pipeline.editor.addData")} <PIcon name="chevronDown" size={12} /></button>
+      {open && (
+        <div className="menu pl-add-menu pl-data-menu" role="menu">
+          {datasets.length > 6 && <input className="pl-data-filter" autoFocus type="search" value={q} placeholder={t("pipeline.editor.addDataFind")} onChange={(e) => setQ(e.target.value)} />}
+          {!datasets.length && <p className="menu-label">{t("pipeline.editor.addDataNone")}</p>}
+          <div className="pl-data-list">
+            {names.map((n) => <button key={n} type="button" role="menuitem" className="menu-item" onClick={() => { setOpen(false); onPick(n); }}><KindChip step={{ type: "input" }} /> {n}</button>)}
+          </div>
+          <button type="button" role="menuitem" className="menu-item muted" onClick={() => { setOpen(false); onPick(""); }}>{t("pipeline.editor.addDataEmpty")}</button>
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** The canvas search: type part of a step's name, kind or dataset; the matches drop down and a click (or Enter) selects the step, which the graph brings into view. */
+function StepSearch({ steps, onPick }) {
+  const [q, setQ] = useState("");
+  const hits = findSteps(steps, q).slice(0, 8);
+  const pick = (id) => { onPick(id); setQ(""); };
+  return (
+    <span className="menu-wrap pl-search">
+      <PIcon name="search" size={14} />
+      <input type="search" value={q} placeholder={t("pipeline.editor.search")} aria-label={t("pipeline.editor.search")} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && hits[0]) pick(hits[0].id); if (e.key === "Escape") setQ(""); }} />
+      {q.trim() && (
+        <div className="menu pl-search-menu" role="listbox">
+          {hits.length ? hits.map((s) => <button key={s.id} type="button" role="option" aria-selected="false" className="menu-item" onClick={() => pick(s.id)}><KindChip step={s} /> {stepTitle(s, steps)}</button>)
+            : <p className="menu-label">{t("pipeline.editor.searchNone")}</p>}
         </div>
       )}
     </span>
@@ -186,6 +228,14 @@ export function PipelineEditor({ detail, reload }) {
     setSelected(made.id);
     setUpto(null);
   };
+  const addData = (dataset) => {
+    if (!dataset) return add("input");
+    const made = dataInput(draft.steps, dataset);
+    setDraft(addStep(draft, made));
+    setSelected(made.id);
+    setUpto(null);
+  };
+  const [relayout, setRelayout] = useState(0);
   const select = (id) => {
     setSelected(id);
     setUpto(null);
@@ -235,9 +285,20 @@ export function PipelineEditor({ detail, reload }) {
           <section className="pl-graph" aria-label={t("pipeline.editor.graphAria")}>
             <div className="pl-tools">
               <button type="button" className="pl-tool" aria-pressed={stepsOpen} onClick={() => setStepsOpen(!stepsOpen)}><PIcon name="steps" /> {t("pipeline.editor.steps")}</button>
+              <span className="pl-tool-sep" aria-hidden="true" />
+              <AddData datasets={datasets} onPick={addData} />
+              <span className="pl-quick" role="group" aria-label={t("pipeline.editor.addStep")}>
+                {["transform", "join", "union", "split", "llm", "output"].map((k) => (
+                  <button key={k} type="button" className="pl-tool icon" title={t("pipeline.editor.addKind", { kind: KIND_LABEL[k] })} aria-label={t("pipeline.editor.addKind", { kind: KIND_LABEL[k] })} onClick={() => add(k)}><KindChip step={{ type: k }} /></button>
+                ))}
+              </span>
               <AddStep onAdd={add} />
+              <span className="pl-tool-sep" aria-hidden="true" />
+              <button type="button" className="pl-tool icon" disabled={!step || readers.length > 0} title={!step ? t("pipeline.editor.deletePick") : readers.length ? t("steps.edit.readers.blocked", { names: readers.join(", ") }) : t("pipeline.editor.delete")} aria-label={t("pipeline.editor.delete")} onClick={() => { setDraft(removeStep(draft, step.id).spec); setSelected(null); }}><PIcon name="trash" /></button>
+              <button type="button" className="pl-tool icon" title={t("pipeline.editor.autoLayout")} aria-label={t("pipeline.editor.autoLayout")} onClick={() => setRelayout((n) => n + 1)}><PIcon name="layout" /></button>
               {todoCount > 0 && <span className="pl-tool-note">{t("pipeline.editor.todoCount", { count: todoCount })}</span>}
               {!step && draft.steps.length > 0 && <span className="pl-tool-note">{t("pipeline.panel.pick")}</span>}
+              <StepSearch steps={draft.steps} onPick={select} />
             </div>
             <div className="pl-notices">
               {error && <p className="pl-note bad" role="alert"><PIcon name="alert" size={14} /><span>{friendlyError(error, draft.steps)} {error.includes(CHANGED_BY_OTHER) && <button type="button" className="plain" onClick={reload}>{t("pipeline.editor.reload")}</button>}</span></p>}
@@ -245,7 +306,7 @@ export function PipelineEditor({ detail, reload }) {
                 ? <p className="pl-note neutral"><PIcon name="info" size={14} /><span><strong>{t("pipeline.graph.unconfigured")}.</strong> {t("pipeline.editor.quiet", { first: firstTodo })}</span></p>
                 : <p className="pl-note bad" role="alert"><PIcon name="alert" size={14} /><span>{friendlyError(problem, draft.steps)}{summary.status === "ready" ? ` ${t("pipeline.editor.laterBlocked")}` : ""}</span></p>)}
             </div>
-            <PipelineGraph steps={draft.steps} nodes={nodes} selected={selected} onSelect={select} issues={issues} results={results} place={name} />
+            <PipelineGraph steps={draft.steps} nodes={nodes} selected={selected} onSelect={select} issues={issues} results={results} place={name} relayout={relayout} />
           </section>
           {step && (
             <section className="pl-bottom" aria-label={t("pipeline.editor.bottomAria")}>
