@@ -18,11 +18,30 @@ from __future__ import annotations
 import difflib
 import re
 
+from ontology_poc_generator.lang import tr
+
 MAX_LENGTH = 1000
 MAX_DEPTH = 40
 NUMBER_TYPES = ('integer', 'decimal')
+
+
+class WordMap(dict):
+    """A table of words written as {key: (中文, English)}: lookups answer in the language of the request; keys and iteration order are plain."""
+    def __getitem__(self, key):
+        return tr(*dict.__getitem__(self, key))
+
+    def get(self, key, default=None):
+        return self[key] if key in self else default
+
+    def values(self):
+        return [self[k] for k in self]
+
+    def items(self):
+        return [(k, self[k]) for k in self]
+
+
 EXPR_TYPE = {'integer': 'number', 'decimal': 'number', 'text': 'text', 'month': 'text', 'date': 'date', 'datetime': 'datetime', 'boolean': 'boolean'}
-TYPE_WORD = {'number': '数字', 'text': '文本', 'date': '日期', 'datetime': '日期时间', 'boolean': '真假', 'null': '空'}
+TYPE_WORD = WordMap({'number': ('数字', 'number'), 'text': ('文本', 'text'), 'date': ('日期', 'date'), 'datetime': ('日期时间', 'date and time'), 'boolean': ('真假', 'true/false'), 'null': ('空', 'empty')})
 COLUMN_TYPE = {'number': 'decimal', 'text': 'text', 'date': 'date', 'datetime': 'datetime', 'boolean': 'boolean'}   # what a column made from an expression is declared as
 _FULL_WIDTH = {'，': ',', '（': '(', '）': ')', '＋': '+', '－': '-', '＊': '*', '／': '/', '＝': '=', '＜': '<', '＞': '>', '‘': "'", '’': "'", '“': '"', '”': '"'}
 _TOKEN = re.compile(r"""\s*(?:(?P<num>\d+(?:\.\d+)?)|(?P<str>'(?:[^']|'')*'|"(?:[^"]|"")*")|(?P<field>\[[^\]]+\]|`[^`]+`)"""
@@ -31,13 +50,29 @@ KEYWORDS = {'and', 'or', 'not', 'true', 'false', 'null'}
 UNITS = {'date_trunc': ('week', 'month'), 'date_diff': ('day', 'week', 'month', 'year'), 'date_add': ('day', 'week', 'month', 'year')}
 
 # group, name, template, what it does: what the editor lists, so a click inserts the template
-FUNCTION_DOCS = [
-    ('数学', 'round', 'round(数值, 2)', '四舍五入到几位小数'), ('数学', 'abs', 'abs(数值)', '绝对值'),
-    ('判断', 'if', "if(条件, 值1, 值2)", '条件成立取值1，否则取值2（条件为空按否）'),
-    ('判断', 'case', "case(条件1, 值1, 条件2, 值2, 其余的值)", '按顺序找第一个成立的条件'), ('判断', 'coalesce', 'coalesce(字段, 默认值)', '第一个不为空的值'),
-    ('文本', 'concat', "concat(字段1, '-', 字段2)", '拼接文本；有一段为空，结果就为空'), ('文本', 'substring', 'substring(文本, 开始位置, 长度)', '取一段文字，位置从 1 数起'),
-    ('日期', 'date_trunc', "date_trunc('week', 日期)", '取所在周（周一）或所在月的第一天'), ('日期', 'date_diff', "date_diff('day', 日期A, 日期B)", '日期B 减 日期A：day、week、month、year'),
-    ('日期', 'date_add', "date_add(日期, 7, 'day')", '加上几天、几周、几月、几年'), ('日期', 'year', 'year(日期)', '年份'), ('日期', 'month', 'month(日期)', '月份')]
+_FUNCTION_DOCS = [
+    (('数学', 'Math'), 'round', ('round(数值, 2)', 'round(number, 2)'), ('四舍五入到几位小数', 'Round to a number of decimal places')),
+    (('数学', 'Math'), 'abs', ('abs(数值)', 'abs(number)'), ('绝对值', 'Absolute value')),
+    (('判断', 'Logic'), 'if', ('if(条件, 值1, 值2)', 'if(condition, value1, value2)'), ('条件成立取值1，否则取值2（条件为空按否）', 'Value1 if the condition holds, otherwise value2 (an empty condition counts as false)')),
+    (('判断', 'Logic'), 'case', ('case(条件1, 值1, 条件2, 值2, 其余的值)', 'case(condition1, value1, condition2, value2, else_value)'), ('按顺序找第一个成立的条件', 'The value of the first condition that holds, in order')),
+    (('判断', 'Logic'), 'coalesce', ('coalesce(字段, 默认值)', 'coalesce(column, default)'), ('第一个不为空的值', 'The first value that is not empty')),
+    (('文本', 'Text'), 'concat', ("concat(字段1, '-', 字段2)", "concat(column1, '-', column2)"), ('拼接文本；有一段为空，结果就为空', 'Join text; if any part is empty, the result is empty')),
+    (('文本', 'Text'), 'substring', ('substring(文本, 开始位置, 长度)', 'substring(text, start, length)'), ('取一段文字，位置从 1 数起', 'Take part of a text; positions count from 1')),
+    (('日期', 'Date'), 'date_trunc', ("date_trunc('week', 日期)", "date_trunc('week', date)"), ('取所在周（周一）或所在月的第一天', 'The first day of the week (Monday) or month')),
+    (('日期', 'Date'), 'date_diff', ("date_diff('day', 日期A, 日期B)", "date_diff('day', dateA, dateB)"), ('日期B 减 日期A：day、week、month、year', 'dateB minus dateA: day, week, month, year')),
+    (('日期', 'Date'), 'date_add', ("date_add(日期, 7, 'day')", "date_add(date, 7, 'day')"), ('加上几天、几周、几月、几年', 'Add days, weeks, months or years')),
+    (('日期', 'Date'), 'year', ('year(日期)', 'year(date)'), ('年份', 'The year')),
+    (('日期', 'Date'), 'month', ('month(日期)', 'month(date)'), ('月份', 'The month'))]
+
+
+class _FunctionDocs:
+    """FUNCTION_DOCS iterates as (group, name, template, what it does) in the language of the request."""
+    def __iter__(self):
+        for group, name, template, what in _FUNCTION_DOCS:
+            yield tr(*group), name, tr(*template), tr(*what)
+
+
+FUNCTION_DOCS = _FunctionDocs()
 
 COMPARE = {'=': '=', '==': '=', '<>': '<>', '!=': '<>', '<': '<', '>': '>', '<=': '<=', '>=': '>='}
 
@@ -65,8 +100,8 @@ def tokens(text: str) -> list[tuple]:
             bad = text[i:].lstrip()[:1]
             at = len(text) - len(text[i:].lstrip())
             if bad in _FULL_WIDTH:
-                raise ExprError(f'第 {at + 1} 个字符「{bad}」是全角符号，请换成半角「{_FULL_WIDTH[bad]}」', at)
-            raise ExprError(f'第 {at + 1} 个字符「{bad}」不认识', at)
+                raise ExprError(tr(f'第 {at + 1} 个字符「{bad}」是全角符号，请换成半角「{_FULL_WIDTH[bad]}」', f'Character {at + 1} "{bad}" is a full-width symbol; use the half-width "{_FULL_WIDTH[bad]}" instead'), at)
+            raise ExprError(tr(f'第 {at + 1} 个字符「{bad}」不认识', f'Character {at + 1} "{bad}" is not recognized'), at)
         kind = m.lastgroup
         value = m.group(kind)
         out.append((kind, value, m.start(kind)))
@@ -97,22 +132,22 @@ class _Parser:
 
     def expect_op(self, op: str, what: str):
         if not self.is_op(op):
-            raise ExprError(f'这里要有「{op}」（{what}）', self.peek()[2])
+            raise ExprError(tr(f'这里要有「{op}」（{what}）', f'Expected "{op}" here ({what})'), self.peek()[2])
         self.take()
 
     def parse(self):
         if not self.tokens:
-            raise ExprError('表达式是空的', 0)
+            raise ExprError(tr('表达式是空的', 'The expression is empty'), 0)
         node = self.or_()
         if self.i < len(self.tokens):
             kind, value, pos = self.peek()
-            raise ExprError(f'「{value}」放在这里不对：前面的部分已经是一个完整的表达式，中间少了运算符或逗号？', pos)
+            raise ExprError(tr(f'「{value}」放在这里不对：前面的部分已经是一个完整的表达式，中间少了运算符或逗号？', f'"{value}" does not belong here: what comes before is already a complete expression. Is an operator or comma missing?'), pos)
         return node
 
     def nested(self, parse):
         self.depth += 1
         if self.depth > MAX_DEPTH:
-            raise ExprError(f'括号和函数嵌套太深（最多 {MAX_DEPTH} 层）', self.peek()[2])
+            raise ExprError(tr(f'括号和函数嵌套太深（最多 {MAX_DEPTH} 层）', f'Parentheses and functions are nested too deeply (at most {MAX_DEPTH} levels)'), self.peek()[2])
         try:
             return parse()
         finally:
@@ -175,7 +210,7 @@ class _Parser:
             return ('field', value[1:-1], pos)
         if kind == 'op' and value == '(':
             node = self.nested(self.or_)
-            self.expect_op(')', '括号没有闭合')
+            self.expect_op(')', tr('括号没有闭合', 'a parenthesis is not closed'))
             return node
         if kind == 'word':
             low = value.lower()
@@ -184,7 +219,7 @@ class _Parser:
             if low == 'null':
                 return ('null', None, pos)
             if low in KEYWORDS:
-                raise ExprError(f'「{value}」是运算符，放在这里不对', pos)
+                raise ExprError(tr(f'「{value}」是运算符，放在这里不对', f'"{value}" is an operator and does not belong here'), pos)
             if self.is_op('('):
                 self.take()
                 args = []
@@ -193,20 +228,20 @@ class _Parser:
                     while self.is_op(','):
                         self.take()
                         args.append(self.nested(self.or_))
-                self.expect_op(')', f'函数 {value} 的括号没有闭合')
+                self.expect_op(')', tr(f'函数 {value} 的括号没有闭合', f'the parenthesis of function {value} is not closed'))
                 return ('call', low, args, pos)
             return ('field', value, pos)
         if kind is None:
-            raise ExprError('表达式没写完', self.end)
-        raise ExprError(f'「{value}」放在这里不对，这里应该是一个值、字段或函数', pos)
+            raise ExprError(tr('表达式没写完', 'The expression is unfinished'), self.end)
+        raise ExprError(tr(f'「{value}」放在这里不对，这里应该是一个值、字段或函数', f'"{value}" does not belong here; expected a value, a property or a function'), pos)
 
 
 def parse(text: str):
     """The syntax tree of an expression; ExprError for a text that is not one."""
     if not isinstance(text, str) or not text.strip():
-        raise ExprError('表达式是空的', 0)
+        raise ExprError(tr('表达式是空的', 'The expression is empty'), 0)
     if len(text) > MAX_LENGTH:
-        raise ExprError(f'表达式最长 {MAX_LENGTH} 个字符', MAX_LENGTH)
+        raise ExprError(tr(f'表达式最长 {MAX_LENGTH} 个字符', f'An expression can be at most {MAX_LENGTH} characters long'), MAX_LENGTH)
     return _Parser(text).parse()
 
 
@@ -251,7 +286,7 @@ class _Compiler:
         if name not in self.columns:
             near = difflib.get_close_matches(name, list(self.columns), n=3, cutoff=0.5)
             known = '、'.join(f'「{c}」' for c in list(self.columns)[:12])
-            return self.error(f'没有字段「{name}」' + (f'，是不是{"、".join(f"「{n}」" for n in near)}？' if near else f'。可用的字段：{known}'), pos)
+            return self.error(tr(f'没有字段「{name}」', f'No column "{name}"') + (tr(f'，是不是{"、".join(f"「{n}」" for n in near)}？', f'. Did you mean {", ".join(chr(34) + n + chr(34) for n in near)}?') if near else tr(f'。可用的字段：{known}', f'. Available columns: {known}')), pos)
         if name not in self.fields:
             self.fields.append(name)
         kind = self.columns[name]
@@ -260,13 +295,13 @@ class _Compiler:
     def v_neg(self, node):
         kind, sql, params = self.visit(node[1])
         if kind not in ('number', 'error', 'null'):
-            return self.error(f'负号只能用在数字上，这里是{TYPE_WORD[kind]}', node[2])
+            return self.error(tr(f'负号只能用在数字上，这里是{TYPE_WORD[kind]}', f'A minus sign only works on numbers; this is {TYPE_WORD[kind]}'), node[2])
         return 'number' if kind != 'error' else kind, f'(-{sql})', params
 
     def v_not(self, node):
         kind, sql, params = self.visit(node[1])
         if kind not in ('boolean', 'error', 'null'):
-            return self.error(f'not 后面要是真假的条件，这里是{TYPE_WORD[kind]}', node[2])
+            return self.error(tr(f'not 后面要是真假的条件，这里是{TYPE_WORD[kind]}', f'not needs a true/false condition; this is {TYPE_WORD[kind]}'), node[2])
         return 'boolean', f'(NOT {sql})', params
 
     def v_bin(self, node):
@@ -275,12 +310,12 @@ class _Compiler:
         if op in ('and', 'or'):
             for kind in (lk, rk):
                 if kind not in ('boolean', 'error', 'null'):
-                    return self.error(f'{op} 两边要是真假的条件，这里有一边是{TYPE_WORD[kind]}', pos)
+                    return self.error(tr(f'{op} 两边要是真假的条件，这里有一边是{TYPE_WORD[kind]}', f'{op} needs true/false conditions on both sides; one side is {TYPE_WORD[kind]}'), pos)
             return 'boolean', f'({ls} {op.upper()} {rs})', lp + rp
         for kind in (lk, rk):
             if kind not in ('number', 'error', 'null'):
-                hint = '；日期用 date_add 加减、date_diff 相减' if kind in ('date', 'datetime') else '；拼接文本用 concat' if kind == 'text' else ''
-                return self.error(f'「{op}」只能算数字，这里有一边是{TYPE_WORD[kind]}{hint}', pos)
+                hint = tr('；日期用 date_add 加减、date_diff 相减', '; for dates use date_add to add and date_diff to subtract') if kind in ('date', 'datetime') else tr('；拼接文本用 concat', '; to join text use concat') if kind == 'text' else ''
+                return self.error(tr(f'「{op}」只能算数字，这里有一边是{TYPE_WORD[kind]}{hint}', f'"{op}" only works on numbers; one side is {TYPE_WORD[kind]}{hint}'), pos)
         return ('error' if 'error' in (lk, rk) else 'number'), f'({ls} {op} {rs})', lp + rp
 
     def v_cmp(self, node):
@@ -291,10 +326,10 @@ class _Compiler:
         for side, other in ((node[2], rk), (node[3], lk)):   # a date written as text, compared with a date column, is read as that date
             if side[0] == 'str' and other in ('date', 'datetime'):
                 if not re.fullmatch(r'\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?', side[1]):
-                    return self.error(f'「{side[1]}」要写成 2026-05-03 这样的日期才能和日期比较', pos)
+                    return self.error(tr(f'「{side[1]}」要写成 2026-05-03 这样的日期才能和日期比较', f'"{side[1]}" must be written as a date like 2026-05-03 to compare with a date'), pos)
                 lk, rk = (other, other)
         if 'null' not in (lk, rk) and lk != rk:
-            return self.error(f'「{op}」两边类型不同：{TYPE_WORD[lk]}和{TYPE_WORD[rk]}不能比较；类型要先转成一样的（字段转换）', pos)
+            return self.error(tr(f'「{op}」两边类型不同：{TYPE_WORD[lk]}和{TYPE_WORD[rk]}不能比较；类型要先转成一样的（字段转换）', f'The two sides of "{op}" have different types: {TYPE_WORD[lk]} and {TYPE_WORD[rk]} cannot be compared; convert them to the same type first (cast step)'), pos)
         return 'boolean', f'({ls} {COMPARE[op]} {rs})', lp + rp
 
     # functions ---------------------------------------------------------------------------------------------------------------------------------------
@@ -304,13 +339,13 @@ class _Compiler:
         handler = getattr(self, f'f_{name}', None)
         if handler is None:
             near = difflib.get_close_matches(name, [d[1] for d in FUNCTION_DOCS], n=1, cutoff=0.6)
-            return self.error(f'没有函数 {name}' + (f'，是不是 {near[0]}？' if near else '；可用的函数见函数列表'), pos)
+            return self.error(tr(f'没有函数 {name}', f'No function {name}') + (tr(f'，是不是 {near[0]}？', f'. Did you mean {near[0]}?') if near else tr('；可用的函数见函数列表', '; see the function list')), pos)
         return handler(args, pos)
 
     def arity(self, name: str, args: list, low: int, high: int | None, pos: int) -> bool:
         if len(args) < low or (high is not None and len(args) > high):
-            want = f'{low}' if high == low else f'{low} 到 {high}' if high else f'至少 {low}'
-            self.error(f'{name} 要 {want} 个参数，这里写了 {len(args)} 个', pos)
+            want = f'{low}' if high == low else tr(f'{low} 到 {high}', f'{low} to {high}') if high else tr(f'至少 {low}', f'at least {low}')
+            self.error(tr(f'{name} 要 {want} 个参数，这里写了 {len(args)} 个', f'{name} takes {want} arguments; {len(args)} given'), pos)
             return False
         return True
 
@@ -319,11 +354,11 @@ class _Compiler:
         kind, sql, params = self.visit(arg)
         if kind in ('error',) or kind in wanted or kind == 'null':
             return kind, sql, params
-        return self.error(f'{name} 的第 {which} 个参数要是{"或".join(TYPE_WORD[w] for w in wanted)}，这里是{TYPE_WORD[kind]}', arg[-1] if isinstance(arg[-1], int) else 0)
+        return self.error(tr(f'{name} 的第 {which} 个参数要是{"或".join(TYPE_WORD[w] for w in wanted)}，这里是{TYPE_WORD[kind]}', f'Argument {which} of {name} must be {" or ".join(TYPE_WORD[w] for w in wanted)}; this is {TYPE_WORD[kind]}'), arg[-1] if isinstance(arg[-1], int) else 0)
 
     def unit(self, name: str, arg, which: int) -> str | None:
         if arg[0] != 'str' or arg[1] not in UNITS[name]:
-            self.error(f'{name} 的第 {which} 个参数要写成 {" 或 ".join(f"{chr(39)}{u}{chr(39)}" for u in UNITS[name])}', arg[-1])
+            self.error(tr(f'{name} 的第 {which} 个参数要写成 {" 或 ".join(f"{chr(39)}{u}{chr(39)}" for u in UNITS[name])}', f'Argument {which} of {name} must be one of {" or ".join(f"{chr(39)}{u}{chr(39)}" for u in UNITS[name])}'), arg[-1])
             return None
         return arg[1]
 
@@ -347,7 +382,7 @@ class _Compiler:
         if 'error' in kinds:
             return 'error'
         if len(real) > 1:
-            self.error(f'{what}的几个值类型不一样：{"、".join(TYPE_WORD[k] for k in sorted(real))}', pos)
+            self.error(tr(f'{what}的几个值类型不一样：{"、".join(TYPE_WORD[k] for k in sorted(real))}', f'The values of {what} have different types: {", ".join(TYPE_WORD[k] for k in sorted(real))}'), pos)
             return 'error'
         return real.pop() if real else 'null'
 
@@ -362,7 +397,7 @@ class _Compiler:
 
     def f_case(self, args, pos):
         if len(args) < 3 or len(args) % 2 == 0:
-            self.error('case 的参数是：条件1, 值1, 条件2, 值2, …, 其余的值（条件和值成对，最后一个是其余情况的值）', pos)
+            self.error(tr('case 的参数是：条件1, 值1, 条件2, 值2, …, 其余的值（条件和值成对，最后一个是其余情况的值）', 'case takes: condition1, value1, condition2, value2, ..., else value (conditions and values come in pairs; the last one is the value for all other cases)'), pos)
             return 'error', 'NULL', []
         whens, params, kinds = [], [], []
         for i in range(0, len(args) - 1, 2):
@@ -459,11 +494,11 @@ def compile_expression(text: str, columns: list[dict], expect: str | None = None
         kind, sql, params = compiler.visit(tree)
         truncates = _truncates(tree)
     except RecursionError:
-        return {'ok': False, 'errors': [{'message': '表达式太长太深，拆成几步来算', 'pos': 0}], 'type': None, 'sql': None, 'params': [], 'fields': [], 'truncates': False}
+        return {'ok': False, 'errors': [{'message': tr('表达式太长太深，拆成几步来算', 'The expression is too long or too deep; split it into several steps'), 'pos': 0}], 'type': None, 'sql': None, 'params': [], 'fields': [], 'truncates': False}
     if kind == 'null' and not compiler.errors:
-        compiler.error('这个表达式只有空值，没有算出什么', 0)
+        compiler.error(tr('这个表达式只有空值，没有算出什么', 'This expression only produces empty values, so nothing is computed'), 0)
     if expect and kind not in (expect, 'error', 'null') and not compiler.errors:
-        compiler.error(f'表达式算出来是{TYPE_WORD[kind]}，列要的是{TYPE_WORD.get(expect, expect)}', 0)
+        compiler.error(tr(f'表达式算出来是{TYPE_WORD[kind]}，列要的是{TYPE_WORD.get(expect, expect)}', f'The expression produces {TYPE_WORD[kind]}, but the column needs {TYPE_WORD.get(expect, expect)}'), 0)
     ok = not compiler.errors
     return {'ok': ok, 'errors': compiler.errors, 'type': kind if ok else None, 'sql': sql if ok else None, 'params': params if ok else [],
             'fields': compiler.fields, 'truncates': ok and truncates}

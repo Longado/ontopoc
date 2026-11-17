@@ -13,6 +13,10 @@ from ontology_poc_generator.code_meanings import codes_for_label, exclusion_text
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview, to_number
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
+from ontology_poc_generator import ontopoc_query
+from ontology_poc_generator.lang import tr
+
+ontopoc_query.SAY = tr   # the query language says its messages in the asker's language (it imports nothing itself)
 
 QUESTION_PROMPT_VERSION = 'company_questions.v18'
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
@@ -21,6 +25,10 @@ MAX_MERGED = 20             # groups named in `evidence`: a pointer to where to 
 QUERY_KEYS = {'start', 'where', 'via', 'group_by', 'share', 'measure', 'top', 'order'}
 ORDERS = ('largest', 'smallest')
 RANGES = {'more_than': '>', 'at_least': '>=', 'less_than': '<', 'at_most': '<='}   # a where condition on a number or a date (OntoPoc Query: >, >=, <, <=, BETWEEN)
+def _bucket_word(by):
+    return tr(BUCKETS[by], {'month': 'by month', 'year': 'by year'}[by])
+
+
 BUCKETS = {'month': '按月', 'year': '按年'}   # a group_by dimension on a date, read as its month or its year
 _TIME = r'(?:[ T][0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?'
 _DATES = (re.compile(rf'^\s*([0-9]{{4}})([-/.])([0-9]{{1,2}})\2([0-9]{{1,2}}){_TIME}\s*$'),   # 2026-01-02, 2026/1/2, 2026.01.02, with a time of day
@@ -177,7 +185,7 @@ def _bound_kind(condition: dict) -> str | None:
 def range_text(field: str, condition: dict) -> str:
     """"金额 > 1000", "下单日期 >= 2026-01-01 且 <= 2026-03-31"."""
     parts = [f'{RANGES[k]} {condition[k]}' for k in RANGES if k in condition]
-    return f'{field} {" 且 ".join(parts)}'
+    return f'{field} {tr(" 且 ", " and ").join(parts)}'
 
 
 def _types(p: dict) -> dict:
@@ -234,7 +242,7 @@ def _walk(relations: dict, start: str, via, label) -> tuple:
     for key in via or []:
         r = relations.get(key)
         if r is None or current not in (r['from'], r['to']):
-            return None, f'从 {label(current)} 走不通关系 {key}'
+            return None, tr(f'从 {label(current)} 走不通关系 {key}', f'Cannot follow the relation {key} from {label(current)}')
         current = r['to'] if r['from'] == current else r['from']
         steps.append(current)
     return (current, steps), None
@@ -250,35 +258,39 @@ def _condition_limit(condition, negatable: bool = False) -> str | None:
     none of a list of values (`negatable`), or lies in a range of numbers or dates (more_than, at_least, less_than, at_most). Any other key is named,
     never dropped: a date range read as an equals of nothing used to come back as "no object satisfies the filter"."""
     if not isinstance(condition, dict):
-        return '筛选要写成“某个字段等于某个值”，这道题的写法查询语言读不了'
+        return tr('筛选要写成“某个字段等于某个值”，这道题的写法查询语言读不了', 'A filter must be "a field equals a value". This one cannot be read')
     values = ('equals', 'not_equals') if negatable else ('equals',)
     ranged = [k for k in RANGES if k in condition] if negatable else []
     extra = _extra(condition, {'field', *values, *(RANGES if negatable else ())})
     if extra:
-        return f'筛选只能写“等于”{"、“不等于”或一个范围" if negatable else ""}，这道题用了 {"、".join(extra)}：查询语言还表达不了这种条件'
+        return tr(f'筛选只能写“等于”{"、“不等于”或一个范围" if negatable else ""}，这道题用了 {"、".join(extra)}：查询语言还表达不了这种条件',
+                  f'A filter can only say "equals"{", “does not equal” or a range" if negatable else ""}. This one uses {", ".join(extra)}, which the query format cannot express yet')
     if ranged:
         if 'field' not in condition or any(k in condition for k in values):
-            return '一个范围条件要写字段，而且不能同时写“等于”或“不等于”'
+            return tr('一个范围条件要写字段，而且不能同时写“等于”或“不等于”', 'A range condition needs a field and cannot also say "equals" or "does not equal"')
         if any(isinstance(condition[k], (list, dict, bool)) or condition[k] in (None, '') for k in ranged):
-            return '范围的边界要是一个数字或一个日期'
+            return tr('范围的边界要是一个数字或一个日期', 'The bounds of a range must be a number or a date')
         kind = _bound_kind(condition)
         if kind is None:
-            return f'范围的边界要都是数字或都是日期，这里是 {"、".join(str(condition[k]) for k in ranged)}：查询不会把文字当成数字或日期来比'
+            return tr(f'范围的边界要都是数字或都是日期，这里是 {"、".join(str(condition[k]) for k in ranged)}：查询不会把文字当成数字或日期来比',
+                      f'The bounds of a range must all be numbers or all dates, but they are {", ".join(str(condition[k]) for k in ranged)}: a query does not compare text as numbers or dates')
         for lk in (k for k in ('more_than', 'at_least') if k in condition):
             for hk in (k for k in ('less_than', 'at_most') if k in condition):
                 lv, hv = bound_value(kind, lk, condition[lk]), bound_value(kind, hk, condition[hk])
                 if lv > hv or (lv == hv and (lk, hk) != ('at_least', 'at_most')):   # nothing can lie between them
-                    return f'范围的下限 {condition[lk]} 不小于上限 {condition[hk]}：没有值能落在里面，请检查是不是写反了'
+                    return tr(f'范围的下限 {condition[lk]} 不小于上限 {condition[hk]}：没有值能落在里面，请检查是不是写反了',
+                              f'The lower bound {condition[lk]} is not below the upper bound {condition[hk]}: no value can fall inside. Check whether they are the wrong way round')
         return None
     if 'field' not in condition or not any(k in condition for k in values):
-        return f'筛选条件缺少 {"、".join(k for k in ("field", "equals") if k not in condition)}，要写成“某个字段等于某个值”'
+        return tr(f'筛选条件缺少 {"、".join(k for k in ("field", "equals") if k not in condition)}，要写成“某个字段等于某个值”',
+                  f'The filter is missing {", ".join(k for k in ("field", "equals") if k not in condition)}: write it as "a field equals a value"')
     if len(values) > 1 and all(k in condition for k in values):
-        return '一个筛选条件不能既写“等于”又写“不等于”'
+        return tr('一个筛选条件不能既写“等于”又写“不等于”', 'A filter cannot say both "equals" and "does not equal"')
     if 'equals' in condition and isinstance(condition['equals'], (list, dict)):
-        return '筛选只能等于一个值，这道题写了一组值或一个范围：查询语言还表达不了这种条件'
+        return tr('筛选只能等于一个值，这道题写了一组值或一个范围：查询语言还表达不了这种条件', 'A filter can only equal one value. This one has a list of values or a range, which the query format cannot express yet')
     excluded = condition.get('not_equals')
     if 'not_equals' in condition and (isinstance(excluded, dict) or (isinstance(excluded, list) and (not excluded or any(isinstance(v, (list, dict)) for v in excluded)))):
-        return '“不等于”后面要写一个值，或一个值的列表：查询语言读不了这种写法'
+        return tr('“不等于”后面要写一个值，或一个值的列表：查询语言读不了这种写法', 'After "does not equal", write a value or a list of values. This cannot be read')
     return None
 
 
@@ -286,34 +298,35 @@ def _shape_limit(query: dict) -> str | None:
     """Why a part of the query has no place in the format, or None. Checked before any data is read."""
     extra = _extra(query, QUERY_KEYS)
     if extra:
-        return f'这道题用了 {"、".join(extra)}：查询语言还表达不了'
+        return tr(f'这道题用了 {"、".join(extra)}：查询语言还表达不了', f'This question uses {", ".join(extra)}, which the query format cannot express yet')
     shapes = {'where': list, 'via': list, 'group_by': (list, str), 'share': dict, 'measure': dict}   # group_by as text: written by v3
     odd = [k for k, kind in shapes.items() if query.get(k) not in (None, '', [], {}) and not isinstance(query[k], kind)]
     if odd:
-        return f'这道题的 {"、".join(odd)} 写法查询语言读不了'
+        return tr(f'这道题的 {"、".join(odd)} 写法查询语言读不了', f'The query format cannot read how {", ".join(odd)} is written here')
     reason = next(filter(None, [*(_condition_limit(w, True) for w in query.get('where') or []), *([_condition_limit(query['share'])] if query.get('share') else [])]), None)
     if reason:
         return reason
     top = query.get('top')
     if top is not None:
         if isinstance(top, bool) or not isinstance(top, int) or top < 1:
-            return '“取前几名”要写成一个大于 0 的整数，查询语言读不了这种写法'
+            return tr('“取前几名”要写成一个大于 0 的整数，查询语言读不了这种写法', '"Top n" must be a whole number greater than 0')
         if query.get('group_by') in (None, '', []):
-            return '“取前几名”只能用在分组上：没有分组，就没有可以排名的组'
+            return tr('“取前几名”只能用在分组上：没有分组，就没有可以排名的组', '"Top n" only works on groups: with no grouping there is nothing to rank')
     order = query.get('order')
     if order is not None:
         if order not in ORDERS:
-            return '排序只能写“largest”（从高到低）或“smallest”（从低到高），查询语言读不了这种写法'
+            return tr('排序只能写“largest”（从高到低）或“smallest”（从低到高），查询语言读不了这种写法', 'The order must be "largest" (high to low) or "smallest" (low to high)')
         if query.get('group_by') in (None, '', []):
-            return '“从低到高”“从高到低”只能用在分组上：没有分组，就没有可以排名的组'
+            return tr('“从低到高”“从高到低”只能用在分组上：没有分组，就没有可以排名的组', 'Ordering high to low or low to high only works on groups: with no grouping there is nothing to rank')
     for d in query['group_by'] if isinstance(query.get('group_by'), list) else []:
         extra = _extra(d, {'via', 'field', 'by'}) if isinstance(d, dict) else []
         if extra:
-            return f'分组只能按字段原来的值，或按日期的月、年，这道题用了 {"、".join(extra)}：查询语言还表达不了'
+            return tr(f'分组只能按字段原来的值，或按日期的月、年，这道题用了 {"、".join(extra)}：查询语言还表达不了',
+                      f'Groups can only be by the value of a field, or by month or year of a date. This question uses {", ".join(extra)}, which the query format cannot express yet')
         if isinstance(d, dict) and d.get('by') not in (None, *BUCKETS):
-            return f'日期只能按月（month）或按年（year）分组，这道题写的是 {d.get("by")}'
+            return tr(f'日期只能按月（month）或按年（year）分组，这道题写的是 {d.get("by")}', f'A date can only be grouped by month or year. This question says {d.get("by")}')
     extra = _extra(query['measure'], {'field', 'op', 'derived'}) if isinstance(query.get('measure'), dict) else []
-    return f'求和、求平均只能直接算一个字段，这道题用了 {"、".join(extra)}：查询语言还表达不了' if extra else None
+    return tr(f'求和、求平均只能直接算一个字段，这道题用了 {"、".join(extra)}：查询语言还表达不了', f'A sum or average can only be taken over one field directly. This question uses {", ".join(extra)}, which the query format cannot express yet') if extra else None
 
 
 def _conditions(types: dict, start: str, raw, meanings, label) -> tuple[list[dict], str | None]:
@@ -323,7 +336,7 @@ def _conditions(types: dict, start: str, raw, meanings, label) -> tuple[list[dic
     for w in raw or []:
         field = _resolve_field(types[start], w.get('field'))
         if field is None:
-            return [], f'本体里的 {label(start)} 没有属性 {w.get("field")}，无法按它筛选'
+            return [], tr(f'本体里的 {label(start)} 没有属性 {w.get("field")}，无法按它筛选', f'{label(start)} has no property {w.get("field")}, so it cannot be filtered by it')
         if any(k in w for k in RANGES):   # a range of numbers or dates: compared as such, never as text
             where.append({'field': field, 'range': {k: w[k] for k in RANGES if k in w}, 'kind': _bound_kind(w)})
             continue
@@ -375,10 +388,10 @@ def graph_objects(ontology: dict, bundle: dict, query: dict, graph: dict | None 
     label = lambda k: types[k].get('label') or k
     start = query.get('start')
     if start not in types:
-        return {'status': 'ontology_gap', 'reason': f'本体里没有对象类型 {start}'}
+        return {'status': 'ontology_gap', 'reason': tr(f'本体里没有对象类型 {start}', f'There is no object type {start} in the ontology')}
     top = query.get('top')
     if top is not None and (isinstance(top, bool) or not isinstance(top, int) or top < 1):
-        return {'status': 'query_limit', 'reason': '画几个起点对象要写成一个大于 0 的整数'}
+        return {'status': 'query_limit', 'reason': tr('画几个起点对象要写成一个大于 0 的整数', 'The number of start objects to draw must be a whole number greater than 0')}
     reason = _shape_limit({**{k: v for k, v in query.items() if k != 'graph'}, 'top': None})   # `top` here is how many start objects are drawn, not a ranking
     if reason:
         return {'status': 'query_limit', 'reason': reason}
@@ -422,15 +435,16 @@ def graph_objects(ontology: dict, bundle: dict, query: dict, graph: dict | None 
         key, name, _ = labellers[inst[0]](inst)
         nodes.append({'id': node_id(inst), 'type': inst[0], 'type_name': label(inst[0]), 'key': key, **({'name': name} if name else {}), 'start': inst in first})
     lines = [{'from': node_id(a), 'to': node_id(b), 'relation': k, 'name': relations[k].get('label') or k} for a, b, k in edges]
-    kept = '、'.join(range_text(w['field'].partition('.')[2], w['range']) if 'range' in w else f'“{w["field"].partition(".")[2]}”{"不是" if w.get("not") else "为"}“{shown_codes(bundle.get("meanings"), w["field"], w.get("codes", [w["equals"]]))}”'
-                    for w in where)
-    head = f'{"只看" + kept + "的" if kept else ""}{label(start)}'
-    walked = '；'.join(' → '.join([label(start), *(label(k) for k in _walk(relations, start, path, label)[0][1])]) for path in paths if path)
-    result = {'status': 'answered' if starts else 'no_data', 'path': f'{head}，画出{"全部" if len(shown) == len(starts) else "前"} {len(shown)} 个' + (f'，沿 {walked}' if walked else ''),
+    kept = tr('、', ' and ').join(range_text(w['field'].partition('.')[2], w['range']) if 'range' in w else tr(f'“{w["field"].partition(".")[2]}”{"不是" if w.get("not") else "为"}“{shown_codes(bundle.get("meanings"), w["field"], w.get("codes", [w["equals"]]))}”',
+                                                                                                                 f'"{w["field"].partition(".")[2]}" {"is not" if w.get("not") else "is"} "{shown_codes(bundle.get("meanings"), w["field"], w.get("codes", [w["equals"]]))}"')
+                                   for w in where)
+    head = tr(f'{"只看" + kept + "的" if kept else ""}{label(start)}', f'{label(start)}{" where " + kept if kept else ""}')
+    walked = tr('；', '; ').join(' → '.join([label(start), *(label(k) for k in _walk(relations, start, path, label)[0][1])]) for path in paths if path)
+    result = {'status': 'answered' if starts else 'no_data', 'path': tr(f'{head}，画出{"全部" if len(shown) == len(starts) else "前"} {len(shown)} 个', f'{head}, drawing {"all" if len(shown) == len(starts) else "the first"} {len(shown)}') + (tr(f'，沿 {walked}', f', along {walked}') if walked else ''),
               'answer': {'total': len(starts), 'graph': {'nodes': nodes, 'edges': lines, 'starts': len(starts), 'shown': len(shown), 'cut': cut}}}
     if not starts:
         result.pop('answer')
-        result['reason'] = '没有满足条件的对象'
+        result['reason'] = tr('没有满足条件的对象', 'No object meets the condition')
     skipped = [v for vals in unreadable.values() for v in vals]
     if skipped:
         result['evidence'] = {'unreadable': {'count': len(skipped), 'examples': skipped[:5]}}
@@ -449,7 +463,7 @@ def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, 
     text = lambda inst: ' · '.join(str(v) for _, v in inst[1])   # one object's key parts, kept apart from the next example
     own = _identity_fields(types[start])   # an identity field is one value per object by definition
     rows = lambda entries, src: {i for s, i in entries if s == src}   # one row read twice (two roles, one table) is one row
-    what, name = '加' if measure['op'] == 'sum' else '求平均', label(start)
+    what, name = (tr('加', 'adding up') if measure['op'] == 'sum' else tr('求平均', 'averaging')), label(start)
     notes = {'folded': [], 'shared': []}
     for field in dict.fromkeys(f for f in measure_fields(measure) if f not in own):
         src, _, path = field.partition('.')
@@ -467,26 +481,33 @@ def _repeats(types: dict, bundle: dict, graph: dict, start: str, objects: list, 
             continue
         inside = next(((inst, got) for inst, got in several if any(len(g) > 1 for g in got)), None)
         if inside:
-            shown = '、'.join([v for g in inside[1] for v in g][:3])
-            return (f'“{path}”在一个{name}里有好几个值（例如 {text(inside[0])}：{shown}），按{name}{what}只会把不同的值各算一次；'
-                    f'查询还不能把一个对象里的一组值加起来，这道题现在算不了。'), {}
+            shown = tr('、', ', ').join([v for g in inside[1] for v in g][:3])
+            return (tr(f'“{path}”在一个{name}里有好几个值（例如 {text(inside[0])}：{shown}），按{name}{what}只会把不同的值各算一次；'
+                       f'查询还不能把一个对象里的一组值加起来，这道题现在算不了。',
+                       f'"{path}" has several values in one {name} (for example {text(inside[0])}: {shown}), so {what} by {name} would count each different value only once. '
+                       f'A query cannot add up a set of values inside one object yet, so this question cannot be calculated now.')), {}
         most = {}   # per other type still in the ontology: the most rows of src one of its objects owns
         for inst, entries in graph['records_of'].items():
             if inst[0] != start and inst[0] in types and rows(entries, src):
                 most[inst[0]] = max(most.get(inst[0], 0), len(rows(entries, src)))
         per_row = [label(k) for k, n in most.items() if n == 1 and field in _fields(types[k])]
-        row = '”或“'.join(per_row)
+        row = tr('”或“', '" or "').join(per_row)
         differ = next(((inst, got) for inst, got in several if len({v for g in got for v in g}) > 1), None)
         if differ:
-            shown = '、'.join(list(dict.fromkeys(v for g in differ[1] for v in g))[:3])
-            return (f'一个{name}在 {src} 表里对应好几个不同的“{path}”（例如 {text(differ[0])}：{shown}），按{name}{what}只会把每个不同的值算一次。'
-                    + (f'请从“{row}”出发，再按{name}分组。' if per_row else '本体里没有一行对应一个对象、又带这个字段的类型可以改从它出发，这道题现在算不了。')), {}
+            shown = tr('、', ', ').join(list(dict.fromkeys(v for g in differ[1] for v in g))[:3])
+            return (tr(f'一个{name}在 {src} 表里对应好几个不同的“{path}”（例如 {text(differ[0])}：{shown}），按{name}{what}只会把每个不同的值算一次。',
+                       f'One {name} matches several different "{path}" values in the {src} table (for example {text(differ[0])}: {shown}), so {what} by {name} would count each different value only once. ')
+                    + (tr(f'请从“{row}”出发，再按{name}分组。', f'Start from "{row}" and group by {name}.') if per_row else tr('本体里没有一行对应一个对象、又带这个字段的类型可以改从它出发，这道题现在算不了。', 'No object type in the ontology has one row per object and also carries this field, so this question cannot be calculated now.'))), {}
         if several and per_row:
-            return (f'有的{name}在 {src} 表里有好几行（例如 {text(several[0][0])}），“{path}”在这几行里都一样。如果它是每个“{row}”各自的数，请从“{row}”出发，再按{name}分组；'
-                    f'如果它是{name}自己的属性，请在本体里把它从“{row}”去掉。'), {}
+            return (tr(f'有的{name}在 {src} 表里有好几行（例如 {text(several[0][0])}），“{path}”在这几行里都一样。如果它是每个“{row}”各自的数，请从“{row}”出发，再按{name}分组；'
+                       f'如果它是{name}自己的属性，请在本体里把它从“{row}”去掉。',
+                       f'Some {name} objects have several rows in the {src} table (for example {text(several[0][0])}), and "{path}" is the same on all of them. If it is a number of each "{row}", start from "{row}" and group by {name}; '
+                       f'if it is a property of the {name} itself, remove it from "{row}" in the ontology.')), {}
         if shared and per_row:
-            return (f'有的 {src} 行同时算进了好几个{name}（例如 {"、".join(map(text, shared[0]))} 共用一行），按{name}{what}会把这一行算好几次。'
-                    f'请从“{row}”出发，再按{name}分组。'), {}
+            return (tr(f'有的 {src} 行同时算进了好几个{name}（例如 {"、".join(map(text, shared[0]))} 共用一行），按{name}{what}会把这一行算好几次。'
+                       f'请从“{row}”出发，再按{name}分组。',
+                       f'Some {src} rows count toward several {name} objects (for example {", ".join(map(text, shared[0]))} share one row), so {what} by {name} would count that row several times. '
+                       f'Start from "{row}" and group by {name}.')), {}
         if several:
             notes['folded'].append({'field': path, 'table': src, 'start': name, 'objects': len(several), 'examples': [text(i) for i, _ in several[:3]]})
         if shared and src not in {n['table'] for n in notes['shared']}:
@@ -524,7 +545,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     gap = lambda reason: {'status': 'ontology_gap', 'reason': reason}
     start = query.get('start')
     if start not in types:
-        return gap(f'本体里没有对象类型 {start}')
+        return gap(tr(f'本体里没有对象类型 {start}', f'There is no object type {start} in the ontology'))
     reason = _shape_limit(query)
     if reason:
         return {'status': 'query_limit', 'reason': reason}
@@ -535,24 +556,24 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     measure = query.get('measure') if isinstance(query.get('measure'), dict) else None
     if measure:
         if measure.get('op') not in ('sum', 'average'):
-            return gap(f'不支持的算法 {measure.get("op")}，只能是 sum 或 average')
+            return gap(tr(f'不支持的算法 {measure.get("op")}，只能是 sum 或 average', f'Unsupported calculation {measure.get("op")}: it must be sum or average'))
         if measure.get('derived') is not None:   # an amount computed from a formula a person confirmed
             formula = next((d for d in derived or [] if d['type'] == start and d['label'] == measure['derived']), None)
             field = _resolve_field(types[start], measure['derived']) if formula is None else None   # a derived property the workspace lists as an attribute
             if formula is None and field is None:
-                return gap(f'要先确认{label(start)}的指标“{measure["derived"]}”，才能对它求和或求平均')
+                return gap(tr(f'要先确认{label(start)}的指标“{measure["derived"]}”，才能对它求和或求平均', f'Confirm the measure "{measure["derived"]}" of {label(start)} before summing or averaging it'))
             # field is written '.<label>' so the naming below, which reads what follows the table's dot, shows the label
             measure = {'field': field, 'op': measure['op']} if field else {'field': f'.{formula["label"]}', 'op': measure['op'], 'derived': formula}
         else:
             field = _resolve_field(types[start], measure.get('field'))
             if field is None:
-                return gap(f'本体里的 {label(start)} 没有属性 {measure.get("field")}，无法对它求和或求平均')
+                return gap(tr(f'本体里的 {label(start)} 没有属性 {measure.get("field")}，无法对它求和或求平均', f'{label(start)} has no property {measure.get("field")}, so it cannot be summed or averaged'))
             measure = {'field': field, 'op': measure['op']}
     share = query.get('share') if isinstance(query.get('share'), dict) else None
     if share:
         field = _resolve_field(types[start], share.get('field'))
         if field is None:
-            return gap(f'本体里的 {label(start)} 没有属性 {share.get("field")}，无法算它的占比')
+            return gap(tr(f'本体里的 {label(start)} 没有属性 {share.get("field")}，无法算它的占比', f'{label(start)} has no property {share.get("field")}, so its share cannot be worked out'))
         codes = codes_for_label(meanings, field, share.get('equals'))
         share = {'field': field, 'equals': codes[0], **({'codes': codes} if len(codes) > 1 else {})}
     top, reason = _walk(relations, start, query.get('via'), label)
@@ -563,7 +584,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     paths = [query.get('via') or [], *[(d.get('via') or []) if isinstance(d, dict) else (query.get('via') or []) for d in raw]]
     if any(relations.get(key, {}).get('from') == relations.get(key, {}).get('to')
            for path in paths for key in path if key in relations):
-        return {'status': 'query_limit', 'reason': '这条关系连接同类对象，查询尚不能指定方向，无法区分上级与下属等角色。请直接按原表字段核对。'}
+        return {'status': 'query_limit', 'reason': tr('这条关系连接同类对象，查询尚不能指定方向，无法区分上级与下属等角色。请直接按原表字段核对。', 'This relation connects objects of the same type, and a query cannot give it a direction yet, so it cannot tell roles such as manager and report apart. Check against the table columns directly.')}
     dims = []
     for d in raw:
         d = {'via': query.get('via') or [], 'field': d} if isinstance(d, str) else d if isinstance(d, dict) else {}
@@ -572,11 +593,11 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             return gap(reason)
         field = _resolve_field(types[walked[0]], d.get('field'))
         if field is None:
-            return gap(f'本体里的 {label(walked[0])} 没有属性 {d.get("field")}，无法按它分组')
+            return gap(tr(f'本体里的 {label(walked[0])} 没有属性 {d.get("field")}，无法按它分组', f'{label(walked[0])} has no property {d.get("field")}, so it cannot be grouped by it'))
         dims.append({'via': d.get('via') or [], 'steps': walked[1], 'field': field, **({'by': d['by']} if d.get('by') else {})})
     seen = [(tuple(d['via']), d['field'], d.get('by')) for d in dims]
     if len(set(seen)) < len(seen):   # "which X go together": one dimension cannot pair two different values of itself
-        return {'status': 'query_limit', 'reason': '同一个字段沿同一条路径分了两次组，这是在问哪些值常在一起出现；查询只会把每个值和它自己配成一对，这种问法还不支持'}
+        return {'status': 'query_limit', 'reason': tr('同一个字段沿同一条路径分了两次组，这是在问哪些值常在一起出现；查询只会把每个值和它自己配成一对，这种问法还不支持', 'The same field is grouped twice along the same path, which asks which values often appear together. A query only pairs each value with itself, so this kind of question is not supported yet')}
     refused = card_refusal(card, bundle, measure, where, dims) if card and measure else None
     if refused:
         return refused
@@ -609,33 +630,34 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     if refused:
         return {'status': 'query_limit', 'reason': refused}
     name = lambda field: field.partition('.')[2]
-    kept = '、'.join(range_text(name(w['field']), w['range']) if 'range' in w else f'“{name(w["field"])}”为“{shown_codes(meanings, w["field"], w.get("codes", [w["equals"]]))}”'
-                    for w in where if not w.get('not'))
-    head = f'只看{kept}的{label(start)}' if kept else label(start)
-    left_out = '；'.join(exclusion_text(meanings, w['field'], w.get('codes', [w['equals']])) for w in where if w.get('not'))
+    kept = tr('、', ' and ').join(range_text(name(w['field']), w['range']) if 'range' in w else tr(f'“{name(w["field"])}”为“{shown_codes(meanings, w["field"], w.get("codes", [w["equals"]]))}”',
+                                                                                                    f'"{name(w["field"])}" is "{shown_codes(meanings, w["field"], w.get("codes", [w["equals"]]))}"')
+                                   for w in where if not w.get('not'))
+    head = tr(f'只看{kept}的{label(start)}', f'{label(start)} where {kept}') if kept else label(start)
+    left_out = tr('；', '; ').join(exclusion_text(meanings, w['field'], w.get('codes', [w['equals']])) for w in where if w.get('not'))
     if left_out:
-        head = f'{head}，{left_out}' if kept else f'{head}里 {left_out}'
+        head = tr(f'{head}，{left_out}', f'{head}, {left_out}') if kept else tr(f'{head}里 {left_out}', f'{head}: {left_out}')
     if len(dims) > 1:
-        path = f'{head}：按' + '和'.join(f'“{name(d["field"])}”' + (f'（{BUCKETS[d["by"]]}）' if d.get('by') else '') + (f'（经 {" → ".join(label(k) for k in [start, *d["steps"]])}）' if d['steps'] else '')
-                                        for d in dims) + '分组'
+        path = tr(f'{head}：按', f'{head}: grouped by ') + tr('和', ' and ').join(f'“{name(d["field"])}”' + (tr(f'（{_bucket_word(d["by"])}）', f' ({_bucket_word(d["by"])})') if d.get('by') else '') + (tr(f'（经 {" → ".join(label(k) for k in [start, *d["steps"]])}）', f' (via {" → ".join(label(k) for k in [start, *d["steps"]])})') if d['steps'] else '')
+                                                                                   for d in dims) + tr('分组', '')
     else:
-        path = ' → '.join([head, *(label(k) for k in (dims[0]['steps'] if dims else top[1]))]) + (f'，按“{name(dims[0]["field"])}”{BUCKETS[dims[0]["by"]] if dims[0].get("by") else ""}分组' if dims else '')
+        path = ' → '.join([head, *(label(k) for k in (dims[0]['steps'] if dims else top[1]))]) + (tr(f'，按“{name(dims[0]["field"])}”{BUCKETS[dims[0]["by"]] if dims[0].get("by") else ""}分组', f', grouped by "{name(dims[0]["field"])}"{" " + _bucket_word(dims[0]["by"]) if dims[0].get("by") else ""}') if dims else '')
     shown_share = share and {'field': name(share['field']), 'equals': share['equals']}
     if measure:
-        what, field = ('合计', name(measure['field'])) if measure['op'] == 'sum' else ('平均', name(measure['field']))
-        path += f'，算每组“{field}”的{what}' if dims else (f'，把“{field}”加起来' if measure['op'] == 'sum' else f'，算“{field}”的平均')
+        what, field = (tr('合计', 'total'), name(measure['field'])) if measure['op'] == 'sum' else (tr('平均', 'average'), name(measure['field']))
+        path += tr(f'，算每组“{field}”的{what}', f', working out the {what} of "{field}" for each group') if dims else (tr(f'，把“{field}”加起来', f', adding up "{field}"') if measure['op'] == 'sum' else tr(f'，算“{field}”的平均', f', averaging "{field}"'))
     elif share:
-        path += f'，算“{shown_share["field"]}”为“{shown_share["equals"]}”的{label(start)}占比'
+        path += tr(f'，算“{shown_share["field"]}”为“{shown_share["equals"]}”的{label(start)}占比', f', working out the share of {label(start)} where "{shown_share["field"]}" is "{shown_share["equals"]}"')
     elif dims:
-        path += f'数{label(start)}'
+        path += tr(f'数{label(start)}', f', counting {label(start)}')
     best = query.get('top')   # keep the first N groups of the ranking
     lowest = query.get('order') == 'smallest'   # the ranking starts from the lowest instead
     if best:
-        path += f'，取最{"低" if lowest else "高"}的 {best} 个'
+        path += tr(f'，取最{"低" if lowest else "高"}的 {best} 个', f', keeping the {best} {"lowest" if lowest else "highest"}')
     elif lowest and dims:
-        path += '，从低到高排'
+        path += tr('，从低到高排', ', ordered low to high')
     if lowest and dims:
-        path += f'（只排有{label(start)}的组）'   # a group with no start object is not there to rank: the lowest is the lowest of those that have one
+        path += tr(f'（只排有{label(start)}的组）', f' (only groups that have {label(start)})')   # a group with no start object is not there to rank: the lowest is the lowest of those that have one
     computed = compute_derived(ontology, bundle, measure['derived'], graph)['values'] if measure and measure.get('derived') else None
 
     def numbers(inst):
@@ -685,7 +707,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     if not starts:
         # a value no start object has may be the number of some other kind of object: the question was put to the wrong one
         lacking = [(name(w['field']), w['equals']) for w in where if 'range' not in w and not w.get('not') and normalize_value(w['equals']) and not any(has(i, w) for i in everyone)]
-        return proved({'status': 'no_data', 'reason': '数据里没有满足筛选条件的对象', 'path': path},
+        return proved({'status': 'no_data', 'reason': tr('数据里没有满足筛选条件的对象', 'No object in the data meets the filter'), 'path': path},
                       elsewhere=_found_elsewhere(types, graph, start, lacking))
 
     def reach(inst, via):
@@ -710,7 +732,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             whole = measured(starts)
             if whole['value'] is None:
                 return proved({'status': 'no_data', 'path': path, 'answer': {'total': len(starts), 'measure': whole},
-                               'reason': f'“{whole["field"]}”里没有一个能读成数字的值（{whole["skipped"]} 个不是数字或为空）'})
+                               'reason': tr(f'“{whole["field"]}”里没有一个能读成数字的值（{whole["skipped"]} 个不是数字或为空）', f'No value in "{whole["field"]}" can be read as a number ({whole["skipped"]} are not numbers or are empty)')})
             return proved({'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'measure': whole}})
         if share:
             return proved({'status': 'answered', 'path': path, 'answer': {'total': len(starts), 'matched': sum(has(s, share) for s in starts), 'share': shown_share}})
@@ -877,13 +899,13 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
     if judgement.failure == 'request':
         return {**out, 'error': model_failure_text(judgement.message)}
     if judgement.failure == 'not_json':
-        return {**out, 'error': '模型返回的不是 JSON'}
+        return {**out, 'error': tr('模型返回的不是 JSON', 'The model did not return JSON')}
     reply = judgement.reply
     raw = reply.get('questions') if isinstance(reply, dict) else None
     if raw is None and question and isinstance(reply, dict) and 'query' in reply:   # one asked question answered as a bare object, not in a list
         raw = [{**reply, 'question': reply['question'] if isinstance(reply.get('question'), str) else question}]
     if not isinstance(raw, list):
-        return {**out, 'error': '模型没有返回问题列表'}
+        return {**out, 'error': tr('模型没有返回问题列表', 'The model did not return a list of questions')}
     graph = build_graph(ontology, bundle)
     for q in raw[:1] if question else raw:
         if not isinstance(q, dict) or not isinstance(q.get('question'), str):
@@ -896,12 +918,12 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
             # a new amount: code checks the formula and tries it on every object; the person confirms before it counts
             formula, why = parse_derived(ontology, q['derive'])
             if formula is None or formula['label'] != wanted:
-                result = {'status': 'ontology_gap', 'reason': f'模型提出的指标算不成：{why or "查询用的指标名和提出的不一致"}'}
+                result = {'status': 'ontology_gap', 'reason': tr(f'模型提出的指标算不成：{why or "查询用的指标名和提出的不一致"}', f'The measure the model proposed cannot be calculated: {why or "the measure name in the query does not match the one proposed"}')}
             else:
                 trial = run_query(ontology, bundle, query, graph, [*(derived or []), formula], card)
                 # a formula that reads fine but that this query could not add up: say so before anyone confirms it
                 result = trial if trial['status'] == 'query_limit' else {
-                    'status': 'needs_derived', 'reason': f'要先确认“{formula["label"]} = {formula_text(formula)}”这个指标，才能回答',
+                    'status': 'needs_derived', 'reason': tr(f'要先确认“{formula["label"]} = {formula_text(formula)}”这个指标，才能回答', f'Confirm the measure "{formula["label"]} = {formula_text(formula)}" before this can be answered'),
                     'derive': {**formula, 'formula': formula_text(formula), 'preview': derived_preview(ontology, bundle, formula, graph)}}
             result = _in_names(ontology, result)
         elif isinstance(query, dict):
@@ -910,7 +932,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
             unmatched = getattr(answerer, 'unmatched', None)   # the question the query language cannot say, answered from the relation check
             result = unmatched(q.get('unmatched_relation')) if unmatched and status == 'query_limit' else None
-            result = result or _in_names(ontology, {'status': status, 'reason': str(q.get('reasoning') or '模型认为本体表达不了这个问题'), 'reason_from_model': True})
+            result = result or _in_names(ontology, {'status': status, 'reason': str(q.get('reasoning') or tr('模型认为本体表达不了这个问题', 'The model thinks the ontology cannot express this question')), 'reason_from_model': True})
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
                              **({'definitions_used': used} if used else {}), **({'definitions_told': [d['id'] for d in definitions]} if definitions else {}), **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])

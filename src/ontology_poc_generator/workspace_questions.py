@@ -32,11 +32,14 @@ from ontology_poc_generator.relation_checks import unmatched_answer, with_relati
 from ontology_poc_generator.row_rules import describe as describe_limit, limit_as_list, positions as row_positions, restriction
 from ontology_poc_generator.type_access import hidden_columns, hidden_values, reads_hidden, visible_type_ids
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
+from ontology_poc_generator.lang import tr
 
 MAX_QUESTION = 300
 HISTORY_LIMIT = 100
 ROW_KEYS = {'examples', 'without_value_examples', 'unreadable_examples', 'keys', 'samples'}   # the objects behind a count: a viewer reads the counts and not these
-STATE_WORDS = {'proposed': '模型提出了，还没有人确认', 'checked': '已经提出，还没有另一位确认', 'needs_look': '需要再看', 'rejected': '被退回了'}
+def _state_words(state):
+    return {'proposed': tr('模型提出了，还没有人确认', 'Proposed by the model, not confirmed yet'), 'checked': tr('已经提出，还没有另一位确认', 'Proposed, waiting for a second person to confirm'),
+            'needs_look': tr('需要再看', 'Needs another look'), 'rejected': tr('被退回了', 'Sent back')}[state]
 
 
 class QaRefused(ValueError):
@@ -207,15 +210,15 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
             if d['id'] in names:
                 continue
             names.append(d['id'])
-            why = d['reason'] or (f'{d["stale_word"] or "要再看一遍"}：{d["reason_hidden"]}' if d['reason_hidden'] else STATE_WORDS[d['state']])
-            who = f'；可以确认的人：{"、".join(d["who_can_confirm"])}' if d['who_can_confirm'] else ''
-            lines.append({**d, 'text': f'{_kind_word(d["kind"])}「{d["name"]}」：{why}{who}'})
-    return {'status': 'refused', 'reason': '没有回答：问题用到的定义不是已确认的状态。' + '；'.join(l['text'] for l in lines),
+            why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
+            who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
+            lines.append({**d, 'text': tr(f'{_kind_word(d["kind"])}「{d["name"]}」：{why}{who}', f'{_kind_word(d["kind"])} "{d["name"]}": {why}{who}')})
+    return {'status': 'refused', 'reason': tr('没有回答：问题用到的定义不是已确认的状态。', 'Not answered: a definition the question uses is not confirmed. ') + tr('；', '; ').join(l['text'] for l in lines),
             'refusal': {'kind': 'unsettled', 'definitions': lines}}
 
 
 def _kind_word(kind: str) -> str:
-    return {'type': '对象类型', 'relation': '关系', 'meaning': '含义', 'view': '视图', 'derived': '派生属性'}[kind]
+    return {'type': tr('对象类型', 'Object type'), 'relation': tr('关系', 'Relation'), 'meaning': tr('含义', 'Meaning'), 'view': tr('视图', 'View'), 'derived': tr('派生属性', 'Derived property')}[kind]
 
 
 # --- what the engine reads ----------------------------------------------------------------------------------------------------------------------------
@@ -228,12 +231,14 @@ def _ends(c: dict) -> tuple[str, str]:
 def _walk_problem(sc: dict, c: dict) -> str | None:
     """Why a query cannot walk this confirmed relation, or None when it can."""
     if c['from'] == c['to']:
-        return '两端是同一个对象类型：问答不沿这种关系走'
+        return tr('两端是同一个对象类型：问答不沿这种关系走', 'Both ends are the same object type: questions do not follow this kind of relation')
     many, one = _ends(c)
     one_type = sc['types'][c[one]]['content']
     if one_type['key'] != [c[f'{one}_column']]:
-        return (f'它连的是“{c[f"{one}_column"]}”，而“{one_type["name"]}”的主键是“{" + ".join(one_type["key"])}”：问答只能沿连到整个主键的关系走。'
-                f'如果“{c[f"{one}_column"]}”一个就能认出一个{one_type["name"]}，把主键改成它再确认')
+        return tr(f'它连的是“{c[f"{one}_column"]}”，而“{one_type["name"]}”的主键是“{" + ".join(one_type["key"])}”：问答只能沿连到整个主键的关系走。'
+                  f'如果“{c[f"{one}_column"]}”一个就能认出一个{one_type["name"]}，把主键改成它再确认',
+                  f'It joins on "{c[f"{one}_column"]}", but the key of "{one_type["name"]}" is "{" + ".join(one_type["key"])}". Questions can only follow a relation that joins the whole key. '
+                  f'If "{c[f"{one}_column"]}" alone identifies one {one_type["name"]}, change the key to it and confirm again')
     return None
 
 
@@ -401,15 +406,15 @@ def _steps(item: dict, types: list[dict], relations: list[str]) -> list[dict]:
     """The steps a person can open: what was understood, which types and relations were found, the query and what came of it, with the check of the definitions.
     A step that failed is shown as failed."""
     failed = item['status'] not in ('answered', 'no_data')
-    steps = [{'name': '理解问题', 'text': item.get('reasoning') or '模型没有写理解'}]
+    steps = [{'name': tr('理解问题', 'Understand the question'), 'text': item.get('reasoning') or tr('模型没有写理解', 'The model gave no reading of the question')}]
     if item.get('query') is not None:
-        steps += [{'name': '找对象类型', 'text': '、'.join(t['name'] for t in types) or '没有找到'},
-                  {'name': '找关系', 'text': '、'.join(relations) or '这道题用不到关系'},
-                  {'name': '改写成查询', 'text': item.get('path') or '', 'query': item['query']}]
+        steps += [{'name': tr('找对象类型', 'Find object types'), 'text': tr('、', ', ').join(t['name'] for t in types) or tr('没有找到', 'None found')},
+                  {'name': tr('找关系', 'Find relations'), 'text': tr('、', ', ').join(relations) or tr('这道题用不到关系', 'This question needs no relation')},
+                  {'name': tr('改写成查询', 'Write the query'), 'text': item.get('path') or '', 'query': item['query']}]
     checks = item.get('understood') or []
     if checks:
-        steps.append({'name': '核对定义', 'text': '；'.join(f'{c["definition"]}：{c["how"]}' for c in checks)})
-    steps.append({'name': '结果', 'text': item.get('reason') or ('没有满足条件的数据' if item['status'] == 'no_data' else '算出了结果'), 'failed': failed})
+        steps.append({'name': tr('核对定义', 'Check definitions'), 'text': tr('；', '; ').join(f'{c["definition"]}{tr("：", ": ")}{c["how"]}' for c in checks)})
+    steps.append({'name': tr('结果', 'Result'), 'text': item.get('reason') or (tr('没有满足条件的数据', 'No data matches') if item['status'] == 'no_data' else tr('算出了结果', 'Worked out the result')), 'failed': failed})
     return steps
 
 
@@ -422,9 +427,9 @@ def _strip_rows(value):
 
 def _clean_question(question) -> str:
     if not isinstance(question, str) or not question.strip():
-        raise QaRefused('请写下要问的问题')
+        raise QaRefused(tr('请写下要问的问题', 'Write the question you want to ask'))
     if len(question.strip()) > MAX_QUESTION:
-        raise QaRefused(f'问题最多 {MAX_QUESTION} 个字')
+        raise QaRefused(tr(f'问题最多 {MAX_QUESTION} 个字', f'A question can be at most {MAX_QUESTION} characters'))
     return question.strip()
 
 
@@ -487,7 +492,7 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
     answer.unmatched = unmatched
     asked = ask_questions(ontology, parts['bundle'], gateway, question, answerer=answer, definitions=definitions, catalog=catalog)
     if asked['error'] or not asked['items']:
-        raise QaRefused(asked['error'] or '模型没有给出回答', 502)
+        raise QaRefused(asked['error'] or tr('模型没有给出回答', 'The model gave no answer'), 502)
     return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec')), 'model': asked['model']}
 
 
@@ -520,8 +525,8 @@ def _query_blockers(conn, user: dict | None, parsed: dict) -> list[dict]:
                 false = [] if checked['problems'] else cardinality_false(checked)
                 said = checked['problems'] or false
                 if said:
-                    head = '过不了检查' if checked['problems'] else '，' + CARDINALITY[content['cardinality']] + '不成立'
-                    line = {**line, 'reason': f'按现在的数据{head}，确认不了：{"；".join(said)}'}
+                    head = tr('过不了检查', 'it fails the check') if checked['problems'] else tr('，' + CARDINALITY[content['cardinality']] + '不成立', f'the {content["cardinality"].replace("_", " ")} does not hold')
+                    line = {**line, 'reason': tr(f'按现在的数据{head}，确认不了：{"；".join(said)}', f'With the data as it is, {head}, so it cannot be confirmed: {"; ".join(said)}')}
             out.append({**line, 'because': _causes(conn, element_row(conn, line['id']), user)})
     return out
 
@@ -538,7 +543,7 @@ def _query_used(parts: dict, query: dict) -> list[dict]:
             use = _use(uses, field, meaning['labels'], label)
             direction = {'filter': 'include', 'exclude': 'exclude', 'share': 'mention'}.get(use)
             if direction:
-                out.append({'id': f'{field}={label}', 'direction': direction, 'basis': '查询里写明的条件'})
+                out.append({'id': f'{field}={label}', 'direction': direction, 'basis': tr('查询里写明的条件', 'A condition written in the query')})
     return out
 
 
@@ -547,9 +552,9 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
     QaRefused (400) when the text cannot be read or names what is not there for them; a refusal on the definitions (one not confirmed, a relation that
     cannot be walked) is an answer that says why, with no number."""
     if params is not None and not isinstance(params, dict):
-        raise QaRefused('params 要是一个对象，例如 {"start": "2026-01-01"}')
+        raise QaRefused(tr('params 要是一个对象，例如 {"start": "2026-01-01"}', 'params must be an object, for example {"start": "2026-01-01"}'))
     if is_graph(text) and user is not None and user['role'] == 'viewer':   # a graph shows the objects one by one: a viewer reads numbers
-        raise QaRefused('SELECT GRAPH 画的是一个个对象，浏览者只能看数：请用 count()、sum() 这类写法，或请搭建者来看', 403)
+        raise QaRefused(tr('SELECT GRAPH 画的是一个个对象，浏览者只能看数：请用 count()、sum() 这类写法，或请搭建者来看', 'SELECT GRAPH draws individual objects and viewers can only see numbers: use count(), sum() and the like, or ask a builder'), 403)
     sc = scope(conn, user)
     try:
         parsed = parse_query(text, params)
@@ -558,9 +563,9 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
     except QueryError as exc:
         raise QaRefused(str(exc)) from exc
     except (KeyError, TypeError, AttributeError) as exc:   # a shape the checks above missed is still a 400 that says so, never a 500
-        raise QaRefused('这条查询读不了，请检查写法') from exc
+        raise QaRefused(tr('这条查询读不了，请检查写法', 'This query cannot be read. Check how it is written')) from exc
     if blockers:
-        result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': '核对定义', 'text': '查询用到的定义还没有确认，没有计算', 'failed': True}]}
+        result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('查询用到的定义还没有确认，没有计算', 'A definition the query uses is not confirmed, so nothing was calculated'), 'failed': True}]}
     else:
         result = _run_compiled(conn, user, sc, query)
         if result['status'] == 'query_limit':   # what the writer wrote and the engine cannot run (a bound that is no number or date): theirs to fix, said as such
@@ -577,17 +582,17 @@ def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '
     walks = [k for k in dict.fromkeys([*query['via'], *(k for d in query['group_by'] or [] for k in d['via']), *(k for path in query.get('graph') or [] for k in path)])]
     stuck = [(k, why) for k in walks if (why := _walk_problem(sc, sc['relations'][k]['content']))]
     if stuck:
-        reason = '；'.join(f'关系「{sc["relations"][k]["content"]["name"]}」现在不能走：{why}' for k, why in stuck)
-        return {'status': 'refused', 'reason': f'没有计算：{reason}', 'query': query, 'refusal': {'kind': 'unwalkable', 'definitions': [d for d in _unwalkable(sc) if d['id'] in {relation_id(k) for k, _ in stuck}]},
-                'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': '找关系', 'text': reason, 'failed': True}]}
+        reason = tr('；', '; ').join(tr(f'关系「{sc["relations"][k]["content"]["name"]}」现在不能走：{why}', f'The relation "{sc["relations"][k]["content"]["name"]}" cannot be followed now: {why}') for k, why in stuck)
+        return {'status': 'refused', 'reason': tr(f'没有计算：{reason}', f'Not calculated: {reason}'), 'query': query, 'refusal': {'kind': 'unwalkable', 'definitions': [d for d in _unwalkable(sc) if d['id'] in {relation_id(k) for k, _ in stuck}]},
+                'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('找关系', 'Find relations'), 'text': reason, 'failed': True}]}
     parts = _inputs(conn, sc)
-    used = [*_query_used(parts, query), *({'id': v, 'direction': 'include', 'basis': '模型说问题要这个视图'} for v in views)]
+    used = [*_query_used(parts, query), *({'id': v, 'direction': 'include', 'basis': tr('模型说问题要这个视图', 'The model said the question needs this view')} for v in views)]
     if query.get('graph') is not None:
         return _finish(conn, user, sc, parts, {**_graph_answer(parts, query, asked, used), 'query': query, 'definitions_used': used}, [])
     answer = _engine(sc, parts, _checked_relations(conn, sc, parts))
     item = {**answer(query, asked, used), 'query': query, 'definitions_used': used}
     if item['status'] == 'query_limit':
-        return {'status': 'query_limit', 'reason': item['reason'], 'query': query, 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': '结果', 'text': item['reason'], 'failed': True}]}
+        return {'status': 'query_limit', 'reason': item['reason'], 'query': query, 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('结果', 'Result'), 'text': item['reason'], 'failed': True}]}
     return _finish(conn, user, sc, parts, item, answer.applied)
 
 
@@ -676,7 +681,7 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
         raise QaRefused(model_failure_text(judgement.message), 502)
     reply = judgement.reply if isinstance(judgement.reply, dict) else None
     if reply is None:
-        raise QaRefused('模型返回的不是 JSON 对象', 502)
+        raise QaRefused(tr('模型返回的不是 JSON 对象', 'The model did not return a JSON object'), 502)
     reasoning = str(reply.get('reasoning') or '')
     text = reply.get('query')
     said = {'reasoning': reasoning, 'model': judgement.model, 'writes': 'query'}
@@ -688,20 +693,20 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
             if found:
                 return {**_finish(conn, user, sc, parts, {**found, 'reasoning': reasoning}, [], reply['unmatched_relation']), **said}
         status = 'query_limit' if reply.get('missing') == 'query_language' else 'ontology_gap'
-        item = {'status': status, 'reason': reasoning or '模型认为写不成一条查询', 'reasoning': reasoning}
+        item = {'status': status, 'reason': reasoning or tr('模型认为写不成一条查询', 'The model could not write a query for this'), 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said}
     known = {v['name'] for v in parts['views'] if v['definition'] is not None}   # the views this person may see: a name the model made up is left out, not held against the query
     if is_graph(text):   # a question is answered with a number; a graph is for 写查询
-        item = {'status': 'query_limit', 'reason': '模型写了 SELECT GRAPH：问答只回答数，要看对象和关系，请在“写查询”里写', 'reasoning': reasoning}
+        item = {'status': 'query_limit', 'reason': tr('模型写了 SELECT GRAPH：问答只回答数，要看对象和关系，请在“写查询”里写', 'The model wrote SELECT GRAPH. Questions only answer with numbers. To see objects and relations, write the query yourself'), 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said, 'written': text}
     views = tuple(dict.fromkeys(v for v in (reply['views'] if isinstance(reply.get('views'), list) else []) if isinstance(v, str) and v in known))
     try:
         query = compile_query(text, query_catalog(sc))
     except QueryError as exc:
-        item = {'status': 'query_limit', 'reason': f'模型写的查询读不了：{exc}', 'reasoning': reasoning}
+        item = {'status': 'query_limit', 'reason': tr(f'模型写的查询读不了：{exc}', f'The query the model wrote cannot be read: {exc}'), 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said, 'written': text}
     except (KeyError, TypeError, AttributeError):
-        item = {'status': 'query_limit', 'reason': '模型写的查询读不了', 'reasoning': reasoning}
+        item = {'status': 'query_limit', 'reason': tr('模型写的查询读不了', 'The query the model wrote cannot be read'), 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said, 'written': text}
     result = _run_compiled(conn, user, sc, query, question, views)
     return {**result, **said, 'written': text, **({'query_text': to_text(query, query_catalog(sc))} if result['status'] in ('answered', 'no_data') else {})}
@@ -764,11 +769,11 @@ def _query_text_of(sc: dict, query) -> str | None:
 def query_as_text(conn, user: dict | None, query) -> str:
     """A structured query (the one an answer kept, one the model wrote) as OntoPoc Query text in this person's names. QaRefused when it names what they may not see."""
     if not isinstance(query, dict):
-        raise QaRefused('query 要是一个结构化查询（start、where、group_by…）')
+        raise QaRefused(tr('query 要是一个结构化查询（start、where、group_by…）', 'query must be a structured query (start, where, group_by...)'))
     try:
         return to_text(query, query_catalog(scope(conn, user)))
     except (QueryError, KeyError, TypeError, AttributeError) as exc:
-        raise QaRefused(str(exc) if isinstance(exc, QueryError) else '这个结构化查询读不了') from exc
+        raise QaRefused(str(exc) if isinstance(exc, QueryError) else tr('这个结构化查询读不了', 'This structured query cannot be read')) from exc
 
 
 def _named_ids(result: dict, sc: dict) -> list[str]:
@@ -801,18 +806,18 @@ def ask(conn, gateway, user: dict | None, question, writes='json') -> dict:
     QaRefused (503 without a model, 502 when it failed) when no answer could be worked out at all; a refusal to answer is an answer, saved like the rest.
     `writes`: what the model writes, the JSON query ('json', the default) or OntoPoc Query text ('query')."""
     if writes not in WRITES:
-        raise QaRefused('writes 只能是 "json"（模型写结构化查询，默认）或 "query"（模型写本体查询）')
+        raise QaRefused(tr('writes 只能是 "json"（模型写结构化查询，默认）或 "query"（模型写本体查询）', 'writes must be "json" (the model writes a structured query, the default) or "query" (the model writes an ontology query)'))
     question = _clean_question(question)
     sc = scope(conn, user)
     blockers = _blockers(conn, user, question)
     if blockers:
-        result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': '核对定义', 'text': '问题里提到的定义还没有确认，没有去问模型', 'failed': True}]}
+        result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('问题里提到的定义还没有确认，没有去问模型', 'A definition the question mentions is not confirmed, so the model was not asked'), 'failed': True}]}
     elif not sc['types']:
-        result = {'status': 'refused', 'reason': '范围里还没有已确认的对象类型，没有东西可以回答。', 'refusal': {'kind': 'not_in_scope', 'in_scope': [], 'left_out': _unsettled(conn, user)},
+        result = {'status': 'refused', 'reason': tr('范围里还没有已确认的对象类型，没有东西可以回答。', 'There is no confirmed object type in scope yet, so there is nothing to answer from.'), 'refusal': {'kind': 'not_in_scope', 'in_scope': [], 'left_out': _unsettled(conn, user)},
                   'definitions': [], 'types': [], 'datasets': {}, 'steps': []}
     else:
         if gateway is None:
-            raise QaRefused('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。', 503)
+            raise QaRefused(tr('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。', 'This server has no model credentials. Set DEEPSEEK_API_KEY or OPENROUTER_API_KEY and restart ontology_server.'), 503)
         if writes == 'query':
             result = _answered_in_text(conn, gateway, user, question, sc)
         else:
@@ -865,7 +870,7 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
     where, args = _mine(user)
     found = conn.execute(f'SELECT id, question, asked_at, answer_json FROM qa_question WHERE id = ? AND {where}', (question_id, *args)).fetchone()
     if found is None:
-        raise QaRefused('没有这条问题', 404)
+        raise QaRefused(tr('没有这条问题', 'No such question'), 404)
     i, question, at, stored = found
     record = json.loads(stored)
     named = list(dict.fromkeys([*record.pop('named', []), *(type_id(t['id']) for t in record['types'])]))
@@ -873,17 +878,17 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
     if lost:   # an answer names the types it read (the asker saw them then); a refusal names nothing, since what it says about a definition is for those who may see it
         types = [] if 'refusal' in record else [t['name'] for t in record['types'] if type_id(t['id']) in lost]
         return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': types},
-                'reason': f'这条回答用到的对象类型你现在看不到了：{"、".join(types)}，所以不再显示它。' if types else '这条回答说到的定义你现在看不到了，所以不再显示它。'}
+                'reason': tr(f'这条回答用到的对象类型你现在看不到了：{"、".join(types)}，所以不再显示它。', f'You can no longer see the object types this answer used: {", ".join(types)}, so it is no longer shown.') if types else tr('这条回答说到的定义你现在看不到了，所以不再显示它。', 'You can no longer see a definition this answer mentions, so it is no longer shown.')}
     rules = record.pop('rules', {})
     moved = [t['name'] for t in record['types'] if t['id'] in rules and _limit_list(restriction(conn, type_id(t['id']), user)) != rules[t['id']]]
     hidden_then = record.pop('hidden_columns', {})
     kept_now = [t['name'] for t in record['types'] if not hidden_columns(conn, type_id(t['id']), user) <= set(hidden_then.get(t['id'], []))]
     if kept_now:   # a column read then may now be kept from this person: the answer may hold its values
         return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': kept_now},
-                'reason': f'“{"、".join(kept_now)}”有属性后来不让你看了，这条回答可能用到它，所以不再显示，请重新问一次。'}
+                'reason': tr(f'“{"、".join(kept_now)}”有属性后来不让你看了，这条回答可能用到它，所以不再显示，请重新问一次。', f'A property of "{", ".join(kept_now)}" is now kept from you and this answer may have used it, so it is no longer shown. Ask again.')}
     if moved:   # the answer was worked out from the rows a rule let this person read then: a different rule, a different set of rows
         return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': moved},
-                'reason': f'这条回答算的是你当时能看到的行；“{"、".join(moved)}”的行规则后来变了，所以不再显示它，请重新问一次。'}
+                'reason': tr(f'这条回答算的是你当时能看到的行；“{"、".join(moved)}”的行规则后来变了，所以不再显示它，请重新问一次。', f'This answer was worked out from the rows you could see then. The row rule of "{", ".join(moved)}" has changed since, so it is no longer shown. Ask again.')}
     if user is not None and user['role'] == 'viewer':   # a person made a viewer since asking: no rows in what was saved
         record = _strip_rows(record)
     stale = []

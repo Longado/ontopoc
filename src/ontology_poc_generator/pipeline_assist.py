@@ -19,6 +19,7 @@ import re
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, CAST_TYPES, visible
 from ontology_poc_generator.recognition import model_failure_text
+from ontology_poc_generator.lang import tr
 
 PARSE_VERSION, PLAN_VERSION, EXPLAIN_VERSION = 'pipeline_condition_parser.v1', 'pipeline_planner.v1', 'pipeline_explainer.v1'
 FEW_VALUES = 12   # a column with at most this many different values is shown to the model with each value and its rows
@@ -106,8 +107,9 @@ def column_facts(columns: list[dict], ctx: dict, seen: dict) -> list[dict]:
 def disclosure(facts: list[dict]) -> dict:
     """What the person is told is sent besides names and types."""
     return {'values_sent': [f['name'] for f in facts if 'values_seen' in f or 'meanings' in f], 'withheld': [f['name'] for f in facts if f.get('values_withheld')],
-            'text': f'除了列名和类型，还会把取值不多的列（最多 {FEW_VALUES} 个不同的取值，每个取值不超过 {LONGEST_VALUE} 个字）的每个取值和行数、已确认的代码含义发给模型；'
-                    '取值更多、有更长的取值、或标了不发送的列只发名字和类型；整行数据不发。'}
+            'text': tr(f'除了列名和类型，还会把取值不多的列（最多 {FEW_VALUES} 个不同的取值，每个取值不超过 {LONGEST_VALUE} 个字）的每个取值和行数、已确认的代码含义发给模型；'
+                    '取值更多、有更长的取值、或标了不发送的列只发名字和类型；整行数据不发。', f'Besides column names and types, every value and its row count, and the confirmed code meanings, are sent to the model for columns with few values (at most {FEW_VALUES} distinct values, each at most {LONGEST_VALUE} characters); '
+                    'columns with more values, longer values, or marked not to be sent only have their name and type sent; whole rows are never sent.')}
 
 
 # --- conditions: what stands -----------------------------------------------------------------------------------------------------------------------------
@@ -120,7 +122,7 @@ def _recommend(concept: str | None, meanings: dict, column: str, by: str | None)
     if label is None:
         return None
     codes = meanings[label]
-    return {'meaning': label, 'value': codes, 'text': f'“{label}”：代码 {"、".join(codes)}（已确认{f"，{by}" if by else ""}）'}
+    return {'meaning': label, 'value': codes, 'text': tr(f'“{label}”：代码 {"、".join(codes)}（已确认{f"，{by}" if by else ""}）', f'"{label}": codes {", ".join(codes)} (confirmed{f" by {by}" if by else ""})')}
 
 
 def _question(column: str, concept: str | None, fact: dict, values: list[dict], by: str | None = None) -> dict:
@@ -128,18 +130,18 @@ def _question(column: str, concept: str | None, fact: dict, values: list[dict], 
     recommended answer the confirmed meaning that looks like what was asked for, if there is one."""
     meanings = fact.get('meanings')
     if meanings:
-        evidence = f'已确认的含义有：{"；".join(label + "（" + "、".join(codes) + "）" for label, codes in meanings.items())}，没有“{concept}”'
+        evidence = tr(f'已确认的含义有：{"；".join(label + "（" + "、".join(codes) + "）" for label, codes in meanings.items())}，没有“{concept}”', f'The confirmed meanings are: {"; ".join(label + " (" + ", ".join(codes) + ")" for label, codes in meanings.items())}, and none is "{concept}"')
     elif values:
-        evidence = f'未确认：见过 {"、".join(v["value"] for v in values)}（{"、".join(str(v["rows"]) + " 行" for v in values)}）'
+        evidence = tr(f'未确认：见过 {"、".join(v["value"] for v in values)}（{"、".join(str(v["rows"]) + " 行" for v in values)}）', f'Not confirmed: seen {", ".join(v["value"] for v in values)} ({", ".join(str(v["rows"]) + " rows" for v in values)})')
     else:
-        evidence = '未确认：这一列的含义还没有人确认'
+        evidence = tr('未确认：这一列的含义还没有人确认', 'Not confirmed: nobody has confirmed the meanings of this column yet')
     return {'id': f'{column}|{concept or ""}', 'column': column, 'concept': concept, 'recommended': _recommend(concept, meanings or {}, column, by), 'evidence': evidence,
-            'ask': f'「{column}」里哪个代码表示“{concept}”？' if concept else f'「{column}」的哪个值？',
-            'options': [{'value': v['value'], 'text': f'{v["value"]}（{v["rows"]} 行）'} for v in values]}
+            'ask': tr(f'「{column}」里哪个代码表示“{concept}”？', f'Which code in "{column}" means "{concept}"?') if concept else tr(f'「{column}」的哪个值？', f'Which value of "{column}"?'),
+            'options': [{'value': v['value'], 'text': tr(f'{v["value"]}（{v["rows"]} 行）', f'{v["value"]} ({v["rows"]} rows)')} for v in values]}
 
 
 def _cite(column: str, label: str, codes: list, by: str | None) -> dict:
-    return {'column': column, 'meaning': label, 'codes': codes, 'text': f'「{column}」的含义“{label}”是代码 {"、".join(codes)}（已确认{f"，{by}" if by else ""}）'}
+    return {'column': column, 'meaning': label, 'codes': codes, 'text': tr(f'「{column}」的含义“{label}”是代码 {"、".join(codes)}（已确认{f"，{by}" if by else ""}）', f'The meaning "{label}" of "{column}" is codes {", ".join(codes)} (confirmed{f" by {by}" if by else ""})')}
 
 
 STATES = ('≠', '!=', '<>', '==', '=', '不等于', '不是', '等于', '是', '为', ':', '：')   # what may stand between a column's name and the value the person gives it
@@ -199,7 +201,7 @@ def parse_condition(gateway, sentence: str, facts: list[dict], seen: dict, answe
         if got.failure == 'request':
             return {'error': model_failure_text(got.message)}
         if got.failure == 'not_json' or not isinstance(got.reply, dict) or not isinstance(got.reply.get('where'), dict):
-            return {'error': '模型返回的不是约定的 JSON：要有 where'}
+            return {'error': tr('模型返回的不是约定的 JSON：要有 where', 'The model did not return the agreed JSON: it needs where')}
         raw = got.reply
     questions, cites = {}, []
     where = settle(raw.get('where'), {f['name']: f for f in facts}, seen, sentence, answers, questions, cites, by)
@@ -213,7 +215,7 @@ def parse_expression(gateway, sentence: str, facts: list[dict], functions: list[
         return {'error': model_failure_text(got.message)}
     reply = got.reply
     if got.failure == 'not_json' or not isinstance(reply, dict) or not isinstance(reply.get('expression'), str) or not isinstance(reply.get('name'), str):
-        return {'error': '模型返回的不是约定的 JSON：要有 name 和 expression'}
+        return {'error': tr('模型返回的不是约定的 JSON：要有 name 和 expression', 'The model did not return the agreed JSON: it needs name and expression')}
     return {'name': reply['name'].strip(), 'expression': reply['expression'].strip(), 'basis': str(reply.get('basis') or '')}
 
 
@@ -225,7 +227,7 @@ def ask_plan(gateway, sentence: str, selected: dict) -> dict:
     if got.failure == 'request':
         return {'error': model_failure_text(got.message)}
     if got.failure == 'not_json' or not isinstance(got.reply, dict) or not isinstance(got.reply.get('steps'), list):
-        return {'error': '模型返回的不是约定的 JSON：要有 steps'}
+        return {'error': tr('模型返回的不是约定的 JSON：要有 steps', 'The model did not return the agreed JSON: it needs steps')}
     return got.reply
 
 
@@ -235,7 +237,7 @@ def settle_plan(raw: dict, selected: dict, seen: dict, taken: set[str], model: s
     items = raw.get('steps') if isinstance(raw.get('steps'), list) else []
     problems, steps, questions, cites, root = [], [], {}, [], {}
     if not items or len(items) > MAX_DRAFT_STEPS:
-        return {'steps': [], 'questions': [], 'cites': [], 'problems': [f'模型要写 1 到 {MAX_DRAFT_STEPS} 步，它写了 {len(items)} 步']}
+        return {'steps': [], 'questions': [], 'cites': [], 'problems': [tr(f'模型要写 1 到 {MAX_DRAFT_STEPS} 步，它写了 {len(items)} 步', f'The model must write 1 to {MAX_DRAFT_STEPS} steps, and it wrote {len(items)}')]}
     ids, n = [], 0
     for _ in items:
         n += 1
@@ -244,9 +246,9 @@ def settle_plan(raw: dict, selected: dict, seen: dict, taken: set[str], model: s
         ids.append(f'ai{n}')
     for position, item in enumerate(items):
         step = copy.deepcopy(item.get('step') if isinstance(item, dict) else None)
-        label = f'第 {position + 1} 步'
+        label = tr(f'第 {position + 1} 步', f'step {position + 1}')
         if not isinstance(step, dict) or step.get('type') not in ALLOWED_STEPS:
-            problems.append(f'{label}：步骤只能是 {"、".join(ALLOWED_STEPS)}')
+            problems.append(tr(f'{label}：步骤只能是 {"、".join(ALLOWED_STEPS)}', f'{label}: a step can only be {", ".join(ALLOWED_STEPS)}'))
             continue
         step['id'] = ids[position]
         for key in REFS:
@@ -256,7 +258,7 @@ def settle_plan(raw: dict, selected: dict, seen: dict, taken: set[str], model: s
             if isinstance(ref, str) and ref.startswith('$') and ref[1:].isdigit() and 1 <= int(ref[1:]) <= position:
                 step[key] = ids[int(ref[1:]) - 1]
             elif ref not in selected:
-                problems.append(f'{label}：读了没有选中的节点「{ref}」')
+                problems.append(tr(f'{label}：读了没有选中的节点「{ref}」', f'{label}: it read the node "{ref}", which was not selected'))
         origin = next((root.get(step[k], step[k]) for k in REFS if k in step and (step[k] in selected or step[k] in root)), None)
         root[step['id']] = origin
         if step['type'] == 'llm':
@@ -277,5 +279,5 @@ def explain(gateway, steps: list[dict]) -> dict:
     if got.failure == 'request':
         return {'error': model_failure_text(got.message)}
     if got.failure == 'not_json' or not isinstance(got.reply, dict) or not isinstance(got.reply.get('text'), str) or not got.reply['text'].strip():
-        return {'error': '模型返回的不是约定的 JSON：要有 text'}
+        return {'error': tr('模型返回的不是约定的 JSON：要有 text', 'The model did not return the agreed JSON: it needs text')}
     return {'text': got.reply['text'].strip(), 'basis': str(got.reply.get('basis') or '')}

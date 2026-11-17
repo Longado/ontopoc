@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 
+from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_types import TypeRefused, element_row
 from ontology_poc_generator.pipeline_assist import (
     MAX_DRAFT_STEPS, ask_plan, column_facts, disclosure, explain, parse_condition, parse_expression, settle_plan, values_seen)
@@ -22,7 +23,7 @@ FUNCTIONS = [name for _, name, _, _ in FUNCTION_DOCS]
 
 def _gateway(llm: LlmService | None):
     if llm is None or llm.gateway is None:
-        raise TypeRefused('本机服务没有模型凭据，AI 助手用不了', 409)
+        raise TypeRefused(tr('本机服务没有模型凭据，AI 助手用不了', 'This server has no model credentials, so the AI assistant is not available'), 409)
     return llm.gateway
 
 
@@ -50,14 +51,14 @@ def _run_to(engine, found: dict, targets, take, llm_part=None):
 def _answers(payload: dict) -> dict:
     raw = payload.get('answers') or {}
     if not isinstance(raw, dict) or not all(isinstance(k, str) and isinstance(v, list) and all(isinstance(x, (str, int, float)) for x in v) for k, v in raw.items()):
-        raise TypeRefused('答案要写成 {问题编号: [值…]}')
+        raise TypeRefused(tr('答案要写成 {问题编号: [值…]}', 'Answers must be written as {question id: [values…]}'))
     return raw
 
 
 def _sentence(payload: dict) -> str:
     text = payload.get('text')
     if not isinstance(text, str) or not text.strip() or len(text) > 500:
-        raise TypeRefused('要用一句话说清楚，最多 500 个字（text）')
+        raise TypeRefused(tr('要用一句话说清楚，最多 500 个字（text）', 'Say it in one sentence, at most 500 characters (text)'))
     return text.strip()
 
 
@@ -68,13 +69,13 @@ def _settled(settle, raw):
     except (TypeError, AttributeError, KeyError) as exc:
         if raw is None:
             raise   # the model's own answer was checked as it came; a failure here is ours
-        raise TypeRefused('raw 要写成上一次返回的 raw，原样带回来；这一份读不了，请重新问一次') from exc
+        raise TypeRefused(tr('raw 要写成上一次返回的 raw，原样带回来；这一份读不了，请重新问一次', 'raw must be the raw from the last reply, sent back unchanged. This one cannot be read, so ask again')) from exc
 
 
 def _raw(payload: dict):
     raw = payload.get('raw')
     if raw is not None and not isinstance(raw, dict):
-        raise TypeRefused('raw 要写成上一次返回的 raw')
+        raise TypeRefused(tr('raw 要写成上一次返回的 raw', 'raw must be the raw from the last reply'))
     return raw
 
 
@@ -84,7 +85,7 @@ def parse(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
     'cites', 'check': {'ok', 'error'}, 'raw', 'sees', 'basis'}."""
     sentence, kind = _sentence(payload), payload.get('kind')
     if kind not in ('filter', 'calc'):
-        raise TypeRefused('kind 要写 filter 或 calc')
+        raise TypeRefused(tr('kind 要写 filter 或 calc', 'kind must be filter or calc'))
     raw, answers = _raw(payload), _answers(payload)
     gateway = None if raw is not None else _gateway(llm)
     found, compiled, step_id = _columns_before(conn, engine, payload, user)
@@ -94,12 +95,12 @@ def parse(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
         _run_to(engine, found, [step_id], lambda c, report, comp: seen.update(values_seen(c, comp['table'], comp['columns'], found['ctx'])) if report['id'] == step_id else None)
         columns = [{**c} for c in visible(compiled['columns'])]
         facts = column_facts(columns, found['ctx'], seen)
-        out = {'kind': kind, 'sees': disclosure(facts), 'label': 'AI 写的草稿，用不用由你定'}
+        out = {'kind': kind, 'sees': disclosure(facts), 'label': tr('AI 写的草稿，用不用由你定', 'Drafted by AI. You decide whether to use it')}
         if kind == 'filter':
             drafted = _settled(lambda: parse_condition(gateway, sentence, facts, seen, answers, _confirmed_by(conn, found['ctx'], meaning_ids, columns), raw), raw)
             if 'error' in drafted:
                 raise TypeRefused(drafted['error'], 409)
-            check = {'ok': False, 'error': '没有一个条件能先写下来：先回答下面的问题'} if drafted['where'] is None else _checked_filter(drafted['where'], compiled['columns'], found['ctx'])
+            check = {'ok': False, 'error': tr('没有一个条件能先写下来：先回答下面的问题', 'No condition could be drafted yet. Answer the questions below first')} if drafted['where'] is None else _checked_filter(drafted['where'], compiled['columns'], found['ctx'])
             return {**out, **drafted, 'check': check}
         drafted = parse_expression(gateway, sentence, facts, FUNCTIONS)
         if 'error' in drafted:
@@ -113,7 +114,7 @@ def parse(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
 
 def _checked_filter(where: dict, columns: list[dict], ctx: dict) -> dict:
     try:
-        compile_op({'op': 'filter', 'where': where}, 'x', columns, ctx, '这个条件')
+        compile_op({'op': 'filter', 'where': where}, 'x', columns, ctx, tr('这个条件', 'this condition'))
         return {'ok': True}
     except OpError as exc:
         return {'ok': False, 'error': str(exc)}
@@ -123,9 +124,9 @@ def _selected(spec: dict, payload: dict) -> list[str]:
     ids = payload.get('selected')
     by_id = {s['id']: s for s in spec.get('steps', []) if isinstance(s, dict) and isinstance(s.get('id'), str)}
     if not isinstance(ids, list) or not ids or not all(isinstance(i, str) and i in by_id for i in ids):
-        raise TypeRefused('先选中要用的节点（selected）：AI 只能读选中的节点')
+        raise TypeRefused(tr('先选中要用的节点（selected）：AI 只能读选中的节点', 'Select the nodes to use first (selected). The AI reads only the selected nodes'))
     if any(by_id[i].get('type') == 'output' for i in ids):
-        raise TypeRefused('输出节点不能选：它没有可读的列')
+        raise TypeRefused(tr('输出节点不能选：它没有可读的列', 'An output node cannot be selected: it has no columns to read'))
     return list(dict.fromkeys(ids))
 
 
@@ -156,9 +157,9 @@ def draft(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
         drop_temporary(engine, found['resolved'])
     settled = _settled(lambda: settle_plan(asked, facts, seen, {s['id'] for s in spec['steps']}, llm.model if llm else None, sentence, answers, merged_by), raw)
     out = {'raw': asked, 'basis': str(asked.get('basis') or ''), 'selected': selected, 'questions': settled['questions'], 'cites': settled['cites'], 'problems': settled['problems'],
-           'sees': disclosure([f for i in selected for f in facts[i]]), 'label': 'AI 写的草稿，用不用由你定', 'steps': [], 'max_steps': MAX_DRAFT_STEPS}
+           'sees': disclosure([f for i in selected for f in facts[i]]), 'label': tr('AI 写的草稿，用不用由你定', 'Drafted by AI. You decide whether to use it'), 'steps': [], 'max_steps': MAX_DRAFT_STEPS}
     if not settled['steps']:
-        return {**out, 'check': {'ok': False, 'error': '；'.join(settled['problems']) or '模型没有写出可用的步骤'}}
+        return {**out, 'check': {'ok': False, 'error': tr('；', '; ').join(settled['problems']) or tr('模型没有写出可用的步骤', 'The model did not write any usable step')}}
     new = [s['step'] for s in settled['steps']]
     whole = {**copy.deepcopy(spec), 'steps': [*copy.deepcopy(spec['steps']), *new]}
     trimmed = {**whole, 'steps': [s for s in whole['steps'] if s['id'] in needed_steps(whole, [s['id'] for s in new])]}
@@ -175,7 +176,7 @@ def draft(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
     steps = [{**s, 'rows_in': nodes[s['id']]['rows_in'], 'rows_out': nodes[s['id']]['rows_out'], 'failures': nodes[s['id']].get('failures') or {},
               'to_call': (nodes[s['id']].get('llm') or {}).get('to_call'), 'operators': [{'op': o['op'], 'text': o.get('text'), 'rows_in': o['rows_in'], 'rows_out': o['rows_out']} for o in nodes[s['id']].get('operators', [])]}
              for s in settled['steps']]
-    return {**out, 'steps': steps, 'check': {'ok': True, 'dry_run': '按现在的数据试算，没有写任何东西'}}
+    return {**out, 'steps': steps, 'check': {'ok': True, 'dry_run': tr('按现在的数据试算，没有写任何东西', 'Tried on the current data. Nothing was written')}}
 
 
 def explain_steps(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
@@ -191,5 +192,5 @@ def explain_steps(conn, engine, payload: dict, user: dict | None, llm: LlmServic
     said = explain(gateway, steps)
     if 'error' in said:
         raise TypeRefused(said['error'], 409)
-    return {**said, 'selected': selected, 'label': 'AI 写的说明，供读的人参考；以步骤的设置为准',
-            'sees': {'text': '会把选中步骤的设置发给模型，设置里写的具体取值（比如过滤条件里的客户名、编号）也在内；不发数据行，也不发取值统计。'}}
+    return {**said, 'selected': selected, 'label': tr('AI 写的说明，供读的人参考；以步骤的设置为准', 'Explained by AI, for reading only. The step settings are what counts'),
+            'sees': {'text': tr('会把选中步骤的设置发给模型，设置里写的具体取值（比如过滤条件里的客户名、编号）也在内；不发数据行，也不发取值统计。', 'The settings of the selected steps are sent to the model, including the values written in them (for example a customer name or id in a filter). No data rows and no value counts are sent.')}}

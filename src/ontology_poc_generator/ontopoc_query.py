@@ -27,6 +27,13 @@ from __future__ import annotations
 import re
 
 AGGREGATES = {'count': 'count', 'sum': 'sum', 'avg': 'average', 'average': 'average', 'share': 'share'}
+SAY = None   # the host sets this to lang.tr so a message comes in the asker's language; this file imports nothing from ontopoc, and on its own says the Chinese
+
+
+def tr(zh, en):
+    return SAY(zh, en) if SAY else zh
+
+
 ALIASES = {'count': '数量', 'sum': '合计', 'average': '平均', 'share': '占比'}
 BUCKETS = ('month', 'year')   # GROUP BY month(o.下单日期): a date read as its month or its year
 COMPARE = {'>': 'more_than', '>=': 'at_least', '<': 'less_than', '<=': 'at_most'}
@@ -60,7 +67,7 @@ def _tokens(text: str) -> list[tuple[str, str, int]]:
     while i < len(text):
         m = _TOKEN.match(text, i)
         if m is None:
-            raise QueryError(f'第 {i + 1} 个字“{text[i]}”读不懂', i)
+            raise QueryError(tr(f'第 {i + 1} 个字“{text[i]}”读不懂', f'Cannot read character {i + 1}, "{text[i]}"'), i)
         kind = m.lastgroup
         if kind != 'space':
             value = m.group()
@@ -90,8 +97,8 @@ class _Reader:
     def take(self, kind=None, value=None, what=None):
         k, v, at = self.tokens[self.i]
         if (kind and k != kind) or (value and v != value):
-            seen = '结尾' if k == 'end' else f'“{v}”'
-            raise QueryError(f'第 {at + 1} 个字附近应该是 {what or value or kind}，这里是{seen}', at)
+            seen = tr('结尾', 'the end') if k == 'end' else f'“{v}”'
+            raise QueryError(tr(f'第 {at + 1} 个字附近应该是 {what or value or kind}，这里是{seen}', f'Expected {what or value or kind} near character {at + 1}, found {seen}'), at)
         self.i += 1
         return v
 
@@ -108,23 +115,23 @@ class _Reader:
         if k in ('string', 'number'):
             self.i += 1
             if k == 'number' and self.tokens[self.i][0] == 'number' and self.tokens[self.i][1].startswith('-'):   # 2026-01-01 read as 2026, -01, -01
-                raise QueryError(f'第 {at + 1} 个字附近：日期要加引号，例如 \'2026-01-01\'', at)
+                raise QueryError(tr(f'第 {at + 1} 个字附近：日期要加引号，例如 \'2026-01-01\'', f"Near character {at + 1}: a date needs quotes, for example '2026-01-01'"), at)
             return v
         if k == 'param':
             self.i += 1
             if v[1:] not in self.params:
-                raise QueryError(f'缺少参数 {v}：调用时在 params 里给它一个值，例如 "params": {{"{v[1:]}": "…"}}', at)
+                raise QueryError(tr(f'缺少参数 {v}：调用时在 params 里给它一个值，例如 "params": {{"{v[1:]}": "…"}}', f'Missing parameter {v}: give it a value in params, for example "params": {{"{v[1:]}": "..."}}'), at)
             given = self.params[v[1:]]
             if isinstance(given, bool) or not isinstance(given, (str, int, float)):
-                raise QueryError(f'参数 {v} 要是一个文字或数字', at)
+                raise QueryError(tr(f'参数 {v} 要是一个文字或数字', f'Parameter {v} must be text or a number'), at)
             return given if isinstance(given, str) else format(given, 'g') if isinstance(given, float) else str(given)
-        raise QueryError(f'第 {at + 1} 个字附近应该是一个值（\'文字\'、数字或 $参数）', at)
+        raise QueryError(tr(f'第 {at + 1} 个字附近应该是一个值（\'文字\'、数字或 $参数）', f"Expected a value near character {at + 1} ('text', a number or a $parameter)"), at)
 
 
 def _ref(r: _Reader) -> tuple[str, str]:
-    var = r.name('对象的简称，例如 o')
-    r.take('op', '.', '“.”，写成 简称.属性，例如 o.金额')
-    return var, r.name('属性名')
+    var = r.name(tr('对象的简称，例如 o', 'a short name for the object, for example o'))
+    r.take('op', '.', tr('“.”，写成 简称.属性，例如 o.金额', '".", written short name.property, for example o.amount'))
+    return var, r.name(tr('属性名', 'a property name'))
 
 
 def _group_ref(r: _Reader) -> tuple[str, str, str | None]:
@@ -132,7 +139,7 @@ def _group_ref(r: _Reader) -> tuple[str, str, str | None]:
     if r.peek('name') and r.peek('op', '(', 1):
         at, fn = r.at(), r.take().lower()
         if fn not in BUCKETS:
-            raise QueryError(f'不认识的函数 {fn}：要算的数用 count、sum、avg、share，日期可以按 month 或 year 分组', at)
+            raise QueryError(tr(f'不认识的函数 {fn}：要算的数用 count、sum、avg、share，日期可以按 month 或 year 分组', f'Unknown function {fn}: use count, sum, avg or share to calculate, and group dates by month or year'), at)
         r.take('op', '(')
         var, prop = _ref(r)
         r.take('op', ')')
@@ -150,12 +157,12 @@ def _select_item(r: _Reader) -> dict:
                 r.take()
                 item = {'kind': 'agg', 'fn': 'count', 'var': None}
             else:
-                item = {'kind': 'agg', 'fn': 'count', 'var': r.name('要数的对象的简称，例如 count(o)')}
+                item = {'kind': 'agg', 'fn': 'count', 'var': r.name(tr('要数的对象的简称，例如 count(o)', 'the short name of the object to count, for example count(o)'))}
                 if r.peek('op', '.'):
-                    raise QueryError('count 数的是对象：写 count(o) 或 count(*)，不是 count(o.属性)', at)
+                    raise QueryError(tr('count 数的是对象：写 count(o) 或 count(*)，不是 count(o.属性)', 'count counts objects: write count(o) or count(*), not count(o.property)'), at)
         elif fn == 'share':
             var, prop = _ref(r)
-            r.take('op', '=', '“=”：share(o.属性 = \'值\') 算等于这个值的对象占多少')
+            r.take('op', '=', tr('“=”：share(o.属性 = \'值\') 算等于这个值的对象占多少', "\"=\": share(o.property = 'value') gives the share of objects equal to that value"))
             item = {'kind': 'agg', 'fn': 'share', 'var': var, 'prop': prop, 'value': r.value()}
         else:
             var, prop = _ref(r)
@@ -166,19 +173,19 @@ def _select_item(r: _Reader) -> dict:
         item = {'kind': 'field', 'var': var, 'prop': prop, 'by': by}
     if r.peek('kw', 'AS'):
         r.take()
-        item['alias'] = r.name('别名')
+        item['alias'] = r.name(tr('别名', 'an alias'))
     item['at'] = at
     return item
 
 
 def _node(r: _Reader) -> dict:
     at = r.at()
-    r.take('op', '(', '“(”：节点写成 (简称:对象类型)，例如 (o:订单)')
-    var = r.name('对象的简称')
+    r.take('op', '(', tr('“(”：节点写成 (简称:对象类型)，例如 (o:订单)', '"(": write a node as (short name:object type), for example (o:orders)'))
+    var = r.name(tr('对象的简称', 'a short name for the object'))
     kind = None
     if r.peek('op', ':'):
         r.take()
-        kind = r.name('对象类型')
+        kind = r.name(tr('对象类型', 'an object type'))
     r.take('op', ')')
     return {'var': var, 'type': kind, 'at': at}
 
@@ -187,10 +194,10 @@ def _edge(r: _Reader) -> dict:
     """-[:r]->, <-[:r]- or -[:r]-: (relation name, 'out' | 'in' | 'any')."""
     at = r.at()
     back = r.peek('op', '<-')
-    r.take('op', '<-' if back else '-', '关系，写成 -[:关系]-> 或 <-[:关系]-')
+    r.take('op', '<-' if back else '-', tr('关系，写成 -[:关系]-> 或 <-[:关系]-', 'a relation, written -[:relation]-> or <-[:relation]-'))
     r.take('op', '[')
-    r.take('op', ':', '“:”，关系写成 [:关系名]')
-    name = r.name('关系名')
+    r.take('op', ':', tr('“:”，关系写成 [:关系名]', '":", a relation is written [:relation name]'))
+    name = r.name(tr('关系名', 'a relation name'))
     r.take('op', ']')
     if back:
         r.take('op', '-')
@@ -198,7 +205,7 @@ def _edge(r: _Reader) -> dict:
     if r.peek('op', '->'):
         r.take()
         return {'relation': name, 'dir': 'out', 'at': at}
-    r.take('op', '-', '“->” 或 “-”')
+    r.take('op', '-', tr('“->” 或 “-”', '"->" or "-"'))
     return {'relation': name, 'dir': 'any', 'at': at}
 
 
@@ -217,7 +224,7 @@ def _condition(r: _Reader) -> dict:
     if r.peek('kw', 'BETWEEN'):
         r.take()
         low = r.value()
-        r.take('kw', 'AND', 'AND：BETWEEN 下限 AND 上限')
+        r.take('kw', 'AND', tr('AND：BETWEEN 下限 AND 上限', 'AND: BETWEEN lower AND upper'))
         return {'var': var, 'prop': prop, 'range': {'at_least': low, 'at_most': r.value()}, 'at': at}
     negated = r.peek('kw', 'NOT')
     if negated:
@@ -233,8 +240,8 @@ def _condition(r: _Reader) -> dict:
         return {'var': var, 'prop': prop, 'not': negated, 'values': values, 'at': at}
     k, v, here = r.tokens[r.i]
     if v in ('LIKE', 'IS'):
-        raise QueryError(f'{var}.{prop} 用了 {v}：{"模糊匹配" if v == "LIKE" else "空值判断"}还不支持；能写 =、<>、IN、NOT IN、>、>=、<、<=、BETWEEN', here)
-    raise QueryError(f'第 {here + 1} 个字附近应该是 =、<>、IN、NOT IN、>、>=、<、<= 或 BETWEEN', here)
+        raise QueryError(tr(f'{var}.{prop} 用了 {v}：{"模糊匹配" if v == "LIKE" else "空值判断"}还不支持；能写 =、<>、IN、NOT IN、>、>=、<、<=、BETWEEN', f'{var}.{prop} uses {v}: {"fuzzy matching" if v == "LIKE" else "null checks"} are not supported yet. You can write =, <>, IN, NOT IN, >, >=, <, <=, BETWEEN'), here)
+    raise QueryError(tr(f'第 {here + 1} 个字附近应该是 =、<>、IN、NOT IN、>、>=、<、<= 或 BETWEEN', f'Expected =, <>, IN, NOT IN, >, >=, <, <= or BETWEEN near character {here + 1}'), here)
 
 
 def param_names(text: str) -> list[str]:
@@ -245,16 +252,16 @@ def param_names(text: str) -> list[str]:
 def parse(text: str, params: dict | None = None) -> dict:
     """The text as its parts (no names are looked up yet): select, chains, where, group, order, limit."""
     if not isinstance(text, str) or not text.strip():
-        raise QueryError('请写一条查询，例如 SELECT count(o) FROM (o:订单)')
+        raise QueryError(tr('请写一条查询，例如 SELECT count(o) FROM (o:订单)', 'Write a query, for example SELECT count(o) FROM (o:orders)'))
     if len(text) > MAX_TEXT:
-        raise QueryError(f'一条查询最多 {MAX_TEXT} 个字')
+        raise QueryError(tr(f'一条查询最多 {MAX_TEXT} 个字', f'A query can be at most {MAX_TEXT} characters'))
     r = _Reader(text, params)
     r.take('kw', 'SELECT', 'SELECT')
     graph = r.peek('name') and r.tokens[r.i][1].upper() == 'GRAPH' and (r.peek('kw', 'FROM', 1) or r.peek('op', ',', 1))
     if graph:   # SELECT GRAPH: the objects and how they are related, not a number
         r.take()
         if r.peek('op', ','):
-            raise QueryError('SELECT GRAPH 后面直接写 FROM：一条查询要么画图，要么算一个数', r.at())
+            raise QueryError(tr('SELECT GRAPH 后面直接写 FROM：一条查询要么画图，要么算一个数', 'Write FROM right after SELECT GRAPH: a query either draws a graph or calculates one number'), r.at())
         select = []
     else:
         select = [_select_item(r)]
@@ -272,7 +279,7 @@ def parse(text: str, params: dict | None = None) -> dict:
             break
         r.take()
     if r.peek('kw', 'JOIN'):
-        raise QueryError('这里不写 JOIN：在 FROM 里沿关系走，例如 FROM (o:订单)-[:订单属于客户]->(c:客户)', r.at())
+        raise QueryError(tr('这里不写 JOIN：在 FROM 里沿关系走，例如 FROM (o:订单)-[:订单属于客户]->(c:客户)', 'Do not write JOIN: follow relations in FROM, for example FROM (o:orders)-[:order_customer]->(c:customers)'), r.at())
     where = []
     if r.peek('kw', 'WHERE'):
         r.take()
@@ -281,11 +288,11 @@ def parse(text: str, params: dict | None = None) -> dict:
             r.take()
             where.append(_condition(r))
         if r.peek('kw', 'OR'):
-            raise QueryError('现在只能用 AND 连起几个条件；OR 还不支持（同一个属性的几个值可以写 IN）', r.at())
+            raise QueryError(tr('现在只能用 AND 连起几个条件；OR 还不支持（同一个属性的几个值可以写 IN）', 'Conditions can only be joined with AND; OR is not supported yet (several values of one property can be written with IN)'), r.at())
     group = []
     if graph and (r.peek('kw', 'GROUP') or r.peek('kw', 'ORDER')):
         word = 'GROUP BY' if r.peek('kw', 'GROUP') else 'ORDER BY'
-        raise QueryError(f'SELECT GRAPH 不写 {word}：它画出对象和它们之间的关系；要少画一些，用 LIMIT n 只留前 n 个起点对象', r.at())
+        raise QueryError(tr(f'SELECT GRAPH 不写 {word}：它画出对象和它们之间的关系；要少画一些，用 LIMIT n 只留前 n 个起点对象', f'SELECT GRAPH does not take {word}: it draws objects and the relations between them. To draw fewer, use LIMIT n to keep only the first n start objects'), r.at())
     if r.peek('kw', 'GROUP'):
         r.take()
         r.take('kw', 'BY', 'BY')
@@ -294,7 +301,7 @@ def parse(text: str, params: dict | None = None) -> dict:
             r.take()
             group.append(dict(zip(('var', 'prop', 'by'), _group_ref(r))))
     if r.peek('kw', 'HAVING'):
-        raise QueryError('HAVING 还不支持：要“前几名”或“最少的几个”，用 ORDER BY 和 LIMIT', r.at())
+        raise QueryError(tr('HAVING 还不支持：要“前几名”或“最少的几个”，用 ORDER BY 和 LIMIT', 'HAVING is not supported yet: for the top few or the fewest, use ORDER BY and LIMIT'), r.at())
     order = None
     if r.peek('kw', 'ORDER'):
         at = r.at()
@@ -306,7 +313,7 @@ def parse(text: str, params: dict | None = None) -> dict:
         elif r.peek('name') and r.peek('op', '.', 1):
             target = {'kind': 'field', **dict(zip(('var', 'prop'), _ref(r)))}
         else:
-            target = {'kind': 'alias', 'name': r.name('要排序的数（它的别名或写法）')}
+            target = {'kind': 'alias', 'name': r.name(tr('要排序的数（它的别名或写法）', 'the number to sort by (its alias or how it is written)'))}
         direction = 'smallest'
         if r.peek('kw', 'DESC') or r.peek('kw', 'ASC'):
             direction = 'largest' if r.take() == 'DESC' else 'smallest'
@@ -317,14 +324,14 @@ def parse(text: str, params: dict | None = None) -> dict:
         r.take()
         k, v, _ = r.tokens[r.i]
         if k != 'number' or not v.isdigit() or int(v) < 1:
-            raise QueryError('LIMIT 后面写一个大于 0 的整数', at)
+            raise QueryError(tr('LIMIT 后面写一个大于 0 的整数', 'Write a whole number greater than 0 after LIMIT'), at)
         r.take()
         limit = {'n': int(v), 'at': at}
         if graph and limit['n'] > MAX_GRAPH:
-            raise QueryError(f'SELECT GRAPH 最多画 {MAX_GRAPH} 个起点对象；要看总数，用 count()', at)
+            raise QueryError(tr(f'SELECT GRAPH 最多画 {MAX_GRAPH} 个起点对象；要看总数，用 count()', f'SELECT GRAPH draws at most {MAX_GRAPH} start objects; for a total, use count()'), at)
     if not r.peek('end'):
         k, v, at = r.tokens[r.i]
-        raise QueryError(f'第 {at + 1} 个字附近的“{v}”多出来了，或者这个位置还不支持它', at)
+        raise QueryError(tr(f'第 {at + 1} 个字附近的“{v}”多出来了，或者这个位置还不支持它', f'"{v}" near character {at + 1} is extra, or is not supported in this position'), at)
     return {'select': select, 'chains': chains, 'where': where, 'group': group, 'order': order, 'limit': limit, 'graph': bool(graph)}
 
 
@@ -356,13 +363,13 @@ def _relation_line(catalog: dict, key: str) -> str:
 
 
 def _no_type(catalog: dict, written: str, at) -> QueryError:
-    known = '、'.join(_type_name(catalog, k) for k in catalog['types']) or '（还没有）'
-    return QueryError(f'没有对象类型「{written}」。你能查的对象类型：{known}', at)
+    known = tr('、', ', ').join(_type_name(catalog, k) for k in catalog['types']) or tr('（还没有）', '(none yet)')
+    return QueryError(tr(f'没有对象类型「{written}」。你能查的对象类型：{known}', f'There is no object type "{written}". Object types you can query: {known}'), at)
 
 
 def _no_property(catalog: dict, key: str, prop: str, at) -> QueryError:
     props = catalog['types'][key]['properties']
-    return QueryError(f'{_type_name(catalog, key)} 没有属性「{prop}」。它的属性：{"、".join(props) or "（没有）"}', at)
+    return QueryError(tr(f'{_type_name(catalog, key)} 没有属性「{prop}」。它的属性：{"、".join(props) or "（没有）"}', f'{_type_name(catalog, key)} has no property "{prop}". Its properties: {", ".join(props) or "(none)"}'), at)
 
 
 def _bind(catalog: dict, parsed: dict) -> tuple[dict, list[tuple[str, str, str]]]:
@@ -372,31 +379,33 @@ def _bind(catalog: dict, parsed: dict) -> tuple[dict, list[tuple[str, str, str]]
         for node in chain[0::2]:
             if node['type'] is None:
                 if node['var'] not in types:
-                    raise QueryError(f'({node["var"]}) 前面没有写过它是什么对象：第一次出现时写成 ({node["var"]}:对象类型)', node['at'])
+                    raise QueryError(tr(f'({node["var"]}) 前面没有写过它是什么对象：第一次出现时写成 ({node["var"]}:对象类型)', f'({node["var"]}) has not been given an object type yet: the first time it appears, write ({node["var"]}:object type)'), node['at'])
                 continue
             key = _named(catalog['types'], node['type'])
             if key is None:
                 raise _no_type(catalog, node['type'], node['at'])
             if types.get(node['var'], key) != key:
-                raise QueryError(f'简称 {node["var"]} 已经是 {_type_name(catalog, types[node["var"]])}，不能再当 {node["type"]}', node['at'])
+                raise QueryError(tr(f'简称 {node["var"]} 已经是 {_type_name(catalog, types[node["var"]])}，不能再当 {node["type"]}', f'The short name {node["var"]} is already {_type_name(catalog, types[node["var"]])} and cannot also be {node["type"]}'), node['at'])
             types[node['var']] = key
         for left, edge, right in zip(chain[0::2], chain[1::2], chain[2::2]):
             a, b = types[left['var']], types[right['var']]
             key = _named(catalog['relations'], edge['relation'])
             touching = [k for k, r in catalog['relations'].items() if a in (r['from'], r['to'])]
             if key is None or a not in (catalog['relations'][key]['from'], catalog['relations'][key]['to']):
-                said = '没有关系' if key is None else f'关系「{edge["relation"]}」不连着 {_type_name(catalog, a)}：'
-                listed = '、'.join(_relation_line(catalog, k) for k in touching) or '（没有）'
-                raise QueryError(f'{said}「{edge["relation"]}」。{_type_name(catalog, a)} 能走的关系：{listed}' if key is None
-                                 else f'{said}{_type_name(catalog, a)} 能走的关系：{listed}', edge['at'])
+                said = tr('没有关系', 'There is no relation') if key is None else tr(f'关系「{edge["relation"]}」不连着 {_type_name(catalog, a)}：', f'The relation "{edge["relation"]}" does not connect to {_type_name(catalog, a)}. ')
+                listed = tr('、', ', ').join(_relation_line(catalog, k) for k in touching) or tr('（没有）', '(none)')
+                raise QueryError(tr(f'{said}「{edge["relation"]}」。{_type_name(catalog, a)} 能走的关系：{listed}', f'{said} "{edge["relation"]}". Relations {_type_name(catalog, a)} can follow: {listed}') if key is None
+                                 else tr(f'{said}{_type_name(catalog, a)} 能走的关系：{listed}', f'{said}Relations {_type_name(catalog, a)} can follow: {listed}'), edge['at'])
             r = catalog['relations'][key]
             ends = {'out': (a, b), 'in': (b, a)}.get(edge['dir'])
             fits = (r['from'], r['to']) == ends if ends else {r['from'], r['to']} == {a, b}
             if not fits:
-                raise QueryError(f'关系「{r.get("name") or key}」是从 {_type_name(catalog, r["from"])} 到 {_type_name(catalog, r["to"])}，'
-                                 f'这里写的是 {_type_name(catalog, a)} {"→" if edge["dir"] != "in" else "←"} {_type_name(catalog, b)}', edge['at'])
+                raise QueryError(tr(f'关系「{r.get("name") or key}」是从 {_type_name(catalog, r["from"])} 到 {_type_name(catalog, r["to"])}，'
+                                    f'这里写的是 {_type_name(catalog, a)} {"→" if edge["dir"] != "in" else "←"} {_type_name(catalog, b)}',
+                                    f'The relation "{r.get("name") or key}" goes from {_type_name(catalog, r["from"])} to {_type_name(catalog, r["to"])}, '
+                                    f'but the query has {_type_name(catalog, a)} {"→" if edge["dir"] != "in" else "←"} {_type_name(catalog, b)}'), edge['at'])
             if left['var'] == right['var']:
-                raise QueryError('一条关系的两头要是两个不同的简称', edge['at'])
+                raise QueryError(tr('一条关系的两头要是两个不同的简称', 'The two ends of a relation must have different short names'), edge['at'])
             edges.append((left['var'], right['var'], key))
     return types, edges
 
@@ -412,7 +421,7 @@ def _paths(start: str, edges: list) -> dict[str, list[str]]:
                 seen_edges.add(i)
                 other = b if here == a else a
                 if other in out:
-                    raise QueryError(f'从 {start} 到 {other} 有两条路：一个节点只能从一条路走到')
+                    raise QueryError(tr(f'从 {start} 到 {other} 有两条路：一个节点只能从一条路走到', f'There are two paths from {start} to {other}: a node can only be reached by one path'))
                 out[other] = [*out[here], key]
                 todo.append(other)
     return out
@@ -425,7 +434,7 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
 
     def prop_of(var, prop, at=None):
         if var not in types:
-            raise QueryError(f'简称 {var} 没有在 FROM 里出现', at)
+            raise QueryError(tr(f'简称 {var} 没有在 FROM 里出现', f'The short name {var} does not appear in FROM'), at)
         if prop not in catalog['types'][types[var]]['properties']:
             raise _no_property(catalog, types[var], prop, at)
         return prop
@@ -436,22 +445,22 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
     aggs = [s for s in parsed['select'] if s['kind'] == 'agg']
     fields = [s for s in parsed['select'] if s['kind'] == 'field']
     if len(aggs) != 1:
-        raise QueryError('SELECT 里要有且只有一个要算的数：count(o)、sum(o.金额)、avg(o.金额) 或 share(o.状态码 = \'已取消\')。'
-                         + ('一次算两个数还不支持，分成两条查询' if aggs else ''), parsed['select'][0]['at'])
+        raise QueryError(tr('SELECT 里要有且只有一个要算的数：count(o)、sum(o.金额)、avg(o.金额) 或 share(o.状态码 = \'已取消\')。', "SELECT needs exactly one number to calculate: count(o), sum(o.amount), avg(o.amount) or share(o.status = 'cancelled'). ")
+                         + (tr('一次算两个数还不支持，分成两条查询', 'Calculating two numbers at once is not supported yet: split it into two queries') if aggs else ''), parsed['select'][0]['at'])
     agg = aggs[0]
     first = parsed['chains'][0][0]['var']
     counted = agg['var'] or first
     if counted not in types:
-        raise QueryError(f'简称 {counted} 没有在 FROM 里出现', agg['at'])
+        raise QueryError(tr(f'简称 {counted} 没有在 FROM 里出现', f'The short name {counted} does not appear in FROM'), agg['at'])
     group = parsed['group']
     for v in [g['var'] for g in group] + [f['var'] for f in fields]:
         if v not in types:
-            raise QueryError(f'简称 {v} 没有在 FROM 里出现')
+            raise QueryError(tr(f'简称 {v} 没有在 FROM 里出现', f'The short name {v} does not appear in FROM'))
     grouped = {(g['var'], g['prop'], g.get('by')) for g in group}
     for f in fields:
         if (f['var'], f['prop'], f.get('by')) not in grouped:
             shown = f'{f["by"]}({f["var"]}.{f["prop"]})' if f.get('by') else f'{f["var"]}.{f["prop"]}'
-            raise QueryError(f'{shown} 在 SELECT 里，也要写进 GROUP BY（和 SQL 一样，写法也要一样）', f['at'])
+            raise QueryError(tr(f'{shown} 在 SELECT 里，也要写进 GROUP BY（和 SQL 一样，写法也要一样）', f'{shown} is in SELECT, so it must also be in GROUP BY (as in SQL, written the same way)'), f['at'])
     filtered = {c['var'] for c in parsed['where']}
     group = parsed['group']
     if agg['fn'] == 'count' and not group and len(filtered) == 1 and filtered != {counted}:
@@ -460,25 +469,29 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
         start = counted
     for c in parsed['where']:
         if c['var'] not in types:
-            raise QueryError(f'简称 {c["var"]} 没有在 FROM 里出现', c['at'])
+            raise QueryError(tr(f'简称 {c["var"]} 没有在 FROM 里出现', f'The short name {c["var"]} does not appear in FROM'), c['at'])
         if c['var'] != start:
-            raise QueryError(f'条件只能写在被数或被算的对象（{start}）上；{c["var"]}.{c["prop"]} 是 {_type_name(catalog, types[c["var"]])} 的属性。'
-                             f'跨对象的条件还不支持', c['at'])
+            raise QueryError(tr(f'条件只能写在被数或被算的对象（{start}）上；{c["var"]}.{c["prop"]} 是 {_type_name(catalog, types[c["var"]])} 的属性。'
+                                f'跨对象的条件还不支持',
+                                f'Conditions can only be on the object being counted or calculated ({start}); {c["var"]}.{c["prop"]} is a property of {_type_name(catalog, types[c["var"]])}. '
+                                f'Conditions across objects are not supported yet'), c['at'])
     paths = _paths(start, edges)
     unreached = [v for v in types if v not in paths]
     if unreached:
-        raise QueryError(f'{"、".join(unreached)} 和 {start} 没有连在一起：FROM 里的节点要沿关系连成一片')
+        raise QueryError(tr(f'{"、".join(unreached)} 和 {start} 没有连在一起：FROM 里的节点要沿关系连成一片', f'{", ".join(unreached)} is not connected to {start}: the nodes in FROM must be linked by relations'))
     used = {start, *(g['var'] for g in group), *([counted] if counted != start else [])}
     needed = {v for u in used for v in types if paths[v] == paths[u][:len(paths[v])]}   # every node on the way from start to a used one
     idle = [v for v in types if v not in needed]
     if idle:
-        raise QueryError(f'{"、".join(f"({v}:{_type_name(catalog, types[v])})" for v in idle)} 没有用到。'
-                         f'SQL 里多连一张表会悄悄去掉连不上的行，这里不会，所以请删掉它，或者按它分组')
+        raise QueryError(tr(f'{"、".join(f"({v}:{_type_name(catalog, types[v])})" for v in idle)} 没有用到。'
+                            f'SQL 里多连一张表会悄悄去掉连不上的行，这里不会，所以请删掉它，或者按它分组',
+                            f'{", ".join(f"({v}:{_type_name(catalog, types[v])})" for v in idle)} is not used. '
+                            f'In SQL, joining an extra table quietly drops the rows that do not match; this does not, so remove it or group by it'))
     where = _where(parsed, prop_of)
     group_by = []
     for g in group:
         if g['var'] not in types:
-            raise QueryError(f'简称 {g["var"]} 没有在 FROM 里出现')
+            raise QueryError(tr(f'简称 {g["var"]} 没有在 FROM 里出现', f'The short name {g["var"]} does not appear in FROM'))
         group_by.append({'via': paths[g['var']], 'field': prop_of(g['var'], g['prop']), **({'by': g['by']} if g.get('by') else {})})
     measure = share = None
     if agg['fn'] in ('sum', 'average'):
@@ -492,13 +505,13 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
         same = (t['kind'] == 'alias' and t['name'] == agg.get('alias', ALIASES[agg['fn']])) or \
                (t['kind'] == 'agg' and all(t.get(k) == agg.get(k) for k in ('fn', 'var', 'prop', 'value')))
         if not same:
-            raise QueryError('ORDER BY 现在只能按算出来的那个数排（写它的别名，或者再写一遍 sum(o.金额) 这样的写法）', o['at'])
+            raise QueryError(tr('ORDER BY 现在只能按算出来的那个数排（写它的别名，或者再写一遍 sum(o.金额) 这样的写法）', 'ORDER BY can only sort by the calculated number (write its alias, or write it again, such as sum(o.amount))'), o['at'])
         if not group:
-            raise QueryError('ORDER BY 要和 GROUP BY 一起用：没有分组，就没有可以排的组', o['at'])
+            raise QueryError(tr('ORDER BY 要和 GROUP BY 一起用：没有分组，就没有可以排的组', 'ORDER BY goes with GROUP BY: with no groups there is nothing to sort'), o['at'])
         order = o['direction']
     if parsed['limit']:
         if not group:
-            raise QueryError('LIMIT 要和 GROUP BY 一起用：它留下排在前面的几组', parsed['limit']['at'])
+            raise QueryError(tr('LIMIT 要和 GROUP BY 一起用：它留下排在前面的几组', 'LIMIT goes with GROUP BY: it keeps the first few groups'), parsed['limit']['at'])
         top = parsed['limit']['n']
     via = paths[counted] if counted != start else []
     return {'start': types[start], 'where': where, 'via': via, 'group_by': group_by or None, 'share': share, 'measure': measure, 'top': top, 'order': order}
@@ -515,7 +528,7 @@ def _where(parsed: dict, prop_of) -> list[dict]:
             continue
         values = list(dict.fromkeys(str(v) for v in c['values']))
         if not c['not'] and len(values) > 1:
-            raise QueryError(f'{c["var"]}.{prop} IN 几个值还不支持（“不在这几个值里”可以写 NOT IN）；分成几条查询，或者确认一个视图', c['at'])
+            raise QueryError(tr(f'{c["var"]}.{prop} IN 几个值还不支持（“不在这几个值里”可以写 NOT IN）；分成几条查询，或者确认一个视图', f'{c["var"]}.{prop} IN several values is not supported here ("not one of these values" can be written NOT IN). Split it into several queries, or confirm a view'), c['at'])
         where.append({'field': prop, 'not_equals': values[0] if len(values) == 1 else values} if c['not'] else {'field': prop, 'equals': values[0]})
     return where
 
@@ -526,14 +539,16 @@ def _compile_graph(catalog: dict, parsed: dict, types: dict, edges: list, prop_o
     start = parsed['chains'][0][0]['var']
     for c in parsed['where']:
         if c['var'] not in types:
-            raise QueryError(f'简称 {c["var"]} 没有在 FROM 里出现', c['at'])
+            raise QueryError(tr(f'简称 {c["var"]} 没有在 FROM 里出现', f'The short name {c["var"]} does not appear in FROM'), c['at'])
         if c['var'] != start:
-            raise QueryError(f'条件只能写在起点对象（{start}，FROM 里的第一个）上；{c["var"]}.{c["prop"]} 是 {_type_name(catalog, types[c["var"]])} 的属性。'
-                             f'跨对象的条件还不支持', c['at'])
+            raise QueryError(tr(f'条件只能写在起点对象（{start}，FROM 里的第一个）上；{c["var"]}.{c["prop"]} 是 {_type_name(catalog, types[c["var"]])} 的属性。'
+                                f'跨对象的条件还不支持',
+                                f'Conditions can only be on the start object ({start}, the first in FROM); {c["var"]}.{c["prop"]} is a property of {_type_name(catalog, types[c["var"]])}. '
+                                f'Conditions across objects are not supported yet'), c['at'])
     paths = _paths(start, edges)
     unreached = [v for v in types if v not in paths]
     if unreached:
-        raise QueryError(f'{"、".join(unreached)} 和 {start} 没有连在一起：FROM 里的节点要沿关系连成一片')
+        raise QueryError(tr(f'{"、".join(unreached)} 和 {start} 没有连在一起：FROM 里的节点要沿关系连成一片', f'{", ".join(unreached)} is not connected to {start}: the nodes in FROM must be linked by relations'))
     drawn = list(dict.fromkeys(tuple(paths[v]) for v in types if v != start))
     return {'start': types[start], 'where': _where(parsed, prop_of), 'via': [], 'group_by': None, 'share': None, 'measure': None,
             'top': parsed['limit']['n'] if parsed['limit'] else None, 'order': None, 'graph': [list(p) for p in drawn]}
@@ -592,10 +607,10 @@ def to_text(query: dict, catalog: dict) -> str:
             if path in node_of:
                 continue
             if key not in catalog['relations']:
-                raise QueryError(f'没有关系「{key}」')
+                raise QueryError(tr(f'没有关系「{key}」', f'There is no relation "{key}"'))
             r, here = catalog['relations'][key], type_of[path[:-1]]
             if here not in (r['from'], r['to']):
-                raise QueryError(f'关系「{key}」不连着 {_type_name(catalog, here)}')
+                raise QueryError(tr(f'关系「{key}」不连着 {_type_name(catalog, here)}', f'The relation "{key}" does not connect to {_type_name(catalog, here)}'))
             there = r['to'] if r['from'] == here else r['from']
             var = letter(there)
             node_of[path], type_of[path] = var, there
@@ -623,14 +638,14 @@ def to_text(query: dict, catalog: dict) -> str:
     elif m:
         fn = {'sum': 'sum', 'average': 'avg'}.get(m.get('op'))
         if fn is None:
-            raise QueryError(f'不支持的算法 {m.get("op")}')
+            raise QueryError(tr(f'不支持的算法 {m.get("op")}', f'Unsupported calculation {m.get("op")}'))
         field = m.get('field') or m.get('derived')
         if not isinstance(field, str) or not field:
-            raise QueryError('求和、求平均没有写字段')
+            raise QueryError(tr('求和、求平均没有写字段', 'A sum or average needs a field'))
         agg, alias = f'{fn}({start_var}.{_ident(str(field))})', ALIASES[m['op']]
     elif s:
         if not isinstance(s.get('field'), str) or 'equals' not in s:
-            raise QueryError('占比要写字段和它等于的值')
+            raise QueryError(tr('占比要写字段和它等于的值', 'A share needs a field and the value it equals'))
         agg, alias = f'share({start_var}.{_ident(str(s["field"]))} = {_literal(s["equals"])})', ALIASES['share']
     else:
         agg, alias = f'count({counted})', ALIASES['count']
@@ -640,7 +655,7 @@ def to_text(query: dict, catalog: dict) -> str:
     for w in q['where']:
         ranged = [k for k in COMPARE.values() if isinstance(w, dict) and k in w]
         if not isinstance(w, dict) or not isinstance(w.get('field'), str) or not ('equals' in w or 'not_equals' in w or ranged):
-            raise QueryError('筛选要写成“某个字段等于（或不等于）某个值”，或一个范围')
+            raise QueryError(tr('筛选要写成“某个字段等于（或不等于）某个值”，或一个范围', 'A filter must be "a field equals (or does not equal) a value", or a range'))
         f = f'{start_var}.{_ident(str(w["field"]))}'
         if ranged:
             if set(ranged) == {'at_least', 'at_most'}:
@@ -651,7 +666,7 @@ def to_text(query: dict, catalog: dict) -> str:
         if 'not_equals' in w:
             v = w['not_equals']
             if v in ([], None, ''):
-                raise QueryError('“不等于”后面要写一个值，或一个值的列表')
+                raise QueryError(tr('“不等于”后面要写一个值，或一个值的列表', 'After "does not equal", write a value or a list of values'))
             conds.append(f'{f} NOT IN ({", ".join(map(_literal, v))})' if isinstance(v, list) and len(v) != 1 else f'{f} <> {_literal(v[0] if isinstance(v, list) else v)}')
         else:
             conds.append(f'{f} = {_literal(w.get("equals"))}')

@@ -27,6 +27,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from ontology_poc_generator.lang import tr
 from ontology_poc_generator.accounts import get_user, user_count
 from ontology_poc_generator.object_types import PIPELINE_PREFIX, element_row
 from ontology_poc_generator.type_access import dataset_hidden
@@ -35,6 +36,7 @@ from ontology_poc_generator.workspace_sources import (
 
 CADENCES = ('hourly', 'daily', 'weekly', 'upstream')
 WEEKDAYS = ('周一', '周二', '周三', '周四', '周五', '周六', '周日')
+WEEKDAYS_EN = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
 _TIME = re.compile(r'([01]\d|2[0-3]):([0-5]\d)', re.ASCII)
 
 
@@ -53,27 +55,27 @@ def maker_of(conn, s: dict) -> tuple[dict | None, str | None]:
     maker_id = s['created_by_user_id']
     if maker_id is None:
         if user_count(conn):
-            return None, '这个调度没有记下是谁建的，不能再自动跑；请让它的主人重建'
+            return None, tr('这个调度没有记下是谁建的，不能再自动跑；请让它的主人重建', 'This schedule has no recorded maker, so it can no longer run on its own. Ask its owner to recreate it')
         from ontology_poc_generator.auth_http import LOCAL_USER   # no accounts to look up: the one local person
         return LOCAL_USER, None
     user = get_user(conn, maker_id)
     if user is None:
-        return None, '建这个调度的账号已经不在了，不能再自动跑'
+        return None, tr('建这个调度的账号已经不在了，不能再自动跑', 'The account that made this schedule no longer exists, so it can no longer run on its own')
     if user['disabled']:
-        return None, '建这个调度的人的账号已停用，不再自动跑；换人重建，或让管理员接手'
+        return None, tr('建这个调度的人的账号已停用，不再自动跑；换人重建，或让管理员接手', 'The account that made this schedule is disabled, so it no longer runs on its own. Recreate it under another account, or ask an admin to take it over')
     if user['role'] == 'viewer':
-        return None, '建这个调度的人现在只有查看权限，不再自动跑'
+        return None, tr('建这个调度的人现在只有查看权限，不再自动跑', 'The person who made this schedule can now only view, so it no longer runs on its own')
     return user, None
 
 
 def cadence_text(s: dict) -> str:
     if s['cadence'] == 'upstream':
-        return '上游更新时'
+        return tr('上游更新时', 'When upstream updates')
     if s['cadence'] == 'hourly':
-        when = f'每小时的第 {s["minute"]} 分'
+        when = tr(f'每小时的第 {s["minute"]} 分', f'At minute {s["minute"]} of every hour')
     else:
         clock = f'{s["hour"]:02d}:{s["minute"]:02d}'
-        when = f'每天 {clock}' if s['cadence'] == 'daily' else f'每{WEEKDAYS[s["weekday"]]} {clock}'
+        when = tr(f'每天 {clock}', f'Every day at {clock}') if s['cadence'] == 'daily' else tr(f'每{WEEKDAYS[s["weekday"]]} {clock}', f'Every {WEEKDAYS_EN[s["weekday"]]} at {clock}')
     return f'{when}（{s["tz"]}）'
 
 
@@ -187,53 +189,53 @@ def schedule_runs(conn, schedule_id: int, user: dict | None = None) -> list[dict
 def _fields(conn, payload: dict, user: dict | None) -> dict:
     name = str(payload.get('name') or '').strip()
     if not name or len(name) > NAME_LIMIT:
-        raise ValueError(f'调度的名字要写 1 到 {NAME_LIMIT} 个字')
+        raise ValueError(tr(f'调度的名字要写 1 到 {NAME_LIMIT} 个字', f'A schedule name must be 1 to {NAME_LIMIT} characters'))
     kind, target, cadence = payload.get('kind'), str(payload.get('target') or ''), payload.get('cadence')
     if kind not in ('source', 'pipeline'):
-        raise ValueError('调度的对象只能是数据源或管道')
+        raise ValueError(tr('调度的对象只能是数据源或管道', 'A schedule can only target a source or a pipeline'))
     if cadence not in CADENCES:
-        raise ValueError('触发方式只有每小时、每天、每周、上游更新时')
+        raise ValueError(tr('触发方式只有每小时、每天、每周、上游更新时', 'The trigger is hourly, daily, weekly or when upstream updates'))
     if cadence == 'upstream' and kind != 'pipeline':
-        raise ValueError('“上游更新时”只能用在管道上：数据源的上游是外面的数据库，我们看不到它什么时候变')
+        raise ValueError(tr('“上游更新时”只能用在管道上：数据源的上游是外面的数据库，我们看不到它什么时候变', '“When upstream updates” only works on a pipeline: a source reads from an outside database, and we cannot see when it changes'))
     scope = payload.get('scope')
     if kind == 'source':
         try:
             source = _source_row(conn, target)
         except KeyError:
-            raise ValueError('没有这个数据源') from None
+            raise ValueError(tr('没有这个数据源', 'No such source')) from None
         if scope is not None:
             if not (isinstance(scope, list) and scope and all(isinstance(t, str) for t in scope)):
-                raise ValueError('范围要写成表名的列表；不写就是这个数据源里读成数据集的全部表')
+                raise ValueError(tr('范围要写成表名的列表；不写就是这个数据源里读成数据集的全部表', 'The scope must be a list of table names. Leave it out to use every table of this source that is read as a dataset'))
             usable = [(b := _binding(conn, source['id'], t)) is not None and not dataset_hidden(conn, b['dataset'], user) for t in scope]
             if not all(usable):   # a table that is not there, one not read as a dataset yet and one read as a dataset kept from this person: one answer, no table named
-                raise ValueError('范围里有的表还没有读成数据集，或者读成了你看不到的数据集，不能定时刷新。先读一次')
+                raise ValueError(tr('范围里有的表还没有读成数据集，或者读成了你看不到的数据集，不能定时刷新。先读一次', 'Some tables in the scope are not read as datasets yet, or are read as datasets you cannot see, so they cannot be refreshed on a schedule. Read them once first'))
     else:
         scope = None
         from ontology_poc_generator.workspace_pipelines import pipeline_visible   # workspace_pipelines reads datasets, not schedules
         row = element_row(conn, f'{PIPELINE_PREFIX}{target}')
         if row is None or not pipeline_visible(conn, row, user):
-            raise NotFound('没有这条管道')
+            raise NotFound(tr('没有这条管道', 'No such pipeline'))
         if not runnable(row):
-            raise ValueError(f'管道“{target}”现在是“{row["state"]}”，只有已确认的管道才能定时跑：它的结果会没人看着就写进数据集')
+            raise ValueError(tr(f'管道“{target}”现在是“{row["state"]}”，只有已确认的管道才能定时跑：它的结果会没人看着就写进数据集', f'Pipeline “{target}” is now “{row["state"]}”. Only a confirmed pipeline can run on a schedule, because its results are written to datasets with nobody watching'))
     tz = str(payload.get('tz') or '')
     try:
         ZoneInfo(tz)
     except (ZoneInfoNotFoundError, ValueError, OSError):
-        raise ValueError('时区要写成 Asia/Shanghai、Asia/Taipei、UTC 这样的名字') from None
+        raise ValueError(tr('时区要写成 Asia/Shanghai、Asia/Taipei、UTC 这样的名字', 'The time zone must be a name like Asia/Shanghai, Asia/Taipei or UTC')) from None
     minute = hour = weekday = None
     if cadence == 'hourly':
         minute = payload.get('minute', 0)
         if isinstance(minute, bool) or not isinstance(minute, int) or not 0 <= minute <= 59:
-            raise ValueError('每小时的第几分要写成 0 到 59')
+            raise ValueError(tr('每小时的第几分要写成 0 到 59', 'The minute of the hour must be 0 to 59'))
     elif cadence in ('daily', 'weekly'):
         found = _TIME.fullmatch(str(payload.get('time') or ''))
         if not found:
-            raise ValueError('时间要写成 08:30 这样')
+            raise ValueError(tr('时间要写成 08:30 这样', 'The time must look like 08:30'))
         hour, minute = int(found.group(1)), int(found.group(2))
         if cadence == 'weekly':
             weekday = payload.get('weekday')
             if isinstance(weekday, bool) or not isinstance(weekday, int) or not 0 <= weekday <= 6:
-                raise ValueError('星期要写成 0（周一）到 6（周日）')
+                raise ValueError(tr('星期要写成 0（周一）到 6（周日）', 'The weekday must be 0 (Monday) to 6 (Sunday)'))
     return {'name': name, 'kind': kind, 'target': target, 'scope_json': json.dumps(scope, ensure_ascii=False) if scope is not None else None,
             'cadence': cadence, 'minute': minute, 'hour': hour, 'weekday': weekday, 'tz': tz}
 
@@ -251,7 +253,7 @@ def create_schedule(conn, payload: dict, who: str | None, user: dict | None = No
     the next slot (or, for "upstream", the next new input version). It is this person's, and runs as them."""
     fields = _fields(conn, payload, user)
     if conn.execute('SELECT 1 FROM schedule WHERE name = ?', (fields['name'],)).fetchone():
-        raise ValueError(f'已经有叫“{fields["name"]}”的调度')
+        raise ValueError(tr(f'已经有叫“{fields["name"]}”的调度', f'A schedule named “{fields["name"]}” already exists'))
     now = now or datetime.now(timezone.utc)
     signer, stamp = str(who or '').strip() or '未署名', now_text()
     draft = {**fields, 'id': None, 'enabled': 1}
@@ -276,7 +278,7 @@ def _owned(conn, payload: dict, user: dict | None) -> dict:
         return s
     if not _shown(conn, s, user):
         raise KeyError(payload.get('id'))
-    raise Forbidden('这个调度是别人建的：只有建它的人或管理员能改、停用或删除它')
+    raise Forbidden(tr('这个调度是别人建的：只有建它的人或管理员能改、停用或删除它', 'This schedule was made by someone else. Only its maker or an admin can change, disable or delete it'))
 
 
 def update_schedule(conn, payload: dict, who: str | None, user: dict | None = None, now: datetime | None = None) -> dict:
@@ -284,14 +286,14 @@ def update_schedule(conn, payload: dict, who: str | None, user: dict | None = No
     old, now, signer = _owned(conn, payload, user), now or datetime.now(timezone.utc), str(who or '').strip() or '未署名'
     if set(payload) <= {'id', 'enabled', 'who'}:
         if not isinstance(payload.get('enabled'), bool):
-            raise ValueError('enabled 要写成 true 或 false')
+            raise ValueError(tr('enabled 要写成 true 或 false', 'enabled must be true or false'))
         conn.execute('UPDATE schedule SET enabled = ?, updated_at = ? WHERE id = ?', (int(payload['enabled']), now_text(), old['id']))
         log_write(conn, signer, f'schedule:{old["name"]}', 'enabled' if payload['enabled'] else 'disabled')
         return schedule_view(conn, _rows(conn, 'WHERE id = ?', (old['id'],))[0], user, now)
     fields = _fields(conn, {**{k: old[k] for k in ('name', 'kind', 'target', 'tz', 'cadence', 'minute')}, 'scope': json.loads(old['scope_json']) if old['scope_json'] else None,
                             'time': f'{old["hour"]:02d}:{old["minute"]:02d}' if old['hour'] is not None else None, 'weekday': old['weekday'], **payload}, user)
     if fields['name'] != old['name'] and conn.execute('SELECT 1 FROM schedule WHERE name = ?', (fields['name'],)).fetchone():
-        raise ValueError(f'已经有叫“{fields["name"]}”的调度')
+        raise ValueError(tr(f'已经有叫“{fields["name"]}”的调度', f'A schedule named “{fields["name"]}” already exists'))
     slot = slot_at_or_before({**fields, 'id': old['id']}, now)
     seen = _inputs_of(conn, fields)
     conn.execute('UPDATE schedule SET name = ?, kind = ?, target = ?, scope_json = ?, cadence = ?, minute = ?, hour = ?, weekday = ?, tz = ?, last_slot = ?, upstream_seen_json = ?, updated_at = ? WHERE id = ?',
@@ -319,17 +321,17 @@ def _run_source(conn, s: dict, reason: str, lock, user: dict) -> list[dict]:
     try:
         source = _source_row(conn, s['target'])
     except KeyError:
-        return [_skip(conn, s, reason, '这个数据源已经不在了')]
+        return [_skip(conn, s, reason, tr('这个数据源已经不在了', 'This source no longer exists'))]
     scope = json.loads(s['scope_json']) if s['scope_json'] else [r[0] for r in conn.execute('SELECT table_name FROM source_table WHERE source_id = ? ORDER BY table_name', (source['id'],))]
     if not scope:
-        return [_skip(conn, s, reason, '这个数据源里还没有读成数据集的表')]
+        return [_skip(conn, s, reason, tr('这个数据源里还没有读成数据集的表', 'This source has no tables read as datasets yet'))]
     out = []
     for table in scope:
         bound = _binding(conn, source['id'], table)
         if bound is None:
-            out.append(_skip(conn, s, reason, f'“{table}”已经不是数据集了（数据集被删了）', table))
+            out.append(_skip(conn, s, reason, tr(f'“{table}”已经不是数据集了（数据集被删了）', f'“{table}” is no longer a dataset (the dataset was deleted)'), table))
         elif dataset_hidden(conn, bound['dataset'], user):
-            out.append(_skip(conn, s, reason, f'建这个调度的人现在看不到“{table}”读成的数据集，没有刷新', table))
+            out.append(_skip(conn, s, reason, tr(f'建这个调度的人现在看不到“{table}”读成的数据集，没有刷新', f'The person who made this schedule can no longer see the dataset “{table}” is read as, so it was not refreshed'), table))
         else:
             out.append(refresh_table(conn, source, table, bound['dataset'], bound['mode'], bound['key_columns'], who_of(s), reason, lock, schedule_id=s['id'], user=user))
     return out
@@ -339,14 +341,14 @@ def _run_pipeline(conn, s: dict, reason: str, lock, engine, llm, user: dict) -> 
     from ontology_poc_generator.workspace_pipelines import fill_answers, pipeline_visible, run_now   # workspace_pipelines reads datasets, not schedules
     row = element_row(conn, f'{PIPELINE_PREFIX}{s["target"]}')
     if row is None:
-        return [_skip(conn, s, reason, '这条管道已经不在了')]
+        return [_skip(conn, s, reason, tr('这条管道已经不在了', 'This pipeline no longer exists'))]
     if not pipeline_visible(conn, row, user):
-        return [_skip(conn, s, reason, '建这个调度的人现在看不到这条管道，没有运行')]
+        return [_skip(conn, s, reason, tr('建这个调度的人现在看不到这条管道，没有运行', 'The person who made this schedule can no longer see this pipeline, so it did not run'))]
     if not runnable(row):
-        return [_skip(conn, s, reason, f'管道现在是“{row["state"]}”，它的定义没有人确认过（或确认之后又改了），定时不跑它；确认后下一次再跑')]
+        return [_skip(conn, s, reason, tr(f'管道现在是“{row["state"]}”，它的定义没有人确认过（或确认之后又改了），定时不跑它；确认后下一次再跑', f'The pipeline is now “{row["state"]}”: nobody has confirmed its definition (or it changed after it was confirmed), so the schedule does not run it. Confirm it and the next slot will run'))]
     with claimed(('pipeline', s['target'], '')) as got:
         if not got:
-            return [_skip(conn, s, reason, '上一次运行还没结束，这次跳过')]
+            return [_skip(conn, s, reason, tr('上一次运行还没结束，这次跳过', 'The last run has not finished, so this one is skipped'))]
         run_id = start_run(conn, 'pipeline', s['target'], '', reason, who_of(s), s['id'])
         try:
             request = {'id': s['target']}

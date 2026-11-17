@@ -25,6 +25,7 @@ from ontology_poc_generator.pipeline_funcs import number_text
 from ontology_poc_generator.pipeline_ops import _new_name, visible
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.workspace_store import now_text
+from ontology_poc_generator.lang import tr
 
 PROMPT_VERSION = 'pipeline_row_judge.v2'
 TEMPLATES = ('empty', 'classify', 'extract', 'summary')
@@ -37,7 +38,15 @@ WORKERS = 8
 MAX_RUN_CALLS = 500     # the most model calls one run of a pipeline may make (rows with different content and no kept answer), refused before the first call
 MAX_TRIAL_CALLS = 100   # the same for one 试跑 or one 样本审核 request
 ERROR_SUFFIX = '_错误'
-SKIPPED, PENDING = '跳过：提示用到的列都是空的', '还没跑'
+SKIPPED, PENDING = '跳过：提示用到的列都是空的', '还没跑'   # the cell texts in Chinese; skipped_text() and pending_text() say them in the asker's language
+
+
+def skipped_text():
+    return tr(SKIPPED, 'Skipped: every column the prompt uses is empty')
+
+
+def pending_text():
+    return tr(PENDING, 'Not run yet')
 
 SYSTEM_PROMPT = """你在替一张数据表的每一行做一次判断。你会收到 task（要做的事，里面的【名字】指 inputs 里同名的一项）、inputs（这一行的内容）和 answer（答案的格式）。
 
@@ -75,19 +84,19 @@ class LlmService:
 def _short(value, what: str, limit: int, required: bool = True) -> str:
     if value is None or (isinstance(value, str) and not value.strip()):
         if required:
-            raise LlmError(f'{what}要写')
+            raise LlmError(tr(f'{what}要写', f'{what} is required'))
         return ''
     if not isinstance(value, str) or len(value) > limit:
-        raise LlmError(f'{what}要写成不超过 {limit} 个字的文字')
+        raise LlmError(tr(f'{what}要写成不超过 {limit} 个字的文字', f'{what} must be text of at most {limit} characters'))
     return value.strip()
 
 
-def _choices(value, what: str = '类别') -> list[str]:
+def _choices(value, what: str = tr('类别', 'categories')) -> list[str]:
     if not isinstance(value, list) or not 2 <= len(value) <= MAX_CHOICES:
-        raise LlmError(f'{what}要写成列表，至少 2 个，最多 {MAX_CHOICES} 个')
-    out = [_short(v, f'每个{what}', MAX_CHOICE) for v in value]
+        raise LlmError(tr(f'{what}要写成列表，至少 2 个，最多 {MAX_CHOICES} 个', f'{what} must be a list of 2 to {MAX_CHOICES}'))
+    out = [_short(v, tr(f'每个{what}', f'each of the {what}'), MAX_CHOICE) for v in value]
     if len(set(out)) != len(out):
-        raise LlmError(f'{what}里有重复的')
+        raise LlmError(tr(f'{what}里有重复的', f'{what} has a repeated entry'))
     return out
 
 
@@ -96,41 +105,41 @@ def effective(step: dict) -> dict:
     'choices', 'fields' ([{name, type}] of an extraction), 'columns' ([{name, type}] the step adds, then its error column)}. LlmError when it is not a step."""
     template = step.get('template', 'empty')
     if template not in TEMPLATES:
-        raise LlmError(f'模板只有 {"、".join(TEMPLATES)}')
-    name = _short(step.get('name'), '新列的名字（name）', 60)
+        raise LlmError(tr(f'模板只有 {"、".join(TEMPLATES)}', f'The template must be one of {", ".join(TEMPLATES)}'))
+    name = _short(step.get('name'), tr('新列的名字（name）', 'the name of the new column (name)'), 60)
     if name.startswith('__') or '\n' in name:
-        raise LlmError('新列的名字不能换行，不能用 __ 开头')
+        raise LlmError(tr('新列的名字不能换行，不能用 __ 开头', 'The new column name cannot contain a line break or start with __'))
     choices, fields = [], []
     if template == 'classify':
-        context, column = _short(step.get('context'), '分类的背景', MAX_CONTEXT, required=False), _short(step.get('column'), '要分类的列', 100)
+        context, column = _short(step.get('context'), tr('分类的背景', 'the background of the classification'), MAX_CONTEXT, required=False), _short(step.get('column'), tr('要分类的列', 'the column to classify'), 100)
         choices = _choices(step.get('categories'))
         if step.get('multiple', False) not in (True, False):
-            raise LlmError('multiple 要写 true 或 false')
+            raise LlmError(tr('multiple 要写 true 或 false', 'multiple must be true or false'))
         kind = 'choices' if step.get('multiple') else 'choice'
-        prompt = (f'{context}。' if context else '') + f'请根据下面「{column}」的内容分类：\n${{{column}}}'
+        prompt = (f'{context}。' if context else '') + tr(f'请根据下面「{column}」的内容分类：\n${{{column}}}', f'Classify by the content of "{column}" below:\n${{{column}}}')
     elif template == 'summary':
-        column = _short(step.get('column'), '要概括的列', 100)
+        column = _short(step.get('column'), tr('要概括的列', 'the column to summarize'), 100)
         size, unit = step.get('size'), step.get('unit', '字')
         if not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= 2000 or unit not in UNITS:
-            raise LlmError('概括的长度要写成 1 到 2000 的整数，单位是字或句')
-        kind, prompt = 'text', f'请把下面「{column}」的内容概括成不超过 {size} {unit}：\n${{{column}}}'
+            raise LlmError(tr('概括的长度要写成 1 到 2000 的整数，单位是字或句', 'The summary length must be a whole number from 1 to 2000, in characters or sentences'))
+        kind, prompt = 'text', tr(f'请把下面「{column}」的内容概括成不超过 {size} {unit}：\n${{{column}}}', f'Summarize the content of "{column}" below in at most {size} {unit}:\n${{{column}}}')
     elif template == 'extract':
-        column = _short(step.get('column'), '要抽取的列', 100)
+        column = _short(step.get('column'), tr('要抽取的列', 'the column to extract from'), 100)
         raw = step.get('fields')
         if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_EXTRACT or not all(isinstance(f, dict) for f in raw):
-            raise LlmError(f'要抽取的字段要写成列表，1 到 {MAX_EXTRACT} 个，每个写名字和类型')
-        fields = [{'name': _short(f.get('name'), '抽取的字段名', 60), 'type': f.get('type', 'text')} for f in raw]
+            raise LlmError(tr(f'要抽取的字段要写成列表，1 到 {MAX_EXTRACT} 个，每个写名字和类型', f'The fields to extract must be a list of 1 to {MAX_EXTRACT}, each with a name and a type'))
+        fields = [{'name': _short(f.get('name'), tr('抽取的字段名', 'the name of the field to extract'), 60), 'type': f.get('type', 'text')} for f in raw]
         if any(f['type'] not in FIELD_TYPES for f in fields) or len({f['name'] for f in fields}) != len(fields):
-            raise LlmError('抽取的字段名不能重复，类型是 text 或 number')
-        kind, prompt = 'extract', f'请从下面「{column}」的内容里抽取要的字段，内容里没有的写 null：\n${{{column}}}'
+            raise LlmError(tr('抽取的字段名不能重复，类型是 text 或 number', 'The names of the fields to extract cannot repeat, and the type is text or number'))
+        kind, prompt = 'extract', tr(f'请从下面「{column}」的内容里抽取要的字段，内容里没有的写 null：\n${{{column}}}', f'Extract the fields wanted from the content of "{column}" below; write null for any the content does not have:\n${{{column}}}')
     else:
-        prompt = _short(step.get('prompt'), '提示（prompt）', MAX_PROMPT)
+        prompt = _short(step.get('prompt'), tr('提示（prompt）', 'the prompt'), MAX_PROMPT)
         output = step.get('output', 'text')
         if output not in KINDS:
-            raise LlmError(f'输出类型只有 {"、".join(KINDS)}')
+            raise LlmError(tr(f'输出类型只有 {"、".join(KINDS)}', f'The output type must be one of {", ".join(KINDS)}'))
         kind = output
         if kind == 'choice':
-            choices = _choices(step.get('choices'), '可选的答案')
+            choices = _choices(step.get('choices'), tr('可选的答案', 'the possible answers'))
     values = [{'name': f['name'], 'type': 'decimal' if f['type'] == 'number' else 'text'} for f in fields] if kind == 'extract' \
         else [{'name': name, 'type': 'decimal' if kind == 'number' else 'text'}]
     return {'template': template, 'prompt': prompt, 'kind': kind, 'choices': choices, 'fields': fields, 'name': name,
@@ -161,7 +170,7 @@ def compile_prompt(text: str, names: list[str]) -> tuple[list[tuple[str, str]], 
             length = len(name) + 1 if name is not None else 0
         if name is None or name not in names:
             shown = text[i + 1:i + 9].split('\n')[0]
-            raise LlmError(f'提示里的「${shown}」没有对应的列。可以用的列：{"、".join(names)}')
+            raise LlmError(tr(f'提示里的「${shown}」没有对应的列。可以用的列：{"、".join(names)}', f'"${shown}" in the prompt has no matching column. Columns you can use: {", ".join(names)}'))
         if buffer:
             parts.append(('text', ''.join(buffer)))
             buffer = []
@@ -172,7 +181,7 @@ def compile_prompt(text: str, names: list[str]) -> tuple[list[tuple[str, str]], 
     if buffer:
         parts.append(('text', ''.join(buffer)))
     if not used:
-        raise LlmError('提示里要用到至少一列：写 $列名，这一行的内容才会放进去')
+        raise LlmError(tr('提示里要用到至少一列：写 $列名，这一行的内容才会放进去', 'The prompt must use at least one column: write $column name, so that the content of the row is put in'))
     return parts, used
 
 
@@ -183,18 +192,18 @@ def render(parts: list[tuple[str, str]]) -> str:
 
 def check_llm_step(step: dict, sid: str, columns: list[dict]) -> list[dict]:
     """The columns the step leaves: what it read, then the columns it adds (marked AI 生成). LlmError (a ValueError) names the step and what is wrong."""
-    label = f'步骤 {sid}'
+    label = tr(f'步骤 {sid}', f'step {sid}')
     try:
         if not isinstance(step.get('model'), str) or not step['model'].strip() or len(step['model']) > 100:
-            raise LlmError('要记下用的模型（model）')
+            raise LlmError(tr('要记下用的模型（model）', 'the model to record (model)'))
         eff = effective(step)
         shown = {c['name']: c for c in visible(columns)}
         _, used = compile_prompt(eff['prompt'], list(shown))
         for name in used:
             if shown[name].get('unsent'):
-                raise LlmError(f'「{name}」被标了不发送给模型（它或它的来源列在对象类型里关了“把取值发给模型”），不能写进提示')
+                raise LlmError(tr(f'「{name}」被标了不发送给模型（它或它的来源列在对象类型里关了“把取值发给模型”），不能写进提示', f'"{name}" is marked not to be sent to the model (it or its source column has "send values to the model" turned off on the object type), so it cannot be used in the prompt'))
         if step.get('min_match') is not None and (not isinstance(step['min_match'], int) or isinstance(step['min_match'], bool) or step['min_match'] < 1):
-            raise LlmError('样本里至少要对上几行（min_match）要写成大于 0 的整数')
+            raise LlmError(tr('样本里至少要对上几行（min_match）要写成大于 0 的整数', 'The number of rows that must match in the sample (min_match) must be a whole number greater than 0'))
         added = []
         for column in eff['columns']:
             _new_name([*columns, *added], column['name'], label)
@@ -247,33 +256,33 @@ def _number(value):
 def parse_reply(eff: dict, reply: dict) -> dict:
     """{'status': ok | off_list | unanswered | failed, 'values' (one per added value column), 'message'}: the answer as the step's columns hold it, or why it is not one."""
     if 'answer' not in reply:
-        return {'status': 'failed', 'values': None, 'message': '模型的回答里没有 answer'}
+        return {'status': 'failed', 'values': None, 'message': tr('模型的回答里没有 answer', 'The model\'s reply has no answer')}
     answer, kind = reply['answer'], eff['kind']
     if kind == 'text':
         if isinstance(answer, str) and answer.strip():
             return {'status': 'ok', 'values': [answer.strip()], 'message': None}
-        return {'status': 'unanswered', 'values': None, 'message': '答不出：模型没有写出文字'}
+        return {'status': 'unanswered', 'values': None, 'message': tr('答不出：模型没有写出文字', 'No answer: the model wrote no text')}
     if kind == 'choice':
         if isinstance(answer, str) and answer.strip() in eff['choices']:
             return {'status': 'ok', 'values': [answer.strip()], 'message': None}
-        return {'status': 'off_list', 'values': None, 'message': f'不在列表里：{answer}', 'answer': str(answer)}
+        return {'status': 'off_list', 'values': None, 'message': tr(f'不在列表里：{answer}', f'Not in the list: {answer}'), 'answer': str(answer)}
     if kind == 'choices':
         picked = answer if isinstance(answer, list) else None
         if not picked or not all(isinstance(a, str) for a in picked):
-            return {'status': 'off_list', 'values': None, 'message': f'不在列表里：{answer}', 'answer': str(answer)}
+            return {'status': 'off_list', 'values': None, 'message': tr(f'不在列表里：{answer}', f'Not in the list: {answer}'), 'answer': str(answer)}
         off = [a for a in picked if a.strip() not in eff['choices']]
         if off:
-            return {'status': 'off_list', 'values': None, 'message': f'不在列表里：{"、".join(off)}', 'answer': '、'.join(off)}
+            return {'status': 'off_list', 'values': None, 'message': tr(f'不在列表里：{"、".join(off)}', f'Not in the list: {", ".join(off)}'), 'answer': '、'.join(off)}
         return {'status': 'ok', 'values': ['；'.join(c for c in eff['choices'] if c in {a.strip() for a in picked})], 'message': None}
     if kind == 'number':
         if answer is None:
-            return {'status': 'unanswered', 'values': None, 'message': '答不出：内容里看不出这个数'}
+            return {'status': 'unanswered', 'values': None, 'message': tr('答不出：内容里看不出这个数', 'No answer: the number cannot be seen in the content')}
         number = _number(answer)
         if number is None:
-            return {'status': 'failed', 'values': None, 'message': f'要一个数，模型写的是 {answer}'}
+            return {'status': 'failed', 'values': None, 'message': tr(f'要一个数，模型写的是 {answer}', f'A number is needed, and the model wrote {answer}')}
         return {'status': 'ok', 'values': [number], 'message': None}
     if not isinstance(answer, dict):
-        return {'status': 'failed', 'values': None, 'message': '要一个对象，键是抽取的字段名'}
+        return {'status': 'failed', 'values': None, 'message': tr('要一个对象，键是抽取的字段名', 'An object is needed, with the names of the extracted fields as keys')}
     values = []
     for f in eff['fields']:
         v = answer.get(f['name'])
@@ -281,12 +290,12 @@ def parse_reply(eff: dict, reply: dict) -> dict:
             values.append(None)
         elif f['type'] == 'number':
             if _number(v) is None:
-                return {'status': 'failed', 'values': None, 'message': f'「{f["name"]}」要一个数，模型写的是 {v}'}
+                return {'status': 'failed', 'values': None, 'message': tr(f'「{f["name"]}」要一个数，模型写的是 {v}', f'"{f["name"]}" needs a number, and the model wrote {v}')}
             values.append(v)
         else:
             values.append(str(v).strip())
     if all(v is None for v in values):
-        return {'status': 'unanswered', 'values': None, 'message': '答不出：内容里一个字段也没抽到'}
+        return {'status': 'unanswered', 'values': None, 'message': tr('答不出：内容里一个字段也没抽到', 'No answer: not one field could be extracted from the content')}
     return {'status': 'ok', 'values': values, 'message': None}
 
 
@@ -294,12 +303,12 @@ def judge(gateway, eff: dict, request: dict) -> dict:
     """One call: parse_reply of what the model said, plus 'raw' (the reply as JSON) and 'request_failed' (the model could not be reached, which trying again at once
     will not mend). Nothing is kept here."""
     if gateway is None:
-        return {'status': 'failed', 'values': None, 'message': '本机服务没有模型凭据，不能调用模型', 'raw': None, 'request_failed': True}
+        return {'status': 'failed', 'values': None, 'message': tr('本机服务没有模型凭据，不能调用模型', 'This server has no model credentials, so the model cannot be called'), 'raw': None, 'request_failed': True}
     got = ask_model(gateway, 'row_judge', PROMPT_VERSION, SYSTEM_PROMPT, request)
     if got.failure == 'request':
         return {'status': 'failed', 'values': None, 'message': model_failure_text(got.message), 'raw': None, 'request_failed': True}
     if got.failure == 'not_json' or not isinstance(got.reply, dict):
-        return {'status': 'failed', 'values': None, 'message': '模型返回的不是约定的 JSON', 'raw': None, 'request_failed': False}
+        return {'status': 'failed', 'values': None, 'message': tr('模型返回的不是约定的 JSON', 'The model did not return the agreed JSON'), 'raw': None, 'request_failed': False}
     return {**parse_reply(eff, got.reply), 'raw': json.dumps(got.reply, ensure_ascii=False), 'request_failed': False}
 
 
@@ -372,7 +381,7 @@ def read_rows(engine, table: str, fields: list[str]) -> list[tuple[int, dict]]:
 def refuse_over(calls: int, limit: int, what: str) -> None:
     """LlmError, before any call is made, when `calls` is more than the `limit` of this kind of request."""
     if calls > limit:
-        raise LlmError(f'{what}要问模型 {calls} 次（内容不同、还没有记下答案的行），一次最多 {limit} 次，没有调用模型。先在前面过滤，或少选一些行，分几次来')
+        raise LlmError(tr(f'{what}要问模型 {calls} 次（内容不同、还没有记下答案的行），一次最多 {limit} 次，没有调用模型。先在前面过滤，或少选一些行，分几次来', f'{what} needs {calls} model calls (rows with different content and no recorded answer), and at most {limit} are allowed at once, so the model was not called. Filter earlier, or pick fewer rows and do it in several goes'))
 
 
 def call_many(gateway, eff: dict, todo: dict, on_batch=None) -> dict:
@@ -388,7 +397,7 @@ def call_many(gateway, eff: dict, todo: dict, on_batch=None) -> dict:
         if on_batch:
             on_batch(done)
         if all(results[k]['request_failed'] for k in batch):
-            rest = {key: {'status': 'failed', 'values': None, 'message': '模型连不上，后面的行没有再试', 'raw': None, 'request_failed': True} for key in keys[start + WORKERS:]}
+            rest = {key: {'status': 'failed', 'values': None, 'message': tr('模型连不上，后面的行没有再试', 'The model could not be reached, and the later rows were not retried'), 'raw': None, 'request_failed': True} for key in keys[start + WORKERS:]}
             results.update(rest)
             break
     return results
@@ -434,16 +443,16 @@ class LlmRun:
             if key in outcome:
                 continue
             if any(len(v or '') > MAX_FIELD_CHARS for v in values.values()):
-                outcome[key] = {'status': 'failed', 'values': None, 'message': f'失败：内容超过 {MAX_FIELD_CHARS} 字，没有发送', 'cached': False}
+                outcome[key] = {'status': 'failed', 'values': None, 'message': tr(f'失败：内容超过 {MAX_FIELD_CHARS} 字，没有发送', f'Failed: the content is over {MAX_FIELD_CHARS} characters and was not sent'), 'cached': False}
                 continue
             todo[key] = request_of(eff, parts, values)
             chars += len(todo[key]['task']) + sum(len(v) for v in todo[key]['inputs'].values())
         called = 0
         if todo and self.mode == 'run':
             if self.service.gateway is None:
-                raise LlmError(f'步骤 {step["id"]}：本机服务没有模型凭据，不能调用模型')
+                raise LlmError(tr(f'步骤 {step["id"]}：本机服务没有模型凭据，不能调用模型', f'Step {step["id"]}: this server has no model credentials, so the model cannot be called'))
             if self.limit is not None:
-                refuse_over(self.calls + len(todo), self.limit, '这次运行一共')
+                refuse_over(self.calls + len(todo), self.limit, tr('这次运行一共', 'this run in all'))
             cache_clear(self.conn, self.pipeline_id, step['id'], contract)   # the earlier answers are not this node's any more
             waited = time.monotonic()
             got = call_many(self.service.gateway, eff, todo,
@@ -462,10 +471,10 @@ class LlmRun:
             got = outcome.get(key) if key else None
             if key is None:
                 report['skipped'] += 1
-                table.append((rid, *[None] * width, SKIPPED))
+                table.append((rid, *[None] * width, skipped_text()))
             elif got is None:
                 report['pending'] += 1
-                table.append((rid, *[None] * width, PENDING))
+                table.append((rid, *[None] * width, pending_text()))
             elif got['status'] == 'ok':
                 report['answered'] += 1
                 report['from_cache'] += got['cached']
@@ -476,7 +485,7 @@ class LlmRun:
                 if got['status'] == 'off_list':
                     shown = got.get('answer', '')
                     report['off_list_answers'][shown] = report['off_list_answers'].get(shown, 0) + 1
-                table.append((rid, *[None] * width, got['message'] if got['status'] != 'failed' or got['message'].startswith('失败') else f"失败：{got['message']}"))
+                table.append((rid, *[None] * width, got['message'] if got['status'] != 'failed' or got['message'].startswith(tr('失败', 'Failed')) else tr(f"失败：{got['message']}", f"Failed: {got['message']}")))
         engine.execute(f'DROP TABLE IF EXISTS temp.{answers}')
         engine.execute(f'CREATE TEMP TABLE {answers} (rid INTEGER PRIMARY KEY, {"".join(f"v{i}, " for i in range(width))}err TEXT)')
         engine.executemany(f'INSERT INTO temp.{answers} VALUES ({",".join("?" * (width + 2))})', table)
