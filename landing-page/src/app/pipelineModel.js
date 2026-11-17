@@ -282,6 +282,18 @@ export function operatorTitle(op) {
   return operatorName(op);
 }
 
+const AGG_SUFFIX = { sum: "合计", count: "计数", count_distinct: "去重数", avg: "平均", min: "最小值", max: "最大值", median: "中位数", p25: "P25", p75: "P75" };
+/** The name a statistic gets when the person has not typed one: the column and what was done to it (金额合计); counting whole rows is 行数. */
+export const aggAutoName = (a) => (a.column ? `${a.column}${AGG_SUFFIX[a.fn] ?? AGG_LABEL[a.fn]}` : "行数");
+
+/** A statistic after its function or column changed: its result name follows, unless the person typed their own (a name that is neither this one's old default nor the service's). */
+export function retargetAgg(agg, change) {
+  const next = { ...agg, ...change };
+  if (!next.column) delete next.column;
+  const auto = agg.as === undefined || agg.as === aggAutoName(agg) || agg.as === aggDefaultName(agg);
+  if (auto) next.as = aggAutoName(next);
+  return next;
+}
 export const aggDefaultName = (a) => `${AGG_LABEL[a.fn]}${a.column ? `_${a.column}` : ""}`;
 const conditionCount = (node) => (node?.all || node?.any ? (node.all ?? node.any).reduce((n, c) => n + conditionCount(c), 0) : 1);
 

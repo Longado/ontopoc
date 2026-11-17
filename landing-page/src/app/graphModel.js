@@ -349,3 +349,11 @@ export function fitText(text, maxPx, size) {
   }
   return chars.join("");
 }
+
+const FIT_CAP = 1.5;
+/** Where the picture sits in its frame. "all" shows the whole of it, centred, never larger than life; "width" fills the frame's width (up to 1.5 times) and starts at the top, so a long wide picture is readable on open and the reader scrolls or drags down. */
+export function fitView(frame, content, mode = "all") {
+  if (mode === "width") return { k: Math.min(frame.w / content.width, FIT_CAP), x: 0, y: 0 };
+  const k = Math.min(frame.w / content.width, frame.h / content.height, 1);
+  return { k, x: (frame.w - content.width * k) / 2, y: (frame.h - content.height * k) / 2 };
+}

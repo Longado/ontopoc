@@ -6,6 +6,13 @@ export const TAB_LABEL = { fields: "字段", preview: "预览", versions: "版�
 export const TYPE_TABS = ["props", "derived", "views", "actions", "objects", "log"];
 export const TYPE_TAB_LABEL = { props: "属性", derived: "派生", views: "视图", actions: "行为", objects: "对象", log: "日志" };
 
+/** `?dataset=name` on a "new" address: the dataset the page starts from (用它建管道, 用它建对象类型). */
+const withDataset = (route, query) => {
+  const dataset = new URLSearchParams(query).get("dataset");
+  return dataset ? { ...route, dataset } : route;
+};
+const datasetQuery = (route) => (route.dataset ? `?dataset=${encodeURIComponent(route.dataset)}` : "");
+
 const decode = (part) => decodeURIComponent(part);
 
 /** An address to the page it means: {page: "home" | "qa" | "datasets" | "dataset" | "tasks" | "notfound", ...}. The empty address is the home page, where the app opens. */
@@ -43,7 +50,7 @@ export function parseRoute(hash) {
   if (parts[0] === "confirm" && parts.length === 4 && parts[1] === "group" && /^[1-9]\d*$/.test(parts[3])) return { page: "confirmgroup", dataset: parts[2], version: Number(parts[3]) };   // what one version of a dataset moved, confirmed together
   if (parts[0] === "pipelines") {
     if (parts.length === 1) return { page: "pipelines" };
-    if (parts.length === 2 && parts[1] === "new") return { page: "pipelinenew" };   // the service refuses a pipeline called new
+    if (parts.length === 2 && parts[1] === "new") return withDataset({ page: "pipelinenew" }, query);   // the service refuses a pipeline called new
     const view = parts[2] ?? "edit";
     if (parts.length === 2) return { page: "pipeline", name: parts[1], view };
     if (parts.length === 3 && ["runs", "history", "confirm"].includes(view)) return { page: "pipeline", name: parts[1], view };
@@ -62,7 +69,7 @@ export function parseRoute(hash) {
   }
   if (parts[0] === "types") {
     if (parts.length === 1) return { page: "types" };
-    if (parts.length === 2 && parts[1] === "new") return { page: "typenew" };   // the service refuses a type called new, so this address is never a type
+    if (parts.length === 2 && parts[1] === "new") return withDataset({ page: "typenew" }, query);   // the service refuses a type called new, so this address is never a type
     if (parts.length === 3 && parts[2] === "edit") return { page: "typeedit", id: parts[1] };
     const tab = parts[2] ?? "props";
     if (tab === "objects" && parts.length === 4 && /^[1-9]\d*$/.test(parts[3])) return { page: "object", id: parts[1], n: Number(parts[3]) };   // one object, by its row number in the data
@@ -93,7 +100,7 @@ export function hrefFor(route) {
   if (route.page === "confirmgroup") return `#/confirm/group/${encodeURIComponent(route.dataset)}/${route.version}`;
   if (route.page === "relations") return route.list ? "#/relations?view=list" : "#/relations";
   if (route.page === "pipelines") return "#/pipelines";
-  if (route.page === "pipelinenew") return "#/pipelines/new";
+  if (route.page === "pipelinenew") return `#/pipelines/new${datasetQuery(route)}`;
   if (route.page === "pipeline") {
     const base = `#/pipelines/${encodeURIComponent(route.name)}`;
     return route.view === "run" ? `${base}/runs/${route.run}` : route.view && route.view !== "edit" ? `${base}/${route.view}` : base;
@@ -101,7 +108,7 @@ export function hrefFor(route) {
   if (route.page === "relationnew") return "#/relations/new";
   if (route.page === "relation") return `#/relations/${encodeURIComponent(route.id)}`;
   if (route.page === "relationedit") return `#/relations/${encodeURIComponent(route.id)}/edit`;
-  if (route.page === "typenew") return "#/types/new";
+  if (route.page === "typenew") return `#/types/new${datasetQuery(route)}`;
   if (route.page === "typeedit") return `#/types/${encodeURIComponent(route.id)}/edit`;
   if (route.page === "type") {
     const query = [route.pageNo > 1 ? `p=${route.pageNo}` : "", route.q ? `q=${encodeURIComponent(route.q)}` : ""].filter(Boolean).join("&");

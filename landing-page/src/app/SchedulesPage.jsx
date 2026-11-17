@@ -4,21 +4,13 @@ import { timeText } from "./format.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { CADENCES, WEEKDAYS, reasonText, runStatusText, runSummary, runnablePipeline, scheduleBody, scheduleProblem } from "./sourceModel.js";
-import { browserZone, hourOptions, minuteOptions, timeFromParts, timeParts } from "./scheduleTime.js";
+import { browserZone, hourOptions, minuteOptions, timeFromParts, timeParts, zoneChoices, zoneLabel } from "./scheduleTime.js";
 import { useLoad } from "./useLoad.js";
 import { FormDialog } from "./FormDialog.jsx";
 import { PageHeader } from "./ui/PageHeader.jsx";
 import { EmptyState } from "./ui/EmptyState.jsx";
 import { MoreMenu } from "./ui/MoreMenu.jsx";
 import { StatusChip } from "./ui/StatusChip.jsx";
-
-const zones = () => {
-  try {
-    return Intl.supportedValuesOf("timeZone");
-  } catch {
-    return [];
-  }
-};
 
 /** A fresh schedule form's values: a daily 08:00 run in the browser's own time zone. */
 export const newScheduleForm = (extra = {}) => ({ name: "", kind: "source", target: "", cadence: "daily", minute: "0", time: "08:00", weekday: "0", tz: browserZone(), scope: [], ...extra });
@@ -57,8 +49,10 @@ export function WhenFields({ f, set, allowUpstream }) {
       {f.cadence !== "upstream" && (
         <label className="field">
           <span className="caption">时区（默认是这台电脑的时区）</span>
-          <input type="text" list="zone-list" value={f.tz} onChange={(e) => set("tz")(e.target.value)} />
-          <datalist id="zone-list">{zones().map((z) => <option key={z} value={z} />)}</datalist>
+          <Select label="时区" value={f.tz} onChange={set("tz")}>
+            {(zoneChoices(browserZone()).includes(f.tz) ? zoneChoices(browserZone()) : [f.tz, ...zoneChoices(browserZone())]).map((z) => <option key={z} value={z}>{zoneLabel(z)}{z === browserZone() ? "，这台电脑" : ""}</option>)}
+          </Select>
+          <span className="muted small">按 {zoneLabel(f.tz)} 的钟点运行</span>
         </label>
       )}
       {f.cadence === "upstream" && <p className="hint">它读的数据集有新版本时运行一次；运行不会重叠。</p>}

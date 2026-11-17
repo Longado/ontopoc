@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { fitView } from "./graphModel.js";
 
 // The graph's own styles live inside the SVG, so a picture exported from it looks like the one on the page (a stand-alone SVG has no page CSS and no custom properties).
 const STYLE = `
@@ -74,9 +75,9 @@ function exportPng(svg, width, height, fileName) {
 
 /**
  * The drawing surface of both graphs: an SVG of `width` x `height` units with zoom in and out, fit, drag to move and export as PNG. A press on the empty background calls `onBlank`.
- * `label` is what a screen reader hears; `fileName` the name of the exported picture.
+ * `fit="width"` opens the picture filled to the frame's width instead of whole. `label` is what a screen reader hears; `fileName` the name of the exported picture.
  */
-export function GraphCanvas({ width, height, label, fileName, onBlank, children }) {
+export function GraphCanvas({ width, height, label, fileName, onBlank, fit: fitMode = "all", children }) {
   const holder = useRef(null);
   const svg = useRef(null);
   const [size, setSize] = useState({ w: 900, h: 520 });
@@ -88,9 +89,8 @@ export function GraphCanvas({ width, height, label, fileName, onBlank, children 
     return () => watch.disconnect();
   }, []);
   const fit = useCallback(() => {
-    const k = Math.min(size.w / width, size.h / height, 1);
-    setView({ k, x: (size.w - width * k) / 2, y: (size.h - height * k) / 2 });
-  }, [size.w, size.h, width, height]);
+    setView(fitView({ w: size.w, h: size.h }, { width, height }, fitMode));
+  }, [size.w, size.h, width, height, fitMode]);
   useEffect(fit, [width, height, size.w]);   // a new picture, or a window of another width, is fitted again; zooming and moving are the reader's until then
   const zoom = useCallback((factor, cx = size.w / 2, cy = size.h / 2) => {
     setView((v) => {

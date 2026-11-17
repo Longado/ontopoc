@@ -3,7 +3,7 @@ import { guessDateFormat, previewNode } from "./api.js";
 import { AiBox } from "./AiBox.jsx";
 import { ExpressionEditor } from "./ExpressionEditor.jsx";
 import { typeLabel } from "./format.js";
-import { AGG_LABEL, CAST_LABEL, CLEAN_LABEL, CMP_LABEL, UNMAPPED_LABEL, aggDefaultName } from "./pipelineModel.js";
+import { AGG_LABEL, CAST_LABEL, CLEAN_LABEL, CMP_LABEL, UNMAPPED_LABEL, aggAutoName, retargetAgg } from "./pipelineModel.js";
 import { Select } from "./Select.jsx";
 
 const NUMBERISH = ["integer", "decimal", "date", "datetime", "month"];
@@ -218,21 +218,21 @@ function AggregateForm({ op, cols, onChange }) {
           <Row key={i}>
             <Select label="统计哪一列" value={agg.column ?? ""} onChange={(column) => {
               const next = allowed(column || null);
-              setAgg(i, { fn: next.includes(agg.fn) ? agg.fn : next[0], ...(column ? { column } : {}), ...(agg.as ? { as: agg.as } : {}) });
+              setAgg(i, retargetAgg(agg, { fn: next.includes(agg.fn) ? agg.fn : next[0], column }));
             }}>
               <option value="">（整行）</option>
               {cols.map((c) => <option key={c.name} value={c.name}>{c.name}（{typeLabel(c.type)}）</option>)}
             </Select>
-            <Select label="统计方式" value={agg.fn} onChange={(fn) => setAgg(i, { ...agg, fn })}>
+            <Select label="统计方式" value={agg.fn} onChange={(fn) => setAgg(i, retargetAgg(agg, { fn }))}>
               {fns.map((f) => <option key={f} value={f}>{AGG_LABEL[f]}</option>)}
             </Select>
-            <input type="text" aria-label="结果列的名字" placeholder={aggDefaultName(agg)} value={agg.as ?? ""} onChange={(e) => setAgg(i, { ...agg, as: e.target.value || undefined })} />
+            <input type="text" aria-label="结果列的名字" placeholder={aggAutoName(agg)} value={agg.as ?? ""} onChange={(e) => setAgg(i, { ...agg, as: e.target.value || undefined })} />
             <button className="plain" disabled={op.aggregations.length === 1} onClick={() => onChange({ ...op, aggregations: op.aggregations.filter((_, k) => k !== i) })}>删除</button>
             {col?.code && <span className="muted small">代码列，只能计数</span>}
           </Row>
         );
       })}
-      <button className="plain" onClick={() => onChange({ ...op, aggregations: [...op.aggregations, { fn: "count" }] })}>加一个统计</button>
+      <button className="plain" onClick={() => onChange({ ...op, aggregations: [...op.aggregations, { fn: "count", as: aggAutoName({ fn: "count" }) }] })}>加一个统计</button>
       <p className="hint">空值不计入；中位数和 P25、P75 是精确值，不是估计。</p>
     </div>
   );
