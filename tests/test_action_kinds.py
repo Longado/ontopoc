@@ -73,7 +73,7 @@ class KindTests(ActionTests):
             self.assertEqual((status, decided['state'], decided['version']), (200, 'approved', 2), decided)
             version, rows = self.rows(out)
             self.assertEqual(len(rows), len(ORDERS) + 1)
-            self.assertEqual({c: rows[FRESH_KEY][c] for c in ('金额', '状态码', '客户编号')}, {'金额': 1200, '状态码': 1, '客户编号': 'KH001'})
+            self.assertEqual({c: rows[FRESH_KEY][c] for c in ('金额', '状态码', '客户编号')}, {'金额': '1200', '状态码': '1', '客户编号': 'KH001'})   # stored as text, like every dataset value
             log = ann.get(url(NEW_ORDER['name']))[1]['log']
             self.assertTrue(any(e['change'] == 'action_approved' and FRESH_KEY in e['text'] for e in log))
 
@@ -100,7 +100,7 @@ class KindTests(ActionTests):
             self.assertEqual((status, body['state']), (200, 'needs_look'), body)
             self.assertIn('已经有了', body['why'])
             version, rows = self.rows(out)
-            self.assertEqual((version, rows[FRESH_KEY]['金额']), (2, 1200))
+            self.assertEqual((version, rows[FRESH_KEY]['金额']), (2, '1200'))
             refused = [e for e in ann.get(url(NEW_ORDER['name']))[1]['log'] if e['change'] == 'action_refused']
             self.assertGreaterEqual(len(refused), 4)   # every refused submit is on the log
 
