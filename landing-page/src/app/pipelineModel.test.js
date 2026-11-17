@@ -310,5 +310,11 @@ test("a card dragged on the pipeline graph keeps its new place; the others keep 
   assert.deepEqual(lay.edges, base.edges);
   assert.equal(placed(base, {}), base);
   assert.equal(snap(13), 16);
-  assert.equal(snap(-30), 0);   // never dragged off the top or left edge
+  assert.equal(snap(-30), -32);
+  // a card dragged above or left of the others: the picture grows that way, everything shifts so nothing is cut off (found by Eddie: "cannot drag it upwards")
+  const up = placed(base, { a: { x: -40, y: -80 } });
+  assert.deepEqual([up.nodes.a.x, up.nodes.a.y], [0, 0]);
+  assert.deepEqual([up.nodes.b.x, up.nodes.b.y], [base.nodes.b.x + 40, base.nodes.b.y + 80]);
+  assert.deepEqual(up.shift, { x: 40, y: 80 });
+  assert.equal(up.height, base.nodes.b.y + 80 + 64);
 });
