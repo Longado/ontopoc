@@ -2,12 +2,12 @@ import React, { useState } from "react";
 import { createSource, getSources, updateSource } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { isAdmin } from "./authModel.js";
-import { CopyButton } from "./CopyButton.jsx";
 import { portAfterKind } from "./connectModel.js";
 import { timeText } from "./format.js";
 import { t, useT } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
+import { ConnectWays, PassiveWay } from "./SourceWays.jsx";
 import { SourceWizard } from "./SourceWizard.jsx";
 import { KINDS, TLS_MODES, sourceBody, sourceProblem, statusText, tlsDefault, tlsWarning } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
@@ -22,19 +22,13 @@ export function SourceState({ source }) {
   return <StatusChip state={CHIP[source.status] ?? source.status} label={statusText(source)} />;
 }
 
-const askAdminText = () => [t("sources.ask.l0"), t("sources.ask.l1"), t("sources.ask.l2"), t("sources.ask.l3"), t("sources.ask.l4"), t("sources.ask.l5")].join("\n");
-
-/** What a builder who is not an admin sees instead of the 新建 button: who connects databases and what to ask them. */
+/** What a builder who is not an admin sees instead of the connect button: who connects databases, and the same "send this message" panel the admin's passive way uses (open, since it is their only way). */
 function AskAdmin() {
-  const ASK_ADMIN = askAdminText();
   return (
     <section className="card ask-admin">
       <h2>{t("sources.ask.title")}</h2>
-      <p>{t("sources.ask.text")}</p>
-      <p className="muted">{t("sources.ask.say")}</p>
-      <pre className="ask-text">{ASK_ADMIN}</pre>
-      <CopyButton text={ASK_ADMIN} label={t("sources.ask.copy")} />
-      <p className="hint">{t("sources.ask.excel")}</p>
+      <p className="muted">{t("sources.ask.text")}</p>
+      <PassiveWay audience="admin" defaultOpen />
     </section>
   );
 }
@@ -108,7 +102,8 @@ export function SourcesPage() {
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>{t("common.retry")}</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">{t("common.loading")}</p>}
       {state.data && !admin && <AskAdmin />}
-      {state.data && !sources.length && admin && <EmptyState icon="plug" title={t("sources.empty.title")} text={t("sources.empty.text")} action={{ label: t("sources.connect"), onClick: () => setMaking(true) }} />}
+      {state.data && admin && <ConnectWays onConnect={() => setMaking(true)} />}
+      {state.data && !sources.length && admin && <EmptyState icon="plug" title={t("sources.empty.title")} text={t("sources.empty.text")} />}
       {sources.length > 0 && (
         <div className="table-wrap">
           <table>
