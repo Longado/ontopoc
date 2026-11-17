@@ -2,4 +2,23 @@
 // noCjk.test.js fails when one of these still holds Chinese characters outside comments.
 // A builder who converts a file adds it here, one line per file, in the same commit.
 export const CONVERTED = [
+  "Auth.jsx",
+  "AccountPage.jsx",
+  "HomePage.jsx",
+  "LoginPage.jsx",
+  "SettingsPage.jsx",
+  "Shell.jsx",
+  "authModel.js",
+  "homeModel.js",
+  "routeModel.js",
+  "searchModel.js",
+  "settingsModel.js",
+  "statusModel.js",
+  "ui/CommandPalette.jsx",
+  "ui/Drawer.jsx",
+  "ui/EmptyState.jsx",
+  "ui/LanguageSwitch.jsx",
+  "ui/MoreMenu.jsx",
+  "ui/PageHeader.jsx",
+  "ui/StatusChip.jsx",
 ];

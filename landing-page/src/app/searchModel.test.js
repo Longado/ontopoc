@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildEntries, matchScore, pageEntries, recordVisit, search } from "./searchModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 test("matchScore: exact beats prefix beats contains beats nothing; case and spaces do not matter", () => {
   assert.ok(matchScore("订单", "订单") > matchScore("订单明细", "订单"));

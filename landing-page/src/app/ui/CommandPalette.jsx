@@ -2,9 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getActions, getBoards, getDatasets, getPipelines, getRelations, getTypes } from "../api.js";
 import { canBuild } from "../authModel.js";
 import { buildEntries, pageEntries, search } from "../searchModel.js";
+import { t } from "../i18n/index.js";
 import { Icon } from "./Icon.jsx";
-
-const KIND_ICON = { 页面: "arrow", 数据集: "table", 对象类型: "cube", 关系: "link", 管道: "pipeline", 看板: "board", 行为: "play", 最近: "clock" };
 
 /** Reads the lists a search covers; a list this person may not read (or that fails) is simply left out. */
 async function loadLists(user) {
@@ -40,10 +39,10 @@ export function CommandPalette({ open, onClose, user, recents = [] }) {
   const pages = useMemo(() => pageEntries(user), [user]);
   const entries = useMemo(() => [...pages, ...buildEntries(lists ?? {})], [pages, lists]);
   const rows = useMemo(() => {
-    if (query.trim()) return search(entries, query, 12).map((e) => ({ ...e, icon: e.icon ?? KIND_ICON[e.kind] }));
+    if (query.trim()) return search(entries, query, 12);
     return [
-      ...recents.map((r) => ({ kind: "最近打开", label: r.label, sub: "", href: r.href, icon: "clock" })),
-      ...pages.map((p) => ({ ...p, kind: "跳转到页面" })),
+      ...recents.map((r) => ({ kind: t("ui.palette.recent"), label: r.label, sub: "", href: r.href, icon: "clock" })),
+      ...pages.map((p) => ({ ...p, kind: t("ui.palette.jump") })),
     ];
   }, [query, entries, recents, pages]);
   useEffect(() => setAt(0), [query]);
@@ -75,11 +74,11 @@ export function CommandPalette({ open, onClose, user, recents = [] }) {
   return (
     <div className="ui-drawer-root palette-root">
       <div className="ui-overlay" onClick={onClose} />
-      <div className="palette" role="dialog" aria-modal="true" aria-label="搜索" onKeyDown={key}>
+      <div className="palette" role="dialog" aria-modal="true" aria-label={t("ui.palette.title")} onKeyDown={key}>
         <div className="palette-input">
           <Icon name="search" />
           <input ref={input} type="text" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-activedescendant={rows[at] ? `palette-${at}` : undefined}
-            aria-label="搜索数据集、对象类型、关系、管道、看板、行为或页面" placeholder="搜索数据集、对象类型、管道、看板…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            aria-label={t("ui.palette.aria")} placeholder={t("ui.palette.placeholder")} value={query} onChange={(e) => setQuery(e.target.value)} />
           <kbd>Esc</kbd>
         </div>
         <div className="palette-list" id="palette-list" role="listbox" ref={list}>
@@ -98,10 +97,10 @@ export function CommandPalette({ open, onClose, user, recents = [] }) {
               </React.Fragment>
             );
           })}
-          {query.trim() && !rows.length && <p className="palette-none">{lists ? `没有找到“${query.trim()}”` : "正在读取…"}</p>}
-          {query.trim() && !lists && rows.length > 0 && <p className="palette-none">还在读取数据，结果可能还会增加</p>}
+          {query.trim() && !rows.length && <p className="palette-none">{lists ? t("ui.palette.none", { query: query.trim() }) : t("ui.palette.reading")}</p>}
+          {query.trim() && !lists && rows.length > 0 && <p className="palette-none">{t("ui.palette.stillReading")}</p>}
         </div>
-        <p className="palette-foot"><kbd>↑</kbd><kbd>↓</kbd> 选择 <kbd>Enter</kbd> 打开 <kbd>Esc</kbd> 关闭</p>
+        <p className="palette-foot"><kbd>↑</kbd><kbd>↓</kbd> {t("ui.palette.foot.select")} <kbd>Enter</kbd> {t("ui.palette.foot.open")} <kbd>Esc</kbd> {t("ui.palette.foot.close")}</p>
       </div>
     </div>
   );

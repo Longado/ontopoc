@@ -81,6 +81,12 @@ kbd { font: 500 11px / 1 ui-monospace, SFMono-Regular, Menlo, monospace; padding
 .menu-item { display: flex; align-items: center; gap: var(--s1); width: 100%; padding: 7px var(--s1); border: 0; border-radius: 6px; background: none; color: var(--ink); text-align: left; text-decoration: none; }
 .menu-item:hover { background: var(--hover); text-decoration: none; }
 .menu-item.danger-text { color: var(--red-ink); }
+.menu-lang { padding: var(--s1) 0; margin: var(--s1) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.menu-label { margin: 0; padding: 2px var(--s1) 4px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.menu-check { display: inline-flex; width: 16px; justify-content: center; color: var(--accent); }
+.lang-inline { display: flex; gap: var(--s2); justify-content: center; }
+.lang-inline button { padding: 2px 4px; font-size: 13px; color: var(--muted); }
+.lang-inline button[aria-pressed="true"] { color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .menu-ask { padding: var(--s1); max-width: 260px; }
 .menu-ask-buttons { display: flex; justify-content: flex-end; gap: var(--s1); margin-top: var(--s1); }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 0; width: 34px; height: 34px; }

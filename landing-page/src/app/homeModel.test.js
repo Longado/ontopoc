@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { exampleQuestions, kpiCards, greeting, needsSetup, setupSteps, todoItems, updatedText } from "./homeModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 const T = (id, name, state = "confirmed") => ({ id, name, state });
 

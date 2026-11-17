@@ -1,10 +1,13 @@
 import { canBuild, isAdmin } from "./authModel.js";
+import { t } from "./i18n/index.js";
 
 // The app's addresses (#/datasets/订单/preview?v=2&p=3, #/account, #/users) and its left navigation, as plain data so both can be tested without a browser.
 export const TABS = ["fields", "preview", "versions"];
-export const TAB_LABEL = { fields: "字段", preview: "预览", versions: "版本" };
+/** Tab names in the current language (getters: read at use time). */
+const labels = (prefix, keys) => Object.defineProperties({}, Object.fromEntries(keys.map((k) => [k, { enumerable: true, get: () => t(`nav.${prefix}.${k}`) }])));
+export const TAB_LABEL = labels("tab", TABS);
 export const TYPE_TABS = ["props", "derived", "views", "actions", "objects", "log"];
-export const TYPE_TAB_LABEL = { props: "属性", derived: "派生", views: "视图", actions: "行为", objects: "对象", log: "日志" };
+export const TYPE_TAB_LABEL = labels("typeTab", TYPE_TABS);
 
 /** `?dataset=name` on a "new" address: the dataset the page starts from (用它建管道, 用它建对象类型). */
 const withDataset = (route, query) => {
@@ -136,21 +139,20 @@ export const PLANNED = {
 
 const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
 const BUILDERS = ["tasks", "confirm", "pipelines", "sources", "schedules", "agents"];   // shown to builders and admins only: a viewer has nothing to confirm, the task list quotes keys and values and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
-const item = (key, label, icon) => ({ key, label, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
+// label (and a group's label and hint) are getters: the words are read when drawn, in the language chosen then
+const item = (key, icon) => ({ key, get label() { return t(`nav.${key}`); }, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
+const group = (key, icon, rest) => ({ key, get label() { return t(`nav.group.${key}`); }, icon, get hint() { return t(`nav.group.${key}.hint`); }, ...rest });
 
 /** The sidebar: a group with a `label` folds and has a grey one-line `hint`; `builders` groups are for builders and admins. A viewer sees 首页, 问数, 看板, 消息 only; every page stays reachable by its address. */
 export const NAV = [
-  { key: "main", items: [item("home", "首页", "home"), item("qa", "问数", "chat"), item("boards", "看板", "board"), item("notices", "消息", "bell")] },
-  { key: "data", label: "数据", icon: "database", hint: "数据集 = 一张张表格；管道把它们加工成新的表", builders: true,
-    items: [item("datasets", "数据集", "table"), item("sources", "数据源", "plug"), item("pipelines", "管道", "pipeline"), item("schedules", "调度", "clock"), item("lineage", "血缘", "lineage"), item("tasks", "任务", "tasks")] },
-  { key: "objects", label: "业务对象", icon: "cube", hint: "对象类型 = 业务里的东西，比如订单、客户", builders: true,
-    items: [item("confirm", "待确认", "check"), item("types", "对象类型", "cube"), item("relations", "关系", "link")] },
-  { key: "apps", label: "应用", icon: "apps", hint: "把问数和看板接给 AI 工具使用", builders: true,
-    items: [item("agents", "AI 工具接入", "bot")] },
+  { key: "main", items: [item("home", "home"), item("qa", "chat"), item("boards", "board"), item("notices", "bell")] },
+  group("data", "database", { builders: true, items: [item("datasets", "table"), item("sources", "plug"), item("pipelines", "pipeline"), item("schedules", "clock"), item("lineage", "lineage"), item("tasks", "tasks")] }),
+  group("objects", "cube", { builders: true, items: [item("confirm", "check"), item("types", "cube"), item("relations", "link")] }),
+  group("apps", "apps", { builders: true, items: [item("agents", "bot")] }),
 ];
 
 /** What only an admin sees. */
-export const ADMIN_NAV = [{ key: "settings", label: "设置", icon: "settings", hint: "谁能进来、能看什么", items: [item("settings", "工作区", "settings"), item("users", "用户", "users"), item("permissions", "权限", "shield")] }];
+export const ADMIN_NAV = [group("settings", "settings", { items: [item("settings", "settings"), item("users", "users"), item("permissions", "shield")] })];
 
 /** The groups this person's role sees, in order. */
 export const navFor = (user) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])].filter((g) => !g.builders || canBuild(user));

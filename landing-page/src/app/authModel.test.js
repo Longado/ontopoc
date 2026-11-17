@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { canBuild, isAdmin, roleLabel, searchPlaceholder, statusText, twoPersonText } from "./authModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 test("only a builder or an admin changes data", () => {
   assert.deepEqual(["viewer", "builder", "admin", undefined].map((role) => canBuild({ role })), [false, true, true, false]);

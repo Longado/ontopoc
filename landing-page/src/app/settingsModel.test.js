@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BACKUP_FILES, workspaceRows } from "./settingsModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 const rowOf = (rows, key) => rows.find((r) => r.key === key);
 

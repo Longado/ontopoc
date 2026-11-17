@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { t } from "../i18n/index.js";
 import { Icon } from "./Icon.jsx";
 
 /** A panel that slides in from the right over a dimmed page; Esc, the × and a click on the dim close it. Props: `open`, `title`, `onClose`, `children` (the body), `width` (px, default 480),
@@ -23,7 +24,7 @@ export function Drawer({ open, title, onClose, children, width = 480, footer }) 
       <aside className="ui-drawer" role="dialog" aria-modal="true" aria-label={title} style={{ width: `min(${width}px, 100vw)` }} ref={panel} tabIndex={-1}>
         <div className="ui-drawer-head">
           <h2>{title}</h2>
-          <button className="plain icon-button" aria-label="关闭" onClick={onClose}><Icon name="close" /></button>
+          <button className="plain icon-button" aria-label={t("ui.drawer.close")} onClick={onClose}><Icon name="close" /></button>
         </div>
         <div className="ui-drawer-body">{children}</div>
         {footer && <div className="ui-drawer-foot">{footer}</div>}
