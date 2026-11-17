@@ -93,7 +93,7 @@ function Row({ item, picked, onPick, onChanged }) {
 function GroupRow({ group, items }) {
   const byElement = Object.fromEntries(items.map((i) => [i.element, i]));
   return (
-    <li className="q-row q-group">
+    <li className={`q-row q-group${group.items.some((e) => queueRow(byElement[e]).hasError) ? " q-error" : ""}`}>
       <div className="q-main">
         <span className="q-pick" />
         <div className="q-body">
@@ -102,12 +102,17 @@ function GroupRow({ group, items }) {
             <strong>{groupTitle(group.dataset, group.version, group.items.length)}</strong>
             <span className="muted small">{group.uploaded_by ?? "未署名"} 上传 {timeText(group.uploaded_at)}</span>
           </div>
-          <p className="q-summary">
-            {group.items.map((element, i) => {
-              const item = byElement[element];
-              return <span key={element}>{i > 0 && "、"}{KIND[item.kind]} <a href={itemHref(item)}>{item.title}</a></span>;
-            })}
-          </p>
+          {group.items.map((element) => {
+            const item = byElement[element];
+            const row = queueRow(item);
+            return (
+              <div key={element} className="q-member">
+                <p className="q-summary"><span className="q-kind">{row.kind}</span> <a href={itemHref(item)}>{item.title}</a> <State item={item} /></p>
+                {row.summary && <p className={`q-summary q-sub${row.summaryLevel === "ok" ? "" : " q-" + row.summaryLevel}`}>{row.summary}</p>}
+                {row.problems.map((p, i) => <p key={i} className={`q-problem q-${p.level}`}><Icon name="alert" size={14} /> {p.text}</p>)}
+              </div>
+            );
+          })}
           {group.hidden > 0 && <p className="warn small">还有 {group.hidden} 项你看不到</p>}
         </div>
         <div className="q-actions">
@@ -155,7 +160,7 @@ export function ConfirmPage() {
     reload();
   };
   return (
-    <main className="page">
+    <main className="page has-bar">
       <PageHeader crumbs={[{ label: "业务对象" }, { label: "待确认" }]} title="待确认" sub={data ? queueCounts(data).text : undefined}
         actions={<label className="check"><input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} /> 只看我能确认的</label>} />
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}

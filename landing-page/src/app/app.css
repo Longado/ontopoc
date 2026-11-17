@@ -711,3 +711,11 @@ table.wraps td.keep { white-space: nowrap; }
 ul.related-list { list-style: none; padding: 0; margin: 4px 0 8px; display: flex; flex-direction: column; gap: 2px; }
 .explore-search { width: 260px; max-width: 100%; }
 @media (max-width: 900px) { .object-layout { grid-template-columns: minmax(0, 1fr); } }
+.q-member { display: flex; flex-direction: column; gap: 2px; margin-top: var(--s1); padding-left: var(--s1); border-left: 2px solid var(--line); }
+.q-summary.q-sub { color: var(--muted); }
+.q-summary.q-sub.q-error { color: var(--red-ink); }
+.q-summary.q-sub.q-warn { color: var(--orange-ink); }
+.page.has-bar { min-height: calc(100vh - var(--topbar)); display: flex; flex-direction: column; }
+.page.has-bar > .queue, .page.has-bar > .cards { flex: none; }
+.page.has-bar > .batch-bar { margin-top: auto; }
+.confirm-step .checks .warn.strong { color: var(--red-ink); }

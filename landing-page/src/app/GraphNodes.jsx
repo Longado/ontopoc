@@ -50,9 +50,9 @@ export function GraphNode({ node, box, picked, faded, onPick }) {
 
 const colour = (state) => (state === "needs_look" ? "amber" : state === "rejected" ? "red" : "grey");
 
-/** A line between two types of the relation graph: the rows that connect on it, an arrow toward the "one" side, dashed when the cardinality does not hold. Several relations
+/** A line between two types of the relation graph (`part` "line" or "label" draws only that half, so a graph can draw every label above every line): the rows that connect on it, an arrow toward the "one" side, dashed when the cardinality does not hold. Several relations
  * between the same two types are one line with a count. */
-export function RelationLine({ group, from, to, picked, faded, lit, onPick, labelAt }) {
+export function RelationLine({ group, from, to, picked, faded, lit, onPick, labelAt, part }) {
   const a = leaves(from, to);
   const b = leaves(to, from);
   const [first] = group.edges;
@@ -68,10 +68,10 @@ export function RelationLine({ group, from, to, picked, faded, lit, onPick, labe
   return (
     <g className={`g-edge s-${state}${failing && !many ? " dashed" : ""}${lit ? " lit" : ""}${picked ? " picked" : ""}${faded ? " faded" : ""}`} tabIndex={0} role="button" aria-label={`${first.from_name} 和 ${first.to_name}：${label}`}
       onClick={(e) => { e.stopPropagation(); onPick(); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(); } }}>
-      <line className="line" x1={a.x} y1={a.y} x2={b.x} y2={b.y} {...(toward ? { [toward === "marker-end" ? "markerEnd" : "markerStart"]: `url(#arrow-${marker})` } : {})} />
-      <line className="hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
-      <rect className="pill" x={mx - width / 2} y={my - 11} width={width} height="22" rx="4" />
-      <text x={mx} y={my + 4} textAnchor="middle">{label}</text>
+      {part !== "label" && <line className="line" x1={a.x} y1={a.y} x2={b.x} y2={b.y} {...(toward ? { [toward === "marker-end" ? "markerEnd" : "markerStart"]: `url(#arrow-${marker})` } : {})} />}
+      {part !== "label" && <line className="hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />}
+      {part !== "line" && <rect className="pill" x={mx - width / 2} y={my - 11} width={width} height="22" rx="4" />}
+      {part !== "line" && <text x={mx} y={my + 4} textAnchor="middle">{label}</text>}
     </g>
   );
 }

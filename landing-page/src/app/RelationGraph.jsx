@@ -11,7 +11,7 @@ import { useLoad } from "./useLoad.js";
 import { Drawer } from "./ui/Drawer.jsx";
 
 /** What the colours and the numbers on the graph mean. */
-function Legend() {
+function Legend({ example }) {
   return (
     <div className="graph-legend" aria-label="图例">
       <ul>
@@ -19,7 +19,7 @@ function Legend() {
           <li key={l.key}><span className="swatch" style={{ background: l.colour }} aria-hidden="true" /><strong>{l.word}</strong> <span className="muted">{l.text}</span></li>
         ))}
       </ul>
-      <p className="muted small"><strong>连上 157 / 161 行</strong>：线上的数字数的是“多”的一端。例如订单一共 161 行，其中 157 行能在客户里找到对应的客户，另外 4 行找不到。实线箭头指向“一”的一端；虚线表示基数不成立。</p>
+      <p className="muted small"><strong>{example ? edgeLabel(example) : "连上 157 / 161 行"}</strong>：线上的数字数的是“多”的一端。{example ? `例如${connectedMeaning(example)}。` : "例如订单一共 161 行，其中 157 行能在客户里找到对应的客户，另外 4 行找不到。"}箭头指向“一”的一端；虚线表示基数不成立。</p>
     </div>
   );
 }
@@ -65,18 +65,18 @@ export function RelationGraph() {
     <>
       <div className={`graph-layout rel-graph${node ? " with-drawer" : ""}`}>
         <GraphCanvas width={layout.width} height={layout.height} label="对象类型和它们之间的关系" fileName="关系图.png" onBlank={() => setPicked(null)}>
-          {groups.map((g) => (
-            <RelationLine key={g.key} group={g} from={layout.positions[g.from]} to={layout.positions[g.to]} picked={group?.key === g.key} labelAt={labels[g.key]}
+          {["line", "label"].map((part) => groups.map((g) => (
+            <RelationLine key={`${part}-${g.key}`} part={part} group={g} from={layout.positions[g.from]} to={layout.positions[g.to]} picked={group?.key === g.key} labelAt={labels[g.key]}
               lit={Boolean(node) && (g.from === node.id || g.to === node.id)} faded={Boolean(lit) && !(lit.has(g.from) && lit.has(g.to) && (group || g.from === node?.id || g.to === node?.id))}
               onPick={() => setPicked({ kind: "edge", id: g.key })} />
-          ))}
+          )))}
           {graph.nodes.map((n) => (
             <GraphNode key={n.id} node={n} box={layout.positions[n.id]} picked={node?.id === n.id} faded={Boolean(lit) && !lit.has(n.id)} onPick={() => setPicked({ kind: "node", id: n.id })} />
           ))}
         </GraphCanvas>
         {node && <NodeDrawer key={node.id} node={node} onClose={() => setPicked(null)} />}
       </div>
-      <Legend />
+      <Legend example={graph.edges.find((e) => e.connected != null && e.of > e.connected) ?? graph.edges.find((e) => e.connected != null)} />
       {group && <EdgeDrawer key={group.key} group={group} onClose={() => setPicked(null)} />}
     </>
   );

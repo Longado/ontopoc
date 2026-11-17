@@ -86,7 +86,7 @@ function Records({ name, type, mayBuild, detail, onChanged }) {
       {!records.length && <p className="muted small">还没有人提交过。</p>}
       {records.length > 0 && (
         <div className="table-wrap">
-          <table>
+          <table className="wraps">
             <thead><tr><th>提交</th><th>对象</th><th>改动</th><th>状态</th><th /></tr></thead>
             <tbody>
               {records.map((r) => (
@@ -94,7 +94,7 @@ function Records({ name, type, mayBuild, detail, onChanged }) {
                   <td className="keep">{r.submitted_by}<span className="muted small block">{timeText(r.submitted_at)}</span></td>
                   <td>{r.object}</td>
                   <td className="wrap-cell">{recordChangeText(r)}{r.reason && <span className="muted small block">{r.reason}</span>}</td>
-                  <td>{recordStateText(r)}{r.why && <span className="muted small block">{r.why}</span>}</td>
+                  <td className="keep">{recordStateText(r)}{r.why && <span className="muted small block">{r.why}</span>}</td>
                   <td className="keep">
                     {r.can_withdraw && <button className="plain" onClick={() => withdraw(r.id)}>撤回</button>}
                     {r.can_undo && <button className="plain" title="提交一条把值改回去的请求，要另一位建设者批准" onClick={() => undo(r.id)}>撤销</button>}
@@ -150,7 +150,7 @@ function ActionDrawer({ action, detail, type, mayBuild, onChanged, onRun, onClos
   const line = stateLine(action, "这个行为");
   const canRun = mayBuild && action.kind === "create" && action.state === "confirmed" && action.can_submit !== false;
   return (
-    <Drawer open title={action.name} onClose={onClose} width={560}
+    <Drawer open title={action.name} onClose={onClose} width={680}
       footer={(
         <>
           <button className="secondary" onClick={onClose}>关闭</button>

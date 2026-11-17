@@ -99,7 +99,7 @@ export function ConfirmGroupPage({ route }) {
     setBusy(false);
   };
   return (
-    <main className="page">
+    <main className="page has-bar">
       <PageHeader crumbs={[{ label: "业务对象" }, { label: "待确认", href: "#/confirm" }, { label: `${dataset} 第 ${version} 版` }]}
         title={result ? groupTitle(dataset, version, result.confirmed.length + result.sent_on.length + result.left_out.length) : group ? groupTitle(group.dataset, group.version, group.items.length) : `${dataset} 第 ${version} 版`}
         sub={group && !result ? `${group.uploaded_by ?? "未署名"} 于 ${timeText(group.uploaded_at)} 上传` : undefined} />
