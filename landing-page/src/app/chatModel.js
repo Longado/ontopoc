@@ -18,7 +18,11 @@ export function groupByDay(history, now = new Date()) {
   });
   rows.sort((a, b) => (b.time ?? -Infinity) - (a.time ?? -Infinity));
   const groups = [];
+  const seen = new Set();
   for (const { h, day } of rows) {
+    const same = String(h.question ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (same && seen.has(same)) continue;   // the same question asked again shows once, at its newest asking
+    seen.add(same);
     let g = groups[groups.length - 1];
     if (!g || g.date !== day) {
       g = { date: day, key: day === today ? "today" : day === yesterday ? "yesterday" : day, when: h.asked_at, items: [] };
@@ -47,7 +51,7 @@ export function sendsOn(e, mode = "ask") {
 }
 
 /** A few questions to try for what is in scope: how many of each confirmed type, then "A by B" for each relation between them (the home page's examples). */
-export function suggestions(scope, relations = [], max = 4) {
+export function suggestions(scope, relations = [], max = 3) {
   const types = (scope?.types ?? []).map((x) => ({ ...x, state: "confirmed" }));
   return exampleQuestions(types, relations, max);
 }

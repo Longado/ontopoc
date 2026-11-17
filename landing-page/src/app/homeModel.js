@@ -1,5 +1,5 @@
 // The home page's words and decisions, as plain functions of what the service sends, so they can be tested without a browser.
-import { formatDateTime, formatNumber, t } from "./i18n/index.js";
+import { formatDateTime, formatNumber, getLocale, t } from "./i18n/index.js";
 
 const confirmed = (list) => (list ?? []).filter((x) => x.state === "confirmed");
 
@@ -49,13 +49,27 @@ export function setupSteps({ datasets, types, users, role, meId = null, canConfi
   });
 }
 
+const CJK = /[\u3400-\u9fff]/;
+const plural = (w) => (/(s|x|ch|sh)$/.test(w) ? `${w}es` : /[^aeiou]y$/.test(w) ? `${w.slice(0, -1)}ies` : `${w}s`);
+const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+/** What to call a type in a question: its name, but in the English UI a Chinese-named type goes by its English name ("commit_version" → "commit versions"), never "How many 订单 are there?". */
+function spoken(name, id, many) {
+  if (getLocale() === "zh" || !CJK.test(name ?? "") || !id) return name;
+  const words = String(id).replace(/[_-]+/g, " ").trim().toLowerCase();
+  return many ? words.replace(/\S+$/, plural) : words;
+}
+
 /** Up to six questions to try, in a manager's words: "How many orders are there?" for each confirmed type, then "Orders by customer" for each confirmed relation between confirmed types. */
 export function exampleQuestions(types, relations, max = 6) {
   const known = confirmed(types);
   const names = new Set(known.map((x) => x.name));
-  const count = (x) => t("home.example.count", { name: x.name });
+  const idOf = new Map(known.map((x) => [x.name, x.id]));
+  const count = (x) => t("home.example.count", { name: spoken(x.name, x.id, true) });
   const counts = known.slice(0, 3).map(count);
-  const by = confirmed(relations).filter((r) => names.has(r.from_name) && names.has(r.to_name)).map((r) => t("home.example.by", { from: r.from_name, to: r.to_name }));
+  const by = confirmed(relations).filter((r) => names.has(r.from_name) && names.has(r.to_name)).map((r) => {
+    const text = t("home.example.by", { from: spoken(r.from_name, r.from ?? idOf.get(r.from_name), true), to: spoken(r.to_name, r.to ?? idOf.get(r.to_name), false) });
+    return getLocale() === "zh" ? text : cap(text);
+  });
   const rest = known.slice(3).map(count);
   return [...counts, ...by, ...rest].slice(0, max);
 }

@@ -356,7 +356,7 @@ function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQue
           )}
           <ScopeChip scope={scope} />
         </div>
-        <span className="composer-hint muted small">{isQuery ? t("ask.chat.composer.hintQuery") : t("ask.chat.composer.hintAsk")}</span>
+        {isQuery && <span className="composer-hint muted small">{t("ask.chat.composer.hintQuery")}</span>}
         <button className="primary send" type="submit" disabled={busy || !value.trim()} aria-label={isQuery ? t("ask.chat.composer.run") : t("ask.chat.composer.send")}>
           <Icon name={isQuery ? "play" : "send"} size={16} />
         </button>
@@ -479,7 +479,7 @@ export function QaPage({ route }) {
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [turns.length, turns[turns.length - 1]?.status]);
 
-  const ideas = suggestions(scope, [], 4);
+  const ideas = suggestions(scope, []);
   const title = threadTitle(turns);
   return (
     <main className="page chat-page">
@@ -513,7 +513,7 @@ export function QaPage({ route }) {
           </div>
           <div className="composer-wrap">
             <Composer scope={scope} mayBuild={mayBuild} mode={queryMode} setMode={setMode} text={text} setText={setText} query={query} setQuery={setQuery} busy={busy} onSend={send} onRun={run} />
-            <p className="composer-fine muted small">{t("ask.input.hint")}</p>
+            <p className="composer-fine muted small" title={t("ask.input.hint")}>{t("ask.chat.privacy")}</p>
           </div>
         </section>
       </div>
