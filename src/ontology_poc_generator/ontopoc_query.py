@@ -35,6 +35,11 @@ def tr(zh, en):
 
 
 ALIASES = {'count': '数量', 'sum': '合计', 'average': '平均', 'share': '占比'}
+ALIASES_EN = {'count': 'count', 'sum': 'total', 'average': 'average', 'share': 'share'}   # the name a number gets when the query does not give one, for an English asker
+
+
+def _alias(fn):
+    return tr(ALIASES[fn], ALIASES_EN[fn])
 BUCKETS = ('month', 'year')   # GROUP BY month(o.下单日期): a date read as its month or its year
 COMPARE = {'>': 'more_than', '>=': 'at_least', '<': 'less_than', '<=': 'at_most'}
 KEYWORDS = {'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'GROUP', 'BY', 'ORDER', 'ASC', 'DESC', 'LIMIT', 'AS', 'IN', 'NOT', 'BETWEEN', 'LIKE', 'IS', 'NULL', 'JOIN', 'ON', 'HAVING'}
@@ -502,7 +507,7 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
     if parsed['order']:
         o = parsed['order']
         t = o['target']
-        same = (t['kind'] == 'alias' and t['name'] == agg.get('alias', ALIASES[agg['fn']])) or \
+        same = (t['kind'] == 'alias' and t['name'] in ({agg['alias']} if agg.get('alias') else {ALIASES[agg['fn']], ALIASES_EN[agg['fn']]})) or \
                (t['kind'] == 'agg' and all(t.get(k) == agg.get(k) for k in ('fn', 'var', 'prop', 'value')))
         if not same:
             raise QueryError(tr('ORDER BY 现在只能按算出来的那个数排（写它的别名，或者再写一遍 sum(o.金额) 这样的写法）', 'ORDER BY can only sort by the calculated number (write its alias, or write it again, such as sum(o.amount))'), o['at'])
@@ -642,13 +647,13 @@ def to_text(query: dict, catalog: dict) -> str:
         field = m.get('field') or m.get('derived')
         if not isinstance(field, str) or not field:
             raise QueryError(tr('求和、求平均没有写字段', 'A sum or average needs a field'))
-        agg, alias = f'{fn}({start_var}.{_ident(str(field))})', ALIASES[m['op']]
+        agg, alias = f'{fn}({start_var}.{_ident(str(field))})', _alias(m['op'])
     elif s:
         if not isinstance(s.get('field'), str) or 'equals' not in s:
             raise QueryError(tr('占比要写字段和它等于的值', 'A share needs a field and the value it equals'))
-        agg, alias = f'share({start_var}.{_ident(str(s["field"]))} = {_literal(s["equals"])})', ALIASES['share']
+        agg, alias = f'share({start_var}.{_ident(str(s["field"]))} = {_literal(s["equals"])})', _alias('share')
     else:
-        agg, alias = f'count({counted})', ALIASES['count']
+        agg, alias = f'count({counted})', _alias('count')
     lines = ['SELECT GRAPH' if graph is not None else f'SELECT {", ".join([*(dim_text(*d) for d in dims), f"{agg} AS {alias}"])}', f'FROM {", ".join(chains)}']
     conds = []
     bound = lambda v: str(v) if re.fullmatch(r'-?\d+(\.\d+)?', str(v)) else _literal(v)
