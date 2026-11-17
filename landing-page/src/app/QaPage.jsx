@@ -3,7 +3,8 @@ import { askQuestion, getAnswer, getAsk, runQuery } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText } from "./format.js";
-import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryRecord, rangeNotes, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
+import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
 import { useLoad } from "./useLoad.js";
 
@@ -64,7 +65,7 @@ function Refusal({ record, mayBuild }) {
   );
 }
 
-function Answer({ record }) {
+export function Answer({ record }) {
   const view = answerView(record);
   const notes = staleLines(record);
   const then = isThenAnswer(record);
@@ -73,6 +74,7 @@ function Answer({ record }) {
       {then && <p className="warn">{staleHeading(record)}</p>}
       <div className="big">{then && <span className="small muted">当时的答案 </span>}{view.big}</div>
       {view.note && <p className="muted">{view.note}</p>}
+      {view.graph && <ObjectGraph graph={view.graph} />}
       {view.table && (
         <div className="table-wrap">
           <table>
@@ -89,7 +91,7 @@ function Answer({ record }) {
 }
 
 /** How the question was read, what it stood on, what it read, and the steps: under every answer and every refusal. */
-function Basis({ record, onEdit }) {
+export function Basis({ record, onEdit }) {
   const read = readText(record.datasets);
   return (
     <>
@@ -175,6 +177,8 @@ function QueryBox({ scope, text, setText, mayBuild }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  const [values, setValues] = useState({});
+  const names = paramsIn(text);
   const run = async (e) => {
     e.preventDefault();
     if (!text.trim() || busy) return;
@@ -182,7 +186,7 @@ function QueryBox({ scope, text, setText, mayBuild }) {
     setError("");
     setResult(null);
     try {
-      setResult(queryRecord(await runQuery(text)));
+      setResult(queryRecord(await runQuery(text, queryParams(text, values))));
     } catch (err) {
       setError(err.message);
     }
@@ -192,6 +196,16 @@ function QueryBox({ scope, text, setText, mayBuild }) {
     <>
       <form className="query" onSubmit={run}>
         <textarea aria-label="本体查询" rows={6} value={text} spellCheck={false} placeholder={queryExample(scope) || "SELECT count(x) FROM (x:对象类型)"} disabled={busy} onChange={(e) => setText(e.target.value)} />
+        {names.length > 0 && (
+          <div className="inline wide" role="group" aria-label="参数">
+            {names.map((n) => (
+              <label key={n} className="field">
+                <span className="caption">${n}</span>
+                <input type="text" aria-label={`参数 ${n}`} value={values[n] ?? ""} disabled={busy} onChange={(e) => setValues({ ...values, [n]: e.target.value })} />
+              </label>
+            ))}
+          </div>
+        )}
         <button className="primary" type="submit" disabled={busy || !text.trim()}>运行</button>
       </form>
       <p className="hint">像 SQL 一样写，沿关系走、不写 JOIN：<code>{"SELECT p.品类, count(o) FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类"}</code>。按你能看的行和已确认的定义算，不调用模型，不记入“我问过的”。<a href="https://github.com/Longado/ontopoc/blob/main/docs/QUERY.md" target="_blank" rel="noreferrer">写法</a></p>

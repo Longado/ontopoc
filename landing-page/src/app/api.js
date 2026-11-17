@@ -235,9 +235,9 @@ export const getExploreObject = (type, n) => request(`/api/workspace/explore/${e
 
 export const getBoards = () => request("/api/workspace/dashboards");
 export const getBoard = (id) => request(`/api/workspace/dashboards/${id}`);
-/** The board worked out for this person; `bar` is the filter bar's picks {field: value}. */
-export const getBoardData = (id, bar = {}) => readPost("/api/workspace/dashboards/data", { id, bar });
-export const previewBoard = (spec, bar = {}) => readPost("/api/workspace/dashboards/preview", { spec, bar });
+/** The board worked out for this person; `bar` is the filter bar's picks {field: value}; `params` the values typed for its parameters {name: value}. */
+export const getBoardData = (id, bar = {}, params = {}) => readPost("/api/workspace/dashboards/data", { id, bar, params });
+export const previewBoard = (spec, bar = {}, params = {}) => readPost("/api/workspace/dashboards/preview", { spec, bar, params });
 export const createBoard = (payload) => send("/api/workspace/dashboards", payload);
 export const updateBoard = (payload) => send("/api/workspace/dashboards/update", payload);
 export const deleteBoard = (id) => send("/api/workspace/dashboards/delete", { id });

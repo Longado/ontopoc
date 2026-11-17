@@ -10,8 +10,12 @@
 A step names the steps it reads by id, always ones written before it, so the list is a tree of steps that cannot loop. Running it executes the statements
 in order into temporary tables of a connection and counts the rows of each node. The step types: input; join (inner, left, anti: the left rows with no match,
 semi: the left rows with a match; empty keys match nothing, or match each other with "null_keys": "equal"; "right_columns" picks the right-hand columns
-that come along); transform (the operators of pipeline_ops, each reporting the rows it affected); output (the columns it keeps, a key built from columns,
-duplicate and empty keys counted). A join is measured before it runs, from the distinct keys of its two inputs (one GROUP BY each, so the cost follows the
+that come along); transform (the operators of pipeline_ops, each reporting the rows it affected); union (the rows of several steps one after another, columns
+matched by name: a column whose type differs between them, a missing column unless "missing": "empty", or a code column whose confirmed meanings are not the same on
+every side is refused; the rows found in more than one input are counted, as is every row a missing column was left empty on); split (each row to the first branch
+whose condition holds, the rest to a "rest" branch when there is one; a branch has its own id that later steps read, and the run counts per branch the rows, the rows
+whose condition was empty and the rows that met it but went to an earlier branch, and the rows that went to no branch); output (the columns it keeps, a key built
+from columns, duplicate and empty keys counted). A join is measured before it runs, from the distinct keys of its two inputs (one GROUP BY each, so the cost follows the
 inputs and not the rows the join makes), and refused when it would make more than ROW_CAP rows. After it runs, when it made more rows than the rows of its left
 input that took part, the keys that repeat on the right and the numeric columns whose sum would then be counted more than once are named, with the sums before
 and after; the same is said the other way round when the left side repeats a key and a numeric column of the right side would be counted more than once. An
@@ -30,13 +34,17 @@ import time
 
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_llm import check_llm_step, llm_sql
-from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, UPSTREAM, carry, compile_op, new_context, visible
+from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, UPSTREAM, _where, carry, compile_op, new_context, visible
 
 NUMERIC = ('integer', 'decimal')
 HOWS = ('inner', 'left', 'anti', 'semi')
 NULL_KEYS = ('no_match', 'equal')
 EXAMPLES = 3
-STEP_TYPES = ('input', 'join', 'transform', 'llm', 'output')
+STEP_TYPES = ('input', 'join', 'transform', 'llm', 'union', 'split', 'output')
+MAX_UNION, MAX_BRANCHES = 10, 10   # inputs of one union, branches of one split
+MISSING = ('error', 'empty')
+TYPE_WORD = {'integer': '整数', 'decimal': '小数', 'text': '文本', 'date': '日期', 'month': '月份', 'datetime': '日期时间', 'boolean': '是否'}
+BRANCH = '__branch'   # the column of a split's own table that says which branch a row went to (-1: none)
 ROW_CAP = 1_000_000   # the most rows one join may make: past it the join is refused, before it runs
 MAX_STEPS = 60
 KEY_EXAMPLES = 20
@@ -135,6 +143,10 @@ def _input_columns(step: dict, sid: str, datasets: dict, views: dict, ctx: dict)
     origin = data['source'] if 'view' in step else step['dataset']
     return [{**c, 'origin': f'{origin}.{c["name"]}', **{mark: True for mark in ('unsent', 'ai') if f'{origin}.{c["name"]}' in ctx.get(mark, ())},
              **({'fan_agg': [UPSTREAM]} if f'{origin}.{c["name"]}' in ctx.get('fan', ()) else {})} for c in data['columns']]
+
+
+def _split_read(sid: str, ref: str):
+    raise ValueError(f'步骤 {sid}：{ref} 是拆分，要读它的某一个分支（写分支的名字），不能读整个拆分')
 
 
 def _undefined(sid: str, role: str, ref):
@@ -236,6 +248,81 @@ def _output(step: dict, sid: str, columns: list[dict]) -> dict:
     return {'columns': out, 'key': key_names, 'dropped': [n for n in shown if n not in names], 'build': build}
 
 
+def _union_columns(step: dict, sid: str, sources: list[tuple[str, list[dict]]], ctx: dict) -> list[dict]:
+    """The columns of a union: every column a person sees in any input, in the order they first appear, each with the marks of all the columns it stacks. The hidden
+    columns of a join (the source rows) do not go through: rows of different inputs have no common source row. ValueError for a column of two types, a column one
+    input lacks (unless missing is "empty"), and a code column whose confirmed meanings are not the same in every input."""
+    names = list(dict.fromkeys(c['name'] for _, cols in sources for c in visible(cols)))
+    by_input = [(ref, {c['name']: c for c in visible(cols)}) for ref, cols in sources]
+    out = []
+    for n in names:
+        have = [(ref, cols[n]) for ref, cols in by_input if n in cols]
+        types = list(dict.fromkeys(c['type'] for _, c in have))
+        if len(types) > 1:
+            where = '，'.join(f'在 {ref} 里是{TYPE_WORD.get(c["type"], c["type"])}' for ref, c in have)
+            raise ValueError(f'步骤 {sid}：列「{n}」{where}：先用“字段转换”把它们变成同一种类型再合并')
+        lacking = [ref for ref, cols in by_input if n not in cols]
+        if lacking and step.get('missing', 'error') != 'empty':
+            raise ValueError(f'步骤 {sid}：{"、".join(lacking)} 没有列「{n}」。要让缺的列留空，把 missing 设成 empty（留空的行会数出来）；或者先把列名改成一样的')
+        origins = list(dict.fromkeys(c.get('origin') for _, c in have))
+        if len(origins) > 1 and any(o in ctx.get('codes', ()) for o in origins):
+            meanings = [ctx.get('meanings', {}).get(o) for o in origins]
+            if not all(meanings) or any(m != meanings[0] for m in meanings):
+                raise ValueError(f'步骤 {sid}：列「{n}」是代码列，来自 {"、".join(str(o) for o in origins)}，它们确认过的代码含义不一样（或有一边没有确认）：'
+                                 '合并后同一个代码会是两个意思。先用“打标签”把代码换成含义，再合并')
+            ctx.setdefault('used', set()).update(origins)   # the union stands on every side's meanings: one of them changing sends it back for a look
+        first = have[0][1]
+        out.append({'name': n, 'type': types[0], **({'origin': first['origin']} if first.get('origin') else {}), **carry(*(c for _, c in have))})   # a computed column has no origin
+    added = step.get('source_column')
+    if added is not None:
+        if not isinstance(added, str) or not added.strip() or len(added) > 60 or added in names or added.startswith('__'):
+            raise ValueError(f'步骤 {sid}：标出来源的新列（source_column）要写一个和别的列都不重名的列名')
+        out.append({'name': added, 'type': 'text'})
+    return out
+
+
+def _union_sql(step: dict, table: str, sources: list[tuple[str, str, list[dict]]], columns: list[dict]) -> tuple[str, list]:
+    """CREATE TEMP TABLE … AS one SELECT per input joined by UNION ALL; a column an input lacks is NULL there, and the source column holds the input's step id."""
+    added = step.get('source_column')
+    selects, params = [], []
+    for ref, table_of, cols in sources:
+        have = {c['name'] for c in visible(cols)}
+        parts = [(_q(c['name']) if c['name'] in have else 'NULL') + f' AS {_q(c["name"])}' for c in columns if c['name'] != added]
+        if added:
+            parts.append(f'? AS {_q(added)}')
+            params.append(ref)
+        selects.append(f'SELECT {", ".join(parts)} FROM {table_of}')
+    return f'CREATE TEMP TABLE {table} AS ' + ' UNION ALL '.join(selects), params
+
+
+def _branches(step: dict, sid: str, columns: list[dict], ctx: dict, taken) -> list[dict]:
+    """A split's branches as [{'id', 'rest', 'cond', 'params'}], checked: at least one branch with a condition, every id new, at most one rest branch and it is the last."""
+    branches = step.get('branches')
+    if not isinstance(branches, list) or not branches or len(branches) > MAX_BRANCHES or not all(isinstance(b, dict) for b in branches):
+        raise ValueError(f'步骤 {sid}：拆分要写分支（branches），每个分支 {{"id": 名字, "where": 条件}}，最后可以有一个 {{"id": 名字, "rest": true}} 接住其余的行，最多 {MAX_BRANCHES} 个')
+    out, seen = [], set()
+    for i, b in enumerate(branches):
+        bid = _text(b.get('id'), f'步骤 {sid} 的第 {i + 1} 个分支的名字（id）')
+        if bid in taken or bid in seen or bid == sid:
+            raise ValueError(f'步骤 {sid}：分支名「{bid}」和别的步骤或分支重复了')
+        seen.add(bid)
+        if b.get('rest'):
+            if i != len(branches) - 1:
+                raise ValueError(f'步骤 {sid}：“其余”分支（rest）要放在最后，接住前面的分支都没接的行')
+            out.append({'id': bid, 'rest': True, 'cond': None, 'params': []})
+            continue
+        if b.get('where') is None:
+            raise ValueError(f'步骤 {sid}：分支「{bid}」要写条件（where），或者写成 "rest": true 接住其余的行')
+        try:
+            cond, params = _where(b['where'], columns, ctx, f'步骤 {sid} 的分支「{bid}」')
+        except OpError as exc:
+            raise ValueError(str(exc)) from None
+        out.append({'id': bid, 'rest': False, 'cond': cond, 'params': params})
+    if not any(not b['rest'] for b in out):
+        raise ValueError(f'步骤 {sid}：拆分至少要有一个带条件的分支')
+    return out
+
+
 def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | None = None) -> dict:
     """The pipeline as a copy, or ValueError with the words the person reads: every step has a known type and a new id, reads only steps written before it, and
     names tables, views and columns that exist; every operator of a transform is checked against the columns it reads, and an output's columns and key too."""
@@ -247,6 +334,7 @@ def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | 
         raise ValueError(f'一条管道最多 {MAX_STEPS} 个步骤')
     columns: dict[str, list[dict]] = {}
     outputs: set[str] = set()
+    splits: set[str] = set()   # a split is read through its branches, not by its own id
     for position, step in enumerate(steps):
         if not isinstance(step, dict):
             raise ValueError(f'第 {position + 1} 步要写成 {{"id": …, "type": …}}')
@@ -256,7 +344,7 @@ def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | 
         kind = step.get('type')
         if kind not in STEP_TYPES:
             raise ValueError(f'步骤 {sid} 是不认识的步骤类型 {kind}，只有 {"、".join(STEP_TYPES)}')
-        read = lambda ref, role: columns[ref] if isinstance(ref, str) and ref in columns else _undefined(sid, role, ref)   # a list or an object is not a step id
+        read = lambda ref, role: _split_read(sid, ref) if isinstance(ref, str) and ref in splits else columns[ref] if isinstance(ref, str) and ref in columns else _undefined(sid, role, ref)   # a list or an object is not a step id
         if kind == 'input':
             columns[sid] = _input_columns(step, sid, datasets, views, ctx)
         elif kind == 'join':
@@ -285,6 +373,19 @@ def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | 
                 raise ValueError(str(exc)) from None
         elif kind == 'llm':
             columns[sid] = check_llm_step(step, sid, read(step.get('from'), '来源'))
+        elif kind == 'union':
+            refs = step.get('inputs')
+            if not isinstance(refs, list) or len(refs) < 2 or len(refs) > MAX_UNION or not all(isinstance(r, str) for r in refs) or len(set(refs)) != len(refs):
+                raise ValueError(f'步骤 {sid}：合并要写至少两个不同的来源步骤（inputs），最多 {MAX_UNION} 个')
+            if step.get('missing', 'error') not in MISSING:
+                raise ValueError(f'步骤 {sid}：缺列的处理（missing）只能是 error（有输入缺列就不合并，默认）或 empty（缺的列留空，并数出留空的行）')
+            columns[sid] = _union_columns(step, sid, [(r, read(r, '来源')) for r in refs], ctx)
+        elif kind == 'split':
+            source = read(step.get('from'), '来源')
+            for b in _branches(step, sid, source, ctx, columns):
+                columns[b['id']] = [{k: v for k, v in c.items() if k != 'badge'} for c in source]
+            columns[sid] = source
+            splits.add(sid)
         else:
             source = read(step.get('from'), '来源')
             name = _text(step.get('name'), f'步骤 {sid}：输出要写名字，输出的名字')
@@ -306,7 +407,7 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
     steps, kept = [], {}
     for index, step in enumerate(spec['steps']):
         sid, table = step['id'], f'pl_{index}'
-        stages, output, params, llm = [], None, [], None
+        stages, output, params, llm, split = [], None, [], None, None
         if step['type'] == 'input':
             data = _input_of(step, sid, datasets, views)[1]
             columns = _input_columns(step, sid, datasets, views, ctx)
@@ -319,6 +420,27 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
             src, columns = kept[step['from']]
             table, columns, stages = _transform(step, sid, src, columns, ctx, index)
             sql = ''
+        elif step['type'] == 'union':
+            sources = [(r, *kept[r]) for r in step['inputs']]
+            columns = _union_columns(step, sid, [(r, cols) for r, _, cols in sources], ctx)
+            sql, params = _union_sql(step, table, sources, columns)
+        elif step['type'] == 'split':
+            src, columns = kept[step['from']]
+            columns = [{k: v for k, v in c.items() if k != 'badge'} for c in columns]
+            made = _branches(step, sid, columns, ctx, {})
+            ruled = [b for b in made if not b['rest']]
+            case = ' '.join(f'WHEN ({b["cond"]}) THEN {i}' for i, b in enumerate(ruled))
+            params = [p for b in ruled for p in b['params']]
+            names = ', '.join(_q(c['name']) for c in columns)
+            taken = {c['name'] for c in columns}
+            marker = next(m for m in (BRANCH, *(f'{BRANCH}_{k}' for k in range(1, len(taken) + 2))) if m not in taken)   # never one of the source's own columns
+            sql = f'CREATE TEMP TABLE {table} AS SELECT {names}, CASE {case} ELSE -1 END AS {_q(marker)} FROM {src}'
+            split = []
+            for i, b in enumerate(made):
+                btable = f'{table}_b{i}'
+                split.append({**b, 'index': -1 if b['rest'] else i, 'table': btable, 'marker': marker,
+                              'sql': f'CREATE TEMP TABLE {btable} AS SELECT {names} FROM {table} WHERE {_q(marker)} = {-1 if b["rest"] else i}'})
+                kept[b['id']] = (btable, columns)
         elif step['type'] == 'llm':
             src, source_columns = kept[step['from']]
             columns = check_llm_step(step, sid, source_columns)
@@ -335,20 +457,30 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
             else:
                 table, sql = src, ''
         kept[sid] = (table, columns)
-        steps.append({'id': sid, 'type': step['type'], 'table': table, 'columns': columns, 'sql': sql, 'params': params, 'stages': stages, 'output': output, 'llm': llm})
+        steps.append({'id': sid, 'type': step['type'], 'table': table, 'columns': columns, 'sql': sql, 'params': params, 'stages': stages, 'output': output, 'llm': llm,
+                      'split': split})
     return steps
+
+
+def step_inputs(step: dict) -> list[str]:
+    """The ids a step reads: a join's two sides, the one step a transform, LLM, split or output reads, a union's inputs (a branch id stands for its split)."""
+    refs = [step[k] for k in ('left', 'right', 'from') if isinstance(step.get(k), str)]
+    return refs + [r for r in step.get('inputs') or [] if isinstance(r, str)] if isinstance(step.get('inputs'), list) else refs
 
 
 def needed_steps(spec: dict, targets) -> set[str]:
     """The ids of the steps the targets read, directly or not, and the targets themselves: what has to run for them."""
     by_id = {s['id']: s for s in spec['steps'] if isinstance(s, dict) and isinstance(s.get('id'), str)}
+    owner = {b['id']: s['id'] for s in by_id.values() if s.get('type') == 'split' and isinstance(s.get('branches'), list)
+             for b in s['branches'] if isinstance(b, dict) and isinstance(b.get('id'), str)}   # a branch is made by its split
     found, todo = set(), list(targets)
     while todo:
-        sid = todo.pop()
+        ref = todo.pop()
+        sid = owner.get(ref, ref)
         if sid in found or sid not in by_id:   # a step that reads one that is not there is for the check to refuse
             continue
         found.add(sid)
-        todo += [by_id[sid][k] for k in ('left', 'right', 'from') if isinstance(by_id[sid].get(k), str)]
+        todo += step_inputs(by_id[sid])
     return found
 
 
@@ -488,6 +620,43 @@ def _output_report(conn, table: str, output: dict) -> dict:
 FAILURE_KEYS = (('failures', 'cast_failures'), ('errors', 'calc_errors'), ('unmapped_rows', 'unmapped_rows'), ('dropped_null', 'dropped_by_empty_condition'))
 
 
+def _union_report(conn, step: dict, sources: list[tuple[str, str, list[dict]]], columns: list[dict]) -> dict:
+    """What a union did beyond stacking: {'filled_empty': {column: rows left empty because their input had no such column}, 'same_rows': {'count': distinct rows found
+    in more than one input, 'examples': the first EXAMPLES as {column: value}}}. Rows found twice are counted twice by a later sum: the run says so instead."""
+    names = [c['name'] for c in columns if c['name'] != step.get('source_column')]
+    filled = {}
+    for ref, table, cols in sources:
+        have = {c['name'] for c in visible(cols)}
+        rows = conn.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]
+        for n in names:
+            if n not in have:
+                filled[n] = filled.get(n, 0) + rows
+    shared = ', '.join(_q(n) for n in names)
+    distinct = [f'SELECT DISTINCT {", ".join((_q(n) if n in {c["name"] for c in visible(cols)} else "NULL") + " AS " + _q(n) for n in names)} FROM {table}' for _, table, cols in sources]
+    repeated = f'SELECT {shared} FROM ({" UNION ALL ".join(distinct)}) GROUP BY {shared} HAVING COUNT(*) > 1'
+    count = conn.execute(f'SELECT COUNT(*) FROM ({repeated})').fetchone()[0]
+    examples = [dict(zip(names, r)) for r in conn.execute(f'{repeated} LIMIT {EXAMPLES}')] if count else []
+    return {'filled_empty': filled, 'same_rows': {'count': count, 'examples': examples}}
+
+
+def _split_report(conn, table: str, branches: list[dict]) -> dict:
+    """Each branch's rows; for a branch with a condition, the rows whose condition was empty (not "false": a field was empty) and the rows that met it but had gone to an
+    earlier branch; and the rows that went to no branch (when there is no rest branch, they leave the pipeline here)."""
+    out = []
+    for b in branches:
+        rows = conn.execute(f'SELECT COUNT(*) FROM {b["table"]}').fetchone()[0]
+        entry = {'id': b['id'], 'rest': b['rest'], 'rows': rows}
+        if not b['rest']:
+            marker = _q(b['marker'])
+            empty, also = conn.execute(f'SELECT COALESCE(SUM(({b["cond"]}) IS NULL), 0), COALESCE(SUM(({b["cond"]}) AND {marker} >= 0 AND {marker} < {b["index"]}), 0) FROM {table}',
+                                       b['params'] + b['params']).fetchone()
+            entry.update({'empty_condition': empty, 'also_matched': also})
+        out.append(entry)
+    rest = any(b['rest'] for b in branches)
+    unassigned = 0 if rest else conn.execute(f'SELECT COUNT(*) FROM {table} WHERE {_q(branches[0]["marker"])} = -1').fetchone()[0]
+    return {'branches': out, 'unassigned': unassigned}
+
+
 def _failures(operators: list[dict]) -> dict:
     """What a node lost or could not do, by kind, nonzero only: values that did not convert, expressions with no result, codes with no label, rows a condition
     dropped because a field was empty."""
@@ -517,6 +686,7 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
     views, ctx = views or {}, ctx or new_context()
     steps = compile_pipeline(check_pipeline(spec, datasets, views, ctx), datasets, views, ctx)
     by_id = {s['id']: s for s in steps}
+    by_id.update({b['id']: {'table': b['table'], 'columns': s['columns']} for s in steps if s['split'] for b in s['split']})   # a branch is read as a table of its own
     feeds = needed_steps(spec, [s['id'] for s in spec['steps'] if s['type'] == 'output'])
     register(conn)
     nodes, made = [], []
@@ -540,6 +710,10 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                 made.append(compiled['table'])
                 conn.execute(f'DROP TABLE IF EXISTS temp.{compiled["table"]}')
                 conn.execute(compiled['sql'], compiled['params'])
+            for b in compiled['split'] or []:
+                made.append(b['table'])
+                conn.execute(f'DROP TABLE IF EXISTS temp.{b["table"]}')
+                conn.execute(b['sql'])
             operators = []
             if compiled['stages']:
                 previous = by_id[step['from']]['table']
@@ -554,7 +728,7 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                         raise PipelineRunError(extra['halt'])
                     previous = stage['table']
             rows_out = conn.execute(f'SELECT COUNT(*) FROM {compiled["table"]}').fetchone()[0]
-            inputs = [step[k] for k in ('left', 'right', 'from') if k in step]
+            inputs = step_inputs(step)
             shown = visible(compiled['columns'])
             node = {'id': compiled['id'], 'type': compiled['type'],
                     'rows_in': [(views[step['view']] if 'view' in step else datasets[dataset_key(step)])['rows']] if step['type'] == 'input'
@@ -573,6 +747,10 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                 node['failures'] = report['failures']
             if step['type'] == 'output':
                 node['output'] = _output_report(conn, compiled['table'], compiled['output'])
+            if step['type'] == 'union':
+                node['union'] = _union_report(conn, step, [(r, by_id[r]['table'], by_id[r]['columns']) for r in step['inputs']], compiled['columns'])
+            if compiled['split']:
+                node['split'] = _split_report(conn, compiled['table'], compiled['split'])
             nodes.append(node)
             if after:
                 after(conn, node, compiled)

@@ -4,12 +4,12 @@ import { AiDraftPanel, RunDialog } from "./AiDraftPanel.jsx";
 import { PipelineBar } from "./PipelineBar.jsx";
 import { PipelineGraph } from "./PipelineGraph.jsx";
 import { PipelinePanel } from "./PipelinePanel.jsx";
-import { KIND_LABEL, addStep, applyDraft, friendlyError, kindLine, newStep, orphans, sameSpec, stepTitle } from "./pipelineModel.js";
+import { KIND_LABEL, addStep, applyDraft, friendlyError, kindLine, newStep, orphans, sameSpec, stepTitle, withBranchNodes } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { StepEditor } from "./StepEditors.jsx";
 import { useSettled } from "./useSettled.js";
 
-const ADDABLE = ["input", "join", "transform", "llm", "output"];
+const ADDABLE = ["input", "join", "transform", "llm", "union", "split", "output"];
 const LEAVE_ASK = "有改动还没保存，离开会丢掉这些改动。要离开吗？";
 
 /** While there are unsaved changes: closing or reloading the tab asks, and so does following a link to another page of the app. (The browser's back button cannot be stopped from here.) */
@@ -62,7 +62,7 @@ export function PipelineEditor({ detail, reload }) {
   useLeaveGuard(dirty);
   const step = draft.steps.find((s) => s.id === selected) ?? null;
   const summary = useSettled(() => pipelineSummary(name, draft), JSON.stringify(draft));
-  const nodes = Object.fromEntries((summary.data?.nodes ?? []).map((n) => [n.id, n]));
+  const nodes = withBranchNodes(Object.fromEntries((summary.data?.nodes ?? []).map((n) => [n.id, n])), draft.steps);   // a step that reads a branch sees its columns
   const preview = useSettled(() => (step && tab !== "log" ? previewNode(name, draft, step.id, upto) : Promise.resolve(null)), JSON.stringify([draft, selected, upto, tab === "log"]));
   const hasOutput = draft.steps.some((s) => s.type === "output");
   const hasAi = draft.steps.some((s) => s.type === "llm");

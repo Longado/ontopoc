@@ -1,15 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { operatorColumns } from "./api.js";
 import { LlmEditor } from "./LlmEditor.jsx";
-import { OperatorForm } from "./OperatorForms.jsx";
+import { FilterForm, OperatorForm } from "./OperatorForms.jsx";
 import {
   HOW_LABEL, KIND_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, catalogView, copyOperator, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, moveOperator, newOperator,
-  operatorName, operatorTitle, removeOperator, removeStep, setOperator, stepTitle, updateStep,
+  branchReaders, newBranchId, operatorName, operatorTitle, readableSteps, removeOperator, removeStep, renameBranch, setOperator, splitLines, stepTitle, unionLines, updateStep,
 } from "./pipelineModel.js";
 import { Select } from "./Select.jsx";
 
 const earlier = (draft, step) => draft.steps.slice(0, draft.steps.findIndex((s) => s.id === step.id));
-const stepOption = (steps) => (s) => <option key={s.id} value={s.id}>{KIND_LABEL[s.type]}：{stepTitle(s, steps)}</option>;
+/** The options of a "读哪一步" picker: the steps before this one, a split by its branches. */
+const readOptions = (draft, step, skip = []) => readableSteps(earlier(draft, step)).filter((r) => !skip.includes(r.id)).map((r) => <option key={r.id} value={r.id}>{r.label}</option>);
 
 /** The header every step editor has: what it is, and the way to remove it. */
 function StepHead({ step, draft, setDraft, onRemoved }) {
@@ -47,7 +48,6 @@ function InputEditor({ step, draft, setDraft, datasets }) {
 }
 
 function JoinEditor({ step, draft, setDraft, nodes }) {
-  const before = earlier(draft, step);
   const columnsOf = (id) => (nodes[id]?.column_types ?? []).map((c) => c.name);
   const left = columnsOf(step.left);
   const right = columnsOf(step.right);
@@ -62,11 +62,11 @@ function JoinEditor({ step, draft, setDraft, nodes }) {
   return (
     <div className="op-form">
       <div className="inline wide">
-        <Select label="左边" value={step.left ?? ""} onChange={(v) => set({ left: v, on: step.on.map(() => ({ left: "", right: "" })) })}>{before.map(stepOption(draft.steps))}</Select>
+        <Select label="左边" value={step.left ?? ""} onChange={(v) => set({ left: v, on: step.on.map(() => ({ left: "", right: "" })) })}>{readOptions(draft, step)}</Select>
         <Select label="关联方式" value={step.how} onChange={(how) => set({ how })}>
           {Object.entries(HOW_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </Select>
-        <Select label="右边" value={step.right ?? ""} onChange={(v) => set({ right: v, on: step.on.map((p) => ({ ...p, right: "" })), right_columns: undefined })}>{before.filter((s) => s.id !== step.left).map(stepOption(draft.steps))}</Select>
+        <Select label="右边" value={step.right ?? ""} onChange={(v) => set({ right: v, on: step.on.map((p) => ({ ...p, right: "" })), right_columns: undefined })}>{readOptions(draft, step, [step.left])}</Select>
       </div>
       {step.how === "semi" && <p className="hint">只留左边对得上的行，不带右边的列。</p>}
       {step.how === "anti" && <p className="hint">只留左边在右边找不到的行，不带右边的列。</p>}
@@ -184,7 +184,7 @@ function TransformEditor({ step, draft, setDraft, nodes, name, catalog, onPrevie
     <div className="op-form">
       <div className="field">
         <span className="caption">读哪一步</span>
-        <Select label="读哪一步" value={step.from ?? ""} onChange={(from) => { setEditing(null); setDraft(updateStep(draft, step.id, { from })); }}>{earlier(draft, step).map(stepOption(draft.steps))}</Select>
+        <Select label="读哪一步" value={step.from ?? ""} onChange={(from) => { setEditing(null); setDraft(updateStep(draft, step.id, { from })); }}>{readOptions(draft, step)}</Select>
       </div>
       <ol className="op-stack">
         {step.operators.map((op, i) => (
@@ -215,6 +215,111 @@ function TransformEditor({ step, draft, setDraft, nodes, name, catalog, onPrevie
   );
 }
 
+/** 合并: the steps whose rows are stacked, matched by column name; what to do with a column some of them lack; an optional column that says where each row came from. */
+function UnionEditor({ step, draft, setDraft, nodes }) {
+  const set = (patch) => setDraft(updateStep(draft, step.id, patch));
+  const inputs = step.inputs ?? [];
+  const readable = readableSteps(earlier(draft, step));
+  const options = [...readable, ...inputs.filter((i) => !readable.some((r) => r.id === i)).map((i) => ({ id: i, label: `${i}（这里不能读，取消勾选它）` }))];
+  const toggle = (id, on) => set({ inputs: on ? [...inputs, id] : inputs.filter((i) => i !== id) });
+  const lines = unionLines(nodes[step.id]?.union);
+  return (
+    <div className="op-form">
+      <fieldset className="keys">
+        <legend>把哪几步的行接在一起（按列名对上）</legend>
+        {options.map((r) => <label key={r.id}><input type="checkbox" checked={inputs.includes(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} />{r.label}</label>)}
+      </fieldset>
+      <div className="ways">
+        <label><input type="radio" name={`missing-${step.id}`} checked={(step.missing ?? "error") === "error"} onChange={() => set({ missing: "error" })} />有一步缺列就不合并</label>
+        <label><input type="radio" name={`missing-${step.id}`} checked={step.missing === "empty"} onChange={() => set({ missing: "empty" })} />缺的列留空（会数出留空的行）</label>
+      </div>
+      <label className="field"><span className="caption">加一列标出每行来自哪一步（不填就不加）</span>
+        <input type="text" value={step.source_column ?? ""} placeholder="例如 来源" onChange={(e) => set({ source_column: e.target.value || undefined })} />
+      </label>
+      <p className="hint">同一列在各步里类型要一样；代码列要各步确认过的含义一样，不一样先用“打标签”换成含义。</p>
+      {lines.length > 0 && (
+        <div className="verdict">
+          <p className="caption">这一步做了什么</p>
+          <ul className="plain-list">{lines.map((l) => <li key={l} className={/算两次/.test(l) ? "warn" : ""}>{l}</li>)}</ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The columns a split's conditions read: what its source step leaves, with the meanings of its code columns (asked the way a transform's first operator asks). */
+function useSourceColumns(name, draft, step) {
+  const probe = `__cols_${step.id}`;
+  const spec = { ...draft, steps: [...earlier(draft, step), { id: probe, type: "transform", from: step.from, operators: [] }] };
+  const key = JSON.stringify(spec);
+  const [state, setState] = useState({ cols: null, error: "" });
+  useEffect(() => {
+    let live = true;
+    if (!step.from) return undefined;
+    operatorColumns(name, spec, probe, null).then((b) => live && setState({ cols: b.columns, error: "" }), (e) => live && setState({ cols: null, error: e.message }));
+    return () => { live = false; };
+  }, [key]);
+  return state;
+}
+
+/** A branch's name, renamed when the person leaves the box or presses Enter: an empty name or one already taken goes back to what it was. */
+function BranchName({ label, id, onRename }) {
+  const [text, setText] = useState(id);
+  useEffect(() => setText(id), [id]);
+  const done = () => {
+    if (text.trim() && text !== id) onRename(text.trim());
+    setText(id);   // a refused name goes back; an accepted one comes back as the new id
+  };
+  return <input type="text" aria-label={label} value={text} onChange={(e) => setText(e.target.value)} onBlur={done} onKeyDown={(e) => e.key === "Enter" && done()} />;
+}
+
+/** 拆分: each row goes to the first branch whose condition holds; a last 其余 branch takes the rest. Each branch has a name later steps read. */
+function SplitEditor({ step, draft, setDraft, nodes, name }) {
+  const set = (patch) => setDraft(updateStep(draft, step.id, patch));
+  const branches = step.branches ?? [];
+  const setBranch = (i, patch) => set({ branches: branches.map((b, k) => (k === i ? { ...b, ...patch } : b)) });
+  const ruled = branches.filter((b) => !b.rest);
+  const rest = branches.find((b) => b.rest);
+  const source = useSourceColumns(name, draft, step);
+  const readBy = (id) => branchReaders(draft.steps, id);
+  const lines = splitLines(nodes[step.id]?.split);
+  const withRest = (list) => [...list, ...(rest ? [rest] : [])];
+  return (
+    <div className="op-form">
+      <div className="field"><span className="caption">拆哪一步的行</span>
+        <Select label="读哪一步" value={step.from ?? ""} onChange={(from) => set({ from })}>{readOptions(draft, step)}</Select>
+      </div>
+      {source.error && <p className="error">读不出这一步的列：{friendlyError(source.error, draft.steps)}</p>}
+      {ruled.map((b, i) => (
+        <fieldset className="component" key={i}>
+          <span className="caption">分支 {i + 1} 的名字（后面的步骤按它读）</span>
+          <div className="inline wide">
+            <BranchName label={`分支 ${i + 1} 的名字`} id={b.id} onRename={(to) => setDraft(renameBranch(draft, step.id, b.id, to))} />
+            <button className="plain" disabled={ruled.length === 1 || readBy(b.id).length > 0} title={readBy(b.id).length ? `${readBy(b.id).join("、")} 在读这个分支，先改它们` : ""} onClick={() => set({ branches: branches.filter((x) => x !== b) })}>去掉这个分支</button>
+          </div>
+          {source.cols && <FilterForm op={{ where: b.where ?? { all: [] } }} cols={source.cols} onChange={(op) => setBranch(branches.indexOf(b), { where: op.where })} lead="满足" tail="条件的行进这个分支" />}
+        </fieldset>
+      ))}
+      <div className="inline">
+        <button className="plain" disabled={branches.length >= 10} onClick={() => set({ branches: withRest([...ruled, { id: newBranchId(step, draft.steps), where: { all: [{ column: "", cmp: "eq", value: "" }] } }]) })}>加一个分支</button>
+        <label className="check" title={rest && readBy(rest.id).length ? `${readBy(rest.id).join("、")} 在读“其余”分支，先改它们` : ""}><input type="checkbox" checked={Boolean(rest)} disabled={Boolean(rest) && readBy(rest.id).length > 0} onChange={(e) => set({ branches: e.target.checked ? [...ruled, { id: `${step.id}_其余`, rest: true }] : ruled })} />其余的行进“其余”分支</label>
+      </div>
+      {rest && (
+        <label className="field"><span className="caption">“其余”分支的名字</span>
+          <BranchName label="“其余”分支的名字" id={rest.id} onRename={(to) => setDraft(renameBranch(draft, step.id, rest.id, to))} />
+        </label>
+      )}
+      <p className="hint">一行只进第一个满足条件的分支。{rest ? "" : "没有“其余”分支时，哪个条件都不满足的行不会往下走。"}后面的步骤按分支的名字读。</p>
+      {lines.length > 0 && (
+        <div className="verdict">
+          <p className="caption">这一步做了什么</p>
+          <ul className="plain-list">{lines.map((l) => <li key={l} className={/没进任何分支|空的|前面的分支/.test(l) ? "warn" : ""}>{l}</li>)}</ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OutputEditor({ step, draft, setDraft, nodes }) {
   const node = nodes[step.id];
   const source = nodes[step.from]?.column_types ?? [];
@@ -232,7 +337,7 @@ function OutputEditor({ step, draft, setDraft, nodes }) {
   return (
     <div className="op-form">
       <div className="field"><span className="caption">读哪一步</span>
-        <Select label="读哪一步" value={step.from ?? ""} onChange={(from) => set({ from, columns: undefined, key: undefined })}>{earlier(draft, step).map(stepOption(draft.steps))}</Select>
+        <Select label="读哪一步" value={step.from ?? ""} onChange={(from) => set({ from, columns: undefined, key: undefined })}>{readOptions(draft, step)}</Select>
       </div>
       <label className="field"><span className="caption">写成哪个数据集（没有就新建，有就加一个新版本）</span>
         <input type="text" value={step.name ?? ""} onChange={(e) => set({ name: e.target.value })} />
@@ -275,6 +380,8 @@ export function StepEditor({ step, draft, setDraft, nodes, datasets, name, catal
       {step.type === "join" && <JoinEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} />}
       {step.type === "transform" && <TransformEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} name={name} catalog={catalog} onPreviewTo={onPreviewTo} />}
       {step.type === "llm" && <LlmEditor key={step.id} step={step} draft={draft} setDraft={setDraft} nodes={nodes} name={name} options={options} dirty={dirty} />}
+      {step.type === "union" && <UnionEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} />}
+      {step.type === "split" && <SplitEditor key={step.id} step={step} draft={draft} setDraft={setDraft} nodes={nodes} name={name} />}
       {step.type === "output" && <OutputEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} />}
       {(step.type === "transform" || step.type === "llm") && failures.length > 0 && <p className="warn small">这一步共：{failures.join("；")}</p>}
     </div>

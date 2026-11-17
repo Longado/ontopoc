@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { timeText } from "./format.js";
-import { KIND_LABEL, ageText, confirmedText, edgeLabel, verdictText } from "./graphModel.js";
+import { KIND_LABEL, ageText, cameFromText, datedText, confirmedText, edgeLabel, verdictText } from "./graphModel.js";
 import { CARDINALITY_LABEL, keyPairText } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
@@ -60,10 +60,21 @@ function TypeBody({ node }) {
   );
 }
 
-function DatasetBody({ node }) {
+function SourceBody({ node }) {
   return (
     <>
-      <p className="muted">第 {node.version} 版{node.uploaded_at && `，上传于 ${ageText(node.uploaded_at)}（${timeText(node.uploaded_at)}${node.who ? `，${node.who}` : ""}）`}</p>
+      <p className={node.status === "failed" ? "warn" : "muted"}>{node.kind_label}，{node.status_label}{node.status_at && `（${timeText(node.status_at)}）`}</p>
+      <List title="读进数据集的表" empty="还没有读进数据集的表" items={node.tables.map((t) => ({ key: t.table, name: `${t.table} → ${t.dataset}`, href: hrefFor({ page: "dataset", name: t.dataset, tab: "fields" }) }))} />
+      <p><a href={hrefFor({ page: "source", name: node.key })}>进入 {node.name}</a></p>
+    </>
+  );
+}
+
+function DatasetBody({ node }) {
+  const came = cameFromText(node.came_from, true);
+  return (
+    <>
+      <p className="muted">第 {node.version} 版{came && `，${came}`}{node.uploaded_at && `，${datedText(node.came_from)} ${ageText(node.uploaded_at)}（${timeText(node.uploaded_at)}${node.who ? `，${node.who}` : ""}）`}</p>
       <List title="用于对象类型" empty="还没有对象类型用它" items={node.used_for.map((n) => ({ key: n, name: n }))} />
       {node.link && <p><a href={hrefFor({ page: "dataset", name: node.key, tab: "fields" })}>进入 {node.name}</a></p>}
     </>
@@ -98,7 +109,7 @@ export function NodeDrawer({ node, onClose }) {
         <button className="plain" onClick={close}>关闭</button>
       </div>
       {node.state && <p><State item={node} /></p>}
-      {node.kind === "type" ? <TypeBody node={node} /> : node.kind === "dataset" ? <DatasetBody node={node} /> : <ElementBody node={node} />}
+      {node.kind === "type" ? <TypeBody node={node} /> : node.kind === "dataset" ? <DatasetBody node={node} /> : node.kind === "source" ? <SourceBody node={node} /> : <ElementBody node={node} />}
     </aside>
   );
 }

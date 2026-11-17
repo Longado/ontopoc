@@ -32,6 +32,7 @@ BUCKETS = ('month', 'year')   # GROUP BY month(o.下单日期): a date read as i
 COMPARE = {'>': 'more_than', '>=': 'at_least', '<': 'less_than', '<=': 'at_most'}
 KEYWORDS = {'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'GROUP', 'BY', 'ORDER', 'ASC', 'DESC', 'LIMIT', 'AS', 'IN', 'NOT', 'BETWEEN', 'LIKE', 'IS', 'NULL', 'JOIN', 'ON', 'HAVING'}
 MAX_TEXT = 4000
+MAX_GRAPH = 100   # start objects a SELECT GRAPH may draw: a picture of more is not read, it is counted
 QUERY_KEYS = ('start', 'where', 'via', 'group_by', 'share', 'measure', 'top', 'order')
 _TOKEN = re.compile(r"""
     (?P<space>\s+|--[^\n]*)
@@ -112,7 +113,7 @@ class _Reader:
         if k == 'param':
             self.i += 1
             if v[1:] not in self.params:
-                raise QueryError(f'缺少参数 {v}：调用时要给它一个值', at)
+                raise QueryError(f'缺少参数 {v}：调用时在 params 里给它一个值，例如 "params": {{"{v[1:]}": "…"}}', at)
             given = self.params[v[1:]]
             if isinstance(given, bool) or not isinstance(given, (str, int, float)):
                 raise QueryError(f'参数 {v} 要是一个文字或数字', at)
@@ -236,6 +237,11 @@ def _condition(r: _Reader) -> dict:
     raise QueryError(f'第 {here + 1} 个字附近应该是 =、<>、IN、NOT IN、>、>=、<、<= 或 BETWEEN', here)
 
 
+def param_names(text: str) -> list[str]:
+    """The $names a query uses, each once, in order of first use; none inside a quoted value or a comment. QueryError when the text cannot be read at all."""
+    return list(dict.fromkeys(v[1:] for k, v, _ in _tokens(text) if k == 'param'))
+
+
 def parse(text: str, params: dict | None = None) -> dict:
     """The text as its parts (no names are looked up yet): select, chains, where, group, order, limit."""
     if not isinstance(text, str) or not text.strip():
@@ -244,10 +250,17 @@ def parse(text: str, params: dict | None = None) -> dict:
         raise QueryError(f'一条查询最多 {MAX_TEXT} 个字')
     r = _Reader(text, params)
     r.take('kw', 'SELECT', 'SELECT')
-    select = [_select_item(r)]
-    while r.peek('op', ','):
+    graph = r.peek('name') and r.tokens[r.i][1].upper() == 'GRAPH' and (r.peek('kw', 'FROM', 1) or r.peek('op', ',', 1))
+    if graph:   # SELECT GRAPH: the objects and how they are related, not a number
         r.take()
-        select.append(_select_item(r))
+        if r.peek('op', ','):
+            raise QueryError('SELECT GRAPH 后面直接写 FROM：一条查询要么画图，要么算一个数', r.at())
+        select = []
+    else:
+        select = [_select_item(r)]
+        while r.peek('op', ','):
+            r.take()
+            select.append(_select_item(r))
     r.take('kw', 'FROM', 'FROM')
     chains = []
     while True:
@@ -270,6 +283,9 @@ def parse(text: str, params: dict | None = None) -> dict:
         if r.peek('kw', 'OR'):
             raise QueryError('现在只能用 AND 连起几个条件；OR 还不支持（同一个属性的几个值可以写 IN）', r.at())
     group = []
+    if graph and (r.peek('kw', 'GROUP') or r.peek('kw', 'ORDER')):
+        word = 'GROUP BY' if r.peek('kw', 'GROUP') else 'ORDER BY'
+        raise QueryError(f'SELECT GRAPH 不写 {word}：它画出对象和它们之间的关系；要少画一些，用 LIMIT n 只留前 n 个起点对象', r.at())
     if r.peek('kw', 'GROUP'):
         r.take()
         r.take('kw', 'BY', 'BY')
@@ -304,10 +320,21 @@ def parse(text: str, params: dict | None = None) -> dict:
             raise QueryError('LIMIT 后面写一个大于 0 的整数', at)
         r.take()
         limit = {'n': int(v), 'at': at}
+        if graph and limit['n'] > MAX_GRAPH:
+            raise QueryError(f'SELECT GRAPH 最多画 {MAX_GRAPH} 个起点对象；要看总数，用 count()', at)
     if not r.peek('end'):
         k, v, at = r.tokens[r.i]
         raise QueryError(f'第 {at + 1} 个字附近的“{v}”多出来了，或者这个位置还不支持它', at)
-    return {'select': select, 'chains': chains, 'where': where, 'group': group, 'order': order, 'limit': limit}
+    return {'select': select, 'chains': chains, 'where': where, 'group': group, 'order': order, 'limit': limit, 'graph': bool(graph)}
+
+
+def is_graph(text) -> bool:
+    """Does the text ask for a graph (SELECT GRAPH …)? False for anything that cannot be read."""
+    try:
+        tokens = _tokens(text) if isinstance(text, str) else []
+    except QueryError:
+        return False
+    return len(tokens) > 2 and tokens[0][:2] == ('kw', 'SELECT') and tokens[1][0] == 'name' and tokens[1][1].upper() == 'GRAPH' and tokens[2][:2] in (('kw', 'FROM'), ('op', ','))
 
 
 # --- names, against what this person may see ---------------------------------------------------------------------------------------------------------
@@ -403,6 +430,9 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
             raise _no_property(catalog, types[var], prop, at)
         return prop
 
+    if parsed['graph']:
+        return _compile_graph(catalog, parsed, types, edges, prop_of)
+
     aggs = [s for s in parsed['select'] if s['kind'] == 'agg']
     fields = [s for s in parsed['select'] if s['kind'] == 'field']
     if len(aggs) != 1:
@@ -444,16 +474,7 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
     if idle:
         raise QueryError(f'{"、".join(f"({v}:{_type_name(catalog, types[v])})" for v in idle)} 没有用到。'
                          f'SQL 里多连一张表会悄悄去掉连不上的行，这里不会，所以请删掉它，或者按它分组')
-    where = []
-    for c in parsed['where']:
-        prop = prop_of(c['var'], c['prop'], c['at'])
-        if 'range' in c:
-            where.append({'field': prop, **{k: str(v) for k, v in c['range'].items()}})
-            continue
-        values = list(dict.fromkeys(str(v) for v in c['values']))
-        if not c['not'] and len(values) > 1:
-            raise QueryError(f'{c["var"]}.{prop} IN 几个值还不支持（“不在这几个值里”可以写 NOT IN）；分成几条查询，或者确认一个视图', c['at'])
-        where.append({'field': prop, 'not_equals': values[0] if len(values) == 1 else values} if c['not'] else {'field': prop, 'equals': values[0]})
+    where = _where(parsed, prop_of)
     group_by = []
     for g in group:
         if g['var'] not in types:
@@ -485,6 +506,39 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
 
 # --- writing it back -----------------------------------------------------------------------------------------------------------------------------------
 
+def _where(parsed: dict, prop_of) -> list[dict]:
+    where = []
+    for c in parsed['where']:
+        prop = prop_of(c['var'], c['prop'], c['at'])
+        if 'range' in c:
+            where.append({'field': prop, **{k: str(v) for k, v in c['range'].items()}})
+            continue
+        values = list(dict.fromkeys(str(v) for v in c['values']))
+        if not c['not'] and len(values) > 1:
+            raise QueryError(f'{c["var"]}.{prop} IN 几个值还不支持（“不在这几个值里”可以写 NOT IN）；分成几条查询，或者确认一个视图', c['at'])
+        where.append({'field': prop, 'not_equals': values[0] if len(values) == 1 else values} if c['not'] else {'field': prop, 'equals': values[0]})
+    return where
+
+
+def _compile_graph(catalog: dict, parsed: dict, types: dict, edges: list, prop_of) -> dict:
+    """SELECT GRAPH: the first node is the start; WHERE is on it; every other node is drawn, reached from the start by its path. `graph` is those paths
+    (relation keys from the start), `top` the start objects drawn at most."""
+    start = parsed['chains'][0][0]['var']
+    for c in parsed['where']:
+        if c['var'] not in types:
+            raise QueryError(f'简称 {c["var"]} 没有在 FROM 里出现', c['at'])
+        if c['var'] != start:
+            raise QueryError(f'条件只能写在起点对象（{start}，FROM 里的第一个）上；{c["var"]}.{c["prop"]} 是 {_type_name(catalog, types[c["var"]])} 的属性。'
+                             f'跨对象的条件还不支持', c['at'])
+    paths = _paths(start, edges)
+    unreached = [v for v in types if v not in paths]
+    if unreached:
+        raise QueryError(f'{"、".join(unreached)} 和 {start} 没有连在一起：FROM 里的节点要沿关系连成一片')
+    drawn = list(dict.fromkeys(tuple(paths[v]) for v in types if v != start))
+    return {'start': types[start], 'where': _where(parsed, prop_of), 'via': [], 'group_by': None, 'share': None, 'measure': None,
+            'top': parsed['limit']['n'] if parsed['limit'] else None, 'order': None, 'graph': [list(p) for p in drawn]}
+
+
 def canonical(query: dict) -> dict:
     """A structured query with every key, in the shape compile_query returns (group_by as dimensions, empty parts as None or [])."""
     q = {k: query.get(k) for k in QUERY_KEYS}
@@ -495,6 +549,8 @@ def canonical(query: dict) -> dict:
         gb = [{'via': q['via'], 'field': gb}]
         q['via'] = []
     q['group_by'] = [{'via': list(d.get('via') or []), 'field': d['field'], **({'by': d['by']} if d.get('by') else {})} for d in gb] if gb else None
+    if query.get('graph') is not None:   # SELECT GRAPH: the paths it draws
+        q['graph'] = [list(p) for p in query['graph']]
     return q
 
 
@@ -553,13 +609,18 @@ def to_text(query: dict, catalog: dict) -> str:
 
     head = f'({start_var}:{_ident(_shown_name(catalog["types"], q["start"]))})'
     chains.append(head)
+    graph = q.get('graph')
+    for path in graph or []:
+        walk(path)
     dims = [(walk(d['via']), d['field'], d.get('by')) for d in q['group_by'] or []]
     dim_text = lambda v, f, by: f'{by}({v}.{_ident(f)})' if by else f'{v}.{_ident(f)}'
     counted = walk(q['via']) if q['via'] else start_var
     if chains[0] == head and len(chains) > 1 and chains[1].startswith(f'({start_var})'):
         chains[0] = head + chains.pop(1)[len(f'({start_var})'):]
     m, s = q['measure'], q['share']
-    if m:
+    if graph is not None:
+        agg = alias = None
+    elif m:
         fn = {'sum': 'sum', 'average': 'avg'}.get(m.get('op'))
         if fn is None:
             raise QueryError(f'不支持的算法 {m.get("op")}')
@@ -573,7 +634,7 @@ def to_text(query: dict, catalog: dict) -> str:
         agg, alias = f'share({start_var}.{_ident(str(s["field"]))} = {_literal(s["equals"])})', ALIASES['share']
     else:
         agg, alias = f'count({counted})', ALIASES['count']
-    lines = [f'SELECT {", ".join([*(dim_text(*d) for d in dims), f"{agg} AS {alias}"])}', f'FROM {", ".join(chains)}']
+    lines = ['SELECT GRAPH' if graph is not None else f'SELECT {", ".join([*(dim_text(*d) for d in dims), f"{agg} AS {alias}"])}', f'FROM {", ".join(chains)}']
     conds = []
     bound = lambda v: str(v) if re.fullmatch(r'-?\d+(\.\d+)?', str(v)) else _literal(v)
     for w in q['where']:

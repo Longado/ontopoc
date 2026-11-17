@@ -58,7 +58,7 @@ from ontology_poc_generator.ontology_confirm import confirmed_reference, element
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
-from ontology_poc_generator.workspace_questions import QaRefused, ask as ask_workspace, query_as_text, run_text as run_query_text, history as question_history, reopen as reopen_question, scope_line
+from ontology_poc_generator.workspace_questions import WRITES as ASK_WRITES, QaRefused, ask as ask_workspace, query_as_text, run_text as run_query_text, history as question_history, reopen as reopen_question, scope_line
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
@@ -1552,10 +1552,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 payload = self.read_json()
                 if payload is None:
                     return
+                if payload.get('writes', 'json') not in ASK_WRITES:   # said before the budget is spent on a question that would not be asked
+                    raise QaRefused('writes 只能是 "json"（模型写结构化查询，默认）或 "query"（模型写本体查询）')
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
                     ask_budget.take(conn, self.user)   # before the model is asked: a token and a person may ask so many questions an hour
-                    body = ask_workspace(conn, gateway, self.user, payload.get('question'))
+                    body = ask_workspace(conn, gateway, self.user, payload.get('question'), payload.get('writes', 'json'))
                 finally:
                     conn.close()
             except QaRefused as exc:
