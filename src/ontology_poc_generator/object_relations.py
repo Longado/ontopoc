@@ -228,6 +228,16 @@ def check_definition(conn, payload: dict, user: dict | None, english_name: str |
     return content
 
 
+def preview_relation(conn, payload: dict, user: dict | None) -> dict:
+    """How many rows would connect for a relation not yet saved: the same check a save runs, on the rows this person may read, kept nowhere. Names are not needed.
+    TypeRefused says what is wrong (a type that is not theirs, a column that is not there)."""
+    content = check_definition(conn, {**payload, 'english_name': 'preview', 'name': '预览'}, user)
+    result = check_relation(conn, content, record=False, user=user)
+    n = result['numbers']
+    return {'rows': n['rows'], 'matched': n['matched'], 'unmatched': n['unmatched'], 'empty': result['empty'], 'samples': result['samples'],
+            'many_name': result['many']['name'], 'one_name': result['one']['name'], 'fan_keys': result['fanout']['keys'], 'cardinality_holds': not cardinality_false(result)}
+
+
 def check_names_free(conn, content: dict) -> None:
     mine = relation_id(content['english_name'])
     for element_id, other in conn.execute("SELECT element_id, content_json FROM element_state WHERE element_id LIKE 'relation:%'"):

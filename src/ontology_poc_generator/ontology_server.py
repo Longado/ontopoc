@@ -87,7 +87,7 @@ from ontology_poc_generator.object_views import confirm_view, create_view, list_
 from ontology_poc_generator.notices import list_notices, mark_read, set_notify
 from ontology_poc_generator.row_rules import RuleRefused, set_rules
 from ontology_poc_generator.object_relations import (
-    confirm_relation, create_relation, list_relations, relation_columns, relation_detail, relation_log, update_relation)
+    confirm_relation, create_relation, list_relations, preview_relation, relation_columns, relation_detail, relation_log, update_relation)
 from ontology_poc_generator.ontology_graph import lineage_graph, relation_graph, type_uses
 from ontology_poc_generator.batch_confirm import confirm_group, group_detail, queue_with_groups
 from ontology_poc_generator.review_queue import confirm_item, send_back
@@ -1685,6 +1685,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                             body = create_relation(conn, payload, who, self.user)
                         elif route == 'relations/update':
                             body = update_relation(conn, payload, who, self.user)
+                        elif route == 'relations/preview':
+                            body = preview_relation(conn, payload, self.user)
                         elif route == 'relations/confirm':
                             body = confirm_relation(conn, payload, who, self.user)
                         elif route == 'queue/confirm':
@@ -1961,7 +1963,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path in ('/api/workspace/query', '/api/workspace/query/text'):
                 self.query_post()
                 return
-            if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
+            if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/preview', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
                              '/api/workspace/queue/confirm-group', '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules', '/api/workspace/column-access'):
                 self.relations_post()
                 return
