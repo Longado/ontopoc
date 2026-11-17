@@ -215,6 +215,63 @@ export function edgeLabel(edge) {
   return `${edge.rows_limited ? "你能看到的 " : ""}连上 ${edge.connected} / ${edge.of} 行`;
 }
 
+/** What the colours of the relation graph mean: the word is the state chip's, the colour the line's and the box's. */
+export const LEGEND = [
+  { word: "已确认", key: "confirmed", colour: "#2b7a4b", text: "有人看过，按当时的数据确认了" },
+  { word: "待确认", key: "proposed", colour: "#6b6b66", text: "刚提出，等另一位建设者确认" },
+  { word: "需再看", key: "needs_look", colour: "#a35f00", text: "确认之后数据变了，要再看一次" },
+  { word: "已退回", key: "rejected", colour: "#a8271a", text: "被退回了，改好再提" },
+];
+
+/** What "连上 157 / 161 行" counts, in a sentence for the legend and the drawer: of the rows on the many side, how many find a row on the one side. */
+export function connectedMeaning(edge) {
+  if (edge.connected == null) return "现在查不了";
+  return `${edge.from_name}一共 ${edge.of} 行，其中 ${edge.connected} 行在${edge.to_name}里找到了对应的一行${edge.of > edge.connected ? `；还有 ${edge.of - edge.connected} 行找不到` : ""}`;
+}
+
+/** The text on a relation's line: how many rows connect, or how many relations there are between the two types. */
+export const groupLabel = (group) => (group.edges.length > 1 ? `${group.edges.length} 个关系` : edgeLabel(group.edges[0]));
+
+/** The width of a label's pill: a character is about 12 wide, with room at the ends. */
+export const labelWidth = (label) => Math.max(56, [...label].length * 12 + 16);
+
+const overlaps = (a, b) => !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+
+/** Where each line's label goes ({key: {x, y}}, the centre of the label): in the middle of the line when that is clear, else the nearest place along it or beside it
+ * that covers no type box and no label placed before it. `widthOf(group)` is the label's width; it is 22 high. */
+export function placeLabels(groups, positions, widthOf) {
+  const nodes = Object.values(positions).map((p) => ({ x: p.x - 4, y: p.y - 4, w: p.w + 8, h: p.h + 8 }));
+  const placed = {};
+  const taken = [];
+  const ts = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8];
+  const offsets = [0, 30, -30, 60, -60, 90, -90, 120, -120, 160, -160];
+  for (const g of groups) {
+    const from = positions[g.from];
+    const to = positions[g.to];
+    const a = leaves(from, to);
+    const b = leaves(to, from);
+    const w = widthOf(g);
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const normal = { x: -(b.y - a.y) / length, y: (b.x - a.x) / length };
+    let spot = null;
+    search: for (const offset of offsets) {
+      for (const t of ts) {
+        const x = a.x + (b.x - a.x) * t + normal.x * offset;
+        const y = a.y + (b.y - a.y) * t + normal.y * offset;
+        const box = { x: x - w / 2, y: y - 11, w, h: 22 };
+        if (!nodes.some((n) => overlaps(box, n)) && !taken.some((o) => overlaps(box, o))) {
+          spot = { x, y, box };
+          break search;
+        }
+      }
+    }
+    const at = spot ?? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, box: { x: (a.x + b.x) / 2 - w / 2, y: (a.y + b.y) / 2 - 11, w, h: 22 } };
+    placed[g.key] = { x: at.x, y: at.y };
+    taken.push({ ...at.box, x: at.box.x - 2, w: at.box.w + 4 });
+  }
+  return placed;
+}
+
 /** The words that say whether the cardinality holds, for the drawer; "" when the check could not run. */
 export function verdictText(edge) {
   if (edge.cardinality_ok == null) return edge.rows_limited ? "受行规则限制，只数了你能看到的行，不判断基数是否成立" : edge.problems?.join("；") ?? "";

@@ -154,7 +154,15 @@ def normalize_query(raw, depth: int = 0) -> dict:
         if depth or not isinstance(pivot, dict) or pivot.get('side') not in ('from', 'to') or not isinstance(pivot.get('relation'), str):
             raise TypeRefused('转到关联对象要写明哪个关系（relation）、起点在关系的哪一端（side）和起点的选法（source）；只能转一次')
         pivot = {'relation': pivot['relation'], 'side': pivot['side'], 'source': normalize_query(pivot.get('source'), depth + 1)}
-    return {'type': raw['type'], 'view': view or None, 'filters': clean, 'rows': rows, 'pivot': pivot}
+    search = raw.get('search')
+    if search is not None and not isinstance(search, str):
+        raise TypeRefused('搜索要写成文字')
+    query = {'type': raw['type'], 'view': view or None, 'filters': clean, 'rows': rows, 'pivot': pivot}
+    if search is not None and len(search) > 100:
+        raise TypeRefused('搜索最多 100 个字符')
+    if search and search.strip():
+        query['search'] = search.strip()   # only a word that says something is kept: the queries the pages built before it carry no key
+    return query
 
 
 def _number(text):
@@ -185,6 +193,16 @@ def _matches(row: dict, field: dict, flt: dict) -> bool:
             return False
         return {'gt': a > b, 'ge': a >= b, 'lt': a < b, 'le': a <= b}[op]
     return {'gt': v > wanted, 'ge': v >= wanted, 'lt': v < wanted, 'le': v <= wanted}[op]
+
+
+def _holds_word(row: dict, fields: list[dict], word: str) -> bool:
+    """Whether the word is in the key or any column of the row (a code is also read by its meaning), ignoring case."""
+    wanted = word.casefold()
+    for f in fields:
+        v = _row_text(_value(row, f))
+        if v is not None and (wanted in v.casefold() or wanted in (f['labels'].get(v) or '').casefold()):
+            return True
+    return False
 
 
 def _check_filters(table: dict, filters: list[dict]) -> list[dict]:
@@ -227,6 +245,8 @@ def select(conn, user: dict | None, query: dict) -> dict:
     fields = _check_filters(table, query['filters'])
     for flt, field in zip(query['filters'], fields):
         rows = [r for r in rows if _matches(r, field, flt)]
+    if query.get('search'):
+        rows = [r for r in rows if _holds_word(r, table['fields'], query['search'])]
     used += [f['element'] for f in fields if f['derived']]
     return {'table': table, 'rows': rows, 'used': used, 'fields': fields}
 
@@ -296,6 +316,21 @@ def explore_meta(conn, user: dict | None, english: str) -> dict:
             'rows_limited': table['limit'] is not None, 'fields': [_field_view(table, f) for f in table['fields']],
             'views': [{k: v[k] for k in ('id', 'name', 'says', 'state', 'reason', 'confirmed_by', 'confirmed_on')} for v in list_views(conn, english, user) if not v['problems']],
             'relations': _relations_of(conn, user, english), 'reach': reach_options(conn, user, english), 'charts': CHARTS, 'aggregations': AGGREGATIONS, 'filter_ops': FILTER_OPS}
+
+
+def name_field(table: dict) -> dict | None:
+    """The column that names an object of this type (客户名称, 产品名称, name): a text column, not the key, called ...名称, ...名, or name; None when no column does."""
+    for f in table['fields']:
+        if f['derived'] or f['is_key'] or f['code'] or f['type'] != 'text':
+            continue
+        if f['name'].endswith(('名称', '名')) or f['name'].casefold().endswith('name'):
+            return f
+    return None
+
+
+def _name_of(table: dict, row: dict) -> str | None:
+    f = name_field(table)
+    return None if f is None else _row_text(_value(row, f))
 
 
 def _object_key(table: dict, row: dict) -> tuple[dict, str]:
@@ -609,7 +644,7 @@ def explore_object(conn, user: dict | None, english: str, n) -> dict:
         except TypeRefused:   # the other type's data is gone or unreadable now: the page does not list a count it cannot stand behind
             continue
         other = got['table']
-        related.append({**rel, 'count': len(got['rows']), 'objects': [{'n': r['n'], 'text': _object_key(other, r)[1]} for r in got['rows'][:RELATED_SHOWN]], 'query': query,
+        related.append({**rel, 'count': len(got['rows']), 'objects': [{'n': r['n'], 'text': _object_key(other, r)[1], 'name': _name_of(other, r)} for r in got['rows'][:RELATED_SHOWN]], 'query': query,
                         'rows_limited': other['limit'] is not None})
     return {'type': _type_line(conn, user, table['row']), 'n': n, 'key': key, 'text': text, 'columns': _columns(table), 'row': _display(table, found), 'outside': _outside(table, found), 'enums': _enums(table),
             'dataset': table['dataset']['name'], 'dataset_version': table['dataset']['version'], 'related': related, 'standing': _standing(conn, [table['row']['element_id']])}

@@ -5,7 +5,10 @@ import { Select } from "./Select.jsx";
 import { State } from "./TypesPage.jsx";
 import { confirmersText, logText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
-import { KIND_WORD, OP_WORD, actionPayload, actionProblem, emptyActionForm, emptyCondition, notifyRecipient, opsFor, recordChangeText, recordStateText, runPayload, runProblem } from "./actionModel.js";
+import { Drawer } from "./ui/Drawer.jsx";
+import { EmptyState } from "./ui/EmptyState.jsx";
+import { Icon } from "./ui/Icon.jsx";
+import { KIND_WORD, OP_WORD, actionPayload, actionRow, emptyActionForm, emptyCondition, notifyRecipient, opsFor, recordChangeText, recordStateText, runPayload, runProblem, saveBlock } from "./actionModel.js";
 
 /** Who the action tells when a change is approved: named people (kept as they are: an admin names them), people by an attribute equal to a column of the row, or
  * people by an attribute equal to a column of the object the row points to through a relation. Saved at once; not part of what is confirmed. */
@@ -27,7 +30,6 @@ function Notify({ name, type, notify, mayBuild, onSaved }) {
   const fresh = notifyRecipient(f);
   return (
     <div className="trace">
-      <p className="small"><strong>批准后通知：</strong>{notify.lines.length ? notify.lines.join("；") : "不通知任何人"}</p>
       {mayBuild && notify.recipients.length > 0 && (
         <ul className="checks">
           {notify.recipients.map((r, i) => <li key={i} className="small">{notify.lines[i]} <button className="plain" onClick={() => save(notify.recipients.filter((_, j) => j !== i))}>去掉</button></li>)}
@@ -63,17 +65,15 @@ function Notify({ name, type, notify, mayBuild, onSaved }) {
   );
 }
 
-function Records({ name, type, mayBuild }) {
-  const [state, reload] = useLoad(() => getAction(name), [name]);
+/** The records of one action, with 撤回 and 撤销, the notification setting (folded: most never touch it) and the log (folded). */
+function Records({ name, type, mayBuild, detail, onChanged }) {
   const [error, setError] = useState("");
-  if (state.status === "error") return <p className="error">{state.error}</p>;
-  if (!state.data) return <p className="muted">加载中</p>;
-  const { records, log, notify } = state.data;
+  const { records, log, notify } = detail;
   const act = (call) => async (id) => {
     setError("");
     try {
       await call(id);
-      reload();
+      onChanged();
     } catch (e) {
       setError(e.message);
     }
@@ -82,18 +82,19 @@ function Records({ name, type, mayBuild }) {
   const undo = act(undoRecord);   // a new request that writes the before-values back; another builder approves it
   return (
     <>
-      {notify && type && <Notify name={name} type={type} notify={notify} mayBuild={mayBuild} onSaved={reload} />}
+      <h3 className="drawer-section">提交记录 {records.length}</h3>
+      {!records.length && <p className="muted small">还没有人提交过。</p>}
       {records.length > 0 && (
         <div className="table-wrap">
-          <table>
+          <table className="wraps">
             <thead><tr><th>提交</th><th>对象</th><th>改动</th><th>状态</th><th /></tr></thead>
             <tbody>
               {records.map((r) => (
                 <tr key={r.id}>
                   <td className="keep">{r.submitted_by}<span className="muted small block">{timeText(r.submitted_at)}</span></td>
                   <td>{r.object}</td>
-                  <td>{recordChangeText(r)}{r.reason && <span className="muted small block">{r.reason}</span>}</td>
-                  <td>{recordStateText(r)}{r.why && <span className="muted small block">{r.why}</span>}</td>
+                  <td className="wrap-cell">{recordChangeText(r)}{r.reason && <span className="muted small block">{r.reason}</span>}</td>
+                  <td className="keep">{recordStateText(r)}{r.why && <span className="muted small block">{r.why}</span>}</td>
                   <td className="keep">
                     {r.can_withdraw && <button className="plain" onClick={() => withdraw(r.id)}>撤回</button>}
                     {r.can_undo && <button className="plain" title="提交一条把值改回去的请求，要另一位建设者批准" onClick={() => undo(r.id)}>撤销</button>}
@@ -105,6 +106,12 @@ function Records({ name, type, mayBuild }) {
         </div>
       )}
       {error && <p className="error">{error}</p>}
+      {notify && type && (
+        <details className="trace">
+          <summary>批准后通知：{notify.lines.length ? notify.lines.join("；") : "不通知任何人"}</summary>
+          <Notify name={name} type={type} notify={notify} mayBuild={mayBuild} onSaved={onChanged} />
+        </details>
+      )}
       {log.length > 0 && (
         <details className="trace">
           <summary>这个行为的日志（{log.length} 条，包括被拒绝的）</summary>
@@ -124,10 +131,10 @@ function Records({ name, type, mayBuild }) {
   );
 }
 
-function ActionCard({ action, type, mayBuild, onChanged }) {
+/** What one action is, who stands behind it and what has been done with it: the drawer a row opens. */
+function ActionDrawer({ action, detail, type, mayBuild, onChanged, onRun, onClose }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [creating, setCreating] = useState(false);
   const confirm = async () => {
     setBusy(true);
     setError("");
@@ -141,12 +148,17 @@ function ActionCard({ action, type, mayBuild, onChanged }) {
     setBusy(false);
   };
   const line = stateLine(action, "这个行为");
+  const canRun = mayBuild && action.kind === "create" && action.state === "confirmed" && action.can_submit !== false;
   return (
-    <section className="card">
-      <div className="page-head">
-        <h2 className="item-title">{action.name}</h2>
-        <State item={action} />
-      </div>
+    <Drawer open title={action.name} onClose={onClose} width={680}
+      footer={(
+        <>
+          <button className="secondary" onClick={onClose}>关闭</button>
+          {canRun && <button className="secondary" onClick={() => onRun(action)}>{action.name}</button>}
+          {mayBuild && action.can_confirm && <button className="primary" onClick={confirm} disabled={busy}>确认这个行为</button>}
+        </>
+      )}>
+      <div className="drawer-lead"><State item={action} /> <span className="muted small">{KIND_WORD[action.kind]}</span></div>
       <p>{action.says}</p>
       {action.description && <p className="muted">{action.description}</p>}
       {line && <p className="muted small">{line}</p>}
@@ -154,23 +166,18 @@ function ActionCard({ action, type, mayBuild, onChanged }) {
       {confirmersText(action) && <p className="muted small">{confirmersText(action)}</p>}
       {action.state === "needs_look" && action.reason && <div className="reason"><strong>为什么需要再看</strong><p>{action.reason}</p></div>}
       {action.submitters?.length > 0 && <p className="muted small">只有 {action.submitters.map((p) => p.name).join("、")} 可以提交</p>}
-      {mayBuild && action.can_confirm && <div className="inline"><button className="primary" onClick={confirm} disabled={busy}>确认这个行为</button></div>}
-      {mayBuild && action.kind === "create" && action.state === "confirmed" && action.can_submit !== false && !creating && (
-        <div className="inline"><button className="secondary" onClick={() => setCreating(true)}>{action.name}</button></div>
-      )}
-      {creating && <RunAction action={action} objectText={`新的${action.type_name}`} onDone={onChanged} onCancel={() => setCreating(false)} />}
       {error && <p className="error">{error}</p>}
-      <Records key={creating ? "a" : "b"} name={action.id} type={type} mayBuild={mayBuild} />
-    </section>
+      {detail ? <Records name={action.id} type={type} mayBuild={mayBuild} detail={detail} onChanged={onChanged} /> : <p className="muted">加载中</p>}
+    </Drawer>
   );
 }
 
-function NewAction({ type, form: options, onSaved }) {
+function NewAction({ type, form: options, onSaved, onClose }) {
   const [form, setForm] = useState(emptyActionForm());
   const [types] = useLoad(getTypes, []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const problem = actionProblem(form);
+  const block = saveBlock(form, busy);
   const condProps = options.condition_properties ?? options.properties;
   const setCondition = (i, next) => setForm({ ...form, conditions: form.conditions.map((c, j) => (j === i ? { ...c, ...next } : c)) });
   const toggle = (name, on) => setForm({ ...form, properties: on ? [...form.properties, name] : form.properties.filter((p) => p !== name) });
@@ -179,16 +186,21 @@ function NewAction({ type, form: options, onSaved }) {
     setError("");
     try {
       await createAction(actionPayload(type, form));
-      setForm(emptyActionForm());
-      onSaved();
+      onSaved(form.name.trim());
     } catch (e) {
       setError(e.message);
+      setBusy(false);
     }
-    setBusy(false);
   };
   return (
-    <section>
-      <h2 className="section">新建行为</h2>
+    <Drawer open title="新建行为" onClose={onClose} width={600}
+      footer={(
+        <>
+          {block.reason && <span className="save-reason" role="status">{block.reason}</span>}
+          <button className="secondary" onClick={onClose}>取消</button>
+          <button className="primary" onClick={save} disabled={block.disabled}>保存</button>
+        </>
+      )}>
       <div className="field">
         <span className="caption">做什么</span>
         <div className="inline wide">
@@ -283,27 +295,75 @@ function NewAction({ type, form: options, onSaved }) {
           </div>
         </div>
       )}
-      <div className="inline">
-        <button className="primary" onClick={save} disabled={busy || !!problem}>保存</button>
-        {problem && <span className="muted small">{problem}</span>}
-      </div>
       {error && <p className="error">{error}</p>}
-    </section>
+    </Drawer>
   );
 }
 
+/** The 行为 tab: one row for each action; a row opens its drawer; 新建行为 opens the form in a drawer. */
 export function TypeActions({ type, mayBuild }) {
-  const [state, reload] = useLoad(() => getActions(type.id), [type.id]);
+  const [state, reload] = useLoad(async () => {
+    const list = await getActions(type.id);
+    const details = await Promise.all(list.actions.map((a) => getAction(a.id).catch(() => null)));
+    return { ...list, details: Object.fromEntries(list.actions.map((a, i) => [a.id, details[i]])) };
+  }, [type.id]);
+  const [open, setOpen] = useState(null);       // the name of the action whose drawer is open
+  const [creating, setCreating] = useState(false);
+  const [running, setRunning] = useState(null);   // the create being run
+  const [fresh, setFresh] = useState("");        // the action just saved, lit for a moment
   if (state.status === "error") return <p className="error">{state.error}</p>;
   if (!state.data) return <p className="muted">加载中</p>;
-  const { actions, form } = state.data;
+  const { actions, form, details } = state.data;
+  const opened = actions.find((a) => a.id === open);
   return (
     <>
-      {!actions.length && <p className="muted">还没有行为。行为是改数据的唯一办法：一个人提交，另一位建设者批准，才会写成数据集的新版本。</p>}
-      <div className="cards">
-        {actions.map((a) => <ActionCard key={`${a.id}@${a.version}`} action={a} type={type} mayBuild={mayBuild} onChanged={reload} />)}
+      <div className="tab-bar">
+        <span className="muted">{actions.length ? `${actions.length} 个行为。点一行看详情和提交记录。` : ""}</span>
+        {mayBuild && form && <button className="primary" onClick={() => setCreating(true)}><Icon name="plus" size={16} /> 新建行为</button>}
       </div>
-      {mayBuild && form && <NewAction type={type.id} form={form} onSaved={reload} />}
+      {!actions.length && (
+        <EmptyState icon="play" title="还没有行为" text="行为是改数据的唯一办法：一个人提交，另一位建设者批准，才会写成数据集的新版本。"
+          action={mayBuild && form ? { label: "新建行为", onClick: () => setCreating(true) } : undefined} />
+      )}
+      {actions.length > 0 && (
+        <div className="table-wrap">
+          <table className="rows-table">
+            <thead><tr><th>名称</th><th>做什么</th><th>内容</th><th>状态</th><th>最近提交</th><th /></tr></thead>
+            <tbody>
+              {actions.map((a) => {
+                const row = actionRow(a, details[a.id]?.records ?? null, mayBuild);
+                return (
+                  <tr key={`${a.id}@${a.version}`} className={`click${fresh === a.id ? " fresh" : ""}`} onClick={() => setOpen(a.id)}>
+                    <td><button className="plain row-name" onClick={(e) => { e.stopPropagation(); setOpen(a.id); }}>{row.name}</button></td>
+                    <td><span className="kind-word">{row.kind}</span></td>
+                    <td className="wrap-cell says">{row.says}</td>
+                    <td><State item={a} />{mayBuild && a.can_confirm && <span className="muted small block">等你确认</span>}</td>
+                    <td className="muted small">{row.last}</td>
+                    <td className="keep" onClick={(e) => e.stopPropagation()}>
+                      {row.canRun && <button className="secondary" onClick={() => setRunning(a)}>{row.name}</button>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {opened && <ActionDrawer key={opened.id} action={opened} detail={details[opened.id]} type={type} mayBuild={mayBuild} onChanged={reload} onRun={(a) => { setOpen(null); setRunning(a); }} onClose={() => setOpen(null)} />}
+      {running && (
+        <Drawer open title={`${running.name}：新的${running.type_name}`} onClose={() => { setRunning(null); reload(); }} width={520}>
+          <RunAction action={running} objectText={`新的${running.type_name}`} onDone={reload} onCancel={() => { setRunning(null); reload(); }} />
+        </Drawer>
+      )}
+      {creating && mayBuild && form && (
+        <NewAction type={type.id} form={form} onClose={() => setCreating(false)}
+          onSaved={(name) => {
+            setCreating(false);
+            setFresh(name);
+            setTimeout(() => setFresh(""), 4000);
+            reload();
+          }} />
+      )}
     </>
   );
 }

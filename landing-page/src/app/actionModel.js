@@ -1,4 +1,5 @@
 // The words and payload of the 行为 tab and the approval cards, as plain functions of what the service sends, so they can be tested without a browser.
+import { timeText } from "./format.js";
 
 export const RECORD_STATE = { pending: "等批准", approved: "已批准", rejected: "已驳回", withdrawn: "已撤回", expired: "已过期", needs_look: "需再看" };
 
@@ -127,4 +128,29 @@ export function notifyRecipient({ kind, column, relation, attr }) {
   if (kind === "attr") return { kind, column: col, user_attr: name };
   if (kind === "via" && relation) return { kind, relation, column: col, user_attr: name };
   return null;
+}
+
+const KIND_SHORT = { edit: "改", create: "新建", delete: "删除" };
+
+/** The last record of an action in one cell: who, when, how it stands. "" while the records are not read. */
+export function lastRecordText(records) {
+  if (!records) return "";
+  if (!records.length) return "还没有提交";
+  const [r] = records;
+  return `${r.submitted_by} · ${timeText(r.submitted_at).slice(5)} · ${recordStateText(r)}`;
+}
+
+/** An action as one row of the 行为 table. `records` are its records (newest first) or null; `mayBuild` whether this person builds. A create runs from here; an edit and a delete run from the object. */
+export function actionRow(action, records, mayBuild) {
+  return {
+    id: action.id, name: action.name, kind: KIND_SHORT[action.kind] ?? action.kind, says: action.says, state: action.state, last: lastRecordText(records),
+    canRun: Boolean(mayBuild) && action.kind === "create" && action.state === "confirmed" && action.can_submit !== false,
+  };
+}
+
+/** Whether the form's save is off, and the sentence that says why (shown beside the button, not only grey). */
+export function saveBlock(form, busy) {
+  if (busy) return { disabled: true, reason: "正在保存" };
+  const reason = actionProblem(form);
+  return { disabled: Boolean(reason), reason };
 }

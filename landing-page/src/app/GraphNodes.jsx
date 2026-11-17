@@ -1,5 +1,5 @@
 import React from "react";
-import { KIND_LABEL, SIZE, ageText, cameFromText, datedText, edgeLabel, fitText, leaves, sourceLines } from "./graphModel.js";
+import { KIND_LABEL, SIZE, ageText, cameFromText, datedText, fitText, groupLabel, labelWidth, leaves, sourceLines } from "./graphModel.js";
 import { stateText } from "./typeModel.js";
 
 const stateClass = (node) => `s-${node.model_draft ? "proposed" : node.state ?? "none"}`;
@@ -52,28 +52,28 @@ export function GraphNode({ node, box, picked, faded, onPick }) {
 
 const colour = (state) => (state === "needs_look" ? "amber" : state === "rejected" ? "red" : "grey");
 
-/** A line between two types of the relation graph: the rows that connect on it, an arrow toward the "one" side, dashed when the cardinality does not hold. Several relations
+/** A line between two types of the relation graph (`part` "line" or "label" draws only that half, so a graph can draw every label above every line): the rows that connect on it, an arrow toward the "one" side, dashed when the cardinality does not hold. Several relations
  * between the same two types are one line with a count. */
-export function RelationLine({ group, from, to, picked, faded, lit, onPick }) {
+export function RelationLine({ group, from, to, picked, faded, lit, onPick, labelAt, part }) {
   const a = leaves(from, to);
   const b = leaves(to, from);
   const [first] = group.edges;
   const many = group.edges.length > 1;
   const failing = group.edges.some((e) => e.cardinality_ok === false);
   const state = group.edges.find((e) => e.state === "needs_look") ? "needs_look" : first.state;
-  const label = many ? `${group.edges.length} 个关系` : edgeLabel(first);
-  const width = Math.max(56, [...label].length * 12 + 16);
-  const mx = (a.x + b.x) / 2;
-  const my = (a.y + b.y) / 2;
+  const label = groupLabel(group);
+  const width = labelWidth(label);
+  const mx = labelAt?.x ?? (a.x + b.x) / 2;   // the relation graph places labels clear of the boxes; the lineage has none
+  const my = labelAt?.y ?? (a.y + b.y) / 2;
   const toward = !many && first.arrow_to ? (first.arrow_to === group.to ? "marker-end" : "marker-start") : null;
   const marker = lit ? "blue" : colour(state);
   return (
     <g className={`g-edge s-${state}${failing && !many ? " dashed" : ""}${lit ? " lit" : ""}${picked ? " picked" : ""}${faded ? " faded" : ""}`} tabIndex={0} role="button" aria-label={`${first.from_name} 和 ${first.to_name}：${label}`}
       onClick={(e) => { e.stopPropagation(); onPick(); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(); } }}>
-      <line className="line" x1={a.x} y1={a.y} x2={b.x} y2={b.y} {...(toward ? { [toward === "marker-end" ? "markerEnd" : "markerStart"]: `url(#arrow-${marker})` } : {})} />
-      <line className="hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
-      <rect className="pill" x={mx - width / 2} y={my - 11} width={width} height="22" rx="4" />
-      <text x={mx} y={my + 4} textAnchor="middle">{label}</text>
+      {part !== "label" && <line className="line" x1={a.x} y1={a.y} x2={b.x} y2={b.y} {...(toward ? { [toward === "marker-end" ? "markerEnd" : "markerStart"]: `url(#arrow-${marker})` } : {})} />}
+      {part !== "label" && <line className="hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />}
+      {part !== "line" && <rect className="pill" x={mx - width / 2} y={my - 11} width={width} height="22" rx="4" />}
+      {part !== "line" && <text x={mx} y={my + 4} textAnchor="middle">{label}</text>}
     </g>
   );
 }
