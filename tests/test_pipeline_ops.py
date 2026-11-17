@@ -151,6 +151,12 @@ class FilterTests(Workspace):
             self.run_ops([{'op': 'filter', 'where': {'column': '状态码', 'cmp': 'eq', 'meaning': '退货'}}], ctx=ctx)
         self.assertIn('已确认的含义里没有「退货」', str(caught.exception))
 
+    def test_a_condition_with_no_column_says_so_and_does_not_print_empty_quotes(self):
+        with self.assertRaises(ValueError) as caught:
+            self.run_ops([{'op': 'filter', 'where': {'column': '', 'cmp': 'eq', 'value': 'x'}}])
+        self.assertIn('没选列', str(caught.exception))
+        self.assertNotIn('「」', str(caught.exception))
+
     def test_groups_all_and_any_and_between(self):
         orders = RECORDS['订单']
         both = self.run_ops([{'op': 'filter', 'where': {'all': [{'column': '金额', 'cmp': 'between', 'low': 1000, 'high': 5000},
