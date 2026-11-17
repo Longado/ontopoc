@@ -90,7 +90,7 @@ export default {
   "basis.steps": "Show steps",
   "card.basis": "Show basis",
   "saved.missing": "That question no longer exists",
-  "history.aria": "Your questions",
+  "history.aria": "Question history",
   "history.title": "Your questions",
   "history.empty": "No questions yet",
   "scope.empty": "No confirmed object types yet: confirm one on the Object types page",
