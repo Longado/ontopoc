@@ -296,3 +296,19 @@ test("a run's result is kept for each card: rows out, and failed or not", () => 
 test("an input with no dataset yet is titled as not chosen, not as an empty string", () => {
   assert.equal(stepTitle({ id: "in2", type: "input", dataset: "" }), "（还没选）");
 });
+
+test("a card dragged on the pipeline graph keeps its new place; the others keep theirs, and the picture grows to fit", async () => {
+  const { placed, snap } = await import("./pipelineModel.js");
+  const steps = [{ id: "a", type: "input" }, { id: "b", type: "filter", input: "a" }];
+  const base = layout(steps, { w: 200, h: 64, gx: 72, gy: 24 });
+  const lay = placed(base, { b: { x: 700, y: 300 }, gone: { x: 5, y: 5 } });
+  assert.deepEqual([lay.nodes.b.x, lay.nodes.b.y], [700, 300]);
+  assert.deepEqual([lay.nodes.a.x, lay.nodes.a.y], [base.nodes.a.x, base.nodes.a.y]);
+  assert.equal(lay.nodes.gone, undefined);   // a step that was removed leaves no card behind
+  assert.equal(lay.width, 900);
+  assert.equal(lay.height, 364);
+  assert.deepEqual(lay.edges, base.edges);
+  assert.equal(placed(base, {}), base);
+  assert.equal(snap(13), 16);
+  assert.equal(snap(-30), 0);   // never dragged off the top or left edge
+});
