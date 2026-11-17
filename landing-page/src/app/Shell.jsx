@@ -6,7 +6,7 @@ import { BoardPage, BoardsPage } from "./BoardsPage.jsx";
 import { WORKSPACE_CHANGED, getNotices, getQueueCount } from "./api.js";
 import { NoticesPage } from "./NoticesPage.jsx";
 import { useAuth } from "./Auth.jsx";
-import { canBuild, isAdmin, roleLabel } from "./authModel.js";
+import { canBuild, roleLabel } from "./authModel.js";
 import { ConfirmGroupPage } from "./ConfirmGroupPage.jsx";
 import { ConfirmPage } from "./ConfirmPage.jsx";
 import { DatasetList } from "./DatasetList.jsx";
@@ -28,19 +28,12 @@ import { TypeForm } from "./TypeForm.jsx";
 import { TypePage } from "./TypePage.jsx";
 import { TypesPage } from "./TypesPage.jsx";
 import { UsersPage } from "./UsersPage.jsx";
-import { ADMIN_NAV, NAV, PLANNED, mayOpen, navKeyOf, parseRoute } from "./routeModel.js";
-
-function UserBox({ onPick }) {
-  const { user, auth, signOut } = useAuth();
-  if (!auth) return <p className="nav-user muted">本机，没有登录</p>;
-  return (
-    <div className="nav-user">
-      <a href="#/account" onClick={onPick} title="我的账号">{user.display_name}</a>
-      <span className="muted">{roleLabel(user.role)}</span>
-      <button className="plain" onClick={signOut}>退出</button>
-    </div>
-  );
-}
+import { HomePage } from "./HomePage.jsx";
+import { PLANNED, mayOpen, navFor, navKeyOf, navLabelOf, parseRoute } from "./routeModel.js";
+import { recordVisit } from "./searchModel.js";
+import { CommandPalette } from "./ui/CommandPalette.jsx";
+import { Icon } from "./ui/Icon.jsx";
+import { usePopover } from "./ui/MoreMenu.jsx";
 
 /** How many items of 待确认 this person may confirm now; read again whenever the page changes, so a confirmation made anywhere is counted. */
 function useQueueCount(route) {
@@ -83,24 +76,105 @@ function useNoticeCount(route) {
   return count;
 }
 
-function Navigation({ active, open, onPick, count, unread = 0 }) {
-  const { user } = useAuth();
+const WORKSPACE_NAME = "我的工作区";
+const store = {
+  read: (key, fallback) => {
+    try {
+      return JSON.parse(window.localStorage.getItem(key)) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  write: (key, value) => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch { /* a private window may refuse: the choice is just not remembered */ }
+  },
+};
+
+/** The avatar and its menu: the person's name and role, 我的账号, 退出. */
+function AvatarMenu() {
+  const { user, auth, signOut } = useAuth();
+  const [open, setOpen, ref] = usePopover();
+  if (!auth) return <span className="top-local muted">本机，没有登录</span>;
   return (
-    <nav className={`nav${open ? " open" : ""}`} aria-label="主导航">
-      {[...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])].map((group, i) => (
-        <div className="nav-group" key={group.label ?? i}>
-          {group.label && <p className="nav-heading">{group.label}</p>}
-          {group.items.filter((item) => !item.builders || canBuild(user)).map((item) => (
-            <a key={item.key} href={item.href} className={`${item.built ? "" : "off"}${item.key === active ? " active" : ""}`.trim()}
-              aria-current={item.key === active ? "page" : undefined} onClick={onPick}>
-              {item.label}
-              {item.key === "confirm" && countText(count) && <span className="count" aria-label={`${count} 项等你确认`}>{countText(count)}</span>}
-              {item.key === "notices" && countText(unread) && <span className="count" aria-label={`${unread} 条未读消息`}>{countText(unread)}</span>}
-            </a>
-          ))}
+    <span className="menu-wrap" ref={ref}>
+      <button className="avatar" aria-label={`账号：${user.display_name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>{[...user.display_name][0]}</button>
+      {open && (
+        <div className="menu menu-right" role="menu">
+          <div className="menu-who"><strong>{user.display_name}</strong><span className="muted small">{roleLabel(user.role)}</span></div>
+          <a role="menuitem" className="menu-item" href="#/account" onClick={() => setOpen(false)}><Icon name="user" />我的账号</a>
+          <button role="menuitem" className="menu-item" onClick={signOut}><Icon name="logout" />退出</button>
         </div>
-      ))}
-      <UserBox onPick={onPick} />
+      )}
+    </span>
+  );
+}
+
+function TopBar({ onMenu, menuOpen, onSearch, count, unread }) {
+  const { user } = useAuth();
+  const mayBuild = canBuild(user);
+  return (
+    <header className="topbar">
+      <button className="plain icon-button menu-button" onClick={onMenu} aria-expanded={menuOpen} aria-label="菜单"><Icon name="menu" size={20} /></button>
+      <a className="brand" href="#/home"><span className="brand-mark" aria-hidden="true" />OntoPoc</a>
+      <span className="workspace-name" title="工作区">{WORKSPACE_NAME}</span>
+      <button className="searchbox" onClick={onSearch} aria-label="搜索（⌘K）">
+        <Icon name="search" />
+        <span className="searchbox-text">搜索数据集、对象类型、管道…</span>
+        <kbd>⌘K</kbd>
+      </button>
+      <div className="top-right">
+        {mayBuild && (
+          <a className="top-count" href="#/confirm" title="待确认" aria-label={`${count} 项等你确认`}>
+            <Icon name="check-circle" size={20} />{countText(count) && <span className="count-badge" data-tone="blue">{countText(count)}</span>}
+          </a>
+        )}
+        <a className="top-count" href="#/notices" title="消息" aria-label={`消息，${unread} 条未读`}>
+          <Icon name="bell" size={20} />{countText(unread) && <span className="count-badge" data-tone="red">{countText(unread)}</span>}
+        </a>
+        <AvatarMenu />
+      </div>
+    </header>
+  );
+}
+
+function Navigation({ active, open, onPick, count, unread = 0, collapsed, onCollapse }) {
+  const { user } = useAuth();
+  const [closed, setClosed] = useState(() => store.read("ontopoc.nav.closed", {}));
+  const toggle = (key) => {
+    const next = { ...closed, [key]: !closed[key] };
+    setClosed(next);
+    store.write("ontopoc.nav.closed", next);
+  };
+  return (
+    <nav className={`nav${open ? " open" : ""}${collapsed ? " icons" : ""}`} aria-label="主导航">
+      {navFor(user).map((group) => {
+        const holdsActive = group.items.some((i) => i.key === active);
+        const folded = group.label && closed[group.key] && !holdsActive && !collapsed;
+        return (
+          <div className="nav-group" key={group.key}>
+            {group.label && (
+              <button className="nav-heading" onClick={() => toggle(group.key)} aria-expanded={!folded}>
+                <span>{group.label}</span><Icon name={folded ? "chevron-right" : "chevron-down"} size={14} />
+              </button>
+            )}
+            {group.label && !folded && <p className="nav-hint">{group.hint}</p>}
+            {!folded && group.items.map((item) => (
+              <a key={item.key} href={item.href} title={collapsed ? item.label : undefined} className={item.key === active ? "active" : ""}
+                aria-current={item.key === active ? "page" : undefined} aria-label={collapsed ? item.label : undefined} onClick={onPick}>
+                <Icon name={item.icon} />
+                <span className="nav-label">{item.label}</span>
+                {item.key === "confirm" && countText(count) && <span className="count" aria-label={`${count} 项等你确认`}>{countText(count)}</span>}
+                {item.key === "notices" && countText(unread) && <span className="count" aria-label={`${unread} 条未读消息`}>{countText(unread)}</span>}
+              </a>
+            ))}
+          </div>
+        );
+      })}
+      <button className="nav-collapse" onClick={onCollapse} aria-label={collapsed ? "展开侧栏" : "收起侧栏"}>
+        <Icon name={collapsed ? "chevrons-right" : "chevrons-left"} /><span className="nav-label">收起</span>
+      </button>
     </nav>
   );
 }
@@ -118,8 +192,8 @@ function Planned({ route }) {
 function Forbidden() {
   return (
     <main className="page">
-      <h1 tabIndex={-1}>你的角色不能看这个页面</h1>
-      <p className="muted"><a href="#/datasets">回到数据集</a></p>
+      <h1 tabIndex={-1}>这个页面需要建设者或管理员权限</h1>
+      <p className="muted">想用它，请联系你们的建设者或管理员。<a href="#/home">回到首页</a></p>
     </main>
   );
 }
@@ -128,13 +202,14 @@ function NotFound() {
   return (
     <main className="page">
       <h1 tabIndex={-1}>没有这个页面</h1>
-      <p className="muted"><a href="#/datasets">回到数据集</a></p>
+      <p className="muted"><a href="#/home">回到首页</a></p>
     </main>
   );
 }
 
 /** What each page of routeModel.PAGES draws, one line each (routeModel.test.js checks the two hold the same pages). */
 const VIEWS = {
+  home: () => <HomePage />,
   qa: (route) => <QaPage route={route} />,
   tasks: () => <TasksPage />,
   datasets: () => <DatasetList />,
@@ -169,16 +244,35 @@ const VIEWS = {
   planned: (route) => <Planned route={route} />,
 };
 
+/** A place's name for the recent list: the page's own heading once it has drawn, else the sidebar's word for it. */
+const placeLabel = (route) => document.querySelector("main h1")?.textContent?.trim() || navLabelOf(route);
+
 export function Shell() {
   const { user } = useAuth();
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
   const [menu, setMenu] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => store.read("ontopoc.nav.collapsed", false));
+  const [palette, setPalette] = useState(false);
+  const [recents, setRecents] = useState(() => store.read("ontopoc.recent", []));
   const queueCount = useQueueCount(route);
   const unread = useNoticeCount(route);
   useEffect(() => {
-    const onChange = () => setRoute(parseRoute(window.location.hash));
+    const onChange = () => {
+      setRoute(parseRoute(window.location.hash));
+      setMenu(false);
+    };
     window.addEventListener("hashchange", onChange);
     return () => window.removeEventListener("hashchange", onChange);
+  }, []);
+  useEffect(() => {
+    const key = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
   }, []);
   const first = useRef(true);
   useEffect(() => {
@@ -186,17 +280,34 @@ export function Shell() {
     if (first.current) first.current = false;
     else document.querySelector("main h1")?.focus({ preventScroll: true });   // a followed link puts the reader at the new page's heading
   }, [route.page, route.name, route.key, route.id]);
+  useEffect(() => {
+    if (!VIEWS[route.page] || route.page === "home") return undefined;
+    const href = window.location.hash;
+    const timer = setTimeout(() => {
+      setRecents((list) => {
+        const next = recordVisit(list, { href, label: placeLabel(route) });
+        store.write("ontopoc.recent", next);
+        return next;
+      });
+    }, 700);   // after the page has drawn its heading
+    return () => clearTimeout(timer);
+  }, [route.page, route.name, route.key, route.id, route.n, route.tab]);
+  const collapse = () => {
+    store.write("ontopoc.nav.collapsed", !collapsed);
+    setCollapsed(!collapsed);
+  };
 
   return (
-    <div className="shell">
-      <aside className="side">
-        <div className="brand-row">
-          <strong className="brand">OntoPoc</strong>
-          <button className="plain menu-button" onClick={() => setMenu(!menu)} aria-expanded={menu}>菜单</button>
-        </div>
-        <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} unread={unread} />
-      </aside>
-      {!VIEWS[route.page] ? <NotFound /> : mayOpen(route.page, user) ? VIEWS[route.page](route) : <Forbidden />}
+    <div className={`app${collapsed ? " app-collapsed" : ""}`}>
+      <TopBar onMenu={() => setMenu(!menu)} menuOpen={menu} onSearch={() => setPalette(true)} count={queueCount} unread={unread} />
+      <div className="shell">
+        <aside className={`side${menu ? " open" : ""}`}>
+          <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} unread={unread} collapsed={collapsed} onCollapse={collapse} />
+        </aside>
+        {menu && <div className="side-dim" onClick={() => setMenu(false)} />}
+        {!VIEWS[route.page] ? <NotFound /> : mayOpen(route.page, user) ? VIEWS[route.page](route) : <Forbidden />}
+      </div>
+      <CommandPalette open={palette} onClose={() => setPalette(false)} user={user} recents={recents} />
     </div>
   );
 }

@@ -114,7 +114,7 @@ export function AgentsPage() {
   };
   return (
     <main className="page">
-      <h1 tabIndex={-1}>智能体</h1>
+      <h1 tabIndex={-1}>AI 工具接入</h1>
       {info.status === "error" && <p className="error">{info.error}</p>}
       {i && (
         <>

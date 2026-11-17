@@ -9,6 +9,8 @@ import { queryRecord } from "./qaModel.js";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
+import { EmptyState } from "./ui/EmptyState.jsx";
 
 /** The components of a board as cards: each with its title, its number or chart (grey with the reason when what it stands on is not confirmed) and its caliber. */
 export function BoardCards({ data }) {
@@ -170,12 +172,12 @@ export function BoardsPage() {
   const boards = state.data?.dashboards ?? [];
   return (
     <main className="page">
-      <div className="page-head">
-        <h1 tabIndex={-1}>看板</h1>
-        {canBuild(user) && <a className="button primary" href="#/boards/new">新建看板</a>}
-      </div>
+      <PageHeader crumbs={[{ label: "看板" }]} title="看板" sub="指标和图，都按已确认的定义计算。"
+        actions={canBuild(user) && <a className="button primary" href="#/boards/new">新建看板</a>} />
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
-      {state.data && boards.length === 0 && <p className="muted">{canBuild(user) ? "还没有看板。新建一个，指标和图都从已确认的定义算。" : "还没有人给你发布看板。"}</p>}
+      {state.data && boards.length === 0 && (canBuild(user)
+        ? <EmptyState icon="board" title="还没有看板" text="新建一个，指标和图都从已确认的定义算。" action={{ label: "新建看板", href: "#/boards/new" }} />
+        : <EmptyState icon="board" title="还没有看板" text="还没有人给你发布看板。" />)}
       {boards.length > 0 && (
         <div className="table-wrap">
           <table>

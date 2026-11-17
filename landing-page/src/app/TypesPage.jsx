@@ -5,9 +5,12 @@ import { canBuild } from "./authModel.js";
 import { hrefFor } from "./routeModel.js";
 import { reconfirmText, stateText } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
+import { StatusChip } from "./ui/StatusChip.jsx";
 
 export function State({ item }) {
-  return <span className={`state state-${item.model_draft ? "draft" : item.state ?? "none"}`}>{stateText(item)}</span>;
+  if (!item.state && !item.model_draft) return <span className="state state-none">{stateText(item)}</span>;   // a column nobody gave meanings to has no state
+  return <StatusChip state={item.state} modelDraft={item.model_draft} />;
 }
 
 /** Asks the model for object types from some datasets. It runs as a task: what it proposed and what the checks dropped are listed, nothing is confirmed. */
@@ -112,15 +115,13 @@ export function TypesPage() {
   const types = (all ?? []).filter((t) => `${t.name} ${t.id}`.toLowerCase().includes(filter.trim().toLowerCase()));
   return (
     <main className="page">
-      <div className="page-head">
-        <h1 tabIndex={-1}>对象类型</h1>
-        {mayBuild && (
-          <div className="head-actions">
+      <PageHeader crumbs={[{ label: "业务对象" }, { label: "对象类型" }]} title="对象类型" sub="对象类型 = 业务里的东西，比如订单、客户。确认过的才能用来回答问题。"
+        actions={mayBuild && (
+          <>
             <button className="secondary" onClick={() => setSuggesting(true)}>从数据集建议</button>
             <a className="button primary" href={hrefFor({ page: "typenew" })}>新建对象类型</a>
-          </div>
-        )}
-      </div>
+          </>
+        )} />
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
       {all && !all.length && hidden > 0 && <p className="muted">有 {hidden} 个对象类型没有开放给你，找管理员。</p>}

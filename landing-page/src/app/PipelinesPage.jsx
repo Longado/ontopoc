@@ -5,9 +5,12 @@ import { STATUS_LABEL, pipelineStateText } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
+import { StatusChip } from "./ui/StatusChip.jsx";
+import { EmptyState } from "./ui/EmptyState.jsx";
 
 export function PipelineState({ item }) {
-  return <span className={`state state-${item.state}`}>{pipelineStateText(item)}</span>;
+  return <StatusChip state={item.state} label={item.state === "needs_look" ? pipelineStateText(item) : undefined} />;
 }
 
 export function PipelinesPage() {
@@ -15,13 +18,11 @@ export function PipelinesPage() {
   const pipelines = state.data ?? [];
   return (
     <main className="page">
-      <div className="page-head">
-        <h1 tabIndex={-1}>管道</h1>
-        <a className="button primary" href={hrefFor({ page: "pipelinenew" })}>新建管道</a>
-      </div>
+      <PageHeader crumbs={[{ label: "数据" }, { label: "管道" }]} title="管道" sub="把几个数据集连起来，算出新的数据集。"
+        actions={<a className="button primary" href={hrefFor({ page: "pipelinenew" })}>新建管道</a>} />
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
       {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
-      {state.data && !pipelines.length && <p className="muted">还没有管道。新建一条，把几个数据集连起来、算出新的数据集。</p>}
+      {state.data && !pipelines.length && <EmptyState icon="pipeline" title="还没有管道" text="新建一条，把几个数据集连起来、算出新的数据集。" action={{ label: "新建管道", href: hrefFor({ page: "pipelinenew" }) }} />}
       {pipelines.length > 0 && (
         <div className="table-wrap">
           <table>

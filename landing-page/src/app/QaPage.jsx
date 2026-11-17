@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { askQuestion, getAnswer, getAsk, runQuery } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
@@ -234,13 +234,13 @@ export function QaPage({ route }) {
     setQuery(t);
     setMode("query");
   };
-  const ask = async (e) => {
-    e.preventDefault();
-    if (!text.trim() || busy) return;
+  const ask = async (e, question = text) => {
+    e?.preventDefault();
+    if (!question.trim() || busy) return;
     setBusy(true);
     setError("");
     try {
-      const saved = await askQuestion(text);
+      const saved = await askQuestion(question);
       setText("");
       reload();
       window.location.hash = `#/qa/${saved.id}`;
@@ -249,9 +249,16 @@ export function QaPage({ route }) {
     }
     setBusy(false);
   };
+  const asked = useRef("");
+  useEffect(() => {
+    if (!route.ask || asked.current === route.ask) return;
+    asked.current = route.ask;   // a question from the home page is asked once as this page opens (the address then becomes the saved answer's)
+    setText(route.ask);
+    ask(null, route.ask);
+  }, [route.ask]);
   return (
     <main className="page">
-      <h1 tabIndex={-1}>问答</h1>
+      <h1 tabIndex={-1}>问数</h1>
       {info.status === "error" && <p className="error">{info.error}</p>}
       <div className="qa">
         <aside className="history" aria-label="我问过的问题">
