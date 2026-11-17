@@ -253,6 +253,7 @@ class KindTests(ActionTests):
             self.confirmed_action(team, {**STATUS_ACTION, 'submitters': [self.user_id(admin, 'bob')]})
             shown = ann.get(ACTION_URL)[1]
             self.assertEqual(shown['submitters'], [{'id': self.user_id(admin, 'bob'), 'name': 'Bob'}])
+            self.assertEqual((shown['can_submit'], bob.get(ACTION_URL)[1]['can_submit']), (False, True))   # the page offers its button only to them
             status, body = self.submit(ann)
             self.assertEqual(status, 403, body)
             self.assertIn('只有', body['error'])
