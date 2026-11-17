@@ -9,7 +9,7 @@ build/
 output/
 .DS_Store
 .env
-node_modules/
+node_modules
 landing-page/audit-*/
 landing-page/qa/
 landing-page/qa-*/
