@@ -6,10 +6,11 @@ import {
   HOW_LABEL, KIND_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, allIssues, catalogView, copyOperator, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, moveOperator, newOperator, suggestJoinKeys,
   branchReaders, newBranchId, operatorName, operatorTitle, readableSteps, removeOperator, removeStep, renameBranch, setOperator, splitLines, stepTitle, unionLines, updateStep,
 } from "./pipelineModel.js";
+import { t } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
 
 const earlier = (draft, step) => draft.steps.slice(0, draft.steps.findIndex((s) => s.id === step.id));
-/** The options of a "读哪一步" picker: the steps before this one, a split by its branches. */
+/** The options of a "reads which step" picker: the steps before this one, a split by its branches. */
 const readOptions = (draft, step, skip = []) => readableSteps(earlier(draft, step)).filter((r) => !skip.includes(r.id)).map((r) => <option key={r.id} value={r.id}>{r.label}</option>);
 
 /** The header every step editor has: what it is, and the way to remove it. */
@@ -18,7 +19,7 @@ function StepHead({ step, draft, setDraft, onRemoved }) {
   return (
     <div className="page-head step-head">
       <h2 className="section-title">{KIND_LABEL[step.type]}</h2>
-      <button className="plain" disabled={readers.length > 0} title={readers.length ? `${readers.join("、")} 还在读它，先删它们` : ""} onClick={() => { setDraft(removeStep(draft, step.id).spec); onRemoved(); }}>删除这一步</button>
+      <button className="plain" disabled={readers.length > 0} title={readers.length ? t("steps.edit.readers.blocked", { names: readers.join(", ") }) : ""} onClick={() => { setDraft(removeStep(draft, step.id).spec); onRemoved(); }}>{t("steps.edit.removeStep")}</button>
     </div>
   );
 }
@@ -29,20 +30,20 @@ function InputEditor({ step, draft, setDraft, datasets }) {
   return (
     <div className="op-form">
       <div className="field">
-        <span className="caption">读哪个数据集</span>
-        <Select label="数据集" value={step.dataset ?? ""} onChange={(dataset) => set({ dataset, version: undefined })}>
-          {!known && <option value={step.dataset ?? ""}>{step.dataset || "选一个数据集"}</option>}
+        <span className="caption">{t("steps.edit.input.dataset")}</span>
+        <Select label={t("steps.edit.input.datasetLabel")} value={step.dataset ?? ""} onChange={(dataset) => set({ dataset, version: undefined })}>
+          {!known && <option value={step.dataset ?? ""}>{step.dataset || t("steps.edit.input.pick")}</option>}
           {datasets.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
         </Select>
       </div>
       <div className="field">
-        <span className="caption">读哪一版</span>
-        <Select label="版本" value={step.version ? String(step.version) : ""} onChange={(v) => set({ version: v ? Number(v) : undefined })}>
-          <option value="">当前版本{known ? `（第 ${known.version} 版）` : ""}</option>
-          {known && Array.from({ length: known.version }, (_, i) => known.version - i).map((v) => <option key={v} value={v}>第 {v} 版（固定）</option>)}
+        <span className="caption">{t("steps.edit.input.version")}</span>
+        <Select label={t("steps.edit.input.versionLabel")} value={step.version ? String(step.version) : ""} onChange={(v) => set({ version: v ? Number(v) : undefined })}>
+          <option value="">{known ? t("steps.edit.input.currentN", { version: known.version }) : t("steps.edit.input.current")}</option>
+          {known && Array.from({ length: known.version }, (_, i) => known.version - i).map((v) => <option key={v} value={v}>{t("steps.edit.input.pinned", { version: v })}</option>)}
         </Select>
       </div>
-      <p className="hint">选了固定的版本，数据集再有新版本，这一步也不动。</p>
+      <p className="hint">{t("steps.edit.input.hint")}</p>
     </div>
   );
 }
@@ -68,29 +69,29 @@ function JoinEditor({ step, draft, setDraft, nodes }) {
   return (
     <div className="op-form">
       <div className="inline wide">
-        <Select label="左边" value={step.left ?? ""} onChange={(v) => set({ left: v, on: [suggestJoinKeys(nodes[v]?.column_types, nodes[step.right]?.column_types).best ?? { left: "", right: "" }] })}>{readOptions(draft, step)}</Select>
-        <Select label="关联方式" value={step.how} onChange={(how) => set({ how })}>
+        <Select label={t("steps.edit.join.left")} value={step.left ?? ""} onChange={(v) => set({ left: v, on: [suggestJoinKeys(nodes[v]?.column_types, nodes[step.right]?.column_types).best ?? { left: "", right: "" }] })}>{readOptions(draft, step)}</Select>
+        <Select label={t("steps.edit.join.how")} value={step.how} onChange={(how) => set({ how })}>
           {Object.entries(HOW_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </Select>
-        <Select label="右边" value={step.right ?? ""} onChange={(v) => set({ right: v, on: [suggestJoinKeys(nodes[step.left]?.column_types, nodes[v]?.column_types).best ?? { left: "", right: "" }], right_columns: undefined })}>{readOptions(draft, step, [step.left])}</Select>
+        <Select label={t("steps.edit.join.right")} value={step.right ?? ""} onChange={(v) => set({ right: v, on: [suggestJoinKeys(nodes[step.left]?.column_types, nodes[v]?.column_types).best ?? { left: "", right: "" }], right_columns: undefined })}>{readOptions(draft, step, [step.left])}</Select>
       </div>
-      {step.how === "semi" && <p className="hint">只留左边对得上的行，不带右边的列。</p>}
-      {step.how === "anti" && <p className="hint">只留左边在右边找不到的行，不带右边的列。</p>}
+      {step.how === "semi" && <p className="hint">{t("steps.edit.join.semi")}</p>}
+      {step.how === "anti" && <p className="hint">{t("steps.edit.join.anti")}</p>}
       <fieldset className="keys">
-        <legend>按哪几列对上</legend>
+        <legend>{t("steps.edit.join.keys")}</legend>
         {step.on.map((pair, i) => (
           <div className="inline wide op-row" key={i}>
-            <Select label="左边的列" value={pair.left} onChange={(v) => setPair(i, { ...pair, left: v })}><option value="">左边的列</option>{left.map((n) => <option key={n} value={n}>{n}</option>)}</Select>
+            <Select label={t("steps.edit.join.leftCol")} value={pair.left} onChange={(v) => setPair(i, { ...pair, left: v })}><option value="">{t("steps.edit.join.leftCol")}</option>{left.map((n) => <option key={n} value={n}>{n}</option>)}</Select>
             <span>=</span>
-            <Select label="右边的列" value={pair.right} onChange={(v) => setPair(i, { ...pair, right: v })}><option value="">右边的列</option>{right.map((n) => <option key={n} value={n}>{n}</option>)}</Select>
-            <button className="plain" disabled={step.on.length === 1} onClick={() => set({ on: step.on.filter((_, k) => k !== i) })}>删除</button>
+            <Select label={t("steps.edit.join.rightCol")} value={pair.right} onChange={(v) => setPair(i, { ...pair, right: v })}><option value="">{t("steps.edit.join.rightCol")}</option>{right.map((n) => <option key={n} value={n}>{n}</option>)}</Select>
+            <button className="plain" disabled={step.on.length === 1} onClick={() => set({ on: step.on.filter((_, k) => k !== i) })}>{t("steps.edit.delete")}</button>
           </div>
         ))}
-        <button className="plain" onClick={() => set({ on: [...step.on, { left: "", right: "" }] })}>加一对</button>
+        <button className="plain" onClick={() => set({ on: [...step.on, { left: "", right: "" }] })}>{t("steps.edit.join.addPair")}</button>
         {unused.length > 0 && (
-          <p className="hint">两边都有的列：{unused.map((s) => <button key={s.left} className="plain" onClick={() => set({ on: [...step.on.filter((p) => p.left || p.right), s] })}>用 {s.left} = {s.right}</button>)}</p>
+          <p className="hint">{t("steps.edit.join.sharedCols")}{unused.map((s) => <button key={s.left} className="plain" onClick={() => set({ on: [...step.on.filter((p) => p.left || p.right), s] })}>{t("steps.edit.join.use", { left: s.left, right: s.right })}</button>)}</p>
         )}
-        {untouched && !suggest.best && step.left && step.right && <p className="todo-note">待配置：两边没有同名的键，自己选。</p>}
+        {untouched && !suggest.best && step.left && step.right && <p className="todo-note">{t("steps.edit.join.noSameKey")}</p>}
       </fieldset>
       <div className="ways">
         {Object.entries(NULL_KEYS_LABEL).map(([k, v]) => (
@@ -99,14 +100,14 @@ function JoinEditor({ step, draft, setDraft, nodes }) {
       </div>
       {(step.how === "inner" || step.how === "left") && right.length > 0 && (
         <fieldset className="keys">
-          <legend>带过来右边的哪些列</legend>
+          <legend>{t("steps.edit.join.bringRight")}</legend>
           {right.map((n) => <label key={n}><input type="checkbox" checked={chosen.includes(n)} onChange={(e) => toggleRight(n, e.target.checked)} />{n}</label>)}
         </fieldset>
       )}
       {verdict.length > 0 && (
         <div className="verdict">
-          <p className="caption">这一步做了什么</p>
-          <ul className="plain-list">{verdict.map((l, i) => <li key={i} className={i > 0 && /多出|合计|重复/.test(l) ? "warn" : ""}>{l}</li>)}</ul>
+          <p className="caption">{t("steps.edit.whatItDid")}</p>
+          <ul className="plain-list">{verdict.map((l, i) => <li key={i} className={i > 0 && new RegExp(t("steps.edit.join.warnRe"), "i").test(l) ? "warn" : ""}>{l}</li>)}</ul>
         </div>
       )}
     </div>
@@ -123,8 +124,8 @@ function OperatorEditor({ name, draft, step, index, onChange }) {
     operatorColumns(name, before, step.id, null).then((b) => live && setState({ key, cols: b.columns, error: "" }), (e) => live && setState({ key, cols: null, error: e.message }));
     return () => { live = false; };
   }, [key]);
-  if (state.error) return Object.keys(allIssues(draft.steps)).length ? <p className="todo-note">前面还有步骤没配好，这一步看不到列。</p> : <p className="error">读不出这一步看到的列：{friendlyError(state.error, draft.steps)}</p>;
-  if (!state.cols) return <p className="muted">加载中</p>;
+  if (state.error) return Object.keys(allIssues(draft.steps)).length ? <p className="todo-note">{t("steps.edit.op.upstream")}</p> : <p className="error">{t("steps.edit.op.cantRead", { error: friendlyError(state.error, draft.steps) })}</p>;
+  if (!state.cols) return <p className="muted">{t("steps.edit.loading")}</p>;
   return <OperatorForm op={step.operators[index]} cols={state.cols} onChange={onChange} where={{ name, spec: before, stepId: step.id, index, from: step.from }} />;
 }
 
@@ -139,33 +140,33 @@ function OperatorPicker({ catalog, onPick, onClose }) {
   return (
     <dialog ref={ref} className="upload wide-dialog" onCancel={(e) => { e.preventDefault(); onClose(); }}>
       <div className="dialog-body">
-        <h2>添加一个操作</h2>
-        <input type="text" aria-label="搜索操作" placeholder="搜索，例如 求和、日期、空值" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <h2>{t("steps.edit.picker.title")}</h2>
+        <input type="text" aria-label={t("steps.edit.picker.searchLabel")} placeholder={t("steps.edit.picker.searchPh")} value={query} onChange={(e) => setQuery(e.target.value)} />
         <div className="picker">
-          <div className="picker-cats" role="tablist" aria-label="分类">
-            <button role="tab" aria-selected={category === null} className={`plain${category === null ? " on" : ""}`} onClick={() => setCategory(null)}>全部</button>
+          <div className="picker-cats" role="tablist" aria-label={t("steps.edit.picker.cats")}>
+            <button role="tab" aria-selected={category === null} className={`plain${category === null ? " on" : ""}`} onClick={() => setCategory(null)}>{t("steps.edit.picker.all")}</button>
             {categories.map((c) => <button key={c} role="tab" aria-selected={category === c} className={`plain${category === c ? " on" : ""}`} onClick={() => setCategory(c)}>{c}</button>)}
           </div>
           <ul className="picker-list">
             {items.map((c) => <li key={c.op}><button className={`plain${shown?.op === c.op ? " on" : ""}`} onClick={() => setPicked(c.op)}>{c.name}</button></li>)}
-            {!items.length && <li className="muted">没有符合的操作</li>}
+            {!items.length && <li className="muted">{t("steps.edit.picker.none")}</li>}
           </ul>
           <div className="picker-detail">
             {shown ? (
               <>
                 <h3>{shown.name}</h3>
                 <p>{shown.text}</p>
-                <p className="caption">要填的</p>
+                <p className="caption">{t("steps.edit.picker.params")}</p>
                 <ul className="plain-list">{(OPERATOR_PARAMS[shown.op] ?? []).map((p) => <li key={p}>{p}</li>)}</ul>
               </>
-            ) : <p className="muted">从左边选一个操作</p>}
+            ) : <p className="muted">{t("steps.edit.picker.choose")}</p>}
           </div>
         </div>
       </div>
       <div className="actions">
         <span></span>
-        <button className="plain" onClick={onClose}>取消</button>
-        <button className="primary" disabled={!shown} onClick={() => onPick(shown.op)}>添加{shown ? shown.name : ""}</button>
+        <button className="plain" onClick={onClose}>{t("steps.edit.cancel")}</button>
+        <button className="primary" disabled={!shown} onClick={() => onPick(shown.op)}>{t("steps.edit.picker.add", { name: shown ? shown.name : "" })}</button>
       </div>
     </dialog>
   );
@@ -177,8 +178,8 @@ function OperatorReport({ report }) {
   return (
     <div className="op-report">
       {report.text && <p className="muted small">{report.text}</p>}
-      {failed.length > 0 && <ul className="plain-list small warn">{failed.slice(0, 10).map((f) => <li key={f.row}>第 {f.row} 行：{f.value}</li>)}{failed.length > 10 && <li>还有 {failed.length - 10} 行</li>}</ul>}
-      {report.error_rows?.length > 0 && <p className="warn small">算不出结果的行：{report.error_rows.slice(0, 10).join("、")}{report.error_rows.length > 10 ? " 等" : ""}</p>}
+      {failed.length > 0 && <ul className="plain-list small warn">{failed.slice(0, 10).map((f) => <li key={f.row}>{t("steps.edit.report.row", { row: f.row, value: f.value })}</li>)}{failed.length > 10 && <li>{t("steps.edit.report.more", { count: failed.length - 10 })}</li>}</ul>}
+      {report.error_rows?.length > 0 && <p className="warn small">{t("steps.edit.report.errorRows", { rows: report.error_rows.slice(0, 10).join(", "), more: report.error_rows.length > 10 ? t("steps.edit.report.etc") : "" })}</p>}
       {(report.notices ?? []).map((n, i) => <p key={i} className="warn small">{n.text}</p>)}
       {doubledGroupLines(report).map((l, i) => <p key={i} className="warn small">{l}</p>)}
     </div>
@@ -193,8 +194,8 @@ function TransformEditor({ step, draft, setDraft, nodes, name, catalog, onPrevie
   return (
     <div className="op-form">
       <div className="field">
-        <span className="caption">读哪一步</span>
-        <Select label="读哪一步" value={step.from ?? ""} onChange={(from) => { setEditing(null); setDraft(updateStep(draft, step.id, { from })); }}>{readOptions(draft, step)}</Select>
+        <span className="caption">{t("steps.edit.tf.reads")}</span>
+        <Select label={t("steps.edit.tf.reads")} value={step.from ?? ""} onChange={(from) => { setEditing(null); setDraft(updateStep(draft, step.id, { from })); }}>{readOptions(draft, step)}</Select>
       </div>
       <ol className="op-stack">
         {step.operators.map((op, i) => (
@@ -202,24 +203,24 @@ function TransformEditor({ step, draft, setDraft, nodes, name, catalog, onPrevie
             <div className="op-head">
               <span className="op-no">{i + 1}</span>
               <strong>{operatorName(op)}</strong>
-              {reports[i]?.affected != null && <span className="op-affect">影响 {reports[i].affected.toLocaleString("en-US")} 行</span>}
+              {reports[i]?.affected != null && <span className="op-affect">{t("steps.edit.tf.affects", { count: reports[i].affected.toLocaleString("en-US") })}</span>}
             </div>
             <p className="muted">{operatorTitle(op)}</p>
             <div className="op-buttons">
-              <button className="plain" aria-expanded={editing === i} onClick={() => setEditing(editing === i ? null : i)}>{editing === i ? "收起" : "编辑"}</button>
-              <button className="plain" onClick={() => onPreviewTo(i)}>预览</button>
-              <button className="plain" onClick={() => apply(copyOperator(draft, step.id, i))}>复制</button>
-              <button className="plain" onClick={() => { setEditing(null); apply(removeOperator(draft, step.id, i)); }}>删除</button>
-              <button className="plain" disabled={i === 0} onClick={() => { setEditing(null); apply(moveOperator(draft, step.id, i, -1)); }}>上移</button>
-              <button className="plain" disabled={i === step.operators.length - 1} onClick={() => { setEditing(null); apply(moveOperator(draft, step.id, i, 1)); }}>下移</button>
+              <button className="plain" aria-expanded={editing === i} onClick={() => setEditing(editing === i ? null : i)}>{editing === i ? t("steps.edit.tf.collapse") : t("steps.edit.tf.edit")}</button>
+              <button className="plain" onClick={() => onPreviewTo(i)}>{t("steps.edit.tf.preview")}</button>
+              <button className="plain" onClick={() => apply(copyOperator(draft, step.id, i))}>{t("steps.edit.tf.copy")}</button>
+              <button className="plain" onClick={() => { setEditing(null); apply(removeOperator(draft, step.id, i)); }}>{t("steps.edit.delete")}</button>
+              <button className="plain" disabled={i === 0} onClick={() => { setEditing(null); apply(moveOperator(draft, step.id, i, -1)); }}>{t("steps.edit.tf.up")}</button>
+              <button className="plain" disabled={i === step.operators.length - 1} onClick={() => { setEditing(null); apply(moveOperator(draft, step.id, i, 1)); }}>{t("steps.edit.tf.down")}</button>
             </div>
             {editing === i && <OperatorEditor name={name} draft={draft} step={step} index={i} onChange={(next) => apply(setOperator(draft, step.id, i, next))} />}
             <OperatorReport report={reports[i]} />
           </li>
         ))}
       </ol>
-      {!step.operators.length && <p className="muted">还没有操作。点“添加操作”，从清单里选。</p>}
-      <button className="secondary" onClick={() => setAdding(true)}>添加操作</button>
+      {!step.operators.length && <p className="muted">{t("steps.edit.tf.empty")}</p>}
+      <button className="secondary" onClick={() => setAdding(true)}>{t("steps.edit.tf.add")}</button>
       {adding && <OperatorPicker catalog={catalog} onClose={() => setAdding(false)} onPick={(kind) => { setAdding(false); apply(addOperator(draft, step.id, newOperator(kind))); setEditing(step.operators.length); }} />}
     </div>
   );
@@ -230,27 +231,27 @@ function UnionEditor({ step, draft, setDraft, nodes }) {
   const set = (patch) => setDraft(updateStep(draft, step.id, patch));
   const inputs = step.inputs ?? [];
   const readable = readableSteps(earlier(draft, step));
-  const options = [...readable, ...inputs.filter((i) => !readable.some((r) => r.id === i)).map((i) => ({ id: i, label: `${i}（这里不能读，取消勾选它）` }))];
+  const options = [...readable, ...inputs.filter((i) => !readable.some((r) => r.id === i)).map((i) => ({ id: i, label: t("steps.edit.un.cantRead", { id: i }) }))];
   const toggle = (id, on) => set({ inputs: on ? [...inputs, id] : inputs.filter((i) => i !== id) });
   const lines = unionLines(nodes[step.id]?.union);
   return (
     <div className="op-form">
       <fieldset className="keys">
-        <legend>把哪几步的行接在一起（按列名对上）</legend>
+        <legend>{t("steps.edit.un.legend")}</legend>
         {options.map((r) => <label key={r.id}><input type="checkbox" checked={inputs.includes(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} />{r.label}</label>)}
       </fieldset>
       <div className="ways">
-        <label><input type="radio" name={`missing-${step.id}`} checked={(step.missing ?? "error") === "error"} onChange={() => set({ missing: "error" })} />有一步缺列就不合并</label>
-        <label><input type="radio" name={`missing-${step.id}`} checked={step.missing === "empty"} onChange={() => set({ missing: "empty" })} />缺的列留空（会数出留空的行）</label>
+        <label><input type="radio" name={`missing-${step.id}`} checked={(step.missing ?? "error") === "error"} onChange={() => set({ missing: "error" })} />{t("steps.edit.un.missingError")}</label>
+        <label><input type="radio" name={`missing-${step.id}`} checked={step.missing === "empty"} onChange={() => set({ missing: "empty" })} />{t("steps.edit.un.missingEmpty")}</label>
       </div>
-      <label className="field"><span className="caption">加一列标出每行来自哪一步（不填就不加）</span>
-        <input type="text" value={step.source_column ?? ""} placeholder="例如 来源" onChange={(e) => set({ source_column: e.target.value || undefined })} />
+      <label className="field"><span className="caption">{t("steps.edit.un.source")}</span>
+        <input type="text" value={step.source_column ?? ""} placeholder={t("steps.edit.un.sourcePh")} onChange={(e) => set({ source_column: e.target.value || undefined })} />
       </label>
-      <p className="hint">同一列在各步里类型要一样；代码列要各步确认过的含义一样，不一样先用“打标签”换成含义。</p>
+      <p className="hint">{t("steps.edit.un.hint")}</p>
       {lines.length > 0 && (
         <div className="verdict">
-          <p className="caption">这一步做了什么</p>
-          <ul className="plain-list">{lines.map((l) => <li key={l} className={/算两次/.test(l) ? "warn" : ""}>{l}</li>)}</ul>
+          <p className="caption">{t("steps.edit.whatItDid")}</p>
+          <ul className="plain-list">{lines.map((l) => <li key={l} className={new RegExp(t("steps.edit.un.warnRe"), "i").test(l) ? "warn" : ""}>{l}</li>)}</ul>
         </div>
       )}
     </div>
@@ -296,34 +297,34 @@ function SplitEditor({ step, draft, setDraft, nodes, name }) {
   const withRest = (list) => [...list, ...(rest ? [rest] : [])];
   return (
     <div className="op-form">
-      <div className="field"><span className="caption">拆哪一步的行</span>
-        <Select label="读哪一步" value={step.from ?? ""} onChange={(from) => set({ from })}>{readOptions(draft, step)}</Select>
+      <div className="field"><span className="caption">{t("steps.edit.sp.source")}</span>
+        <Select label={t("steps.edit.tf.reads")} value={step.from ?? ""} onChange={(from) => set({ from })}>{readOptions(draft, step)}</Select>
       </div>
-      {source.error && <p className="error">读不出这一步的列：{friendlyError(source.error, draft.steps)}</p>}
+      {source.error && <p className="error">{t("steps.edit.sp.error", { error: friendlyError(source.error, draft.steps) })}</p>}
       {ruled.map((b, i) => (
         <fieldset className="component" key={i}>
-          <span className="caption">分支 {i + 1} 的名字（后面的步骤按它读）</span>
+          <span className="caption">{t("steps.edit.sp.branchName", { n: i + 1 })}</span>
           <div className="inline wide">
-            <BranchName label={`分支 ${i + 1} 的名字`} id={b.id} onRename={(to) => setDraft(renameBranch(draft, step.id, b.id, to))} />
-            <button className="plain" disabled={ruled.length === 1 || readBy(b.id).length > 0} title={readBy(b.id).length ? `${readBy(b.id).join("、")} 在读这个分支，先改它们` : ""} onClick={() => set({ branches: branches.filter((x) => x !== b) })}>去掉这个分支</button>
+            <BranchName label={t("steps.edit.sp.branchLabel", { n: i + 1 })} id={b.id} onRename={(to) => setDraft(renameBranch(draft, step.id, b.id, to))} />
+            <button className="plain" disabled={ruled.length === 1 || readBy(b.id).length > 0} title={readBy(b.id).length ? t("steps.edit.sp.readBy", { names: readBy(b.id).join(", ") }) : ""} onClick={() => set({ branches: branches.filter((x) => x !== b) })}>{t("steps.edit.sp.dropBranch")}</button>
           </div>
-          {source.cols && <FilterForm op={{ where: b.where ?? { all: [] } }} cols={source.cols} onChange={(op) => setBranch(branches.indexOf(b), { where: op.where })} lead="满足" tail="条件的行进这个分支" />}
+          {source.cols && <FilterForm op={{ where: b.where ?? { all: [] } }} cols={source.cols} onChange={(op) => setBranch(branches.indexOf(b), { where: op.where })} lead={t("steps.edit.sp.lead")} tail={t("steps.edit.sp.tail")} />}
         </fieldset>
       ))}
       <div className="inline">
-        <button className="plain" disabled={branches.length >= 10} onClick={() => set({ branches: withRest([...ruled, { id: newBranchId(step, draft.steps), where: { all: [{ column: "", cmp: "eq", value: "" }] } }]) })}>加一个分支</button>
-        <label className="check" title={rest && readBy(rest.id).length ? `${readBy(rest.id).join("、")} 在读“其余”分支，先改它们` : ""}><input type="checkbox" checked={Boolean(rest)} disabled={Boolean(rest) && readBy(rest.id).length > 0} onChange={(e) => set({ branches: e.target.checked ? [...ruled, { id: `${step.id}_其余`, rest: true }] : ruled })} />其余的行进“其余”分支</label>
+        <button className="plain" disabled={branches.length >= 10} onClick={() => set({ branches: withRest([...ruled, { id: newBranchId(step, draft.steps), where: { all: [{ column: "", cmp: "eq", value: "" }] } }]) })}>{t("steps.edit.sp.addBranch")}</button>
+        <label className="check" title={rest && readBy(rest.id).length ? t("steps.edit.sp.readRest", { names: readBy(rest.id).join(", ") }) : ""}><input type="checkbox" checked={Boolean(rest)} disabled={Boolean(rest) && readBy(rest.id).length > 0} onChange={(e) => set({ branches: e.target.checked ? [...ruled, { id: `${step.id}_${t("steps.edit.sp.restSuffix")}`, rest: true }] : ruled })} />{t("steps.edit.sp.restCheck")}</label>
       </div>
       {rest && (
-        <label className="field"><span className="caption">“其余”分支的名字</span>
-          <BranchName label="“其余”分支的名字" id={rest.id} onRename={(to) => setDraft(renameBranch(draft, step.id, rest.id, to))} />
+        <label className="field"><span className="caption">{t("steps.edit.sp.restName")}</span>
+          <BranchName label={t("steps.edit.sp.restName")} id={rest.id} onRename={(to) => setDraft(renameBranch(draft, step.id, rest.id, to))} />
         </label>
       )}
-      <p className="hint">一行只进第一个满足条件的分支。{rest ? "" : "没有“其余”分支时，哪个条件都不满足的行不会往下走。"}后面的步骤按分支的名字读。</p>
+      <p className="hint">{t("steps.edit.sp.hint1")} {rest ? "" : `${t("steps.edit.sp.hint2")} `}{t("steps.edit.sp.hint3")}</p>
       {lines.length > 0 && (
         <div className="verdict">
-          <p className="caption">这一步做了什么</p>
-          <ul className="plain-list">{lines.map((l) => <li key={l} className={/没进任何分支|空的|前面的分支/.test(l) ? "warn" : ""}>{l}</li>)}</ul>
+          <p className="caption">{t("steps.edit.whatItDid")}</p>
+          <ul className="plain-list">{lines.map((l) => <li key={l} className={new RegExp(t("steps.edit.sp.warnRe"), "i").test(l) ? "warn" : ""}>{l}</li>)}</ul>
         </div>
       )}
     </div>
@@ -346,42 +347,42 @@ function OutputEditor({ step, draft, setDraft, nodes }) {
   const status = out?.status;
   return (
     <div className="op-form">
-      <div className="field"><span className="caption">读哪一步</span>
-        <Select label="读哪一步" value={step.from ?? ""} onChange={(from) => set({ from, columns: undefined, key: undefined })}>{readOptions(draft, step)}</Select>
+      <div className="field"><span className="caption">{t("steps.edit.tf.reads")}</span>
+        <Select label={t("steps.edit.tf.reads")} value={step.from ?? ""} onChange={(from) => set({ from, columns: undefined, key: undefined })}>{readOptions(draft, step)}</Select>
       </div>
-      <label className="field"><span className="caption">写成哪个数据集（没有就新建，有就加一个新版本）</span>
+      <label className="field"><span className="caption">{t("steps.edit.out.name")}</span>
         <input type="text" value={step.name ?? ""} onChange={(e) => set({ name: e.target.value })} />
       </label>
       {status && <p className={`output-status status-${status.state}`}>{status.text}</p>}
       <fieldset className="keys">
-        <legend>留下哪些列（取消勾选就丢掉）</legend>
+        <legend>{t("steps.edit.out.keep")}</legend>
         {names.map((n) => <label key={n}><input type="checkbox" checked={kept.includes(n)} onChange={(e) => toggle(n, e.target.checked)} />{n}</label>)}
       </fieldset>
       <fieldset className="keys">
-        <legend>主键：用哪几列认出一行</legend>
+        <legend>{t("steps.edit.out.key")}</legend>
         {names.map((n) => <label key={n}><input type="checkbox" checked={key.includes(n)} onChange={(e) => setKey(e.target.checked ? [...key, n] : key.filter((k) => k !== n))} />{n}</label>)}
       </fieldset>
       {key.length > 1 && (
         <div className="inline wide">
-          <label className="field"><span className="caption">连起来的分隔符</span><input type="text" value={step.key.separator ?? "|"} maxLength={10} onChange={(e) => set({ key: { ...step.key, separator: e.target.value } })} /></label>
-          <label className="field"><span className="caption">新主键列叫</span><input type="text" value={step.key.as ?? ""} placeholder="键" onChange={(e) => set({ key: { ...step.key, as: e.target.value || undefined } })} /></label>
+          <label className="field"><span className="caption">{t("steps.edit.out.sep")}</span><input type="text" value={step.key.separator ?? "|"} maxLength={10} onChange={(e) => set({ key: { ...step.key, separator: e.target.value } })} /></label>
+          <label className="field"><span className="caption">{t("steps.edit.out.as")}</span><input type="text" value={step.key.as ?? ""} placeholder={t("steps.edit.out.asPh")} onChange={(e) => set({ key: { ...step.key, as: e.target.value || undefined } })} /></label>
         </div>
       )}
       {out?.duplicate_keys && (
         <div className="verdict">
-          <p className="bad">主键有 {out.duplicate_keys.count} 个重复，多出 {out.duplicate_keys.extra_rows} 行，运行会被拦下</p>
-          <ul className="plain-list small">{out.duplicate_keys.examples.map((e, i) => <li key={i}>{e.key.join(" + ")}：{e.rows} 行</li>)}</ul>
+          <p className="bad">{t("steps.edit.out.dupKeys", { count: out.duplicate_keys.count, extra: out.duplicate_keys.extra_rows })}</p>
+          <ul className="plain-list small">{out.duplicate_keys.examples.map((e, i) => <li key={i}>{t("steps.edit.out.dupExample", { key: e.key.join(" + "), rows: e.rows })}</li>)}</ul>
         </div>
       )}
-      {out?.empty_keys > 0 && <p className="bad">{out.empty_keys} 行的主键是空的，运行会被拦下</p>}
-      {out?.dropped.length > 0 && <p className="muted small">丢掉的列：{out.dropped.join("、")}</p>}
+      {out?.empty_keys > 0 && <p className="bad">{t("steps.edit.out.emptyKeys", { count: out.empty_keys })}</p>}
+      {out?.dropped.length > 0 && <p className="muted small">{t("steps.edit.out.dropped", { names: out.dropped.join(", ") })}</p>}
     </div>
   );
 }
 
 /** The editor on the right: by the kind of the selected step. `onPreviewTo(i)` shows the node's rows up to operator i in the bottom panel. */
 export function StepEditor({ step, draft, setDraft, nodes, datasets, name, catalog, options, dirty, onPreviewTo, onRemoved }) {
-  if (!step) return <p className="muted pl-empty">点左边的步骤或图里的卡片，在这里改它。</p>;
+  if (!step) return <p className="muted pl-empty">{t("steps.edit.none")}</p>;
   const failures = failureLines(nodes[step.id]);
   return (
     <div>
@@ -393,7 +394,7 @@ export function StepEditor({ step, draft, setDraft, nodes, datasets, name, catal
       {step.type === "union" && <UnionEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} />}
       {step.type === "split" && <SplitEditor key={step.id} step={step} draft={draft} setDraft={setDraft} nodes={nodes} name={name} />}
       {step.type === "output" && <OutputEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} />}
-      {(step.type === "transform" || step.type === "llm") && failures.length > 0 && <p className="warn small">这一步共：{failures.join("；")}</p>}
+      {(step.type === "transform" || step.type === "llm") && failures.length > 0 && <p className="warn small">{t("steps.edit.failTotal", { lines: failures.join("; ") })}</p>}
     </div>
   );
 }

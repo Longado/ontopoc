@@ -21,4 +21,9 @@ export const CONVERTED = [
   "ui/MoreMenu.jsx",
   "ui/PageHeader.jsx",
   "ui/StatusChip.jsx",
+  "StepEditors.jsx",
+  "OperatorForms.jsx",
+  "ExpressionEditor.jsx",
+  "LlmEditor.jsx",
+  "pipelineModel.js",
 ];

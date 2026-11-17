@@ -17,24 +17,28 @@ import enAuth from "./en/auth.js"; // areas
 import enCommon from "./en/common.js"; // areas
 import enHome from "./en/home.js"; // areas
 import enNav from "./en/nav.js"; // areas
+import enPipeline from "./en/pipeline.js"; // areas
 import enSettings from "./en/settings.js"; // areas
 import enShell from "./en/shell.js"; // areas
 import enStatus from "./en/status.js"; // areas
+import enSteps from "./en/steps.js"; // areas
 import enUi from "./en/ui.js"; // areas
 import zhAccount from "./zh/account.js"; // areas
 import zhAuth from "./zh/auth.js"; // areas
 import zhCommon from "./zh/common.js"; // areas
 import zhHome from "./zh/home.js"; // areas
 import zhNav from "./zh/nav.js"; // areas
+import zhPipeline from "./zh/pipeline.js"; // areas
 import zhSettings from "./zh/settings.js"; // areas
 import zhShell from "./zh/shell.js"; // areas
 import zhStatus from "./zh/status.js"; // areas
+import zhSteps from "./zh/steps.js"; // areas
 import zhUi from "./zh/ui.js"; // areas
 
 /** The dictionaries: AREAS[locale][area] is a flat { key: text } object. */
 export const AREAS = {
-  en: { account: enAccount, auth: enAuth, common: enCommon, home: enHome, nav: enNav, settings: enSettings, shell: enShell, status: enStatus, ui: enUi }, // areas
-  zh: { account: zhAccount, auth: zhAuth, common: zhCommon, home: zhHome, nav: zhNav, settings: zhSettings, shell: zhShell, status: zhStatus, ui: zhUi }, // areas
+  en: { account: enAccount, auth: enAuth, common: enCommon, home: enHome, nav: enNav, settings: enSettings, shell: enShell, status: enStatus, steps: enSteps, ui: enUi, pipeline: enPipeline }, // areas
+  zh: { account: zhAccount, auth: zhAuth, common: zhCommon, home: zhHome, nav: zhNav, settings: zhSettings, shell: zhShell, status: zhStatus, steps: zhSteps, ui: zhUi, pipeline: zhPipeline }, // areas
 };
 
 export const LOCALES = ["en", "zh"];

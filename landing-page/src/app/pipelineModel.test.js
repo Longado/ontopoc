@@ -169,6 +169,9 @@ test("statistics before and after are compared per column and a column that came
 // --- the AI step and the assistant ---
 
 import { aiNodeLine, applyDraft, estimateText, insertField, labelledRow, llmRunText, runCalls, offListLines, rememberPrompt, reviewText, stepSummary } from "./pipelineModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these assertions are on the Chinese texts; pipelineEnglish.test.js holds the English ones
 
 test("a new AI step reads the selected step, records the model and starts as a classification that ends in 其他", () => {
   const step = newStep([{ id: "t", type: "input" }], "llm", "t", [], "deepseek-flash");

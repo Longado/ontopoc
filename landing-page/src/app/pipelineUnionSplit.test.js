@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { KIND_LABEL, cardFlags, inputsOf, kindLine, layout, newStep, operatorTitle, orphans, readableSteps, removeStep, splitLines, stepSummary, stepTitle, unionLines } from "./pipelineModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these assertions are on the Chinese texts; pipelineEnglish.test.js holds the English ones
 
 const STEPS = [
   { id: "o", type: "input", dataset: "订单" },

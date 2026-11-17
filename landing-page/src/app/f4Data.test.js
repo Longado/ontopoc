@@ -8,6 +8,9 @@ import { aggAutoName, newOperator, retargetAgg } from "./pipelineModel.js";
 import { hrefFor, parseRoute } from "./routeModel.js";
 import { zoneChoices, zoneLabel } from "./scheduleTime.js";
 import { suggestEnglish } from "./typeModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // the assertions on pipeline texts are the Chinese ones
 
 test("an aggregate's default name follows its function and column", () => {
   assert.equal(aggAutoName({ fn: "count" }), "行数");
