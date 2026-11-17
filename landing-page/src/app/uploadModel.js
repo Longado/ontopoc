@@ -87,6 +87,26 @@ export const changesExisting = (payload) => payload.files.some((f) => f.mode ===
 /** The definitions an upload would send back to needs another look, one line each: what it is and why. */
 export const movedLines = (moved) => moved.map((m) => ({ key: m.element, what: `${KIND_WORD[m.kind] ?? m.kind}「${m.title}」`, reason: m.reason }));
 
+const WAY = {
+  new: { kind: "new", label: "新数据集", consequence: "数据放进一个新的数据集，不动现有的。" },
+  update_by_key: { kind: "update_by_key", label: "按主键更新", consequence: "对上主键的行改成新值，新主键的行追加；不会删除任何行。" },
+  overwrite: { kind: "overwrite", label: "覆盖", consequence: "整张表换成新文件，写成新的一版；旧版本还留在版本页，但现在的行不会保留。" },
+};
+
+/** The ways a file can go in: a new dataset is always offered; updating one that exists is folded away ("更新已有数据集") and is not offered at all when there is no dataset to update. */
+export const waysFor = (datasetNames) => ({ primary: [WAY.new], folded: datasetNames.length ? [WAY.update_by_key, WAY.overwrite] : [] });
+
+/** Whether a file's fold of update ways starts open: when the file's name is a dataset already (nothing chosen yet) or the person chose an update. */
+export const updateWays = (choice) => ({ open: choice.kind === null || choice.kind === "update_by_key" || choice.kind === "overwrite" });
+
+/** The buttons after an upload: look at the dataset (the list when several were made), and make an object type from it when a new dataset was made.
+ * The type form does not take a dataset in its address yet, so that link goes to the empty form. */
+export function afterUpload(results) {
+  const first = results[0];
+  const view = { label: "查看数据集", href: results.length === 1 ? `#/datasets/${encodeURIComponent(first.name)}/fields` : "#/datasets" };
+  return results.some((r) => r.mode === "new" || !r.mode) ? [view, { label: "用它建对象类型", href: "#/types/new" }] : [view];
+}
+
 const blankText = (n) => (n ? `新文件里 ${n} 个空格子，保留了原值` : "");
 
 /** One saved file as a sentence for the dialog. A skipped update is a plain line, not an error. */
