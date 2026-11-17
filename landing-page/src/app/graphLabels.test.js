@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setLocale } from "./i18n/index.js";
 
 import { LEGEND, connectedMeaning, placeLabels } from "./graphModel.js";
+
+setLocale("zh");   // these tests assert the Chinese wording; English is the default
 
 const rects = (a, b) => !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
 

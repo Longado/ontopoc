@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setLocale } from "./i18n/index.js";
 
 import { LAYERS, SIZE, ageText, fitView, lineageColumns, litDepth, causeLine, edgeLabel, fitText, forceLayout, groupEdges, layeredLayout, leaves, lit, neighbours, shown, verdictText } from "./graphModel.js";
+
+setLocale("zh");   // these tests assert the Chinese wording; English is the default
 
 const node = (id, kind, name = id, extra = {}) => ({ id, kind, name, ...extra });
 const LINEAGE = {
@@ -176,7 +179,7 @@ test("the lineage draws every node as a 220 x 56 card, in contiguous columns tha
 test("a readable fit never zooms in past 100% or out past 70%, leaves room for the sticky header and centres what fits", () => {
   const content = { width: 1000, height: 400, top: 28 };
   assert.deepEqual(fitView({ w: 2000, h: 1200 }, content, "readable"), { k: 1, x: 500, y: 28 });
-  const small = fitView({ w: 800, h: 300 }, content, "readable");
+  const small = fitView({ w: 600, h: 300 }, content, "readable");
   assert.equal(small.k, 0.7);
   assert.equal(small.x, 0);   // wider than the frame at the floor: starts at the left edge, the reader drags for the rest
   assert.equal(fitView({ w: 900, h: 900 }, content, "readable").k, 0.9);
