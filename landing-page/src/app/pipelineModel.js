@@ -112,7 +112,7 @@ export function friendlyError(message, steps) {
   });
   const empty = lastOp?.op === "filter" ? conditionsOf(lastOp.where).findIndex((c) => !c.column) + 1 || 1 : 0;
   return said
-    .replace(/没有列「」/, empty ? `条件 ${empty} 没选列` : "没选列")
+    .replace(/没有列「」|(?<=：)没选列$/, empty ? `条件 ${empty} 没选列` : "没选列")
     .replace(/数据集「」(?:不存在|没有)?/, "数据集还没选")
     .replace(/没有(\S{0,4}?)「」/, "没选$1")
     .replace(/「」/g, "");

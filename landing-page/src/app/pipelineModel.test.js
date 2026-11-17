@@ -251,6 +251,7 @@ test("an engine message is said in plain words: no empty quotes, no word twice, 
   assert.equal(friendlyError("步骤 t 的第 1 个操作（filter）：没有列「」", steps), "数据过滤：条件 2 没选列");
   assert.equal(friendlyError("步骤 t 的第 1 个操作（filter）：没有列「」", [steps[0], { ...steps[1], operators: [{ op: "filter" }] }]), "数据过滤：条件 1 没选列");
   assert.equal(friendlyError("步骤 t 的第 1 个操作（filter）：没有列「金额」，是不是「金额数」？", steps), "数据过滤：没有列「金额」，是不是「金额数」？");
+  assert.equal(friendlyError("步骤 t 的第 1 个操作（filter）：没选列", steps), "数据过滤：条件 2 没选列");   // what the service says now
   const two = [steps[0], { ...steps[1], operators: [steps[1].operators[0], { op: "aggregate", group_by: [], aggregations: [] }] }];
   assert.equal(friendlyError("步骤 t 的第 2 个操作（aggregate）：已经有叫「行数」的列", two), "分组统计（第 2 个操作）：已经有叫「行数」的列");
   assert.equal(friendlyError("步骤 j：读的步骤里没有列「」", steps), "步骤 j：读的步骤里没选列");
