@@ -5,7 +5,7 @@ import { Select } from "./Select.jsx";
 import { State } from "./TypesPage.jsx";
 import { confirmersText, logText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
-import { actionProblem, emptyActionForm, actionPayload, notifyRecipient, recordStateText } from "./actionModel.js";
+import { KIND_WORD, OP_WORD, actionPayload, actionProblem, emptyActionForm, emptyCondition, notifyRecipient, opsFor, recordChangeText, recordStateText, runPayload, runProblem } from "./actionModel.js";
 
 /** Who the action tells when a change is approved: named people (kept as they are: an admin names them), people by an attribute equal to a column of the row, or
  * people by an attribute equal to a column of the object the row points to through a relation. Saved at once; not part of what is confirmed. */
@@ -92,7 +92,7 @@ function Records({ name, type, mayBuild }) {
                 <tr key={r.id}>
                   <td className="keep">{r.submitted_by}<span className="muted small block">{timeText(r.submitted_at)}</span></td>
                   <td>{r.object}</td>
-                  <td>{r.before_text} → {r.after_text}{r.reason && <span className="muted small block">{r.reason}</span>}</td>
+                  <td>{recordChangeText(r)}{r.reason && <span className="muted small block">{r.reason}</span>}</td>
                   <td>{recordStateText(r)}{r.why && <span className="muted small block">{r.why}</span>}</td>
                   <td className="keep">
                     {r.can_withdraw && <button className="plain" onClick={() => withdraw(r.id)}>撤回</button>}
@@ -127,6 +127,7 @@ function Records({ name, type, mayBuild }) {
 function ActionCard({ action, type, mayBuild, onChanged }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
   const confirm = async () => {
     setBusy(true);
     setError("");
@@ -152,9 +153,14 @@ function ActionCard({ action, type, mayBuild, onChanged }) {
       {action.waiting_on?.length > 0 && <p className="warn">要先确认{action.waiting_on.map((w) => `“${w.name}”`).join("、")}，才能确认这个行为</p>}
       {confirmersText(action) && <p className="muted small">{confirmersText(action)}</p>}
       {action.state === "needs_look" && action.reason && <div className="reason"><strong>为什么需要再看</strong><p>{action.reason}</p></div>}
+      {action.submitters?.length > 0 && <p className="muted small">只有 {action.submitters.map((p) => p.name).join("、")} 可以提交</p>}
       {mayBuild && action.can_confirm && <div className="inline"><button className="primary" onClick={confirm} disabled={busy}>确认这个行为</button></div>}
+      {mayBuild && action.kind === "create" && action.state === "confirmed" && !creating && (
+        <div className="inline"><button className="secondary" onClick={() => setCreating(true)}>{action.name}</button></div>
+      )}
+      {creating && <RunAction action={action} objectText={`新的${action.type_name}`} onDone={onChanged} onCancel={() => setCreating(false)} />}
       {error && <p className="error">{error}</p>}
-      <Records name={action.id} type={type} mayBuild={mayBuild} />
+      <Records key={creating ? "a" : "b"} name={action.id} type={type} mayBuild={mayBuild} />
     </section>
   );
 }
@@ -165,7 +171,8 @@ function NewAction({ type, form: options, onSaved }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const problem = actionProblem(form);
-  const column = options.properties.find((p) => p.column === form.condition.column);
+  const condProps = options.condition_properties ?? options.properties;
+  const setCondition = (i, next) => setForm({ ...form, conditions: form.conditions.map((c, j) => (j === i ? { ...c, ...next } : c)) });
   const toggle = (name, on) => setForm({ ...form, properties: on ? [...form.properties, name] : form.properties.filter((p) => p !== name) });
   const save = async () => {
     setBusy(true);
@@ -182,12 +189,25 @@ function NewAction({ type, form: options, onSaved }) {
   return (
     <section>
       <h2 className="section">新建行为</h2>
+      <div className="field">
+        <span className="caption">做什么</span>
+        <div className="inline wide">
+          {Object.entries(KIND_WORD).map(([kind, word]) => (
+            <label key={kind} className="check">
+              <input type="radio" name="action-kind" checked={form.kind === kind} onChange={() => setForm({ ...form, kind, properties: kind === "delete" ? [] : form.properties, conditions: kind === "create" ? [] : form.conditions })} />
+              {word}
+            </label>
+          ))}
+        </div>
+        {form.kind === "create" && <span className="muted small">新建一个对象：主键总要填，再选要一起填的属性。主键已经有了就拒绝，不会改写已有的对象。</span>}
+        {form.kind === "delete" && <span className="muted small">删除一个对象：提交要写理由，另一位建设者批准后才删；整行会留在记录里，可以撤销。</span>}
+      </div>
       <label className="field">
         <span className="caption">名字（动词加名词）</span>
         <input type="text" value={form.name} maxLength={40} placeholder="例如 改订单状态" onChange={(e) => setForm({ ...form, name: e.target.value })} />
       </label>
-      <div className="field">
-        <span className="caption">要改的属性（主键不能改）</span>
+      {form.kind !== "delete" && <div className="field">
+        <span className="caption">{form.kind === "create" ? "新建时要一起填的属性（主键总要填）" : "要改的属性（主键不能改）"}</span>
         <div className="inline wide" style={{ flexWrap: "wrap" }}>
           {options.properties.map((p) => (
             <label key={p.column} className="check">
@@ -196,8 +216,8 @@ function NewAction({ type, form: options, onSaved }) {
             </label>
           ))}
         </div>
-      </div>
-      {options.properties.filter((p) => form.properties.includes(p.column) && !p.values).length > 0 && (
+      </div>}
+      {form.kind !== "delete" && options.properties.filter((p) => form.properties.includes(p.column) && !p.values).length > 0 && (
         <div className="field">
           <span className="caption">新值只能从某个对象类型的一列里选（可以不写）</span>
           {options.properties.filter((p) => form.properties.includes(p.column) && !p.values).map((p) => {
@@ -217,23 +237,52 @@ function NewAction({ type, form: options, onSaved }) {
           })}
         </div>
       )}
-      <div className="field">
-        <span className="caption">只在对象满足这个条件时可以提交（可以不写）</span>
-        <div className="inline wide">
-          <Select label="条件的属性" value={form.condition.column} onChange={(c) => setForm({ ...form, condition: { column: c, value: "" } })}>
-            <option value="">不设条件</option>
-            {options.properties.map((p) => <option key={p.column} value={p.column}>{p.name}</option>)}
-          </Select>
-          {column && <span>等于</span>}
-          {column?.values && (
-            <Select label="条件的取值" value={form.condition.value} onChange={(value) => setForm({ ...form, condition: { ...form.condition, value } })}>
-              <option value="">选含义</option>
-              {column.values.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-            </Select>
-          )}
-          {column && !column.values && <input type="text" aria-label="条件的取值" value={form.condition.value} maxLength={100} onChange={(e) => setForm({ ...form, condition: { ...form.condition, value: e.target.value } })} />}
+      {form.kind !== "create" && (
+        <div className="field">
+          <span className="caption">只在对象满足这些条件时可以提交（都要满足，最多 5 条，可以不写）</span>
+          {form.conditions.map((c, i) => {
+            const prop = condProps.find((p) => p.column === c.column);
+            const ops = opsFor(prop);
+            return (
+              <div className="inline wide" key={i}>
+                <Select label={`条件 ${i + 1} 的属性`} value={c.column} onChange={(column) => setCondition(i, { column, op: "eq", value: "" })}>
+                  <option value="">选属性</option>
+                  {condProps.map((p) => <option key={p.column} value={p.column}>{p.name}</option>)}
+                </Select>
+                <Select label={`条件 ${i + 1} 的比较`} value={c.op} onChange={(op) => setCondition(i, { op, value: "" })}>
+                  {ops.map((op) => <option key={op} value={op}>{OP_WORD[op]}</option>)}
+                </Select>
+                {!["empty", "not_empty"].includes(c.op) && (prop?.values && ["eq", "ne"].includes(c.op) ? (
+                  <Select label={`条件 ${i + 1} 的取值`} value={c.value} onChange={(value) => setCondition(i, { value })}>
+                    <option value="">选含义</option>
+                    {prop.values.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                  </Select>
+                ) : (
+                  <input type="text" aria-label={`条件 ${i + 1} 的取值`} value={c.value} maxLength={c.op === "in" ? 400 : 100}
+                    placeholder={c.op === "in" ? (prop?.values ? `用逗号隔开：${prop.values.map((v) => v.value).join("，")}` : "用逗号隔开") : ""}
+                    onChange={(e) => setCondition(i, { value: e.target.value })} />
+                ))}
+                <button className="plain" onClick={() => setForm({ ...form, conditions: form.conditions.filter((_, j) => j !== i) })}>去掉</button>
+              </div>
+            );
+          })}
+          {form.conditions.length < 5 && <div><button className="plain" onClick={() => setForm({ ...form, conditions: [...form.conditions, emptyCondition()] })}>加一个条件</button></div>}
         </div>
-      </div>
+      )}
+      {options.people?.length > 0 && (
+        <div className="field">
+          <span className="caption">谁能提交（不选就是能看到它的建设者都能提交）</span>
+          <div className="inline wide" style={{ flexWrap: "wrap" }}>
+            {options.people.map((p) => (
+              <label key={p.id} className="check">
+                <input type="checkbox" aria-label={`能提交：${p.name}`} checked={form.submitters.includes(p.id)}
+                  onChange={(e) => setForm({ ...form, submitters: e.target.checked ? [...form.submitters, p.id] : form.submitters.filter((x) => x !== p.id) })} />
+                {p.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="inline">
         <button className="primary" onClick={save} disabled={busy || !!problem}>保存</button>
         {problem && <span className="muted small">{problem}</span>}
@@ -259,18 +308,21 @@ export function TypeActions({ type, mayBuild }) {
   );
 }
 
-/** The form for running one action on one object: a value for each property it writes, a reason. It makes a record that waits for another builder. */
+/** The form for running one action: a value for each property it writes (a create's key first), a reason (a delete must give one). It makes a record that waits
+ * for another builder. A create has no object yet: `objectKey` is null and the key comes from the form. */
 export function RunAction({ action, objectKey, objectText, onDone, onCancel }) {
   const [values, setValues] = useState(() => Object.fromEntries(action.parameters.map((p) => [p.column, ""])));
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const problem = runProblem(action, values, reason);
   const send = async () => {
     setBusy(true);
     setError("");
     try {
-      await submitAction(action.id, objectKey, values, reason);
+      const run = runPayload(action, values);
+      await submitAction(action.id, run.key ?? objectKey, run.params, reason);
       setDone(true);
       onDone?.();
     } catch (e) {
@@ -279,31 +331,34 @@ export function RunAction({ action, objectKey, objectText, onDone, onCancel }) {
     setBusy(false);
   };
   if (done) return <p>已提交，等另一位建设者在 <a href="#/confirm">待确认</a> 里批准。 <button className="plain" onClick={onCancel}>关闭</button></p>;
+  const verb = (p) => (action.kind === "create" ? (p.key ? `${p.name}（主键）` : p.name) : `${p.name} 改成`);
   return (
     <section className="card">
       <h2 className="item-title">{action.name}：{objectText}</h2>
+      {action.kind === "delete" && <p className="warn">批准后会删除 {objectText}。整行会留在记录里，可以撤销。</p>}
       {action.parameters.map((p) => (
         <div className="field" key={p.column}>
-          <span className="caption">{p.name} 改成</span>
+          <span className="caption">{verb(p)}</span>
           {p.options ? (
-            <Select label={`${p.name} 改成`} value={values[p.column]} onChange={(v) => setValues({ ...values, [p.column]: v })}>
+            <Select label={verb(p)} value={values[p.column]} onChange={(v) => setValues({ ...values, [p.column]: v })}>
               <option value="">选一个</option>
               {p.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           ) : (
-            <input type="text" aria-label={`${p.name} 改成`} value={values[p.column]} onChange={(e) => setValues({ ...values, [p.column]: e.target.value })} />
+            <input type="text" aria-label={verb(p)} value={values[p.column]} onChange={(e) => setValues({ ...values, [p.column]: e.target.value })} />
           )}
           {p.options_cut && <span className="muted small">只列出前 500 个可选值</span>}
           {!p.options && <span className="muted small">{p.type_name}</span>}
         </div>
       ))}
       <label className="field">
-        <span className="caption">理由</span>
-        <input type="text" value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} />
+        <span className="caption">{action.kind === "delete" ? "理由（必填）" : "理由"}</span>
+        <input type="text" aria-label="理由" value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} />
       </label>
       <div className="inline">
-        <button className="primary" onClick={send} disabled={busy || action.parameters.some((p) => !values[p.column].trim())}>提交，等人批准</button>
+        <button className="primary" onClick={send} disabled={busy || !!problem}>提交，等人批准</button>
         <button className="plain" onClick={onCancel}>取消</button>
+        {problem && <span className="muted small">{problem}</span>}
       </div>
       {error && <p className="error">{error}</p>}
     </section>
