@@ -112,7 +112,6 @@ export function SourcesPage() {
       {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
       {state.data && !admin && <AskAdmin />}
       {state.data && !sources.length && admin && <EmptyState icon="plug" title="还没有数据源" text="按向导走五步：选类型、填连接、测试、选表、定时同步。只读，不会改库里的数据。" action={{ label: "接入数据库", onClick: () => setMaking(true) }} />}
-      {state.data && !sources.length && !admin && <EmptyState icon="plug" title="还没有数据源" text="管理员接入数据库后，会出现在这里。" />}
       {sources.length > 0 && (
         <div className="table-wrap">
           <table>

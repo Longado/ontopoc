@@ -708,3 +708,8 @@ table.clickable tbody tr { cursor: pointer; }
 .banner-from { margin: 4px 0 0; font-weight: 600; }
 .banner button { flex: none; }
 .invite-box { width: 100%; font: inherit; line-height: 1.6; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg); resize: vertical; }
+.table-wrap.menus { overflow: visible; }
+.sched th, .sched td { padding: 0 10px; }
+.row-actions .menu, .ph-actions .menu { left: auto; right: 0; }
+.page .toolbar { flex-wrap: wrap; }
+.row-actions > * { vertical-align: middle; }

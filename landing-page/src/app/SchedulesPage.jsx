@@ -158,8 +158,8 @@ export function SchedulesPage() {
         ? <EmptyState icon="database" title="先有数据，才能设定时刷新" text="调度刷新的是数据源里读成数据集的表，或一条已确认的管道。先接入一个数据源。" action={{ label: "去接入数据", href: hrefFor({ page: "sources" }) }} />
         : <EmptyState icon="clock" title="还没有调度" text="给数据源或管道设一个，让它按时刷新，不用再手动点。" action={{ label: "新建调度", onClick: () => setMaking(true) }} />)}
       {schedules.length > 0 && (
-        <div className="table-wrap">
-          <table>
+        <div className="table-wrap menus">
+          <table className="sched">
             <thead><tr><th>名称</th><th>对象</th><th>什么时候</th><th>下一次</th><th>最近一次</th><th>上次改了数据</th><th>写入</th><th>建的人</th><th></th></tr></thead>
             <tbody>
               {schedules.flatMap((s) => [
@@ -179,10 +179,12 @@ export function SchedulesPage() {
                   <td>{s.mine ? "我" : s.created_by}</td>
                   <td className="keep row-actions">
                     <button className="plain" onClick={() => setOpen(open === s.id ? null : s.id)}>{open === s.id ? "收起记录" : "运行记录"}</button>
-                    {s.can_change && <button className="plain" onClick={() => act(() => updateSchedule({ id: s.id, enabled: !s.enabled }))}>{s.enabled ? "关闭" : "开启"}</button>}
                     {s.can_change && (
-                      <MoreMenu items={[{ label: "删除调度", danger: true, confirmText: `删除“${s.name}”？它不会再按时刷新 ${s.target}；数据集和已经读进来的数据不受影响。`,
-                        onClick: () => act(async () => { await deleteSchedule(s.id); setDeleted(true); }) }]} />
+                      <MoreMenu items={[
+                        { label: s.enabled ? "关闭这个调度" : "开启这个调度", onClick: () => act(() => updateSchedule({ id: s.id, enabled: !s.enabled })) },
+                        { label: "删除调度", danger: true, confirmText: `删除“${s.name}”？它不会再按时刷新 ${s.target}；数据集和已经读进来的数据不受影响。`,
+                          onClick: () => act(async () => { await deleteSchedule(s.id); setDeleted(true); }) },
+                      ]} />
                     )}
                   </td>
                 </tr>,

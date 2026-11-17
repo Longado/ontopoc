@@ -42,13 +42,13 @@ function TypeStep({ f, setF }) {
   );
 }
 
-function ConnectStep({ f, setF, problem, error }) {
+function ConnectStep({ f, setF, problem, error, locked }) {
   const [show, setShow] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const tls = f.tls ?? tlsDefault(f.host);
   return (
     <>
-      <label className="field"><span className="caption">名字（数据集会写“来自这个名字”）</span><input type="text" value={f.name} maxLength={60} placeholder="例如 销售订单库" onChange={set("name")} /></label>
+      <label className="field"><span className="caption">名字（数据集会写“来自这个名字”）</span><input type="text" value={f.name} maxLength={60} placeholder="例如 销售订单库" disabled={locked} title={locked ? "数据源建好后名字不能改" : undefined} onChange={set("name")} /></label>
       <div className="field-row">
         <label className="field grow"><span className="caption">主机</span><input type="text" value={f.host} placeholder="db.example.com" autoComplete="off" onChange={set("host")} /></label>
         <label className="field port"><span className="caption">端口</span><input type="text" inputMode="numeric" value={f.port} onChange={set("port")} /></label>
@@ -259,7 +259,7 @@ export function SourceWizard({ onClose, onDone }) {
     <Drawer open title="接入数据库" onClose={onClose} width={620} footer={footer}>
       <Stepper at={step} reached={reached} />
       {step === 0 && <TypeStep f={f} setF={setF} />}
-      {step === 1 && <ConnectStep f={f} setF={setF} problem={problem} error={error} />}
+      {step === 1 && <ConnectStep f={f} setF={setF} problem={problem} error={error} locked={!!saved} />}
       {step === 2 && <TestStep f={f} kindLabel={kindLabel} result={result} onRetry={test} onBack={() => go(1)} />}
       {step === 3 && <TablesStep tables={tables} picked={picked} setPicked={setPicked} names={names} setNames={setNames} outcome={outcome} />}
       {step === 4 && <ScheduleStep sourceName={f.name} form={form} setForm={setForm} problem={scheduleIssue} saved={scheduled} />}
