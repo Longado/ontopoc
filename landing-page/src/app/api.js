@@ -256,3 +256,6 @@ export async function fileToBase64(file) {
   for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(text);
 }
+
+/** Whether the service has a model to call (the AI buttons need one): false when it has no credentials. */
+export const getModelReady = () => request("/api/ontology/health").then((b) => Boolean(b.model_ready), () => true);

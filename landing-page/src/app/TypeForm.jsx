@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import { checkTypeKey, createType, getDataset, getDatasets, getType, updateType } from "./api.js";
 import { typeLabel } from "./format.js";
 import { Select } from "./Select.jsx";
-import { hrefFor } from "./routeModel.js";
-import { TYPE_CHOICES, keyProblem, typePayload } from "./typeModel.js";
+import { hrefFor, parseRoute } from "./routeModel.js";
+import { TYPE_CHOICES, keyProblem, suggestEnglish, typePayload } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
 const ENUM_TYPES = ["integer", "text"];
@@ -53,6 +53,8 @@ export function TypeForm({ id }) {
   const [keyResult, setKeyResult] = useState(null);
   const [error, setError] = useState(null);
   const [sending, setSending] = useState(false);
+  const [englishTyped, setEnglishTyped] = useState(false);   // once the person writes the English name themselves, the name no longer rewrites it
+  const [advanced, setAdvanced] = useState(false);
   const ready = saved.status === "ready" && datasets.status === "ready";
 
   useEffect(() => {
@@ -61,9 +63,18 @@ export function TypeForm({ id }) {
       getDataset(t.dataset).then((d) => setForm({ english: t.id, name: t.name, description: t.description, dataset: t.dataset, key: t.key, columns: columnRows(d, t) }),
         (e) => setError({ message: e.message }));
     } else if (ready && !editing && !form) {
-      setForm({ english: "", name: "", description: "", dataset: "", key: [], columns: [] });
+      const list = datasets.data;
+      const wanted = parseRoute(window.location.hash).dataset;   // 用它建对象类型 arrives with the dataset
+      const start = list.find((d) => d.name === wanted)?.name ?? (list.length === 1 ? list[0].name : "");   // the only dataset is the one to use
+      const name = start;
+      setForm({ english: suggestEnglish(name), name, description: "", dataset: "", key: [], columns: [] });
+      if (start) getDataset(start).then((d) => setForm((f) => ({ ...f, dataset: start, columns: columnRows(d, null) })), (e) => setError({ message: e.message }));
     }
   }, [ready]);
+  useEffect(() => {
+    if (form && form.columns.some((c) => c.enum)) setAdvanced(true);   // a code column is already chosen: show where it is set
+  }, [form?.dataset]);
+  const setName = (name) => setForm({ ...form, name, ...(editing || englishTyped ? {} : { english: suggestEnglish(name) }) });
 
   const pickDataset = async (name) => {
     setKeyResult(null);
@@ -114,16 +125,19 @@ export function TypeForm({ id }) {
         <div className="stack wide">
           <label className="field">
             <span className="caption">名称</span>
-            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input type="text" value={form.name} placeholder="例如：订单" onChange={(e) => setName(e.target.value)} />
           </label>
           <label className="field">
-            <span className="caption">英文名（字母、数字、下划线；{editing ? "建好后不能改" : "确认前也不能再改"}）</span>
-            <input type="text" value={form.english} disabled={editing} onChange={(e) => setForm({ ...form, english: e.target.value })} />
+            <span className="caption">英文名（程序里用的名字，字母、数字、下划线；{editing ? "建好后不能改" : "确认前也不能再改"}）</span>
+            <input type="text" value={form.english} disabled={editing} placeholder="例如：order、customer_ticket" onChange={(e) => { setEnglishTyped(true); setForm({ ...form, english: e.target.value }); }} />
+            {!editing && (form.english
+              ? <span className="muted small">按名称自动写了“{form.english}”，不合适可以改。</span>
+              : <span className="muted small">{form.name.trim() ? "没认出这个词，请自己写一个英文名，比如“订单”写 order。" : "写好名称后会自动给一个建议。"}</span>)}
           </label>
-          <label className="field">
-            <span className="caption">说明</span>
-            <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </label>
+          <details className="fold" open={Boolean(form.description)}>
+            <summary>说明（可以不写）</summary>
+            <input type="text" aria-label="说明" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </details>
           <div className="field">
             <span className="caption">来自哪个数据集（用它现在的版本）</span>
             <Select label="数据集" value={form.dataset} disabled={editing} onChange={pickDataset}>
@@ -135,10 +149,11 @@ export function TypeForm({ id }) {
           {form.columns.length > 0 && (
             <>
               <h2 className="section">属性</h2>
+              <p className="hint">通常选能唯一认出每一行的那一列做主键（比如订单号），其余列都勾上做属性。</p>
               <div className="table-wrap">
                 <table className="props">
                   <thead>
-                    <tr><th>主键</th><th>列</th><th>用作属性</th><th>属性名称</th><th>类型</th><th>代码列</th></tr>
+                    <tr><th>主键</th><th>列</th><th>用作属性</th><th>属性名称</th>{advanced && <th>类型</th>}{advanced && <th>代码列</th>}</tr>
                   </thead>
                   <tbody>
                     {form.columns.map((c) => {
@@ -149,29 +164,30 @@ export function TypeForm({ id }) {
                           <td>{c.name} <span className="muted small">{typeLabel(c.type)}</span></td>
                           <td><input type="checkbox" aria-label={`${c.name} 做属性`} checked={c.include || isKey} disabled={isKey} onChange={(e) => setColumn(c.name, { include: e.target.checked })} /></td>
                           <td><input type="text" aria-label={`${c.name} 的属性名称`} value={c.label} placeholder={c.name} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { label: e.target.value })} /></td>
-                          <td>
+                          {advanced && <td>
                             <Select label={`${c.name} 的类型`} value={c.declared} disabled={!(c.include || isKey) || c.enum} onChange={(v) => setColumn(c.name, { declared: v })}>
                               {TYPE_CHOICES[c.type].map((t) => <option key={t} value={t}>{typeLabel(t)}</option>)}
                             </Select>
-                          </td>
-                          <td>
+                          </td>}
+                          {advanced && <td>
                             {c.candidate ? (
                               <input type="checkbox" aria-label={`${c.name} 是代码列`} checked={c.enum} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { enum: e.target.checked })} />
                             ) : <span className="faint">—</span>}
-                          </td>
+                          </td>}
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
+              <div className="inline"><button className="plain" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>{advanced ? "收起高级设置" : "高级设置：属性类型、代码列"}</button></div>
               {problems.map((p, i) => <p key={i} className="error">{p}</p>)}
               <div className="inline">
                 <button className="secondary" onClick={check} disabled={!form.key.length || problems.length > 0}>检查主键</button>
                 <span className="muted small">按全部行查有没有重复和空值；保存时也会查一遍</span>
               </div>
               <KeyResult result={keyResult} />
-              <p className="hint">代码列不会存成是/否：0、1、2 这样的取值保持整数，由人给每个取值写含义。</p>
+              {advanced && <p className="hint">代码列不会存成是/否：0、1、2 这样的取值保持整数，由人给每个取值写含义。</p>}
 
               {form.columns.filter((c) => c.enum && (c.include || form.key.includes(c.name))).map((c) => (
                 <section key={c.name}>

@@ -3,7 +3,7 @@ import { SKILL_HREF, createAgentToken, getAgentInfo, getAgentTokens, getUsers, r
 import { useAuth } from "./Auth.jsx";
 import { FormDialog } from "./FormDialog.jsx";
 import { isAdmin, roleLabel } from "./authModel.js";
-import { EXPIRY_DAYS, SCOPES, connectConfig, endText, firstSentence, scopeWord, skillText, tokenState } from "./agentModel.js";
+import { EXPIRY_DAYS, SCOPES, connectConfig, endText, firstSentence, groupTools, scopeWord, skillText, toolInfo, tokenState, GROUP_HINT } from "./agentModel.js";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
@@ -123,12 +123,17 @@ export function AgentsPage() {
             <table className="wraps">
               <thead><tr><th>工具</th><th>做什么</th><th>参数</th></tr></thead>
               <tbody>
-                {i.tools.map((t) => (
+                {groupTools(i.tools).map((g) => (
+                  <React.Fragment key={g.group}>
+                    <tr className="group-row"><th colSpan="3">{g.group}：{GROUP_HINT[g.group]}</th></tr>
+                    {g.tools.map((t) => (
                   <tr key={t.name}>
                     <td className="keep"><code>{t.name}</code></td>
-                    <td>{firstSentence(t.description)}</td>
+                    <td>{toolInfo(t.name).line || firstSentence(t.description)}</td>
                     <td>{t.arguments.length ? t.arguments.map((a) => `${a.name}${a.required ? "" : "（可选）"}`).join("、") : <span className="faint">没有</span>}</td>
                   </tr>
+                    ))}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

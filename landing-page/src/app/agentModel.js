@@ -35,6 +35,7 @@ export const endText = (t) => (!t.expires_at ? "不过期" : t.expired ? "已过
 export const tokenState = (t) => (t.revoked ? "已撤销" : t.expired ? "已过期" : t.last_used_at ? "在用" : "还没用过");
 
 export const TOOL_GROUPS = ["读", "问", "建模", "确认", "导出", "其他"];
+export const GROUP_HINT = { 读: "查看已有的定义和数据，不改任何东西", 问: "用数据回答业务问题", 建模: "上传数据、建本体（需要“全部”令牌）", 确认: "记下人的判断（需要“全部”令牌）", 导出: "导出成文件（需要“全部”令牌）", 其他: "服务状态和运行记录" };
 
 // What each tool does in one Chinese line, and the group it sits in: 读 reads what the team confirmed or the data, 问 asks a question of it, 建模 builds, 确认 records a person's judgement, 导出 hands files out.
 const TOOLS = {

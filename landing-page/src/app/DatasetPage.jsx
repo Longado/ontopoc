@@ -151,8 +151,8 @@ export function DatasetPage({ route }) {
         sub={page && `${page.rows} 行，${page.columns.length} 列，第 ${page.version} 版`}
         actions={page && mayBuild && (
           <>
-            <a className="button secondary" href="#/pipelines/new">用它建管道</a>
-            <a className="button secondary" href="#/types/new">用它建对象类型</a>
+            <a className="button secondary" href={hrefFor({ page: "pipelinenew", dataset: name })}>用它建管道</a>
+            <a className="button secondary" href={hrefFor({ page: "typenew", dataset: name })}>用它建对象类型</a>
             <button className="primary" onClick={() => setUploading(true)}>上传新版本</button>
           </>
         )}

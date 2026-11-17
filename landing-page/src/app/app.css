@@ -863,3 +863,10 @@ ul.related-list { list-style: none; padding: 0; margin: 4px 0 8px; display: flex
 .page.has-bar > .queue, .page.has-bar > .cards { flex: none; }
 .page.has-bar > .batch-bar { margin-top: auto; }
 .confirm-step .checks .warn.strong { color: var(--red-ink); }
+
+/* F4 */
+.fold { margin: 4px 0; }
+.fold > summary { cursor: pointer; color: var(--muted, #6b6b66); font-size: 13px; }
+.fold > input { margin-top: 6px; width: 100%; }
+.group-row th { background: #f7f7f4; text-align: left; font-weight: 600; font-size: 13px; padding: 6px 10px; }
+.field .muted.small { display: block; margin-top: 2px; }
