@@ -694,3 +694,4 @@ input.todo-input { border-color: var(--faint); background: var(--grey-soft); }
   .pl-graph, .pl-bottom { grid-column: 1; }
   .pl-editor { grid-column: 1; grid-row: 3; border-left: 0; border-top: 1px solid var(--line); padding-left: 0; }
 }
+.card-node svg { position: static; }

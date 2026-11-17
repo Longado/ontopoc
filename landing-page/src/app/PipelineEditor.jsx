@@ -139,7 +139,7 @@ export function PipelineEditor({ detail, reload }) {
   const reason = runBlockReason({ dirty, hasOutput, todo: todoCount, running });
   const results = runResults(ran);
   const titleOfStep = (id) => { const x = draft.steps.find((t) => t.id === id); return x ? stepTitle(x, draft.steps) : id; };
-  const firstTodo = Object.entries(issues).flatMap(([id, list]) => list.map((l) => `${titleOfStep(id)}：${l}`))[0];
+  const firstTodo = Object.entries(issues).flatMap(([id, list]) => list.map((l) => (l.includes("：") ? l : `${titleOfStep(id)}：${l}`)))[0];
   const problem = summary.status === "ready" && summary.data.error ? summary.data.error : summary.status === "error" ? summary.error : "";
   const quiet = Boolean(problem) && todoCount > 0 && !attempted;   // the engine objects to something the person has not set up yet: grey, not red
   return (
