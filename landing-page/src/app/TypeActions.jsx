@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { confirmAction, createAction, getAction, getActions, getRelations, getTypes, setActionNotify, submitAction, undoRecord, withdrawRecord } from "./api.js";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
@@ -8,6 +8,7 @@ import { useLoad } from "./useLoad.js";
 import { Drawer } from "./ui/Drawer.jsx";
 import { EmptyState } from "./ui/EmptyState.jsx";
 import { Icon } from "./ui/Icon.jsx";
+import { sentBackLine } from "./relationModel.js";
 import { KIND_WORD, OP_WORD, actionPayload, actionRow, emptyActionForm, emptyCondition, notifyRecipient, opsFor, recordChangeText, recordStateText, runPayload, runProblem, saveBlock } from "./actionModel.js";
 
 /** Who the action tells when a change is approved: named people (kept as they are: an admin names them), people by an attribute equal to a column of the row, or
@@ -164,6 +165,7 @@ function ActionDrawer({ action, detail, type, mayBuild, onChanged, onRun, onClos
       {line && <p className="muted small">{line}</p>}
       {action.waiting_on?.length > 0 && <p className="warn">要先确认{action.waiting_on.map((w) => `“${w.name}”`).join("、")}，才能确认这个行为</p>}
       {confirmersText(action) && <p className="muted small">{confirmersText(action)}</p>}
+      {action.state === "rejected" && <div className="reason sent-back"><strong>{sentBackLine(action)}</strong></div>}
       {action.state === "needs_look" && action.reason && <div className="reason"><strong>为什么需要再看</strong><p>{action.reason}</p></div>}
       {action.submitters?.length > 0 && <p className="muted small">只有 {action.submitters.map((p) => p.name).join("、")} 可以提交</p>}
       {error && <p className="error">{error}</p>}
@@ -301,7 +303,7 @@ function NewAction({ type, form: options, onSaved, onClose }) {
 }
 
 /** The 行为 tab: one row for each action; a row opens its drawer; 新建行为 opens the form in a drawer. */
-export function TypeActions({ type, mayBuild }) {
+export function TypeActions({ type, mayBuild, onCount }) {
   const [state, reload] = useLoad(async () => {
     const list = await getActions(type.id);
     const details = await Promise.all(list.actions.map((a) => getAction(a.id).catch(() => null)));
@@ -311,6 +313,8 @@ export function TypeActions({ type, mayBuild }) {
   const [creating, setCreating] = useState(false);
   const [running, setRunning] = useState(null);   // the create being run
   const [fresh, setFresh] = useState("");        // the action just saved, lit for a moment
+  const count = state.data?.actions.length;
+  useEffect(() => { if (count != null) onCount?.(count); }, [count]);   // the tab's number is this list's own
   if (state.status === "error") return <p className="error">{state.error}</p>;
   if (!state.data) return <p className="muted">加载中</p>;
   const { actions, form, details } = state.data;
@@ -337,7 +341,7 @@ export function TypeActions({ type, mayBuild }) {
                     <td><button className="plain row-name" onClick={(e) => { e.stopPropagation(); setOpen(a.id); }}>{row.name}</button></td>
                     <td><span className="kind-word">{row.kind}</span></td>
                     <td className="wrap-cell says">{row.says}</td>
-                    <td><State item={a} />{mayBuild && a.can_confirm && <span className="muted small block">等你确认</span>}</td>
+                    <td><State item={a} />{mayBuild && a.can_confirm && <span className="muted small block">等你确认</span>}{a.state === "rejected" && a.reason && <span className="muted small block sent-back-reason">{a.reason}</span>}</td>
                     <td className="muted small">{row.last}</td>
                     <td className="keep" onClick={(e) => e.stopPropagation()}>
                       {row.canRun && <button className="secondary" onClick={() => setRunning(a)}>{row.name}</button>}

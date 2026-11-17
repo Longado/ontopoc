@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { confirmItem, decideRecord, getQueue, sendBack, withdrawRecord } from "./api.js";
 import { KIND, groupTitle } from "./batchModel.js";
-import { batchPlan, batchSummary, queueCounts, queueRow, rejectProblem, sortByProblem } from "./confirmModel.js";
+import { QUEUE_LEGEND, approveWarning, batchPlan, batchSummary, queueCounts, queueRow, rejectProblem, sortByProblem } from "./confirmModel.js";
 import { timeText } from "./format.js";
 import { itemHref } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
@@ -29,6 +29,8 @@ function Row({ item, picked, onPick, onChanged }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sure, setSure] = useState(false);   // 批准 writes a new version of a dataset: the first click asks, the second does it
+  const warning = approveWarning(item);
   const act = async (run) => {
     setBusy(true);
     setError("");
@@ -56,6 +58,7 @@ function Row({ item, picked, onPick, onChanged }) {
             <span className="q-kind">{row.kind}</span>
             <a href={itemHref(item)}>{item.title}</a>
             <State item={item} />
+            <span className="q-tag muted small">{row.tag}</span>
           </div>
           {row.summary && <p className={`q-summary${row.summaryLevel === "ok" ? "" : " q-" + row.summaryLevel}`}>{row.summary}</p>}
           {row.problems.map((p, i) => (
@@ -64,6 +67,15 @@ function Row({ item, picked, onPick, onChanged }) {
           {!row.summary && !row.problems.length && item.kind === "pipeline" && <p className="muted small">改了什么要在管道页里看</p>}
           {(row.mode === "wait" || row.mode === "blocked") && <p className="muted small">{waitWords(item, row.mode)}</p>}
           {row.mode === "repropose" && <p className="small"><a href={itemHref(item)}>到类型的属性页，按现在的数据写新的含义</a> <span className="muted">提出后由另一位确认</span></p>}
+          {sure && (
+            <div className="q-warn" role="alert">
+              <p><Icon name="alert" size={14} /> {warning}</p>
+              <p className="inline">
+                <button className="primary" disabled={busy} onClick={() => { setSure(false); confirm(); }}>确认批准，写成新版本</button>
+                <button className="plain" onClick={() => setSure(false)}>先不批准</button>
+              </p>
+            </div>
+          )}
           {asking && (
             <div className="q-ask">
               <input type="text" aria-label="退回的理由" value={reason} maxLength={300} placeholder="写明哪里不对（必填）" autoFocus onChange={(e) => setReason(e.target.value)} />
@@ -75,10 +87,10 @@ function Row({ item, picked, onPick, onChanged }) {
           {error && <p className="error small">{error}</p>}
           <p className="muted small q-meta">{item.proposed_by ? `${item.proposed_by} 提出` : "写入"} {timeText(item.written_at)}</p>
         </div>
-        {!asking && (
+        {!asking && !sure && (
           <div className="q-actions">
             {row.mode === "confirm" && <button className="primary" disabled={busy} onClick={confirm}>确认</button>}
-            {row.mode === "approve" && <button className="primary" disabled={busy} onClick={confirm}>批准</button>}
+            {row.mode === "approve" && <button className="primary" disabled={busy} onClick={() => setSure(true)}>批准</button>}
             {row.canReject && <button className="secondary" disabled={busy} onClick={() => setAsking(true)}>退回</button>}
             {row.mode === "withdraw" && <button className="secondary" disabled={busy} onClick={() => act(() => withdrawRecord(item.record))}>撤回</button>}
             {row.mode === "open" && <a className="button primary" href={itemHref(item)}>{item.kind === "pipeline" ? "看改了什么" : "选新值，再确认"}</a>}
@@ -129,6 +141,7 @@ export function ConfirmPage() {
   const [picked, setPicked] = useState(new Set());
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState("");
+  const [askBatch, setAskBatch] = useState(false);   // a batch that approves data changes asks once, in words
   const data = state.data;
   const items = sortByProblem((data?.items ?? []).filter((i) => (!mineOnly || i.can_confirm) && !i.group));
   const pickedHere = new Set([...picked].filter((e) => items.some((i) => i.element === e)));
@@ -141,7 +154,9 @@ export function ConfirmPage() {
     else next.delete(element);
     setPicked(next);
   };
+  const approvals = plan.filter((p) => p.call === "approve").map((p) => items.find((i) => i.element === p.key));
   const runBatch = async () => {
+    setAskBatch(false);
     setBusy(true);
     setSaid("");
     const results = [];
@@ -166,6 +181,7 @@ export function ConfirmPage() {
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
       {state.status === "loading" && !data && <p className="muted">加载中</p>}
       {said && <p className="notice-line" role="status">{said}</p>}
+      {data && data.items.length > 0 && <p className="muted small q-legend">{QUEUE_LEGEND}</p>}
       {data?.hidden_by_rules > 0 && <p className="warn">有 {data.hidden_by_rules} 项因为行规则你看不到。要看，请管理员在权限页给你开“全部行”。</p>}
       {data && !data.items.length && !data.hidden_by_rules && (
         <EmptyState icon="check-circle" title="没有要确认的" text="新提出的定义、数据变了需要再看的，会出现在这里。" />
@@ -179,11 +195,18 @@ export function ConfirmPage() {
       {batchable.length > 0 && (
         <div className="batch-bar" role="region" aria-label="批量确认">
           <span>{pickedHere.size ? `已选 ${pickedHere.size} 项` : `${batchable.length} 项可以直接确认`}</span>
+          {askBatch && (
+            <span className="q-warn q-warn-bar" role="alert">
+              所选里有 {approvals.length} 项数据改动：批准后相关数据集各会有新版本，用到它们的已确认的定义会重新检查，可能变成需再看。
+              <button className="primary" onClick={runBatch}>仍然处理</button>
+              <button className="plain" onClick={() => setAskBatch(false)}>先不</button>
+            </span>
+          )}
           {risky > 0 && <span className="q-error-text">所选里有 {risky} 项带问题，确认前请先看过</span>}
           <span className="batch-spacer" />
           <button className="secondary" onClick={() => setPicked(new Set(batchable.filter((i) => !queueRow(i).hasError).map((i) => i.element)))}>全选没有问题的</button>
           {pickedHere.size > 0 && <button className="plain" onClick={() => setPicked(new Set())}>清除</button>}
-          <button className="primary" disabled={busy || !plan.length} onClick={runBatch}>{busy ? "确认中" : plan.length ? `确认所选 ${plan.length} 项` : "先勾选要确认的"}</button>
+          <button className="primary" disabled={busy || !plan.length} onClick={() => (approvals.length ? setAskBatch(true) : runBatch())}>{busy ? "处理中" : plan.length ? `${approvals.length === plan.length ? "批准" : "确认"}所选 ${plan.length} 项` : "先勾选要处理的"}</button>
         </div>
       )}
     </main>

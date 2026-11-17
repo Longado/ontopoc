@@ -1,5 +1,6 @@
 import React from "react";
-import { KIND_LABEL, SIZE, ageText, cameFromText, datedText, fitText, groupLabel, labelWidth, leaves, sourceLines } from "./graphModel.js";
+import { KIND_LABEL, SIZE, ageText, cameFromText, datedText, fitText, labelWidth, leaves, sourceLines } from "./graphModel.js";
+import { lineLabel, matchRateText } from "./relationModel.js";
 import { stateText } from "./typeModel.js";
 
 const stateClass = (node) => `s-${node.model_draft ? "proposed" : node.state ?? "none"}`;
@@ -61,17 +62,18 @@ export function RelationLine({ group, from, to, picked, faded, lit, onPick, labe
   const many = group.edges.length > 1;
   const failing = group.edges.some((e) => e.cardinality_ok === false);
   const state = group.edges.find((e) => e.state === "needs_look") ? "needs_look" : first.state;
-  const label = groupLabel(group);
+  const label = lineLabel(group);   // the relation's short name; the match rate is in the drawer and the tooltip
   const width = labelWidth(label);
   const mx = labelAt?.x ?? (a.x + b.x) / 2;   // the relation graph places labels clear of the boxes; the lineage has none
   const my = labelAt?.y ?? (a.y + b.y) / 2;
   const toward = !many && first.arrow_to ? (first.arrow_to === group.to ? "marker-end" : "marker-start") : null;
   const marker = lit ? "blue" : colour(state);
   return (
-    <g className={`g-edge s-${state}${failing && !many ? " dashed" : ""}${lit ? " lit" : ""}${picked ? " picked" : ""}${faded ? " faded" : ""}`} tabIndex={0} role="button" aria-label={`${first.from_name} 和 ${first.to_name}：${label}`}
+    <g className={`g-edge s-${state}${failing && !many ? " dashed" : ""}${lit ? " lit" : ""}${picked ? " picked" : ""}${faded ? " faded" : ""}`} tabIndex={0} role="button" aria-label={`${first.from_name} 和 ${first.to_name}：${label}，点开看详情`}
       onClick={(e) => { e.stopPropagation(); onPick(); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(); } }}>
       {part !== "label" && <line className="line" x1={a.x} y1={a.y} x2={b.x} y2={b.y} {...(toward ? { [toward === "marker-end" ? "markerEnd" : "markerStart"]: `url(#arrow-${marker})` } : {})} />}
-      {part !== "label" && <line className="hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />}
+      {part !== "label" && <line className="hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth="20" pointerEvents="stroke" style={{ cursor: "pointer" }} />}
+      <title>{many ? label : `${first.name}：${matchRateText(first)}。点开看详情`}</title>
       {part !== "line" && <rect className="pill" x={mx - width / 2} y={my - 11} width={width} height="22" rx="4" />}
       {part !== "line" && <text x={mx} y={my + 4} textAnchor="middle">{label}</text>}
     </g>

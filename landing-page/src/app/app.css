@@ -863,3 +863,22 @@ ul.related-list { list-style: none; padding: 0; margin: 4px 0 8px; display: flex
 .page.has-bar > .queue, .page.has-bar > .cards { flex: none; }
 .page.has-bar > .batch-bar { margin-top: auto; }
 .confirm-step .checks .warn.strong { color: var(--red-ink); }
+
+/* F3: queue legend and the warning before 批准, sent-back reasons, relation drawer with preview */
+.q-legend { margin: 0 0 var(--s2); max-width: 880px; }
+.q-tag { margin-left: var(--s1); }
+.q-warn { margin-top: var(--s1); padding: var(--s1) var(--s2); border: 1px solid var(--orange-ink); border-radius: var(--radius-lg); background: var(--orange-soft); color: var(--orange-ink); }
+.q-warn p { margin: 0 0 var(--s1); }
+.q-warn p:last-child { margin-bottom: 0; }
+.q-warn-bar { display: inline-flex; align-items: center; gap: var(--s1); flex-wrap: wrap; margin-top: 0; }
+.sent-back { border-left: 3px solid var(--red-ink); background: var(--red-soft); padding: var(--s1) var(--s2); margin: var(--s1) 0; }
+.sent-back-reason { color: var(--red-ink); }
+.rel-form { display: flex; flex-direction: column; gap: var(--s2); }
+.rel-form-ends { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); }
+.rel-form-ends .end { padding: var(--s2); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.end-title { font-size: 15px; margin: 0 0 var(--s1); }
+.preview { padding: var(--s1) var(--s2); border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 2px; }
+.preview-ok { background: var(--green-soft); color: var(--green-ink); }
+.preview-warn { background: var(--orange-soft); color: var(--orange-ink); }
+.preview .muted { color: inherit; opacity: 0.85; }
+.g-edge text, .g-edge .pill { cursor: pointer; }

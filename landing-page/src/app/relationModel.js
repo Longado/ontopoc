@@ -16,6 +16,43 @@ export function waitingText(r) {
   return "";
 }
 
+/** What a relation's line says: its own short name, or how many relations the line stands for. The match rate is in the drawer, not on the line. */
+export function lineLabel(group) {
+  if (group.edges.length > 1) return `${group.edges.length} 个关系`;
+  const name = [...(group.edges[0].name ?? "")];
+  return name.length > 12 ? `${name.slice(0, 11).join("")}…` : name.join("");
+}
+
+/** The match rate of a relation as the drawer says it: "连上 157 / 160 行（98%）". */
+export function matchRateText(edge) {
+  if (edge.connected == null) return "现在查不了";
+  const share = edge.of ? `（${Math.round((edge.connected / edge.of) * 100)}%）` : "";
+  return `${edge.rows_limited ? "你能看到的 " : ""}连上 ${edge.connected} / ${edge.of} 行${share}`;
+}
+
+/** The preview a new relation shows before it is saved, in a sentence; "" until there is one. `p` is what /relations/preview sends. */
+export function previewText(p) {
+  if (!p) return "";
+  const rest = p.rows - p.matched;
+  if (rest <= 0) return `${p.rows} 行都能连上`;
+  const parts = [`能连上 ${p.matched}/${p.rows} 行`];
+  if (p.unmatched > 0) parts.push(`${p.unmatched} 行找不到${p.samples?.length ? `（${p.samples.slice(0, 3).map((s) => s.key).join("、")}）` : ""}`);
+  if (p.empty > 0) parts.push(`${p.empty} 行这一列是空的`);
+  return parts.join("，");
+}
+
+/** What the preview is asked with, or null while a type or a column is not picked yet. */
+export function previewPayload(form) {
+  if (!form.from || !form.to || !form.fromColumn || !form.toColumn) return null;
+  return { from: form.from, to: form.to, cardinality: form.cardinality, from_column: form.fromColumn, to_column: form.toColumn };
+}
+
+/** The line for a definition that was sent back: 已退回 and the reason when there is one; "" for anything else. */
+export function sentBackLine(item) {
+  if (item.state !== "rejected") return "";
+  return item.reason ? `已退回：${item.reason}` : "已退回";
+}
+
 /** The payload that creates or changes a relation, from the form. */
 export function relationPayload(form) {
   return {

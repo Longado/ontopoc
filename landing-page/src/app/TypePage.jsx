@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Explorer } from "./Explorer.jsx";
 import { TypeActions } from "./TypeActions.jsx";
 import { confirmType, getTypeUses, getType, getTypeLog, proposeMeanings, setValuesHidden } from "./api.js";
@@ -8,6 +8,7 @@ import { timeText, typeLabel } from "./format.js";
 import { ageText } from "./graphModel.js";
 import { waitingText } from "./relationModel.js";
 import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
+import { statusOf } from "./statusModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
@@ -199,7 +200,7 @@ function Uses({ id, uses }) {
         {uses.used_by.map((u) => (
           <React.Fragment key={u.kind}>
             <dt>{u.label} {u.count}</dt>
-            <dd>{u.items.map((item, i) => <span key={item.id}>{i > 0 && "、"}<a href={USE_HREF[u.kind](id, item)}>{item.name}</a>{item.state && item.state !== "confirmed" && <span className="muted small"> {item.state === "needs_look" ? "需再看" : "待确认"}</span>}</span>)}</dd>
+            <dd>{u.items.map((item, i) => <span key={item.id}>{i > 0 && "、"}<a href={USE_HREF[u.kind](id, item)}>{item.name}</a>{item.state && item.state !== "confirmed" && <span className="muted small"> {statusOf(item.state).label}</span>}</span>)}</dd>
           </React.Fragment>
         ))}
       </dl>
@@ -213,6 +214,8 @@ export function TypePage({ route }) {
   const [uses] = useLoad(() => (state.data?.waiting ? Promise.resolve(null) : getTypeUses(id)), [id, state.data?.version, state.data?.waiting]);   // a waiting type has no uses to show
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [actionCount, setActionCount] = useState(null);   // the 行为 list's own count, once it is read
+  useEffect(() => setActionCount(null), [id]);
   const mayBuild = canBuild(useAuth().user);
   const t = state.data;
   const confirm = async () => {
@@ -228,7 +231,7 @@ export function TypePage({ route }) {
     setBusy(false);
   };
   const uploaded = uses.data?.data.uploaded_at ? `${ageText(uses.data.data.uploaded_at)}${uses.data.data.who ? `，${uses.data.data.who}` : ""}` : "";
-  const counts = t && !t.waiting ? tabCounts(t, uses.data) : {};
+  const counts = t && !t.waiting ? tabCounts(t, uses.data, actionCount == null ? {} : { actions: actionCount }) : {};
   return (
     <main className="page">
       {state.status === "error" && <p className="error">{state.error}</p>}
@@ -269,7 +272,7 @@ export function TypePage({ route }) {
           {tab === "props" && <Properties type={t} mayBuild={mayBuild} reload={reload} />}
           {tab === "derived" && <TypeDerived type={t} mayBuild={mayBuild} />}
           {tab === "views" && <TypeViews type={t} mayBuild={mayBuild} />}
-          {tab === "actions" && mayBuild && <TypeActions type={t} mayBuild={mayBuild} />}
+          {tab === "actions" && mayBuild && <TypeActions type={t} mayBuild={mayBuild} onCount={setActionCount} />}
           {tab === "objects" && <Explorer key={`${id}|${route.q ?? ""}`} id={id} route={route} />}
           {tab === "log" && <Log id={id} />}
         </>

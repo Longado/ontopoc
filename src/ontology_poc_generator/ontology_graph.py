@@ -183,7 +183,7 @@ def _edge(conn, row: dict, user: dict | None) -> dict:
     edge = {'id': row['element_id'], 'kind': 'relation', 'key': content['english_name'], 'name': content['name'], 'from': type_id(content['from']), 'to': type_id(content['to']),
             'from_name': _content(ends['from'])['name'], 'to_name': _content(ends['to'])['name'], 'from_column': content['from_column'], 'to_column': content['to_column'],
             'cardinality': content['cardinality'], 'cardinality_label': CARDINALITY_NAME[content['cardinality']], 'arrow_to': type_id(content[one_end]) if one_end else None,
-            'state': row['state'], 'stale': stale_cause(conn, row, user), 'rows_limited': limited, 'problems': result['problems']}
+            'state': row['state'], 'reason': row['reason'] if row['state'] == 'rejected' else None, 'stale': stale_cause(conn, row, user), 'rows_limited': limited, 'problems': result['problems']}
     if result['problems']:
         return {**edge, 'connected': None, 'of': None, 'unmatched': None, 'cardinality_ok': None, 'cardinality_text': None}
     n = result['numbers']
