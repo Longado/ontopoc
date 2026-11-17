@@ -289,3 +289,7 @@ test("a run's result is kept for each card: rows out, and failed or not", () => 
   assert.deepEqual(runResults(run), { o: { rows: 9, warn: false }, g: { rows: 2, warn: true } });
   assert.deepEqual(runResults(null), {});
 });
+
+test("an input with no dataset yet is titled as not chosen, not as an empty string", () => {
+  assert.equal(stepTitle({ id: "in2", type: "input", dataset: "" }), "（还没选）");
+});
