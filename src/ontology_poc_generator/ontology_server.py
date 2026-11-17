@@ -91,7 +91,7 @@ from ontology_poc_generator.object_relations import (
 from ontology_poc_generator.ontology_graph import lineage_graph, relation_graph, type_uses
 from ontology_poc_generator.batch_confirm import confirm_group, group_detail, queue_with_groups
 from ontology_poc_generator.review_queue import confirm_item, send_back
-from ontology_poc_generator import ask_budget, use_layer
+from ontology_poc_generator import ask_budget, lang, use_layer
 from ontology_poc_generator.dashboards import DashboardRefused
 from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, hidden_columns, set_access, set_column_access, set_values_hidden
 
@@ -1718,6 +1718,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.reply(200, body)
 
         def do_GET(self):
+            lang.use(lang.from_header(self.headers.get('Accept-Language')))
             if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
                 return
             if use_layer.owns(self.path):
@@ -1931,6 +1932,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return payload
 
         def do_POST(self):
+            lang.use(lang.from_header(self.headers.get('Accept-Language')))
             self.payload = None
             self.post_route()
 
