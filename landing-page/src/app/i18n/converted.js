@@ -97,4 +97,7 @@ export const CONVERTED = [
   "typeModel.js",
   "viewModel.js",
   "SourceWays.jsx",
+  "TwinMap.jsx",
+  "TwinControls.jsx",
+  "lineageModel.js",
 ];

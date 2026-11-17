@@ -37,9 +37,9 @@ test("the map goes left to right: source, dataset, pipeline, the dataset it writ
   assert.ok(x("pipeline:Totals") < x("dataset:Totals"));
   assert.ok(x("dataset:Totals") < x("objtype:order"));
   assert.ok(x("objtype:order") < x("relation:oc"));
-  assert.equal(x("relation:oc"), x("objaction:mark"));
-  assert.deepEqual(columns.map((c) => c.key), ["source", "dataset", "pipeline", "written", "type", "model"]);
-  assert.deepEqual(columns.map((c) => c.count), [1, 2, 1, 1, 2, 2]);
+  assert.ok(x("relation:oc") < x("objaction:mark"));
+  assert.deepEqual(columns.map((c) => c.key), ["source", "dataset", "pipeline", "written", "type", "model", "derived"]);
+  assert.deepEqual(columns.map((c) => c.count), [1, 2, 1, 1, 2, 1, 1]);
 });
 
 test("a pipeline is a group box as tall as its steps need; nothing in a column overlaps", () => {
@@ -85,7 +85,7 @@ test("a line is amber when either end needs another look, red when a source fail
 
 test("the facts on a card: columns and rows of a dataset, objects and properties of a type, tables of a source", () => {
   const datasets = [{ name: "Orders", rows: 160, columns: 8 }];
-  const [orders, order, source] = enrichNodes(NODES.filter((n) => ["dataset:Orders", "objtype:order", "source:db"].includes(n.id)), datasets, {});
+  const [source, orders, order] = enrichNodes(NODES.filter((n) => ["dataset:Orders", "objtype:order", "source:db"].includes(n.id)), datasets, {});
   assert.deepEqual(cardFacts(orders).stats.map((s) => [s.key, s.value]), [["columns", "8"], ["rows", "160"]]);
   assert.deepEqual(cardFacts(order).stats.map((s) => [s.key, s.value]), [["objects", "160"], ["properties", "3"]]);
   assert.deepEqual(cardFacts(source).stats.map((s) => [s.key, s.value]), [["tables", "1"]]);
@@ -103,8 +103,8 @@ test("enrichment puts the dataset's rows and columns and a pipeline's steps on t
 });
 
 test("centreOn puts a box in the middle of the frame at the given zoom", () => {
-  assert.deepEqual(centreOn({ w: 1000, h: 600 }, { x: 400, y: 200, w: 200, h: 100 }, 1), { k: 1, x: 0, y: 150 });
-  assert.deepEqual(centreOn({ w: 1000, h: 600 }, { x: 0, y: 0, w: 200, h: 100 }, 0.5), { k: 0.5, x: 400, y: 275 });
+  assert.deepEqual(centreOn({ w: 1000, h: 600 }, { x: 400, y: 200, w: 200, h: 100 }, 1), { k: 1, x: 0, y: 50 });
+  assert.deepEqual(centreOn({ w: 1000, h: 600 }, { x: 0, y: 0, w: 200, h: 100 }, 0.5), { k: 0.5, x: 450, y: 275 });
 });
 
 test("the minimap scales the whole map into its box, keeping the shape", () => {

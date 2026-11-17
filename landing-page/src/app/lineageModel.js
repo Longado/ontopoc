@@ -1,5 +1,5 @@
 // The lineage as a twin-view map, as plain functions: where each card and each pipeline group goes, what a trace keeps, what a search finds, what a card says. No browser needed.
-import { KIND_STYLE, LAYERS, litDepth, stateTone } from "./graphModel.js";
+import { KIND_STYLE, litDepth, stateTone } from "./graphModel.js";
 import { formatNumber, t } from "./i18n/index.js";
 import { statusOf } from "./statusModel.js";
 
@@ -7,13 +7,15 @@ import { statusOf } from "./statusModel.js";
 export const TWIN_STYLE = KIND_STYLE;
 export const TWIN_KINDS = Object.keys(TWIN_STYLE);
 
-export const CARD = { w: 196, h: 58 };
+export const CARD = { w: 192, h: 64 };
 export const GROUP = { head: 30, step: 24, pad: 10 };
 const GAP = 14;
-const COLUMN_GAP = 76;
+const COLUMN_GAP = 44;
 const TOP = 44;   // room above the first card for the column headings
-const MARGIN = 24;
-const LAYER_OF = { source: 0, dataset: 1, pipeline: 2, type: 4, relation: 5, view: 5, action: 5, derived: 5, answer: 5 };
+const MARGIN = 16;
+/** The map's columns, left to right. The last two: what the types are tied together and viewed by, then what is worked out from them or done with them. */
+const LAYERS = ["source", "dataset", "pipeline", "written", "type", "model", "derived"].map((key) => ({ key, get label() { return t(`lineage.twin.layer.${key}`); } }));
+const LAYER_OF = { source: 0, dataset: 1, pipeline: 2, type: 4, relation: 5, view: 5, derived: 6, action: 6, answer: 6 };
 
 /** The size of a node's box: a card, or for a pipeline a group box with a row for each of its steps. */
 export function sizeOf(node) {
@@ -28,7 +30,7 @@ export function mapLayout(nodes, edges) {
   const kind = Object.fromEntries(nodes.map((n) => [n.id, n.kind]));
   const live = edges.filter((e) => ids.has(e.from) && ids.has(e.to));
   const written = new Set(live.filter((e) => kind[e.from] === "pipeline" && kind[e.to] === "dataset").map((e) => e.to));
-  const layerOf = Object.fromEntries(nodes.map((n) => [n.id, n.kind === "dataset" && written.has(n.id) ? 3 : LAYER_OF[n.kind] ?? 5]));
+  const layerOf = Object.fromEntries(nodes.map((n) => [n.id, n.kind === "dataset" && written.has(n.id) ? 3 : LAYER_OF[n.kind] ?? 6]));
   const lists = LAYERS.map(() => []);
   for (const n of [...nodes].sort((a, b) => String(a.name).localeCompare(String(b.name)))) lists[layerOf[n.id]].push(n);
   const used = lists.map((list, layer) => ({ layer, list })).filter((c) => c.list.length);
@@ -105,21 +107,21 @@ export function enrichNodes(nodes, datasets, pipelines) {
   });
 }
 
-const number = (n) => formatNumber(n);
+const stat = (key, n) => ({ key, value: formatNumber(n), n });
 
 /** What a card says under its header: up to two numbers (each with a key the card draws an icon and a word for), a line of its own kind, and a note when it needs another look. */
 export function cardFacts(node) {
   const stats = [];
   let sub = "";
   if (node.kind === "dataset") {
-    if (node.columns != null) stats.push({ key: "columns", value: number(node.columns) });
-    if (node.rows != null) stats.push({ key: "rows", value: number(node.rows) });
+    if (node.columns != null) stats.push(stat("columns", node.columns));
+    if (node.rows != null) stats.push(stat("rows", node.rows));
     sub = node.version ? t("lineage.node.version", { version: node.version }) : "";
   } else if (node.kind === "type") {
-    if (node.objects != null) stats.push({ key: "objects", value: number(node.objects) });
-    if (Array.isArray(node.properties)) stats.push({ key: "properties", value: number(node.properties.length) });
+    if (node.objects != null) stats.push(stat("objects", node.objects));
+    if (Array.isArray(node.properties)) stats.push(stat("properties", node.properties.length));
   } else if (node.kind === "source") {
-    stats.push({ key: "tables", value: number(node.tables?.length ?? 0) });
+    stats.push(stat("tables", node.tables?.length ?? 0));
     sub = node.kind_label ?? "";
   } else if (node.kind === "relation") {
     sub = [node.from_name, node.to_name].filter(Boolean).join(" → ");
