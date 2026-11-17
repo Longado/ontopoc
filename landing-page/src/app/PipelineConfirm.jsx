@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { aiExplain, confirmPipeline, reviewPipeline } from "./api.js";
 import { useAuth } from "./Auth.jsx";
-import { timeText } from "./format.js";
+import { formatDateTime, t } from "./i18n/index.js";
+import { PIcon } from "./PipelineIcons.jsx";
 import { changeTitle, ChangeRow } from "./PipelineViews.jsx";
-import { aiNodeLine, failureLine, friendlyError, labelledRow, markedIds, numberText, progressOf, statRows, toggleMark, versionsText } from "./pipelineModel.js";
+import { aiNodeLine, failureLine, friendlyError, labelledRow, markedIds, numberText, progressOf, rowsText, statRows, toggleMark, versionsText } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
 
@@ -20,9 +21,9 @@ function StatsTable({ before, after }) {
   const rows = statRows(before, after);
   if (!rows.length) return null;
   return (
-    <div className="table-wrap">
+    <div className="pl-resource compact">
       <table className="wraps">
-        <thead><tr><th>列</th><th>确认过的那次</th><th>现在</th></tr></thead>
+        <thead><tr><th>{t("pipeline.confirm.col")}</th><th>{t("pipeline.confirm.thenCol")}</th><th>{t("pipeline.confirm.nowCol")}</th></tr></thead>
         <tbody>{rows.map((r) => <tr key={r.name} className={r.changed ? "changed" : ""}><td>{r.name}</td><td className="muted">{r.before}</td><td>{r.after}</td></tr>)}</tbody>
       </table>
     </div>
@@ -31,32 +32,31 @@ function StatsTable({ before, after }) {
 
 /** Why this person cannot confirm, when they cannot. */
 function whyNot(detail, me) {
-  if (detail.editors?.includes(me)) return "这条管道的定义你改过，要另一位来确认";
-  if (detail.waiting_on?.length) return `管道用到的 ${detail.waiting_on.map((w) => `“${w.name}”`).join("、")} 还没有确认，要先确认它们`;
-  return "你现在不能确认这条管道";
+  if (detail.editors?.includes(me)) return t("pipeline.confirm.why.editor");
+  if (detail.waiting_on?.length) return t("pipeline.confirm.why.waiting", { names: detail.waiting_on.map((w) => `“${w.name}”`).join(", ") });
+  return t("pipeline.confirm.why.other");
 }
 
 /** A confirmed pipeline has nothing left to confirm: which version, who and when. */
 function Confirmed({ detail }) {
   return (
     <div className="pl-page">
-      <p>第 {detail.confirmed_definition_version ?? detail.definition_version} 版已确认{detail.confirmed_by && `（${detail.confirmed_by}，${timeText(detail.confirmed_at)}）`}</p>
-      <p><a href={hrefFor({ page: "pipeline", name: detail.name, view: "edit" })}>回到管道</a></p>
+      <div className="pl-note ok big"><PIcon name="success" size={18} /><span>{t("pipeline.confirm.done", { version: detail.confirmed_definition_version ?? detail.definition_version })}{detail.confirmed_by && ` (${detail.confirmed_by}, ${formatDateTime(detail.confirmed_at)})`}</span></div>
+      <p className="pl-backline"><a href={hrefFor({ page: "pipeline", name: detail.name, view: "edit" })}>&larr; {t("pipeline.confirm.back")}</a></p>
     </div>
   );
 }
 
-/** What the second person reads before confirming: each changed step with before and after, the statistics of its output then and now, a mark for each step seen. Once confirmed: only who confirmed which version. */
 /** The rows the sample review was made on: what each said, what its labeller expected and what the step answered, mismatches first. Read this before trusting the count. */
 function LabelledRows({ node }) {
   const rows = node.rows.map(labelledRow).sort((a, b) => Number(a.matched) - Number(b.matched));
-  if (!rows.length) return <p className="muted small">{node.name}：还没有人标注过行，没有什么可看的。</p>;
+  if (!rows.length) return <p className="muted small">{t("pipeline.confirm.noLabelled", { name: node.name })}</p>;
   return (
     <details className="labelled" open>
-      <summary>{node.name}：标注的 {rows.length} 行，期望的答案和 AI 的答案（{rows.filter((r) => r.checked && !r.matched).length} 行没对上）</summary>
-      <div className="table-wrap">
+      <summary>{t("pipeline.confirm.labelled", { name: node.name, count: rows.length, off: rows.filter((r) => r.checked && !r.matched).length })}</summary>
+      <div className="pl-resource compact">
         <table className="wraps">
-          <thead><tr><th>这一行</th><th>标注的人期望</th><th>AI 答的</th><th>标注人</th></tr></thead>
+          <thead><tr><th>{t("pipeline.confirm.lbl.row")}</th><th>{t("pipeline.confirm.lbl.expected")}</th><th>{t("pipeline.confirm.lbl.answered")}</th><th>{t("pipeline.confirm.lbl.who")}</th></tr></thead>
           <tbody>{rows.map((r, i) => <tr key={i} className={r.checked && !r.matched ? "changed" : ""}><td>{r.text}</td><td>{r.expected}</td><td>{r.answered}</td><td className="muted">{r.who}</td></tr>)}</tbody>
         </table>
       </div>
@@ -64,11 +64,13 @@ function LabelledRows({ node }) {
   );
 }
 
+/** What the second person reads before confirming: each changed step with before and after, the statistics of its output then and now, a mark for each step seen. Once confirmed: only who
+ * confirmed which version. */
 export function PipelineConfirm({ detail, reload }) {
   return detail.state === "confirmed" ? <Confirmed detail={detail} /> : <Review detail={detail} reload={reload} />;
 }
 
-/** 解释: a plain description of the steps that changed, written by the model from their settings. A reading aid, labelled AI-written; the settings below are what is confirmed. */
+/** "Explain": a plain description of the steps that changed, written by the model from their settings. A reading aid, labelled AI-written; the settings below are what is confirmed. */
 function Explain({ detail, ids }) {
   const [state, setState] = useState({ status: "idle" });
   const go = async () => {
@@ -81,7 +83,7 @@ function Explain({ detail, ids }) {
   };
   return (
     <div className="explain">
-      <button className="secondary" onClick={go} disabled={!ids.length || state.status === "loading"}>{state.status === "loading" ? "AI 在写" : "解释这些步骤"}</button>
+      <button type="button" className="secondary pl-btn" onClick={go} disabled={!ids.length || state.status === "loading"}><PIcon name="sparkle" /> {state.status === "loading" ? t("pipeline.confirm.explaining") : t("pipeline.confirm.explain")}</button>
       {state.status === "error" && <p className="error">{friendlyError(state.error, detail.spec.steps)}</p>}
       {state.data && <div className="ai-draft"><p className="caption">{state.data.label}</p><p>{state.data.text}</p></div>}
     </div>
@@ -120,37 +122,40 @@ function Review({ detail, reload }) {
   return (
     <div className="pl-page">
       {state.status === "error" && <p className="error">{state.error}</p>}
-      {state.status === "loading" && !review && <p className="muted">按现在的数据把管道算一遍（不写数据）</p>}
+      {state.status === "loading" && !review && <div className="pl-skeleton table" aria-label={t("pipeline.loading")}><i /><i /><i /></div>}
+      {state.status === "loading" && !review && <p className="muted">{t("pipeline.confirm.computing")}</p>}
       {review && (
         <>
-          <p>{review.compared_with ? `和第 ${review.compared_with} 版（上次确认的）比，改了这些：` : "这条管道还没有人确认过，下面是它的全部步骤："} 按 {versionsText(review.inputs_now)} 算。</p>
-          <div className="bar" aria-hidden="true"><span style={{ width: `${progress.total ? (progress.seen / progress.total) * 100 : 0}%` }} /></div>
-          <p className="muted small">已看过 {progress.seen} / {progress.total} 步。定义再被改，已看过的标记会清掉。</p>
-          {!review.changes.length && <p className="muted">和上次确认的相比，步骤没有变化。</p>}
+          <div className="pl-review-head">
+            <p>{review.compared_with ? t("pipeline.confirm.comparedWith", { version: review.compared_with }) : t("pipeline.confirm.firstTime")} {t("pipeline.confirm.basedOn", { inputs: versionsText(review.inputs_now) })}</p>
+            <div className="pl-progress" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.seen}><span style={{ width: `${progress.total ? (progress.seen / progress.total) * 100 : 0}%` }} /></div>
+            <p className="muted small">{t("pipeline.confirm.progress", { seen: progress.seen, total: progress.total })}</p>
+          </div>
+          {!review.changes.length && <p className="muted">{t("pipeline.confirm.noChanges")}</p>}
           {review.changes.some((c) => c.change !== "DEL") && <Explain detail={detail} ids={review.changes.filter((c) => c.change !== "DEL" && c.after.type !== "output").map((c) => c.id)} />}
           {review.ai_nodes?.length > 0 && (
             <div className="verdict">
-              <p className="caption">AI 步骤的样本审核（它们写出的列标着“AI 生成”）</p>
-              <ul className="plain-list">{review.ai_nodes.map((n) => <li key={n.id} className={n.review.passed ? "" : "warn"}>{aiNodeLine(n)}</li>)}</ul>
+              <p className="caption">{t("pipeline.confirm.aiReview")}</p>
+              <ul className="pl-lines">{review.ai_nodes.map((n) => <li key={n.id} className={n.review.passed ? "" : "warn"}>{aiNodeLine(n)}</li>)}</ul>
               {review.ai_nodes.map((n) => <LabelledRows key={n.id} node={n} />)}
             </div>
           )}
           {review.changes.map((c) => (
-            <section key={`${c.id}${c.change}`} className="card confirm-step">
+            <section key={`${c.id}${c.change}`} className={`pl-confirm-step${seen.includes(c.id) ? " seen" : ""}`}>
               <ChangeRow change={c} steps={detail.spec.steps} titleOf={changeTitle} />
               {c.change !== "DEL" && (
-                <p className="muted small">这一步的结果：{review.rows_before?.[c.id] != null ? `${numberText(review.rows_before[c.id])} 行 → ` : ""}{numberText(review.rows_now[c.id])} 行</p>
+                <p className="muted small">{t("pipeline.confirm.result")} {review.rows_before?.[c.id] != null ? `${rowsText(review.rows_before[c.id])} → ` : ""}{rowsText(review.rows_now[c.id])}</p>
               )}
               {c.change !== "DEL" && <StatsTable before={review.stats_before?.[c.id]} after={review.stats_now[c.id]} />}
-              {review.failures?.[c.id] && <p className="warn small">按现在的数据：{Object.entries(review.failures[c.id]).map(([k, n]) => failureLine(k, n)).join("；")}</p>}
-              <label className="check"><input type="checkbox" checked={seen.includes(c.id)} onChange={() => mark(c.id)} />已看过这一步</label>
+              {review.failures?.[c.id] && <p className="warn small">{t("pipeline.confirm.nowData")} {Object.entries(review.failures[c.id]).map(([k, n]) => failureLine(k, n)).join("; ")}</p>}
+              <label className="check"><input type="checkbox" checked={seen.includes(c.id)} onChange={() => mark(c.id)} />{t("pipeline.confirm.seen")}</label>
             </section>
           ))}
-          <div className="inline wide">
+          <div className="pl-confirm-bar">
             {detail.can_confirm
-              ? <button className="primary" disabled={!ready || busy} onClick={confirm}>确认这条管道</button>
+              ? <button type="button" className="primary" disabled={!ready || busy} onClick={confirm}>{t("pipeline.confirm.confirm")}</button>
               : <span className="warn">{whyNot(detail, user?.display_name)}</span>}
-            {detail.can_confirm && !ready && <span className="muted small">每一步都看过，才能确认</span>}
+            {detail.can_confirm && !ready && <span className="muted small">{t("pipeline.confirm.allSeen")}</span>}
             {error && <span className="error">{error}</span>}
           </div>
         </>

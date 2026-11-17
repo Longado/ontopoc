@@ -26,4 +26,13 @@ export const CONVERTED = [
   "ExpressionEditor.jsx",
   "LlmEditor.jsx",
   "pipelineModel.js",
+  "PipelinesPage.jsx",
+  "PipelinePage.jsx",
+  "PipelineBar.jsx",
+  "PipelineGraph.jsx",
+  "PipelinePanel.jsx",
+  "PipelineEditor.jsx",
+  "PipelineViews.jsx",
+  "PipelineConfirm.jsx",
+  "AiDraftPanel.jsx",
 ];

@@ -23,3 +23,6 @@ export const SERVER_PATTERNS = {
   emptyQuotes: /「」/g,
   inNoColumn: /里没有列\s*$/,
 };
+
+/** What the service says when the definition was saved by someone else meanwhile (the page then offers to reload). */
+export const CHANGED_BY_OTHER = "被改了";

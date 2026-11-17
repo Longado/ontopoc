@@ -406,6 +406,14 @@ export function splitLines(split) {
   return [...split.branches.map(branch), ...(split.unassigned ? [t("pipeline.m.split.unassigned", { count: split.unassigned, n: numberText(split.unassigned) })] : [])];
 }
 
+/** The counts as a card's footer has room for them: "160 + 30 → 160 rows" (an input: "160 rows"). */
+export function countsShort(node) {
+  if (!node) return "";
+  if (node.type === "input" || !node.rows_in?.length) return rowsText(node.rows_out);
+  const into = node.rows_in.length > 1 ? node.rows_in.map(numberText).join(" + ") : numberText(node.rows_in[0]);
+  return t("pipeline.m.counts", { count: typeof node.rows_out === "number" ? node.rows_out : 2, from: into, n: numberText(node.rows_out) });
+}
+
 /** What the card carries beside its counts: {level: "warn" | "bad", text}. */
 export function cardFlags(node) {
   if (!node) return [];

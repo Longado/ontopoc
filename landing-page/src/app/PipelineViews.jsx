@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { getPipelineRun, getPipelineRuns, getPipelineVersions } from "./api.js";
-import { timeText } from "./format.js";
+import { formatDateTime, t } from "./i18n/index.js";
 import { PipelineGraph } from "./PipelineGraph.jsx";
-import { CHANGE_LABEL, KIND_LABEL, STATUS_LABEL, cardFlags, countsText, durationText, failureLines, friendlyError, llmRunText, numberText, offListLines, stepSummary, stepTitle, versionsText } from "./pipelineModel.js";
+import { KindChip, PIcon } from "./PipelineIcons.jsx";
+import { RunStatus } from "./PipelinesPage.jsx";
+import { CHANGE_LABEL, KIND_LABEL, cardFlags, countsText, durationText, failureLines, friendlyError, llmRunText, numberText, offListLines, rowsText, stepSummary, stepTitle, versionsText } from "./pipelineModel.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
@@ -14,22 +16,24 @@ export function PipelineRuns({ detail }) {
   const runs = state.data ?? [];
   return (
     <div className="pl-page">
-      {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
-      {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
-      {state.data && !runs.length && <p className="muted">还没有运行过。到“编辑”页保存后点“运行”。</p>}
+      {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>{t("pipeline.retry")}</button></p>}
+      {state.status === "loading" && !state.data && <div className="pl-skeleton table" aria-label={t("pipeline.loading")}><i /><i /><i /></div>}
+      {state.data && !runs.length && (
+        <div className="pl-empty-block"><span className="empty-icon"><PIcon name="play" size={20} /></span><p className="empty-title">{t("pipeline.runs.emptyTitle")}</p><p className="empty-text">{t("pipeline.runs.empty")}</p></div>
+      )}
       {runs.length > 0 && (
-        <div className="table-wrap">
+        <div className="pl-resource">
           <table>
-            <thead><tr><th>运行</th><th>状态</th><th>谁运行的</th><th>开始</th><th className="num">用时</th><th className="num">定义版本</th></tr></thead>
+            <thead><tr><th>{t("pipeline.runs.status")}</th><th>{t("pipeline.runs.run")}</th><th>{t("pipeline.runs.who")}</th><th>{t("pipeline.runs.started")}</th><th className="num">{t("pipeline.runs.duration")}</th><th className="num">{t("pipeline.runs.version")}</th></tr></thead>
             <tbody>
               {runs.map((r) => (
-                <tr key={r.id}>
-                  <td><a href={runHref(detail.name, r.id)}>第 {r.id} 次</a></td>
-                  <td className={r.status === "failed" ? "bad" : ""}>{STATUS_LABEL[r.status] ?? r.status}</td>
-                  <td>{r.who ?? "未署名"}</td>
-                  <td>{timeText(r.started_at)}</td>
+                <tr key={r.id} className="clickable" onClick={(e) => { if (!e.target.closest("a")) window.location.hash = runHref(detail.name, r.id); }}>
+                  <td><RunStatus status={r.status} /></td>
+                  <td><a className="pl-res-name" href={runHref(detail.name, r.id)}>{t("pipeline.runs.nth", { id: r.id })}</a></td>
+                  <td>{r.who ?? t("pipeline.unsigned")}</td>
+                  <td title={r.started_at}>{formatDateTime(r.started_at)}</td>
                   <td className="num">{durationText(r.duration_ms)}</td>
-                  <td className="num">{r.definition_version}</td>
+                  <td className="num">v{r.definition_version}</td>
                 </tr>
               ))}
             </tbody>
@@ -45,43 +49,52 @@ export function PipelineRun({ detail, id }) {
   const run = state.data;
   return (
     <div className="pl-page">
-      <p><a href={hrefFor({ page: "pipeline", name: detail.name, view: "runs" })}>全部运行记录</a></p>
-      {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
-      {state.status === "loading" && !run && <p className="muted">加载中</p>}
+      <p className="pl-backline"><a href={hrefFor({ page: "pipeline", name: detail.name, view: "runs" })}>&larr; {t("pipeline.run.all")}</a></p>
+      {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>{t("pipeline.retry")}</button></p>}
+      {state.status === "loading" && !run && <div className="pl-skeleton table" aria-label={t("pipeline.loading")}><i /><i /><i /></div>}
       {run && (
         <>
-          <h2 className="section-title">第 {run.id} 次运行：<span className={run.status === "failed" ? "bad" : ""}>{STATUS_LABEL[run.status] ?? run.status}</span></h2>
-          <dl className="defs">
-            <dt>谁运行的</dt><dd>{run.who ?? "未署名"}</dd>
-            <dt>开始</dt><dd>{timeText(run.started_at)}{run.finished_at && `，用时 ${durationText(run.duration_ms)}`}</dd>
-            <dt>定义版本</dt><dd>第 {run.definition_version} 版</dd>
-            <dt>读了</dt><dd>{versionsText(run.input_versions) || "—"}</dd>
+          <div className="pl-run-head">
+            <h2>{t("pipeline.run.title", { id: run.id })}</h2>
+            <RunStatus status={run.status} />
+          </div>
+          <dl className="pl-facts">
+            <div><dt>{t("pipeline.run.who")}</dt><dd>{run.who ?? t("pipeline.unsigned")}</dd></div>
+            <div><dt>{t("pipeline.run.started")}</dt><dd>{formatDateTime(run.started_at)}{run.finished_at && <span className="muted"> · {t("pipeline.run.took", { time: durationText(run.duration_ms) })}</span>}</dd></div>
+            <div><dt>{t("pipeline.run.version")}</dt><dd>{t("pipeline.run.versionN", { version: run.definition_version })}</dd></div>
+            <div><dt>{t("pipeline.run.read")}</dt><dd>{versionsText(run.input_versions) || "—"}</dd></div>
           </dl>
-          {run.error && <p className="error run-error">{friendlyError(run.error, detail.spec.steps)}</p>}
+          {run.error && <div className="pl-errcard" role="alert"><PIcon name="alert" size={16} /><div><strong>{t("pipeline.run.failedTitle")}</strong><p>{friendlyError(run.error, detail.spec.steps)}</p></div></div>}
           {run.outputs.length > 0 && (
             <>
-              <h3 className="section-title">写出了</h3>
-              <ul className="plain-list">
+              <h3 className="pl-section">{t("pipeline.run.wrote")}</h3>
+              <ul className="pl-written">
                 {run.outputs.map((o) => (
-                  <li key={o.dataset}><a href={hrefFor({ page: "dataset", name: o.dataset, tab: "versions" })}>{o.dataset}</a> 第 {o.version} 版，{numberText(o.rows)} 行{o.created_version ? "" : "，内容没有变化，没有新版本"}</li>
+                  <li key={o.dataset}>
+                    <PIcon name="output" size={16} />
+                    <a href={hrefFor({ page: "dataset", name: o.dataset, tab: "versions" })}>{o.dataset}</a>
+                    <span className="pl-badge neutral">v{o.version}</span>
+                    <span>{rowsText(o.rows)}</span>
+                    {!o.created_version && <span className="muted">{t("pipeline.run.unchanged")}</span>}
+                  </li>
                 ))}
               </ul>
             </>
           )}
           {run.nodes.length > 0 && (
             <>
-              <h3 className="section-title">每一步</h3>
-              <div className="table-wrap">
+              <h3 className="pl-section">{t("pipeline.run.steps")}</h3>
+              <div className="pl-resource">
                 <table>
-                  <thead><tr><th>步骤</th><th>行数</th><th>做了什么</th><th>没做成的</th></tr></thead>
+                  <thead><tr><th>{t("pipeline.run.step")}</th><th>{t("pipeline.run.rows")}</th><th>{t("pipeline.run.did")}</th><th>{t("pipeline.run.problems")}</th></tr></thead>
                   <tbody>
                     {run.nodes.map((n) => {
                       const flags = cardFlags(n).filter((f) => f.level !== "note");
                       return (
                         <tr key={n.id} className="wrap-row">
-                          <td>{KIND_LABEL[n.type]} <span className="muted">{n.id}</span></td>
+                          <td><span className="pl-step-cell"><KindChip step={{ type: n.type }} />{KIND_LABEL[n.type]} <span className="muted">{n.id}</span></span></td>
                           <td className="keep">{countsText(n)}</td>
-                          <td>{(n.operators ?? []).map((op, i) => <p key={i} className="small">{i + 1}. {op.text}</p>)}{n.llm && <p className="small">{llmRunText(n.llm)}{n.llm.called > 0 && `；这次问了模型 ${numberText(n.llm.called)} 次`}</p>}{n.llm && offListLines(n.llm).map((l) => <p key={l} className="warn small">{l}</p>)}{n.join && <p className="small">{n.join.matched_left} / {n.join.left_rows} 行左边对上了{n.join.extra_rows > 0 ? `，多出 ${n.join.extra_rows} 行` : ""}</p>}</td>
+                          <td>{(n.operators ?? []).map((op, i) => <p key={i} className="small">{i + 1}. {op.text}</p>)}{n.llm && <p className="small">{llmRunText(n.llm)}{n.llm.called > 0 && `; ${t("pipeline.run.asked", { count: n.llm.called, n: numberText(n.llm.called) })}`}</p>}{n.llm && offListLines(n.llm).map((l) => <p key={l} className="warn small">{l}</p>)}{n.join && <p className="small">{t("pipeline.run.joined", { matched: n.join.matched_left, left: n.join.left_rows })}{n.join.extra_rows > 0 ? t("pipeline.run.extra", { count: n.join.extra_rows }) : ""}</p>}</td>
                           <td>{failureLines(n).map((l) => <p key={l} className="warn small">{l}</p>)}{flags.filter((f) => !failureLines(n).includes(f.text)).map((f) => <p key={f.text} className={`${f.level === "bad" ? "bad" : "warn"} small`}>{f.text}</p>)}</td>
                         </tr>
                       );
@@ -103,8 +116,8 @@ function ChangeRow({ change, steps, titleOf }) {
     <div className={`change change-${change.change}`}>
       <div className="change-head"><span className="change-tag">{CHANGE_LABEL[change.change]}</span><strong>{titleOf(change, steps)}</strong></div>
       <div className="change-sides">
-        <div><p className="caption">之前</p>{change.before ? line(change.before) : <p className="faint small">没有</p>}</div>
-        <div><p className="caption">现在</p>{change.after ? line(change.after) : <p className="faint small">没有</p>}</div>
+        <div><p className="caption">{t("pipeline.history.before")}</p>{change.before ? line(change.before) : <p className="faint small">{t("pipeline.history.none")}</p>}</div>
+        <div><p className="caption">{t("pipeline.history.after")}</p>{change.after ? line(change.after) : <p className="faint small">{t("pipeline.history.none")}</p>}</div>
       </div>
     </div>
   );
@@ -127,19 +140,19 @@ export function PipelineHistory({ detail }) {
   return (
     <div className="pl-page">
       {list.status === "error" && <p className="error">{list.error}</p>}
-      {list.status === "loading" && !list.data && <p className="muted">加载中</p>}
+      {list.status === "loading" && !list.data && <div className="pl-skeleton table" aria-label={t("pipeline.loading")}><i /><i /><i /></div>}
       {versions.length > 0 && (
-        <div className="table-wrap">
+        <div className="pl-resource">
           <table>
-            <thead><tr><th>定义版本</th><th>谁保存的</th><th>时间</th><th className="num">步骤</th><th></th></tr></thead>
+            <thead><tr><th>{t("pipeline.history.version")}</th><th>{t("pipeline.history.savedBy")}</th><th>{t("pipeline.history.time")}</th><th className="num">{t("pipeline.history.steps")}</th><th /></tr></thead>
             <tbody>
               {versions.map((v) => (
-                <tr key={v.version}>
-                  <td>第 {v.version} 版{v.version === detail.definition_version && <span className="muted">（现在这一版）</span>}</td>
-                  <td>{v.saved_by ?? "未署名"}</td>
-                  <td>{timeText(v.saved_at)}</td>
+                <tr key={v.version} className={viewing === v.version ? "selected" : ""}>
+                  <td><strong>{t("pipeline.history.versionN", { version: v.version })}</strong>{v.version === detail.definition_version && <span className="pl-badge ok">{t("pipeline.history.current")}</span>}</td>
+                  <td>{v.saved_by ?? t("pipeline.unsigned")}</td>
+                  <td>{formatDateTime(v.saved_at)}</td>
                   <td className="num">{v.steps}</td>
-                  <td><button className="plain" onClick={() => setViewing(viewing === v.version ? null : v.version)}>{viewing === v.version ? "收起" : "只读查看"}</button></td>
+                  <td className="actions"><button type="button" className="secondary pl-btn-sm" onClick={() => setViewing(viewing === v.version ? null : v.version)}>{viewing === v.version ? t("pipeline.history.hide") : t("pipeline.history.view")}</button></td>
                 </tr>
               ))}
             </tbody>
@@ -148,21 +161,21 @@ export function PipelineHistory({ detail }) {
       )}
       {viewing && past.data?.spec && (
         <div className="past">
-          <h3 className="section-title">第 {viewing} 版（只读）</h3>
-          <PipelineGraph steps={past.data.spec.steps} nodes={{}} selected={null} onSelect={() => {}} />
-          <ul className="plain-list">{past.data.spec.steps.flatMap((s) => stepSummary(s, past.data.spec.steps).map((l, i) => <li key={`${s.id}${i}`}><span className="muted">{KIND_LABEL[s.type]}</span> {l}</li>))}</ul>
+          <h3 className="pl-section">{t("pipeline.history.readOnly", { version: viewing })}</h3>
+          <div className="past-graph"><PipelineGraph steps={past.data.spec.steps} nodes={{}} selected={null} onSelect={() => {}} /></div>
+          <ul className="pl-lines">{past.data.spec.steps.flatMap((s) => stepSummary(s, past.data.spec.steps).map((l, i) => <li key={`${s.id}${i}`}><span className="muted">{KIND_LABEL[s.type]}</span> {l}</li>))}</ul>
         </div>
       )}
       {versions.length > 1 && (
         <>
-          <h3 className="section-title">对比两个版本</h3>
-          <div className="inline wide">
-            <Select label="从哪一版" value={String(a)} onChange={(v) => setFrom(Number(v))}>{versions.map((v) => <option key={v.version} value={v.version}>第 {v.version} 版</option>)}</Select>
-            <span>改成</span>
-            <Select label="到哪一版" value={String(b)} onChange={(v) => setTo(Number(v))}>{versions.map((v) => <option key={v.version} value={v.version}>第 {v.version} 版</option>)}</Select>
+          <h3 className="pl-section">{t("pipeline.history.compare")}</h3>
+          <div className="pl-compare">
+            <Select label={t("pipeline.history.from")} value={String(a)} onChange={(v) => setFrom(Number(v))}>{versions.map((v) => <option key={v.version} value={v.version}>{t("pipeline.history.versionN", { version: v.version })}</option>)}</Select>
+            <span className="muted">{t("pipeline.history.changedTo")}</span>
+            <Select label={t("pipeline.history.to")} value={String(b)} onChange={(v) => setTo(Number(v))}>{versions.map((v) => <option key={v.version} value={v.version}>{t("pipeline.history.versionN", { version: v.version })}</option>)}</Select>
           </div>
           {compared.status === "error" && <p className="error">{compared.error}</p>}
-          {compared.data && !compared.data.changes.length && <p className="muted">这两版的步骤一样</p>}
+          {compared.data && !compared.data.changes.length && <p className="muted">{t("pipeline.history.same")}</p>}
           {compared.data?.changes.map((c) => <ChangeRow key={`${c.id}${c.change}`} change={c} steps={compared.data.spec.steps} titleOf={changeTitle} />)}
         </>
       )}

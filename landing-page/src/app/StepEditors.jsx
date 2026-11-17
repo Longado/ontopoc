@@ -3,8 +3,8 @@ import { operatorColumns } from "./api.js";
 import { LlmEditor } from "./LlmEditor.jsx";
 import { FilterForm, OperatorForm } from "./OperatorForms.jsx";
 import {
-  HOW_LABEL, KIND_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, allIssues, catalogView, copyOperator, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, moveOperator, newOperator, suggestJoinKeys,
-  branchReaders, newBranchId, operatorName, operatorTitle, readableSteps, removeOperator, removeStep, renameBranch, setOperator, splitLines, stepTitle, unionLines, updateStep,
+  HOW_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, allIssues, catalogView, copyOperator, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, moveOperator, newOperator, suggestJoinKeys,
+  branchReaders, newBranchId, operatorName, operatorTitle, readableSteps, removeOperator, renameBranch, setOperator, splitLines, stepTitle, unionLines, updateStep,
 } from "./pipelineModel.js";
 import { t } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
@@ -12,17 +12,6 @@ import { Select } from "./Select.jsx";
 const earlier = (draft, step) => draft.steps.slice(0, draft.steps.findIndex((s) => s.id === step.id));
 /** The options of a "reads which step" picker: the steps before this one, a split by its branches. */
 const readOptions = (draft, step, skip = []) => readableSteps(earlier(draft, step)).filter((r) => !skip.includes(r.id)).map((r) => <option key={r.id} value={r.id}>{r.label}</option>);
-
-/** The header every step editor has: what it is, and the way to remove it. */
-function StepHead({ step, draft, setDraft, onRemoved }) {
-  const readers = removeStep(draft, step.id).blocked;
-  return (
-    <div className="page-head step-head">
-      <h2 className="section-title">{KIND_LABEL[step.type]}</h2>
-      <button className="plain" disabled={readers.length > 0} title={readers.length ? t("steps.edit.readers.blocked", { names: readers.join(", ") }) : ""} onClick={() => { setDraft(removeStep(draft, step.id).spec); onRemoved(); }}>{t("steps.edit.removeStep")}</button>
-    </div>
-  );
-}
 
 function InputEditor({ step, draft, setDraft, datasets }) {
   const known = datasets.find((d) => d.name === step.dataset);
@@ -68,11 +57,15 @@ function JoinEditor({ step, draft, setDraft, nodes }) {
   const unused = [suggest.best, ...suggest.others].filter((s) => s && !step.on.some((p) => p.left === s.left && p.right === s.right));
   return (
     <div className="op-form">
-      <div className="inline wide">
+      <div className="field"><span className="caption">{t("steps.edit.join.left")}</span>
         <Select label={t("steps.edit.join.left")} value={step.left ?? ""} onChange={(v) => set({ left: v, on: [suggestJoinKeys(nodes[v]?.column_types, nodes[step.right]?.column_types).best ?? { left: "", right: "" }] })}>{readOptions(draft, step)}</Select>
+      </div>
+      <div className="field"><span className="caption">{t("steps.edit.join.how")}</span>
         <Select label={t("steps.edit.join.how")} value={step.how} onChange={(how) => set({ how })}>
           {Object.entries(HOW_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </Select>
+      </div>
+      <div className="field"><span className="caption">{t("steps.edit.join.right")}</span>
         <Select label={t("steps.edit.join.right")} value={step.right ?? ""} onChange={(v) => set({ right: v, on: [suggestJoinKeys(nodes[step.left]?.column_types, nodes[v]?.column_types).best ?? { left: "", right: "" }], right_columns: undefined })}>{readOptions(draft, step, [step.left])}</Select>
       </div>
       {step.how === "semi" && <p className="hint">{t("steps.edit.join.semi")}</p>}
@@ -381,12 +374,11 @@ function OutputEditor({ step, draft, setDraft, nodes }) {
 }
 
 /** The editor on the right: by the kind of the selected step. `onPreviewTo(i)` shows the node's rows up to operator i in the bottom panel. */
-export function StepEditor({ step, draft, setDraft, nodes, datasets, name, catalog, options, dirty, onPreviewTo, onRemoved }) {
+export function StepEditor({ step, draft, setDraft, nodes, datasets, name, catalog, options, dirty, onPreviewTo }) {
   if (!step) return <p className="muted pl-empty">{t("steps.edit.none")}</p>;
   const failures = failureLines(nodes[step.id]);
   return (
     <div>
-      <StepHead step={step} draft={draft} setDraft={setDraft} onRemoved={onRemoved} />
       {step.type === "input" && <InputEditor step={step} draft={draft} setDraft={setDraft} datasets={datasets} />}
       {step.type === "join" && <JoinEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} />}
       {step.type === "transform" && <TransformEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} name={name} catalog={catalog} onPreviewTo={onPreviewTo} />}
