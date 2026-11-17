@@ -18,6 +18,7 @@ from ontology_poc_generator.ontology_eval import _relations, _row_owners
 from ontology_poc_generator.open_items import CHOICES, _num, open_items, split_answers
 from ontology_poc_generator.public_ontology import _alias_map, _path_exists, bound_instances, normalize_proposal, resolve
 from ontology_poc_generator.lang import tr
+from ontology_poc_generator.pipeline_expr import WordMap
 
 ISO = 'YYYY-MM-DD'
 # the ways a date is written that a pipeline is asked to put right, besides ISO itself: name, pattern, the groups holding year, month, day
@@ -32,9 +33,10 @@ MAPPING_LINES = 3   # confirmed spellings and aliases named in one entry
 FILES = ('编排需求单.md', '编排需求单.json')
 
 # what a client said of rows that did not link, by choice
-REPLIES = {'expected': '客户答复本来就没有对应：用左关联，保留没对上的行', 'incomplete': '客户答复数据没导全：先补数据再关联'}
+REPLIES = WordMap({'expected': ('客户答复本来就没有对应：用左关联，保留没对上的行', 'The customer says there is no match by design: use a left join and keep the rows that did not match'),
+                   'incomplete': ('客户答复数据没导全：先补数据再关联', 'The customer says the data is not fully imported: complete the data first, then join')})
 
-quote = lambda column: f'「{column}」'
+quote = lambda column: tr(f'「{column}」', f'"{column}"')
 
 
 def _entry(kind: str, text: str, source: str, refs=(), **who) -> dict:
@@ -179,7 +181,7 @@ def _date_meaning(t: dict) -> list:
         if not (answer or declared):
             continue
         text = (tr(f'{quote(d["field"])}是{answer["says"]}', f'{quote(d["field"])} is {answer["says"]}') if answer else tr(f'{quote(d["field"])}是什么时间还没说清', f'What time {quote(d["field"])} means is not settled yet')) \
-            + (f'；{declared["says"]}' if declared else '') \
+            + (tr(f'；{declared["says"]}', f'; {declared["says"]}') if declared else '') \
             + (tr('。取数时间和录入时间不能当业务期次用', '. The time the data was pulled and the time it was entered cannot be used as the business period') if answer and answer['value'] in NOT_BUSINESS_TIME else '')
         out.append(_client('date_meaning', text, [a for a in (answer, declared) if a], [d['id'], *([d['range_id']] if declared else [])]))
     return out
@@ -192,7 +194,7 @@ def _code_mapping(source: str, labels: dict, fit: dict, run: dict) -> list:
     spellings = [x for x in fit.get('identity_spellings') or [] if x['type'] in labels]
     twins = [x for x in fit.get('suspected_duplicates') or [] if x['type'] in labels]
     confirmation = run.get('confirmation')
-    variants = [f'{labels[g["type"]]}：{" / ".join(g["values"])}' for g in ((confirmation or {}).get('reference') or {}).get('name_variants') or []
+    variants = [tr(f'{labels[g["type"]]}：{" / ".join(g["values"])}', f'{labels[g["type"]]}: {" / ".join(g["values"])}') for g in ((confirmation or {}).get('reference') or {}).get('name_variants') or []
                 if g['type'] in labels]
     aliases = [tr(f'{labels[a["type"]]}的值别名：{a["source"]} 表的“{a["value"]}”对应 {a["target_source"]} 表的“{a["target_value"]}”', f'Value alias for {labels[a["type"]]}: "{a["value"]}" in table {a["source"]} is "{a["target_value"]}" in table {a["target_source"]}')
                for a in run['ontology'].get('value_aliases') or [] if a['source'] == source and a['type'] in labels]
@@ -214,8 +216,8 @@ def _complete(source: str, objects: list) -> list:
         answer = _answered(o['answer'])
         if answer is None or o['id'].partition(':')[2].partition('|')[0] != source:
             continue
-        tail = tr('，要补数据', ', the data has to be completed') + (f'：{answer["note"]}' if answer.get('note') else '') if answer['value'] == 'partial' else tr('，已确认是全量', ', confirmed to be complete')
-        out.append(_client('complete', f'{o["label"]}：{answer["says"]}{tail}', [answer], [o['id']]))
+        tail = tr('，要补数据', ', the data has to be completed') + (tr(f'：{answer["note"]}', f': {answer["note"]}') if answer.get('note') else '') if answer['value'] == 'partial' else tr('，已确认是全量', ', confirmed to be complete')
+        out.append(_client('complete', tr(f'{o["label"]}：{answer["says"]}{tail}', f'{o["label"]}: {answer["says"]}{tail}'), [answer], [o['id']]))
     return out
 
 
@@ -285,7 +287,7 @@ def _join(r: dict, ends: tuple, types: dict, bundle: dict, graph: dict, aliases:
         facts += tr(f'；{_num(left)} 行连不上', f'; {_num(left)} rows not linked') + (tr(f'（其中 {_num(empty)} 行用来连的编号是空的）', f' ({_num(empty)} of them have an empty number to link by)') if empty else '')
     elif not misses:
         facts += tr('，每一行都连上了', ', every row was linked')
-    return f'{"，".join(said)}：{counts}，{facts}', left, (tr(f'按这几列直接关联，{"，".join(misses)}', f'join directly on these columns, {", ".join(misses)}') if misses else '')
+    return tr(f'{"，".join(said)}：{counts}，{facts}', f'{", ".join(said)}: {counts}, {facts}'), left, (tr(f'按这几列直接关联，{"，".join(misses)}', f'join directly on these columns, {", ".join(misses)}') if misses else '')
 
 
 def _joins(reviewed: dict, bundle: dict, graph: dict, aliases: dict, stats: dict, answers: dict, listed: set) -> list:
@@ -298,7 +300,7 @@ def _joins(reviewed: dict, bundle: dict, graph: dict, aliases: dict, stats: dict
         about = [k for k in (r['from'], r['to']) if k in owners.get(r['source'], ())]
         ends = ('to',) if about == [r['from']] else ('from',) if about == [r['to']] else ('from', 'to')
         text, left, misses = _join(r, ends, types, bundle, graph, aliases, stats[r['key']])
-        text = f'{text}。{misses}' if misses else text
+        text = tr(f'{text}。{misses}', f'{text}. {misses}') if misses else text
         item_id = f'unlinked:{r["key"]}'
         refs = [item_id] if left and item_id in listed else []
         answer = answers.get(item_id) if refs else None
@@ -308,7 +310,7 @@ def _joins(reviewed: dict, bundle: dict, graph: dict, aliases: dict, stats: dict
         elif answer is None:
             out.append(_code('join', tr(f'{text}。连不上的 {_num(left)} 行怎么处理还没说清', f'{text}. What to do with the {_num(left)} rows that do not link is not settled yet'), refs))
         else:
-            reply = REPLIES[answer['choice']] + (f'（{answer["text"]}）' if answer['text'] else '') if answer['choice'] else tr(f'客户答复：{answer["text"]}', f'Customer reply: {answer["text"]}')
+            reply = REPLIES[answer['choice']] + (tr(f'（{answer["text"]}）', f' ({answer["text"]})') if answer['text'] else '') if answer['choice'] else tr(f'客户答复：{answer["text"]}', f'Customer reply: {answer["text"]}')
             out.append(_client('join', tr(f'{text}。连不上的 {_num(left)} 行，{reply}', f'{text}. For the {_num(left)} rows that do not link, {reply}'), [answer], refs))
     return out
 
@@ -388,15 +390,15 @@ def _origin(e: dict) -> str:
         return tr('代码查出', 'Found by code')
     if e['source'] == 'client':
         who = '，'.join(x for x in (e.get('by'), e.get('basis'), e['at'][5:10]) if x)
-        return tr('客户答复', 'Customer reply') + (f'：{who}' if who else '')
-    return tr('人确认', 'Confirmed by a person') + (f'：{e["by"]}' if e.get('by') else '')
+        return tr('客户答复', 'Customer reply') + (tr(f'：{who}', f': {who}') if who else '')
+    return tr('人确认', 'Confirmed by a person') + (tr(f'：{e["by"]}', f': {e["by"]}') if e.get('by') else '')
 
 
 def pipeline_markdown(spec: dict) -> str:
     asked = sum(len(t['items']) for t in spec['tables']) + len(spec['relations']) + len(spec['derived']) + len(spec['rules'])
     lines = [tr(f'# 编排需求单：{spec["file"]}', f'# Pipeline brief: {spec["file"]}'), '', tr('这份清单由 OntoPoc 按数据和客户答复生成，只描述要做什么，不执行加工。', 'This list was generated by OntoPoc from the data and the customer replies. It only describes what to do and does not run any processing.'), '',
              tr(f'共 {len(spec["tables"])} 张表，{asked} 条要求，{len(spec["open"])} 条还没说清。', f'{len(spec["tables"])} tables, {asked} requirements, {len(spec["open"])} still to be settled.')]
-    bullet = lambda e: f'- {e["text"]}（{_origin(e)}）'
+    bullet = lambda e: tr(f'- {e["text"]}（{_origin(e)}）', f'- {e["text"]} ({_origin(e)})')
     for t in spec['tables']:
         lines += ['', tr(f'## {t["source"]}（{_num(t["rows"])} 行）', f'## {t["source"]} ({_num(t["rows"])} rows)'), '', *([tr(f'对象：{"、".join(t["objects"])}', f'Objects: {", ".join(t["objects"])}'), ''] if t['objects'] else []), *map(bullet, t['items'])]
     for title, key in ((tr('表之间怎么关联', 'How the tables are joined'), 'relations'), (tr('计算列', 'Calculated columns'), 'derived'), (tr('编排后的校验', 'Checks after the pipeline'), 'rules')):

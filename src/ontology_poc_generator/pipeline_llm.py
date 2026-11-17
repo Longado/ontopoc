@@ -91,7 +91,8 @@ def _short(value, what: str, limit: int, required: bool = True) -> str:
     return value.strip()
 
 
-def _choices(value, what: str = tr('类别', 'categories')) -> list[str]:
+def _choices(value, what: str | None = None) -> list[str]:
+    what = what or tr('类别', 'categories')
     if not isinstance(value, list) or not 2 <= len(value) <= MAX_CHOICES:
         raise LlmError(tr(f'{what}要写成列表，至少 2 个，最多 {MAX_CHOICES} 个', f'{what} must be a list of 2 to {MAX_CHOICES}'))
     out = [_short(v, tr(f'每个{what}', f'each of the {what}'), MAX_CHOICE) for v in value]
@@ -116,7 +117,7 @@ def effective(step: dict) -> dict:
         if step.get('multiple', False) not in (True, False):
             raise LlmError(tr('multiple 要写 true 或 false', 'multiple must be true or false'))
         kind = 'choices' if step.get('multiple') else 'choice'
-        prompt = (f'{context}。' if context else '') + tr(f'请根据下面「{column}」的内容分类：\n${{{column}}}', f'Classify by the content of "{column}" below:\n${{{column}}}')
+        prompt = (tr(f'{context}。', f'{context}. ') if context else '') + tr(f'请根据下面「{column}」的内容分类：\n${{{column}}}', f'Classify by the content of "{column}" below:\n${{{column}}}')
     elif template == 'summary':
         column = _short(step.get('column'), tr('要概括的列', 'the column to summarize'), 100)
         size, unit = step.get('size'), step.get('unit', '字')
@@ -210,7 +211,7 @@ def check_llm_step(step: dict, sid: str, columns: list[dict]) -> list[dict]:
             added.append({**column, 'badge': 'new', 'ai': True})
     except ValueError as exc:   # OpError and LlmError are both ValueErrors
         text = str(exc)
-        raise LlmError(text if text.startswith(label) else f'{label}：{text}') from None
+        raise LlmError(text if text.startswith(label) else tr(f'{label}：{text}', f'{label}: {text}')) from None
     return [*columns, *added]
 
 

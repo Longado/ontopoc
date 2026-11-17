@@ -88,10 +88,11 @@ def draw(rows: list[tuple[int, dict]], fields: list[str], n: int, seed, skip: se
     return random.Random(seed).sample(list(pool.values()), min(n, len(pool)))
 
 
-def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: list[str], rows: list[tuple[int, dict]], what: str = tr('这次试跑', 'this trial run')) -> list[dict]:
+def run_rows(conn, service: LlmService, pipeline_id: str, step: dict, names: list[str], rows: list[tuple[int, dict]], what: str | None = None) -> list[dict]:
     """The step applied to these (row number, values) rows; `names` are the columns the step reads. For each {'row', 'fields', 'status', 'values', 'message', 'raw', 'cached', 'prompt'}. A row with
     nothing in its prompt fields is skipped without a call. Answers that are answers are kept for later runs, each batch as it comes back. This calls the model, for at most
     MAX_TRIAL_CALLS rows (refused before the first call, in words that start with `what`)."""
+    what = what or tr('这次试跑', 'this trial run')
     eff = effective(step)
     parts, fields = compile_prompt(eff['prompt'], names)
     model = service.model or step.get('model')

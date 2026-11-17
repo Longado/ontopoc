@@ -19,7 +19,7 @@ import re
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, CAST_TYPES, visible
 from ontology_poc_generator.recognition import model_failure_text
-from ontology_poc_generator.lang import tr
+from ontology_poc_generator.lang import english, tr
 
 PARSE_VERSION, PLAN_VERSION, EXPLAIN_VERSION = 'pipeline_condition_parser.v1', 'pipeline_planner.v1', 'pipeline_explainer.v1'
 FEW_VALUES = 12   # a column with at most this many different values is shown to the model with each value and its rows
@@ -102,6 +102,13 @@ def column_facts(columns: list[dict], ctx: dict, seen: dict) -> list[dict]:
             fact['values_seen'] = values
         out.append(fact)
     return out
+
+
+ENGLISH_NOTE = '\n\nThe person asking works in English: write every "basis", "summary" and "text" in English.'   # appended only for an English asker; the Chinese prompts are unchanged
+
+
+def _in_language(prompt: str) -> str:
+    return prompt + ENGLISH_NOTE if english() else prompt
 
 
 def disclosure(facts: list[dict]) -> dict:
@@ -197,7 +204,7 @@ def settle(node, facts: dict, seen: dict, sentence: str, answers: dict, question
 def parse_condition(gateway, sentence: str, facts: list[dict], seen: dict, answers: dict, by: dict, raw: dict | None = None) -> dict:
     """{'raw' (what the model said), 'where' (what stands, or None), 'questions', 'cites', 'basis'} or {'error'}; with `raw` the model is not asked again (a person answered a question)."""
     if raw is None:
-        got = ask_model(gateway, 'condition_parser', PARSE_VERSION, PARSE_SYSTEM_PROMPT, {'task': 'filter', 'sentence': sentence, 'columns': facts})
+        got = ask_model(gateway, 'condition_parser', PARSE_VERSION, _in_language(PARSE_SYSTEM_PROMPT), {'task': 'filter', 'sentence': sentence, 'columns': facts})
         if got.failure == 'request':
             return {'error': model_failure_text(got.message)}
         if got.failure == 'not_json' or not isinstance(got.reply, dict) or not isinstance(got.reply.get('where'), dict):
@@ -210,7 +217,7 @@ def parse_condition(gateway, sentence: str, facts: list[dict], seen: dict, answe
 
 def parse_expression(gateway, sentence: str, facts: list[dict], functions: list[str]) -> dict:
     """{'name', 'expression', 'basis'} the model wrote for a calculated column, or {'error'}; the expression is for the caller to check against the columns."""
-    got = ask_model(gateway, 'condition_parser', PARSE_VERSION, PARSE_SYSTEM_PROMPT, {'task': 'calc', 'sentence': sentence, 'columns': facts, 'functions': functions})
+    got = ask_model(gateway, 'condition_parser', PARSE_VERSION, _in_language(PARSE_SYSTEM_PROMPT), {'task': 'calc', 'sentence': sentence, 'columns': facts, 'functions': functions})
     if got.failure == 'request':
         return {'error': model_failure_text(got.message)}
     reply = got.reply
@@ -223,7 +230,7 @@ def parse_expression(gateway, sentence: str, facts: list[dict], functions: list[
 
 def ask_plan(gateway, sentence: str, selected: dict) -> dict:
     """The model's draft as it said it ({'basis', 'steps'}), or {'error'}. `selected` is {node id: its column facts}."""
-    got = ask_model(gateway, 'pipeline_planner', PLAN_VERSION, PLAN_SYSTEM_PROMPT, {'sentence': sentence, 'selected': [{'id': i, 'columns': f} for i, f in selected.items()]})
+    got = ask_model(gateway, 'pipeline_planner', PLAN_VERSION, _in_language(PLAN_SYSTEM_PROMPT), {'sentence': sentence, 'selected': [{'id': i, 'columns': f} for i, f in selected.items()]})
     if got.failure == 'request':
         return {'error': model_failure_text(got.message)}
     if got.failure == 'not_json' or not isinstance(got.reply, dict) or not isinstance(got.reply.get('steps'), list):
@@ -275,7 +282,7 @@ def settle_plan(raw: dict, selected: dict, seen: dict, taken: set[str], model: s
 
 def explain(gateway, steps: list[dict]) -> dict:
     """{'text', 'basis'} in plain words for the selected steps, or {'error'}."""
-    got = ask_model(gateway, 'pipeline_explainer', EXPLAIN_VERSION, EXPLAIN_SYSTEM_PROMPT, {'steps': steps})
+    got = ask_model(gateway, 'pipeline_explainer', EXPLAIN_VERSION, _in_language(EXPLAIN_SYSTEM_PROMPT), {'steps': steps})
     if got.failure == 'request':
         return {'error': model_failure_text(got.message)}
     if got.failure == 'not_json' or not isinstance(got.reply, dict) or not isinstance(got.reply.get('text'), str) or not got.reply['text'].strip():

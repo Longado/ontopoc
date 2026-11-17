@@ -14,11 +14,12 @@ from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.derived_measures import compute as compute_derived, formula_text, parse_derived, plain_reason, preview as derived_preview, to_number
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 from ontology_poc_generator import ontopoc_query
-from ontology_poc_generator.lang import tr
+from ontology_poc_generator.lang import english, tr
 
 ontopoc_query.SAY = tr   # the query language says its messages in the asker's language (it imports nothing itself)
 
 QUESTION_PROMPT_VERSION = 'company_questions.v18'
+ENGLISH_NOTE = '\n\nThe person asking works in English: write the "reasoning" of each question in English.'   # appended only for an English asker
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
 MAX_MERGED = 20             # groups named in `evidence`: a pointer to where to look, not the full list
@@ -638,7 +639,7 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     if left_out:
         head = tr(f'{head}，{left_out}', f'{head}, {left_out}') if kept else tr(f'{head}里 {left_out}', f'{head}: {left_out}')
     if len(dims) > 1:
-        path = tr(f'{head}：按', f'{head}: grouped by ') + tr('和', ' and ').join(f'“{name(d["field"])}”' + (tr(f'（{_bucket_word(d["by"])}）', f' ({_bucket_word(d["by"])})') if d.get('by') else '') + (tr(f'（经 {" → ".join(label(k) for k in [start, *d["steps"]])}）', f' (via {" → ".join(label(k) for k in [start, *d["steps"]])})') if d['steps'] else '')
+        path = tr(f'{head}：按', f'{head}: grouped by ') + tr('和', ' and ').join(tr(f'“{name(d["field"])}”', f'"{name(d["field"])}"') + (tr(f'（{_bucket_word(d["by"])}）', f' ({_bucket_word(d["by"])})') if d.get('by') else '') + (tr(f'（经 {" → ".join(label(k) for k in [start, *d["steps"]])}）', f' (via {" → ".join(label(k) for k in [start, *d["steps"]])})') if d['steps'] else '')
                                                                                    for d in dims) + tr('分组', '')
     else:
         path = ' → '.join([head, *(label(k) for k in (dims[0]['steps'] if dims else top[1]))]) + (tr(f'，按“{name(dims[0]["field"])}”{BUCKETS[dims[0]["by"]] if dims[0].get("by") else ""}分组', f', grouped by "{name(dims[0]["field"])}"{" " + _bucket_word(dims[0]["by"]) if dims[0].get("by") else ""}') if dims else '')
@@ -894,7 +895,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         request['only_purpose'] = True
     out = {'prompt_version': QUESTION_PROMPT_VERSION, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
            'items': [], 'answered': 0, 'total': 0, 'error': None}
-    judgement = ask_model(gateway, 'question_writer', QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT, request)
+    judgement = ask_model(gateway, 'question_writer', QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT + ENGLISH_NOTE if english() else QUESTION_SYSTEM_PROMPT, request)
     out['model'] = judgement.model
     if judgement.failure == 'request':
         return {**out, 'error': model_failure_text(judgement.message)}

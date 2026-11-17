@@ -557,7 +557,7 @@ def _dry_run(conn, engine, row: dict, user: dict | None, llm: LlmService | None 
                           llm_run(conn, llm, pipeline_id(content['name']), 'cache'))
         problems = _output_problems(conn, result['nodes'], content['spec'])
         if problems:
-            raise TypeRefused('；'.join(problems), 409)
+            raise TypeRefused(tr('；', '; ').join(problems), 409)
     except TypeRefused:
         raise
     except (ValueError, PipelineRunError) as exc:
@@ -770,7 +770,7 @@ def confirm_pipeline(conn, payload: dict, who: str | None, user: dict | None, en
         raise SelfConfirmation(tr('这条管道的定义你改过，要另一位来确认', 'You changed the definition of this pipeline, so someone else has to confirm it'))
     waiting = waiting_on(conn, content)
     if waiting:
-        names = '、'.join(f'“{w["name"]}”' for w in waiting)
+        names = tr('、', ', ').join(f'“{w["name"]}”' for w in waiting)
         raise TypeRefused(tr(f'管道用到的{names}还没有确认，要先确认它们', f'The pipeline uses {names}, which is not confirmed yet. Confirm it first'), 409)
     if not isinstance(payload.get('seen'), dict):
         raise TypeRefused(tr('确认要带上你看到的输入数据版本（seen）', 'Confirming needs the input data versions you saw (seen)'))

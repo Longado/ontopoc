@@ -76,7 +76,7 @@ def cadence_text(s: dict) -> str:
     else:
         clock = f'{s["hour"]:02d}:{s["minute"]:02d}'
         when = tr(f'每天 {clock}', f'Every day at {clock}') if s['cadence'] == 'daily' else tr(f'每{WEEKDAYS[s["weekday"]]} {clock}', f'Every {WEEKDAYS_EN[s["weekday"]]} at {clock}')
-    return f'{when}（{s["tz"]}）'
+    return tr(f'{when}（{s["tz"]}）', f'{when} ({s["tz"]})')
 
 
 # --- the clock -------------------------------------------------------------------------------------------------------------------------------------

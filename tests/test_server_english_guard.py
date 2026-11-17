@@ -60,6 +60,13 @@ class ServerEnglishGuardTest(unittest.TestCase):
                     problems.append(f'{name}.py:{line}: {text}')
         self.assertEqual(problems, [], 'wrap these in tr(zh, en):\n' + '\n'.join(problems))
 
+    def test_the_net_does_catch_a_bare_chinese_sentence(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            sample = Path(folder) / 'sample.py'
+            sample.write_text("def f(x):\n    if x:\n        raise ValueError('不行')\n    ok = {'error': '坏了'}\n    fine = {'error': tr('坏了', 'broken')}\n    return ok, fine\n", encoding='utf-8')
+            self.assertEqual(sorted(text for _, text in chinese_outside_tr(sample)), sorted(['不行', '坏了']))
+
 
 if __name__ == '__main__':
     unittest.main()

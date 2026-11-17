@@ -70,10 +70,11 @@ class Lease:
 
 
 @contextmanager
-def deadline(engine, seconds: float, advice: str = tr('数据多的时候，先在前面加过滤，或把步骤拆开分别试', 'When there is a lot of data, add a filter earlier on, or split the steps and try them one by one')):
+def deadline(engine, seconds: float, advice: str | None = None):
     """Whatever the engine computes inside this block is stopped after `seconds` (SQLite's progress handler; it stops SQL, not a Python function in the middle of a
     value). The stop, and a statement SQLite itself refuses as too big, come out as a PipelineRunError in words a person reads, with `advice` for what to do about it.
     Yields the Lease."""
+    advice = advice or tr('数据多的时候，先在前面加过滤，或把步骤拆开分别试', 'When there is a lot of data, add a filter earlier on, or split the steps and try them one by one')
     lease = Lease(seconds)
     engine.set_progress_handler(lambda: 1 if time.monotonic() > lease.end else 0, 1000)
     try:
@@ -210,7 +211,7 @@ def _transform(step: dict, sid: str, src: str, columns: list[dict], ctx: dict, i
     stages = []
     for j, op in enumerate(operators):
         label = tr(f'步骤 {sid} 的第 {j + 1} 个操作', f'operator {j + 1} of step {sid}')
-        stage = compile_op(op, src, columns, ctx, f'{label}（{op.get("op") if isinstance(op, dict) else op}）')
+        stage = compile_op(op, src, columns, ctx, tr(f'{label}（{op.get("op") if isinstance(op, dict) else op}）', f'{label} ({op.get("op") if isinstance(op, dict) else op})'))
         table = f'pl_{index}_{j}'
         stages.append({'op': op['op'], 'table': table, 'sql': f'CREATE TEMP TABLE {table} AS {stage["select"]}', 'params': stage['params'], 'measure': stage['measure']})
         src, columns = table, stage['columns']

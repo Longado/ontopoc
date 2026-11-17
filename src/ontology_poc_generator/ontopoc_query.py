@@ -97,7 +97,7 @@ class _Reader:
     def take(self, kind=None, value=None, what=None):
         k, v, at = self.tokens[self.i]
         if (kind and k != kind) or (value and v != value):
-            seen = tr('结尾', 'the end') if k == 'end' else f'“{v}”'
+            seen = tr('结尾', 'the end') if k == 'end' else tr(f'“{v}”', f'"{v}"')
             raise QueryError(tr(f'第 {at + 1} 个字附近应该是 {what or value or kind}，这里是{seen}', f'Expected {what or value or kind} near character {at + 1}, found {seen}'), at)
         self.i += 1
         return v
@@ -359,7 +359,7 @@ def _type_name(catalog: dict, key: str) -> str:
 
 def _relation_line(catalog: dict, key: str) -> str:
     r = catalog['relations'][key]
-    return f'{r.get("name") or key}（{_type_name(catalog, r["from"])}→{_type_name(catalog, r["to"])}）'
+    return tr(f'{r.get("name") or key}（{_type_name(catalog, r["from"])}→{_type_name(catalog, r["to"])}）', f'{r.get("name") or key} ({_type_name(catalog, r["from"])}→{_type_name(catalog, r["to"])})')
 
 
 def _no_type(catalog: dict, written: str, at) -> QueryError:

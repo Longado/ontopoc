@@ -84,7 +84,8 @@ def _by_name(columns: list[dict]) -> dict[str, dict]:
     return {c['name']: c for c in visible(columns)}
 
 
-def _col(columns: list[dict], name, label: str, what: str = tr('列', 'column')) -> dict:
+def _col(columns: list[dict], name, label: str, what: str | None = None) -> dict:
+    what = what or tr('列', 'column')
     found = _by_name(columns).get(name) if isinstance(name, str) else None
     if found is None:
         if name in (None, ''):

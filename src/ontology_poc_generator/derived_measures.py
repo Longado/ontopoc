@@ -65,7 +65,7 @@ def formula_text(derived: dict) -> str:
     """The formula as a person writes it: 单价 × 数量 ×（1 − 折扣）."""
     def factor(f):
         name = f['field'].partition('.')[2]
-        return f'（1 − {name}）' if f['complement'] else name
+        return tr(f'（1 − {name}）', f'(1 − {name})') if f['complement'] else name
     text = ''
     for i, term in enumerate(derived['terms']):
         product = ' × '.join(factor(f) for f in term['factors']).replace(' × （', ' ×（')

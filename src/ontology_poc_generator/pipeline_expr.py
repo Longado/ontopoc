@@ -285,7 +285,7 @@ class _Compiler:
         name, pos = node[1], node[2]
         if name not in self.columns:
             near = difflib.get_close_matches(name, list(self.columns), n=3, cutoff=0.5)
-            known = '、'.join(f'「{c}」' for c in list(self.columns)[:12])
+            known = tr('、', ', ').join(tr(f'「{c}」', f'"{c}"') for c in list(self.columns)[:12])
             return self.error(tr(f'没有字段「{name}」', f'No column "{name}"') + (tr(f'，是不是{"、".join(f"「{n}」" for n in near)}？', f'. Did you mean {", ".join(chr(34) + n + chr(34) for n in near)}?') if near else tr(f'。可用的字段：{known}', f'. Available columns: {known}')), pos)
         if name not in self.fields:
             self.fields.append(name)
