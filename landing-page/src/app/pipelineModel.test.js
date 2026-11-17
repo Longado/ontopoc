@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   addOperator, addStep, cardFlags, catalogView, copyOperator, countsText, doubledGroupLines, fanOutLines, fieldRef, friendlyError, insertAt, joinVerdictLines, kindLine, layout, markedIds, moveOperator, newOperator, newStep,
   operatorTitle, orphans, pipelineStateText, progressOf, removeOperator, removeStep, sameSpec, setOperator, simpleExpression, statRows, stepTitle, toggleMark,
+  allIssues, runBlockReason, runResults, stepIssues, suggestJoinKeys, rowChangeText,
 } from "./pipelineModel.js";
 
 const SPEC = {
@@ -28,7 +29,7 @@ test("a step stands one column right of the furthest step it reads, and an edge 
 
 test("an engine message names the step by what it reads or does and the operator in Chinese, and leaves an id it does not know alone", () => {
   const steps = [...SPEC.steps.slice(0, 3), { id: "t1", type: "transform", from: "j", operators: [{ op: "calc", name: "比", expression: "a" }] }];
-  assert.equal(friendlyError("步骤 t1 的第 1 个操作（calc）：表达式不对：括号不成对", steps), "转换「计算列」的第 1 个操作（计算列）：表达式不对：括号不成对");
+  assert.equal(friendlyError("步骤 t1 的第 1 个操作（calc）：表达式不对：括号不成对", steps), "计算列：表达式不对：括号不成对");
   assert.equal(friendlyError("步骤 j：读的步骤 zz 还没有定义", steps), "关联「订单 和 售后工单」：读的步骤 zz 还没有定义");
   assert.equal(friendlyError("步骤 nope：不对", steps), "步骤 nope：不对");
   assert.equal(friendlyError("步骤 o 的第 2 个操作（filter）：x", steps), "输入「订单」的第 2 个操作（数据过滤）：x");
@@ -226,4 +227,65 @@ test("an AI step shows on the confirm screen with its template and what it reads
   const step = { id: "c", type: "llm", from: "t", model: "m", name: "类别", template: "classify", column: "描述", categories: ["甲", "其他"] };
   assert.deepEqual(stepSummary(step, [{ id: "t", type: "input", dataset: "工单" }]), ["读 工单，让 AI 写「类别」（分类）", "模型 m", "按「描述」分成：甲、其他"]);
   assert.deepEqual(cardFlags({ type: "llm", llm: { pending: 4 }, failures: { ai_failed: 2 } }).map((f) => f.text), ["4 行 AI 还没跑", "2 行 AI 没答成"]);
+});
+
+test("a new input step is empty: no dataset is picked for the person", () => {
+  assert.equal(newStep([], "input", null, ["交付统计", "订单"]).dataset, "");
+  assert.equal(newStep(SPEC.steps, "input", "o", ["交付统计"]).id, "in1");
+});
+
+test("a step that is not set up yet lists what is missing, in plain words, and a complete one lists nothing", () => {
+  assert.deepEqual(stepIssues({ id: "in2", type: "input", dataset: "" }), ["还没选数据集"]);
+  assert.deepEqual(stepIssues({ id: "in2", type: "input", dataset: "订单" }), []);
+  assert.deepEqual(stepIssues({ id: "j", type: "join", left: "o", right: "t", on: [{ left: "", right: "" }] }), ["关联的列没选齐"]);
+  assert.deepEqual(stepIssues({ id: "j", type: "join", left: "o", right: null, on: [{ left: "a", right: "a" }] }), ["右边还没选"]);
+  const filter = { op: "filter", where: { all: [{ column: "", cmp: "eq", value: "" }, { column: "状态", cmp: "eq", value: "" }, { column: "状态", cmp: "is_null" }, { column: "金额", cmp: "gt", value: "5" }] } };
+  assert.deepEqual(stepIssues({ id: "t", type: "transform", from: "j", operators: [filter] }), ["数据过滤：条件 1 没选列", "数据过滤：条件 2 未填"]);
+  assert.deepEqual(stepIssues({ id: "t", type: "transform", from: "j", operators: [] }), ["还没有操作"]);
+  assert.deepEqual(stepIssues({ id: "out", type: "output", from: "g", name: "" }), ["还没写数据集的名字"]);
+  assert.deepEqual(stepIssues({ id: "t", type: "transform", from: "j", operators: [{ op: "calc", name: "", expression: "" }] }), ["计算列：还没写新列的名字", "计算列：还没写表达式"]);
+  assert.deepEqual(allIssues([{ id: "in2", type: "input", dataset: "" }, SPEC.steps[0]]), { in2: ["还没选数据集"] });
+});
+
+test("an engine message is said in plain words: no empty quotes, no word twice, the condition named by its number", () => {
+  const steps = [{ id: "in1", type: "input", dataset: "订单" }, { id: "t", type: "transform", from: "in1", operators: [{ op: "filter", where: { all: [{ column: "a", cmp: "eq", value: "1" }, { column: "", cmp: "eq", value: "x" }] } }] }];
+  assert.equal(friendlyError("步骤 t 的第 1 个操作（filter）：没有列「」", steps), "数据过滤：条件 2 没选列");
+  assert.equal(friendlyError("步骤 t 的第 1 个操作（filter）：没有列「」", [steps[0], { ...steps[1], operators: [{ op: "filter" }] }]), "数据过滤：条件 1 没选列");
+  assert.equal(friendlyError("步骤 t 的第 1 个操作（filter）：没有列「金额」，是不是「金额数」？", steps), "数据过滤：没有列「金额」，是不是「金额数」？");
+  const two = [steps[0], { ...steps[1], operators: [steps[1].operators[0], { op: "aggregate", group_by: [], aggregations: [] }] }];
+  assert.equal(friendlyError("步骤 t 的第 2 个操作（aggregate）：已经有叫「行数」的列", two), "分组统计（第 2 个操作）：已经有叫「行数」的列");
+  assert.equal(friendlyError("步骤 j：读的步骤里没有列「」", steps), "步骤 j：读的步骤里没选列");
+  assert.equal(friendlyError("步骤 in1：数据集「」不存在", steps), "输入「订单」：数据集还没选");
+});
+
+test("the join suggests the same-name key, the key-like one first, and says which to put in", () => {
+  const left = [{ name: "订单号", type: "text" }, { name: "客户编号", type: "text" }, { name: "金额", type: "integer" }, { name: "状态", type: "text" }];
+  const right = [{ name: "工单号", type: "text" }, { name: "订单号", type: "text" }, { name: "客户编号", type: "text" }, { name: "金额", type: "text" }, { name: "状态", type: "text" }];
+  const { best, others } = suggestJoinKeys(left, right);
+  assert.deepEqual(best, { left: "订单号", right: "订单号" });
+  assert.deepEqual(others, [{ left: "客户编号", right: "客户编号" }]);
+  assert.deepEqual(suggestJoinKeys([{ name: "a", type: "text" }], [{ name: "b", type: "text" }]), { best: null, others: [] });
+  assert.deepEqual(suggestJoinKeys([{ name: "状态", type: "text" }], [{ name: "状态", type: "text" }]), { best: null, others: [] });   // a same-name column that does not look like a key is not put in
+});
+
+test("the run button says why it cannot run", () => {
+  assert.equal(runBlockReason({ dirty: true, hasOutput: true, todo: 0 }), "有改动还没保存，先保存");
+  assert.equal(runBlockReason({ dirty: false, hasOutput: false, todo: 0 }), "要有一个输出步骤才能运行");
+  assert.equal(runBlockReason({ dirty: false, hasOutput: true, todo: 2 }), "还有 2 处没配好，先配好");
+  assert.equal(runBlockReason({ dirty: false, hasOutput: true, todo: 0, running: true }), "正在运行");
+  assert.equal(runBlockReason({ dirty: false, hasOutput: true, todo: 0 }), "");
+});
+
+test("a card says how many rows a step added or dropped", () => {
+  assert.equal(rowChangeText({ type: "transform", rows_in: [160], rows_out: 120 }), "−40 行");
+  assert.equal(rowChangeText({ type: "join", rows_in: [160, 40], rows_out: 169 }), "+9 行");
+  assert.equal(rowChangeText({ type: "transform", rows_in: [5], rows_out: 5 }), "行数不变");
+  assert.equal(rowChangeText({ type: "input", rows_in: [], rows_out: 5 }), "");
+  assert.equal(rowChangeText(undefined), "");
+});
+
+test("a run's result is kept for each card: rows out, and failed or not", () => {
+  const run = { status: "success", duration_ms: 5, id: 4, nodes: [{ id: "o", type: "input", rows_in: [], rows_out: 9 }, { id: "g", type: "transform", rows_in: [9], rows_out: 2, failures: { cast_failures: 1 } }] };
+  assert.deepEqual(runResults(run), { o: { rows: 9, warn: false }, g: { rows: 2, warn: true } });
+  assert.deepEqual(runResults(null), {});
 });
