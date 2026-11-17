@@ -29,7 +29,7 @@ export function parseRoute(hash) {
   if (parts[0] === "notices" && parts.length === 1) return { page: "notices" };
   if (parts[0] === "schedules" && parts.length === 1) return { page: "schedules" };
   if (parts[0] === "sources" && parts.length <= 2) return parts.length === 1 ? { page: "sources" } : { page: "source", name: parts[1] };
-  if ((parts[0] === "account" || parts[0] === "users") && parts.length === 1) return { page: parts[0] };
+  if ((parts[0] === "account" || parts[0] === "users" || parts[0] === "settings") &&parts.length === 1) return { page: parts[0] };
   if (parts.length === 1 && Object.hasOwn(PLANNED, parts[0])) return { page: "planned", key: parts[0] };
   if (parts[0] === "lineage" && parts.length === 1) return { page: "lineage" };
   if (parts[0] === "relations") {
@@ -81,11 +81,14 @@ export function parseRoute(hash) {
   return { page: "notfound" };
 }
 
+/** Where the app opens after the sign-in form: the home page. Only a session that ran out while the person was working returns to the address they were at. */
+export const afterSignIn = (hash, ended) => (ended && hash && hash !== "#/" ? hash : "#/home");
+
 /** The address of a route; the inverse of parseRoute. */
 export function hrefFor(route) {
   if (route.page === "home") return "#/home";
   if (route.page === "qa") return route.id ? `#/qa/${route.id}` : route.ask ? `#/qa?ask=${encodeURIComponent(route.ask)}` : "#/qa";
-  if (route.page === "tasks" || route.page === "notices" || route.page === "account" || route.page === "users" || route.page === "sources" || route.page === "schedules") return `#/${route.page}`;
+  if (route.page === "tasks" || route.page === "notices" || route.page === "account" || route.page === "users" || route.page === "settings" || route.page === "sources" || route.page === "schedules") return `#/${route.page}`;
   if (route.page === "source") return `#/sources/${encodeURIComponent(route.name)}`;
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "types") return "#/types";
@@ -124,7 +127,7 @@ export function hrefFor(route) {
 export const PLANNED = {
 };
 
-const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
+const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
 const BUILDERS = ["tasks", "confirm", "pipelines", "sources", "schedules", "agents"];   // shown to builders and admins only: a viewer has nothing to confirm, the task list quotes keys and values and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
 const item = (key, label, icon) => ({ key, label, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
 
@@ -140,7 +143,7 @@ export const NAV = [
 ];
 
 /** What only an admin sees. */
-export const ADMIN_NAV = [{ key: "settings", label: "设置", icon: "settings", hint: "谁能进来、能看什么", items: [item("users", "用户", "users"), item("permissions", "权限", "shield")] }];
+export const ADMIN_NAV = [{ key: "settings", label: "设置", icon: "settings", hint: "谁能进来、能看什么", items: [item("settings", "工作区", "settings"), item("users", "用户", "users"), item("permissions", "权限", "shield")] }];
 
 /** The groups this person's role sees, in order. */
 export const navFor = (user) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])].filter((g) => !g.builders || canBuild(user));
@@ -162,7 +165,7 @@ export const PAGES = {
   agents: { nav: "agents", role: "builder" },
   boards: { nav: "boards" }, board: { nav: "boards" }, boardnew: { nav: "boards", role: "builder" }, boardedit: { nav: "boards", role: "builder" },
   lineage: { nav: "lineage" },
-  users: { nav: "users", role: "admin" }, permissions: { nav: "permissions", role: "admin" },
+  settings: { nav: "settings", role: "admin" }, users: { nav: "users", role: "admin" }, permissions: { nav: "permissions", role: "admin" },
   account: { nav: null },
   planned: { nav: null },   // a page not built yet lives under its own key (navKeyOf)
 };

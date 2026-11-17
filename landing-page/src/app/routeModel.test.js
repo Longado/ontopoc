@@ -90,7 +90,7 @@ test("a viewer sees four items, a builder the three groups more, an admin settin
   assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "问数", "看板", "消息"]]]);
   assert.deepEqual(names({ role: "builder" }).map((g) => g[0]), [null, "数据", "业务对象", "应用"]);
   assert.deepEqual(names({ role: "admin" }).map((g) => g[0]), [null, "数据", "业务对象", "应用", "设置"]);
-  assert.deepEqual(names({ role: "admin" })[4][1], ["用户", "权限"]);
+  assert.deepEqual(names({ role: "admin" })[4][1], ["工作区", "用户", "权限"]);
   assert.deepEqual(names({ role: "builder" })[1][1], ["数据集", "数据源", "管道", "调度", "血缘", "任务"]);   // 血缘 lives under 数据
   assert.deepEqual(navFor(null).map((g) => g.label ?? null), [null]);
   for (const role of ["viewer", "builder", "admin"]) for (const g of navFor({ role })) for (const i of g.items) assert.equal(mayOpen(i.key, { role }), true, `${role} ${i.key}`);   // nothing offered leads to a refusal
@@ -160,7 +160,7 @@ test("the screen that confirms what one dataset version moved has an address und
 
 const ADDRESSES = ["#/home", "#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/notices", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
   "#/relations", "#/relations/new", "#/relations/x", "#/relations/x/edit", "#/lineage", "#/confirm", "#/confirm/group/x/2", "#/pipelines", "#/pipelines/new",
-  "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents"];
+  "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/settings", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents"];
 
 test("every page an address can open has one entry in the page table, and the table has no page no address opens", () => {
   const opened = new Set(ADDRESSES.map((a) => parseRoute(a).page));

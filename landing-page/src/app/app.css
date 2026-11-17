@@ -863,3 +863,42 @@ ul.related-list { list-style: none; padding: 0; margin: 4px 0 8px; display: flex
 .page.has-bar > .queue, .page.has-bar > .cards { flex: none; }
 .page.has-bar > .batch-bar { margin-top: auto; }
 .confirm-step .checks .warn.strong { color: var(--red-ink); }
+
+/* F1 */
+/* sidebar: group explainers are tooltips now; tighter rows; the collapse button sits at the end of the list instead of covering it */
+.nav { padding: 6px var(--s1); }
+.nav-group { padding-bottom: 4px; margin-bottom: 4px; }
+.nav-group + .nav-group { padding-top: 4px; }
+.nav-heading { padding: 3px var(--s1); cursor: pointer; }
+.nav a { padding: 5px var(--s1); }
+.nav-collapse { position: static; padding: 5px var(--s1); }
+@media (max-height: 800px) {
+  .nav a { padding: 3px var(--s1); font-size: 14px; }
+  .nav-heading { padding: 2px var(--s1); }
+}
+/* login */
+.login-page { max-width: 420px; padding-top: 72px; gap: var(--s3); }
+.login-intro { display: flex; flex-direction: column; gap: var(--s1); }
+.brand-lg { font-size: 22px; }
+.brand-lg .brand-mark { width: 22px; height: 22px; }
+.login-line { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 0; }
+.login-card { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); box-shadow: var(--shadow-pop); }
+.login-card h1 { font-size: 20px; margin: 0; }
+.login-card form { max-width: none; gap: var(--s2); }
+.login-card .primary.block { align-self: stretch; padding: 10px 16px; }
+.login-help { margin: 0; }
+/* setup checklist notes, home number cards */
+.step-note { margin: 2px 0 0; color: var(--orange-ink); font-size: var(--small); }
+.step .button.plain { align-self: center; }
+.kpis { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--s2); }
+.kpi { display: flex; flex-direction: column; gap: 2px; padding: var(--s2) var(--s3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); color: var(--ink); }
+.kpi:hover { text-decoration: none; border-color: var(--accent); }
+.kpi-label { color: var(--muted); font-size: var(--small); }
+.kpi-value { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.15; }
+/* settings page */
+.settings { display: flex; flex-direction: column; gap: var(--s3); }
+.setting-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.setting-row { padding: var(--s1) 0; border-top: 1px solid var(--line); }
+.setting-row:first-child { border-top: 0; }
+.setting-name { display: flex; align-items: center; gap: var(--s1); }
+.setting-row p { margin: 4px 0 0; }

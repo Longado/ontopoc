@@ -16,7 +16,7 @@ test("four steps; the first undone one is next, the rest are not started", () =>
   assert.deepEqual(none.map((s) => s.state), ["next", "todo", "todo", "todo"]);
   const some = setupSteps({ datasets: [{ name: "a" }], types: [T("a", "A", "proposed")], users: [{}], sources: [], role: "builder" });
   assert.deepEqual(some.map((s) => s.state), ["done", "done", "next", "todo"]);
-  const all = setupSteps({ datasets: [{ name: "a" }], types: [T("a", "A")], users: [{}, {}], sources: [], role: "admin" });
+  const all = setupSteps({ datasets: [{ name: "a" }], types: [T("a", "A")], users: [{ id: 1, last_login_at: "x" }, { id: 2, last_login_at: "y" }], meId: 1, sources: [], role: "admin" });
   assert.deepEqual(all.map((s) => s.state), ["done", "done", "done", "done"]);
 });
 
