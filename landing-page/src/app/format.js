@@ -1,3 +1,4 @@
+import { formatDateTime } from "./i18n/index.js";
 import { sourceOrigin } from "./sourceModel.js";
 
 const TYPE_LABEL = { integer: "整数", decimal: "小数", text: "文本", date: "日期", month: "月份", datetime: "日期时间", boolean: "是否" };
@@ -17,13 +18,8 @@ export const originText = (origin) => {
   return origin === "upload" ? "上传" : source ? `数据源“${source.source}”的表 ${source.table}` : "建模运行";
 };
 
-/** An ISO time as the local "2026-11-13 14:05". */
-export function timeText(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
+/** An ISO time as the person reads it ("Nov 13, 2026, 2:05 PM" in English; the locale's own form in Chinese), through the i18n formatter; "" when it is not a time. */
+export const timeText = (iso) => formatDateTime(iso);
 
 /** What the stored counts and the recorded checks say about a column as a key. */
 export function keyText(column) {

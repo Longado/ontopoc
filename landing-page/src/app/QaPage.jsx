@@ -6,48 +6,51 @@ import { timeText } from "./format.js";
 import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
+import { useT } from "./i18n/index.js";
 import { PageHeader } from "./ui/PageHeader.jsx";
 import { useLoad } from "./useLoad.js";
 
-const KIND = { type: "对象类型", meaning: "含义", relation: "关系", view: "视图", derived: "派生属性" };
+const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived" };
 
 /** The definitions a refusal names, bottom of the chain first: what it is, where it stands and why, who could confirm it. */
 function Named({ list, mayBuild }) {
+  const t = useT();
   return (
     <ul className="named">
       {list.map((d) => (
         <li key={d.id}>
           <p>
-            <span className="muted">{KIND[d.kind]}</span> <a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} />
+            <span className="muted">{t(KIND[d.kind])}</span> <a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} />
           </p>
           <p className="muted">{standingText(d)}</p>
-          {d.who_can_confirm?.length > 0 && <p className="muted small">可以确认的人：{d.who_can_confirm.join("、")}</p>}
+          {d.who_can_confirm?.length > 0 && <p className="muted small">{t("ask.named.confirmers", { names: d.who_can_confirm.join(t("ask.sep")) })}</p>}
         </li>
       ))}
-      {mayBuild && list.some((d) => d.state !== "confirmed") && <li><a href="#/confirm">去待确认</a></li>}
+      {mayBuild && list.some((d) => d.state !== "confirmed") && <li><a href="#/confirm">{t("ask.named.toConfirm")}</a></li>}
     </ul>
   );
 }
 
 function Refusal({ record, mayBuild }) {
+  const t = useT();
   const r = record.refusal;
   return (
     <div className="refusal-card">
-      <h2 className="section">没有回答</h2>
+      <h2 className="section">{t("ask.refusal.title")}</h2>
       {r?.kind === "unsettled" && (
         <>
-          <p>问题用到的定义还不能用，没有照旧的定义回答。</p>
+          <p>{t("ask.refusal.unsettled")}</p>
           <Named list={r.definitions} mayBuild={mayBuild} />
         </>
       )}
       {r?.kind === "not_in_scope" && (
         <>
-          {r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") && <p>有已确认的关系问答用不上（原因在下面），模型看不到它，所以下面说“没有关系”。</p>}
+          {r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") && <p>{t("ask.refusal.relationLeftOut")}</p>}
           <p className={r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") ? "muted" : undefined}>{record.reason}</p>
-          <p className="muted">你能问的是 {r.in_scope.length ? r.in_scope.join("、") : "（还没有已确认的对象类型）"}，回答它需要的东西不在里面。</p>
+          <p className="muted">{t("ask.refusal.inScope", { list: r.in_scope.length ? r.in_scope.join(t("ask.sep")) : t("ask.refusal.noTypes") })}</p>
           {r.left_out?.length > 0 && (
             <>
-              <p className="muted" style={{ marginTop: 12 }}>这些还不在范围里：</p>
+              <p className="muted refusal-sub">{t("ask.refusal.leftOut")}</p>
               <Named list={r.left_out} mayBuild={mayBuild} />
             </>
           )}
@@ -67,13 +70,14 @@ function Refusal({ record, mayBuild }) {
 }
 
 export function Answer({ record }) {
+  const t = useT();
   const view = answerView(record);
   const notes = staleLines(record);
   const then = isThenAnswer(record);
   return (
     <div className={then ? "answer then" : "answer"}>
       {then && <p className="warn">{staleHeading(record)}</p>}
-      <div className="big">{then && <span className="small muted">当时的答案 </span>}{view.big}</div>
+      <div className="big">{then && <span className="small muted">{t("ask.answer.then")} </span>}{view.big}</div>
       {view.note && <p className="muted">{view.note}</p>}
       {view.graph && <ObjectGraph graph={view.graph} />}
       {view.table && (
@@ -82,64 +86,65 @@ export function Answer({ record }) {
             <thead><tr>{view.table.head.map((h, i) => <th key={h} className={i ? "num" : ""}>{h}</th>)}</tr></thead>
             <tbody>{view.table.rows.map((row, i) => <tr key={i}>{row.map((v, j) => <td key={j} className={j ? "num" : ""}>{v}</td>)}</tr>)}</tbody>
           </table>
-          {view.table.total > view.table.rows.length && <p className="muted small">只显示前 {view.table.rows.length} 组，共 {view.table.total} 组</p>}
+          {view.table.total > view.table.rows.length && <p className="muted small table-note">{t("ask.answer.shown", { shown: view.table.rows.length, total: view.table.total })}</p>}
         </div>
       )}
       {rangeNotes(record).map((n) => <p className="warn" key={n}>{n}</p>)}
-      {notes.length > 0 && <p className="warn">{then ? "" : `${staleHeading(record)}：`}{notes.join("；")}</p>}
+      {notes.length > 0 && <p className="warn">{then ? notes.join(t("ask.stale.sep")) : t("ask.stale.withHeading", { heading: staleHeading(record), notes: notes.join(t("ask.stale.sep")) })}</p>}
     </div>
   );
 }
 
 /** How the question was read, what it stood on, what it read, and the steps: under every answer and every refusal. */
 export function Basis({ record, onEdit }) {
+  const t = useT();
   const read = readText(record.datasets);
   return (
     <>
       <dl className="defs">
         {record.query_text && (
           <>
-            <dt>写成查询</dt>
+            <dt>{t("ask.basis.query")}</dt>
             <dd>
               <pre className="query-text">{record.query_text}</pre>
-              {onEdit && <button className="plain" onClick={() => onEdit(record.query_text)}>改成查询</button>}
+              {onEdit && <button className="plain" onClick={() => onEdit(record.query_text)}>{t("ask.basis.edit")}</button>}
             </dd>
           </>
         )}
         {record.reasoning && (
           <>
-            <dt>理解为</dt>
+            <dt>{t("ask.basis.understood")}</dt>
             <dd>
               {record.reasoning}
               {record.path && <span className="muted"> {record.path}</span>}
-              {record.understood?.map((u) => <span className="muted small block" key={u.definition}>{u.definition}：{u.how}</span>)}
+              {record.understood?.map((u) => <span className="muted small block" key={u.definition}>{t("ask.basis.understoodLine", { definition: u.definition, how: u.how })}</span>)}
             </dd>
           </>
         )}
         {record.definitions.length > 0 && (
           <>
-            <dt>用到的定义</dt>
+            <dt>{t("ask.basis.definitions")}</dt>
             <dd>
               {record.definitions.map((d) => (
                 <span className="block" key={d.id}>
-                  {KIND[d.kind]} <a href={definitionHref(d.id, d.type)}>{d.name}</a> <span className="muted">{d.confirmed_by ? `${d.confirmed_by} 于 ${timeText(d.confirmed_at)} 确认` : ""}</span>
+                  {t(KIND[d.kind])} <a href={definitionHref(d.id, d.type)}>{d.name}</a> <span className="muted">{d.confirmed_by ? t("ask.basis.confirmedBy", { by: d.confirmed_by, when: timeText(d.confirmed_at) }) : ""}</span>
                   {d.says && <span className="muted small block">{d.says}</span>}
                 </span>
               ))}
             </dd>
           </>
         )}
-        {read.length > 0 && <><dt>读取的数据</dt><dd>{read.map((t) => <span className="block" key={t}>{t}</span>)}</dd></>}
+        {read.length > 0 && <><dt>{t("ask.basis.read")}</dt><dd>{read.map((line) => <span className="block" key={line}>{line}</span>)}</dd></>}
         {record.limited_by_rule?.length > 0 && (
           <>
-            <dt>只算了你看得到的行</dt>
-            <dd>{record.limited_by_rule.map((l) => <span className="block" key={l.type}>{l.name}：行规则限制了行（{l.rule}），数是按这些行算的</span>)}</dd>
+            <dt>{t("ask.basis.limited")}</dt>
+            <dd>{record.limited_by_rule.map((l) => <span className="block" key={l.type}>{t("ask.basis.limitedLine", { name: l.name, rule: l.rule })}</span>)}</dd>
           </>
         )}
       </dl>
       {record.steps.length > 0 && (
         <details className="trace">
-          <summary>查看步骤</summary>
+          <summary>{t("ask.basis.steps")}</summary>
           <ol>
             {record.steps.map((s, i) => (
               <li key={i} className={s.failed ? "warn" : ""}>
@@ -156,6 +161,7 @@ export function Basis({ record, onEdit }) {
 
 /** An answer as a card: the figure or table first, the time-word warning when the question's time was not used, one caliber line, and the technical basis folded. */
 function AnswerCard({ record, mayBuild, onEdit, title }) {
+  const t = useT();
   const warning = isAnswer(record) ? timeWarning(record) : null;
   const line = isAnswer(record) ? criteriaLine(record, record.asked_at ? timeText(record.asked_at) : "") : "";
   return (
@@ -168,7 +174,7 @@ function AnswerCard({ record, mayBuild, onEdit, title }) {
           {warning && <p className="time-warn" role="alert">{warning}</p>}
           {line && <p className="criteria">{line}</p>}
           <details className="basis">
-            <summary>查看依据</summary>
+            <summary>{t("ask.card.basis")}</summary>
             <Basis record={record} onEdit={onEdit} />
           </details>
         </>
@@ -178,15 +184,17 @@ function AnswerCard({ record, mayBuild, onEdit, title }) {
 }
 
 function Saved({ id, mayBuild, onEdit }) {
+  const t = useT();
   const [state] = useLoad(() => getAnswer(id), [id]);
   const r = state.data;
-  if (state.status === "error") return <p className="error">{state.missing ? "没有这条问题" : state.error}</p>;
-  if (!r) return <p className="muted">加载中</p>;
+  if (state.status === "error") return <p className="error">{state.missing ? t("ask.saved.missing") : state.error}</p>;
+  if (!r) return <p className="muted">{t("ask.loading")}</p>;
   return <AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} title={r.question} />;
 }
 
 /** The query box: OntoPoc Query run as this person, by the same engine as a question, with no model; nothing is kept. */
 function QueryBox({ scope, text, setText, mayBuild }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
@@ -208,23 +216,23 @@ function QueryBox({ scope, text, setText, mayBuild }) {
   return (
     <>
       <form className="query" onSubmit={run}>
-        <textarea aria-label="本体查询" rows={6} value={text} spellCheck={false} placeholder={queryExample(scope) || "SELECT count(x) FROM (x:对象类型)"} disabled={busy} onChange={(e) => setText(e.target.value)} />
+        <textarea aria-label={t("ask.query.aria")} rows={6} value={text} spellCheck={false} placeholder={queryExample(scope) || t("ask.query.placeholder")} disabled={busy} onChange={(e) => setText(e.target.value)} />
         {names.length > 0 && (
-          <div className="inline wide" role="group" aria-label="参数">
+          <div className="inline wide" role="group" aria-label={t("ask.query.params")}>
             {names.map((n) => (
               <label key={n} className="field">
                 <span className="caption">${n}</span>
-                <input type="text" aria-label={`参数 ${n}`} value={values[n] ?? ""} disabled={busy} onChange={(e) => setValues({ ...values, [n]: e.target.value })} />
+                <input type="text" aria-label={t("ask.query.param", { name: n })} value={values[n] ?? ""} disabled={busy} onChange={(e) => setValues({ ...values, [n]: e.target.value })} />
               </label>
             ))}
           </div>
         )}
-        <button className="primary" type="submit" disabled={busy || !text.trim()}>运行</button>
+        <button className="primary" type="submit" disabled={busy || !text.trim()}>{t("ask.query.run")}</button>
       </form>
       {mayBuild
-        ? <details className="query-help"><summary>写法说明</summary><p className="hint">像 SQL 一样写，沿关系走、不写 JOIN：<code>{"SELECT p.品类, count(o) FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类"}</code>。按你能看的行和已确认的定义算，不调用模型，不记入“我问过的”。<a href="https://github.com/Longado/ontopoc/blob/main/docs/QUERY.md" target="_blank" rel="noreferrer">完整写法</a></p></details>
-        : <p className="hint">按你能看的行和已确认的定义算，不记入“我问过的”。</p>}
-      {busy && <p className="muted" role="status">正在算</p>}
+        ? <details className="query-help"><summary>{t("ask.query.help")}</summary><p className="hint">{t("ask.query.helpBefore")}<code>{t("ask.query.sample")}</code>{t("ask.query.helpAfter")}<a href="https://github.com/Longado/ontopoc/blob/main/docs/QUERY.md" target="_blank" rel="noreferrer">{t("ask.query.helpLink")}</a></p></details>
+        : <p className="hint">{t("ask.query.viewerHint")}</p>}
+      {busy && <p className="muted" role="status">{t("ask.query.busy")}</p>}
       {error && <p className="error" role="alert">{error}</p>}
       {result && (
         <AnswerCard record={result} mayBuild={mayBuild} />
@@ -234,6 +242,7 @@ function QueryBox({ scope, text, setText, mayBuild }) {
 }
 
 export function QaPage({ route }) {
+  const t = useT();
   const mayBuild = canBuild(useAuth().user);
   const [info, reload] = useLoad(getAsk, []);
   const [text, setText] = useState("");
@@ -242,8 +251,8 @@ export function QaPage({ route }) {
   const [mode, setMode] = useState("ask");
   const [query, setQuery] = useState("");
   const scope = info.data;
-  const edit = (t) => {
-    setQuery(t);
+  const edit = (text) => {
+    setQuery(text);
     setMode("query");
   };
   const ask = async (e, question = text) => {
@@ -270,12 +279,12 @@ export function QaPage({ route }) {
   }, [route.ask]);
   return (
     <main className="page">
-      <PageHeader title="问数" sub="用业务词提问，答案按已确认的定义算。" />
+      <PageHeader title={t("ask.title")} sub={t("ask.sub")} />
       {info.status === "error" && <p className="error">{info.error}</p>}
       <div className="qa">
-        <aside className="history" aria-label="我问过的问题">
-          <h2 className="small">我问过的</h2>
-          {scope && scope.history.length === 0 && <p className="muted small">还没有问过</p>}
+        <aside className="history" aria-label={t("ask.history.aria")}>
+          <h2 className="history-title">{t("ask.history.title")}</h2>
+          {scope && scope.history.length === 0 && <p className="muted small">{t("ask.history.empty")}</p>}
           <ul className="history-list">
             {scope?.history.map((h) => {
               const v = historyView(h, timeText(h.asked_at));
@@ -294,11 +303,11 @@ export function QaPage({ route }) {
           {scope && (
             <details className="scope">
               <summary>{scopeText(scope)}</summary>
-              <p className="muted">{scope.types.length ? scope.types.map((t) => t.name).join("、") : "还没有已确认的对象类型：先到对象类型页确认"}</p>
-              {scope.views?.length > 0 && <p className="muted">视图：{scope.views.map((v) => v.name).join("、")}</p>}
+              <p className="muted">{scope.types.length ? scope.types.map((type) => type.name).join(t("ask.sep")) : t("ask.scope.empty")}</p>
+              {scope.views?.length > 0 && <p className="muted">{t("ask.scope.views", { names: scope.views.map((v) => v.name).join(t("ask.sep")) })}</p>}
               {scope.left_out.length > 0 && (
                 <>
-                  <p className="muted" style={{ marginTop: 8 }}>不在范围里：</p>
+                  <p className="muted scope-sub">{t("ask.scope.leftOut")}</p>
                   <ul className="named">
                     {scope.left_out.map((d) => <li key={d.id}><a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} /></li>)}
                   </ul>
@@ -306,18 +315,18 @@ export function QaPage({ route }) {
               )}
             </details>
           )}
-          <div className="seg" role="group" aria-label="怎么问">
-            <button className={mode === "ask" ? "on" : ""} aria-pressed={mode === "ask"} onClick={() => setMode("ask")}>提问</button>
-            <button className={mode === "query" ? "on" : ""} aria-pressed={mode === "query"} onClick={() => setMode("query")}>写查询</button>
+          <div className="seg" role="group" aria-label={t("ask.mode.aria")}>
+            <button className={mode === "ask" ? "on" : ""} aria-pressed={mode === "ask"} onClick={() => setMode("ask")}>{t("ask.mode.ask")}</button>
+            <button className={mode === "query" ? "on" : ""} aria-pressed={mode === "query"} onClick={() => setMode("query")}>{t("ask.mode.query")}</button>
           </div>
           {mode === "query" ? <QueryBox scope={scope} text={query} setText={setQuery} mayBuild={mayBuild} /> : (
             <>
               <form className="ask" onSubmit={ask}>
-                <input type="text" aria-label="问题" value={text} maxLength={300} placeholder="问一个问题" disabled={busy} onChange={(e) => setText(e.target.value)} />
-                <button className="primary" type="submit" disabled={busy || !text.trim()}>提问</button>
+                <input type="text" aria-label={t("ask.input.aria")} value={text} maxLength={300} placeholder={t("ask.input.placeholder")} disabled={busy} onChange={(e) => setText(e.target.value)} />
+                <button className="primary" type="submit" disabled={busy || !text.trim()}>{t("ask.input.submit")}</button>
               </form>
-              <p className="hint">模型只看到类型、属性、含义，以及取值不多又重复出现的列的取值，看不到数据行。</p>
-              {busy && <p className="muted" role="status">正在回答，通常几秒到半分钟</p>}
+              <p className="hint">{t("ask.input.hint")}</p>
+              {busy && <p className="muted" role="status">{t("ask.input.busy")}</p>}
               {error && <p className="error" role="alert">{error}</p>}
             </>
           )}

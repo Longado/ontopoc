@@ -12,6 +12,10 @@
 // The locale is kept in localStorage "ontopoc.locale" (default "en"); "?lang=zh" (in the page query or after the # route) sets and keeps it.
 // A key missing in the current language falls back to English, then to the key itself; the dev server logs a warning for either.
 import { useSyncExternalStore } from "react";
+import enAgents from "./en/agents.js"; // areas
+import enAsk from "./en/ask.js"; // areas
+import enBoards from "./en/boards.js"; // areas
+import enNotices from "./en/notices.js"; // areas
 import enAccount from "./en/account.js"; // areas
 import enAuth from "./en/auth.js"; // areas
 import enCommon from "./en/common.js"; // areas
@@ -21,6 +25,10 @@ import enSettings from "./en/settings.js"; // areas
 import enShell from "./en/shell.js"; // areas
 import enStatus from "./en/status.js"; // areas
 import enUi from "./en/ui.js"; // areas
+import zhAgents from "./zh/agents.js"; // areas
+import zhAsk from "./zh/ask.js"; // areas
+import zhBoards from "./zh/boards.js"; // areas
+import zhNotices from "./zh/notices.js"; // areas
 import zhAccount from "./zh/account.js"; // areas
 import zhAuth from "./zh/auth.js"; // areas
 import zhCommon from "./zh/common.js"; // areas
@@ -36,6 +44,9 @@ export const AREAS = {
   en: { account: enAccount, auth: enAuth, common: enCommon, home: enHome, nav: enNav, settings: enSettings, shell: enShell, status: enStatus, ui: enUi }, // areas
   zh: { account: zhAccount, auth: zhAuth, common: zhCommon, home: zhHome, nav: zhNav, settings: zhSettings, shell: zhShell, status: zhStatus, ui: zhUi }, // areas
 };
+
+Object.assign(AREAS.en, { agents: enAgents, ask: enAsk, boards: enBoards, notices: enNotices }); // areas (T3)
+Object.assign(AREAS.zh, { agents: zhAgents, ask: zhAsk, boards: zhBoards, notices: zhNotices }); // areas (T3)
 
 export const LOCALES = ["en", "zh"];
 const STORAGE_KEY = "ontopoc.locale";
