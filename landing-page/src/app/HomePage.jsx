@@ -3,7 +3,7 @@ import { getAsk, getDatasets, getNotices, getPipelines, getQueueCount, getRelati
 import { useAuth } from "./Auth.jsx";
 import { canBuild, isAdmin } from "./authModel.js";
 import { timeText } from "./format.js";
-import { exampleQuestions, greeting, needsSetup, setupSteps, todoItems, updatedText } from "./homeModel.js";
+import { exampleQuestions, greeting, kpiCards, needsSetup, setupSteps, todoItems, updatedText } from "./homeModel.js";
 import { statusText } from "./qaModel.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
@@ -39,11 +39,31 @@ function Checklist({ steps }) {
             <div className="step-body">
               <p className="step-title"><strong>{s.title}</strong> <span className={`step-state step-state-${s.state}`}>{STEP_MARK[s.state]}</span></p>
               <p className="muted">{s.text}</p>
+              {s.note && <p className="step-note">{s.note}</p>}
             </div>
+            {s.extra && <a className="button plain" href={s.extra.href}>{s.extra.label}</a>}
             {s.button && <a className={`button ${s.state === "next" ? "primary" : "secondary"}`} href={s.button.href}>{s.state === "done" ? "查看" : s.button.label}</a>}
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+function Kpis({ cards }) {
+  return (
+    <section aria-label="关键数字">
+      <ul className="kpis">
+        {cards.map((c) => (
+          <li key={c.key}>
+            <a className="kpi" href={c.href}>
+              <span className="kpi-label">{c.label}</span>
+              <span className="kpi-value">{c.value}</span>
+              <span className="kpi-asof muted small">{c.asOf || "已确认"}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -58,7 +78,7 @@ function AskBox({ examples, ready }) {
     <section className="ask-hero" aria-label="问数">
       <form onSubmit={(e) => { e.preventDefault(); ask(text); }}>
         <Icon name="search" size={20} />
-        <input type="text" aria-label="问一个问题" value={text} maxLength={300} placeholder="问一个问题，比如：订单 一共有多少" onChange={(e) => setText(e.target.value)} />
+        <input type="text" aria-label="问一个问题" value={text} maxLength={300} placeholder={`问一个问题，比如：${examples[0] ?? "订单一共有多少"}`} onChange={(e) => setText(e.target.value)} />
         <button className="primary" type="submit" disabled={!text.trim()}>提问</button>
       </form>
       {examples.length > 0 ? (
@@ -112,6 +132,7 @@ export function HomePage() {
   const failedRuns = (d.pipelines ?? []).filter((p) => p.last_run?.status === "failed").length;
   const todos = todoItems({ unread: d.notices?.unread ?? 0, queue: d.queue, failedRuns, mayBuild });
   const examples = exampleQuestions(types, d.relations ?? []);
+  const cards = kpiCards(types, d.datasets);
   const today = new Date();
   const fresh = updatedText(d.datasets);
   return (
@@ -120,7 +141,8 @@ export function HomePage() {
         <h1 tabIndex={-1}>{greeting(today, user?.display_name ?? "")}</h1>
         <p className="muted">{today.getMonth() + 1} 月 {today.getDate()} 日{fresh && ` · ${fresh}`}</p>
       </header>
-      {setup && <Checklist steps={setupSteps({ datasets: d.datasets, types, users: d.users, sources: d.sources, role: user?.role })} />}
+      {setup && <Checklist steps={setupSteps({ datasets: d.datasets, types, users: d.users, sources: d.sources, role: user?.role, meId: user?.id ?? null, canConfirm: d.queue > 0 })} />}
+      {!setup && cards.length > 0 && <Kpis cards={cards} />}
       {!setup || (d.datasets ?? []).length > 0 ? <AskBox examples={examples} ready={types.some((t) => t.state === "confirmed")} /> : null}
       {(!setup || todos.length > 0) && <div className="home-grid"><Todo items={todos} /><Recent history={d.ask?.history ?? []} /></div>}
     </main>

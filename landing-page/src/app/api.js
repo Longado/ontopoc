@@ -256,3 +256,6 @@ export async function fileToBase64(file) {
   for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(text);
 }
+
+/** {model_ready, running, on_disk, stale}: the service is up, whether a model is configured, and the build it runs (a fingerprint of its code). */
+export const getHealth = () => request("/api/ontology/health");

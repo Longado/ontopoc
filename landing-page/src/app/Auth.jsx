@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { getMe, signOut, whenSignedOut } from "./api.js";
 import { AccountPage } from "./AccountPage.jsx";
 import { LoginPage } from "./LoginPage.jsx";
+import { afterSignIn } from "./routeModel.js";
 
 const AuthContext = createContext({ user: null, auth: false });
 export const useAuth = () => useContext(AuthContext);
@@ -26,8 +27,14 @@ export function AuthGate({ children }) {
 
   if (me.status === "loading") return <p className="muted center">加载中</p>;
   if (me.status === "failed") return <p className="error center">{me.error} <button className="plain" onClick={load}>重试</button></p>;
-  if (me.status === "out") return <LoginPage setup={me.setup} ended={me.ended} onSignedIn={load} />;
+  // a fresh sign-in (and the forced first-password change after it) opens the home page; only an expired session returns to where the person was
+  const home = (ended) => {
+    const to = afterSignIn(window.location.hash, ended);
+    if (window.location.hash !== to) window.location.hash = to;
+    load();
+  };
+  if (me.status === "out") return <LoginPage setup={me.setup} ended={me.ended} onSignedIn={() => home(me.ended)} />;
   const exit = () => signOut().catch(() => {}).finally(() => setMe({ status: "out", setup: "" }));
-  if (me.user.must_change) return <AccountPage forced user={me.user} onChanged={load} />;
+  if (me.user.must_change) return <AccountPage forced user={me.user} onChanged={() => home(false)} />;
   return <AuthContext.Provider value={{ user: me.user, auth: me.auth, signOut: exit, refresh: load }}>{children}</AuthContext.Provider>;
 }

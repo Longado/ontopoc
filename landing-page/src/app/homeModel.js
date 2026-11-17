@@ -6,27 +6,43 @@ const confirmed = (list) => (list ?? []).filter((x) => x.state === "confirmed");
 /** Whether the workspace cannot answer anything yet: no dataset, or no confirmed object type. */
 export const needsSetup = ({ datasets, types }) => !(datasets ?? []).length || !confirmed(types).length;
 
-/** The four steps of 开始使用: [{key, title, text, state: "done" | "next" | "todo", button: {label, href} | null}].
- * `users` and `sources` are null when this person may not read them (a builder cannot list users). */
-export function setupSteps({ datasets, types, users, role }) {
+/** The four steps of 开始使用: [{key, title, text, state: "done" | "next" | "todo", button: {label, href} | null, extra?: {label, href}, note?}].
+ * `users` and `sources` are null when this person may not read them (a builder cannot list users). `meId` is who is looking; `canConfirm` is whether
+ * they may confirm anything now (the queue count says so; undefined when unknown). */
+export function setupSteps({ datasets, types, users, role, meId = null, canConfirm }) {
   const admin = role === "admin";
+  const others = (users ?? []).filter((u) => u.id !== meId);
   const done = {
     data: (datasets ?? []).length > 0,
     type: (types ?? []).length > 0,
     confirm: confirmed(types).length > 0,
-    invite: (users ?? []).length > 1,
+    invite: others.some((u) => u.last_login_at),   // an account nobody has signed in to is not a colleague yet
   };
+  const only = (datasets ?? []).length === 1 ? `?dataset=${encodeURIComponent(datasets[0].name)}` : "";
+  const stuck = done.type && !done.confirm && canConfirm === false;   // proposed, and nothing here is this person's to confirm
   const steps = [
     { key: "data", title: "接入数据", text: admin ? "上传 Excel、CSV，或连一个数据库，把表读进来。" : "上传 Excel 或 CSV 表格。数据库由管理员接入。", button: { label: "去传数据", href: "#/datasets" } },
-    { key: "type", title: "建对象类型", text: "把表变成业务里的东西，比如“订单”“客户”，并写清每一列的含义。", button: { label: "新建对象类型", href: "#/types/new" } },
-    { key: "confirm", title: "请另一位建设者确认", text: "确认过的定义才能拿来回答问题。", button: { label: "去待确认", href: "#/confirm" } },
+    { key: "type", title: "建对象类型", text: "把表变成业务里的东西，比如“订单”“客户”，并写清每一列的含义。", button: { label: "新建对象类型", href: `#/types/new${only}` } },
+    stuck
+      ? {
+        key: "confirm", title: "请另一位建设者确认",
+        text: admin
+          ? "这个对象类型是你提出的，或现在只有你一位建设者，所以你不能确认。邀请一位建设者，让他登录后在待确认里确认。"
+          : "这个对象类型你不能确认（是你提出的，或只有你一位建设者）。请管理员邀请另一位建设者，或让别的建设者来确认。",
+        button: admin ? { label: "邀请一位建设者", href: "#/users" } : { label: "去待确认", href: "#/confirm" },
+        ...(admin ? { extra: { label: "看待确认队列", href: "#/confirm" } } : {}),
+      }
+      : { key: "confirm", title: "请另一位建设者确认", text: "确认过的定义才能拿来回答问题。", button: { label: "去待确认", href: "#/confirm" } },
     admin
-      ? { key: "invite", title: "邀请同事", text: "建设者能改数据和定义，查看者只提问、看看板。", button: { label: "去用户页", href: "#/users" } }
+      ? { key: "invite", title: "邀请同事", text: "建设者能改数据和定义，查看者只提问、看看板。", button: { label: "去用户页", href: "#/users" }, ...(others.length && !done.invite ? { note: `已建 ${others.length} 个同事账号，还没有人登录过` } : {}) }
       : { key: "invite", title: "邀请同事", text: "新用户由管理员在“设置 · 用户”里添加，请联系管理员。", button: null },
   ];
   let nextFound = false;
   return steps.map((s) => {
-    if (done[s.key]) return { ...s, state: "done" };
+    if (done[s.key]) {
+      const { note, extra, ...rest } = s;
+      return { ...rest, state: "done" };
+    }
     if (!nextFound) {
       nextFound = true;
       return { ...s, state: "next" };
@@ -35,14 +51,23 @@ export function setupSteps({ datasets, types, users, role }) {
   });
 }
 
-/** Up to six questions to try, from what is confirmed: "订单 一共有多少" for each type, then "按客户统计订单" for each confirmed relation between confirmed types. */
+/** Up to six questions to try, in a manager's words: "订单一共有多少" for each confirmed type, then "按客户统计订单数量" for each confirmed relation between confirmed types. */
 export function exampleQuestions(types, relations, max = 6) {
   const known = confirmed(types);
   const names = new Set(known.map((t) => t.name));
-  const counts = known.slice(0, 3).map((t) => `${t.name} 一共有多少`);
-  const by = confirmed(relations).filter((r) => names.has(r.from_name) && names.has(r.to_name)).map((r) => `按${r.to_name}统计${r.from_name}`);
-  const rest = known.slice(3).map((t) => `${t.name} 一共有多少`);
+  const counts = known.slice(0, 3).map((t) => `${t.name}一共有多少`);
+  const by = confirmed(relations).filter((r) => names.has(r.from_name) && names.has(r.to_name)).map((r) => `按${r.to_name}统计${r.from_name}数量`);
+  const rest = known.slice(3).map((t) => `${t.name}一共有多少`);
   return [...counts, ...by, ...rest].slice(0, max);
+}
+
+/** Up to four number cards for the home page: each confirmed type that has rows, as {key, label, value, asOf, href}. `asOf` is "数据截至 …" from the dataset the type reads. */
+export function kpiCards(types, datasets, max = 4) {
+  const when = new Map((datasets ?? []).map((d) => [d.name, d.updated_at]));
+  return confirmed(types).filter((t) => Number.isInteger(t.rows)).slice(0, max).map((t) => ({
+    key: t.id, label: t.name, value: t.rows.toLocaleString("en-US"),
+    asOf: when.get(t.dataset) ? `数据截至 ${timeText(when.get(t.dataset))}` : "", href: `#/types/${encodeURIComponent(t.id)}/objects`,
+  }));
 }
 
 /** "陈总，早上好" by the hour (before noon morning, before 18:00 afternoon, else evening). */

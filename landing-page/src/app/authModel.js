@@ -9,6 +9,9 @@ export const roleLabel = (role) => ROLE_LABEL[role] ?? role;
 export const canBuild = (user) => RANK[user?.role] >= RANK.builder;
 export const isAdmin = (user) => user?.role === "admin";
 
+/** The top search box's hint: a viewer has boards and questions, a builder has datasets, types and pipelines. */
+export const searchPlaceholder = (user) => (user?.role === "viewer" ? "搜索看板、问题…" : "搜索数据集、对象类型、管道…");
+
 /** One account's state in a word: disabled, waiting to change the first password, or fine. */
 export const statusText = (user) => (user.disabled ? "已停用" : user.must_change ? "要先改初始密码" : "正常");
 

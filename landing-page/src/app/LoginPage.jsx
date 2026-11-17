@@ -21,8 +21,13 @@ export function LoginPage({ setup, ended, onSignedIn }) {
     }
   };
   return (
-    <main className="login">
-      <strong className="brand">OntoPoc</strong>
+    <main className="login login-page">
+      <div className="login-intro">
+        <span className="brand brand-lg"><span className="brand-mark" aria-hidden="true" />OntoPoc</span>
+        <p className="login-line">把表格变成能问、能看的业务数据</p>
+        <p className="muted">上传数据，定义“订单”“客户”这样的业务对象，同事就能直接用中文提问、看看板。</p>
+      </div>
+      <div className="card login-card">
       <h1 tabIndex={-1}>登录</h1>
       {setup ? (
         <p className="error">{setup}</p>
@@ -38,9 +43,11 @@ export function LoginPage({ setup, ended, onSignedIn }) {
             <input type="password" value={password} autoComplete="current-password" onChange={(e) => setPassword(e.target.value)} />
           </label>
           {error && <p className="error" role="alert">{error}</p>}
-          <button className="primary" type="submit" disabled={sending || !username || !password}>{sending ? "登录中" : "登录"}</button>
+          <button className="primary block" type="submit" disabled={sending || !username || !password}>{sending ? "登录中" : "登录"}</button>
         </form>
       )}
+      <p className="muted small login-help">没有账号，或忘了密码？请联系你们的管理员。</p>
+      </div>
     </main>
   );
 }

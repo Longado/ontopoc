@@ -6,7 +6,8 @@ import { BoardPage, BoardsPage } from "./BoardsPage.jsx";
 import { WORKSPACE_CHANGED, getNotices, getQueueCount } from "./api.js";
 import { NoticesPage } from "./NoticesPage.jsx";
 import { useAuth } from "./Auth.jsx";
-import { canBuild, roleLabel } from "./authModel.js";
+import { canBuild, roleLabel, searchPlaceholder } from "./authModel.js";
+import { SettingsPage } from "./SettingsPage.jsx";
 import { ConfirmGroupPage } from "./ConfirmGroupPage.jsx";
 import { ConfirmPage } from "./ConfirmPage.jsx";
 import { DatasetList } from "./DatasetList.jsx";
@@ -121,7 +122,7 @@ function TopBar({ onMenu, menuOpen, onSearch, count, unread }) {
       <span className="workspace-name" title="工作区">{WORKSPACE_NAME}</span>
       <button className="searchbox" onClick={onSearch} aria-label="搜索（⌘K）">
         <Icon name="search" />
-        <span className="searchbox-text">搜索数据集、对象类型、管道…</span>
+        <span className="searchbox-text">{searchPlaceholder(user)}</span>
         <kbd>⌘K</kbd>
       </button>
       <div className="top-right">
@@ -155,11 +156,10 @@ function Navigation({ active, open, onPick, count, unread = 0, collapsed, onColl
         return (
           <div className="nav-group" key={group.key}>
             {group.label && (
-              <button className="nav-heading" onClick={() => toggle(group.key)} aria-expanded={!folded}>
+              <button className="nav-heading" onClick={() => toggle(group.key)} aria-expanded={!folded} title={group.hint} aria-label={`${group.label}。${group.hint}`}>
                 <span>{group.label}</span><Icon name={folded ? "chevron-right" : "chevron-down"} size={14} />
               </button>
             )}
-            {group.label && !folded && <p className="nav-hint">{group.hint}</p>}
             {!folded && group.items.map((item) => (
               <a key={item.key} href={item.href} title={collapsed ? item.label : undefined} className={item.key === active ? "active" : ""}
                 aria-current={item.key === active ? "page" : undefined} aria-label={collapsed ? item.label : undefined} onClick={onPick}>
@@ -237,6 +237,7 @@ const VIEWS = {
   boardnew: () => <BoardEditor key="new" />,
   boardedit: (route) => <BoardEditor key={route.id} id={route.id} />,
   lineage: () => <LineagePage />,
+  settings: () => <SettingsPage />,
   users: () => <UsersPage />,
   permissions: () => <PermissionsPage />,
   account: () => <AccountPage />,
