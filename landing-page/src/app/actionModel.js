@@ -67,7 +67,12 @@ const isNumber = (t) => /^-?\d+(\.\d+)?$/.test(t) && !/^-?0\d/.test(t);
 /** A value in the form it is matched in: a number by its value (1000.0 is 1000), anything else as written. */
 const canonical = (v) => {
   const t = plain(v);
-  return isNumber(t) ? String(Number(t)) : t;
+  if (!isNumber(t)) return t;
+  const negative = t.startsWith("-");
+  const [whole, fraction = ""] = t.replace(/^-/, "").split(".");   // on the digits as written: a long number keeps every digit
+  const rest = fraction.replace(/0+$/, "");
+  if (whole === "0" && !rest) return "0";
+  return (negative ? "-" : "") + whole + (rest ? `.${rest}` : "");
 };
 const sameValue = (a, b) => canonical(a) === canonical(b);
 
