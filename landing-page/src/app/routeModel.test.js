@@ -102,7 +102,7 @@ test("every page stays reachable from some item or by its address", () => {
 });
 
 test("the boards and the agent page are built: a viewer reads boards, only builders see the agent page", () => {
-  assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => ["agents", "boards"].includes(i.key)).map((i) => [i.key, i.built, i.builders]), [["agents", true, true], ["boards", true, false]]);
+  assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => ["agents", "boards"].includes(i.key)).map((i) => [i.key, i.built, i.builders]), [["boards", true, false], ["agents", true, true]]);
   assert.deepEqual(parseRoute("#/agents"), { page: "agents" });
   assert.deepEqual(parseRoute("#/boards"), { page: "boards" });
   assert.deepEqual(parseRoute("#/boards/new"), { page: "boardnew" });
@@ -158,7 +158,7 @@ test("the screen that confirms what one dataset version moved has an address und
   for (const hash of ["#/confirm/group/订单", "#/confirm/group/订单/0", "#/confirm/group/订单/x", "#/confirm/other/订单/2"]) assert.deepEqual(parseRoute(hash), { page: "notfound" }, hash);
 });
 
-const ADDRESSES = ["#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/notices", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
+const ADDRESSES = ["#/home", "#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/notices", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
   "#/relations", "#/relations/new", "#/relations/x", "#/relations/x/edit", "#/lineage", "#/confirm", "#/confirm/group/x/2", "#/pipelines", "#/pipelines/new",
   "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents"];
 

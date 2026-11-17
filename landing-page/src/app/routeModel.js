@@ -8,7 +8,7 @@ export const TYPE_TAB_LABEL = { props: "属性", derived: "派生", views: "视�
 
 const decode = (part) => decodeURIComponent(part);
 
-/** An address to the page it means: {page: "qa" | "datasets" | "dataset" | "tasks" | "notfound", ...}. The empty address is the Q&A page, where the app opens. */
+/** An address to the page it means: {page: "home" | "qa" | "datasets" | "dataset" | "tasks" | "notfound", ...}. The empty address is the home page, where the app opens. */
 export function parseRoute(hash) {
   const raw = String(hash || "").replace(/^#\/?/, "");
   const [path, query = ""] = raw.split("?");
@@ -18,7 +18,11 @@ export function parseRoute(hash) {
   } catch {
     return { page: "notfound" };   // a broken %-escape in the name
   }
-  if (!parts.length || (parts[0] === "qa" && parts.length === 1)) return { page: "qa", id: null };
+  if (!parts.length || (parts[0] === "home" && parts.length === 1)) return { page: "home" };
+  if (parts[0] === "qa" && parts.length === 1) {
+    const ask = (new URLSearchParams(query).get("ask") ?? "").trim();   // a question typed on the home page, asked as the Q&A page opens
+    return ask ? { page: "qa", id: null, ask } : { page: "qa", id: null };
+  }
   if (parts[0] === "qa" && parts.length === 2 && /^[1-9]\d*$/.test(parts[1])) return { page: "qa", id: Number(parts[1]) };   // a saved answer
   if (parts[0] === "datasets" && parts.length === 1) return { page: "datasets" };
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
@@ -79,7 +83,8 @@ export function parseRoute(hash) {
 
 /** The address of a route; the inverse of parseRoute. */
 export function hrefFor(route) {
-  if (route.page === "qa") return route.id ? `#/qa/${route.id}` : "#/qa";
+  if (route.page === "home") return "#/home";
+  if (route.page === "qa") return route.id ? `#/qa/${route.id}` : route.ask ? `#/qa?ask=${encodeURIComponent(route.ask)}` : "#/qa";
   if (route.page === "tasks" || route.page === "notices" || route.page === "account" || route.page === "users" || route.page === "sources" || route.page === "schedules") return `#/${route.page}`;
   if (route.page === "source") return `#/sources/${encodeURIComponent(route.name)}`;
   if (route.page === "planned") return `#/${route.key}`;
@@ -119,24 +124,31 @@ export function hrefFor(route) {
 export const PLANNED = {
 };
 
-const BUILT = { qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
+const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
 const BUILDERS = ["tasks", "confirm", "pipelines", "sources", "schedules", "agents"];   // shown to builders and admins only: a viewer has nothing to confirm, the task list quotes keys and values and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
-const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
+const item = (key, label, icon) => ({ key, label, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
 
+/** The sidebar: a group with a `label` folds and has a grey one-line `hint`; `builders` groups are for builders and admins. A viewer sees 首页, 问数, 看板, 消息 only; every page stays reachable by its address. */
 export const NAV = [
-  { items: [item("qa", "问答"), item("tasks", "任务"), item("notices", "消息")] },
-  { label: "数据", items: [item("datasets", "数据集"), item("pipelines", "管道"), item("sources", "数据源"), item("schedules", "调度")] },
-  { label: "本体", items: [item("types", "对象类型"), item("relations", "关系"), item("confirm", "待确认")] },
-  { label: "应用", items: [item("agents", "智能体"), item("boards", "看板")] },
-  { items: [item("lineage", "血缘")] },
+  { key: "main", items: [item("home", "首页", "home"), item("qa", "问数", "chat"), item("boards", "看板", "board"), item("notices", "消息", "bell")] },
+  { key: "data", label: "数据", icon: "database", hint: "数据集 = 一张张表格；管道把它们加工成新的表", builders: true,
+    items: [item("datasets", "数据集", "table"), item("sources", "数据源", "plug"), item("pipelines", "管道", "pipeline"), item("schedules", "调度", "clock"), item("lineage", "血缘", "lineage"), item("tasks", "任务", "tasks")] },
+  { key: "objects", label: "业务对象", icon: "cube", hint: "对象类型 = 业务里的东西，比如订单、客户", builders: true,
+    items: [item("confirm", "待确认", "check"), item("types", "对象类型", "cube"), item("relations", "关系", "link")] },
+  { key: "apps", label: "应用", icon: "apps", hint: "把问数和看板接给 AI 工具使用", builders: true,
+    items: [item("agents", "AI 工具接入", "bot")] },
 ];
 
 /** What only an admin sees. */
-export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户"), item("permissions", "权限")] }];
+export const ADMIN_NAV = [{ key: "settings", label: "设置", icon: "settings", hint: "谁能进来、能看什么", items: [item("users", "用户", "users"), item("permissions", "权限", "shield")] }];
+
+/** The groups this person's role sees, in order. */
+export const navFor = (user) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])].filter((g) => !g.builders || canBuild(user));
 
 /** Every page the app draws, once: the sidebar item it lives under (null: none) and the role it needs (none: anyone signed in). A new page is one entry here
  * and one view in Shell.jsx; routeModel.test.js fails when the two differ or an address opens a page that is not here. The service checks roles again. */
 export const PAGES = {
+  home: { nav: "home" },
   qa: { nav: "qa" },
   tasks: { nav: "tasks" },
   notices: { nav: "notices" },
