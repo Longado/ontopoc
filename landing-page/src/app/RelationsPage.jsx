@@ -9,6 +9,7 @@ import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
 import { confirmersText, logText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
 
 /** 图 / 列表: two addresses of the same page, so a reload or a shared link keeps the view. */
 function ViewToggle({ list }) {
@@ -25,13 +26,13 @@ export function RelationsPage({ route }) {
   const mayBuild = canBuild(useAuth().user);
   return (
     <main className="page">
-      <div className="page-head">
-        <h1 tabIndex={-1}>关系</h1>
-        <div className="head-actions">
-          <ViewToggle list={list} />
-          {mayBuild && <a className="button primary" href={hrefFor({ page: "relationnew" })}>新建关系</a>}
-        </div>
-      </div>
+      <PageHeader crumbs={[{ label: "业务对象" }, { label: "关系" }]} title="关系" sub="关系说明两个对象类型怎么连，比如订单属于客户。"
+        actions={(
+          <>
+            <ViewToggle list={list} />
+            {mayBuild && <a className="button primary" href={hrefFor({ page: "relationnew" })}>新建关系</a>}
+          </>
+        )} />
       {list ? <RelationList mayBuild={mayBuild} /> : <RelationGraph />}
     </main>
   );

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { readFileSync } from "node:fs";
-import { ADMIN_NAV, NAV, PAGES, PLANNED, hrefFor, mayOpen, navFor, navKeyOf, parseRoute } from "./routeModel.js";
+import { ADMIN_NAV, NAV, PAGES, PLANNED, hrefFor, mayOpen, navFor, navKeyOf, navLabelOf, parseRoute } from "./routeModel.js";
 
 test("the empty address is the home page; the Q&A page, a saved answer and the dataset list have addresses", () => {
   assert.deepEqual(parseRoute(""), { page: "home" });
@@ -184,4 +184,10 @@ test("the shell draws a view for every page in the table and for no other", () =
   const block = shell.slice(shell.indexOf("const VIEWS = {"), shell.indexOf("};", shell.indexOf("const VIEWS = {")));
   const drawn = [...block.matchAll(/^\s+(\w+): /gm)].map((m) => m[1]);
   assert.deepEqual(drawn.sort(), Object.keys(PAGES).sort());
+});
+
+test("a route's sidebar word names the place in the recent list", () => {
+  assert.equal(navLabelOf({ page: "qa", id: 3 }), "问数");
+  assert.equal(navLabelOf({ page: "pipeline", name: "x", view: "edit" }), "管道");
+  assert.equal(navLabelOf({ page: "account" }), "");
 });

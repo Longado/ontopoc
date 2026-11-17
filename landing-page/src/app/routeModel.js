@@ -175,3 +175,6 @@ export const mayOpen = (page, user) => {
 
 /** Which navigation item a route lives under. */
 export const navKeyOf = (route) => (route.page === "planned" ? route.key : route.page in PAGES ? PAGES[route.page].nav : route.page);
+
+/** The sidebar's word for the page a route lives under ("" when it has none). */
+export const navLabelOf = (route) => [...NAV, ...ADMIN_NAV].flatMap((g) => g.items).find((i) => i.key === navKeyOf(route))?.label ?? "";
