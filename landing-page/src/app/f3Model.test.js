@@ -2,10 +2,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { QUEUE_LEGEND, approveWarning, queueRow } from "./confirmModel.js";
+import { approveWarning, queueLegend, queueRow } from "./confirmModel.js";
 import { objectLabel, objectName } from "./objectModel.js";
 import { lineLabel, matchRateText, previewPayload, previewText, sentBackLine } from "./relationModel.js";
 import { tabCounts } from "./typeModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 const rel = { element: "relation:order_customer", kind: "relation", title: "订单属于客户", state: "needs_look", can_confirm: true, lines: [] };
 const approval = { element: "record:7", kind: "approval", record: 7, title: "改订单状态：DD1", state: "pending", can_confirm: true, lines: [{ ok: true, text: "x" }] };
@@ -29,8 +32,8 @@ test("the queue row says which verb it uses, and a pipeline item is labelled as 
   assert.equal(queueRow(pipeline).tag, "管道：打开看改了什么");
   assert.equal(queueRow(approval).tag, "数据改动：批准后写成新版本");
   assert.equal(queueRow(rel).tag, "定义：确认后问答才会用它");
-  assert.match(QUEUE_LEGEND, /批准.*数据/);
-  assert.match(QUEUE_LEGEND, /确认.*定义/);
+  assert.match(queueLegend(), /批准.*数据/);
+  assert.match(queueLegend(), /确认.*定义/);
 });
 
 test("the tab count of the actions is the list's own count once the list is read", () => {

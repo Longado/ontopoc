@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { objectName, relatedCard, unconfirmedNote } from "./objectModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 test("an object's own name is read from its name-like column, when it has one (W3)", () => {
   const columns = [{ name: "客户编号", key: true }, { name: "客户名称", key: false }, { name: "城市", key: true }];

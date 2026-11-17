@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { confirmWords, emptyViewForm, newValueChoices, newValueText, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 const form = (over = {}) => ({ ...emptyViewForm(), name: " 有效订单 ", filters: [{ column: "状态码", op: "is_not", label: "已取消" }, { column: "", op: "is", label: "" }], ...over });
 

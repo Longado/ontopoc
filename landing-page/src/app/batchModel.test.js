@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { groupTitle, markKey, missing, requestItems, resultLines, withMark } from "./batchModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 const item = (over) => ({ element: "objtype:order", title: "订单", version: 3, seen: { dataset_version: 2, rows: 160 }, ready: true, ...over });
 const view = item({ element: "objview:有效订单", title: "有效订单（订单的视图）", version: 5, new_values: [{ column: "状态码", value: "3", label: "已发货待签收", rows: 16 }] });

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useT } from "./i18n/index.js";
 import { GraphCanvas } from "./GraphCanvas.jsx";
+import { t } from "./i18n/index.js";
 import { nodeLines, objectGraphLayout } from "./objectGraphModel.js";
 
 /** A SELECT GRAPH answer: the start objects on the left, what they reach to the right, each edge named by its relation. Picking an object lights its edges. */

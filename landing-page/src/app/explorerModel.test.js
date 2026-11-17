@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { barRows, chartMissing, chartSpec, emptyFilter, fnOptions, formatNumber, greyText, histogramBars, leftOutLines, opsFor, pieSlices, pivotQuery, queryFromParam, queryOf, queryToParam, readyFilters, sliceColor } from "./explorerModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 const AGGREGATIONS = { sum: "求和", count: "计数", count_distinct: "去重计数", avg: "平均", min: "最小", max: "最大", median: "中位数", p25: "P25", p75: "P75" };
 

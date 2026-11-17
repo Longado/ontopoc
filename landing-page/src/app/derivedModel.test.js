@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { derivedPayload, derivedProblem, emptyDerivedForm, formFromLine, nextRelations, offerChange, sampleText, usedByText, waitingText } from "./derivedModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 const AGG = { count: "计数", latest: "取最新", median: "中位数" };
 const statistic = (over = {}) => ({ ...emptyDerivedForm(), name: "已取消订单数", english_name: "cancelled_orders", path: ["order_customer"], ...over });

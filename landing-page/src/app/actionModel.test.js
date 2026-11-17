@@ -3,6 +3,9 @@ import test from "node:test";
 
 import { actionFits, actionPayload, actionProblem, emptyActionForm, emptyCondition, holds, opsFor, recordChangeText, recordStateText, rowKey, runPayload, runProblem } from "./actionModel.js";
 import { notifyRecipient, choicesPayload } from "./actionModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 test("an action form needs a name, a property for an edit, and a value for each condition that takes one", () => {
   const form = emptyActionForm();
