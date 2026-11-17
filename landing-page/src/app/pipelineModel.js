@@ -78,7 +78,7 @@ export function nameOf(id, steps) {
 
 /** What a step is called: a dataset or output by its name, a join by the two steps it joins (`steps` lets it name them, else it uses their ids). */
 export function stepTitle(step, steps = []) {
-  if (step.type === "input") return `${step.dataset ?? step.view ?? "（还没选）"}${step.version ? ` 第 ${step.version} 版` : ""}`;
+  if (step.type === "input") return `${step.dataset || step.view || "（还没选）"}${step.version ? ` 第 ${step.version} 版` : ""}`;
   if (step.type === "output") return step.name || "（还没写名字）";
   if (step.type === "join") return `${nameOf(step.left, steps)} 和 ${nameOf(step.right, steps)}`;
   if (step.type === "union") return (step.inputs ?? []).map((i) => (branchOwners(steps)[i] ? i : nameOf(i, steps))).join("、") || "（还没选）";
@@ -115,6 +115,7 @@ export function friendlyError(message, steps) {
     .replace(/没有列「」|(?<=：)没选列$/, empty ? `条件 ${empty} 没选列` : "没选列")
     .replace(/数据集「」(?:不存在|没有)?/, "数据集还没选")
     .replace(/没有(\S{0,4}?)「」/, "没选$1")
+    .replace(/里没有列\s*$/, "里没选列")
     .replace(/「」/g, "");
 }
 

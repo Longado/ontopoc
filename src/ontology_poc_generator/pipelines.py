@@ -358,6 +358,8 @@ def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | 
                 raise ValueError(f'步骤 {sid}：要写关联字段，例如 [{{"left": "订单号", "right": "订单号"}}]')
             for pair in on:
                 for side, cols, ref in (('left', left, step['left']), ('right', right, step['right'])):
+                    if pair.get(side) in (None, ''):
+                        raise ValueError(f'步骤 {sid}：关联的列没选齐')
                     if not isinstance(pair.get(side), str) or pair[side] not in {c['name'] for c in visible(cols)}:
                         raise ValueError(f'步骤 {sid}：读的步骤 {ref} 里没有列 {pair.get(side)}')
             chosen = step.get('right_columns')

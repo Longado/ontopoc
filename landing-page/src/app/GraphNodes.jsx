@@ -31,7 +31,9 @@ export function GraphNode({ node, box, picked, faded, onPick }) {
     <g className={`g-node ${stateClass(node)} ${kindClass}${picked ? " picked" : ""}${faded ? " faded" : ""}`} transform={`translate(${box.x} ${box.y})`} tabIndex={0} role="button" aria-label={hint} aria-pressed={picked}
       onClick={(e) => { e.stopPropagation(); onPick(); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(); } }}>
       <title>{hint}</title>
-      <rect className="box" width={w} height={h} rx={node.kind === "dataset" ? 2 : node.kind === "source" ? 12 : 6} />
+      {node.kind === "pipeline"
+        ? <path className="box" d={`M14 0 H${w - 14} L${w} ${h / 2} L${w - 14} ${h} H14 L0 ${h / 2} Z`} />   // a pipeline is a hexagon: a thing that does work, not one that holds data
+        : <rect className="box" width={w} height={h} rx={node.kind === "dataset" ? 2 : node.kind === "source" ? 12 : 6} />}
       {node.kind === "type" ? (
         <>
           <path className="head" d={`M0 24 V6 a6 6 0 0 1 6 -6 H${w - 6} a6 6 0 0 1 6 6 V24 Z`} />
@@ -40,8 +42,8 @@ export function GraphNode({ node, box, picked, faded, onPick }) {
         </>
       ) : (
         <>
-          <text className="name" x="12" y="21">{fitText(node.name, inner, 14)}</text>
-          {shown.map((l, i) => <text key={i} className={l.cause ? "cause" : `line${l.word ? ` word-${l.word}` : ""}`} x="12" y={h - 12 - (shown.length - 1 - i) * 15}>{fitText(l.text, inner, 12)}</text>)}
+          <text className="name" x={node.kind === "pipeline" ? 20 : 12} y="21">{fitText(node.name, node.kind === "pipeline" ? inner - 16 : inner, 14)}</text>
+          {shown.map((l, i) => <text key={i} className={l.cause ? "cause" : `line${l.word ? ` word-${l.word}` : ""}`} x={node.kind === "pipeline" ? 20 : 12} y={h - 12 - (shown.length - 1 - i) * 15}>{fitText(l.text, node.kind === "pipeline" ? inner - 16 : inner, 12)}</text>)}
         </>
       )}
     </g>

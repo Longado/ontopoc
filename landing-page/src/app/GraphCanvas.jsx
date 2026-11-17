@@ -32,6 +32,10 @@ text { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft
 .g-edge:focus { outline: none; }
 .g-edge:focus-visible .pill { stroke: #1757dc; stroke-width: 1.5; }
 .faded { opacity: 0.22; }
+.col-band { fill: #f7f7f4; }
+.col-head { font-size: 13px; font-weight: 600; fill: #3b3b37; }
+.col-count { font-size: 12px; fill: #6b6b66; }
+.col-rule { stroke: #d6d6d0; stroke-width: 1; }
 .g-node:focus-visible .box { stroke: #1757dc; stroke-width: 2.5; }
 .g-node:focus { outline: none; }
 `;

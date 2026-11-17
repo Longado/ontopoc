@@ -3,7 +3,7 @@ import { operatorColumns } from "./api.js";
 import { LlmEditor } from "./LlmEditor.jsx";
 import { FilterForm, OperatorForm } from "./OperatorForms.jsx";
 import {
-  HOW_LABEL, KIND_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, catalogView, copyOperator, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, moveOperator, newOperator,
+  HOW_LABEL, KIND_LABEL, NULL_KEYS_LABEL, OPERATOR_PARAMS, addOperator, allIssues, catalogView, copyOperator, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, moveOperator, newOperator, suggestJoinKeys,
   branchReaders, newBranchId, operatorName, operatorTitle, readableSteps, removeOperator, removeStep, renameBranch, setOperator, splitLines, stepTitle, unionLines, updateStep,
 } from "./pipelineModel.js";
 import { Select } from "./Select.jsx";
@@ -59,14 +59,20 @@ function JoinEditor({ step, draft, setDraft, nodes }) {
     set({ right_columns: right.every((n) => next.includes(n)) ? undefined : right.filter((n) => next.includes(n)) });
   };
   const verdict = joinVerdictLines(nodes[step.id]?.join);
+  const suggest = suggestJoinKeys(nodes[step.left]?.column_types, nodes[step.right]?.column_types);
+  const untouched = step.on.every((p) => !p.left && !p.right);
+  useEffect(() => {
+    if (untouched && suggest.best) set({ on: [suggest.best] });   // two inputs with a key of the same name: it is put in; the person can change it
+  }, [untouched, suggest.best?.left, step.left, step.right]);
+  const unused = [suggest.best, ...suggest.others].filter((s) => s && !step.on.some((p) => p.left === s.left && p.right === s.right));
   return (
     <div className="op-form">
       <div className="inline wide">
-        <Select label="左边" value={step.left ?? ""} onChange={(v) => set({ left: v, on: step.on.map(() => ({ left: "", right: "" })) })}>{readOptions(draft, step)}</Select>
+        <Select label="左边" value={step.left ?? ""} onChange={(v) => set({ left: v, on: [suggestJoinKeys(nodes[v]?.column_types, nodes[step.right]?.column_types).best ?? { left: "", right: "" }] })}>{readOptions(draft, step)}</Select>
         <Select label="关联方式" value={step.how} onChange={(how) => set({ how })}>
           {Object.entries(HOW_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </Select>
-        <Select label="右边" value={step.right ?? ""} onChange={(v) => set({ right: v, on: step.on.map((p) => ({ ...p, right: "" })), right_columns: undefined })}>{readOptions(draft, step, [step.left])}</Select>
+        <Select label="右边" value={step.right ?? ""} onChange={(v) => set({ right: v, on: [suggestJoinKeys(nodes[step.left]?.column_types, nodes[v]?.column_types).best ?? { left: "", right: "" }], right_columns: undefined })}>{readOptions(draft, step, [step.left])}</Select>
       </div>
       {step.how === "semi" && <p className="hint">只留左边对得上的行，不带右边的列。</p>}
       {step.how === "anti" && <p className="hint">只留左边在右边找不到的行，不带右边的列。</p>}
@@ -81,6 +87,10 @@ function JoinEditor({ step, draft, setDraft, nodes }) {
           </div>
         ))}
         <button className="plain" onClick={() => set({ on: [...step.on, { left: "", right: "" }] })}>加一对</button>
+        {unused.length > 0 && (
+          <p className="hint">两边都有的列：{unused.map((s) => <button key={s.left} className="plain" onClick={() => set({ on: [...step.on.filter((p) => p.left || p.right), s] })}>用 {s.left} = {s.right}</button>)}</p>
+        )}
+        {untouched && !suggest.best && step.left && step.right && <p className="todo-note">待配置：两边没有同名的键，自己选。</p>}
       </fieldset>
       <div className="ways">
         {Object.entries(NULL_KEYS_LABEL).map(([k, v]) => (
@@ -113,7 +123,7 @@ function OperatorEditor({ name, draft, step, index, onChange }) {
     operatorColumns(name, before, step.id, null).then((b) => live && setState({ key, cols: b.columns, error: "" }), (e) => live && setState({ key, cols: null, error: e.message }));
     return () => { live = false; };
   }, [key]);
-  if (state.error) return <p className="error">读不出这一步看到的列：{friendlyError(state.error, draft.steps)}</p>;
+  if (state.error) return Object.keys(allIssues(draft.steps)).length ? <p className="todo-note">前面还有步骤没配好，这一步看不到列。</p> : <p className="error">读不出这一步看到的列：{friendlyError(state.error, draft.steps)}</p>;
   if (!state.cols) return <p className="muted">加载中</p>;
   return <OperatorForm op={step.operators[index]} cols={state.cols} onChange={onChange} where={{ name, spec: before, stepId: step.id, index, from: step.from }} />;
 }

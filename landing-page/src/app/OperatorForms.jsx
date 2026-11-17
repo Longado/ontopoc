@@ -74,7 +74,7 @@ export function FilterForm({ op, cols, onChange, where, lead = "留下", tail = 
               <input type="text" aria-label="一组值，用逗号隔开" placeholder="用逗号隔开" value={(row.values ?? []).join(", ")}
                 onChange={(e) => setRow(i, { ...row, values: e.target.value.split(/[,，]\s*/) })} onBlur={() => setRow(i, { ...row, values: (row.values ?? []).filter(Boolean) })} />
             ) : NO_VALUE.includes(row.cmp) ? null : (
-              <input type="text" aria-label="值" value={row.value ?? ""} onChange={(e) => setRow(i, { ...row, value: e.target.value })} />
+              <input type="text" aria-label="值" placeholder="要比较的值" className={row.column && !row.value && row.value !== 0 ? "todo-input" : undefined} value={row.value ?? ""} onChange={(e) => setRow(i, { ...row, value: e.target.value })} />
             )}
             {meanings.length > 0 && ["eq", "ne"].includes(row.cmp) && (
               <label className="check"><input type="checkbox" checked={byMeaning} onChange={(e) => setRow(i, e.target.checked ? { column: row.column, cmp: row.cmp, meaning: "" } : { column: row.column, cmp: row.cmp, value: "" })} />按含义选</label>
