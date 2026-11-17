@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { readFileSync } from "node:fs";
-import { ADMIN_NAV, NAV, PAGES, PLANNED, hrefFor, mayOpen, navFor, navKeyOf, navLabelOf, parseRoute } from "./routeModel.js";
+import { ADMIN_NAV, NAV, PAGES, PLANNED, afterSignIn, hrefFor, mayOpen, navFor, navKeyOf, navLabelOf, parseRoute } from "./routeModel.js";
 
 test("the empty address is the home page; the Q&A page, a saved answer and the dataset list have addresses", () => {
   assert.deepEqual(parseRoute(""), { page: "home" });
@@ -39,7 +39,7 @@ test("the account page and the users page have addresses; nothing hangs off them
   assert.deepEqual(parseRoute("#/users/1"), { page: "notfound" });
   assert.equal(navKeyOf({ page: "account" }), null);
   assert.equal(navKeyOf({ page: "users" }), "users");
-  assert.deepEqual(ADMIN_NAV.flatMap((g) => g.items.map((i) => [g.label, i.label, i.built])), [["设置", "用户", true], ["设置", "权限", true]]);
+  assert.deepEqual(ADMIN_NAV.flatMap((g) => g.items.map((i) => [g.label, i.label, i.built])), [["设置", "工作区", true], ["设置", "用户", true], ["设置", "权限", true]]);
 });
 
 test("hrefFor is the inverse of parseRoute", () => {
@@ -190,4 +190,19 @@ test("a route's sidebar word names the place in the recent list", () => {
   assert.equal(navLabelOf({ page: "qa", id: 3 }), "问数");
   assert.equal(navLabelOf({ page: "pipeline", name: "x", view: "edit" }), "管道");
   assert.equal(navLabelOf({ page: "account" }), "");
+});
+
+test("the settings page has an address, is for admins, and lives under its sidebar item", () => {
+  assert.deepEqual(parseRoute("#/settings"), { page: "settings" });
+  assert.deepEqual(parseRoute("#/settings/x"), { page: "notfound" });
+  assert.equal(hrefFor({ page: "settings" }), "#/settings");
+  assert.equal(navKeyOf({ page: "settings" }), "settings");
+  assert.equal(mayOpen("settings", { role: "builder" }), false);
+  assert.equal(mayOpen("settings", { role: "admin" }), true);
+});
+
+test("a fresh sign-in lands on the home page; an expired session returns to where the person was", () => {
+  for (const hash of ["", "#/", "#/qa", "#/types/order/props", "#/home"]) assert.equal(afterSignIn(hash, false), "#/home", hash);
+  assert.equal(afterSignIn("#/qa/3", true), "#/qa/3");
+  assert.equal(afterSignIn("", true), "#/home");
 });
