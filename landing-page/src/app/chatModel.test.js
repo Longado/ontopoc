@@ -62,3 +62,14 @@ test("the thread's title is its first question, cut to fit", () => {
   assert.equal(threadTitle([newTurn("ask", "  How many   orders? ")]), "How many orders?");
   assert.equal(threadTitle([{ ...savedTurn(1), record: { question: "x".repeat(80) } }], 10), "xxxxxxxxx…");
 });
+
+test("the history lists each question once, its newest asking (found by Eddie: a rail full of repeats)", () => {
+  const at = (h) => new Date(2026, 10, 16, h).toISOString();
+  const groups = groupByDay([{ id: 1, question: "How many orders?", asked_at: at(9) }, { id: 2, question: " how many  orders? ", asked_at: at(11) }, { id: 3, question: "Customers by city", asked_at: at(10) }], new Date(2026, 10, 16, 12));
+  assert.deepEqual(groups[0].items.map((h) => h.id), [2, 3]);
+});
+
+test("the chat offers three questions to try, not a wall of them", () => {
+  const scope = { types: [{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name: "C" }, { id: "d", name: "D" }] };
+  assert.equal(suggestions(scope).length, 3);
+});

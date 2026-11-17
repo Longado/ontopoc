@@ -41,7 +41,11 @@ test("the sidebar speaks English, and the labels follow a language switch", () =
 test("the home page copy: example questions use the type's name, the greeting is English", () => {
   const types = [{ id: "o", name: "orders", state: "confirmed", rows: 1200, dataset: "d" }, { id: "c", name: "customers", state: "confirmed" }];
   const relations = [{ from_name: "orders", to_name: "customers", state: "confirmed" }];
-  assert.deepEqual(exampleQuestions(types, relations), ["How many orders are there?", "How many customers are there?", "orders by customers"]);
+  assert.deepEqual(exampleQuestions(types, relations), ["How many orders are there?", "How many customers are there?", "Orders by customers"]);
+  // a type named in Chinese is asked about by its English name in the English UI, never "How many 订单 are there?"
+  const zhNamed = [{ id: "order", name: "订单", state: "confirmed" }, { id: "customer", name: "客户", state: "confirmed" }, { id: "commit_version", name: "订单承诺", state: "confirmed" }];
+  const zhRel = [{ from: "order", to: "customer", from_name: "订单", to_name: "客户", state: "confirmed" }];
+  assert.deepEqual(exampleQuestions(zhNamed, zhRel), ["How many orders are there?", "How many customers are there?", "How many commit versions are there?", "Orders by customer"]);
   assert.equal(greeting(new Date(2026, 10, 16, 9), "Ann"), "Good morning, Ann");
   assert.equal(greeting(new Date(2026, 10, 16, 20), ""), "Good evening");
   assert.equal(kpiCards(types, [])[0].value, "1,200");
