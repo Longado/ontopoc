@@ -7,10 +7,11 @@ from __future__ import annotations
 import json
 from contextlib import nullcontext
 
+from ontology_poc_generator.assistant_checks import type_assumptions, type_self_check
 from ontology_poc_generator.lang import english, tr
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.object_types import (
-    TypeRefused, _readable_dataset, dataset_columns, check_definition, element_row, check_names_free, write_elements, type_id)
+    CODE_TYPES, TypeRefused, _readable_dataset, dataset_columns, check_definition, element_row, check_names_free, write_elements, type_id)
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.workspace_store import current_dataset, log_line
 
@@ -80,7 +81,7 @@ def suggest_types(conn, gateway, names, purpose, who: str | None, now: str, user
             except TypeRefused as exc:
                 task['rejected'].append({'name': str(label), 'reason': str(exc)})
         _task_line(conn, who, task)
-    return {k: task[k] for k in ('proposed', 'rejected', 'model')}
+    return {**{k: task[k] for k in ('proposed', 'rejected', 'model')}, 'self_check': type_self_check(len(task['proposed']), len(task['rejected']))}
 
 
 def _keep(conn, suggested, asked: set[str], user: dict | None) -> dict:
@@ -102,7 +103,12 @@ def _keep(conn, suggested, asked: set[str], user: dict | None) -> dict:
     anchors = {'dataset': dataset['name'], 'version': dataset['version'], 'key_rows': key_check['rows_checked']}
     write_elements(conn, [(type_id(content['english_name']), 'proposed', f'check_result:{key_check["id"]},dataset:{dataset["name"]}@v{dataset["version"]}', MODEL_NAME,
                    content, anchors, None)], {type_id(content['english_name']): [f'dataset:{dataset["name"]}']})
-    return {'id': content['english_name'], 'name': content['name']}
+    used = {p['column'] for p in content['properties']}
+    columns = dataset_columns(conn, dataset['id'])
+    left_out = [c for c in columns if c not in used]   # the columns of the dataset this type does not use
+    codes = [p['column'] for p in content['properties'] if p['column'] in columns and bool(columns[p['column']]['counts']) and columns[p['column']]['type'] in CODE_TYPES]   # code columns: their meanings are for a person to confirm
+    return {'id': content['english_name'], 'name': content['name'], 'basis': content['basis'], 'dataset': dataset['name'], 'key': content['key'], 'left_out': left_out,
+            'assumptions': type_assumptions(content['english_name'], content['key'], key_check['rows_checked'], codes)}
 
 
 def suggest_prompt() -> str:

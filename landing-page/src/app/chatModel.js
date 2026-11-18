@@ -33,7 +33,7 @@ export function groupByDay(history, now = new Date()) {
   return groups.map(({ date, ...g }) => g);
 }
 
-let counter = 0;
+let counter = Date.now();   // a thread kept in the tab comes back with its ids: new ones must not repeat them
 /** A turn that is waiting for its answer. */
 export const newTurn = (kind, text) => ({ id: `t${++counter}`, kind, text, status: "thinking", record: null, error: "" });
 /** A saved answer opened from the history or from #/qa/<id>: a thread of one, loaded when it renders. */

@@ -2242,3 +2242,16 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .canvas, .tw-stage, .graph-pane { -webkit-user-select: none; user-select: none; }
 .pl-tools .pl-tool { white-space: nowrap; flex: none; }
 .pl-search input { width: 120px; }
+
+/* R17 G2 */
+.as-version { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--bg-app); color: var(--text-muted); border: 1px solid var(--border); }
+.as-state.applied { background: var(--green-soft); color: var(--green-ink); }
+.as-state.superseded, .as-state.discarded { background: var(--bg-app); color: var(--text-muted); border: 1px solid var(--border); }
+.as-card.frozen { background: var(--bg-app); }
+.as-card.frozen .as-chain, .as-card.frozen .as-assume { opacity: 0.8; }
+.as-note { margin: 0; padding: 8px var(--s3); border-top: 1px solid var(--border); }
+.as-revise { display: grid; gap: var(--s1); padding: 12px var(--s3); border-top: 1px solid var(--border); }
+.as-revise label { font-weight: 600; font-size: 13px; }
+.as-revise textarea { width: 100%; resize: vertical; }
+.as-revise-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s1); }
+.as-ack { margin-left: var(--s1); }
