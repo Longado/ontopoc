@@ -1,9 +1,12 @@
 """Objects created through the assistant's Apply carry a marker (who applied it, when, and that the assistant drafted it), kept in the definition like its other metadata and shown
 on the object's page and in the review queue. An object a person made by hand has none, and a later ordinary edit keeps the marker."""
+from urllib.parse import quote
+
 from tests.test_object_types import ORDER, Suggester, TABLES
 from tests.test_two_person import SigningTestCase
 
 REPLY = {'object_types': [{'name': '订单', 'english_name': 'order', 'dataset': '订单', 'key': ['订单号'], 'basis': '一行一张订单', 'properties': [{'column': '订单号', 'needed_for': '数订单'}]}]}
+SHOWN = '/api/workspace/pipelines/' + quote('汇总')
 SPEC = {'steps': [{'id': 'o', 'type': 'input', 'dataset': '订单'}]}
 BIGGER = {'steps': [*SPEC['steps'], {'id': 't', 'type': 'transform', 'from': 'o', 'operators': []}]}
 
@@ -46,14 +49,14 @@ class ProvenanceTests(SigningTestCase):
             team = self.setup(base)
             ann = team['ann']
             self.assertEqual(ann.post('/api/workspace/pipelines', {'name': '汇总', 'description': '', 'spec': SPEC})[0], 200)
-            self.assertIsNone(ann.get('/api/workspace/pipelines/汇总')[1]['drafted'])
-            version = ann.get('/api/workspace/pipelines/汇总')[1]['version']
+            self.assertIsNone(ann.get(SHOWN)[1]['drafted'])
+            version = ann.get(SHOWN)[1]['version']
             status, body = ann.post('/api/workspace/pipelines/update', {'id': '汇总', 'version': version, 'spec': BIGGER, 'assistant': True})
             self.assertEqual(status, 200, body)
-            drafted = ann.get('/api/workspace/pipelines/汇总')[1]['drafted']
+            drafted = ann.get(SHOWN)[1]['drafted']
             self.assertEqual((drafted['by'], drafted['how']), ('Ann', 'assistant'))
             self.assertEqual(ann.get('/api/workspace/pipelines')[1]['pipelines'][0]['drafted'], drafted)
             self.assertEqual(next(i for i in team['bob'].get('/api/workspace/queue')[1]['items'] if i['element'] == 'pipeline:汇总')['drafted'], drafted)
-            version = ann.get('/api/workspace/pipelines/汇总')[1]['version']
+            version = ann.get(SHOWN)[1]['version']
             self.assertEqual(ann.post('/api/workspace/pipelines/update', {'id': '汇总', 'version': version, 'spec': SPEC})[0], 200)
-            self.assertEqual(ann.get('/api/workspace/pipelines/汇总')[1]['drafted'], drafted)
+            self.assertEqual(ann.get(SHOWN)[1]['drafted'], drafted)
