@@ -410,6 +410,11 @@ class ObjectTypeTests(SigningTestCase):
             self.assertEqual(status, 200, body)
             self.assertEqual([p['id'] for p in body['proposed']], ['order', 'stock'])
             self.assertEqual([r['name'] for r in body['rejected']], ['客户'])
+            order = body['proposed'][0]   # what each type stood on and what it left out, and its assumptions, worked out by code from what the check computed
+            self.assertEqual((order['basis'], order['dataset'], order['key'], order['left_out']), ('一行一张订单，订单号不重复', '订单', ['订单号'], ['金额']))
+            self.assertEqual([(x['status'], x.get('definition')) for x in order['assumptions']], [('confirmed', 'objtype:order'), ('open', 'enum:order:状态码')])
+            self.assertEqual([x['key'] for x in body['self_check']['done']], ['checked', 'kept'])
+            self.assertEqual(body['self_check']['not_done'][0]['key'], 'confirmed')
             self.assertIn('KH012', body['rejected'][0]['reason'])   # the key checks a person's definition goes through caught the repeated customer
             self.assertEqual((len(model.asked), model.timeouts), (1, [120]))   # one call, which may take up to two minutes
             self.assertIn('状态码', model.asked[0])   # it saw the column names
