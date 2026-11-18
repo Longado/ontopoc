@@ -13,6 +13,7 @@ reads them in one place.
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import TrMap, tr
 import json
 
 from ontology_poc_generator.derived_properties import derived_visible
@@ -27,12 +28,13 @@ from ontology_poc_generator.workspace_pipelines import pipeline_id, pipeline_vis
 from ontology_poc_generator.workspace_questions import _mine, reopen
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
-CAUSE_LABEL = {'data': '数据变了', 'definition': '定义改了', 'upstream': '上一步过时', 'far_upstream': '更上游过时'}
+CAUSE_LABEL = TrMap({'data': ('数据变了', 'Data changed'), 'definition': ('定义改了', 'Definition changed'), 'upstream': ('上一步过时', 'Upstream'), 'far_upstream': ('更上游过时', 'Far upstream')})
 ANSWER_NODES = 15   # the latest saved answers of the person, drawn in the lineage
 ANSWER_LOOK = 100   # and how many of the newest are looked at to find them: reopening one reads the answer and every dataset it used
-HIDDEN_WORDS = '原因里有全部数据的统计，你受行规则限制，看不到'
+def hidden_words() -> str:
+    return tr('原因里有全部数据的统计，你受行规则限制，看不到', 'The reason has statistics over all the data, which a row rule keeps you from seeing')
 NEAR = lambda: {'views': [], 'actions': [], 'relations': [], 'derived': []}   # what is about one type, by kind
-CARDINALITY_NAME = {'many_to_one': '多对一', 'one_to_many': '一对多', 'one_to_one': '一对一'}
+CARDINALITY_NAME = TrMap({'many_to_one': ('多对一', 'many to one'), 'one_to_many': ('一对多', 'one to many'), 'one_to_one': ('一对一', 'one to one')})
 
 
 # --- why something needs another look ------------------------------------------------------------------------------------------------------------
@@ -42,9 +44,9 @@ def _own_cause(reason: str | None, stored: str | None = None) -> str:
     (it begins 它用的 and says 需要再看), else 'data': a new version of a dataset moved what a check found. `stored` is the cause the store wrote with the flag: a reason
     the words do not place (the edit of the pipeline a type's data comes from) is a definition change when the store says so."""
     reason = reason or ''
-    if reason.endswith('要重新确认'):
+    if reason.endswith(('要重新确认', 'confirming again')):
         return 'definition'
-    if reason.startswith('它用的') and '需要再看' in reason:
+    if (reason.startswith('它用的') and '需要再看' in reason) or (reason.startswith('It uses ') and 'needs review' in reason):
         return 'cascade'
     return 'definition' if stored == 'definition' else 'data'
 
@@ -75,7 +77,7 @@ def _cause(conn, chain: dict | None, hide: bool, root_kept: bool = False) -> dic
     root_row = element_row(conn, chain['root'])
     root = _label(conn, chain['root']) if root_row and not root_kept and chain.get('at', chain['root']) != chain['root'] else None   # a root that reads a column kept from them is not named
     return {'cause': kind, 'label': CAUSE_LABEL[kind], 'root_cause': chain['own'], 'root': root, 'short': None if hide else _short(conn, kind, root_row),
-            'text': None if hide else chain['text'], **({'text_hidden': HIDDEN_WORDS} if hide else {})}
+            'text': None if hide else chain['text'], **({'text_hidden': hidden_words()} if hide else {})}
 
 
 def _short(conn, kind: str, root_row: dict | None) -> str | None:
@@ -84,7 +86,7 @@ def _short(conn, kind: str, root_row: dict | None) -> str | None:
         return None
     content = _content(root_row)
     dataset = current_dataset(conn, content['dataset'])
-    return f'{content["dataset"]} 第 {dataset["version"]} 版 {content["column"]} 取值变了' if dataset else None
+    return tr(f'{content["dataset"]} 第 {dataset["version"]} 版 {content["column"]} 取值变了', f'{content["dataset"]} version {dataset["version"]}: values of {content["column"]} changed') if dataset else None
 
 
 def _limited(conn, row: dict | None, user: dict | None) -> bool:
@@ -157,7 +159,7 @@ def _type_nodes(conn, user: dict | None) -> list[dict]:
             'proposed_by': row['proposed_by'],
             'stale': stale_cause(conn, row, user),
             'views': [_small(conn, r, user) for r in near['views']], 'actions': [_small(conn, r, user) for r in near['actions']],
-            'derived': [{**_small(conn, r, user), 'kind': _content(r)['kind'], 'tag': '派生'} for r in sorted(near['derived'], key=lambda r: (r['state'] != 'confirmed', r['element_id']))],   # the confirmed ones first
+            'derived': [{**_small(conn, r, user), 'kind': _content(r)['kind'], 'tag': tr('派生', 'Derived')} for r in sorted(near['derived'], key=lambda r: (r['state'] != 'confirmed', r['element_id']))],   # the confirmed ones first
             'relations': [{'id': r['element_id'], 'key': _content(r)['english_name'], 'name': _content(r)['name']} for r in near['relations']],
             'answers': sum(1 for _, _, _, types in answers if element_id in types)})
     return nodes
@@ -168,10 +170,10 @@ def _verdict_words(result: dict) -> str | None:
     n, f, one, many = result['numbers'], result['fanout'], result['one'], result['many']
     words = []
     if n['extra_rows']:
-        words.append(f'{one["dataset"]} 里“{one["column"]}”有 {f["keys"]} 个值重复，连上它们的 {f["source_rows"]} 行会多出 {f["extra_rows"]} 行')
+        words.append(tr(f'{one["dataset"]} 里“{one["column"]}”有 {f["keys"]} 个值重复，连上它们的 {f["source_rows"]} 行会多出 {f["extra_rows"]} 行', f'"{one["column"]}" in {one["dataset"]} has {f["keys"]} repeated value{"" if f["keys"] == 1 else "s"}, and the {f["source_rows"]} rows that connect to them gain {f["extra_rows"]} extra rows'))
     if n['many_repeats']:
-        words.append(f'一对一不成立：{many["dataset"]} 里“{many["column"]}”有 {n["many_repeats"]} 个值出现了不止一次')
-    return '；'.join(words) or None
+        words.append(tr(f'一对一不成立：{many["dataset"]} 里“{many["column"]}”有 {n["many_repeats"]} 个值出现了不止一次', f'One to one does not hold: "{many["column"]}" in {many["dataset"]} has {n["many_repeats"]} values that appear more than once'))
+    return tr('；', '; ').join(words) or None
 
 
 def _edge(conn, row: dict, user: dict | None) -> dict:
@@ -183,7 +185,7 @@ def _edge(conn, row: dict, user: dict | None) -> dict:
     edge = {'id': row['element_id'], 'kind': 'relation', 'key': content['english_name'], 'name': content['name'], 'from': type_id(content['from']), 'to': type_id(content['to']),
             'from_name': _content(ends['from'])['name'], 'to_name': _content(ends['to'])['name'], 'from_column': content['from_column'], 'to_column': content['to_column'],
             'cardinality': content['cardinality'], 'cardinality_label': CARDINALITY_NAME[content['cardinality']], 'arrow_to': type_id(content[one_end]) if one_end else None,
-            'state': row['state'], 'stale': stale_cause(conn, row, user), 'rows_limited': limited, 'problems': result['problems']}
+            'state': row['state'], 'reason': row['reason'] if row['state'] == 'rejected' else None, 'stale': stale_cause(conn, row, user), 'rows_limited': limited, 'problems': result['problems']}
     if result['problems']:
         return {**edge, 'connected': None, 'of': None, 'unmatched': None, 'cardinality_ok': None, 'cardinality_text': None}
     n = result['numbers']
@@ -269,10 +271,10 @@ def _answer_node(conn, user: dict | None, answer_id: int, question: str, asked_a
         if chain:
             cause = _cause(conn, {**chain, 'depth': chain['depth'] + 1}, hide)
         elif changed:
-            cause = {'cause': 'definition', 'label': CAUSE_LABEL['definition'], 'root_cause': 'definition', 'root': None, 'text': f'它用的{"、".join(c["name"] for c in changed)}后来改过'}
+            cause = {'cause': 'definition', 'label': CAUSE_LABEL['definition'], 'root_cause': 'definition', 'root': None, 'text': tr(f'它用的{tr("、", ", ").join(c["name"] for c in changed)}后来改过', f'{", ".join(c["name"] for c in changed)} it uses was changed later')}
         else:
             cause = {'cause': 'data', 'label': CAUSE_LABEL['data'], 'root_cause': 'data', 'root': None,
-                     'text': '；'.join(f'它读的“{s["dataset"]}”是第 {s["read"]} 版，现在是第 {s["now"]} 版' if s['now'] else f'它读的“{s["dataset"]}”已经不在了' for s in stale)}
+                     'text': tr('；', '; ').join(tr(f'它读的“{s["dataset"]}”是第 {s["read"]} 版，现在是第 {s["now"]} 版', f'It read version {s["read"]} of "{s["dataset"]}", and it is now version {s["now"]}') if s['now'] else tr(f'它读的“{s["dataset"]}”已经不在了', f'"{s["dataset"]}", which it read, is gone') for s in stale)}
     return {'id': f'answer:{answer_id}', 'kind': 'answer', 'key': answer_id, 'name': question, 'state': state, 'asked_at': asked_at, 'stale': cause}, list(dict.fromkeys(named))
 
 
@@ -348,11 +350,11 @@ def type_uses(conn, english_name: str, user: dict | None) -> dict:
     element_id = row['element_id']
     near = _by_type(conn, user).get(element_id, NEAR())
     answers = [{'id': i, 'name': q} for i, q, _at, types in _mine_answers(conn, user) if element_id in types]
-    kinds = [('views', '视图', [{'id': _content(r)['name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['views']]),
-             ('actions', '行为', [{'id': _content(r)['name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['actions']]),
-             ('relations', '关系', [{'id': _content(r)['english_name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['relations']]),
-             ('derived', '派生属性', [{'id': _content(r)['english_name'], 'name': _content(r)['name'], 'state': r['state']} for r in sorted(near['derived'], key=lambda r: (r['state'] != 'confirmed', r['element_id']))]),
-             ('answers', '你存下的回答', answers)]
+    kinds = [('views', tr('视图', 'Views'), [{'id': _content(r)['name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['views']]),
+             ('actions', tr('行为', 'Actions'), [{'id': _content(r)['name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['actions']]),
+             ('relations', tr('关系', 'Relations'), [{'id': _content(r)['english_name'], 'name': _content(r)['name'], 'state': r['state']} for r in near['relations']]),
+             ('derived', tr('派生属性', 'Derived properties'), [{'id': _content(r)['english_name'], 'name': _content(r)['name'], 'state': r['state']} for r in sorted(near['derived'], key=lambda r: (r['state'] != 'confirmed', r['element_id']))]),
+             ('answers', tr('你存下的回答', 'Answers you saved'), answers)]
     hidden = dataset is not None and dataset_hidden(conn, content['dataset'], user)
     return {'data': {'dataset': content['dataset'], 'version': dataset['version'] if dataset else None, 'uploaded_at': None if hidden or not dataset else dataset['imported_at'],
                      'who': None if hidden or not dataset else dataset['who'], 'link': dataset is not None and not hidden},

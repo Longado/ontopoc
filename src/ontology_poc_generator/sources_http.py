@@ -3,6 +3,7 @@ the connection details leave only to an admin (workspace_sources.public_source),
 (workspace_sources.visible_run, the lists), and no request ever returns a password."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import re
 
 from ontology_poc_generator.source_connect import SourceError
@@ -22,7 +23,7 @@ def sources_get(conn, parts: list[str], user: dict | None) -> Reply:
         return 200, {'sources': list_sources(conn, user)}
     detail = source_detail(conn, parts[0], user)
     if detail is None:
-        return 404, {'error': '没有这个数据源'}
+        return 404, {'error': tr('没有这个数据源', 'There is no such source')}
     if len(parts) == 1:
         return 200, detail
     if parts[1:] == ['tables']:
@@ -51,7 +52,7 @@ def sources_post(conn, route: str, payload: dict, who: str | None, user: dict | 
         if route == '/refresh':
             return 200, {'run': visible_run(conn, refresh_dataset(conn, payload, who, user, lock), user)}
     except KeyError:
-        return 404, {'error': '没有这个数据源'}
+        return 404, {'error': tr('没有这个数据源', 'There is no such source')}
     except SourceError as exc:   # the database's own words (no password in them) are an admin's; everyone else reads the general reason
         return 400, {'error': str(exc) if is_admin(user) else exc.public}
     except ValueError as exc:
@@ -67,7 +68,7 @@ def schedules_get(conn, parts: list[str], user: dict | None) -> Reply:
         try:
             return 200, {'runs': schedule_runs(conn, int(parts[0]), user)}
         except KeyError:
-            return 404, {'error': '没有这个调度'}
+            return 404, {'error': tr('没有这个调度', 'There is no such schedule')}
     return NOT_FOUND
 
 
@@ -81,7 +82,7 @@ def schedules_post(conn, route: str, payload: dict, who: str | None, user: dict 
         if route == '/delete':
             return 200, delete_schedule(conn, payload, who, user)
     except KeyError:
-        return 404, {'error': '没有这个调度'}
+        return 404, {'error': tr('没有这个调度', 'There is no such schedule')}
     except Forbidden as exc:
         return 403, {'error': str(exc)}
     except NotFound as exc:   # a pipeline that is not there and one kept from this person read the same

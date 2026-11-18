@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { headlineStands, draftOf, draftProblem, emptyComponent, emptyDraft, expiryText, paramsIn, paramValues, payloadOf, refreshText, scopeText, shareLink, specOf } from "./boardModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in askEnglish.test.js
 
 const SAVED = {
   name: "订单看板", scope: "named", visible_to: [3], visible_names: ["Vera"], expires_at: "2026-12-01", refresh_seconds: 300,

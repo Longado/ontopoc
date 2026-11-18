@@ -80,3 +80,36 @@ test("a query that finds nothing says so instead of breaking the card", () => {
   assert.deepEqual(view, { big: "没有数据", note: "数据里没有满足筛选条件的对象", table: null });
   assert.equal(answerView({ status: "refused" }), null);
 });
+
+import { timeWord, timeWarning, criteriaLine, historyView } from "./qaModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in askEnglish.test.js
+
+test("time words in a question are found", () => {
+  for (const [q, w] of [["本月已取消订单有多少", "本月"], ["今年的销售额", "今年"], ["最近30天下单客户", "最近30天"], ["最近3个月的订单", "最近3个月"], ["2026年3月订单", "2026年3月"], ["昨天有几单", "昨天"], ["上个月退款", "上个月"], ["3月份订单", "3月份"]]) assert.equal(timeWord(q), w, q);
+  assert.equal(timeWord("已取消订单有多少"), null);
+  assert.equal(timeWord(""), null);
+  assert.equal(timeWord(undefined), null);
+});
+
+test("a time word the query did not use is warned about; one it used, or no time word, is not", () => {
+  const noDate = { question: "本月已取消订单有多少", status: "answered", query_text: "SELECT count(o) FROM (o:订单) WHERE o.状态码 = '已取消'", query: { type: "order", filters: [{ field: "状态码", op: "eq", value: "9" }] } };
+  assert.equal(timeWarning(noDate), "问题里的「本月」没有用上：这个数是全部时间的");
+  assert.equal(timeWarning({ ...noDate, query_text: undefined, query: { filters: [] } }), "问题里的「本月」没有用上：这个数是全部时间的");
+  assert.equal(timeWarning({ ...noDate, query: { filters: [{ field: "下单日期", op: "gte", value: "2026-11-01" }] }, query_text: undefined }), null);
+  assert.equal(timeWarning({ ...noDate, query_text: "SELECT count(o) FROM (o:订单) WHERE o.下单日期 >= '2026-11-01'", query: undefined }), null);
+  assert.equal(timeWarning({ ...noDate, question: "已取消订单有多少" }), null);
+  assert.equal(timeWarning({ ...noDate, status: "refused" }), null);
+  assert.equal(timeWarning({ status: "answered", query_text: "SELECT count(o) FROM (o:订单)" }), null);
+});
+
+test("the caliber line says what was counted and as of when", () => {
+  assert.equal(criteriaLine({ query_text: "SELECT count(o) FROM (o:订单) WHERE o.状态码 = '已取消'" }, "11月16日 08:00"), "按已确认的定义：订单.状态码 = 已取消，数据截至 11月16日 08:00");
+  assert.equal(criteriaLine({ query_text: "SELECT count(o) FROM (o:订单)" }, ""), "按已确认的定义：全部订单");
+  assert.equal(criteriaLine({}, ""), "");
+});
+
+test("history rows carry question, status and time", () => {
+  assert.deepEqual(historyView({ id: 3, question: "q", status: "answered", asked_at: "t" }, "T"), { id: 3, question: "q", meta: "T 已回答" });
+});

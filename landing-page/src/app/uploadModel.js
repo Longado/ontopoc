@@ -1,3 +1,5 @@
+import { t } from "./i18n/index.js";
+
 // The upload dialog's decisions, before anything is sent. A file whose name is already a dataset is never guessed about:
 // the person says whether it makes a new dataset, updates one by key, or overwrites one.
 export const MAX_TOTAL = 10 * 1024 * 1024;
@@ -11,12 +13,12 @@ export const sizeText = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(
 
 /** "" when these files can be sent, else why not. */
 export function filesProblem(files) {
-  if (!files.length) return "先选择文件";
+  if (!files.length) return t("data.upl.chooseFile");
   for (const file of files) {
-    if (![".xlsx", ".csv"].includes(suffix(file.name))) return `${file.name}：数据集只收 .xlsx 和 .csv 文件`;
+    if (![".xlsx", ".csv"].includes(suffix(file.name))) return t("data.upl.onlyTypes", { file: file.name });
   }
   const total = files.reduce((n, f) => n + f.size, 0);
-  return total > MAX_TOTAL ? `这些文件一共 ${sizeText(total)}，上限 ${sizeText(MAX_TOTAL)}，请分批上传` : "";
+  return total > MAX_TOTAL ? t("data.upl.tooBig", { total: sizeText(total), max: sizeText(MAX_TOTAL) }) : "";
 }
 
 /**
@@ -40,15 +42,15 @@ export const withKeyColumn = (choice, column, on) => ({
 
 /** Why this file's choice cannot be sent yet, or "". */
 export function choiceProblem(filename, choice, datasetNames) {
-  if (choice.kind === null) return `${filename}：选一种方式：新数据集、按主键更新或覆盖`;
+  if (choice.kind === null) return t("data.upl.pickWay", { file: filename });
   if (choice.kind === "new") {
     const name = choice.name.trim();
-    if (!name || name.length > MAX_NAME) return `${filename}：给新数据集起个名字（1 到 ${MAX_NAME} 个字）`;
-    if (datasetNames.includes(name)) return `${filename}：已经有叫“${name}”的数据集，请改名，或选择更新或覆盖`;
+    if (!name || name.length > MAX_NAME) return t("data.upl.needName", { file: filename, max: MAX_NAME });
+    if (datasetNames.includes(name)) return t("data.upl.nameTaken", { file: filename, name });
     return "";
   }
-  if (!choice.target) return `${filename}：选一个要更新的数据集`;
-  if (choice.kind === "update_by_key" && !choice.keyColumns.length) return `${filename}：选出主键列`;
+  if (!choice.target) return t("data.upl.pickTarget", { file: filename });
+  if (choice.kind === "update_by_key" && !choice.keyColumns.length) return t("data.upl.pickKeys", { file: filename });
   return "";
 }
 
@@ -62,7 +64,7 @@ export function uploadProblem(files, choices, datasetNames) {
   }
   const written = choices.map((c) => (c.kind === "new" ? c.name.trim() : c.target));
   const twice = written.find((name, i) => written.indexOf(name) !== i);
-  return twice ? `有两个文件都要写入“${twice}”，一次上传里一个数据集只能写一次` : "";
+  return twice ? t("data.upl.twice", { name: twice }) : "";
 }
 
 /** The request body; the new-name field is sent only when the person changed it from the file's name. */
@@ -79,26 +81,44 @@ export function uploadPayload(who, files, contents, choices) {
   };
 }
 
-const KIND_WORD = { type: "对象类型", view: "视图", meaning: "取值含义", relation: "关系", derived: "派生属性", pipeline: "管道", action: "行为" };
+const KIND_WORDS = ["type", "view", "meaning", "relation", "derived", "pipeline", "action"];
 
 /** Whether the upload changes a dataset that exists, so it is worth asking what that sends back before it is made. */
 export const changesExisting = (payload) => payload.files.some((f) => f.mode === "overwrite" || f.mode === "update_by_key");
 
 /** The definitions an upload would send back to needs another look, one line each: what it is and why. */
-export const movedLines = (moved) => moved.map((m) => ({ key: m.element, what: `${KIND_WORD[m.kind] ?? m.kind}「${m.title}」`, reason: m.reason }));
+export const movedLines = (moved) => moved.map((m) => ({ key: m.element, what: t("data.upl.moved", { kind: KIND_WORDS.includes(m.kind) ? t(`data.upl.kind.${m.kind}`) : m.kind, title: m.title }), reason: m.reason }));
 
-const blankText = (n) => (n ? `新文件里 ${n} 个空格子，保留了原值` : "");
+/** The three ways a file can go in, with their words in the current language (getters: read at use time). */
+const way = (kind) => ({ kind, get label() { return t(`data.upl.way.${kind}`); }, get consequence() { return t(`data.upl.way.${kind}.text`); } });
+const WAY = { new: way("new"), update_by_key: way("update_by_key"), overwrite: way("overwrite") };
+
+/** The ways a file can go in: a new dataset is always offered; updating one that exists is folded away ("Update an existing dataset") and is not offered at all when there is no dataset to update. */
+export const waysFor = (datasetNames) => ({ primary: [WAY.new], folded: datasetNames.length ? [WAY.update_by_key, WAY.overwrite] : [] });
+
+/** Whether a file's fold of update ways starts open: when the file's name is a dataset already (nothing chosen yet) or the person chose an update. */
+export const updateWays = (choice) => ({ open: choice.kind === null || choice.kind === "update_by_key" || choice.kind === "overwrite" });
+
+/** The buttons after an upload: look at the dataset (the list when several were made), and make an object type from it when a new dataset was made.
+ * The type form does not take a dataset in its address yet, so that link goes to the empty form. */
+export function afterUpload(results) {
+  const first = results[0];
+  const view = { label: t(results.length === 1 ? "data.upl.view" : "data.upl.viewAll"), href: results.length === 1 ? `#/datasets/${encodeURIComponent(first.name)}/fields` : "#/datasets" };
+  return results.some((r) => r.mode === "new" || !r.mode) ? [view, { label: t("data.upl.makeType"), href: "#/types/new" }] : [view];
+}
+
+const blankText = (n) => (n ? t("data.upl.blank", { count: n }) : "");
 
 /** One saved file as a sentence for the dialog. A skipped update is a plain line, not an error. */
 export function resultLine(r) {
-  const failed = r.key_check?.status === "failed" ? "；主键检查没通过" : "";
-  if (r.mode === "overwrite" && !r.created_version) return `${r.name}：内容和当前版本完全一样，没有新版本`;
-  const same = r.same_as ? `；内容同第 ${r.same_as} 版` : "";
-  if (r.mode === "update_by_key" && !r.created_version) return `${r.name}：没有变化，没有新版本${r.changes.blank_kept ? `（${blankText(r.changes.blank_kept)}）` : ""}`;
+  const failed = r.key_check?.status === "failed" ? t("data.upl.keyFailed") : "";
+  if (r.mode === "overwrite" && !r.created_version) return t("data.upl.r.sameOverwrite", { name: r.name });
+  const same = r.same_as ? t("data.upl.r.same", { n: r.same_as }) : "";
+  if (r.mode === "update_by_key" && !r.created_version) return t("data.upl.r.noChange", { name: r.name, blank: r.changes.blank_kept ? t("data.upl.r.parens", { text: blankText(r.changes.blank_kept) }) : "" });
   if (r.mode === "update_by_key") {
     const c = r.changes;
-    return `${r.name}：按主键更新，改 ${c.changed}、增 ${c.added}、未变 ${c.unchanged}；现在 ${r.rows} 行，第 ${r.version} 版${same}${r.changes.blank_kept ? `；${blankText(r.changes.blank_kept)}` : ""}${failed}`;
+    return t("data.upl.r.update", { name: r.name, changed: c.changed, added: c.added, unchanged: c.unchanged, count: r.rows, version: r.version, same, blank: r.changes.blank_kept ? `${t("data.semi")}${blankText(r.changes.blank_kept)}` : "", failed });
   }
-  if (r.mode === "overwrite") return `${r.name}：已覆盖，现在 ${r.rows} 行，第 ${r.version} 版${same}`;
-  return `${r.name}：新建，${r.rows} 行`;
+  if (r.mode === "overwrite") return t("data.upl.r.overwrite", { name: r.name, count: r.rows, version: r.version, same });
+  return t("data.upl.r.new", { name: r.name, count: r.rows });
 }

@@ -1,14 +1,24 @@
 import { canBuild, isAdmin } from "./authModel.js";
+import { t } from "./i18n/index.js";
 
 // The app's addresses (#/datasets/订单/preview?v=2&p=3, #/account, #/users) and its left navigation, as plain data so both can be tested without a browser.
 export const TABS = ["fields", "preview", "versions"];
-export const TAB_LABEL = { fields: "字段", preview: "预览", versions: "版本" };
+/** Tab names in the current language (getters: read at use time). */
+const labels = (prefix, keys) => Object.defineProperties({}, Object.fromEntries(keys.map((k) => [k, { enumerable: true, get: () => t(`nav.${prefix}.${k}`) }])));
+export const TAB_LABEL = labels("tab", TABS);
 export const TYPE_TABS = ["props", "derived", "views", "actions", "objects", "log"];
-export const TYPE_TAB_LABEL = { props: "属性", derived: "派生", views: "视图", actions: "行为", objects: "对象", log: "日志" };
+export const TYPE_TAB_LABEL = labels("typeTab", TYPE_TABS);
+
+/** `?dataset=name` on a "new" address: the dataset the page starts from (用它建管道, 用它建对象类型). */
+const withDataset = (route, query) => {
+  const dataset = new URLSearchParams(query).get("dataset");
+  return dataset ? { ...route, dataset } : route;
+};
+const datasetQuery = (route) => (route.dataset ? `?dataset=${encodeURIComponent(route.dataset)}` : "");
 
 const decode = (part) => decodeURIComponent(part);
 
-/** An address to the page it means: {page: "qa" | "datasets" | "dataset" | "tasks" | "notfound", ...}. The empty address is the Q&A page, where the app opens. */
+/** An address to the page it means: {page: "home" | "qa" | "datasets" | "dataset" | "tasks" | "notfound", ...}. The empty address is the home page, where the app opens. */
 export function parseRoute(hash) {
   const raw = String(hash || "").replace(/^#\/?/, "");
   const [path, query = ""] = raw.split("?");
@@ -18,18 +28,25 @@ export function parseRoute(hash) {
   } catch {
     return { page: "notfound" };   // a broken %-escape in the name
   }
-  if (!parts.length || (parts[0] === "qa" && parts.length === 1)) return { page: "qa", id: null };
+  if (!parts.length || (parts[0] === "home" && parts.length === 1)) return { page: "home" };
+  if (parts[0] === "qa" && parts.length === 1) {
+    const ask = (new URLSearchParams(query).get("ask") ?? "").trim();   // a question typed on the home page, asked as the Q&A page opens
+    return ask ? { page: "qa", id: null, ask } : { page: "qa", id: null };
+  }
   if (parts[0] === "qa" && parts.length === 2 && /^[1-9]\d*$/.test(parts[1])) return { page: "qa", id: Number(parts[1]) };   // a saved answer
   if (parts[0] === "datasets" && parts.length === 1) return { page: "datasets" };
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
   if (parts[0] === "notices" && parts.length === 1) return { page: "notices" };
   if (parts[0] === "schedules" && parts.length === 1) return { page: "schedules" };
   if (parts[0] === "sources" && parts.length <= 2) return parts.length === 1 ? { page: "sources" } : { page: "source", name: parts[1] };
-  if ((parts[0] === "account" || parts[0] === "users") && parts.length === 1) return { page: parts[0] };
+  if ((parts[0] === "account" || parts[0] === "users" || parts[0] === "settings") &&parts.length === 1) return { page: parts[0] };
   if (parts.length === 1 && Object.hasOwn(PLANNED, parts[0])) return { page: "planned", key: parts[0] };
   if (parts[0] === "lineage" && parts.length === 1) return { page: "lineage" };
   if (parts[0] === "relations") {
-    if (parts.length === 1) return new URLSearchParams(query).get("view") === "list" ? { page: "relations", list: true } : { page: "relations" };   // the graph is the default, the list stays one click away
+    if (parts.length === 1) {
+      const view = new URLSearchParams(query).get("view");
+      return view === "map" ? { page: "relations", map: true } : view === "list" ? { page: "relations", list: true } : { page: "relations" };   // the list of relation cards is the default, the map is one click away
+    }
     if (parts.length === 2 && parts[1] === "new") return { page: "relationnew" };   // the service refuses a relation called new, so this address is never a relation
     if (parts.length === 3 && parts[2] === "edit") return { page: "relationedit", id: parts[1] };
     if (parts.length === 2) return { page: "relation", id: parts[1] };
@@ -39,7 +56,7 @@ export function parseRoute(hash) {
   if (parts[0] === "confirm" && parts.length === 4 && parts[1] === "group" && /^[1-9]\d*$/.test(parts[3])) return { page: "confirmgroup", dataset: parts[2], version: Number(parts[3]) };   // what one version of a dataset moved, confirmed together
   if (parts[0] === "pipelines") {
     if (parts.length === 1) return { page: "pipelines" };
-    if (parts.length === 2 && parts[1] === "new") return { page: "pipelinenew" };   // the service refuses a pipeline called new
+    if (parts.length === 2 && parts[1] === "new") return withDataset({ page: "pipelinenew" }, query);   // the service refuses a pipeline called new
     const view = parts[2] ?? "edit";
     if (parts.length === 2) return { page: "pipeline", name: parts[1], view };
     if (parts.length === 3 && ["runs", "history", "confirm"].includes(view)) return { page: "pipeline", name: parts[1], view };
@@ -58,7 +75,7 @@ export function parseRoute(hash) {
   }
   if (parts[0] === "types") {
     if (parts.length === 1) return { page: "types" };
-    if (parts.length === 2 && parts[1] === "new") return { page: "typenew" };   // the service refuses a type called new, so this address is never a type
+    if (parts.length === 2 && parts[1] === "new") return withDataset({ page: "typenew" }, query);   // the service refuses a type called new, so this address is never a type
     if (parts.length === 3 && parts[2] === "edit") return { page: "typeedit", id: parts[1] };
     const tab = parts[2] ?? "props";
     if (tab === "objects" && parts.length === 4 && /^[1-9]\d*$/.test(parts[3])) return { page: "object", id: parts[1], n: Number(parts[3]) };   // one object, by its row number in the data
@@ -77,18 +94,22 @@ export function parseRoute(hash) {
   return { page: "notfound" };
 }
 
+/** Where the app opens after the sign-in form: the home page. Only a session that ran out while the person was working returns to the address they were at. */
+export const afterSignIn = (hash, ended) => (ended && hash && hash !== "#/" ? hash : "#/home");
+
 /** The address of a route; the inverse of parseRoute. */
 export function hrefFor(route) {
-  if (route.page === "qa") return route.id ? `#/qa/${route.id}` : "#/qa";
-  if (route.page === "tasks" || route.page === "notices" || route.page === "account" || route.page === "users" || route.page === "sources" || route.page === "schedules") return `#/${route.page}`;
+  if (route.page === "home") return "#/home";
+  if (route.page === "qa") return route.id ? `#/qa/${route.id}` : route.ask ? `#/qa?ask=${encodeURIComponent(route.ask)}` : "#/qa";
+  if (route.page === "tasks" || route.page === "notices" || route.page === "account" || route.page === "users" || route.page === "settings" || route.page === "sources" || route.page === "schedules") return `#/${route.page}`;
   if (route.page === "source") return `#/sources/${encodeURIComponent(route.name)}`;
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "types") return "#/types";
   if (route.page === "confirm" || route.page === "permissions" || route.page === "lineage") return `#/${route.page}`;
   if (route.page === "confirmgroup") return `#/confirm/group/${encodeURIComponent(route.dataset)}/${route.version}`;
-  if (route.page === "relations") return route.list ? "#/relations?view=list" : "#/relations";
+  if (route.page === "relations") return route.map ? "#/relations?view=map" : route.list ? "#/relations?view=list" : "#/relations";
   if (route.page === "pipelines") return "#/pipelines";
-  if (route.page === "pipelinenew") return "#/pipelines/new";
+  if (route.page === "pipelinenew") return `#/pipelines/new${datasetQuery(route)}`;
   if (route.page === "pipeline") {
     const base = `#/pipelines/${encodeURIComponent(route.name)}`;
     return route.view === "run" ? `${base}/runs/${route.run}` : route.view && route.view !== "edit" ? `${base}/${route.view}` : base;
@@ -96,7 +117,7 @@ export function hrefFor(route) {
   if (route.page === "relationnew") return "#/relations/new";
   if (route.page === "relation") return `#/relations/${encodeURIComponent(route.id)}`;
   if (route.page === "relationedit") return `#/relations/${encodeURIComponent(route.id)}/edit`;
-  if (route.page === "typenew") return "#/types/new";
+  if (route.page === "typenew") return `#/types/new${datasetQuery(route)}`;
   if (route.page === "typeedit") return `#/types/${encodeURIComponent(route.id)}/edit`;
   if (route.page === "type") {
     const query = [route.pageNo > 1 ? `p=${route.pageNo}` : "", route.q ? `q=${encodeURIComponent(route.q)}` : ""].filter(Boolean).join("&");
@@ -119,24 +140,30 @@ export function hrefFor(route) {
 export const PLANNED = {
 };
 
-const BUILT = { qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
+const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
 const BUILDERS = ["tasks", "confirm", "pipelines", "sources", "schedules", "agents"];   // shown to builders and admins only: a viewer has nothing to confirm, the task list quotes keys and values and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
-const item = (key, label) => ({ key, label, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
+// label (and a group's label and hint) are getters: the words are read when drawn, in the language chosen then
+const item = (key, icon) => ({ key, get label() { return t(`nav.${key}`); }, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
+const group = (key, icon, rest) => ({ key, get label() { return t(`nav.group.${key}`); }, icon, get hint() { return t(`nav.group.${key}.hint`); }, ...rest });
 
+/** The sidebar: a group with a `label` folds and has a grey one-line `hint`; `builders` groups are for builders and admins. A viewer sees 首页, 问数, 看板, 消息 only; every page stays reachable by its address. */
 export const NAV = [
-  { items: [item("qa", "问答"), item("tasks", "任务"), item("notices", "消息")] },
-  { label: "数据", items: [item("datasets", "数据集"), item("pipelines", "管道"), item("sources", "数据源"), item("schedules", "调度")] },
-  { label: "本体", items: [item("types", "对象类型"), item("relations", "关系"), item("confirm", "待确认")] },
-  { label: "应用", items: [item("agents", "智能体"), item("boards", "看板")] },
-  { items: [item("lineage", "血缘")] },
+  { key: "main", items: [item("home", "home"), item("qa", "chat"), item("boards", "board"), item("notices", "bell")] },
+  group("data", "database", { builders: true, items: [item("datasets", "table"), item("sources", "plug"), item("pipelines", "pipeline"), item("schedules", "clock"), item("lineage", "lineage"), item("tasks", "tasks")] }),
+  group("objects", "cube", { builders: true, items: [item("confirm", "check"), item("types", "cube"), item("relations", "link")] }),
+  group("apps", "apps", { builders: true, items: [item("agents", "bot")] }),
 ];
 
 /** What only an admin sees. */
-export const ADMIN_NAV = [{ label: "设置", items: [item("users", "用户"), item("permissions", "权限")] }];
+export const ADMIN_NAV = [group("settings", "settings", { items: [item("settings", "settings"), item("users", "users"), item("permissions", "shield")] })];
+
+/** The groups this person's role sees, in order. */
+export const navFor = (user) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])].filter((g) => !g.builders || canBuild(user));
 
 /** Every page the app draws, once: the sidebar item it lives under (null: none) and the role it needs (none: anyone signed in). A new page is one entry here
  * and one view in Shell.jsx; routeModel.test.js fails when the two differ or an address opens a page that is not here. The service checks roles again. */
 export const PAGES = {
+  home: { nav: "home" },
   qa: { nav: "qa" },
   tasks: { nav: "tasks" },
   notices: { nav: "notices" },
@@ -150,7 +177,7 @@ export const PAGES = {
   agents: { nav: "agents", role: "builder" },
   boards: { nav: "boards" }, board: { nav: "boards" }, boardnew: { nav: "boards", role: "builder" }, boardedit: { nav: "boards", role: "builder" },
   lineage: { nav: "lineage" },
-  users: { nav: "users", role: "admin" }, permissions: { nav: "permissions", role: "admin" },
+  settings: { nav: "settings", role: "admin" }, users: { nav: "users", role: "admin" }, permissions: { nav: "permissions", role: "admin" },
   account: { nav: null },
   planned: { nav: null },   // a page not built yet lives under its own key (navKeyOf)
 };
@@ -163,3 +190,6 @@ export const mayOpen = (page, user) => {
 
 /** Which navigation item a route lives under. */
 export const navKeyOf = (route) => (route.page === "planned" ? route.key : route.page in PAGES ? PAGES[route.page].nav : route.page);
+
+/** The sidebar's word for the page a route lives under ("" when it has none). */
+export const navLabelOf = (route) => [...NAV, ...ADMIN_NAV].flatMap((g) => g.items).find((i) => i.key === navKeyOf(route))?.label ?? "";

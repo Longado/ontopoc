@@ -17,6 +17,7 @@ rule is refused naming the action; defining, confirming, submitting or approving
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import json
 
 from ontology_poc_generator.accounts import MAX_ATTR_NAME
@@ -96,7 +97,7 @@ def positions(records: list[dict], limit: list[list[tuple[str, str]]] | None) ->
 
 
 def describe(limit: list[list[tuple[str, str]]]) -> str:
-    return '；且 '.join('、'.join(f'{c} = {v}' for c, v in clause) if clause else '没有一条规则让你看到行' for clause in limit)
+    return tr('；且 ', '; and ').join(tr('、', ', ').join(f'{c} = {v}' for c, v in clause) if clause else tr('没有一条规则让你看到行', 'no rule lets you see rows') for clause in limit)
 
 
 def limit_as_list(limit) -> list | None:
@@ -110,7 +111,7 @@ def _actions_writing(conn, type_element_id: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for content, in conn.execute("SELECT content_json FROM element_state WHERE element_id LIKE 'objaction:%' AND state != 'rejected'"):
         c = json.loads(content)
-        if c['type'] in english:
+        if c['type'] in english and (c.get('kind') or 'edit') == 'edit':   # a create adds a row its submitter may read, a delete removes one: neither moves a row across a rule
             for column in c['properties']:
                 out.setdefault(column, []).append(c['name'])
     return out
@@ -121,7 +122,7 @@ def conflict_with_actions(conn, type_element_id: str, written: list[str]) -> str
     ruled = set().union(*(columns_ruled(conn, e) for e in types_on_dataset_of(conn, type_element_id))) & set(written)
     if not ruled:
         return None
-    return f'这个数据集上的行规则用到“{"、".join(sorted(ruled))}”，行为不能改写它：一次改写就能把一行移进或移出某个人看得到的范围'
+    return tr(f'这个数据集上的行规则用到“{tr("、", ", ").join(sorted(ruled))}”，行为不能改写它：一次改写就能把一行移进或移出某个人看得到的范围', f'The row rules on this dataset use {", ".join(sorted(ruled))}, so an action cannot rewrite it: one rewrite could move a row into or out of what someone can see')
 
 
 def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
@@ -129,21 +130,21 @@ def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
     element_id = f'objtype:{english_name}'
     found = conn.execute('SELECT content_json FROM element_state WHERE element_id = ?', (element_id,)).fetchone()
     if found is None:
-        raise RuleRefused('没有这个对象类型', 404)
+        raise RuleRefused(tr('没有这个对象类型', 'There is no such object type'), 404)
     columns = {p['column'] for p in json.loads(found[0])['properties']}
     if not isinstance(rules, list) or len(rules) > MAX_RULES or not all(isinstance(r, dict) for r in rules):
-        raise RuleRefused(f'规则要写成列表，最多 {MAX_RULES} 条')
+        raise RuleRefused(tr(f'规则要写成列表，最多 {MAX_RULES} 条', f'Rules must be a list of at most {MAX_RULES}'))
     clean = []
     for r in rules:
         column, value, ids, attr = r.get('column'), r.get('value'), r.get('user_ids'), r.get('user_attr')
         if attr not in (None, ''):   # everyone: the rows where column = their own attribute
             if column not in columns:
-                raise RuleRefused(f'“{column}”不是这个对象类型的属性')
+                raise RuleRefused(tr(f'“{column}”不是这个对象类型的属性', f'"{column}" is not a property of this object type'))
             attr = attr.strip() if isinstance(attr, str) else ''
             if not attr or len(attr) > MAX_ATTR_NAME or not attr.isprintable():
-                raise RuleRefused(f'人的属性名要写 1 到 {MAX_ATTR_NAME} 个字，不能换行')
+                raise RuleRefused(tr(f'人的属性名要写 1 到 {MAX_ATTR_NAME} 个字，不能换行', f'A person attribute name must be 1 to {MAX_ATTR_NAME} characters, on one line'))
             if value not in (None, '') or ids not in (None, []):
-                raise RuleRefused('按人的属性的规则对所有人生效，不写取值、不点名')
+                raise RuleRefused(tr('按人的属性的规则对所有人生效，不写取值、不点名', 'A rule by person attribute applies to everyone: give no value and name no one'))
             clean.append({'column': column, 'value': '', 'user_ids': [], 'user_attr': attr})
             continue
         everything = column in (None, '') and value in (None, '')   # no condition: these people see all rows
@@ -151,26 +152,26 @@ def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
             column, value = '', ''
         else:
             if column not in columns:
-                raise RuleRefused(f'“{column}”不是这个对象类型的属性')
+                raise RuleRefused(tr(f'“{column}”不是这个对象类型的属性', f'"{column}" is not a property of this object type'))
             value = value.strip() if isinstance(value, str) else ''
             if not value or len(value) > MAX_VALUE or '\n' in value:
-                raise RuleRefused(f'取值要写 1 到 {MAX_VALUE} 个字，不能换行')
+                raise RuleRefused(tr(f'取值要写 1 到 {MAX_VALUE} 个字，不能换行', f'A value must be 1 to {MAX_VALUE} characters, on one line'))
         if not isinstance(ids, list) or not ids or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
-            raise RuleRefused('每条规则要点名至少一个人')
+            raise RuleRefused(tr('每条规则要点名至少一个人', 'Each rule must name at least one person'))
         ids = sorted(set(ids))
         known = {x for (x,) in conn.execute(f'SELECT id FROM user WHERE id IN ({",".join("?" * len(ids))})', ids)}
         if set(ids) - known:
-            raise RuleRefused('名单里有不存在的账号')
+            raise RuleRefused(tr('名单里有不存在的账号', 'The list has an account that does not exist'))
         clean.append({'column': column, 'value': value, 'user_ids': ids, 'user_attr': None})
     used = _actions_writing(conn, element_id)
     clash = sorted({r['column'] for r in clean} & set(used))
     if clash:
-        raise RuleRefused(f'“{"、".join(clash)}”被行为“{"、".join(sorted({n for c in clash for n in used[c]}))}”改写：规则读的属性不能同时被行为改写，一次改写就能把一行移进或移出某个人看得到的范围', 409)
+        raise RuleRefused(tr(f'“{tr("、", ", ").join(clash)}”被行为“{tr("、", ", ").join(sorted({n for c in clash for n in used[c]}))}”改写：规则读的属性不能同时被行为改写，一次改写就能把一行移进或移出某个人看得到的范围', f'{", ".join(clash)} is rewritten by the action {", ".join(sorted({n for c in clash for n in used[c]}))}: a property a rule reads cannot also be rewritten by an action, because one rewrite could move a row into or out of what someone can see'), 409)
     before = rules_of(conn, element_id)
     if [{k: r[k] for k in ('column', 'value', 'user_ids', 'user_attr')} for r in before] == clean:
         return {'rules': before}   # unchanged, even a list saved before duplicates were refused
     if len({json.dumps(r, sort_keys=True) for r in clean}) < len(clean):
-        raise RuleRefused('有两条一模一样的规则，去掉一条')
+        raise RuleRefused(tr('有两条一模一样的规则，去掉一条', 'Two rules are identical. Remove one'))
     conn.execute('BEGIN IMMEDIATE')
     try:
         conn.execute('DELETE FROM row_rule WHERE type_id = ?', (element_id,))
@@ -178,10 +179,10 @@ def set_rules(conn, english_name: str, rules, who: str | None) -> dict:
                          [(element_id, r['column'], r['value'], json.dumps(r['user_ids']), r['user_attr']) for r in clean])
         names = lambda ids: [n for (n,) in conn.execute(f'SELECT display_name FROM user WHERE id IN ({",".join("?" * len(ids))}) ORDER BY display_name', ids)]
         say = lambda rs: [{'column': r['column'], 'value': r['value'], 'users': names(r['user_ids']) if r['user_ids'] else [], **({'user_attr': r['user_attr']} if r['user_attr'] else {})} for r in rs]
-        line = lambda r: (f"每个人看 {r['column']} = 自己的{r['user_attr']} 的行" if r.get('user_attr') else
-                          f"{'、'.join(r['users'])} 看{(' ' + r['column'] + ' = ' + r['value'] + ' 的行') if r['column'] else '全部行'}")
-        summary = '；'.join(line(r) for r in say(clean)) or '行规则全部去掉了'
-        log_line(conn, who or '未署名', element_id, 'row_rules_changed', before={'rules': say(before)}, after={'rules': say(clean), 'summary': f'行规则：{summary}'})
+        line = lambda r: (tr(f"每个人看 {r['column']} = 自己的{r['user_attr']} 的行", f"everyone sees rows where {r['column']} equals their own {r['user_attr']}") if r.get('user_attr') else
+                          tr(f"{tr('、', ', ').join(r['users'])} 看{(' ' + r['column'] + ' = ' + r['value'] + ' 的行') if r['column'] else '全部行'}", f"{', '.join(r['users'])} see {('rows where ' + r['column'] + ' = ' + r['value']) if r['column'] else 'all rows'}"))
+        summary = tr('；'.join(line(r) for r in say(clean)) or '行规则全部去掉了', '; '.join(line(r) for r in say(clean)) or 'all row rules were removed')
+        log_line(conn, who or tr('未署名', 'unsigned'), element_id, 'row_rules_changed', before={'rules': say(before)}, after={'rules': say(clean), 'summary': tr(f'行规则：{summary}', f'Row rules: {summary}')})
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')

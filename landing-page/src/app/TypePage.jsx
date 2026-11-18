@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Explorer } from "./Explorer.jsx";
 import { TypeActions } from "./TypeActions.jsx";
 import { confirmType, getTypeUses, getType, getTypeLog, proposeMeanings, setValuesHidden } from "./api.js";
@@ -6,13 +6,18 @@ import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText, typeLabel } from "./format.js";
 import { ageText } from "./graphModel.js";
+import { t } from "./i18n/index.js";
 import { waitingText } from "./relationModel.js";
 import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
+import { statusOf } from "./statusModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { confirmersText, limitedNote, logText, reconfirmText, stateLine } from "./typeModel.js";
+import { confirmersText, joinList, limitedNote, logText, meaningsSummary, reconfirmText, stateLine, tabCounts, typeSub, usesSummary } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
+
+const TYPE_CRUMBS = (name) => [{ label: t("types.page.crumbGroup") }, { label: t("types.page.crumbTypes"), href: "#/types" }, { label: name }];
 
 /** What stands behind a state, in one place: the line, who could confirm, and why it needs another look. */
 function Standing({ item, noun }) {
@@ -24,7 +29,7 @@ function Standing({ item, noun }) {
       {confirmersText(item) && <p className="muted small">{confirmersText(item)}</p>}
       {item.state === "needs_look" && item.reason && (
         <div className="reason">
-          <strong>为什么需要再看</strong>
+          <strong>{t("types.page.whyLook")}</strong>
           <p>{item.reason}</p>
         </div>
       )}
@@ -32,11 +37,12 @@ function Standing({ item, noun }) {
   );
 }
 
-/** The meanings of one code column: the values as the data has them, the meaning written for each, and the two things a person can do with them. */
+/** The meanings of one code column, as a section of their own: read as a table first; "Edit meanings" turns the meanings into inputs with Propose and Cancel. */
 function Meanings({ type, prop, mayBuild, onChanged }) {
   const m = prop.meanings;
   const saved = Object.fromEntries(m.values.map((v) => [v.value, v.label]));
   const [draft, setDraft] = useState(saved);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const changed = m.values.some((v) => (draft[v.value] ?? "") !== v.label);
@@ -53,28 +59,37 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
   };
   const propose = () => act(() => proposeMeanings(type.id, prop.column, m.values.map((v) => ({ value: v.value, label: draft[v.value] ?? "" }))));
   const confirm = () => act(() => confirmType(type.id, m.version, m.seen, prop.column));
+  const cancel = () => {
+    setDraft(saved);
+    setEditing(false);
+  };
   const hasThen = m.state === "needs_look";   // what the rows were when it was confirmed matters only once the data has moved
+  const editable = mayBuild && editing;
   return (
-    <section>
-      <h2 className="section">{prop.name}的含义 <State item={m} /></h2>
-      <Standing item={m} noun="这组含义" />
+    <section className="meanings" aria-label={t("types.meanings.aria", { name: prop.name })}>
+      <div className="section-head">
+        <h2 className="section">{t("types.meanings.title", { name: prop.name })} <State item={m} /></h2>
+        <span className="muted small">{meaningsSummary(m)}</span>
+        {mayBuild && !editing && <button className="secondary" onClick={() => setEditing(true)}>{t("types.meanings.edit")}</button>}
+      </div>
+      <Standing item={m} noun={t("types.meanings.noun")} />
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>取值</th><th>含义</th>{hasThen && !m.limited_note && <th className="num">上次确认时行数</th>}{!m.limited_note && <th className="num">现在行数</th>}</tr>
+            <tr><th>{t("types.meanings.value")}</th><th>{t("types.meanings.meaning")}</th>{hasThen && !m.limited_note && <th className="num">{t("types.meanings.thenRows")}</th>}{!m.limited_note && <th className="num">{t("types.meanings.nowRows")}</th>}</tr>
           </thead>
           <tbody>
             {m.values.map((v) => (
               <tr key={v.value}>
                 <td>{v.value}</td>
                 <td>
-                  {mayBuild ? (
-                    <input type="text" aria-label={`${prop.column} = ${v.value} 的含义`} value={draft[v.value] ?? ""} placeholder={v.in_data ? "还没有含义" : "数据里已经没有这个值，清空它"}
+                  {editable ? (
+                    <input type="text" aria-label={t("types.meanings.inputAria", { column: prop.column, value: v.value })} value={draft[v.value] ?? ""} placeholder={v.in_data ? t("types.meanings.placeholder") : t("types.meanings.gone")}
                       onChange={(e) => setDraft({ ...draft, [v.value]: e.target.value })} />
-                  ) : (v.label || <span className="faint">含义未确认</span>)}
+                  ) : (v.label || <span className="faint">{t("types.meanings.unconfirmed")}</span>)}
                 </td>
                 {hasThen && !m.limited_note && <td className="num">{v.rows_at_confirmation ?? <span className="faint">—</span>}</td>}
-                {!m.limited_note && <td className="num">{v.rows ?? <span className="faint">没有</span>}</td>}
+                {!m.limited_note && <td className="num">{v.rows ?? <span className="faint">{t("types.none")}</span>}</td>}
               </tr>
             ))}
           </tbody>
@@ -83,9 +98,12 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
       {m.limited_note && <p className="muted small">{m.limited_note}</p>}
       {mayBuild && (
         <div className="inline">
-          {(changed || m.state === "needs_look") && <button className="secondary" onClick={propose} disabled={busy}>提出这组含义</button>}
-          {m.can_confirm && !changed && <button className="primary" onClick={confirm} disabled={busy}>确认这组含义</button>}
-          {m.state === "needs_look" && <span className="muted small">提出后要另一位建设者确认</span>}
+          {editing && <button className="primary" onClick={propose} disabled={busy || !changed}>{t("types.meanings.propose")}</button>}
+          {editing && <button className="plain" onClick={cancel} disabled={busy}>{t("common.cancel")}</button>}
+          {editing && !changed && <span className="muted small">{t("types.meanings.changeToPropose")}</span>}
+          {!editing && m.state === "needs_look" && <button className="secondary" onClick={propose} disabled={busy}>{t("types.meanings.propose")}</button>}
+          {!editing && m.can_confirm && !changed && <button className="primary" onClick={confirm} disabled={busy}>{t("types.meanings.confirm")}</button>}
+          {(editing || m.state === "needs_look") && <span className="muted small">{t("types.meanings.needsSecond")}</span>}
         </div>
       )}
       {error && <p className="error">{error}</p>}
@@ -94,11 +112,12 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
 }
 
 function Properties({ type, mayBuild, reload }) {
+  const QA_HELP = t("types.props.qaHelp");
   const [error, setError] = useState("");
-  const hide = async (column, on) => {
+  const allow = async (column, on) => {
     setError("");
     try {
-      await setValuesHidden(type.id, column, on);
+      await setValuesHidden(type.id, column, !on);   // the box says what is allowed; the service keeps what is hidden
       reload();
     } catch (e) {
       setError(e.message);
@@ -108,20 +127,25 @@ function Properties({ type, mayBuild, reload }) {
     <>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>名称</th><th>来源列</th><th>类型</th><th>主键</th>{mayBuild && <th>问答</th>}</tr></thead>
+          <thead>
+            <tr>
+              <th>{t("types.props.name")}</th><th>{t("types.props.column")}</th><th>{t("types.props.type")}</th><th>{t("types.props.key")}</th>
+              {mayBuild && <th>{t("types.props.allow")} <span className="help" tabIndex={0} role="img" aria-label={QA_HELP} title={QA_HELP}>?</span></th>}
+            </tr>
+          </thead>
           <tbody>
             {type.properties.map((p) => (
               <tr key={p.column}>
                 <td>{p.name}{p.fan && <span className="warn small block">{p.fan}</span>}</td>
                 <td className="muted">{p.column}</td>
-                <td>{p.enum ? <>{typeLabel(p.type)}代码 {p.meanings.state && <State item={p.meanings} />}</> : typeLabel(p.type)}</td>
-                <td>{p.key ? "是" : ""}</td>
+                <td>{p.enum ? <>{t("types.props.code", { type: typeLabel(p.type) })} {p.meanings.state ? <State item={p.meanings} /> : <span className="muted small">{t("types.props.meaningsUnwritten")}</span>}</> : typeLabel(p.type)}</td>
+                <td>{p.key ? t("types.yes") : ""}</td>
                 {mayBuild && (
                   <td>
-                    {p.key ? <span className="faint">不发取值</span> : (
+                    {p.key ? <span className="faint">{t("types.props.keyNotSent")}</span> : (
                       <label className="check">
-                        <input type="checkbox" checked={p.hide_values} onChange={(e) => hide(p.column, e.target.checked)} aria-label={`${p.name}：不把取值发给模型`} />
-                        不发取值
+                        <input type="checkbox" checked={!p.hide_values} onChange={(e) => allow(p.column, e.target.checked)} aria-label={t("types.props.allowAria", { name: p.name })} />
+                        {p.hide_values ? t("types.props.hidden") : t("types.props.sendable")}
                       </label>
                     )}
                   </td>
@@ -142,15 +166,15 @@ function Properties({ type, mayBuild, reload }) {
 function Log({ id }) {
   const [state] = useLoad(() => getTypeLog(id), [id]);
   if (state.status === "error") return <p className="error">{state.error}</p>;
-  if (!state.data) return <p className="muted">加载中</p>;
+  if (!state.data) return <p className="muted">{t("common.loading")}</p>;
   return (
     <div className="table-wrap">
       <table className="log">
-        <thead><tr><th>时间</th><th>谁</th><th>发生了什么</th></tr></thead>
+        <thead><tr><th>{t("types.log.when")}</th><th>{t("types.log.who")}</th><th>{t("types.log.what")}</th></tr></thead>
         <tbody>
           {state.data.map((e, i) => {
-            const t = logText(e);
-            return <tr key={i}><td className="keep">{timeText(e.at)}</td><td className="keep">{t.who}</td><td>{t.text}</td></tr>;
+            const line = logText(e);
+            return <tr key={i}><td className="keep">{timeText(e.at)}</td><td className="keep">{line.who}</td><td>{line.text}</td></tr>;
           })}
         </tbody>
       </table>
@@ -166,21 +190,21 @@ const USE_HREF = {
   answers: (_id, item) => hrefFor({ page: "qa", id: item.id }),
 };
 
-/** 用到它的: what stands on this type, a line for each kind with its count and the names. Kinds nothing uses are not listed. */
+/** Used by: one line with a count for each kind; it opens to the names. Kinds nothing uses are not listed. */
 function Uses({ id, uses }) {
   if (!uses?.used_by.length) return null;
   return (
-    <section aria-label="用到它的">
-      <h2 className="section">用到它的</h2>
+    <details className="uses">
+      <summary><span className="muted">{t("types.page.usedBy")}</span> {usesSummary(uses)}</summary>
       <dl className="defs">
         {uses.used_by.map((u) => (
           <React.Fragment key={u.kind}>
             <dt>{u.label} {u.count}</dt>
-            <dd>{u.items.map((item, i) => <span key={item.id}>{i > 0 && "、"}<a href={USE_HREF[u.kind](id, item)}>{item.name}</a>{item.state && item.state !== "confirmed" && <span className="muted small"> {item.state === "needs_look" ? "需再看" : "未确认"}</span>}</span>)}</dd>
+            <dd>{u.items.map((item, i) => <span key={item.id}>{i > 0 && t("types.sep")}<a href={USE_HREF[u.kind](id, item)}>{item.name}</a>{item.state && item.state !== "confirmed" && <span className="muted small"> {statusOf(item.state).label}</span>}</span>)}</dd>
           </React.Fragment>
         ))}
       </dl>
-    </section>
+    </details>
   );
 }
 
@@ -190,13 +214,15 @@ export function TypePage({ route }) {
   const [uses] = useLoad(() => (state.data?.waiting ? Promise.resolve(null) : getTypeUses(id)), [id, state.data?.version, state.data?.waiting]);   // a waiting type has no uses to show
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [actionCount, setActionCount] = useState(null);   // the 行为 list's own count, once it is read
+  useEffect(() => setActionCount(null), [id]);
   const mayBuild = canBuild(useAuth().user);
-  const t = state.data;
+  const ty = state.data;
   const confirm = async () => {
     setBusy(true);
     setError("");
     try {
-      await confirmType(id, t.version, t.seen);
+      await confirmType(id, ty.version, ty.seen);
       reload();
     } catch (e) {
       setError(e.message);
@@ -204,54 +230,49 @@ export function TypePage({ route }) {
     }
     setBusy(false);
   };
+  const uploaded = uses.data?.data.uploaded_at ? `${ageText(uses.data.data.uploaded_at)}${uses.data.data.who ? `${t("types.comma")}${uses.data.data.who}` : ""}` : "";
+  const counts = ty && !ty.waiting ? tabCounts(ty, uses.data, actionCount == null ? {} : { actions: actionCount }) : {};
   return (
     <main className="page">
-      <a className="back" href="#/types">
-        <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        对象类型
-      </a>
       {state.status === "error" && <p className="error">{state.error}</p>}
-      {state.status === "loading" && !t && <p className="muted">加载中</p>}
-      {t?.waiting && (
+      {state.status === "loading" && !ty && <p className="muted">{t("common.loading")}</p>}
+      {ty?.waiting && (
         <>
-          <div className="page-head">
-            <h1 tabIndex={-1}>{t.name} <span className="muted id">{t.id}</span> <State item={t} /></h1>
-          </div>
-          <p className="warn">{reconfirmText(t.waiting_for)}</p>
-          <p className="muted">确认之前不显示它的属性和对象。</p>
+          <PageHeader crumbs={TYPE_CRUMBS(ty.name)} title={ty.name} status={<State item={ty} />} />
+          <p className="warn">{reconfirmText(ty.waiting_for)}</p>
+          <p className="muted">{t("types.page.waitingNote")}</p>
         </>
       )}
-      {t && !t.waiting && (
+      {ty && !ty.waiting && (
         <>
-          <div className="page-head">
-            <h1 tabIndex={-1}>{t.name} <span className="muted id">{t.id}</span> <State item={t} /></h1>
-            {mayBuild && (
-              <div className="head-actions">
-                {!t.columns_kept && <a className="button secondary" href={hrefFor({ page: "typeedit", id })}>修改</a>}
-                {t.can_confirm && <button className="primary" onClick={confirm} disabled={busy}>确认这个对象类型</button>}
-              </div>
-            )}
-          </div>
+          <PageHeader crumbs={TYPE_CRUMBS(ty.name)} title={ty.name} status={<State item={ty} />} sub={typeSub(ty, uploaded)}
+            actions={mayBuild && (
+              <>
+                {!ty.columns_kept && <a className="button secondary" href={hrefFor({ page: "typeedit", id })}>{t("types.page.edit")}</a>}
+                {ty.can_confirm && <button className="primary" onClick={confirm} disabled={busy}>{t("types.page.confirm")}</button>}
+              </>
+            )} />
           {error && <p className="error">{error}</p>}
-          <p className="facts">
-            <span>来源 {t.rows_limited || t.columns_kept ? t.dataset : <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>} 第 {t.dataset_version} 版{uses.data?.data.uploaded_at && `，上传于 ${ageText(uses.data.data.uploaded_at)}${uses.data.data.who ? `（${uses.data.data.who}）` : ""}`}</span>
-            <span>{t.rows_limited ? `你能看到 ${t.rows} 个对象` : `${t.rows} 个对象`}</span>
-            {t.columns_kept > 0 && <span className="faint">有 {t.columns_kept} 个属性不让你看</span>}
-            {t.description && <span>{t.description}</span>}
-            {t.visible_to && t.visible_to !== "everyone" && <span>只有{t.visible_to.length ? t.visible_to.join("、") : "管理员"}看得到</span>}
-          </p>
-          {limitedNote(t) && <p className="muted small">{limitedNote(t)}</p>}
-          <Standing item={t} noun="这个对象类型" />
-          <Uses id={id} uses={uses.data} />
-          <nav className="tabs" aria-label="对象类型的页面" style={{ marginTop: 16 }}>
+          <div className="type-notes">
+            {ty.description && <p>{ty.description}</p>}
+            {ty.columns_kept > 0 && <p className="faint small">{t("types.page.keptColumns", { count: ty.columns_kept })}</p>}
+            {ty.visible_to && ty.visible_to !== "everyone" && <p className="muted small">{t("types.page.visibleOnly", { who: ty.visible_to.length ? joinList(ty.visible_to) : t("types.admins") })}</p>}
+            {!ty.rows_limited && !ty.columns_kept && <p className="small"><a href={hrefFor({ page: "dataset", name: ty.dataset, tab: "fields" })}>{t("types.page.sourceLink", { dataset: ty.dataset })}</a></p>}
+            {limitedNote(ty) && <p className="muted small">{limitedNote(ty)}</p>}
+            <Standing item={ty} noun={t("types.page.noun")} />
+            <Uses id={id} uses={uses.data} />
+          </div>
+          <nav className="tabs" aria-label={t("types.page.tabsAria")}>
             {TYPE_TABS.filter((k) => k !== "actions" || mayBuild).map((k) => (
-              <a key={k} href={hrefFor({ page: "type", id, tab: k })} aria-current={k === tab ? "page" : undefined} className={k === tab ? "active" : ""}>{TYPE_TAB_LABEL[k]}</a>
+              <a key={k} href={hrefFor({ page: "type", id, tab: k })} aria-current={k === tab ? "page" : undefined} className={k === tab ? "active" : ""}>
+                {TYPE_TAB_LABEL[k]}{counts[k] != null && <span className="tab-count">{counts[k]}</span>}
+              </a>
             ))}
           </nav>
-          {tab === "props" && <Properties type={t} mayBuild={mayBuild} reload={reload} />}
-          {tab === "derived" && <TypeDerived type={t} mayBuild={mayBuild} />}
-          {tab === "views" && <TypeViews type={t} mayBuild={mayBuild} />}
-          {tab === "actions" && mayBuild && <TypeActions type={t} mayBuild={mayBuild} />}
+          {tab === "props" && <Properties type={ty} mayBuild={mayBuild} reload={reload} />}
+          {tab === "derived" && <TypeDerived type={ty} mayBuild={mayBuild} />}
+          {tab === "views" && <TypeViews type={ty} mayBuild={mayBuild} />}
+          {tab === "actions" && mayBuild && <TypeActions type={ty} mayBuild={mayBuild} onCount={setActionCount} />}
           {tab === "objects" && <Explorer key={`${id}|${route.q ?? ""}`} id={id} route={route} />}
           {tab === "log" && <Log id={id} />}
         </>

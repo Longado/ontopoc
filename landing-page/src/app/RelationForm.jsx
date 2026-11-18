@@ -1,12 +1,57 @@
 import React, { useEffect, useState } from "react";
-import { createRelation, getRelation, getRelationForm, updateRelation } from "./api.js";
+import { createRelation, getRelation, getRelationForm, previewRelation, updateRelation } from "./api.js";
 import { typeLabel } from "./format.js";
-import { CARDINALITY_LABEL, relationPayload, relationProblem, suggestedColumns } from "./relationModel.js";
+import { t } from "./i18n/index.js";
+import { CARDINALITY_LABEL, previewPayload, previewText, relationPayload, relationProblem, sentenceParts, suggestedColumns } from "./relationModel.js";
+import { RelationPage, RelationsPage } from "./RelationsPage.jsx";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
+import { Drawer } from "./ui/Drawer.jsx";
 
-/** One page for making a relation and changing one: the two types, the column of each dataset that holds the same value, and the cardinality. */
+/** What the two columns would connect, read before anything is saved: a line under the two ends ("157/160 rows can connect, 3 have no match"). */
+function Preview({ form }) {
+  const [state, setState] = useState({ status: "idle" });
+  const payload = previewPayload(form);
+  const key = payload ? JSON.stringify(payload) : "";
+  useEffect(() => {
+    if (!key) {
+      setState({ status: "idle" });
+      return undefined;
+    }
+    let alive = true;
+    setState({ status: "loading" });
+    const timer = setTimeout(() => {
+      previewRelation(JSON.parse(key)).then((data) => alive && setState({ status: "ready", data }), (e) => alive && setState({ status: "error", error: e.message }));
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [key]);
+  if (state.status === "idle") return <p className="preview muted small">{t("relations.form.previewIdle")}</p>;
+  if (state.status === "loading") return <p className="preview muted small">{t("relations.form.previewLoading")}</p>;
+  if (state.status === "error") return <p className="preview warn small">{state.error}</p>;
+  const d = state.data;
+  const bad = d.unmatched > 0 || d.empty > 0 || d.matched < d.rows;
+  return (
+    <div className={`preview ${bad ? "preview-warn" : "preview-ok"}`} role="status">
+      <strong>{previewText(d)}</strong>
+      <span className="muted small">{t("relations.form.previewNote", { many: d.many_name, one: d.one_name, fan: d.fan_keys > 0 ? t("relations.form.previewFan", { one: d.one_name, count: d.fan_keys }) : "" })}</span>
+    </div>
+  );
+}
+
+/** The sentence the form is building, filled in as the types and the cardinality are picked: "Each Order belongs to one ___". */
+function Building({ form, byId }) {
+  const blank = t("relations.form.blank");
+  const [each, from, mid, to] = sentenceParts({ cardinality: form.cardinality, from_name: byId[form.from]?.name ?? "", to_name: byId[form.to]?.name ?? "" });
+  const name = (value) => (value ? <strong>{value}</strong> : <span className="rel-blank">{blank}</span>);
+  return <>{each}{name(from)}{mid}{name(to)}</>;
+}
+
+/** Making a relation and changing one, in a drawer over the relation's own page: the names, then the two ends side by side (From / To, each a type and its column) with the
+ * cardinality between them, and the match preview before anything is saved. */
 export function RelationForm({ id }) {
   const editing = id != null;
   const [saved] = useLoad(() => (editing ? getRelation(id) : Promise.resolve(null)), [id]);
@@ -24,7 +69,7 @@ export function RelationForm({ id }) {
       : { english: "", name: "", description: "", from: "", to: "", cardinality: "many_to_one", fromColumn: "", toColumn: "" });
   }, [ready]);
 
-  const byId = Object.fromEntries((types.data ?? []).map((t) => [t.id, t]));
+  const byId = Object.fromEntries((types.data ?? []).map((ty) => [ty.id, ty]));
   const pickType = (end, value) => {
     const next = { ...form, [end]: value, [`${end}Column`]: "" };
     const suggested = suggestedColumns(byId[next.from], byId[next.to], next.cardinality);
@@ -34,6 +79,8 @@ export function RelationForm({ id }) {
     const suggested = suggestedColumns(byId[form.from], byId[form.to], value);
     setForm({ ...form, cardinality: value, fromColumn: suggested.fromColumn || form.fromColumn, toColumn: suggested.toColumn || form.toColumn });
   };
+  const back = editing ? hrefFor({ page: "relation", id }) : hrefFor({ page: "relations" });
+  const close = () => { window.location.hash = back; };
   const save = async () => {
     setSending(true);
     setError("");
@@ -48,64 +95,75 @@ export function RelationForm({ id }) {
   };
   const columns = (typeId) => byId[typeId]?.columns ?? [];
   const problem = form ? relationProblem(form, editing) : "";
-  const end = (which, label) => (
+  const end = (which, label, hint) => (
     <div className="end">
+      <h3 className="end-title">{label}<span className="muted small"> {hint}</span></h3>
       <div className="field">
-        <span className="caption">{label}</span>
-        <Select label={label} value={form[which]} onChange={(v) => pickType(which, v)}>
-          <option value="">请选择对象类型</option>
-          {(types.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}（{t.dataset}）</option>)}
+        <span className="caption">{t("relations.form.type")}</span>
+        <Select label={t("relations.form.typeLabel", { end: label })} value={form[which]} onChange={(v) => pickType(which, v)}>
+          <option value="">{t("relations.form.pickType")}</option>
+          {(types.data ?? []).map((ty) => <option key={ty.id} value={ty.id}>{t("relations.form.typeOption", { name: ty.name, dataset: ty.dataset })}</option>)}
         </Select>
       </div>
       <div className="field">
-        <span className="caption">{label}的列（和另一边同一个值）</span>
-        <Select label={`${label}的列`} value={form[`${which}Column`]} disabled={!form[which]} onChange={(v) => setForm({ ...form, [`${which}Column`]: v })}>
-          <option value="">请选择列</option>
-          {columns(form[which]).map((c) => <option key={c.name} value={c.name}>{c.name}（{typeLabel(c.type)}）{byId[form[which]].key.includes(c.name) ? " 主键" : ""}</option>)}
+        <span className="caption">{t("relations.form.column")}</span>
+        <Select label={t("relations.form.columnLabel", { end: label })} value={form[`${which}Column`]} disabled={!form[which]} onChange={(v) => setForm({ ...form, [`${which}Column`]: v })}>
+          <option value="">{t("relations.form.pickColumn")}</option>
+          {columns(form[which]).map((c) => <option key={c.name} value={c.name}>{t("relations.form.columnOption", { name: c.name, type: typeLabel(c.type), key: byId[form[which]].key.includes(c.name) ? t("relations.form.keyMark") : "" })}</option>)}
         </Select>
       </div>
     </div>
   );
-  const back = editing ? hrefFor({ page: "relation", id }) : hrefFor({ page: "relations" });
   return (
-    <main className="page">
-      <a className="back" href={back}>
-        <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        {editing ? saved.data?.name ?? "关系" : "关系"}
-      </a>
-      <div className="page-head"><h1 tabIndex={-1}>{editing ? "修改关系" : "新建关系"}</h1></div>
-      {[saved, types].map((s, i) => s.status === "error" && <p key={i} className="error">{s.error}</p>)}
-      {form && (
-        <div className="stack wide">
-          <label className="field">
-            <span className="caption">名称</span>
-            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </label>
-          <label className="field">
-            <span className="caption">英文名（字母、数字、下划线；{editing ? "建好后不能改" : "确认前也不能再改"}）</span>
-            <input type="text" value={form.english} disabled={editing} onChange={(e) => setForm({ ...form, english: e.target.value })} />
-          </label>
-          <label className="field">
-            <span className="caption">说明</span>
-            <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </label>
-          {end("from", "起点")}
-          <div className="field">
-            <span className="caption">一个起点对象对应几个终点对象</span>
-            <Select label="基数" value={form.cardinality} onChange={pickCardinality}>
-              {Object.entries(CARDINALITY_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-            </Select>
+    <>
+      {editing ? <RelationPage route={{ id }} /> : <RelationsPage route={{}} />}
+      <Drawer open title={editing ? t("relations.form.edit") : t("relations.form.new")} onClose={close} width={760}
+        footer={(
+          <>
+            {problem && <span className="save-reason" role="status">{problem}</span>}
+            <button className="secondary" onClick={close}>{t("common.cancel")}</button>
+            <button className="primary" onClick={save} disabled={Boolean(problem) || sending}>{sending ? t("relations.form.saving") : editing ? t("common.save") : t("relations.form.create")}</button>
+          </>
+        )}>
+        {[saved, types].map((s, i) => s.status === "error" && <p key={i} className="error">{s.error}</p>)}
+        {!form && !(saved.status === "error" || types.status === "error") && <p className="muted">{t("common.loading")}</p>}
+        {form && (
+          <div className="rel-form">
+            <section className="rel-form-lead" aria-label={t("relations.form.leadAria")}>
+              <p className="caption">{t("relations.form.lead")}</p>
+              <p className="rel-form-sentence"><Building form={form} byId={byId} /></p>
+              <Preview form={form} />
+            </section>
+            <div className="rel-form-ends">
+              {end("from", t("relations.form.from"), t("relations.form.fromHint"))}
+              <span className="rel-arrow" aria-hidden="true">→</span>
+              {end("to", t("relations.form.to"), t("relations.form.toHint"))}
+            </div>
+            <div className="field">
+              <span className="caption">{t("relations.form.cardinality")}</span>
+              <Select label={t("relations.form.cardinalityLabel")} value={form.cardinality} onChange={pickCardinality}>
+                {Object.entries(CARDINALITY_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </Select>
+            </div>
+            <div className="rel-form-names">
+              <label className="field">
+                <span className="caption">{t("relations.form.name")}</span>
+                <input type="text" value={form.name} maxLength={40} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </label>
+              <label className="field">
+                <span className="caption">{t("relations.form.english", { fixed: editing ? t("relations.form.fixedEdit") : t("relations.form.fixedNew") })}</span>
+                <input type="text" value={form.english} disabled={editing} onChange={(e) => setForm({ ...form, english: e.target.value })} />
+              </label>
+              <label className="field">
+                <span className="caption">{t("relations.form.description")}</span>
+                <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </label>
+            </div>
+            <p className="hint">{t("relations.form.manyToMany")}</p>
+            {error && <div className="refusal"><p className="error">{error}</p></div>}
           </div>
-          {end("to", "终点")}
-          <p className="hint">保存时会按两个数据集现在的全部行，数出有多少行连得上、哪些键找不到、哪些键重复。多对多要靠一张连接两边的表，这一版还没有。</p>
-          {error && <div className="refusal"><p className="error">{error}</p></div>}
-          <div className="inline">
-            <button className="primary" onClick={save} disabled={Boolean(problem) || sending}>{sending ? "保存中" : editing ? "保存" : "创建"}</button>
-            <a href={back}>取消</a>
-            {problem && <span className="muted small">{problem}</span>}
-          </div>
-        </div>
-      )}
-    </main>
+        )}
+      </Drawer>
+    </>
   );
 }

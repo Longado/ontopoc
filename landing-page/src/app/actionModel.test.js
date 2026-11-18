@@ -1,21 +1,43 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { actionFits, actionPayload, actionProblem, emptyActionForm, recordStateText, rowKey } from "./actionModel.js";
+import { actionFits, actionPayload, actionProblem, emptyActionForm, emptyCondition, holds, opsFor, recordChangeText, recordStateText, rowKey, runPayload, runProblem } from "./actionModel.js";
 import { notifyRecipient, choicesPayload } from "./actionModel.js";
+import { setLocale } from "./i18n/index.js";
 
-test("an action form needs a name, a property to change, and a value when a condition column is picked", () => {
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
+
+test("an action form needs a name, a property for an edit, and a value for each condition that takes one", () => {
   const form = emptyActionForm();
+  assert.equal(form.kind, "edit");
   assert.equal(actionProblem(form), "要写行为的名字");
   assert.equal(actionProblem({ ...form, name: "改订单状态" }), "要选至少一个要改的属性");
-  assert.equal(actionProblem({ ...form, name: "改订单状态", properties: ["状态码"], condition: { column: "状态码", value: " " } }), "条件要写取值，或者不设条件");
-  assert.equal(actionProblem({ ...form, name: "改订单状态", properties: ["状态码"] }), "");
+  assert.equal(actionProblem({ ...form, name: "新建订单", kind: "create" }), "");   // a create may ask for the key alone
+  assert.equal(actionProblem({ ...form, name: "删除订单", kind: "delete" }), "");
+  const named = { ...form, name: "改订单状态", properties: ["状态码"] };
+  assert.equal(actionProblem({ ...named, conditions: [{ ...emptyCondition(), column: "" }] }), "每个条件要选属性");
+  assert.equal(actionProblem({ ...named, conditions: [{ column: "状态码", op: "eq", value: " " }] }), "条件要写取值，或者去掉这个条件");
+  assert.equal(actionProblem({ ...named, conditions: [{ column: "金额", op: "empty", value: "" }] }), "");
+  assert.equal(actionProblem(named), "");
 });
 
-test("the payload has no condition unless a column was picked", () => {
-  const form = { ...emptyActionForm(), name: " 改订单状态 ", properties: ["状态码"] };
-  assert.deepEqual(actionPayload("order", form), { name: "改订单状态", type: "order", description: "", properties: ["状态码"], condition: null });
-  assert.deepEqual(actionPayload("order", { ...form, condition: { column: "状态码", value: "1" } }).condition, { column: "状态码", value: "1" });
+test("the payload carries the kind, the conditions in the service's form, and no property for a delete or condition for a create", () => {
+  const form = { ...emptyActionForm(), name: " 改金额 ", properties: ["金额"],
+    conditions: [{ column: "状态码", op: "eq", value: " 1 " }, { column: "金额", op: "gt", value: "3000" }, { column: "客户编号", op: "in", value: "KH001，KH002, KH003、" }, { column: "备注", op: "empty", value: "x" }] };
+  assert.deepEqual(actionPayload("order", form), {
+    name: "改金额", type: "order", kind: "edit", description: "", properties: ["金额"],
+    conditions: [{ column: "状态码", op: "eq", value: "1" }, { column: "金额", op: "gt", value: "3000" }, { column: "客户编号", op: "in", value: ["KH001", "KH002", "KH003"] }, { column: "备注", op: "empty" }],
+  });
+  assert.deepEqual(actionPayload("order", { ...form, kind: "delete" }).properties, []);
+  assert.deepEqual(actionPayload("order", { ...form, kind: "create" }).conditions, []);
+  assert.deepEqual(actionPayload("order", { ...form, submitters: [3, 5] }).submitters, [3, 5]);
+});
+
+test("a property offers the operators that make sense for it", () => {
+  assert.deepEqual(opsFor({ type: "integer", enum: false }), ["eq", "ne", "gt", "ge", "lt", "le", "in", "empty", "not_empty"]);
+  assert.deepEqual(opsFor({ type: "date", enum: false }), ["eq", "ne", "gt", "ge", "lt", "le", "in", "empty", "not_empty"]);
+  assert.deepEqual(opsFor({ type: "text", enum: false }), ["eq", "ne", "in", "empty", "not_empty"]);
+  assert.deepEqual(opsFor({ type: "integer", enum: true }), ["eq", "ne", "in", "empty", "not_empty"]);   // a code is a meaning, not an amount
 });
 
 test("a row's key comes from the key columns only", () => {
@@ -35,12 +57,36 @@ test("a pending record whose data moved says so", () => {
   assert.equal(recordStateText({ state: "needs_look" }), "需再看");
 });
 
-test("an action is offered only on rows that meet its condition", () => {
-  const columns = [{ column: "订单号" }, { column: "状态码" }];
-  const action = { condition: { column: "状态码", value: "1" } };
-  assert.equal(actionFits(action, columns, ["DD1", "1"]), true);
-  assert.equal(actionFits(action, columns, ["DD2", "0"]), false);
-  assert.equal(actionFits({ condition: null }, columns, ["DD2", "0"]), true);
+test("an action is offered only on rows that meet all its conditions, and a create on none", () => {
+  const columns = [{ column: "订单号" }, { column: "状态码" }, { column: "金额" }, { column: "客户编号" }];
+  const action = { kind: "edit", conditions: [{ column: "状态码", op: "eq", value: "1" }, { column: "金额", op: "gt", value: "3000" }, { column: "客户编号", op: "in", value: ["KH001", "KH002"] }] };
+  assert.equal(actionFits(action, columns, ["DD1", "1", "4600", "KH001"]), true);
+  assert.equal(actionFits(action, columns, ["DD2", "1", "2080", "KH001"]), false);   // 2080 is not more than 3000 (as numbers, not as text)
+  assert.equal(actionFits(action, columns, ["DD3", "1", "4600", "KH009"]), false);
+  assert.equal(actionFits(action, columns, ["DD4", "0", "4600", "KH001"]), false);
+  assert.equal(actionFits({ kind: "edit", conditions: [{ column: "客户编号", op: "empty" }] }, columns, ["DD5", "1", "1", ""]), true);
+  assert.equal(actionFits({ kind: "edit", conditions: [{ column: "客户编号", op: "ne", value: "KH001" }] }, columns, ["DD5", "1", "1", null]), true);
+  assert.equal(actionFits({ kind: "edit", conditions: [] }, columns, ["DD2", "0"]), true);
+  assert.equal(actionFits({ kind: "create", conditions: [] }, columns, ["DD2", "0"]), false);   // a create is run from the type, not on an object
+});
+
+test("running a create sends the key apart from the values; a delete sends no values and needs a reason", () => {
+  const create = { kind: "create", parameters: [{ column: "订单号", key: true }, { column: "金额", key: false }] };
+  assert.deepEqual(runPayload(create, { 订单号: " DD9 ", 金额: "10" }), { key: { 订单号: "DD9" }, params: { 金额: "10" } });
+  assert.equal(runProblem(create, { 订单号: "DD9", 金额: " " }, ""), "每一项都要填");
+  assert.equal(runProblem(create, { 订单号: "DD9", 金额: "10" }, ""), "");
+  const drop = { kind: "delete", parameters: [] };
+  assert.deepEqual(runPayload(drop, {}), { params: {} });
+  assert.equal(runProblem(drop, {}, " "), "删除要写理由");
+  assert.equal(runProblem(drop, {}, "客户撤单"), "");
+  assert.deepEqual(runPayload({ kind: "edit", parameters: [{ column: "状态码" }] }, { 状态码: "0" }), { params: { 状态码: "0" } });
+});
+
+test("a create or a delete record reads as what it does, an edit as before → after", () => {
+  assert.equal(recordChangeText({ kind: "create", change_text: "新建：金额 1200", before_text: "（还没有）", after_text: "金额 1200" }), "新建：金额 1200");
+  assert.equal(recordChangeText({ kind: "delete", change_text: "删除：金额 1", before_text: "金额 1", after_text: "（删除）" }), "删除：金额 1");
+  assert.equal(recordChangeText({ kind: "edit", before_text: "状态码 生产中", after_text: "状态码 已交付" }), "状态码 生产中 → 状态码 已交付");
+  assert.equal(recordChangeText({ before_text: "a", after_text: "b" }), "a → b");
 });
 
 test("a notice recipient from the form is whole or nothing", () => {
@@ -54,4 +100,19 @@ test("only whole choices of a written property are sent", () => {
   const form = { properties: ["客户编号"], choices: { 客户编号: { type: "customer", column: " 客户编号 " }, 金额: { type: "customer", column: "x" }, 数量: { type: "", column: "y" } } };
   assert.deepEqual(choicesPayload(form), { 客户编号: { type: "customer", column: "客户编号" } });
   assert.deepEqual(choicesPayload({ properties: [], choices: undefined }), {});
+});
+
+test("a condition reads numbers the way the service does (found in the review of R12a)", () => {
+  assert.equal(holds({ op: "eq", value: "1000" }, "1e3"), false);   // written that way it is text, not 1000
+  assert.equal(holds({ op: "eq", value: "1000" }, "1000.0"), true);
+  assert.equal(holds({ op: "eq", value: "-7" }, "-007"), false);   // a leading zero keeps a code a code
+  assert.equal(holds({ op: "in", value: ["16"] }, "0x10"), false);
+  assert.equal(holds({ op: "gt", value: "5" }, "abc"), false);   // not a number: not more than 5
+  assert.equal(holds({ op: "gt", value: "2026-01-01" }, "2026-03-20"), true);   // dates compare as written
+});
+
+test("long numbers keep every digit, as the service keeps them", () => {
+  assert.equal(holds({ op: "eq", value: "123456789012345678" }, "123456789012345679"), false);
+  assert.equal(holds({ op: "eq", value: "12.50" }, "12.5"), true);
+  assert.equal(holds({ op: "eq", value: "-0.0" }, "0"), true);
 });

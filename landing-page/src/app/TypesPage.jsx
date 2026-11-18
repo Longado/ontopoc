@@ -1,13 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
-import { getDatasets, getTypeList, suggestTypes } from "./api.js";
+import { getDatasets, getModelReady, getTypeList, suggestTypes } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
+import { t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { reconfirmText, stateText } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
+import { EmptyState } from "./ui/EmptyState.jsx";
+import { PageHeader } from "./ui/PageHeader.jsx";
+import { DraftedChip } from "./ui/DraftedChip.jsx";
+import { StatusChip } from "./ui/StatusChip.jsx";
 
 export function State({ item }) {
-  return <span className={`state state-${item.model_draft ? "draft" : item.state ?? "none"}`}>{stateText(item)}</span>;
+  if (!item.state && !item.model_draft) return <span className="state state-none">{stateText(item)}</span>;   // a column nobody gave meanings to has no state
+  return <><StatusChip state={item.state} modelDraft={item.model_draft} /><DraftedChip item={item} /></>;
 }
 
 /** Asks the model for object types from some datasets. It runs as a task: what it proposed and what the checks dropped are listed, nothing is confirmed. */
@@ -20,9 +26,14 @@ function SuggestDialog({ onClose, onDone }) {
   const [result, setResult] = useState(null);
   const [sending, setSending] = useState(false);
   const [waited, setWaited] = useState(0);
+  const [modelReady, setModelReady] = useState(true);
   useEffect(() => {
     ref.current.showModal();
-    getDatasets().then(setDatasets, (e) => setError(e.message));
+    getDatasets().then((list) => {
+      setDatasets(list);
+      if (list.length === 1) setChosen([list[0].name]);   // the only dataset is the one to read
+    }, (e) => setError(e.message));
+    getModelReady().then(setModelReady);
   }, []);
   useEffect(() => {
     if (!sending) return undefined;
@@ -50,11 +61,12 @@ function SuggestDialog({ onClose, onDone }) {
   return (
     <dialog ref={ref} className="upload" onCancel={(e) => { e.preventDefault(); close(); }}>
       <div className="dialog-body">
-        <h2>从数据集建议对象类型</h2>
+        <h2>{t("types.suggest.title")}</h2>
+        {!result && !modelReady && <p className="warn">{t("types.suggest.noModel")}</p>}
         {!result && (
           <>
             <fieldset className="keys">
-              <legend>读哪几个数据集</legend>
+              <legend>{t("types.suggest.datasets")}</legend>
               {datasets.map((d) => (
                 <label key={d.name}>
                   <input type="checkbox" checked={chosen.includes(d.name)} onChange={(e) => toggle(d.name, e.target.checked)} />
@@ -63,23 +75,23 @@ function SuggestDialog({ onClose, onDone }) {
               ))}
             </fieldset>
             <label className="field">
-              <span className="caption">要拿它回答什么</span>
-              <input type="text" value={purpose} maxLength={400} placeholder="例如：数每个客户已取消的订单" onChange={(e) => setPurpose(e.target.value)} />
+              <span className="caption">{t("types.suggest.purpose")}</span>
+              <input type="text" value={purpose} maxLength={400} placeholder={t("types.suggest.purposePlaceholder")} onChange={(e) => setPurpose(e.target.value)} />
             </label>
-            <p className="hint">模型只看到数据集名、列名、类型和每列有几种取值，看不到任何一行。它只能提议，提议出来的都是“模型草稿”，要有人看过、再由另一位确认才算数。</p>
+            <p className="hint">{t("types.suggest.hint")}</p>
           </>
         )}
         {result && (
           <>
-            <p>提议了 {result.proposed.length} 个对象类型{result.proposed.length > 0 && "："}</p>
+            <p>{t("types.suggest.proposed", { count: result.proposed.length, colon: result.proposed.length > 0 ? t("types.colon") : "" })}</p>
             <ul className="results">
               {result.proposed.map((p) => <li key={p.id}><a href={hrefFor({ page: "type", id: p.id, tab: "props" })}>{p.name}</a></li>)}
             </ul>
             {result.rejected.length > 0 && (
               <>
-                <p style={{ marginTop: 12 }}>没通过检查、没有保存的 {result.rejected.length} 个：</p>
+                <p style={{ marginTop: 12 }}>{t("types.suggest.rejected", { count: result.rejected.length })}</p>
                 <ul className="results">
-                  {result.rejected.map((r, i) => <li key={i}>{r.name}：<span className="muted">{r.reason}</span></li>)}
+                  {result.rejected.map((r, i) => <li key={i}>{r.name}{t("types.colon")} <span className="muted">{r.reason}</span></li>)}
                 </ul>
               </>
             )}
@@ -89,12 +101,12 @@ function SuggestDialog({ onClose, onDone }) {
       <div className="actions">
         {error ? <span className="error">{error}</span> : <span></span>}
         {result ? (
-          <button className="primary" onClick={close}>关闭</button>
+          <button className="primary" onClick={close}>{t("common.close")}</button>
         ) : (
           <>
-            {sending && <span className="muted">模型在看，通常 15–40 秒，已等 {waited} 秒</span>}
-            <button className="plain" onClick={close} disabled={sending}>取消</button>
-            <button className="primary" onClick={send} disabled={sending || !chosen.length}>{sending ? "模型在看" : "开始"}</button>
+            {sending && <span className="muted">{t("types.suggest.waiting", { seconds: waited })}</span>}
+            <button className="plain" onClick={close} disabled={sending}>{t("common.cancel")}</button>
+            <button className="primary" onClick={send} disabled={sending || !chosen.length || !modelReady}>{sending ? t("types.suggest.working") : t("types.suggest.start")}</button>
           </>
         )}
       </div>
@@ -109,46 +121,51 @@ export function TypesPage() {
   const mayBuild = canBuild(useAuth().user);
   const all = state.data?.types;
   const hidden = state.data?.hidden ?? 0;
-  const types = (all ?? []).filter((t) => `${t.name} ${t.id}`.toLowerCase().includes(filter.trim().toLowerCase()));
+  const types = (all ?? []).filter((ty) => `${ty.name} ${ty.id}`.toLowerCase().includes(filter.trim().toLowerCase()));
   return (
     <main className="page">
-      <div className="page-head">
-        <h1 tabIndex={-1}>对象类型</h1>
-        {mayBuild && (
-          <div className="head-actions">
-            <button className="secondary" onClick={() => setSuggesting(true)}>从数据集建议</button>
-            <a className="button primary" href={hrefFor({ page: "typenew" })}>新建对象类型</a>
-          </div>
-        )}
-      </div>
-      {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>重试</button></p>}
-      {state.status === "loading" && !state.data && <p className="muted">加载中</p>}
-      {all && !all.length && hidden > 0 && <p className="muted">有 {hidden} 个对象类型没有开放给你，找管理员。</p>}
-      {all && !all.length && !hidden && <p className="muted">还没有对象类型。{mayBuild ? "从一个数据集新建，或让模型先提议。" : "建设者确认后会出现在这里。"}</p>}
-      {all?.length > 8 && <label className="field"><span className="caption">按名称筛选</span><input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} /></label>}
+      <PageHeader crumbs={[{ label: t("types.list.crumbGroup") }, { label: t("types.list.title") }]} title={t("types.list.title")} sub={t("types.list.sub")}
+        actions={mayBuild && (
+          <>
+            <button className="secondary" onClick={() => setSuggesting(true)}>{t("types.list.suggest")}</button>
+            <a className="button primary" href={hrefFor({ page: "typenew" })}>{t("types.list.new")}</a>
+          </>
+        )} />
+      {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>{t("common.retry")}</button></p>}
+      {state.status === "loading" && !state.data && <p className="muted">{t("common.loading")}</p>}
+      {all && !all.length && hidden > 0 && <p className="muted">{t("types.list.hidden", { count: hidden })}</p>}
+      {all && !all.length && !hidden && (
+        <EmptyState icon="cube" title={t("types.list.emptyTitle")} text={mayBuild ? t("types.list.emptyBuild") : t("types.list.emptyView")}
+          action={mayBuild ? { label: t("types.list.new"), href: hrefFor({ page: "typenew" }) } : undefined} />
+      )}
+      {all?.length > 8 && (
+        <div className="list-toolbar">
+          <input type="search" className="list-search" aria-label={t("types.list.filter")} placeholder={t("types.list.filter")} value={filter} onChange={(e) => setFilter(e.target.value)} />
+        </div>
+      )}
       {types.length > 0 && (
         <div className="table-wrap">
-          <table>
+          <table className="resource-table">
             <thead>
-              <tr><th>名称</th><th>英文名</th><th>来源</th><th>状态</th><th className="num">对象</th><th>确认人</th></tr>
+              <tr><th>{t("types.list.col.name")}</th><th>{t("types.list.col.id")}</th><th>{t("types.list.col.source")}</th><th>{t("types.list.col.state")}</th><th className="num">{t("types.list.col.objects")}</th><th>{t("types.list.col.confirmedBy")}</th></tr>
             </thead>
             <tbody>
-              {types.map((t) => (
-                <tr key={t.id}>
-                  <td><a href={hrefFor({ page: "type", id: t.id, tab: "props" })}>{t.name}</a></td>
-                  <td className="id">{t.id}</td>
-                  <td>{t.waiting ? <span className="faint">—</span> : <>{t.dataset}{t.dataset_version != null && <span className="muted"> 第 {t.dataset_version} 版</span>}</>}</td>
-                  <td><State item={t} />{t.waiting && <span className="muted small"> {reconfirmText(t.waiting_for)}</span>}{t.meanings_waiting > 0 && <span className="muted small"> 有 {t.meanings_waiting} 组含义没确认</span>}</td>
-                  <td className="num">{t.rows ?? "—"}</td>
-                  <td>{t.waiting ? <span className="faint">—</span> : t.confirmed_by ?? <span className="faint">没有</span>}</td>
+              {types.map((ty) => (
+                <tr key={ty.id}>
+                  <td><a className="row-name" href={hrefFor({ page: "type", id: ty.id, tab: "props" })}>{ty.name}</a></td>
+                  <td className="id">{ty.id}</td>
+                  <td>{ty.waiting ? <span className="faint">—</span> : <>{ty.dataset}{ty.dataset_version != null && <span className="muted">{t("types.list.version", { version: ty.dataset_version })}</span>}</>}</td>
+                  <td><State item={ty} />{ty.waiting && <span className="muted small"> {reconfirmText(ty.waiting_for)}</span>}{ty.meanings_waiting > 0 && <span className="muted small"> {t("types.list.meaningsWaiting", { count: ty.meanings_waiting })}</span>}</td>
+                  <td className="num">{ty.rows ?? "—"}</td>
+                  <td>{ty.waiting ? <span className="faint">—</span> : ty.confirmed_by ?? <span className="faint">{t("types.none")}</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {all?.length > 0 && <p className="hint">对象浏览器：点开一个类型，在“对象”页里按条件筛行、看表格和图表、打开单个对象。</p>}
-      {all?.length > 0 && hidden > 0 && <p className="hint">另有 {hidden} 个对象类型没有开放给你，找管理员。</p>}
+      {all?.length > 0 && <p className="hint">{t("types.list.explorerHint")}</p>}
+      {all?.length > 0 && hidden > 0 && <p className="hint">{t("types.list.hiddenMore", { count: hidden })}</p>}
       {suggesting && <SuggestDialog onClose={() => setSuggesting(false)} onDone={reload} />}
     </main>
   );

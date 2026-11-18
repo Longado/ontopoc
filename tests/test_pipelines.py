@@ -125,6 +125,9 @@ class CheckTests(PipelineTestCase):
         self.assertIn('还没有定义', self.bad({'steps': [steps[2]]}))                         # a join before its inputs
         self.assertIn('只能是 inner 或 left', self.bad({'steps': [*steps[:2], {**steps[2], 'how': 'outer'}]}))
         self.assertIn('关联字段', self.bad({'steps': [*steps[:2], {**steps[2], 'on': []}]}))
+        words = self.bad({'steps': [*steps[:2], {**steps[2], 'on': [{'left': '', 'right': ''}]}]})                     # a key pair the person has not filled in
+        self.assertIn('关联的列没选齐', words)
+        self.assertNotIn('里没有列 ', words)
         self.assertIn('读的步骤 orders 里没有列 没有这列', self.bad({'steps': [*steps[:2], {**steps[2], 'on': [{'left': '没有这列', 'right': '订单号'}]}]}))
         self.assertIn('读的步骤 tickets 里没有列 没有这列', self.bad({'steps': [*steps[:2], {**steps[2], 'on': [{'left': '订单号', 'right': '没有这列'}]}]}))
         self.assertIn('输出要写名字', self.bad({'steps': [*steps[:3], {'id': 'o', 'type': 'output', 'from': 'joined'}]}))

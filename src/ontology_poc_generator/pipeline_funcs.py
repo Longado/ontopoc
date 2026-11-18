@@ -9,6 +9,8 @@ from functools import lru_cache
 import math
 import re
 
+from ontology_poc_generator.lang import tr
+
 _DECIMAL = re.compile(r'[+-]?(\d+(\.\d*)?|\.\d+)')
 _INTEGER = re.compile(r'[+-]?\d+')
 _ISO_DATE = re.compile(r'(\d{4})-(\d{2})-(\d{2})')
@@ -87,9 +89,9 @@ def format_regex(fmt: str) -> re.Pattern:
             pattern += re.escape(fmt[i])
             i += 1
     if len(set(seen)) != len(seen):
-        raise ValueError('格式里同一个部分写了两次')
+        raise ValueError(tr('格式里同一个部分写了两次', 'The format uses the same part twice'))
     if not ({'Y', 'm', 'd'} <= set(seen) or {'y', 'm', 'd'} <= set(seen)):
-        raise ValueError('格式里要有年、月、日：YYYY（或 YY）、MM（或 M）、DD（或 D）')
+        raise ValueError(tr('格式里要有年、月、日：YYYY（或 YY）、MM（或 M）、DD（或 D）', 'The format needs a year, a month and a day: YYYY (or YY), MM (or M), DD (or D)'))
     return re.compile(pattern)
 
 

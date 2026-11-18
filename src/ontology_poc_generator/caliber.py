@@ -12,10 +12,17 @@ import json
 
 from ontology_poc_generator.derived_properties import describe as describe_derived
 from ontology_poc_generator.object_types import DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _content, _settled_since, element_row, stale_word
+from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_views import in_out_text
 
-STATE_WORDS = {'proposed': '模型提出了，还没有人确认', 'checked': '已经提出，还没有另一位确认', 'needs_look': '需要再看', 'rejected': '被退回了'}
-KIND_WORDS = {'type': '对象类型', 'meaning': '含义', 'relation': '关系', 'view': '视图', 'derived': '派生属性'}
+def _state_word(state):
+    words = {'proposed': tr('模型提出了，还没有人确认', 'Proposed by the model, not confirmed yet'), 'checked': tr('已经提出，还没有另一位确认', 'Proposed, waiting for a second person to confirm'),
+             'needs_look': tr('需要再看', 'Needs another look'), 'rejected': tr('被退回了', 'Sent back')}
+    return words.get(state, state)
+
+
+def _kind_word(kind):
+    return {'type': tr('对象类型', 'Object type'), 'meaning': tr('含义', 'Meaning'), 'relation': tr('关系', 'Relation'), 'view': tr('视图', 'View'), 'derived': tr('派生属性', 'Derived property')}[kind]
 
 
 def _type_name(conn, english: str) -> str:
@@ -27,13 +34,13 @@ def _view_text(conn, content: dict) -> str:
     parts = [in_out_text(conn, content)] if content['filters'] else []
     latest = content.get('latest')
     if latest:
-        parts.insert(0, f'每个 {"、".join(latest["key"])} 只留 {latest["order"]} 最新的一行')
-    return '；'.join(parts)
+        parts.insert(0, tr(f'每个 {"、".join(latest["key"])} 只留 {latest["order"]} 最新的一行', f'Keep only the latest row by {latest["order"]} for each {", ".join(latest["key"])}'))
+    return tr('；', '; ').join(parts)
 
 
 def _meaning_text(content: dict) -> str:
-    codes = '、'.join(f'{e["value"]} {e["label"]}' for e in content['values'] if e['label'])
-    return f'{content["column"]}：{codes}'
+    codes = tr('、', ', ').join(f'{e["value"]} {e["label"]}' for e in content['values'] if e['label'])
+    return f'{content["column"]}{tr("：", ": ")}{codes}'
 
 
 def _text(conn, element_id: str, content: dict) -> str:
@@ -44,7 +51,7 @@ def _text(conn, element_id: str, content: dict) -> str:
     if element_id.startswith(DERIVED_PREFIX):
         return describe_derived(conn, content)
     if element_id.startswith(RELATION_PREFIX):
-        return f'{content["name"]}：{_type_name(conn, content["from"])} → {_type_name(conn, content["to"])}（{content["from_column"]} = {content["to_column"]}）'
+        return f'{content["name"]}{tr("：", ": ")}{_type_name(conn, content["from"])} → {_type_name(conn, content["to"])}{tr("（", " (")}{content["from_column"]} = {content["to_column"]}{tr("）", ")")}'
     return content['name']
 
 
@@ -67,15 +74,16 @@ def line_of(conn, element_id: str) -> dict:
     row = element_row(conn, element_id)
     if row is None or not row['content_json']:
         return {'id': element_id, 'kind': _kind(element_id), 'name': element_id.split(':', 1)[1], 'state': None, 'confirmed': False, 'text': '', 'by': None, 'on': None,
-                'line': '这条定义已经不在了', 'reason': '这条定义已经不在了', 'stale_word': None}
+                'line': tr('这条定义已经不在了', 'This definition no longer exists'), 'reason': tr('这条定义已经不在了', 'This definition no longer exists'), 'stale_word': None}
     content = _content(row)
     last = conn.execute('SELECT confirmed_by, dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
     by, on = (last[0], ' '.join(f'{n} v{v}' for n, v in json.loads(last[1]).items())) if last else (None, None)
     text = _text(conn, element_id, content)
     confirmed = row['state'] == 'confirmed'
     stored = _settled_since(conn, row) if row['state'] == 'needs_look' and row['reason'] else row['reason']   # as the pages read it: a parent confirmed again says so
-    reason = None if confirmed else (stored if row['state'] in ('needs_look', 'rejected') and stored else STATE_WORDS.get(row['state'], row['state']))
-    sentence = f'{text}，{by} 确认于 {on}' if confirmed and by and on else text if confirmed else f'{text}（{reason}）'
+    reason = None if confirmed else (stored if row['state'] in ('needs_look', 'rejected') and stored else _state_word(row['state']))
+    sentence = (tr(f'{text}，{by} 确认于 {on}', f'{text}, confirmed by {by} on {on}') if confirmed and by and on else text if confirmed
+                else tr(f'{text}（{reason}）', f'{text} ({reason})'))
     return {'id': element_id, 'kind': _kind(element_id), 'name': _name(conn, element_id, content), 'state': row['state'], 'confirmed': confirmed, 'text': text,
             'by': by, 'on': on, 'line': sentence, 'reason': reason, 'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None}
 
@@ -87,7 +95,7 @@ def lines_of(conn, element_ids: list[str]) -> list[dict]:
 
 def grey_reasons(lines: list[dict]) -> list[str]:
     """Why what stands on these definitions is not in colour, one sentence for each that is not confirmed; empty when all are."""
-    return [f'{KIND_WORDS[l["kind"]]}「{l["name"]}」：{l["reason"]}' for l in lines if not l['confirmed']]
+    return [tr(f'{_kind_word(l["kind"])}「{l["name"]}」：{l["reason"]}', f'{_kind_word(l["kind"])} "{l["name"]}": {l["reason"]}') for l in lines if not l['confirmed']]
 
 
 def _roots(conn, element_id: str, seen: frozenset = frozenset()) -> list[str]:
@@ -105,4 +113,4 @@ def root_reason(conn, lines: list[dict]) -> str | None:
     if grey is None:
         return None
     root = line_of(conn, _roots(conn, grey['id'])[0])
-    return f'{KIND_WORDS[root["kind"]]}「{root["name"]}」：{root["reason"]}'
+    return tr(f'{_kind_word(root["kind"])}「{root["name"]}」：{root["reason"]}', f'{_kind_word(root["kind"])} "{root["name"]}": {root["reason"]}')

@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { readFileSync } from "node:fs";
-import { ADMIN_NAV, NAV, PAGES, PLANNED, hrefFor, mayOpen, navKeyOf, parseRoute } from "./routeModel.js";
+import { ADMIN_NAV, NAV, PAGES, PLANNED, afterSignIn, hrefFor, mayOpen, navFor, navKeyOf, navLabelOf, parseRoute } from "./routeModel.js";
+import { setLocale } from "./i18n/index.js";
 
-test("the empty address is the Q&A page, a saved answer has an address, and the list address is the dataset list", () => {
-  assert.deepEqual(parseRoute(""), { page: "qa", id: null });
-  assert.deepEqual(parseRoute("#/"), { page: "qa", id: null });
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
+
+test("the empty address is the home page; the Q&A page, a saved answer and the dataset list have addresses", () => {
+  assert.deepEqual(parseRoute(""), { page: "home" });
+  assert.deepEqual(parseRoute("#/"), { page: "home" });
+  assert.deepEqual(parseRoute("#/home"), { page: "home" });
+  assert.deepEqual(parseRoute("#/home/x"), { page: "notfound" });
+  assert.deepEqual(parseRoute(hrefFor({ page: "home" })), { page: "home" });
+  assert.equal(navKeyOf({ page: "home" }), "home");
   assert.deepEqual(parseRoute("#/qa"), { page: "qa", id: null });
   assert.deepEqual(parseRoute("#/qa/12"), { page: "qa", id: 12 });
   assert.deepEqual(parseRoute("#/qa/x"), { page: "notfound" });
@@ -35,13 +42,13 @@ test("the account page and the users page have addresses; nothing hangs off them
   assert.deepEqual(parseRoute("#/users/1"), { page: "notfound" });
   assert.equal(navKeyOf({ page: "account" }), null);
   assert.equal(navKeyOf({ page: "users" }), "users");
-  assert.deepEqual(ADMIN_NAV.flatMap((g) => g.items.map((i) => [g.label, i.label, i.built])), [["设置", "用户", true], ["设置", "权限", true]]);
+  assert.deepEqual(ADMIN_NAV.flatMap((g) => g.items.map((i) => [g.label, i.label, i.built])), [["设置", "工作区", true], ["设置", "用户", true], ["设置", "权限", true]]);
 });
 
 test("hrefFor is the inverse of parseRoute", () => {
   for (const route of [{ page: "datasets" }, { page: "qa", id: null }, { page: "qa", id: 7 }, { page: "tasks" }, { page: "account" }, { page: "users" }, { page: "dataset", name: "订单 (试)", tab: "preview", version: 3, pageNo: 2 }, { page: "dataset", name: "a/b", tab: "versions", version: null, pageNo: 1 },
     { page: "types" }, { page: "typenew" }, { page: "typeedit", id: "order" }, { page: "type", id: "order", tab: "props", pageNo: 1 }, { page: "type", id: "order", tab: "objects", pageNo: 3 },
-    { page: "relations" }, { page: "relations", list: true }, { page: "lineage" }, { page: "relationnew" }, { page: "relation", id: "order_customer" }, { page: "relationedit", id: "order_customer" }, { page: "confirm" }, { page: "permissions" }]) {
+    { page: "relations" }, { page: "relations", list: true }, { page: "relations", map: true }, { page: "lineage" }, { page: "relationnew" }, { page: "relation", id: "order_customer" }, { page: "relationedit", id: "order_customer" }, { page: "confirm" }, { page: "permissions" }]) {
     assert.deepEqual(parseRoute(hrefFor(route)), route);
   }
 });
@@ -60,6 +67,12 @@ test("a pipeline opens on its steps; its runs, one run, its history and its conf
   assert.equal(navKeyOf({ page: "pipeline", name: "x", view: "runs" }), "pipelines");
 });
 
+test("a question asked from the home page rides in the address of the Q&A page", () => {
+  assert.deepEqual(parseRoute("#/qa?ask=%E8%AE%A2%E5%8D%95%20%E4%B8%80%E5%85%B1%E6%9C%89%E5%A4%9A%E5%B0%91"), { page: "qa", id: null, ask: "订单 一共有多少" });
+  assert.deepEqual(parseRoute("#/qa?ask="), { page: "qa", id: null });
+  assert.deepEqual(parseRoute(hrefFor({ page: "qa", id: null, ask: "按客户统计订单" })), { page: "qa", id: null, ask: "按客户统计订单" });
+});
+
 test("a page not built yet has an address of its own and says what it will do", () => {
   assert.equal(parseRoute("#/nowhere").page !== "planned", true);
   assert.equal(navKeyOf({ page: "qa", id: 3 }), "qa");
@@ -68,13 +81,31 @@ test("a page not built yet has an address of its own and says what it will do", 
 });
 
 test("the sidebar groups what the product has, and marks what is built", () => {
-  assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "数据", "本体", "应用", null]);
-  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["问答", "任务", "消息", "数据集", "管道", "数据源", "调度", "对象类型", "关系", "待确认", "智能体", "看板", "血缘"]);
+  assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "数据", "业务对象", "应用"]);
+  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "助手", "看板", "消息", "数据集", "数据源", "管道", "调度", "血缘", "任务", "待确认", "对象类型", "关系", "AI 工具接入"]);
+  for (const g of [...NAV, ...ADMIN_NAV].filter((g) => g.label)) assert.ok(g.hint && g.icon, g.label);   // a one-line grey explainer and an icon under each group
+  for (const i of [...NAV, ...ADMIN_NAV].flatMap((g) => g.items)) assert.ok(i.icon, i.key);
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
 });
 
+test("a viewer sees four items, a builder the three groups more, an admin settings too", () => {
+  const names = (user) => navFor(user).map((g) => [g.label ?? null, g.items.map((i) => i.label)]);
+  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板", "消息"]]]);
+  assert.deepEqual(names({ role: "builder" }).map((g) => g[0]), [null, "数据", "业务对象", "应用"]);
+  assert.deepEqual(names({ role: "admin" }).map((g) => g[0]), [null, "数据", "业务对象", "应用", "设置"]);
+  assert.deepEqual(names({ role: "admin" })[4][1], ["工作区", "用户", "权限"]);
+  assert.deepEqual(names({ role: "builder" })[1][1], ["数据集", "数据源", "管道", "调度", "血缘", "任务"]);   // 血缘 lives under 数据
+  assert.deepEqual(navFor(null).map((g) => g.label ?? null), [null]);
+  for (const role of ["viewer", "builder", "admin"]) for (const g of navFor({ role })) for (const i of g.items) assert.equal(mayOpen(i.key, { role }), true, `${role} ${i.key}`);   // nothing offered leads to a refusal
+});
+
+test("every page stays reachable from some item or by its address", () => {
+  const keys = new Set([...NAV, ...ADMIN_NAV].flatMap((g) => g.items.map((i) => i.key)));
+  for (const [page, { nav }] of Object.entries(PAGES)) assert.ok(nav === null || keys.has(nav), page);
+});
+
 test("the boards and the agent page are built: a viewer reads boards, only builders see the agent page", () => {
-  assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => ["agents", "boards"].includes(i.key)).map((i) => [i.key, i.built, i.builders]), [["agents", true, true], ["boards", true, false]]);
+  assert.deepEqual(NAV.flatMap((g) => g.items).filter((i) => ["agents", "boards"].includes(i.key)).map((i) => [i.key, i.built, i.builders]), [["boards", true, false], ["agents", true, true]]);
   assert.deepEqual(parseRoute("#/agents"), { page: "agents" });
   assert.deepEqual(parseRoute("#/boards"), { page: "boards" });
   assert.deepEqual(parseRoute("#/boards/new"), { page: "boardnew" });
@@ -117,6 +148,7 @@ test("relations, the 待确认 queue and the permissions page have addresses; a 
   assert.equal(navKeyOf({ page: "relation", id: "x" }), "relations");
   assert.equal(navKeyOf({ page: "lineage" }), "lineage");
   assert.deepEqual(parseRoute("#/relations?view=list"), { page: "relations", list: true });
+  assert.deepEqual(parseRoute("#/relations?view=map"), { page: "relations", map: true });
   assert.deepEqual(parseRoute("#/relations?view=graph"), { page: "relations" });
   assert.deepEqual(parseRoute("#/lineage/x"), { page: "notfound" });
   assert.equal(navKeyOf({ page: "permissions" }), "permissions");
@@ -130,9 +162,9 @@ test("the screen that confirms what one dataset version moved has an address und
   for (const hash of ["#/confirm/group/订单", "#/confirm/group/订单/0", "#/confirm/group/订单/x", "#/confirm/other/订单/2"]) assert.deepEqual(parseRoute(hash), { page: "notfound" }, hash);
 });
 
-const ADDRESSES = ["#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/notices", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
+const ADDRESSES = ["#/home", "#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/notices", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
   "#/relations", "#/relations/new", "#/relations/x", "#/relations/x/edit", "#/lineage", "#/confirm", "#/confirm/group/x/2", "#/pipelines", "#/pipelines/new",
-  "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents"];
+  "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/settings", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents"];
 
 test("every page an address can open has one entry in the page table, and the table has no page no address opens", () => {
   const opened = new Set(ADDRESSES.map((a) => parseRoute(a).page));
@@ -156,4 +188,25 @@ test("the shell draws a view for every page in the table and for no other", () =
   const block = shell.slice(shell.indexOf("const VIEWS = {"), shell.indexOf("};", shell.indexOf("const VIEWS = {")));
   const drawn = [...block.matchAll(/^\s+(\w+): /gm)].map((m) => m[1]);
   assert.deepEqual(drawn.sort(), Object.keys(PAGES).sort());
+});
+
+test("a route's sidebar word names the place in the recent list", () => {
+  assert.equal(navLabelOf({ page: "qa", id: 3 }), "助手");
+  assert.equal(navLabelOf({ page: "pipeline", name: "x", view: "edit" }), "管道");
+  assert.equal(navLabelOf({ page: "account" }), "");
+});
+
+test("the settings page has an address, is for admins, and lives under its sidebar item", () => {
+  assert.deepEqual(parseRoute("#/settings"), { page: "settings" });
+  assert.deepEqual(parseRoute("#/settings/x"), { page: "notfound" });
+  assert.equal(hrefFor({ page: "settings" }), "#/settings");
+  assert.equal(navKeyOf({ page: "settings" }), "settings");
+  assert.equal(mayOpen("settings", { role: "builder" }), false);
+  assert.equal(mayOpen("settings", { role: "admin" }), true);
+});
+
+test("a fresh sign-in lands on the home page; an expired session returns to where the person was", () => {
+  for (const hash of ["", "#/", "#/qa", "#/types/order/props", "#/home"]) assert.equal(afterSignIn(hash, false), "#/home", hash);
+  assert.equal(afterSignIn("#/qa/3", true), "#/qa/3");
+  assert.equal(afterSignIn("", true), "#/home");
 });

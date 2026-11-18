@@ -11,6 +11,7 @@ read it).
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 from datetime import date
 import io
 import json
@@ -76,7 +77,7 @@ def unconfirmed(conn, user: dict | None) -> dict:
                                           "OR element_id LIKE 'objview:%' OR element_id LIKE 'derived:%') ORDER BY element_id").fetchall():
             if _may_see(conn, user, element_id):
                 out.append(_definition_line(conn, element_row(conn, element_id), user))
-    return {'unconfirmed': out, 'note': '这些定义现在不是“已确认”：不要拿它们回答问题，也不要把里面的数字或含义当成已经说定的。'}
+    return {'unconfirmed': out, 'note': tr('这些定义现在不是“已确认”：不要拿它们回答问题，也不要把里面的数字或含义当成已经说定的。', 'These definitions are not confirmed now: do not answer from them, and do not treat the numbers or meanings in them as settled.')}
 
 
 def read_derived(conn, user: dict | None, type_name, name, key=None, page=1) -> dict:
@@ -84,28 +85,28 @@ def read_derived(conn, user: dict | None, type_name, name, key=None, page=1) -> 
     property that is not confirmed gives no value: the refusal says its state and why (409)."""
     row = element_row(conn, derived_id(type_name, name)) if isinstance(type_name, str) and isinstance(name, str) else None
     if row is None or not derived_visible(conn, row, user):
-        raise TypeRefused('没有这个派生属性', 404)
+        raise TypeRefused(tr('没有这个派生属性', 'There is no such derived property'), 404)
     if row['state'] != 'confirmed':
         line = line_of(conn, row['element_id'])
-        raise TypeRefused(f'派生属性「{line["name"]}」现在不是已确认的状态（{line["reason"]}），不给出它的值', 409)
+        raise TypeRefused(tr(f'派生属性「{line["name"]}」现在不是已确认的状态（{line["reason"]}），不给出它的值', f'The derived property "{line["name"]}" is not confirmed now ({line["reason"]}), so its value is not given'), 409)
     sc = scope(conn, user)   # the one list of what may be told to a model: a property that reads a column kept from models is not in it
     if row['element_id'] not in sc['derived']:
         if row['element_id'] in sc['derived_kept_back']:
-            raise TypeRefused(f'派生属性「{line_of(conn, row["element_id"])["name"]}」用到的一列，所有者设成了取值不对模型开放，所以不给出它的值', 403)
-        raise TypeRefused('没有这个派生属性', 404)
+            raise TypeRefused(tr(f'派生属性「{line_of(conn, row["element_id"])["name"]}」用到的一列，所有者设成了取值不对模型开放，所以不给出它的值', f'A column the derived property "{line_of(conn, row["element_id"])["name"]}" uses was set by its owner to keep values from the model, so its value is not given'), 403)
+        raise TypeRefused(tr('没有这个派生属性', 'There is no such derived property'), 404)
     content = json.loads(row['content_json'])
     result = evaluate(conn, content, user)
     if result['problems']:
-        raise TypeRefused(f'派生属性「{content["name"]}」现在算不出来：{result["problems"][0]}', 409)
+        raise TypeRefused(tr(f'派生属性「{content["name"]}」现在算不出来：{result["problems"][0]}', f'The derived property "{content["name"]}" cannot be computed now: {result["problems"][0]}'), 409)
     table = _load(conn, user, content['type'])
     objects = [{'key': _object_key(table, r)[0], 'value': result['values'].get(r['pos'])} for r in table['rows']]
     if key is not None:
         if not isinstance(key, dict) or set(key) != set(table['content']['key']):
-            raise TypeRefused(f'key 要写成 {{{"、".join(table["content"]["key"])}: 取值}}')
+            raise TypeRefused(tr(f'key 要写成 {{{tr("、", ", ").join(table["content"]["key"])}: 取值}}', f'key must be written as {{{", ".join(table["content"]["key"])}: value}}'))
         wanted = {c: _canonical(str(v)) for c, v in key.items()}
         objects = [o for o in objects if {c: _canonical(None if v is None else str(v)) for c, v in o['key'].items()} == wanted]
         if not objects:
-            raise TypeRefused('没有这个对象', 404)
+            raise TypeRefused(tr('没有这个对象', 'There is no such object'), 404)
     pages = max(1, -(-len(objects) // OBJECT_PAGE))
     page = min(max(whole_page(page), 1), pages)
     shown = objects if key is not None else objects[(page - 1) * OBJECT_PAGE:page * OBJECT_PAGE]
@@ -117,12 +118,12 @@ def read_derived(conn, user: dict | None, type_name, name, key=None, page=1) -> 
 # --- the skill folder ------------------------------------------------------------------------------------------------------------------------------------
 
 def _meaning_lines(t: dict) -> list[str]:
-    return [f'- {column}：' + '、'.join(f'{v} = {label}' for v, label in m['values'].items()) + f'（{m["confirmed_by"]} 确认于 {m["confirmed_on"]}）' for column, m in t['meanings'].items()]
+    return [f'- {column}：' + tr('、', ', ').join(f'{v} = {label}' for v, label in m['values'].items()) + f'（{m["confirmed_by"]} 确认于 {m["confirmed_on"]}）' for column, m in t['meanings'].items()]
 
 
 def _type_file(t: dict) -> str:
     props = [f'- {p["name"]}（{p["column"]}，{p["type"]}{"，代码列" if p["code"] else ""}）' for p in t['properties']]
-    return '\n'.join([f'# {t["name"]}（{t["id"]}）', '', t['description'] or '', '', f'来自数据集 {t["dataset"]}；主键 {"、".join(t["key"])}；{t["confirmed_by"]} 确认于 {t["confirmed_on"]}。', '',
+    return '\n'.join([f'# {t["name"]}（{t["id"]}）', '', t['description'] or '', '', f'来自数据集 {t["dataset"]}；主键 {tr("、", ", ").join(t["key"])}；{t["confirmed_by"]} 确认于 {t["confirmed_on"]}。', '',
                       '## 属性', *props, *(['', '## 代码的含义', *_meaning_lines(t)] if t['meanings'] else [])]).strip() + '\n'
 
 

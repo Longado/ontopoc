@@ -1,80 +1,90 @@
 // The words of the object type pages, as plain functions of what the service sends, so they can be tested without a browser.
 import { timeText } from "./format.js";
+import { t } from "./i18n/index.js";
+import { WORD_LIST, WORDS } from "./typeWords.js";
 
-export const STATE_LABEL = { proposed: "已提出", checked: "已检查", confirmed: "已确认", needs_look: "需再看", rejected: "已退回" };
+const STATES = ["proposed", "checked", "confirmed", "needs_look", "rejected"];
+/** The word of each state a definition can be in; read it as STATE_LABEL[state] (it follows the language). */
+export const STATE_LABEL = {};
+for (const k of STATES) Object.defineProperty(STATE_LABEL, k, { get: () => t(`types.state.${k}`), enumerable: true });
+
+export const joinList = (items) => items.join(t("types.sep"));
+export const capital = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** The state chip's word. A model's draft says so; a code column nobody gave meanings to has no state. */
 export function stateText(item) {
-  if (item.model_draft) return "模型草稿";
-  return item.state ? STATE_LABEL[item.state] : "还没有含义";
+  if (item.model_draft) return t("types.state.modelDraft");
+  return item.state ? STATE_LABEL[item.state] : t("types.state.none");
 }
 
-const versionsText = (on) => Object.entries(on ?? {}).map(([name, v]) => `${name} 第 ${v} 版`).join("、");
+const versionsText = (on) => joinList(Object.entries(on ?? {}).map(([name, version]) => t("types.line.versionOf", { name, version })));
 
-/** One sentence under the title: who stands behind it, or what it is waiting for. `noun` is what the item is ("这个对象类型", "这组含义"). */
+/** One sentence under the title: who stands behind it, or what it is waiting for. `noun` is what the item is ("This object type", "This set of meanings"). */
 export function stateLine(item, noun) {
-  const confirmed = item.confirmed_by ? `${item.confirmed_by} 于 ${timeText(item.confirmed_at)} 确认，依据 ${versionsText(item.confirmed_on)}` : "";
+  const confirmed = item.confirmed_by ? t("types.line.confirmed", { who: item.confirmed_by, time: timeText(item.confirmed_at), versions: versionsText(item.confirmed_on) }) : "";
   if (item.state === "confirmed") return confirmed;
-  if (item.state === "rejected") return `${item.proposed_by ? `${item.proposed_by} 提出的，` : ""}被退回了；改好重新保存，再由另一位确认`;
-  if (item.state === "needs_look") return confirmed ? `原来是 ${confirmed}；之后数据变了，要再看一次` : `${noun}需要再看一次`;
-  if (item.model_draft) return `模型写的草稿，还没有人看过，确认前问答和智能体不会用它`;
+  if (item.state === "rejected") return item.proposed_by ? t("types.line.rejectedBy", { who: item.proposed_by }) : t("types.line.rejected");
+  if (item.state === "needs_look") return confirmed ? t("types.line.needsLookWas", { confirmed }) : t("types.line.needsLook", { noun });
+  if (item.model_draft) return t("types.line.modelDraft");
   if (item.state === "proposed" || item.state === "checked") {
-    const by = item.proposed_by ? `${item.proposed_by} 提出，` : "";
-    return item.can_confirm ? `${by}等你或另一位建设者确认` : `${by}需要另一位建设者确认`;
+    const by = item.proposed_by ? t("types.line.proposedBy", { who: item.proposed_by }) : "";
+    return t(item.can_confirm ? "types.line.mayConfirm" : "types.line.needsConfirm", { by });
   }
   return "";
 }
 
 /** What a viewer reads of an object type whose data moved after it was confirmed: it is there, it waits for a second look. */
-export const reconfirmText = (names) => `数据更新了，正在等 ${names?.length ? names.join("、") : "有权限确认的人"} 再确认`;
+export const reconfirmText = (names) => t("types.line.reconfirm", { who: names?.length ? joinList(names) : t("types.line.reconfirmAnyone") });
 
 /** Who could confirm, when it is waiting for someone and the reader is not one of them. */
-export const confirmersText = (item) => (item.confirmers?.length && !item.can_confirm ? `可以确认的人：${item.confirmers.join("、")}` : "");
+export const confirmersText = (item) => (item.confirmers?.length && !item.can_confirm ? t("types.line.confirmers", { names: joinList(item.confirmers) }) : "");
 
 const DATASET_LINE = [
-  [/^import v(\d+)/, (m) => `上传了第 ${m[1]} 版`],
-  [/^v(\d+) is current again/, (m) => `第 ${m[1]} 版重新成为当前版本`],
-  [/^no change/, () => "上传了，内容没有变化"],
+  [/^import v(\d+)/, (m) => t("types.dataset.import", { version: m[1] })],
+  [/^v(\d+) is current again/, (m) => t("types.dataset.current", { version: m[1] })],
+  [/^no change/, () => t("types.dataset.nochange")],
 ];
+
+const WHAT = { pipeline: "pipeline", relation: "relation", view: "view", derived: "derived", action: "action" };
 
 /** One line of the log as a sentence: {who, text}. */
 export function logText(e) {
-  const what = e.element === "meaning" ? `“${e.column}”的含义` : e.element === "pipeline" ? "管道" : e.element === "relation" ? "关系" : e.element === "view" ? "视图" : e.element === "derived" ? "派生属性" : e.element === "action" ? "行为" : "对象类型";
+  const what = e.element === "meaning" ? t("types.what.meaning", { column: e.column }) : t(`types.what.${WHAT[e.element] ?? "type"}`);
   if (e.element === "dataset") {
     const hit = DATASET_LINE.map(([re, say]) => [re.exec(e.change), say]).find(([m]) => m);
     return { who: e.who, text: hit ? hit[1](hit[0]) : e.change };
   }
   if (e.change.startsWith("action_") || e.change === "row_rules_changed" || e.change === "column_access_changed" || e.change === "run" || e.change === "run_failed") return { who: e.who, text: e.text };   // the service writes these lines as sentences
-  if (e.change === "needs_look") return { who: "系统", text: `${what}需再看：${e.reason}${e.caused_by ? `（${e.caused_by} 的上传）` : ""}` };
-  if (e.change === "confirmed") return { who: e.who, text: `确认了${what}${e.self_confirmed ? "（自己提的；只有一位建设者，两人确认没有生效）" : ""}` };
-  if (e.change === "confirmed_together") return { who: e.who, text: e.text };   // the service writes it as a sentence: 和另外 3 项一起确认
-  if (e.change === "sent_back") return { who: e.who, text: `退回了${what}：${e.reason}` };
-  if (e.change === "access_changed") return { who: e.who, text: `改了可见范围：${e.visible_to === "everyone" ? "所有人" : e.visible_to?.length ? e.visible_to.join("、") : "只有管理员"}` };
-  if (e.change === "meanings_retired") return { who: e.who, text: `去掉了这些列的含义（${e.reason}）：${e.text}` };
-  if (e.change === "edited") return { who: e.who, text: `改了名称或说明：${e.text}` };
-  if (e.change === "checked" || e.change === "proposed") return { who: e.who, text: `提出了${what}` };
-  return { who: e.who, text: `${what}：${e.change}` };
+  if (e.change === "needs_look") return { who: t("types.log.system"), text: t("types.log.needsLook", { what, reason: e.reason, cause: e.caused_by ? t("types.log.cause", { who: e.caused_by }) : "" }) };
+  if (e.change === "confirmed") return { who: e.who, text: t("types.log.confirmed", { what, self: e.self_confirmed ? t("types.log.self") : "" }) };
+  if (e.change === "confirmed_together") return { who: e.who, text: e.text };   // the service writes it as a sentence: confirmed together with 3 others
+  if (e.change === "sent_back") return { who: e.who, text: t("types.log.sentBack", { what, reason: e.reason }) };
+  if (e.change === "access_changed") return { who: e.who, text: t("types.log.access", { to: e.visible_to === "everyone" ? t("types.log.everyone") : e.visible_to?.length ? joinList(e.visible_to) : t("types.admins") }) };
+  if (e.change === "meanings_retired") return { who: e.who, text: t("types.log.retired", { reason: e.reason, text: e.text }) };
+  if (e.change === "edited") return { who: e.who, text: t("types.log.edited", { text: e.text }) };
+  if (e.change === "checked" || e.change === "proposed") return { who: e.who, text: t("types.log.proposed", { what }) };
+  return { who: e.who, text: t("types.log.other", { what: capital(what), change: e.change }) };
 }
 
-/** A code cell on the objects tab: the value, and next to it what it means when that is confirmed, else why it is not shown as meaning. */
-/** Why a derived value is empty for someone a row rule limits: what it is worked out from lies outside the rows they may read (it is not 0). */
 /** The one line on a type's page for someone a row rule limits: their own rows of this type, and the other types whose rows a derived property of it is worked out over. "" when nothing limits them. */
 export function limitedNote(type) {
   const parts = [
-    ...(type.rows_limited ? [`只算你能看的 ${type.rows} 行`] : []),
-    ...(type.limited_reads ?? []).map((d) => `${d.name}只算你能看的${d.types.map((t) => `${t.name} ${t.rows} 行`).join("、")}`),
+    ...(type.rows_limited ? [t("types.limited.own", { rows: type.rows, count: type.rows })] : []),
+    ...(type.limited_reads ?? []).map((d) => t("types.limited.read", { name: d.name, types: joinList(d.types.map((x) => t("types.limited.type", { name: x.name, rows: x.rows, count: x.rows }))) })),
   ];
-  return parts.length ? `你受行规则限制：${parts.join("；")}` : "";
+  return parts.length ? t("types.limited.note", { parts: parts.join(t("types.semi")) }) : "";
 }
 
-export const OUTSIDE_NOTE = "不在你能看的行里";
+/** Why a derived value is empty for someone a row rule limits: what it is worked out from lies outside the rows they may read (it is not 0). */
+export const outsideNote = () => t("types.outside");
 
+/** A code cell on the objects tab: the value, and next to it what it means when that is confirmed, else why it is not shown as meaning. */
 export function codeCell(value, enumState) {
   if (value == null) return { value: "", note: "" };
   const label = enumState?.labels?.[value];
   if (enumState?.state === "confirmed" && label) return { value, note: label };
-  if (enumState?.state === "needs_look") return { value, note: "含义需再看" };
-  return { value, note: "含义未确认" };
+  if (enumState?.state === "needs_look") return { value, note: t("types.cell.needsLook") };
+  return { value, note: t("types.cell.unconfirmed") };
 }
 
 /** What a column of the dataset may be declared as, the first being what it is now. */
@@ -85,8 +95,8 @@ export const TYPE_CHOICES = {
 
 /** A key column the service would refuse, and why, before anything is sent; "" when it is fine. */
 export function keyProblem(column) {
-  if (column.type === "decimal") return `“${column.name}”是小数列，不能做主键`;
-  if (column.type === "boolean") return `“${column.name}”是是/否列，不能做主键`;
+  if (column.type === "decimal") return t("types.form.decimalKey", { name: column.name });
+  if (column.type === "boolean") return t("types.form.booleanKey", { name: column.name });
   return "";
 }
 
@@ -98,4 +108,43 @@ export function typePayload(form) {
     english_name: form.english.trim(), name: form.name.trim(), description: form.description.trim(), dataset: form.dataset, key: form.key,
     properties: columns.map((c) => ({ column: c.name, name: c.label.trim() || c.name, type: c.declared, enum: c.enum })), enums,
   };
+}
+
+/** The number on each tab of a type page: properties and objects are the type's own; derived, views and actions come from what uses it (0 when nothing does). Before that is read, only the type's own. */
+export function tabCounts(type, uses, live = {}) {   // `live`: a tab's own list, once read, is the one source of its number
+  const own = { props: type.properties?.length ?? 0, objects: type.rows ?? 0 };
+  if (!uses) return { ...own, ...live };
+  const of = (kind) => uses.used_by.find((u) => u.kind === kind)?.count ?? 0;
+  return { ...own, derived: of("derived"), views: of("views"), actions: of("actions"), ...live };
+}
+
+/** What uses a type, as one line: "Views 1 · Actions 3 · Relations 4"; "" when nothing uses the type. */
+export const usesSummary = (uses) => (uses?.used_by ?? []).map((u) => `${u.label} ${u.count}`).join(" · ");
+
+/** The grey line under a type's title: where it comes from and how many objects it has. `uploaded` ("3 days ago, Ann") is added when known. */
+export function typeSub(type, uploaded = "") {
+  const from = t("types.sub.from", { dataset: type.dataset, version: type.dataset_version }) + (uploaded ? t("types.sub.uploaded", { when: uploaded }) : " · ");
+  return `${from}${t(type.rows_limited ? "types.sub.limited" : "types.sub.objects", { count: type.rows })}`;
+}
+
+/** The head of a code column's meanings: how many values, how many have a meaning written. */
+export function meaningsSummary(meanings) {
+  const values = meanings.values ?? [];
+  if (!values.length) return t("types.meanings.none");
+  return t("types.meanings.summary", { values: values.length, written: values.filter((v) => (v.label ?? "").trim()).length });
+}
+
+/** An English name for an object type from its Chinese name: known words joined by underscores (售后工单 → after_sales_ticket), a name already in letters tidied up, and "" when a word is not known. */
+export function suggestEnglish(name) {
+  let rest = String(name ?? "").trim().replace(/\u8868$/, "");
+  if (!rest) return "";
+  if (/^[\x20-\x7e]+$/.test(rest)) return rest.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const out = [];
+  while (rest) {
+    const word = WORD_LIST.find((w) => rest.startsWith(w));
+    if (!word) return "";
+    out.push(WORDS[word]);
+    rest = rest.slice(word.length);
+  }
+  return out.join("_");
 }

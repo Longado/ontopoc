@@ -1,5 +1,6 @@
 import React from "react";
 import { getPipeline } from "./api.js";
+import { t } from "./i18n/index.js";
 import { PipelineBar } from "./PipelineBar.jsx";
 import { PipelineConfirm } from "./PipelineConfirm.jsx";
 import { PipelineEditor } from "./PipelineEditor.jsx";
@@ -14,13 +15,13 @@ export function PipelinePage({ route }) {
   if (!detail) {
     return (
       <main className="page">
-        <a className="back" href={hrefFor({ page: "pipelines" })}>管道</a>
-        {state.status === "loading" && <p className="muted">加载中</p>}
-        {state.status === "error" && <p className="error">{state.missing ? "没有这条管道" : state.error} <button className="plain" onClick={reload}>重试</button></p>}
+        <a className="back" href={hrefFor({ page: "pipelines" })}>{t("pipeline.page.back")}</a>
+        {state.status === "loading" && <p className="muted">{t("pipeline.loading")}</p>}
+        {state.status === "error" && <p className="error">{state.missing ? t("pipeline.page.missing") : state.error} <button className="plain" onClick={reload}>{t("pipeline.retry")}</button></p>}
       </main>
     );
   }
-  if (route.view === "edit") return <main className="pl-main"><PipelineEditor detail={detail} reload={reload} /></main>;
+  if (route.view === "edit") return <main className="pl-main pl-main-edit"><PipelineEditor detail={detail} reload={reload} /></main>;
   return (
     <main className="pl-main">
       <div className="pl">

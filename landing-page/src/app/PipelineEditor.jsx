@@ -1,16 +1,21 @@
-import React, { useEffect, useState } from "react";
-import { getDatasets, getPipelineOptions, pipelineSummary, previewNode, runPipeline, savePipeline } from "./api.js";
+import React, { useEffect, useRef, useState } from "react";
+import { getDatasets, getPipelineOptions, getPipelineRun, pipelineSummary, previewNode, runPipeline, savePipeline } from "./api.js";
 import { AiDraftPanel, RunDialog } from "./AiDraftPanel.jsx";
+import { takeDraft } from "./assistantModel.js";
+import { t } from "./i18n/index.js";
 import { PipelineBar } from "./PipelineBar.jsx";
 import { PipelineGraph } from "./PipelineGraph.jsx";
+import { KindChip, PIcon } from "./PipelineIcons.jsx";
 import { PipelinePanel } from "./PipelinePanel.jsx";
-import { KIND_LABEL, addStep, applyDraft, friendlyError, kindLine, newStep, orphans, sameSpec, stepTitle, withBranchNodes } from "./pipelineModel.js";
+import { KIND_LABEL, addStep, allIssues, dataInput, findSteps, inReadingOrder, linkSteps, unlinkSteps, updateStep, applyDraft, cardFlags, durationText, friendlyError, kindLine, newStep, orphans, removeStep, rowsText, runBlockReason, runResults, sameSpec, stepTitle, withBranchNodes } from "./pipelineModel.js";
+import { CHANGED_BY_OTHER } from "./pipelineServerText.js";
 import { hrefFor } from "./routeModel.js";
 import { StepEditor } from "./StepEditors.jsx";
 import { useSettled } from "./useSettled.js";
+import { usePopover } from "./ui/MoreMenu.jsx";
 
-const ADDABLE = ["input", "join", "transform", "llm", "union", "split", "output"];
-const LEAVE_ASK = "有改动还没保存，离开会丢掉这些改动。要离开吗？";
+const ADDABLE_GROUPS = [["input", ["input"]], ["transform", ["join", "transform", "union", "split"]], ["ai", ["llm"]], ["output", ["output"]]];
+const TOAST_MS = 5000;
 
 /** While there are unsaved changes: closing or reloading the tab asks, and so does following a link to another page of the app. (The browser's back button cannot be stopped from here.) */
 function useLeaveGuard(dirty) {
@@ -23,7 +28,7 @@ function useLeaveGuard(dirty) {
     const onClick = (e) => {
       const link = e.target instanceof Element ? e.target.closest("a[href]") : null;
       const to = link?.getAttribute("href");
-      if (to?.startsWith("#") && to !== window.location.hash && !window.confirm(LEAVE_ASK)) {
+      if (to?.startsWith("#") && to !== window.location.hash && !window.confirm(t("pipeline.editor.leaveAsk"))) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -37,9 +42,107 @@ function useLeaveGuard(dirty) {
   }, [dirty]);
 }
 
-/** The editing page: steps on the left, the graph in the middle, the selected step's editor on the right, rows / columns / statistics / log below. Nothing is saved until 保存. */
+/** While the editor is open the app's navigation folds to its icons (CSS: body.pl-editing), so that the canvas gets the width. */
+function useFullBleed() {
+  useEffect(() => {
+    document.body.classList.add("pl-editing");
+    return () => document.body.classList.remove("pl-editing");
+  }, []);
+}
+
+/** "Add step": the kinds of step, grouped, in a menu over the canvas. */
+function AddStep({ onAdd }) {
+  const [open, setOpen, ref] = usePopover();
+  return (
+    <span className="menu-wrap" ref={ref}>
+      <button type="button" className="pl-tool primary-soft" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><PIcon name="plus" /> {t("pipeline.editor.addStep")}</button>
+      {open && (
+        <div className="menu pl-add-menu" role="menu">
+          {ADDABLE_GROUPS.map(([group, kinds]) => (
+            <div key={group} className="pl-add-group">
+              <p className="menu-label">{t(`pipeline.editor.group.${group}`)}</p>
+              {kinds.map((k) => (
+                <button key={k} type="button" role="menuitem" className="menu-item" onClick={() => { setOpen(false); onAdd(k); }}><KindChip step={{ type: k }} /> {KIND_LABEL[k]}</button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** "Add data" (DIP's 添加数据): the workspace's datasets, each put on the canvas as an input step that already reads it; a filter once the list is long;
+ * at the bottom, an empty input to choose later. */
+function AddData({ datasets, onPick }) {
+  const [open, setOpen, ref] = usePopover();
+  const [q, setQ] = useState("");
+  const names = datasets.map((d) => d.name).filter((n) => n.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <span className="menu-wrap" ref={ref}>
+      <button type="button" className="pl-tool" aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(!open); setQ(""); }}><PIcon name="input" /> {t("pipeline.editor.addData")} <PIcon name="chevronDown" size={12} /></button>
+      {open && (
+        <div className="menu pl-add-menu pl-data-menu" role="menu">
+          {datasets.length > 6 && <input className="pl-data-filter" autoFocus type="search" value={q} placeholder={t("pipeline.editor.addDataFind")} onChange={(e) => setQ(e.target.value)} />}
+          {!datasets.length && <p className="menu-label">{t("pipeline.editor.addDataNone")}</p>}
+          <div className="pl-data-list">
+            {names.map((n) => <button key={n} type="button" role="menuitem" className="menu-item" onClick={() => { setOpen(false); onPick(n); }}><KindChip step={{ type: "input" }} /> {n}</button>)}
+          </div>
+          <button type="button" role="menuitem" className="menu-item muted" onClick={() => { setOpen(false); onPick(""); }}>{t("pipeline.editor.addDataEmpty")}</button>
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** The canvas search: type part of a step's name, kind or dataset; the matches drop down and a click (or Enter) selects the step, which the graph brings into view. */
+function StepSearch({ steps, onPick }) {
+  const [q, setQ] = useState("");
+  const hits = findSteps(steps, q).slice(0, 8);
+  const pick = (id) => { onPick(id); setQ(""); };
+  return (
+    <span className="menu-wrap pl-search">
+      <PIcon name="search" size={14} />
+      <input type="search" value={q} placeholder={t("pipeline.editor.search")} aria-label={t("pipeline.editor.search")} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && hits[0]) pick(hits[0].id); if (e.key === "Escape") setQ(""); }} />
+      {q.trim() && (
+        <div className="menu pl-search-menu" role="listbox">
+          {hits.length ? hits.map((s) => <button key={s.id} type="button" role="option" aria-selected="false" className="menu-item" onClick={() => pick(s.id)}><KindChip step={s} /> {stepTitle(s, steps)}</button>)
+            : <p className="menu-label">{t("pipeline.editor.searchNone")}</p>}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** The result of a run, as a toast at the bottom of the page: one sentence, a link to the record, a close button. A success goes away by itself; a failure stays until closed. */
+function RunToast({ name, run, onClose }) {
+  const failed = run.status === "failed";
+  useEffect(() => {
+    if (failed) return undefined;
+    const timer = setTimeout(onClose, TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [run.id, failed]);
+  return (
+    <div className={`pl-toast${failed ? " failed" : ""}`} role={failed ? "alert" : "status"}>
+      <PIcon name={failed ? "alert" : "success"} size={18} />
+      <div className="pl-toast-body">
+        <strong>{t(failed ? "pipeline.editor.toast.failed" : "pipeline.editor.toast.ok", { id: run.id })}</strong>
+        <span>{t("pipeline.editor.toast.took", { time: durationText(run.duration_ms) })}</span>
+        {run.outputs.map((o) => <span key={o.dataset}>{t("pipeline.editor.toast.wrote", { rows: rowsText(o.rows), version: o.version })} <a href={hrefFor({ page: "dataset", name: o.dataset, tab: "fields" })}>{o.dataset}</a></span>)}
+      </div>
+      <a className="pl-toast-link" href={hrefFor({ page: "pipeline", name, view: "run", run: run.id })}>{t("pipeline.editor.toast.view")}</a>
+      <button type="button" className="icon-btn" onClick={onClose} aria-label={t("pipeline.editor.toast.close")}><PIcon name="close" /></button>
+    </div>
+  );
+}
+
+/** The editing page: the graph fills the page, the steps can open as a list on the left, the selected step's editor sits on the right, and rows / columns / statistics / log in a drawer below.
+ * Nothing is saved until Save. */
 export function PipelineEditor({ detail, reload }) {
+  useFullBleed();
   const name = detail.name;
+  const handed = useRef(undefined);
+  const fromAssistant = useRef(false);
   const [draft, setDraft] = useState(detail.spec);
   const [selected, setSelected] = useState(detail.spec.steps[detail.spec.steps.length - 1]?.id ?? null);
   const [tab, setTab] = useState("rows");
@@ -51,15 +154,35 @@ export function PipelineEditor({ detail, reload }) {
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [stepsOpen, setStepsOpen] = useState(false);   // the list repeats the graph, so the graph gets the width until the person asks for the list
+  const [size, setSize] = useState("normal");
+  const [attempted, setAttempted] = useState(false);   // a step that is not set up is grey "Unconfigured" until the person saves or runs
+  const [ran, setRan] = useState(null);   // the run that just finished, as its record: the numbers on the cards
+  const [toast, setToast] = useState(null);   // the same run, as the message at the bottom
   useEffect(() => {
     setDraft(detail.spec);
   }, [detail.version]);
+  useEffect(() => {
+    // steps the assistant handed over wait in this tab until the editor opens: they are applied the way the AI panel's Apply does, as an unsaved draft
+    if (handed.current === undefined) handed.current = takeDraft(window.sessionStorage, name);   // taken once, even if the effects run twice (development)
+    const steps = handed.current;
+    if (!steps) return;
+    setDraft(applyDraft(detail.spec, steps));
+    fromAssistant.current = true;   // saving this draft marks the pipeline "drafted by the assistant"
+    setSelected(steps[0].id);
+    setUpto(null);
+  }, []);
   useEffect(() => {
     getDatasets().then(setDatasets, () => {});
     getPipelineOptions().then(setOptions, () => {});
   }, []);
   const dirty = !sameSpec(draft, detail.spec);
   useLeaveGuard(dirty);
+  useEffect(() => {
+    if (dirty) setRan(null);   // the numbers on the cards belong to the definition that ran
+  }, [dirty]);
+  const issues = allIssues(draft.steps);
+  const todoCount = Object.values(issues).reduce((n, list) => n + list.length, 0);
   const step = draft.steps.find((s) => s.id === selected) ?? null;
   const summary = useSettled(() => pipelineSummary(name, draft), JSON.stringify(draft));
   const nodes = withBranchNodes(Object.fromEntries((summary.data?.nodes ?? []).map((n) => [n.id, n])), draft.steps);   // a step that reads a branch sees its columns
@@ -68,10 +191,12 @@ export function PipelineEditor({ detail, reload }) {
   const hasAi = draft.steps.some((s) => s.type === "llm");
 
   const save = async () => {
+    setAttempted(true);
     setSaving(true);
     setError("");
     try {
-      await savePipeline(name, detail.version, draft);
+      await savePipeline(name, detail.version, draft, fromAssistant.current);
+      fromAssistant.current = false;
       reload();
     } catch (e) {
       setError(e.message);
@@ -79,15 +204,26 @@ export function PipelineEditor({ detail, reload }) {
     setSaving(false);
   };
   const run = async () => {
+    setAttempted(true);
     setRunning(true);
     setError("");
     try {
       const made = await runPipeline(name);
-      window.location.hash = hrefFor({ page: "pipeline", name, view: "run", run: made.id });
+      const record = await getPipelineRun(name, made.id);   // stay on the graph: the run's rows are drawn on its cards
+      setRan(record);
+      setToast(record);
+      reload();
     } catch (e) {
       setError(e.message);
-      setRunning(false);
     }
+    setRunning(false);
+  };
+  const exportSpec = () => {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" }));
+    link.download = `${name}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
   const add = (kind) => {
     const made = newStep(draft.steps, kind, selected, datasets.map((d) => d.name), options?.model ?? "");
@@ -95,49 +231,131 @@ export function PipelineEditor({ detail, reload }) {
     setSelected(made.id);
     setUpto(null);
   };
+  const addData = (dataset) => {
+    if (!dataset) return add("input");
+    const made = dataInput(draft.steps, dataset);
+    setDraft(addStep(draft, made));
+    setSelected(made.id);
+    setUpto(null);
+  };
+  const [relayout, setRelayout] = useState(0);
   const select = (id) => {
     setSelected(id);
     setUpto(null);
   };
+  const link = (from, to, slot) => {
+    const made = linkSteps(draft.steps, from, to, slot);
+    if (made.error) return made.error;
+    const next = updateStep(draft, made.id, made.patch);
+    setDraft({ ...next, steps: inReadingOrder(next.steps) });
+    setSelected(made.id);
+    setUpto(null);
+    return null;
+  };
+  const unlink = (from, to) => {
+    const made = unlinkSteps(draft.steps, from, to);
+    if (!made) return;
+    setDraft(updateStep(draft, made.id, made.patch));
+    setSelected(made.id);
+    setUpto(null);
+  };
   const lost = new Set(orphans(draft.steps));
+  const reason = runBlockReason({ dirty, hasOutput, todo: todoCount, running });
+  const results = runResults(ran);
+  const titleOfStep = (id) => { const x = draft.steps.find((s) => s.id === id); return x ? stepTitle(x, draft.steps) : id; };
+  const firstTodo = Object.entries(issues).flatMap(([id, list]) => list.map((l) => (/[:\uff1a]/.test(l) || /^[(\uff08]/.test(titleOfStep(id)) ? l : t("pipeline.editor.todoLine", { title: titleOfStep(id), issue: l }))))[0];
+  const problem = summary.status === "ready" && summary.data.error ? summary.data.error : summary.status === "error" ? summary.error : "";
+  const quiet = Boolean(problem) && todoCount > 0 && !attempted;   // the engine objects to something the person has not set up yet: grey, not red
+  const flags = step ? cardFlags(nodes[step.id]).filter((f) => f.level !== "note") : [];
+  const readers = step ? removeStep(draft, step.id).blocked : [];
   return (
-    <div className="pl">
-      <PipelineBar detail={detail} view="edit">
-        <span className={`saved${dirty ? " unsaved" : ""}`}>{dirty ? "有改动还没保存" : `已保存，第 ${detail.definition_version} 版`}</span>
-        <button className="secondary" onClick={() => setAsking(true)} disabled={!options?.model_ready} title={options && !options.model_ready ? "本机服务没有模型凭据" : "用一句话让 AI 写几个步骤"}>AI</button>
-        <button className="secondary" onClick={save} disabled={!dirty || saving}>{saving ? "保存中" : "保存"}</button>
-        <button className="primary" onClick={() => (hasAi ? setConfirmRun(true) : run())} disabled={dirty || running || !hasOutput} title={dirty ? "先保存" : !hasOutput ? "要有一个输出才能运行" : ""}>{running ? "运行中" : "运行"}</button>
-      </PipelineBar>
-      {error && <p className="error pl-error">{friendlyError(error, draft.steps)} {error.includes("被改了") && <button className="plain" onClick={reload}>重新载入</button>}</p>}
-      {summary.status === "error" && <p className="error pl-error">{friendlyError(summary.error, draft.steps)}</p>}
-      {summary.status === "ready" && summary.data.error && <p className="error pl-error">{friendlyError(summary.data.error, draft.steps)}（图里只算到这一步之前）</p>}
-      <div className="pl-grid">
-        <aside className="pl-steps" aria-label="步骤">
+    <div className="pl pl-edit">
+      <PipelineBar detail={detail} view="edit"
+        meta={<span className={`pl-saved${dirty ? " unsaved" : ""}`}><i aria-hidden="true" />{dirty ? t("pipeline.editor.unsaved") : t("pipeline.editor.saved", { version: detail.definition_version })}</span>}
+        actions={(
+          <>
+            <button type="button" className="secondary pl-btn" onClick={() => setAsking(true)} disabled={!options?.model_ready} title={options && !options.model_ready ? t("pipeline.editor.aiNoModel") : t("pipeline.editor.aiHint")}><PIcon name="sparkle" /> {t("pipeline.editor.ai")}</button>
+            <button type="button" className="secondary pl-btn" onClick={save} disabled={!dirty || saving}>{saving ? t("pipeline.editor.saving") : t("pipeline.editor.save")}</button>
+            <span className="run-wrap" title={reason || t("pipeline.editor.runHint")}>
+              <button type="button" className="primary pl-btn" onClick={() => (hasAi ? setConfirmRun(true) : run())} disabled={Boolean(reason)}><PIcon name="play" size={14} /> {running ? t("pipeline.editor.running") : t("pipeline.editor.run")}</button>
+            </span>
+          </>
+        )}
+        more={[{ label: t("pipeline.editor.export"), onClick: exportSpec }, ...(dirty ? [{ label: t("pipeline.editor.discard"), danger: true, confirmText: t("pipeline.editor.discardAsk"), onClick: () => { setDraft(detail.spec); setAttempted(false); } }] : [])]} />
+      <div className={`pl-work${stepsOpen ? " with-steps" : ""}${step ? " with-config" : ""} size-${size}`}>
+        <aside className="pl-steps" aria-label={t("pipeline.editor.stepsAria")}>
+          <div className="pl-side-head"><h2>{t("pipeline.editor.steps")}</h2><span className="pl-count">{draft.steps.length}</span></div>
           <ol>
             {draft.steps.map((s) => (
               <li key={s.id}>
-                <button className={`step-item${selected === s.id ? " on" : ""}`} onClick={() => select(s.id)} aria-current={selected === s.id ? "true" : undefined}>
-                  <span className="step-kind">{kindLine(s)}{lost.has(s.id) && "，不会运行"}</span>
-                  <span className="step-title">{stepTitle(s, draft.steps)}</span>
+                <button type="button" className={`step-item${selected === s.id ? " on" : ""}`} onClick={() => select(s.id)} aria-current={selected === s.id ? "true" : undefined}>
+                  <KindChip step={s} />
+                  <span className="step-text">
+                    <span className="step-title">{stepTitle(s, draft.steps)}</span>
+                    <span className="step-kind">{kindLine(s)}{lost.has(s.id) && ` · ${t("pipeline.graph.wontRun")}`}</span>
+                  </span>
+                  {issues[s.id] && <span className="pl-badge neutral">{t("pipeline.graph.unconfigured")}</span>}
                 </button>
               </li>
             ))}
           </ol>
-          <div className="step-add">
-            <p className="caption">加一步</p>
-            {ADDABLE.map((k) => <button key={k} className="plain" onClick={() => add(k)}>{KIND_LABEL[k]}</button>)}
-          </div>
         </aside>
-        <section className="pl-graph" aria-label="管道图">
-          <PipelineGraph steps={draft.steps} nodes={nodes} selected={selected} onSelect={select} />
-        </section>
-        <section className="pl-editor" aria-label="编辑这一步">
-          <StepEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} datasets={datasets} name={name} catalog={options?.operators ?? []} options={options} dirty={dirty} onPreviewTo={(i) => { setUpto(i); setTab("rows"); }} onRemoved={() => setSelected(null)} />
-        </section>
-        <section className="pl-bottom" aria-label="这一步的内容">
-          <PipelinePanel tab={tab} setTab={setTab} preview={preview} upto={upto} onClearUpto={() => setUpto(null)} name={name} step={step} steps={draft.steps} node={step ? nodes[step.id] : null} />
-        </section>
+        <div className="pl-center">
+          <section className="pl-graph" aria-label={t("pipeline.editor.graphAria")}>
+            <div className="pl-tools">
+              <button type="button" className="pl-tool" aria-pressed={stepsOpen} onClick={() => setStepsOpen(!stepsOpen)}><PIcon name="steps" /> {t("pipeline.editor.steps")}</button>
+              <span className="pl-tool-sep" aria-hidden="true" />
+              <AddData datasets={datasets} onPick={addData} />
+              <span className="pl-quick" role="group" aria-label={t("pipeline.editor.addStep")}>
+                {["transform", "join", "union", "split", "llm", "output"].map((k) => (
+                  <button key={k} type="button" className="pl-tool icon" title={t("pipeline.editor.addKind", { kind: KIND_LABEL[k] })} aria-label={t("pipeline.editor.addKind", { kind: KIND_LABEL[k] })} onClick={() => add(k)}><KindChip step={{ type: k }} /></button>
+                ))}
+              </span>
+              <AddStep onAdd={add} />
+              <span className="pl-tool-sep" aria-hidden="true" />
+              <button type="button" className="pl-tool icon" disabled={!step || readers.length > 0} title={!step ? t("pipeline.editor.deletePick") : readers.length ? t("steps.edit.readers.blocked", { names: readers.join(", ") }) : t("pipeline.editor.delete")} aria-label={t("pipeline.editor.delete")} onClick={() => { setDraft(removeStep(draft, step.id).spec); setSelected(null); }}><PIcon name="trash" /></button>
+              <button type="button" className="pl-tool icon" title={t("pipeline.editor.autoLayout")} aria-label={t("pipeline.editor.autoLayout")} onClick={() => setRelayout((n) => n + 1)}><PIcon name="layout" /></button>
+              {todoCount > 0 && <span className="pl-tool-note">{t("pipeline.editor.todoCount", { count: todoCount })}</span>}
+              {!step && draft.steps.length > 0 && <span className="pl-tool-note">{t("pipeline.panel.pick")}</span>}
+              <StepSearch steps={draft.steps} onPick={select} />
+            </div>
+            <div className="pl-notices">
+              {error && <p className="pl-note bad" role="alert"><PIcon name="alert" size={14} /><span>{friendlyError(error, draft.steps)} {error.includes(CHANGED_BY_OTHER) && <button type="button" className="plain" onClick={reload}>{t("pipeline.editor.reload")}</button>}</span></p>}
+              {problem && (quiet
+                ? <p className="pl-note neutral"><PIcon name="info" size={14} /><span><strong>{t("pipeline.graph.unconfigured")}.</strong> {t("pipeline.editor.quiet", { first: firstTodo })}</span></p>
+                : <p className="pl-note bad" role="alert"><PIcon name="alert" size={14} /><span>{friendlyError(problem, draft.steps)}{summary.status === "ready" ? ` ${t("pipeline.editor.laterBlocked")}` : ""}</span></p>)}
+            </div>
+            <PipelineGraph steps={draft.steps} nodes={nodes} selected={selected} onSelect={select} issues={issues} results={results} place={name} relayout={relayout} onLink={link} onUnlink={unlink} />
+          </section>
+          {step && (
+            <section className="pl-bottom" aria-label={t("pipeline.editor.bottomAria")}>
+              <PipelinePanel tab={tab} setTab={setTab} preview={preview} upto={upto} onClearUpto={() => setUpto(null)} name={name} step={step} steps={draft.steps} node={nodes[step.id]} todo={issues[step.id] ?? []} size={size} setSize={setSize} />
+            </section>
+          )}
+        </div>
+        {step && (
+          <aside className="pl-config" aria-label={t("pipeline.editor.configAria")}>
+            <header className="pl-config-head">
+              <KindChip step={step} size={28} />
+              <div className="pl-config-title">
+                <h2 title={stepTitle(step, draft.steps)}>{stepTitle(step, draft.steps)}</h2>
+                <p>{step.type === "join" ? kindLine(step) : KIND_LABEL[step.type]}</p>
+              </div>
+              <button type="button" className="icon-btn" onClick={() => setSelected(null)} aria-label={t("pipeline.editor.closePanel")} title={t("pipeline.editor.closePanel")}><PIcon name="close" /></button>
+            </header>
+            <div className="pl-config-body">
+              {issues[step.id] && <p className="pl-note neutral"><PIcon name="info" size={14} /><span><strong>{t("pipeline.graph.unconfigured")}.</strong> {issues[step.id].join("; ")}</span></p>}
+              {flags.map((f) => <p key={f.text} className={`pl-note ${f.level === "bad" ? "bad" : "warn"}`}><PIcon name="alert" size={14} /><span>{f.text}</span></p>)}
+              <StepEditor step={step} draft={draft} setDraft={setDraft} nodes={nodes} datasets={datasets} name={name} catalog={options?.operators ?? []} options={options} dirty={dirty} onPreviewTo={(i) => { setUpto(i); setTab("rows"); }} />
+            </div>
+            <footer className="pl-config-foot">
+              <span className={`pl-foot-note${dirty ? " unsaved" : ""}`}><i aria-hidden="true" />{dirty ? t("pipeline.editor.footUnsaved") : t("pipeline.editor.footSaved")}</span>
+              <button type="button" className="secondary danger-text" disabled={readers.length > 0} title={readers.length ? t("steps.edit.readers.blocked", { names: readers.join(", ") }) : ""} onClick={() => { setDraft(removeStep(draft, step.id).spec); setSelected(null); }}><PIcon name="trash" /> {t("steps.edit.removeStep")}</button>
+            </footer>
+          </aside>
+        )}
       </div>
+      {toast && <RunToast name={name} run={toast} onClose={() => setToast(null)} />}
       {asking && (
         <AiDraftPanel name={name} spec={draft} selected={selected} onClose={() => setAsking(false)}
           onApply={(steps) => { setDraft(applyDraft(draft, steps)); setSelected(steps[0].id); setUpto(null); }} />

@@ -1,52 +1,60 @@
-import React, { useState } from "react";
-import { askQuestion, getAnswer, getAsk, runQuery } from "./api.js";
+import React, { useEffect, useRef, useState } from "react";
+import { aiDraft, askQuestion, getAnswer, getAsk, getDatasets, getModelReady, getPipeline, getPipelines, getType, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
-import { canBuild } from "./authModel.js";
+import { canBuild, isAdmin } from "./authModel.js";
+import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, loadThread, modesFor, nextVersion, parseCommand, privacyKey, proposePayload, saveThread, scopeKind, stashDraft } from "./assistantModel.js";
+import { NoModel, PlanCard, ProposalCard } from "./AssistantCards.jsx";
 import { timeText } from "./format.js";
-import { answerView, definitionHref, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, staleHeading, staleLines, standingText, statusText } from "./qaModel.js";
+import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
+import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
+import { formatDate, useT } from "./i18n/index.js";
+import { hrefFor } from "./routeModel.js";
+import { Icon } from "./ui/Icon.jsx";
 import { useLoad } from "./useLoad.js";
 
-const KIND = { type: "对象类型", meaning: "含义", relation: "关系", view: "视图", derived: "派生属性" };
+const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived" };
 
 /** The definitions a refusal names, bottom of the chain first: what it is, where it stands and why, who could confirm it. */
 function Named({ list, mayBuild }) {
+  const t = useT();
   return (
     <ul className="named">
       {list.map((d) => (
         <li key={d.id}>
           <p>
-            <span className="muted">{KIND[d.kind]}</span> <a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} />
+            <span className="muted">{t(KIND[d.kind])}</span> <a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} />
           </p>
           <p className="muted">{standingText(d)}</p>
-          {d.who_can_confirm?.length > 0 && <p className="muted small">可以确认的人：{d.who_can_confirm.join("、")}</p>}
+          {d.who_can_confirm?.length > 0 && <p className="muted small">{t("ask.named.confirmers", { names: d.who_can_confirm.join(t("ask.sep")) })}</p>}
         </li>
       ))}
-      {mayBuild && list.some((d) => d.state !== "confirmed") && <li><a href="#/confirm">去待确认</a></li>}
+      {mayBuild && list.some((d) => d.state !== "confirmed") && <li><a href="#/confirm">{t("ask.named.toConfirm")}</a></li>}
     </ul>
   );
 }
 
 function Refusal({ record, mayBuild }) {
+  const t = useT();
   const r = record.refusal;
   return (
     <div className="refusal-card">
-      <h2 className="section">没有回答</h2>
+      <h2 className="section">{t("ask.refusal.title")}</h2>
       {r?.kind === "unsettled" && (
         <>
-          <p>问题用到的定义还不能用，没有照旧的定义回答。</p>
+          <p>{t("ask.refusal.unsettled")}</p>
           <Named list={r.definitions} mayBuild={mayBuild} />
         </>
       )}
       {r?.kind === "not_in_scope" && (
         <>
-          {r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") && <p>有已确认的关系问答用不上（原因在下面），模型看不到它，所以下面说“没有关系”。</p>}
+          {r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") && <p>{t("ask.refusal.relationLeftOut")}</p>}
           <p className={r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") ? "muted" : undefined}>{record.reason}</p>
-          <p className="muted">你能问的是 {r.in_scope.length ? r.in_scope.join("、") : "（还没有已确认的对象类型）"}，回答它需要的东西不在里面。</p>
+          <p className="muted">{t("ask.refusal.inScope", { list: r.in_scope.length ? r.in_scope.join(t("ask.sep")) : t("ask.refusal.noTypes") })}</p>
           {r.left_out?.length > 0 && (
             <>
-              <p className="muted" style={{ marginTop: 12 }}>这些还不在范围里：</p>
+              <p className="muted refusal-sub">{t("ask.refusal.leftOut")}</p>
               <Named list={r.left_out} mayBuild={mayBuild} />
             </>
           )}
@@ -66,13 +74,14 @@ function Refusal({ record, mayBuild }) {
 }
 
 export function Answer({ record }) {
+  const t = useT();
   const view = answerView(record);
   const notes = staleLines(record);
   const then = isThenAnswer(record);
   return (
     <div className={then ? "answer then" : "answer"}>
       {then && <p className="warn">{staleHeading(record)}</p>}
-      <div className="big">{then && <span className="small muted">当时的答案 </span>}{view.big}</div>
+      <div className="big">{then && <span className="small muted">{t("ask.answer.then")} </span>}{view.big}</div>
       {view.note && <p className="muted">{view.note}</p>}
       {view.graph && <ObjectGraph graph={view.graph} />}
       {view.table && (
@@ -81,64 +90,65 @@ export function Answer({ record }) {
             <thead><tr>{view.table.head.map((h, i) => <th key={h} className={i ? "num" : ""}>{h}</th>)}</tr></thead>
             <tbody>{view.table.rows.map((row, i) => <tr key={i}>{row.map((v, j) => <td key={j} className={j ? "num" : ""}>{v}</td>)}</tr>)}</tbody>
           </table>
-          {view.table.total > view.table.rows.length && <p className="muted small">只显示前 {view.table.rows.length} 组，共 {view.table.total} 组</p>}
+          {view.table.total > view.table.rows.length && <p className="muted small table-note">{t("ask.answer.shown", { shown: view.table.rows.length, total: view.table.total })}</p>}
         </div>
       )}
       {rangeNotes(record).map((n) => <p className="warn" key={n}>{n}</p>)}
-      {notes.length > 0 && <p className="warn">{then ? "" : `${staleHeading(record)}：`}{notes.join("；")}</p>}
+      {notes.length > 0 && <p className="warn">{then ? notes.join(t("ask.stale.sep")) : t("ask.stale.withHeading", { heading: staleHeading(record), notes: notes.join(t("ask.stale.sep")) })}</p>}
     </div>
   );
 }
 
 /** How the question was read, what it stood on, what it read, and the steps: under every answer and every refusal. */
 export function Basis({ record, onEdit }) {
+  const t = useT();
   const read = readText(record.datasets);
   return (
     <>
       <dl className="defs">
         {record.query_text && (
           <>
-            <dt>写成查询</dt>
+            <dt>{t("ask.basis.query")}</dt>
             <dd>
               <pre className="query-text">{record.query_text}</pre>
-              {onEdit && <button className="plain" onClick={() => onEdit(record.query_text)}>改成查询</button>}
+              {onEdit && <button className="plain" onClick={() => onEdit(record.query_text)}>{t("ask.basis.edit")}</button>}
             </dd>
           </>
         )}
         {record.reasoning && (
           <>
-            <dt>理解为</dt>
+            <dt>{t("ask.basis.understood")}</dt>
             <dd>
               {record.reasoning}
               {record.path && <span className="muted"> {record.path}</span>}
-              {record.understood?.map((u) => <span className="muted small block" key={u.definition}>{u.definition}：{u.how}</span>)}
+              {record.understood?.map((u) => <span className="muted small block" key={u.definition}>{t("ask.basis.understoodLine", { definition: u.definition, how: u.how })}</span>)}
             </dd>
           </>
         )}
         {record.definitions.length > 0 && (
           <>
-            <dt>用到的定义</dt>
+            <dt>{t("ask.basis.definitions")}</dt>
             <dd>
               {record.definitions.map((d) => (
                 <span className="block" key={d.id}>
-                  {KIND[d.kind]} <a href={definitionHref(d.id, d.type)}>{d.name}</a> <span className="muted">{d.confirmed_by ? `${d.confirmed_by} 于 ${timeText(d.confirmed_at)} 确认` : ""}</span>
+                  {t(KIND[d.kind])} <a href={definitionHref(d.id, d.type)}>{d.name}</a> <span className="muted">{d.confirmed_by ? t("ask.basis.confirmedBy", { by: d.confirmed_by, when: timeText(d.confirmed_at) }) : ""}</span>
                   {d.says && <span className="muted small block">{d.says}</span>}
                 </span>
               ))}
             </dd>
           </>
         )}
-        {read.length > 0 && <><dt>读取的数据</dt><dd>{read.map((t) => <span className="block" key={t}>{t}</span>)}</dd></>}
+        {read.length > 0 && <><dt>{t("ask.basis.read")}</dt><dd>{read.map((line) => <span className="block" key={line}>{line}</span>)}</dd></>}
         {record.limited_by_rule?.length > 0 && (
           <>
-            <dt>只算了你看得到的行</dt>
-            <dd>{record.limited_by_rule.map((l) => <span className="block" key={l.type}>{l.name}：行规则限制了行（{l.rule}），数是按这些行算的</span>)}</dd>
+            <dt>{t("ask.basis.limited")}</dt>
+            <dd>{record.limited_by_rule.map((l) => <span className="block" key={l.type}>{t("ask.basis.limitedLine", { name: l.name, rule: l.rule })}</span>)}</dd>
           </>
         )}
       </dl>
       {record.steps.length > 0 && (
         <details className="trace">
-          <summary>查看步骤</summary>
+          <summary>{t("ask.basis.steps")}</summary>
           <ol>
             {record.steps.map((s, i) => (
               <li key={i} className={s.failed ? "warn" : ""}>
@@ -153,149 +163,583 @@ export function Basis({ record, onEdit }) {
   );
 }
 
-function Saved({ id, mayBuild, onEdit }) {
-  const [state] = useLoad(() => getAnswer(id), [id]);
-  const r = state.data;
-  if (state.status === "error") return <p className="error">{state.missing ? "没有这条问题" : state.error}</p>;
-  if (!r) return <p className="muted">加载中</p>;
+/** An answer as a message: the figure or table first, the time-word warning when the question's time was not used, one caliber line, and the technical basis folded. */
+function AnswerCard({ record, mayBuild, onEdit }) {
+  const t = useT();
+  const warning = isAnswer(record) ? timeWarning(record) : null;
+  const line = isAnswer(record) ? criteriaLine(record, record.asked_at ? timeText(record.asked_at) : "") : "";
   return (
-    <section className="turn">
-      <h2 className="question">{r.question}</h2>
-      <p className="muted small">{timeText(r.asked_at)}</p>
-      {r.withheld ? <p className="warn">{r.reason}</p> : (
+    <section className="qa-card">
+      {record.withheld ? <p className="warn">{record.reason}</p> : (
         <>
-          {isAnswer(r) ? <Answer record={r} /> : <Refusal record={r} mayBuild={mayBuild} />}
-          <Basis record={r} onEdit={onEdit} />
+          {isAnswer(record) ? <Answer record={record} /> : <Refusal record={record} mayBuild={mayBuild} />}
+          {warning && <p className="time-warn" role="alert">{warning}</p>}
+          {line && <p className="criteria">{line}</p>}
+          <details className="basis">
+            <summary>{t("ask.card.basis")}</summary>
+            <Basis record={record} onEdit={onEdit} />
+          </details>
+          {record.asked_at && <p className="muted small qa-when">{timeText(record.asked_at)}</p>}
         </>
       )}
     </section>
   );
 }
 
-/** The query box: OntoPoc Query run as this person, by the same engine as a question, with no model; nothing is kept. */
-function QueryBox({ scope, text, setText, mayBuild }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState(null);
-  const [values, setValues] = useState({});
-  const names = paramsIn(text);
-  const run = async (e) => {
-    e.preventDefault();
-    if (!text.trim() || busy) return;
-    setBusy(true);
-    setError("");
-    setResult(null);
-    try {
-      setResult(queryRecord(await runQuery(text, queryParams(text, values))));
-    } catch (err) {
-      setError(err.message);
-    }
-    setBusy(false);
-  };
+/** The person's side of a turn: a plain bubble, the query in monospace. */
+function UserBubble({ text, query, mode }) {
+  const t = useT();
+  const tag = query ? t("ask.chat.queryTurn") : mode === "model" || mode === "pipeline" ? t(`ask.assistant.turn.${mode}`) : "";
+  return (
+    <div className="msg msg-user">
+      <div className={query ? "bubble bubble-query" : "bubble"}>
+        {tag && <span className="bubble-tag">{tag}</span>}
+        {query ? <pre>{text}</pre> : text}
+      </div>
+    </div>
+  );
+}
+
+/** The assistant's side of a turn: the OntoPoc mark, then what it says. */
+function AssistantMsg({ children, label }) {
+  const t = useT();
+  return (
+    <div className="msg msg-bot">
+      <span className="bot-mark" aria-hidden="true" />
+      <div className="bot-body" aria-label={label ?? t("ask.chat.assistant")}>{children}</div>
+    </div>
+  );
+}
+
+function Thinking({ query, mode }) {
+  const t = useT();
+  return (
+    <AssistantMsg>
+      <div className="thinking" role="status">
+        <span className="typing" aria-hidden="true"><i /><i /><i /></span>
+        <span>{t("ask.chat.thinking")}</span>
+      </div>
+      <p className="muted small">{query ? t("ask.query.busy") : mode === "model" || mode === "pipeline" ? t(`ask.assistant.busy.${mode}`) : t("ask.input.busy")}</p>
+    </AssistantMsg>
+  );
+}
+
+function FollowUps({ list, onAsk, disabled }) {
+  const t = useT();
+  if (!list.length) return null;
+  return (
+    <div className="followups">
+      <span className="muted small">{t("ask.chat.followUp")}</span>
+      <div className="chips">{list.map((q) => <button key={q} className="chip" disabled={disabled} onClick={() => onAsk(q)}>{q}</button>)}</div>
+    </div>
+  );
+}
+
+/** A saved answer opened on its own: its question as the person's message, then the answer card. */
+function SavedTurn({ turn, mayBuild, onEdit, followUps, onAsk, last, onLoaded }) {
+  const t = useT();
+  const [state] = useLoad(() => getAnswer(turn.savedId), [turn.savedId]);
+  const r = state.data;
+  useEffect(() => {
+    if (state.status !== "loading") onLoaded(turn.id, state.status === "error" ? { status: "error", error: state.error } : { status: "done", record: state.data });
+  }, [state.status]);
+  if (state.status === "error") return <AssistantMsg><p className="error">{state.missing ? t("ask.saved.missing") : state.error}</p></AssistantMsg>;
+  if (!r) return <Thinking />;
   return (
     <>
-      <form className="query" onSubmit={run}>
-        <textarea aria-label="本体查询" rows={6} value={text} spellCheck={false} placeholder={queryExample(scope) || "SELECT count(x) FROM (x:对象类型)"} disabled={busy} onChange={(e) => setText(e.target.value)} />
-        {names.length > 0 && (
-          <div className="inline wide" role="group" aria-label="参数">
-            {names.map((n) => (
-              <label key={n} className="field">
-                <span className="caption">${n}</span>
-                <input type="text" aria-label={`参数 ${n}`} value={values[n] ?? ""} disabled={busy} onChange={(e) => setValues({ ...values, [n]: e.target.value })} />
-              </label>
-            ))}
-          </div>
+      <UserBubble text={r.question} />
+      <AssistantMsg><AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} /><FollowUps list={last && !isAnswer(r) ? followUps : []} onAsk={onAsk} /></AssistantMsg>
+    </>
+  );
+}
+
+function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last, onLoaded, cards }) {
+  if (turn.kind === "saved") return <SavedTurn turn={turn} mayBuild={mayBuild} onEdit={onEdit} followUps={followUps} onAsk={onAsk} last={last} onLoaded={onLoaded} />;
+  if (turn.kind === "model" || turn.kind === "pipeline") {
+    return (
+      <>
+        <UserBubble text={turn.text} mode={turn.kind} />
+        {turn.status === "thinking" && <Thinking mode={turn.kind} />}
+        {turn.status === "error" && <AssistantMsg>{turn.noModel ? <NoModel admin={admin} /> : <p className="error" role="alert">{turn.error}</p>}</AssistantMsg>}
+        {turn.status === "done" && (
+          <AssistantMsg>
+            {turn.kind === "pipeline" ? <PlanCard plan={turn.plan} busy={busy} onAnswer={(id, values) => cards.answer(turn, id, values)} onApply={() => cards.apply(turn)} onRevise={(request) => cards.revise(turn, request)} onDiscard={() => cards.discard(turn)} request={turn.text} version={turn.version ?? 1} />
+              : <ProposalCard proposal={turn.proposal} busy={turn.proposal.busy} onPropose={() => cards.propose(turn)} onAck={(id) => cards.ack(turn, id)} />}
+          </AssistantMsg>
         )}
-        <button className="primary" type="submit" disabled={busy || !text.trim()}>运行</button>
-      </form>
-      <p className="hint">像 SQL 一样写，沿关系走、不写 JOIN：<code>{"SELECT p.品类, count(o) FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类"}</code>。按你能看的行和已确认的定义算，不调用模型，不记入“我问过的”。<a href="https://github.com/Longado/ontopoc/blob/main/docs/QUERY.md" target="_blank" rel="noreferrer">写法</a></p>
-      {busy && <p className="muted" role="status">正在算</p>}
-      {error && <p className="error" role="alert">{error}</p>}
-      {result && (
-        <section className="turn">
-          {isAnswer(result) ? <Answer record={result} /> : <Refusal record={result} mayBuild={mayBuild} />}
-          <Basis record={result} />
-        </section>
+      </>
+    );
+  }
+  const r = turn.record;
+  const unanswered = r && (!isAnswer(r) || r.status === "no_data");
+  return (
+    <>
+      <UserBubble text={turn.text} query={turn.kind === "query"} />
+      {turn.status === "thinking" && <Thinking query={turn.kind === "query"} />}
+      {turn.status === "error" && <AssistantMsg><p className="error" role="alert">{turn.error}</p></AssistantMsg>}
+      {turn.status === "done" && r && (
+        <AssistantMsg>
+          <AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} />
+          {last && unanswered && turn.kind === "ask" && <FollowUps list={followUps} onAsk={onAsk} disabled={busy} />}
+        </AssistantMsg>
       )}
     </>
   );
 }
 
-export function QaPage({ route }) {
-  const mayBuild = canBuild(useAuth().user);
-  const [info, reload] = useLoad(getAsk, []);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [mode, setMode] = useState("ask");
-  const [query, setQuery] = useState("");
-  const scope = info.data;
-  const edit = (t) => {
-    setQuery(t);
-    setMode("query");
-  };
-  const ask = async (e) => {
-    e.preventDefault();
-    if (!text.trim() || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const saved = await askQuestion(text);
-      setText("");
-      reload();
-      window.location.hash = `#/qa/${saved.id}`;
-    } catch (err) {
-      setError(err.message);
-    }
-    setBusy(false);
-  };
+/** A scope chip that opens a small popover: shared by the three kinds of scope. */
+function ChipPop({ label, aria, children }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => !wrap.current?.contains(e.target) && setOpen(false);   // a click anywhere else closes it
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
   return (
-    <main className="page">
-      <h1 tabIndex={-1}>问答</h1>
-      {info.status === "error" && <p className="error">{info.error}</p>}
-      <div className="qa">
-        <aside className="history" aria-label="我问过的问题">
-          <h2 className="small">我问过的</h2>
-          {scope && scope.history.length === 0 && <p className="muted small">还没有</p>}
-          {scope?.history.map((h) => (
-            <a key={h.id} href={`#/qa/${h.id}`} onClick={() => setMode("ask")} aria-current={h.id === route.id ? "page" : undefined} className={h.id === route.id ? "active" : ""}>
-              {h.question}
-              <span className="muted small block">{timeText(h.asked_at)} {statusText(h.status)}</span>
-            </a>
-          ))}
-        </aside>
-        <section>
-          {scope && (
-            <details className="scope">
-              <summary>{scopeText(scope)}</summary>
-              <p className="muted">{scope.types.length ? scope.types.map((t) => t.name).join("、") : "还没有已确认的对象类型：先到对象类型页确认"}</p>
-              {scope.views?.length > 0 && <p className="muted">视图：{scope.views.map((v) => v.name).join("、")}</p>}
-              {scope.left_out.length > 0 && (
-                <>
-                  <p className="muted" style={{ marginTop: 8 }}>不在范围里：</p>
-                  <ul className="named">
-                    {scope.left_out.map((d) => <li key={d.id}><a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} /></li>)}
-                  </ul>
-                </>
-              )}
-            </details>
-          )}
-          <div className="seg" role="group" aria-label="怎么问">
-            <button className={mode === "ask" ? "on" : ""} aria-pressed={mode === "ask"} onClick={() => setMode("ask")}>提问</button>
-            <button className={mode === "query" ? "on" : ""} aria-pressed={mode === "query"} onClick={() => setMode("query")}>写查询</button>
+    <span className="scope-chip-wrap" ref={wrap}>
+      <button type="button" className="scope-chip" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+        {label}
+        <Icon name="chevron-down" size={12} />
+      </button>
+      {open && <div className="scope-pop" role="dialog" aria-label={aria}>{children(() => setOpen(false))}</div>}
+    </span>
+  );
+}
+
+/** Model mode: the datasets the model may read about. */
+function DatasetsChip({ datasets, chosen, setChosen }) {
+  const t = useT();
+  const toggle = (name, on) => setChosen(on ? [...chosen, name] : chosen.filter((x) => x !== name));
+  return (
+    <ChipPop label={chosen.length ? t("ask.assistant.scope.datasets", { count: chosen.length }) : t("ask.assistant.scope.datasets.none")} aria={t("ask.assistant.scope.datasets.title")}>
+      {() => (
+        <>
+          <p className="muted small">{t("ask.assistant.scope.datasets.title")}</p>
+          {datasets.length === 0 && <p>{t("ask.assistant.scope.datasets.empty")}</p>}
+          <div className="as-pick">
+            {datasets.map((d) => <label key={d.name}><input type="checkbox" checked={chosen.includes(d.name)} onChange={(e) => toggle(d.name, e.target.checked)} />{d.name}</label>)}
           </div>
-          {mode === "query" ? <QueryBox scope={scope} text={query} setText={setQuery} mayBuild={mayBuild} /> : (
+        </>
+      )}
+    </ChipPop>
+  );
+}
+
+/** Pipeline mode: one pipeline to draft over, or one dataset to start a new pipeline from. */
+function TargetChip({ pipelines, datasets, target, setTarget }) {
+  const t = useT();
+  const label = !target ? t("ask.assistant.scope.target.none") : t(target.kind === "pipeline" ? "ask.assistant.scope.target.pipeline" : "ask.assistant.scope.target.dataset", { name: target.name });
+  return (
+    <ChipPop label={label} aria={t("ask.assistant.scope.target.none")}>
+      {(close) => (
+        <>
+          {pipelines.length === 0 && datasets.length === 0 && <p>{t("ask.assistant.scope.target.empty")}</p>}
+          {pipelines.length > 0 && <p className="muted small">{t("ask.assistant.scope.target.pipelines")}</p>}
+          <div className="as-pick">
+            {pipelines.map((p) => <button type="button" key={p.id} className={target?.kind === "pipeline" && target.name === p.id ? "on" : ""} onClick={() => { setTarget({ kind: "pipeline", name: p.id, label: p.name }); close(); }}>{p.name}</button>)}
+          </div>
+          {datasets.length > 0 && <p className="muted small scope-sub">{t("ask.assistant.scope.target.datasets")}</p>}
+          <div className="as-pick">
+            {datasets.map((d) => <button type="button" key={d.name} className={target?.kind === "dataset" && target.name === d.name ? "on" : ""} onClick={() => { setTarget({ kind: "dataset", name: d.name, label: d.name }); close(); }}>{d.name}</button>)}
+          </div>
+        </>
+      )}
+    </ChipPop>
+  );
+}
+
+/** What can be asked about: a chip in the composer that opens the list of types in scope, the views, and what is left out. */
+function ScopeChip({ scope }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  if (!scope) return null;
+  return (
+    <span className="scope-chip-wrap">
+      <button type="button" className="scope-chip" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+        {t("ask.chat.scope", { count: scope.types.length })}
+        <Icon name="chevron-down" size={12} />
+      </button>
+      {open && (
+        <div className="scope-pop" role="dialog" aria-label={t("ask.chat.scope.aria")}>
+          <p>{scope.types.length ? scope.types.map((type) => type.name).join(t("ask.sep")) : t("ask.scope.empty")}</p>
+          {scope.views?.length > 0 && <p className="muted">{t("ask.scope.views", { names: scope.views.map((v) => v.name).join(t("ask.sep")) })}</p>}
+          {scope.left_out.length > 0 && (
             <>
-              <form className="ask" onSubmit={ask}>
-                <input type="text" aria-label="问题" value={text} maxLength={300} placeholder="问一个问题" disabled={busy} onChange={(e) => setText(e.target.value)} />
-                <button className="primary" type="submit" disabled={busy || !text.trim()}>提问</button>
-              </form>
-              <p className="hint">模型只看到类型、属性、含义，以及取值不多又重复出现的列的取值，看不到数据行。</p>
-              {busy && <p className="muted" role="status">正在回答，通常几秒到半分钟</p>}
-              {error && <p className="error" role="alert">{error}</p>}
+              <p className="muted scope-sub">{t("ask.scope.leftOut")}</p>
+              <ul className="named">
+                {scope.left_out.map((d) => <li key={d.id}><a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} /></li>)}
+              </ul>
             </>
           )}
-          {mode === "ask" && route.id && <Saved key={route.id} id={route.id} mayBuild={mayBuild} onEdit={edit} />}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** The sticky composer: a growing textarea (Enter sends, Shift+Enter breaks the line), the mode chips (a viewer has Ask only), the scope chip of the mode,
+ * and the privacy line of the mode. "/model", "/pipeline", "/query" and "/ask" switch the mode. */
+function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQuery, busy, onSend, onRun, scopes }) {
+  const t = useT();
+  const box = useRef(null);
+  const [values, setValues] = useState({});
+  const isQuery = mode === "query";
+  const value = isQuery ? query : text;
+  const names = isQuery ? paramsIn(query) : [];
+  const typed = isQuery ? query : text;
+  const choices = commandChoices(typed, mayBuild);
+  const modes = modesFor(mayBuild);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [value, mode]);
+  useEffect(() => {
+    if (!busy) box.current?.focus({ preventScroll: true });
+  }, [busy, mode]);
+  const switchTo = (next, rest = "") => {
+    setMode(next);
+    if (next === "query") { setQuery(rest); setText(""); } else { setText(rest); }
+  };
+  const change = (v) => {
+    const c = /^\s*\/[a-z]+\s/i.test(v) ? parseCommand(v, mayBuild) : null;   // "/model " with the space: the command is complete
+    if (c) switchTo(c.mode, c.text);
+    else if (isQuery) setQuery(v);
+    else setText(v);
+  };
+  const submit = (e) => {
+    e?.preventDefault();
+    const c = parseCommand(value, mayBuild);
+    if (c) return switchTo(c.mode, c.text);   // "/model" alone only switches
+    if (!value.trim() && mode !== "model") return;
+    if (busy) return;
+    if (isQuery) onRun(query, queryParams(query, values));
+    else onSend(mode, text);
+  };
+  const empty = mode === "model" ? false : !value.trim();
+  return (
+    <form className="composer" onSubmit={submit}>
+      {names.length > 0 && (
+        <div className="composer-params" role="group" aria-label={t("ask.query.params")}>
+          {names.map((n) => (
+            <label key={n} className="field">
+              <span className="caption">${n}</span>
+              <input type="text" aria-label={t("ask.query.param", { name: n })} value={values[n] ?? ""} disabled={busy} onChange={(e) => setValues({ ...values, [n]: e.target.value })} />
+            </label>
+          ))}
+        </div>
+      )}
+      {choices.length > 0 && (
+        <div className="as-commands" role="listbox" aria-label={t("ask.assistant.commands")}>
+          {choices.map((m) => <button type="button" role="option" key={m} onClick={() => switchTo(m)}><code>/{m}</code> <span className="muted">{t(`ask.assistant.mode.${m}.hint`)}</span></button>)}
+        </div>
+      )}
+      <textarea
+        ref={box}
+        className={isQuery ? "composer-input mono" : "composer-input"}
+        aria-label={isQuery ? t("ask.query.aria") : t("ask.input.aria")}
+        rows={isQuery ? 3 : 1}
+        value={value}
+        maxLength={isQuery ? undefined : 300}
+        spellCheck={false}
+        placeholder={isQuery ? queryExample(scope) || t("ask.chat.composer.queryPlaceholder") : mayBuild ? t(`ask.assistant.placeholder.${mode}`) : t("ask.chat.composer.placeholder")}
+        disabled={busy}
+        onChange={(e) => change(e.target.value)}
+        onKeyDown={(e) => {
+          if (sendsOn({ key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, mode)) submit(e);
+        }}
+      />
+      <div className="composer-bar">
+        <div className="composer-tools">
+          {modes.length > 1 && (
+            <div className="mode-chips" role="group" aria-label={t("ask.assistant.mode.aria")}>
+              {modes.map((m) => <button key={m} type="button" className={m === mode ? "mode on" : "mode"} aria-pressed={m === mode} title={t(`ask.assistant.mode.${m}.hint`)} onClick={() => switchTo(m, m === "query" ? query : text)}>{t(`ask.assistant.mode.${m}`)}</button>)}
+            </div>
+          )}
+          {scopeKind(mode) === "types" && <ScopeChip scope={scope} />}
+          {scopeKind(mode) === "datasets" && <DatasetsChip datasets={scopes.datasets} chosen={scopes.chosen} setChosen={scopes.setChosen} />}
+          {scopeKind(mode) === "target" && <TargetChip pipelines={scopes.pipelines} datasets={scopes.datasets} target={scopes.target} setTarget={scopes.setTarget} />}
+        </div>
+        {isQuery && <span className="composer-hint muted small">{t("ask.chat.composer.hintQuery")}</span>}
+        <button className="primary send" type="submit" disabled={busy || empty} aria-label={isQuery ? t("ask.chat.composer.run") : t("ask.chat.composer.send")}>
+          <Icon name={isQuery ? "play" : "send"} size={16} />
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** The history rail: New chat, then the saved questions grouped by the day they were asked. */
+function Rail({ scope, activeId, onNew, onPick }) {
+  const t = useT();
+  const groups = groupByDay(scope?.history ?? []);
+  const label = (g) => (g.key === "today" ? t("ask.chat.today") : g.key === "yesterday" ? t("ask.chat.yesterday") : g.key === "undated" ? t("ask.chat.undated") : formatDate(g.when));
+  return (
+    <aside className="chat-rail" aria-label={t("ask.history.aria")}>
+      <button className="chat-new" onClick={onNew}><Icon name="plus" size={14} /> {t("ask.chat.new")}</button>
+      <div className="rail-scroll">
+        {scope && scope.history.length === 0 && <p className="muted small rail-empty">{t("ask.history.empty")}</p>}
+        {groups.map((g) => (
+          <section key={g.key} className="rail-group">
+            <h2 className="history-title">{label(g)}</h2>
+            <ul className="history-list">
+              {g.items.map((h) => {
+                const v = historyView(h, timeText(h.asked_at));
+                return (
+                  <li key={h.id}>
+                    <a href={`#/qa/${h.id}`} title={v.meta} onClick={onPick} aria-current={h.id === activeId ? "page" : undefined} className={h.id === activeId ? "active" : ""}>
+                      <span className="hq">{v.question}</span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+export function QaPage({ route }) {
+  const t = useT();
+  const me = useAuth().user;
+  const mayBuild = canBuild(me);
+  const who = me?.username ?? "";
+  const [info, reload] = useLoad(getAsk, []);
+  const [text, setText] = useState("");
+  const [mode, setMode] = useState("ask");
+  const [query, setQuery] = useState("");
+  const [turns, setTurns] = useState(() => { const kept = loadThread(window.sessionStorage, who); return route.id == null || kept.some((x) => x.record?.id === route.id) ? kept : []; });
+  const [rail, setRail] = useState(false);
+  const admin = isAdmin(useAuth().user);
+  const [datasets] = useLoad(() => (mayBuild ? getDatasets() : Promise.resolve([])), [mayBuild]);
+  const [pipelines] = useLoad(() => (mayBuild ? getPipelines() : Promise.resolve([])), [mayBuild]);
+  const [chosen, setChosen] = useState([]);   // Model mode: the datasets the model may read about
+  const [target, setTarget] = useState(null);   // Pipeline mode: {kind: "pipeline" | "dataset", name, label}
+  const scope = info.data;
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
+  const own = useRef(new Set(turns.map((x) => x.record?.id).filter((x) => x != null)));   // saved ids this session's thread already holds: opening one of them must not replace the thread
+  const thread = useRef(null);
+  const busy = isThinking(turns);
+  const queryMode = allowedMode(mode, mayBuild);
+
+  const add = (turn) => setTurns((ts) => [...ts, turn]);
+  const finish = (turn, patch) => setTurns((ts) => settle(ts, turn.id, patch));
+
+  const send = async (question) => {
+    const q = String(question ?? "").trim();
+    if (!q || isThinking(turnsRef.current)) return;
+    const turn = newTurn("ask", q);
+    add(turn);
+    setText("");
+    setMode("ask");
+    try {
+      const saved = await askQuestion(q);
+      own.current.add(saved.id);
+      finish(turn, { status: "done", record: saved });
+      reload();
+      if (turnsRef.current.some((x) => x.id === turn.id)) window.location.hash = `#/qa/${saved.id}`;
+    } catch (err) {
+      finish(turn, { status: "error", error: err.message });
+    }
+  };
+  /** The three model-backed modes over their existing endpoints. Nothing is saved or run by the assistant itself: a card is pending until the person acts on it. */
+  const sendIn = (inMode, raw) => {
+    if (inMode === "ask") return send(raw);
+    if (isThinking(turnsRef.current)) return;
+    const question = String(raw ?? "").trim();
+    const noModel = (turn) => finish(turn, { status: "error", noModel: true });
+    if (inMode === "model") {
+      if (!chosen.length) { add({ ...newTurn("model", question || chosen.join(", ")), status: "error", error: t("ask.assistant.error.pickDatasets") }); return; }
+      const turn = newTurn("model", question || chosen.join(t("ask.sep")));
+      add(turn);
+      setText("");
+      (async () => {
+        try {
+          if (!(await getModelReady())) return noModel(turn);
+          const result = await suggestTypes(chosen, question);
+          const details = await Promise.all(result.proposed.map((p) => getType(p.id).catch(() => null)));
+          finish(turn, { status: "done", proposal: { result, details, datasets: chosen, proposed: 0, busy: false, error: "" } });
+        } catch (err) {
+          if (isNoModel(err.message)) noModel(turn); else finish(turn, { status: "error", error: err.message });
+        }
+      })();
+      return;
+    }
+    if (!target) { add({ ...newTurn("pipeline", question), status: "error", error: t("ask.assistant.error.pickTarget") }); return; }
+    setText("");
+    draftPlan(question, target);
+  };
+  /** One pipeline draft over `tgt`. `revises` is the turn whose card this one replaces: the old card is kept and frozen, the new one is its next version. */
+  const draftPlan = (question, tgt, revises) => {
+    const turn = { ...newTurn("pipeline", question), version: nextVersion(turnsRef.current, revises), ...(revises ? { revises } : {}) };
+    add(turn);
+    (async () => {
+      try {
+        if (!(await getModelReady())) return finish(turn, { status: "error", noModel: true });
+        const spec = tgt.kind === "pipeline" ? (await getPipeline(tgt.name)).spec : datasetSpec(tgt.name);
+        const selected = tgt.kind === "pipeline" ? defaultSelected(spec) : "in1";
+        if (!selected) throw new Error(t("ask.assistant.error.pickTarget"));
+        const draft = await aiDraft(tgt.kind === "pipeline" ? tgt.name : undefined, spec, [selected], question);
+        finish(turn, { status: "done", plan: { draft, answers: {}, spec, selected, target: tgt, scopeLabel: tgt.label, newPipeline: tgt.kind === "dataset", busy: false } });
+        if (revises) setTurns((ts) => ts.map((x) => (x.id === revises ? { ...x, plan: { ...x.plan, supersededBy: turn.id } } : x)));   // only once the new version exists
+      } catch (err) {
+        if (isNoModel(err.message)) finish(turn, { status: "error", noModel: true }); else finish(turn, { status: "error", error: err.message });
+      }
+    })();
+  };
+  const patchPlan = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, plan: { ...x.plan, ...patch } } : x)));
+  const patchProposal = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, proposal: { ...x.proposal, ...patch } } : x)));
+  const cards = {
+    // answering a question re-checks the draft with the person's own words; the service calls no model for it
+    answer: async (turn, id, values) => {
+      const plan = turn.plan;
+      const answers = { ...plan.answers, [id]: values };
+      patchPlan(turn, { answers, busy: true });
+      try {
+        const draft = await aiDraft(plan.target.kind === "pipeline" ? plan.target.name : undefined, plan.spec, [plan.selected], turn.text, { raw: plan.draft.raw, answers });
+        patchPlan(turn, { draft, busy: false });
+      } catch (err) {
+        patchPlan(turn, { busy: false, answers: plan.answers });
+      }
+    },
+    // Apply: the steps wait for the editor, which applies them the way its own AI panel does; nothing is saved
+    apply: (turn) => {
+      const plan = turn.plan;
+      const name = plan.target.kind === "pipeline" ? plan.target.name : `new:${plan.target.name}`;
+      stashDraft(window.sessionStorage, name, plan.draft.steps);
+      patchPlan(turn, { applied: true, appliedAt: new Date().toISOString() });
+      window.location.hash = plan.target.kind === "pipeline" ? hrefFor({ page: "pipeline", name: plan.target.name, view: "edit" }) : hrefFor({ page: "pipelinenew", dataset: plan.target.name });
+    },
+    // Revise: the changed request is a new turn with a new version of the card; this one is kept and frozen
+    revise: (turn, request) => {
+      if (isThinking(turnsRef.current) || !String(request ?? "").trim()) return;
+      draftPlan(String(request).trim(), turn.plan.target, turn.id);
+    },
+    discard: (turn) => patchPlan(turn, { discarded: true }),
+    // an open assumption on a type proposal is acknowledged by the person; the card re-checks by code, no model
+    ack: (turn, id) => patchProposal(turn, { acked: { ...(turn.proposal.acked ?? {}), [id]: true } }),
+    // Propose: the model drafts become this person's proposals through the normal update path; a second person confirms in the review queue
+    propose: async (turn) => {
+      patchProposal(turn, { busy: true, error: "" });
+      let count = 0;
+      try {
+        for (const ty of turn.proposal.details.filter(Boolean)) {
+          const payload = proposePayload(ty);
+          if (!payload) continue;
+          await updateType(payload);
+          count += 1;
+        }
+        patchProposal(turn, { busy: false, proposed: count });
+        reload();
+      } catch (err) {
+        patchProposal(turn, { busy: false, proposed: count, error: err.message });
+      }
+    },
+  };
+  const run = async (queryText, params) => {
+    if (!queryText.trim() || isThinking(turnsRef.current)) return;
+    const turn = newTurn("query", queryText);
+    add(turn);
+    try {
+      finish(turn, { status: "done", record: queryRecord({ query_text: queryText, ...(await runQuery(queryText, params)) }) });
+    } catch (err) {
+      finish(turn, { status: "error", error: err.message });
+    }
+  };
+  const edit = (queryText) => {
+    setQuery(queryText);
+    setMode("query");
+  };
+  const newChat = () => {
+    setTurns([]);
+    setText("");
+    setRail(false);
+    if (window.location.hash !== "#/qa") window.location.hash = "#/qa";
+  };
+
+  useEffect(() => {
+    if (datasets.data?.length === 1 && !chosen.length) setChosen([datasets.data[0].name]);   // the only dataset is the one to read
+  }, [datasets.data]);
+
+  const was = useRef(route.id);
+  useEffect(() => {
+    const before = was.current;
+    was.current = route.id;
+    if (route.id == null) {
+      if (before != null) setTurns([]);   // back to a new chat
+    } else if (!own.current.has(route.id) && !turnsRef.current.some((x) => x.record?.id === route.id)) {
+      setTurns([savedTurn(route.id)]);   // a past question opens as a thread of one
+      setMode("ask");
+    }
+  }, [route.id]);
+
+  const asked = useRef("");
+  useEffect(() => {
+    if (!route.ask || asked.current === route.ask) return;
+    asked.current = route.ask;   // a question from the home page is asked once as this page opens (the address then becomes the saved answer's)
+    send(route.ask);
+  }, [route.ask]);
+
+  useEffect(() => {
+    const el = thread.current;
+    if (!el) return;
+    const last = turns[turns.length - 1];
+    const card = last?.status === "done" && (last.kind === "pipeline" || last.kind === "model") ? el.querySelector(".msg-bot:last-child .as-card") : null;
+    // a plan or proposal card is read from its top; everything else follows the end of the thread
+    if (card) el.scrollTo({ top: Math.max(0, card.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 72), behavior: "smooth" });
+    else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [turns.length, turns[turns.length - 1]?.status]);
+
+  useEffect(() => { saveThread(window.sessionStorage, who, turns); }, [turns]);
+
+  const ideas = suggestions(scope, []);
+  const title = threadTitle(turns);
+  return (
+    <main className="page chat-page">
+      <div className={rail ? "chat rail-open" : "chat"}>
+        <Rail scope={scope} activeId={route.id} onNew={newChat} onPick={() => setRail(false)} />
+        {rail && <div className="rail-dim" onClick={() => setRail(false)} />}
+        <section className="chat-main">
+          <header className="chat-head">
+            <button className="icon-button secondary rail-toggle" aria-label={t("ask.chat.historyToggle")} aria-expanded={rail} onClick={() => setRail(!rail)}><Icon name="menu" size={16} /></button>
+            <h1 tabIndex={-1}>{t("ask.title")}</h1>
+            <span className="chat-title muted">{title || t("ask.chat.untitled")}</span>
+          </header>
+          <div className="thread" ref={thread}>
+            {info.status === "error" && <p className="error">{info.error}</p>}
+            {turns.length === 0 ? (
+              <div className="chat-empty">
+                <span className="bot-mark big" aria-hidden="true" />
+                <h2>{mayBuild ? t("ask.assistant.empty.title") : t("ask.chat.emptyTitle")}</h2>
+                <p className="muted">{mayBuild ? t("ask.assistant.empty.sub") : scope && scope.types.length === 0 ? t("ask.chat.emptyNoScope") : t("ask.sub")}</p>
+                {mayBuild && (
+                  <div className="chips" aria-label={t("ask.assistant.mode.aria")}>
+                    {["ask", "model", "pipeline"].map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
+                  </div>
+                )}
+                {ideas.length > 0 && queryMode === "ask" && (
+                  <div className="chips" aria-label={t("ask.chat.try")}>
+                    {ideas.map((q) => <button key={q} className="chip" disabled={busy} onClick={() => send(q)}>{q}</button>)}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="turns" role="log" aria-label={t("ask.chat.thread")} aria-live="polite">
+                {turns.map((turn, i) => <TurnView key={turn.id} turn={turn} mayBuild={mayBuild} onEdit={mayBuild ? edit : undefined} admin={admin} cards={cards} followUps={ideas} onAsk={send} busy={busy} last={i === turns.length - 1} onLoaded={(id, patch) => setTurns((ts) => settle(ts, id, patch))} />)}
+              </div>
+            )}
+          </div>
+          <div className="composer-wrap">
+            <Composer scope={scope} mayBuild={mayBuild} mode={queryMode} setMode={setMode} text={text} setText={setText} query={query} setQuery={setQuery} busy={busy} onSend={sendIn} onRun={run}
+              scopes={{ datasets: datasets.data ?? [], pipelines: pipelines.data ?? [], chosen, setChosen, target, setTarget }} />
+            <p className="composer-fine muted small" title={t(privacyKey(queryMode))}>{t(`${privacyKey(queryMode)}Short`)}</p>
+          </div>
         </section>
       </div>
     </main>

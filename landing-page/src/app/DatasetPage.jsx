@@ -1,13 +1,16 @@
 import React, { useState } from "react";
-import { csvHref, getDataset } from "./api.js";
+import { csvHref, getDataset, getTypes } from "./api.js";
 import { DeleteDialog } from "./DeleteDialog.jsx";
-import { isNumeric, keyText, originText, percentText, timeText, typeLabel } from "./format.js";
+import { originLink, readerLinks } from "./datasetModel.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
+import { isNumeric, keyText, percentText, timeText, typeLabel } from "./format.js";
+import { t, useT } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
 import { TABS, TAB_LABEL, hrefFor } from "./routeModel.js";
+import { readerKindLabel } from "./serverWords.js";
 import { UploadDialog } from "./UploadDialog.jsx";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
-import { sourceOrigin } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
 import { keyListText, noChangeText, timeline, versionChangeText, versionWay } from "./versionText.js";
 
@@ -18,14 +21,14 @@ function Fields({ page }) {
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>列名</th><th>类型</th><th className="num">填写率</th><th>主键检查</th></tr>
+            <tr><th>{t("data.fields.column")}</th><th>{t("data.fields.type")}</th><th className="num">{t("data.fields.fill")}</th><th>{t("data.fields.keyCheck")}</th></tr>
           </thead>
           <tbody>
             {page.columns.map((c) => (
               <tr key={c.name}>
-                <td>{c.name}{c.fan && <span className="warn small block">{c.fan}</span>}</td>
-                <td>{typeLabel(c.type)}</td>
-                <td className="num" title={c.missing ? `缺 ${c.missing} 行` : undefined}>{percentText(c.fill_rate)}</td>
+                <td className="strong">{c.name}{c.fan && <span className="warn small block">{c.fan}</span>}</td>
+                <td className="muted">{typeLabel(c.type)}</td>
+                <td className="num" title={c.missing ? t("data.fields.missing", { count: c.missing }) : undefined}>{percentText(c.fill_rate)}</td>
                 <td className={c.key_check?.status === "failed" ? "bad" : c.possible_key || c.key_check || c.near_key ? "" : "muted"}>{keyText(c)}</td>
               </tr>
             ))}
@@ -36,7 +39,11 @@ function Fields({ page }) {
         <ul className="checks">
           {multi.map((c) => (
             <li key={c.id} className={c.status === "failed" ? "bad" : ""}>
-              {c.columns.join(" + ")}：{c.status === "passed" ? "没有重复，没有空值" : `重复 ${c.violations} 行，空 ${c.null_key_rows} 行`}（查了 {c.rows_checked} 行）
+              {t("data.fields.multi", {
+                columns: c.columns.join(" + "),
+                result: c.status === "passed" ? t("data.fields.multiOk") : t("data.fields.multiBad", { dup: c.violations, blank: c.null_key_rows }),
+                checked: c.rows_checked,
+              })}
             </li>
           ))}
         </ul>
@@ -52,18 +59,18 @@ function Preview({ page, name }) {
   return (
     <>
       <div className="toolbar">
-        <Select label="版本" value={String(page.version)} onChange={(v) => { window.location.hash = hrefFor({ page: "dataset", name, tab: "preview", version: Number(v) === page.current_version ? null : Number(v) }); }}>
+        <Select label={t("data.preview.version")} value={String(page.version)} onChange={(v) => { window.location.hash = hrefFor({ page: "dataset", name, tab: "preview", version: Number(v) === page.current_version ? null : Number(v) }); }}>
           {page.versions.map((v) => (
-            <option key={v.version} value={v.version}>第 {v.version} 版{v.current ? "（当前）" : ""}</option>
+            <option key={v.version} value={v.version}>{t(v.current ? "data.preview.versionCurrent" : "data.preview.versionN", { n: v.version })}</option>
           ))}
         </Select>
         <span className="muted">
-          第 {(preview.page - 1) * preview.limit + (preview.total ? 1 : 0)}–{Math.min(preview.page * preview.limit, preview.total)} 行，共 {preview.total} 行
+          {t("data.preview.range", { from: (preview.page - 1) * preview.limit + (preview.total ? 1 : 0), to: Math.min(preview.page * preview.limit, preview.total), total: preview.total })}
         </span>
-        <a className="download" href={csvHref(name, page.version === page.current_version ? null : page.version)} download>下载 CSV</a>
-        <span className="muted">以 = + - @ 开头的文字，下载时前面会多一个 '</span>
+        <a className="download" href={csvHref(name, page.version === page.current_version ? null : page.version)} download>{t("data.preview.download")}</a>
+        <span className="muted small">{t("data.preview.csvNote")}</span>
       </div>
-      <div className="table-wrap tall">
+      <div className="table-wrap tall dense">
         <table>
           <thead>
             <tr>{preview.columns.map((c, i) => <th key={c} className={numeric[i] ? "num" : ""}>{c}</th>)}</tr>
@@ -80,10 +87,10 @@ function Preview({ page, name }) {
         </table>
       </div>
       {preview.pages > 1 && (
-        <nav className="pager" aria-label="预览分页">
-          {preview.page > 1 ? <a href={at(preview.page - 1)}>上一页</a> : <span className="faint">上一页</span>}
+        <nav className="pager" aria-label={t("data.preview.pagerAria")}>
+          {preview.page > 1 ? <a href={at(preview.page - 1)}>{t("data.preview.prev")}</a> : <span className="faint">{t("data.preview.prev")}</span>}
           <span>{preview.page} / {preview.pages}</span>
-          {preview.page < preview.pages ? <a href={at(preview.page + 1)}>下一页</a> : <span className="faint">下一页</span>}
+          {preview.page < preview.pages ? <a href={at(preview.page + 1)}>{t("data.preview.next")}</a> : <span className="faint">{t("data.preview.next")}</span>}
         </nav>
       )}
     </>
@@ -96,7 +103,7 @@ function Versions({ page, name, mayRead }) {
     <div className="table-wrap">
       <table className="wraps">
         <thead>
-          <tr><th>版本</th><th>时间</th><th>操作人</th><th>方式</th><th>变化</th><th></th></tr>
+          <tr><th>{t("data.versions.version")}</th><th>{t("data.versions.time")}</th><th>{t("data.versions.by")}</th><th>{t("data.versions.how")}</th><th>{t("data.versions.change")}</th><th></th></tr>
         </thead>
         <tbody>
           {rows.map((r, i) =>
@@ -109,7 +116,7 @@ function Versions({ page, name, mayRead }) {
               </tr>
             ) : (
               <tr key={r.version}>
-                <td>第 {r.version} 版{r.current && <span className="here"> 当前</span>}</td>
+                <td className="strong">{t("data.versions.n", { n: r.version })}{r.current && <span className="here">{t("data.versions.current")}</span>}</td>
                 <td>{timeText(r.at)}</td>
                 <td className="keep">{r.who ?? <span className="faint">—</span>}</td>
                 <td className="keep">{versionWay(r)}</td>
@@ -117,13 +124,13 @@ function Versions({ page, name, mayRead }) {
                   {versionChangeText(r)}
                   {(r.changed_keys.length > 0 || r.added_keys.length > 0) && (
                     <details className="which">
-                      <summary>看是哪些行</summary>
-                      {r.changed_keys.length > 0 && <p>改的行：{keyListText(r.changed_keys, r.changed)}</p>}
-                      {r.added_keys.length > 0 && <p>增的行：{keyListText(r.added_keys, r.added)}</p>}
+                      <summary>{t("data.versions.which")}</summary>
+                      {r.changed_keys.length > 0 && <p>{t("data.versions.changedRows", { keys: keyListText(r.changed_keys, r.changed) })}</p>}
+                      {r.added_keys.length > 0 && <p>{t("data.versions.addedRows", { keys: keyListText(r.added_keys, r.added) })}</p>}
                     </details>
                   )}
                 </td>
-                <td className="keep">{mayRead && <a href={hrefFor({ page: "dataset", name, tab: "preview", version: r.current ? null : r.version })}>预览</a>}</td>
+                <td className="keep">{mayRead && <a href={hrefFor({ page: "dataset", name, tab: "preview", version: r.current ? null : r.version })}>{t("data.versions.preview")}</a>}</td>
               </tr>
             ),
           )}
@@ -134,47 +141,59 @@ function Versions({ page, name, mayRead }) {
 }
 
 export function DatasetPage({ route }) {
+  useT();
   const { name, tab, version, pageNo } = route;
   const [state, reload] = useLoad(() => getDataset(name, version, pageNo), [name, version, pageNo]);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const mayBuild = canBuild(useAuth().user);
+  const [types] = useLoad(getTypes, []);
   const page = state.data;
-  const at = (t) => hrefFor({ page: "dataset", name, tab: t, version });
+  const origin = originLink(page?.origin);
+  const readers = readerLinks(page?.readers ?? [], Object.fromEntries((types.data ?? []).map((ty) => [ty.name, ty.id])));
+  const at = (to) => hrefFor({ page: "dataset", name, tab: to, version });
+  const leftOut = page?.versions.find((v) => v.version === page.version)?.source?.left_out;
   return (
     <main className="page">
-      <a className="back" href="#/datasets">
-        <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        数据集
-      </a>
-      <div className="page-head">
-        <h1 tabIndex={-1}>{name}</h1>
-        {page && mayBuild && (
-          <div className="head-actions">
-            <button className="plain" onClick={() => setDeleting(true)}>删除</button>
-            <button className="primary" onClick={() => setUploading(true)}>上传新版本</button>
-          </div>
+      <PageHeader crumbs={[{ label: t("data.crumb.data") }, { label: t("data.list.title"), href: hrefFor({ page: "datasets" }) }, { label: name }]} title={name}
+        sub={page && t("data.page.sub", { rows: t("data.n.rows", { count: page.rows }), columns: t("data.n.columns", { count: page.columns.length }), version: page.version })}
+        actions={page && mayBuild && (
+          <>
+            <a className="button secondary" href={hrefFor({ page: "pipelinenew", dataset: name })}>{t("data.page.makePipeline")}</a>
+            <a className="button secondary" href={hrefFor({ page: "typenew", dataset: name })}>{t("data.page.makeType")}</a>
+            <button className="primary" onClick={() => setUploading(true)}>{t("data.page.newVersion")}</button>
+          </>
         )}
-      </div>
-      {state.status === "error" && <p className="error">{state.error} {!state.missing && <button className="plain" onClick={reload}>重试</button>}</p>}
-      {state.status === "loading" && !page && <p className="muted">加载中</p>}
+        more={page && mayBuild ? [{ label: t("data.page.delete"), onClick: () => setDeleting(true) }] : undefined} />
+      {state.status === "error" && <p className="error">{state.error} {!state.missing && <button className="plain" onClick={reload}>{t("common.retry")}</button>}</p>}
+      {state.status === "loading" && !page && <p className="muted">{t("common.loading")}</p>}
       {page && (
         <>
-          <p className="facts">
-            <span>{page.rows} 行</span>
-            <span>{page.columns.length} 列</span>
-            <span>第 {page.version} 版</span>
-            <span>{page.version === page.current_version ? `更新于 ${timeText(page.updated_at)}` : `这一版导入于 ${timeText(page.version_at)}`}</span>
-            <span>来源 {sourceOrigin(page.origin) ? <>数据源“{mayBuild ? <a href={hrefFor({ page: "source", name: sourceOrigin(page.origin).source })}>{sourceOrigin(page.origin).source}</a> : sourceOrigin(page.origin).source}”的表 {sourceOrigin(page.origin).table}，拉取于 {timeText(page.version_at)}</> : originText(page.origin)}</span>
-            {page.versions.find((v) => v.version === page.version)?.source?.left_out?.length > 0 && <span className="warn">没读的二进制列：{page.versions.find((v) => v.version === page.version).source.left_out.join("、")}</span>}
-            {page.readers.length > 0 && <span>被 {page.readers.map((r) => r.name).join("、")} 用到</span>}
-          </p>
+          <dl className="ds-facts">
+            <div><dt>{t("data.facts.updated")}</dt><dd>{page.version === page.current_version ? timeText(page.updated_at) : t("data.facts.importedThisVersion", { time: timeText(page.version_at) })}</dd></div>
+            <div>
+              <dt>{t("data.facts.source")}</dt>
+              <dd>
+                {origin.href && mayBuild ? <a href={origin.href}>{origin.label}</a> : origin.label}
+                {origin.kind === "source" && <span className="muted">{t("data.facts.pulledAt", { time: timeText(page.version_at) })}</span>}
+              </dd>
+            </div>
+            <div>
+              <dt>{t("data.facts.usedBy")}</dt>
+              <dd>
+                {!readers.length ? <span className="muted">{t("data.facts.unused")}</span> : readers.map((r, i) => (
+                  <span key={`${r.kind}${r.name}`}>{i > 0 && t("data.listSep")}<span className="muted">{readerKindLabel(r.kind)} </span>{r.href ? <a href={r.href}>{r.name}</a> : r.name}</span>
+                ))}
+              </dd>
+            </div>
+            {leftOut?.length > 0 && <div><dt>{t("data.facts.leftOut")}</dt><dd className="warn">{t("data.facts.binary", { cols: leftOut.join(t("data.listSep")) })}</dd></div>}
+          </dl>
           {page.version !== page.current_version && (
-            <p className="viewing">正在看第 {page.version} 版，当前是第 {page.current_version} 版。 <a href={hrefFor({ page: "dataset", name, tab, version: null })}>回到当前版本</a></p>
+            <p className="viewing">{t("data.page.viewing", { version: page.version, current: page.current_version })} <a href={hrefFor({ page: "dataset", name, tab, version: null })}>{t("data.page.backToCurrent")}</a></p>
           )}
-          <nav className="tabs" aria-label="数据集的页面">
-            {TABS.filter((t) => mayBuild || t !== "preview").map((t) => (   // a viewer reads no rows of a dataset: the preview and the download are for builders
-              <a key={t} href={at(t)} aria-current={t === tab ? "page" : undefined} className={t === tab ? "active" : ""}>{TAB_LABEL[t]}</a>
+          <nav className="tabs" aria-label={t("data.page.tabsAria")}>
+            {TABS.filter((tb) => mayBuild || tb !== "preview").map((tb) => (   // a viewer reads no rows of a dataset: the preview and the download are for builders
+              <a key={tb} href={at(tb)} aria-current={tb === tab ? "page" : undefined} className={tb === tab ? "active" : ""}>{TAB_LABEL[tb]}</a>
             ))}
           </nav>
           {(tab === "fields" || (tab === "preview" && !mayBuild)) && <Fields page={page} />}

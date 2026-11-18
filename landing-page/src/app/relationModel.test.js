@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { connectedText, itemAction, keyPairText, relationPayload, relationProblem, suggestedColumns, toggled, waitingText } from "./relationModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 test("a relation reads as connected rows over all rows, and as the key pair it joins on", () => {
   assert.equal(connectedText({ matched: 157, rows: 160 }), "157 / 160");

@@ -35,6 +35,8 @@ import time
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_llm import check_llm_step, llm_sql
 from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, UPSTREAM, _where, carry, compile_op, new_context, visible
+from ontology_poc_generator.lang import tr
+from ontology_poc_generator.pipeline_expr import WordMap
 
 NUMERIC = ('integer', 'decimal')
 HOWS = ('inner', 'left', 'anti', 'semi')
@@ -43,7 +45,7 @@ EXAMPLES = 3
 STEP_TYPES = ('input', 'join', 'transform', 'llm', 'union', 'split', 'output')
 MAX_UNION, MAX_BRANCHES = 10, 10   # inputs of one union, branches of one split
 MISSING = ('error', 'empty')
-TYPE_WORD = {'integer': '整数', 'decimal': '小数', 'text': '文本', 'date': '日期', 'month': '月份', 'datetime': '日期时间', 'boolean': '是否'}
+TYPE_WORD = WordMap({'integer': ('整数', 'whole number'), 'decimal': ('小数', 'decimal'), 'text': ('文本', 'text'), 'date': ('日期', 'date'), 'month': ('月份', 'month'), 'datetime': ('日期时间', 'date and time'), 'boolean': ('是否', 'yes/no')})
 BRANCH = '__branch'   # the column of a split's own table that says which branch a row went to (-1: none)
 ROW_CAP = 1_000_000   # the most rows one join may make: past it the join is refused, before it runs
 MAX_STEPS = 60
@@ -68,10 +70,11 @@ class Lease:
 
 
 @contextmanager
-def deadline(engine, seconds: float, advice: str = '数据多的时候，先在前面加过滤，或把步骤拆开分别试'):
+def deadline(engine, seconds: float, advice: str | None = None):
     """Whatever the engine computes inside this block is stopped after `seconds` (SQLite's progress handler; it stops SQL, not a Python function in the middle of a
     value). The stop, and a statement SQLite itself refuses as too big, come out as a PipelineRunError in words a person reads, with `advice` for what to do about it.
     Yields the Lease."""
+    advice = advice or tr('数据多的时候，先在前面加过滤，或把步骤拆开分别试', 'When there is a lot of data, add a filter earlier on, or split the steps and try them one by one')
     lease = Lease(seconds)
     engine.set_progress_handler(lambda: 1 if time.monotonic() > lease.end else 0, 1000)
     try:
@@ -80,8 +83,8 @@ def deadline(engine, seconds: float, advice: str = '数据多的时候，先在�
         if not _ENGINE_LIMIT.search(str(exc)):
             raise
         if 'interrupted' in str(exc):
-            raise PipelineRunError(f'算了超过 {seconds:g} 秒，已经停下。{advice}') from None
-        raise PipelineRunError(f'数据库算不了这一步：{exc}。表达式、条件或步骤太大，请拆小') from None
+            raise PipelineRunError(tr(f'算了超过 {seconds:g} 秒，已经停下。{advice}', f'Ran for more than {seconds:g} seconds and stopped. {advice}')) from None
+        raise PipelineRunError(tr(f'数据库算不了这一步：{exc}。表达式、条件或步骤太大，请拆小', f'The database could not work out this step: {exc}. The expression, condition or step is too big; split it up')) from None
     finally:
         engine.set_progress_handler(None, 0)
 
@@ -111,7 +114,7 @@ def _q(name: str) -> str:
 
 def _text(value, what: str) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f'{what}要写成不为空的文字')
+        raise ValueError(tr(f'{what}要写成不为空的文字', f'{what} must be non-empty text'))
     return value
 
 
@@ -123,17 +126,17 @@ def dataset_key(step: dict) -> str:
 def _input_of(step: dict, sid: str, datasets: dict, views: dict) -> tuple[str, dict]:
     """(what it is called for a person, its dataset or view) for an input step; ValueError when it names neither or both."""
     if 'view' in step and 'dataset' in step:
-        raise ValueError(f'步骤 {sid}：输入只能读一张表（dataset）或一个视图（view），不能两个都写')
-    kind, pool = ('视图', views) if 'view' in step else ('表', datasets)
+        raise ValueError(tr(f'步骤 {sid}：输入只能读一张表（dataset）或一个视图（view），不能两个都写', f'Step {sid}: an input can read one dataset or one view, not both'))
+    kind, pool = (tr('视图', 'view'), views) if 'view' in step else (tr('表', 'table'), datasets)
     name = step.get('view') if 'view' in step else step.get('dataset')
     if not isinstance(name, str):
-        raise ValueError(f'步骤 {sid}：输入的{kind}名要写成文字')
-    if 'version' in step and (kind == '视图' or not isinstance(step['version'], int) or isinstance(step['version'], bool) or step['version'] < 1):
-        raise ValueError(f'步骤 {sid}：版本（version）只用在表上，写成大于 0 的整数')
+        raise ValueError(tr(f'步骤 {sid}：输入的{kind}名要写成文字', f'Step {sid}: the {kind} name of an input must be text'))
+    if 'version' in step and ('view' in step or not isinstance(step['version'], int) or isinstance(step['version'], bool) or step['version'] < 1):
+        raise ValueError(tr(f'步骤 {sid}：版本（version）只用在表上，写成大于 0 的整数', f'Step {sid}: version only applies to a dataset; write a whole number greater than 0'))
     key = name if 'view' in step else dataset_key(step)
     if key not in pool:
-        raise ValueError(f'步骤 {sid}：这次运行里没有这{"个" if kind == "视图" else "张"}{kind} {key}')
-    return f'{kind} {name}' + (f' 第 {step["version"]} 版' if step.get('version') is not None else ''), pool[key]
+        raise ValueError(tr(f'步骤 {sid}：这次运行里没有这{"个" if "view" in step else "张"}{kind} {key}', f'Step {sid}: this run has no {kind} {key}'))
+    return f'{kind} {name}' + (tr(f' 第 {step["version"]} 版', f' version {step["version"]}') if step.get('version') is not None else ''), pool[key]
 
 
 def _input_columns(step: dict, sid: str, datasets: dict, views: dict, ctx: dict) -> list[dict]:
@@ -146,11 +149,11 @@ def _input_columns(step: dict, sid: str, datasets: dict, views: dict, ctx: dict)
 
 
 def _split_read(sid: str, ref: str):
-    raise ValueError(f'步骤 {sid}：{ref} 是拆分，要读它的某一个分支（写分支的名字），不能读整个拆分')
+    raise ValueError(tr(f'步骤 {sid}：{ref} 是拆分，要读它的某一个分支（写分支的名字），不能读整个拆分', f'Step {sid}: {ref} is a split, so read one of its branches (give the branch name), not the whole split'))
 
 
 def _undefined(sid: str, role: str, ref):
-    raise ValueError(f'步骤 {sid}：{role}边读的步骤 {ref} 还没有定义（只能读写在它前面的步骤）')
+    raise ValueError(tr(f'步骤 {sid}：{role}边读的步骤 {ref} 还没有定义（只能读写在它前面的步骤）', f'Step {sid}: the {role} input {ref} is not defined yet (a step can only read steps written before it)'))
 
 
 def _lineage(sid: str, side: str) -> str:
@@ -177,7 +180,7 @@ def _join_columns(step: dict, left: list[dict], right: list[dict]) -> list[dict]
         + [{'name': lname, 'type': 'integer', 'hidden': True, 'rowid_of': 'l'}, {'name': rname, 'type': 'integer', 'hidden': True, 'rowid_of': 'r'}]
     names = [c['name'] for c in out]
     if len(set(names)) < len(names):
-        raise ValueError(f'步骤 {step["id"]}：连接后有重名的列：{sorted({n for n in names if names.count(n) > 1})[0]}')
+        raise ValueError(tr(f'步骤 {step["id"]}：连接后有重名的列：{sorted({n for n in names if names.count(n) > 1})[0]}', f'Step {step["id"]}: columns have the same name after the join: {sorted({n for n in names if names.count(n) > 1})[0]}'))
     return out
 
 
@@ -203,12 +206,12 @@ def _transform(step: dict, sid: str, src: str, columns: list[dict], ctx: dict, i
     was given are dropped: New and Replace say what this step did."""
     operators = step.get('operators')
     if not isinstance(operators, list) or len(operators) > MAX_OPERATORS:
-        raise ValueError(f'步骤 {sid}：operators 要写成操作的列表，最多 {MAX_OPERATORS} 个')
+        raise ValueError(tr(f'步骤 {sid}：operators 要写成操作的列表，最多 {MAX_OPERATORS} 个', f'Step {sid}: operators must be a list of operators, at most {MAX_OPERATORS}'))
     columns = [{k: v for k, v in c.items() if k != 'badge'} for c in columns]
     stages = []
     for j, op in enumerate(operators):
-        label = f'步骤 {sid} 的第 {j + 1} 个操作'
-        stage = compile_op(op, src, columns, ctx, f'{label}（{op.get("op") if isinstance(op, dict) else op}）')
+        label = tr(f'步骤 {sid} 的第 {j + 1} 个操作', f'operator {j + 1} of step {sid}')
+        stage = compile_op(op, src, columns, ctx, tr(f'{label}（{op.get("op") if isinstance(op, dict) else op}）', f'{label} ({op.get("op") if isinstance(op, dict) else op})'))
         table = f'pl_{index}_{j}'
         stages.append({'op': op['op'], 'table': table, 'sql': f'CREATE TEMP TABLE {table} AS {stage["select"]}', 'params': stage['params'], 'measure': stage['measure']})
         src, columns = table, stage['columns']
@@ -221,26 +224,26 @@ def _output(step: dict, sid: str, columns: list[dict]) -> dict:
     shown = {c['name']: c for c in visible(columns)}
     chosen = step.get('columns')
     if chosen is not None and (not isinstance(chosen, list) or not chosen or len(set(map(str, chosen))) != len(chosen) or any(not isinstance(n, str) for n in chosen)):
-        raise ValueError(f'步骤 {sid}：要留的列（columns）要写成不重复的列名列表')
+        raise ValueError(tr(f'步骤 {sid}：要留的列（columns）要写成不重复的列名列表', f'Step {sid}: the columns to keep (columns) must be a list of distinct column names'))
     for n in chosen or []:
         if n not in shown:
-            raise ValueError(f'步骤 {sid}：读的步骤里没有列 {n}')
+            raise ValueError(tr(f'步骤 {sid}：读的步骤里没有列 {n}', f'Step {sid}: the step it reads has no column {n}'))
     names = list(shown) if chosen is None else list(chosen)
     key, build, key_names = step.get('key'), None, None
     if key is not None:
         cols = key.get('columns') if isinstance(key, dict) else None
         if not isinstance(cols, list) or not cols or len(set(map(str, cols))) != len(cols) or any(not isinstance(c, str) or c not in shown for c in cols):
-            raise ValueError(f'步骤 {sid}：主键（key）要写成 {{"columns": […], "separator": "|", "as": 新列名}}，列要在读的步骤里')
+            raise ValueError(tr(f'步骤 {sid}：主键（key）要写成 {{"columns": […], "separator": "|", "as": 新列名}}，列要在读的步骤里', f'Step {sid}: the key must be written as {{"columns": [...], "separator": "|", "as": new column name}}, and the columns must be in the step it reads'))
         separator = key.get('separator', '|')
         if not isinstance(separator, str) or len(separator) > 10:
-            raise ValueError(f'步骤 {sid}：主键的分隔符最多 10 个字')
+            raise ValueError(tr(f'步骤 {sid}：主键的分隔符最多 10 个字', f'Step {sid}: the key separator can be at most 10 characters'))
         if len(cols) == 1 and not key.get('as'):
             key_names = list(cols)
             names += [c for c in cols if c not in names]
         else:
-            built = key.get('as') or '键'
+            built = key.get('as') or tr('键', 'key')
             if not isinstance(built, str) or built in names or built.startswith('__') or built in shown and built not in cols:
-                raise ValueError(f'步骤 {sid}：主键的新列名「{built}」不能和别的列重名')
+                raise ValueError(tr(f'步骤 {sid}：主键的新列名「{built}」不能和别的列重名', f'Step {sid}: the new key column name "{built}" cannot be the same as another column'))
             parts = [f'pl_text({_q(c)})' for c in cols]
             build = (built, f'({f" || ? || ".join(parts)})' if len(parts) > 1 else parts[0], [separator] * (len(parts) - 1))
             key_names = [built]
@@ -259,24 +262,25 @@ def _union_columns(step: dict, sid: str, sources: list[tuple[str, list[dict]]], 
         have = [(ref, cols[n]) for ref, cols in by_input if n in cols]
         types = list(dict.fromkeys(c['type'] for _, c in have))
         if len(types) > 1:
-            where = '，'.join(f'在 {ref} 里是{TYPE_WORD.get(c["type"], c["type"])}' for ref, c in have)
-            raise ValueError(f'步骤 {sid}：列「{n}」{where}：先用“字段转换”把它们变成同一种类型再合并')
+            where = '，'.join(tr(f'在 {ref} 里是{TYPE_WORD.get(c["type"], c["type"])}', f'in {ref} it is {TYPE_WORD.get(c["type"], c["type"])}') for ref, c in have)
+            raise ValueError(tr(f'步骤 {sid}：列「{n}」{where}：先用“字段转换”把它们变成同一种类型再合并', f'Step {sid}: column "{n}" {where}. Use "Convert type" to make them the same type before combining'))
         lacking = [ref for ref, cols in by_input if n not in cols]
         if lacking and step.get('missing', 'error') != 'empty':
-            raise ValueError(f'步骤 {sid}：{"、".join(lacking)} 没有列「{n}」。要让缺的列留空，把 missing 设成 empty（留空的行会数出来）；或者先把列名改成一样的')
+            raise ValueError(tr(f'步骤 {sid}：{"、".join(lacking)} 没有列「{n}」。要让缺的列留空，把 missing 设成 empty（留空的行会数出来）；或者先把列名改成一样的', f'Step {sid}: {", ".join(lacking)} has no column "{n}". To leave the missing columns empty, set missing to empty (the rows left empty are counted); or rename the columns to match first'))
         origins = list(dict.fromkeys(c.get('origin') for _, c in have))
         if len(origins) > 1 and any(o in ctx.get('codes', ()) for o in origins):
             meanings = [ctx.get('meanings', {}).get(o) for o in origins]
             if not all(meanings) or any(m != meanings[0] for m in meanings):
-                raise ValueError(f'步骤 {sid}：列「{n}」是代码列，来自 {"、".join(str(o) for o in origins)}，它们确认过的代码含义不一样（或有一边没有确认）：'
-                                 '合并后同一个代码会是两个意思。先用“打标签”把代码换成含义，再合并')
+                raise ValueError(tr(f'步骤 {sid}：列「{n}」是代码列，来自 {"、".join(str(o) for o in origins)}，它们确认过的代码含义不一样（或有一边没有确认）：'
+                                 '合并后同一个代码会是两个意思。先用“打标签”把代码换成含义，再合并', f'Step {sid}: column "{n}" is a code column from {", ".join(str(o) for o in origins)}, and their confirmed code meanings differ (or one side is not confirmed): '
+                                 'after combining, the same code would mean two things. Use "Add labels" to replace the codes with meanings first, then combine'))
             ctx.setdefault('used', set()).update(origins)   # the union stands on every side's meanings: one of them changing sends it back for a look
         first = have[0][1]
         out.append({'name': n, 'type': types[0], **({'origin': first['origin']} if first.get('origin') else {}), **carry(*(c for _, c in have))})   # a computed column has no origin
     added = step.get('source_column')
     if added is not None:
         if not isinstance(added, str) or not added.strip() or len(added) > 60 or added in names or added.startswith('__'):
-            raise ValueError(f'步骤 {sid}：标出来源的新列（source_column）要写一个和别的列都不重名的列名')
+            raise ValueError(tr(f'步骤 {sid}：标出来源的新列（source_column）要写一个和别的列都不重名的列名', f'Step {sid}: the new column that marks the source (source_column) needs a name that no other column has'))
         out.append({'name': added, 'type': 'text'})
     return out
 
@@ -299,27 +303,27 @@ def _branches(step: dict, sid: str, columns: list[dict], ctx: dict, taken) -> li
     """A split's branches as [{'id', 'rest', 'cond', 'params'}], checked: at least one branch with a condition, every id new, at most one rest branch and it is the last."""
     branches = step.get('branches')
     if not isinstance(branches, list) or not branches or len(branches) > MAX_BRANCHES or not all(isinstance(b, dict) for b in branches):
-        raise ValueError(f'步骤 {sid}：拆分要写分支（branches），每个分支 {{"id": 名字, "where": 条件}}，最后可以有一个 {{"id": 名字, "rest": true}} 接住其余的行，最多 {MAX_BRANCHES} 个')
+        raise ValueError(tr(f'步骤 {sid}：拆分要写分支（branches），每个分支 {{"id": 名字, "where": 条件}}，最后可以有一个 {{"id": 名字, "rest": true}} 接住其余的行，最多 {MAX_BRANCHES} 个', f'Step {sid}: a split needs branches, each {{"id": name, "where": condition}}, and optionally a last {{"id": name, "rest": true}} to catch the other rows, at most {MAX_BRANCHES}'))
     out, seen = [], set()
     for i, b in enumerate(branches):
-        bid = _text(b.get('id'), f'步骤 {sid} 的第 {i + 1} 个分支的名字（id）')
+        bid = _text(b.get('id'), tr(f'步骤 {sid} 的第 {i + 1} 个分支的名字（id）', f'the name (id) of branch {i + 1} of step {sid}'))
         if bid in taken or bid in seen or bid == sid:
-            raise ValueError(f'步骤 {sid}：分支名「{bid}」和别的步骤或分支重复了')
+            raise ValueError(tr(f'步骤 {sid}：分支名「{bid}」和别的步骤或分支重复了', f'Step {sid}: the branch name "{bid}" is the same as another step or branch'))
         seen.add(bid)
         if b.get('rest'):
             if i != len(branches) - 1:
-                raise ValueError(f'步骤 {sid}：“其余”分支（rest）要放在最后，接住前面的分支都没接的行')
+                raise ValueError(tr(f'步骤 {sid}：“其余”分支（rest）要放在最后，接住前面的分支都没接的行', f'Step {sid}: the "rest" branch must come last and catch the rows no earlier branch took'))
             out.append({'id': bid, 'rest': True, 'cond': None, 'params': []})
             continue
         if b.get('where') is None:
-            raise ValueError(f'步骤 {sid}：分支「{bid}」要写条件（where），或者写成 "rest": true 接住其余的行')
+            raise ValueError(tr(f'步骤 {sid}：分支「{bid}」要写条件（where），或者写成 "rest": true 接住其余的行', f'Step {sid}: branch "{bid}" needs a condition (where), or "rest": true to catch the other rows'))
         try:
-            cond, params = _where(b['where'], columns, ctx, f'步骤 {sid} 的分支「{bid}」')
+            cond, params = _where(b['where'], columns, ctx, tr(f'步骤 {sid} 的分支「{bid}」', f'branch "{bid}" of step {sid}'))
         except OpError as exc:
             raise ValueError(str(exc)) from None
         out.append({'id': bid, 'rest': False, 'cond': cond, 'params': params})
     if not any(not b['rest'] for b in out):
-        raise ValueError(f'步骤 {sid}：拆分至少要有一个带条件的分支')
+        raise ValueError(tr(f'步骤 {sid}：拆分至少要有一个带条件的分支', f'Step {sid}: a split needs at least one branch with a condition'))
     return out
 
 
@@ -329,70 +333,72 @@ def check_pipeline(spec, datasets: dict, views: dict | None = None, ctx: dict | 
     views, ctx = views or {}, ctx or new_context()
     steps = spec.get('steps') if isinstance(spec, dict) else None
     if not isinstance(steps, list) or not steps:
-        raise ValueError('管道要有 steps：一组按顺序写的步骤')
+        raise ValueError(tr('管道要有 steps：一组按顺序写的步骤', 'A pipeline needs steps: a list of steps written in order'))
     if len(steps) > MAX_STEPS:
-        raise ValueError(f'一条管道最多 {MAX_STEPS} 个步骤')
+        raise ValueError(tr(f'一条管道最多 {MAX_STEPS} 个步骤', f'A pipeline can have at most {MAX_STEPS} steps'))
     columns: dict[str, list[dict]] = {}
     outputs: set[str] = set()
     splits: set[str] = set()   # a split is read through its branches, not by its own id
     for position, step in enumerate(steps):
         if not isinstance(step, dict):
-            raise ValueError(f'第 {position + 1} 步要写成 {{"id": …, "type": …}}')
-        sid = _text(step.get('id'), f'第 {position + 1} 步的 id')
+            raise ValueError(tr(f'第 {position + 1} 步要写成 {{"id": …, "type": …}}', f'Step {position + 1} must be written as {{"id": ..., "type": ...}}'))
+        sid = _text(step.get('id'), tr(f'第 {position + 1} 步的 id', f'the id of step {position + 1}'))
         if sid in columns:
-            raise ValueError(f'步骤编号重复：{sid}')
+            raise ValueError(tr(f'步骤编号重复：{sid}', f'Step id repeated: {sid}'))
         kind = step.get('type')
         if kind not in STEP_TYPES:
-            raise ValueError(f'步骤 {sid} 是不认识的步骤类型 {kind}，只有 {"、".join(STEP_TYPES)}')
+            raise ValueError(tr(f'步骤 {sid} 是不认识的步骤类型 {kind}，只有 {"、".join(STEP_TYPES)}', f'Step {sid} has an unknown step type {kind}. The types are {", ".join(STEP_TYPES)}'))
         read = lambda ref, role: _split_read(sid, ref) if isinstance(ref, str) and ref in splits else columns[ref] if isinstance(ref, str) and ref in columns else _undefined(sid, role, ref)   # a list or an object is not a step id
         if kind == 'input':
             columns[sid] = _input_columns(step, sid, datasets, views, ctx)
         elif kind == 'join':
-            left, right = read(step.get('left'), '左'), read(step.get('right'), '右')
+            left, right = read(step.get('left'), tr('左', 'left')), read(step.get('right'), tr('右', 'right'))
             if step.get('how') not in HOWS:
-                raise ValueError(f'步骤 {sid}：关联方式只能是 inner 或 left（保留左边的行），或 anti（左边没有对上的行）、semi（左边有对上的行）')
+                raise ValueError(tr(f'步骤 {sid}：关联方式只能是 inner 或 left（保留左边的行），或 anti（左边没有对上的行）、semi（左边有对上的行）', f'Step {sid}: the join type must be inner or left (keep the left rows), or anti (left rows with no match) or semi (left rows with a match)'))
             if step.get('null_keys') not in (None, *NULL_KEYS):
-                raise ValueError(f'步骤 {sid}：空值的处理（null_keys）只能是 no_match（空值不匹配，默认）或 equal（空值相等）')
+                raise ValueError(tr(f'步骤 {sid}：空值的处理（null_keys）只能是 no_match（空值不匹配，默认）或 equal（空值相等）', f'Step {sid}: null_keys must be no_match (empty values do not match, the default) or equal (empty values are equal)'))
             on = step.get('on')
             if not isinstance(on, list) or not on or not all(isinstance(p, dict) for p in on):
-                raise ValueError(f'步骤 {sid}：要写关联字段，例如 [{{"left": "订单号", "right": "订单号"}}]')
+                raise ValueError(tr(f'步骤 {sid}：要写关联字段，例如 [{{"left": "订单号", "right": "订单号"}}]', f'Step {sid}: write the join fields, for example [{{"left": "order_id", "right": "order_id"}}]'))
             for pair in on:
                 for side, cols, ref in (('left', left, step['left']), ('right', right, step['right'])):
+                    if pair.get(side) in (None, ''):
+                        raise ValueError(tr(f'步骤 {sid}：关联的列没选齐', f'Step {sid}: the join columns are not all chosen'))
                     if not isinstance(pair.get(side), str) or pair[side] not in {c['name'] for c in visible(cols)}:
-                        raise ValueError(f'步骤 {sid}：读的步骤 {ref} 里没有列 {pair.get(side)}')
+                        raise ValueError(tr(f'步骤 {sid}：读的步骤 {ref} 里没有列 {pair.get(side)}', f'Step {sid}: the step {ref} it reads has no column {pair.get(side)}'))
             chosen = step.get('right_columns')
             if chosen is not None:
                 if not isinstance(chosen, list) or any(not isinstance(c, str) or c not in {x['name'] for x in visible(right)} for c in chosen):
-                    raise ValueError(f'步骤 {sid}：要带过来的右边的列（right_columns）要写成右边读的步骤里有的列名列表')
+                    raise ValueError(tr(f'步骤 {sid}：要带过来的右边的列（right_columns）要写成右边读的步骤里有的列名列表', f'Step {sid}: the right-hand columns to bring over (right_columns) must be a list of column names the right-hand step has'))
             columns[sid] = _join_columns(step, left, right)
         elif kind == 'transform':
-            source = read(step.get('from'), '来源')
+            source = read(step.get('from'), tr('来源', 'source'))
             try:
                 columns[sid] = _transform(step, sid, 'x', source, ctx, position)[1]
             except OpError as exc:
                 raise ValueError(str(exc)) from None
         elif kind == 'llm':
-            columns[sid] = check_llm_step(step, sid, read(step.get('from'), '来源'))
+            columns[sid] = check_llm_step(step, sid, read(step.get('from'), tr('来源', 'source')))
         elif kind == 'union':
             refs = step.get('inputs')
             if not isinstance(refs, list) or len(refs) < 2 or len(refs) > MAX_UNION or not all(isinstance(r, str) for r in refs) or len(set(refs)) != len(refs):
-                raise ValueError(f'步骤 {sid}：合并要写至少两个不同的来源步骤（inputs），最多 {MAX_UNION} 个')
+                raise ValueError(tr(f'步骤 {sid}：合并要写至少两个不同的来源步骤（inputs），最多 {MAX_UNION} 个', f'Step {sid}: a union needs at least two different source steps (inputs), at most {MAX_UNION}'))
             if step.get('missing', 'error') not in MISSING:
-                raise ValueError(f'步骤 {sid}：缺列的处理（missing）只能是 error（有输入缺列就不合并，默认）或 empty（缺的列留空，并数出留空的行）')
-            columns[sid] = _union_columns(step, sid, [(r, read(r, '来源')) for r in refs], ctx)
+                raise ValueError(tr(f'步骤 {sid}：缺列的处理（missing）只能是 error（有输入缺列就不合并，默认）或 empty（缺的列留空，并数出留空的行）', f'Step {sid}: missing must be error (do not combine if an input lacks a column, the default) or empty (leave the missing columns empty and count those rows)'))
+            columns[sid] = _union_columns(step, sid, [(r, read(r, tr('来源', 'source'))) for r in refs], ctx)
         elif kind == 'split':
-            source = read(step.get('from'), '来源')
+            source = read(step.get('from'), tr('来源', 'source'))
             for b in _branches(step, sid, source, ctx, columns):
                 columns[b['id']] = [{k: v for k, v in c.items() if k != 'badge'} for c in source]
             columns[sid] = source
             splits.add(sid)
         else:
-            source = read(step.get('from'), '来源')
-            name = _text(step.get('name'), f'步骤 {sid}：输出要写名字，输出的名字')
+            source = read(step.get('from'), tr('来源', 'source'))
+            name = _text(step.get('name'), tr(f'步骤 {sid}：输出要写名字，输出的名字', f'Step {sid}: an output needs a name, the name of the output'))
             if len(name) > 100:
-                raise ValueError(f'步骤 {sid}：输出的名字最多 100 个字')
+                raise ValueError(tr(f'步骤 {sid}：输出的名字最多 100 个字', f'Step {sid}: an output name can be at most 100 characters'))
             if name in outputs:
-                raise ValueError(f'步骤 {sid}：已经有一个输出叫「{name}」，两个输出不能写到同一个数据集')
+                raise ValueError(tr(f'步骤 {sid}：已经有一个输出叫「{name}」，两个输出不能写到同一个数据集', f'Step {sid}: there is already an output called "{name}", and two outputs cannot write to the same dataset'))
             outputs.add(name)
             columns[sid] = _output(step, sid, source)['columns']
     return copy.deepcopy(spec)
@@ -530,8 +536,9 @@ def _measure_join(conn, index: int, step: dict, ltable: str, rtable: str, row_ca
     matched, joined = conn.execute(f'SELECT COALESCE(SUM(l.n), 0), COALESCE(SUM(l.n * r.n), 0) FROM jl_{index} AS l JOIN jr_{index} AS r ON {on}').fetchone()
     expected = {'inner': joined, 'left': joined + left_rows - matched, 'anti': left_rows - matched, 'semi': matched}[step['how']]
     if expected > row_cap:
-        raise ValueError(f'步骤 {step["id"]}：这个连接会产生 {expected:,} 行，超过一次最多 {row_cap:,} 行，没有运行。'
-                         f'通常是连接的列在两边都有大量重复的值，先换一列或先去重')
+        raise ValueError(tr(f'步骤 {step["id"]}：这个连接会产生 {expected:,} 行，超过一次最多 {row_cap:,} 行，没有运行。'
+                         f'通常是连接的列在两边都有大量重复的值，先换一列或先去重', f'Step {step["id"]}: this join would produce {expected:,} rows, more than the {row_cap:,} allowed at once, so it did not run. '
+                         f'Usually the join columns have many repeated values on both sides: use another column or remove duplicates first'))
     return {'left_rows': left_rows, 'matched_left': matched, 'expected_rows': expected}
 
 
@@ -671,7 +678,7 @@ def _failures(operators: list[dict]) -> dict:
 def prepare_llm(conn, ctx: dict, step: dict, compiled: dict) -> dict:
     """The answers of an LLM step as a table beside its rows (the model's part of a run is `ctx['llm']`, an LlmRun); its report. A run with nothing to do it is refused."""
     if ctx.get('llm') is None:
-        raise ValueError(f'步骤 {step["id"]}：这里不能调用模型，管道里的 AI 步骤只在管道页面里运行')
+        raise ValueError(tr(f'步骤 {step["id"]}：这里不能调用模型，管道里的 AI 步骤只在管道页面里运行', f'Step {step["id"]}: the model cannot be called here; AI steps in a pipeline only run on the pipeline page'))
     return ctx['llm'].prepare(conn, step, compiled['llm']['source'], compiled['llm']['source_columns'], compiled['llm']['answers'])
 
 

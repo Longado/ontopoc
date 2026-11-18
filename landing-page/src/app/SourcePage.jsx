@@ -3,69 +3,66 @@ import { deleteSource, getSource, getSourceTables, pullTable, refreshDataset, te
 import { useAuth } from "./Auth.jsx";
 import { isAdmin } from "./authModel.js";
 import { timeText } from "./format.js";
+import { t, useT } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { SourceForm, SourceState } from "./SourcesPage.jsx";
+import { ConnectFailure } from "./ConnectFailure.jsx";
+import { errorReport } from "./connectModel.js";
+import { PageHeader } from "./ui/PageHeader.jsx";
 import { estimateText, keyColumnsFrom, reasonText, runStatusText, runSummary } from "./sourceModel.js";
 import { useLoad } from "./useLoad.js";
 import { FormDialog } from "./FormDialog.jsx";
 
-const MODE_TEXT = { overwrite: "整张覆盖", update_by_key: "按主键更新" };
+const modeText = (mode) => (mode === "overwrite" || mode === "update_by_key" ? t(`sources.pull.mode.${mode}`) : mode);
 
 function PullDialog({ source, table, onClose, onDone }) {
+  useT();
   const [name, setName] = useState(table.split(".").pop());
   const [mode, setMode] = useState("overwrite");
   const [keys, setKeys] = useState("");
   const keyList = keyColumnsFrom(keys);
   const valid = name.trim() && (mode === "overwrite" || keyList.length);
   return (
-    <FormDialog title={`把“${table}”读成数据集`} submitLabel="读取" onClose={onClose} valid={valid}
+    <FormDialog title={t("sources.pull.title", { table })} submitLabel={t("sources.pull.submit")} onClose={onClose} valid={valid}
       onSubmit={async () => {
         const run = await pullTable({ source, table, name: name.trim(), mode, ...(mode === "update_by_key" ? { key_columns: keyList } : {}) });
-        if (run.status !== "success") throw new Error(run.error || "没有读成");
+        if (run.status !== "success") throw new Error(run.error || t("sources.pull.failed"));
         onDone();
       }}>
-      <label className="field"><span className="caption">数据集的名字</span><input type="text" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></label>
+      <label className="field"><span className="caption">{t("sources.pull.name")}</span><input type="text" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></label>
       <div className="field">
-        <span className="caption">以后每次刷新怎么写进数据集</span>
-        <Select label="刷新方式" value={mode} onChange={setMode}>
-          <option value="overwrite">整张覆盖：用库里现在的整张表换掉</option>
-          <option value="update_by_key">按主键更新：改了的行和新增的行更新进来，库里删掉的行保留</option>
+        <span className="caption">{t("sources.pull.refresh")}</span>
+        <Select label={t("sources.pull.refreshAria")} value={mode} onChange={setMode}>
+          <option value="overwrite">{t("sources.pull.overwrite")}</option>
+          <option value="update_by_key">{t("sources.pull.update")}</option>
         </Select>
       </div>
       {mode === "update_by_key" && (
-        <label className="field"><span className="caption">主键列（多列用逗号隔开）</span><input type="text" value={keys} placeholder="订单号" onChange={(e) => setKeys(e.target.value)} /></label>
+        <label className="field"><span className="caption">{t("sources.pull.keys")}</span><input type="text" value={keys} placeholder={t("sources.pull.keysHint")} onChange={(e) => setKeys(e.target.value)} /></label>
       )}
     </FormDialog>
   );
 }
 
-function DeleteSource({ source, onClose }) {
-  return (
-    <FormDialog title={`删除“${source.name}”`} submitLabel="删除" onClose={onClose} valid
-      onSubmit={async () => { await deleteSource(source.name); window.location.hash = hrefFor({ page: "sources" }); }}>
-      <p>数据源和它的调度会删掉。还有数据集来自它时删不了：先删掉那些数据集。</p>
-    </FormDialog>
-  );
-}
-
 function Tables({ name, tables, reload }) {
+  useT();
   const [pulling, setPulling] = useState(null);
   return (
     <div className="table-wrap">
       <table>
-        <thead><tr><th>表</th><th>类型</th><th>行数</th><th>数据集</th></tr></thead>
+        <thead><tr><th>{t("sources.tables.table")}</th><th>{t("sources.col.type")}</th><th>{t("sources.tables.rows")}</th><th>{t("sources.tables.dataset")}</th></tr></thead>
         <tbody>
-          {tables.map((t) => (
-            <tr key={t.name}>
-              <td>{t.name}</td>
-              <td>{t.kind}</td>
-              <td title="数据库自己统计的行数，可能不是最新">{t.rows == null ? <span className="faint">{estimateText(t.rows)}</span> : estimateText(t.rows)}</td>
+          {tables.map((tb) => (
+            <tr key={tb.name}>
+              <td>{tb.name}</td>
+              <td>{tb.kind}</td>
+              <td title={t("sources.tables.estimateTip")}>{tb.rows == null ? <span className="faint">{estimateText(tb.rows)}</span> : estimateText(tb.rows)}</td>
               <td>
-                {t.hidden ? <span className="faint">已读成你看不到的数据集</span>
-                  : t.dataset ? <a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a>
-                    : t.supported === false ? <span className="faint small">{t.note}</span>
-                      : <button className="plain" onClick={() => setPulling(t.name)}>读成数据集</button>}
+                {tb.hidden ? <span className="faint">{t("sources.tables.hidden")}</span>
+                  : tb.dataset ? <a href={hrefFor({ page: "dataset", name: tb.dataset, tab: "fields" })}>{tb.dataset}</a>
+                    : tb.supported === false ? <span className="faint small">{tb.note}</span>
+                      : <button className="plain" onClick={() => setPulling(tb.name)}>{t("sources.tables.pull")}</button>}
               </td>
             </tr>
           ))}
@@ -77,11 +74,11 @@ function Tables({ name, tables, reload }) {
 }
 
 function Runs({ runs }) {
-  if (!runs.length) return <p className="muted">还没有拉取过。</p>;
+  if (!runs.length) return <p className="muted">{t("sources.runs.none")}</p>;
   return (
     <div className="table-wrap">
       <table>
-        <thead><tr><th>开始</th><th>结束</th><th>表</th><th>方式</th><th>谁</th><th>结果</th><th></th></tr></thead>
+        <thead><tr><th>{t("sources.runs.started")}</th><th>{t("sources.runs.ended")}</th><th>{t("sources.tables.table")}</th><th>{t("sources.runs.how")}</th><th>{t("sources.runs.who")}</th><th>{t("sources.runs.result")}</th><th></th></tr></thead>
         <tbody>
           {runs.map((r) => (
             <tr key={r.id}>
@@ -101,6 +98,7 @@ function Runs({ runs }) {
 }
 
 export function SourcePage({ route }) {
+  useT();
   const { name } = route;
   const admin = isAdmin(useAuth().user);
   const [state, reload] = useLoad(() => getSource(name), [name]);
@@ -135,7 +133,7 @@ export function SourcePage({ route }) {
     setMessage("");
     try {
       const run = await refreshDataset(dataset);
-      setMessage(run.status === "success" ? `“${dataset}”：${runSummary(run)}` : `“${dataset}”没有刷新：${run.error}`);
+      setMessage(run.status === "success" ? t("sources.page.refreshed", { dataset, summary: runSummary(run) }) : t("sources.page.refreshFailed", { dataset, error: run.error }));
     } catch (e) {
       setMessage(e.message);
     }
@@ -143,52 +141,66 @@ export function SourcePage({ route }) {
     reload();
   };
   const afterPull = () => { reload(); look(); };
+  const removeSource = async () => {
+    try {
+      await deleteSource(name);
+      window.location.hash = hrefFor({ page: "sources" });
+    } catch (e) {
+      setMessage(e.message);
+    }
+  };
+  // a failed connection is explained once: after a test or a look, what that said; before either, what the last test left on the source
+  const failure = live?.status === "error" ? live.error : !live && source?.status === "failed" ? source.status_note : null;
+  const report = source && admin && failure ? errorReport({ source: name, kind: source.kind_label, host: source.host, port: source.port, database: source.database, username: source.username, tls: source.tls, message: failure, at: timeText(new Date().toISOString()) }) : "";
 
   return (
     <main className="page">
-      <a className="back" href={hrefFor({ page: "sources" })}>数据源</a>
-      <div className="page-head">
-        <h1 tabIndex={-1}>{name}</h1>
-        {source && admin && (
-          <div className="head-actions">
-            <button className="plain" onClick={() => setDialog("delete")}>删除</button>
-            <button className="secondary" onClick={() => setDialog("edit")}>修改连接</button>
-            <button className="primary" onClick={test}>测试连接</button>
-          </div>
+      <PageHeader crumbs={[{ label: t("data.crumb.data") }, { label: t("sources.title"), href: hrefFor({ page: "sources" }) }, { label: name }]} title={name} status={source && <SourceState source={source} />}
+        actions={source && admin && (
+          <>
+            <button className="secondary" onClick={() => setDialog("edit")}>{t("sources.page.edit")}</button>
+            <button className="primary" onClick={test}>{t("sources.page.test")}</button>
+          </>
         )}
-      </div>
-      {state.status === "error" && <p className="error">{state.error} {!state.missing && <button className="plain" onClick={reload}>重试</button>}</p>}
-      {state.status === "loading" && !source && <p className="muted">加载中</p>}
+        more={source && admin ? [{ label: t("sources.page.delete"), danger: true, confirmText: t("sources.page.deleteConfirm", { name }), onClick: removeSource }] : undefined} />
+      {state.status === "error" && <p className="error">{state.error} {!state.missing && <button className="plain" onClick={reload}>{t("common.retry")}</button>}</p>}
+      {state.status === "loading" && !source && <p className="muted">{t("common.loading")}</p>}
       {source && (
         <>
           <p className="facts">
             <span>{source.kind_label}</span>
-            {admin && <span>{source.host}:{source.port}/{source.database}，账号 {source.username}</span>}
-            <span><SourceState source={source} />{source.status_at && ` ${timeText(source.status_at)}`}</span>
+            {admin && <span>{source.host}:{source.port}/{source.database}{t("sources.page.account", { username: source.username })}</span>}
+            {source.status_at && <span>{t("sources.page.lastTest", { time: timeText(source.status_at) })}</span>}
           </p>
-          {admin && source.local && <p className="hint">这个数据库在运行本服务的这台机器上。</p>}
-          {source.status === "failed" && source.status_note && <p className="error">{source.status_note}</p>}
-          {source.can_write && <p className="warn">这个账号不是只读的：{source.write_note}。服务只用只读会话读数据，但建议换成只有 SELECT 权限的账号。</p>}
+          {admin && source.local && <p className="hint">{t("sources.page.local")}</p>}
+          {failure && admin && (
+            <ConnectFailure message={failure} report={report}>
+              <button className="secondary" onClick={() => setDialog("edit")}>{t("sources.page.edit")}</button>
+              <button className="primary" onClick={test}>{t("sources.page.retest")}</button>
+            </ConnectFailure>
+          )}
+          {failure && !admin && <p className="error">{failure}</p>}
+          {source.can_write && <p className="warn">{t("sources.page.writable", { note: source.write_note })}</p>}
           {message && <p className="muted">{message}</p>}
 
-          <h2 className="section">库里的表</h2>
-          {!live && <p><button className="secondary" onClick={look}>查看库里的表</button></p>}
-          {live?.status === "loading" && <p className="muted">正在连接，读表的列表</p>}
-          {live?.status === "error" && <p className="error">{live.error} <button className="plain" onClick={look}>重试</button></p>}
-          {live?.status === "ready" && (live.tables.length ? <Tables name={name} tables={live.tables} reload={afterPull} /> : <p className="muted">库里没有表，或这个账号看不到。</p>)}
+          <h2 className="section">{t("sources.page.dbTables")}</h2>
+          {!live && <p><button className="secondary" onClick={look}>{t("sources.page.look")}</button></p>}
+          {live?.status === "loading" && <p className="muted">{t("sources.page.connecting")}</p>}
+          {live?.status === "error" && <p className="muted">{t("sources.page.cannotConnect")} <button className="plain" onClick={look}>{t("common.retry")}</button></p>}
+          {live?.status === "ready" && (live.tables.length ? <Tables name={name} tables={live.tables} reload={afterPull} /> : <p className="muted">{t("sources.page.noTables")}</p>)}
 
-          <h2 className="section">已读成的数据集</h2>
-          {!source.tables.length ? <p className="muted">还没有。从上面的表里选一张读成数据集。</p> : (
+          <h2 className="section">{t("sources.page.pulled")}</h2>
+          {!source.tables.length ? <p className="muted">{t("sources.page.pulledNone")}</p> : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>数据集</th><th>来自的表</th><th>刷新方式</th><th></th></tr></thead>
+                <thead><tr><th>{t("sources.tables.dataset")}</th><th>{t("sources.page.fromTable")}</th><th>{t("sources.page.refreshMode")}</th><th></th></tr></thead>
                 <tbody>
-                  {source.tables.map((t) => (
-                    <tr key={t.table}>
-                      <td><a href={hrefFor({ page: "dataset", name: t.dataset, tab: "fields" })}>{t.dataset}</a></td>
-                      <td>{t.table}</td>
-                      <td>{MODE_TEXT[t.mode]}{t.key_columns && `（${t.key_columns.join("、")}）`}</td>
-                      <td className="keep"><button className="plain" disabled={refreshing === t.dataset} onClick={() => refresh(t.dataset)}>{refreshing === t.dataset ? "刷新中" : "现在刷新"}</button></td>
+                  {source.tables.map((tb) => (
+                    <tr key={tb.table}>
+                      <td><a href={hrefFor({ page: "dataset", name: tb.dataset, tab: "fields" })}>{tb.dataset}</a></td>
+                      <td>{tb.table}</td>
+                      <td>{modeText(tb.mode)}{tb.key_columns && t("sources.page.keysIn", { keys: tb.key_columns.join(t("data.listSep")) })}</td>
+                      <td className="keep"><button className="plain" disabled={refreshing === tb.dataset} onClick={() => refresh(tb.dataset)}>{refreshing === tb.dataset ? t("sources.page.refreshing") : t("sources.page.refreshNow")}</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -196,19 +208,18 @@ export function SourcePage({ route }) {
             </div>
           )}
 
-          <h2 className="section">调度</h2>
+          <h2 className="section">{t("sources.page.schedules")}</h2>
           {source.schedules.length ? (
             <ul className="plain-list">
-              {source.schedules.map((s) => <li key={s.id}><a href="#/schedules">{s.name}</a> {s.when}{!s.enabled && <span className="faint">（已关）</span>}</li>)}
+              {source.schedules.map((s) => <li key={s.id}><a href="#/schedules">{s.name}</a> {s.when}{!s.enabled && <span className="faint"> {t("sources.page.off")}</span>}</li>)}
             </ul>
-          ) : <p className="muted">没有。<a href="#/schedules">去设一个定时刷新</a></p>}
+          ) : <p className="muted">{t("sources.page.noSchedules")} <a href="#/schedules">{t("sources.page.setSchedule")}</a></p>}
 
-          <h2 className="section">拉取记录</h2>
+          <h2 className="section">{t("sources.page.runs")}</h2>
           <Runs runs={source.runs} />
         </>
       )}
       {dialog === "edit" && <SourceForm source={source} onClose={() => setDialog(null)} onDone={reload} />}
-      {dialog === "delete" && <DeleteSource source={source} onClose={() => setDialog(null)} />}
     </main>
   );
 }

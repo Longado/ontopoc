@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { OBJECT_BOX, nodeLines, objectGraphLayout } from "./objectGraphModel.js";
+import { setLocale } from "./i18n/index.js";
 import { answerView } from "./qaModel.js";
+
+setLocale("zh");   // these tests assert the Chinese words; the English ones are in askEnglish.test.js
 
 const GRAPH = {
   nodes: [

@@ -1,25 +1,29 @@
 // What the pipeline pages decide without a browser: the graph's layout, the card texts, how a draft definition is changed (always into a new object), the operator
 // picker's filtering, the simple expression form, what a confirm screen counts as seen. The service's own words are shown as they come.
 
-export const KIND_LABEL = { input: "输入", join: "关联", transform: "转换", llm: "AI 判断", union: "合并", split: "拆分", output: "输出" };
-export const HOW_LABEL = { left: "保留左边全部", inner: "只留两边都对上的", anti: "只留左边没对上的", semi: "只留左边对上的" };
-export const NULL_KEYS_LABEL = { no_match: "空值不匹配", equal: "空值相等" };
-export const STATUS_LABEL = { success: "成功", failed: "失败", running: "运行中", cancelled: "已取消" };
-export const CHANGE_LABEL = { ADD: "新增", MOD: "改了", DEL: "删除" };
-export const CMP_LABEL = { eq: "等于", ne: "不等于", gt: "大于", lt: "小于", ge: "大于等于", le: "小于等于", in: "属于", between: "介于", is_null: "为空", not_null: "不为空" };
-export const AGG_LABEL = { sum: "求和", count: "计数", count_distinct: "去重计数", avg: "平均", min: "最小", max: "最大", median: "中位数", p25: "P25", p75: "P75" };
-export const CAST_LABEL = { date: "日期", datetime: "日期时间", decimal: "小数", integer: "整数", boolean: "是否" };
-export const CLEAN_LABEL = { trim: "去首尾空格", whitespace: "合并多余空白", upper: "转大写", lower: "转小写", replace: "替换文字" };
-export const UNMAPPED_LABEL = { null: "留空", keep: "保留原代码", other: "写成指定文字" };
-const CATEGORY_ORDER = ["常用", "清洗", "类型", "日期", "数值", "文本", "汇总"];
+import { t } from "./i18n/index.js";
+import { AGG_SERVER, CATEGORY_ORDER, KEY_LIKE, SERVER_PATTERNS, UNIT_CHARS, UNIT_SENTENCES } from "./pipelineServerText.js";
+
+/** An object whose values are read from the dictionary when they are used, so that a language change shows at once: LABELS.kind.join -> t("pipeline.m.kind.join"). */
+const labels = (prefix, keys) => Object.defineProperties({}, Object.fromEntries(keys.map((k) => [k, { enumerable: true, get: () => t(`pipeline.m.${prefix}.${k}`) }])));
+export const KIND_LABEL = labels("kind", ["input", "join", "transform", "llm", "union", "split", "output", "branch"]);
+export const HOW_LABEL = labels("how", ["left", "inner", "anti", "semi"]);
+export const NULL_KEYS_LABEL = labels("nullkeys", ["no_match", "equal"]);
+export const STATUS_LABEL = labels("status", ["success", "failed", "running", "cancelled"]);
+export const CHANGE_LABEL = labels("change", ["ADD", "MOD", "DEL"]);
+export const CMP_LABEL = labels("cmp", ["eq", "ne", "gt", "lt", "ge", "le", "in", "between", "is_null", "not_null"]);
+export const AGG_LABEL = labels("agg", ["sum", "count", "count_distinct", "avg", "min", "max", "median", "p25", "p75"]);
+export const CAST_LABEL = labels("cast", ["date", "datetime", "decimal", "integer", "boolean"]);
+export const CLEAN_LABEL = labels("clean", ["trim", "whitespace", "upper", "lower", "replace"]);
+export const UNMAPPED_LABEL = labels("unmapped", ["null", "keep", "other"]);
 const PREFIX = { input: "in", join: "j", transform: "t", llm: "ai", union: "u", split: "s", output: "out" };
 
-const STATE_WORD = { proposed: "已提出", checked: "已检查", confirmed: "已确认", needs_look: "需再看", rejected: "已退回" };
-/** The state chip of a pipeline or of one of its outputs: a pipeline that needs another look says why (数据变了 / 定义改了). */
-export const pipelineStateText = (item) => (item.state === "needs_look" && item.cause_word ? `需再看：${item.cause_word}` : STATE_WORD[item.state] ?? "");
+const STATE_WORDS = ["proposed", "checked", "confirmed", "needs_look", "rejected"];
+/** The state chip of a pipeline or of one of its outputs: a pipeline that needs another look says why (the service's own words: data changed / definition changed). */
+export const pipelineStateText = (item) => (item.state === "needs_look" && item.cause_word ? t("pipeline.m.state.needs_look_why", { cause: item.cause_word }) : STATE_WORDS.includes(item.state) ? t(`pipeline.m.state.${item.state}`) : "");
 
 export const numberText =(value) => (typeof value === "number" ? value.toLocaleString("en-US") : value == null ? "—" : String(value));
-export const rowsText = (n) => `${numberText(n)} 行`;
+export const rowsText = (n, shown = numberText(n)) => t("pipeline.m.rows", { count: typeof n === "number" ? n : 2, n: shown });
 
 /** The ids a step reads (a branch id stands for the split that makes it). */
 export const inputsOf = (step) => (step.type === "join" ? [step.left, step.right] : step.type === "union" ? [...(step.inputs ?? [])] : step.type === "input" ? [] : [step.from]).filter(Boolean);
@@ -31,8 +35,8 @@ export const branchOwners = (steps) => Object.fromEntries(steps.filter((s) => s.
 const readsOf = (step, owners) => [...new Set(inputsOf(step).map((i) => owners[i] ?? i))];
 
 /** What a step can read, in order: every step but a split and an output, and each branch of a split, with the words of a picker. */
-export const readableSteps = (steps) => steps.flatMap((s) => (s.type === "split" ? (s.branches ?? []).map((b) => ({ id: b.id, label: `拆分的分支：${b.id}` }))
-  : s.type === "output" ? [] : [{ id: s.id, label: `${KIND_LABEL[s.type]}：${stepTitle(s, steps)}` }]));
+export const readableSteps = (steps) => steps.flatMap((s) => (s.type === "split" ? (s.branches ?? []).map((b) => ({ id: b.id, label: t("pipeline.m.readable.branch", { id: b.id }) }))
+  : s.type === "output" ? [] : [{ id: s.id, label: t("pipeline.m.readable.step", { kind: KIND_LABEL[s.type], title: stepTitle(s, steps) }) }]));
 
 /** Where each card goes, left to right: a step stands one column right of the furthest step it reads; the order of the steps decides the order in a column. */
 export function layout(steps, size = { w: 208, h: 116, gx: 56, gy: 16 }) {
@@ -52,7 +56,89 @@ export function layout(steps, size = { w: 208, h: 116, gx: 56, gy: 16 }) {
   return { nodes, edges, size, width: steps.length ? cols * size.w + (cols - 1) * size.gx : 0, height: rows * size.h + (rows - 1) * size.gy };
 }
 
-/** The steps that feed no output, when there is an output at all: they are drawn and marked "不会运行". */
+/** A drag position on the 8px grid. */
+export const snap = (v, grid = 8) => Math.round(v / grid) * grid;
+
+/** The layout with the cards the reader dragged at their own places (`moved` is {step id: {x, y}} in layout coordinates, which may be negative;
+ * ids of removed steps are ignored). Everything shifts by `shift` so the top-left card sits at 0, and the picture grows to hold every card.
+ * With nothing moved it is the layout itself. */
+export function placed(lay, moved) {
+  const ids = Object.keys(moved ?? {}).filter((id) => lay.nodes[id]);
+  if (!ids.length) return lay;
+  const raw = { ...lay.nodes };
+  for (const id of ids) raw[id] = { ...raw[id], x: moved[id].x, y: moved[id].y };
+  const all = Object.values(raw);
+  const shift = { x: Math.max(0, -Math.min(...all.map((n) => n.x))), y: Math.max(0, -Math.min(...all.map((n) => n.y))) };
+  const nodes = Object.fromEntries(Object.entries(raw).map(([id, n]) => [id, { ...n, x: n.x + shift.x, y: n.y + shift.y }]));
+  const shifted = Object.values(nodes);
+  return { ...lay, nodes, shift, width: Math.max(...shifted.map((n) => n.x)) + lay.size.w, height: Math.max(...shifted.map((n) => n.y)) + lay.size.h };
+}
+
+/** A link drawn from `from`'s out-port to `to`'s in-port (`slot` "left" | "right" for a join), as {id, patch} for `to`, or {error} with the reason's key:
+ * input (an input reads a dataset), output (an output has no out-port), self, same (already linked), loop (`from` already reads `to`), branchless (a split with no branch). */
+export function linkSteps(steps, from, to, slot = "left") {
+  const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
+  const src = byId[from];
+  const dst = byId[to];
+  if (!src || !dst) return { error: "missing" };
+  if (src.type === "output") return { error: "output" };
+  if (dst.type === "input") return { error: "input" };
+  if (from === to) return { error: "self" };
+  const owners = branchOwners(steps);
+  const reads = readsOf(dst, owners);
+  if (reads.includes(from) && dst.type !== "join") return { error: "same" };
+  if (dst.type === "join" && (owners[dst[slot]] ?? dst[slot]) === from) return { error: "same" };
+  const upstream = new Set();
+  const walk = (id) => {
+    if (upstream.has(id) || !byId[id]) return;
+    upstream.add(id);
+    readsOf(byId[id], owners).forEach(walk);
+  };
+  walk(from);
+  if (upstream.has(to)) return { error: "loop" };
+  let id = from;
+  if (src.type === "split") {
+    const branches = (src.branches ?? []).map((b) => b.id);
+    if (!branches.length) return { error: "branchless" };
+    const read = new Set(steps.flatMap(inputsOf));
+    id = branches.find((b) => !read.has(b)) ?? branches[0];
+  }
+  if (dst.type === "join") return { id: to, patch: { [slot === "right" ? "right" : "left"]: id } };
+  if (dst.type === "union") return { id: to, patch: { inputs: [...(dst.inputs ?? []), id] } };
+  return { id: to, patch: { from: id } };
+}
+
+/** The steps with every step after all the steps it reads (the engine reads only steps written before), otherwise in their own order; the same list when nothing moves. */
+export function inReadingOrder(steps) {
+  const owners = branchOwners(steps);
+  const known = new Set(steps.map((s) => s.id));
+  const done = new Set();
+  const out = [];
+  let rest = steps;
+  while (rest.length) {
+    const ready = rest.filter((s) => readsOf(s, owners).every((i) => done.has(i) || !known.has(i) || i === s.id));
+    const take = ready.length ? [ready[0]] : [rest[0]];   // a loop (never made by a link) keeps its order
+    take.forEach((s) => { done.add(s.id); out.push(s); });
+    rest = rest.filter((s) => !done.has(s.id));
+  }
+  return out.every((s, i) => s === steps[i]) ? steps : out;
+}
+
+/** The edge from `from` (a step; a split stands for its branches) to `to` taken away, as {id, patch} for `to`, or null when `to` does not read it. */
+export function unlinkSteps(steps, from, to) {
+  const dst = steps.find((s) => s.id === to);
+  if (!dst) return null;
+  const owners = branchOwners(steps);
+  const hit = (i) => i != null && (owners[i] ?? i) === from;
+  if (dst.type === "union") return (dst.inputs ?? []).some(hit) ? { id: to, patch: { inputs: dst.inputs.filter((i) => !hit(i)) } } : null;
+  if (dst.type === "join") {
+    const patch = { ...(hit(dst.left) ? { left: null } : {}), ...(hit(dst.right) ? { right: null } : {}) };
+    return Object.keys(patch).length ? { id: to, patch } : null;
+  }
+  return hit(dst.from) ? { id: to, patch: { from: null } } : null;
+}
+
+/** The steps that feed no output, when there is an output at all: they are drawn and marked "will not run". */
 export function orphans(steps) {
   if (!steps.some((s) => s.type === "output")) return [];
   const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
@@ -68,7 +154,7 @@ export function orphans(steps) {
 }
 
 /** The card's top line: what kind of step, and for a join how it keeps rows. */
-export const kindLine = (step) => (step.type === "join" ? `关联，${HOW_LABEL[step.how] ?? ""}` : KIND_LABEL[step.type]);
+export const kindLine = (step) => (step.type === "join" ? t("pipeline.m.kind.join_how", { how: HOW_LABEL[step.how] ?? "" }) : KIND_LABEL[step.type]);
 
 /** A step by its title, from its id (the id itself when it is not among `steps`). */
 export function nameOf(id, steps) {
@@ -78,27 +164,108 @@ export function nameOf(id, steps) {
 
 /** What a step is called: a dataset or output by its name, a join by the two steps it joins (`steps` lets it name them, else it uses their ids). */
 export function stepTitle(step, steps = []) {
-  if (step.type === "input") return `${step.dataset ?? step.view ?? "（还没选）"}${step.version ? ` 第 ${step.version} 版` : ""}`;
-  if (step.type === "output") return step.name || "（还没写名字）";
-  if (step.type === "join") return `${nameOf(step.left, steps)} 和 ${nameOf(step.right, steps)}`;
-  if (step.type === "union") return (step.inputs ?? []).map((i) => (branchOwners(steps)[i] ? i : nameOf(i, steps))).join("、") || "（还没选）";
-  if (step.type === "split") return (step.branches ?? []).map((b) => b.id).join(" / ") || "（还没有分支）";
-  if (step.type === "llm") return step.name || "（还没写新列的名字）";
+  if (step.type === "input") return `${step.dataset || step.view || t("pipeline.m.title.unset")}${step.version ? t("pipeline.m.title.version", { version: step.version }) : ""}`;
+  if (step.type === "output") return step.name || t("pipeline.m.title.unnamed");
+  if (step.type === "join") return t("pipeline.m.title.pair", { a: nameOf(step.left, steps), b: nameOf(step.right, steps) });
+  if (step.type === "union") return (step.inputs ?? []).map((i) => (branchOwners(steps)[i] ? i : nameOf(i, steps))).join(t("pipeline.m.sep.list")) || t("pipeline.m.title.unset");
+  if (step.type === "split") return (step.branches ?? []).map((b) => b.id).join(" / ") || t("pipeline.m.title.no_branches");
+  if (step.type === "llm") return step.name || t("pipeline.m.title.no_column_name");
   const n = step.operators?.length ?? 0;
-  return n ? step.operators.map(operatorName).join("、") : "（还没有操作）";
+  return n ? step.operators.map(operatorName).join(t("pipeline.m.sep.list")) : t("pipeline.m.title.no_ops");
 }
 
-export const OP_NAME = { filter: "数据过滤", fill_null: "空值替换", text_clean: "文本清理", cast: "字段转换", calc: "计算列", aggregate: "分组统计", dedupe: "排重", label: "打标签" };
+export const OP_NAME = labels("op", ["filter", "fill_null", "text_clean", "cast", "calc", "aggregate", "dedupe", "label"]);
 export const operatorName = (op) => OP_NAME[op.op] ?? op.op;
 
-/** A message from the engine ("步骤 t1 的第 1 个操作（calc）：…") with the step id and the operator id said as a person says them ("转换「计算列」的第 1 个操作（计算列）：…"). An id that is not among `steps` is left as it is. */
+/** The conditions of a filter, flattened in the order the form shows them. */
+const conditionsOf = (node) => (node?.all || node?.any ? (node.all ?? node.any).flatMap(conditionsOf) : node ? [node] : []);
+const VALUE_CMPS = new Set(["eq", "ne", "gt", "lt", "ge", "le"]);
+
+/** A message from the engine (in its own words: "步骤 t1 的第 1 个操作（filter）：没有列「」") said as a person says it: an operator by its name ("Filter rows: condition 1 has no column";
+ * "Group and aggregate (operation 2): ..." when the step has several), any other step by its kind and title, no empty quotes. An id that is not among `steps` is left as it is.
+ * The patterns that read the service's text are in pipelineServerText.js. */
 export function friendlyError(message, steps) {
-  return String(message ?? "").replace(/步骤 ([^\s：，、（）。]+?)(?: 的第 (\d+) 个操作（(\w+)）)?(?=[：，、。 ）]|$)/g, (whole, id, n, op) => {
+  let lastOp = null;
+  const said = String(message ?? "").replace(SERVER_PATTERNS.step, (whole, id, n, op) => {
     const step = steps.find((s) => s.id === id);
     if (!step) return whole;
-    const head = `${KIND_LABEL[step.type]}「${stepTitle(step, steps.filter((s) => s !== step))}」`;
-    return n ? `${head}的第 ${n} 个操作（${OP_NAME[op] ?? op}）` : head;
+    const operator = n ? step.operators?.[Number(n) - 1] : null;
+    if (operator) {
+      lastOp = operator;
+      return step.operators.length > 1 ? t("pipeline.m.err.opnum", { name: OP_NAME[op] ?? op, n }) : OP_NAME[op] ?? op;
+    }
+    const head = t("pipeline.m.err.head", { kind: KIND_LABEL[step.type], title: stepTitle(step, steps.filter((s) => s !== step)) });
+    return n ? t("pipeline.m.err.head_op", { head, n, op: OP_NAME[op] ?? op }) : head;
   });
+  const empty = lastOp?.op === "filter" ? conditionsOf(lastOp.where).findIndex((c) => !c.column) + 1 || 1 : 0;
+  const noColumn = empty ? t("pipeline.m.err.cond_no_column", { n: empty }) : t("pipeline.m.err.no_column");
+  return said
+    .replace(SERVER_PATTERNS.noColumn, noColumn)
+    .replace(SERVER_PATTERNS.datasetEmpty, t("pipeline.m.err.dataset_unset"))
+    .replace(SERVER_PATTERNS.noneChosen, (m, what) => t("pipeline.m.err.not_chosen", { what }))
+    .replace(SERVER_PATTERNS.inNoColumn, t("pipeline.m.err.in_no_column"))
+    .replace(SERVER_PATTERNS.emptyQuotes, "");
+}
+
+/** Whether a step is set up so that it can run: what is still missing, in words ("Filter rows: condition 1 needs a column"). A step that has none of these may still fail when the service checks it. */
+export function stepIssues(step) {
+  if (step.type === "input") return step.dataset || step.view ? [] : [t("pipeline.m.issue.input_dataset")];
+  if (step.type === "join") {
+    return [...(step.left ? [] : [t("pipeline.m.issue.join_left")]), ...(step.right ? [] : [t("pipeline.m.issue.join_right")]), ...((step.on ?? []).some((p) => !p.left || !p.right) ? [t("pipeline.m.issue.join_cols")] : [])];
+  }
+  if (step.type === "output") return String(step.name ?? "").trim() ? [] : [t("pipeline.m.issue.output_name")];
+  if (step.type === "union") return (step.inputs ?? []).length < 2 ? [t("pipeline.m.issue.union_two")] : [];
+  if (step.type !== "transform") return [];
+  if (!step.operators?.length) return [t("pipeline.m.issue.no_ops")];
+  return step.operators.flatMap((op) => {
+    const who = operatorName(op);
+    if (op.op === "filter") {
+      return conditionsOf(op.where).flatMap((c, i) => {
+        if (!c.column) return [t("pipeline.m.issue.cond_col", { who, n: i + 1 })];
+        const open = VALUE_CMPS.has(c.cmp) ? c.value == null || c.value === "" && !("meaning" in c || "meanings" in c)
+          : c.cmp === "in" ? !(c.values ?? []).length && !("meaning" in c || "meanings" in c) : c.cmp === "between" ? c.low == null || c.low === "" || c.high == null || c.high === "" : false;
+        return open ? [t("pipeline.m.issue.cond_open", { who, n: i + 1 })] : [];
+      });
+    }
+    if (op.op === "calc") return [...(op.name ? [] : [t("pipeline.m.issue.calc_name", { who })]), ...(op.expression ? [] : [t("pipeline.m.issue.calc_expr", { who })])];
+    if (["cast", "label"].includes(op.op)) return op.column ? [] : [t("pipeline.m.issue.pick_col", { who })];
+    if (["fill_null", "text_clean"].includes(op.op)) return op.columns?.length ? [] : [t("pipeline.m.issue.pick_col", { who })];
+    return [];
+  });
+}
+
+/** {step id: what is missing} for the steps that are not set up yet. */
+export function allIssues(steps) {
+  return Object.fromEntries(steps.map((s) => [s.id, stepIssues(s)]).filter(([, list]) => list.length));
+}
+
+/** The columns a join can put in as its key: the columns of the same name and type on both sides. `best` is the one most likely the key (a name that ends like one, the first in the left
+ * input); `others` are the other key-like ones, which would make the key longer. A same-name column that does not look like a key (a status, an amount) is not offered. */
+export function suggestJoinKeys(left = [], right = []) {
+  const there = new Map(right.map((c) => [c.name, c]));
+  const same = left.filter((c) => KEY_LIKE.test(c.name) && there.has(c.name) && (!c.type || !there.get(c.name).type || c.type === there.get(c.name).type)).map((c) => ({ left: c.name, right: c.name }));
+  return { best: same[0] ?? null, others: same.slice(1) };
+}
+
+/** Why the run button is grey ("" when it is not). */
+export function runBlockReason({ dirty, hasOutput, todo = 0, running = false }) {
+  if (running) return t("pipeline.m.block.running");
+  if (dirty) return t("pipeline.m.block.dirty");
+  if (!hasOutput) return t("pipeline.m.block.no_output");
+  if (todo > 0) return t("pipeline.m.block.todo", { count: todo });
+  return "";
+}
+
+/** How many rows a step added or dropped, for its card ("" for an input, which has nothing before it). */
+export function rowChangeText(node) {
+  if (!node || node.type === "input" || !node.rows_in?.length || node.rows_out == null) return "";
+  const delta = node.rows_out - node.rows_in[0];
+  return delta === 0 ? t("pipeline.m.delta.same") : t("pipeline.m.delta.rows", { count: Math.abs(delta), sign: delta > 0 ? "+" : "\u2212", n: numberText(Math.abs(delta)) });
+}
+
+/** What a run left on each card: {step id: {rows, warn}}. */
+export function runResults(run) {
+  return Object.fromEntries((run?.nodes ?? []).map((n) => [n.id, { rows: n.rows_out, warn: Object.keys(n.failures ?? {}).length > 0 }]));
 }
 
 /** The picker: the categories present (in the order people look for them), and the operators of the chosen one that match the search. */
@@ -125,7 +292,7 @@ export function newStep(steps, kind, near, datasets = [], model = "") {
   const split = steps.find((s) => s.id === picked && s.type === "split");
   const branches = (split?.branches ?? []).map((b) => b.id);
   const last = split ? branches[0] ?? null : picked;   // a split is read through its branches
-  if (kind === "input") return { id, type: "input", dataset: datasets[0] ?? "" };
+  if (kind === "input") return { id, type: "input", dataset: "" };   // empty: the person picks the data; the first dataset in the list is not a guess worth making
   if (kind === "join") {
     const right = [...steps].reverse().find((s) => s.id !== picked && s.type === "input") ?? [...steps].reverse().find((s) => s.id !== picked && s.type !== "split" && s.type !== "output");
     return { id, type: "join", left: last, right: right?.id ?? null, how: "left", on: [{ left: "", right: "" }], null_keys: "no_match" };
@@ -136,8 +303,8 @@ export function newStep(steps, kind, near, datasets = [], model = "") {
     const other = [...steps].reverse().find((s) => s.id !== last && s.type !== "output" && s.type !== "split");
     return { id, type: "union", inputs: [last, other?.id].filter(Boolean), missing: "error" };
   }
-  if (kind === "split") return { id, type: "split", from: last, branches: [{ id: `${id}_甲`, where: { all: [{ column: "", cmp: "eq", value: "" }] } }, { id: `${id}_其余`, rest: true }] };
-  if (kind === "llm") return { id, type: "llm", from: near ? last : [...steps].reverse().find((s) => s.type !== "output" && s.type !== "split")?.id ?? last, model, name: "", template: "classify", context: "", column: "", categories: ["其他"], multiple: false };
+  if (kind === "split") return { id, type: "split", from: last, branches: [{ id: `${id}_${t("pipeline.m.default.branch_a")}`, where: { all: [{ column: "", cmp: "eq", value: "" }] } }, { id: `${id}_${t("pipeline.m.default.branch_rest")}`, rest: true }] };
+  if (kind === "llm") return { id, type: "llm", from: near ? last : [...steps].reverse().find((s) => s.type !== "output" && s.type !== "split")?.id ?? last, model, name: "", template: "classify", context: "", column: "", categories: [t("pipeline.m.default.other")], multiple: false };
   return { id, type: "output", from: last, name: "" };
 }
 
@@ -180,29 +347,45 @@ export function newOperator(kind) {
     text_clean: { columns: [], steps: [{ do: "trim" }] },
     cast: { column: "", to: "decimal" },
     calc: { name: "", expression: "" },
-    aggregate: { group_by: [], aggregations: [{ fn: "count", as: "行数" }] },
+    aggregate: { group_by: [], aggregations: [{ fn: "count", as: t("pipeline.m.default.agg_rows") }] },
     dedupe: { keys: [], keep: "first", order_by: "" },
     label: { column: "", from_meaning: true, unmapped: "null" },
   };
   return { op: kind, ...structuredClone(starts[kind]) };
 }
 
-const list = (names) => (names?.length ? names.join("、") : "（还没选）");
+const list = (names) => (names?.length ? names.join(t("pipeline.m.sep.list")) : t("pipeline.m.title.unset"));
 
 /** One operator in a sentence, for its card. */
 export function operatorTitle(op) {
-  if (op.op === "filter") return `留下满足条件的行（${conditionCount(op.where)} 个条件）`;
-  if (op.op === "fill_null") return `${list(op.columns)} 的空值换成${op.with?.column ? `「${op.with.column}」` : op.with?.expression ? `表达式 ${op.with.expression}` : ` ${op.with?.constant ?? ""}`}`;
-  if (op.op === "text_clean") return `${list(op.columns)}：${(op.steps ?? []).map((s) => CLEAN_LABEL[s.do] ?? s.do).join("，")}`;
-  if (op.op === "cast") return `「${op.column || "（还没选）"}」转成${CAST_LABEL[op.to] ?? op.to}${op.as && op.as !== op.column ? `，放进新列「${op.as}」` : ""}${op.thousands ? "（千分位）" : ""}`;
-  if (op.op === "calc") return `${op.replace ? "替换" : "新增"}「${op.name || "（还没写名字）"}」= ${op.expression || "（还没写表达式）"}`;
-  if (op.op === "aggregate") return `${op.group_by?.length ? `按 ${list(op.group_by)} 分组` : "全部合成一组"}：${(op.aggregations ?? []).map((a) => `${a.as ?? aggDefaultName(a)}`).join("、")}`;
-  if (op.op === "dedupe") return op.keys?.length ? `按 ${list(op.keys)} 排重，留${op.keep === "last" ? "最后" : "第一"}条（按「${op.order_by || "（还没选）"}」）` : "整行一样的只留一行";
-  if (op.op === "label") return `「${op.column || "（还没选）"}」的代码换成含义${op.from_meaning ? "（读已确认的含义）" : ""}`;
+  const unset = t("pipeline.m.title.unset");
+  if (op.op === "filter") return t("pipeline.m.op.filter_title", { count: conditionCount(op.where) });
+  if (op.op === "fill_null") {
+    const value = op.with?.column ? t("pipeline.m.op.fill_column", { column: op.with.column }) : op.with?.expression ? t("pipeline.m.op.fill_expr", { expression: op.with.expression }) : t("pipeline.m.op.fill_const", { constant: op.with?.constant ?? "" });
+    return t("pipeline.m.op.fill_title", { cols: list(op.columns), value });
+  }
+  if (op.op === "text_clean") return t("pipeline.m.op.clean_title", { cols: list(op.columns), steps: (op.steps ?? []).map((s) => CLEAN_LABEL[s.do] ?? s.do).join(t("pipeline.m.sep.comma")) });
+  if (op.op === "cast") return `${t("pipeline.m.op.cast_title", { column: op.column || unset, to: CAST_LABEL[op.to] ?? op.to })}${op.as && op.as !== op.column ? t("pipeline.m.op.cast_as", { as: op.as }) : ""}${op.thousands ? t("pipeline.m.op.cast_thousands") : ""}`;
+  if (op.op === "calc") return t("pipeline.m.op.calc_title", { verb: op.replace ? t("pipeline.m.op.calc_replace") : t("pipeline.m.op.calc_add"), name: op.name || t("pipeline.m.op.calc_no_name"), expr: op.expression || t("pipeline.m.op.calc_no_expr") });
+  if (op.op === "aggregate") return t("pipeline.m.op.agg_title", { group: op.group_by?.length ? t("pipeline.m.op.agg_group", { cols: list(op.group_by) }) : t("pipeline.m.op.agg_all"), aggs: (op.aggregations ?? []).map((a) => `${a.as ?? aggDefaultName(a)}`).join(t("pipeline.m.sep.list")) });
+  if (op.op === "dedupe") return op.keys?.length ? t("pipeline.m.op.dedupe_title", { keys: list(op.keys), which: op.keep === "last" ? t("pipeline.m.op.dedupe_last") : t("pipeline.m.op.dedupe_first"), order: op.order_by || unset }) : t("pipeline.m.op.dedupe_all");
+  if (op.op === "label") return t("pipeline.m.op.label_title", { column: op.column || unset, meaning: op.from_meaning ? t("pipeline.m.op.label_meaning") : "" });
   return operatorName(op);
 }
 
-export const aggDefaultName = (a) => `${AGG_LABEL[a.fn]}${a.column ? `_${a.column}` : ""}`;
+const AGG_SUFFIXES = ["sum", "count", "count_distinct", "avg", "min", "max", "median", "p25", "p75"];
+/** The name a statistic gets when the person has not typed one: the column and what was done to it (amount_sum); counting whole rows is row_count. */
+export const aggAutoName = (a) => (a.column ? t("pipeline.m.agg.auto", { column: a.column, suffix: AGG_SUFFIXES.includes(a.fn) ? t(`pipeline.m.aggsuffix.${a.fn}`) : AGG_LABEL[a.fn] }) : t("pipeline.m.default.agg_rows"));
+
+/** A statistic after its function or column changed: its result name follows, unless the person typed their own (a name that is neither this one's old default nor the service's). */
+export function retargetAgg(agg, change) {
+  const next = { ...agg, ...change };
+  if (!next.column) delete next.column;
+  const auto = agg.as === undefined || agg.as === aggAutoName(agg) || agg.as === aggDefaultName(agg);
+  if (auto) next.as = aggAutoName(next);
+  return next;
+}
+export const aggDefaultName = (a) => `${AGG_SERVER[a.fn]}${a.column ? `_${a.column}` : ""}`;   // the service names a statistic itself, in its own words
 const conditionCount = (node) => (node?.all || node?.any ? (node.all ?? node.any).reduce((n, c) => n + conditionCount(c), 0) : 1);
 
 // --- the expression editor ---
@@ -229,34 +412,26 @@ export function insertAt(text, start, end, insert) {
 
 // --- cards, flags, lines ---
 
-/** "160 行 → 169 行": what went in and what came out; a join shows both inputs. */
+/** "160 rows → 169 rows": what went in and what came out; a join shows both inputs. */
 export function countsText(node) {
   if (!node) return "";
   const into = node.rows_in.length > 1 ? node.rows_in.map(numberText).join(" + ") : numberText(node.rows_in[0]);
-  return node.type === "input" ? `${rowsText(node.rows_out)}` : `${into} 行 → ${rowsText(node.rows_out)}`;
+  return node.type === "input" ? `${rowsText(node.rows_out)}` : `${rowsText(node.rows_in.length > 1 ? 2 : node.rows_in[0], into)} → ${rowsText(node.rows_out)}`;
 }
 
-const FAILURE_TEXT = {
-  cast_failures: (n) => `${n} 个值没转成功`,
-  calc_errors: (n) => `${n} 行算不出结果`,
-  unmapped_rows: (n) => `${n} 行的代码没有对应的含义`,
-  dropped_by_empty_condition: (n) => `${n} 行因为条件的字段是空的被删掉`,
-  ai_failed: (n) => `${n} 行 AI 没答成`,
-  ai_off_list: (n) => `${n} 行 AI 答的不在列表里`,
-  ai_unanswered: (n) => `${n} 行 AI 答不出`,
-};
-export const failureLine = (kind, n) => (FAILURE_TEXT[kind] ?? (() => `${kind} ${n}`))(n);
+const FAILURE_KINDS = ["cast_failures", "calc_errors", "unmapped_rows", "dropped_by_empty_condition", "ai_failed", "ai_off_list", "ai_unanswered"];
+export const failureLine = (kind, n) => (FAILURE_KINDS.includes(kind) ? t(`pipeline.m.fail.${kind}`, { count: n }) : `${kind} ${n}`);
 export const failureLines = (node) => Object.entries(node?.failures ?? {}).map(([kind, n]) => failureLine(kind, n));
 
-/** "KH099：合计算成 52,620，每行只算一次是 49,470" for each group a statistic counted a source row more than once. */
+/** "KH099: total came to 52,620; counting each row once gives 49,470" for each group a statistic counted a source row more than once. */
 export function doubledGroupLines(operator) {
-  return (operator.double_counted ?? []).flatMap((d) => d.examples.map((e) => `${Object.values(e.group).join("、")}：${d.as ?? d.column}算成 ${numberText(e.with)}，每行只算一次是 ${numberText(e.true)}`));
+  return (operator.double_counted ?? []).flatMap((d) => d.examples.map((e) => t("pipeline.m.doubled.line", { group: Object.values(e.group).join(t("pipeline.m.sep.list")), name: d.as ?? d.column, with: numberText(e.with), true: numberText(e.true) })));
 }
 
 /** What a join's fan-out did to the sums, in lines: which column, and the figure with and without the repeated rows. */
 export function fanOutLines(join) {
-  const side = (f, name) => (f?.double_counted ?? []).map((d) => `${name}「${d.column}」的合计从 ${numberText(d.without)} 变成 ${numberText(d.with)}`);
-  return [...side(join?.fan_out, "左边"), ...side(join?.right_fan_out, "右边")];
+  const side = (f, name) => (f?.double_counted ?? []).map((d) => t("pipeline.m.fanout.line", { side: name, column: d.column, without: numberText(d.without), with: numberText(d.with) }));
+  return [...side(join?.fan_out, t("pipeline.m.side.left")), ...side(join?.right_fan_out, t("pipeline.m.side.right"))];
 }
 
 /** The summary's nodes with one for each branch of a split, so that a step reading a branch sees its columns: the split's columns, the branch's rows. */
@@ -298,18 +473,27 @@ export const branchReaders = (steps, id) => steps.filter((s) => [s.left, s.right
 /** What a union did besides stacking rows: rows found in more than one input, and the rows a missing column was left empty on. */
 export function unionLines(union) {
   if (!union) return [];
-  const same = union.same_rows?.count ? [`${numberText(union.same_rows.count)} 行在不止一个输入里都有，后面求和会算两次`] : [];
-  return [...same, ...Object.entries(union.filled_empty ?? {}).map(([col, n]) => `${col}：${numberText(n)} 行没有这一列，留空`)];
+  const same = union.same_rows?.count ? [t("pipeline.m.union.same", { count: union.same_rows.count, n: numberText(union.same_rows.count) })] : [];
+  return [...same, ...Object.entries(union.filled_empty ?? {}).map(([col, n]) => t("pipeline.m.union.filled", { col, count: n, n: numberText(n) }))];
 }
 
 /** Where a split sent the rows: each branch with its rows, the rows whose condition field was empty, the rows that met it after an earlier branch took them, and the rows in no branch. */
 export function splitLines(split) {
   if (!split) return [];
   const branch = (b) => {
-    const notes = [b.empty_condition ? `${numberText(b.empty_condition)} 行条件字段是空的，没进这个分支` : "", b.also_matched ? `${numberText(b.also_matched)} 行也满足，但已经进了前面的分支` : ""].filter(Boolean);
-    return `${b.id}：${rowsText(b.rows)}${notes.length ? `（${notes.join("；")}）` : ""}`;
+    const notes = [b.empty_condition ? t("pipeline.m.split.empty_cond", { count: b.empty_condition, n: numberText(b.empty_condition) }) : "", b.also_matched ? t("pipeline.m.split.also", { count: b.also_matched, n: numberText(b.also_matched) }) : ""].filter(Boolean);
+    const base = t("pipeline.m.split.branch", { id: b.id, rows: rowsText(b.rows) });
+    return notes.length ? t("pipeline.m.split.notes", { base, notes: notes.join(t("pipeline.m.sep.semi")) }) : base;
   };
-  return [...split.branches.map(branch), ...(split.unassigned ? [`${numberText(split.unassigned)} 行没进任何分支，不会往下走`] : [])];
+  return [...split.branches.map(branch), ...(split.unassigned ? [t("pipeline.m.split.unassigned", { count: split.unassigned, n: numberText(split.unassigned) })] : [])];
+}
+
+/** The counts as a card's footer has room for them: "160 + 30 → 160 rows" (an input: "160 rows"). */
+export function countsShort(node) {
+  if (!node) return "";
+  if (node.type === "input" || !node.rows_in?.length) return rowsText(node.rows_out);
+  const into = node.rows_in.length > 1 ? node.rows_in.map(numberText).join(" + ") : numberText(node.rows_in[0]);
+  return t("pipeline.m.counts", { count: typeof node.rows_out === "number" ? node.rows_out : 2, from: into, n: numberText(node.rows_out) });
 }
 
 /** What the card carries beside its counts: {level: "warn" | "bad", text}. */
@@ -317,21 +501,21 @@ export function cardFlags(node) {
   if (!node) return [];
   const out = [];
   if (node.type === "join" && node.join) {
-    if (node.join.extra_rows > 0) out.push({ level: "warn", text: `多出 ${node.join.extra_rows} 行：右边同一个键有多条` });
-    if (fanOutLines(node.join).length) out.push({ level: "warn", text: "合计会被重复计算" });
-    if (node.join.left_unmatched > 0 && node.join.how !== "semi") out.push({ level: "note", text: `${node.join.left_unmatched} 行左边没有对上` });
+    if (node.join.extra_rows > 0) out.push({ level: "warn", text: t("pipeline.m.flag.extra", { count: node.join.extra_rows }) });
+    if (fanOutLines(node.join).length) out.push({ level: "warn", text: t("pipeline.m.flag.double") });
+    if (node.join.left_unmatched > 0 && node.join.how !== "semi") out.push({ level: "note", text: t("pipeline.m.flag.unmatched", { count: node.join.left_unmatched }) });
   }
-  if (node.union?.same_rows?.count) out.push({ level: "warn", text: `${numberText(node.union.same_rows.count)} 行重复` });
-  if (node.split?.unassigned) out.push({ level: "warn", text: `${numberText(node.split.unassigned)} 行没进任何分支` });
+  if (node.union?.same_rows?.count) out.push({ level: "warn", text: t("pipeline.m.flag.dupes", { count: node.union.same_rows.count }) });
+  if (node.split?.unassigned) out.push({ level: "warn", text: t("pipeline.m.flag.no_branch", { count: node.split.unassigned }) });
   const doubled = (node.operators ?? []).flatMap(doubledGroupLines);
-  if (doubled.length) out.push({ level: "warn", text: `${(node.operators ?? []).reduce((n, o) => n + (o.double_counted ?? []).reduce((m, d) => Math.max(m, d.groups), 0), 0)} 组的合计重复计算了行` });
-  if (node.llm?.pending > 0) out.push({ level: "note", text: `${numberText(node.llm.pending)} 行 AI 还没跑` });
+  if (doubled.length) out.push({ level: "warn", text: t("pipeline.m.flag.groups", { count: (node.operators ?? []).reduce((n, o) => n + (o.double_counted ?? []).reduce((m, d) => Math.max(m, d.groups), 0), 0) }) });
+  if (node.llm?.pending > 0) out.push({ level: "note", text: t("pipeline.m.flag.ai_pending", { count: node.llm.pending }) });
   const failures = failureLines(node);
-  if (failures.length) out.push({ level: "warn", text: failures[0] + (failures.length > 1 ? ` 等 ${failures.length} 类` : "") });
+  if (failures.length) out.push({ level: "warn", text: failures.length > 1 ? t("pipeline.m.flag.more", { first: failures[0], total: failures.length, rest: failures.length - 1 }) : failures[0] });
   if (node.type === "output" && node.output) {
     if (node.output.status?.state === "error") out.push({ level: "bad", text: node.output.status.text });
-    if (node.output.duplicate_keys) out.push({ level: "bad", text: `主键有 ${node.output.duplicate_keys.count} 个重复` });
-    if (node.output.empty_keys) out.push({ level: "bad", text: `${node.output.empty_keys} 行主键是空的` });
+    if (node.output.duplicate_keys) out.push({ level: "bad", text: t("pipeline.m.flag.dup_keys", { count: node.output.duplicate_keys.count }) });
+    if (node.output.empty_keys) out.push({ level: "bad", text: t("pipeline.m.flag.empty_keys", { count: node.output.empty_keys }) });
   }
   return out;
 }
@@ -339,48 +523,53 @@ export function cardFlags(node) {
 /** What a join did, in lines a person can check against the data: matched and unmatched left rows, rows beyond the left input, the sums that repeat, keys that match after cleaning. */
 export function joinVerdictLines(join) {
   if (!join) return [];
-  const lines = [`左边 ${rowsText(join.left_rows)}，${numberText(join.matched_left)} 行对上了，${numberText(join.left_unmatched)} 行没有对上`];
+  const lines = [t("pipeline.m.verdict.left", { rows: rowsText(join.left_rows), matched: numberText(join.matched_left), unmatched: numberText(join.left_unmatched) })];
   if (join.extra_rows > 0) {
     const repeated = join.fan_out?.repeated_keys;
-    lines.push(`多出 ${numberText(join.extra_rows)} 行：${repeated ? `${numberText(repeated)} 个键在右边有不止一行` : "同一个键在右边有不止一行"}`);
+    lines.push(t("pipeline.m.verdict.extra", { n: numberText(join.extra_rows), why: repeated ? t("pipeline.m.verdict.extra_keys", { n: numberText(repeated) }) : t("pipeline.m.verdict.extra_key") }));
     lines.push(...fanOutLines(join));
   }
-  if (join.right_fan_out) lines.push(`左边有 ${numberText(join.right_fan_out.repeated_keys)} 个键不止一行，右边的合计也会重复：${fanOutLines({ right_fan_out: join.right_fan_out }).join("；")}`);
-  if (join.left_blank || join.right_blank) lines.push(`键是空的：左边 ${numberText(join.left_blank)} 行，右边 ${numberText(join.right_blank)} 行（${NULL_KEYS_LABEL[join.null_keys] ?? ""}）`);
-  for (const n of join.near_matches ?? []) lines.push(`「${n.left}」有 ${numberText(n.count)} 个值去掉空格或按数字读就能和「${n.right}」对上，例如 ${n.examples.slice(0, 3).join("、")}`);
+  if (join.right_fan_out) lines.push(t("pipeline.m.verdict.right_fan", { n: numberText(join.right_fan_out.repeated_keys), lines: fanOutLines({ right_fan_out: join.right_fan_out }).join(t("pipeline.m.sep.semi")) }));
+  if (join.left_blank || join.right_blank) lines.push(t("pipeline.m.verdict.blank", { l: numberText(join.left_blank), r: numberText(join.right_blank), nk: NULL_KEYS_LABEL[join.null_keys] ?? "" }));
+  for (const n of join.near_matches ?? []) lines.push(t("pipeline.m.verdict.near", { left: n.left, right: n.right, n: numberText(n.count), ex: n.examples.slice(0, 3).join(t("pipeline.m.sep.list")) }));
   return lines;
 }
 
 /** The parameters each operator takes, for the picker's right-hand side. */
 export const OPERATOR_PARAMS = {
-  filter: ["条件：列、比较、值（代码列可以按含义选）", "条件之间是“全部满足”或“任一满足”"],
-  fill_null: ["要换的列（可以几列）", "换成：一个常量、另一列、或表达式的结果", "空字符串是否也算空"],
-  text_clean: ["要清理的文本列", "动作：去空格、合并空白、转大小写、替换文字（按原样的文字找）"],
-  cast: ["列和目标类型", "日期格式、千分位", "转不了时记录继续，或停下"],
-  calc: ["新列的名字，或替换哪一列", "表达式（可以先试算）"],
-  aggregate: ["按哪几列分组（可以不分组）", "统计：求和、计数、去重计数、平均、最小、最大、中位数、P25、P75", "空值不计入；代码列不能求和"],
-  dedupe: ["按哪几列排重（不选则整行一样才算重复）", "留第一条还是最后一条", "按哪一列排先后"],
-  label: ["要换成含义的代码列", "读已确认的含义，或自己写对照表", "对不上的代码：留空、保留或写成指定文字"],
+  get filter() { return [t("pipeline.m.params.filter.0"), t("pipeline.m.params.filter.1")]; },
+  get fill_null() { return [t("pipeline.m.params.fill_null.0"), t("pipeline.m.params.fill_null.1"), t("pipeline.m.params.fill_null.2")]; },
+  get text_clean() { return [t("pipeline.m.params.text_clean.0"), t("pipeline.m.params.text_clean.1")]; },
+  get cast() { return [t("pipeline.m.params.cast.0"), t("pipeline.m.params.cast.1"), t("pipeline.m.params.cast.2")]; },
+  get calc() { return [t("pipeline.m.params.calc.0"), t("pipeline.m.params.calc.1")]; },
+  get aggregate() { return [t("pipeline.m.params.aggregate.0"), t("pipeline.m.params.aggregate.1"), t("pipeline.m.params.aggregate.2")]; },
+  get dedupe() { return [t("pipeline.m.params.dedupe.0"), t("pipeline.m.params.dedupe.1"), t("pipeline.m.params.dedupe.2")]; },
+  get label() { return [t("pipeline.m.params.label.0"), t("pipeline.m.params.label.1"), t("pipeline.m.params.label.2")]; },
 };
 
-export const durationText =(ms) => (ms == null ? "" : ms < 1000 ? `${ms} 毫秒` : `${(ms / 1000).toFixed(1)} 秒`);
-export const versionsText = (inputs) => Object.entries(inputs ?? {}).map(([k, v]) => `${k.replace(/^view:/, "视图 ")} 第 ${v} 版`).join("、");
+export const durationText = (ms) => (ms == null ? "" : ms < 1000 ? t("pipeline.m.dur.ms", { ms }) : t("pipeline.m.dur.s", { s: (ms / 1000).toFixed(1) }));
+export const versionsText = (inputs) => Object.entries(inputs ?? {}).map(([k, v]) => t("pipeline.m.version.item", { name: k.replace(/^view:/, t("pipeline.m.version.view")), v })).join(t("pipeline.m.sep.list"));
 
 // --- the confirm screen ---
 
 /** One step in words, for the before / after of a change. */
 export function stepSummary(step, steps = []) {
   if (!step) return [];
-  if (step.type === "input") return [`读 ${stepTitle(step)}`];
-  if (step.type === "join") return [`${HOW_LABEL[step.how] ?? step.how}：${nameOf(step.left, steps)} 和 ${nameOf(step.right, steps)}`,`按 ${(step.on ?? []).map((p) => `${p.left} = ${p.right}`).join("，")}，${NULL_KEYS_LABEL[step.null_keys ?? "no_match"]}`,
-    ...(step.right_columns ? [`右边只带 ${list(step.right_columns)}`] : [])];
-  if (step.type === "transform") return [`读 ${nameOf(step.from, steps)}`, ...(step.operators ?? []).map(operatorTitle)];
-  if (step.type === "llm") return [`读 ${nameOf(step.from, steps)}，让 AI 写「${step.name}」（${LLM_TEMPLATE[step.template ?? "empty"]}）`, `模型 ${step.model}`, ...llmSettingLines(step)];
-  if (step.type === "union") return [`把 ${stepTitle(step, steps)} 的行接在一起，按列名对上`, step.missing === "empty" ? "缺的列留空" : "有一步缺列就不合并",
-    ...(step.source_column ? [`加一列「${step.source_column}」标出每行来自哪一步`] : [])];
-  if (step.type === "split") return [`读 ${nameOf(step.from, steps)}，每行进第一个满足条件的分支`,
-    ...(step.branches ?? []).map((b) => `${b.id}：${b.rest ? "其余的行" : operatorTitle({ op: "filter", where: b.where })}`)];
-  return [`读 ${nameOf(step.from, steps)}，写到「${step.name}」`, ...(step.key ? [`主键 ${list(step.key.columns)}`] : []), ...(step.columns ? [`只留 ${list(step.columns)}`] : [])];
+  const from = () => nameOf(step.from, steps);
+  if (step.type === "input") return [t("pipeline.m.sum.input", { title: stepTitle(step) })];
+  if (step.type === "join") {
+    return [t("pipeline.m.sum.join", { how: HOW_LABEL[step.how] ?? step.how, a: nameOf(step.left, steps), b: nameOf(step.right, steps) }),
+      t("pipeline.m.sum.join_on", { pairs: (step.on ?? []).map((p) => `${p.left} = ${p.right}`).join(t("pipeline.m.sep.comma")), nk: NULL_KEYS_LABEL[step.null_keys ?? "no_match"] }),
+      ...(step.right_columns ? [t("pipeline.m.sum.join_right", { cols: list(step.right_columns) })] : [])];
+  }
+  if (step.type === "transform") return [t("pipeline.m.sum.reads", { from: from() }), ...(step.operators ?? []).map(operatorTitle)];
+  if (step.type === "llm") return [t("pipeline.m.sum.llm", { from: from(), name: step.name, template: LLM_TEMPLATE[step.template ?? "empty"] }), t("pipeline.m.sum.model", { model: step.model }), ...llmSettingLines(step)];
+  if (step.type === "union") {
+    return [t("pipeline.m.sum.union", { title: stepTitle(step, steps) }), step.missing === "empty" ? t("pipeline.m.sum.union_empty") : t("pipeline.m.sum.union_strict"),
+      ...(step.source_column ? [t("pipeline.m.sum.union_source", { col: step.source_column })] : [])];
+  }
+  if (step.type === "split") return [t("pipeline.m.sum.split", { from: from() }), ...(step.branches ?? []).map((b) => t("pipeline.m.sum.split_branch", { id: b.id, what: b.rest ? t("pipeline.m.sum.split_rest") : operatorTitle({ op: "filter", where: b.where }) }))];
+  return [t("pipeline.m.sum.output", { from: from(), name: step.name }), ...(step.key ? [t("pipeline.m.sum.key", { cols: list(step.key.columns) })] : []), ...(step.columns ? [t("pipeline.m.sum.keeps", { cols: list(step.columns) })] : [])];
 }
 
 /** Marks made for one definition version only: a definition that was edited has none. */
@@ -396,7 +585,7 @@ export const progressOf = (changes, marks, version) => {
 
 /** A column's statistics before and after, side by side: [{name, before, after, changed}], where each side is the text of rows empty, distinct values, smallest, largest. */
 export function statRows(before, after) {
-  const text = (c) => (c ? `空 ${numberText(c.nulls)}，${numberText(c.distinct)} 种，${c.min ?? "—"} ~ ${c.max ?? "—"}` : "—");
+  const text = (c) => (c ? t("pipeline.m.stat.text", { nulls: numberText(c.nulls), distinct: numberText(c.distinct), min: c.min ?? "—", max: c.max ?? "—" }) : "—");
   const names = [...new Set([...(after ?? []).map((c) => c.name), ...(before ?? []).map((c) => c.name)])];
   return names.map((name) => {
     const b = (before ?? []).find((c) => c.name === name);
@@ -407,40 +596,44 @@ export function statRows(before, after) {
 
 // --- the AI node and the assistant ---
 
-export const LLM_TEMPLATE = { classify: "分类", extract: "抽取", summary: "摘要", empty: "自己写提示" };
-export const LLM_OUTPUT = { text: "一段文字", choice: "几个答案里选一个", number: "一个数" };
-export const TRIAL_MODE = { sample: "随机样本", rows: "选几行", values: "自己填一个值" };
+export const LLM_TEMPLATE = labels("llm.template", ["classify", "extract", "summary", "empty"]);
+export const LLM_OUTPUT = labels("llm.output", ["text", "choice", "number"]);
+export const TRIAL_MODE = labels("llm.trial", ["sample", "rows", "values"]);
 
 /** The lines a person reads of an AI step's settings, for the confirm screen. */
 export function llmSettingLines(step) {
-  const t = step.template ?? "empty";
-  if (t === "classify") return [`按「${step.column || "（还没选）"}」分成：${(step.categories ?? []).join("、")}${step.multiple ? "（可以选几个）" : ""}`, ...(step.context ? [`背景：${step.context}`] : [])];
-  if (t === "summary") return [`把「${step.column || "（还没选）"}」概括成不超过 ${step.size ?? "?"} ${step.unit ?? "字"}`];
-  if (t === "extract") return [`从「${step.column || "（还没选）"}」抽取：${(step.fields ?? []).map((f) => `${f.name}（${f.type === "number" ? "数" : "文字"}）`).join("、")}`];
-  return [`提示：${step.prompt || "（还没写）"}`, `答案：${LLM_OUTPUT[step.output ?? "text"]}${step.output === "choice" ? `（${(step.choices ?? []).join("、")}）` : ""}`];
+  const kind = step.template ?? "empty";
+  const col = step.column || t("pipeline.m.title.unset");
+  if (kind === "classify") return [t("pipeline.m.llm.classify", { col, cats: (step.categories ?? []).join(t("pipeline.m.sep.list")), multi: step.multiple ? t("pipeline.m.llm.multi") : "" }), ...(step.context ? [t("pipeline.m.llm.context", { text: step.context })] : [])];
+  if (kind === "summary") {
+    const unit = step.unit === UNIT_SENTENCES ? t("pipeline.m.llm.unit_sentences") : !step.unit || step.unit === UNIT_CHARS ? t("pipeline.m.llm.unit_chars") : step.unit;
+    return [t("pipeline.m.llm.summary", { col, size: step.size ?? "?", unit })];
+  }
+  if (kind === "extract") return [t("pipeline.m.llm.extract", { col, fields: (step.fields ?? []).map((f) => t("pipeline.m.llm.field", { name: f.name, type: f.type === "number" ? t("pipeline.m.llm.field_number") : t("pipeline.m.llm.field_text") })).join(t("pipeline.m.sep.list")) })];
+  return [t("pipeline.m.llm.prompt", { text: step.prompt || t("pipeline.m.llm.prompt_empty") }), t("pipeline.m.llm.answer", { what: LLM_OUTPUT[step.output ?? "text"], choices: step.output === "choice" ? t("pipeline.m.llm.choices", { list: (step.choices ?? []).join(t("pipeline.m.sep.list")) }) : "" })];
 }
 
-/** What a run (or a read of what is kept) did, as a person says it: "30 行答了（18 行是以前记下的），2 行失败，3 行跳过". */
+/** What a run (or a read of what is kept) did, as a person says it: "30 answered (18 from earlier answers), 2 failed, 3 skipped". */
 export function llmRunText(report) {
   if (!report) return "";
-  const parts = [`${numberText(report.answered)} 行答了${report.from_cache ? `（${numberText(report.from_cache)} 行用的是以前记下的）` : ""}`];
-  if (report.failed) parts.push(`${numberText(report.failed)} 行失败`);
-  if (report.off_list) parts.push(`${numberText(report.off_list)} 行答的不在列表里`);
-  if (report.unanswered) parts.push(`${numberText(report.unanswered)} 行答不出`);
-  if (report.skipped) parts.push(`${numberText(report.skipped)} 行跳过（提示用到的列都是空的）`);
-  if (report.pending) parts.push(`${numberText(report.pending)} 行还没跑`);
-  return parts.join("，");
+  const parts = [t("pipeline.m.run.answered", { n: numberText(report.answered), cache: report.from_cache ? t("pipeline.m.run.cache", { n: numberText(report.from_cache) }) : "" })];
+  if (report.failed) parts.push(t("pipeline.m.run.failed", { n: numberText(report.failed) }));
+  if (report.off_list) parts.push(t("pipeline.m.run.off_list", { n: numberText(report.off_list) }));
+  if (report.unanswered) parts.push(t("pipeline.m.run.unanswered", { n: numberText(report.unanswered) }));
+  if (report.skipped) parts.push(t("pipeline.m.run.skipped", { n: numberText(report.skipped) }));
+  if (report.pending) parts.push(t("pipeline.m.run.pending", { n: numberText(report.pending) }));
+  return parts.join(t("pipeline.m.sep.comma"));
 }
 
-/** "答了 '质量问题'，不在列表里：3 行" for each off-list answer. */
-export const offListLines = (report) => Object.entries(report?.off_list_answers ?? {}).map(([answer, n]) => `答了「${answer}」，不在列表里：${numberText(n)} 行`);
+/** One line for each off-list answer. */
+export const offListLines = (report) => Object.entries(report?.off_list_answers ?? {}).map(([answer, n]) => t("pipeline.m.run.offlist_line", { answer, n: numberText(n) }));
 
 /** What a run would ask of the model before it starts: calls, characters in, cost when known. */
 export function estimateText(estimate) {
   if (!estimate) return "";
-  const money = estimate.cost == null ? "服务没有配单价，没有估价" : `约 ${estimate.cost} 元`;
-  const cap = estimate.cap == null ? "" : `；一次运行最多 ${numberText(estimate.cap)} 次`;
-  return `要调用 ${numberText(estimate.calls)} 次，约 ${numberText(estimate.chars_in)} 字发给模型；${money}${cap}`;
+  const money = estimate.cost == null ? t("pipeline.m.est.nomoney") : t("pipeline.m.est.money", { cost: estimate.cost });
+  const cap = estimate.cap == null ? "" : t("pipeline.m.est.cap", { n: numberText(estimate.cap) });
+  return t("pipeline.m.est.text", { calls: numberText(estimate.calls), chars: numberText(estimate.chars_in), money, cap });
 }
 
 /** The whole run's calls against the most one run may make, over all its AI steps; null when the service does not say. */
@@ -452,28 +645,30 @@ export function runCalls(states) {
   return { calls, cap, over: calls > cap };
 }
 
-/** "20 行里 17 行对上" and where the review stands against the line the step names. */
+/** "17 of 20 rows match" and where the review stands against the line the step names. */
 export function reviewText(review) {
   if (!review) return "";
-  if (!review.reviewable) return "概括没有标准答案，不做样本审核";
-  if (!review.labelled) return "还没有标注";
-  if (review.matched == null) return `${review.labelled} 行有标注，还没有按现在的提示核对`;
-  const count = `${review.total} 行里 ${review.matched} 行对上`;
-  if (!review.current) return `${count}（那是改提示之前的结果，要重跑）`;
-  if (review.min_match == null) return `${count}；还没定要对上几行才算通过`;
-  if (review.need_labelled != null && review.labelled < review.need_labelled) return `${count}；至少要标注 ${review.need_labelled} 行才能通过，现在 ${review.labelled} 行`;
-  return `${count}，${review.passed ? "达到" : "没达到"}要求的 ${review.need_match ?? review.min_match} 行`;
+  if (!review.reviewable) return t("pipeline.m.review.noref");
+  if (!review.labelled) return t("pipeline.m.review.none");
+  if (review.matched == null) return t("pipeline.m.review.unchecked", { n: review.labelled });
+  const count = t("pipeline.m.review.count", { total: review.total, matched: review.matched });
+  if (!review.current) return t("pipeline.m.review.stale", { count });
+  if (review.min_match == null) return t("pipeline.m.review.nomin", { count });
+  if (review.need_labelled != null && review.labelled < review.need_labelled) return t("pipeline.m.review.needlabel", { count, need: review.need_labelled, have: review.labelled });
+  return t("pipeline.m.review.result", { count, verdict: review.passed ? t("pipeline.m.review.met") : t("pipeline.m.review.missed"), n: review.need_match ?? review.min_match });
 }
 
 /** One labelled row for the person who confirms: what the row said, what was expected, what the step answered, and whether they match. */
 export function labelledRow(row) {
-  const answered = row.ai == null ? (row.status === "absent" ? "这一行不在现在的数据里" : "还没核对") : row.ai.map((v) => (v == null ? "空" : String(v))).join("；");
-  const expected = row.expected !== null && typeof row.expected === "object" ? Object.values(row.expected).map((v) => (v == null ? "空" : String(v))).join("；") : String(row.expected);
-  return { text: Object.values(row.fields).map((v) => (v == null || v === "" ? "空" : String(v))).join(" ｜ "), expected, answered, matched: row.matched === true, checked: row.matched != null, who: row.who ?? "—" };
+  const empty = t("pipeline.m.labelled.empty");
+  const semi = t("pipeline.m.sep.semi");
+  const answered = row.ai == null ? (row.status === "absent" ? t("pipeline.m.labelled.absent") : t("pipeline.m.labelled.unchecked")) : row.ai.map((v) => (v == null ? empty : String(v))).join(semi);
+  const expected = row.expected !== null && typeof row.expected === "object" ? Object.values(row.expected).map((v) => (v == null ? empty : String(v))).join(semi) : String(row.expected);
+  return { text: Object.values(row.fields).map((v) => (v == null || v === "" ? empty : String(v))).join(" | "), expected, answered, matched: row.matched === true, checked: row.matched != null, who: row.who ?? "—" };
 }
 
 /** The AI columns an output keeps and what holds each back from being a key or a code meaning, from the pipeline's AI nodes. */
-export const aiNodeLine = (node) => `${node.name}：${reviewText(node.review)}；记下了 ${numberText(node.cache.current)} 条答案`;
+export const aiNodeLine = (node) => t("pipeline.m.ainode.line", { name: node.name, review: reviewText(node.review), n: numberText(node.cache.current) });
 
 /** A new draft after the assistant's steps were applied: they are ordinary steps from then on. */
 export const applyDraft = (spec, steps) => withSteps(spec, steps.map((s) => s.step));
@@ -483,13 +678,25 @@ export function rememberPrompt(list, entry, keep = 8) {
   return [entry, ...list.filter((e) => e.text !== entry.text)].slice(0, keep);
 }
 
-/** The values a sample row shows in its columns: the fields of the prompt, in order, empty ones as "空". */
-export const fieldCells = (fields, values) => fields.map((f) => (values[f] == null || values[f] === "" ? "空" : String(values[f])));
+/** The values a sample row shows in its columns: the fields of the prompt, in order, empty ones as "empty". */
+export const fieldCells = (fields, values) => fields.map((f) => (values[f] == null || values[f] === "" ? t("pipeline.m.labelled.empty") : String(values[f])));
 
-/** Puts a field into the prompt where the caret is, written `${名字}`: {text, caret}. */
+/** Puts a field into the prompt where the caret is, written `${name}`: {text, caret}. */
 export function insertField(text, start, end, name) {
   const insert = "${" + name + "}";
   const from = Math.min(start ?? text.length, end ?? text.length);
   const to = Math.max(start ?? text.length, end ?? text.length);
   return { text: text.slice(0, from) + insert + text.slice(to), caret: from + insert.length };
+}
+
+/** "Add data": a new input step that already reads `dataset` (the toolbar's dataset menu, as DIP's 添加数据). */
+export function dataInput(steps, dataset) {
+  return { ...newStep(steps, "input", null), dataset };
+}
+
+/** The canvas search: the steps whose title, kind or dataset contains `query`, ignoring case; nothing for an empty query. */
+export function findSteps(steps, query) {
+  const q = String(query ?? "").trim().toLowerCase();
+  if (!q) return [];
+  return steps.filter((s) => [stepTitle(s, steps), KIND_LABEL[s.type] ?? "", s.type, s.dataset ?? ""].some((x) => String(x).toLowerCase().includes(q)));
 }

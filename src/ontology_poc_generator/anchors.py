@@ -18,6 +18,7 @@ A count is judged by its share of the table, not its size: a month with more row
 choices, not measurements: a share that grows to more than twice, or falls below half, and by at least five rows."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import TrMap, tr
 from collections import Counter
 import hashlib
 from datetime import datetime, timezone
@@ -112,7 +113,7 @@ def code_anchor(profile: dict, records: list[dict], key: list[str] | None = None
 def _example(sample: dict, columns: list[str]) -> str:
     """The first filled column of a sample row, in the table's column order (the stored sample's own keys are sorted)."""
     column, value = next(((c, sample[c]) for c in columns if sample.get(c)), ('', ''))
-    return f'{column} {value}' if column else '一行'
+    return f'{column} {value}' if column else tr('一行', 'a row')
 
 
 def check_code(anchor: dict, labels: dict[str, str], profile: dict | None, records: list[dict]) -> list[str]:
@@ -121,17 +122,17 @@ def check_code(anchor: dict, labels: dict[str, str], profile: dict | None, recor
     column = anchor['column']
     if profile is None:
         if not any(column in r for r in records):
-            return [f'表里现在没有「{column}」这一列']
-        return [f'「{column}」现在不再像一列代码：有 {len({str(r[column]) for r in records if r.get(column) not in (None, "")})} 个不同的取值']
+            return [tr(f'表里现在没有「{column}」这一列', f'The table has no column "{column}" now')]
+        return [tr(f'「{column}」现在不再像一列代码：有 {len({str(r[column]) for r in records if r.get(column) not in (None, "")})} 个不同的取值', f'"{column}" no longer looks like a code column: it has {len({str(r[column]) for r in records if r.get(column) not in (None, "")})} distinct values')]
     now = {v['value']: v['rows'] for v in profile['values']}
     changes = []
     for value in sorted(v for v in labels if v in anchor['values']):
         if moved(anchor['values'][value], anchor['rows'], now.get(value, 0), profile['rows']):
-            changes.append(f'上次 {value} 有 {anchor["values"][value]} 行（占 {_pct(anchor["values"][value], anchor["rows"])}），'
-                           f'现在 {value} 有 {now.get(value, 0)} 行（占 {_pct(now.get(value, 0), profile["rows"])}）')
+            changes.append(tr(f'上次 {value} 有 {anchor["values"][value]} 行（占 {_pct(anchor["values"][value], anchor["rows"])}），', f'Last time {value} had {anchor["values"][value]} rows ({_pct(anchor["values"][value], anchor["rows"])}), ') +
+                           tr(f'现在 {value} 有 {now.get(value, 0)} 行（占 {_pct(now.get(value, 0), profile["rows"])}）', f'now {value} has {now.get(value, 0)} rows ({_pct(now.get(value, 0), profile["rows"])})'))
     new = [v for v in sorted(now) if v not in anchor['values']]
     if new:
-        changes.append('多了取值 ' + '、'.join(f'{v}（{now[v]} 行）' for v in new))
+        changes.append(tr('多了取值 ', 'New values ') + tr('、', ', ').join(tr(f'{v}（{now[v]} 行）', f'{v} ({now[v]} rows)') for v in new))
     changes += _swapped(anchor, labels, records) if anchor.get('ids') else []
     index: dict[tuple, set] = {}
     for r in records:
@@ -143,14 +144,14 @@ def check_code(anchor: dict, labels: dict[str, str], profile: dict | None, recor
         for sample in anchor['samples'].get(value, []):
             found = index.get(tuple(sample[c] for c in anchor['columns']))
             if found is not None and value not in found:
-                pair = (value, '、'.join(sorted(found)))
+                pair = (value, tr('、', ', ').join(sorted(found)))
                 different[pair] += 1
                 example.setdefault(pair, sample)
     for (value, now_codes), n in sorted(different.items()):
-        changes.append(f'抽查的同一批行里，{n} 行上次是 {value}，现在是 {now_codes}（如{_example(example[(value, now_codes)], anchor["columns"])}）')
+        changes.append(tr(f'抽查的同一批行里，{n} 行上次是 {value}，现在是 {now_codes}（如{_example(example[(value, now_codes)], anchor["columns"])}）', f'Among the same sampled rows, {n} were {value} last time and are {now_codes} now (for example {_example(example[(value, now_codes)], anchor["columns"])})'))
     gone = [v for v in sorted(labels) if v in anchor['values'] and v not in now]
     if changes and gone:
-        changes.append('已有含义的取值现在一行都没有：' + '、'.join(gone))
+        changes.append(tr('已有含义的取值现在一行都没有：', 'Values with a meaning that now have no rows: ') + tr('、', ', ').join(gone))
     return changes
 
 
@@ -170,7 +171,7 @@ def _swapped(anchor: dict, labels: dict[str, str], records: list[dict]) -> list[
             if k >= MIN_ROWS and k * 100 >= SWAP_SHARE_PERCENT * len(here):
                 moved_rows = {h for h in here if where[h] == other}
                 example = next((found for r in records if (found := _row_id(r, key)) is not None and _hash(found) in moved_rows), '')   # the first in the file
-                out.append(f'按「{"、".join(key)}」对，上次是 {code} 的 {len(here)} 行里有 {k} 行现在是 {other}（如{"、".join(key)} {example.replace(chr(31), " ")}）')
+                out.append(tr(f'按「{tr("、", ", ").join(key)}」对，上次是 {code} 的 {len(here)} 行里有 {k} 行现在是 {other}（如{tr("、", ", ").join(key)} {example.replace(chr(31), " ")}）', f'Matched by "{", ".join(key)}": of the {len(here)} rows that were {code} last time, {k} are now {other} (for example {", ".join(key)} {example.replace(chr(31), " ")})'))
     return out
 
 
@@ -184,9 +185,9 @@ def check_view(anchor: dict, rows: int, source_rows: int, version: int | None) -
     if not moved(anchor['rows'], anchor['source_rows'], rows, source_rows):
         return []
     table = anchor['table']
-    swapped = f'；「{table}」表从第 {anchor["version"]} 版换成了第 {version} 版' if anchor.get('version') and version and anchor['version'] != version else ''
-    return [f'上次视图留下 {anchor["rows"]} 行（「{table}」共 {anchor["source_rows"]} 行里的 {_pct(anchor["rows"], anchor["source_rows"])}），'
-            f'现在留下 {rows} 行（共 {source_rows} 行里的 {_pct(rows, source_rows)}）{swapped}']
+    swapped = tr(f'；「{table}」表从第 {anchor["version"]} 版换成了第 {version} 版', f'; the table "{table}" went from version {anchor["version"]} to version {version}') if anchor.get('version') and version and anchor['version'] != version else ''
+    return [tr(f'上次视图留下 {anchor["rows"]} 行（「{table}」共 {anchor["source_rows"]} 行里的 {_pct(anchor["rows"], anchor["source_rows"])}），', f'Last time the view kept {anchor["rows"]} rows ({_pct(anchor["rows"], anchor["source_rows"])} of the {anchor["source_rows"]} rows of "{table}"), ') +
+            tr(f'现在留下 {rows} 行（共 {source_rows} 行里的 {_pct(rows, source_rows)}）{swapped}', f'now it keeps {rows} rows ({_pct(rows, source_rows)} of {source_rows}){swapped}')]
 
 
 # relations
@@ -202,13 +203,13 @@ def check_relation(anchor: dict, check: dict, label) -> list[str]:
     for was in anchor['sides']:
         side = now.get(was['end'])
         if side and moved(was['unmatched'], was['rows'], side['unmatched'], side['rows']):
-            changes.append(f'{label(was["object"])}那一头：上次 {was["rows"]} 行里 {was["unmatched"]} 行找不到对应，现在 {side["rows"]} 行里 {side["unmatched"]} 行找不到')
+            changes.append(tr(f'{label(was["object"])}那一头：上次 {was["rows"]} 行里 {was["unmatched"]} 行找不到对应，现在 {side["rows"]} 行里 {side["unmatched"]} 行找不到', f'On the {label(was["object"])} end: last time {was["unmatched"]} of {was["rows"]} rows had no match, now {side["unmatched"]} of {side["rows"]} have none'))
     return changes
 
 
 # the list a person reads
 
-RULE_SAYS = {'keep_both': '每一行都留', 'data_error': '当作数据错误'}
+RULE_SAYS = TrMap({'keep_both': ('每一行都留', 'Keep every row'), 'data_error': ('当作数据错误', 'Treat it as a data error')})
 
 
 def review_items(rows: dict[str, dict], named_views: dict, relations: dict[str, str], newer: str | None = None) -> list[dict]:
@@ -221,17 +222,17 @@ def review_items(rows: dict[str, dict], named_views: dict, relations: dict[str, 
         table, _, column = field.partition('.')
         meant = [f'{e["value"]} = {e["label"]}' for e in (row['content'] or {}).get('values', []) if e.get('label')]
         reading = [n for n, d in sorted(named_views.items()) if isinstance(d, dict) and d.get('kind') == 'filter' and d.get('base') == table and d.get('column') == column]
-        out.append(_entry('property', 'code_meaning', field, f'「{table}」的「{column}」的含义：{"、".join(meant)}', row,
-                          {'tab': 'data', 'table': table}, [f'视图「{n}」读它，现在读不了' for n in reading], newer))
+        out.append(_entry('property', 'code_meaning', field, tr(f'「{table}」的「{column}」的含义：{tr("、", ", ").join(meant)}', f'Meanings of "{column}" of "{table}": {", ".join(meant)}'), row,
+                          {'tab': 'data', 'table': table}, [tr(f'视图「{n}」读它，现在读不了', f'The view "{n}" reads it and cannot be read now') for n in reading], newer))
     for name, row in sorted(rows['repeat_rule'].items()):
         source = name.partition('.')[2]
         rule = row['content'] or {}
-        said = RULE_SAYS.get(rule.get('rule'), f'只留「{rule.get("column")}」最新的一行')
-        out.append(_entry('repeat_rule', 'repeat_rule', name, f'「{source}」表重复编号的处理办法：{said}', row, {'tab': 'data', 'table': source}, [], newer))
+        said = RULE_SAYS.get(rule.get('rule'), tr(f'只留「{rule.get("column")}」最新的一行', f'Keep only the latest row by "{rule.get("column")}"'))
+        out.append(_entry('repeat_rule', 'repeat_rule', name, tr(f'「{source}」表重复编号的处理办法：{said}', f'How the table "{source}" treats repeated keys: {said}'), row, {'tab': 'data', 'table': source}, [], newer))
     for name, row in sorted(rows['view'].items()):
-        out.append(_entry('view', 'view', name, f'视图「{name}」', row, {'tab': 'data', 'table': (row['content'] or {}).get('base')}, [], newer))
+        out.append(_entry('view', 'view', name, tr(f'视图「{name}」', f'The view "{name}"'), row, {'tab': 'data', 'table': (row['content'] or {}).get('base')}, [], newer))
     for name, row in sorted(rows['relation'].items()):
-        out.append(_entry('relation', 'relation', name, f'关系「{relations.get(name, name)}」判过“对”', row, {'tab': 'objects', 'place': 'confirm'}, [], newer))
+        out.append(_entry('relation', 'relation', name, tr(f'关系「{relations.get(name, name)}」判过“对”', f'The relation "{relations.get(name, name)}" was judged right'), row, {'tab': 'objects', 'place': 'confirm'}, [], newer))
     return out
 
 

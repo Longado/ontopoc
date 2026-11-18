@@ -11,6 +11,7 @@ failed) are an admin's. Everything a person reads of a pull, a table or a schedu
 """
 from __future__ import annotations
 
+from ontology_poc_generator.lang import TrMap, tr
 import contextlib
 import ipaddress
 import json
@@ -24,7 +25,7 @@ from pathlib import Path
 from ontology_poc_generator.object_actions import overwritten_by_upload
 from ontology_poc_generator.object_types import recheck_after_write
 from ontology_poc_generator.source_connect import (
-    DEFAULT_PORTS, GENERIC, KINDS, MAX_PULL_ROWS, TLS_MODES, SourceError, check_ca, connect, describe, records_of, screen_host)
+    DEFAULT_PORTS, generic_failure, KINDS, MAX_PULL_ROWS, TLS_MODES, SourceError, check_ca, connect, describe, records_of, screen_host)
 from ontology_poc_generator.source_vault import seal, unseal
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_store import (
@@ -33,12 +34,14 @@ from ontology_poc_generator.workspace_store import (
 NAME_LIMIT = 60
 TEXT_LIMIT = 253
 LOCAL_HOSTS = {'localhost', '127.0.0.1', '::1', '[::1]'}
-STATUS_WORDS = {'untested': '未测试', 'ok': '正常', 'failed': '失败'}
+STATUS_WORDS = TrMap({'untested': ('未测试', 'Not tested'), 'ok': ('正常', 'OK'), 'failed': ('失败', 'Failed')})
 ORIGIN_PREFIX = 'source:'
 RUN_LIST_LIMIT = 50
 TABLE_CACHE_SECONDS = 600   # a builder's look at the table list is the database's answer of up to ten minutes ago; an admin's test is always fresh
-HIDDEN_ERROR = '这个数据集你看不到，细节只给能看它的人'
-INTERNAL_ERROR = '读取时出了内部错误，详情见服务日志'
+def hidden_error() -> str:
+    return tr('这个数据集你看不到，细节只给能看它的人', 'You cannot see this dataset; the details go only to people who can')
+def internal_error() -> str:
+    return tr('读取时出了内部错误，详情见服务日志', 'An internal error happened while reading; see the service log for details')
 
 _active: set[tuple] = set()   # what is being pulled or run right now, by (kind, target, item): a second one for the same thing does not start
 _active_lock = threading.Lock()
@@ -113,7 +116,7 @@ def public_source(conn, row: dict, user: dict | None) -> dict:
     admin = is_admin(user)
     failed = row['status'] == 'failed'
     out = {'name': row['name'], 'kind': row['kind'], 'kind_label': KINDS[row['kind']], 'status': row['status'], 'status_label': STATUS_WORDS[row['status']],
-           'status_at': row['status_at'], 'status_note': row['status_note'] if admin else (GENERIC if failed else None),
+           'status_at': row['status_at'], 'status_note': row['status_note'] if admin else (generic_failure() if failed else None),
            'can_write': None if row['can_write'] is None else bool(row['can_write']), 'tls': row['tls'] or 'required', 'tables': bound_for(conn, row['id'], user)}
     if admin:
         out |= {'write_note': row['write_note'], 'host': row['host'], 'port': row['port'], 'database': row['database'], 'username': row['username'], 'has_password': True,
@@ -147,12 +150,12 @@ def _text(payload: dict, field: str, label: str, limit: int = TEXT_LIMIT, requir
     value = payload.get(field)
     if value is None or (isinstance(value, str) and not value.strip()):
         if required:
-            raise ValueError(f'要填{label}')
+            raise ValueError(tr(f'要填{label}', f'{label} is required'))
         return None
     if not isinstance(value, str):
-        raise ValueError(f'{label}要写成文字')
+        raise ValueError(tr(f'{label}要写成文字', f'{label} must be text'))
     if len(value.strip()) > limit:
-        raise ValueError(f'{label}不能超过 {limit} 个字符')
+        raise ValueError(tr(f'{label}不能超过 {limit} 个字符', f'{label} must be at most {limit} characters'))
     return value.strip()
 
 
@@ -164,26 +167,26 @@ def _ipv6(host: str) -> bool:
 
 
 def _connection_fields(payload: dict, kind: str) -> dict:
-    host = _text(payload, 'host', '主机')
+    host = _text(payload, 'host', tr('主机', 'The host'))
     if re.search(r'[\s/@?#]', host) or '://' in host:
-        raise ValueError('主机只写地址，例如 db.example.com 或 10.0.0.5，不要带协议、路径或账号')
+        raise ValueError(tr('主机只写地址，例如 db.example.com 或 10.0.0.5，不要带协议、路径或账号', 'Write only the address as the host, for example db.example.com or 10.0.0.5, without protocol, path or account'))
     if ':' in host and not _ipv6(host):
-        raise ValueError('主机里不要写端口，端口有单独的一格（例如主机写 db.example.com，端口写 3306）')
+        raise ValueError(tr('主机里不要写端口，端口有单独的一格（例如主机写 db.example.com，端口写 3306）', 'Do not put the port in the host; the port has its own box (for example host db.example.com, port 3306)'))
     port = payload.get('port', DEFAULT_PORTS[kind])
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
-        raise ValueError('端口要写成 1 到 65535 的整数')
+        raise ValueError(tr('端口要写成 1 到 65535 的整数', 'The port must be a whole number from 1 to 65535'))
     try:
         screen_host(host, port)
     except SourceError as exc:
         raise ValueError(str(exc)) from None
-    return {'host': host, 'port': port, 'database': _text(payload, 'database', '数据库名'), 'username': _text(payload, 'username', '账号')}
+    return {'host': host, 'port': port, 'database': _text(payload, 'database', tr('数据库名', 'The database name')), 'username': _text(payload, 'username', tr('账号', 'The username'))}
 
 
 def _tls(payload: dict, host: str, current: str | None = None) -> str:
     """The encryption setting: what the request says, else what the source had, else "required" unless the database is on this machine."""
     tls = payload.get('tls', current if current is not None else ('none' if host.strip('[]').lower() in LOCAL_HOSTS else 'required'))
     if tls not in TLS_MODES:
-        raise ValueError('加密只能选“必须”（核对证书，默认）或“不用”（密码和数据会明文过网络）')
+        raise ValueError(tr('加密只能选“必须”（核对证书，默认）或“不用”（密码和数据会明文过网络）', 'Encryption can only be "Required" (checks the certificate; the default) or "Off" (the password and data cross the network in clear text)'))
     return tls
 
 
@@ -200,7 +203,7 @@ def _ca(payload: dict, tls: str, current: str | None = None) -> str | None:
     except SourceError as exc:
         raise ValueError(str(exc)) from None
     if tls != 'required':
-        raise ValueError('不加密时用不上 CA 证书：要按这张证书核对数据库，加密选“必须”')
+        raise ValueError(tr('不加密时用不上 CA 证书：要按这张证书核对数据库，加密选“必须”', 'A CA certificate is not used without encryption: to check the database against it, set encryption to "Required"'))
     return ca
 
 
@@ -210,26 +213,26 @@ def _name_taken(conn, name: str) -> bool:
 
 def create_source(conn, payload: dict, who: str | None) -> dict:
     """{name, kind, host, port?, database, username, password, tls?}: save a source, status 未测试. The password is sealed on the way in."""
-    name = _text(payload, 'name', '数据源的名字', NAME_LIMIT)
+    name = _text(payload, 'name', tr('数据源的名字', 'The source name'), NAME_LIMIT)
     if re.search(r'[/@\\]', name):
-        raise ValueError('数据源的名字里不能有 / @ \\（它会写进数据集的来源里）')
+        raise ValueError(tr('数据源的名字里不能有 / @ \\（它会写进数据集的来源里）', 'A source name cannot contain / @ \\ (it is written into the source of a dataset)'))
     kind = payload.get('kind')
     if kind not in KINDS:
-        raise ValueError('数据库类型只能选 PostgreSQL 或 MySQL')
+        raise ValueError(tr('数据库类型只能选 PostgreSQL 或 MySQL', 'The database type can only be PostgreSQL or MySQL'))
     fields = _connection_fields(payload, kind)
     tls = _tls(payload, fields['host'])
     ca = _ca(payload, tls)
     password = payload.get('password')
     if not isinstance(password, str) or not password:
-        raise ValueError('要填密码')
+        raise ValueError(tr('要填密码', 'The password is required'))
     if _name_taken(conn, name):
-        raise ValueError(f'已经有叫“{name}”的数据源')
-    stamp, signer = now_text(), str(who or '').strip() or '未署名'
+        raise ValueError(tr(f'已经有叫“{name}”的数据源', f'There is already a source named "{name}"'))
+    stamp, signer = now_text(), str(who or '').strip() or tr('未署名', 'unsigned')
     try:
         conn.execute('INSERT INTO data_source(name, kind, host, port, database, username, secret, tls, ca_pem, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                      (name, kind, fields['host'], fields['port'], fields['database'], fields['username'], seal(_directory(conn), password), tls, ca, signer, stamp, stamp))
     except sqlite3.IntegrityError:   # another request made the same name between the check and the write
-        raise ValueError(f'已经有叫“{name}”的数据源') from None
+        raise ValueError(tr(f'已经有叫“{name}”的数据源', f'There is already a source named "{name}"')) from None
     log_write(conn, signer, f'source:{name}', 'created', {'kind': kind, 'host': fields['host'], 'port': fields['port'], 'database': fields['database'], 'tls': tls, 'custom_ca': bool(ca)})
     return public_source(conn, _row(conn, name), None)
 
@@ -241,18 +244,18 @@ def update_source(conn, payload: dict, who: str | None) -> dict:
     try:
         row = _row(conn, payload.get('name'))
     except KeyError:
-        raise ValueError('没有这个数据源') from None
+        raise ValueError(tr('没有这个数据源', 'There is no such source')) from None
     fields = _connection_fields({**{k: row[k] for k in ('host', 'port', 'database', 'username')}, **{k: v for k, v in payload.items() if k in ('host', 'port', 'database', 'username')}}, row['kind'])
     password = payload.get('password')
     if password is not None and not isinstance(password, str):
-        raise ValueError('密码要写成文字')
-    moved = [label for key, label in (('host', '主机'), ('port', '端口'), ('database', '数据库名'), ('username', '账号')) if fields[key] != row[key]]
+        raise ValueError(tr('密码要写成文字', 'The password must be text'))
+    moved = [label for key, label in (('host', tr('主机', 'the host')), ('port', tr('端口', 'the port')), ('database', tr('数据库名', 'the database name')), ('username', tr('账号', 'the username'))) if fields[key] != row[key]]
     if moved and not password:
-        raise ValueError(f'改了{"、".join(moved)}，要重新填密码：保存的密码不会自己送到新的地方去')
+        raise ValueError(tr(f'改了{tr("、", ", ").join(moved)}，要重新填密码：保存的密码不会自己送到新的地方去', f'You changed {", ".join(moved)}, so enter the password again: the saved password is not sent to a new place on its own'))
     tls = _tls(payload, fields['host'], row['tls'] or 'required')
     ca = _ca(payload, tls, row.get('ca_pem'))
     secret = seal(_directory(conn), password) if password else row['secret']
-    signer = str(who or '').strip() or '未署名'
+    signer = str(who or '').strip() or tr('未署名', 'unsigned')
     conn.execute("UPDATE data_source SET host = ?, port = ?, database = ?, username = ?, secret = ?, tls = ?, ca_pem = ?, status = 'untested', status_at = NULL, status_note = NULL, "
                  'can_write = NULL, write_note = NULL, updated_at = ? WHERE id = ?', (fields['host'], fields['port'], fields['database'], fields['username'], secret, tls, ca, now_text(), row['id']))
     _table_cache.pop(row['name'], None)
@@ -264,12 +267,12 @@ def delete_source(conn, name: str, who: str | None) -> dict:
     """Refused (ValueError naming the datasets) while any dataset comes from it; its schedules go with it. The check and the delete are one transaction: a pull that
     finishes in between cannot leave a dataset pointing at a source that is gone. Returns {'name', 'schedules'}."""
     row = _row(conn, name)   # KeyError: no such source
-    signer = str(who or '').strip() or '未署名'
+    signer = str(who or '').strip() or tr('未署名', 'unsigned')
     conn.execute('BEGIN IMMEDIATE')
     try:
         bound = [d for (d,) in conn.execute('SELECT dataset FROM source_table WHERE source_id = ? ORDER BY dataset', (row['id'],))]
         if bound:
-            raise ValueError(f'有 {len(bound)} 个数据集来自“{row["name"]}”：' + '、'.join(f'「{d}」' for d in bound) + '。先删掉它们，再删数据源')
+            raise ValueError(tr(f'有 {len(bound)} 个数据集来自“{row["name"]}”：' + tr('、', ', ').join(f'「{d}」' for d in bound) + '。先删掉它们，再删数据源', f'{len(bound)} datasets come from "{row["name"]}": ' + ', '.join(f'"{d}"' for d in bound) + '. Delete them first, then delete the source'))
         gone = conn.execute("DELETE FROM schedule WHERE kind = 'source' AND target = ?", (row['name'],)).rowcount
         conn.execute('DELETE FROM data_source WHERE id = ?', (row['id'],))
         conn.execute('COMMIT')
@@ -293,7 +296,7 @@ def _open(conn, row: dict):
     except SourceError:
         raise
     except Exception as exc:
-        raise SourceError(describe(exc, password), GENERIC) from None
+        raise SourceError(describe(exc, password), generic_failure()) from None
     finally:
         with contextlib.suppress(Exception):   # a close that fails has nothing to say the person needs
             live.close()
@@ -321,13 +324,13 @@ def test_source(conn, name: str, who: str | None) -> dict:
             writes, why = live.writes()
         _table_cache[row['name']] = (time.monotonic(), tables)
         result = {'status': 'ok', 'tables': tables, 'can_write': writes, 'write_note': why or None}
-        note = None if not writes else f'这个账号不是只读的：{why}。建议换一个只有 SELECT 权限的账号'
+        note = None if not writes else tr(f'这个账号不是只读的：{why}。建议换一个只有 SELECT 权限的账号', f'This account is not read-only: {why}. Use an account that has only SELECT rights')
     except (SourceError, ValueError) as exc:
         note = str(exc)
         _table_cache.pop(row['name'], None)   # what a failed look found is that the last list can no longer be trusted
     conn.execute('UPDATE data_source SET status = ?, status_at = ?, status_note = ?, can_write = ?, write_note = ? WHERE id = ?',
                  (result['status'], now_text(), note, None if result['can_write'] is None else int(result['can_write']), result['write_note'], row['id']))
-    log_write(conn, str(who or '').strip() or '未署名', f'source:{row["name"]}', 'tested', {'status': result['status']})
+    log_write(conn, str(who or '').strip() or tr('未署名', 'unsigned'), f'source:{row["name"]}', 'tested', {'status': result['status']})
     return {**result, 'status_label': STATUS_WORDS[result['status']], 'note': note, 'tables': _annotated(conn, row, result['tables'], None)}
 
 
@@ -343,7 +346,7 @@ def source_tables(conn, name: str, user: dict | None) -> list[dict]:
                     cached = (time.monotonic(), live.tables())
                 _table_cache[row['name']] = cached
             elif cached is None:
-                raise SourceError('另一个请求正在读这个数据源的表列表，稍等几秒再试')
+                raise SourceError(tr('另一个请求正在读这个数据源的表列表，稍等几秒再试', 'Another request is reading the table list of this source. Wait a few seconds and try again'))
     return _annotated(conn, row, cached[1], user)
 
 
@@ -373,10 +376,10 @@ def visible_run(conn, run: dict, user: dict | None) -> dict | None:
     names = [w['dataset'] for w in detail.get('outputs') or []] or [n for n in (run['dataset'] or '').split('、') if n]
     out = {k: v for k, v in run.items() if k != 'error_public'}
     if any(dataset_hidden(conn, n, user) for n in names):
-        return {**out, 'dataset': None, 'rows': None, 'version': None, 'changed': None, 'detail': None, 'hidden': True, 'error': HIDDEN_ERROR if run['error'] else None}
+        return {**out, 'dataset': None, 'rows': None, 'version': None, 'changed': None, 'detail': None, 'hidden': True, 'error': hidden_error() if run['error'] else None}
     shown = {k: v for k, v in detail.items() if k not in ('flagged', 'recheck_error')}
     if detail.get('recheck_error'):
-        shown['recheck_error'] = '有一步检查出了错，请让管理员看详情'
+        shown['recheck_error'] = tr('有一步检查出了错，请让管理员看详情', 'One of the checks failed. Ask an admin to look at the details')
     return {**out, 'error': run['error_public'], 'detail': shown or None, 'hidden': False}
 
 
@@ -420,7 +423,7 @@ def _plan_for(conn, dataset: str, mode: str, key_columns, records: list[dict]) -
 
 
 def _taken_text(dataset: str) -> str:
-    return f'数据集“{dataset}”已经从另一张表读来，不能再写进去；换一个名字'
+    return tr(f'数据集“{dataset}”已经从另一张表读来，不能再写进去；换一个名字', f'The dataset "{dataset}" was read from another table and cannot be written to again. Pick another name')
 
 
 def refresh_table(conn, source: dict, table: str, dataset: str, mode: str, key_columns: list[str] | None, who: str, reason: str, lock, *,
@@ -434,20 +437,20 @@ def refresh_table(conn, source: dict, table: str, dataset: str, mode: str, key_c
     with claimed(key) as got:
         if not got:
             if reason == 'manual':
-                raise ValueError(f'“{table}”正在拉取，等这一次结束再试')
-            return finish_run(conn, start_run(conn, 'source', source['name'], table, reason, who, schedule_id), 'skipped', dataset=dataset, error='上一次拉取还没结束，这次跳过')
+                raise ValueError(tr(f'“{table}”正在拉取，等这一次结束再试', f'"{table}" is being pulled. Wait for this one to finish and try again'))
+            return finish_run(conn, start_run(conn, 'source', source['name'], table, reason, who, schedule_id), 'skipped', dataset=dataset, error=tr('上一次拉取还没结束，这次跳过', 'The last pull has not finished, so this one was skipped'))
         run_id = start_run(conn, 'source', source['name'], table, reason, who, schedule_id)
         try:
             with _open(conn, source) as live:
                 columns, rows = live.read(table, MAX_PULL_ROWS + 1)
             if len(rows) > MAX_PULL_ROWS:
-                raise SourceError(f'“{table}”超过 {MAX_PULL_ROWS:,} 行，一次读不完。在数据库里建一个只含需要的行和列的视图，再读那个视图')
+                raise SourceError(tr(f'“{table}”超过 {MAX_PULL_ROWS:,} 行，一次读不完。在数据库里建一个只含需要的行和列的视图，再读那个视图', f'"{table}" has more than {MAX_PULL_ROWS:,} rows and cannot be read in one go. Create a view with only the rows and columns you need in the database, and read that view'))
             records, left_out = records_of(columns, rows)
             if not records or not records[0]:
-                raise SourceError(f'“{table}”里没有数据行或没有能读成文字的列' + (f'（二进制列没读：{"、".join(left_out)}）' if left_out else ''))
+                raise SourceError(tr(f'“{table}”里没有数据行或没有能读成文字的列', f'"{table}" has no data rows or no column that can be read as text') + (tr(f'（二进制列没读：{tr("、", ", ").join(left_out)}）', f' (binary columns were not read: {", ".join(left_out)})') if left_out else ''))
             with lock:   # the lock an upload takes: the check of what reads the dataset and the write it stands on are not split by other new data
                 if dataset_hidden(conn, dataset, user):
-                    raise ValueError(f'没有叫“{dataset}”的数据集可以写入，也不能用这个名字新建')
+                    raise ValueError(tr(f'没有叫“{dataset}”的数据集可以写入，也不能用这个名字新建', f'There is no dataset named "{dataset}" to write to, and it cannot be created with this name'))
                 if _bound_elsewhere(conn, source['id'], table, dataset):
                     raise ValueError(_taken_text(dataset))
                 plan = _plan_for(conn, dataset, mode, key_columns, records)
@@ -478,7 +481,7 @@ def refresh_table(conn, source: dict, table: str, dataset: str, mode: str, key_c
             return finish_run(conn, run_id, 'failed', dataset=dataset, error=str(exc), error_public=getattr(exc, 'public', str(exc)))
         except Exception as exc:   # not ours: the run is not left "running", the person is told something went wrong, and what it was is in the service's log
             print(f'pull of “{table}” from “{source["name"]}” stopped with {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
-            return finish_run(conn, run_id, 'failed', dataset=dataset, error=INTERNAL_ERROR)
+            return finish_run(conn, run_id, 'failed', dataset=dataset, error=internal_error())
 
 
 def pull_table(conn, payload: dict, who: str | None, user: dict | None, lock) -> dict:
@@ -489,31 +492,31 @@ def pull_table(conn, payload: dict, who: str | None, user: dict | None, lock) ->
     try:
         source = _row(conn, payload.get('source'))
     except KeyError:
-        raise ValueError('没有这个数据源') from None
+        raise ValueError(tr('没有这个数据源', 'There is no such source')) from None
     table = payload.get('table')
     if not isinstance(table, str) or not table:
-        raise ValueError('要写明读哪张表（table）')
-    signer = str(who or '').strip() or '未署名'
+        raise ValueError(tr('要写明读哪张表（table）', 'Say which table to read (table)'))
+    signer = str(who or '').strip() or tr('未署名', 'unsigned')
     bound = _binding(conn, source['id'], table)
     if bound and dataset_hidden(conn, bound['dataset'], user):
-        raise ValueError('这张表现在不能由你读成数据集')
+        raise ValueError(tr('这张表现在不能由你读成数据集', 'You cannot read this table into a dataset now'))
     mode = payload.get('mode') or (bound['mode'] if bound else 'overwrite')
     keys = payload.get('key_columns') if payload.get('key_columns') is not None else (bound['key_columns'] if bound else None)
     if bound and payload.get('name') not in (None, '', bound['dataset']):
-        raise ValueError(f'“{table}”已经读成数据集“{bound["dataset"]}”了；要更新它请用刷新')
+        raise ValueError(tr(f'“{table}”已经读成数据集“{bound["dataset"]}”了；要更新它请用刷新', f'"{table}" was already read into the dataset "{bound["dataset"]}"; to update it, use refresh'))
     if mode not in UPLOAD_MODES:
-        raise ValueError('刷新方式只有按主键更新（update_by_key）和覆盖（overwrite）两种')
+        raise ValueError(tr('刷新方式只有按主键更新（update_by_key）和覆盖（overwrite）两种', 'The refresh mode can only be update by key (update_by_key) or overwrite (overwrite)'))
     if mode == 'update_by_key' and not (isinstance(keys, list) and keys and all(isinstance(c, str) and c for c in keys)):
-        raise ValueError('按主键更新要先选出主键列（key_columns），例如 ["订单号"]')
+        raise ValueError(tr('按主键更新要先选出主键列（key_columns），例如 ["订单号"]', 'Updating by key needs the key columns (key_columns) chosen first, for example ["Order ID"]'))
     name = bound['dataset'] if bound else str(payload.get('name') or table.rsplit('.', 1)[-1]).strip()
     if not name or len(name) > 100:
-        raise ValueError('数据集名字要写 1 到 100 个字')
+        raise ValueError(tr('数据集名字要写 1 到 100 个字', 'The dataset name must be 1 to 100 characters'))
     if dataset_hidden(conn, name, user):
-        raise ValueError(f'没有叫“{name}”的数据集可以写入，也不能用这个名字新建')
+        raise ValueError(tr(f'没有叫“{name}”的数据集可以写入，也不能用这个名字新建', f'There is no dataset named "{name}" to write to, and it cannot be created with this name'))
     if _bound_elsewhere(conn, source['id'], table, name):
         raise ValueError(_taken_text(name))
     if not bound and current_dataset(conn, name) and not payload.get('mode'):
-        raise ValueError(f'已经有叫“{name}”的数据集。要把这张表写进去，请指定方式：按主键更新或覆盖；要新建，请换一个名字')
+        raise ValueError(tr(f'已经有叫“{name}”的数据集。要把这张表写进去，请指定方式：按主键更新或覆盖；要新建，请换一个名字', f'There is already a dataset named "{name}". To write this table into it, pick a mode (update by key or overwrite); to create a new one, pick another name'))
     return refresh_table(conn, source, table, name, mode, keys, signer, 'manual', lock, user=user)
 
 
@@ -522,5 +525,5 @@ def refresh_dataset(conn, payload: dict, who: str | None, user: dict | None, loc
     name = payload.get('dataset')
     found = conn.execute('SELECT s.table_name, d.name FROM source_table s JOIN data_source d ON d.id = s.source_id WHERE s.dataset = ?', (str(name or ''),)).fetchone()
     if found is None or dataset_hidden(conn, name, user):
-        raise ValueError('这不是从数据源读来的数据集，或者你看不到它')
+        raise ValueError(tr('这不是从数据源读来的数据集，或者你看不到它', 'This is not a dataset read from a source, or you cannot see it'))
     return pull_table(conn, {'source': found[1], 'table': found[0]}, who, user, lock)

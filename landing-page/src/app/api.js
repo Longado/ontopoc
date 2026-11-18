@@ -1,4 +1,5 @@
-// The workspace service, one function per request. A refusal arrives as the service's own Chinese sentence.
+// The workspace service, one function per request. A refusal arrives as the service's own sentence, in the page's language (Accept-Language).
+import { getLocale } from "./i18n/index.js";
 
 // the page that holds the sign-in decides what a 401 means: it shows the sign-in form
 let onSignedOut = () => {};
@@ -9,14 +10,14 @@ export const whenSignedOut = (fn) => {
 async function request(path, options = {}) {
   let response;
   try {
-    response = await fetch(path, { cache: "no-store", ...options });
+    response = await fetch(path, { cache: "no-store", ...options, headers: { "Accept-Language": getLocale() === "zh" ? "zh-CN" : "en", ...(options.headers ?? {}) } });
   } catch {
-    throw new Error("连不上本机服务，请确认服务已经启动后再试");
+    throw new Error(getLocale() === "zh" ? "连不上本机服务，请确认服务已经启动后再试" : "Can't reach the OntoPoc service. Check that it is running, then try again.");
   }
   const body = await response.json().catch(() => null);
   if (response.status === 401 && path !== "/api/auth/login") onSignedOut();   // the session ended (or never was): back to the sign-in form
   if (!response.ok) {
-    throw Object.assign(new Error(body?.error || `服务返回了 ${response.status}`), {
+    throw Object.assign(new Error(body?.error || (getLocale() === "zh" ? `服务返回了 ${response.status}` : `The service answered ${response.status}`)), {
       code: response.status, files: body?.files, readers: body?.readers, setup: body?.setup, mustChange: body?.must_change, keyCheck: body?.key_check, offer: body?.offer,
     });
   }
@@ -136,7 +137,7 @@ export const getPipelineRun = (name, id) => request(pipelinePath(name, `/runs/${
 export const getPipelineLog = (name) => request(pipelinePath(name, "/log")).then((b) => b.log);
 export const createPipeline = (name, description, spec) => send("/api/workspace/pipelines", { name, description, spec });
 /** Saves a changed definition as the version the person had open (409 when it moved since). */
-export const savePipeline = (name, version, spec) => send("/api/workspace/pipelines/update", { id: name, version, spec });
+export const savePipeline = (name, version, spec, assistant = false) => send("/api/workspace/pipelines/update", { id: name, version, spec, ...(assistant ? { assistant: true } : {}) });
 export const runPipeline = (name) => send("/api/workspace/pipelines/run", { id: name });
 /** Confirms what the person looked at: the definition version and the input versions they saw. */
 export const confirmPipeline = (name, version, inputs) => send("/api/workspace/pipelines/confirm", { id: name, version, seen: { inputs } });
@@ -174,6 +175,8 @@ export const getRelationLog = (id) => request(relationPath(id, "/log")).then((b)
 export const getRelationForm = () => request("/api/workspace/relation-form").then((b) => b.types);
 export const createRelation = (payload) => send("/api/workspace/relations", payload);
 export const updateRelation = (payload) => send("/api/workspace/relations/update", payload);
+/** How many rows a relation not yet saved would connect: {rows, matched, unmatched, empty, samples, many_name, one_name}. Writes nothing. */
+export const previewRelation = (payload) => send("/api/workspace/relations/preview", payload);
 /** {items, count}: everything waiting to be judged that this person may see, and how many of it they may confirm now. */
 export const getQueue = () => request("/api/workspace/queue");
 /** Only how many items this person may confirm now: read from the states, cheap enough to ask on every page. */
@@ -256,3 +259,8 @@ export async function fileToBase64(file) {
   for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(text);
 }
+
+/** {model_ready, running, on_disk, stale}: the service is up, whether a model is configured, and the build it runs (a fingerprint of its code). */
+export const getHealth = () => request("/api/ontology/health");
+/** Whether the service has a model to call (the AI buttons need one): false when it has no credentials. */
+export const getModelReady = () => request("/api/ontology/health").then((b) => Boolean(b.model_ready), () => true);

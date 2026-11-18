@@ -46,7 +46,7 @@ ROUTES: list[tuple[str, str, str]] = [
     # change data, start model work, write definitions
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
     ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?))?', 'builder'),
-    ('POST', r'/api/workspace/relations(/(update|confirm))?', 'builder'),
+    ('POST', r'/api/workspace/relations(/(update|confirm|preview))?', 'builder'),
     ('POST', r'/api/workspace/queue/(confirm|confirm-group|send-back)', 'builder'),
     ('POST', r'/api/workspace/actions(/(update|confirm|submit|decide|withdraw|undo|notify))?', 'builder'),   # a person may not approve their own submission (object_actions.decide)
     ('GET', r'/api/workspace/notices', 'viewer'),   # each person's own notices

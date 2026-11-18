@@ -20,16 +20,18 @@ The service works the band out again inside the write and refuses what is not in
 approved items only."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import TrMap, tr
 from ontology_poc_generator.anchors import moved
 
-REPLY_SAYS = {'confirm': '确认', 'wrong': '不对', 'not_applicable': '不适用', 'exception': '已知例外'}
+REPLY_SAYS = TrMap({'confirm': ('确认', 'Confirm'), 'wrong': ('不对', 'Wrong'), 'not_applicable': ('不适用', 'Not applicable'), 'exception': ('已知例外', 'Known exception')})
 RECORDED = ('not_applicable', 'exception')   # decisions that stay decided and carry an anchor
 EXAMPLE_ROWS = 3
 EXAMPLE_COLUMNS = 6
 NEW_SHOWN = 3
 
-OWN_SAYS = {'expected': '本来就没有对应', 'incomplete': '数据没导全', 'distinct': '是不同的对象', 'same': '是同一个', 'rename': '名字说错了，改名',
-            'name_right': '名字是对的', 'keep_both': '每一行都留', 'keep_latest': '只留最新的一行', 'data_error': '当作数据错误'}
+OWN_SAYS = TrMap({'expected': ('本来就没有对应', 'No match is expected'), 'incomplete': ('数据没导全', 'The data is incomplete'), 'distinct': ('是不同的对象', 'They are different objects'), 'same': ('是同一个', 'They are the same'),
+                      'rename': ('名字说错了，改名', 'The name is wrong; rename it'), 'name_right': ('名字是对的', 'The name is right'), 'keep_both': ('每一行都留', 'Keep every row'),
+                      'keep_latest': ('只留最新的一行', 'Keep only the latest row'), 'data_error': ('当作数据错误', 'Treat it as a data error')})
 YES_NO = ('found_elsewhere', 'unstable')   # "is it?" / "keep it?": yes is confirm, no is wrong
 TEXT_ONLY = ('check_finding', 'data_gap', 'data_gaps', 'unanswered', 'name_source', 'name_by_view', 'name_values')
 OWN = {'unlinked': ('expected', 'incomplete'), 'same_name': ('distinct', 'same'), 'merged': ('distinct', 'same'),
@@ -54,8 +56,8 @@ def menu(kind: str) -> list[dict]:
         ids = ['keep_both', 'keep_latest', 'data_error', 'exception']
     else:
         return []
-    says = {**OWN_SAYS, **REPLY_SAYS, **({'confirm': '记下答复'} if kind in TEXT_ONLY else {'confirm': '确认含义'} if kind == 'code_meaning' else {}),
-            **({'not_applicable': '不是代码'} if kind == 'code_meaning' else {})}
+    says = {**dict(OWN_SAYS.items()), **dict(REPLY_SAYS.items()), **({'confirm': tr('记下答复', 'Record the reply')} if kind in TEXT_ONLY else {'confirm': tr('确认含义', 'Confirm the meaning')} if kind == 'code_meaning' else {}),
+            **({'not_applicable': tr('不是代码', 'Not a code')} if kind == 'code_meaning' else {})}
     return [{'id': i, 'label': says[i], 'needs_text': i in ('wrong', 'exception') or (i == 'confirm' and kind in TEXT_ONLY)} for i in ids]
 
 
@@ -64,7 +66,7 @@ def check_mode(payload: dict) -> str:
     with the text the person reads when a request says anything else."""
     mode = payload.get('mode', 'single')
     if mode != 'single':
-        raise ValueError('mode 只能是 single；批量通过只能走“一起通过”')
+        raise ValueError(tr('mode 只能是 single；批量通过只能走“一起通过”', 'mode can only be single; approving in bulk goes through "approve together"'))
     return mode
 
 
@@ -90,15 +92,15 @@ def anchor_changes(was: dict, now: dict) -> list[str]:
     changes = []
     new = [m for m in now.get('members', []) if m not in set(was.get('members', []))]
     if new:
-        changes.append(f'多了{now.get("noun", "内容")}：{"、".join(new[:NEW_SHOWN])}{"等" if len(new) > NEW_SHOWN else ""}')
-    unit = now.get('unit', '行')
+        changes.append(tr(f'多了{now.get("noun", "内容")}：{tr("、", ", ").join(new[:NEW_SHOWN])}{"等" if len(new) > NEW_SHOWN else ""}', f'New {now.get("noun", "content")}: {", ".join(new[:NEW_SHOWN])}{" and more" if len(new) > NEW_SHOWN else ""}'))
+    unit = now.get('unit', tr('行', 'rows'))
     for name, count in (was.get('counts') or {}).items():
         k, n = (now.get('counts') or {}).get(name, 0), now.get('total')
         if was.get('total') is None or n is None:   # nothing to measure it against: the count itself, grown to more than twice or fallen below half
             if moved(count, 1, k, 1):
-                changes.append(f'{name}：上次 {count} {unit}，现在 {k} {unit}')
+                changes.append(tr(f'{name}：上次 {count} {unit}，现在 {k} {unit}', f'{name}: {count} {unit} last time, {k} {unit} now'))
         elif moved(count, was['total'], k, n):
-            changes.append(f'{name}：上次 {count} {unit}（共 {was["total"]} {unit}），现在 {k} {unit}（共 {n} {unit}）')
+            changes.append(tr(f'{name}：上次 {count} {unit}（共 {was["total"]} {unit}），现在 {k} {unit}（共 {n} {unit}）', f'{name}: {count} {unit} of {was["total"]} last time, {k} {unit} of {n} now'))
     return changes
 
 
@@ -128,12 +130,12 @@ def code_check(values: list[dict]) -> dict | None:
         return None
     weak = [v for v in guessed if not v['recommendation']['strong']]
     return {'status': 'weak' if weak else 'passed',
-            'text': (f'模型建议了 {len(guessed)} 个含义，其中 {len(weak)} 个数据没有支持' if weak else f'模型建议了 {len(guessed)} 个含义，数据都有支持')}
+            'text': (tr(f'模型建议了 {len(guessed)} 个含义，其中 {len(weak)} 个数据没有支持', f'The model suggested {len(guessed)} meanings; the data does not back {len(weak)} of them') if weak else tr(f'模型建议了 {len(guessed)} 个含义，数据都有支持', f'The model suggested {len(guessed)} meanings and the data backs them all'))}
 
 
 # the clean band: what can be approved together, after the list is shown
 
-CARDINALITY_SAYS = {'one_to_one': '一对一', 'many_to_one': '多对一', 'one_to_many': '一对多'}
+CARDINALITY_SAYS = TrMap({'one_to_one': ('一对一', 'one to one'), 'many_to_one': ('多对一', 'many to one'), 'one_to_many': ('一对多', 'one to many')})
 
 
 def cardinality_line(cardinality: dict, source: str, target: str) -> str | None:
@@ -143,8 +145,8 @@ def cardinality_line(cardinality: dict, source: str, target: str) -> str | None:
     reaches at most one `target`, so walking the relation never multiplies rows."""
     declared, observed = cardinality.get('declared'), cardinality.get('observed')
     if declared:
-        return f'声明为{CARDINALITY_SAYS[declared]}，数据里成立' if declared in ('one_to_one', 'many_to_one') and cardinality.get('holds') is True else None
-    return f'没有声明，按数据算是{CARDINALITY_SAYS[observed]}：每个{source}只对一个{target}' if observed in ('one_to_one', 'many_to_one') else None
+        return tr(f'声明为{CARDINALITY_SAYS[declared]}，数据里成立', f'Declared {CARDINALITY_SAYS[declared]}, and the data holds to it') if declared in ('one_to_one', 'many_to_one') and cardinality.get('holds') is True else None
+    return tr(f'没有声明，按数据算是{CARDINALITY_SAYS[observed]}：每个{source}只对一个{target}', f'Not declared; by the data it is {CARDINALITY_SAYS[observed]}: each {source} reaches only one {target}') if observed in ('one_to_one', 'many_to_one') else None
 
 
 def relation_band(relations: list[dict], decisions: dict | None, label, relation_name) -> list[dict]:
@@ -170,5 +172,5 @@ def relation_band(relations: list[dict], decisions: dict | None, label, relation
         if how is None:
             continue
         band.append({'id': f'relation:{r["key"]}', 'kind': 'relation', 'title': relation_name(r),
-                     'lines': [*(f'{s["rows"]} / {s["rows"]} 行{label(s["other"])}都找得到{label(s["object"])}，「{s["lookup"]}」表里没有重复的编号' for s in sides), how]})
+                     'lines': [*(tr(f'{s["rows"]} / {s["rows"]} 行{label(s["other"])}都找得到{label(s["object"])}，「{s["lookup"]}」表里没有重复的编号', f'All {s["rows"]} / {s["rows"]} {label(s["other"])} rows find their {label(s["object"])}, and "{s["lookup"]}" has no repeated keys') for s in sides), how]})
     return band

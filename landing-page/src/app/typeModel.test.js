@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { codeCell, confirmersText, keyProblem, limitedNote, logText, reconfirmText, stateLine, stateText, typePayload } from "./typeModel.js";
+import { setLocale } from "./i18n/index.js";
+
+setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
 
 test("the chip says what a person needs to know: a model's draft is not an ordinary proposal", () => {
   assert.equal(stateText({ state: "proposed", model_draft: true }), "模型草稿");

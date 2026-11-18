@@ -8,6 +8,7 @@ confirmed is shown as unconfirmed. Where meanings are stored (element_state) and
 not decided here."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import re
 
 from ontology_poc_generator.agent_harness import ask_model
@@ -22,7 +23,8 @@ MAX_LABEL, MAX_DESCRIPTION, MAX_BASIS = 40, 200, 200
 SHORT_CODE = re.compile(r'[0-9A-Za-z_\-]{1,4}', re.ASCII)   # a value written in words says what it means: it is not a code
 YEAR = re.compile(r'(19|20)[0-9]{2}', re.ASCII)
 FLAG_PAIRS = ({'y', 'n'}, {'yes', 'no'}, {'t', 'f'}, {'true', 'false'}, {'0', '1'})   # 是/否 are not ASCII: SHORT_CODE already drops them
-UNCONFIRMED = '（含义未确认）'
+def unconfirmed() -> str:
+    return tr('（含义未确认）', ' (meaning not confirmed)')
 
 DESCRIBE_CODES_SYSTEM_PROMPT = """你在帮顾问弄清数据表里的代码列是什么意思。每一列是几个短代码（如 0、1、2），你会收到：建模目的，每一列的表名、列名、总行数，每个取值的行数，以及代码从数据里算出来的、这个取值和表里其他列的关系（例如“这 16 行的「交付天数」全是空的”）。没有给你任何一行原始数据。
 
@@ -41,7 +43,7 @@ def _blank(value) -> bool:
 
 
 def _pct(share: float) -> str:
-    return f'{share * 100:.0f}%' if share * 100 >= 1 or share == 0 else '不到 1%'
+    return tr(f'{share * 100:.0f}%' if share * 100 >= 1 or share == 0 else '不到 1%', f'{share * 100:.0f}%' if share * 100 >= 1 or share == 0 else 'under 1%')
 
 
 def _relation_facts(n: int, m: int, blank_mine: int, blank_rest: int, other: str) -> tuple[list[str], str | None]:
@@ -51,16 +53,16 @@ def _relation_facts(n: int, m: int, blank_mine: int, blank_rest: int, other: str
     coincidence until more rows say otherwise."""
     mine, rest = blank_mine / n, blank_rest / m if m else 0
     if abs(mine - rest) <= 0.5:
-        return ([f'其中「{other}」为空 {blank_mine} 行'] if blank_mine else []), None
+        return ([tr(f'其中「{other}」为空 {blank_mine} 行', f'"{other}" is empty in {blank_mine} of them')] if blank_mine else []), None
     if mine == 1 and rest == 0:
-        said = f'这 {n} 行的「{other}」全是空的，其他取值的 {m} 行都有值'
+        said = tr(f'这 {n} 行的「{other}」全是空的，其他取值的 {m} 行都有值', f'"{other}" is empty in all {n} of these rows and filled in the {m} rows of the other values')
     elif mine == 0 and rest == 1:
-        said = f'只有这个取值的行填了「{other}」，其他取值的 {m} 行全是空的'
+        said = tr(f'只有这个取值的行填了「{other}」，其他取值的 {m} 行全是空的', f'Only the rows with this value fill in "{other}"; it is empty in the {m} rows of the other values')
     else:
-        said = f'这 {n} 行里「{other}」为空的占 {_pct(mine)}，其他取值的 {m} 行里占 {_pct(rest)}'
+        said = tr(f'这 {n} 行里「{other}」为空的占 {_pct(mine)}，其他取值的 {m} 行里占 {_pct(rest)}', f'"{other}" is empty in {_pct(mine)} of these {n} rows and in {_pct(rest)} of the {m} rows of the other values')
     if min(n, m) >= PATTERN_ROWS:
         return [said], 'held'
-    return [f'{said}；但比较的两组里有一组只有 {min(n, m)} 行，可能是巧合'], 'thin'
+    return [tr(f'{said}；但比较的两组里有一组只有 {min(n, m)} 行，可能是巧合', f'{said}; but one of the two groups compared has only {min(n, m)} rows, so it may be chance')], 'thin'
 
 
 def _flag_or_year(values: set[str]) -> bool:
@@ -102,12 +104,12 @@ def code_columns(bundle: dict, skip: frozenset = frozenset()) -> list[dict]:
                 pattern = 'held' in kinds
                 if not kinds & {'held', 'thin'}:
                     rest = filled - len(idx)
-                    facts.append(f'只有 {len(idx)} 行，太少，看不出规律' if len(idx) < PATTERN_ROWS
-                                 else f'其余取值只有 {rest} 行，太少，没法拿来比，看不出规律' if rest < PATTERN_ROWS
-                                 else '和这张表里别的列没看出规律：没有哪一列能把它和其他取值分开')
+                    facts.append(tr(f'只有 {len(idx)} 行，太少，看不出规律', f'Only {len(idx)} rows, too few to see a pattern') if len(idx) < PATTERN_ROWS
+                                 else tr(f'其余取值只有 {rest} 行，太少，没法拿来比，看不出规律', f'The other values have only {rest} rows, too few to compare, so no pattern shows') if rest < PATTERN_ROWS
+                                 else tr('和这张表里别的列没看出规律：没有哪一列能把它和其他取值分开', 'No pattern with the other columns of this table: no column separates it from the other values'))
                 share = len(idx) / len(records)
                 values.append({'value': value, 'rows': len(idx), 'share': share, 'pattern': pattern,
-                               'facts': [f'{len(idx)} 行，占 {_pct(share)}', *facts]})
+                               'facts': [tr(f'{len(idx)} 行，占 {_pct(share)}', f'{len(idx)} rows, {_pct(share)}'), *facts]})
             out.append({'id': f'code_meaning:{source}.{column}', 'field': f'{source}.{column}', 'source': source, 'column': column,
                         'rows': len(records), 'blank': len(records) - filled, 'values': values})
     return out
@@ -124,16 +126,16 @@ def clean_draft(profiles: list[dict], reply) -> dict:
     for column in reply.get('columns') if isinstance(reply, dict) and isinstance(reply.get('columns'), list) else []:
         cid = column.get('id') if isinstance(column, dict) else None
         if cid not in known:
-            out['rejected'].append({'item': str(cid), 'reason': f'没有这一列：{cid}'})
+            out['rejected'].append({'item': str(cid), 'reason': tr(f'没有这一列：{cid}', f'There is no such column: {cid}')})
             continue
         for v in column.get('values') if isinstance(column.get('values'), list) else []:
             value = v.get('value') if isinstance(v, dict) else None
             if value not in known[cid]:
-                out['rejected'].append({'item': f'{cid}={value}', 'reason': f'这一列里没有取值 {value}'})
+                out['rejected'].append({'item': f'{cid}={value}', 'reason': tr(f'这一列里没有取值 {value}', f'This column has no value {value}')})
                 continue
             label, description, basis = _text(v.get('label'), MAX_LABEL), _text(v.get('description') or '', MAX_DESCRIPTION), _text(v.get('basis') or '', MAX_BASIS)
             if not label or description is None or basis is None:
-                out['rejected'].append({'item': f'{cid}={value}', 'reason': '含义、描述或依据不是一段短文字'})
+                out['rejected'].append({'item': f'{cid}={value}', 'reason': tr('含义、描述或依据不是一段短文字', 'The meaning, description or basis is not a short piece of text')})
                 continue
             out['columns'].setdefault(cid, {})[value] = {'label': label, 'description': description, 'basis': basis}
     return out
@@ -150,7 +152,7 @@ def draft_meanings(profiles: list[dict], gateway, purpose: str) -> dict:
     if judgement.failure == 'request':
         return {**out, 'error': model_failure_text(judgement.message)}
     if judgement.failure == 'not_json' or not isinstance(judgement.reply, dict) or not isinstance(judgement.reply.get('columns'), list):
-        return {**out, 'error': '模型返回的不是约定的 JSON'}
+        return {**out, 'error': tr('模型返回的不是约定的 JSON', 'The model did not return the agreed JSON')}
     return {**out, **clean_draft(profiles, judgement.reply)}
 
 
@@ -158,17 +160,17 @@ def check_enum(profile: dict, posted) -> list[dict]:
     """A person's answer for some values of one column as {value, label, description} entries. A blank label takes that
     value's meaning back. Raises ValueError, with the text the person reads, when it cannot be kept."""
     if not isinstance(posted, list) or not posted:
-        raise ValueError('values 要写成列表，至少一项')
+        raise ValueError(tr('values 要写成列表，至少一项', 'values must be a list with at least one item'))
     known = {v['value'] for v in profile['values']}
     kept = []
     for entry in posted:
         if not isinstance(entry, dict) or entry.get('value') not in known:
-            raise ValueError(f'这一列里没有取值 {entry.get("value") if isinstance(entry, dict) else entry}')
+            raise ValueError(tr(f'这一列里没有取值 {entry.get("value") if isinstance(entry, dict) else entry}', f'This column has no value {entry.get("value") if isinstance(entry, dict) else entry}'))
         label, description = entry.get('label') or '', entry.get('description') or ''
         if not isinstance(label, str) or len(label.strip()) > MAX_LABEL:
-            raise ValueError(f'取值 {entry["value"]} 的含义要写 1–{MAX_LABEL} 个字')
+            raise ValueError(tr(f'取值 {entry["value"]} 的含义要写 1–{MAX_LABEL} 个字', f'The meaning of value {entry["value"]} must be 1 to {MAX_LABEL} characters'))
         if not isinstance(description, str) or len(description.strip()) > MAX_DESCRIPTION:
-            raise ValueError(f'取值 {entry["value"]} 的说明最多 {MAX_DESCRIPTION} 个字')
+            raise ValueError(tr(f'取值 {entry["value"]} 的说明最多 {MAX_DESCRIPTION} 个字', f'The description of value {entry["value"]} must be at most {MAX_DESCRIPTION} characters'))
         kept.append({'value': entry['value'], 'label': label.strip(), 'description': description.strip()})
     return kept
 
@@ -195,7 +197,7 @@ def shown(meanings: dict | None, field: str, value) -> str:
     if code is None:
         return value
     label = code['labels'].get(str(value))
-    return f'{value} = {label}' if label else f'{value}{UNCONFIRMED}'
+    return f'{value} = {label}' if label else f'{value}{unconfirmed()}'
 
 
 def codes_for_label(meanings: dict | None, field: str, value) -> list:
@@ -213,9 +215,9 @@ def exclusion_text(meanings: dict | None, field: str, codes: list) -> str:
     labels = (meanings or {}).get(field, {}).get('labels', {})
     order = lambda code: (0, float(code), code) if re.fullmatch(r'[0-9]+(\.[0-9]+)?', code) else (1, 0.0, code)
     left_out = [str(c) for c in codes]
-    said = '、'.join(f'{c}（{labels[c]}）' if labels.get(c) else c for c in sorted(left_out, key=order))
-    rest = '、'.join(f'{c} {label}' for c, label in sorted(labels.items(), key=lambda item: order(item[0])) if label and c not in left_out)
-    return f'{field.partition(".")[2]} 不是 {said}' + (f'：算进 {rest}' if rest else '')
+    said = tr('、', ', ').join(tr(f'{c}（{labels[c]}）', f'{c} ({labels[c]})') if labels.get(c) else c for c in sorted(left_out, key=order))
+    rest = tr('、', ', ').join(f'{c} {label}' for c, label in sorted(labels.items(), key=lambda item: order(item[0])) if label and c not in left_out)
+    return tr(f'{field.partition(".")[2]} 不是 {said}', f'{field.partition(".")[2]} is not {said}') + (tr(f'：算进 {rest}', f': counts {rest}') if rest else '')
 
 
 def shown_codes(meanings: dict | None, field: str, codes: list) -> str:

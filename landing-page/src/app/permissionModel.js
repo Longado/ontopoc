@@ -1,4 +1,6 @@
-// The 权限 page's reasoning as plain functions: who sees a type now, who a row-rule list would cut off, who a change to the visibility list takes the type from.
+import { t } from "./i18n/index.js";
+
+// The Permissions page's reasoning as plain functions: who sees a type now, who a row-rule list would cut off, who a change to the visibility list takes the type from.
 
 /** The people who see the type now (the admin always does and is left out: nothing here can take it from them); a viewer needs it confirmed too. */
 export const seers = (type, people) =>
@@ -13,10 +15,10 @@ export function cutOff(type, people, rules) {
   return seers(type, people).filter((p) => !rules.some((r) => covers(r, p)));
 }
 
-/** A rule in words: "Ann、Bob 看 区域 = 华东 的行", "每个人看 区域 = 自己的部门 的行", or "Ann 看全部行". */
+/** A rule in words: "Ann, Bob see rows where Region = East", "everyone sees rows where Region = their own Department", or "Ann sees all rows". */
 export function ruleText(rule, columnName, names) {
-  if (rule.user_attr) return `每个人看 ${columnName} = 自己的${rule.user_attr} 的行`;
-  return `${names} 看${rule.column ? ` ${columnName} = ${rule.value} 的行` : "全部行"}`;
+  if (rule.user_attr) return t("users.rule.attr", { column: columnName, attr: rule.user_attr });
+  return rule.column ? t("users.rule.named", { names, column: columnName, value: rule.value }) : t("users.rule.all", { names });
 }
 
 /** The attribute names the people have, for the rule form to offer. */

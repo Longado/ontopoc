@@ -11,6 +11,7 @@ refusal names the item. What a person cannot confirm (their own proposal, an ite
 failed. Each confirmed item also gets a log line saying it was confirmed with the others."""
 from __future__ import annotations
 
+from ontology_poc_generator.lang import tr
 import json
 
 from ontology_poc_generator.object_types import (
@@ -62,11 +63,11 @@ def _in_order(conn, rows: list[dict]) -> list[dict]:
 
 def _why_not_theirs(conn, row: dict, user: dict | None) -> str | None:
     if limited_on(conn, row, user):
-        return '你受行规则或列的限制，看不到全部数据：要不受限制的建设者来确认'
+        return tr('你受行规则或列的限制，看不到全部数据：要不受限制的建设者来确认', 'A row rule or a column limit keeps you from seeing all the data: a builder without the limit must confirm')
     if user is not None and user['role'] == 'viewer':
-        return '你是只读成员，不能确认'
+        return tr('你是只读成员，不能确认', 'You are a read-only member and cannot confirm')
     if not _confirmers(conn, row, user)[0]:
-        return '这一项是你提的或你改过的，要另一位建设者确认'
+        return tr('这一项是你提的或你改过的，要另一位建设者确认', 'You put this forward or changed it, so another builder must confirm it')
     return None
 
 
@@ -80,14 +81,14 @@ def _plan(conn, rows: list[dict], user: dict | None) -> list[dict]:
         mine_why = _why_not_theirs(conn, row, user)
         why = mine_why
         if why is None and element_id.startswith(ENUM_PREFIX) and row['state'] == 'needs_look':
-            why = '这组含义要先按现在的数据重新写，由另一位确认'
+            why = tr('这组含义要先按现在的数据重新写，由另一位确认', 'These meanings must be rewritten on the current data first, and confirmed by someone else')
         if why is None:
             waiting = [d for (d,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (element_id,))
                        if d.startswith(DEPENDS_ON) and d not in will and (held := element_row(conn, d)) and held['state'] != 'confirmed']
             if waiting:
-                why = f'要先确认{"、".join(_label(conn, d) for d in waiting)}'
+                why = tr(f'要先确认{tr("、", ", ").join(_label(conn, d) for d in waiting)}', f'Confirm {", ".join(_label(conn, d) for d in waiting)} first')
             elif element_id.startswith(TYPE_PREFIX) and (producers := unconfirmed_producers(conn, content['dataset'])):
-                why = f'要先确认管道{"、".join(f"“{n}”" for n in producers)}'
+                why = tr(f'要先确认管道{tr("、", ", ").join(f"“{n}”" for n in producers)}', f'Confirm the pipeline {", ".join(producers)} first')
         if why is None:
             will.add(element_id)
         out.append({'row': row, 'mine': mine_why is None, 'ready': why is None, 'why_not': why})
@@ -138,11 +139,11 @@ def queue_with_groups(conn, user: dict | None, light: bool = False) -> dict:
 def _members(conn, user: dict | None, dataset, version) -> tuple[dict, list[dict], int]:
     """(the dataset, the elements of the group this person may see, how many more they may not); TypeRefused 404 when there is no such group for them."""
     if not isinstance(dataset, str) or not isinstance(version, int) or isinstance(version, bool):
-        raise TypeRefused('要写明是哪个数据集的哪一版')
+        raise TypeRefused(tr('要写明是哪个数据集的哪一版', 'Say which dataset and which version'))
     found = _scan(conn, (dataset, version)).get((dataset, version))
     seen = [r for r in found['rows'] if _item(conn, r, user, light=True)] if found else []
     if not seen:
-        raise TypeRefused('没有这一组：这一版没有让什么东西需要再看，或者已经都处理了', 404)
+        raise TypeRefused(tr('没有这一组：这一版没有让什么东西需要再看，或者已经都处理了', 'There is no such group: this version did not make anything need review, or all of it is handled'), 404)
     return found['dataset'], seen, len(found['rows']) - len(seen)
 
 
@@ -162,13 +163,13 @@ def group_detail(conn, user: dict | None, dataset, version) -> dict:
 def _asked(payload: dict, members: list[dict]) -> dict[str, dict]:
     asked = payload.get('items')
     if not isinstance(asked, list) or not asked or len(asked) > MAX_ITEMS or not all(isinstance(a, dict) and isinstance(a.get('element'), str) for a in asked):
-        raise TypeRefused(f'要带上这一组里要确认的项目（最多 {MAX_ITEMS} 个）')
+        raise TypeRefused(tr(f'要带上这一组里要确认的项目（最多 {MAX_ITEMS} 个）', f'Send the items of this group to confirm (at most {MAX_ITEMS})'))
     by_element = {a['element']: a for a in asked}
     if len(by_element) != len(asked):
-        raise TypeRefused('同一项写了不止一次')
+        raise TypeRefused(tr('同一项写了不止一次', 'An item is listed more than once'))
     outside = [e for e in by_element if e not in {r['element_id'] for r in members}]
     if outside:
-        raise TypeRefused('这一项不在这一组里', 404)
+        raise TypeRefused(tr('这一项不在这一组里', 'This item is not in this group'), 404)
     return by_element
 
 
@@ -182,10 +183,10 @@ def confirm_group(conn, payload: dict, who: str | None, user: dict | None) -> di
     plan = _plan(conn, members, user)
     ready = [p for p in plan if p['ready']]
     if not ready:
-        raise TypeRefused('这一组里没有你现在能确认的：' + '；'.join(f'{_label(conn, p["row"]["element_id"])}{p["why_not"]}' for p in plan), 409)
+        raise TypeRefused(tr('这一组里没有你现在能确认的：' + tr('；', '; ').join(f'{_label(conn, p["row"]["element_id"])}{p["why_not"]}' for p in plan), 'Nothing in this group is yours to confirm now: ' + '; '.join(f'{_label(conn, p["row"]["element_id"])}: {p["why_not"]}' for p in plan)), 409)
     missing = [p for p in ready if p['row']['element_id'] not in asked]
     if missing:
-        raise TypeRefused(f'这一组里你也能确认{"、".join(_label(conn, p["row"]["element_id"]) for p in missing)}，没有带上：一起确认要把它们都带上', 409)
+        raise TypeRefused(tr(f'这一组里你也能确认{tr("、", ", ").join(_label(conn, p["row"]["element_id"]) for p in missing)}，没有带上：一起确认要把它们都带上', f'You can also confirm {", ".join(_label(conn, p["row"]["element_id"]) for p in missing)} in this group, but they were not sent: confirming together needs all of them'), 409)
     confirmed, sent_on = [], []
     conn.execute('BEGIN IMMEDIATE')   # the confirmations below join this transaction (element_state_writes)
     try:
@@ -194,10 +195,10 @@ def confirm_group(conn, payload: dict, who: str | None, user: dict | None) -> di
             try:
                 done = confirm_item(conn, {**asked[element_id], 'element': element_id}, who, user)
             except (TypeRefused, SelfConfirmation) as exc:
-                raise TypeRefused(f'{_label(conn, element_id)}：{exc}', exc.status if isinstance(exc, TypeRefused) else 403) from exc
+                raise TypeRefused(tr(f'{_label(conn, element_id)}：{exc}', f'{_label(conn, element_id)}: {exc}'), exc.status if isinstance(exc, TypeRefused) else 403) from exc
             (confirmed if done['state'] == 'confirmed' else sent_on).append(element_id)
         for element_id in confirmed if len(confirmed) > 1 else []:
-            log_line(conn, who or '未署名', element_id, 'confirmed_together', after={'with': len(confirmed) - 1, 'text': f'和另外 {len(confirmed) - 1} 项一起确认'})
+            log_line(conn, who or tr('未署名', 'unsigned'), element_id, 'confirmed_together', after={'with': len(confirmed) - 1, 'text': tr(f'和另外 {len(confirmed) - 1} 项一起确认', f'Confirmed together with {len(confirmed) - 1} other items')})
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
