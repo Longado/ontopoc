@@ -300,5 +300,7 @@ export default {
   "assistant.model.leftOut_other": "Left out ({count} columns)",
   "assistant.model.ack": "Noted, propose anyway",
   "assistant.model.blocked.open": "Acknowledge the open assumptions to propose. Nothing else waits for them.",
+  "assistant.drafted": "Drafted by the assistant",
+  "assistant.drafted.title": "Applied by {by} on {when}. The assistant drafted it; it still needs a person to confirm it.",
   "chat.queryTurn": "Query",
 };

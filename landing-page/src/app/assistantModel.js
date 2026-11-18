@@ -107,6 +107,7 @@ export function proposePayload(type) {
   return {
     id: type.id, version: type.version, english_name: type.id, name: type.name, description: type.description ?? "", dataset: type.dataset, key: type.key,
     properties: props.map((p) => ({ column: p.column, name: p.name || p.column, type: p.type, enum: Boolean(p.enum) })), enums,
+    assistant: true,   // the service marks it "drafted by the assistant", applied by this person now
   };
 }
 

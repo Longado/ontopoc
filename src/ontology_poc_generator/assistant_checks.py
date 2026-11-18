@@ -3,6 +3,8 @@ No model is asked and no prompt changes: an assumption is a fact the result stan
 has answered (open); the self-check names what ran and what did not. An open assumption blocks Apply, and only Apply, until it is answered."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from ontology_poc_generator.lang import tr
 
 CONFIRMED, OPEN = 'confirmed', 'open'
@@ -73,3 +75,11 @@ def type_self_check(kept: int, dropped: int) -> dict:
     if dropped:
         not_done.append({'key': 'dropped', 'text': tr(f'{dropped} 条建议没通过核对，已剔除', f'{dropped} suggestion(s) failed the checks and were left out')})
     return {'done': done, 'not_done': not_done}
+
+
+def drafted_mark(payload: dict, who: str | None, old: dict | None = None) -> dict | None:
+    """The marker an object carries when it was applied from the assistant's draft: who applied it, when, and that the assistant drafted it. It is stored in the
+    definition like its other metadata. The page sends `assistant: true` (exactly) from the assistant's Apply; any other save keeps the marker the object has."""
+    if payload.get('assistant') is True:
+        return {'by': who, 'at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'how': 'assistant'}
+    return old

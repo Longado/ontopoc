@@ -300,5 +300,7 @@ export default {
   "assistant.model.leftOut_other": "没用到（{count} 列）",
   "assistant.model.ack": "知道了，仍然提议",
   "assistant.model.blocked.open": "先确认待定的假设才能提议；其他操作不受影响。",
+  "assistant.drafted": "助手起草",
+  "assistant.drafted.title": "{by} 于 {when} 应用。这是助手起草的，仍需要有人确认。",
   "chat.queryTurn": "查询",
 };

@@ -2255,3 +2255,4 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .as-revise textarea { width: 100%; resize: vertical; }
 .as-revise-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s1); }
 .as-ack { margin-left: var(--s1); }
+.chip-assistant { gap: 4px; background: var(--accent-bg); color: var(--accent-700); }

@@ -119,7 +119,7 @@ test("proposing a type sends what saving it from its own form sends", () => {
   const ty = { id: "order", name: "Order", description: "d", dataset: "orders", key: ["no"], version: 3, properties: [{ column: "no", name: "no", type: "text" }, { column: "st", name: "Status", type: "integer", enum: true, meanings: { values: [{ value: "1", label: "open" }] } }] };
   assert.deepEqual(proposePayload(ty), {
     id: "order", version: 3, english_name: "order", name: "Order", description: "d", dataset: "orders", key: ["no"],
-    properties: [{ column: "no", name: "no", type: "text", enum: false }, { column: "st", name: "Status", type: "integer", enum: true }], enums: { st: [{ value: "1", label: "open" }] },
+    properties: [{ column: "no", name: "no", type: "text", enum: false }, { column: "st", name: "Status", type: "integer", enum: true }], enums: { st: [{ value: "1", label: "open" }] }, assistant: true,
   });
   assert.equal(proposePayload({ id: "x" }), null);
 });
