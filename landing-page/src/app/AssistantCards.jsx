@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { QuestionList, SeesNote } from "./AiBox.jsx";
 import { actionState, planCard, proposalCard } from "./assistantModel.js";
 import { formatNumber, useT } from "./i18n/index.js";
@@ -47,6 +47,8 @@ export function PlanCard({ plan, busy, onAnswer, onApply, onRevise, onDiscard, r
   const t = useT();
   const [revising, setRevising] = useState(false);
   const [change, setChange] = useState(request);
+  const form = useRef(null);
+  useEffect(() => { if (revising) form.current?.scrollIntoView({ block: "center", behavior: "smooth" }); }, [revising]);
   const { draft, answers, scopeLabel } = plan;
   const c = planCard(draft, answers);
   const open = (draft.questions ?? []).filter((q) => !(answers[q.id] ?? []).length);
@@ -102,7 +104,7 @@ export function PlanCard({ plan, busy, onAnswer, onApply, onRevise, onDiscard, r
       <SeesNote sees={draft.sees} />
       {plan.supersededBy && <p className="as-note muted small">{t("ask.assistant.plan.supersededBy")}</p>}
       {revising && !plan.supersededBy && (
-        <form className="as-revise" onSubmit={(e) => { e.preventDefault(); if (change.trim()) { onRevise(change); setRevising(false); } }}>
+        <form className="as-revise" ref={form} onSubmit={(e) => { e.preventDefault(); if (change.trim()) { onRevise(change); setRevising(false); } }}>
           <label htmlFor={`revise-${plan.selected}-${version}`}>{t("ask.assistant.plan.reviseTitle")}</label>
           <textarea id={`revise-${plan.selected}-${version}`} rows={2} value={change} onChange={(e) => setChange(e.target.value)} autoFocus />
           <div className="as-revise-actions">

@@ -69,7 +69,7 @@ def type_assumptions(english_name: str, key: list[str], rows: int, code_columns:
 def type_self_check(kept: int, dropped: int) -> dict:
     done, not_done = [], []
     if kept:
-        done.append({'key': 'checked', 'text': tr(f'数据集和列都存在，{kept} 个主键在全部行上都不重复、没有空值', f'Datasets and columns exist, and each of the {kept} keys is unique and filled on all rows')})
+        done.append({'key': 'checked', 'text': tr(f'数据集和列都存在，{kept} 个主键在全部行上都不重复、没有空值', 'Datasets and columns exist, and the key is unique and filled on all rows' if kept == 1 else f'Datasets and columns exist, and each of the {kept} keys is unique and filled on all rows')})
         done.append({'key': 'kept', 'text': tr(f'已存为 {kept} 份模型草稿（还没有提议人）', f'Kept {kept} as model drafts (no proposer yet)')})
         not_done.append({'key': 'confirmed', 'text': tr('还没有人确认：没有一个类型被确认', 'Confirmed: nobody has confirmed any type')})
     if dropped:
