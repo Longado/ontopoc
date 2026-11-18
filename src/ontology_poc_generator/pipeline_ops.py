@@ -91,7 +91,7 @@ def _col(columns: list[dict], name, label: str, what: str | None = None) -> dict
         if name in (None, ''):
             raise OpError(tr(f'{label}：没选{what}', f'{label}: {what} not chosen'))
         near = difflib.get_close_matches(str(name), list(_by_name(columns)), n=3, cutoff=0.5)
-        raise OpError(tr(f'{label}：没有{what}「{name}」', f'{label}: no {what} "{name}"') + (tr(f'，是不是{"、".join(f"「{n}」" for n in near)}？', f'. Did you mean {", ".join(f"\"{n}\"" for n in near)}?') if near else ''))
+        raise OpError(tr(f'{label}：没有{what}「{name}」', f'{label}: no {what} "{name}"') + (tr(f'，是不是{"、".join(f"「{n}」" for n in near)}？', f'. Did you mean {", ".join(chr(34) + n + chr(34) for n in near)}?') if near else ''))
     return found
 
 
