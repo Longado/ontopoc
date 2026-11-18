@@ -141,13 +141,13 @@ def clean_draft(profiles: list[dict], reply) -> dict:
     return out
 
 
-def draft_meanings(profiles: list[dict], gateway, purpose: str) -> dict:
+def draft_meanings(profiles: list[dict], gateway, purpose: str, timeout_seconds: float | None = None) -> dict:
     """One call for all the columns. The model sees counts and facts, never a row."""
     request = {'purpose': purpose, 'columns': [
         {'id': p['id'], 'table': p['source'], 'column': p['column'], 'rows': p['rows'],
          'values': [{'value': v['value'], 'facts': v['facts']} for v in p['values']]} for p in profiles]}
     out = {'prompt_version': DESCRIBE_CODES_PROMPT_VERSION, 'model': None, 'columns': {}, 'rejected': [], 'error': None}
-    judgement = ask_model(gateway, 'field_describer', DESCRIBE_CODES_PROMPT_VERSION, DESCRIBE_CODES_SYSTEM_PROMPT, request)
+    judgement = ask_model(gateway, 'field_describer', DESCRIBE_CODES_PROMPT_VERSION, DESCRIBE_CODES_SYSTEM_PROMPT, request, timeout_seconds)
     out['model'] = judgement.model
     if judgement.failure == 'request':
         return {**out, 'error': model_failure_text(judgement.message)}

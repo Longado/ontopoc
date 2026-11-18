@@ -75,6 +75,7 @@ from ontology_poc_generator.workspace_schedules import schedule_loop, tick as sc
 from ontology_poc_generator.workspace_sources import interrupted_runs
 from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, hidden_type_count, key_preview, list_types, propose_meanings, type_detail, type_log, type_page, type_id, type_objects, update_type, whole_type_row
 from ontology_poc_generator.object_type_suggest import suggest_types
+from ontology_poc_generator.type_meaning_draft import draft_type_meanings
 from ontology_poc_generator.pipeline_llm import LlmService
 from ontology_poc_generator.workspace_ai import draft as ai_draft, explain_steps as ai_explain, parse as ai_parse
 from ontology_poc_generator.workspace_llm import clear_cache as llm_clear_cache, label as llm_label, review_rerun as llm_review_rerun, state as llm_state, trial as llm_trial
@@ -1314,6 +1315,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                             return
                         body = suggest_types(conn, gateway, payload.get('datasets'), payload.get('purpose') or '', who, datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                              self.user, runs_lock)
+                    elif route == '/meanings-draft':   # the assistant's Meanings mode: one bounded call over counts, nothing saved (type_meaning_draft)
+                        if gateway is None:
+                            self.reply(503, {'error': no_key()})
+                            return
+                        body = draft_type_meanings(conn, gateway, payload.get('id'), self.user)
                     else:
                         with runs_lock:   # the lock an upload takes: a check and the write that stands on it are not split by new data
                             if route == '':

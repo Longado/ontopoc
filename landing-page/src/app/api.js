@@ -111,6 +111,8 @@ export const trialDerived = (payload) => tryDerived("/trial", payload);
 export const shapeDerived = (type, path) => tryDerived("/shape", { type, path });
 export const checkDerivedExpression = (type, expression) => tryDerived("/expression", { type, expression });
 export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
+/** The assistant's draft of the meanings of one type's code columns: one model call over counts, nothing is saved. */
+export const draftMeanings = (id) => send("/api/workspace/types/meanings-draft", { id });
 
 // actions: the definitions of one type with their parameters, one action with its records and log, submitting, approving
 const actionPath = (name, tail = "") => `/api/workspace/actions/${encodeURIComponent(name)}${tail}`;

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { QuestionList, SeesNote } from "./AiBox.jsx";
-import { actionState, planCard, proposalCard } from "./assistantModel.js";
+import { actionState, meaningsCard, planCard, proposalCard } from "./assistantModel.js";
 import { formatNumber, useT } from "./i18n/index.js";
 import { failureLines, friendlyError, kindLine } from "./pipelineModel.js";
 import { definitionHref } from "./qaModel.js";
@@ -187,6 +187,86 @@ export function ProposalCard({ proposal, busy, onPropose, onAck }) {
           <>
             <button className="primary" disabled={!c.canPropose || busy} onClick={onPropose}>{busy ? t("ask.assistant.model.proposing") : t("ask.assistant.model.propose")}</button>
             <span className="muted small">{c.blocked ? t("ask.assistant.model.blocked.open") : t("ask.assistant.model.proposeNote")}</span>
+          </>
+        )}
+      </footer>
+    </section>
+  );
+}
+
+/** A meanings draft for one object type: per code column, each code with its drafted meaning, the flags the code worked out, and a keep/skip toggle; Apply puts
+ * the kept meanings forward through the type's own meanings path (a second builder confirms them). Nothing is saved until then. */
+export function MeaningsCard({ meanings, busy, onToggle, onApply }) {
+  const t = useT();
+  const { result, choices = {}, typeLabel } = meanings;
+  const c = meaningsCard(result, choices);
+  const done = meanings.applied != null;
+  const working = busy || Boolean(meanings.busy);
+  const drafted = c.columns.some((x) => x.values.some((v) => v.hasDraft));
+  return (
+    <section className="as-card" aria-label={t("ask.assistant.meanings.kind")}>
+      <header className="as-head">
+        <span className="as-kind"><Icon name="cube" size={13} />{t("ask.assistant.meanings.kind")}</span>
+        <span className="as-scope muted">{t("ask.assistant.meanings.on", { type: typeLabel })}</span>
+        <span className={`as-state ${done ? "proposed" : drafted ? "pending" : "needs"}`}>{t(done ? "ask.assistant.card.proposed" : drafted ? "ask.assistant.card.pending" : "ask.assistant.card.needs")}</span>
+      </header>
+      <dl className="as-rows">
+        <Row label={t("ask.assistant.card.result")}>
+          {c.columns.length === 0 && <span className="muted">{t("ask.assistant.meanings.none")}</span>}
+          {c.columns.map((col) => (
+            <div key={col.column} className="as-meaning-col">
+              <p className="as-type-head"><strong>{col.column}</strong> <span className="muted small">{t("ask.assistant.meanings.rows", { rows: n(col.rows) })}</span>{col.confirmed && <> <span className="as-tag confirmed">{t("ask.assistant.meanings.confirmed")}</span></>}</p>
+              <table className="as-meanings">
+                <thead><tr><th>{t("ask.assistant.meanings.code")}</th><th>{t("ask.assistant.meanings.meaning")}</th><th /></tr></thead>
+                <tbody>
+                  {col.values.map((v) => (
+                    <tr key={v.value} className={v.hasDraft && !v.keep ? "skipped" : ""}>
+                      <td><code>{v.value}</code> <span className="muted small">{t("ask.assistant.meanings.valueRows", { rows: n(v.rows ?? 0) })}</span></td>
+                      <td>
+                        {v.hasDraft ? <strong>{v.label}</strong> : v.current ? <span>{v.current}</span> : <span className="faint">{t("ask.assistant.meanings.noMeaning")}</span>}
+                        {!v.hasDraft && v.current && <span className="muted small"> {t("ask.assistant.meanings.onFile")}</span>}
+                        {v.flags.map((f) => <span key={f} className={`as-tag ${f === "unmeant" ? "open" : ""}`}>{t(`ask.assistant.meanings.flag.${f}`, { current: v.current })}</span>)}
+                        {v.hasDraft && v.basis && <p className="muted small">{t("ask.assistant.card.basis")}: {v.basis}</p>}
+                      </td>
+                      <td>{v.hasDraft && !done && <label className="small"><input type="checkbox" checked={v.keep} disabled={working} aria-label={t("ask.assistant.meanings.keepAria", { column: col.column, value: v.value })} onChange={(e) => onToggle(col.column, v.value, e.target.checked)} /> {t("ask.assistant.meanings.keep")}</label>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {col.gone.length > 0 && <p className="small warn">{t("ask.assistant.meanings.gone", { codes: col.gone.join(t("ask.sep")) })}</p>}
+            </div>
+          ))}
+        </Row>
+        {c.assumptions.length > 0 && (
+          <Row label={t("ask.assistant.card.assume")}>
+            <ul className="as-assume">
+              {c.assumptions.map((a) => <li key={a.id}><span className={`as-tag ${a.state}`}>{t(`ask.assistant.assume.${a.state}`)}</span> {a.text}{a.definition && <> <a className="small" href={definitionHref(a.definition)}>{t("ask.assistant.assume.definition")}</a></>}</li>)}
+            </ul>
+          </Row>
+        )}
+        {(c.skipped.length > 0 || c.rejected.length > 0) && (
+          <Row label={t("ask.assistant.meanings.left")}>
+            <ul className="as-rejected">
+              {c.skipped.map((s) => <li key={s.column}><strong>{s.column}</strong> <span className="muted">{s.reason}</span></li>)}
+              {c.rejected.map((r, i) => <li key={i}><strong>{r.item}</strong> <span className="muted">{r.reason}</span></li>)}
+            </ul>
+          </Row>
+        )}
+        <Row label={t("ask.assistant.card.checked")}>
+          <Checked done={c.done} notDone={c.notDone.filter((x) => !(done && x.key === "saved"))} prefix="meanings" />
+        </Row>
+      </dl>
+      {meanings.error && <p className="error" role="alert">{meanings.error}</p>}
+      <footer className="as-actions">
+        {done ? (
+          <>
+            <span className="as-ok"><Icon name="check" size={14} />{t("ask.assistant.meanings.appliedAll", { count: meanings.applied })}</span>
+            <a className="button secondary" href={hrefFor({ page: "type", id: result.type, tab: "props" })}>{t("ask.assistant.model.open")}</a>
+          </>
+        ) : (
+          <>
+            <button className="primary" disabled={!c.canApply || working} onClick={onApply}>{working ? t("ask.assistant.meanings.applying") : t("ask.assistant.meanings.apply", { count: c.kept })}</button>
+            <span className="muted small">{c.blocked ? t("ask.assistant.meanings.blocked.none") : t("ask.assistant.meanings.applyNote")}</span>
           </>
         )}
       </footer>
