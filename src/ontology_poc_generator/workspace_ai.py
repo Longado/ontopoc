@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 
+from ontology_poc_generator.assistant_checks import plan_assumptions, plan_self_check
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_types import TypeRefused, element_row
 from ontology_poc_generator.pipeline_assist import (
@@ -131,6 +132,12 @@ def _selected(spec: dict, payload: dict) -> list[str]:
 
 
 def draft(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
+    """The draft, with its key assumptions and self-check worked out by code from what it contains (assistant_checks): no further model call."""
+    out = _draft(conn, engine, payload, user, llm)
+    return {**out, 'assumptions': plan_assumptions(out, _answers(payload)), 'self_check': plan_self_check(out)}
+
+
+def _draft(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
     """{id | spec, selected: [step ids], text, raw?, answers?}: one draft of steps over the selected nodes: each step with a sentence of what it does, the questions that must be asked
     (each with the values seen and no recommended answer when a code is not confirmed; a confirmed meaning is cited instead), and the result of our check (columns, operators and
     functions exist) and of a dry run on the current data (rows in and out per step). Nothing is added to the pipeline: 应用 is the person's, on the page."""
@@ -153,9 +160,11 @@ def draft(conn, engine, payload: dict, user: dict | None, llm: LlmService | None
         if 'error' in asked:
             raise TypeRefused(asked['error'], 409)
         merged_by = {c: w for i in selected for c, w in by[i].items()}
+        elements = {c['name']: meaning_ids[c['origin']] for i in selected for c in visible(compiled[i]['columns']) if c.get('origin') in found['ctx']['meanings'] and c.get('origin') in meaning_ids}
     finally:
         drop_temporary(engine, found['resolved'])
     settled = _settled(lambda: settle_plan(asked, facts, seen, {s['id'] for s in spec['steps']}, llm.model if llm else None, sentence, answers, merged_by), raw)
+    settled['cites'] = [{**c, 'definition': elements.get(c['column'])} for c in settled['cites']]   # where the meaning cited is defined: the card links to it
     out = {'raw': asked, 'basis': str(asked.get('basis') or ''), 'selected': selected, 'questions': settled['questions'], 'cites': settled['cites'], 'problems': settled['problems'],
            'sees': disclosure([f for i in selected for f in facts[i]]), 'label': tr('AI 写的草稿，用不用由你定', 'Drafted by AI. You decide whether to use it'), 'steps': [], 'max_steps': MAX_DRAFT_STEPS}
     if not settled['steps']:

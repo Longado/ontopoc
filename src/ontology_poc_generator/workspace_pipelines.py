@@ -22,6 +22,7 @@ import time
 
 from ontology_poc_generator import pipeline_llm
 from ontology_poc_generator.accounts import two_person
+from ontology_poc_generator.assistant_checks import drafted_mark
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.object_types import (
     MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _flag, _flag_readers, _state_view, _text, dataset_columns,
@@ -284,6 +285,8 @@ def create_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
     """Put a pipeline forward (state checked, the person who wrote it its proposer): {'id', 'definition_version'}."""
     engine = engine or conn
     found = check_definition(conn, engine, payload, user)
+    if mark := drafted_mark(payload, who):
+        found['content'] = {**found['content'], 'drafted': mark}
     try:
         element_id = pipeline_id(found['content']['name'])
         if element_row(conn, element_id):
@@ -310,6 +313,8 @@ def update_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
     found = check_definition(conn, engine, {**payload, 'spec': payload.get('spec', old['spec'])}, user, old['name'], row['element_id'])
     try:
         new, element_id = found['content'], row['element_id']
+        if mark := drafted_mark(payload, who, old.get('drafted')):   # saved from the assistant's draft: who, when (an ordinary save keeps it)
+            new = {**new, 'drafted': mark}
         changed = _canonical(new['spec']) != _canonical(old['spec'])
         if changed or row['state'] in ('proposed', 'rejected'):
             version = old['definition_version'] + (1 if changed else 0)

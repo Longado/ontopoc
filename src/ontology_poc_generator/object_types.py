@@ -19,6 +19,7 @@ import json
 import re
 
 from ontology_poc_generator.accounts import two_person
+from ontology_poc_generator.assistant_checks import drafted_mark
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
@@ -382,6 +383,8 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id'])
     reset = reset_reasons(old, content)
+    if mark := drafted_mark(payload, who, old.get('drafted')):   # applied from the assistant's draft: who, when (a later ordinary edit keeps it)
+        content = {**content, 'drafted': mark}
     english = old['english_name']
     existing = _meaning_columns(conn, english)
     moved_dataset = old['dataset'] != content['dataset']
@@ -847,7 +850,7 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
                         (row['element_id'],)).fetchone()
     limited = limited_on(conn, row, user)
     reason, reason_hidden = reason_for(conn, row, user)
-    return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'reason': reason, 'reason_hidden': reason_hidden,
+    return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'drafted': _content(row).get('drafted'), 'reason': reason, 'reason_hidden': reason_hidden,
             'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited, 'limited_by_rule': limited,
             'cause': row['cause'] if row['state'] == 'needs_look' else None, 'via': row['via'] if row['state'] == 'needs_look' else None,
             'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None,

@@ -142,6 +142,7 @@ export function PipelineEditor({ detail, reload }) {
   useFullBleed();
   const name = detail.name;
   const handed = useRef(undefined);
+  const fromAssistant = useRef(false);
   const [draft, setDraft] = useState(detail.spec);
   const [selected, setSelected] = useState(detail.spec.steps[detail.spec.steps.length - 1]?.id ?? null);
   const [tab, setTab] = useState("rows");
@@ -167,6 +168,7 @@ export function PipelineEditor({ detail, reload }) {
     const steps = handed.current;
     if (!steps) return;
     setDraft(applyDraft(detail.spec, steps));
+    fromAssistant.current = true;   // saving this draft marks the pipeline "drafted by the assistant"
     setSelected(steps[0].id);
     setUpto(null);
   }, []);
@@ -193,7 +195,8 @@ export function PipelineEditor({ detail, reload }) {
     setSaving(true);
     setError("");
     try {
-      await savePipeline(name, detail.version, draft);
+      await savePipeline(name, detail.version, draft, fromAssistant.current);
+      fromAssistant.current = false;
       reload();
     } catch (e) {
       setError(e.message);

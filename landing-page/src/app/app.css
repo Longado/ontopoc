@@ -2258,3 +2258,19 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .pl-edge-cut { position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border-radius: 50%; border: 1px solid var(--pl-border-strong); background: var(--pl-surface); color: var(--pl-text-2); cursor: pointer; z-index: 3; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 .pl-edge-cut:hover { color: var(--danger, #c23030); border-color: currentColor; }
 .pl-link-refused { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 5; padding: 6px 12px; border-radius: 6px; background: var(--pl-text, #1c2127); color: var(--pl-surface, #fff); font-size: 12px; pointer-events: none; }
+
+
+/* R17 G2 */
+.as-version { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--bg-app); color: var(--text-muted); border: 1px solid var(--border); }
+.as-state.applied { background: var(--green-soft); color: var(--green-ink); }
+.as-state.superseded, .as-state.discarded { background: var(--bg-app); color: var(--text-muted); border: 1px solid var(--border); }
+.as-card.frozen { background: var(--bg-app); }
+.as-card.frozen .as-chain, .as-card.frozen .as-assume { opacity: 0.8; }
+.as-note { margin: 0; padding: 8px var(--s3); border-top: 1px solid var(--border); }
+.as-revise { display: grid; gap: var(--s1); padding: 12px var(--s3); border-top: 1px solid var(--border); }
+.as-revise label { font-weight: 600; font-size: 13px; }
+.as-revise textarea { width: 100%; resize: vertical; }
+.as-revise-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s1); }
+.as-ack { margin-left: var(--s1); }
+.chip-assistant { gap: 4px; background: var(--accent-bg); color: var(--accent-700); }
+.as-basis .as-key { margin-right: 8px; }

@@ -8,11 +8,12 @@ import { reconfirmText, stateText } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { EmptyState } from "./ui/EmptyState.jsx";
 import { PageHeader } from "./ui/PageHeader.jsx";
+import { DraftedChip } from "./ui/DraftedChip.jsx";
 import { StatusChip } from "./ui/StatusChip.jsx";
 
 export function State({ item }) {
   if (!item.state && !item.model_draft) return <span className="state state-none">{stateText(item)}</span>;   // a column nobody gave meanings to has no state
-  return <StatusChip state={item.state} modelDraft={item.model_draft} />;
+  return <><StatusChip state={item.state} modelDraft={item.model_draft} /><DraftedChip item={item} /></>;
 }
 
 /** Asks the model for object types from some datasets. It runs as a task: what it proposed and what the checks dropped are listed, nothing is confirmed. */

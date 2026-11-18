@@ -8,11 +8,12 @@ import { hrefFor, parseRoute } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
 import { PageHeader } from "./ui/PageHeader.jsx";
+import { DraftedChip } from "./ui/DraftedChip.jsx";
 import { StatusChip } from "./ui/StatusChip.jsx";
 import { EmptyState } from "./ui/EmptyState.jsx";
 
 export function PipelineState({ item }) {
-  return <StatusChip state={item.state} label={item.state === "needs_look" ? pipelineStateText(item) : undefined} />;
+  return <><StatusChip state={item.state} label={item.state === "needs_look" ? pipelineStateText(item) : undefined} /><DraftedChip item={item} /></>;
 }
 
 /** A run's status as an icon and a word (never colour alone). */

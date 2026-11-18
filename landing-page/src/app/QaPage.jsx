@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { aiDraft, askQuestion, getAnswer, getAsk, getDatasets, getModelReady, getPipeline, getPipelines, getType, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild, isAdmin } from "./authModel.js";
-import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, modesFor, parseCommand, privacyKey, proposePayload, scopeKind, stashDraft } from "./assistantModel.js";
+import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, loadThread, modesFor, nextVersion, parseCommand, privacyKey, proposePayload, saveThread, scopeKind, stashDraft } from "./assistantModel.js";
 import { NoModel, PlanCard, ProposalCard } from "./AssistantCards.jsx";
 import { timeText } from "./format.js";
 import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
@@ -263,8 +263,8 @@ function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last,
         {turn.status === "error" && <AssistantMsg>{turn.noModel ? <NoModel admin={admin} /> : <p className="error" role="alert">{turn.error}</p>}</AssistantMsg>}
         {turn.status === "done" && (
           <AssistantMsg>
-            {turn.kind === "pipeline" ? <PlanCard plan={turn.plan} busy={turn.plan.busy || busy} onAnswer={(id, values) => cards.answer(turn, id, values)} onApply={() => cards.apply(turn)} onRevise={() => cards.revise(turn)} />
-              : <ProposalCard proposal={turn.proposal} busy={turn.proposal.busy} onPropose={() => cards.propose(turn)} />}
+            {turn.kind === "pipeline" ? <PlanCard plan={turn.plan} busy={busy} onAnswer={(id, values) => cards.answer(turn, id, values)} onApply={() => cards.apply(turn)} onRevise={(request) => cards.revise(turn, request)} onDiscard={() => cards.discard(turn)} request={turn.text} version={turn.version ?? 1} />
+              : <ProposalCard proposal={turn.proposal} busy={turn.proposal.busy} onPropose={() => cards.propose(turn)} onAck={(id) => cards.ack(turn, id)} />}
           </AssistantMsg>
         )}
       </>
@@ -506,12 +506,14 @@ function Rail({ scope, activeId, onNew, onPick }) {
 
 export function QaPage({ route }) {
   const t = useT();
-  const mayBuild = canBuild(useAuth().user);
+  const me = useAuth().user;
+  const mayBuild = canBuild(me);
+  const who = me?.username ?? "";
   const [info, reload] = useLoad(getAsk, []);
   const [text, setText] = useState("");
   const [mode, setMode] = useState("ask");
   const [query, setQuery] = useState("");
-  const [turns, setTurns] = useState([]);
+  const [turns, setTurns] = useState(() => { const kept = loadThread(window.sessionStorage, who); return route.id == null || kept.some((x) => x.record?.id === route.id) ? kept : []; });
   const [rail, setRail] = useState(false);
   const admin = isAdmin(useAuth().user);
   const [datasets] = useLoad(() => (mayBuild ? getDatasets() : Promise.resolve([])), [mayBuild]);
@@ -521,7 +523,7 @@ export function QaPage({ route }) {
   const scope = info.data;
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
-  const own = useRef(new Set());   // saved ids this session's thread already holds: opening one of them must not replace the thread
+  const own = useRef(new Set(turns.map((x) => x.record?.id).filter((x) => x != null)));   // saved ids this session's thread already holds: opening one of them must not replace the thread
   const thread = useRef(null);
   const busy = isThinking(turns);
   const queryMode = allowedMode(mode, mayBuild);
@@ -570,19 +572,24 @@ export function QaPage({ route }) {
       return;
     }
     if (!target) { add({ ...newTurn("pipeline", question), status: "error", error: t("ask.assistant.error.pickTarget") }); return; }
-    const turn = newTurn("pipeline", question);
-    add(turn);
     setText("");
+    draftPlan(question, target);
+  };
+  /** One pipeline draft over `tgt`. `revises` is the turn whose card this one replaces: the old card is kept and frozen, the new one is its next version. */
+  const draftPlan = (question, tgt, revises) => {
+    const turn = { ...newTurn("pipeline", question), version: nextVersion(turnsRef.current, revises), ...(revises ? { revises } : {}) };
+    add(turn);
     (async () => {
       try {
-        if (!(await getModelReady())) return noModel(turn);
-        const spec = target.kind === "pipeline" ? (await getPipeline(target.name)).spec : datasetSpec(target.name);
-        const selected = target.kind === "pipeline" ? defaultSelected(spec) : "in1";
+        if (!(await getModelReady())) return finish(turn, { status: "error", noModel: true });
+        const spec = tgt.kind === "pipeline" ? (await getPipeline(tgt.name)).spec : datasetSpec(tgt.name);
+        const selected = tgt.kind === "pipeline" ? defaultSelected(spec) : "in1";
         if (!selected) throw new Error(t("ask.assistant.error.pickTarget"));
-        const draft = await aiDraft(target.kind === "pipeline" ? target.name : undefined, spec, [selected], question);
-        finish(turn, { status: "done", plan: { draft, answers: {}, spec, selected, target, scopeLabel: target.label, newPipeline: target.kind === "dataset", busy: false } });
+        const draft = await aiDraft(tgt.kind === "pipeline" ? tgt.name : undefined, spec, [selected], question);
+        finish(turn, { status: "done", plan: { draft, answers: {}, spec, selected, target: tgt, scopeLabel: tgt.label, newPipeline: tgt.kind === "dataset", busy: false } });
+        if (revises) setTurns((ts) => ts.map((x) => (x.id === revises ? { ...x, plan: { ...x.plan, supersededBy: turn.id } } : x)));   // only once the new version exists
       } catch (err) {
-        if (isNoModel(err.message)) noModel(turn); else finish(turn, { status: "error", error: err.message });
+        if (isNoModel(err.message)) finish(turn, { status: "error", noModel: true }); else finish(turn, { status: "error", error: err.message });
       }
     })();
   };
@@ -606,13 +613,17 @@ export function QaPage({ route }) {
       const plan = turn.plan;
       const name = plan.target.kind === "pipeline" ? plan.target.name : `new:${plan.target.name}`;
       stashDraft(window.sessionStorage, name, plan.draft.steps);
+      patchPlan(turn, { applied: true, appliedAt: new Date().toISOString() });
       window.location.hash = plan.target.kind === "pipeline" ? hrefFor({ page: "pipeline", name: plan.target.name, view: "edit" }) : hrefFor({ page: "pipelinenew", dataset: plan.target.name });
     },
-    revise: (turn) => {
-      setTarget(turn.plan.target);
-      setMode("pipeline");
-      setText(turn.text);
+    // Revise: the changed request is a new turn with a new version of the card; this one is kept and frozen
+    revise: (turn, request) => {
+      if (isThinking(turnsRef.current) || !String(request ?? "").trim()) return;
+      draftPlan(String(request).trim(), turn.plan.target, turn.id);
     },
+    discard: (turn) => patchPlan(turn, { discarded: true }),
+    // an open assumption on a type proposal is acknowledged by the person; the card re-checks by code, no model
+    ack: (turn, id) => patchProposal(turn, { acked: { ...(turn.proposal.acked ?? {}), [id]: true } }),
     // Propose: the model drafts become this person's proposals through the normal update path; a second person confirms in the review queue
     propose: async (turn) => {
       patchProposal(turn, { busy: true, error: "" });
@@ -662,7 +673,7 @@ export function QaPage({ route }) {
     was.current = route.id;
     if (route.id == null) {
       if (before != null) setTurns([]);   // back to a new chat
-    } else if (!own.current.has(route.id)) {
+    } else if (!own.current.has(route.id) && !turnsRef.current.some((x) => x.record?.id === route.id)) {
       setTurns([savedTurn(route.id)]);   // a past question opens as a thread of one
       setMode("ask");
     }
@@ -684,6 +695,8 @@ export function QaPage({ route }) {
     if (card) el.scrollTo({ top: Math.max(0, card.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 72), behavior: "smooth" });
     else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [turns.length, turns[turns.length - 1]?.status]);
+
+  useEffect(() => { saveThread(window.sessionStorage, who, turns); }, [turns]);
 
   const ideas = suggestions(scope, []);
   const title = threadTitle(turns);

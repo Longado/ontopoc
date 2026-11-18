@@ -87,6 +87,9 @@ class AssistantTests(SigningTestCase):
             self.assertEqual(draft['check']['ok'], True)
             self.assertEqual([c['text'] for c in draft['cites']], ['「状态码」的含义“已取消”是代码 2（已确认，Bob）'])
             self.assertEqual(draft['label'], 'AI 写的草稿，用不用由你定')
+            [cited] = draft['assumptions']   # a confirmed meaning is a confirmed assumption that links to its definition
+            self.assertEqual((cited['status'], cited['definition'], cited['text']), ('confirmed', 'enum:order:状态码', draft['cites'][0]['text']))
+            self.assertEqual([x['key'] for x in draft['self_check']['done']], ['columns', 'dry', 'counts', 'cites'])
             seen = model.requests[0]['selected'][0]['columns']
             status_column = next(c for c in seen if c['name'] == '状态码')
             self.assertEqual((status_column['code'], status_column['meanings']), (True, {m['label']: [m['value']] for m in MEANINGS}))
@@ -110,6 +113,14 @@ class AssistantTests(SigningTestCase):
             self.assertEqual(draft['steps'][0]['step']['operators'], [])   # the filter is not written until a code is chosen
             self.assertEqual(draft['steps'][0]['rows_out'], 160)
             self.assertEqual(draft['cites'], [])
+            self.assertEqual([(x['status'], x['question']) for x in draft['assumptions']], [('open', question['id'])])
+            self.assertEqual([x['key'] for x in draft['self_check']['not_done']], ['open', 'fullRun', 'saved'])
+            # answering re-checks with code and calls no model: the answer is now a confirmed assumption
+            calls = len(model.requests)
+            again = self.draft(ann, raw=draft['raw'], answers={question['id']: ['2']})[1]
+            self.assertEqual(len(model.requests), calls)
+            self.assertEqual([(x['status'], x['by']) for x in again['assumptions']], [('confirmed', 'you')])
+            self.assertNotIn('open', [x['key'] for x in again['self_check']['not_done']])
 
     def test_a_code_the_model_wrote_that_the_sentence_does_not_say_is_not_used(self):
         model = Assistant(careless=True)

@@ -137,7 +137,7 @@ export const getPipelineRun = (name, id) => request(pipelinePath(name, `/runs/${
 export const getPipelineLog = (name) => request(pipelinePath(name, "/log")).then((b) => b.log);
 export const createPipeline = (name, description, spec) => send("/api/workspace/pipelines", { name, description, spec });
 /** Saves a changed definition as the version the person had open (409 when it moved since). */
-export const savePipeline = (name, version, spec) => send("/api/workspace/pipelines/update", { id: name, version, spec });
+export const savePipeline = (name, version, spec, assistant = false) => send("/api/workspace/pipelines/update", { id: name, version, spec, ...(assistant ? { assistant: true } : {}) });
 export const runPipeline = (name) => send("/api/workspace/pipelines/run", { id: name });
 /** Confirms what the person looked at: the definition version and the input versions they saw. */
 export const confirmPipeline = (name, version, inputs) => send("/api/workspace/pipelines/confirm", { id: name, version, seen: { inputs } });
