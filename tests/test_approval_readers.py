@@ -22,5 +22,27 @@ class ReaderTests(KindTests):
             self.assertGreaterEqual(card['readers'], 1)   # at least the confirmed object type reads it
 
 
+    def test_the_count_leaves_out_definitions_this_person_may_not_see(self):
+        # review of #90: a builder kept from a type should not learn, even as a number, that it reads the dataset
+        from ontology_poc_generator.object_actions import open_records
+        from ontology_poc_generator.review_queue import approval_item
+        from ontology_poc_generator.workspace_store import open_workspace
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, admin = team['ann'], team['admin']
+            self.confirmed_action(team, NEW_ORDER)
+            self.assertEqual(self.create(ann)[0], 200)
+            people = {p['name']: p['id'] for p in admin.get('/api/workspace/permissions')[1]['people']}
+            conn = open_workspace(out / 'workspace.sqlite')
+            try:
+                rec = open_records(conn, None)[0]
+                everyone = approval_item(rec, conn, None)['readers']
+                self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [people['Ann']]})[0], 200)
+                self.assertEqual(approval_item(rec, conn, {'id': people['Ann'], 'role': 'builder'})['readers'], everyone)
+                self.assertLess(approval_item(rec, conn, {'id': people['Bob'], 'role': 'builder'})['readers'], everyone)
+            finally:
+                conn.close()
+
+
 if __name__ == '__main__':
     unittest.main()
