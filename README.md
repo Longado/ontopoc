@@ -116,7 +116,7 @@ claude plugin install ontopoc@ontopoc
 这 39 个工具与页面共用同一个本机服务，可在 Claude Code 等客户端中直接调用（在仓库根目录运行）。其中 34 个对应早期界面的运行（建模、查看、问答、确认、导出），5 个对应团队应用：读已确认的定义、提问、用本体查询直接算（[QUERY.md](docs/QUERY.md)）、列出未确认项、读派生属性。团队应用里的上传、写定义和确认还没有 MCP 工具，在页面或 HTTP 接口里做。
 
 ```bash
-claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
+claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
 ```
 
 工具清单见 [docs/MCP.md](docs/MCP.md)。

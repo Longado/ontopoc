@@ -116,7 +116,7 @@ In a new session there are two commands: `/ontopoc:ontopoc-build` (upload files 
 The 39 tools share the same local service as the page and can be called directly from Claude Code and other clients (run this in the repository root). 34 of them work on the earlier screen's runs (building, browsing, questions, confirmation, export) and 5 on the team app: read confirmed definitions, ask, run an OntoPoc Query ([QUERY.md](docs/QUERY.md)), list unconfirmed items, read a derived property. Uploading, writing definitions and confirming in the team app have no MCP tool yet; use the page or HTTP.
 
 ```bash
-claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
+claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
 ```
 
 The tool list is in [docs/MCP.md](docs/MCP.md).

@@ -6,7 +6,7 @@ server needs — initialize, ping, tools/list, tools/call — written out here r
 
 Run: PYTHONPATH=src python -m ontology_poc_generator.mcp_server   (ONTOPOC_URL defaults to http://127.0.0.1:8767;
 ONTOPOC_TOKEN is a personal token from the account page: the service then signs what this server does with the token owner's name;
-with a token the server offers the read tools only, unless ONTOPOC_TOOLSET=all; with no token it offers all of them)
+the server offers the five read tools unless ONTOPOC_TOOLSET=all, and with a token only what the token's scope allows)
 """
 from __future__ import annotations
 
@@ -708,6 +708,20 @@ TOOLS = [
           ('type', 'name')),
 ]
 READ_TOOLS = ('describe_definitions', 'ask', 'ontopoc_query', 'list_unconfirmed', 'read_derived_property')   # what an outside agent is given (a token and no ONTOPOC_TOOLSET, or ONTOPOC_TOOLSET=read): no uploading, no confirming, no writing
+# where each tool works, first in its description, so look-alike tools are told apart (Glama, 2026-11-17): the team's confirmed definitions, one build run (saved_as), or the service
+SCOPE_TEAM, SCOPE_RUN, SCOPE_SERVICE = '【团队已确认的定义】', '【一次建模运行 saved_as】', '【本机服务】'
+LOOK_ALIKE = {
+    'ask': '（设了 ONTOPOC_TOOLSET=all 时才有）问的是一次建模运行里上传的数据、还没进团队定义时，用 ask_question。',
+    'ask_question': '问的是团队已经确认的定义（工作区）时不用这个，用 ontopoc_query，写不出查询再用 ask。',
+    'describe_definitions': '（设了 ONTOPOC_TOOLSET=all 时才有）某次建模运行里模型提出、还没确认的对象用 list_objects。',
+    'list_objects': '这是这次运行模型提出的对象，不是团队已确认的定义；那个用 describe_definitions。',
+    'list_unconfirmed': '（设了 ONTOPOC_TOOLSET=all 时才有）某次建模运行里等确认的视图用 list_proposed_views。',
+    'list_proposed_views': '团队工作区里所有没确认的定义用 list_unconfirmed。',
+    'read_derived_property': '全部派生属性的清单在 describe_definitions 返回的 derived 里。',
+}
+for _t in TOOLS:
+    _scope = SCOPE_TEAM if _t['name'] in READ_TOOLS else SCOPE_SERVICE if _t['name'] in ('health', 'list_runs') else SCOPE_RUN
+    _t['description'] = _scope + _t['description'] + LOOK_ALIKE.get(_t['name'], '')
 BY_NAME = {t['name']: t for t in TOOLS}
 
 
@@ -756,7 +770,7 @@ def check(base: str) -> None:
 
 
 class Toolset:
-    """The tools this server offers. With no token it is the local session's: all of them, or the read tools when ONTOPOC_TOOLSET=read. With a token the service says
+    """The tools this server offers. With no token it is the local session's: the read tools, or all of them when ONTOPOC_TOOLSET=all. With a token the service says
     what the token may do (its scope, from /api/auth/me): the read tools for a read token, all of them for an all token; the environment can narrow that to the read
     tools and not widen it, because the service refuses what the token may not do. While the service cannot be asked, the read tools."""
 
@@ -765,7 +779,7 @@ class Toolset:
 
     def __call__(self) -> tuple | None:
         if not self.service.token:
-            return READ_TOOLS if self.asked == 'read' else None
+            return None if self.asked == 'all' else READ_TOOLS   # the build tools only when the local session asks for them (ONTOPOC_TOOLSET=all)
         if self.scope is None:
             try:
                 self.scope = self.service.request('/api/auth/me')['user'].get('token_scope')
