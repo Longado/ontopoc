@@ -203,6 +203,13 @@ export const setColumnAccess = (type, column, visibleTo) => send("/api/workspace
 // Q&A: the scope line with the person's own history, one saved answer as it stands now, a new question
 export const getAsk = () => request("/api/workspace/ask");
 export const getAnswer = (id) => request(`/api/workspace/ask/${id}`);
+// The assistant's builder-mode turns (query, model, pipeline, ...): the person's own, kept with a compact card; one is read back as it may be seen now
+export const getAssistantTurns = () => request("/api/workspace/assistant/turns");
+export const getAssistantTurn = (id) => request(`/api/workspace/assistant/turns/${id}`);
+export const keepAssistantTurn = (turn) => send("/api/workspace/assistant/turns", turn);
+/** What happened to a turn's card next: {state: "applied" | "saved" | "not_applied", name?}. */
+export const markAssistantTurn = (id, outcome) => send(`/api/workspace/assistant/turns/${id}/outcome`, outcome);
+export const deleteAssistantTurn = (id) => send(`/api/workspace/assistant/turns/${id}/delete`, {});
 /** The model works out the query: it can take up to a minute, there is no timeout here. */
 export const askQuestion = (question) => send("/api/workspace/ask", { question });
 /** A builder's switch on one property: its values are not sent to the model that reads a question. */

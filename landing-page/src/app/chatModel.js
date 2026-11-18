@@ -20,8 +20,8 @@ export function groupByDay(history, now = new Date()) {
   const groups = [];
   const seen = new Set();
   for (const { h, day } of rows) {
-    const same = String(h.question ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-    if (same && seen.has(same)) continue;   // the same question asked again shows once, at its newest asking
+    const same = `${h.mode ?? "ask"}|${String(h.question ?? "").replace(/\s+/g, " ").trim().toLowerCase()}`;
+    if (String(h.question ?? "").trim() && seen.has(same)) continue;   // the same question asked again shows once, at its newest asking
     seen.add(same);
     let g = groups[groups.length - 1];
     if (!g || g.date !== day) {

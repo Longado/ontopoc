@@ -96,6 +96,9 @@ CREATE TABLE IF NOT EXISTS llm_review (
 CREATE TABLE IF NOT EXISTS qa_question (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, asked_by TEXT, question TEXT NOT NULL, asked_at TEXT NOT NULL, status TEXT NOT NULL,
     answer_json TEXT NOT NULL, definitions_json TEXT NOT NULL, dataset_versions_json TEXT NOT NULL, types_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS assistant_turn (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, mode TEXT NOT NULL, message TEXT NOT NULL, scope_json TEXT NOT NULL, at TEXT NOT NULL,
+    card_json TEXT NOT NULL, named_json TEXT NOT NULL, outcome_json TEXT);
 CREATE TABLE IF NOT EXISTS check_result (
     id INTEGER PRIMARY KEY AUTOINCREMENT, element_id TEXT NOT NULL, check_type TEXT NOT NULL, query TEXT NOT NULL,
     rows_checked INTEGER, violations INTEGER, samples_json TEXT, dataset_id INTEGER, null_key_rows INTEGER,
