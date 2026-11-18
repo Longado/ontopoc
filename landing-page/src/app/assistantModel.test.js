@@ -197,3 +197,42 @@ test("the proposal card shows what each type stood on and what it left out when 
   assert.deepEqual(none.types[0].leftOut, []);
   assert.equal(none.types[0].basis, "");
 });
+
+test("a plan card takes its assumptions and self-check from the service, and an open assumption blocks Apply only", () => {
+  const draft = {
+    steps: [{ id: "a", summary: "s", step: { type: "transform" }, rows_in: [10], rows_out: 5 }], check: { ok: true },
+    assumptions: [
+      { id: "meaning:st|x", text: "Confirmed one", status: "confirmed", definition: "enum:order:st" },
+      { id: "answer:q", text: "You chose", status: "confirmed", by: "you" },
+      { id: "question:q2", question: "q2", text: "Which?", status: "open" },
+    ],
+    self_check: { done: [{ key: "columns", text: "Columns exist" }], not_done: [{ key: "open", text: "1 open" }, { key: "fullRun", text: "Run on all" }] },
+  };
+  const c = planCard(draft, {});
+  assert.deepEqual(c.assumptions.map((a) => [a.state, a.text, a.definition ?? null]), [["confirmed", "Confirmed one", "enum:order:st"], ["confirmed", "You chose", null], ["open", "Which?", null]]);
+  assert.equal(c.open, 1);
+  assert.equal(c.canApply, false);
+  assert.equal(c.blocked, "open");
+  assert.deepEqual(c.done, [{ key: "columns", text: "Columns exist" }]);
+  assert.equal(c.notDone[1].text, "Run on all");
+  // a service that sends none (an older one): the card works the facts out from the draft as before
+  assert.equal(planCard({ ...draft, assumptions: undefined, self_check: undefined }, {}).done[0].key, "columns");
+});
+
+test("a type proposal has its assumptions; an open one must be acknowledged before Propose", () => {
+  const result = {
+    proposed: [{ id: "order", name: "Order", assumptions: [{ id: "key:order", text: "Key unique", status: "confirmed", definition: "objtype:order" }, { id: "meanings:order:st", text: "Nobody confirmed st", status: "open", definition: "enum:order:st" }] }],
+    rejected: [], self_check: { done: [{ key: "checked", text: "ok" }], not_done: [{ key: "confirmed", text: "nobody" }] },
+  };
+  const details = [{ id: "order", dataset: "orders", key: ["no"], version: 1, properties: [] }];
+  const c = proposalCard(result, details, {});
+  assert.deepEqual(c.assumptions.map((a) => [a.state, a.type]), [["confirmed", "order"], ["open", "order"]]);
+  assert.equal(c.open, 1);
+  assert.equal(c.canPropose, false);
+  assert.equal(c.blocked, "open");
+  const seen = proposalCard(result, details, { "meanings:order:st": true });
+  assert.equal(seen.open, 0);
+  assert.equal(seen.canPropose, true);
+  assert.equal(seen.assumptions[1].state, "answered");
+  assert.equal(c.done[0].text, "ok");
+});
