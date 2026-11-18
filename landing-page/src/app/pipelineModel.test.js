@@ -381,3 +381,17 @@ test("an edge can be removed: the reader stops reading that step (a union just d
   assert.deepEqual(unlinkSteps(steps, "s", "o"), { id: "o", patch: { from: null } });   // the edge is drawn from the split; the reader held its branch
   assert.equal(unlinkSteps(steps, "b", "t"), null);
 });
+
+test("after a link the steps are put in reading order (the engine reads only steps written before), otherwise kept as they were", async () => {
+  const { inReadingOrder } = await import("./pipelineModel.js");
+  const steps = [
+    { id: "a", type: "input", dataset: "Orders" },
+    { id: "g", type: "transform", from: "p", operators: [] },
+    { id: "s", type: "split", from: "a", branches: [{ id: "s_hi" }] },
+    { id: "o", type: "output", from: "g", dataset: "Out" },
+    { id: "p", type: "transform", from: "s_hi", operators: [] },
+  ];
+  assert.deepEqual(inReadingOrder(steps).map((s) => s.id), ["a", "s", "p", "g", "o"]);
+  const fine = [steps[0], steps[2], steps[4], steps[1], steps[3]];
+  assert.equal(inReadingOrder(fine), fine);   // already in order: the same list
+});
