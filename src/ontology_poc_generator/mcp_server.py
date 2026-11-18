@@ -6,7 +6,7 @@ server needs — initialize, ping, tools/list, tools/call — written out here r
 
 Run: PYTHONPATH=src python -m ontology_poc_generator.mcp_server   (ONTOPOC_URL defaults to http://127.0.0.1:8767;
 ONTOPOC_TOKEN is a personal token from the account page: the service then signs what this server does with the token owner's name;
-with a token the server offers the read tools only, unless ONTOPOC_TOOLSET=all; with no token it offers all of them)
+the server offers the five read tools unless ONTOPOC_TOOLSET=all, and with a token only what the token's scope allows)
 """
 from __future__ import annotations
 
@@ -711,11 +711,11 @@ READ_TOOLS = ('describe_definitions', 'ask', 'ontopoc_query', 'list_unconfirmed'
 # where each tool works, first in its description, so look-alike tools are told apart (Glama, 2026-11-17): the team's confirmed definitions, one build run (saved_as), or the service
 SCOPE_TEAM, SCOPE_RUN, SCOPE_SERVICE = '【团队已确认的定义】', '【一次建模运行 saved_as】', '【本机服务】'
 LOOK_ALIKE = {
-    'ask': '问的是一次建模运行里上传的数据、还没进团队定义时，用 ask_question。',
+    'ask': '（设了 ONTOPOC_TOOLSET=all 时才有）问的是一次建模运行里上传的数据、还没进团队定义时，用 ask_question。',
     'ask_question': '问的是团队已经确认的定义（工作区）时不用这个，用 ontopoc_query，写不出查询再用 ask。',
-    'describe_definitions': '某次建模运行里模型提出、还没确认的对象用 list_objects。',
+    'describe_definitions': '（设了 ONTOPOC_TOOLSET=all 时才有）某次建模运行里模型提出、还没确认的对象用 list_objects。',
     'list_objects': '这是这次运行模型提出的对象，不是团队已确认的定义；那个用 describe_definitions。',
-    'list_unconfirmed': '某次建模运行里等确认的视图用 list_proposed_views。',
+    'list_unconfirmed': '（设了 ONTOPOC_TOOLSET=all 时才有）某次建模运行里等确认的视图用 list_proposed_views。',
     'list_proposed_views': '团队工作区里所有没确认的定义用 list_unconfirmed。',
     'read_derived_property': '全部派生属性的清单在 describe_definitions 返回的 derived 里。',
 }
