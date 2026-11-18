@@ -74,6 +74,70 @@ export function placed(lay, moved) {
   return { ...lay, nodes, shift, width: Math.max(...shifted.map((n) => n.x)) + lay.size.w, height: Math.max(...shifted.map((n) => n.y)) + lay.size.h };
 }
 
+/** A link drawn from `from`'s out-port to `to`'s in-port (`slot` "left" | "right" for a join), as {id, patch} for `to`, or {error} with the reason's key:
+ * input (an input reads a dataset), output (an output has no out-port), self, same (already linked), loop (`from` already reads `to`), branchless (a split with no branch). */
+export function linkSteps(steps, from, to, slot = "left") {
+  const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
+  const src = byId[from];
+  const dst = byId[to];
+  if (!src || !dst) return { error: "missing" };
+  if (src.type === "output") return { error: "output" };
+  if (dst.type === "input") return { error: "input" };
+  if (from === to) return { error: "self" };
+  const owners = branchOwners(steps);
+  const reads = readsOf(dst, owners);
+  if (reads.includes(from) && dst.type !== "join") return { error: "same" };
+  if (dst.type === "join" && (owners[dst[slot]] ?? dst[slot]) === from) return { error: "same" };
+  const upstream = new Set();
+  const walk = (id) => {
+    if (upstream.has(id) || !byId[id]) return;
+    upstream.add(id);
+    readsOf(byId[id], owners).forEach(walk);
+  };
+  walk(from);
+  if (upstream.has(to)) return { error: "loop" };
+  let id = from;
+  if (src.type === "split") {
+    const branches = (src.branches ?? []).map((b) => b.id);
+    if (!branches.length) return { error: "branchless" };
+    const read = new Set(steps.flatMap(inputsOf));
+    id = branches.find((b) => !read.has(b)) ?? branches[0];
+  }
+  if (dst.type === "join") return { id: to, patch: { [slot === "right" ? "right" : "left"]: id } };
+  if (dst.type === "union") return { id: to, patch: { inputs: [...(dst.inputs ?? []), id] } };
+  return { id: to, patch: { from: id } };
+}
+
+/** The steps with every step after all the steps it reads (the engine reads only steps written before), otherwise in their own order; the same list when nothing moves. */
+export function inReadingOrder(steps) {
+  const owners = branchOwners(steps);
+  const known = new Set(steps.map((s) => s.id));
+  const done = new Set();
+  const out = [];
+  let rest = steps;
+  while (rest.length) {
+    const ready = rest.filter((s) => readsOf(s, owners).every((i) => done.has(i) || !known.has(i) || i === s.id));
+    const take = ready.length ? [ready[0]] : [rest[0]];   // a loop (never made by a link) keeps its order
+    take.forEach((s) => { done.add(s.id); out.push(s); });
+    rest = rest.filter((s) => !done.has(s.id));
+  }
+  return out.every((s, i) => s === steps[i]) ? steps : out;
+}
+
+/** The edge from `from` (a step; a split stands for its branches) to `to` taken away, as {id, patch} for `to`, or null when `to` does not read it. */
+export function unlinkSteps(steps, from, to) {
+  const dst = steps.find((s) => s.id === to);
+  if (!dst) return null;
+  const owners = branchOwners(steps);
+  const hit = (i) => i != null && (owners[i] ?? i) === from;
+  if (dst.type === "union") return (dst.inputs ?? []).some(hit) ? { id: to, patch: { inputs: dst.inputs.filter((i) => !hit(i)) } } : null;
+  if (dst.type === "join") {
+    const patch = { ...(hit(dst.left) ? { left: null } : {}), ...(hit(dst.right) ? { right: null } : {}) };
+    return Object.keys(patch).length ? { id: to, patch } : null;
+  }
+  return hit(dst.from) ? { id: to, patch: { from: null } } : null;
+}
+
 /** The steps that feed no output, when there is an output at all: they are drawn and marked "will not run". */
 export function orphans(steps) {
   if (!steps.some((s) => s.type === "output")) return [];

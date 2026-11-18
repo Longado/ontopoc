@@ -2242,3 +2242,19 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .canvas, .tw-stage, .graph-pane { -webkit-user-select: none; user-select: none; }
 .pl-tools .pl-tool { white-space: nowrap; flex: none; }
 .pl-search input { width: 120px; }
+
+/* R17 port linking: drag from a card's out-port to another card to link them; a picked edge can be cut */
+.pl-port.out.grab { pointer-events: auto; cursor: crosshair; width: 12px; height: 12px; margin-top: -6px; right: -7px; }
+.pl-port.out.grab::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; }
+.pl-port.out.grab:hover { background: var(--pl-accent); border-color: var(--pl-accent); }
+.graph-pane.linking, .graph-pane.linking .pl-node { cursor: crosshair; }
+.graph-pane:focus { outline: none; }
+.graph .pl-link-draft { fill: none; stroke: var(--pl-accent); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
+.pl-node.link-ok { box-shadow: 0 0 0 2px color-mix(in srgb, var(--pl-accent) 35%, transparent); }
+.pl-node.link-no { opacity: 0.45; }
+.pl-node.link-ok.link-over { box-shadow: 0 0 0 2px var(--pl-accent); }
+.graph .pl-edge.picked .pl-edge-line { stroke: var(--pl-accent); stroke-width: 2.5; }
+.graph .pl-edge-hit { cursor: pointer; }
+.pl-edge-cut { position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border-radius: 50%; border: 1px solid var(--pl-border-strong); background: var(--pl-surface); color: var(--pl-text-2); cursor: pointer; z-index: 3; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.pl-edge-cut:hover { color: var(--danger, #c23030); border-color: currentColor; }
+.pl-link-refused { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 5; padding: 6px 12px; border-radius: 6px; background: var(--pl-text, #1c2127); color: var(--pl-surface, #fff); font-size: 12px; pointer-events: none; }

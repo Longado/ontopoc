@@ -7,7 +7,7 @@ import { PipelineBar } from "./PipelineBar.jsx";
 import { PipelineGraph } from "./PipelineGraph.jsx";
 import { KindChip, PIcon } from "./PipelineIcons.jsx";
 import { PipelinePanel } from "./PipelinePanel.jsx";
-import { KIND_LABEL, addStep, allIssues, dataInput, findSteps, applyDraft, cardFlags, durationText, friendlyError, kindLine, newStep, orphans, removeStep, rowsText, runBlockReason, runResults, sameSpec, stepTitle, withBranchNodes } from "./pipelineModel.js";
+import { KIND_LABEL, addStep, allIssues, dataInput, findSteps, inReadingOrder, linkSteps, unlinkSteps, updateStep, applyDraft, cardFlags, durationText, friendlyError, kindLine, newStep, orphans, removeStep, rowsText, runBlockReason, runResults, sameSpec, stepTitle, withBranchNodes } from "./pipelineModel.js";
 import { CHANGED_BY_OTHER } from "./pipelineServerText.js";
 import { hrefFor } from "./routeModel.js";
 import { StepEditor } from "./StepEditors.jsx";
@@ -240,6 +240,22 @@ export function PipelineEditor({ detail, reload }) {
     setSelected(id);
     setUpto(null);
   };
+  const link = (from, to, slot) => {
+    const made = linkSteps(draft.steps, from, to, slot);
+    if (made.error) return made.error;
+    const next = updateStep(draft, made.id, made.patch);
+    setDraft({ ...next, steps: inReadingOrder(next.steps) });
+    setSelected(made.id);
+    setUpto(null);
+    return null;
+  };
+  const unlink = (from, to) => {
+    const made = unlinkSteps(draft.steps, from, to);
+    if (!made) return;
+    setDraft(updateStep(draft, made.id, made.patch));
+    setSelected(made.id);
+    setUpto(null);
+  };
   const lost = new Set(orphans(draft.steps));
   const reason = runBlockReason({ dirty, hasOutput, todo: todoCount, running });
   const results = runResults(ran);
@@ -306,7 +322,7 @@ export function PipelineEditor({ detail, reload }) {
                 ? <p className="pl-note neutral"><PIcon name="info" size={14} /><span><strong>{t("pipeline.graph.unconfigured")}.</strong> {t("pipeline.editor.quiet", { first: firstTodo })}</span></p>
                 : <p className="pl-note bad" role="alert"><PIcon name="alert" size={14} /><span>{friendlyError(problem, draft.steps)}{summary.status === "ready" ? ` ${t("pipeline.editor.laterBlocked")}` : ""}</span></p>)}
             </div>
-            <PipelineGraph steps={draft.steps} nodes={nodes} selected={selected} onSelect={select} issues={issues} results={results} place={name} relayout={relayout} />
+            <PipelineGraph steps={draft.steps} nodes={nodes} selected={selected} onSelect={select} issues={issues} results={results} place={name} relayout={relayout} onLink={link} onUnlink={unlink} />
           </section>
           {step && (
             <section className="pl-bottom" aria-label={t("pipeline.editor.bottomAria")}>

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { t } from "./i18n/index.js";
 import { KindChip, PIcon, kindOf } from "./PipelineIcons.jsx";
-import { branchOwners, cardFlags, countsShort, kindLine, layout, numberText, orphans, placed, rowChangeText, rowsText, snap, stepTitle } from "./pipelineModel.js";
+import { branchOwners, cardFlags, countsShort, kindLine, layout, linkSteps, numberText, orphans, placed, rowChangeText, rowsText, snap, stepTitle } from "./pipelineModel.js";
 
 export const NODE = { w: 200, h: 64, gx: 72, gy: 24 };   // the card: 200 x 64, a gap of 72 between columns and 24 between rows
 const PAD = 24;
@@ -44,7 +44,8 @@ function readPlaces(place) {
   }
 }
 
-export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, results = {}, place = null, relayout = 0 }) {
+export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, results = {}, place = null, relayout = 0, onLink = null, onUnlink = null }) {
+  // `onLink(from, to, slot)` given: dragging from a card's out-port to another card draws a link (like DIP); `onUnlink(from, to)`: a picked edge can be removed
   // `place` names the pipeline: given, the cards can be dragged and their places are kept in this browser for that pipeline
   const [moved, setMoved] = useState(() => readPlaces(place));
   useEffect(() => setMoved(readPlaces(place)), [place]);
@@ -102,8 +103,36 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
     watch.observe(box);
     return () => watch.disconnect();
   }, [fit, fitted]);
+  const [link, setLink] = useState(null);   // {from, x, y}: a link being drawn from `from`'s out-port to the pointer, in graph coordinates
+  const [refused, setRefused] = useState("");
+  const [edge, setEdge] = useState(null);   // the picked edge, "from>to"
+  useEffect(() => {
+    if (!refused) return undefined;
+    const timer = setTimeout(() => setRefused(""), 3200);
+    return () => clearTimeout(timer);
+  }, [refused]);
+  const graphRef = useRef(null);
+  const toGraph = (e) => {
+    const r = graphRef.current.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k };
+  };
+  const linkTarget = (e) => {
+    const card = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".pl-node");
+    if (!card) return null;
+    const r = card.getBoundingClientRect();
+    return { to: card.dataset.id, slot: e.clientY > r.top + r.height / 2 ? "right" : "left" };
+  };
   const press = (e, id) => {
-    if (!place || e.button !== 0) return;
+    if (e.button !== 0) return;
+    if (onLink && e.target.closest?.(".pl-port.out")) {
+      drag.current = { link: true, id, done: false };
+      setLink({ from: id, ...toGraph(e) });
+      setEdge(null);
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      return;
+    }
+    if (!place) return;
     const sh = lay.shift ?? { x: 0, y: 0 };   // drag in layout coordinates, before the picture shifts to hold cards above or left of the rest
     drag.current = { id, x0: e.clientX, y0: e.clientY, nx: at(id).x - sh.x, ny: at(id).y - sh.y, moving: false };
     e.stopPropagation();
@@ -112,6 +141,10 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
   const move = (e) => {
     const d = drag.current;
     if (!d) return;
+    if (d.link) {
+      setLink((l) => l && { ...l, ...toGraph(e), over: linkTarget(e) });
+      return;
+    }
     const dx = (e.clientX - d.x0) / k;
     const dy = (e.clientY - d.y0) / k;
     if (!d.moving && Math.hypot(dx, dy) * k < DRAG_START) return;
@@ -119,8 +152,18 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
     d.moving = true;
     setMoved((m) => ({ ...m, [d.id]: { x: snap(d.nx + dx), y: snap(d.ny + dy) } }));
   };
-  const release = () => {
+  const release = (e) => {
     const d = drag.current;
+    if (d?.link) {
+      d.done = true;
+      setLink(null);
+      const hit = e?.type === "pointerup" ? linkTarget(e) : null;
+      if (hit && hit.to !== d.id) {
+        const why = onLink(d.id, hit.to, hit.slot);
+        if (why) setRefused(t(`pipeline.graph.link.${why}`));
+      }
+      return;
+    }
     if (d?.moving) {
       d.done = true;
       keep(latest.current);
@@ -151,7 +194,8 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
   const pan = useRef(null);
   const [panning, setPanning] = useState(false);
   const panStart = (e) => {
-    if (e.button !== 0 || e.target.closest?.(".pl-node")) return;
+    if (e.button !== 0 || e.target.closest?.(".pl-node, .pl-edge-cut")) return;
+    setEdge(null);
     const box = pane.current;
     pan.current = { x0: e.clientX, y0: e.clientY, sl: box.scrollLeft, st: box.scrollTop };
     box.setPointerCapture?.(e.pointerId);
@@ -211,9 +255,11 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
         <span className="graph-zoom-sep" aria-hidden="true" />
         <button type="button" onClick={fit} aria-label={t("pipeline.graph.fit")} title={t("pipeline.graph.fit")}><PIcon name="fit" /></button>
       </div>
-      <div className={`graph-pane pannable${panning ? " panning" : ""}`} ref={pane} onPointerDown={panStart} onPointerMove={panMove} onPointerUp={panEnd} onPointerCancel={panEnd} title={t("pipeline.graph.panHint")}>
+      {refused && <div className="pl-link-refused" role="status">{refused}</div>}
+      <div className={`graph-pane pannable${panning ? " panning" : ""}${link ? " linking" : ""}`} tabIndex={-1}
+        onKeyDown={(ev) => { if (edge && onUnlink && (ev.key === "Delete" || ev.key === "Backspace")) { const [from, to] = edge.split(">"); setEdge(null); onUnlink(from, to); } if (ev.key === "Escape") setEdge(null); }} ref={pane} onPointerDown={panStart} onPointerMove={panMove} onPointerUp={panEnd} onPointerCancel={panEnd} title={t("pipeline.graph.panHint")}>
         <div className="graph-sizer" style={{ width: full.w * k + slack.x * 2, height: full.h * k + slack.y * 2 }}>
-          <div className="graph" style={{ width: full.w, height: full.h, transform: `scale(${k})`, transformOrigin: "0 0", left: slack.x, top: slack.y }}>
+          <div className="graph" ref={graphRef} style={{ width: full.w, height: full.h, transform: `scale(${k})`, transformOrigin: "0 0", left: slack.x, top: slack.y }}>
             <svg width={full.w} height={full.h} aria-hidden="true">
               <defs>
                 {[["", "pl-arrow"], ["-on", "pl-arrow pl-arrow-on"]].map(([id, cls]) => (
@@ -227,14 +273,30 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
                 const y2 = portY(e);
                 const on = selected != null && (e.from === selected || e.to === selected);
                 const d = edgePath(x1, y1, x2, y2);
+                const key = `${e.from}>${e.to}`;
                 return (
-                  <g key={`${e.from}-${e.to}`} className={`pl-edge${on ? " on" : ""}`}>
-                    <path className="pl-edge-hit" d={d} />
+                  <g key={`${e.from}-${e.to}`} className={`pl-edge${on || edge === key ? " on" : ""}${edge === key ? " picked" : ""}`}>
+                    <path className="pl-edge-hit" d={d} onPointerDown={(ev) => onUnlink && ev.stopPropagation()} onClick={() => { if (!onUnlink) return; setEdge(edge === key ? null : key); pane.current?.focus({ preventScroll: true }); }} />
                     <path className="pl-edge-line" d={d} markerEnd={`url(#pl-arrow${on ? "-on" : ""})`} />
                   </g>
                 );
               })}
+              {link && (() => {
+                const x1 = at(link.from).x + w + PAD;
+                const y1 = at(link.from).y + h / 2 + PAD;
+                return <path className="pl-link-draft" d={edgePath(x1, y1, link.x, link.y)} />;
+              })()}
             </svg>
+            {edge && onUnlink && (() => {
+              const [from, to] = edge.split(">");
+              if (!at(from) || !at(to)) return null;
+              const x = (at(from).x + w + at(to).x) / 2 + PAD;
+              const y = portY({ from, to }) - (k >= 0.75 ? 18 : 0);
+              return (
+                <button type="button" className="pl-edge-cut" style={{ left: x, top: y }} title={t("pipeline.graph.unlink")} aria-label={t("pipeline.graph.unlink")}
+                  onPointerDown={(ev) => ev.stopPropagation()} onClick={() => { setEdge(null); onUnlink(from, to); }}><PIcon name="close" size={12} /></button>
+              );
+            })()}
             {k >= 0.75 && lay.edges.map((e) => {
               const rows = nodes[e.from]?.rows_out;
               if (rows == null) return null;
@@ -253,14 +315,15 @@ export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, r
               const state = stateOf({ node, flags, todo, lost: lost.has(s.id), result });
               const kind = kindOf(s);
               const isLost = lost.has(s.id);
+              const verdict = link && link.from !== s.id ? (linkSteps(steps, link.from, s.id, link.over?.to === s.id ? link.over.slot : "left").error ? " link-no" : " link-ok") : "";
               const tip = [trouble.map((f) => f.text).join("; "), todo.length ? todo.join("; ") : ""].filter(Boolean).join(" · ");
               return (
                 <button key={s.id} ref={selected === s.id ? chosen : null} type="button" title={tip || undefined}
-                  className={`pl-node k-${kind} st-${state}${selected === s.id ? " on" : ""}${isLost ? " lost" : ""}${todo.length ? " todo" : ""}${s.type === "input" ? " no-in" : ""}${s.type === "output" ? " no-out" : ""}`}
+                  className={`pl-node k-${kind} st-${state}${selected === s.id ? " on" : ""}${isLost ? " lost" : ""}${todo.length ? " todo" : ""}${s.type === "input" ? " no-in" : ""}${s.type === "output" ? " no-out" : ""}${verdict}${link?.over?.to === s.id ? " link-over" : ""}`} data-id={s.id}
                   aria-pressed={selected === s.id} style={{ left: at(s.id).x + PAD, top: at(s.id).y + PAD, width: w, height: h, cursor: place ? "grab" : undefined, touchAction: place ? "none" : undefined }}
                   onClick={() => click(s.id)} onPointerDown={(e) => press(e, s.id)} onPointerMove={move} onPointerUp={release} onPointerCancel={release}>
                   {s.type !== "input" && (s.type === "join" ? <><i className="pl-port in" style={{ top: "33%" }} /><i className="pl-port in" style={{ top: "67%" }} /></> : <i className="pl-port in" />)}
-                  {s.type !== "output" && <i className="pl-port out" />}
+                  {s.type !== "output" && <i className={`pl-port out${onLink ? " grab" : ""}`} title={onLink ? t("pipeline.graph.linkHint") : undefined} />}
                   <span className="pl-node-top">
                     <KindChip step={s} />
                     <span className="pl-node-text">
