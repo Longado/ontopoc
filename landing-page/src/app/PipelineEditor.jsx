@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { getDatasets, getPipelineOptions, getPipelineRun, pipelineSummary, previewNode, runPipeline, savePipeline } from "./api.js";
 import { AiDraftPanel, RunDialog } from "./AiDraftPanel.jsx";
-import { takeDraft } from "./assistantModel.js";
+import { takeHandover } from "./assistantModel.js";
 import { t } from "./i18n/index.js";
 import { PipelineBar } from "./PipelineBar.jsx";
 import { PipelineGraph } from "./PipelineGraph.jsx";
@@ -142,7 +142,7 @@ export function PipelineEditor({ detail, reload }) {
   useFullBleed();
   const name = detail.name;
   const handed = useRef(undefined);
-  const fromAssistant = useRef(false);
+  const fromAssistant = useRef(null);   // the service's receipt for the assistant's draft, sent with the save
   const [draft, setDraft] = useState(detail.spec);
   const [selected, setSelected] = useState(detail.spec.steps[detail.spec.steps.length - 1]?.id ?? null);
   const [tab, setTab] = useState("rows");
@@ -164,11 +164,11 @@ export function PipelineEditor({ detail, reload }) {
   }, [detail.version]);
   useEffect(() => {
     // steps the assistant handed over wait in this tab until the editor opens: they are applied the way the AI panel's Apply does, as an unsaved draft
-    if (handed.current === undefined) handed.current = takeDraft(window.sessionStorage, name);   // taken once, even if the effects run twice (development)
-    const steps = handed.current;
+    if (handed.current === undefined) handed.current = takeHandover(window.sessionStorage, name);   // taken once, even if the effects run twice (development)
+    const steps = handed.current?.steps;
     if (!steps) return;
     setDraft(applyDraft(detail.spec, steps));
-    fromAssistant.current = true;   // saving this draft marks the pipeline "drafted by the assistant"
+    fromAssistant.current = handed.current.receipt;   // saving this draft with the receipt lets the service mark the pipeline "drafted by the assistant"
     setSelected(steps[0].id);
     setUpto(null);
   }, []);
@@ -196,7 +196,7 @@ export function PipelineEditor({ detail, reload }) {
     setError("");
     try {
       await savePipeline(name, detail.version, draft, fromAssistant.current);
-      fromAssistant.current = false;
+      fromAssistant.current = null;
       reload();
     } catch (e) {
       setError(e.message);

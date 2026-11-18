@@ -612,7 +612,7 @@ export function QaPage({ route }) {
     apply: (turn) => {
       const plan = turn.plan;
       const name = plan.target.kind === "pipeline" ? plan.target.name : `new:${plan.target.name}`;
-      stashDraft(window.sessionStorage, name, plan.draft.steps);
+      stashDraft(window.sessionStorage, name, plan.draft.steps, plan.draft.draft_receipt);
       patchPlan(turn, { applied: true, appliedAt: new Date().toISOString() });
       window.location.hash = plan.target.kind === "pipeline" ? hrefFor({ page: "pipeline", name: plan.target.name, view: "edit" }) : hrefFor({ page: "pipelinenew", dataset: plan.target.name });
     },
@@ -630,7 +630,7 @@ export function QaPage({ route }) {
       let count = 0;
       try {
         for (const ty of turn.proposal.details.filter(Boolean)) {
-          const payload = proposePayload(ty);
+          const payload = proposePayload({ ...ty, receipt: (turn.proposal.result?.proposed ?? []).find((p) => p.id === ty.id)?.draft_receipt });
           if (!payload) continue;
           await updateType(payload);
           count += 1;

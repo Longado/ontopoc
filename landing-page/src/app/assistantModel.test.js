@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actionState, allowedMode, loadThread, nextVersion, saveThread, commandChoices, datasetSpec, defaultSelected, isNoModel, modesFor, moveDraft, parseCommand, planCard, privacyKey, proposalCard, proposePayload, scopeKind, stashDraft, takeDraft } from "./assistantModel.js";
+import { actionState, allowedMode, loadThread, nextVersion, saveThread, commandChoices, datasetSpec, defaultSelected, isNoModel, modesFor, moveDraft, parseCommand, planCard, privacyKey, proposalCard, proposePayload, scopeKind, stashDraft, takeDraft, takeHandover } from "./assistantModel.js";
 
 const store = () => {
   const m = new Map();
@@ -119,8 +119,11 @@ test("proposing a type sends what saving it from its own form sends", () => {
   const ty = { id: "order", name: "Order", description: "d", dataset: "orders", key: ["no"], version: 3, properties: [{ column: "no", name: "no", type: "text" }, { column: "st", name: "Status", type: "integer", enum: true, meanings: { values: [{ value: "1", label: "open" }] } }] };
   assert.deepEqual(proposePayload(ty), {
     id: "order", version: 3, english_name: "order", name: "Order", description: "d", dataset: "orders", key: ["no"],
-    properties: [{ column: "no", name: "no", type: "text", enum: false }, { column: "st", name: "Status", type: "integer", enum: true }], enums: { st: [{ value: "1", label: "open" }] }, assistant: true,
+    properties: [{ column: "no", name: "no", type: "text", enum: false }, { column: "st", name: "Status", type: "integer", enum: true }], enums: { st: [{ value: "1", label: "open" }] },
   });
+  // the receipt the service issued with the suggestion goes back with the save; the page never says "assistant" itself
+  assert.equal(proposePayload({ ...ty, receipt: "r1" }).draft_receipt, "r1");
+  assert.equal("assistant" in proposePayload({ ...ty, receipt: "r1" }), false);
   assert.equal(proposePayload({ id: "x" }), null);
 });
 
@@ -136,6 +139,11 @@ test("a draft waits in session storage for the editor, applies once, and can mov
   assert.equal(takeDraft(s, "Made").length, 1);
   s.setItem("assistant-draft:bad", "{not json");
   assert.equal(takeDraft(s, "bad"), null);
+  assert.equal(s.size(), 0);
+  stashDraft(s, "Orders", [{ id: "ai1", step: {} }], "rcpt");   // the service's receipt for the draft waits with it and moves with it
+  moveDraft(s, "Orders", "Made");
+  assert.deepEqual(takeHandover(s, "Made"), { steps: [{ id: "ai1", step: {} }], receipt: "rcpt" });
+  assert.equal(takeHandover(s, "Made"), null);
   assert.equal(s.size(), 0);
   moveDraft(s, "nothing", "to");   // moving what is not there does nothing
   assert.equal(s.size(), 0);

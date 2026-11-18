@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from ontology_poc_generator.draft_receipts import pipeline_fingerprint, redeem, type_fingerprint
 from ontology_poc_generator.lang import tr
 
 CONFIRMED, OPEN = 'confirmed', 'open'
@@ -77,9 +78,29 @@ def type_self_check(kept: int, dropped: int) -> dict:
     return {'done': done, 'not_done': not_done}
 
 
-def drafted_mark(payload: dict, who: str | None, old: dict | None = None) -> dict | None:
-    """The marker an object carries when it was applied from the assistant's draft: who applied it, when, and that the assistant drafted it. It is stored in the
-    definition like its other metadata. The page sends `assistant: true` (exactly) from the assistant's Apply; any other save keeps the marker the object has."""
-    if payload.get('assistant') is True:
-        return {'by': who, 'at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'how': 'assistant'}
-    return old
+def drafted_mark(conn, payload: dict, who: str | None, user: dict | None, kind: str, saved, old: dict | None = None, target: str | None = None) -> dict | None:
+    """The marker an object carries when it was applied from the assistant's draft: who applied it, when, and how. It is stored in the definition like its other metadata.
+
+    The server decides, not the page: `assistant: true` marks nothing. The save must carry `draft_receipt`, the id the server issued with the draft (draft_receipts):
+    live (24 hours), issued to this person, for this kind ('pipeline' or 'type'), for this target when it was issued for one, and not used before. A receipt is used up
+    by the first save that carries it, marked or not. An invalid receipt is ignored silently: the save goes ahead without a marker, and keeps `old` (the marker the
+    object already has). The saved content is compared with the fingerprint of what was drafted:
+      pipeline (`saved` = the saved steps): every drafted step is there exactly as drafted -> how 'assistant'; some drafted step is there but any is changed or missing -> 'assistant-edited';
+        none of the drafted steps is there -> no marker.
+      type (`saved` = the saved definition): same dataset, key and set of columns as drafted -> 'assistant'; otherwise -> 'assistant-edited'."""
+    receipt = payload.get('draft_receipt')
+    got = redeem(conn, receipt, user, kind)
+    if got is None:
+        return old
+    drafted_target, fingerprint = got
+    if drafted_target is not None and drafted_target != target:
+        return old
+    if kind == 'pipeline':
+        now = pipeline_fingerprint([s for s in saved if isinstance(s, dict)])
+        present = [i for i in fingerprint if i in now]
+        if not present:
+            return old
+        how = 'assistant' if len(present) == len(fingerprint) and all(now[i] == fingerprint[i] for i in present) else 'assistant-edited'
+    else:
+        how = 'assistant' if type_fingerprint(saved) == fingerprint else 'assistant-edited'
+    return {'by': who, 'at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'how': how}

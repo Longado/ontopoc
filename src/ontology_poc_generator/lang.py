@@ -52,6 +52,21 @@ class TrMap(dict):
         return [self[key] for key in self]
 
 
+def carry(fn):
+    """`fn` as a function that runs in a copy of the context of whoever calls carry (the request's language and the signed-in person), for work handed to another thread
+    or executor on behalf of a request: a new thread starts with an empty context, so its sentences would come out in Chinese. Each call runs in its own copy."""
+    made = contextvars.copy_context()
+
+    def run(*args, **kwargs):
+        return made.copy().run(fn, *args, **kwargs)
+    return run
+
+
+def unknown_endpoint():
+    """The refusal for a workspace path nobody serves."""
+    return tr('没有这个工作区接口', 'Unknown workspace endpoint')
+
+
 @contextlib.contextmanager
 def speaking(code):
     """Write or compare text in one language for a moment (for example to find a stored sentence written in either language)."""

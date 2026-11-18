@@ -107,7 +107,7 @@ export function proposePayload(type) {
   return {
     id: type.id, version: type.version, english_name: type.id, name: type.name, description: type.description ?? "", dataset: type.dataset, key: type.key,
     properties: props.map((p) => ({ column: p.column, name: p.name || p.column, type: p.type, enum: Boolean(p.enum) })), enums,
-    assistant: true,   // the service marks it "drafted by the assistant", applied by this person now
+    ...(type.receipt ? { draft_receipt: type.receipt } : {}),   // the service's receipt for this suggestion: it decides whether the saved type counts as drafted by the assistant
   };
 }
 
@@ -115,8 +115,18 @@ export function proposePayload(type) {
 // which applies them the way the editor's own AI panel does. A draft for a pipeline that does not exist yet waits under "new:<dataset>"
 // and is moved to the pipeline's name when the person creates it.
 const stashKey = (target) => `assistant-draft:${target}`;
-export function stashDraft(storage, target, steps) {
+const receiptKey = (target) => `assistant-receipt:${target}`;
+export function stashDraft(storage, target, steps, receipt) {
   storage.setItem(stashKey(target), JSON.stringify(steps));
+  if (receipt) storage.setItem(receiptKey(target), receipt);
+  else storage.removeItem(receiptKey(target));
+}
+/** The steps waiting for `target` and the service's receipt for that draft, taken out together; null when there are no steps. */
+export function takeHandover(storage, target) {
+  const receipt = storage.getItem(receiptKey(target));
+  storage.removeItem(receiptKey(target));
+  const steps = takeDraft(storage, target);
+  return steps ? { steps, receipt: receipt || null } : null;
 }
 /** The steps waiting for `target`, taken out (so they apply once); null when there are none. */
 export function takeDraft(storage, target) {
@@ -135,6 +145,9 @@ export function moveDraft(storage, from, to) {
   if (raw == null) return;
   storage.removeItem(stashKey(from));
   storage.setItem(stashKey(to), raw);
+  const receipt = storage.getItem(receiptKey(from));
+  storage.removeItem(receiptKey(from));
+  if (receipt) storage.setItem(receiptKey(to), receipt);
 }
 
 /** The pipeline's step the assistant works from when the person names a pipeline: the last step that is not an output. */
