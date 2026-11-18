@@ -104,3 +104,43 @@ def drafted_mark(conn, payload: dict, who: str | None, user: dict | None, kind: 
     else:
         how = 'assistant' if type_fingerprint(saved) == fingerprint else 'assistant-edited'
     return {'by': who, 'at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'how': how}
+
+
+def meanings_assumptions(english_name: str, columns: list[dict]) -> list[dict]:
+    """The Meanings card's assumptions: a column whose meanings were confirmed stays as it is (confirmed, linked to them); each column with drafted meanings stands on a guess
+    nobody has confirmed yet (open). The open ones do not stop Apply: Apply only puts the meanings forward, and a second builder confirms them."""
+    found = []
+    for c in columns:
+        column = c['column']
+        if c['confirmed']:
+            found.append({'id': f'meanings:{english_name}:{column}', 'text': tr(f'“{column}”的含义已经确认，这次不改', f'The meanings of "{column}" are confirmed and are left as they are'),
+                          'status': CONFIRMED, 'definition': f'enum:{english_name}:{column}', 'by': None})
+        elif any(v['draft'] for v in c['values']):
+            found.append({'id': f'meanings:{english_name}:{column}', 'text': tr(f'“{column}”里各代码的含义是模型的猜测，要另一位建设者确认', f'The meanings of the codes in "{column}" are the model\'s guess and need another builder to confirm'),
+                          'status': OPEN, 'definition': f'enum:{english_name}:{column}', 'by': None})
+    return found
+
+
+def meanings_self_check(columns: list[dict], rejected: list[dict], skipped: list[dict], asked: bool = True) -> dict:
+    """What ran for a Meanings draft: the counts and the code-side checks. It never says "verified"."""
+    drafted = sum(1 for c in columns for v in c['values'] if v['draft'])
+    unmeant = sum(len(c['checks']['no_meaning']) for c in columns)
+    gone = sum(len(c['checks']['never_seen']) for c in columns)
+    confirmed = sum(1 for c in columns if c['confirmed'])
+    done, not_done = [], []
+    if asked and columns:
+        done.append({'key': 'values', 'text': tr('列和取值都在数据里，含义是短文字', 'Columns and codes exist in the data, and the meanings are short texts')})
+    if drafted:
+        done.append({'key': 'drafted', 'text': tr(f'起草了 {drafted} 个代码的含义', f'Drafted a meaning for {drafted} code(s)')})
+    if confirmed:
+        done.append({'key': 'confirmed', 'text': tr(f'{confirmed} 列的含义已确认，没有动', f'{confirmed} column(s) already confirmed were left untouched')})
+    if unmeant:
+        not_done.append({'key': 'unmeant', 'text': tr(f'{unmeant} 个数据里出现的代码还没有含义', f'{unmeant} code(s) in the data still have no meaning')})
+    if gone:
+        not_done.append({'key': 'gone', 'text': tr(f'{gone} 个已写含义的代码现在的数据里没有', f'{gone} code(s) with a meaning on file do not occur in the data now')})
+    if rejected:
+        not_done.append({'key': 'rejected', 'text': tr(f'{len(rejected)} 条模型的猜测没通过核对，已剔除', f'{len(rejected)} guess(es) failed the checks and were left out')})
+    if skipped:
+        not_done.append({'key': 'skipped', 'text': tr(f'{len(skipped)} 列没有起草', f'{len(skipped)} column(s) were not drafted')})
+    not_done.append({'key': 'saved', 'text': tr('还没有保存：什么也没有写入', 'Saved: nothing has been written yet')})
+    return {'done': done, 'not_done': not_done}

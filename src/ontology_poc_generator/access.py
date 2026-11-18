@@ -45,7 +45,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/query(/text)?', 'viewer'),   # OntoPoc Query: run a text, or read a structured query back as text, within what the person may see (no model)
     # change data, start model work, write definitions
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
-    ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?))?', 'builder'),
+    ('POST', r'/api/workspace/types(/(update|meanings|meanings-draft|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?))?', 'builder'),
     ('POST', r'/api/workspace/relations(/(update|confirm|preview))?', 'builder'),
     ('POST', r'/api/workspace/queue/(confirm|confirm-group|send-back)', 'builder'),
     ('POST', r'/api/workspace/actions(/(update|confirm|submit|decide|withdraw|undo|notify))?', 'builder'),   # a person may not approve their own submission (object_actions.decide)

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { aiDraft, askQuestion, getAnswer, getAsk, getDatasets, getModelReady, getPipeline, getPipelines, getType, runQuery, suggestTypes, updateType } from "./api.js";
+import { aiDraft, askQuestion, draftMeanings, getAnswer, getAsk, getDatasets, getModelReady, getPipeline, getPipelines, getType, getTypes, proposeMeanings, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild, isAdmin } from "./authModel.js";
-import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, loadThread, modesFor, nextVersion, parseCommand, privacyKey, proposePayload, saveThread, scopeKind, stashDraft } from "./assistantModel.js";
-import { NoModel, PlanCard, ProposalCard } from "./AssistantCards.jsx";
+import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, loadThread, meaningsPayloads, modesFor, nextVersion, parseCommand, privacyKey, proposePayload, saveThread, scopeKind, stashDraft, textOptional } from "./assistantModel.js";
+import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.jsx";
 import { timeText } from "./format.js";
 import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
@@ -14,6 +14,7 @@ import { hrefFor } from "./routeModel.js";
 import { Icon } from "./ui/Icon.jsx";
 import { useLoad } from "./useLoad.js";
 
+const MODEL_KINDS = ["model", "pipeline", "meanings"];   // the turn kinds that call the model and answer with a card
 const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived" };
 
 /** The definitions a refusal names, bottom of the chain first: what it is, where it stands and why, who could confirm it. */
@@ -189,7 +190,7 @@ function AnswerCard({ record, mayBuild, onEdit }) {
 /** The person's side of a turn: a plain bubble, the query in monospace. */
 function UserBubble({ text, query, mode }) {
   const t = useT();
-  const tag = query ? t("ask.chat.queryTurn") : mode === "model" || mode === "pipeline" ? t(`ask.assistant.turn.${mode}`) : "";
+  const tag = query ? t("ask.chat.queryTurn") : MODEL_KINDS.includes(mode) ? t(`ask.assistant.turn.${mode}`) : "";
   return (
     <div className="msg msg-user">
       <div className={query ? "bubble bubble-query" : "bubble"}>
@@ -219,7 +220,7 @@ function Thinking({ query, mode }) {
         <span className="typing" aria-hidden="true"><i /><i /><i /></span>
         <span>{t("ask.chat.thinking")}</span>
       </div>
-      <p className="muted small">{query ? t("ask.query.busy") : mode === "model" || mode === "pipeline" ? t(`ask.assistant.busy.${mode}`) : t("ask.input.busy")}</p>
+      <p className="muted small">{query ? t("ask.query.busy") : MODEL_KINDS.includes(mode) ? t(`ask.assistant.busy.${mode}`) : t("ask.input.busy")}</p>
     </AssistantMsg>
   );
 }
@@ -255,7 +256,7 @@ function SavedTurn({ turn, mayBuild, onEdit, followUps, onAsk, last, onLoaded })
 
 function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last, onLoaded, cards }) {
   if (turn.kind === "saved") return <SavedTurn turn={turn} mayBuild={mayBuild} onEdit={onEdit} followUps={followUps} onAsk={onAsk} last={last} onLoaded={onLoaded} />;
-  if (turn.kind === "model" || turn.kind === "pipeline") {
+  if (MODEL_KINDS.includes(turn.kind)) {
     return (
       <>
         <UserBubble text={turn.text} mode={turn.kind} />
@@ -264,6 +265,7 @@ function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last,
         {turn.status === "done" && (
           <AssistantMsg>
             {turn.kind === "pipeline" ? <PlanCard plan={turn.plan} busy={busy} onAnswer={(id, values) => cards.answer(turn, id, values)} onApply={() => cards.apply(turn)} onRevise={(request) => cards.revise(turn, request)} onDiscard={() => cards.discard(turn)} request={turn.text} version={turn.version ?? 1} />
+              : turn.kind === "meanings" ? <MeaningsCard meanings={turn.meanings} busy={busy} onToggle={(column, value, keep) => cards.toggleMeaning(turn, column, value, keep)} onApply={() => cards.applyMeanings(turn)} />
               : <ProposalCard proposal={turn.proposal} busy={turn.proposal.busy} onPropose={() => cards.propose(turn)} onAck={(id) => cards.ack(turn, id)} />}
           </AssistantMsg>
         )}
@@ -350,6 +352,23 @@ function TargetChip({ pipelines, datasets, target, setTarget }) {
   );
 }
 
+/** Meanings mode: the one object type whose code meanings are drafted (a type this person may open; the service refuses one with properties kept from them). */
+function TypeChip({ types, type, setType }) {
+  const t = useT();
+  return (
+    <ChipPop label={type ? t("ask.assistant.scope.type", { name: type.label }) : t("ask.assistant.scope.type.none")} aria={t("ask.assistant.scope.type.none")}>
+      {(close) => (
+        <>
+          {types.length === 0 && <p>{t("ask.assistant.scope.type.empty")}</p>}
+          <div className="as-pick">
+            {types.map((x) => <button type="button" key={x.id} className={type?.id === x.id ? "on" : ""} onClick={() => { setType({ id: x.id, label: x.name }); close(); }}>{x.name}</button>)}
+          </div>
+        </>
+      )}
+    </ChipPop>
+  );
+}
+
 /** What can be asked about: a chip in the composer that opens the list of types in scope, the views, and what is left out. */
 function ScopeChip({ scope }) {
   const t = useT();
@@ -414,12 +433,12 @@ function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQue
     e?.preventDefault();
     const c = parseCommand(value, mayBuild);
     if (c) return switchTo(c.mode, c.text);   // "/model" alone only switches
-    if (!value.trim() && mode !== "model") return;
+    if (!value.trim() && !textOptional(mode)) return;
     if (busy) return;
     if (isQuery) onRun(query, queryParams(query, values));
     else onSend(mode, text);
   };
-  const empty = mode === "model" ? false : !value.trim();
+  const empty = textOptional(mode) ? false : !value.trim();
   return (
     <form className="composer" onSubmit={submit}>
       {names.length > 0 && (
@@ -462,6 +481,7 @@ function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQue
           {scopeKind(mode) === "types" && <ScopeChip scope={scope} />}
           {scopeKind(mode) === "datasets" && <DatasetsChip datasets={scopes.datasets} chosen={scopes.chosen} setChosen={scopes.setChosen} />}
           {scopeKind(mode) === "target" && <TargetChip pipelines={scopes.pipelines} datasets={scopes.datasets} target={scopes.target} setTarget={scopes.setTarget} />}
+          {scopeKind(mode) === "type" && <TypeChip types={scopes.types} type={scopes.type} setType={scopes.setType} />}
         </div>
         {isQuery && <span className="composer-hint muted small">{t("ask.chat.composer.hintQuery")}</span>}
         <button className="primary send" type="submit" disabled={busy || empty} aria-label={isQuery ? t("ask.chat.composer.run") : t("ask.chat.composer.send")}>
@@ -520,6 +540,8 @@ export function QaPage({ route }) {
   const [pipelines] = useLoad(() => (mayBuild ? getPipelines() : Promise.resolve([])), [mayBuild]);
   const [chosen, setChosen] = useState([]);   // Model mode: the datasets the model may read about
   const [target, setTarget] = useState(null);   // Pipeline mode: {kind: "pipeline" | "dataset", name, label}
+  const [types] = useLoad(() => (mayBuild ? getTypes() : Promise.resolve([])), [mayBuild]);
+  const [typeScope, setTypeScope] = useState(null);   // Meanings mode: {id, label}, the object type whose code meanings are drafted
   const scope = info.data;
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
@@ -571,6 +593,22 @@ export function QaPage({ route }) {
       })();
       return;
     }
+    if (inMode === "meanings") {
+      if (!typeScope) { add({ ...newTurn("meanings", question), status: "error", error: t("ask.assistant.error.pickType") }); return; }
+      const turn = newTurn("meanings", question || typeScope.label);
+      add(turn);
+      setText("");
+      (async () => {
+        try {
+          if (!(await getModelReady())) return noModel(turn);
+          const result = await draftMeanings(typeScope.id);
+          finish(turn, { status: "done", meanings: { result, typeLabel: typeScope.label, choices: {}, applied: null, busy: false, error: "" } });
+        } catch (err) {
+          if (isNoModel(err.message)) noModel(turn); else finish(turn, { status: "error", error: err.message });
+        }
+      })();
+      return;
+    }
     if (!target) { add({ ...newTurn("pipeline", question), status: "error", error: t("ask.assistant.error.pickTarget") }); return; }
     setText("");
     draftPlan(question, target);
@@ -595,6 +633,7 @@ export function QaPage({ route }) {
   };
   const patchPlan = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, plan: { ...x.plan, ...patch } } : x)));
   const patchProposal = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, proposal: { ...x.proposal, ...patch } } : x)));
+  const patchMeanings = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, meanings: { ...x.meanings, ...patch } } : x)));
   const cards = {
     // answering a question re-checks the draft with the person's own words; the service calls no model for it
     answer: async (turn, id, values) => {
@@ -622,6 +661,23 @@ export function QaPage({ route }) {
       draftPlan(String(request).trim(), turn.plan.target, turn.id);
     },
     discard: (turn) => patchPlan(turn, { discarded: true }),
+    // Meanings: keep/skip one drafted code; Apply sends the kept ones through the type's own meanings path, one column at a time (a second builder confirms them)
+    toggleMeaning: (turn, column, value, keep) => patchMeanings(turn, { choices: { ...turn.meanings.choices, [`${column}|${value}`]: keep } }),
+    applyMeanings: async (turn) => {
+      patchMeanings(turn, { busy: true, error: "" });
+      let count = 0;
+      try {
+        for (const payload of meaningsPayloads(turn.meanings.result, turn.meanings.choices)) {
+          // TODO receipt: record that the assistant drafted these meanings (another builder is reworking the receipt)
+          await proposeMeanings(payload.id, payload.column, payload.values);
+          count += payload.values.length;
+        }
+        patchMeanings(turn, { busy: false, applied: count });
+        reload();
+      } catch (err) {
+        patchMeanings(turn, { busy: false, error: err.message });
+      }
+    },
     // an open assumption on a type proposal is acknowledged by the person; the card re-checks by code, no model
     ack: (turn, id) => patchProposal(turn, { acked: { ...(turn.proposal.acked ?? {}), [id]: true } }),
     // Propose: the model drafts become this person's proposals through the normal update path; a second person confirms in the review queue
@@ -690,7 +746,7 @@ export function QaPage({ route }) {
     const el = thread.current;
     if (!el) return;
     const last = turns[turns.length - 1];
-    const card = last?.status === "done" && (last.kind === "pipeline" || last.kind === "model") ? el.querySelector(".msg-bot:last-child .as-card") : null;
+    const card = last?.status === "done" && MODEL_KINDS.includes(last.kind) ? el.querySelector(".msg-bot:last-child .as-card") : null;
     // a plan or proposal card is read from its top; everything else follows the end of the thread
     if (card) el.scrollTo({ top: Math.max(0, card.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 72), behavior: "smooth" });
     else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
@@ -720,7 +776,7 @@ export function QaPage({ route }) {
                 <p className="muted">{mayBuild ? t("ask.assistant.empty.sub") : scope && scope.types.length === 0 ? t("ask.chat.emptyNoScope") : t("ask.sub")}</p>
                 {mayBuild && (
                   <div className="chips" aria-label={t("ask.assistant.mode.aria")}>
-                    {["ask", "model", "pipeline"].map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
+                    {["ask", "model", "pipeline", "meanings"].map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
                   </div>
                 )}
                 {ideas.length > 0 && queryMode === "ask" && (
@@ -737,7 +793,7 @@ export function QaPage({ route }) {
           </div>
           <div className="composer-wrap">
             <Composer scope={scope} mayBuild={mayBuild} mode={queryMode} setMode={setMode} text={text} setText={setText} query={query} setQuery={setQuery} busy={busy} onSend={sendIn} onRun={run}
-              scopes={{ datasets: datasets.data ?? [], pipelines: pipelines.data ?? [], chosen, setChosen, target, setTarget }} />
+              scopes={{ datasets: datasets.data ?? [], pipelines: pipelines.data ?? [], chosen, setChosen, target, setTarget, types: (types.data ?? []).filter((x) => x.dataset), type: typeScope, setType: setTypeScope }} />
             <p className="composer-fine muted small" title={t(privacyKey(queryMode))}>{t(`${privacyKey(queryMode)}Short`)}</p>
           </div>
         </section>
