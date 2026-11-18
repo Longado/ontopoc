@@ -34,18 +34,20 @@ def draft_type_meanings(conn, gateway, english_name, user: dict | None) -> dict:
         raise TypeRefused(tr('这个对象类型没有代码列，没有含义可写', 'This object type has no code columns, so there are no meanings to draft'))
     cols = dataset_columns(conn, dataset['id'])
     source = content['dataset']
-    bundle = {'sources': {source: {'records': dataset_records(conn, dataset)}}}
-    profiles = {p['column']: p for p in code_columns(bundle, skip=frozenset((source, c) for c in content['key']))}
     unsent = hidden_values(conn, row['element_id'])
+    sent = [c for c in wanted if c in cols and c not in unsent]   # what the model may hear about: this type's code columns, never another column's name or blanks
+    records = [{c: r.get(c) for c in sent} for r in dataset_records(conn, dataset)]
+    bundle = {'sources': {source: {'records': records}}}
+    profiles = {p['column']: p for p in code_columns(bundle, skip=frozenset((source, c) for c in content['key']))}
     state_of = {c: (element_row(conn, enum_id(content['english_name'], c)) or {}).get('state') for c in wanted}
     skipped, to_ask = [], []
     for column in wanted:
         if column not in cols:
             skipped.append({'column': column, 'reason': tr('数据集里已经没有这一列', 'the dataset no longer has this column')})
-        elif column not in profiles:
-            skipped.append({'column': column, 'reason': tr('取值看不出是代码（太多、太长，或是年份、是/否）', 'its values do not look like codes (too many, too long, or years or yes/no)')})
         elif column in unsent:
             skipped.append({'column': column, 'reason': tr('这一列标了不发送给模型', 'this column is marked not to be sent to the model')})
+        elif column not in profiles:
+            skipped.append({'column': column, 'reason': tr('取值看不出是代码（太多、太长，或是年份、是/否）', 'its values do not look like codes (too many, too long, or years or yes/no)')})
         elif state_of[column] != 'confirmed':
             to_ask.append(profiles[column])
     drafted = {'columns': {}, 'rejected': [], 'model': None}

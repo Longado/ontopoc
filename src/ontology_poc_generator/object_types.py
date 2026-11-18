@@ -20,6 +20,7 @@ import re
 
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.assistant_checks import drafted_mark
+from ontology_poc_generator.draft_receipts import spend as spend_receipt
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
@@ -415,6 +416,7 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
         _retire_meanings(c, english, retire, who, tr('来源数据集换了' if moved_dataset else '不再是代码列', 'the source dataset changed' if moved_dataset else 'it is no longer a code column'))
 
     write_elements(conn, changes, reads, {row['element_id']: row['version']}, after)
+    spend_receipt(conn, payload, user)
     if not reset and (old['name'], old['description']) != (content['name'], content['description']):
         _edit_names(conn, element_row(conn, row['element_id']), content, who)
     return {'id': english, 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': warnings}

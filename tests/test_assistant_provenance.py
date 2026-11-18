@@ -169,6 +169,16 @@ class ProvenanceTests(SigningTestCase):
             self.assertEqual(status, 200, body)
             self.assertEqual(ann.get(SHOWN)[1]['drafted']['how'], 'assistant')
 
+    def test_a_save_that_fails_leaves_the_receipt_for_the_retry(self):
+        with self.service(gateway=Both()) as (base, out):
+            ann = self.confirmed(base)['ann']
+            self.assertEqual(ann.post('/api/workspace/pipelines', {'name': '汇总', 'description': '', 'spec': SPEC})[0], 200)
+            draft = self.draft(ann)
+            taken = {'name': '汇总', 'description': '', 'spec': self.whole(draft), 'draft_receipt': draft['draft_receipt']}
+            self.assertEqual(ann.post('/api/workspace/pipelines', taken)[0], 409)   # the name is taken: nothing was written
+            self.assertEqual(ann.post('/api/workspace/pipelines', {**taken, 'name': '汇总二'})[0], 200)
+            self.assertEqual(ann.get('/api/workspace/pipelines/' + quote('汇总二'))[1]['drafted']['how'], 'assistant')
+
     def test_a_pipeline_flag_alone_or_a_foreign_or_reused_receipt_marks_nothing(self):
         with self.service(gateway=Both()) as (base, out):
             team = self.confirmed(base)

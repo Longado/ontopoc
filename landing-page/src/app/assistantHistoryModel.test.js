@@ -41,11 +41,12 @@ test("the filter offers the modes in MODES and any other mode a turn carries, an
 
 test("Draft again gives back the same mode, message and scope, leaves out what is hidden, and carries nothing that runs", () => {
   const model = draftAgain({ mode: "model", message: "suggest types", scope: { datasets: [{ kind: "datasets", name: "orders" }, { kind: "datasets", hidden: true }] } });
-  assert.deepEqual(model, { mode: "model", text: "suggest types", datasets: ["orders"], target: null });
+  assert.deepEqual(model, { mode: "model", text: "suggest types", datasets: ["orders"], target: null, types: [] });
   const plan = draftAgain({ mode: "pipeline", message: "filter", scope: { target: { kind: "pipeline", name: "p1", label: "Orders pipeline" } } });
-  assert.deepEqual(plan, { mode: "pipeline", text: "filter", datasets: [], target: { kind: "pipeline", name: "p1", label: "Orders pipeline" } });
+  assert.deepEqual(plan, { mode: "pipeline", text: "filter", datasets: [], target: { kind: "pipeline", name: "p1", label: "Orders pipeline" }, types: [] });
   assert.equal(draftAgain({ mode: "pipeline", message: "f", scope: { target: { kind: "dataset", hidden: true } } }).target, null);
-  assert.deepEqual(draftAgain({ mode: "query", message: "start order", scope: {} }), { mode: "query", text: "start order", datasets: [], target: null });
+  assert.deepEqual(draftAgain({ mode: "query", message: "start order", scope: {} }), { mode: "query", text: "start order", datasets: [], target: null, types: [] });
+  assert.deepEqual(draftAgain({ mode: "meanings", message: "m", scope: { types: [{ kind: "types", name: "order" }, { kind: "types", hidden: true }] } }).types, ["order"]);
 });
 
 test("the scope kept with a turn is what the composer had", () => {

@@ -75,11 +75,15 @@ def _named(scope: dict, card: dict) -> dict:
         cols = [c.get('column') for c in card['columns'] if isinstance(c, dict) and isinstance(c.get('column'), str)]
         if cols:
             named['columns'][card['type']] = sorted(set(cols))
+    if isinstance(card.get('steps'), list) or isinstance(card.get('questions'), list):   # a pipeline draft: its questions, cites and steps name columns and values of what it reads
+        named['read'] = [t['name'] for t in [target] if t and t.get('kind') == 'dataset']
+        named['definitions'] = [c['definition'] for c in card.get('cites') or [] if isinstance(c, dict) and isinstance(c.get('definition'), str)]
     for s in card.get('steps') or []:
         step = s.get('step') if isinstance(s, dict) else None
         if isinstance(step, dict) and step.get('type') == 'input':
             if isinstance(step.get('dataset'), str):
                 named['datasets'].append(step['dataset'])
+                named.setdefault('read', []).append(step['dataset'])
             if isinstance(step.get('view'), str):
                 named['views'].append(step['view'])
     return {k: (sorted(set(v)) if isinstance(v, list) else v) for k, v in named.items()}
@@ -143,9 +147,19 @@ def listing(conn, user: dict | None) -> list[dict]:
             for i, mode, message, at, outcome in conn.execute(f'SELECT id, mode, message, at, outcome_json FROM assistant_turn WHERE {where} ORDER BY id DESC LIMIT {HISTORY_LIMIT}', args)]
 
 
+def _columns_kept_on(conn, dataset_name: str, user: dict | None) -> bool:
+    """Whether a column of this dataset is kept from this person on any type that reads it (column access binds the dataset's column, see type_access.hidden_columns)."""
+    if user is None or user['role'] == 'admin':
+        return False
+    for element_id, content_json in conn.execute(f"SELECT element_id, content_json FROM element_state WHERE element_id LIKE '{TYPE_PREFIX}%'"):
+        if (json.loads(content_json) or {}).get('dataset') == dataset_name and hidden_columns(conn, element_id, user):
+            return True
+    return False
+
+
 def _hidden(conn, user: dict | None, named: dict) -> dict[str, list[str]]:
     """What the turn names that this person cannot see now, by kind (a thing that is gone counts as hidden)."""
-    gone = {'types': [], 'views': [], 'datasets': [], 'pipelines': [], 'columns': []}
+    gone = {'types': [], 'views': [], 'datasets': [], 'pipelines': [], 'columns': [], 'definitions': []}
     for t in named.get('types', []):
         if not _may_see(conn, user, type_id(t)):
             gone['types'].append(t)
@@ -159,6 +173,12 @@ def _hidden(conn, user: dict | None, named: dict) -> dict[str, list[str]]:
         row = element_row(conn, pipeline_id(p))
         if row is None or not pipeline_visible(conn, row, user):
             gone['pipelines'].append(p)
+    for d in named.get('read', []):   # a pipeline card shows columns and values of what it reads: any column of it kept from this person now withholds the card
+        if _columns_kept_on(conn, d, user):
+            gone['columns'].append(d)
+    for e in named.get('definitions', []):
+        if not _may_see(conn, user, e):
+            gone['definitions'].append(e)
     for t, cols in named.get('columns', {}).items():
         if any(c in hidden_columns(conn, type_id(t), user) for c in cols):
             gone['columns'].append(t)

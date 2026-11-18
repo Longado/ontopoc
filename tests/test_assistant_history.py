@@ -104,6 +104,20 @@ class AssistantHistoryTests(SigningTestCase):
             self.assertEqual(shown['withheld'], {'columns': 1})
             self.assertNotIn('card', shown)
 
+    def test_a_pipeline_card_is_withheld_when_a_column_of_what_it_reads_is_kept_from_the_reader(self):
+        with self.service(gateway=None) as (base, out):
+            team = self.team(base)
+            ann, admin = team['ann'], team['admin']
+            self.confirmed_orders(team)
+            card = {'steps': [{'summary': 'x', 'step': {'id': 'o', 'type': 'input', 'dataset': '订单'}}],
+                    'questions': [{'id': 'q1', 'ask': '状态码 2 是什么？', 'evidence': '2: 16 行'}], 'cites': []}
+            made = ann.post('/api/workspace/assistant/turns', turn(mode='pipeline', scope={'target': {'kind': 'dataset', 'name': '订单'}}, card=card))[1]
+            self.assertIn('card', ann.get(f'/api/workspace/assistant/turns/{made["id"]}')[1])
+            self.assertEqual(admin.post('/api/workspace/column-access', {'type': 'order', 'column': '状态码', 'visible_to': [3]})[0], 200)
+            shown = ann.get(f'/api/workspace/assistant/turns/{made["id"]}')[1]
+            self.assertNotIn('card', shown)
+            self.assertEqual(shown['withheld'].get('columns'), 1)
+
     def test_only_the_newest_turns_are_kept(self):
         with self.service(gateway=None) as (base, out):
             conn = open_workspace(out / 'workspace.sqlite')

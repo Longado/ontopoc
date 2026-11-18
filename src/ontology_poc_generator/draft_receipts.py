@@ -45,8 +45,9 @@ def issue(conn, user: dict | None, kind: str, target: str | None, fingerprint: d
     return receipt
 
 
-def redeem(conn, receipt, user: dict | None, kind: str, now: float | None = None) -> tuple[str | None, dict] | None:
-    """(target, fingerprint) when `receipt` is live and was issued to this person for this kind; it is used up. None otherwise, silently."""
+def peek(conn, receipt, user: dict | None, kind: str, now: float | None = None) -> tuple[str | None, dict] | None:
+    """(target, fingerprint) when `receipt` is live and was issued to this person for this kind; None otherwise, silently. It is not used up here: the save
+    that carries it calls spend() once its write has gone through, so a save that fails (a name taken, a version that moved) leaves the receipt for the retry."""
     if not isinstance(receipt, str) or not receipt:
         return None
     now = time.time() if now is None else now
@@ -54,6 +55,20 @@ def redeem(conn, receipt, user: dict | None, kind: str, now: float | None = None
     row = conn.execute('SELECT who, kind, target, fingerprint_json, expires FROM draft_receipt WHERE id = ?', (receipt,)).fetchone()
     if row is None or row[0] != _who(user) or row[1] != kind or row[4] <= now:
         return None
-    if conn.execute('DELETE FROM draft_receipt WHERE id = ?', (receipt,)).rowcount != 1:   # used by someone in the meantime
-        return None
     return row[2], json.loads(row[3])
+
+
+def spend(conn, payload: dict, user: dict | None) -> None:
+    """Use up the receipt a save carried, after the save was written. Only this person's own receipt: someone else's id is left for its owner."""
+    receipt = payload.get('draft_receipt') if isinstance(payload, dict) else None
+    if isinstance(receipt, str) and receipt:
+        conn.execute(_TABLE)
+        conn.execute('DELETE FROM draft_receipt WHERE id = ? AND who = ?', (receipt, _who(user)))
+
+
+def redeem(conn, receipt, user: dict | None, kind: str, now: float | None = None) -> tuple[str | None, dict] | None:
+    """peek() and use the receipt up at once (for callers with nothing to write)."""
+    got = peek(conn, receipt, user, kind, now)
+    if got is not None and conn.execute('DELETE FROM draft_receipt WHERE id = ?', (receipt,)).rowcount != 1:   # used by someone in the meantime
+        return None
+    return got

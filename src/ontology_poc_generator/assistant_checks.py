@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ontology_poc_generator.draft_receipts import pipeline_fingerprint, redeem, type_fingerprint
+from ontology_poc_generator.draft_receipts import peek, pipeline_fingerprint, type_fingerprint
 from ontology_poc_generator.lang import tr
 
 CONFIRMED, OPEN = 'confirmed', 'open'
@@ -83,13 +83,13 @@ def drafted_mark(conn, payload: dict, who: str | None, user: dict | None, kind: 
 
     The server decides, not the page: `assistant: true` marks nothing. The save must carry `draft_receipt`, the id the server issued with the draft (draft_receipts):
     live (24 hours), issued to this person, for this kind ('pipeline' or 'type'), for this target when it was issued for one, and not used before. A receipt is used up
-    by the first save that carries it, marked or not. An invalid receipt is ignored silently: the save goes ahead without a marker, and keeps `old` (the marker the
+    by the first save that carries it once that save is written (draft_receipts.spend at the call site); a save that fails leaves it for the retry. An invalid receipt is ignored silently: the save goes ahead without a marker, and keeps `old` (the marker the
     object already has). The saved content is compared with the fingerprint of what was drafted:
       pipeline (`saved` = the saved steps): every drafted step is there exactly as drafted -> how 'assistant'; some drafted step is there but any is changed or missing -> 'assistant-edited';
         none of the drafted steps is there -> no marker.
       type (`saved` = the saved definition): same dataset, key and set of columns as drafted -> 'assistant'; otherwise -> 'assistant-edited'."""
     receipt = payload.get('draft_receipt')
-    got = redeem(conn, receipt, user, kind)
+    got = peek(conn, receipt, user, kind)
     if got is None:
         return old
     drafted_target, fingerprint = got

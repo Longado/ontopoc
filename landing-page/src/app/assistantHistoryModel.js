@@ -26,7 +26,8 @@ export function draftAgain(turn) {
   const scope = turn?.scope ?? {};
   const datasets = (scope.datasets ?? []).filter((d) => !d.hidden && d.name).map((d) => d.name);
   const target = scope.target && !scope.target.hidden && scope.target.name ? { kind: scope.target.kind, name: scope.target.name, label: scope.target.label || scope.target.name } : null;
-  return { mode: turn?.mode ?? "ask", text: turn?.message ?? "", datasets, target };
+  const types = (scope.types ?? []).filter((x) => !x.hidden && x.name).map((x) => x.name);
+  return { mode: turn?.mode ?? "ask", text: turn?.message ?? "", datasets, target, types };
 }
 
 /** The scope a turn is kept with, from what the composer had when it was sent: {datasets} (Model), {target} (Pipeline), nothing for a query. */

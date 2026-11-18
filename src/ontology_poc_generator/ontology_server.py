@@ -1565,7 +1565,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif len(parts) == 1 and re.fullmatch(r'[0-9]+', parts[0]):
                     body = assistant_history.fetch(conn, self.user, int(parts[0]))
                 else:
-                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    self.reply(404, {'error': lang.unknown_endpoint()})
                     return
             except QaRefused as exc:
                 self.reply(exc.status, {'error': str(exc)})
@@ -1587,7 +1587,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif len(parts) == 2 and re.fullmatch(r'[0-9]+', parts[0]) and parts[1] in ('outcome', 'delete'):
                     body = (assistant_history.mark(conn, self.user, int(parts[0]), payload) if parts[1] == 'outcome' else assistant_history.delete(conn, self.user, int(parts[0])))
                 else:
-                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    self.reply(404, {'error': lang.unknown_endpoint()})
                     return
             except QaRefused as exc:
                 self.reply(exc.status, {'error': str(exc)})

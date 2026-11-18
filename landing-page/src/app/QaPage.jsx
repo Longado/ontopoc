@@ -617,6 +617,10 @@ export function QaPage({ route }) {
     if (d.mode === "query") setQuery(d.text); else setText(d.text);
     if (d.mode === "model") setChosen(d.datasets);
     if (d.mode === "pipeline" && d.target) setTarget(d.target);
+    if (d.mode === "meanings" && d.types?.[0]) {
+      const found = (types.data ?? []).find((x) => x.id === d.types[0]);
+      setTypeScope({ id: d.types[0], label: found?.name ?? d.types[0] });
+    }
   };
   /** The three model-backed modes over their existing endpoints. Nothing is saved or run by the assistant itself: a card is pending until the person acts on it. */
   const sendIn = (inMode, raw) => {
@@ -731,6 +735,7 @@ export function QaPage({ route }) {
         reload();
       } catch (err) {
         patchMeanings(turn, { busy: false, error: err.message });
+        if (count) mark(turn, "applied", turn.meanings.result?.type ?? "");   // the columns before the one that failed were put forward
       }
     },
     // an open assumption on a type proposal is acknowledged by the person; the card re-checks by code, no model

@@ -23,6 +23,7 @@ import time
 from ontology_poc_generator import pipeline_llm
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.assistant_checks import drafted_mark
+from ontology_poc_generator.draft_receipts import spend as spend_receipt
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.object_types import (
     MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _flag, _flag_readers, _state_view, _text, dataset_columns,
@@ -301,6 +302,7 @@ def create_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
                 raise TypeRefused(tr(f'已经有叫“{other[len(PIPELINE_PREFIX):]}”的管道（名字不分大小写）', f'A pipeline called "{other[len(PIPELINE_PREFIX):]}" already exists (names are not case-sensitive)'), 409)
         _write(conn, _change(found['content'], 1, found['versions'], who), found['reads'], found['outputs'], _version_row(element_id, 1, found['content'], who), None,
                lambda c: _flag_takeover(c, found['content']['name'], found['outputs']))
+        spend_receipt(conn, payload, user)
     finally:
         drop_temporary(engine, found['resolved'])
     return {'id': found['content']['name'], 'definition_version': 1}
@@ -326,6 +328,7 @@ def update_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
             after = (lambda c: _flag_readers(c, element_id, tr(f'管道“{old["name"]}”的定义改了（第 {version} 版）', f'The definition of the pipeline "{old["name"]}" changed (version {version})'), [], 'definition')) if changed else None
             _write(conn, _change(new, version, found['versions'], who), found['reads'], found['outputs'], _version_row(element_id, version, new, who) if changed else None,
                    {element_id: row['version']}, after)
+            spend_receipt(conn, payload, user)
             return {'id': old['name'], 'state': 'checked', 'definition_version': version, 'changed': changed}
         if new['description'] != old['description']:
             _edit_names(conn, row, {'name': old['name'], 'description': new['description']}, who)

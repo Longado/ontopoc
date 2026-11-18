@@ -1,5 +1,6 @@
 """The assistant's Meanings mode on the server: POST /api/workspace/types/meanings-draft drafts meanings for the code columns of one workspace object type with a fake
 model gateway, and saves nothing. Counts come from the planted 订单 table (状态码 0/1/2 on 96/48/16 of 160 rows)."""
+import base64
 import json
 
 from ontology_poc_generator.workspace_store import open_workspace
@@ -47,6 +48,21 @@ class MeaningsDraftTests(SigningTestCase):
             self.assertEqual([c['id'] for c in asked['columns']], [COLUMN])
             self.assertTrue(any(a['status'] == 'open' for a in body['assumptions']))
             self.assertIn('saved', [x['key'] for x in body['self_check']['not_done']])
+
+    def test_only_the_types_own_code_columns_are_described_to_the_model(self):
+        rows = ['工单号,状态,备注,内部批注'] + [f'T{i},{i % 3},{"" if i % 3 == 0 else "有"},{"" if i % 3 == 1 else "密"}' for i in range(60)]
+        csv = {'filename': '工单.csv', 'content_base64': base64.b64encode('\n'.join(rows).encode('utf-8')).decode()}
+        model = Suggester({'columns': []})
+        with self.service(gateway=model) as (base, out):
+            ann = self.people(base, 'ann')['ann']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [csv]})[0], 200)
+            ticket = {'english_name': 'ticket', 'name': '工单', 'dataset': '工单', 'key': ['工单号'], 'properties': [{'column': '工单号'}, {'column': '状态', 'enum': True}]}
+            self.assertEqual(ann.post('/api/workspace/types', ticket)[0], 200)
+            self.assertEqual(ann.post(URL, {'id': 'ticket'})[0], 200)
+            asked = model.asked[0] if isinstance(model.asked[0], str) else json.dumps(model.asked[0], ensure_ascii=False)
+            self.assertIn('状态', asked)
+            for other in ('备注', '内部批注'):   # columns the type does not read: not their names, not their blanks
+                self.assertNotIn(other, asked)
 
     def test_the_draft_applies_through_the_ordinary_meanings_path(self):
         with self.service(gateway=Suggester(DRAFT)) as (base, out):
