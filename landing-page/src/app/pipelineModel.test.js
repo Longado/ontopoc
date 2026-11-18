@@ -336,3 +336,48 @@ test("the canvas search finds steps by their title or kind, case-insensitively",
   assert.deepEqual(findSteps(steps, "join").map((s) => s.id), ["join"]);
   assert.deepEqual(findSteps(steps, "  "), []);
 });
+
+test("dragging from one card's out-port to another's in-port links them (like DIP): a join fills the side it was dropped on, a union adds an input, others read the new step", async () => {
+  const { linkSteps } = await import("./pipelineModel.js");
+  const steps = [
+    { id: "a", type: "input", dataset: "Orders" },
+    { id: "b", type: "input", dataset: "Customers" },
+    { id: "t", type: "transform", from: "a", operators: [] },
+    { id: "j", type: "join", left: "a", right: null, on: [] },
+    { id: "u", type: "union", inputs: ["a"], missing: "error" },
+    { id: "s", type: "split", from: "a", branches: [{ id: "s_hi" }, { id: "s_lo" }] },
+    { id: "o", type: "output", from: "t", dataset: "Out" },
+  ];
+  assert.deepEqual(linkSteps(steps, "b", "t"), { id: "t", patch: { from: "b" } });
+  assert.deepEqual(linkSteps(steps, "b", "j", "right"), { id: "j", patch: { right: "b" } });
+  assert.deepEqual(linkSteps(steps, "b", "j", "left"), { id: "j", patch: { left: "b" } });
+  assert.deepEqual(linkSteps(steps, "b", "u"), { id: "u", patch: { inputs: ["a", "b"] } });
+  assert.deepEqual(linkSteps(steps, "s", "o"), { id: "o", patch: { from: "s_hi" } });   // a split hands over its first branch nobody reads yet
+  assert.deepEqual(linkSteps([...steps, { id: "x", type: "transform", from: "s_hi", operators: [] }], "s", "o"), { id: "o", patch: { from: "s_lo" } });
+  // refused, with the reason as a key
+  assert.equal(linkSteps(steps, "a", "b").error, "input");    // an input reads a dataset, not a step
+  assert.equal(linkSteps(steps, "o", "t").error, "output");   // an output has no out-port
+  assert.equal(linkSteps(steps, "t", "t").error, "self");
+  assert.equal(linkSteps(steps, "o", "o").error, "output");
+  assert.equal(linkSteps(steps, "t", "o").error, "same");     // already linked
+  assert.equal(linkSteps(steps, "a", "u").error, "same");
+  assert.equal(linkSteps([...steps, { id: "t2", type: "transform", from: "t", operators: [] }], "t2", "t").error, "loop");
+});
+
+test("an edge can be removed: the reader stops reading that step (a union just drops the input)", async () => {
+  const { unlinkSteps } = await import("./pipelineModel.js");
+  const steps = [
+    { id: "a", type: "input", dataset: "Orders" },
+    { id: "b", type: "input", dataset: "Customers" },
+    { id: "t", type: "transform", from: "a", operators: [] },
+    { id: "j", type: "join", left: "a", right: "b", on: [] },
+    { id: "u", type: "union", inputs: ["a", "b"], missing: "error" },
+    { id: "s", type: "split", from: "a", branches: [{ id: "s_hi" }] },
+    { id: "o", type: "output", from: "s_hi", dataset: "Out" },
+  ];
+  assert.deepEqual(unlinkSteps(steps, "a", "t"), { id: "t", patch: { from: null } });
+  assert.deepEqual(unlinkSteps(steps, "b", "j"), { id: "j", patch: { right: null } });
+  assert.deepEqual(unlinkSteps(steps, "a", "u"), { id: "u", patch: { inputs: ["b"] } });
+  assert.deepEqual(unlinkSteps(steps, "s", "o"), { id: "o", patch: { from: null } });   // the edge is drawn from the split; the reader held its branch
+  assert.equal(unlinkSteps(steps, "b", "t"), null);
+});
