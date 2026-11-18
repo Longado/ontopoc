@@ -2274,3 +2274,11 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .as-ack { margin-left: var(--s1); }
 .chip-assistant { gap: 4px; background: var(--accent-bg); color: var(--accent-700); }
 .as-basis .as-key { margin-right: 8px; }
+
+/* R18-B3: the assistant's history rail: a filter by mode, a small mode chip on each item, and a past turn shown read-only */
+.chat-rail .rail-filter { flex-wrap: wrap; margin: var(--s1) 4px; align-self: flex-start; border-radius: var(--radius-md); }
+.chat-rail .history-list a:has(.rail-mode) { display: flex; align-items: center; gap: 6px; }
+.chat-rail .history-list a:has(.rail-mode) .hq { flex: 1; min-width: 0; }
+.rail-mode { flex: none; padding: 0 6px; border-radius: 999px; background: var(--bg-subtle); color: var(--muted); font-size: 10px; font-weight: 600; line-height: 16px; letter-spacing: 0.03em; text-transform: uppercase; }
+.as-query { margin: 0; padding: var(--s1) var(--s2); background: var(--bg-subtle); border-radius: var(--radius-md); overflow-x: auto; font-size: 12px; }
+.as-card .as-note { margin: 0; padding: var(--s2); }

@@ -59,6 +59,7 @@ from ontology_poc_generator.ontology_confirm import confirmed_reference, element
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
+from ontology_poc_generator import assistant_history
 from ontology_poc_generator.workspace_questions import WRITES as ASK_WRITES, QaRefused, ask as ask_workspace, query_as_text, run_text as run_query_text, history as question_history, reopen as reopen_question, scope_line
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
@@ -1548,6 +1549,47 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             self.reply(200, body)
 
+        def assistant_get(self):
+            """/api/workspace/assistant/turns (this person's own builder-mode turns, newest first), /api/workspace/assistant/turns/<id> (one, with its card checked against what they may see now)."""
+            parts = [p for p in urlsplit(self.path).path[len('/api/workspace/assistant/turns'):].split('/') if p]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = {'turns': assistant_history.listing(conn, self.user)}
+                elif len(parts) == 1 and re.fullmatch(r'[0-9]+', parts[0]):
+                    body = assistant_history.fetch(conn, self.user, int(parts[0]))
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except QaRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def assistant_post(self):
+            """POST /api/workspace/assistant/turns {mode, message, scope, card, outcome?} keeps a turn; /turns/<id>/outcome {state, name?} says what happened next; /turns/<id>/delete removes it."""
+            parts = [p for p in self.path.split('?')[0][len('/api/workspace/assistant/turns'):].split('/') if p]
+            payload = self.read_json()
+            if payload is None:
+                return
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = assistant_history.record(conn, self.user, payload.get('mode'), payload.get('message'), payload.get('scope'), payload.get('card'), payload.get('outcome'))
+                elif len(parts) == 2 and re.fullmatch(r'[0-9]+', parts[0]) and parts[1] in ('outcome', 'delete'):
+                    body = (assistant_history.mark(conn, self.user, int(parts[0]), payload) if parts[1] == 'outcome' else assistant_history.delete(conn, self.user, int(parts[0])))
+                else:
+                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    return
+            except QaRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
         def ask_post(self):
             """POST /api/workspace/ask {question}: answered from the confirmed definitions this person may see, or refused with the reason (see workspace_questions.py).
             The model is asked without the lock; the answer is kept under it."""
@@ -1729,6 +1771,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path.split('?')[0] == '/api/workspace/ask' or self.path.startswith('/api/workspace/ask/'):
                 self.ask_get()
+                return
+            if self.path.split('?')[0].startswith('/api/workspace/assistant/turns'):
+                self.assistant_get()
                 return
             if self.path.split('?')[0] == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
                 self.actions_get()
@@ -1964,6 +2009,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/ask':
                 self.ask_post()
+                return
+            if self.path.split('?')[0].startswith('/api/workspace/assistant/turns'):
+                self.assistant_post()
                 return
             if self.path in ('/api/workspace/query', '/api/workspace/query/text'):
                 self.query_post()

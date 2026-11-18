@@ -49,6 +49,8 @@ export const CONVERTED = [
   "ui/PageHeader.jsx",
   "ui/StatusChip.jsx",
   "QaPage.jsx",
+  "PastTurn.jsx",
+  "assistantHistoryModel.js",
   "qaModel.js",
   "AiBox.jsx",
   "AiDraftPanel.jsx",
