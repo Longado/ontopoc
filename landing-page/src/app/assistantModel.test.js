@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, modesFor, moveDraft, parseCommand, planCard, privacyKey, proposalCard, proposePayload, scopeKind, stashDraft, takeDraft } from "./assistantModel.js";
+import { actionState, allowedMode, loadThread, nextVersion, saveThread, commandChoices, datasetSpec, defaultSelected, isNoModel, modesFor, moveDraft, parseCommand, planCard, privacyKey, proposalCard, proposePayload, scopeKind, stashDraft, takeDraft } from "./assistantModel.js";
 
 const store = () => {
   const m = new Map();
@@ -145,4 +145,55 @@ test("the scope helpers pick the node to draft over", () => {
   assert.equal(defaultSelected({ steps: [{ id: "a", type: "input" }, { id: "b", type: "transform" }, { id: "c", type: "output" }] }), "b");
   assert.equal(defaultSelected({ steps: [] }), null);
   assert.deepEqual(datasetSpec("orders"), { steps: [{ id: "in1", type: "input", dataset: "orders" }] });
+});
+
+test("the thread survives in the tab's session storage, per user, without anything still waiting", () => {
+  const s = store();
+  const turns = [
+    { id: "t1", kind: "ask", text: "How many?", status: "done", record: { id: 7 } },
+    { id: "t2", kind: "pipeline", text: "sum", status: "done", plan: { draft: { steps: [] }, answers: {}, busy: true } },
+    { id: "t3", kind: "ask", text: "later", status: "thinking" },
+  ];
+  saveThread(s, "ann", turns);
+  assert.equal(loadThread(s, "bob").length, 0);
+  const back = loadThread(s, "ann");
+  assert.deepEqual(back.map((x) => x.id), ["t1", "t2"]);   // a turn still waiting for the service cannot be resumed
+  assert.equal(back[1].plan.busy, false);
+  saveThread(s, "ann", []);
+  assert.equal(s.size(), 0);
+  s.setItem("assistant-thread:ann", "{nope");
+  assert.deepEqual(loadThread(s, "ann"), []);
+  assert.deepEqual(loadThread(s, null), []);
+});
+
+test("a revised request is a new version of the card: the next number, counting the versions already in the thread", () => {
+  const a = { id: "t1", kind: "pipeline", version: 1, plan: {} };
+  const b = { id: "t2", kind: "pipeline", version: 2, revises: "t1", plan: {} };
+  assert.equal(nextVersion([a], "t1"), 2);
+  assert.equal(nextVersion([a, b], "t1"), 3);
+  assert.equal(nextVersion([a, b], "t2"), 3);
+  assert.equal(nextVersion([a], undefined), 1);
+});
+
+test("an open question blocks Apply only, and says why; a frozen card has no actions", () => {
+  const open = { canApply: false, blocked: "open" };
+  assert.deepEqual(actionState(open, {}), { apply: { enabled: false, reason: "open" }, revise: true, discard: true });
+  assert.deepEqual(actionState({ canApply: true, blocked: "" }, {}), { apply: { enabled: true, reason: "" }, revise: true, discard: true });
+  assert.deepEqual(actionState({ canApply: false, blocked: "failed" }, {}).apply, { enabled: false, reason: "failed" });
+  // after Apply the card is frozen: no second Apply, a change is a new turn
+  assert.deepEqual(actionState({ canApply: true, blocked: "" }, { applied: true }), { apply: { enabled: false, reason: "applied" }, revise: true, discard: false });
+  assert.deepEqual(actionState({ canApply: true, blocked: "" }, { supersededBy: "t2" }), { apply: { enabled: false, reason: "superseded" }, revise: false, discard: false });
+  assert.deepEqual(actionState({ canApply: true, blocked: "" }, { discarded: true }), { apply: { enabled: false, reason: "discarded" }, revise: false, discard: false });
+  // busy re-checking stops Apply but never Revise or Discard
+  assert.equal(actionState({ canApply: true, blocked: "" }, { busy: true }).apply.enabled, false);
+  assert.equal(actionState({ canApply: true, blocked: "" }, { busy: true }).revise, true);
+});
+
+test("the proposal card shows what each type stood on and what it left out when the response says", () => {
+  const c = proposalCard({ proposed: [{ id: "order", name: "Order", basis: "one row per order", left_out: ["ship_date", "note"], dataset: "orders", key: ["no"] }], rejected: [] }, [{ id: "order", dataset: "orders", key: ["no"], version: 1, properties: [] }]);
+  assert.equal(c.types[0].basis, "one row per order");
+  assert.deepEqual(c.types[0].leftOut, ["ship_date", "note"]);
+  const none = proposalCard({ proposed: [{ id: "x", name: "X" }], rejected: [] }, []);
+  assert.deepEqual(none.types[0].leftOut, []);
+  assert.equal(none.types[0].basis, "");
 });
