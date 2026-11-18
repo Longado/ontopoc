@@ -159,12 +159,24 @@ def queue(conn, user: dict | None, light: bool = False) -> dict:
             items.append(item)
         elif not light and _item(conn, row, without_rules(user), light=True):
             ruled_out += 1
-    items += [approval_item(r, conn) for r in open_records(conn, user)]   # the submissions waiting for a second person: a card each
+    items += [approval_item(r, conn, user) for r in open_records(conn, user)]   # the submissions waiting for a second person: a card each
     items.sort(key=lambda i: (not i['can_confirm'], ORDER[i['state']], i['element']))
     return {'items': [] if light else items, 'count': sum(1 for i in items if i['can_confirm']), 'hidden_by_rules': ruled_out}
 
 
-def approval_item(rec: dict, conn=None) -> dict:
+def seen_by(conn, row: dict, user: dict | None) -> bool:
+    """Whether this person may see this definition at all (the same test the queue uses for each kind)."""
+    element_id, content = row['element_id'], _content(row)
+    for prefix, visible in ((RELATION_PREFIX, _relation_visible), (VIEW_PREFIX, view_visible), (DERIVED_PREFIX, derived_visible), (PIPELINE_PREFIX, pipeline_visible), (ACTION_PREFIX, action_visible)):
+        if element_id.startswith(prefix):
+            return visible(conn, row, user)
+    if element_id.startswith(ENUM_PREFIX):
+        type_row = element_row(conn, f'{TYPE_PREFIX}{content["type"]}')
+        return type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, element_id, user, content)
+    return _visible(conn, row, user)
+
+
+def approval_item(rec: dict, conn=None, user: dict | None = None) -> dict:
     """A submitted action as a card in the queue: what is asked of which object, by whom, and whether the data moved since. Approve and reject are their own
     requests (object_actions.decide), not the confirmation of a definition."""
     said = {'create': tr(f'想新建 {rec["object"]}：{rec["after_text"]}', f'wants to create {rec["object"]}: {rec["after_text"]}'), 'delete': tr(f'想删除 {rec["object"]}：{rec["before_text"]}', f'wants to delete {rec["object"]}: {rec["before_text"]}')}.get(rec.get('kind'), tr(f'想把 {rec["object"]} 的 {rec["change_text"]}', f'wants to change {rec["object"]}: {rec["change_text"]}'))
@@ -179,7 +191,7 @@ def approval_item(rec: dict, conn=None) -> dict:
         lines.append({'ok': True, 'text': tr(f'{rec["dataset"]} 还是提交时读的第 {rec["dataset_version"]} 版，批准时会再对一遍现在的值', f'{rec["dataset"]} is still version {rec["dataset_version"]}, the one read at submission; approving checks the current values again')})
     readers = None   # how many confirmed definitions read the dataset an approval would give a new version: they are rechecked and may need another look
     if conn is not None:
-        readers = sum(1 for e in _readers_of_dataset(conn, rec['dataset']) if (row := element_row(conn, e)) and row['state'] == 'confirmed')
+        readers = sum(1 for e in _readers_of_dataset(conn, rec['dataset']) if (row := element_row(conn, e)) and row['state'] == 'confirmed' and seen_by(conn, row, user))   # only what this person may see: not even a count of the rest
     return {'element': f'record:{rec["id"]}', 'kind': 'approval', 'dataset': rec['dataset'], 'readers': readers, 'title': tr(f'{rec["action"]}：{rec["object"]}', f'{rec["action"]}: {rec["object"]}'), 'id': rec['type'], 'record': rec['id'], 'lines': lines, 'version': 0,
             'state': rec['state'], 'can_confirm': rec['can_decide'] and rec['state'] == 'pending', 'can_withdraw': rec['can_withdraw'], 'confirmers': [], 'proposed_by': rec['submitted_by'],
             'written_at': rec['submitted_at'], 'reason': rec['why'], 'model_draft': False, 'meanings_blocking': [], 'waiting_on': []}
