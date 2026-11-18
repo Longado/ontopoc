@@ -7,10 +7,10 @@
 先启动建模服务（`PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server`），再把工具服务配进客户端。Claude Code：
 
 ```bash
-claude mcp add ontopoc -- env PYTHONPATH=<仓库路径>/src python3 -m ontology_poc_generator.mcp_server
+claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=<仓库路径>/src python3 -m ontology_poc_generator.mcp_server
 ```
 
-别的客户端写成 stdio 服务，命令同上。服务不在 8767 端口时设 `ONTOPOC_URL`。
+别的客户端写成 stdio 服务，命令同上。不设 `ONTOPOC_TOOLSET=all` 时只给 5 个只读工具（团队已确认的定义：`describe_definitions`、`ontopoc_query`、`ask`、`list_unconfirmed`、`read_derived_property`）；下表的建模工具要设它（插件已经设好）。服务不在 8767 端口时设 `ONTOPOC_URL`。
 
 ## 工具
 

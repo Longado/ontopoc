@@ -180,7 +180,7 @@ claude plugin marketplace add Longado/ontopoc
 claude plugin install ontopoc@ontopoc
 
 # Or add as an MCP server (from the repo root)
-claude mcp add ontopoc -- env PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server</pre>
+claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server</pre>
         <p class="note">Tool list: <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">docs/MCP.md</a>. Plugin commands: <code>/ontopoc:ontopoc-build</code>, <code>/ontopoc:ontopoc-review</code>.</p>
       </section>
 

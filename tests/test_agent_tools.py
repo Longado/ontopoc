@@ -14,7 +14,7 @@ from tests.test_workspace_questions import AskModel, cancelled
 
 def load_tests(loader, standard, pattern):
     suite = unittest.TestSuite()
-    for cls in (RoutingTests, LeanOutputTests, DefinitionsTests, TeachingErrorTests, SizeTests):
+    for cls in (RoutingTests, LeanOutputTests, DefinitionsTests, TeachingErrorTests, SizeTests, LookAlikeTests):
         suite.addTests(cls(name) for name in vars(cls) if name.startswith('test_'))
     return suite
 
@@ -153,3 +153,21 @@ class SizeTests(AgentCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LookAlikeTests(unittest.TestCase):
+    """Tools that sound alike say which world each one works in, and name the other one (Glama, 2026-11-17: "ask vs ask_question both answer business questions via a model")."""
+
+    PAIRS = (('ask', 'ask_question'), ('describe_definitions', 'list_objects'), ('list_unconfirmed', 'list_proposed_views'))
+
+    def test_each_look_alike_pair_names_the_other_and_its_scope(self):
+        t = {x['name']: x for x in handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None)['result']['tools']}
+        for team, run in self.PAIRS:
+            self.assertIn(run, t[team]['description'], team)
+            self.assertIn(team, t[run]['description'], run)
+            self.assertTrue(t[team]['description'].startswith(mcp_server.SCOPE_TEAM), team)
+            self.assertTrue(t[run]['description'].startswith(mcp_server.SCOPE_RUN), run)
+
+    def test_every_tool_starts_with_where_it_works(self):
+        for x in handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None)['result']['tools']:
+            self.assertTrue(x['description'].startswith((mcp_server.SCOPE_TEAM, mcp_server.SCOPE_RUN, mcp_server.SCOPE_SERVICE)), x['name'])
