@@ -96,7 +96,8 @@ class TokenScopeTests(AgentCase, BoardCase):
             self.assertEqual(listed(token=read, toolset='all'), set(mcp_server.READ_TOOLS))   # asking for more in its own environment gets nothing: the service would refuse the calls
             self.assertIn('build_ontology', listed(token=full, toolset=None))
             self.assertEqual(listed(token=full, toolset='read'), set(mcp_server.READ_TOOLS))
-            self.assertIn('build_ontology', listed(token=None, toolset=None))   # no token: the local session's toolset, as before
+            self.assertEqual(listed(token=None, toolset=None), set(mcp_server.READ_TOOLS))   # no token and nothing asked: the five read tools (Glama, 2026-11-17: 39 tools is heavy)
+            self.assertIn('build_ontology', listed(token=None, toolset='all'))   # the local session asks for all of them (the plugin does)
 
 
 class DerivedReadTests(AgentCase):
