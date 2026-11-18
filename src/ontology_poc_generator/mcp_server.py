@@ -770,7 +770,7 @@ def check(base: str) -> None:
 
 
 class Toolset:
-    """The tools this server offers. With no token it is the local session's: all of them, or the read tools when ONTOPOC_TOOLSET=read. With a token the service says
+    """The tools this server offers. With no token it is the local session's: the read tools, or all of them when ONTOPOC_TOOLSET=all. With a token the service says
     what the token may do (its scope, from /api/auth/me): the read tools for a read token, all of them for an all token; the environment can narrow that to the read
     tools and not widen it, because the service refuses what the token may not do. While the service cannot be asked, the read tools."""
 
@@ -779,7 +779,7 @@ class Toolset:
 
     def __call__(self) -> tuple | None:
         if not self.service.token:
-            return READ_TOOLS if self.asked == 'read' else None
+            return None if self.asked == 'all' else READ_TOOLS   # the build tools only when the local session asks for them (ONTOPOC_TOOLSET=all)
         if self.scope is None:
             try:
                 self.scope = self.service.request('/api/auth/me')['user'].get('token_scope')
