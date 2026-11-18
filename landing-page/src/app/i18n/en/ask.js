@@ -345,6 +345,7 @@ export default {
   "past.loading": "Opening the turn...",
   "past.hidden": "(hidden)",
   "past.truncated": "The card was too large to keep. Use Draft again to make a new one.",
+  "past.skipped": "Not drafted",
   "past.again": "Draft again",
   "past.delete": "Delete this turn",
   "past.deleteYes": "Yes, delete",

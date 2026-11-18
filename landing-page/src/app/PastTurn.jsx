@@ -62,6 +62,7 @@ function CardBody({ mode, card }) {
     return (
       <dl className="as-rows">
         <div className="as-row"><dt>{t("ask.assistant.card.result")}</dt><dd>{c.columns.map((col) => <div key={col.column}><p className="as-type-head"><strong>{col.column}</strong></p><ul className="as-assume">{col.values.filter((v) => v.hasDraft).map((v) => <li key={v.value}><code>{v.value}</code> {v.label}</li>)}</ul></div>)}</dd></div>
+        {(card.skipped ?? []).length > 0 && <div className="as-row"><dt>{t("ask.past.skipped")}</dt><dd><ul className="as-rejected">{card.skipped.map((x) => <li key={x.column}><strong>{x.column}</strong> <span className="muted">{x.reason}</span></li>)}</ul></dd></div>}
         <div className="as-row"><dt>{t("ask.assistant.card.checked")}</dt><dd><Lists done={card.self_check?.done ?? []} notDone={card.self_check?.not_done ?? []} /></dd></div>
       </dl>
     );

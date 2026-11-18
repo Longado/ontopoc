@@ -345,6 +345,7 @@ export default {
   "past.loading": "正在打开这一轮……",
   "past.hidden": "（已隐藏）",
   "past.truncated": "这张卡太大，没有保存。用“再起草一次”重新生成。",
+  "past.skipped": "没有起草",
   "past.again": "再起草一次",
   "past.delete": "删除这一轮",
   "past.deleteYes": "确认删除",
