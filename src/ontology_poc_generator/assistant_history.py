@@ -15,6 +15,7 @@ import re
 
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_types import TYPE_PREFIX, VIEW_PREFIX, element_row, type_id
+from ontology_poc_generator.row_rules import restriction
 from ontology_poc_generator.type_access import dataset_hidden, hidden_columns
 from ontology_poc_generator.workspace_pipelines import pipeline_id, pipeline_visible
 from ontology_poc_generator.workspace_questions import HISTORY_LIMIT, QaRefused, _may_see, _mine
@@ -147,19 +148,28 @@ def listing(conn, user: dict | None) -> list[dict]:
             for i, mode, message, at, outcome in conn.execute(f'SELECT id, mode, message, at, outcome_json FROM assistant_turn WHERE {where} ORDER BY id DESC LIMIT {HISTORY_LIMIT}', args)]
 
 
+def _types_on(conn, dataset_name: str) -> list[str]:
+    return [element_id for element_id, content_json in conn.execute(f"SELECT element_id, content_json FROM element_state WHERE element_id LIKE '{TYPE_PREFIX}%'")
+            if (json.loads(content_json) or {}).get('dataset') == dataset_name]
+
+
 def _columns_kept_on(conn, dataset_name: str, user: dict | None) -> bool:
     """Whether a column of this dataset is kept from this person on any type that reads it (column access binds the dataset's column, see type_access.hidden_columns)."""
     if user is None or user['role'] == 'admin':
         return False
-    for element_id, content_json in conn.execute(f"SELECT element_id, content_json FROM element_state WHERE element_id LIKE '{TYPE_PREFIX}%'"):
-        if (json.loads(content_json) or {}).get('dataset') == dataset_name and hidden_columns(conn, element_id, user):
-            return True
-    return False
+    return any(hidden_columns(conn, t, user) for t in _types_on(conn, dataset_name))
+
+
+def _rows_limited_on(conn, element_ids, user: dict | None) -> bool:
+    """Whether a row rule keeps some rows of these types from this person: then counts over the whole data (a card's rows, codes, facts) are not theirs to read."""
+    if user is None or user['role'] == 'admin':
+        return False
+    return any(restriction(conn, t, user) is not None for t in element_ids)
 
 
 def _hidden(conn, user: dict | None, named: dict) -> dict[str, list[str]]:
     """What the turn names that this person cannot see now, by kind (a thing that is gone counts as hidden)."""
-    gone = {'types': [], 'views': [], 'datasets': [], 'pipelines': [], 'columns': [], 'definitions': []}
+    gone = {'types': [], 'views': [], 'datasets': [], 'pipelines': [], 'columns': [], 'definitions': [], 'rows': []}
     for t in named.get('types', []):
         if not _may_see(conn, user, type_id(t)):
             gone['types'].append(t)
@@ -176,6 +186,12 @@ def _hidden(conn, user: dict | None, named: dict) -> dict[str, list[str]]:
     for d in named.get('read', []):   # a pipeline card shows columns and values of what it reads: any column of it kept from this person now withholds the card
         if _columns_kept_on(conn, d, user):
             gone['columns'].append(d)
+    for t in named.get('types', []):   # a card quotes counts over the whole data of what it names
+        if t not in gone['types'] and _rows_limited_on(conn, [type_id(t)], user):
+            gone['rows'].append(t)
+    for d in sorted(set(named.get('datasets', [])) | set(named.get('read', []))):
+        if d not in gone['datasets'] and _rows_limited_on(conn, _types_on(conn, d), user):
+            gone['rows'].append(d)
     for e in named.get('definitions', []):
         if not _may_see(conn, user, e):
             gone['definitions'].append(e)

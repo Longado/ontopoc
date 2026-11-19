@@ -118,6 +118,20 @@ class AssistantHistoryTests(SigningTestCase):
             self.assertNotIn('card', shown)
             self.assertEqual(shown['withheld'].get('columns'), 1)
 
+    def test_a_card_is_withheld_once_a_row_rule_limits_the_reader(self):
+        with self.service(gateway=None) as (base, out):
+            team = self.team(base)
+            ann, admin = team['ann'], team['admin']
+            self.confirmed_orders(team)
+            ann_id = next(u['id'] for u in admin.get('/api/users')[1]['users'] if u['username'] == 'ann')
+            card = {'type': 'order', 'dataset': '订单', 'columns': [{'column': '状态码', 'rows': 160, 'values': [{'value': '2', 'rows': 16, 'draft': None}]}]}
+            made = ann.post('/api/workspace/assistant/turns', turn(mode='meanings', scope={'types': ['order']}, card=card))[1]
+            self.assertIn('card', ann.get(f'/api/workspace/assistant/turns/{made["id"]}')[1])
+            status, body = admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '状态码', 'value': '0', 'user_ids': [ann_id]}]}); self.assertEqual(status, 200, body)
+            shown = ann.get(f'/api/workspace/assistant/turns/{made["id"]}')[1]
+            self.assertNotIn('card', shown)   # the counts over all 160 rows are not hers to read now
+            self.assertGreaterEqual(shown['withheld'].get('rows', 0), 1)
+
     def test_only_the_newest_turns_are_kept(self):
         with self.service(gateway=None) as (base, out):
             conn = open_workspace(out / 'workspace.sqlite')
