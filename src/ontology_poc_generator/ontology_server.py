@@ -9,8 +9,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
+import mimetypes
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import sqlite3
 import sys
@@ -107,6 +108,7 @@ LOGGED_WRITES = {'/api/ontology/acceptance': 'acceptance', '/api/ontology/rules'
                  '/api/ontology/reference/confirm': 'reference', '/api/ontology/card': 'card'}   # library/import only reads a file and keeps nothing
 SECURITY_HEADERS = (('X-Content-Type-Options', 'nosniff'), ('Referrer-Policy', 'no-referrer'),
                     ('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'"))   # the service answers JSON and downloads, never a page
+PAGE_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"   # for the built page only
 MAX_BULK = 200   # relations approved in one request: far above what a run has
 SOURCE_PATH = re.compile(r'/api/workspace/(sources|schedules)(/.*)?')   # the sources and schedules pages' requests (sources_http.py)
 
@@ -182,9 +184,13 @@ def close_to_others(folder: Path) -> None:
 
 
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent,
-                no_auth: bool = False, origins=(), trusted_proxies=None):
-    """no_auth: no sign-in, every request is the local admin (trials and tests only). origins: the addresses, besides the service's own, that
+                no_auth: bool = False, origins=(), trusted_proxies=None, page_dir: Path = None):
+    """page_dir: a built page (landing-page/dist/client) the service serves itself on every GET outside /api/. no_auth: no sign-in, every request is the local admin (trials and tests only). origins: the addresses, besides the service's own, that
     people reach it at: a proxy's https address, or a dev server."""
+    if page_dir is not None:
+        page_dir = Path(page_dir).resolve()
+        if not (page_dir / 'index.html').is_file():
+            raise ValueError(f'--page-dir {page_dir} has no index.html: build the page first (cd landing-page && npm run build)')
     output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)   # the data holds password hashes, every prompt sent to the model and the people's names
     close_to_others(output_dir)   # a folder made before this was a rule may be open to every account on the machine
     running = code_fingerprint(code_dir)
@@ -1071,8 +1077,40 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def end_headers(self):
             for name, value in SECURITY_HEADERS:
+                if name == 'Content-Security-Policy' and getattr(self, 'serving_page', False):
+                    value = PAGE_CSP
                 self.send_header(name, value)
             super().end_headers()
+
+        def page_get(self):
+            """A file of the built page, or index.html for a route of the page itself; the page signs in through /api, so these need no session."""
+            try:
+                path = unquote(urlsplit(self.path).path)
+            except (ValueError, UnicodeError):
+                path = ''
+            target = None
+            if '\x00' not in path and path.startswith('/'):
+                candidate = (page_dir / path.lstrip('/')).resolve()
+                if candidate == page_dir or page_dir in candidate.parents:
+                    target = candidate
+            if target is not None and target.is_dir():
+                target = target / 'index.html'
+            if target is None or not target.is_file():
+                if target is None or PurePosixPath(path).suffix:   # an asset-like path that is not there is a 404, not the page
+                    self.send_error(404)
+                    return
+                target = page_dir / 'index.html'
+                if not target.is_file():
+                    self.send_error(404)
+                    return
+            body = target.read_bytes()
+            self.serving_page = True
+            self.send_response(200)
+            self.send_header('Content-Type', mimetypes.guess_type(target.name)[0] or 'application/octet-stream')
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-cache' if target.suffix == '.html' else 'public, max-age=31536000, immutable' if target.parent.name == 'assets' else 'no-cache')
+            self.end_headers()
+            self.wfile.write(body)
 
         def reply(self, status, payload, headers=None):
             if status < 300 and self.command == 'POST' and self.path in LOGGED_WRITES:
@@ -1770,6 +1808,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_GET(self):
             lang.use(lang.from_header(self.headers.get('Accept-Language')))
+            self.serving_page = False
+            if page_dir is not None and not (urlsplit(self.path).path + '/').startswith('/api/'):
+                self.page_get()
+                return
             if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
                 return
             if use_layer.owns(self.path):
@@ -3201,12 +3243,14 @@ def main(argv=None):
                         help='an address people reach the service at besides http://127.0.0.1:<port> (the https address of the proxy in front, or a dev server); repeat for several')
     parser.add_argument('--trusted-proxy', action='append', default=None, metavar='ADDRESS',
                         help='the address of the proxy in front, whose X-Forwarded-For is believed (default with an https --origin: this machine); repeat for several')
+    parser.add_argument('--page-dir', type=Path, default=None, metavar='PATH',
+                        help='serve the built page (landing-page/dist/client) from this service, so one process and one address are the whole install')
     parser.add_argument('--no-auth', action='store_true', help='no sign-in: every request is the local admin. Only for a trial on your own machine; needs ONTOPOC_DEV=1, and refuses --origin and proxied requests')
     args = parser.parse_args(argv)
     gateway = gateway_from_env()
     os.umask(0o077)   # files the service makes (runs, confirmations, the model log, the workspace) are this account's only
     try:
-        server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin, trusted_proxies=args.trusted_proxy)
+        server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin, trusted_proxies=args.trusted_proxy, page_dir=args.page_dir)
     except ValueError as exc:
         parser.error(str(exc))
     print(f'Ontology API: http://127.0.0.1:{server.server_port}'
