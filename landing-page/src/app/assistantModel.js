@@ -151,17 +151,22 @@ export function meaningsPayloads(result, choices = {}) {
 // and is moved to the pipeline's name when the person creates it.
 const stashKey = (target) => `assistant-draft:${target}`;
 const receiptKey = (target) => `assistant-receipt:${target}`;
-export function stashDraft(storage, target, steps, receipt) {
+const turnKey = (target) => `assistant-turn:${target}`;   // the kept assistant turn the card came from, marked "saved" when the editor saves
+export function stashDraft(storage, target, steps, receipt, turn) {
   storage.setItem(stashKey(target), JSON.stringify(steps));
   if (receipt) storage.setItem(receiptKey(target), receipt);
   else storage.removeItem(receiptKey(target));
+  if (turn != null) storage.setItem(turnKey(target), String(turn));
+  else storage.removeItem(turnKey(target));
 }
-/** The steps waiting for `target` and the service's receipt for that draft, taken out together; null when there are no steps. */
+/** The steps waiting for `target`, the service's receipt for that draft and the kept turn it came from, taken out together; null when there are no steps. */
 export function takeHandover(storage, target) {
   const receipt = storage.getItem(receiptKey(target));
   storage.removeItem(receiptKey(target));
+  const turn = storage.getItem(turnKey(target));
+  storage.removeItem(turnKey(target));
   const steps = takeDraft(storage, target);
-  return steps ? { steps, receipt: receipt || null } : null;
+  return steps ? { steps, receipt: receipt || null, turn: turn ? Number(turn) : null } : null;
 }
 /** The steps waiting for `target`, taken out (so they apply once); null when there are none. */
 export function takeDraft(storage, target) {
@@ -183,6 +188,9 @@ export function moveDraft(storage, from, to) {
   const receipt = storage.getItem(receiptKey(from));
   storage.removeItem(receiptKey(from));
   if (receipt) storage.setItem(receiptKey(to), receipt);
+  const turn = storage.getItem(turnKey(from));
+  storage.removeItem(turnKey(from));
+  if (turn) storage.setItem(turnKey(to), turn);
 }
 
 /** The pipeline's step the assistant works from when the person names a pipeline: the last step that is not an output. */

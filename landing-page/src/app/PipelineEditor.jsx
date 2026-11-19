@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { getDatasets, getPipelineOptions, getPipelineRun, pipelineSummary, previewNode, runPipeline, savePipeline } from "./api.js";
+import { getDatasets, getPipelineOptions, getPipelineRun, markAssistantTurn, pipelineSummary, previewNode, runPipeline, savePipeline } from "./api.js";
 import { AiDraftPanel, RunDialog } from "./AiDraftPanel.jsx";
 import { takeHandover } from "./assistantModel.js";
 import { t } from "./i18n/index.js";
@@ -143,6 +143,7 @@ export function PipelineEditor({ detail, reload }) {
   const name = detail.name;
   const handed = useRef(undefined);
   const fromAssistant = useRef(null);   // the service's receipt for the assistant's draft, sent with the save
+  const assistantTurn = useRef(null);   // the kept assistant turn the draft came from: marked "saved" once the save succeeds
   const [draft, setDraft] = useState(detail.spec);
   const [selected, setSelected] = useState(detail.spec.steps[detail.spec.steps.length - 1]?.id ?? null);
   const [tab, setTab] = useState("rows");
@@ -169,6 +170,7 @@ export function PipelineEditor({ detail, reload }) {
     if (!steps) return;
     setDraft(applyDraft(detail.spec, steps));
     fromAssistant.current = handed.current.receipt;   // saving this draft with the receipt lets the service mark the pipeline "drafted by the assistant"
+    assistantTurn.current = handed.current.turn;
     setSelected(steps[0].id);
     setUpto(null);
   }, []);
@@ -197,6 +199,8 @@ export function PipelineEditor({ detail, reload }) {
     try {
       await savePipeline(name, detail.version, draft, fromAssistant.current);
       fromAssistant.current = null;
+      if (assistantTurn.current != null) markAssistantTurn(assistantTurn.current, { state: "saved", name }).catch(() => {});   // the history is a convenience
+      assistantTurn.current = null;
       reload();
     } catch (e) {
       setError(e.message);

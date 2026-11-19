@@ -706,7 +706,7 @@ export function QaPage({ route }) {
     apply: (turn) => {
       const plan = turn.plan;
       const name = plan.target.kind === "pipeline" ? plan.target.name : `new:${plan.target.name}`;
-      stashDraft(window.sessionStorage, name, plan.draft.steps, plan.draft.draft_receipt);
+      stashDraft(window.sessionStorage, name, plan.draft.steps, plan.draft.draft_receipt, turn.histId);
       patchPlan(turn, { applied: true, appliedAt: new Date().toISOString() });
       mark(turn, "applied", plan.target.kind === "pipeline" ? plan.target.name : "");
       window.location.hash = plan.target.kind === "pipeline" ? hrefFor({ page: "pipeline", name: plan.target.name, view: "edit" }) : hrefFor({ page: "pipelinenew", dataset: plan.target.name });
