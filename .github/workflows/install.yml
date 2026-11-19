@@ -1,0 +1,53 @@
+name: install
+
+# The pilot install path, from a clean checkout: scripts/ontopoc-start.sh sets everything up, makes the first admin
+# (answers piped in: without a terminal getpass reads stdin), and serves the page and the API on one port.
+on:
+  pull_request:
+    paths: ["scripts/ontopoc-start.sh", "pyproject.toml", "landing-page/package*.json", "src/ontology_poc_generator/ontology_server.py", ".github/workflows/install.yml"]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  start-script:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Run the start script
+        env:
+          ONTOPOC_DATA_DIR: ${{ runner.temp }}/ontopoc-data
+          ONTOPOC_PORT: "8931"
+        run: |
+          printf 'pilot-admin\ncorrect horse battery staple\ncorrect horse battery staple\n' \
+            | ./scripts/ontopoc-start.sh > "$RUNNER_TEMP/start.log" 2>&1 &
+          for i in $(seq 1 180); do
+            curl -sf -o /dev/null http://127.0.0.1:8931/ && break
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/start.log"
+      - name: Page, assets, gated API and sign-in on one port
+        run: |
+          set -e
+          O=http://127.0.0.1:8931
+          curl -sf "$O/" | grep -q '<div id="root"'
+          asset=$(curl -sf "$O/" | grep -o '/assets/[^"]*\.js' | head -n 1)
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$O$asset")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$O/api/workspace/datasets")" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "Origin: $O" -H 'Content-Type: application/json' \
+            -d '{"username":"pilot-admin","password":"correct horse battery staple"}' "$O/api/auth/login")" = 200
+          echo "install OK on ${{ matrix.os }}"
