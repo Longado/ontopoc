@@ -727,8 +727,8 @@ LOOK_ALIKE = {
     'list_questions': '只是读已有的题和答案，不调模型；要问一道新题用 ask_question。',
     'health': '只看服务本身，不看数据；一次运行的数据问题用 data_check，表的结构用 data_layout。',
     'preview_upload': '还没建模、只给文件路径时用这个；已经建过模的运行看每张表用 data_layout，看数据问题用 data_check。',
-    'data_layout': '看的是已经建过模的运行里每张表的结构（行、列、怎么连）；还没上传时用 preview_upload，数据有没有问题用 data_check。',
-    'data_check': '看的是数据有没有问题（七项检查）；表的结构用 data_layout，服务本身在不在跑用 health。',
+    'data_layout': '看的是已经建过模的运行里每张表的结构（行数、列、怎么连）；还没建模、只有文件路径时用 preview_upload，数据有没有问题用 data_check。',
+    'data_check': '看的是数据有没有问题（七项检查）；表的结构用 data_layout，服务在不在跑、有没有模型凭据用 health。',
 }
 for _t in TOOLS:
     _scope = SCOPE_TEAM if _t['name'] in READ_TOOLS else SCOPE_SERVICE if _t['name'] in ('health', 'list_runs') else SCOPE_RUN
