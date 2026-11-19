@@ -10,7 +10,7 @@
 <p align="center">数据集 → 管道 → 对象类型、关系、视图、行为、派生属性 → 问答、看板、智能体（MCP）。</p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/tested%20on-macOS-black" alt="tested on macOS">
   <img src="https://img.shields.io/badge/Python-3.11%2B-green" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Node-22%2B-green" alt="Node 22+">
@@ -200,4 +200,4 @@ PYTHONPATH=src:. python3 scripts/make_demo_company.py         # 重新生成合�
 
 ## 许可证
 
-[MIT](LICENSE) © Yutai Lin
+[AGPL-3.0](LICENSE) © Yutai Lin。v0.2.0 及更早的版本仍按 MIT 发布；需要商业许可的，见 [NOTICE.md](NOTICE.md)。
