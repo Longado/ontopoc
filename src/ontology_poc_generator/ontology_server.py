@@ -1537,7 +1537,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             except Exception as exc:   # never a dropped connection: the person is told something went wrong, and what it was goes to the service's log
-                print(f'{self.path} stopped with {type(exc).__name__}: {failure_reason(exc)}', file=sys.stderr, flush=True)
+                print(f'{self.path} stopped with {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)   # the log keeps the whole of it; the person gets the fixed phrase below
                 self.reply(500, {'error': tr('服务出了内部错误，详情见服务日志', 'The service had an internal error; see the service log for details')})
                 return
             self.reply(*reply)
