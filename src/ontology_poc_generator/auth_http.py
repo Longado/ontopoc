@@ -27,6 +27,15 @@ LOOPBACK_ADDRESSES = ('127.0.0.1', '::1')   # the peer a proxy on this machine c
 PROXY_HEADERS = ('X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'Forwarded', 'X-Real-IP', 'Via')   # a client that reaches the service itself sends none of these
 AUTH_BODY = 4096   # the biggest body any /api/auth/* or /api/users* request needs, read before anyone is signed in
 STILL_NEEDED = ('/api/auth/me', '/api/auth/logout', '/api/auth/password')   # what a person who must change their password may still do
+DEFAULT_FEEDBACK_URL = 'https://github.com/Longado/ontopoc/issues/new'
+
+
+def feedback_url() -> str:
+    """Where the page's "Send feedback" link goes: ONTOPOC_FEEDBACK_URL when it is an http(s) address, else the project's issue form."""
+    value = os.environ.get('ONTOPOC_FEEDBACK_URL', '').strip()
+    return value if urlsplit(value).scheme in ('http', 'https') and urlsplit(value).netloc else DEFAULT_FEEDBACK_URL
+
+
 def not_here() -> str:
     return tr('这个服务没有开登录（--no-auth），没有账号可管理', 'This service runs without sign-in (--no-auth), so there are no accounts to manage')
 def no_token() -> str:
@@ -169,7 +178,7 @@ class Gate:
             return False
         if self.no_auth:
             if path == '/api/auth/me':
-                h.reply(200, {'user': LOCAL_USER, 'auth': False})
+                h.reply(200, {'user': LOCAL_USER, 'auth': False, 'feedback_url': feedback_url()})
             else:
                 h.reply(400, {'error': not_here()})
             return True
@@ -201,7 +210,7 @@ class Gate:
             token = accounts.start_session(conn, found['id'])
             h.reply(200, {'user': found, **me}, self._cookie(token, int(accounts.ABSOLUTE.total_seconds())))
         elif path == '/api/auth/me':
-            h.reply(200, {'user': user, **me})
+            h.reply(200, {'user': user, **me, 'feedback_url': feedback_url()})
         elif path == '/api/auth/logout':
             accounts.end_session(conn, h.session_token)
             h.reply(200, {'ok': True}, self._cookie('', 0))
