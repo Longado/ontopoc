@@ -17,3 +17,4 @@ landing-page/qa-*.png
 landing-page/qa-*.jpg
 landing-page/qa-*.jpeg
 landing-page/qa-*.webp
+deploy/demo/demo.env

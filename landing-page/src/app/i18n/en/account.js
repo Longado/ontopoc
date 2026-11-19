@@ -1,5 +1,6 @@
 // My account: password change and API tokens.
 export default {
+  "guest.note": "Guests of the demo can't change a password or create tokens. Request an account to do that.",
   "title": "My account",
   "noAuth": "This service runs without sign-in (--no-auth), so there is no account to manage.",
   "forced.title": "Change your initial password",

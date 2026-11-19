@@ -1,0 +1,25 @@
+# The public demo: OntoPoc plus Caddy (HTTPS) sharing one network namespace, so Caddy reaches the service on loopback
+# and the service trusts only that proxy. Run from this folder:  docker compose --env-file demo.env up -d --build
+services:
+  ontopoc:
+    build: ../..
+    restart: unless-stopped
+    env_file: demo.env
+    volumes:
+      - ontopoc-data:/data
+    ports:
+      - "80:80"
+      - "443:443"
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    network_mode: "service:ontopoc"
+    env_file: demo.env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - ontopoc
+volumes:
+  ontopoc-data:
+  caddy-data:

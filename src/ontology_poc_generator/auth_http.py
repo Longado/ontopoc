@@ -56,7 +56,7 @@ def limited_anywhere(conn, user: dict | None) -> bool:
     return any(restriction(conn, type_id, user) is not None for (type_id,) in conn.execute('SELECT DISTINCT type_id FROM row_rule').fetchall())
 
 class Gate:
-    def __init__(self, db_path, port: int, origins=(), no_auth: bool = False, trusted_proxies=None):
+    def __init__(self, db_path, port: int, origins=(), no_auth: bool = False, trusted_proxies=None, demo: bool = False):
         """origins: the extra addresses people reach the service at, e.g. https://ontopoc.example.com (the proxy that terminates TLS) or a
         dev server; the service's own http://127.0.0.1:<port> and http://localhost:<port> are always allowed. trusted_proxies: the peer
         addresses whose X-Forwarded-For is believed (by default this machine, once an https origin is configured: the proxy in front).
@@ -65,6 +65,9 @@ class Gate:
             raise ValueError('--no-auth 只用于开发：先设置环境变量 ONTOPOC_DEV=1，再用它。有人要登录的服务不能关登录')
         if no_auth and origins:
             raise ValueError('--no-auth 不能和 --origin 一起用：前面有代理的服务是给别人用的，不能关登录')
+        if demo and no_auth:
+            raise ValueError('--demo 不能和 --no-auth 一起用：演示要有访客账号，不能关登录')
+        self.demo = demo
         self.db_path, self.no_auth, self.limiter = db_path, no_auth, accounts.LoginLimiter()
         extra = [o.rstrip('/') for o in origins]
         for origin in extra:
@@ -186,7 +189,7 @@ class Gate:
             payload = h.read_json(AUTH_BODY) if method == 'POST' else {}
             if payload is None:
                 return True
-            if path not in ('/api/auth/login', '/api/auth/me') and h.session_token is None:
+            if path not in ('/api/auth/login', '/api/auth/demo', '/api/auth/me') and h.session_token is None:
                 raise accounts.AccountError(no_token(), 403)
             conn = self.connect()
             try:
@@ -204,6 +207,19 @@ class Gate:
 
     def _route(self, h, conn, method: str, path: str, payload: dict) -> None:
         user, me = h.user, {'auth': True}   # me: what every account answer carries, so a page can tell the service has sign-in
+        if self.demo:
+            me['demo'] = True
+        if path == '/api/auth/demo':
+            if not self.demo:
+                raise accounts.AccountError(tr('这里没有开演示', 'The demo is not on here'), 404)
+            from ontology_poc_generator import demo   # imported here: only a demo service needs it
+            guest = demo.create_guest(conn, self.client(h))
+            accounts.end_session(conn, h.session_token)
+            token = accounts.start_session(conn, guest['id'])
+            h.reply(200, {'user': guest, **me}, self._cookie(token, int(accounts.ABSOLUTE.total_seconds())))
+            return
+        if user is not None and user.get('provider') == 'demo' and path in ('/api/auth/password', '/api/auth/tokens', '/api/auth/tokens/revoke'):
+            raise accounts.AccountError(tr('演示里不能做这个', 'Not in the demo'), 403)
         if path == '/api/auth/login':
             found = accounts.authenticate(conn, self.limiter, payload.get('username'), payload.get('password'), self.client(h))   # not in a transaction: a failure's log line must stay
             accounts.end_session(conn, h.session_token)   # signing in again ends the session this browser already had

@@ -35,6 +35,7 @@ const send = (path, payload = {}) =>
 // accounts
 export const getMe = () => request("/api/auth/me");
 export const signIn = (username, password) => send("/api/auth/login", { username, password });
+export const startDemo = () => send("/api/auth/demo");
 export const signOut = () => send("/api/auth/logout");
 export const changePassword = (current, next) => send("/api/auth/password", { current, new: next });
 export const getTokens = () => request("/api/auth/tokens").then((b) => b.tokens);

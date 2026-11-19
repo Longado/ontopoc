@@ -2289,3 +2289,11 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .rail-mode { flex: none; padding: 0 6px; border-radius: 999px; background: var(--bg-subtle); color: var(--muted); font-size: 10px; font-weight: 600; line-height: 16px; letter-spacing: 0.03em; text-transform: uppercase; }
 .as-query { margin: 0; padding: var(--s1) var(--s2); background: var(--bg-subtle); border-radius: var(--radius-md); overflow-x: auto; font-size: 12px; }
 .as-card .as-note { margin: 0; padding: var(--s2); }
+
+/* demo landing (login page in demo mode) and the guest banner */
+.login-demo { max-width: 460px; padding-top: 56px; }
+.demo-points { margin: var(--s1) 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: var(--s05); line-height: 22px; }
+.demo-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s1); }
+.demo-actions .primary { min-height: var(--control-lg); padding-left: var(--s3); padding-right: var(--s3); }
+.guest-banner { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--s05) var(--s2); padding: var(--s1) var(--s2); background: var(--accent-soft); color: var(--accent-700); border-bottom: 1px solid var(--border); font-size: 13px; line-height: 20px; }
+.guest-banner .plain { color: var(--accent-700); text-decoration: underline; padding: 0; }

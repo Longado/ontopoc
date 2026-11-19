@@ -191,7 +191,7 @@ def close_to_others(folder: Path) -> None:
 
 
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent,
-                no_auth: bool = False, origins=(), trusted_proxies=None, page_dir: Path = None):
+                no_auth: bool = False, origins=(), trusted_proxies=None, page_dir: Path = None, demo: bool = False):
     """page_dir: a built page (landing-page/dist/client) the service serves itself on every GET outside /api/. no_auth: no sign-in, every request is the local admin (trials and tests only). origins: the addresses, besides the service's own, that
     people reach it at: a proxy's https address, or a dev server."""
     if page_dir is not None:
@@ -1071,7 +1071,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return tr(f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {failure_reason(exc)}', f'Saved, but the answers already in this run could not be recomputed with it: {type(exc).__name__}: {failure_reason(exc)}')[:300]
         return None
 
-    gate = Gate(output_dir / 'workspace.sqlite', port, origins, no_auth, trusted_proxies)
+    gate = Gate(output_dir / 'workspace.sqlite', port, origins, no_auth, trusted_proxies, demo=demo)
 
     class Handler(BaseHTTPRequestHandler):
         timeout = 15   # seconds the service waits on one read from a client, so a connection that sends nothing does not hold a thread
@@ -1898,11 +1898,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path != '/api/ontology/health':
                 self.reply(404, lang.unknown_ontology_endpoint())
                 return
+            extra = {'demo': True} if gate.demo else {}
             if self.user is None:   # a stranger learns only that the service is up
-                self.reply(200, {'ok': True})
+                self.reply(200, {'ok': True, **extra})
                 return
             on_disk = code_fingerprint(code_dir)
-            self.reply(200, {'model_ready': gateway is not None, 'running': running, 'on_disk': on_disk, 'stale': on_disk != running})
+            self.reply(200, {'model_ready': gateway is not None, 'running': running, 'on_disk': on_disk, 'stale': on_disk != running, **extra})
 
         def list_runs(self):
             """Every run kept on this machine, newest first, so a closed tab or another day does not lose one."""
@@ -3260,11 +3261,15 @@ def main(argv=None):
     parser.add_argument('--page-dir', type=Path, default=None, metavar='PATH',
                         help='serve the built page (landing-page/dist/client) from this service, so one process and one address are the whole install')
     parser.add_argument('--no-auth', action='store_true', help='no sign-in: every request is the local admin. Only for a trial on your own machine; needs ONTOPOC_DEV=1, and refuses --origin and proxied requests')
+    parser.add_argument('--demo', action='store_true', help='public demo: POST /api/auth/demo gives each visitor a read-only guest account (also on with ONTOPOC_DEMO=1); not with --no-auth')
     args = parser.parse_args(argv)
+    demo_on = args.demo or os.environ.get('ONTOPOC_DEMO') == '1'
+    if demo_on and args.no_auth:
+        parser.error('--demo 不能和 --no-auth 一起用：演示要有访客账号，不能关登录 / --demo cannot be used with --no-auth')
     gateway = gateway_from_env()
     os.umask(0o077)   # files the service makes (runs, confirmations, the model log, the workspace) are this account's only
     try:
-        server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin, trusted_proxies=args.trusted_proxy, page_dir=args.page_dir)
+        server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin, trusted_proxies=args.trusted_proxy, page_dir=args.page_dir, demo=demo_on)
     except ValueError as exc:
         parser.error(str(exc))
     print(f'Ontology API: http://127.0.0.1:{server.server_port}'
@@ -3279,6 +3284,10 @@ def main(argv=None):
               + ('' if args.data_dir == ROOT / 'output/ontology-runs' else f' --data-dir {args.data_dir}'), flush=True)
     stop = threading.Event()
     threading.Thread(target=schedule_loop, args=(server.run_schedules, stop), name='schedules', daemon=True).start()
+    if demo_on:
+        from ontology_poc_generator import demo
+        print('Demo mode is ON: visitors get read-only guest accounts (POST /api/auth/demo).', flush=True)
+        threading.Thread(target=demo.cleanup_loop, args=(server.gate.connect, stop), name='demo-cleanup', daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

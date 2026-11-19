@@ -1,0 +1,5 @@
+# Caddy gets and renews the HTTPS certificate for the domain by itself (ports 80 and 443 must reach this machine).
+{$ONTOPOC_DOMAIN} {
+	encode gzip
+	reverse_proxy 127.0.0.1:8767
+}
