@@ -16,7 +16,7 @@ Smallest path：标准库解析 RDF/XML、本机服务提供读取接口，工�
 
 首批为：Fourth Coffee、电商、医疗、金融、制造、大学、IQ Lab 零售供应链最终版、Zava 果园到货架，以及社区的售后服务工单、人力资源、供应链中断与风险、产线运营。
 
-原始 RDF 与 metadata 原样保存在 `examples/ontologies/playground/`，`index.json` 记录中文入口名称、原始路径、固定上游提交及文件校验值。收录自 `microsoft/Ontology-Playground` 的提交 `42a5e5ec170c1e76343886b9d5ba7a55959cb112`，随附原始 MIT LICENSE；项目 LICENSE 保留 Microsoft 版权行。
+原始 RDF 与 metadata 原样保存在 `examples/ontologies/playground/`，`index.json` 记录中文入口名称、原始路径、固定上游提交及文件校验值。收录自 `microsoft/Ontology-Playground` 的提交 `42a5e5ec170c1e76343886b9d5ba7a55959cb112`，随附原始 MIT LICENSE（仍按 MIT）；出处与版权写在根目录 NOTICE.md。
 
 ### 能力边界
 

@@ -7,6 +7,8 @@ name = "ontopoc"
 version = "0.2.0"
 description = "An ontology draft from business tables or a document: the model drafts, code checks the draft against the data, a person confirms"
 requires-python = ">=3.11"
+license = {text = "AGPL-3.0-only"}
+classifiers = ["License :: OSI Approved :: GNU Affero General Public License v3"]
 dependencies = ["openpyxl>=3.1"]
 
 [project.optional-dependencies]
