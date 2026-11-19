@@ -4,9 +4,14 @@
 set -eu
 : "${ONTOPOC_DOMAIN:?set ONTOPOC_DOMAIN to the address people open, e.g. demo.example.com}"
 DATA="${ONTOPOC_DATA_DIR:-/data}"
-if [ -z "$(python -m ontology_poc_generator.accounts list --data-dir "$DATA")" ]; then
-  echo "First start: building the demo workspace in $DATA"
-  python -m ontology_poc_generator.demo seed --data-dir "$DATA"
+if [ ! -f "$DATA/.ontopoc-demo-ready" ]; then
+  if [ -f "$DATA/.ontopoc-demo" ]; then
+    echo "An earlier seed stopped halfway: building the demo workspace again in $DATA"
+    python -m ontology_poc_generator.demo seed --data-dir "$DATA" --force-fresh
+  elif [ -z "$(python -m ontology_poc_generator.accounts list --data-dir "$DATA")" ]; then
+    echo "First start: building the demo workspace in $DATA"
+    python -m ontology_poc_generator.demo seed --data-dir "$DATA"
+  fi
 fi
 exec python -m ontology_poc_generator.ontology_server --demo --port "${ONTOPOC_PORT:-8767}" --data-dir "$DATA" \
   --page-dir /app/page --origin "https://$ONTOPOC_DOMAIN"

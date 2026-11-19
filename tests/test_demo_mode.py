@@ -92,6 +92,27 @@ class DemoRoutes(unittest.TestCase):
             codes = [Browser(base).call('POST', '/api/auth/demo', {})[0] for _ in range(6)]
             self.assertEqual(codes, [200] * 5 + [429])
 
+    def test_hourly_limit_across_addresses(self):
+        conn = open_workspace(':memory:')
+        with mock.patch.dict('os.environ', {'ONTOPOC_DEMO_GUESTS_PER_HOUR': '3'}):
+            for i in range(3):
+                demo.create_guest(conn, f'10.0.0.{i}')
+            with self.assertRaises(accounts.AccountError) as caught:
+                demo.create_guest(conn, '10.0.0.9')
+            self.assertEqual(caught.exception.status, 429)
+            self.assertIsNotNone(demo.create_guest(conn, '10.0.0.9', now=__import__('time').time() + 3601))
+
+    def test_ipv6_counts_by_its_64(self):
+        self.assertEqual(demo.address_key('2001:db8:1:2::5'), demo.address_key('2001:db8:1:2:ffff::9'))
+        self.assertNotEqual(demo.address_key('2001:db8:1:2::5'), demo.address_key('2001:db8:1:3::5'))
+        self.assertEqual(demo.address_key('::ffff:10.1.2.3'), '10.1.2.3')
+        self.assertEqual(demo.address_key('203.0.113.7'), '203.0.113.7')
+        conn = open_workspace(':memory:')
+        for i in range(5):
+            demo.create_guest(conn, f'2001:db8:1:2::{i + 1}')
+        with self.assertRaises(accounts.AccountError):
+            demo.create_guest(conn, '2001:db8:1:2::abcd')
+
     def test_total_limit(self):
         with serving(True) as (base, _), mock.patch.dict('os.environ', {'ONTOPOC_DEMO_MAX_GUESTS': '2'}):
             codes = [Browser(base).call('POST', '/api/auth/demo', {})[0] for _ in range(3)]
@@ -160,6 +181,7 @@ class Seed(unittest.TestCase):
             finally:
                 conn.close()
             self.assertEqual(sorted(result['types']), ['customer', 'order'])
+            self.assertTrue((target / demo.READY).is_file())   # written last: the entrypoint seeds again when it is missing
             with self.assertRaises(SystemExit):
                 demo.seed(target)
             with self.assertRaises(SystemExit):

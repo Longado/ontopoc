@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import http.cookiejar
+import ipaddress
 import json
 import os
 import secrets
@@ -30,6 +31,7 @@ GUEST_PER_ADDRESS = 5   # new guests one address may make in an hour
 GUEST_AGE = timedelta(hours=24)
 CLEANUP_EVERY = 3600   # seconds
 MARKER = '.ontopoc-demo'
+READY = '.ontopoc-demo-ready'   # written last: a seed that stopped halfway has the marker but not this
 def sample_dir() -> Path:
     """docs/pilot/sample: beside the source in a checkout, or under the working folder in an installed copy (the image has it at /app/docs/pilot)."""
     for root in (Path(__file__).resolve().parents[2], Path.cwd()):
@@ -55,15 +57,37 @@ def is_guest(user: dict | None) -> bool:
     return bool(user) and user.get('provider') == PROVIDER
 
 
+def guests_per_hour() -> int:
+    try:
+        return int(os.environ.get('ONTOPOC_DEMO_GUESTS_PER_HOUR', '60'))
+    except ValueError:
+        return 60
+
+
+def address_key(client: str) -> str:
+    """What the per-address limit counts by: an IPv4 address as is, an IPv6 one by its /64 (one household or server holds a whole /64)."""
+    try:
+        address = ipaddress.ip_address(client.strip('[]'))
+    except ValueError:
+        return client[:64]
+    if address.version == 6:
+        if address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)
+        return str(ipaddress.ip_network(f'{address}/64', strict=False))
+    return str(address)
+
+
 def create_guest(conn, client: str, now: float | None = None) -> dict:
     """A new read-only guest for this address, or AccountError 429 when the address or the whole demo has had enough."""
     now = time.time() if now is None else now
     conn.execute(SCHEMA)
-    client = client[:64]
+    client = address_key(client)
     with transaction(conn):
         recent = conn.execute('SELECT COUNT(*) FROM demo_guest WHERE client = ? AND at > ?', (client, now - 3600)).fetchone()[0]
         if recent >= GUEST_PER_ADDRESS:
             raise AccountError(tr(f'这个地址一小时内最多能开 {GUEST_PER_ADDRESS} 个访客账号，请稍后再试', f'This address can open at most {GUEST_PER_ADDRESS} guest accounts an hour. Try again later'), 429)
+        if conn.execute('SELECT COUNT(*) FROM demo_guest WHERE at > ?', (now - 3600,)).fetchone()[0] >= guests_per_hour():   # many addresses at once cannot fill the demo in minutes
+            raise AccountError(tr('演示现在人太多了，请稍后再来', 'The demo is full right now. Come back a little later'), 429)
         live = conn.execute('SELECT COUNT(*) FROM user WHERE provider = ?', (PROVIDER,)).fetchone()[0]
         if live >= max_guests():
             raise AccountError(tr('演示现在人太多了，请稍后再来', 'The demo is full right now. Come back a little later'), 429)
@@ -222,6 +246,7 @@ def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = Fal
         accounts.set_disabled(conn, accounts.get_user(conn, 1), 2, True)
     finally:
         conn.close()
+    (data_dir / READY).write_text('the demo seed finished\n')
     return {'admin': admin_name, 'password': admin_pw, 'data_dir': str(data_dir), 'types': types}
 
 

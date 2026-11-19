@@ -14,7 +14,8 @@ services:
     image: caddy:2
     restart: unless-stopped
     network_mode: "service:ontopoc"
-    env_file: demo.env
+    environment:
+      ONTOPOC_DOMAIN: ${ONTOPOC_DOMAIN:?set ONTOPOC_DOMAIN in demo.env}   # only the domain: the model key stays with the service
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
