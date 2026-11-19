@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { aiDraft, askQuestion, draftMeanings, getAnswer, getAsk, getAssistantTurns, getDatasets, getModelReady, getPipeline, getPipelines, getType, getTypes, keepAssistantTurn, markAssistantTurn, proposeMeanings, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { DemoAskNote } from "./DemoAskNote.jsx";
-import { askOff } from "./demoModel.js";
+import { QUICK_START_URL, askOff } from "./demoModel.js";
 import { useDemoAsk } from "./useDemoAsk.js";
 import { canBuild, isAdmin } from "./authModel.js";
 import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, loadThread, meaningsPayloads, modesFor, nextVersion, parseCommand, privacyKey, proposePayload, saveThread, scopeKind, stashDraft, textOptional } from "./assistantModel.js";
@@ -46,7 +46,7 @@ function Refusal({ record, mayBuild }) {
   const r = record.refusal;
   return (
     <div className="refusal-card">
-      <h2 className="section">{t("ask.refusal.title")}</h2>
+      <h2 className="section"><Icon name="info" size={16} />{t("ask.refusal.title")}</h2>
       {r?.kind === "unsettled" && (
         <>
           <p>{t("ask.refusal.unsettled")}</p>
@@ -823,6 +823,21 @@ export function QaPage({ route }) {
 
   const ideas = suggestions(scope, []);
   const title = threadTitle(turns);
+  if (noAsk && turns.length === 0 && route.id == null) {
+    return (
+      <main className="page chat-page chat-off">
+        <div className="chat-off-state">
+          <span className="chat-off-icon" aria-hidden="true"><Icon name="chat" size={22} /></span>
+          <h1 tabIndex={-1}>{t("auth.guest.askOff.title")}</h1>
+          <p>{t("auth.guest.askOff.body")}</p>
+          <div className="chat-off-actions">
+            <a className="button primary" href={hrefFor({ page: "boards" })}>{t("auth.guest.openBoards")}</a>
+            <a className="button secondary" href={QUICK_START_URL} target="_blank" rel="noopener noreferrer">{t("auth.guest.runItself")}</a>
+          </div>
+        </div>
+      </main>
+    );
+  }
   return (
     <main className="page chat-page">
       <div className={rail ? "chat rail-open" : "chat"}>
