@@ -1898,7 +1898,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path != '/api/ontology/health':
                 self.reply(404, lang.unknown_ontology_endpoint())
                 return
-            extra = {'demo': True} if gate.demo else {}
+            extra = {'demo': True, 'demo_ask': gateway is not None} if gate.demo else {}
             if self.user is None:   # a stranger learns only that the service is up
                 self.reply(200, {'ok': True, **extra})
                 return

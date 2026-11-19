@@ -12,10 +12,11 @@ export function LoginPage({ setup, ended, onSignedIn, feedbackUrl }) {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [demo, setDemo] = useState(false);
+  const [askIsOff, setAskIsOff] = useState(false);
   const [demoError, setDemoError] = useState("");
   useEffect(() => {
     let live = true;
-    getHealth().then((h) => live && setDemo(h?.demo === true), () => {});
+    getHealth().then((h) => { if (live) { setDemo(h?.demo === true); setAskIsOff(h?.demo_ask === false); } }, () => {});
     return () => {
       live = false;
     };
@@ -60,6 +61,7 @@ export function LoginPage({ setup, ended, onSignedIn, feedbackUrl }) {
               <button className="primary" type="button" onClick={tryDemo} disabled={sending}>{sending ? t("auth.demo.trying") : t("auth.demo.try")}</button>
               <a className="demo-request" href={accessUrl(feedbackUrl)} target="_blank" rel="noopener noreferrer">{t("auth.demo.request")}</a>
             </div>
+            {askIsOff && <p className="muted small">{t("auth.demo.askOff")}</p>}
             {demoError && <p className="error" role="alert">{demoError}</p>}
           </>
         ) : (

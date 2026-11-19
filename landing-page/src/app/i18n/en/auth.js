@@ -28,6 +28,11 @@ export default {
   "demo.haveAccount": "Have an account? Sign in",
   "guest.banner": "You're exploring the demo as a guest — read-only, sample data, resets daily. Try asking: “What is the total amount of valid orders?”",
   "guest.signOut": "Sign out",
+  "guest.bannerNoAsk": "You're exploring the demo as a guest — read-only sample data. Questions are off in this public demo; open Boards to see answers built from confirmed definitions.",
+  "guest.openBoards": "Open Boards",
+  "guest.askOff.text": "Asking questions needs a model, which is off in this public demo. Run OntoPoc yourself to ask questions about your own data — see the",
+  "guest.askOff.quickstart": "quick start.",
+  "demo.askOff": "In this public demo questions are off; boards show the answers.",
   "loading": "Loading…",
   "retry": "Try again",
 };

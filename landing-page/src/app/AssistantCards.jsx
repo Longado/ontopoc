@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { QuestionList, SeesNote } from "./AiBox.jsx";
 import { actionState, meaningsCard, planCard, proposalCard } from "./assistantModel.js";
 import { formatNumber, useT } from "./i18n/index.js";
+import { useAuth } from "./Auth.jsx";
+import { isGuest } from "./authModel.js";
+import { DemoAskNote } from "./DemoAskNote.jsx";
 import { failureLines, friendlyError, kindLine } from "./pipelineModel.js";
 import { definitionHref } from "./qaModel.js";
 import { hrefFor } from "./routeModel.js";
@@ -33,6 +36,7 @@ function Row({ label, children }) {
 /** When no model is configured: a plain assistant message, with a way to Settings for an admin. */
 export function NoModel({ admin }) {
   const t = useT();
+  if (isGuest(useAuth().user)) return <DemoAskNote />;
   return (
     <div className="as-notice" role="status">
       <strong>{t("ask.assistant.nomodel.title")}</strong>

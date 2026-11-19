@@ -6,6 +6,8 @@ import { BoardPage, BoardsPage } from "./BoardsPage.jsx";
 import { WORKSPACE_CHANGED, getNotices, getQueueCount } from "./api.js";
 import { NoticesPage } from "./NoticesPage.jsx";
 import { useAuth } from "./Auth.jsx";
+import { askOff } from "./demoModel.js";
+import { useDemoAsk } from "./useDemoAsk.js";
 import { t } from "./i18n/index.js";
 import { canBuild, isGuest, roleLabel, searchPlaceholder } from "./authModel.js";
 import { SettingsPage } from "./SettingsPage.jsx";
@@ -118,10 +120,13 @@ function AvatarMenu() {
 /** The slim line under the top bar for a demo guest: what this is, and a way out. */
 function GuestBanner() {
   const { user, signOut } = useAuth();
+  const demoAsk = useDemoAsk();
   if (!isGuest(user)) return null;
+  const off = askOff(user, demoAsk);
   return (
     <div className="guest-banner" role="note">
-      <span>{t("auth.guest.banner")}</span>
+      <span>{off ? t("auth.guest.bannerNoAsk") : t("auth.guest.banner")}</span>
+      {off && <a href="#/boards">{t("auth.guest.openBoards")}</a>}
       <button className="plain" onClick={signOut}>{t("auth.guest.signOut")}</button>
     </div>
   );

@@ -205,6 +205,14 @@ def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = Fal
                    'properties': [{'column': c} for c in ('customer_id', 'name', 'city', 'tier')]})
         # Customer stays unconfirmed on purpose: a question about customers is refused with the reason, which is what the demo shows
         types = [t['id'] for t in admin.must('GET', '/api/workspace/types')['types']]
+        # boards for every viewer, guests included: only confirmed definitions, worked out without a model
+        valid, every = {'type': 'order', 'view': 'Valid orders'}, {'type': 'order'}
+        admin.must('POST', '/api/workspace/dashboards', {'name': 'Orders overview', 'scope': 'everyone', 'spec': {'components': [
+            {'id': 'valid_amount', 'title': 'Valid order amount', 'query': valid, 'chart': {'kind': 'number', 'measure': 'amount', 'fn': 'sum'}},
+            {'id': 'valid_count', 'title': 'Valid orders', 'query': valid, 'chart': {'kind': 'number'}},
+            {'id': 'all_amount', 'title': 'All orders amount', 'query': every, 'chart': {'kind': 'number', 'measure': 'amount', 'fn': 'sum'}},
+            {'id': 'by_status', 'title': 'Valid order amount by status', 'query': valid, 'chart': {'kind': 'bar', 'group': 'status_code', 'measure': 'amount', 'fn': 'sum'}}],
+            'filters': []}})
     finally:
         server.shutdown()
         server.server_close()

@@ -2297,3 +2297,4 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .demo-actions .primary { min-height: var(--control-lg); padding-left: var(--s3); padding-right: var(--s3); }
 .guest-banner { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--s05) var(--s2); padding: var(--s1) var(--s2); background: var(--accent-soft); color: var(--accent-700); border-bottom: 1px solid var(--border); font-size: 13px; line-height: 20px; }
 .guest-banner .plain { color: var(--accent-700); text-decoration: underline; padding: 0; }
+.guest-banner a { color: var(--accent-700); text-decoration: underline; }

@@ -54,7 +54,7 @@ class Browser:
 class DemoRoutes(unittest.TestCase):
     def test_health_flag_only_when_on(self):
         with serving(True) as (base, _):
-            self.assertEqual(Browser(base).call('GET', '/api/ontology/health')[1], {'ok': True, 'demo': True})
+            self.assertEqual(Browser(base).call('GET', '/api/ontology/health')[1], {'ok': True, 'demo': True, 'demo_ask': False})
         with serving(False) as (base, _):
             self.assertEqual(Browser(base).call('GET', '/api/ontology/health')[1], {'ok': True})
 
@@ -165,6 +165,41 @@ class Seed(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 demo.seed(Path(tmp), force_fresh=True)   # not a demo folder (no marker): refuses to wipe
             demo.seed(target, force_fresh=True)
+
+    def test_guest_opens_the_seeded_board(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / 'demo'
+            demo.seed(target)
+            server = make_server(port=0, gateway=None, output_dir=target, demo=True)
+            thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
+            thread.start()
+            try:
+                guest = Browser(f'http://127.0.0.1:{server.server_port}')
+                self.assertEqual(guest.call('GET', '/api/ontology/health')[1], {'ok': True, 'demo': True, 'demo_ask': False})
+                self.assertEqual(guest.call('POST', '/api/auth/demo', {})[0], 200)   # a guest made after the seed
+                boards = guest.call('GET', '/api/workspace/dashboards')[1]['dashboards']
+                self.assertEqual([b['name'] for b in boards], ['Orders overview'])
+                status, body = guest.call('POST', '/api/workspace/dashboards/data', {'id': boards[0]['id'], 'bar': {}})
+                self.assertEqual(status, 200, body)
+                by_id = {c['id']: c for c in body['components']}
+                self.assertTrue(all(c['status'] == 'ok' for c in by_id.values()), body)
+                self.assertEqual([by_id[k]['result']['value'] for k in ('valid_amount', 'valid_count', 'all_amount')], [119810, 107, 162960])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join()
+
+    def test_health_demo_ask_follows_the_gateway(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            server = make_server(port=0, gateway=object(), output_dir=Path(tmp), demo=True)
+            thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
+            thread.start()
+            try:
+                self.assertTrue(Browser(f'http://127.0.0.1:{server.server_port}').call('GET', '/api/ontology/health')[1]['demo_ask'])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join()
 
 
 if __name__ == '__main__':

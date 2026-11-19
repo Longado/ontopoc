@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { aiDraft, askQuestion, draftMeanings, getAnswer, getAsk, getAssistantTurns, getDatasets, getModelReady, getPipeline, getPipelines, getType, getTypes, keepAssistantTurn, markAssistantTurn, proposeMeanings, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
+import { DemoAskNote } from "./DemoAskNote.jsx";
+import { askOff } from "./demoModel.js";
+import { useDemoAsk } from "./useDemoAsk.js";
 import { canBuild, isAdmin } from "./authModel.js";
 import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, loadThread, meaningsPayloads, modesFor, nextVersion, parseCommand, privacyKey, proposePayload, saveThread, scopeKind, stashDraft, textOptional } from "./assistantModel.js";
 import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.jsx";
@@ -548,6 +551,7 @@ export function QaPage({ route }) {
   const t = useT();
   const me = useAuth().user;
   const mayBuild = canBuild(me);
+  const noAsk = askOff(me, useDemoAsk());
   const who = me?.username ?? "";
   const [info, reload] = useLoad(getAsk, []);
   const [text, setText] = useState("");
@@ -842,7 +846,7 @@ export function QaPage({ route }) {
                     {["ask", "model", "pipeline", "meanings"].map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
                   </div>
                 )}
-                {ideas.length > 0 && queryMode === "ask" && (
+                {!noAsk && ideas.length > 0 && queryMode === "ask" && (
                   <div className="chips" aria-label={t("ask.chat.try")}>
                     {ideas.map((q) => <button key={q} className="chip" disabled={busy} onClick={() => send(q)}>{q}</button>)}
                   </div>
@@ -854,11 +858,11 @@ export function QaPage({ route }) {
               </div>
             )}
           </div>
-          <div className="composer-wrap">
+          {noAsk ? <div className="composer-wrap"><DemoAskNote /></div> : <div className="composer-wrap">
             <Composer scope={scope} mayBuild={mayBuild} mode={queryMode} setMode={setMode} text={text} setText={setText} query={query} setQuery={setQuery} busy={busy} onSend={sendIn} onRun={run}
               scopes={{ datasets: datasets.data ?? [], pipelines: pipelines.data ?? [], chosen, setChosen, target, setTarget, types: (types.data ?? []).filter((x) => x.dataset), type: typeScope, setType: setTypeScope }} />
             <p className="composer-fine muted small" title={t(privacyKey(queryMode))}>{t(`${privacyKey(queryMode)}Short`)}</p>
-          </div>
+          </div>}
         </section>
       </div>
     </main>

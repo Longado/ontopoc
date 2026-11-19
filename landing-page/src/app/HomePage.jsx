@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import { getAsk, getDatasets, getNotices, getPipelines, getQueueCount, getRelations, getSources, getTypes, getUsers } from "./api.js";
 import { useAuth } from "./Auth.jsx";
+import { DemoAskNote } from "./DemoAskNote.jsx";
+import { askOff } from "./demoModel.js";
+import { useDemoAsk } from "./useDemoAsk.js";
 import { canBuild, isAdmin } from "./authModel.js";
 import { exampleQuestions, greeting, kpiCards, needsSetup, quickActions, setupSteps, todoItems, updatedText } from "./homeModel.js";
 import { formatDate, formatDateTime, t } from "./i18n/index.js";
@@ -72,6 +75,9 @@ function Kpis({ cards }) {
 
 function AskBox({ examples, ready }) {
   const [text, setText] = useState("");
+  const { user } = useAuth();
+  const demoAsk = useDemoAsk();
+  if (askOff(user, demoAsk)) return <section className="ask-hero" aria-label={t("home.ask.aria")}><DemoAskNote /></section>;
   const ask = (question) => {
     const q = question.trim();
     if (q) window.location.hash = hrefFor({ page: "qa", id: null, ask: q });

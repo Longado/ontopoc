@@ -27,6 +27,11 @@ export default {
   "demo.haveAccount": "已有账号？登录",
   "guest.banner": "你正以访客身份体验演示：只读、示例数据、每天重置。试着问：“有效订单的总金额是多少？”",
   "guest.signOut": "退出",
+  "guest.bannerNoAsk": "你正以访客身份体验演示：只读示例数据。这个公开演示未开放提问；打开看板，可以看到由已确认定义生成的答案。",
+  "guest.openBoards": "打开看板",
+  "guest.askOff.text": "提问需要模型，而这个公开演示没有开启模型。想问你自己的数据，请自己运行 OntoPoc，详见",
+  "guest.askOff.quickstart": "快速开始。",
+  "demo.askOff": "这个公开演示未开放提问；看板里有答案。",
   "loading": "加载中",
   "retry": "重试",
 };
