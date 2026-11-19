@@ -15,6 +15,7 @@ export default {
   "avatar.aria": "Account: {name}",
   "avatar.local": "Local mode, not signed in",
   "avatar.account": "My account",
+  "avatar.feedback": "Send feedback",
   "avatar.signOut": "Sign out",
   "avatar.language": "Language",
   "nav.aria": "Main navigation",

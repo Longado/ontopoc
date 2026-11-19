@@ -14,6 +14,7 @@ export default {
   "avatar.aria": "账号：{name}",
   "avatar.local": "本机，没有登录",
   "avatar.account": "我的账号",
+  "avatar.feedback": "反馈意见",
   "avatar.signOut": "退出",
   "avatar.language": "语言",
   "nav.aria": "主导航",

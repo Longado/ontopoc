@@ -159,6 +159,19 @@ class GateTests(GateTestCase):
                 self.assertEqual(guest.get(path)[0], 401, path)
             self.assertEqual(guest.post('/api/workspace/datasets/upload', {'files': [table_part()]})[0], 401)
 
+    def test_me_carries_the_feedback_link_from_the_environment_or_the_default(self):
+        from unittest import mock
+        from ontology_poc_generator.auth_http import DEFAULT_FEEDBACK_URL
+        with self.service() as (base, _):
+            admin = Client(base)
+            admin.login('root')
+            with mock.patch.dict(os.environ, {'ONTOPOC_FEEDBACK_URL': ''}):
+                self.assertEqual(admin.get('/api/auth/me')[1]['feedback_url'], DEFAULT_FEEDBACK_URL)
+            with mock.patch.dict(os.environ, {'ONTOPOC_FEEDBACK_URL': 'https://forms.example.com/pilot'}):
+                self.assertEqual(admin.get('/api/auth/me')[1]['feedback_url'], 'https://forms.example.com/pilot')
+            with mock.patch.dict(os.environ, {'ONTOPOC_FEEDBACK_URL': 'javascript:alert(1)'}):
+                self.assertEqual(admin.get('/api/auth/me')[1]['feedback_url'], DEFAULT_FEEDBACK_URL)
+
     def test_no_account_yet_means_the_service_says_how_to_make_one_and_does_nothing_else(self):
         with self.service(first_admin=False) as (base, _):
             guest = Client(base)

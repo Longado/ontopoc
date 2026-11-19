@@ -1,0 +1,7 @@
+status_code,note
+0,"New: order placed, not yet paid"
+1,Paid: payment received
+2,Shipped: left the warehouse
+3,Delivered: customer received it
+4,"Cancelled: stopped before delivery, money not collected or returned in full"
+5,"Refunded: delivered, then money returned to the customer"

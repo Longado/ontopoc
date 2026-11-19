@@ -17,7 +17,7 @@ export function AuthGate({ children }) {
   const [me, setMe] = useState({ status: "loading" });
   const load = useCallback(
     () => getMe().then(
-      (b) => setMe({ status: "in", user: b.user, auth: b.auth }),
+      (b) => setMe({ status: "in", user: b.user, auth: b.auth, feedbackUrl: b.feedback_url }),
       (e) => setMe(e.code === 401 || e.setup ? { status: "out", setup: e.setup ? e.message : "" } : { status: "failed", error: e.message }),
     ),
     [],
@@ -38,5 +38,5 @@ export function AuthGate({ children }) {
   if (me.status === "out") return <LoginPage setup={me.setup} ended={me.ended} onSignedIn={() => home(me.ended)} />;
   const exit = () => signOut().catch(() => {}).finally(() => setMe({ status: "out", setup: "" }));
   if (me.user.must_change) return <AccountPage forced user={me.user} onChanged={() => home(false)} />;
-  return <AuthContext.Provider value={{ user: me.user, auth: me.auth, signOut: exit, refresh: load }}><React.Fragment key={t.locale}>{children}</React.Fragment></AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user: me.user, auth: me.auth, feedbackUrl: me.feedbackUrl, signOut: exit, refresh: load }}><React.Fragment key={t.locale}>{children}</React.Fragment></AuthContext.Provider>;
 }
