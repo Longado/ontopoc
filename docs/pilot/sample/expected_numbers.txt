@@ -1,0 +1,6 @@
+orders: 150  customers: 40  rows in the three uploadable files: 196
+orders per status_code: {0: 7, 1: 12, 2: 32, 3: 63, 4: 19, 5: 17}
+sum of amount, all orders (the WRONG revenue, includes cancelled and refunded): 162960
+sum of amount, status_code in (1,2,3) paid/shipped/delivered (the intended revenue): 119810
+orders with status_code 4 or 5: 36, amount 38170
+orders with status_code 3 (delivered): 63

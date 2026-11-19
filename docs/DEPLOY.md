@@ -2,6 +2,14 @@
 
 服务本身只听本机（127.0.0.1:8767），不处理 HTTPS。给几个人用时，前面放一个做 HTTPS 的代理，服务和数据都留在这台机器上。下面按顺序做。
 
+## 一条命令装好（Mac / Linux，先试用）
+
+```bash
+git clone https://github.com/Longado/ontopoc.git && cd ontopoc && ./scripts/ontopoc-start.sh
+```
+
+脚本会检查 Python 3.11+ 和 Node，建 `.venv`、装依赖、构建页面，第一次运行时让你建管理员，然后由服务自己提供页面，打开 `http://127.0.0.1:8767/` 即可。数据在 `~/.ontopoc/data`（`ONTOPOC_DATA_DIR` 可改），端口用 `ONTOPOC_PORT` 改。再次运行会跳过已完成的步骤。没设 `OPENROUTER_API_KEY` / `DEEPSEEK_API_KEY` 时，含义和建议功能关闭，其余照常。要给团队用、加 HTTPS，继续看下面的步骤（`--page-dir` 同样可以接在下面的启动命令后）。
+
 ## 1. 账号
 
 在服务所在的机器上建第一个管理员（没有默认账号和密码）：

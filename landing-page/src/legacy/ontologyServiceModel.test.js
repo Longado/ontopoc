@@ -5,6 +5,7 @@ import { serviceBlock, serviceError, serviceReady } from "./ontologyStudioModel.
 
 test("an outdated local service is told apart from other failures", () => {
   assert.match(serviceError(404, { error: "Unknown ontology endpoint" }), /重启建模服务/);
+  assert.match(serviceError(404, { error: "没有这个本体接口", code: "no_such_route" }), /重启建模服务/);   // a newer service says it in the reader's language, with the code
   assert.equal(serviceError(400, { error: "文件太大" }), "文件太大");
   assert.equal(serviceError(500, null), "服务返回 500");
 });

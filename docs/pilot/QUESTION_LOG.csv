@@ -1,0 +1,3 @@
+date,asked_by,question,expected_sql_or_number,ontopoc_answer,verdict,refusal_reason_ok,notes
+2026-08-03,Wang Li,What is the total amount of valid orders?,"119810 (SELECT SUM(amount) FROM orders WHERE status_code IN (1,2,3))",119810,right,,Matched after the Valid orders view was confirmed
+2026-08-04,Chen Yu,How many orders were refunded last month?,"SELECT COUNT(*) FROM orders WHERE status_code=5 AND order_date>='2026-07-01'",Not answered: meanings of status_code are not confirmed,refused,y,Correct to refuse: the meaning of code 5 was still waiting for a second builder

@@ -260,7 +260,7 @@ class SignInTests(AccountTestCase):
         self.sign_in('root')
         rows = self.conn.execute("SELECT who, change FROM log WHERE change IN ('login', 'login_failed') ORDER BY rowid").fetchall()
         self.assertEqual(rows, [('(sign-in)', 'login_failed'), ('root', 'login')])   # a stranger's text is never the signature
-        self.assertEqual(json.loads(self.conn.execute("SELECT after_json FROM log WHERE change = 'login_failed'").fetchone()[0])['name'], 'xinject')   # kept as data, without the control characters
+        self.assertEqual(json.loads(self.conn.execute("SELECT after_json FROM log WHERE change = 'login_failed'").fetchone()[0])['name'], '(unknown name)')   # a name no account has is not kept (it may be a password typed in the wrong box); a real one is, as text: see tests/test_security_review_2026_11.py
 
     def test_a_huge_password_is_refused_before_it_is_hashed(self):
         with mock.patch.object(accounts, '_scrypt') as work, self.assertRaises(AccountError):

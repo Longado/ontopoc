@@ -20,6 +20,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
+from ontology_poc_generator import lang
 from ontology_poc_generator.ontology_card import SAYS
 from ontology_poc_generator.ontology_confirm import without_wrong
 
@@ -28,7 +29,7 @@ KEPT = ('question', 'query', 'note', 'snapshot', 'answer', 'status', 'path', 're
 UNMET = ('query_limit', 'ontology_gap')
 CARDINALITY = {'one_to_one': '一对一', 'one_to_many': '一对多', 'many_to_one': '多对一', 'many_to_many': '多对多'}
 OLD_SERVICE = '本机建模服务是旧版本，还没有“要确认的事”这一项；更新代码并重启服务后再看。'
-NO_SUCH_ROUTE = 'Unknown ontology endpoint'   # what the service's router says for a path it does not have
+NO_SUCH_ROUTE = 'Unknown ontology endpoint'   # what an older service's router says for a path it does not have (a newer one also sends code no_such_route, in either language)
 EXPORT_MANIFEST = '.ontopoc-export.json'   # in the export folder: the names each kind of export last wrote there
 INSTRUCTIONS = """本机 OntoPoc：上传业务表或文档建本体，让人判断它对不对、能不能拿去用。
 模型只提议，代码核验，判断只归人。
@@ -72,9 +73,9 @@ READ_INSTRUCTIONS = """本机 OntoPoc 的只读入口：团队已经确认的业
 class ToolError(Exception):
     """What a tool reports back to the client as its error text; status is the service's HTTP status when it refused."""
 
-    def __init__(self, text: str, status: int | None = None):
+    def __init__(self, text: str, status: int | None = None, code: str | None = None):
         super().__init__(text)
-        self.status = status
+        self.status, self.code = status, code
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -101,8 +102,12 @@ class LocalService:
                 return json.load(response)
         except HTTPError as exc:
             try:
-                raise ToolError(json.load(exc).get('error') or f'服务返回 {exc.code}', exc.code) from None
+                body = json.load(exc)
             except ValueError:
+                body = None
+            if isinstance(body, dict):
+                raise ToolError(body.get('error') or f'服务返回 {exc.code}', exc.code, body.get('code')) from None
+            else:
                 raise ToolError(f'服务返回 {exc.code}', exc.code) from None
         except URLError as exc:
             raise ToolError(f'连不上本机建模服务 {self.base}（{exc.reason}）。先启动 ontology_server。') from None
@@ -153,7 +158,7 @@ def _route(s, path: str):
     try:
         return s.request(path)
     except ToolError as exc:
-        if exc.status != 404 or str(exc) != NO_SUCH_ROUTE:   # any other 404 is about the run, not the route
+        if exc.status != 404 or (exc.code != lang.NO_SUCH_ROUTE and str(exc) != NO_SUCH_ROUTE):   # any other 404 is about the run, not the route
             raise
         return None
 

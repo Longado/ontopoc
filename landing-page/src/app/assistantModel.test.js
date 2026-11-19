@@ -148,8 +148,16 @@ test("a draft waits in session storage for the editor, applies once, and can mov
   assert.equal(s.size(), 0);
   stashDraft(s, "Orders", [{ id: "ai1", step: {} }], "rcpt");   // the service's receipt for the draft waits with it and moves with it
   moveDraft(s, "Orders", "Made");
-  assert.deepEqual(takeHandover(s, "Made"), { steps: [{ id: "ai1", step: {} }], receipt: "rcpt" });
+  assert.deepEqual(takeHandover(s, "Made"), { steps: [{ id: "ai1", step: {} }], receipt: "rcpt", turn: null });
   assert.equal(takeHandover(s, "Made"), null);
+  assert.equal(s.size(), 0);
+  stashDraft(s, "new:orders", [{ id: "ai1", step: {} }], "rcpt", 42);   // the kept turn the card came from goes with it, so saving can mark that turn "saved"
+  moveDraft(s, "new:orders", "Made");
+  assert.deepEqual(takeHandover(s, "Made"), { steps: [{ id: "ai1", step: {} }], receipt: "rcpt", turn: 42 });
+  assert.equal(s.size(), 0);
+  stashDraft(s, "Orders", [{ id: "ai1", step: {} }], null, 7);
+  stashDraft(s, "Orders", [{ id: "ai2", step: {} }]);   // a later handover without a kept turn does not inherit the earlier one
+  assert.equal(takeHandover(s, "Orders").turn, null);
   assert.equal(s.size(), 0);
   moveDraft(s, "nothing", "to");   // moving what is not there does nothing
   assert.equal(s.size(), 0);

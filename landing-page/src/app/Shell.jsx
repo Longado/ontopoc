@@ -96,7 +96,7 @@ const store = {
 
 /** The avatar and its menu: the person's name and role, the language switch, My account, Sign out. */
 function AvatarMenu() {
-  const { user, auth, signOut } = useAuth();
+  const { user, auth, signOut, feedbackUrl } = useAuth();
   const [open, setOpen, ref] = usePopover();
   if (!auth) return <span className="top-local muted">{t("shell.avatar.local")}</span>;
   return (
@@ -107,6 +107,7 @@ function AvatarMenu() {
           <div className="menu-who"><strong>{user.display_name}</strong><span className="muted small">{roleLabel(user.role)}</span></div>
           <a role="menuitem" className="menu-item" href="#/account" onClick={() => setOpen(false)}><Icon name="user" />{t("shell.avatar.account")}</a>
           <LanguageSwitch />
+          {feedbackUrl && <a role="menuitem" className="menu-item" href={feedbackUrl} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}><Icon name="external" />{t("shell.avatar.feedback")}</a>}
           <button role="menuitem" className="menu-item" onClick={signOut}><Icon name="logout" />{t("shell.avatar.signOut")}</button>
         </div>
       )}

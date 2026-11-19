@@ -9,8 +9,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
+import mimetypes
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import sqlite3
 import sys
@@ -107,6 +108,8 @@ LOGGED_WRITES = {'/api/ontology/acceptance': 'acceptance', '/api/ontology/rules'
                  '/api/ontology/reference/confirm': 'reference', '/api/ontology/card': 'card'}   # library/import only reads a file and keeps nothing
 SECURITY_HEADERS = (('X-Content-Type-Options', 'nosniff'), ('Referrer-Policy', 'no-referrer'),
                     ('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'"))   # the service answers JSON and downloads, never a page
+PAGE_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"   # for the built page only
+API_PREFIX = '/' + 'api' + '/'   # everything under it is the service; the page's files are served only outside it
 MAX_BULK = 200   # relations approved in one request: far above what a run has
 SOURCE_PATH = re.compile(r'/api/workspace/(sources|schedules)(/.*)?')   # the sources and schedules pages' requests (sources_http.py)
 
@@ -117,6 +120,12 @@ class RunChanged(ValueError):
 
 SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
 JOB_ID = re.compile(r'^[0-9a-f]{12}$')
+def failure_reason(exc: BaseException) -> str:
+    """What an error says to the person at the page. A file error carries the path of this machine, so only its kind is said; the whole of it goes to the service's log."""
+    if isinstance(exc, OSError):
+        print(f'request stopped with {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+        return tr('详情见服务日志', 'see the service log')
+    return str(exc)
 def no_key() -> str:
     return tr('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。', 'This service has no model credentials: set DEEPSEEK_API_KEY or OPENROUTER_API_KEY and restart ontology_server.')
 def interrupted() -> str:
@@ -182,9 +191,13 @@ def close_to_others(folder: Path) -> None:
 
 
 def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontology-runs', code_dir: Path = Path(__file__).parent,
-                no_auth: bool = False, origins=(), trusted_proxies=None):
-    """no_auth: no sign-in, every request is the local admin (trials and tests only). origins: the addresses, besides the service's own, that
+                no_auth: bool = False, origins=(), trusted_proxies=None, page_dir: Path = None):
+    """page_dir: a built page (landing-page/dist/client) the service serves itself on every GET outside /api/. no_auth: no sign-in, every request is the local admin (trials and tests only). origins: the addresses, besides the service's own, that
     people reach it at: a proxy's https address, or a dev server."""
+    if page_dir is not None:
+        page_dir = Path(page_dir).resolve()
+        if not (page_dir / 'index.html').is_file():
+            raise ValueError(f'--page-dir {page_dir} has no index.html: build the page first (cd landing-page && npm run build)')
     output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)   # the data holds password hashes, every prompt sent to the model and the people's names
     close_to_others(output_dir)   # a folder made before this was a rule may be open to every account on the machine
     running = code_fingerprint(code_dir)
@@ -412,7 +425,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             return {'views': context['views'], 'view_tables': context['view_tables'], 'proposed_views': waiting}
         except Exception as exc:
-            return {'views': [], 'view_tables': [], 'proposed_views': [], 'views_error': tr(f'视图没有读出来：{type(exc).__name__}: {exc}', f'The views could not be read: {type(exc).__name__}: {exc}')[:300]}
+            return {'views': [], 'view_tables': [], 'proposed_views': [], 'views_error': tr(f'视图没有读出来：{type(exc).__name__}: {failure_reason(exc)}', f'The views could not be read: {type(exc).__name__}: {failure_reason(exc)}')[:300]}
 
     def rows_kept(result, context, view):
         """The positions of the rows a view keeps in its table, read once per version of the definitions."""
@@ -462,7 +475,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         try:   # the workspace file is a second store: failing to read it must not stop an answer that the rows alone can give
             context, unread = view_context(result), None
         except Exception as exc:
-            context, unread = None, tr(f'视图没有读出来，这次读的是原表的行：{type(exc).__name__}: {exc}', f'The views could not be read, so this run read the rows of the original table: {type(exc).__name__}: {exc}')[:300]
+            context, unread = None, tr(f'视图没有读出来，这次读的是原表的行：{type(exc).__name__}: {failure_reason(exc)}', f'The views could not be read, so this run read the rows of the original table: {type(exc).__name__}: {failure_reason(exc)}')[:300]
 
         def rows_of(applied):
             """(bundle, graph) holding only the rows the views in `applied` keep, per table (a row all of them keep)."""
@@ -524,7 +537,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             return tr('；', '; ').join(tr(f'{n}：{e}', f'{n}: {e}') for n, e in refused.items()) or None
         except Exception as exc:
-            return f'{type(exc).__name__}: {exc}'[:300]
+            return f'{type(exc).__name__}: {failure_reason(exc)}'[:300]
 
     views_warning = lambda problem: tr(f'已记下，但工作区里的视图没有更新：{problem}', f'Saved, but the views in the workspace were not updated: {problem}') if problem else None
 
@@ -927,7 +940,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         try:
             return future.result()
         except Exception as exc:   # an extra run is evidence, not the answer: its failure is counted, the upload goes on
-            return {'status': 'failed', 'error': f'{type(exc).__name__}: {exc}'[:200]}
+            return {'status': 'failed', 'error': f'{type(exc).__name__}: {failure_reason(exc)}'[:200]}
 
     def data_checks(ontology, bundle, starter=None):
         """Every source table goes into the workspace file beside the runs, and each drafted identity is checked over the
@@ -942,7 +955,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             finally:
                 conn.close()
         except Exception as exc:   # the checks are evidence on top of the build: their failure is shown, not fatal
-            return {'tables': [], 'keys': [], 'error': f'{type(exc).__name__}: {exc}'[:300]}
+            return {'tables': [], 'keys': [], 'error': f'{type(exc).__name__}: {failure_reason(exc)}'[:300]}
 
     def save_build(bundle, result, progress=None, previous_name=None, starter=None):
         outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
@@ -1055,7 +1068,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return None   # a blocked draft has no answers to work out again
             answers_again(name, because)
         except Exception as exc:
-            return tr(f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {exc}', f'Saved, but the answers already in this run could not be recomputed with it: {type(exc).__name__}: {exc}')[:300]
+            return tr(f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {failure_reason(exc)}', f'Saved, but the answers already in this run could not be recomputed with it: {type(exc).__name__}: {failure_reason(exc)}')[:300]
         return None
 
     gate = Gate(output_dir / 'workspace.sqlite', port, origins, no_auth, trusted_proxies)
@@ -1071,8 +1084,47 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def end_headers(self):
             for name, value in SECURITY_HEADERS:
+                if name == 'Content-Security-Policy' and getattr(self, 'serving_page', False):
+                    value = PAGE_CSP
                 self.send_header(name, value)
             super().end_headers()
+
+        def page_get(self):
+            """A file of the built page, or index.html for a route of the page itself; the page signs in through /api, so these need no session."""
+            try:
+                path = unquote(urlsplit(self.path).path)
+            except (ValueError, UnicodeError):
+                path = ''
+            target = None
+            if '\x00' not in path and path.startswith('/'):
+                candidate = (page_dir / path.lstrip('/')).resolve()
+                if candidate == page_dir or page_dir in candidate.parents:
+                    target = candidate
+            if target is not None and target.is_dir():
+                target = target / 'index.html'
+            if target is None or not target.is_file():
+                if target is None or PurePosixPath(path).suffix:   # an asset-like path that is not there is a 404, not the page
+                    self.send_error(404)
+                    return
+                target = page_dir / 'index.html'
+                if not target.is_file():
+                    self.send_error(404)
+                    return
+            try:
+                body = target.read_bytes()
+            except OSError as exc:   # a file of the build this account cannot read: an error reply, not a dropped connection
+                print(f'page file {target.name} not served: {exc}', file=sys.stderr, flush=True)
+                self.send_error(404)
+                return
+            self.serving_page = True
+            self.send_response(200)
+            kind = mimetypes.guess_type(target.name)[0] or 'application/octet-stream'
+            self.send_header('Content-Type', kind + '; charset=utf-8' if kind.startswith('text/') or kind.endswith(('javascript', 'json')) else kind)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-cache' if target.suffix == '.html' else 'public, max-age=31536000, immutable' if target.parent.name == 'assets' else 'no-cache')
+            self.end_headers()
+            self.serving_page = False   # the relaxed policy is for this reply only
+            self.wfile.write(body)
 
         def reply(self, status, payload, headers=None):
             if status < 300 and self.command == 'POST' and self.path in LOGGED_WRITES:
@@ -1531,7 +1583,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             except Exception as exc:   # never a dropped connection: the person is told something went wrong, and what it was goes to the service's log
-                print(f'{self.path} stopped with {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+                print(f'{self.path} stopped with {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)   # the log keeps the whole of it; the person gets the fixed phrase below
                 self.reply(500, {'error': tr('服务出了内部错误，详情见服务日志', 'The service had an internal error; see the service log for details')})
                 return
             self.reply(*reply)
@@ -1770,6 +1822,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_GET(self):
             lang.use(lang.from_header(self.headers.get('Accept-Language')))
+            self.serving_page = False
+            if page_dir is not None and not (urlsplit(self.path).path + '/').startswith(API_PREFIX):
+                self.page_get()
+                return
             if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
                 return
             if use_layer.owns(self.path):
@@ -1840,7 +1896,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.open_run(self.path.rsplit('/', 1)[1])
                 return
             if self.path != '/api/ontology/health':
-                self.reply(404, {'error': 'Unknown ontology endpoint'})
+                self.reply(404, lang.unknown_ontology_endpoint())
                 return
             if self.user is None:   # a stranger learns only that the service is up
                 self.reply(200, {'ok': True})
@@ -1910,7 +1966,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif tail == 'graph':
                     self.reply(200, neighbourhood(result['ontology'], bundle, (query.get('node') or [''])[0], graph=graph))
                 else:
-                    self.reply(404, {'error': 'Unknown ontology endpoint'})
+                    self.reply(404, lang.unknown_ontology_endpoint())
             except FileNotFoundError:
                 self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
             except KeyError as exc:
@@ -2147,7 +2203,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.variants()
                 return
             if self.path != '/api/ontology/build':
-                self.reply(404, {'error': 'Unknown ontology endpoint'})
+                self.reply(404, lang.unknown_ontology_endpoint())
                 return
             try:
                 payload = self.read_json()
@@ -2205,7 +2261,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 try:
                     status, body = finish_build(bundle, is_document, report, previous, starter)
                 except Exception as exc:  # the job must end in a state the page can show; the server log keeps the rest
-                    status, body = 500, {'error': tr(f'建模时出错：{exc}', f'An error happened while modeling: {exc}')}
+                    status, body = 500, {'error': tr(f'建模时出错：{failure_reason(exc)}', f'An error happened while modeling: {failure_reason(exc)}')}
                 report('done' if status == 200 else 'failed', {})
                 with jobs_lock:
                     job['state'] = 'done' if status == 200 else 'failed'
@@ -2458,7 +2514,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
-                self.reply(500, {'error': tr(f'{what}没有保存：{type(exc).__name__}: {exc}', f'{what} was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'{what}没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'{what} was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             warning = recompute_warning(found[0]['saved_as'], because) or views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
@@ -2531,7 +2587,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
-                self.reply(500, {'error': tr(f'处理办法没有保存：{type(exc).__name__}: {exc}', f'The way of treating them was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'处理办法没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'The way of treating them was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             warning = recompute_warning(name, because) or views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
@@ -2589,7 +2645,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             except sqlite3.Error as exc:
-                self.reply(500, {'error': tr(f'再确认没有保存：{type(exc).__name__}: {exc}', f'Confirming again was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'再确认没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'Confirming again was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             self.keep_code_state(found, (row['element_id'], 'confirmed', row['evidence_ref'], signer, content, stored_anchors(anchors)), tr('再确认', 'confirmed again'), tr(f'「{name}」的定义照旧再确认了', f'The definition of "{name}" was confirmed again as before'))
 
@@ -2627,7 +2683,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             except sqlite3.Error as exc:
-                self.reply(500, {'error': tr(f'视图没有保存：{type(exc).__name__}: {exc}', f'The view was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'视图没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'The view was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             warning = views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), 'message': message, **({'warning': warning} if warning else {})})
@@ -2753,7 +2809,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
-                self.reply(500, {'error': tr(f'批量通过没有保存：{type(exc).__name__}: {exc}', f'The bulk approval was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'批量通过没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'The bulk approval was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             warning = views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
@@ -2977,7 +3033,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:   # whatever failed, the person is told and nothing of the confirmation is kept
-                self.reply(500, {'error': tr(f'确认没有保存：{type(exc).__name__}: {exc}', f'The confirmation was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'确认没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'The confirmation was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             self.reply(200, result)
 
@@ -3201,12 +3257,14 @@ def main(argv=None):
                         help='an address people reach the service at besides http://127.0.0.1:<port> (the https address of the proxy in front, or a dev server); repeat for several')
     parser.add_argument('--trusted-proxy', action='append', default=None, metavar='ADDRESS',
                         help='the address of the proxy in front, whose X-Forwarded-For is believed (default with an https --origin: this machine); repeat for several')
+    parser.add_argument('--page-dir', type=Path, default=None, metavar='PATH',
+                        help='serve the built page (landing-page/dist/client) from this service, so one process and one address are the whole install')
     parser.add_argument('--no-auth', action='store_true', help='no sign-in: every request is the local admin. Only for a trial on your own machine; needs ONTOPOC_DEV=1, and refuses --origin and proxied requests')
     args = parser.parse_args(argv)
     gateway = gateway_from_env()
     os.umask(0o077)   # files the service makes (runs, confirmations, the model log, the workspace) are this account's only
     try:
-        server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin, trusted_proxies=args.trusted_proxy)
+        server = make_server(args.port, gateway, output_dir=args.data_dir, no_auth=args.no_auth, origins=args.origin, trusted_proxies=args.trusted_proxy, page_dir=args.page_dir)
     except ValueError as exc:
         parser.error(str(exc))
     print(f'Ontology API: http://127.0.0.1:{server.server_port}'

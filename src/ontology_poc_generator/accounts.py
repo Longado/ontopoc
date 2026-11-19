@@ -375,7 +375,7 @@ def authenticate(conn, limiter: LoginLimiter, username, password, client: str) -
     if row and good and stored and row[4]:
         limiter.refund(conn, name, client)   # the password was right: not a failed try, and the person is told why they cannot come in
         raise AccountError(disabled_failure(), 403)
-    _log(conn, '(sign-in)', 'login', 'login_failed', {'name': _printable(typed), 'client': _printable(client)})   # what a stranger typed is data, not a signature
+    _log(conn, '(sign-in)', 'login', 'login_failed', {'name': _printable(typed) if row else '(unknown name)', 'client': _printable(client)})   # what a stranger typed is data, not a signature; a name no account has is not kept: it may be a password typed into the wrong box
     raise AccountError(generic_failure(), 401)
 
 
