@@ -72,6 +72,13 @@ class OverviewTests(unittest.TestCase):
         self.assertIn('旧版本', out['note'])
         self.assertEqual(out['checks_passed'], '6 / 7')
 
+    def test_a_service_that_says_so_in_chinese_with_the_code_is_still_taken_for_an_older_version(self):
+        missing = {RUN_PATH: (200, RUN), RUN_PATH + '/open-items': (404, {'error': '没有这个本体接口', 'code': 'no_such_route'})}
+        with serving(missing) as base:
+            out = mcp_server.run_overview(LocalService(base), {'saved_as': 'exam.json'})
+        self.assertIsNone(out['open_items'])
+        self.assertIn('旧版本', out['note'])
+
     def test_other_failures_of_the_route_are_not_taken_for_an_old_service(self):
         with serving({RUN_PATH: (200, RUN), RUN_PATH + '/open-items': (500, {'error': '读不了这次运行'})}) as base:
             with self.assertRaisesRegex(ToolError, '读不了这次运行'):

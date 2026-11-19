@@ -76,5 +76,11 @@ class BackgroundLanguageTests(unittest.TestCase):
                 self.assertEqual(get(base, '/api/workspace/nothing-here'), (404, {'error': '没有这个工作区接口'}))
 
 
+    def test_unknown_ontology_endpoint_follows_the_language_and_carries_a_code(self):
+        with tempfile.TemporaryDirectory() as out:
+            with serving(Path(out), None) as base:
+                self.assertEqual(get(base, '/api/ontology/nothing-here', EN), (404, {'error': 'Unknown ontology endpoint', 'code': 'no_such_route'}))
+                self.assertEqual(get(base, '/api/ontology/nothing-here'), (404, {'error': '没有这个本体接口', 'code': 'no_such_route'}))
+
 if __name__ == '__main__':
     unittest.main()
