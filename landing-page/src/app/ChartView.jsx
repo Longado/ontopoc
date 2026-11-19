@@ -5,7 +5,6 @@ import { hrefFor } from "./routeModel.js";
 import { Select } from "./Select.jsx";
 import { codeCell } from "./typeModel.js";
 
-const short = (text, n = 16) => (text.length > n ? `${text.slice(0, n)}…` : text);
 // one accent in five steps (a pie reads from one hue, no rainbow); grey is the muted ink in the same steps
 const SLICE_OPACITY = [1, 0.78, 0.56, 0.38, 0.22];
 const sliceFill = (i, grey) => ({ fill: grey ? "var(--muted)" : "var(--accent)", fillOpacity: SLICE_OPACITY[i % SLICE_OPACITY.length] });
@@ -67,31 +66,16 @@ export function Standing({ standing }) {
 function Bars({ groups, grey }) {
   const t = useT();
   const rows = barRows(groups);
-  const labelWidth = 150;
-  const barWidth = 250;
-  const row = 30;
-  const top = 4;
-  const height = rows.length * row + top + 22;
-  const biggest = Math.max(0, ...rows.map((r) => Math.abs(r.value)));
-  const ticks = biggest ? [0, 0.5, 1] : [0];
-  const axisY = rows.length * row + top;
   return (
-    <svg className="chart-svg" viewBox={`0 0 ${labelWidth + barWidth + 70} ${height}`} role="img" aria-label={t("boards.chart.bar")}>
-      {ticks.map((f) => (
-        <g key={f}>
-          <line className="grid" x1={labelWidth + f * barWidth} x2={labelWidth + f * barWidth} y1={top} y2={axisY} />
-          <text x={labelWidth + f * barWidth} y={axisY + 15} textAnchor={f === 1 ? "end" : f === 0 ? "start" : "middle"} className="axis">{formatNumber(biggest * f)}</text>
-        </g>
-      ))}
-      <line className="axis-line" x1={labelWidth} x2={labelWidth} y1={top} y2={axisY} />
+    <ul className={`bh-bars${grey ? " is-grey" : ""}`} aria-label={t("boards.chart.bar")}>
       {rows.map((r, i) => (
-        <g key={i} transform={`translate(0 ${i * row + top})`}>
-          <text x={labelWidth - 10} y="19" textAnchor="end"><title>{r.label}</title>{short(r.label)}</text>
-          <rect x={labelWidth} y="6" rx="3" width={Math.max(r.fraction * barWidth, r.value ? 2 : 0)} height="18" className={grey ? "fill-grey" : "fill-accent"} />
-          <text x={labelWidth + r.fraction * barWidth + 8} y="19" className="value">{formatNumber(r.value)}</text>
-        </g>
+        <li key={i}>
+          <span className="bh-bar-label" title={r.label}>{r.label}</span>
+          <span className="bh-bar-track" aria-hidden="true"><span className="bh-bar-fill" style={{ width: `${Math.max(r.fraction * 100, r.value ? 1 : 0)}%` }} /></span>
+          <span className="bh-bar-value">{formatNumber(r.value)}</span>
+        </li>
       ))}
-    </svg>
+    </ul>
   );
 }
 
@@ -191,7 +175,7 @@ function Rows({ result }) {
 }
 
 /** One chart result in the shape its kind says, in colour when everything it stands on is confirmed and in grey, with the reason, when not. */
-export function ChartResult({ result, withStanding = true }) {
+export function ChartResult({ result, withStanding = true, bare = false }) {
   const t = useT();
   const grey = !result.standing.confirmed;
   const kind = result.chart?.kind ?? "rows";
@@ -207,7 +191,7 @@ export function ChartResult({ result, withStanding = true }) {
       {kind === "table" && <StatTable result={result} />}
       {kind === "rows" && <Rows result={result} />}
       {(kind === "bar" || kind === "pie" || kind === "table") && leftOutLines(result).map((line) => <p key={line} className="muted small">{line}</p>)}
-      {kind !== "rows" && <p className="muted small">{t("boards.chart.computed", { count: result.rows })}</p>}
+      {kind !== "rows" && !bare && <p className="muted small">{t("boards.chart.computed", { count: result.rows })}</p>}
       {withStanding && <Standing standing={result.standing} />}
     </div>
   );

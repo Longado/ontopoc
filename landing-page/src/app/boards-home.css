@@ -1,0 +1,93 @@
+/* Boards and Home, "clean product" look: white surfaces, numbers first, evidence quiet.
+   Loaded before app.css in the bundle, so overrides of app.css classes use a `.page` prefix to win on specificity. */
+
+/* ---- shared chip and number ---- */
+.bh-chip { display: inline-flex; align-items: center; gap: 3px; min-height: 20px; padding: 0 8px; border-radius: 999px; background: var(--bg-subtle); color: var(--muted); font-size: 11px; font-weight: 500; line-height: 20px; white-space: nowrap; }
+.bh-chip-ok { background: var(--green-soft); color: var(--green-ink); }
+.bh-chip-grey { background: var(--orange-soft); color: var(--orange-ink); }
+
+/* ---- board header ---- */
+.page .bh-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 var(--s3); }
+.bh-info { position: relative; display: inline-flex; align-items: center; gap: 4px; color: var(--faint); font-size: 11px; cursor: help; border-radius: var(--radius); }
+.bh-info:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.bh-info-text { position: absolute; left: 0; top: calc(100% + 6px); z-index: 5; width: max-content; max-width: min(320px, 80vw); padding: 6px 10px; border-radius: var(--radius-md); background: var(--ink); color: #fff; font-size: 12px; line-height: 1.4; white-space: normal; pointer-events: none; display: none; }
+.bh-info:hover .bh-info-text, .bh-info:focus-visible .bh-info-text, .bh-info.open .bh-info-text { display: block; }
+button.bh-info { background: none; border: 0; padding: 2px; font: inherit; font-size: 11px; text-align: left; }
+
+/* ---- board grid and cards ---- */
+.page .board-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin: var(--s2) 0; align-items: stretch; }
+.page .board-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--s2) var(--s3) var(--s2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+.page .board-card.kind-bar, .page .board-card.kind-pie, .page .board-card.kind-histogram { grid-column: span 2; }
+.page .board-card.kind-table, .page .board-card.kind-rows, .page .board-card.kind-query { grid-column: 1 / -1; }
+.page .board-card .item-title { margin: 0; font-size: var(--small); font-weight: 500; line-height: 20px; color: var(--muted); }
+.page .board-card .chart { display: flex; flex-direction: column; gap: 4px; }
+.page .board-card .metric { margin: 0; font-size: 40px; line-height: 48px; font-weight: 600; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.page .board-card .is-grey .metric { color: var(--faint); }
+.bh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: auto; }
+.bh-meta-line { color: var(--muted); font-size: var(--small); }
+.bh-basis { margin-top: 4px; }
+.bh-basis-btn { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 6px 0 0; border: 0; background: none; color: var(--muted); font-size: var(--small); font-weight: 500; cursor: pointer; border-radius: var(--radius); }
+.bh-basis-btn:hover { color: var(--accent-600); }
+.bh-basis-btn:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.bh-basis-body { margin-top: 6px; padding: 10px 12px; background: var(--bg-app); border-radius: var(--radius-md); color: var(--muted); font-size: var(--small); overflow-wrap: anywhere; }
+.bh-basis-body[hidden] { display: none; }
+.bh-basis-body .caliber li { padding: 3px 0; }
+
+/* bar chart: label | track | value */
+.bh-bars { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.bh-bars li { display: grid; grid-template-columns: minmax(80px, 160px) minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.bh-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.bh-bar-track { height: 8px; border-radius: 999px; background: var(--bg-subtle); overflow: hidden; }
+.bh-bar-fill { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.bh-bars.is-grey .bh-bar-fill { background: var(--faint); }
+.bh-bar-value { min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+@media (max-width: 900px) {
+  .page .board-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page .board-card.kind-bar, .page .board-card.kind-pie, .page .board-card.kind-histogram { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .page .board-grid { grid-template-columns: minmax(0, 1fr); }
+  .page .board-card, .page .board-card.kind-bar, .page .board-card.kind-pie, .page .board-card.kind-histogram { grid-column: auto; padding: var(--s2); }
+  .page .board-card .metric { font-size: 32px; line-height: 40px; }
+  .bh-bars li { grid-template-columns: minmax(64px, 110px) minmax(0, 1fr) auto; gap: 8px; }
+}
+
+/* ---- boards list ---- */
+.bh-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--s2); }
+.bh-board { display: flex; flex-direction: column; gap: 6px; height: 100%; padding: var(--s2) var(--s3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); color: var(--ink); transition: border-color 100ms var(--ease), box-shadow 100ms var(--ease); }
+.bh-board:hover { text-decoration: none; border-color: var(--accent-400); box-shadow: var(--shadow-1); }
+.bh-board:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.bh-board-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--faint); }
+.bh-board-name { color: var(--ink); font-size: 15px; font-weight: 600; letter-spacing: -0.005em; overflow-wrap: anywhere; }
+.bh-board-sub { color: var(--muted); font-size: var(--small); }
+.bh-board .bh-facts { margin: auto 0 0; padding-top: 6px; }
+
+/* ---- home ---- */
+.bh-home { gap: var(--s3); }
+.bh-home .home-head h1 { font-size: 22px; line-height: 30px; letter-spacing: -0.015em; }
+.bh-home .bh-date { margin-top: 2px; font-size: var(--small); }
+.bh-section { margin: 0 0 var(--s1); font-size: var(--small); font-weight: 600; color: var(--muted); text-transform: none; }
+.bh-home h2.bh-section { font-size: var(--small); line-height: 20px; }
+.bh-start { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+.bh-start-card { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; row-gap: 2px; height: 100%; padding: var(--s2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); color: var(--ink); transition: border-color 100ms var(--ease), box-shadow 100ms var(--ease); }
+.bh-start-card:hover { text-decoration: none; border-color: var(--accent-400); box-shadow: var(--shadow-1); }
+.bh-start-card:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.bh-start-icon { grid-row: span 2; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-md); background: var(--accent-bg); color: var(--accent-600); }
+.bh-start-title { font-weight: 600; font-size: 13px; line-height: 20px; }
+.bh-start-text { color: var(--muted); font-size: var(--small); line-height: 18px; }
+.bh-home .home-grid.bh-single { grid-template-columns: minmax(0, 1fr); }
+.bh-quiet { margin: 0; padding: 4px 0; color: var(--muted); font-size: var(--small); }
+.bh-examples { justify-content: flex-start; margin: 8px 0 0; }
+
+/* KPI tile, same card as a board number */
+.bh-home .kpis { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.bh-home .kpi.bh-stat { gap: 6px; padding: var(--s2) var(--s3); border-radius: var(--radius-lg); }
+.bh-home .bh-stat .kpi-label { font-size: var(--small); font-weight: 500; }
+.bh-home .bh-stat .kpi-value { font-size: 40px; line-height: 48px; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+.bh-home .bh-stat .kpi-asof { color: var(--muted); font-size: var(--small); }
+
+@media (max-width: 900px) { .bh-start { grid-template-columns: minmax(0, 1fr); gap: var(--s1); } }
+
+/* opening one card's basis does not stretch its neighbours */
+.page .board-grid { align-items: start; }

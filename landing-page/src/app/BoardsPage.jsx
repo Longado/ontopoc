@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { ChartResult, Standing } from "./ChartView.jsx";
 import { deleteBoard, getBoard, getBoardData, getBoards } from "./api.js";
 import { useAuth } from "./Auth.jsx";
@@ -10,10 +10,64 @@ import { queryRecord } from "./qaModel.js";
 import { timeText } from "./format.js";
 import { Select } from "./Select.jsx";
 import { useLoad } from "./useLoad.js";
+import { Icon } from "./ui/Icon.jsx";
 import { PageHeader } from "./ui/PageHeader.jsx";
+import "./boards-home.css";
 import { EmptyState } from "./ui/EmptyState.jsx";
 
-/** The components of a board as cards: each with its title, its number or chart (grey with the reason when what it stands on is not confirmed) and its caliber. */
+/** The view a result was worked out on, by name, when its caliber names one. */
+const viewOf = (result) => result.standing?.lines?.find((l) => l.kind === "view")?.name ?? "";
+
+/** "Show basis": the full evidence (the caliber, one line for each definition) kept behind a button, quiet until asked for. */
+function BasisToggle({ children }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <div className="bh-basis">
+      <button type="button" className="bh-basis-btn" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={12} />{open ? t("boards.card.hideBasis") : t("boards.card.showBasis")}
+      </button>
+      <div id={id} className="bh-basis-body" hidden={!open}>{children}</div>
+    </div>
+  );
+}
+
+/** One short line under a number or chart: "107 rows · Valid orders view", plus the confirmed (or not) chip. */
+function CardMeta({ result }) {
+  const t = useT();
+  const view = viewOf(result);
+  const confirmed = result.standing.confirmed;
+  const count = typeof result.rows === "number" ? result.rows : typeof result.total === "number" ? result.total : null;   // a rows card carries the rows themselves in result.rows
+  return (
+    <div className="bh-meta">
+      <span className="bh-meta-line">{[count === null ? "" : t("boards.card.rows", { count }), view && t("boards.card.viewName", { name: view })].filter(Boolean).join(" · ")}</span>
+      <span className={`bh-chip ${confirmed ? "bh-chip-ok" : "bh-chip-grey"}`}>{confirmed ? <Icon name="check" size={11} /> : null}{confirmed ? t("boards.card.confirmed") : t("boards.card.notConfirmed")}</span>
+    </div>
+  );
+}
+
+/** The board's note on who can open a shared link: an info button; hover, focus or a tap shows the full sentence. */
+function SignInNote({ note }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button type="button" className={`bh-info${open ? " open" : ""}`} aria-expanded={open} aria-label={note} onClick={() => setOpen(!open)} onBlur={() => setOpen(false)}>
+      <Icon name="info" size={14} /><span className="bh-info-text">{note}</span>
+    </button>
+  );
+}
+
+function BasisLines({ result }) {
+  const t = useT();
+  return result.standing.lines.length ? <Standing standing={result.standing} /> : (
+    <div className="standing">
+      <p className="muted small">{t("boards.card.caliber")}{result.query.filters.length ? t("boards.card.extra", { count: result.query.filters.length }) : ""}</p>
+      {!result.standing.confirmed && <Standing standing={{ ...result.standing, lines: [] }} />}
+    </div>
+  );
+}
+
+/** The components of a board as cards: title (small, muted), the number or chart (grey with the reason when what it stands on is not confirmed), one short line, and the caliber behind "Show basis". */
 export function BoardCards({ data }) {
   const t = useT();
   return (
@@ -27,8 +81,9 @@ export function BoardCards({ data }) {
               {c.last ? (
                 <div className="last-confirmed">
                   <p className="muted small">{t("boards.card.lastConfirmed", { when: timeText(c.last.at) })}</p>
-                  <ChartResult result={c.last.result} withStanding={false} />
-                  {c.last.result.standing.lines.length > 0 && <Standing standing={c.last.result.standing} />}
+                  <ChartResult result={c.last.result} withStanding={false} bare />
+                  <CardMeta result={c.last.result} />
+                  {c.last.result.standing.lines.length > 0 && <BasisToggle><Standing standing={c.last.result.standing} /></BasisToggle>}
                 </div>
               ) : <p className="muted small">{t("boards.card.noneConfirmed")}</p>}
             </>
@@ -39,13 +94,10 @@ export function BoardCards({ data }) {
             </>
           ) : (
             <>
-              <ChartResult result={c.result} withStanding={false} />
-              {c.result.standing.lines.length ? <Standing standing={c.result.standing} /> : (
-                <div className="standing">
-                  <p className="muted small">{t("boards.card.caliber")}{c.result.query.filters.length ? t("boards.card.extra", { count: c.result.query.filters.length }) : ""}</p>
-                  {!c.result.standing.confirmed && <Standing standing={{ ...c.result.standing, lines: [] }} />}
-                </div>
-              )}
+              <ChartResult result={c.result} withStanding={false} bare />
+              <CardMeta result={c.result} />
+              {!c.result.standing.confirmed && <Standing standing={{ ...c.result.standing, lines: [] }} />}
+              <BasisToggle><BasisLines result={c.result} /></BasisToggle>
             </>
           )}
         </section>
@@ -142,13 +194,13 @@ export function BoardPage({ route }) {
       {board.status === "error" && <p className="error">{board.error}</p>}
       {b && (
         <>
-          <p className="facts">
-            <span>{t("boards.page.owner", { owner: b.owner })}</span>
-            <span>{t("boards.page.publishedTo", { scope: scopeText(b) })}</span>
-            <span>{expiryText(b)}</span>
-            <span>{refreshText(b.refresh_seconds)}</span>
+          <p className="bh-facts">
+            <span className="bh-chip">{t("boards.page.owner", { owner: b.owner })}</span>
+            <span className="bh-chip">{t("boards.page.publishedTo", { scope: scopeText(b) })}</span>
+            <span className="bh-chip">{expiryText(b)}</span>
+            <span className="bh-chip">{refreshText(b.refresh_seconds)}</span>
+            {b.sign_in_note && <SignInNote note={b.sign_in_note} />}
           </p>
-          <p className="muted small">{b.sign_in_note}</p>
           {error && <p className="error">{error}</p>}
         </>
       )}
@@ -181,23 +233,21 @@ export function BoardsPage() {
         ? <EmptyState icon="board" title={t("boards.empty.title")} text={t("boards.empty.builder")} action={{ label: t("boards.new"), href: "#/boards/new" }} />
         : <EmptyState icon="board" title={t("boards.empty.title")} text={t("boards.empty.viewer")} action={{ label: t("boards.empty.ask"), href: "#/qa" }} />)}
       {boards.length > 0 && (
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>{t("boards.col.name")}</th><th>{t("boards.col.owner")}</th><th>{t("boards.col.scope")}</th><th>{t("boards.col.expiry")}</th><th className="num">{t("boards.col.components")}</th><th>{t("boards.col.updated")}</th></tr></thead>
-            <tbody>
-              {boards.map((b) => (
-                <tr key={b.id}>
-                  <td><a href={`#/boards/${b.id}`}>{b.name}</a></td>
-                  <td>{b.owner}{b.mine && <span className="chip chip-blue">{t("boards.col.me")}</span>}</td>
-                  <td>{scopeLabel(b.scope)}</td>
-                  <td>{expiryText(b)}</td>
-                  <td className="num">{b.components}</td>
-                  <td>{timeText(b.updated_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="bh-list">
+          {boards.map((b) => (
+            <li key={b.id}>
+              <a className="bh-board" href={`#/boards/${b.id}`}>
+                <span className="bh-board-top"><span className="bh-board-name">{b.name}</span><Icon name="chevron-right" size={14} /></span>
+                <span className="bh-board-sub">{t("boards.list.components", { count: b.components })} · {t("boards.list.updated", { when: timeText(b.updated_at) })}</span>
+                <span className="bh-facts">
+                  <span className="bh-chip">{b.owner}{b.mine ? ` · ${t("boards.col.me")}` : ""}</span>
+                  <span className="bh-chip">{scopeLabel(b.scope)}</span>
+                  <span className="bh-chip">{expiryText(b)}</span>
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
       )}
     </main>
   );

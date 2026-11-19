@@ -46,6 +46,8 @@ test("the home page copy: example questions use the type's name, the greeting is
   const zhNamed = [{ id: "order", name: "订单", state: "confirmed" }, { id: "customer", name: "客户", state: "confirmed" }, { id: "commit_version", name: "订单承诺", state: "confirmed" }];
   const zhRel = [{ from: "order", to: "customer", from_name: "订单", to_name: "客户", state: "confirmed" }];
   assert.deepEqual(exampleQuestions(zhNamed, zhRel), ["How many orders are there?", "How many customers are there?", "How many commit versions are there?", "Orders by customer"]);
+  // a singular English type name does not read "How many Order are there?"
+  assert.deepEqual(exampleQuestions([{ id: "order", name: "Order", state: "confirmed" }], []), ["How many Order records are there?"]);
   assert.equal(greeting(new Date(2026, 10, 16, 9), "Ann"), "Good morning, Ann");
   assert.equal(greeting(new Date(2026, 10, 16, 20), ""), "Good evening");
   assert.equal(kpiCards(types, [])[0].value, "1,200");

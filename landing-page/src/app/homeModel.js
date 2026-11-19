@@ -64,7 +64,11 @@ export function exampleQuestions(types, relations, max = 6) {
   const known = confirmed(types);
   const names = new Set(known.map((x) => x.name));
   const idOf = new Map(known.map((x) => [x.name, x.id]));
-  const count = (x) => t("home.example.count", { name: spoken(x.name, x.id, true) });
+  // an English type name that is not already plural ("Order") reads "How many Order records are there?", not "How many Order are there?"
+  const count = (x) => {
+    const name = spoken(x.name, x.id, true);
+    return t(getLocale() !== "zh" && !CJK.test(name ?? "") && !/s$/i.test(name ?? "") ? "home.example.countRecords" : "home.example.count", { name });
+  };
   const counts = known.slice(0, 3).map(count);
   const by = confirmed(relations).filter((r) => names.has(r.from_name) && names.has(r.to_name)).map((r) => {
     const text = t("home.example.by", { from: spoken(r.from_name, r.from ?? idOf.get(r.from_name), true), to: spoken(r.to_name, r.to ?? idOf.get(r.to_name), false) });

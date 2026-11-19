@@ -1,26 +1,27 @@
 import React, { useState } from "react";
-import { getAsk, getDatasets, getNotices, getPipelines, getQueueCount, getRelations, getSources, getTypes, getUsers } from "./api.js";
+import { getAsk, getBoards, getDatasets, getNotices, getPipelines, getQueueCount, getRelations, getSources, getTypes, getUsers } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { DemoAskNote } from "./DemoAskNote.jsx";
 import { askOff } from "./demoModel.js";
 import { useDemoAsk } from "./useDemoAsk.js";
-import { canBuild, isAdmin } from "./authModel.js";
+import { canBuild, isAdmin, isGuest } from "./authModel.js";
 import { exampleQuestions, greeting, kpiCards, needsSetup, quickActions, setupSteps, todoItems, updatedText } from "./homeModel.js";
 import { formatDate, formatDateTime, t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
-import { EmptyState } from "./ui/EmptyState.jsx";
+import "./boards-home.css";
 import { Icon } from "./ui/Icon.jsx";
 
 /** Everything the home page shows, read at once; a list this person may not read comes back as null instead of failing the page. */
 async function loadHome(user) {
   const builder = canBuild(user);
   const ok = (p) => p.then((v) => v, () => null);
-  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources] = await Promise.all([
+  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources, boards] = await Promise.all([
     ok(getDatasets()), ok(getTypes()), ok(getRelations()), ok(getAsk()), ok(getNotices()),
     builder ? ok(getQueueCount()) : null, builder ? ok(getPipelines()) : null, isAdmin(user) ? ok(getUsers()) : null, builder ? ok(getSources()) : null,
+    isGuest(user) ? ok(getBoards()) : null,
   ]);
-  return { datasets, types, relations, ask, notices, queue: queue ?? 0, pipelines, users, sources };
+  return { datasets, types, relations, ask, notices, queue: queue ?? 0, pipelines, users, sources, boards };
 }
 
 const qaStatus = (status) => t(status === "answered" ? "home.qa.answered" : status === "no_data" ? "home.qa.noData" : "home.qa.unanswered");
@@ -61,10 +62,37 @@ function Kpis({ cards }) {
       <ul className="kpis">
         {cards.map((c) => (
           <li key={c.key}>
-            <a className="kpi" href={c.href}>
+            <a className="kpi bh-stat" href={c.href}>
               <span className="kpi-top"><span className="kpi-label">{c.label}</span><Icon name="chevron-right" size={14} /></span>
               <span className="kpi-value">{c.value}</span>
               <span className="kpi-asof">{c.asOf || t("home.kpi.confirmed")}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** A guest's first row: three compact cards, two into the first board and one to the README. */
+function StartHere({ boards }) {
+  const first = boards?.dashboards?.[0];
+  const board = first ? `#/boards/${first.id}` : "#/boards";
+  const cards = [
+    { key: "orders", href: board, icon: "board" },
+    { key: "trust", href: board, icon: "check-circle" },
+    { key: "refuse", href: "https://github.com/Longado/ontopoc#readme", icon: "alert", external: true },
+  ];
+  return (
+    <section aria-labelledby="start-title">
+      <h2 id="start-title" className="bh-section">{t("home.start.title")}</h2>
+      <ul className="bh-start">
+        {cards.map((c) => (
+          <li key={c.key}>
+            <a className="bh-start-card" href={c.href} {...(c.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+              <span className="bh-start-icon" aria-hidden="true"><Icon name={c.icon} size={16} /></span>
+              <span className="bh-start-title">{t(`home.start.${c.key}.title`)}{c.external && <span className="visually-hidden"> {t("home.start.newTab")}</span>}</span>
+              <span className="bh-start-text">{t(`home.start.${c.key}.text`)}</span>
             </a>
           </li>
         ))}
@@ -108,7 +136,7 @@ function Todo({ items }) {
             <li key={i.key}><a href={i.href}><span className={`row-count dot-${i.key}`} aria-hidden="true">{i.count}</span><span className="row-main">{i.text}</span><Icon name="chevron-right" size={16} /></a></li>
           ))}
         </ul>
-      ) : <EmptyState icon="check-circle" title={t("home.todo.emptyTitle")} text={t("home.todo.emptyText")} />}
+      ) : <p className="bh-quiet">{t("home.todo.quiet")}</p>}
     </section>
   );
 }
@@ -127,8 +155,8 @@ function Recent({ history, examples }) {
         </ul>
       ) : (
         <>
-          <EmptyState icon="chat" title={t("home.recent.emptyTitle")} text={examples.length ? t("home.recent.emptyTry") : t("home.recent.emptyText")} />
-          {examples.length > 0 && <p className="examples examples-center">{examples.slice(0, 3).map((q) => <a key={q} className="example" href={hrefFor({ page: "qa", id: null, ask: q })}>{q}</a>)}</p>}
+          <p className="bh-quiet">{t("home.recent.quiet")}</p>
+          {examples.length > 0 && <p className="examples examples-center bh-examples">{examples.slice(0, 3).map((q) => <a key={q} className="example" href={hrefFor({ page: "qa", id: null, ask: q })}>{q}</a>)}</p>}
         </>
       )}
     </section>
@@ -151,12 +179,16 @@ export function HomePage() {
   const quick = quickActions(mayBuild);
   const today = new Date();
   const fresh = updatedText(d.datasets);
+  const guest = isGuest(user);
+  const history = d.ask?.history ?? [];
+  const showTodo = !guest || todos.length > 0;
+  const showRecent = !guest || history.length > 0;
   return (
-    <main className="page home">
+    <main className="page home bh-home">
       <header className="home-head">
         <div>
           <h1 tabIndex={-1}>{greeting(today, user?.display_name ?? "")}</h1>
-          <p className="muted">{formatDate(today, { weekday: "long", month: "long", day: "numeric" })}{fresh && ` · ${fresh}`}</p>
+          <p className="muted bh-date">{formatDate(today, { weekday: "long", month: "long", day: "numeric" })}{fresh && ` · ${fresh}`}</p>
         </div>
         {quick.length > 0 && (
           <nav className="quick" aria-label={t("home.quick.aria")}>
@@ -166,8 +198,14 @@ export function HomePage() {
       </header>
       {setup && <Checklist steps={setupSteps({ datasets: d.datasets, types, users: d.users, sources: d.sources, role: user?.role, meId: user?.id ?? null, canConfirm: d.queue > 0 })} />}
       {!setup || (d.datasets ?? []).length > 0 ? <AskBox examples={examples} ready={types.some((t) => t.state === "confirmed")} /> : null}
+      {guest && !setup && <StartHere boards={d.boards} />}
       {!setup && cards.length > 0 && <Kpis cards={cards} />}
-      {(!setup || todos.length > 0) && <div className="home-grid"><Todo items={todos} /><Recent history={d.ask?.history ?? []} examples={examples} /></div>}
+      {(!setup || todos.length > 0) && (showTodo || showRecent) && (
+        <div className={`home-grid${showTodo && showRecent ? "" : " bh-single"}`}>
+          {showTodo && <Todo items={todos} />}
+          {showRecent && <Recent history={history} examples={examples} />}
+        </div>
+      )}
     </main>
   );
 }

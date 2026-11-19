@@ -1,0 +1,78 @@
+/* Public demo front door: a clean product landing page. White, one accent (the app's blue). Reuses the app's variables. */
+.landing { --ld-gap: clamp(48px, 8vw, 96px); background: #fff; color: var(--ink, #1c2127); min-height: 100vh; display: flex; flex-direction: column; }
+.ld-wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding-left: 24px; padding-right: 24px; box-sizing: border-box; }
+.landing a:focus-visible, .landing button:focus-visible { outline: 2px solid var(--accent, #2d72d2); outline-offset: 2px; }
+
+.ld-bar { position: sticky; top: 0; z-index: 5; background: rgba(255, 255, 255, 0.9); backdrop-filter: saturate(1.4) blur(8px); border-bottom: 1px solid var(--border, #dce0e5); }
+.ld-bar-in { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 12px; }
+.ld-bar-r { display: flex; align-items: center; gap: 12px; }
+.ld-bar .lang-inline { gap: 2px; }
+.ld-link { background: none; border: 0; color: var(--ink, #1c2127); font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.ld-link:hover { background: var(--bg-subtle, #edeff2); }
+.ld-btn-sm { min-height: 32px; padding: 0 14px; font-size: 14px; }
+
+.ld-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; padding-top: clamp(40px, 8vw, 96px); padding-bottom: var(--ld-gap); align-items: center; }
+.ld-h1 { margin: 0; font-size: clamp(34px, 6.4vw, 56px); line-height: 1.06; letter-spacing: -0.035em; font-weight: 650; text-wrap: balance; outline: none; }
+.ld-sub { margin: 20px 0 0; max-width: 54ch; font-size: clamp(16px, 2vw, 18px); line-height: 1.6; color: var(--muted, #5f6b7c); }
+.ld-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+.ld-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 22px; font-size: 15px; font-weight: 550; border-radius: 8px; text-decoration: none; box-sizing: border-box; }
+.ld-ghost { color: var(--ink, #1c2127); background: #fff; border: 1px solid var(--border-input, #c5cbd3); }
+.ld-ghost:hover { background: var(--bg-subtle, #edeff2); text-decoration: none; }
+.ld-note { margin: 16px 0 0; font-size: 13px; color: var(--muted, #5f6b7c); }
+
+.ld-window { margin: 0; background: #fff; border: 1px solid var(--border, #dce0e5); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(17, 20, 24, 0.06), 0 24px 48px -16px rgba(33, 93, 176, 0.22); min-width: 0; }
+.ld-titlebar { display: flex; align-items: center; gap: 6px; padding: 0 14px; height: 38px; background: var(--bg-app, #f6f7f9); border-bottom: 1px solid var(--border, #dce0e5); }
+.ld-titlebar i { width: 10px; height: 10px; border-radius: 50%; background: var(--border-strong, #d3d8de); }
+.ld-titlebar span { margin-left: 10px; font-size: 12px; color: var(--muted, #5f6b7c); }
+.ld-win-body { padding: 22px; display: flex; flex-direction: column; gap: 20px; }
+.ld-k { display: block; font-size: 12px; color: var(--muted, #5f6b7c); margin-bottom: 4px; }
+.ld-big { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: clamp(30px, 5vw, 40px); font-weight: 650; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.ld-big em { font-style: normal; font-size: 12px; font-weight: 550; letter-spacing: 0; color: var(--green-ink, #165a36); background: var(--green-soft, #e6f4ec); border: 1px solid var(--green-line, #b4dfc7); padding: 2px 8px; border-radius: 999px; }
+.ld-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border, #dce0e5); border-bottom: 1px solid var(--border, #dce0e5); }
+.ld-num { display: block; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ld-mute { display: block; margin-top: 2px; font-size: 12px; color: var(--muted, #5f6b7c); }
+.ld-bars { display: flex; flex-direction: column; gap: 10px; }
+.ld-bar-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) 56px; align-items: center; gap: 10px; font-size: 12px; color: var(--muted, #5f6b7c); }
+.ld-bar-row b { font-weight: 550; color: var(--ink, #1c2127); text-align: right; font-variant-numeric: tabular-nums; }
+.ld-track { height: 8px; background: var(--bg-subtle, #edeff2); border-radius: 4px; overflow: hidden; }
+.ld-track span { display: block; height: 100%; background: var(--accent, #2d72d2); border-radius: 4px; }
+
+.ld-steps { padding-bottom: var(--ld-gap); }
+.ld-steps ol { list-style: none; margin: 0; padding: 32px 0 0; border-top: 1px solid var(--border, #dce0e5); display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+.ld-ico { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 8px; background: var(--accent-bg, #e8f1fc); color: var(--accent-600, #215db0); }
+.ld-steps h2 { margin: 14px 0 6px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.ld-steps p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--muted, #5f6b7c); max-width: 36ch; }
+
+.ld-signin { padding-bottom: var(--ld-gap); scroll-margin-top: 80px; }
+.ld-signin .login-card { max-width: 400px; margin: 0 auto; box-shadow: none; border: 1px solid var(--border, #dce0e5); }
+.ld-signin h2 { font-size: 16px; line-height: 24px; margin: 0; }
+
+.ld-foot { margin-top: auto; border-top: 1px solid var(--border, #dce0e5); font-size: 13px; color: var(--muted, #5f6b7c); }
+.ld-foot-in { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding-top: 24px; padding-bottom: 24px; }
+.ld-foot a { color: var(--accent-600, #215db0); }
+
+@media (min-width: 900px) {
+  .ld-hero { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 64px; }
+  .ld-steps ol { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; }
+}
+@media (max-width: 480px) {
+  .ld-wrap { padding-left: 16px; padding-right: 16px; }
+  .ld-bar-r { gap: 4px; }
+  .ld-btn-sm { padding: 0 10px; }
+  .ld-win-body { padding: 16px; }
+  .ld-bar-row { grid-template-columns: 64px minmax(0, 1fr) 52px; }
+  .ld-cta .ld-btn { flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ld-link, .ld-ghost { transition: background-color 0.15s; }
+}
+
+/* Plain sign-in page (no demo): same structure, a little more air. */
+.login-page:not(.login-demo) .login-line { font-size: 22px; line-height: 30px; letter-spacing: -0.02em; }
+.login-page:not(.login-demo) .login-card { gap: var(--s3, 24px); }
+
+/* narrow screens: the bar keeps brand, language and the demo button on one line; "Sign in" is the card further down */
+.ld-link, .ld-btn-sm { white-space: nowrap; }
+@media (max-width: 480px) {
+  .ld-bar .ld-link { display: none; }
+}
