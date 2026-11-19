@@ -56,6 +56,14 @@ The earlier screen organised around runs is still at `legacy.html`; see [docs/LE
 
 You need Python 3.11+, Node 22+ and a DeepSeek API key. Uploading a PDF also needs `pdftotext` (poppler) installed on this machine.
 
+### One command (Mac / Linux)
+
+```bash
+git clone https://github.com/Longado/ontopoc.git && cd ontopoc && ./scripts/ontopoc-start.sh
+```
+
+It installs the dependencies, builds the page, makes the first admin on the first run, and serves the page and the API on one address, `http://127.0.0.1:8767/`; data lives in `~/.ontopoc/data` (`ONTOPOC_DATA_DIR`, `ONTOPOC_PORT` to change). Without a model key, meanings and suggestions are off. For a team behind HTTPS see [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ### Option A: let your AI install it
 
 Paste this into Claude Code or Codex:
