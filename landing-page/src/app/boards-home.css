@@ -11,7 +11,8 @@
 .bh-info { position: relative; display: inline-flex; align-items: center; gap: 4px; color: var(--faint); font-size: 11px; cursor: help; border-radius: var(--radius); }
 .bh-info:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
 .bh-info-text { position: absolute; left: 0; top: calc(100% + 6px); z-index: 5; width: max-content; max-width: min(320px, 80vw); padding: 6px 10px; border-radius: var(--radius-md); background: var(--ink); color: #fff; font-size: 12px; line-height: 1.4; white-space: normal; pointer-events: none; display: none; }
-.bh-info:hover .bh-info-text, .bh-info:focus .bh-info-text { display: block; }
+.bh-info:hover .bh-info-text, .bh-info:focus-visible .bh-info-text, .bh-info.open .bh-info-text { display: block; }
+button.bh-info { background: none; border: 0; padding: 2px; font: inherit; font-size: 11px; text-align: left; }
 
 /* ---- board grid and cards ---- */
 .page .board-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin: var(--s2) 0; align-items: stretch; }
@@ -87,3 +88,6 @@
 .bh-home .bh-stat .kpi-asof { color: var(--muted); font-size: var(--small); }
 
 @media (max-width: 900px) { .bh-start { grid-template-columns: minmax(0, 1fr); gap: var(--s1); } }
+
+/* opening one card's basis does not stretch its neighbours */
+.page .board-grid { align-items: start; }

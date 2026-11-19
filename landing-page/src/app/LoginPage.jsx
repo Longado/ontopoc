@@ -14,11 +14,12 @@ export function LoginPage({ setup, ended, onSignedIn, feedbackUrl }) {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [demo, setDemo] = useState(false);
+  const [ready, setReady] = useState(false);   // the health check has answered (or failed): until then neither page is drawn, so the sign-in form does not flash before the landing page
   const [askIsOff, setAskIsOff] = useState(false);
   const [demoError, setDemoError] = useState("");
   useEffect(() => {
     let live = true;
-    getHealth().then((h) => { if (live) { setDemo(h?.demo === true); setAskIsOff(h?.demo_ask === false); } }, () => {});
+    getHealth().then((h) => { if (live) { setDemo(h?.demo === true); setAskIsOff(h?.demo_ask === false); setReady(true); } }, () => live && setReady(true));
     return () => {
       live = false;
     };
@@ -70,6 +71,7 @@ export function LoginPage({ setup, ended, onSignedIn, feedbackUrl }) {
       <button className={demo ? "secondary block" : "primary block"} type="submit" disabled={sending || !username || !password}>{sending ? t("auth.login.sending") : t("auth.login.submit")}</button>
     </form>
   );
+  if (!ready) return <main className="login login-page" aria-busy="true" />;
   if (!demo) {
     return (
       <main className="login login-page">

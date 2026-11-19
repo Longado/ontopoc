@@ -38,11 +38,22 @@ function CardMeta({ result }) {
   const t = useT();
   const view = viewOf(result);
   const confirmed = result.standing.confirmed;
+  const count = typeof result.rows === "number" ? result.rows : typeof result.total === "number" ? result.total : null;   // a rows card carries the rows themselves in result.rows
   return (
     <div className="bh-meta">
-      <span className="bh-meta-line">{[t("boards.card.rows", { count: result.rows }), view && t("boards.card.viewName", { name: view })].filter(Boolean).join(" · ")}</span>
+      <span className="bh-meta-line">{[count === null ? "" : t("boards.card.rows", { count }), view && t("boards.card.viewName", { name: view })].filter(Boolean).join(" · ")}</span>
       <span className={`bh-chip ${confirmed ? "bh-chip-ok" : "bh-chip-grey"}`}>{confirmed ? <Icon name="check" size={11} /> : null}{confirmed ? t("boards.card.confirmed") : t("boards.card.notConfirmed")}</span>
     </div>
+  );
+}
+
+/** The board's note on who can open a shared link: an info button; hover, focus or a tap shows the full sentence. */
+function SignInNote({ note }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button type="button" className={`bh-info${open ? " open" : ""}`} aria-expanded={open} aria-label={note} onClick={() => setOpen(!open)} onBlur={() => setOpen(false)}>
+      <Icon name="info" size={14} /><span className="bh-info-text">{note}</span>
+    </button>
   );
 }
 
@@ -71,6 +82,7 @@ export function BoardCards({ data }) {
                 <div className="last-confirmed">
                   <p className="muted small">{t("boards.card.lastConfirmed", { when: timeText(c.last.at) })}</p>
                   <ChartResult result={c.last.result} withStanding={false} bare />
+                  <CardMeta result={c.last.result} />
                   {c.last.result.standing.lines.length > 0 && <BasisToggle><Standing standing={c.last.result.standing} /></BasisToggle>}
                 </div>
               ) : <p className="muted small">{t("boards.card.noneConfirmed")}</p>}
@@ -84,6 +96,7 @@ export function BoardCards({ data }) {
             <>
               <ChartResult result={c.result} withStanding={false} bare />
               <CardMeta result={c.result} />
+              {!c.result.standing.confirmed && <Standing standing={{ ...c.result.standing, lines: [] }} />}
               <BasisToggle><BasisLines result={c.result} /></BasisToggle>
             </>
           )}
@@ -186,7 +199,7 @@ export function BoardPage({ route }) {
             <span className="bh-chip">{t("boards.page.publishedTo", { scope: scopeText(b) })}</span>
             <span className="bh-chip">{expiryText(b)}</span>
             <span className="bh-chip">{refreshText(b.refresh_seconds)}</span>
-            {b.sign_in_note && <span className="bh-info" tabIndex={0} role="note" title={b.sign_in_note} aria-label={b.sign_in_note}><Icon name="info" size={14} /><span className="bh-info-text">{t("boards.page.signInHint")}</span></span>}
+            {b.sign_in_note && <SignInNote note={b.sign_in_note} />}
           </p>
           {error && <p className="error">{error}</p>}
         </>
