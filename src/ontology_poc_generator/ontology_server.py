@@ -109,6 +109,7 @@ LOGGED_WRITES = {'/api/ontology/acceptance': 'acceptance', '/api/ontology/rules'
 SECURITY_HEADERS = (('X-Content-Type-Options', 'nosniff'), ('Referrer-Policy', 'no-referrer'),
                     ('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'"))   # the service answers JSON and downloads, never a page
 PAGE_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"   # for the built page only
+API_PREFIX = '/' + 'api' + '/'   # everything under it is the service; the page's files are served only outside it
 MAX_BULK = 200   # relations approved in one request: far above what a run has
 SOURCE_PATH = re.compile(r'/api/workspace/(sources|schedules)(/.*)?')   # the sources and schedules pages' requests (sources_http.py)
 
@@ -1106,7 +1107,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             body = target.read_bytes()
             self.serving_page = True
             self.send_response(200)
-            self.send_header('Content-Type', mimetypes.guess_type(target.name)[0] or 'application/octet-stream')
+            kind = mimetypes.guess_type(target.name)[0] or 'application/octet-stream'
+            self.send_header('Content-Type', kind + '; charset=utf-8' if kind.startswith('text/') or kind.endswith(('javascript', 'json')) else kind)
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', 'no-cache' if target.suffix == '.html' else 'public, max-age=31536000, immutable' if target.parent.name == 'assets' else 'no-cache')
             self.end_headers()
@@ -1809,7 +1811,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         def do_GET(self):
             lang.use(lang.from_header(self.headers.get('Accept-Language')))
             self.serving_page = False
-            if page_dir is not None and not (urlsplit(self.path).path + '/').startswith('/api/'):
+            if page_dir is not None and not (urlsplit(self.path).path + '/').startswith(API_PREFIX):
                 self.page_get()
                 return
             if not gate.admit(self, 'GET') or gate.handle(self, 'GET'):
