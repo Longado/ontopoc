@@ -48,7 +48,7 @@ Back up both **with the service stopped**, or run `sqlite3 workspace.sqlite ".ba
 
 ## 4b. Reading from MySQL or PostgreSQL
 
-Admins add a database under **Data > Sources** (needs `pip install -e '.[sources]'`, which the start script does). Give OntoPoc a read-only account. Each table becomes a dataset; **Update by key** keeps rows that vanished from the table, **Overwrite** mirrors it.
+Admins add a database under **Data > Sources** (needs `pip install -e '.[sources]'`, which the start script does). Give OntoPoc a read-only account. Each table becomes a dataset; **Update by key** keeps rows that vanished from the table, **Replace whole table** mirrors it.
 
 Encryption is **None** by default for a database on the same machine and **Required** otherwise. "Required (verify certificate)" checks the server's certificate *and its host name*. MySQL's auto-generated certificate has no host name, so it never passes, even when you paste its CA. For a database on another machine, have the DBA install a certificate issued for the host name you connect to (from your company CA; paste that CA in the source form).
 

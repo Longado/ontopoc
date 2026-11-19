@@ -4,7 +4,7 @@ name: install
 # (answers piped in: without a terminal getpass reads stdin), and serves the page and the API on one port.
 on:
   pull_request:
-    paths: ["scripts/ontopoc-start.sh", "pyproject.toml", "landing-page/package*.json", "src/ontology_poc_generator/ontology_server.py", ".github/workflows/install.yml"]
+    paths: ["scripts/ontopoc-start.sh", "pyproject.toml", "landing-page/**", "src/ontology_poc_generator/ontology_server.py", "src/ontology_poc_generator/accounts.py", "src/ontology_poc_generator/auth_http.py", ".github/workflows/install.yml"]
   push:
     branches: [main]
   workflow_dispatch:
@@ -35,8 +35,10 @@ jobs:
         run: |
           printf 'pilot-admin\ncorrect horse battery staple\ncorrect horse battery staple\n' \
             | ./scripts/ontopoc-start.sh > "$RUNNER_TEMP/start.log" 2>&1 &
+          pid=$!
           for i in $(seq 1 180); do
             curl -sf -o /dev/null http://127.0.0.1:8931/ && break
+            kill -0 "$pid" 2>/dev/null || { cat "$RUNNER_TEMP/start.log"; echo "the start script stopped"; exit 1; }   # a crash fails here, not after the whole wait
             sleep 2
           done
           cat "$RUNNER_TEMP/start.log"
