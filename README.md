@@ -56,6 +56,14 @@ OntoPoc 还在开发中，还没有作者以外的用户。现在的主线是一
 
 环境要求：Python 3.11+、Node 22+，以及模型 key：DeepSeek（`DEEPSEEK_API_KEY`）或 OpenRouter（`OPENROUTER_API_KEY`，默认用 DeepSeek V4.1 Flash）。上传 PDF 另需本机装有 `pdftotext`（poppler）。
 
+### 一条命令（Mac / Linux）
+
+```bash
+git clone https://github.com/Longado/ontopoc.git && cd ontopoc && ./scripts/ontopoc-start.sh
+```
+
+装依赖、构建页面、第一次运行时建管理员，然后在 `http://127.0.0.1:8767/` 一个地址提供页面和服务；数据在 `~/.ontopoc/data`。详见 [docs/DEPLOY.md](docs/DEPLOY.md)。
+
 ### 方式 A：由 AI 助手安装
 
 将以下内容粘贴至 Claude Code 或 Codex：
