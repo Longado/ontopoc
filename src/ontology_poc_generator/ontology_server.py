@@ -1840,7 +1840,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.open_run(self.path.rsplit('/', 1)[1])
                 return
             if self.path != '/api/ontology/health':
-                self.reply(404, {'error': 'Unknown ontology endpoint'})
+                self.reply(404, lang.unknown_ontology_endpoint())
                 return
             if self.user is None:   # a stranger learns only that the service is up
                 self.reply(200, {'ok': True})
@@ -1910,7 +1910,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif tail == 'graph':
                     self.reply(200, neighbourhood(result['ontology'], bundle, (query.get('node') or [''])[0], graph=graph))
                 else:
-                    self.reply(404, {'error': 'Unknown ontology endpoint'})
+                    self.reply(404, lang.unknown_ontology_endpoint())
             except FileNotFoundError:
                 self.reply(404, {'error': tr('找不到这次运行，可能已经被删掉了', 'Run not found; it may have been deleted')})
             except KeyError as exc:
@@ -2147,7 +2147,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.variants()
                 return
             if self.path != '/api/ontology/build':
-                self.reply(404, {'error': 'Unknown ontology endpoint'})
+                self.reply(404, lang.unknown_ontology_endpoint())
                 return
             try:
                 payload = self.read_json()

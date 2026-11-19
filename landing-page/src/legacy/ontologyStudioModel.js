@@ -272,7 +272,7 @@ const NO_SUCH_ROUTE = "Unknown ontology endpoint";   // what the service's route
 /** What to tell the user when the local service answers with an error. The router's 404 (or a 404 that says nothing) means
  *  the running service predates this page; any other 404 is about the run or the item, and says so in its own words. */
 export function serviceError(status, data) {
-  if (status === 404 && (!data?.error || data.error === NO_SUCH_ROUTE)) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
+  if (status === 404 && (!data?.error || data.error === NO_SUCH_ROUTE || data.code === "no_such_route")) return "本机建模服务是旧版本，不认识这个请求。请重启建模服务后再试。";
   return data?.error || `服务返回 ${status}`;
 }
 

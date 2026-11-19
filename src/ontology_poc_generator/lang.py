@@ -67,6 +67,14 @@ def unknown_endpoint():
     return tr('没有这个工作区接口', 'Unknown workspace endpoint')
 
 
+NO_SUCH_ROUTE = 'no_such_route'   # the code beside the text, so a client (the MCP server) can tell "this service has no such route" in either language
+
+
+def unknown_ontology_endpoint() -> dict:
+    """The reply body for an ontology path nobody serves."""
+    return {'error': tr('没有这个本体接口', 'Unknown ontology endpoint'), 'code': NO_SUCH_ROUTE}
+
+
 @contextlib.contextmanager
 def speaking(code):
     """Write or compare text in one language for a moment (for example to find a stored sentence written in either language)."""
