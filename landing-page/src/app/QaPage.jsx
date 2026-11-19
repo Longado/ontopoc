@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { aiDraft, askQuestion, getAnswer, getAsk, getDatasets, getModelReady, getPipeline, getPipelines, getType, runQuery, suggestTypes, updateType } from "./api.js";
+import { aiDraft, askQuestion, draftMeanings, getAnswer, getAsk, getAssistantTurns, getDatasets, getModelReady, getPipeline, getPipelines, getType, getTypes, keepAssistantTurn, markAssistantTurn, proposeMeanings, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild, isAdmin } from "./authModel.js";
-import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, loadThread, modesFor, nextVersion, parseCommand, privacyKey, proposePayload, saveThread, scopeKind, stashDraft } from "./assistantModel.js";
-import { NoModel, PlanCard, ProposalCard } from "./AssistantCards.jsx";
+import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, loadThread, meaningsPayloads, modesFor, nextVersion, parseCommand, privacyKey, proposePayload, saveThread, scopeKind, stashDraft, textOptional } from "./assistantModel.js";
+import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.jsx";
+import { filterByMode, filterModes, pastTurn, railItems, scopeOf } from "./assistantHistoryModel.js";
+import { PastTurn, modeLabel } from "./PastTurn.jsx";
 import { timeText } from "./format.js";
 import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
@@ -14,6 +16,7 @@ import { hrefFor } from "./routeModel.js";
 import { Icon } from "./ui/Icon.jsx";
 import { useLoad } from "./useLoad.js";
 
+const MODEL_KINDS = ["model", "pipeline", "meanings"];   // the turn kinds that call the model and answer with a card
 const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived" };
 
 /** The definitions a refusal names, bottom of the chain first: what it is, where it stands and why, who could confirm it. */
@@ -189,7 +192,7 @@ function AnswerCard({ record, mayBuild, onEdit }) {
 /** The person's side of a turn: a plain bubble, the query in monospace. */
 function UserBubble({ text, query, mode }) {
   const t = useT();
-  const tag = query ? t("ask.chat.queryTurn") : mode === "model" || mode === "pipeline" ? t(`ask.assistant.turn.${mode}`) : "";
+  const tag = query ? t("ask.chat.queryTurn") : MODEL_KINDS.includes(mode) ? t(`ask.assistant.turn.${mode}`) : "";
   return (
     <div className="msg msg-user">
       <div className={query ? "bubble bubble-query" : "bubble"}>
@@ -219,7 +222,7 @@ function Thinking({ query, mode }) {
         <span className="typing" aria-hidden="true"><i /><i /><i /></span>
         <span>{t("ask.chat.thinking")}</span>
       </div>
-      <p className="muted small">{query ? t("ask.query.busy") : mode === "model" || mode === "pipeline" ? t(`ask.assistant.busy.${mode}`) : t("ask.input.busy")}</p>
+      <p className="muted small">{query ? t("ask.query.busy") : MODEL_KINDS.includes(mode) ? t(`ask.assistant.busy.${mode}`) : t("ask.input.busy")}</p>
     </AssistantMsg>
   );
 }
@@ -254,8 +257,9 @@ function SavedTurn({ turn, mayBuild, onEdit, followUps, onAsk, last, onLoaded })
 }
 
 function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last, onLoaded, cards }) {
+  if (turn.kind === "past") return <PastTurn turnId={turn.turnId} onDraftAgain={cards.again} onDeleted={cards.deleted} />;
   if (turn.kind === "saved") return <SavedTurn turn={turn} mayBuild={mayBuild} onEdit={onEdit} followUps={followUps} onAsk={onAsk} last={last} onLoaded={onLoaded} />;
-  if (turn.kind === "model" || turn.kind === "pipeline") {
+  if (MODEL_KINDS.includes(turn.kind)) {
     return (
       <>
         <UserBubble text={turn.text} mode={turn.kind} />
@@ -264,6 +268,7 @@ function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last,
         {turn.status === "done" && (
           <AssistantMsg>
             {turn.kind === "pipeline" ? <PlanCard plan={turn.plan} busy={busy} onAnswer={(id, values) => cards.answer(turn, id, values)} onApply={() => cards.apply(turn)} onRevise={(request) => cards.revise(turn, request)} onDiscard={() => cards.discard(turn)} request={turn.text} version={turn.version ?? 1} />
+              : turn.kind === "meanings" ? <MeaningsCard meanings={turn.meanings} busy={busy} onToggle={(column, value, keep) => cards.toggleMeaning(turn, column, value, keep)} onApply={() => cards.applyMeanings(turn)} />
               : <ProposalCard proposal={turn.proposal} busy={turn.proposal.busy} onPropose={() => cards.propose(turn)} onAck={(id) => cards.ack(turn, id)} />}
           </AssistantMsg>
         )}
@@ -350,6 +355,23 @@ function TargetChip({ pipelines, datasets, target, setTarget }) {
   );
 }
 
+/** Meanings mode: the one object type whose code meanings are drafted (a type this person may open; the service refuses one with properties kept from them). */
+function TypeChip({ types, type, setType }) {
+  const t = useT();
+  return (
+    <ChipPop label={type ? t("ask.assistant.scope.type", { name: type.label }) : t("ask.assistant.scope.type.none")} aria={t("ask.assistant.scope.type.none")}>
+      {(close) => (
+        <>
+          {types.length === 0 && <p>{t("ask.assistant.scope.type.empty")}</p>}
+          <div className="as-pick">
+            {types.map((x) => <button type="button" key={x.id} className={type?.id === x.id ? "on" : ""} onClick={() => { setType({ id: x.id, label: x.name }); close(); }}>{x.name}</button>)}
+          </div>
+        </>
+      )}
+    </ChipPop>
+  );
+}
+
 /** What can be asked about: a chip in the composer that opens the list of types in scope, the views, and what is left out. */
 function ScopeChip({ scope }) {
   const t = useT();
@@ -414,12 +436,12 @@ function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQue
     e?.preventDefault();
     const c = parseCommand(value, mayBuild);
     if (c) return switchTo(c.mode, c.text);   // "/model" alone only switches
-    if (!value.trim() && mode !== "model") return;
+    if (!value.trim() && !textOptional(mode)) return;
     if (busy) return;
     if (isQuery) onRun(query, queryParams(query, values));
     else onSend(mode, text);
   };
-  const empty = mode === "model" ? false : !value.trim();
+  const empty = textOptional(mode) ? false : !value.trim();
   return (
     <form className="composer" onSubmit={submit}>
       {names.length > 0 && (
@@ -462,6 +484,7 @@ function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQue
           {scopeKind(mode) === "types" && <ScopeChip scope={scope} />}
           {scopeKind(mode) === "datasets" && <DatasetsChip datasets={scopes.datasets} chosen={scopes.chosen} setChosen={scopes.setChosen} />}
           {scopeKind(mode) === "target" && <TargetChip pipelines={scopes.pipelines} datasets={scopes.datasets} target={scopes.target} setTarget={scopes.setTarget} />}
+          {scopeKind(mode) === "type" && <TypeChip types={scopes.types} type={scopes.type} setType={scopes.setType} />}
         </div>
         {isQuery && <span className="composer-hint muted small">{t("ask.chat.composer.hintQuery")}</span>}
         <button className="primary send" type="submit" disabled={busy || empty} aria-label={isQuery ? t("ask.chat.composer.run") : t("ask.chat.composer.send")}>
@@ -472,27 +495,44 @@ function Composer({ scope, mayBuild, mode, setMode, text, setText, query, setQue
   );
 }
 
-/** The history rail: New chat, then the saved questions grouped by the day they were asked. */
-function Rail({ scope, activeId, onNew, onPick }) {
+/** The history rail: New chat, a filter by mode, then every turn (saved Ask questions and the builder modes) grouped by the day, each with a small mode chip. */
+function Rail({ scope, turns, activeId, activeTurn, onNew, onPick, onOpenTurn }) {
   const t = useT();
-  const groups = groupByDay(scope?.history ?? []);
+  const [only, setOnly] = useState("");
+  const items = railItems(scope?.history ?? [], turns ?? []);
+  const modes = filterModes(items);
+  const groups = groupByDay(filterByMode(items, modes.includes(only) ? only : ""));
   const label = (g) => (g.key === "today" ? t("ask.chat.today") : g.key === "yesterday" ? t("ask.chat.yesterday") : g.key === "undated" ? t("ask.chat.undated") : formatDate(g.when));
   return (
     <aside className="chat-rail" aria-label={t("ask.history.aria")}>
       <button className="chat-new" onClick={onNew}><Icon name="plus" size={14} /> {t("ask.chat.new")}</button>
+      {modes.length > 0 && (
+        <div className="rail-filter mode-chips" role="group" aria-label={t("ask.rail.filter")}>
+          {["", ...modes].map((m) => <button key={m || "all"} type="button" className={m === only ? "mode on" : "mode"} aria-pressed={m === only} onClick={() => setOnly(m)}>{m ? modeLabel(t, m) : t("ask.rail.all")}</button>)}
+        </div>
+      )}
       <div className="rail-scroll">
-        {scope && scope.history.length === 0 && <p className="muted small rail-empty">{t("ask.history.empty")}</p>}
+        {scope && items.length === 0 && <p className="muted small rail-empty">{t("ask.history.empty")}</p>}
+        {items.length > 0 && groups.length === 0 && <p className="muted small rail-empty">{t("ask.rail.none")}</p>}
         {groups.map((g) => (
           <section key={g.key} className="rail-group">
             <h2 className="history-title">{label(g)}</h2>
             <ul className="history-list">
               {g.items.map((h) => {
-                const v = historyView(h, timeText(h.asked_at));
+                const v = h.turn ? { question: h.question, meta: timeText(h.asked_at) } : historyView(h, timeText(h.asked_at));
+                const active = h.turn ? h.id === activeTurn : h.id === activeId;
+                const chip = modes.length > 0 && <span className={`rail-mode m-${h.mode}`}>{modeLabel(t, h.mode)}</span>;
                 return (
-                  <li key={h.id}>
-                    <a href={`#/qa/${h.id}`} title={v.meta} onClick={onPick} aria-current={h.id === activeId ? "page" : undefined} className={h.id === activeId ? "active" : ""}>
-                      <span className="hq">{v.question}</span>
-                    </a>
+                  <li key={h.key}>
+                    {h.turn ? (
+                      <a href="#/qa" title={v.meta} onClick={(e) => { e.preventDefault(); onOpenTurn(h.id); }} aria-current={active ? "page" : undefined} className={active ? "active" : ""}>
+                        {chip}<span className="hq">{v.question}</span>
+                      </a>
+                    ) : (
+                      <a href={`#/qa/${h.id}`} title={v.meta} onClick={onPick} aria-current={active ? "page" : undefined} className={active ? "active" : ""}>
+                        {chip}<span className="hq">{v.question}</span>
+                      </a>
+                    )}
                   </li>
                 );
               })}
@@ -520,6 +560,9 @@ export function QaPage({ route }) {
   const [pipelines] = useLoad(() => (mayBuild ? getPipelines() : Promise.resolve([])), [mayBuild]);
   const [chosen, setChosen] = useState([]);   // Model mode: the datasets the model may read about
   const [target, setTarget] = useState(null);   // Pipeline mode: {kind: "pipeline" | "dataset", name, label}
+  const [types] = useLoad(() => (mayBuild ? getTypes() : Promise.resolve([])), [mayBuild]);
+  const [typeScope, setTypeScope] = useState(null);   // Meanings mode: {id, label}, the object type whose code meanings are drafted
+  const [past, reloadPast] = useLoad(() => (mayBuild ? getAssistantTurns() : Promise.resolve({ turns: [] })), [mayBuild]);   // the builder-mode turns kept for this person
   const scope = info.data;
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
@@ -548,6 +591,37 @@ export function QaPage({ route }) {
       finish(turn, { status: "error", error: err.message });
     }
   };
+  /** Keeps a finished builder-mode turn in this person's history (the rail). Failing to keep one never gets in the way of the card. */
+  const keep = async (turn, mode, message, scopeKept, card) => {
+    try {
+      const { id } = await keepAssistantTurn({ mode, message, scope: scopeKept, card });
+      setTurns((ts) => settle(ts, turn.id, { histId: id }));
+      reloadPast();
+    } catch {
+      // the history is a convenience
+    }
+  };
+  /** What happened to the card next (applied, saved as <name>, not applied), written against the turn kept for it. */
+  const mark = (turn, state, name) => {
+    if (turn.histId) markAssistantTurn(turn.histId, { state, ...(name ? { name } : {}) }).then(reloadPast, () => {});
+  };
+  /** A past builder-mode turn opens in place, read-only. */
+  const openTurn = (id) => {
+    setTurns([pastTurn(id)]);
+    setRail(false);
+    if (route.id != null) window.location.hash = "#/qa";
+  };
+  /** "Draft again": the composer gets the same mode, scope and message back. Nothing is run and nothing is applied. */
+  const again = (d) => {
+    setMode(d.mode);
+    if (d.mode === "query") setQuery(d.text); else setText(d.text);
+    if (d.mode === "model") setChosen(d.datasets);
+    if (d.mode === "pipeline" && d.target) setTarget(d.target);
+    if (d.mode === "meanings" && d.types?.[0]) {
+      const found = (types.data ?? []).find((x) => x.id === d.types[0]);
+      setTypeScope({ id: d.types[0], label: found?.name ?? d.types[0] });
+    }
+  };
   /** The three model-backed modes over their existing endpoints. Nothing is saved or run by the assistant itself: a card is pending until the person acts on it. */
   const sendIn = (inMode, raw) => {
     if (inMode === "ask") return send(raw);
@@ -565,6 +639,24 @@ export function QaPage({ route }) {
           const result = await suggestTypes(chosen, question);
           const details = await Promise.all(result.proposed.map((p) => getType(p.id).catch(() => null)));
           finish(turn, { status: "done", proposal: { result, details, datasets: chosen, proposed: 0, busy: false, error: "" } });
+          keep(turn, "model", question, scopeOf("model", { chosen }), result);
+        } catch (err) {
+          if (isNoModel(err.message)) noModel(turn); else finish(turn, { status: "error", error: err.message });
+        }
+      })();
+      return;
+    }
+    if (inMode === "meanings") {
+      if (!typeScope) { add({ ...newTurn("meanings", question), status: "error", error: t("ask.assistant.error.pickType") }); return; }
+      const turn = newTurn("meanings", question || typeScope.label);
+      add(turn);
+      setText("");
+      (async () => {
+        try {
+          if (!(await getModelReady())) return noModel(turn);
+          const result = await draftMeanings(typeScope.id);
+          finish(turn, { status: "done", meanings: { result, typeLabel: typeScope.label, choices: {}, applied: null, busy: false, error: "" } });
+          keep(turn, "meanings", question || typeScope.label, scopeOf("meanings", { type: typeScope }), result);
         } catch (err) {
           if (isNoModel(err.message)) noModel(turn); else finish(turn, { status: "error", error: err.message });
         }
@@ -587,6 +679,7 @@ export function QaPage({ route }) {
         if (!selected) throw new Error(t("ask.assistant.error.pickTarget"));
         const draft = await aiDraft(tgt.kind === "pipeline" ? tgt.name : undefined, spec, [selected], question);
         finish(turn, { status: "done", plan: { draft, answers: {}, spec, selected, target: tgt, scopeLabel: tgt.label, newPipeline: tgt.kind === "dataset", busy: false } });
+        keep(turn, "pipeline", question, scopeOf("pipeline", { target: tgt }), draft);
         if (revises) setTurns((ts) => ts.map((x) => (x.id === revises ? { ...x, plan: { ...x.plan, supersededBy: turn.id } } : x)));   // only once the new version exists
       } catch (err) {
         if (isNoModel(err.message)) finish(turn, { status: "error", noModel: true }); else finish(turn, { status: "error", error: err.message });
@@ -595,6 +688,7 @@ export function QaPage({ route }) {
   };
   const patchPlan = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, plan: { ...x.plan, ...patch } } : x)));
   const patchProposal = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, proposal: { ...x.proposal, ...patch } } : x)));
+  const patchMeanings = (turn, patch) => setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, meanings: { ...x.meanings, ...patch } } : x)));
   const cards = {
     // answering a question re-checks the draft with the person's own words; the service calls no model for it
     answer: async (turn, id, values) => {
@@ -612,8 +706,9 @@ export function QaPage({ route }) {
     apply: (turn) => {
       const plan = turn.plan;
       const name = plan.target.kind === "pipeline" ? plan.target.name : `new:${plan.target.name}`;
-      stashDraft(window.sessionStorage, name, plan.draft.steps);
+      stashDraft(window.sessionStorage, name, plan.draft.steps, plan.draft.draft_receipt);
       patchPlan(turn, { applied: true, appliedAt: new Date().toISOString() });
+      mark(turn, "applied", plan.target.kind === "pipeline" ? plan.target.name : "");
       window.location.hash = plan.target.kind === "pipeline" ? hrefFor({ page: "pipeline", name: plan.target.name, view: "edit" }) : hrefFor({ page: "pipelinenew", dataset: plan.target.name });
     },
     // Revise: the changed request is a new turn with a new version of the card; this one is kept and frozen
@@ -621,7 +716,28 @@ export function QaPage({ route }) {
       if (isThinking(turnsRef.current) || !String(request ?? "").trim()) return;
       draftPlan(String(request).trim(), turn.plan.target, turn.id);
     },
-    discard: (turn) => patchPlan(turn, { discarded: true }),
+    discard: (turn) => { patchPlan(turn, { discarded: true }); mark(turn, "not_applied"); },
+    again,
+    deleted: () => { setTurns([]); reloadPast(); },
+    // Meanings: keep/skip one drafted code; Apply sends the kept ones through the type's own meanings path, one column at a time (a second builder confirms them)
+    toggleMeaning: (turn, column, value, keep) => patchMeanings(turn, { choices: { ...turn.meanings.choices, [`${column}|${value}`]: keep } }),
+    applyMeanings: async (turn) => {
+      patchMeanings(turn, { busy: true, error: "" });
+      let count = 0;
+      try {
+        for (const payload of meaningsPayloads(turn.meanings.result, turn.meanings.choices)) {
+          // meanings are only proposed here; a second builder confirms them in the review queue, so no "drafted" marker is written
+          await proposeMeanings(payload.id, payload.column, payload.values);
+          count += payload.values.length;
+        }
+        patchMeanings(turn, { busy: false, applied: count });
+        if (count) mark(turn, "applied", turn.meanings.result?.type ?? "");
+        reload();
+      } catch (err) {
+        patchMeanings(turn, { busy: false, error: err.message });
+        if (count) mark(turn, "applied", turn.meanings.result?.type ?? "");   // the columns before the one that failed were put forward
+      }
+    },
     // an open assumption on a type proposal is acknowledged by the person; the card re-checks by code, no model
     ack: (turn, id) => patchProposal(turn, { acked: { ...(turn.proposal.acked ?? {}), [id]: true } }),
     // Propose: the model drafts become this person's proposals through the normal update path; a second person confirms in the review queue
@@ -630,7 +746,7 @@ export function QaPage({ route }) {
       let count = 0;
       try {
         for (const ty of turn.proposal.details.filter(Boolean)) {
-          const payload = proposePayload(ty);
+          const payload = proposePayload({ ...ty, receipt: (turn.proposal.result?.proposed ?? []).find((p) => p.id === ty.id)?.draft_receipt });
           if (!payload) continue;
           await updateType(payload);
           count += 1;
@@ -640,6 +756,7 @@ export function QaPage({ route }) {
       } catch (err) {
         patchProposal(turn, { busy: false, proposed: count, error: err.message });
       }
+      if (count) mark(turn, "saved", turn.proposal.details.filter(Boolean).map((ty) => ty.id).join(", "));
     },
   };
   const run = async (queryText, params) => {
@@ -647,7 +764,9 @@ export function QaPage({ route }) {
     const turn = newTurn("query", queryText);
     add(turn);
     try {
-      finish(turn, { status: "done", record: queryRecord({ query_text: queryText, ...(await runQuery(queryText, params)) }) });
+      const ran = await runQuery(queryText, params);
+      finish(turn, { status: "done", record: queryRecord({ query_text: queryText, ...ran }) });
+      keep(turn, "query", queryText, scopeOf("query"), { query_text: queryText, status: ran.status ?? "answered" });
     } catch (err) {
       finish(turn, { status: "error", error: err.message });
     }
@@ -672,7 +791,7 @@ export function QaPage({ route }) {
     const before = was.current;
     was.current = route.id;
     if (route.id == null) {
-      if (before != null) setTurns([]);   // back to a new chat
+      if (before != null && turnsRef.current[0]?.kind !== "past") setTurns([]);   // back to a new chat (a past turn just opened from the rail stays)
     } else if (!own.current.has(route.id) && !turnsRef.current.some((x) => x.record?.id === route.id)) {
       setTurns([savedTurn(route.id)]);   // a past question opens as a thread of one
       setMode("ask");
@@ -690,7 +809,7 @@ export function QaPage({ route }) {
     const el = thread.current;
     if (!el) return;
     const last = turns[turns.length - 1];
-    const card = last?.status === "done" && (last.kind === "pipeline" || last.kind === "model") ? el.querySelector(".msg-bot:last-child .as-card") : null;
+    const card = last?.status === "done" && MODEL_KINDS.includes(last.kind) ? el.querySelector(".msg-bot:last-child .as-card") : null;
     // a plan or proposal card is read from its top; everything else follows the end of the thread
     if (card) el.scrollTo({ top: Math.max(0, card.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 72), behavior: "smooth" });
     else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
@@ -703,7 +822,7 @@ export function QaPage({ route }) {
   return (
     <main className="page chat-page">
       <div className={rail ? "chat rail-open" : "chat"}>
-        <Rail scope={scope} activeId={route.id} onNew={newChat} onPick={() => setRail(false)} />
+        <Rail scope={scope} turns={past.data?.turns} activeId={route.id} activeTurn={turns[0]?.kind === "past" ? turns[0].turnId : null} onNew={newChat} onPick={() => setRail(false)} onOpenTurn={openTurn} />
         {rail && <div className="rail-dim" onClick={() => setRail(false)} />}
         <section className="chat-main">
           <header className="chat-head">
@@ -720,7 +839,7 @@ export function QaPage({ route }) {
                 <p className="muted">{mayBuild ? t("ask.assistant.empty.sub") : scope && scope.types.length === 0 ? t("ask.chat.emptyNoScope") : t("ask.sub")}</p>
                 {mayBuild && (
                   <div className="chips" aria-label={t("ask.assistant.mode.aria")}>
-                    {["ask", "model", "pipeline"].map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
+                    {["ask", "model", "pipeline", "meanings"].map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
                   </div>
                 )}
                 {ideas.length > 0 && queryMode === "ask" && (
@@ -737,7 +856,7 @@ export function QaPage({ route }) {
           </div>
           <div className="composer-wrap">
             <Composer scope={scope} mayBuild={mayBuild} mode={queryMode} setMode={setMode} text={text} setText={setText} query={query} setQuery={setQuery} busy={busy} onSend={sendIn} onRun={run}
-              scopes={{ datasets: datasets.data ?? [], pipelines: pipelines.data ?? [], chosen, setChosen, target, setTarget }} />
+              scopes={{ datasets: datasets.data ?? [], pipelines: pipelines.data ?? [], chosen, setChosen, target, setTarget, types: (types.data ?? []).filter((x) => x.dataset), type: typeScope, setType: setTypeScope }} />
             <p className="composer-fine muted small" title={t(privacyKey(queryMode))}>{t(`${privacyKey(queryMode)}Short`)}</p>
           </div>
         </section>

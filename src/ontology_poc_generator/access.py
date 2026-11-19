@@ -42,10 +42,12 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/ontology/library(/.+)?', 'viewer'),   # reference ontologies, no company data
     ('POST', r'/api/ontology/ask', UNLIMITED),
     ('POST', r'/api/workspace/ask', 'viewer'),
+    ('GET', r'/api/workspace/assistant/turns(/[0-9]+)?', 'builder'),   # a builder's own assistant turns (assistant_history): nobody else's
+    ('POST', r'/api/workspace/assistant/turns(/[0-9]+/(outcome|delete))?', 'builder'),
     ('POST', r'/api/workspace/query(/text)?', 'viewer'),   # OntoPoc Query: run a text, or read a structured query back as text, within what the person may see (no model)
     # change data, start model work, write definitions
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
-    ('POST', r'/api/workspace/types(/(update|meanings|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?))?', 'builder'),
+    ('POST', r'/api/workspace/types(/(update|meanings|meanings-draft|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?))?', 'builder'),
     ('POST', r'/api/workspace/relations(/(update|confirm|preview))?', 'builder'),
     ('POST', r'/api/workspace/queue/(confirm|confirm-group|send-back)', 'builder'),
     ('POST', r'/api/workspace/actions(/(update|confirm|submit|decide|withdraw|undo|notify))?', 'builder'),   # a person may not approve their own submission (object_actions.decide)

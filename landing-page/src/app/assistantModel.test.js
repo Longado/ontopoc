@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actionState, allowedMode, loadThread, nextVersion, saveThread, commandChoices, datasetSpec, defaultSelected, isNoModel, modesFor, moveDraft, parseCommand, planCard, privacyKey, proposalCard, proposePayload, scopeKind, stashDraft, takeDraft } from "./assistantModel.js";
+import { actionState, allowedMode, loadThread, nextVersion, saveThread, commandChoices, datasetSpec, defaultSelected, isNoModel, modesFor, moveDraft, parseCommand, planCard, privacyKey, meaningsCard, meaningsPayloads, proposalCard, proposePayload, scopeKind, stashDraft, takeDraft, takeHandover, textOptional } from "./assistantModel.js";
 
 const store = () => {
   const m = new Map();
   return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), size: () => m.size };
 };
 
-test("a builder sees all four modes and a viewer sees Ask only", () => {
-  assert.deepEqual(modesFor(true), ["ask", "query", "model", "pipeline"]);
+test("a builder sees all five modes and a viewer sees Ask only", () => {
+  assert.deepEqual(modesFor(true), ["ask", "query", "model", "pipeline", "meanings"]);
+  assert.equal(allowedMode("meanings", false), "ask");
   assert.deepEqual(modesFor(false), ["ask"]);
   assert.equal(allowedMode("pipeline", false), "ask");
   assert.equal(allowedMode("pipeline", true), "pipeline");
@@ -16,7 +17,8 @@ test("a builder sees all four modes and a viewer sees Ask only", () => {
 });
 
 test("each mode has its own scope kind and privacy line", () => {
-  assert.deepEqual(["ask", "query", "model", "pipeline"].map(scopeKind), ["types", "types", "datasets", "target"]);
+  assert.deepEqual(["ask", "query", "model", "pipeline", "meanings"].map(scopeKind), ["types", "types", "datasets", "target", "type"]);
+  assert.equal(privacyKey("meanings"), "ask.assistant.privacy.meanings");
   assert.equal(privacyKey("model"), "ask.assistant.privacy.model");
   assert.equal(privacyKey("weird"), "ask.assistant.privacy.ask");
 });
@@ -30,10 +32,14 @@ test("slash commands switch the mode and keep the rest of the line", () => {
   assert.equal(parseCommand("how about /model", true), null);
   assert.equal(parseCommand("/model x", false), null);   // a viewer's slash is just text
   assert.deepEqual(parseCommand("/ask hi", false), { mode: "ask", text: "hi" });
+  assert.deepEqual(parseCommand("/meanings the status codes", true), { mode: "meanings", text: "the status codes" });
+  assert.equal(parseCommand("/meanings", false), null);
 });
 
 test("typing a slash offers the commands this person may use", () => {
-  assert.deepEqual(commandChoices("/", true), ["ask", "query", "model", "pipeline"]);
+  assert.deepEqual(commandChoices("/", true), ["ask", "query", "model", "pipeline", "meanings"]);
+  assert.deepEqual(commandChoices("/mea", true), ["meanings"]);
+  assert.deepEqual(commandChoices("/mea", false), []);
   assert.deepEqual(commandChoices("/p", true), ["pipeline"]);
   assert.deepEqual(commandChoices("/p", false), []);
   assert.deepEqual(commandChoices("/", false), ["ask"]);
@@ -119,8 +125,11 @@ test("proposing a type sends what saving it from its own form sends", () => {
   const ty = { id: "order", name: "Order", description: "d", dataset: "orders", key: ["no"], version: 3, properties: [{ column: "no", name: "no", type: "text" }, { column: "st", name: "Status", type: "integer", enum: true, meanings: { values: [{ value: "1", label: "open" }] } }] };
   assert.deepEqual(proposePayload(ty), {
     id: "order", version: 3, english_name: "order", name: "Order", description: "d", dataset: "orders", key: ["no"],
-    properties: [{ column: "no", name: "no", type: "text", enum: false }, { column: "st", name: "Status", type: "integer", enum: true }], enums: { st: [{ value: "1", label: "open" }] }, assistant: true,
+    properties: [{ column: "no", name: "no", type: "text", enum: false }, { column: "st", name: "Status", type: "integer", enum: true }], enums: { st: [{ value: "1", label: "open" }] },
   });
+  // the receipt the service issued with the suggestion goes back with the save; the page never says "assistant" itself
+  assert.equal(proposePayload({ ...ty, receipt: "r1" }).draft_receipt, "r1");
+  assert.equal("assistant" in proposePayload({ ...ty, receipt: "r1" }), false);
   assert.equal(proposePayload({ id: "x" }), null);
 });
 
@@ -136,6 +145,11 @@ test("a draft waits in session storage for the editor, applies once, and can mov
   assert.equal(takeDraft(s, "Made").length, 1);
   s.setItem("assistant-draft:bad", "{not json");
   assert.equal(takeDraft(s, "bad"), null);
+  assert.equal(s.size(), 0);
+  stashDraft(s, "Orders", [{ id: "ai1", step: {} }], "rcpt");   // the service's receipt for the draft waits with it and moves with it
+  moveDraft(s, "Orders", "Made");
+  assert.deepEqual(takeHandover(s, "Made"), { steps: [{ id: "ai1", step: {} }], receipt: "rcpt" });
+  assert.equal(takeHandover(s, "Made"), null);
   assert.equal(s.size(), 0);
   moveDraft(s, "nothing", "to");   // moving what is not there does nothing
   assert.equal(s.size(), 0);
@@ -235,4 +249,47 @@ test("a type proposal has its assumptions; an open one must be acknowledged befo
   assert.equal(seen.canPropose, true);
   assert.equal(seen.assumptions[1].state, "answered");
   assert.equal(c.done[0].text, "ok");
+});
+
+const DRAFT = {
+  type: "order", dataset: "订单",
+  columns: [
+    { column: "状态码", field: "订单.状态码", rows: 160, state: null, confirmed: false, checks: { confirmed: false, no_meaning: ["2"], never_seen: ["9"] }, values: [
+      { value: "0", rows: 96, facts: [], pattern: true, current: "", draft: { label: "已交付", description: "", basis: "x" } },
+      { value: "1", rows: 48, facts: [], pattern: false, current: "进行中", draft: { label: "生产中", description: "在做", basis: "" } },
+      { value: "2", rows: 16, facts: [], pattern: false, current: "", draft: null },
+    ] },
+    { column: "等级", field: "订单.等级", rows: 160, state: "confirmed", confirmed: true, checks: { confirmed: true, no_meaning: [], never_seen: [] }, values: [
+      { value: "A", rows: 80, facts: [], pattern: false, current: "大客户", draft: null },
+    ] },
+  ],
+  skipped: [{ column: "备注", reason: "x" }], rejected: [],
+  assumptions: [{ id: "a", text: "t", status: "open", definition: "enum:order:状态码" }],
+  self_check: { done: [{ key: "values", text: "ok" }], not_done: [{ key: "saved", text: "no" }] },
+};
+
+test("the meanings card lists each code with flags worked out from the checks, and keeps every draft unless skipped", () => {
+  const card = meaningsCard(DRAFT);
+  const codes = card.columns[0].values;
+  assert.deepEqual(codes.map((v) => [v.value, v.label, v.keep]), [["0", "已交付", true], ["1", "生产中", true], ["2", "", false]]);
+  assert.deepEqual(codes.map((v) => v.flags), [[], ["differs", "noPattern"], ["unmeant"]]);
+  assert.deepEqual(card.columns[0].gone, ["9"]);
+  assert.equal(card.columns[1].confirmed, true);
+  assert.equal(card.kept, 2);
+  assert.equal(card.canApply, true);
+  assert.deepEqual(card.assumptions, [{ id: "a", text: "t", state: "open", definition: "enum:order:状态码", by: null }]);
+  assert.deepEqual(card.notDone, [{ key: "saved", text: "no" }]);
+  const none = meaningsCard(DRAFT, { "状态码|0": false, "状态码|1": false });
+  assert.equal(none.canApply, false);
+  assert.equal(none.blocked, "none");
+});
+
+test("Apply sends the kept meanings per column in the shape of the type's own meanings editor, and nothing for confirmed columns", () => {
+  assert.deepEqual(meaningsPayloads(DRAFT), [{ id: "order", column: "状态码", values: [{ value: "0", label: "已交付", description: "" }, { value: "1", label: "生产中", description: "在做" }] }]);
+  assert.deepEqual(meaningsPayloads(DRAFT, { "状态码|1": false }), [{ id: "order", column: "状态码", values: [{ value: "0", label: "已交付", description: "" }] }]);
+  assert.deepEqual(meaningsPayloads(DRAFT, { "状态码|0": false, "状态码|1": false }), []);
+});
+
+test("Model and Meanings may be sent with no message", () => {
+  assert.deepEqual(["ask", "query", "model", "pipeline", "meanings"].map(textOptional), [false, false, true, false, true]);
 });

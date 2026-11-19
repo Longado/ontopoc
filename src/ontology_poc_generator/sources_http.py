@@ -3,7 +3,7 @@ the connection details leave only to an admin (workspace_sources.public_source),
 (workspace_sources.visible_run, the lists), and no request ever returns a password."""
 from __future__ import annotations
 
-from ontology_poc_generator.lang import tr
+from ontology_poc_generator.lang import tr, unknown_endpoint
 import re
 
 from ontology_poc_generator.source_connect import SourceError
@@ -14,7 +14,8 @@ from ontology_poc_generator.workspace_sources import (
     update_source, visible_run)
 
 Reply = tuple[int, dict]
-NOT_FOUND = (404, {'error': 'Unknown workspace endpoint'})
+def not_found() -> Reply:
+    return 404, {'error': unknown_endpoint()}
 
 
 def sources_get(conn, parts: list[str], user: dict | None) -> Reply:
@@ -33,7 +34,7 @@ def sources_get(conn, parts: list[str], user: dict | None) -> Reply:
             return 502, {'error': str(exc) if is_admin(user) else exc.public}
     if parts[1:] == ['runs']:
         return 200, {'runs': refresh_runs(conn, 'source', parts[0], user=user)}
-    return NOT_FOUND
+    return not_found()
 
 
 def sources_post(conn, route: str, payload: dict, who: str | None, user: dict | None, lock) -> Reply:
@@ -57,7 +58,7 @@ def sources_post(conn, route: str, payload: dict, who: str | None, user: dict | 
         return 400, {'error': str(exc) if is_admin(user) else exc.public}
     except ValueError as exc:
         return (409 if route == '/delete' else 400), {'error': str(exc)}
-    return NOT_FOUND
+    return not_found()
 
 
 def schedules_get(conn, parts: list[str], user: dict | None) -> Reply:
@@ -69,7 +70,7 @@ def schedules_get(conn, parts: list[str], user: dict | None) -> Reply:
             return 200, {'runs': schedule_runs(conn, int(parts[0]), user)}
         except KeyError:
             return 404, {'error': tr('没有这个调度', 'There is no such schedule')}
-    return NOT_FOUND
+    return not_found()
 
 
 def schedules_post(conn, route: str, payload: dict, who: str | None, user: dict | None) -> Reply:
@@ -89,4 +90,4 @@ def schedules_post(conn, route: str, payload: dict, who: str | None, user: dict 
         return 404, {'error': str(exc)}
     except ValueError as exc:
         return 400, {'error': str(exc)}
-    return NOT_FOUND
+    return not_found()

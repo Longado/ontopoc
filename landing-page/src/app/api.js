@@ -111,6 +111,8 @@ export const trialDerived = (payload) => tryDerived("/trial", payload);
 export const shapeDerived = (type, path) => tryDerived("/shape", { type, path });
 export const checkDerivedExpression = (type, expression) => tryDerived("/expression", { type, expression });
 export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
+/** The assistant's draft of the meanings of one type's code columns: one model call over counts, nothing is saved. */
+export const draftMeanings = (id) => send("/api/workspace/types/meanings-draft", { id });
 
 // actions: the definitions of one type with their parameters, one action with its records and log, submitting, approving
 const actionPath = (name, tail = "") => `/api/workspace/actions/${encodeURIComponent(name)}${tail}`;
@@ -137,7 +139,7 @@ export const getPipelineRun = (name, id) => request(pipelinePath(name, `/runs/${
 export const getPipelineLog = (name) => request(pipelinePath(name, "/log")).then((b) => b.log);
 export const createPipeline = (name, description, spec) => send("/api/workspace/pipelines", { name, description, spec });
 /** Saves a changed definition as the version the person had open (409 when it moved since). */
-export const savePipeline = (name, version, spec, assistant = false) => send("/api/workspace/pipelines/update", { id: name, version, spec, ...(assistant ? { assistant: true } : {}) });
+export const savePipeline = (name, version, spec, receipt = null) => send("/api/workspace/pipelines/update", { id: name, version, spec, ...(receipt ? { draft_receipt: receipt } : {}) });
 export const runPipeline = (name) => send("/api/workspace/pipelines/run", { id: name });
 /** Confirms what the person looked at: the definition version and the input versions they saw. */
 export const confirmPipeline = (name, version, inputs) => send("/api/workspace/pipelines/confirm", { id: name, version, seen: { inputs } });
@@ -201,6 +203,13 @@ export const setColumnAccess = (type, column, visibleTo) => send("/api/workspace
 // Q&A: the scope line with the person's own history, one saved answer as it stands now, a new question
 export const getAsk = () => request("/api/workspace/ask");
 export const getAnswer = (id) => request(`/api/workspace/ask/${id}`);
+// The assistant's builder-mode turns (query, model, pipeline, ...): the person's own, kept with a compact card; one is read back as it may be seen now
+export const getAssistantTurns = () => request("/api/workspace/assistant/turns");
+export const getAssistantTurn = (id) => request(`/api/workspace/assistant/turns/${id}`);
+export const keepAssistantTurn = (turn) => send("/api/workspace/assistant/turns", turn);
+/** What happened to a turn's card next: {state: "applied" | "saved" | "not_applied", name?}. */
+export const markAssistantTurn = (id, outcome) => send(`/api/workspace/assistant/turns/${id}/outcome`, outcome);
+export const deleteAssistantTurn = (id) => send(`/api/workspace/assistant/turns/${id}/delete`, {});
 /** The model works out the query: it can take up to a minute, there is no timeout here. */
 export const askQuestion = (question) => send("/api/workspace/ask", { question });
 /** A builder's switch on one property: its values are not sent to the model that reads a question. */

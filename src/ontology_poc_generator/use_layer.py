@@ -2,7 +2,7 @@
 handler opens the connection, takes the write lock for the ones that write, and turns the refusals into answers. Who may call what is access.py's table."""
 from __future__ import annotations
 
-from ontology_poc_generator.lang import tr
+from ontology_poc_generator.lang import tr, unknown_endpoint
 import re
 from urllib.parse import unquote
 
@@ -54,7 +54,7 @@ def get(conn, user: dict | None, path: str, query: dict[str, list[str]]):
             raise TypeRefused(tr('读派生属性要用 POST /api/workspace/agent/derived，type、name、key 写在请求体里', 'Read a derived property with POST /api/workspace/agent/derived, with type, name and key in the request body'), 405)
         if parts[1] == 'skill':
             return (*SKILL_FILE, agent_access.skill_zip(conn, user))
-    raise TypeRefused('Unknown workspace endpoint', 404)
+    raise TypeRefused(unknown_endpoint(), 404)
 
 
 def post(conn, user: dict | None, path: str, payload: dict):
@@ -75,4 +75,4 @@ def post(conn, user: dict | None, path: str, payload: dict):
         return dashboards.preview(conn, user, payload)
     if route == '/api/workspace/agent/derived':
         return agent_access.read_derived(conn, user, payload.get('type'), payload.get('name'), payload.get('key'), payload.get('page') or 1)
-    raise TypeRefused('Unknown workspace endpoint', 404)
+    raise TypeRefused(unknown_endpoint(), 404)

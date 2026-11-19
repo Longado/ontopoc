@@ -59,6 +59,7 @@ from ontology_poc_generator.ontology_confirm import confirmed_reference, element
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
+from ontology_poc_generator import assistant_history
 from ontology_poc_generator.workspace_questions import WRITES as ASK_WRITES, QaRefused, ask as ask_workspace, query_as_text, run_text as run_query_text, history as question_history, reopen as reopen_question, scope_line
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
@@ -75,6 +76,7 @@ from ontology_poc_generator.workspace_schedules import schedule_loop, tick as sc
 from ontology_poc_generator.workspace_sources import interrupted_runs
 from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, hidden_type_count, key_preview, list_types, propose_meanings, type_detail, type_log, type_page, type_id, type_objects, update_type, whole_type_row
 from ontology_poc_generator.object_type_suggest import suggest_types
+from ontology_poc_generator.type_meaning_draft import draft_type_meanings
 from ontology_poc_generator.pipeline_llm import LlmService
 from ontology_poc_generator.workspace_ai import draft as ai_draft, explain_steps as ai_explain, parse as ai_parse
 from ontology_poc_generator.workspace_llm import clear_cache as llm_clear_cache, label as llm_label, review_rerun as llm_review_rerun, state as llm_state, trial as llm_trial
@@ -889,7 +891,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             return save_build(bundle, build_and_evaluate_document(bundle, gateway, progress), progress, previous, starter)
         # the extra runs start together with the shown one, so three runs take about as long as one
         with ThreadPoolExecutor(max_workers=STABILITY_RUNS - 1) as pool:
-            extra = [pool.submit(build_company_ontology, bundle, gateway, None, False) for _ in range(STABILITY_RUNS - 1)]
+            extra = [pool.submit(lang.carry(build_company_ontology), bundle, gateway, None, False) for _ in range(STABILITY_RUNS - 1)]
             result = build_and_evaluate(bundle, gateway, progress)
             if previous:
                 # the new version's rows are held against what each earlier confirmation was confirmed on, before any question is answered
@@ -1195,7 +1197,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     return
             finally:
                 conn.close()
-            self.reply(404, {'error': 'Unknown workspace endpoint'})
+            self.reply(404, {'error': lang.unknown_endpoint()})
 
         def workspace_upload(self, preview: bool = False):
             """POST /api/workspace/datasets/upload {who, files: [{filename, content_base64, target?, mode?, key_columns?, name?}]}. With preview (/upload/preview) nothing is
@@ -1287,7 +1289,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif len(parts) == 4 and parts[1] == 'derived' and parts[3] == 'log':   # what happened to one of them and the confirmations it has had
                     body = derived_log(conn, parts[0], parts[2], self.user)
                 else:
-                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    self.reply(404, {'error': lang.unknown_endpoint()})
                     return
             except TypeRefused as exc:
                 self.reply(exc.status, {'error': str(exc)})
@@ -1314,6 +1316,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                             return
                         body = suggest_types(conn, gateway, payload.get('datasets'), payload.get('purpose') or '', who, datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                              self.user, runs_lock)
+                    elif route == '/meanings-draft':   # the assistant's Meanings mode: one bounded call over counts, nothing saved (type_meaning_draft)
+                        if gateway is None:
+                            self.reply(503, {'error': no_key()})
+                            return
+                        body = draft_type_meanings(conn, gateway, payload.get('id'), self.user)
                     else:
                         with runs_lock:   # the lock an upload takes: a check and the write that stands on it are not split by new data
                             if route == '':
@@ -1344,7 +1351,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                 whole_type_row(conn, payload.get('id'), self.user)   # a type this person may not see is not there for them; one with a column kept from them is not theirs to mark
                                 body = set_values_hidden(conn, str(payload.get('id')), str(payload.get('column')), payload.get('hide_values'), who)
                             else:
-                                self.reply(404, {'error': 'Unknown workspace endpoint'})
+                                self.reply(404, {'error': lang.unknown_endpoint()})
                                 return
                 finally:
                     conn.close()
@@ -1371,7 +1378,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif len(parts) == 1:
                     body = action_detail(conn, parts[0], self.user)
                 else:
-                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    self.reply(404, {'error': lang.unknown_endpoint()})
                     return
             except TypeRefused as exc:
                 self.reply(exc.status, {'error': str(exc)})
@@ -1396,7 +1403,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         handlers = {'': create_action, '/update': update_action, '/confirm': confirm_action, '/submit': submit_action, '/decide': decide_record, '/withdraw': withdraw_record, '/undo': undo_record,
                                     '/notify': set_notify}
                         if route not in handlers:
-                            self.reply(404, {'error': 'Unknown workspace endpoint'})
+                            self.reply(404, {'error': lang.unknown_endpoint()})
                             return
                         body = handlers[route](conn, payload, who, self.user)
                 finally:
@@ -1436,7 +1443,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif parts[1:] == ['log']:
                     body = {'log': pipeline_log(conn, parts[0], self.user)}
                 else:
-                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    self.reply(404, {'error': lang.unknown_endpoint()})
                     return
             except TypeRefused as exc:
                 self.reply(exc.status, {'error': str(exc)})
@@ -1484,7 +1491,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     elif route == '/format-guess':
                         body = format_guess(payload)
                     else:
-                        self.reply(404, {'error': 'Unknown workspace endpoint'})
+                        self.reply(404, {'error': lang.unknown_endpoint()})
                         return
                 finally:
                     engine.close()
@@ -1539,7 +1546,48 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif len(parts) == 1 and re.fullmatch(r'[0-9]+', parts[0]):
                     body = reopen_question(conn, self.user, int(parts[0]))
                 else:
-                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    self.reply(404, {'error': lang.unknown_endpoint()})
+                    return
+            except QaRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def assistant_get(self):
+            """/api/workspace/assistant/turns (this person's own builder-mode turns, newest first), /api/workspace/assistant/turns/<id> (one, with its card checked against what they may see now)."""
+            parts = [p for p in urlsplit(self.path).path[len('/api/workspace/assistant/turns'):].split('/') if p]
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = {'turns': assistant_history.listing(conn, self.user)}
+                elif len(parts) == 1 and re.fullmatch(r'[0-9]+', parts[0]):
+                    body = assistant_history.fetch(conn, self.user, int(parts[0]))
+                else:
+                    self.reply(404, {'error': lang.unknown_endpoint()})
+                    return
+            except QaRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
+        def assistant_post(self):
+            """POST /api/workspace/assistant/turns {mode, message, scope, card, outcome?} keeps a turn; /turns/<id>/outcome {state, name?} says what happened next; /turns/<id>/delete removes it."""
+            parts = [p for p in self.path.split('?')[0][len('/api/workspace/assistant/turns'):].split('/') if p]
+            payload = self.read_json()
+            if payload is None:
+                return
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if not parts:
+                    body = assistant_history.record(conn, self.user, payload.get('mode'), payload.get('message'), payload.get('scope'), payload.get('card'), payload.get('outcome'))
+                elif len(parts) == 2 and re.fullmatch(r'[0-9]+', parts[0]) and parts[1] in ('outcome', 'delete'):
+                    body = (assistant_history.mark(conn, self.user, int(parts[0]), payload) if parts[1] == 'outcome' else assistant_history.delete(conn, self.user, int(parts[0])))
+                else:
+                    self.reply(404, {'error': lang.unknown_endpoint()})
                     return
             except QaRefused as exc:
                 self.reply(exc.status, {'error': str(exc)})
@@ -1615,7 +1663,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif parts == ['permissions']:
                     body = access_table(conn)
                 else:
-                    self.reply(404, {'error': 'Unknown workspace endpoint'})
+                    self.reply(404, {'error': lang.unknown_endpoint()})
                     return
             except TypeRefused as exc:
                 self.reply(exc.status, {'error': str(exc)})
@@ -1705,7 +1753,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         elif route == 'column-access':
                             body = set_column_access(conn, str(payload.get('type')), str(payload.get('column')), payload.get('visible_to'), who)
                         else:
-                            self.reply(404, {'error': 'Unknown workspace endpoint'})
+                            self.reply(404, {'error': lang.unknown_endpoint()})
                             return
                 finally:
                     conn.close()
@@ -1729,6 +1777,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path.split('?')[0] == '/api/workspace/ask' or self.path.startswith('/api/workspace/ask/'):
                 self.ask_get()
+                return
+            if self.path.split('?')[0].startswith('/api/workspace/assistant/turns'):
+                self.assistant_get()
                 return
             if self.path.split('?')[0] == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
                 self.actions_get()
@@ -1920,7 +1971,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(413, {'error': tr(f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB。', f'The file is too large; the limit is {MAX_BYTES // 1024 // 1024} MB.') if limit == MAX_BODY else tr('请求太大。', 'The request is too large.')})
                 return None
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
-                self.reply(415, {'error': 'Expected application/json'})
+                self.reply(415, {'error': tr('请求要用 application/json', 'Expected application/json')})
                 return None
             try:
                 payload = json.loads(self.rfile.read(length))
@@ -1964,6 +2015,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/ask':
                 self.ask_post()
+                return
+            if self.path.split('?')[0].startswith('/api/workspace/assistant/turns'):
+                self.assistant_post()
                 return
             if self.path in ('/api/workspace/query', '/api/workspace/query/text'):
                 self.query_post()
@@ -2157,7 +2211,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     job['state'] = 'done' if status == 200 else 'failed'
                     job['result' if status == 200 else 'error'] = body if status == 200 else body['error']
                     keep_job(job_id, job)
-            threading.Thread(target=run, daemon=True).start()
+            threading.Thread(target=lang.carry(run), daemon=True).start()   # in the request's context: its language (a new thread starts with none)
             self.reply(202, {'job_id': job_id})
 
         def job_status(self, job_id):

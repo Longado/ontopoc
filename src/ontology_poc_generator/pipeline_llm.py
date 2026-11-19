@@ -25,6 +25,7 @@ from ontology_poc_generator.pipeline_funcs import number_text
 from ontology_poc_generator.pipeline_ops import _new_name, visible
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.workspace_store import now_text
+from ontology_poc_generator import lang
 from ontology_poc_generator.lang import tr
 
 PROMPT_VERSION = 'pipeline_row_judge.v2'
@@ -393,7 +394,7 @@ def call_many(gateway, eff: dict, todo: dict, on_batch=None) -> dict:
     for start in range(0, len(keys), WORKERS):
         batch = keys[start:start + WORKERS]
         with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-            done = dict(zip(batch, pool.map(lambda k: judge(gateway, eff, todo[k]), batch)))
+            done = dict(zip(batch, [f.result() for f in [pool.submit(lang.carry(judge), gateway, eff, todo[k]) for k in batch]]))   # each call in the caller's context (its language)
         results.update(done)
         if on_batch:
             on_batch(done)

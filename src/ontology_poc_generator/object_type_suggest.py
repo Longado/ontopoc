@@ -8,6 +8,7 @@ import json
 from contextlib import nullcontext
 
 from ontology_poc_generator.assistant_checks import type_assumptions, type_self_check
+from ontology_poc_generator.draft_receipts import issue, type_fingerprint
 from ontology_poc_generator.lang import english, tr
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.object_types import (
@@ -107,7 +108,8 @@ def _keep(conn, suggested, asked: set[str], user: dict | None) -> dict:
     columns = dataset_columns(conn, dataset['id'])
     left_out = [c for c in columns if c not in used]   # the columns of the dataset this type does not use
     codes = [p['column'] for p in content['properties'] if p['column'] in columns and bool(columns[p['column']]['counts']) and columns[p['column']]['type'] in CODE_TYPES]   # code columns: their meanings are for a person to confirm
-    return {'id': content['english_name'], 'name': content['name'], 'basis': content['basis'], 'dataset': dataset['name'], 'key': content['key'], 'left_out': left_out,
+    receipt = issue(conn, user, 'type', content['english_name'], type_fingerprint(content))   # the server's record that this person was given this draft (draft_receipts)
+    return {'draft_receipt': receipt, 'id': content['english_name'], 'name': content['name'], 'basis': content['basis'], 'dataset': dataset['name'], 'key': content['key'], 'left_out': left_out,
             'assumptions': type_assumptions(content['english_name'], content['key'], key_check['rows_checked'], codes)}
 
 

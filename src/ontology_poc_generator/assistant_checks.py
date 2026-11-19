@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from ontology_poc_generator.draft_receipts import peek, pipeline_fingerprint, type_fingerprint
 from ontology_poc_generator.lang import tr
 
 CONFIRMED, OPEN = 'confirmed', 'open'
@@ -77,9 +78,69 @@ def type_self_check(kept: int, dropped: int) -> dict:
     return {'done': done, 'not_done': not_done}
 
 
-def drafted_mark(payload: dict, who: str | None, old: dict | None = None) -> dict | None:
-    """The marker an object carries when it was applied from the assistant's draft: who applied it, when, and that the assistant drafted it. It is stored in the
-    definition like its other metadata. The page sends `assistant: true` (exactly) from the assistant's Apply; any other save keeps the marker the object has."""
-    if payload.get('assistant') is True:
-        return {'by': who, 'at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'how': 'assistant'}
-    return old
+def drafted_mark(conn, payload: dict, who: str | None, user: dict | None, kind: str, saved, old: dict | None = None, target: str | None = None) -> dict | None:
+    """The marker an object carries when it was applied from the assistant's draft: who applied it, when, and how. It is stored in the definition like its other metadata.
+
+    The server decides, not the page: `assistant: true` marks nothing. The save must carry `draft_receipt`, the id the server issued with the draft (draft_receipts):
+    live (24 hours), issued to this person, for this kind ('pipeline' or 'type'), for this target when it was issued for one, and not used before. A receipt is used up
+    by the first save that carries it once that save is written (draft_receipts.spend at the call site); a save that fails leaves it for the retry. An invalid receipt is ignored silently: the save goes ahead without a marker, and keeps `old` (the marker the
+    object already has). The saved content is compared with the fingerprint of what was drafted:
+      pipeline (`saved` = the saved steps): every drafted step is there exactly as drafted -> how 'assistant'; some drafted step is there but any is changed or missing -> 'assistant-edited';
+        none of the drafted steps is there -> no marker.
+      type (`saved` = the saved definition): same dataset, key and set of columns as drafted -> 'assistant'; otherwise -> 'assistant-edited'."""
+    receipt = payload.get('draft_receipt')
+    got = peek(conn, receipt, user, kind)
+    if got is None:
+        return old
+    drafted_target, fingerprint = got
+    if drafted_target is not None and drafted_target != target:
+        return old
+    if kind == 'pipeline':
+        now = pipeline_fingerprint([s for s in saved if isinstance(s, dict)])
+        present = [i for i in fingerprint if i in now]
+        if not present:
+            return old
+        how = 'assistant' if len(present) == len(fingerprint) and all(now[i] == fingerprint[i] for i in present) else 'assistant-edited'
+    else:
+        how = 'assistant' if type_fingerprint(saved) == fingerprint else 'assistant-edited'
+    return {'by': who, 'at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'how': how}
+
+
+def meanings_assumptions(english_name: str, columns: list[dict]) -> list[dict]:
+    """The Meanings card's assumptions: a column whose meanings were confirmed stays as it is (confirmed, linked to them); each column with drafted meanings stands on a guess
+    nobody has confirmed yet (open). The open ones do not stop Apply: Apply only puts the meanings forward, and a second builder confirms them."""
+    found = []
+    for c in columns:
+        column = c['column']
+        if c['confirmed']:
+            found.append({'id': f'meanings:{english_name}:{column}', 'text': tr(f'“{column}”的含义已经确认，这次不改', f'The meanings of "{column}" are confirmed and are left as they are'),
+                          'status': CONFIRMED, 'definition': f'enum:{english_name}:{column}', 'by': None})
+        elif any(v['draft'] for v in c['values']):
+            found.append({'id': f'meanings:{english_name}:{column}', 'text': tr(f'“{column}”里各代码的含义是模型的猜测，要另一位建设者确认', f'The meanings of the codes in "{column}" are the model\'s guess and need another builder to confirm'),
+                          'status': OPEN, 'definition': f'enum:{english_name}:{column}', 'by': None})
+    return found
+
+
+def meanings_self_check(columns: list[dict], rejected: list[dict], skipped: list[dict], asked: bool = True) -> dict:
+    """What ran for a Meanings draft: the counts and the code-side checks. It never says "verified"."""
+    drafted = sum(1 for c in columns for v in c['values'] if v['draft'])
+    unmeant = sum(len(c['checks']['no_meaning']) for c in columns)
+    gone = sum(len(c['checks']['never_seen']) for c in columns)
+    confirmed = sum(1 for c in columns if c['confirmed'])
+    done, not_done = [], []
+    if asked and columns:
+        done.append({'key': 'values', 'text': tr('列和取值都在数据里，含义是短文字', 'Columns and codes exist in the data, and the meanings are short texts')})
+    if drafted:
+        done.append({'key': 'drafted', 'text': tr(f'起草了 {drafted} 个代码的含义', f'Drafted a meaning for {drafted} code(s)')})
+    if confirmed:
+        done.append({'key': 'confirmed', 'text': tr(f'{confirmed} 列的含义已确认，没有动', f'{confirmed} column(s) already confirmed were left untouched')})
+    if unmeant:
+        not_done.append({'key': 'unmeant', 'text': tr(f'{unmeant} 个数据里出现的代码还没有含义', f'{unmeant} code(s) in the data still have no meaning')})
+    if gone:
+        not_done.append({'key': 'gone', 'text': tr(f'{gone} 个已写含义的代码现在的数据里没有', f'{gone} code(s) with a meaning on file do not occur in the data now')})
+    if rejected:
+        not_done.append({'key': 'rejected', 'text': tr(f'{len(rejected)} 条模型的猜测没通过核对，已剔除', f'{len(rejected)} guess(es) failed the checks and were left out')})
+    if skipped:
+        not_done.append({'key': 'skipped', 'text': tr(f'{len(skipped)} 列没有起草', f'{len(skipped)} column(s) were not drafted')})
+    not_done.append({'key': 'saved', 'text': tr('还没有保存：什么也没有写入', 'Saved: nothing has been written yet')})
+    return {'done': done, 'not_done': not_done}

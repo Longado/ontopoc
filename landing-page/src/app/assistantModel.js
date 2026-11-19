@@ -1,7 +1,7 @@
 // The assistant's modes and cards as plain functions, so they can be tested without a browser.
 // One turn is one user message, one mode, one bounded call (or none) and one result card. Nothing here saves, runs or confirms anything.
 
-export const MODES = ["ask", "query", "model", "pipeline"];
+export const MODES = ["ask", "query", "model", "pipeline", "meanings"];
 
 /** The modes a person sees as chips: a viewer gets Ask only (the others are absent, not disabled); a builder gets all. */
 export const modesFor = (mayBuild) => (mayBuild ? MODES : ["ask"]);
@@ -9,8 +9,11 @@ export const modesFor = (mayBuild) => (mayBuild ? MODES : ["ask"]);
 /** A mode this person may use: anything else is Ask. */
 export const allowedMode = (mode, mayBuild) => (modesFor(mayBuild).includes(mode) ? mode : "ask");
 
-/** What the scope chip in the composer is about: confirmed types (Ask, Query), datasets (Model), a dataset or a pipeline (Pipeline). */
-export const scopeKind = (mode) => (mode === "model" ? "datasets" : mode === "pipeline" ? "target" : "types");
+/** What the scope chip in the composer is about: confirmed types (Ask, Query), datasets (Model), a dataset or a pipeline (Pipeline), one object type (Meanings). */
+export const scopeKind = (mode) => (mode === "model" ? "datasets" : mode === "pipeline" ? "target" : mode === "meanings" ? "type" : "types");
+
+/** The modes whose message is optional: the scope alone says what to do (the datasets for Model, the type for Meanings). */
+export const textOptional = (mode) => mode === "model" || mode === "meanings";
 
 /** Slash commands: "/model ...", "/pipeline ...", "/query ..." (and "/ask ...") switch the mode; the rest of the line is the message.
  * Returns {mode, text} when the text starts with a command this person may use, else null. A viewer's "/model" is just text. */
@@ -107,16 +110,58 @@ export function proposePayload(type) {
   return {
     id: type.id, version: type.version, english_name: type.id, name: type.name, description: type.description ?? "", dataset: type.dataset, key: type.key,
     properties: props.map((p) => ({ column: p.column, name: p.name || p.column, type: p.type, enum: Boolean(p.enum) })), enums,
-    assistant: true,   // the service marks it "drafted by the assistant", applied by this person now
+    ...(type.receipt ? { draft_receipt: type.receipt } : {}),   // the service's receipt for this suggestion: it decides whether the saved type counts as drafted by the assistant
   };
+}
+
+/** The Meanings card for the draft of one type (the response of the meanings-draft endpoint) and the person's keep/skip choices ({"column|value": boolean}).
+ * Each column lists its codes with the drafted meaning, what is on file, and flags worked out by code. A drafted meaning is kept unless the person skips it;
+ * a confirmed column has no drafts and is only shown. {columns, kept, canApply, blocked, ...}. */
+export function meaningsCard(result, choices = {}) {
+  const columns = (result?.columns ?? []).map((c) => {
+    const unmeant = new Set(c.checks?.no_meaning ?? []);
+    const values = c.values.map((v) => {
+      const flags = [];
+      if (v.draft && v.current && v.current !== v.draft.label) flags.push("differs");
+      if (v.draft && !v.pattern) flags.push("noPattern");
+      if (unmeant.has(v.value)) flags.push("unmeant");
+      const keep = Boolean(v.draft) && (choices[`${c.column}|${v.value}`] ?? true);
+      return { value: v.value, rows: v.rows, label: v.draft?.label ?? "", description: v.draft?.description ?? "", basis: v.draft?.basis ?? "", current: v.current ?? "", facts: v.facts ?? [], flags, hasDraft: Boolean(v.draft), keep };
+    });
+    return { column: c.column, rows: c.rows, confirmed: Boolean(c.confirmed), values, gone: c.checks?.never_seen ?? [], kept: values.filter((v) => v.keep).length };
+  });
+  const kept = columns.reduce((a, c) => a + c.kept, 0);
+  return {
+    columns, kept, canApply: kept > 0, blocked: kept > 0 ? "" : "none", skipped: result?.skipped ?? [], rejected: result?.rejected ?? [],
+    assumptions: (result?.assumptions ?? []).map((a) => ({ id: a.id, text: a.text, state: a.status === "open" ? "open" : "confirmed", definition: a.definition ?? null, by: a.by ?? null })),
+    done: result?.self_check?.done ?? [], notDone: result?.self_check?.not_done ?? [],
+  };
+}
+
+/** What Apply sends for a Meanings card: one meanings update per column with kept values, exactly what the type's own meanings editor sends
+ * ({id, column, values: [{value, label, description}]}), so the service runs the same checks. Skipped values and confirmed columns send nothing. */
+export function meaningsPayloads(result, choices = {}) {
+  return meaningsCard(result, choices).columns.filter((c) => !c.confirmed && c.kept).map((c) => ({
+    id: result.type, column: c.column, values: c.values.filter((v) => v.keep).map((v) => ({ value: v.value, label: v.label, description: v.description })),
+  }));
 }
 
 // Handing a draft to the pipeline editor: the steps wait in this tab's session storage under the pipeline's name until the editor opens it,
 // which applies them the way the editor's own AI panel does. A draft for a pipeline that does not exist yet waits under "new:<dataset>"
 // and is moved to the pipeline's name when the person creates it.
 const stashKey = (target) => `assistant-draft:${target}`;
-export function stashDraft(storage, target, steps) {
+const receiptKey = (target) => `assistant-receipt:${target}`;
+export function stashDraft(storage, target, steps, receipt) {
   storage.setItem(stashKey(target), JSON.stringify(steps));
+  if (receipt) storage.setItem(receiptKey(target), receipt);
+  else storage.removeItem(receiptKey(target));
+}
+/** The steps waiting for `target` and the service's receipt for that draft, taken out together; null when there are no steps. */
+export function takeHandover(storage, target) {
+  const receipt = storage.getItem(receiptKey(target));
+  storage.removeItem(receiptKey(target));
+  const steps = takeDraft(storage, target);
+  return steps ? { steps, receipt: receipt || null } : null;
 }
 /** The steps waiting for `target`, taken out (so they apply once); null when there are none. */
 export function takeDraft(storage, target) {
@@ -135,6 +180,9 @@ export function moveDraft(storage, from, to) {
   if (raw == null) return;
   storage.removeItem(stashKey(from));
   storage.setItem(stashKey(to), raw);
+  const receipt = storage.getItem(receiptKey(from));
+  storage.removeItem(receiptKey(from));
+  if (receipt) storage.setItem(receiptKey(to), receipt);
 }
 
 /** The pipeline's step the assistant works from when the person names a pipeline: the last step that is not an output. */
@@ -160,7 +208,7 @@ export function loadThread(storage, user) {
   try {
     const list = JSON.parse(storage.getItem(threadKey(user)) ?? "[]");
     if (!Array.isArray(list)) return [];
-    return list.filter((x) => x && typeof x.id === "string").map((x) => (x.plan ? { ...x, plan: { ...x.plan, busy: false } } : x.proposal ? { ...x, proposal: { ...x.proposal, busy: false } } : x));
+    return list.filter((x) => x && typeof x.id === "string").map((x) => (x.plan ? { ...x, plan: { ...x.plan, busy: false } } : x.proposal ? { ...x, proposal: { ...x.proposal, busy: false } } : x.meanings ? { ...x, meanings: { ...x.meanings, busy: false } } : x));
   } catch {
     return [];
   }

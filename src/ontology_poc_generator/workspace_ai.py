@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 
 from ontology_poc_generator.assistant_checks import plan_assumptions, plan_self_check
+from ontology_poc_generator.draft_receipts import issue, pipeline_fingerprint
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_types import TypeRefused, element_row
 from ontology_poc_generator.pipeline_assist import (
@@ -134,6 +135,9 @@ def _selected(spec: dict, payload: dict) -> list[str]:
 def draft(conn, engine, payload: dict, user: dict | None, llm: LlmService | None = None) -> dict:
     """The draft, with its key assumptions and self-check worked out by code from what it contains (assistant_checks): no further model call."""
     out = _draft(conn, engine, payload, user, llm)
+    if (out.get('check') or {}).get('ok') and out.get('steps'):   # the server's own record that this person was given this draft: a save that carries it is marked (draft_receipts)
+        target = payload.get('id') if isinstance(payload.get('id'), str) else None
+        out = {**out, 'draft_receipt': issue(conn, user, 'pipeline', target, pipeline_fingerprint([s['step'] for s in out['steps']]))}
     return {**out, 'assumptions': plan_assumptions(out, _answers(payload)), 'self_check': plan_self_check(out)}
 
 
