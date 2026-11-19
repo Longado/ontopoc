@@ -117,6 +117,12 @@ class RunChanged(ValueError):
 
 SAVED_NAME = re.compile(r'^\d{8}T\d{6,12}Z-[0-9a-f]{8}\.json$')
 JOB_ID = re.compile(r'^[0-9a-f]{12}$')
+def failure_reason(exc: BaseException) -> str:
+    """What an error says to the person at the page. A file error carries the path of this machine, so only its kind is said; the whole of it goes to the service's log."""
+    if isinstance(exc, OSError):
+        print(f'request stopped with {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+        return tr('详情见服务日志', 'see the service log')
+    return str(exc)
 def no_key() -> str:
     return tr('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。', 'This service has no model credentials: set DEEPSEEK_API_KEY or OPENROUTER_API_KEY and restart ontology_server.')
 def interrupted() -> str:
@@ -412,7 +418,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             return {'views': context['views'], 'view_tables': context['view_tables'], 'proposed_views': waiting}
         except Exception as exc:
-            return {'views': [], 'view_tables': [], 'proposed_views': [], 'views_error': tr(f'视图没有读出来：{type(exc).__name__}: {exc}', f'The views could not be read: {type(exc).__name__}: {exc}')[:300]}
+            return {'views': [], 'view_tables': [], 'proposed_views': [], 'views_error': tr(f'视图没有读出来：{type(exc).__name__}: {failure_reason(exc)}', f'The views could not be read: {type(exc).__name__}: {failure_reason(exc)}')[:300]}
 
     def rows_kept(result, context, view):
         """The positions of the rows a view keeps in its table, read once per version of the definitions."""
@@ -462,7 +468,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         try:   # the workspace file is a second store: failing to read it must not stop an answer that the rows alone can give
             context, unread = view_context(result), None
         except Exception as exc:
-            context, unread = None, tr(f'视图没有读出来，这次读的是原表的行：{type(exc).__name__}: {exc}', f'The views could not be read, so this run read the rows of the original table: {type(exc).__name__}: {exc}')[:300]
+            context, unread = None, tr(f'视图没有读出来，这次读的是原表的行：{type(exc).__name__}: {failure_reason(exc)}', f'The views could not be read, so this run read the rows of the original table: {type(exc).__name__}: {failure_reason(exc)}')[:300]
 
         def rows_of(applied):
             """(bundle, graph) holding only the rows the views in `applied` keep, per table (a row all of them keep)."""
@@ -524,7 +530,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             return tr('；', '; ').join(tr(f'{n}：{e}', f'{n}: {e}') for n, e in refused.items()) or None
         except Exception as exc:
-            return f'{type(exc).__name__}: {exc}'[:300]
+            return f'{type(exc).__name__}: {failure_reason(exc)}'[:300]
 
     views_warning = lambda problem: tr(f'已记下，但工作区里的视图没有更新：{problem}', f'Saved, but the views in the workspace were not updated: {problem}') if problem else None
 
@@ -927,7 +933,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         try:
             return future.result()
         except Exception as exc:   # an extra run is evidence, not the answer: its failure is counted, the upload goes on
-            return {'status': 'failed', 'error': f'{type(exc).__name__}: {exc}'[:200]}
+            return {'status': 'failed', 'error': f'{type(exc).__name__}: {failure_reason(exc)}'[:200]}
 
     def data_checks(ontology, bundle, starter=None):
         """Every source table goes into the workspace file beside the runs, and each drafted identity is checked over the
@@ -942,7 +948,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             finally:
                 conn.close()
         except Exception as exc:   # the checks are evidence on top of the build: their failure is shown, not fatal
-            return {'tables': [], 'keys': [], 'error': f'{type(exc).__name__}: {exc}'[:300]}
+            return {'tables': [], 'keys': [], 'error': f'{type(exc).__name__}: {failure_reason(exc)}'[:300]}
 
     def save_build(bundle, result, progress=None, previous_name=None, starter=None):
         outage = [e['message'] for a in result['ontology']['attempts'] for e in a['errors'] if e['code'] == 'model_request_failed']
@@ -1055,7 +1061,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return None   # a blocked draft has no answers to work out again
             answers_again(name, because)
         except Exception as exc:
-            return tr(f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {exc}', f'Saved, but the answers already in this run could not be recomputed with it: {type(exc).__name__}: {exc}')[:300]
+            return tr(f'已保存，但这次运行里已有的答案没能按它重算：{type(exc).__name__}: {failure_reason(exc)}', f'Saved, but the answers already in this run could not be recomputed with it: {type(exc).__name__}: {failure_reason(exc)}')[:300]
         return None
 
     gate = Gate(output_dir / 'workspace.sqlite', port, origins, no_auth, trusted_proxies)
@@ -1531,7 +1537,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             except Exception as exc:   # never a dropped connection: the person is told something went wrong, and what it was goes to the service's log
-                print(f'{self.path} stopped with {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+                print(f'{self.path} stopped with {type(exc).__name__}: {failure_reason(exc)}', file=sys.stderr, flush=True)
                 self.reply(500, {'error': tr('服务出了内部错误，详情见服务日志', 'The service had an internal error; see the service log for details')})
                 return
             self.reply(*reply)
@@ -2205,7 +2211,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 try:
                     status, body = finish_build(bundle, is_document, report, previous, starter)
                 except Exception as exc:  # the job must end in a state the page can show; the server log keeps the rest
-                    status, body = 500, {'error': tr(f'建模时出错：{exc}', f'An error happened while modeling: {exc}')}
+                    status, body = 500, {'error': tr(f'建模时出错：{failure_reason(exc)}', f'An error happened while modeling: {failure_reason(exc)}')}
                 report('done' if status == 200 else 'failed', {})
                 with jobs_lock:
                     job['state'] = 'done' if status == 200 else 'failed'
@@ -2458,7 +2464,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
-                self.reply(500, {'error': tr(f'{what}没有保存：{type(exc).__name__}: {exc}', f'{what} was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'{what}没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'{what} was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             warning = recompute_warning(found[0]['saved_as'], because) or views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
@@ -2531,7 +2537,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
-                self.reply(500, {'error': tr(f'处理办法没有保存：{type(exc).__name__}: {exc}', f'The way of treating them was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'处理办法没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'The way of treating them was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             warning = recompute_warning(name, because) or views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
@@ -2589,7 +2595,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             except sqlite3.Error as exc:
-                self.reply(500, {'error': tr(f'再确认没有保存：{type(exc).__name__}: {exc}', f'Confirming again was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'再确认没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'Confirming again was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             self.keep_code_state(found, (row['element_id'], 'confirmed', row['evidence_ref'], signer, content, stored_anchors(anchors)), tr('再确认', 'confirmed again'), tr(f'「{name}」的定义照旧再确认了', f'The definition of "{name}" was confirmed again as before'))
 
@@ -2627,7 +2633,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(400, {'error': str(exc)})
                 return
             except sqlite3.Error as exc:
-                self.reply(500, {'error': tr(f'视图没有保存：{type(exc).__name__}: {exc}', f'The view was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'视图没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'The view was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             warning = views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), 'message': message, **({'warning': warning} if warning else {})})
@@ -2753,7 +2759,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:
-                self.reply(500, {'error': tr(f'批量通过没有保存：{type(exc).__name__}: {exc}', f'The bulk approval was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'批量通过没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'The bulk approval was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             warning = views_warning(sync_run_views(found[0]))
             self.reply(200, {**code_reply(found), **({'warning': warning} if warning else {})})
@@ -2977,7 +2983,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(403, {'error': str(exc)})
                 return
             except Exception as exc:   # whatever failed, the person is told and nothing of the confirmation is kept
-                self.reply(500, {'error': tr(f'确认没有保存：{type(exc).__name__}: {exc}', f'The confirmation was not saved: {type(exc).__name__}: {exc}')[:300]})
+                self.reply(500, {'error': tr(f'确认没有保存：{type(exc).__name__}: {failure_reason(exc)}', f'The confirmation was not saved: {type(exc).__name__}: {failure_reason(exc)}')[:300]})
                 return
             self.reply(200, result)
 
