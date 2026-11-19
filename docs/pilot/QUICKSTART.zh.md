@@ -46,6 +46,12 @@ export OPENROUTER_API_KEY=你的key     # 或 DEEPSEEK_API_KEY；在启动服务
 
 两样一起备份，**先停服务**，或用 `sqlite3 workspace.sqlite ".backup /备份路径/backup.sqlite"`。备份放在只有你能读的地方：sqlite 文件里有密码哈希。上传上限：一次 10 MB；一张表至多 100 万个单元格。
 
+## 4b. 从 MySQL 或 PostgreSQL 读数据
+
+管理员在 **数据 > 数据源** 里加数据库（需要 `pip install -e '.[sources]'`，启动脚本已经装好）。给 OntoPoc 一个只读账号。每张表读成一个数据集；**按主键更新** 会保留表里已删掉的行，**覆盖** 和表保持一致。
+
+数据库在本机时加密默认 **不用**，否则默认 **必须（核对证书）**。“必须”会核对服务器证书*和它的主机名*。MySQL 自动生成的证书没有主机名，所以永远过不了，即使把它的 CA 贴进来也一样。数据库在别的机器上时，请 DBA 装一张按你连接用的主机名签发的证书（用公司 CA 签，把这个 CA 贴进数据源表单）。
+
 ## 5. 下一步
 
 照 [FIRST_DEFINITION.md](FIRST_DEFINITION.md) 用 [sample/](sample/) 里的样例数据走一遍，再按 [README.md](README.md) 的日程推进。右上角头像菜单里有 **Send feedback**（中文界面显示“反馈意见”）；启动服务前设 `ONTOPOC_FEEDBACK_URL`，可以让它指向你们自己的表单或群。

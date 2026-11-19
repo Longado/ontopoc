@@ -46,6 +46,12 @@ With `scripts/ontopoc-start.sh` everything is in `~/.ontopoc/data` (or `ONTOPOC_
 
 Back up both **with the service stopped**, or run `sqlite3 workspace.sqlite ".backup /path/to/backup.sqlite"`. Keep backups where only you can read them: the sqlite file contains password hashes. Upload limit: 10 MB per upload; a table at most 1 million cells.
 
+## 4b. Reading from MySQL or PostgreSQL
+
+Admins add a database under **Data > Sources** (needs `pip install -e '.[sources]'`, which the start script does). Give OntoPoc a read-only account. Each table becomes a dataset; **Update by key** keeps rows that vanished from the table, **Overwrite** mirrors it.
+
+Encryption is **None** by default for a database on the same machine and **Required** otherwise. "Required (verify certificate)" checks the server's certificate *and its host name*. MySQL's auto-generated certificate has no host name, so it never passes, even when you paste its CA. For a database on another machine, have the DBA install a certificate issued for the host name you connect to (from your company CA; paste that CA in the source form).
+
 ## 5. Next
 
 Run [FIRST_DEFINITION.md](FIRST_DEFINITION.md) with the sample data in [sample/](sample/), then follow the schedule in [README.md](README.md). The **Send feedback** link in the avatar menu (top right) opens the feedback page; set `ONTOPOC_FEEDBACK_URL` before starting the service to point it at your own form or chat.
