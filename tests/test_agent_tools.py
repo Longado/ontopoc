@@ -168,6 +168,15 @@ class LookAlikeTests(unittest.TestCase):
             self.assertTrue(t[team]['description'].startswith(mcp_server.SCOPE_TEAM), team)
             self.assertTrue(t[run]['description'].startswith(mcp_server.SCOPE_RUN), run)
 
+    # in the same world but easy to mix up (Glama, 2026-11-17: "list_questions vs ask_question are easily confused, and data_check/health/preview_upload/data_layout all inspect the uploaded data")
+    SAME_WORLD = (('ask_question', 'list_questions'), ('preview_upload', 'data_layout'), ('data_layout', 'data_check'), ('data_check', 'health'))
+
+    def test_same_world_look_alikes_name_each_other(self):
+        t = {x['name']: x for x in handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None)['result']['tools']}
+        for one, other in self.SAME_WORLD:
+            self.assertIn(other, t[one]['description'], one)
+            self.assertIn(one, t[other]['description'], other)
+
     def test_every_tool_starts_with_where_it_works(self):
         for x in handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None)['result']['tools']:
             self.assertTrue(x['description'].startswith((mcp_server.SCOPE_TEAM, mcp_server.SCOPE_RUN, mcp_server.SCOPE_SERVICE)), x['name'])
