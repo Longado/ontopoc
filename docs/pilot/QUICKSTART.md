@@ -37,7 +37,7 @@ Never write the key into a file or paste it into chat. **Without a key**, upload
 
 ## 4. Where data lives and backups
 
-Everything is in `output/ontology-runs/` in the checkout (or the folder you pass as `--data-dir`):
+With `scripts/ontopoc-start.sh` everything is in `~/.ontopoc/data` (or `ONTOPOC_DATA_DIR`); started by hand, it is `output/ontology-runs/` in the checkout (or the folder you pass as `--data-dir`):
 
 | File | What it is |
 |---|---|

@@ -1110,7 +1110,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if not target.is_file():
                     self.send_error(404)
                     return
-            body = target.read_bytes()
+            try:
+                body = target.read_bytes()
+            except OSError as exc:   # a file of the build this account cannot read: an error reply, not a dropped connection
+                print(f'page file {target.name} not served: {exc}', file=sys.stderr, flush=True)
+                self.send_error(404)
+                return
             self.serving_page = True
             self.send_response(200)
             kind = mimetypes.guess_type(target.name)[0] or 'application/octet-stream'
@@ -1118,6 +1123,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', 'no-cache' if target.suffix == '.html' else 'public, max-age=31536000, immutable' if target.parent.name == 'assets' else 'no-cache')
             self.end_headers()
+            self.serving_page = False   # the relaxed policy is for this reply only
             self.wfile.write(body)
 
         def reply(self, status, payload, headers=None):

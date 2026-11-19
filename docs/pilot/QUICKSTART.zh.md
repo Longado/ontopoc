@@ -37,7 +37,7 @@ export OPENROUTER_API_KEY=你的key     # 或 DEEPSEEK_API_KEY；在启动服务
 
 ## 4. 数据在哪、怎么备份
 
-全部在检出目录的 `output/ontology-runs/`（或你用 `--data-dir` 指定的目录）：
+用 `scripts/ontopoc-start.sh` 启动时全部在 `~/.ontopoc/data`（或 `ONTOPOC_DATA_DIR`）；手动启动时在检出目录的 `output/ontology-runs/`（或你用 `--data-dir` 指定的目录）：
 
 | 文件 | 是什么 |
 |---|---|
