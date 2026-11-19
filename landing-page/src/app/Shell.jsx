@@ -6,8 +6,10 @@ import { BoardPage, BoardsPage } from "./BoardsPage.jsx";
 import { WORKSPACE_CHANGED, getNotices, getQueueCount } from "./api.js";
 import { NoticesPage } from "./NoticesPage.jsx";
 import { useAuth } from "./Auth.jsx";
+import { askOff } from "./demoModel.js";
+import { useDemoAsk } from "./useDemoAsk.js";
 import { t } from "./i18n/index.js";
-import { canBuild, roleLabel, searchPlaceholder } from "./authModel.js";
+import { canBuild, isGuest, roleLabel, searchPlaceholder } from "./authModel.js";
 import { SettingsPage } from "./SettingsPage.jsx";
 import { ConfirmGroupPage } from "./ConfirmGroupPage.jsx";
 import { ConfirmPage } from "./ConfirmPage.jsx";
@@ -105,13 +107,28 @@ function AvatarMenu() {
       {open && (
         <div className="menu menu-right" role="menu">
           <div className="menu-who"><strong>{user.display_name}</strong><span className="muted small">{roleLabel(user.role)}</span></div>
-          <a role="menuitem" className="menu-item" href="#/account" onClick={() => setOpen(false)}><Icon name="user" />{t("shell.avatar.account")}</a>
+          {!isGuest(user) && <a role="menuitem" className="menu-item" href="#/account" onClick={() => setOpen(false)}><Icon name="user" />{t("shell.avatar.account")}</a>}
           <LanguageSwitch />
           {feedbackUrl && <a role="menuitem" className="menu-item" href={feedbackUrl} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}><Icon name="external" />{t("shell.avatar.feedback")}</a>}
           <button role="menuitem" className="menu-item" onClick={signOut}><Icon name="logout" />{t("shell.avatar.signOut")}</button>
         </div>
       )}
     </span>
+  );
+}
+
+/** The slim line under the top bar for a demo guest: what this is, and a way out. */
+function GuestBanner() {
+  const { user, signOut } = useAuth();
+  const demoAsk = useDemoAsk();
+  if (!isGuest(user)) return null;
+  const off = askOff(user, demoAsk);
+  return (
+    <div className="guest-banner" role="note">
+      <span>{off ? t("auth.guest.bannerNoAsk") : t("auth.guest.banner")}</span>
+      {off && <a href="#/boards">{t("auth.guest.openBoards")}</a>}
+      <button className="plain" onClick={signOut}>{t("auth.guest.signOut")}</button>
+    </div>
   );
 }
 
@@ -304,6 +321,7 @@ export function Shell() {
   return (
     <div className={`app${collapsed ? " app-collapsed" : ""}`}>
       <TopBar onMenu={() => setMenu(!menu)} menuOpen={menu} onSearch={() => setPalette(true)} count={queueCount} unread={unread} />
+      <GuestBanner />
       <div className="shell">
         <aside className={`side${menu ? " open" : ""}`}>
           <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} unread={unread} collapsed={collapsed} onCollapse={collapse} />

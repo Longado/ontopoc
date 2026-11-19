@@ -12,6 +12,13 @@ export const roleLabel = (role) => ROLE_LABEL[role] ?? role;
 export const canBuild = (user) => RANK[user?.role] >= RANK.builder;
 export const isAdmin = (user) => user?.role === "admin";
 
+/** A demo guest: signed in through "Try the demo", read-only, with a limited number of questions. */
+export const isGuest = (user) => user?.provider === "demo";
+
+/** Where "Request access" goes: the service's own feedback address when it has one, else the project's issue page. */
+export const DEFAULT_ACCESS_URL = "https://github.com/Longado/ontopoc/issues/new";
+export const accessUrl = (feedbackUrl) => (typeof feedbackUrl === "string" && feedbackUrl.trim() ? feedbackUrl.trim() : DEFAULT_ACCESS_URL);
+
 /** The top search box's hint: a viewer has boards and questions, a builder has datasets, types and pipelines. */
 export const searchPlaceholder = (user) => (user?.role === "viewer" ? t("shell.search.viewer") : t("shell.search.builder"));
 

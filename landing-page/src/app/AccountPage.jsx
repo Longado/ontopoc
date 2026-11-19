@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { changePassword, createToken, getTokens, revokeToken } from "./api.js";
 import { useAuth } from "./Auth.jsx";
-import { roleLabel } from "./authModel.js";
+import { isGuest, roleLabel } from "./authModel.js";
 import { formatDateTime, t } from "./i18n/index.js";
 import { useLoad } from "./useLoad.js";
 
@@ -118,6 +118,14 @@ export function AccountPage({ forced = false, user: given, onChanged }) {
       <main className="page">
         <h1 tabIndex={-1}>{t("account.title")}</h1>
         <p className="muted">{t("account.noAuth")}</p>
+      </main>
+    );
+  }
+  if (!forced && isGuest(user)) {
+    return (
+      <main className="page">
+        <h1 tabIndex={-1}>{t("account.title")}</h1>
+        <p className="muted">{t("account.guest.note")}</p>
       </main>
     );
   }

@@ -4,6 +4,7 @@ restart does not give the hour back. A refusal is a 429 that says when the oldes
 from __future__ import annotations
 
 import math
+import os
 import time
 
 from ontology_poc_generator.accounts import transaction
@@ -13,6 +14,16 @@ from ontology_poc_generator.workspace_questions import QaRefused
 TOKEN_LIMIT = 60
 PERSON_LIMIT = 60
 WINDOW = 3600   # seconds
+GUEST_LIMIT = 10   # what a demo guest may ask in an hour
+DAY = 86400
+DEMO_ALL = 'demo:all'   # the key all guests' asks are also counted under, for the demo's daily cap
+
+
+def demo_daily_asks() -> int:
+    try:
+        return int(os.environ.get('ONTOPOC_DEMO_DAILY_ASKS', '200'))
+    except ValueError:
+        return 200
 
 
 class AskBudgetSpent(QaRefused):
@@ -23,6 +34,14 @@ class AskBudgetSpent(QaRefused):
         self.wait = wait
 
 
+class DemoSpent(AskBudgetSpent):
+    def __init__(self, limit: int, wait: int):
+        minutes = max(1, math.ceil(wait / 60))
+        QaRefused.__init__(self, tr(f'演示今天的 {limit} 个提问已经用完，约 {minutes} 分钟后再来。',
+                                    f'The demo has used today\'s questions ({limit}). Come back in about {minutes} {"minute" if minutes == 1 else "minutes"}.'), 429)
+        self.wait = wait
+
+
 def take(conn, user: dict | None, now: float | None = None) -> None:
     """Counts one ask for this person (and the token they come with, if any), or raises AskBudgetSpent."""
     if user is None or user.get('id') is None:   # the local session of a service with no sign-in: nobody to count
@@ -30,13 +49,20 @@ def take(conn, user: dict | None, now: float | None = None) -> None:
     now = time.time() if now is None else now
     conn.execute('CREATE TABLE IF NOT EXISTS ask_budget (who TEXT NOT NULL, at REAL NOT NULL)')
     conn.execute('CREATE INDEX IF NOT EXISTS ask_budget_who ON ask_budget(who, at)')
-    counted = [(f'user:{user["id"]}', PERSON_LIMIT, tr('你', 'You'))]
+    guest = user.get('provider') == 'demo'
+    counted = [(f'user:{user["id"]}', GUEST_LIMIT if guest else PERSON_LIMIT, tr('你', 'You'))]
     if user.get('token_id') is not None:
         counted.insert(0, (f'token:{user["token_id"]}', TOKEN_LIMIT, tr('这个令牌', 'This token')))
     with transaction(conn):
-        conn.execute('DELETE FROM ask_budget WHERE at <= ?', (now - WINDOW,))
+        conn.execute('DELETE FROM ask_budget WHERE at <= ? AND who != ?', (now - WINDOW, DEMO_ALL))
+        conn.execute('DELETE FROM ask_budget WHERE at <= ?', (now - DAY,))
         for who, limit, whose in counted:
             used, oldest = conn.execute('SELECT COUNT(*), MIN(at) FROM ask_budget WHERE who = ?', (who,)).fetchone()
             if used >= limit:
                 raise AskBudgetSpent(limit, whose, max(1, math.ceil(oldest + WINDOW - now)))
+        if guest:
+            used, oldest = conn.execute('SELECT COUNT(*), MIN(at) FROM ask_budget WHERE who = ?', (DEMO_ALL,)).fetchone()
+            if used >= demo_daily_asks():
+                raise DemoSpent(demo_daily_asks(), max(1, math.ceil(oldest + DAY - now)))
+            counted.append((DEMO_ALL, 0, ''))
         conn.executemany('INSERT INTO ask_budget(who, at) VALUES (?, ?)', [(who, now) for who, _, _ in counted])

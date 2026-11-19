@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canBuild, isAdmin, roleLabel, searchPlaceholder, statusText, twoPersonText } from "./authModel.js";
+import { accessUrl, DEFAULT_ACCESS_URL, canBuild, isAdmin, isGuest, roleLabel, searchPlaceholder, statusText, twoPersonText } from "./authModel.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
@@ -29,4 +29,17 @@ test("the search box speaks business words to a viewer and builder words to a bu
   assert.equal(searchPlaceholder({ role: "builder" }), "搜索数据集、对象类型、管道…");
   assert.equal(searchPlaceholder({ role: "admin" }), "搜索数据集、对象类型、管道…");
   assert.equal(searchPlaceholder(null), "搜索数据集、对象类型、管道…");
+});
+
+test("a demo guest is told by the provider, nothing else", () => {
+  assert.equal(isGuest({ provider: "demo", role: "viewer" }), true);
+  assert.equal(isGuest({ provider: "local", role: "viewer" }), false);
+  assert.equal(isGuest(null), false);
+  assert.equal(isGuest(undefined), false);
+});
+
+test("Request access uses the feedback address, else the issue page", () => {
+  assert.equal(accessUrl("https://example.com/f"), "https://example.com/f");
+  assert.equal(accessUrl(undefined), DEFAULT_ACCESS_URL);
+  assert.equal(accessUrl("  "), DEFAULT_ACCESS_URL);
 });

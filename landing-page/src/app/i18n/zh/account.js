@@ -1,4 +1,5 @@
 export default {
+  "guest.note": "演示访客不能改密码，也不能创建令牌。申请账号后即可使用。",
   "title": "我的账号",
   "noAuth": "这个服务没有开登录（用了 --no-auth），没有账号可管理。",
   "forced.title": "先改掉初始密码",

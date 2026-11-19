@@ -16,6 +16,7 @@ _UPLOAD_AND_DELETE = r'/api/workspace/datasets/(upload(/preview)?|delete)'
 ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/ontology/health', PUBLIC),   # the service answers {ok} to a stranger and the code fingerprint only to a signed-in person
     ('POST', r'/api/auth/login', PUBLIC),
+    ('POST', r'/api/auth/demo', PUBLIC),   # demo mode only: a guest viewer account for a visitor
     ('GET', r'/api/auth/me', SESSION),
     ('POST', r'/api/auth/(logout|password)', SESSION),
     ('GET', r'/api/auth/tokens', SESSION),
