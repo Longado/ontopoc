@@ -10,7 +10,7 @@
 <p align="center">Datasets → pipelines → object types, relations, views, actions, derived properties → Q&amp;A, boards, agents (MCP).</p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/tested%20on-macOS-black" alt="tested on macOS">
   <img src="https://img.shields.io/badge/Python-3.11%2B-green" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Node-22%2B-green" alt="Node 22+">
@@ -202,4 +202,4 @@ The design documents are in Chinese:
 
 ## License
 
-[MIT](LICENSE) © Yutai Lin
+[AGPL-3.0](LICENSE) © Yutai Lin. v0.2.0 and earlier stay under MIT; for a commercial license, see [NOTICE.md](NOTICE.md).

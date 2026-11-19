@@ -5,7 +5,7 @@
   "author": { "name": "Yutai Lin" },
   "homepage": "https://github.com/Longado/ontopoc",
   "repository": "https://github.com/Longado/ontopoc",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "keywords": ["ontology", "data-modeling", "mcp", "claude-code"],
   "mcpServers": {
     "ontopoc": { "command": "${CLAUDE_PLUGIN_ROOT}/bin/ontopoc-mcp", "env": { "ONTOPOC_TOOLSET": "all" } }
