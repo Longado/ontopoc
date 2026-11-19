@@ -29,7 +29,6 @@ export default {
   "guest.banner": "Demo · read-only sample data · resets daily",
   "guest.try": "Try: “What is the total amount of valid orders?”",
   "guest.signOut": "Sign out",
-  "guest.bannerNoAsk": "Demo · read-only sample data · resets daily",
   "guest.openBoards": "Open Boards",
   "guest.askOff.text": "Asking questions needs a model, which is off in this public demo. Run OntoPoc yourself to ask questions about your own data — see the",
   "guest.askOff.quickstart": "quick start.",

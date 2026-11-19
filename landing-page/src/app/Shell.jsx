@@ -125,7 +125,7 @@ function GuestBanner() {
   const off = askOff(user, demoAsk);
   return (
     <div className="guest-banner" role="note">
-      <span>{off ? t("auth.guest.bannerNoAsk") : t("auth.guest.banner")}</span>
+      <span>{t("auth.guest.banner")}</span>
       {!off && <span>{t("auth.guest.try")}</span>}
       <span className="links">
         {off && <a href="#/boards">{t("auth.guest.openBoards")}</a>}
