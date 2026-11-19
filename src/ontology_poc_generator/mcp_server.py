@@ -717,12 +717,18 @@ READ_TOOLS = ('describe_definitions', 'ask', 'ontopoc_query', 'list_unconfirmed'
 SCOPE_TEAM, SCOPE_RUN, SCOPE_SERVICE = '【团队已确认的定义】', '【一次建模运行 saved_as】', '【本机服务】'
 LOOK_ALIKE = {
     'ask': '（设了 ONTOPOC_TOOLSET=all 时才有）问的是一次建模运行里上传的数据、还没进团队定义时，用 ask_question。',
-    'ask_question': '问的是团队已经确认的定义（工作区）时不用这个，用 ontopoc_query，写不出查询再用 ask。',
     'describe_definitions': '（设了 ONTOPOC_TOOLSET=all 时才有）某次建模运行里模型提出、还没确认的对象用 list_objects。',
     'list_objects': '这是这次运行模型提出的对象，不是团队已确认的定义；那个用 describe_definitions。',
     'list_unconfirmed': '（设了 ONTOPOC_TOOLSET=all 时才有）某次建模运行里等确认的视图用 list_proposed_views。',
     'list_proposed_views': '团队工作区里所有没确认的定义用 list_unconfirmed。',
     'read_derived_property': '全部派生属性的清单在 describe_definitions 返回的 derived 里。',
+    'ask_question': '问的是团队已经确认的定义（工作区）时不用这个，用 ontopoc_query，写不出查询再用 ask。'
+                    '这个会问一道新题；只看这次运行里已经问过、出过的题和答案，用 list_questions，不调模型。',
+    'list_questions': '只是读已有的题和答案，不调模型；要问一道新题用 ask_question。',
+    'health': '只看服务本身，不看数据；一次运行的数据问题用 data_check，表的结构用 data_layout。',
+    'preview_upload': '还没建模、只给文件路径时用这个；已经建过模的运行看每张表用 data_layout，看数据问题用 data_check。',
+    'data_layout': '看的是已经建过模的运行里每张表的结构（行数、列、怎么连）；还没建模、只有文件路径时用 preview_upload，数据有没有问题用 data_check。',
+    'data_check': '看的是数据有没有问题（七项检查）；表的结构用 data_layout，服务在不在跑、有没有模型凭据用 health。',
 }
 for _t in TOOLS:
     _scope = SCOPE_TEAM if _t['name'] in READ_TOOLS else SCOPE_SERVICE if _t['name'] in ('health', 'list_runs') else SCOPE_RUN
