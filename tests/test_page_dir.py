@@ -20,6 +20,8 @@ def serving(with_page=True, admin=False):
         (page / 'legacy.html').write_text('<!doctype html><title>legacy</title>', encoding='utf-8')
         (page / 'assets' / 'app-1.js').write_text('console.log(1)', encoding='utf-8')
         (page / 'assets' / 'app-1.css').write_text('a{}', encoding='utf-8')
+        (page / 'assets' / 'locked.js').write_text('x', encoding='utf-8')
+        (page / 'assets' / 'locked.js').chmod(0)   # a file of the build this account cannot read
         (root / 'site' / 'secret.txt').write_text('outside', encoding='utf-8')   # beside the page folder, not in it
         server = ontology_server.make_server(port=0, gateway=None, output_dir=root / 'data', page_dir=page if with_page else None)
         if admin:
@@ -68,6 +70,10 @@ class PageDirTests(unittest.TestCase):
     def test_a_missing_asset_is_a_404_not_the_page(self):
         with serving() as port:
             self.assertEqual(get(port, '/assets/nope.js')[0], 404)
+
+    def test_an_unreadable_file_is_an_error_reply_not_a_dropped_connection(self):
+        with serving() as port:
+            self.assertEqual(get(port, '/assets/locked.js')[0], 404)
 
     def test_no_way_out_of_the_folder(self):
         with serving() as port:
