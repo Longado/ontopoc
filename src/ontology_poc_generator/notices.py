@@ -9,6 +9,9 @@ An action names up to five recipients, each one of:
 The list is not part of what is confirmed (it changes who hears, not what is written): a builder who may see the action and every type it names sets it, and the
 change goes to the action's log. When a change is approved, each person found is told unless they approved it themselves, are disabled, or may not read the row (the
 type, a column the action reads kept from them, a row rule): a notice quotes the row. Nobody is told twice of one change.
+
+When new data (or an edit) sends a confirmed definition back to needs another look, the people who can confirm what moved and the person who confirmed it last are
+told which definition and why (tell_moved). Such a notice has no record: it names the definition instead, and is shown only while the person may still see it.
 """
 from __future__ import annotations
 
@@ -16,7 +19,8 @@ import json
 
 from ontology_poc_generator.lang import current, speaking, tr
 from ontology_poc_generator.accounts import MAX_ATTR_NAME, list_users
-from ontology_poc_generator.object_types import TypeRefused, _content, _visible, element_row, type_id, whole_type_row
+from ontology_poc_generator.object_types import (ACTION_PREFIX, CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, PIPELINE_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX,
+                                                 TypeRefused, _content, _label, _state_view, _visible, confirmer_people, element_row, limited_on, type_id, whole_type_row)
 from ontology_poc_generator.row_rules import keeps, restriction
 from ontology_poc_generator.type_access import hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_store import _canonical, current_dataset, dataset_records, log_line, now_text
@@ -211,8 +215,110 @@ def list_notices(conn, user: dict | None) -> dict:
         return {'notices': [], 'unread': 0}
     rows = conn.execute('SELECT id, at, action_name, record_id, text, read_at FROM notice WHERE user_id = ? ORDER BY id DESC LIMIT ?', (user['id'], LISTED)).fetchall()
     cache: dict = {}
-    shown = [{'id': i, 'at': at, 'action': a, 'record': r, 'text': in_language(t), 'read': read is not None} for i, at, a, r, t, read in rows if _still_readable(conn, r, user, cache)]
+    shown = []
+    for i, at, a, r, t, read in rows:
+        if r is None:   # a definition that went back: action_name holds its id
+            definition = _definition_link(conn, a, user)
+            if definition is not None:
+                shown.append({'id': i, 'at': at, 'action': None, 'record': None, 'text': in_language(t), 'read': read is not None, 'definition': definition})
+        elif _still_readable(conn, r, user, cache):
+            shown.append({'id': i, 'at': at, 'action': a, 'record': r, 'text': in_language(t), 'read': read is not None})
     return {'notices': shown, 'unread': sum(1 for n in shown if not n['read'])}
+
+
+# --- a definition that went back ----------------------------------------------------------------------------------------------------------------------
+
+def may_see_definition(conn, row: dict, person: dict | None) -> bool:
+    """Whether this person may see the definition today, through the check its own pages use, and all of its data: what a notice about it quotes (the reason,
+    with counts of the whole data) is for them only then."""
+    from ontology_poc_generator.derived_properties import derived_visible   # these read this module's neighbours: imported here, where they are used
+    from ontology_poc_generator.object_actions import action_visible
+    from ontology_poc_generator.object_relations import _relation_visible
+    from ontology_poc_generator.object_views import view_visible
+    from ontology_poc_generator.workspace_pipelines import pipeline_visible
+    element_id = row['element_id']
+    if element_id.startswith(ENUM_PREFIX):   # a meaning follows its type, unless its column is kept from them
+        type_row = element_row(conn, type_id(_content(row)['type']))
+        seen = type_row is not None and _visible(conn, type_row, person) and not reads_hidden(conn, element_id, person)
+    else:
+        check = {TYPE_PREFIX: _visible, RELATION_PREFIX: _relation_visible, VIEW_PREFIX: view_visible, DERIVED_PREFIX: derived_visible, ACTION_PREFIX: action_visible,
+                 PIPELINE_PREFIX: pipeline_visible}.get(element_id[:element_id.index(':') + 1] if ':' in element_id else '')
+        seen = check is not None and check(conn, row, person)
+    return seen and not limited_on(conn, row, person)
+
+
+def _where(conn, row: dict) -> dict:
+    """What the page needs to link to the definition, in the words of the confirm queue (review_queue): its kind and the id of the page it is on."""
+    content, element_id = _content(row), row['element_id']
+    if element_id.startswith(TYPE_PREFIX):
+        return {'kind': 'type', 'id': content['english_name']}
+    if element_id.startswith(ENUM_PREFIX):
+        return {'kind': 'meaning', 'id': content['type'], 'column': content['column']}
+    if element_id.startswith(RELATION_PREFIX):
+        return {'kind': 'relation', 'id': content['english_name']}
+    if element_id.startswith(PIPELINE_PREFIX):
+        return {'kind': 'pipeline', 'id': content['name']}
+    return {'kind': 'view' if element_id.startswith(VIEW_PREFIX) else 'derived' if element_id.startswith(DERIVED_PREFIX) else 'action', 'id': content['type']}
+
+
+def _definition_link(conn, element_id: str, user: dict) -> dict | None:
+    """The definition a notice names, as this person may follow it now (None when it is gone or no longer theirs to see: the notice goes with it): where it is, its
+    state now, and whether they may confirm it now (the proposer, while two-person is on, may not: their link only opens it)."""
+    row = element_row(conn, element_id)
+    if row is None or not may_see_definition(conn, row, user):
+        return None
+    return {**_where(conn, row), 'state': row['state'], 'can_confirm': bool(_state_view(conn, row, user)['can_confirm'])}
+
+
+def _moved_label(conn, row: dict) -> str:
+    content = _content(row)
+    if row['element_id'].startswith(ENUM_PREFIX):   # a meaning is named with its type: a column name alone is not enough
+        type_row = element_row(conn, type_id(content['type']))
+        owner = _content(type_row)['name'] if type_row else content['type']
+        return tr(f'“{owner}”的“{content["column"]}”含义', f'the meanings of "{content["column"]}" on "{owner}"')
+    return _label(conn, row['element_id'])
+
+
+def _moved_text(conn, row: dict, others: int) -> str:
+    """What a person is told: which definition went back, the cause and the reason it was given, and how many more of what they may see went back in the same move."""
+    label, cause, reason = _moved_label(conn, row), CAUSE_WORDS.get(row['cause']) or '', (row['reason'] or '').strip()   # the reason is kept in the language it was written in
+    said = tr(f'{label}退回到“需要再看”（{cause}）：{reason.rstrip("。")}。', f'{label[:1].upper() + label[1:]} went back to needs another look ({cause}): {reason.rstrip(".")}.')
+    if others:
+        plural = '' if others == 1 else 's'
+        said += tr(f'同一次变动里还有 {others} 项你能看到的定义也退回了。', f' In the same change, {others} more definition{plural} you can see went back too.')
+    return said
+
+
+def tell_moved(conn, moved: list[str]) -> int:
+    """One move sent these definitions back to needs another look (the first is where it started, the rest stand on it). Each person who can confirm one of them, or
+    who confirmed it last, and who may see it, is told once, of the first of them that is theirs, with how many more they may see; a person who may not see any of
+    them is told nothing. Runs inside the write that moved them. Returns how many were told."""
+    rows = [r for r in (element_row(conn, e) for e in moved) if r is not None]
+    if not rows:
+        return 0
+    people = [p for p in list_users(conn) if not p['disabled']]
+    told: set[int] = set()
+    seen: dict[tuple[str, int], bool] = {}
+
+    def sees(row, person):   # once per definition and person in one move
+        key = (row['element_id'], person['id'])
+        if key not in seen:
+            seen[key] = may_see_definition(conn, row, person)
+        return seen[key]
+
+    for row in rows:
+        asked = {person for person, _ in confirmer_people(conn, row)}
+        last = conn.execute('SELECT confirmed_by_user_id FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (row['element_id'],)).fetchone()
+        if last and last[0] is not None:
+            asked.add(last[0])
+        for person in people:
+            if person['id'] in told or person['id'] not in asked or not sees(row, person):
+                continue
+            others = sum(1 for other in rows if other is not row and sees(other, person))
+            text = kept_in_both(lambda: _moved_text(conn, row, others))
+            conn.execute('INSERT INTO notice(user_id, at, action_name, record_id, text) VALUES (?, ?, ?, NULL, ?)', (person['id'], now_text(), row['element_id'], text))
+            told.add(person['id'])
+    return len(told)
 
 
 def mark_read(conn, user: dict | None, payload: dict) -> dict:

@@ -15,8 +15,11 @@ person who confirmed, and when, are read from the confirmation snapshots.
 from __future__ import annotations
 
 from ontology_poc_generator.lang import TrMap, current, speaking, tr
+import contextlib
+import contextvars
 import json
 import re
+import sys
 
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.assistant_checks import drafted_mark
@@ -106,9 +109,10 @@ def stale_note() -> str:
 def write_elements(conn, changes: list[tuple], reads: dict[str, list[str]], versions: dict[str, int] | None = None, after=None) -> None:
     """Keep the changes all together or not at all, with what each one reads. `versions`: the version of each element the writer read; one that has moved
     since is a 409 and nothing is written. `after(conn)` runs in the same transaction once the rows and what they read are written (the elements that
-    stopped being confirmed move what reads them to needs_look there, so the two are never seen apart)."""
+    stopped being confirmed move what reads them to needs_look there, so the two are never seen apart). Who can confirm what moved is told once it is written
+    (one_telling)."""
     try:
-        with element_state_writes(conn, changes, versions):
+        with one_telling(conn), element_state_writes(conn, changes, versions):
             for element_id, depends_on in reads.items():
                 _set_deps(conn, element_id, depends_on)
             for element_id in reads:
@@ -567,6 +571,49 @@ def stale_word(cause: str | None, via: str | None) -> str | None:
     return VIA_WORDS.get(via) or CAUSE_WORDS.get(cause)
 
 
+_MOVES = contextvars.ContextVar('ontopoc_moves', default=None)   # what has gone back to needs_look in the operation running now (one_telling)
+
+
+@contextlib.contextmanager
+def one_telling(conn):
+    """One operation (an upload of several files, a pull, a scheduled run, a pipeline run, an edit): everything _flag sends back to needs_look inside it is told once,
+    when the outermost of these ends and its writes are done, so each person gets one notice for the whole of it. One inside another adds to the outer one."""
+    if _MOVES.get() is not None:
+        yield
+        return
+    token = _MOVES.set([])
+    try:
+        yield
+    finally:
+        moved = _MOVES.get()
+        _MOVES.reset(token)
+        tell_safely(conn, moved)
+
+
+def tell_safely(conn, moved: list[str]) -> None:
+    """Tell who can confirm what moved (notices.tell_moved), only what still needs another look now (a write rolled back took its move with it). Telling never
+    undoes or stops the move: the notices are written under a savepoint of their own, and when writing them fails they are dropped and the service's log says so."""
+    outside = not conn.in_transaction   # after the operation's own writes: the savepoint is the whole transaction
+    try:
+        wanted = [e for e in dict.fromkeys(moved) if (r := element_row(conn, e)) is not None and r['state'] == 'needs_look']
+        if not wanted:
+            return
+        from ontology_poc_generator.notices import tell_moved   # notices reads this module: imported here, where it is used
+        conn.execute('SAVEPOINT tell_moved')
+        try:
+            tell_moved(conn, wanted)
+        except BaseException:
+            conn.execute('ROLLBACK TO tell_moved')
+            conn.execute('RELEASE tell_moved')
+            raise
+        conn.execute('RELEASE tell_moved')
+    except Exception as exc:
+        if outside and conn.in_transaction:   # never leave a transaction of ours open behind the operation
+            with contextlib.suppress(Exception):
+                conn.execute('ROLLBACK')
+        print(f'notices of definitions that went back were not written: {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+
+
 def _flag_readers(conn, element_id: str, reason: str, moved: list[str], cause: str = 'definition') -> None:
     """What reads this element and is confirmed goes to needs_look with the reason (and so on to what reads it): used when the element itself stopped being
     confirmed (its definition was edited). Inside the caller's transaction, so it is written together with what stopped the confirmation. The readers' cause is
@@ -575,26 +622,34 @@ def _flag_readers(conn, element_id: str, reason: str, moved: list[str], cause: s
         _flag(conn, reader, reason, None, moved, cause, 'parent')
 
 
-def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list[str], cause: str = 'data', via: str = 'self') -> None:
+def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list[str], cause: str = 'data', via: str = 'self', top: bool = True) -> None:
     """A confirmed element whose check came out different goes to needs_look with the reason; then the same for what reads it, with its own reason. `cause` is
     what changed at the root (data or definition) and stays the same all the way down; `via` is self for the element whose own input or logic changed, parent
-    for what reads it directly, ancestor for the rest. The dataset a pipeline writes is not an element: it passes the flag on to what reads it."""
+    for what reads it directly, ancestor for the rest. The dataset a pipeline writes is not an element: it passes the flag on to what reads it. Who can confirm
+    what moved, and who confirmed it last, are told (tell_safely): inside an operation (one_telling) the move is added to it and told once at its end; outside
+    one, a top call tells its own move (`top` is false for the calls this one makes down the line)."""
     row = element_row(conn, element_id)
     if row is None and element_id.startswith('dataset:'):
         for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
-            _flag(conn, reader, reason, caused_by, moved, cause, via)
+            _flag(conn, reader, reason, caused_by, moved, cause, via, top)
         return
     if row is None or row['state'] != 'confirmed':
         return
+    start = len(moved)
     reason = (_new_value_question(conn, row, moved) if element_id.startswith(VIEW_PREFIX) else _derived_question(conn, row) if element_id.startswith(DERIVED_PREFIX) else None) or reason
     conn.execute("UPDATE element_state SET state = 'needs_look', reason = ?, cause = ?, via = ?, version = version + 1 WHERE element_id = ?", (reason, cause, via, element_id))
     log_line(conn, 'system', element_id, 'needs_look',
              before={'state': 'confirmed', 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at']},
              after={'state': 'needs_look', 'reason': reason, 'caused_by': caused_by, 'cause': cause, 'via': via}, user_id=None)
     moved.append(element_id)
+    pending = _MOVES.get()
+    if pending is not None:
+        pending.append(element_id)
     for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
         _flag(conn, reader, tr(f'它用的{_label(conn, element_id)}需要再看（原因见{"那一组含义" if element_id.startswith(ENUM_PREFIX) else "那条管道" if element_id.startswith(PIPELINE_PREFIX) else "那个对象类型"}）', f'It uses {_label(conn, element_id)}, which needs review (see the reason on {"that set of meanings" if element_id.startswith(ENUM_PREFIX) else "that pipeline" if element_id.startswith(PIPELINE_PREFIX) else "that object type"})'),
-              caused_by, moved, cause, 'parent' if via == 'self' else 'ancestor')
+              caused_by, moved, cause, 'parent' if via == 'self' else 'ancestor', False)
+    if top and pending is None:
+        tell_safely(conn, moved[start:])
 
 
 def _readers_of_dataset(conn, dataset_name: str) -> set[str]:
@@ -656,13 +711,14 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
 def recheck_after_write(conn, name: str, signer: str) -> str | None:
     """What was confirmed on the version before is checked against the new one (an upload, or an approved action). When the check itself fails, nothing can be said
     to still hold: everything confirmed that reads the dataset goes to needs_look saying so, and the error is returned for the answer, so a new version is never
-    live with its readers silently left confirmed."""
-    try:
-        recheck_dependents(conn, name, signer)
-    except Exception as exc:   # whatever went wrong, the readers are flagged and the person is told
-        flag_dataset_readers(conn, name, tr(f'“{name}”有了新版本，重新检查出了错（{exc}），没法确认它还成立，请再看一遍', f'"{name}" has a new version and the re-check failed ({exc}), so it cannot be confirmed to still hold. Please look again'), signer)
-        return str(exc)
-    return None
+    live with its readers silently left confirmed. Who can confirm what moved is told once, at the end (one_telling)."""
+    with one_telling(conn):
+        try:
+            recheck_dependents(conn, name, signer)
+        except Exception as exc:   # whatever went wrong, the readers are flagged and the person is told
+            flag_dataset_readers(conn, name, tr(f'“{name}”有了新版本，重新检查出了错（{exc}），没法确认它还成立，请再看一遍', f'"{name}" has a new version and the re-check failed ({exc}), so it cannot be confirmed to still hold. Please look again'), signer)
+            return str(exc)
+        return None
 
 
 def dataset_readers_of(conn, name: str, user: dict | None = None, everyone: bool = True) -> list[dict]:
@@ -848,14 +904,20 @@ def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
         raise TypeRefused(tr('你受行规则或列的限制，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的建设者来确认', 'A row rule or a column limit keeps you from seeing all the data. Confirming needs a look at all of it, so ask a builder without the limit'), 403)
 
 
-def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
-    """(whether this person may confirm it now, the builders who may). A viewer never; the one who put it forward not while two-person is active."""
-    rule = two_person(conn)
-    excluded = row['proposed_by_user_id'] if rule['active'] else None
+def confirmer_people(conn, row: dict) -> list[tuple[int, str]]:
+    """(id, name) of the builders who may confirm it: not the one who put it forward while two-person is active, and only people who may see what it is about,
+    and all of its data."""
+    excluded = row['proposed_by_user_id'] if two_person(conn)['active'] else None
     types = _types_read(row)
-    others = [name for person, name, role in conn.execute(   # only people who may see what it is about, and all of its data, can be asked to confirm it
+    return [(person, name) for person, name, role in conn.execute(
         "SELECT id, display_name, role FROM user WHERE disabled = 0 AND role IN ('builder', 'admin') AND (? IS NULL OR id != ?) ORDER BY display_name", (excluded, excluded))
         if all(can_access(conn, t, {'id': person, 'role': role}) for t in types) and not limited_on(conn, row, {'id': person, 'role': role})]
+
+
+def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
+    """(whether this person may confirm it now, the builders who may). A viewer never; the one who put it forward not while two-person is active."""
+    excluded = row['proposed_by_user_id'] if two_person(conn)['active'] else None
+    others = [name for _, name in confirmer_people(conn, row)]
     if user is not None and user['role'] == 'viewer':
         return False, others
     return not (excluded is not None and user is not None and user['id'] == excluded), others
