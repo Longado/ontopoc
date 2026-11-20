@@ -143,13 +143,25 @@ def _by_code(item: tuple) -> tuple:
 
 def in_out_text(conn, content: dict) -> str:
     """What the conditions of a view let in and keep out, spelled out from the confirmed meanings: 状态码 不是 2（已取消）：算进 0 已交付、1 生产中. The codes with a
-    meaning on file that the condition does not name are the ones that come in (for "is not") or stay out (for "is"); "" when the view has no condition."""
-    parts = []
+    meaning on file that the condition does not name are the ones that come in (for "is not") or stay out (for "is"); "" when the view has no condition.
+    Several "is not" conditions on one column are said together, with what all of them let in: 状态码 不是 0（新建）、4（已取消）：算进 1 已付款."""
+    parts, together = [], {}
+    for f in content['filters']:
+        if f['op'] == 'is_not':
+            together.setdefault(f['column'], []).append(f['label'])
+    said_together = set()
     for f in content['filters']:
         labels = meaning_labels(conn, content['type'], f['column'])
-        named = sorted(((c, l) for c, l in labels.items() if l == f['label']), key=_by_code)
-        others = sorted(((c, l) for c, l in labels.items() if l != f['label']), key=_by_code)
-        said = tr(f'{f["column"]} {OPS[f["op"]]} {tr("、", ", ").join(c for c, _ in named) or "?"}（{f["label"]}）', f'{f["column"]} {OPS[f["op"]]} {", ".join(c for c, _ in named) or "?"} ({f["label"]})')
+        out = together.get(f['column'], []) if f['op'] == 'is_not' else [f['label']]
+        if f['op'] == 'is_not' and len(out) > 1:
+            if f['column'] in said_together:
+                continue
+            said_together.add(f['column'])
+        named = sorted(((c, l) for c, l in labels.items() if l in out), key=_by_code)
+        others = sorted(((c, l) for c, l in labels.items() if l not in out), key=_by_code)
+        codes = [tr(f'{c}（{l}）', f'{c} ({l})') for c, l in named] + [tr(f'?（{l}）', f'? ({l})') for l in out if l not in labels.values()] if len(out) > 1 else []
+        said = (tr(f'{f["column"]} {OPS[f["op"]]} {"、".join(codes)}', f'{f["column"]} {OPS[f["op"]]} {", ".join(codes)}') if codes else
+                tr(f'{f["column"]} {OPS[f["op"]]} {tr("、", ", ").join(c for c, _ in named) or "?"}（{f["label"]}）', f'{f["column"]} {OPS[f["op"]]} {", ".join(c for c, _ in named) or "?"} ({f["label"]})'))
         rest = tr("、", ", ").join(f"{c} {l}" for c, l in others)
         parts.append(tr(f'{said}：{"算进" if f["op"] == "is_not" else "不算"} {rest}', f'{said}: {"counts" if f["op"] == "is_not" else "leaves out"} {rest}') if rest else said)
     return tr('；', '; ').join(parts)

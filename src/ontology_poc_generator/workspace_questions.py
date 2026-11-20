@@ -21,7 +21,8 @@ from ontology_poc_generator.derived_properties import derived_visible, describe 
 from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
-    CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, reason_for, stale_word, type_id)
+    CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, _waiting_line, dataset_columns, element_row, enum_id, reason_for,
+    stale_word, type_id, waiting_for_viewer)
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible
 from ontology_poc_generator.agent_harness import ask_model
@@ -199,6 +200,23 @@ def _blockers(conn, user: dict | None, question: str) -> list[dict]:
             hit = all(r and (_named(question, _content(r)['name']) or _named(question, _content(r)['english_name'])) for r in ends)
         if hit:
             out.append({**line, 'because': _causes(conn, row, user)})
+    if user is not None and user['role'] == 'viewer':
+        out += _waiting_blockers(conn, user, question)
+    return out
+
+
+def _waiting_blockers(conn, user: dict, question: str) -> list[dict]:
+    """For a viewer: the types they may see that were confirmed and now wait for a second look (object_types.waiting_for_viewer), when the question names one.
+    Each is said with what the type list already tells them (its name and who it waits for): no reason, no cause, no count, nothing of the data."""
+    out = []
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        if not waiting_for_viewer(conn, row, user):
+            continue
+        content = _content(row)
+        if _named(question, content['name']) or _named(question, content['english_name']):
+            waiting = _waiting_line(conn, row, user)
+            out.append({'id': element_id, 'kind': 'type', 'name': waiting['name'], 'state': waiting['state'], 'waiting': True, 'who_can_confirm': waiting['waiting_for'], 'because': []})
     return out
 
 
@@ -210,8 +228,11 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
             if d['id'] in names:
                 continue
             names.append(d['id'])
-            why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
-            who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
+            if d.get('waiting'):   # a viewer's line: where it stands and who it waits for, nothing more
+                why, who = (tr(f'在等 {"、".join(d["who_can_confirm"])} 再确认', f'waiting for {", ".join(d["who_can_confirm"])} to confirm it again') if d['who_can_confirm'] else _state_words(d['state'])), ''
+            else:
+                why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
+                who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
             lines.append({**d, 'text': tr(f'{_kind_word(d["kind"])}「{d["name"]}」：{why}{who}', f'{_kind_word(d["kind"])} "{d["name"]}": {why}{who}')})
     return {'status': 'refused', 'reason': tr('没有回答：问题用到的定义不是已确认的状态。', 'Not answered: a definition the question uses is not confirmed. ') + tr('；', '; ').join(l['text'] for l in lines),
             'refusal': {'kind': 'unsettled', 'definitions': lines}}
@@ -915,7 +936,7 @@ def _may_see(conn, user: dict | None, element_id: str) -> bool:
     if row is None:
         return False
     if element_id.startswith(TYPE_PREFIX):
-        return _visible(conn, row, user)
+        return _visible(conn, row, user) or waiting_for_viewer(conn, row, user)   # a type that waits is still named to a viewer (its name and who it waits for)
     if element_id.startswith(RELATION_PREFIX):
         return _relation_visible(conn, row, user)
     if element_id.startswith(VIEW_PREFIX):
