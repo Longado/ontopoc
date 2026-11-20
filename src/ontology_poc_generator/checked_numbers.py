@@ -13,8 +13,8 @@ the Q&A engine), with no model, and says one of four things:
   differs  不一致  it is what OntoPoc computed at the check, and that was never the trusted value
 Nothing changes the trusted value but a new check, which is kept beside the earlier ones (the latest is the check).
 
-Who sees what: a viewer sees on a board card only the mark and who checked it when (the trusted value or its source could tell them about rows or columns they
-may not read). A check is held against a card only as the board is worked out with no filter picked and the default parameters, and never for a reader whose
+Who sees what: a viewer, and a builder who cannot read the card's number now (its type or a column it reads is kept from them), sees on a board card only the
+mark and who checked it when (the trusted value, its source or what was computed could tell them about rows or columns they may not read). A check is held against a card only as the board is worked out with no filter picked and the default parameters, and never for a reader whose
 rows a rule limits. A saved answer stays its asker's: only they record or read its check; the team's tally counts checks and names no question.
 """
 from __future__ import annotations
@@ -233,21 +233,18 @@ def on_board(conn, user: dict | None, board: dict, components: list[dict], as_sh
     live = {k: r for k, r in checks.items() if spec.get(k) == r['component_json']}
     if not as_shown:
         return components, {**_summary([], '数', 'numbers'), 'text': tr('筛选或参数不是默认值时，不对照核对过的数', 'With a filter picked or a parameter typed, the board is not held against its checked numbers') if live else ''}
-    out, statuses, full = [], [], _builds(user)
+    out, statuses = [], []
     for c in components:
         row = live.get(c['id'])
         if row is None or _limited(c):
             out.append(c)
             continue
         now, why = _card_number(next(x for x in board['spec']['components'] if x['id'] == c['id']), c)
+        full = _builds(user) and c['status'] == 'ok'   # the numbers, the source and the reasons only to a builder who reads the card's number now: one kept from its type or a column gets the mark
         seen = _view(conn, row, now, why, full)
         statuses.append(seen['status'])
         out.append({**c, 'check': seen})
     return out, _summary(statuses, '数', 'numbers')
-
-
-def forget_board(conn, board_id: int) -> None:
-    conn.execute('DELETE FROM checked_number WHERE dashboard_id = ?', (board_id,))
 
 
 # --- a saved answer's check -------------------------------------------------------------------------------------------------------------------------------
