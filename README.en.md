@@ -38,7 +38,7 @@ OntoPoc is an ontology tool for a team's own data. The team writes down what its
 
 ## How it refuses
 
-Three outcomes, all on the bundled sample data (150 orders, status codes 0 to 5), which the [live demo](https://longado.github.io/ontopoc/) also serves to read-only guests:
+Three outcomes, all on the bundled sample data (150 orders, status codes 0 to 5), which the [live demo](https://35-229-236-140.sslip.io/) (temporary address) also serves to read-only guests:
 
 | You ask | OntoPoc says | Why |
 |---|---|---|
@@ -46,13 +46,13 @@ Three outcomes, all on the bundled sample data (150 orders, status codes 0 to 5)
 | A question that names a definition nobody has confirmed yet | Held back before the model is asked, naming the definition and who can confirm it | Proposed is not confirmed. A person who may see the definition gets its name and who can confirm it; a viewer, who only reads confirmed definitions, is not told the names of definitions never confirmed, and for a confirmed one waiting for another look is told only that the answer waits for a confirmation |
 | The same question after `orders_update.csv` arrives (new code 6, nobody gave it a meaning) | Refused: *Valid orders* needs another look; a board shows that it waits and the last number | The data changed under the confirmation |
 
-On the live demo a guest gets the first answer and one refusal of the third kind: the type Customer was confirmed once and now waits for a second look, so a question about customers names it and who it waits for.
+On the live demo a guest gets the first answer and one refusal of the third kind: the type Customer was confirmed once and now waits for a second look, so a question that names Customer is refused before the model, and the guest is told only that the answer waits for a confirmation.
 
 The sum of the amount column is 162,960. It is arithmetically right and it is not revenue: cancelled and refunded orders still carry an amount. That gap is what the gate is for.
 
 ## How a definition gets confirmed
 
-1. **Put it forward.** A builder writes the definition, or asks the model to suggest one from the datasets (a suggestion is only a draft).
+1. **Put it forward.** A builder writes the definition, asks the model to suggest one from the datasets, or imports the tests of a dbt `manifest.json` (a suggestion or an import is only a proposal).
 2. **Code checks it on every row.** Keys are unique and filled, relations connect (and say how many rows do not), every code has a meaning. A key check over no rows does not count as passed (relation checks do not yet make that distinction).
 3. **A second builder confirms it.** Never the one who proposed it; with one builder the rule opens up and the log says so. The confirmation keeps who, when and which data version.
 4. **It is used.** Q&A, boards and agents see it, each number with the line it rests on.
