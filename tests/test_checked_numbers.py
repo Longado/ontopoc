@@ -237,6 +237,23 @@ class AnswerCheckTests(SigningTestCase):
             self.assertEqual(bob.get('/api/workspace/ask/tally')[1]['checked']['refused'], 1)
             self.assertEqual(len(model.requests), calls)   # all of it worked out by code
 
+    def test_a_checked_answer_whose_view_left_the_askers_scope_refuses_and_is_never_worked_out_over_more_rows(self):
+        model = AskModel({'reasoning': '有效订单', 'query': ALL_ORDERS, 'definitions_used': [{'id': '有效订单', 'direction': 'include', 'basis': '有效订单'}]})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/views', VALID)[0], 200)
+            shown = bob.get('/api/workspace/types/order/views')[1]['views'][0]
+            self.assertEqual(bob.post('/api/workspace/types/views/confirm', {'id': VALID['name'], 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+            asked = ann.post('/api/workspace/ask', {'question': '有效订单有多少？'})[1]
+            self.assertEqual(asked['answer']['total'], len(LIVE))
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': asked['id'], 'note': '运营周报'})[1]['status'], 'same')
+            self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'order', 'column': '状态码', 'hide_values': True})[0], 200)   # the view's column: its values go to no model, so the view leaves the scope
+            check = ann.get(f'/api/workspace/checked/question/{asked["id"]}')[1]['check']
+            self.assertEqual((check['status'], check['now']), ('refused', None))
+            self.assertIn('有效订单', check['reason'])
+
     def test_a_viewer_cannot_record_a_checked_number(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
             team = self.team(base)
