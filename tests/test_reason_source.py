@@ -44,6 +44,17 @@ class ReasonSourceTests(unittest.TestCase):
         self.assertTrue(ask({'question': 'Best product?', 'reasoning': english, 'query': None, 'missing': 'ontology'})['reason'].startswith('The ontology has no product type, so the query cannot group by product.'))
         self.assertEqual(ask({'question': '上个月卖了多少？', 'reasoning': '要限定时间段，order_line 上没有日期', 'query': None, 'missing': 'query_language'})['reason'], '要限定时间段，订单明细 上没有日期')   # nothing left out: the model's words as they were
 
+    def test_a_sentence_left_out_is_left_out_whole_past_an_abbreviation(self):
+        # "e.g. customer and product." is the end of the sentence that names group_by, not a sentence of its own
+        for reasoning in ('Grouping by two things at once with group_by is not supported, e.g. customer and product.',
+                          'Grouping by two things at once with group_by is not supported, i.e. customer and product at once.'):
+            item = ask({'question': 'Sales by customer and product?', 'reasoning': reasoning, 'query': None, 'missing': 'query_language'})
+            self.assertEqual(item['reason'], '现在的查询写法还表达不了这个问题。', reasoning)
+        kept = ask({'question': 'Sales by customer and product?', 'reasoning': 'Grouping by two things at once is not supported, e.g. buyer and item. Query is null.',
+                    'query': None, 'missing': 'query_language'})['reason']
+        self.assertTrue(kept.startswith('Grouping by two things at once is not supported, e.g. buyer and item.'), kept)
+        self.assertNotIn('null', kept)
+
     def test_a_reason_code_found_is_not(self):
         query = {'start': 'order_line', 'where': [{'field': '地区', 'equals': '华东'}], 'via': [], 'group_by': [], 'share': None, 'measure': None}
         item = ask({'question': '华东有几条明细？', 'reasoning': 'r', 'query': query})
