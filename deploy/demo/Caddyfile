@@ -1,6 +1,8 @@
 # Caddy gets and renews the HTTPS certificate for the domain by itself (ports 80 and 443 must reach this machine).
 {$ONTOPOC_DOMAIN} {
 	encode gzip
-	header Strict-Transport-Security "max-age=31536000"
+	# Browsers that have visited keep to HTTPS. Not on a local trial: it would pin every http://localhost to HTTPS for a year.
+	@public not host localhost
+	header @public Strict-Transport-Security "max-age=31536000"
 	reverse_proxy 127.0.0.1:8767
 }

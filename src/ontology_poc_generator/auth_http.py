@@ -31,9 +31,12 @@ DEFAULT_FEEDBACK_URL = 'https://github.com/Longado/ontopoc/issues/new'
 
 
 def feedback_url() -> str:
-    """Where the page's "Send feedback" link goes: ONTOPOC_FEEDBACK_URL when it is an http(s) address, else the project's issue form."""
+    """Where the page's "Send feedback" link goes: ONTOPOC_FEEDBACK_URL when it is a plain http(s) address (no spaces, no name or password
+    in it: the address is shown to everyone who signs in, and on a public demo to everyone), else the project's issue form."""
     value = os.environ.get('ONTOPOC_FEEDBACK_URL', '').strip()
-    return value if urlsplit(value).scheme in ('http', 'https') and urlsplit(value).netloc else DEFAULT_FEEDBACK_URL
+    parts = urlsplit(value)
+    usable = parts.scheme in ('http', 'https') and parts.netloc and '@' not in parts.netloc and not any(c.isspace() for c in value)
+    return value if usable else DEFAULT_FEEDBACK_URL
 
 
 def not_here() -> str:

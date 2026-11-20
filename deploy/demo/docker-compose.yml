@@ -21,11 +21,10 @@ services:
       - ontopoc-data:/data
     healthcheck:   # the service answers on loopback once the sample workspace is built
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8767/api/ontology/health', timeout=3)"]
-      interval: 30s
+      interval: 10s
       timeout: 5s
       retries: 3
       start_period: 60s
-      start_interval: 2s
     depends_on:
       - net
   caddy:
