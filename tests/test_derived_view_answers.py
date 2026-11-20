@@ -54,7 +54,7 @@ class DerivedViewAnswerTests(pilot.PilotFoundation):
         self.assertEqual(answer['status'], 'answered', answer.get('reason'))
         top = max(BY_CITY, key=BY_CITY.get)
         self.assertEqual((top, BY_CITY[top]), ('Chengdu', 31040))
-        self.assertEqual([(g['value'] if 'value' in g else g.get('group'), g['measure']['value']) for g in answer['answer']['groups']][:1], [(top, BY_CITY[top])])
+        self.assertEqual(answer['answer']['groups'][0][:2], [top, BY_CITY[top]])   # [group, amount, objects]
         self.assertIn('有效订单金额', ''.join(u['how'] for u in answer['understood'] if u['definition'] == '有效订单'))   # how it was used: through the property
         self.assertIn('derived', [d['kind'] for d in answer['definitions']])
 
@@ -69,6 +69,7 @@ class DerivedViewAnswerTests(pilot.PilotFoundation):
         self.assertEqual(answer['status'], 'answered', answer.get('reason'))
         top = max(BY_CUSTOMER, key=BY_CUSTOMER.get)
         self.assertEqual((top, BY_CUSTOMER[top]), ('C001', 7140))
+        self.assertEqual(answer['answer']['groups'][0][:2], [top, BY_CUSTOMER[top]])
 
     def test_the_meanings_the_view_leaves_out_named_one_by_one_are_left_out_by_the_property(self):
         answer = self.ask({'query': TIER_A, 'definitions_used': LEFT_OUT}, 'A 级客户的订单金额合计是多少，不算新建、已取消和已退款的？')
