@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { getAsk, getBoards, getDatasets, getNotices, getPipelines, getQueueCount, getRelations, getSources, getTypes, getUsers } from "./api.js";
+import { getAsk, getAskTally, getBoards, getDatasets, getNotices, getPipelines, getQueueCount, getRelations, getSources, getTypes, getUsers } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { DemoAskNote } from "./DemoAskNote.jsx";
 import { askOff } from "./demoModel.js";
 import { useDemoAsk } from "./useDemoAsk.js";
 import { canBuild, isAdmin, isGuest } from "./authModel.js";
-import { exampleQuestions, greeting, kpiCards, needsSetup, quickActions, setupSteps, todoItems, updatedText } from "./homeModel.js";
+import { exampleQuestions, greeting, kpiCards, needsSetup, quickActions, setupSteps, tallyView, todoItems, updatedText } from "./homeModel.js";
 import { formatDate, formatDateTime, t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
@@ -16,12 +16,12 @@ import { Icon } from "./ui/Icon.jsx";
 async function loadHome(user) {
   const builder = canBuild(user);
   const ok = (p) => p.then((v) => v, () => null);
-  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources, boards] = await Promise.all([
+  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources, boards, tally] = await Promise.all([
     ok(getDatasets()), ok(getTypes()), ok(getRelations()), ok(getAsk()), ok(getNotices()),
     builder ? ok(getQueueCount()) : null, builder ? ok(getPipelines()) : null, isAdmin(user) ? ok(getUsers()) : null, builder ? ok(getSources()) : null,
-    isGuest(user) ? ok(getBoards()) : null,
+    isGuest(user) ? ok(getBoards()) : null, builder ? ok(getAskTally()) : null,
   ]);
-  return { datasets, types, relations, ask, notices, queue: queue ?? 0, pipelines, users, sources, boards };
+  return { datasets, types, relations, ask, notices, queue: queue ?? 0, pipelines, users, sources, boards, tally };
 }
 
 const qaStatus = (status) => t(status === "answered" ? "home.qa.answered" : status === "no_data" ? "home.qa.noData" : "home.qa.unanswered");
@@ -163,6 +163,31 @@ function Recent({ history, examples }) {
   );
 }
 
+/** For builders and admins: how the team's questions of the last 7 days ended, and which unconfirmed definitions held the most back. */
+function Tally({ view }) {
+  return (
+    <section className="card tally" aria-labelledby="tally-title">
+      <div className="card-head"><h2 id="tally-title">{t("home.tally.title")}</h2><span className="muted small">{view.before}</span></div>
+      <dl className="tally-figures">
+        {view.figures.map((f) => (
+          <div key={f.key} className={`tally-figure tally-${f.key}`}><dt>{f.label}</dt><dd>{f.value}{f.note && <>{" "}<span className="muted small">{f.note}</span></>}</dd></div>
+        ))}
+      </dl>
+      {view.held.length > 0 && (
+        <>
+          <h3 className="tally-sub">{t("home.tally.held.title")}</h3>
+          <ul className="rows">
+            {view.held.map((h) => (
+              <li key={h.key}><a href={h.href}><span className="row-count dot-failed" aria-hidden="true">{h.count}</span><span className="row-main">{h.text}</span><Icon name="chevron-right" size={16} /></a></li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="tally-note muted small">{t("home.tally.note")}</p>
+    </section>
+  );
+}
+
 /** The page the app opens on: the setup checklist while the workspace is not ready (builders and admins), then the daily view: greeting, ask box, to-dos, recent questions. */
 export function HomePage() {
   const { user } = useAuth();
@@ -181,6 +206,7 @@ export function HomePage() {
   const fresh = updatedText(d.datasets);
   const guest = isGuest(user);
   const history = d.ask?.history ?? [];
+  const tally = mayBuild ? tallyView(d.tally) : null;
   const showTodo = !guest || todos.length > 0;
   const showRecent = !guest || history.length > 0;
   return (
@@ -206,6 +232,7 @@ export function HomePage() {
           {showRecent && <Recent history={history} examples={examples} />}
         </div>
       )}
+      {!setup && tally && <Tally view={tally} />}
     </main>
   );
 }

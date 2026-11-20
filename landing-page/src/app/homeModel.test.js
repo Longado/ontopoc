@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { exampleQuestions, kpiCards, greeting, needsSetup, setupSteps, todoItems, updatedText } from "./homeModel.js";
+import { exampleQuestions, kpiCards, greeting, needsSetup, setupSteps, tallyView, todoItems, updatedText } from "./homeModel.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
@@ -117,4 +117,21 @@ test("quick actions are for builders only: upload data, new pipeline, new object
   assert.deepEqual(quickActions(false), []);
   assert.deepEqual(quickActions(true).map((a) => a.href), ["#/datasets", "#/pipelines/new", "#/types/new", "#/confirm"]);
   assert.ok(quickActions(true).every((a) => a.key && a.label && a.icon));
+});
+
+test("the question tally: the last 7 days by outcome with the answered share, the 7 days before, and what held questions back", () => {
+  const zero = { asked: 0, answered: 0, refused: 0, unanswered: 0 };
+  assert.equal(tallyView(null), null);   // a viewer is not sent one
+  assert.equal(tallyView({ last_7_days: zero, previous_7_days: zero, held_back: [] }), null);   // nothing asked: nothing to show
+  const v = tallyView({
+    last_7_days: { asked: 10, answered: 6, refused: 3, unanswered: 1 }, previous_7_days: { asked: 4, answered: 4, refused: 0, unanswered: 0 },
+    held_back: [{ id: "meaning:order.状态码", kind: "meaning", name: "订单.状态码", questions: 3 }, { id: "type:order", kind: "type", name: "订单", questions: 1 }],
+  });
+  assert.deepEqual(v.figures.map((f) => [f.key, f.value]), [["asked", "10"], ["answered", "6"], ["refused", "3"], ["unanswered", "1"]]);
+  assert.equal(v.figures[1].note, "占 60%");
+  assert.equal(v.before, "再往前 7 天：问了 4 个，答了 4 个");
+  assert.deepEqual(v.held.map((h) => [h.count, h.text, h.href]), [[3, "含义「订单.状态码」拦下了 3 个问题", "#/confirm"], [1, "对象类型「订单」拦下了 1 个问题", "#/confirm"]]);
+  // a quiet week after a busy one still shows, with no share to work out
+  const quiet = tallyView({ last_7_days: zero, previous_7_days: { asked: 4, answered: 4, refused: 0, unanswered: 0 }, held_back: [] });
+  assert.deepEqual([quiet.figures[0].value, quiet.figures[1].note, quiet.held], ["0", "", []]);
 });

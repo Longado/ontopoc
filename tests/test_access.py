@@ -48,7 +48,7 @@ class RouteTableTests(unittest.TestCase):
                 ('GET', '/api/workspace/datasets', 'viewer'), ('GET', '/api/workspace/datasets/%E8%AE%A2%E5%8D%95', 'viewer'), ('GET', '/api/workspace/tasks', 'builder'),
                 ('GET', '/api/ontology/runs', UNLIMITED), ('GET', '/api/ontology/runs/a.json/objects/x', UNLIMITED), ('GET', '/api/ontology/jobs/abc', UNLIMITED),
                 ('POST', '/api/ontology/ask', UNLIMITED), ('GET', '/api/ontology/library', 'viewer'),   # the early screen's runs hold whole tables: only someone no rule limits
-                ('POST', '/api/workspace/ask', 'viewer'), ('POST', '/api/workspace/query', 'viewer'), ('POST', '/api/workspace/query/text', 'viewer'), ('GET', '/api/workspace/ask', 'viewer'), ('GET', '/api/workspace/ask/3', 'viewer'),
+                ('POST', '/api/workspace/ask', 'viewer'), ('POST', '/api/workspace/query', 'viewer'), ('POST', '/api/workspace/query/text', 'viewer'), ('GET', '/api/workspace/ask', 'viewer'), ('GET', '/api/workspace/ask/3', 'viewer'), ('GET', '/api/workspace/ask/tally', 'builder'),
                 ('POST', '/api/workspace/types/privacy', 'builder'), ('POST', '/api/workspace/types/views', 'builder'), ('POST', '/api/workspace/types/views/update', 'builder'),
                 ('POST', '/api/workspace/types/views/confirm', 'builder'), ('GET', '/api/workspace/types/order/views', 'viewer'),
                 ('GET', '/api/workspace/types', 'viewer'), ('GET', '/api/workspace/types/order/objects', 'viewer'),
