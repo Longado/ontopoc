@@ -220,5 +220,44 @@ class DbtImportTests(SigningTestCase):
             self.assertTrue(body['left_out'])
 
 
+    def deep_text(self, where):
+        """The test manifest with one value nested 100,000 lists deep: as an accepted value of orders.status, or as the name of a test node on orders."""
+        deep = '[' * 100_000 + '1' + ']' * 100_000
+        if where == 'value':
+            return json.dumps(manifest(extra=generic_test('accepted_values', 'orders', 'status', values=['placed', 'DEEP']))).replace('"DEEP"', deep)
+        node = {'test.shop.deep': {'resource_type': 'test', 'name': 'DEEP', 'test_metadata': None, 'depends_on': {'nodes': ['model.shop.orders']}}}
+        return json.dumps(manifest(extra=node)).replace('"DEEP"', deep)
+
+    def test_a_value_nested_very_deep_is_skipped_with_a_reason_or_the_file_refused_on_preview_and_apply(self):
+        for where in ('value', 'name'):
+            for apply in (False, True):
+                with self.subTest(where=where, apply=apply), self.service() as (base, out):
+                    ann = self.team(base)['ann']
+                    status, body = self.run_import(ann, self.deep_text(where), apply=apply)
+                    self.assertIn(status, (200, 400), body)   # a Python whose json reader refuses the depth says so: 400; one that reads it answers with the rest
+                    rows = {e for e, _, _ in self.written(out)[0]}
+                    if status == 400:
+                        self.assertTrue(body['error'])
+                        self.assertEqual(rows, set())
+                        continue
+                    self.assertEqual({t['id'] for t in body['types']}, {'orders', 'customers'})
+                    self.assertEqual([r['id'] for r in body['relations']], ['orders_customer_id'])
+                    if where == 'value':
+                        self.assertNotIn('status', [c['column'] for c in body['codes']])
+                        self.assertTrue(any('status' in s['what'] and 'plain' in s['reason'] for s in body['skipped']), body['skipped'])
+                    self.assertEqual(rows, {'objtype:orders', 'objtype:customers', 'relation:orders_customer_id'} if apply else set())
+
+    def test_an_unexpected_error_mid_apply_writes_nothing_and_answers_with_the_reason(self):
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            with mock.patch.object(dbt_import, 'create_relation', side_effect=RuntimeError('boom')):
+                status, body = self.run_import(ann, json.dumps(manifest()), apply=True)
+            self.assertEqual(status, 400, body)
+            self.assertIn('nothing was written', body['error'].lower())
+            self.assertEqual(self.written(out), ([], 0))   # the two types written before the failure are taken back with it
+            with mock.patch.object(dbt_import, 'create_relation', side_effect=RecursionError('deep')):
+                status, body = self.run_import(ann, json.dumps(manifest()), apply=False)
+            self.assertEqual(status, 400, body)
+
 if __name__ == '__main__':
     unittest.main()
