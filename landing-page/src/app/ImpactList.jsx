@@ -6,7 +6,8 @@ import { impactView, receiptMarkdown, summaryMarkdown, summaryView } from "./imp
 import { timeText } from "./format.js";
 import { useLoad } from "./useLoad.js";
 
-function Figure({ cell }) {
+function Figure({ cell, short = false }) {
+  if (short && cell.grey) cell = { ...cell, note: t("review.impact.grey") };   // the upload dialog lists why each definition goes back right below: not again in every row
   return (
     <span className={cell.refused ? "impact-refused" : cell.grey ? "impact-grey" : undefined}>
       {cell.text}
@@ -20,6 +21,8 @@ function Figure({ cell }) {
 export function ImpactList({ impact, upload = false, labels = null }) {
   const view = impactView(impact, Boolean(labels));
   const title = labels?.title ?? t(upload ? "review.impact.titleUpload" : "review.impact.title");
+  const nowLabel = labels?.now ?? t("review.impact.now");
+  const afterLabel = labels?.after ?? t(upload ? "review.impact.afterUpload" : "review.impact.after");
   return (
     <section className="impact" aria-label={title}>
       <p className="impact-head"><strong>{title}</strong><span className={view.refused ? "error" : undefined}>{view.sentence}</span></p>
@@ -29,18 +32,18 @@ export function ImpactList({ impact, upload = false, labels = null }) {
             <thead>
               <tr>
                 <th>{t("review.impact.board")}</th><th>{t("review.impact.card")}</th>
-                <th className="num">{labels?.now ?? t("review.impact.now")}</th><th className="num">{labels?.after ?? t(upload ? "review.impact.afterUpload" : "review.impact.after")}</th>
+                <th className="num">{nowLabel}</th><th className="num">{afterLabel}</th>
                 <th>{t("review.impact.change")}</th>
               </tr>
             </thead>
             <tbody>
               {view.rows.map((r) => (
                 <tr key={r.key} className={r.change.level === "same" ? "impact-same" : undefined}>
-                  <td>{r.board}</td>
-                  <td>{r.card}</td>
-                  <td className="num"><Figure cell={r.now} /></td>
-                  <td className="num"><Figure cell={r.after} /></td>
-                  <td className={`impact-change impact-${r.change.level}`}>{r.change.text}</td>
+                  <td className="impact-board">{r.board}</td>
+                  <td className="impact-card">{r.card}</td>
+                  <td className="num" data-label={nowLabel}><Figure cell={r.now} short={upload} /></td>
+                  <td className="num" data-label={afterLabel}><Figure cell={r.after} short={upload} /></td>
+                  <td className={`impact-change impact-${r.change.level}`} data-label={t("review.impact.change")}>{r.change.text}</td>
                 </tr>
               ))}
             </tbody>
