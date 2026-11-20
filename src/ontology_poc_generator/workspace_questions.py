@@ -439,7 +439,7 @@ def _engine(sc: dict, parts: dict, relations: list[dict]):
     ontology, bundle = parts['ontology'], parts['bundle']
     graph = build_graph(ontology, bundle)
     applied = []   # the views the last answer was worked out from, kept for the definitions it stood on
-    held = column_values(bundle, bundle['meanings'])   # what a filter that leaves codes out lets through
+    held = column_values(bundle, bundle['meanings'], ontology, graph)   # what a filter that leaves codes out lets through
 
     def answer(query, asked, used=None, check=True, told=None):
         checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held)

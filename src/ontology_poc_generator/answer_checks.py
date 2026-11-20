@@ -14,10 +14,13 @@ it checks the executed query against what the model said:
   exclude    the query leaves the meaning's codes out ("not_equals": the column is not one of them, code leaves those rows out); else a
              named view a person made that leaves the meaning out is read in its place; else the answer is refused naming what could not be applied
   (include by leaving the rest out) the query language has no "is one of", so 已取消和已退款 is written as "the column is none of the other
-             codes". That includes 已取消 and 已退款 only when everything the filter lets through, read from the column's values in the rows, is a
-             code of a meaning the model said the question includes: a code with no meaning, a blank, or a meaning it did not name would be
-             counted too, and is refused as before (so is a check that is not given the rows). Only when leaving codes out is all the query does
-             to the column: another filter on it (an equals, a range), a share of it or a view read that filters it could drop a kept meaning's rows
+             codes". That includes 已取消 and 已退款 only when everything the filter lets through, read per object from the column's values, is a
+             code of a meaning the model said the question includes: a code with no meaning, a blank (an object with no value there), or a meaning
+             it did not name would be counted too, and is refused as before (so is a check that is not given the values). Only when each object
+             holds one value in the column: the query leaves out an object any of whose values is left out, so an object with a kept code and a
+             left-out one (two rows of one key, a column of another table's rows) would be dropped, and such a column is not given. Only when
+             leaving codes out is all the query does to the column: another filter on it (an equals, a range), a share of it or a view read that
+             filters it could drop a kept meaning's rows
   omitted    a confirmed label the model did not list, that the question says verbatim (three characters or more, or with its
              column named) or that the query filters by: refused, saying the model did not say how it was used
   unknown    an id the model wrote that is in no catalog entry (a synonym such as 取消), whatever direction it gave: refused, saying the name did not match,
@@ -42,8 +45,8 @@ from collections import Counter
 from ontology_poc_generator.code_meanings import codes_for_label
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.named_views import query_tables, query_types
-from ontology_poc_generator.ontology_questions import RANGES, _fields, _resolve_field, _shape_limit, _types, clean_used
-from ontology_poc_generator.public_ontology import normalize_proposal, normalize_value
+from ontology_poc_generator.ontology_questions import RANGES, _fields, _matcher, _resolve_field, _shape_limit, _types, clean_used
+from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value
 from ontology_poc_generator.repeated_keys import rule_key
 from ontology_poc_generator.workspace_store import describes_rows
 
@@ -133,16 +136,23 @@ def _use(uses: list, field: str, labels: dict[str, str], label: str) -> str | No
     return found
 
 
-def column_values(bundle: dict, meanings: dict | None) -> dict[str, set[str]]:
-    """{field: the values its column holds in the rows, as normalize_value reads them, '' for a blank} for each column with meanings: what a filter that
-    leaves codes out lets through."""
-    out = {}
-    for field in meanings or {}:
-        table, _, column = field.partition('.')
-        records = ((bundle.get('sources') or {}).get(table) or {}).get('records')
-        if records is not None:
-            out[field] = {normalize_value(r.get(column)) or '' for r in records}
-    return out
+def column_values(bundle: dict, meanings: dict | None, ontology: dict, graph: dict | None = None) -> dict[str, set[str]]:
+    """{field: the values its column holds, as normalize_value reads them, '' for an object with none} for each column with meanings, read per object as
+    the query reads it: what a filter that leaves codes out lets through. The query leaves out an object when any of its values is left out, so a column
+    in which some object holds more than one value (two rows of one key, a column of rows of another table) is not given: an object that holds a kept
+    code and a left-out one would be dropped though its meaning is kept."""
+    types = _types(normalize_proposal(ontology))
+    graph = graph or build_graph(ontology, bundle)
+    values, _, _ = _matcher(types, bundle, graph)
+    out, mixed = {}, set()
+    for key, t in types.items():
+        for field in set(_fields(t)) & set(meanings or {}):
+            for inst in (i for i in graph['sources_of'] if i[0] == key):
+                got = {normalize_value(v) or '' for v in values(inst, field)} or {''}
+                if len(got) > 1:
+                    mixed.add(field)
+                out.setdefault(field, set()).update(got)
+    return {field: held for field, held in out.items() if field not in mixed}
 
 
 def _left_in(uses: list, field: str, labels: dict[str, str], held: set[str] | None) -> set[str] | None:

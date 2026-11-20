@@ -470,7 +470,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         that found nothing in a table that was damaged upstream says that and not "no data".
         When the views cannot be read the tables' rows are used and every answer says so."""
         meanings = bundle.get('meanings')
-        held = column_values(bundle, meanings)   # what a filter that leaves codes out lets through
+        graph = graph or build_graph(reviewed, bundle)   # the graph an answer reads when it is not given one
+        held = column_values(bundle, meanings, reviewed, graph)   # what a filter that leaves codes out lets through
         relations = [r for r in (result.get('data_checks') or {}).get('relations') or [] if r['key'] in {x['key'] for x in reviewed['relations']}]   # what the relation check found on the rows stored at upload, for the relations nobody judged wrong
         meaning_key = json.dumps([meanings, bundle.get('repeat_rules')], sort_keys=True, ensure_ascii=False)
         try:   # the workspace file is a second store: failing to read it must not stop an answer that the rows alone can give
