@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { keyText, percentText, typeLabel } from "./format.js";
+import { keyText, multiCheckText, percentText, typeLabel } from "./format.js";
 import { keyListText, modeLabel, noChangeText, timeline, versionChangeText, versionWay } from "./versionText.js";
 import { setLocale } from "./i18n/index.js";
 
@@ -48,6 +48,10 @@ test("a column's key cell reads the recorded check first, then the stored counts
   assert.equal(keyText({ possible_key: false, key_check: null }), "—");
   assert.equal(keyText({ key_check: { status: "failed", violations: 1, null_key_rows: 0 } }), "主键检查没通过：重复 1 行");
   assert.equal(keyText({ key_check: { status: "passed" } }), "唯一，没有空值");
+  assert.equal(keyText({ key_check: { status: "failed", violations: 0, null_key_rows: 0, rows_checked: 0 } }), "主键检查没通过：没有一行数据，查了 0 行不算通过");
+  assert.equal(multiCheckText({ status: "failed", violations: 0, null_key_rows: 0, rows_checked: 0 }), "没有一行数据，查了 0 行不算通过");
+  assert.equal(multiCheckText({ status: "failed", violations: 2, null_key_rows: 1, rows_checked: 9 }), "重复 2 行，空 1 行");
+  assert.equal(multiCheckText({ status: "passed", violations: 0, null_key_rows: 0, rows_checked: 9 }), "没有重复，没有空值");
   const near = { repeated_values: 1, repeated_rows: 2, missing: 0, samples: [{ value: "KH012", rows: 2 }] };
   assert.equal(keyText({ possible_key: false, key_check: null, near_key: near }), "重复 1 个值（KH012，2 行）");
   assert.equal(keyText({ possible_key: false, key_check: null, near_key: { ...near, repeated_values: 5, missing: 2 } }), "重复 5 个值（KH012，2 行 等），空 2 行");

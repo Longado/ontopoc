@@ -85,6 +85,12 @@ test("a table says rows in the file, rows stored, what was dropped and why, and 
     ["客户", "名稱", false, "没有重复，没有空值"]]);
 });
 
+test("a key checked over no rows is failed and says there was nothing to check", () => {
+  const run = checked();
+  run.data_checks.keys = [{ object_type: "customer", dataset: "tw_company_registry", key_columns: ["名稱"], check_type: "key_unique", status: "failed", violations: 0, null_key_rows: 0, rows_checked: 0, samples: [] }];
+  assert.deepEqual(tableChecks(run, "tw_company_registry").keys.map((k) => [k.failed, k.text]), [[true, "没有一行可查，不算通过"]]);
+});
+
 test("a table that could not be stored carries the error naming the table and the rows", () => {
   const c = tableChecks(checked(), "tw_company_directors");
   assert.match(c.error, /tw_company_directors.*1573.*1500/);
