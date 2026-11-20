@@ -247,17 +247,30 @@ class DbtImportTests(SigningTestCase):
                         self.assertTrue(any('status' in s['what'] and 'plain' in s['reason'] for s in body['skipped']), body['skipped'])
                     self.assertEqual(rows, {'objtype:orders', 'objtype:customers', 'relation:orders_customer_id'} if apply else set())
 
-    def test_an_unexpected_error_mid_apply_writes_nothing_and_answers_with_the_reason(self):
-        with self.service() as (base, out):
-            ann = self.team(base)['ann']
-            with mock.patch.object(dbt_import, 'create_relation', side_effect=RuntimeError('boom')):
-                status, body = self.run_import(ann, json.dumps(manifest()), apply=True)
-            self.assertEqual(status, 400, body)
-            self.assertIn('nothing was written', body['error'].lower())
-            self.assertEqual(self.written(out), ([], 0))   # the two types written before the failure are taken back with it
-            with mock.patch.object(dbt_import, 'create_relation', side_effect=RecursionError('deep')):
-                status, body = self.run_import(ann, json.dumps(manifest()), apply=False)
-            self.assertEqual(status, 400, body)
+    def test_an_unexpected_error_on_the_second_of_three_items_stops_the_import_and_the_report_says_what_was_written_failed_and_not_tried(self):
+        real = dbt_import.create_type
+        calls = []
+
+        def second_fails(*args, **kwargs):   # customers first, then orders (by model name), then the relation
+            calls.append(1)
+            if len(calls) == 2:
+                raise RecursionError('maximum recursion depth exceeded')
+            return real(*args, **kwargs)
+        for apply in (False, True):
+            with self.subTest(apply=apply), self.service() as (base, out):
+                ann = self.team(base)['ann']
+                calls.clear()
+                with mock.patch.object(dbt_import, 'create_type', side_effect=second_fails):
+                    status, body = self.run_import(ann, json.dumps(manifest()), apply=apply)
+                self.assertEqual(status, 200, body)   # a report, not a dropped answer
+                self.assertTrue(body['stopped'])
+                self.assertEqual([(t['id'], t['status']) for t in body['types']], [('customers', 'new')])
+                self.assertEqual(len(body['failed']), 1)
+                self.assertIn('orders', body['failed'][0]['what'])
+                self.assertIn('RecursionError', body['failed'][0]['reason'])
+                self.assertEqual(body['relations'], [])
+                self.assertTrue(any('customer_id' in n['what'] for n in body['not_attempted']), body['not_attempted'])
+                self.assertEqual({e for e, _, _ in self.written(out)[0]}, {'objtype:customers'} if apply else set())   # the first stays written; the second was taken back
 
     def test_identical_tests_are_read_once_and_every_list_in_the_answer_is_capped(self):
         copies = {}
@@ -277,8 +290,8 @@ class DbtImportTests(SigningTestCase):
             self.assertEqual(status, 200, body)
             self.assertEqual(len(body['unmatched_models']), 2)
             self.assertEqual(body['more']['unmatched_models'], 4)   # payments and the five
-            self.assertTrue(all(len(body[k]) <= 2 for k in ('types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out')))
-            self.assertEqual(set(body['more']), {'types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out'})
+            self.assertTrue(all(len(body[k]) <= 2 for k in ('types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out', 'failed', 'not_attempted')))
+            self.assertEqual(set(body['more']), {'types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out', 'failed', 'not_attempted'})
 
     def test_two_relationships_on_one_column_to_different_models_get_their_own_names_and_a_taken_name_is_never_already_there(self):
         accounts = [{'customer_id': c['customer_id'], 'region': 'north'} for c in CUSTOMERS]
