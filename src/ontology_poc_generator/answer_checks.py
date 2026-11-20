@@ -24,8 +24,8 @@ it checks the executed query against what the model said:
   waiting    a meaning whose confirmation broke when the data changed (anchors.py) and waits for a second look: counts as nothing
              confirmed, and a question that says its label (or a model that lists it) is refused saying so, never answered under the
              old label
-  derived    a query that reads a confirmed derived property instead of the rows (每个客户的有效订单金额) uses a view whose conditions are exactly the
-             property's on the table it counts, or the meanings it leaves out when they are exactly the ones the model says the question leaves out (or the one
+  derived    a query that reads a confirmed derived property instead of the rows (每个客户的有效订单金额) uses a view the model says the question includes
+             (never one it gave no direction for, or only mentions) whose conditions are exactly the property's on the table it counts, or the meanings it leaves out when they are exactly the ones the model says the question leaves out (or the one
              it keeps). Every derived property the query reads on that table must match: one that counts more rows is refused like a query that reads them
   understood how the model's word was carried out ("读视图 有效订单", "状态码 = 2"), returned for the page to say beside the answer
 
@@ -238,22 +238,18 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
             unmet.append({'definition': v['name'], 'kind': 'view', 'why': _excluding()})
             understood.append(_says(direction, v['name'], tr('查询做不到排除', 'A query cannot leave it out')))
         elif direction is None:
-            if v['state'] == 'confirmed' and (d := through(v)) and _verbatim(question, v['name']):   # the question says the view, and the query reads it through a derived property
-                understood.append(_says(UNSAID, v['name'], by_derived(d, v)))
-            elif offered(v['name']) and _verbatim(question, v['name']):
+            if offered(v['name']) and _verbatim(question, v['name']):
                 omitted.append(({'definition': v['name'], 'kind': 'view', 'why': tr('问题里说了它，但模型没有说明它是怎么用的，这条查询也没有读它', 'The question names it, but the model did not say how it is used, and the query does not read it')}, _says(UNSAID, v['name'], _unsaid_how())))
         elif direction == 'mention':
             if v['source'] in tables:
                 understood.append(_says(direction, v['name'], tr('只是提到，没有读它', 'Only mentioned, not read')))
-            elif v['state'] == 'confirmed' and (d := through(v)):
-                understood.append(_says(direction, v['name'], by_derived(d, v)))
             else:
                 unmet.append({'definition': v['name'], 'kind': 'view', 'why': tr(f'模型说问题只是提到它，但这条查询没有读它的表「{v["source"]}」，{_unbacked()}', f'The model said it is only mentioned, but the query does not read its table "{v["source"]}", so {_unbacked()}')})
                 understood.append(_says(direction, v['name'], _unbacked_how()))
         elif v['state'] != 'confirmed':
             unmet.append({'definition': v['name'], 'kind': 'view', 'why': tr(f'这个视图现在用不了：{v["why"]}', f'This view cannot be used right now: {v["why"]}')})
             understood.append(_says(direction, v['name'], tr('视图现在用不了', 'The view cannot be used right now')))
-        elif v['source'] not in tables and (d := through(v)):   # the rows it keeps are what a derived property the query reads counts
+        elif v['source'] not in tables and (d := through(v)):   # the model says the question includes it, and the rows it keeps are what a derived property the query reads counts (only then: no direction or a mention is refused above)
             understood.append(_says(direction, v['name'], by_derived(d, v)))
         elif v['source'] not in tables:
             unmet.append({'definition': v['name'], 'kind': 'view', 'why': tr(f'它是「{v["source"]}」表上的定义，这条查询没有读这张表', f'It is defined on the table "{v["source"]}", which the query does not read')})
