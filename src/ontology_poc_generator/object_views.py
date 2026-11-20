@@ -24,7 +24,7 @@ import json
 from ontology_poc_generator.named_views import NUMERIC, orderable
 from ontology_poc_generator.object_types import (
     limited_note, MAX_DESCRIPTION, MAX_NAME, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _label, _state_view, _text, _type_row, _visible,
-    dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, whole_type_row, write_confirmation, write_elements)
+    dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, waiting_for_viewer, was_confirmed, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.public_ontology import normalize_value
 from ontology_poc_generator.row_rules import positions as row_positions, restriction
 from ontology_poc_generator.type_access import reads_hidden
@@ -348,6 +348,17 @@ def view_visible(conn, row: dict, user: dict | None) -> bool:
         return False
     type_row = element_row(conn, type_id(_content(row)['type']))
     return type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, row['element_id'], user, _content(row))
+
+
+def view_waiting_for_viewer(conn, row: dict | None, user: dict | None) -> bool:
+    """A view a viewer would read if it were confirmed, that was confirmed once and now waits for a confirmer (changed and put forward again, or sent for another
+    look by the data): like a type that waits (object_types.waiting_for_viewer), they are told its name and who it waits for, nothing of what changed or why.
+    One nobody ever confirmed, or one sent back, is not this."""
+    if row is None or user is None or user['role'] != 'viewer' or row['state'] not in ('proposed', 'checked', 'needs_look') or not was_confirmed(conn, row['element_id']):
+        return False
+    content = _content(row)
+    type_row = element_row(conn, type_id(content['type']))
+    return type_row is not None and (_visible(conn, type_row, user) or waiting_for_viewer(conn, type_row, user)) and not reads_hidden(conn, row['element_id'], user, content)
 
 
 def waiting_on(conn, content: dict) -> list[dict]:

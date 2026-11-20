@@ -24,7 +24,7 @@ from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, _waiting_line, dataset_columns, element_row, enum_id, reason_for,
     stale_word, type_id, waiting_for_viewer)
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
-from ontology_poc_generator.object_views import describe, kept_positions, view_visible
+from ontology_poc_generator.object_views import describe, kept_positions, view_visible, view_waiting_for_viewer
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions, graph_objects
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
@@ -233,19 +233,36 @@ def _blockers(conn, user: dict | None, question: str) -> list[dict]:
 
 
 def _waiting_blockers(conn, user: dict, question: str) -> list[dict]:
-    """For a viewer: the types they may see that were confirmed and now wait for a second look (object_types.waiting_for_viewer), when the question names one.
-    The refusal tells a viewer only that the answer waits (VIEWERS_TOLD_WHAT_WAITS off); turned on, it says what the type list already tells them (its name and who
-    it waits for). Never a reason, a cause, a count or anything of the data."""
+    """For a viewer: the types they may see that were confirmed and now wait for a second look (object_types.waiting_for_viewer), and the views (by their name,
+    object_views.view_waiting_for_viewer), when the question names one."""
+    return _waiting_lines(conn, user, question)
+
+
+def _waiting_lines(conn, user: dict, question: str | None = None) -> list[dict]:
+    """For a viewer, the types and views that were confirmed and now wait for a confirmer (all of them, or those the question names), with their name and who they
+    wait for. What a viewer is told of them is up to VIEWERS_TOLD_WHAT_WAITS (off: only that the answer waits); never a reason, a cause, a count or anything of the
+    data."""
     out = []
     for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
         if not waiting_for_viewer(conn, row, user):
             continue
         content = _content(row)
-        if _named(question, content['name']) or _named(question, content['english_name']):
+        if question is None or _named(question, content['name']) or _named(question, content['english_name']):
             waiting = _waiting_line(conn, row, user)
             out.append({'id': element_id, 'kind': 'type', 'name': waiting['name'], 'state': waiting['state'], 'waiting': True, 'who_can_confirm': waiting['waiting_for'], 'because': []})
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        content = _content(row)
+        if view_waiting_for_viewer(conn, row, user) and (question is None or _named(question, content['name'])):
+            out.append({'id': element_id, 'kind': 'view', 'name': content['name'], 'state': 'needs_look', 'waiting': True, 'who_can_confirm': _confirmers(conn, row, user)[1], 'because': [], 'type': content['type']})
     return out
+
+
+def _waiting_text(d: dict) -> str:
+    """A viewer's line for a definition that waits: where it stands and who it waits for, nothing more."""
+    why = tr(f'在等 {"、".join(d["who_can_confirm"])} 再确认', f'waiting for {", ".join(d["who_can_confirm"])} to confirm it again') if d['who_can_confirm'] else _state_words(d['state'])
+    return tr(f'{_kind_word(d["kind"])}「{d["name"]}」：{why}', f'{_kind_word(d["kind"])} "{d["name"]}": {why}')
 
 
 def _refused_unsettled(blockers: list[dict]) -> dict:
@@ -262,10 +279,10 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
                     lines.append({'kind': d['kind'], 'state': d['state'], 'waiting': True, 'text': text})
                 continue
             if d.get('waiting'):   # a viewer's line: where it stands and who it waits for, nothing more
-                why, who = (tr(f'在等 {"、".join(d["who_can_confirm"])} 再确认', f'waiting for {", ".join(d["who_can_confirm"])} to confirm it again') if d['who_can_confirm'] else _state_words(d['state'])), ''
-            else:
-                why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
-                who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
+                lines.append({**d, 'text': _waiting_text(d)})
+                continue
+            why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
+            who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
             lines.append({**d, 'text': tr(f'{_kind_word(d["kind"])}「{d["name"]}」：{why}{who}', f'{_kind_word(d["kind"])} "{d["name"]}": {why}{who}')})
     return {'status': 'refused', 'reason': tr('没有回答：问题用到的定义不是已确认的状态。', 'Not answered: a definition the question uses is not confirmed. ') + tr('；', '; ').join(l['text'] for l in lines),
             'refusal': {'kind': 'unsettled', 'definitions': lines}}
@@ -924,7 +941,10 @@ def ask(conn, gateway, user: dict | None, question, writes='json') -> dict:
     if blockers:
         result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('问题里提到的定义还没有确认，没有去问模型', 'A definition the question mentions is not confirmed, so the model was not asked'), 'failed': True}]}
     elif not sc['types']:
-        result = {'status': 'refused', 'reason': tr('范围里还没有已确认的对象类型，没有东西可以回答。', 'There is no confirmed object type in scope yet, so there is nothing to answer from.'), 'refusal': {'kind': 'not_in_scope', 'in_scope': [], 'left_out': _unsettled(conn, user)},
+        waiting = _waiting_lines(conn, user) if user is not None and user['role'] == 'viewer' else []   # a viewer's scope emptied by definitions that wait: which, and for whom
+        said = tr('；', '; ').join(_waiting_text(d) for d in waiting)
+        result = {'status': 'refused', 'reason': tr('范围里还没有已确认的对象类型，没有东西可以回答。', 'There is no confirmed object type in scope yet, so there is nothing to answer from.') + (tr(f'在等再确认的：{said}。', f' Waiting to be confirmed again: {said}.') if waiting else ''),
+                  'refusal': {'kind': 'not_in_scope', 'in_scope': [], 'left_out': [*_unsettled(conn, user), *({**d, 'text': _waiting_text(d)} for d in waiting)]},
                   'definitions': [], 'types': [], 'datasets': {}, 'steps': []}
     else:
         if gateway is None:
