@@ -44,7 +44,7 @@ test("the preview says what would be proposed and offers Apply only when somethi
   assert.equal(importSummary({ ...PREVIEW, applied: true }).canApply, false);
   const sections = importSections(PREVIEW);
   assert.deepEqual(sections.map((s) => s.id), ["types", "relations", "codes", "unmatched", "skipped"]);
-  assert.equal(sections[0].items[1].href, "#/types/orders?tab=props");
+  assert.equal(sections[0].items[1].href, "#/types/orders/props");
   assert.equal(sections[1].items[0].href, "#/relations/orders_customer_id");
   assert.equal(sections[3].items[0].text, "payments");
   assert.equal(sections[4].items[0].text, "order_items, object type: No key in the tests: ...");
