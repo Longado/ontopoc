@@ -31,6 +31,7 @@ RELATIONS = [
 P50 = {'type': 'product', 'english_name': 'delivery_p50', 'name': '交付天数P50', 'kind': 'statistic', 'path': ['order_product'], 'measure': {'column': '交付天数'}, 'fn': 'median'}
 STOCK_LATEST = {'type': 'product', 'english_name': 'stock_now', 'name': '当前库存', 'kind': 'statistic', 'path': ['stock_product'], 'measure': {'column': '库存数量'}, 'fn': 'latest',
                 'latest': {'order': '快照月份'}}
+INCLUDES_CANCELLED = [{'id': '订单.状态码=已取消', 'direction': 'include', 'basis': '已取消订单数'}]
 CANCELLED = {'type': 'customer', 'english_name': 'cancelled_orders', 'name': '已取消订单数', 'kind': 'statistic', 'path': ['order_customer'], 'measure': {'column': None}, 'fn': 'count',
              'conditions': [{'column': '状态码', 'op': 'is', 'label': '已取消'}]}
 GROSS = {'type': 'order', 'english_name': 'gross', 'name': '含税金额', 'kind': 'function', 'expression': '金额 * 1.13'}
@@ -166,7 +167,7 @@ class AcceptanceTests(DerivedTestCase):
         expected = Counter(r['客户编号'] for r in ORDERS if r['状态码'] == '2')
         query = {'start': 'customer', 'where': [{'field': '客户编号', 'equals': 'KH026'}], 'via': [], 'group_by': None, 'share': None,
                  'measure': {'field': '已取消订单数', 'op': 'sum'}}
-        model = AskModel({'reasoning': '客户的已取消订单数是一个派生属性', 'query': query, 'definitions_used': []})
+        model = AskModel({'reasoning': '客户的已取消订单数是一个派生属性', 'query': query, 'definitions_used': INCLUDES_CANCELLED})   # the model says the question includes 已取消 (no name exception)
         with self.service(gateway=model) as (base, out):
             team = self.team(base)
             self.foundation(team)
@@ -197,7 +198,7 @@ class AcceptanceTests(DerivedTestCase):
     def test_a_confirmed_property_the_model_writes_as_a_derived_measure_is_still_cited(self):
         query = {'start': 'customer', 'where': [{'field': '客户编号', 'equals': 'KH026'}], 'via': [], 'group_by': None, 'share': None,
                  'measure': {'derived': '已取消订单数', 'op': 'sum'}}   # how DeepSeek V4.1 Flash wrote it in a real run
-        model = AskModel({'reasoning': '客户的已取消订单数是一个派生属性', 'query': query, 'definitions_used': []})
+        model = AskModel({'reasoning': '客户的已取消订单数是一个派生属性', 'query': query, 'definitions_used': INCLUDES_CANCELLED})
         with self.service(gateway=model) as (base, out):
             team = self.team(base)
             self.foundation(team)

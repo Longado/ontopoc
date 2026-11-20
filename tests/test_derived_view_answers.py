@@ -190,9 +190,11 @@ class PropertyNamedForTheMeaningTests(pilot.PilotFoundation):
     it: 非已取消订单金额 asks for the opposite of what the property counts (B1), and a property named 已取消订单金额 that leaves the cancelled out answers 49,145 (B2)."""
     ask = DerivedViewAnswerTests.ask
 
-    def test_the_property_asked_for_by_its_name_is_answered(self):
+    def test_the_property_asked_for_by_its_name_with_nothing_listed_is_refused_saying_how_to_ask(self):
         answer = self.ask({'query': CANCELLED_A, 'definitions_used': []}, 'A 级客户的已取消订单金额合计是多少？', derived=(pilot.VALID_AMOUNT, CANCELLED_AMOUNT))
-        self.assertEqual((answer['status'], answer['answer']['measure']['value']), ('answered', tier_a_cancelled()), answer.get('reason'))
+        self.assertEqual(answer['status'], 'definition_unmet')   # no name exception (review of f21041e, B1): the model must say the meaning is included
+        self.assertIn('已取消订单金额', answer['reason'])
+        self.assertIn('换个问法', answer['reason'])   # name the meaning or the property outright
         self.assertEqual(tier_a_cancelled(), 6415)
 
     def test_a_negation_around_the_name_is_refused(self):
