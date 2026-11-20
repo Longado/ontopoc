@@ -254,6 +254,23 @@ class AnswerCheckTests(SigningTestCase):
             self.assertEqual((check['status'], check['now']), ('refused', None))
             self.assertIn('有效订单', check['reason'])
 
+    def test_a_checked_answer_whose_asker_a_row_rule_limits_since_refuses_like_the_answer_itself(self):
+        model = AskModel(cancelled())
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            ann, admin = team['ann'], team['admin']
+            asked = ann.post('/api/workspace/ask', {'question': QUESTION})[1]
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': asked['id'], 'note': '运营周报'})[1]['status'], 'same')
+            ann_id = next(u['id'] for u in admin.get('/api/users')[1]['users'] if u['username'] == 'ann')
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '订单号', 'value': next(r['订单号'] for r in ORDERS if r['状态码'] == '2'), 'user_ids': [ann_id]}]})[0], 200)
+            self.assertIn('withheld', ann.get(f'/api/workspace/ask/{asked["id"]}')[1])   # the answer itself is no longer shown to her
+            check = ann.get(f'/api/workspace/checked/question/{asked["id"]}')[1]['check']
+            self.assertEqual((check['status'], check['now']), ('refused', None))
+            self.assertIn('行规则', check['reason'])
+            tally = team['bob'].get('/api/workspace/ask/tally')[1]['checked']
+            self.assertEqual((tally['refused'], tally['moved']), (1, 0))
+
     def test_a_viewer_cannot_record_a_checked_number(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
             team = self.team(base)
