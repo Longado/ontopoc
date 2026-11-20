@@ -10,6 +10,7 @@ from unittest import mock
 from ontology_poc_generator import change_preview
 
 from tests.test_access import Client
+from tests import test_batch_confirm
 from tests.test_dashboards import BoardCase
 from tests.test_derived_properties import CANCELLED
 from tests.test_explorer import LIVE, ORDERS
@@ -309,6 +310,28 @@ class ReceiptTests(ImpactCase):
             self.assertEqual(summary['rows']['covered'], summary['rows']['total'] - summary['rows']['uncovered'])
             confirmed = {c['element']: c for c in summary['confirmations']}
             self.assertEqual((confirmed['objview:有效订单']['by'], confirmed['objview:有效订单']['on']), ('Bob', {'订单': 1}))
+
+
+class GroupTests(ImpactCase):
+    """Confirming together what one upload moved (batch_confirm): the same body the page sends goes to the preview first."""
+    ops_overwrite, type_of, view_of, group, request = (test_batch_confirm.BatchConfirmTests.ops_overwrite, test_batch_confirm.BatchConfirmTests.type_of, test_batch_confirm.BatchConfirmTests.view_of,
+                                                       test_batch_confirm.BatchConfirmTests.group, test_batch_confirm.BatchConfirmTests.request)
+
+    def test_the_cards_one_upload_s_group_moves_and_confirming_it_gives_what_it_said(self):
+        with self.service() as (base, out):
+            team = self.ops_overwrite(base)
+            ann, bob = team['ann'], team['bob']
+            board = self.make(ann, spec={'components': [VALID_COUNT, BY_STATUS], 'filters': []}, scope='everyone')
+            body = self.request(self.group(bob))
+            preview = self.impact(bob, body)
+            self.assertIsNone(preview['refused'])
+            cards = self.by_card(preview)
+            self.assertEqual(sorted(cards), ['status', 'valid'])
+            self.assertEqual(cards['valid']['now']['value'], len(LIVE))   # what the readers were shown: version 1, before the upload
+            self.assertFalse(cards['valid']['after']['grey'])
+            status, done = bob.post('/api/workspace/queue/confirm-group', body)
+            self.assertEqual(status, 200, done)
+            self.preview_is_reality(bob, board['id'], preview)
 
 
 if __name__ == '__main__':
