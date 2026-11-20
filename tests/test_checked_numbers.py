@@ -316,7 +316,7 @@ class AnswerCheckTests(SigningTestCase):
             self.assertEqual(ann.post('/api/workspace/checked', {'question': second['id'], 'value': 999, 'note': '周报'})[1]['status'], 'differs')
             checked = team['bob'].get('/api/workspace/ask/tally')[1]['checked']
             self.assertEqual((checked['total'], checked['all'], checked['same'], checked['differs']), (1, 2, 0, 1))   # the latest check only
-            self.assertIn('只重算了最近核对的 1 个（共 2 个）', checked['text'])
+            self.assertEqual(checked['text'], '只重算了最近核对的 1 个（共 2 个回答核对过）：0 一致、0 变了、0 拒答、1 不一致')
 
     def test_a_viewer_cannot_record_a_checked_number(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
