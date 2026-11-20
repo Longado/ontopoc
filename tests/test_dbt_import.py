@@ -152,6 +152,17 @@ class DbtImportTests(SigningTestCase):
             self.assertEqual(by(again['types'], 'id', 'orders')['state'], 'confirmed')   # left alone
             self.assertEqual([r['status'] for r in again['relations']], ['already_there'])
 
+    def test_a_test_written_in_sql_is_listed_on_a_model_with_a_dataset_and_not_on_one_without(self):
+        singular = lambda on: {f'test.shop.check_{on}': {'resource_type': 'test', 'name': f'check_{on}', 'unique_id': f'test.shop.check_{on}', 'test_metadata': None,
+                                                        'attached_node': None, 'column_name': None, 'depends_on': {'nodes': [f'model.shop.{on}']}}}
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            status, body = self.run_import(ann, json.dumps(manifest(extra={**singular('orders'), **singular('payments')})), apply=False)
+            self.assertEqual(status, 200, body)
+            self.assertTrue(any(s['model'] == 'orders' and s['what'] == 'check_orders' for s in body['skipped']))
+            self.assertFalse(any(s['model'] == 'payments' for s in body['skipped']), body['skipped'])   # payments is listed once, as a model with no dataset
+            self.assertIn('payments', body['unmatched_models'])
+
     def test_a_manifest_that_is_not_dbt_or_is_too_large_is_refused_and_a_viewer_may_not_import(self):
         with self.service() as (base, out):
             team = self.team(base)
