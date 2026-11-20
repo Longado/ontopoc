@@ -100,6 +100,32 @@ CANCELLED_AMOUNT = {**ALL_AMOUNT, 'english_name': 'cancelled_amount', 'name': '�
 CANCELLED = [{'id': 'orders.status_code=已取消', 'direction': 'include', 'basis': '已取消'}]
 
 
+class DirectionTests(pilot.PilotFoundation):
+    """Reading the derived property counts as using the view only when the model says the question includes the view. Code does not read the question for
+    negation: with no direction (the question may ask for the complement) or "mention" (the question does not pick rows by it) the answer is refused, as when
+    the query reads neither (review of e3cc20d, B-1 and B-2)."""
+    ask = DerivedViewAnswerTests.ask
+
+    def test_an_explicit_include_is_answered(self):
+        answer = self.ask({'query': TIER_A, 'definitions_used': [VALID]}, 'A 级客户的有效订单金额合计是多少？')
+        self.assertEqual((answer['status'], answer['answer']['measure']['value']), ('answered', BY_TIER['A']))
+
+    def test_no_direction_is_refused_even_when_the_property_has_the_views_conditions(self):
+        answer = self.ask({'query': TIER_A, 'definitions_used': []}, 'A 级客户里，不属于有效订单的那些订单金额合计是多少？')   # the complement: 42,380 would be wrong
+        self.assertEqual(answer['status'], 'definition_unmet')
+        self.assertNotIn('answer', answer)
+
+    def test_a_view_only_mentioned_is_refused_when_the_query_reads_rows_picked_by_it(self):
+        answer = self.ask({'query': TIER_A, 'definitions_used': [{**VALID, 'direction': 'mention'}]}, 'A 级客户的订单金额合计是多少？（有效订单另说）')   # every order is asked for
+        self.assertEqual(answer['status'], 'definition_unmet')
+
+    def test_every_property_read_on_the_table_must_match_whichever_comes_first(self):
+        late = {**ALL_AMOUNT, 'english_name': 'z_all'}   # sorts after valid_amount, so the matching one is met first
+        mixed = query('订单金额', where=[{'field': '有效订单金额', 'more_than': 0}])
+        answer = self.ask({'query': mixed, 'definitions_used': [VALID]}, '有有效订单的客户，订单金额合计是多少？', derived=(pilot.VALID_AMOUNT, late))
+        self.assertEqual(answer['status'], 'definition_unmet')
+
+
 class IncludedMeaningOnATableNotReadTests(pilot.PilotFoundation):
     """The same gap the other way round: a question that wants only 已取消 orders, answered by a query that reads no order (only a property of the customers),
     used to pass the check unread and give the amount of every order. It is refused unless the property it reads keeps exactly that meaning."""
