@@ -183,6 +183,7 @@ export default {
   "dbt.title": "从 dbt manifest 导入",
   "dbt.intro": "选 dbt 写在 target/ 下的 manifest.json（dbt parse 或 dbt compile 会生成它）。",
   "dbt.reads": "只读：每个模型的名字，以及它的 unique、not_null、relationships、accepted_values 测试。不读：SQL、说明、列类型、source、seed、snapshot、指标、语义层。这里有同名数据集（不分大小写）、而且有一列同时有 unique 和 not_null 的模型，会成为对象类型；其余的列在跳过里，写明原因。什么都不会被确认：提出的东西和用表单提出的一样，要另一位建设者确认。",
+  "dbt.slow": "表很大时，每一项的检查都要读完所有行，可能要几分钟；页面会等到全部做完。",
   "dbt.file": "manifest 文件",
   "dbt.preview": "预览",
   "dbt.reading": "正在读…",

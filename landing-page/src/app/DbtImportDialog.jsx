@@ -47,6 +47,7 @@ export function DbtImportDialog({ onClose, onDone }) {
               <input type="file" accept=".json,application/json" disabled={!!busy} onChange={(e) => pick(e.target.files?.[0])} />
             </label>
             <p className="hint">{t("types.dbt.reads")}</p>
+            <p className="hint">{t("types.dbt.slow")}</p>
           </>
         )}
         {result && (

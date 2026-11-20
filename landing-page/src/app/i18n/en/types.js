@@ -183,6 +183,7 @@ export default {
   "dbt.title": "Import from a dbt manifest",
   "dbt.intro": "Choose the manifest.json that dbt writes to target/ (dbt parse or dbt compile makes it).",
   "dbt.reads": "Read from it: each model's name, and its unique, not_null, relationships and accepted_values tests. Not read: SQL, descriptions, column types, sources, seeds, snapshots, metrics, the semantic layer. A model becomes an object type when a dataset here has its name (letter case aside) and one column has both unique and not_null; otherwise it is listed as skipped, with the reason. Nothing is confirmed: what is proposed waits for another builder, as from the form.",
+  "dbt.slow": "On large tables each proposal's check reads every row and can take minutes; the page waits until all are done.",
   "dbt.file": "Manifest file",
   "dbt.preview": "Preview",
   "dbt.reading": "Reading…",
