@@ -66,3 +66,35 @@ class WaitingViewTests(pilot.PilotFoundation):
             self.assertEqual(status, 200, answer)
             self.assertEqual(answer['status'], 'definition_unmet')
             self.assertIn('有效订单', answer['reason'])
+
+
+AVG = {**pilot.VALID_AMOUNT, 'english_name': 'valid_avg', 'name': '有效订单平均金额', 'fn': 'avg'}
+COUNT = {**pilot.VALID_AMOUNT, 'english_name': 'valid_count', 'name': '有效订单数', 'measure': {'column': None}, 'fn': 'count'}
+VALID_ROWS = sum(1 for r in csv.DictReader((pilot.SAMPLE / 'orders.csv').open(encoding='utf-8')) if r['status_code'] not in ('0', '4', '5'))
+
+
+class PropertyFunctionTests(pilot.PilotFoundation):
+    """The property's own calculation and the query's measure must add up to the view's rows: a sum of a per-customer sum, or a sum of a per-customer count. A
+    sum of per-customer averages (or a minimum, an average of sums…) is not the view's total, even with the view's conditions."""
+
+    def ask(self, item, question, derived):
+        model = AskModel({'reasoning': '用已确认的派生属性', **item})
+        with self.service(gateway=model) as (base, out):
+            ann = self.foundation(base, derived)['ann']
+            status, answer = ann.post('/api/workspace/ask', {'question': question})
+            self.assertEqual(status, 200, answer)
+            return answer
+
+    def test_a_sum_of_per_customer_averages_is_not_the_views_total(self):
+        answer = self.ask({'query': query('有效订单平均金额'), 'definitions_used': [VALID]}, '有效订单的总金额是多少？', (pilot.VALID_AMOUNT, AVG))
+        self.assertEqual(answer['status'], 'definition_unmet')   # 45,289.25 would be wrong
+        self.assertNotIn('answer', answer)
+
+    def test_an_average_over_the_per_customer_sums_is_not_the_views_rows_either(self):
+        answer = self.ask({'query': {**query(), 'measure': {'field': '有效订单金额', 'op': 'average'}}, 'definitions_used': [VALID]}, '有效订单的平均金额是多少？', (pilot.VALID_AMOUNT,))
+        self.assertEqual(answer['status'], 'definition_unmet')
+
+    def test_a_sum_of_per_customer_counts_is_the_views_row_count(self):
+        self.assertEqual(VALID_ROWS, 107)
+        answer = self.ask({'query': query('有效订单数'), 'definitions_used': [VALID]}, '有效订单一共有多少笔？', (pilot.VALID_AMOUNT, COUNT))
+        self.assertEqual((answer['status'], answer['answer']['measure']['value']), ('answered', VALID_ROWS), answer.get('reason'))
