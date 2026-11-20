@@ -69,6 +69,7 @@ class StandingTests(StandingCase):
             self.assertIn('Bob', gross['who_can_confirm'])
             self.assertNotIn('Ann', gross['who_can_confirm'])   # she put it forward: two-person confirmation
             self.assertEqual(gross['proposed_by'], 'Ann')
+            self.assertEqual(gross['reason'], '已经提出，还没有另一位确认')   # the cause of one that only waits is its state, in words
             self.assertEqual([e['id'] for e in body['definitions'] if not e['confirmed']], [GROSS_ID])
             for e in body['definitions']:
                 self.assertFalse({'rows', 'rows_stored', 'total', 'count'} & set(e), e['id'])   # no count of the data
