@@ -466,11 +466,14 @@ class ServerAnswersTests(unittest.TestCase):
             self.assertEqual([v['name'] for v in item['evidence']['views']], ['有效订单'])
         self.assertEqual(self.ask('已取消的不算，有多少订单？（带筛选）')['status'], 'definition_unmet')   # the query also counts them: contradicts
 
-    def test_meanings_kept_by_leaving_the_other_code_out_are_read_from_this_runs_rows(self):
+    def test_on_a_single_upload_meanings_are_never_kept_by_leaving_the_other_codes_out(self):
+        # here one object can be filled from several tables and views choose rows after the check, so the check cannot know what "not 2" keeps:
+        # the question is refused as before C1, even when the answer would have been right (144)
         self.confirm_meaning([{'value': '0', 'label': '已交付'}, {'value': '1', 'label': '生产中'}, {'value': '2', 'label': '已取消'}])
         both = self.ask('已交付和生产中的订单有多少？')
-        self.assertEqual((both['status'], both['answer']['total']), ('answered', 144), both)
-        self.assertEqual(sorted((u['definition'], u['direction']) for u in both['understood']), [('已交付', 'include'), ('生产中', 'include')])
+        self.assertEqual(both['status'], 'definition_unmet', both)
+        self.assertNotIn('answer', both)
+        self.assertIn('「已交付」', both['reason'])
         narrowed = self.ask('已交付和生产中的订单有多少？（又筛了一次）')   # 48 orders would come back as both meanings
         self.assertEqual(narrowed['status'], 'definition_unmet', narrowed)
         self.assertNotIn('answer', narrowed)
@@ -554,7 +557,7 @@ def orders_with_a_second_row(code='2', number='DD20260001') -> list[dict]:
 
 class RepeatedKeyAnswersTests(unittest.TestCase):
     """An order with two rows, one 已交付 and one 已取消: the query leaves out every order that holds a left-out code, so "not 2" drops it although
-    it is 已交付. The rows alone would say "not 2 keeps only 已交付 and 生产中"; the objects say otherwise."""
+    it is 已交付 (143 for 144). On a single upload leaving the rest out is never read as including what it keeps, so this is refused too."""
     post, ask, confirm_meaning = ServerAnswersTests.post, ServerAnswersTests.ask, ServerAnswersTests.confirm_meaning
 
     def setUp(self):
@@ -574,6 +577,54 @@ class RepeatedKeyAnswersTests(unittest.TestCase):
         self.assertEqual(item['status'], 'definition_unmet', item)
         self.assertNotIn('answer', item)
         self.assertIn('「已交付」', item['reason'])
+
+
+class DraftModel(AskModel):
+    """AskModel with another draft."""
+    def __init__(self, queries, draft):
+        super().__init__(queries)
+        self.draft = draft
+
+    def complete_json(self, *, system_prompt, user_prompt):
+        from ontology_poc_generator.recognition import ModelCompletion
+        done = super().complete_json(system_prompt=system_prompt, user_prompt=user_prompt)
+        return done if system_prompt == self.questions else ModelCompletion(provider='fake', model='deepseek-flash', content=json.dumps(self.draft, ensure_ascii=False))
+
+
+class ViewDroppedOrdersTests(unittest.TestCase):
+    """The reviewer's case: orders are also filled from the open tickets (a population with a condition, which a view's choice does not follow), and a
+    keep-latest view per customer drops orders from 订单. Eight of them live on through their tickets with no 状态码, and "not 2" keeps them: 36 for
+    the 28 that equals 0 and equals 1 count. Refused."""
+    post, ask, confirm_meaning = ServerAnswersTests.post, ServerAnswersTests.ask, ServerAnswersTests.confirm_meaning
+    QUESTION = '每个客户最新的订单里，已交付和生产中的有多少？'
+
+    def setUp(self):
+        from tests.test_ontology_ask_server import call
+        from tests.test_ontology_server import OntologyServerTests
+        from tests.test_workspace_store import ServerDataChecksTests
+        draft = json.loads(json.dumps(PLANTED_DRAFT))
+        order = next(t for t in draft['object_types'] if t['key'] == 'order')
+        next(p for p in order['populated_from'] if p['source'] == '售后工单')['where'] = [{'path': '处理状态', 'equals': '处理中'}]
+        rest = ({'start': 'order', 'where': [{'field': '状态码', 'not_equals': ['2']}], 'group_by': None},
+                [inc('已交付'), inc('生产中'), {'id': '每客户最新订单', 'direction': 'include', 'basis': 'b'}])
+        each = lambda code: ({'start': 'order', 'where': [{'field': '状态码', 'equals': code}], 'group_by': None}, [{'id': '每客户最新订单', 'direction': 'include', 'basis': 'b'}, inc('已交付' if code == '0' else '生产中')])
+        self.model = DraftModel({self.QUESTION: rest, '每个客户最新的订单里，已交付的有多少？': each('0'), '每个客户最新的订单里，生产中的有多少？': each('1')}, draft)
+        server = OntologyServerTests().server(gateway=self.model)
+        self.base, self.out = server.__enter__()
+        self.addCleanup(server.__exit__, None, None, None)
+        self.call = call
+        status, self.run = call(self.base, '/api/ontology/build', {'files': ServerDataChecksTests.files})
+        self.assertEqual(status, 200, self.run)
+
+    def test_meanings_kept_by_leaving_the_rest_out_are_refused_where_a_view_drops_rows_that_live_on_elsewhere(self):
+        self.confirm_meaning([{'value': '0', 'label': '已交付'}, {'value': '1', 'label': '生产中'}, {'value': '2', 'label': '已取消'}])
+        status, body = self.post('/api/ontology/views', name='每客户最新订单', kind='latest', base='订单', key=['客户编号'], order='下单日期')
+        self.assertEqual(status, 200, body)
+        counts = [self.ask(f'每个客户最新的订单里，{label}的有多少？')['answer']['total'] for label in ('已交付', '生产中')]
+        self.assertEqual(sum(counts), 28)
+        item = self.ask(self.QUESTION)   # 36 would come back
+        self.assertEqual(item['status'], 'definition_unmet', item)
+        self.assertNotIn('answer', item)
 
 
 class BlockedDraftTests(unittest.TestCase):
