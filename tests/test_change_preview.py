@@ -288,9 +288,8 @@ class ReceiptTests(ImpactCase):
             self.assertEqual(status, 200, receipt)
             item = receipt['items'][0]
             self.assertEqual((item['element'], item['proposed_by'], item['confirmed_by'], item['on']), ('objview:有效订单', 'Ann', 'Bob', {'订单': 1}))
-            self.assertIn('不是 2（已取消）', item['before'])
-            self.assertIn('不是 1（生产中）', item['after'])
-            self.assertNotIn('不是 1（生产中）', item['before'])
+            self.assertEqual(item['before'], '订单里只留 状态码 不是「已取消」 的行')   # as the queue words a view
+            self.assertEqual(item['after'], '订单里只留 状态码 不是「已取消」，且 状态码 不是「生产中」 的行')
             cards = self.by_card(receipt)
             self.assertEqual({k: (c['now'], c['after']) for k, c in cards.items()}, {k: (c['now'], c['after']) for k, c in self.by_card(preview).items()})
             self.assertEqual(cards['valid']['change']['delta'], sum(r['状态码'] == '0' for r in ORDERS) - len(LIVE))
