@@ -10,7 +10,8 @@ declared cardinality is false on today's data (rows a join would multiply; for o
 type's key is a warning only. A viewer reads the counts of a check and none of the rows or keys behind them.
 
 A relation goes to needs_look when either endpoint does (object_types._flag follows element_dep) and when a new upload changes the connected rows
-(recheck_dependents calls relation_problems). Saving a relation with a different key, endpoint or cardinality puts it forward again; names and the
+(recheck_dependents calls relation_problems). One exception: a relation confirmed with every row connected and no repeated key stays confirmed while that is
+still so, whatever the row counts are now; its page shows today's counts beside the ones it was confirmed on. Saving a relation with a different key, endpoint or cardinality puts it forward again; names and the
 description are edits only. Many-to-many is not offered: it needs a table that joins the two, which a key pair cannot say.
 """
 from __future__ import annotations
@@ -182,14 +183,23 @@ def _describe(numbers: dict, many: str, one: str) -> str:
     return tr(f'{numbers["matched"]} / {numbers["rows"]} 行连上{one}，{numbers["fan_keys"]} 个重复的{one}键', f'{numbers["matched"]} / {numbers["rows"]} rows connect to {one}, {numbers["fan_keys"]} repeated {one} keys')
 
 
+def _fully_connected(numbers: dict) -> bool:
+    """Every row of the many side finds the one side (none empty, none unmatched), and no key repeats on either side. A table with no rows connects nothing."""
+    return (numbers['rows'] > 0 and numbers['matched'] == numbers['rows'] and not numbers['unmatched'] and not numbers['fan_keys']
+            and not numbers.get('many_repeats'))
+
+
 def relation_problems(conn, row: dict) -> list[str]:
-    """For a confirmed relation, after a dataset moved: what is different now, in words (empty when the connected rows are the same as when it was confirmed)."""
+    """For a confirmed relation, after a dataset moved: what is different now, in words. Empty when the connected rows are the same as when it was confirmed, and
+    when it was fully connected then and still is (_fully_connected): rows came or went, and what the person stood behind, every row finding exactly one, holds."""
     content = _content(row)
     result = check_relation(conn, content)
     if result['problems']:
         return result['problems']
     was = json.loads(row['anchors_json'])
     if result['numbers'] == was['numbers']:   # by name: the anchors are stored with their keys sorted, the signature is in the order the page reads it
+        return []
+    if _fully_connected(was['numbers']) and _fully_connected(result['numbers']):
         return []
     many, one = result['many'], result['one']
     moved = tr('、', ', ').join(tr(f'{name} 第 {v} 版', f'{name} version {v}') for name, v in result['datasets'].items() if was['datasets'].get(name) != v)
