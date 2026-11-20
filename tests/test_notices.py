@@ -198,3 +198,31 @@ class BackForAnotherLookTests(DerivedTestCase):
             self.assertEqual(own[0]['definition']['can_confirm'], False)   # but not offered to confirm her own
             self.assertEqual(self.notices(cara), {'notices': [], 'unread': 0})   # a row rule keeps her from all the data: she cannot confirm it
             self.assertEqual(len(self.notices(admin)['notices']), 1)
+
+    def test_an_edit_that_sends_a_reader_back_tells_who_can_confirm_the_reader_with_the_cause_definition_changed(self):
+        with self.service() as (base, out):
+            team = self.people(base, 'ann', 'bob', 'cara', 'dan')
+            ann, bob, cara, dan, admin = team['ann'], team['bob'], team['cara'], team['dan'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': TABLES})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
+            self.foundation(team, types=(ORDER, CUSTOMER), relations=[r for r in RELATIONS if r['english_name'] == 'order_customer'])   # Ann puts forward, Bob confirms
+            ids = self.ids(admin)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'customer', 'visible_to': [ids['ann'], ids['bob'], ids['cara']]})[0], 200)   # the relation is kept from Dan
+            shown = cara.get('/api/workspace/types/order')[1]
+            edited = {**ORDER, 'id': 'order', 'version': shown['version'], 'properties': [p for p in ORDER['properties'] if p['column'] != '交付天数']}
+            status, body = cara.post('/api/workspace/types/update', edited)   # Cara drops a property: the type is hers to have confirmed again, the relation on it goes back
+            self.assertEqual(status, 200, body)
+            self.assertTrue(body['reset'], body)
+            self.assertEqual(self.states(out)['relation:order_customer'], 'needs_look')
+            for person in (bob, admin):
+                told = self.notices(person)
+                self.assertEqual((told['unread'], len(told['notices'])), (1, 1))
+                notice = told['notices'][0]
+                self.assertEqual((notice['definition']['kind'], notice['definition']['id'], notice['definition']['state']), ('relation', 'order_customer', 'needs_look'))
+                for words in ('订单属于客户', '定义改了', '它连接的“订单”类型改了'):
+                    self.assertIn(words, notice['text'])
+            own = self.notices(cara)['notices']   # the editor can confirm the relation (she did not put it forward), so she is told too
+            self.assertEqual(len(own), 1)
+            self.assertEqual((own[0]['definition']['id'], own[0]['definition']['can_confirm']), ('order_customer', True))
+            for person in (ann, dan):   # the relation's proposer; a builder the relation is kept from
+                self.assertEqual(self.notices(person), {'notices': [], 'unread': 0})
