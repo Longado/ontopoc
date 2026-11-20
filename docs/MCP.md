@@ -1,18 +1,54 @@
 # OntoPoc 的 MCP 工具
 
-页面上的主要功能都有对应的 MCP 工具（本体库、⌘K 搜索和纪要、JSON 下载、新版本与“和上次比”的对比、建模记录除外；稳定性只给到对象，不稳的关系在 open_items 里），任何支持 MCP 的客户端（Claude Code、Claude Desktop、Cursor、DSH 这类 agent）都能直接调用。工具走 stdio，调用的是本机正在运行的建模服务，和页面用同一套接口：核验、计数、确认记录只有一份。
+OntoPoc 是团队数据和回答问题的 AI 之间的确认关口。给外部智能体的是 5 个只读工具：智能体以令牌主人的身份，只按这个人看得到的、已确认的定义回答；问到没确认或需再看的定义，就拒答，说明原因和谁能确认。工具走 stdio，调用本机正在运行的服务，和页面用同一套接口：核验、计数、确认记录只有一份。工具不能上传、写定义或确认，这些在页面里做。
+
+早期界面（`legacy.html`，按运行建模）的 34 个工具还在，要设 `ONTOPOC_TOOLSET=all` 才有，写在文末的[附录](#附录早期界面的工具)。
 
 ## 接上
 
-先启动建模服务（`PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server`），再把工具服务配进客户端。Claude Code：
+先启动服务（`./scripts/ontopoc-start.sh`，或 `PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server`）。管理员在“AI 工具接入”页给一个人发令牌，再把工具服务配进客户端。Claude Code（在仓库根目录）：
 
 ```bash
-claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=<仓库路径>/src python3 -m ontology_poc_generator.mcp_server
+claude mcp add ontopoc -- env ONTOPOC_TOKEN=<令牌> PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
 ```
 
-别的客户端写成 stdio 服务，命令同上。不设 `ONTOPOC_TOOLSET=all` 时只给 5 个只读工具（团队已确认的定义：`describe_definitions`、`ontopoc_query`、`ask`、`list_unconfirmed`、`read_derived_property`）；下表的建模工具要设它（插件已经设好）。服务不在 8767 端口时设 `ONTOPOC_URL`。
+别的客户端写成 stdio 服务，命令同上；“AI 工具接入”页给出填好服务地址的 JSON。服务不在 8767 端口时设 `ONTOPOC_URL`。不设 `ONTOPOC_TOOLSET`（或设成 `read`）时只给下面 5 个只读工具。
 
-## 工具
+## 给外部智能体的只读工具
+
+管理员给一个人发令牌（`ONTOPOC_TOKEN`）以后，工具服务默认只给这几个，按令牌主人的权限算：
+
+| 工具 | 做什么 | 调用模型 | 重试 |
+|---|---|---|---|
+| `describe_definitions` | 已确认的对象类型、属性、代码含义、关系、视图、派生属性和拒答规则；`types` 只取几个类型和连着它们的定义 | 否 | 可以 |
+| `ontopoc_query` | 要一个数时先用它：直接写本体查询（像 SQL，见 [QUERY.md](QUERY.md)），代码算；写错时说明能写什么 | 否 | 可以，不记录 |
+| `ask` | 写不出查询时才用：用一句话问，模型写成查询，代码算 | 是 | 每问一次都记进问答历史、算一次提问 |
+| `list_unconfirmed` | 还不能用的定义，以及原因 | 否 | 可以 |
+| `read_derived_property` | 读一个已确认的派生属性的值 | 否 | 可以 |
+
+`ask` 的回答带着 `query_text`，也就是这道题写成本体查询的样子。智能体可以先用 `ask` 学写法，再用 `ontopoc_query` 改条件、重复跑，后面这些都不再调用模型。
+
+这几个工具按给模型用的工具该有的样子来做（`tests/test_agent_tools.py` 守着）：
+
+- **少，而且不重叠。** 连上时的说明、`ask` 的说明和拒答规则都写着：要数字先用 `ontopoc_query`，写不出来再用 `ask`。以前这三处都只提 `ask`，智能体会把能直接算的数也交给模型。
+- **专门做一件事。** `ontopoc_query` 看起来像 SQL，但只能沿确认过的关系走、按提问人的行算，不是一个能读任何表的 `run_sql`（为什么见 [QUERY.md](QUERY.md)）。
+- **省字。** 结果里不重复说同一件事：去掉了编译后的结构化查询（`text` 能编译回它），用到的定义只留 id、种类、名字、版本、确认人和派生属性的算式，状态只在不是已确认时给；属性的 `name` 只在和列名不同时给，`code` 只在是代码列时给。分组超过 50 组只给前 50 组，`groups_cut` 说一共几组、怎么用 `ORDER BY … LIMIT` 或 `WHERE` 收窄（`ask` 的回答是改它的 `query_text` 再用 `ontopoc_query` 跑）。`types` 写空列表会报错，要全部就不写。演示数据上，一个计数的结果从 424 个字降到 226 个，全部定义从 4,620 降到 3,847，只取一个类型更少。
+- **错误说怎么改。** 关系写错列出这个类型能走的关系，属性写错列出它的属性，缺参数写出 `"params": {"名字": …}` 的样子，类型不在定义里列出有的类型。
+- **能放心重试。** 除了 `ask`，都是只读的，同样的调用在数据和定义没变时结果相同；`ask` 的说明里写着不要为了重试再问。
+
+## 护栏照旧
+
+这些是入口，不是新的 Agent：模型调用仍然只经过 `agent_harness.ask_model` 的六个 Agent，每个用户动作最多三次模型调用，答案由代码在数据上算。工具不改数据、不合并对象；确认和验收问题要调用方明确传入。只连本机。
+
+## 附录：早期界面的工具
+
+这些工具对应早期界面（`legacy.html`）的运行：上传文件建本体、看体检、记下客户的答复、逐项确认、导出。设了 `ONTOPOC_TOOLSET=all` 才有；Claude Code 插件（`/ontopoc:ontopoc-build`、`/ontopoc:ontopoc-review`）现在用的就是它们，插件默认设了 `all`。它们读的是一次运行里上传的数据，不经过团队应用的确认关口。
+
+```bash
+claude mcp add ontopoc-legacy -- env ONTOPOC_TOOLSET=all PYTHONPATH=<仓库路径>/src python3 -m ontology_poc_generator.mcp_server
+```
+
+本体库、⌘K 搜索和纪要、JSON 下载、新版本与“和上次比”的对比、建模记录没有对应的工具；稳定性只给到对象，不稳的关系在 open_items 里。
 
 | 工具 | 对应页面上的 | 调用模型 |
 |---|---|---|
@@ -61,29 +97,7 @@ claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=<仓库路径>/src 
 
 "下载纪要"没有单独的工具：纪要是页面把上面这些数据排版成的一页，开头就是 `run_overview` 里的 `open_items`。
 
-## 给外部智能体的只读工具
-
-管理员给一个人发令牌（`ONTOPOC_TOKEN`）以后，工具服务默认只给这几个，按令牌主人的权限算：
-
-| 工具 | 做什么 | 调用模型 | 重试 |
-|---|---|---|---|
-| `describe_definitions` | 已确认的对象类型、属性、代码含义、关系、视图、派生属性和拒答规则；`types` 只取几个类型和连着它们的定义 | 否 | 可以 |
-| `ontopoc_query` | 要一个数时先用它：直接写本体查询（像 SQL，见 [QUERY.md](QUERY.md)），代码算；写错时说明能写什么 | 否 | 可以，不记录 |
-| `ask` | 写不出查询时才用：用一句话问，模型写成查询，代码算 | 是 | 每问一次都记进问答历史、算一次提问 |
-| `list_unconfirmed` | 还不能用的定义，以及原因 | 否 | 可以 |
-| `read_derived_property` | 读一个已确认的派生属性的值 | 否 | 可以 |
-
-`ask` 的回答带着 `query_text`，也就是这道题写成本体查询的样子。智能体可以先用 `ask` 学写法，再用 `ontopoc_query` 改条件、重复跑，后面这些都不再调用模型。
-
-这几个工具按给模型用的工具该有的样子来做（`tests/test_agent_tools.py` 守着）：
-
-- **少，而且不重叠。** 连上时的说明、`ask` 的说明和拒答规则都写着：要数字先用 `ontopoc_query`，写不出来再用 `ask`。以前这三处都只提 `ask`，智能体会把能直接算的数也交给模型。
-- **专门做一件事。** `ontopoc_query` 看起来像 SQL，但只能沿确认过的关系走、按提问人的行算，不是一个能读任何表的 `run_sql`（为什么见 [QUERY.md](QUERY.md)）。
-- **省字。** 结果里不重复说同一件事：去掉了编译后的结构化查询（`text` 能编译回它），用到的定义只留 id、种类、名字、版本、确认人和派生属性的算式，状态只在不是已确认时给；属性的 `name` 只在和列名不同时给，`code` 只在是代码列时给。分组超过 50 组只给前 50 组，`groups_cut` 说一共几组、怎么用 `ORDER BY … LIMIT` 或 `WHERE` 收窄（`ask` 的回答是改它的 `query_text` 再用 `ontopoc_query` 跑）。`types` 写空列表会报错，要全部就不写。演示数据上，一个计数的结果从 424 个字降到 226 个，全部定义从 4,620 降到 3,847，只取一个类型更少。
-- **错误说怎么改。** 关系写错列出这个类型能走的关系，属性写错列出它的属性，缺参数写出 `"params": {"名字": …}` 的样子，类型不在定义里列出有的类型。
-- **能放心重试。** 除了 `ask`，都是只读的，同样的调用在数据和定义没变时结果相同；`ask` 的说明里写着不要为了重试再问。
-
-## 口径卡和客户的答复
+### 口径卡和客户的答复
 
 口径卡是每张上传的表一张：代码能算的先算好（一行按哪几列唯一、日期列的最早最晚和空值），只有人能答的留空，也就是一行是什么、日期列是什么时间、数值列能不能相加、对象在数据里全不全。`get_card` 读整张卡，每一格有稳定的 id，已答复的格带 `answer`（`value`、`says`、`by`、`basis`、`at`）。文档运行没有卡，返回空的 `tables`。
 
@@ -100,7 +114,3 @@ claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=<仓库路径>/src 
 - 数值列在卡上标成“每次事件后的累计值”，或标成“期初到期末的累计值”而问题没有固定在一期上，对它求和会被拒答：`status` 是 `query_limit`，`reason` 是代码给的原因（`reason_from_model` 不为 true），`refused_by_card` 是拒答的那一格的 id。照 `reason` 告诉人，这是口径卡上的规则，不要换问法绕过；平均不拦。
 - 对象在卡上标成“只有一部分”时，答案照常给，`evidence.card.incomplete` 写明哪个对象、备注是什么，要转告人。
 - 卡上至少有一格已答复时，`answered` 和 `no_data` 的答案带 `evidence.card`：`tables` 是用了哪张表、多少行、数据到哪天，`lines` 是答案按哪几条口径算的（谁答复、出处）。
-
-## 护栏照旧
-
-这些是入口，不是新的 Agent：模型调用仍然只经过 `agent_harness.ask_model` 的六个 Agent，每个用户动作最多三次模型调用，答案由代码在数据上算。工具不改数据、不合并对象；确认和验收问题要调用方明确传入。只连本机。

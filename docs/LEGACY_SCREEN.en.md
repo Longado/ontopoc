@@ -14,7 +14,7 @@ Every uploaded table is also stored in a local `workspace.sqlite`: one table per
 
 The result can be exported in the shape of a data platform's object form; as a pipeline requirements sheet (编排需求单) for whoever builds the data pipeline, and a one-page meeting note; or as W3C Turtle (OWL and SHACL). Some features are also MCP tools other agents can call (the newer definition and join features have none yet).
 
-> **Early version.** It has been tried on public and synthetic data only (US federal procurement, Chicago city contracts, Northwind, BART transit, the Taiwan company registry, CMS hospitals and more). Nobody but the author has yet used it end to end on their own, and it has not been compared with doing the same thing directly in a general-purpose coding assistant. The page has been used on macOS only. Batch import has not been tested on any data platform. A single file, or several tables uploaded together, may total at most 10 MB; the model is reached through DeepSeek's hosted API or OpenRouter (any OpenAI-compatible endpoint can be configured), with no local-model option. See [Known issues](KNOWN_ISSUES.en.md).
+> **Early version.** It has been tried on public and synthetic data only (US federal procurement, Chicago city contracts, Northwind, BART transit, the Taiwan company registry, CMS hospitals and more). Nobody but the author has yet used it end to end on their own, and it has not been compared with doing the same thing directly in a general-purpose coding assistant. The page has been used on macOS only. Batch import has not been tested on any data platform. A single file, or several tables uploaded together, may total at most 10 MB; the model is reached through DeepSeek's hosted API or OpenRouter (any OpenAI-compatible endpoint can be configured), with no local-model option. See [Known issues](#known-issues) below and [KNOWN_ISSUES.en.md](KNOWN_ISSUES.en.md).
 
 ## Screenshots
 
@@ -92,3 +92,18 @@ Once installed (see [Quick start](../README.en.md#quick-start)), open `legacy.ht
 | Data check (数据体检) | 7 checks, rules (规则), comparison with a reference ontology (对照标准) |
 
 Under "More examples" (更多示例) in the sidebar there are two more example uses of the same method: vehicle recall scope (NHTSA public data, no local service needed), and product and lot matching for food recall event 95876 (openFDA, which needs a separate local recall service started). See [docs/RECALL_EXAMPLE.md](RECALL_EXAMPLE.md). OntoPoc is not affiliated with NHTSA or any carmaker, and its candidates are not defect findings.
+
+## What the model sees
+
+Moved from the README's Privacy section; what the team app sends is in the README.
+
+- Sent to the model by the earlier screen (DeepSeek, or a model on OpenRouter): the modelling purpose; for each table its row count, each column's name, up to 3 example values, the counts code took (values present, distinct values, whether all differ), the columns or column pairs that differ on every row, and likely links (including into the same table); every value of a category-like column; when writing questions, every value of columns with at most 12 distinct values, and any question you type in 智能问答 (Q&A) as written; when you click "起草" (draft) for field descriptions, each field's type and maximum length; when you click "找出可能的对应" (find possible matches), for objects identified by a single field with 2 to 200 values, all identity values and how many rows each appears in; for documents, the text, at most 12 chunks per upload. The upload page shows exactly what will be sent for modelling, column by column.
+
+## Known issues
+
+Issues that belong only to the earlier screen, moved from [KNOWN_ISSUES.en.md](KNOWN_ISSUES.en.md); issues it shares with the team app are still there.
+
+- **The model builds differently each time.** Three builds of one file often differ, now mainly in the relations: in one measurement on Northwind on 10-28 (8 kinds of object, 7 relations), 4 relations differed across the 3 builds, nearly all because the same relation ran the other way (order → customer / customer → order). The page marks where they disagree for you to decide.
+- **A new version may come with a different way of telling objects apart.** Once, Chicago's contracts went from "number + revision" to number alone; then only counts can be compared, not objects one by one, and the page says so ("识别方式已变更", identification changed).
+- **Batch import is untested.** The exported form columns follow what data platforms usually ask for; import format, key rules and how relations are expressed differ by platform and have not been tested on any, so no relation table is exported.
+- **Turtle export is checked only by reading it back with rdflib and pyshacl.** It has not been loaded into Protégé or a graph database.
