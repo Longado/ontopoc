@@ -1,6 +1,7 @@
 """Demo mode: guest accounts, their limits, the ask guard, cleanup, and the seed."""
 import base64
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -37,13 +38,13 @@ def serving(demo_on=True):
 
 
 class Browser:
-    def __init__(self, base):
-        self.base, self.jar = base, http.cookiejar.CookieJar()
+    def __init__(self, base, lang='en'):
+        self.base, self.lang, self.jar = base, lang, http.cookiejar.CookieJar()
         self.opener = build_opener(HTTPCookieProcessor(self.jar))
 
     def call(self, method, path, body=None):
         request = Request(self.base + path, method=method, data=None if body is None else json.dumps(body).encode(),
-                          headers={'Content-Type': 'application/json', 'Origin': self.base, 'Accept-Language': 'en'})
+                          headers={'Content-Type': 'application/json', 'Origin': self.base, 'Accept-Language': self.lang})
         try:
             with self.opener.open(request) as response:
                 return response.status, json.load(response)
@@ -339,6 +340,143 @@ class Seed(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join()
+
+
+@contextmanager
+def seeded():
+    """A demo workspace built by the seed, served in demo mode without a model: (base address, admin password, folder)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / 'demo'
+        result = demo.seed(target)
+        server = make_server(port=0, gateway=None, output_dir=target, demo=True)
+        thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
+        thread.start()
+        try:
+            yield f'http://127.0.0.1:{server.server_port}', result['password'], target
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+
+def signed_in(base, password, name='demo-admin', lang='zh-CN'):
+    admin = Browser(base, lang)
+    assert admin.call('POST', '/api/auth/login', {'username': name, 'password': password})[0] == 200
+    return admin
+
+
+def a_guest(base, lang='zh-CN'):
+    guest = Browser(base, lang)
+    assert guest.call('POST', '/api/auth/demo', {})[0] == 200
+    return guest
+
+
+class DemoStory(unittest.TestCase):
+    """What a first-time visitor meets: one answer on the board, and one definition that waits for a second look, named with who it waits for and nothing else."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._seeded = seeded()
+        cls.base, cls.password, cls.folder = cls._seeded.__enter__()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._seeded.__exit__(None, None, None)
+
+    def test_the_view_says_what_it_counts_with_all_its_conditions_together(self):
+        admin = signed_in(self.base, self.password)
+        view = admin.call('GET', '/api/workspace/types/order/views')[1]['views'][0]
+        self.assertEqual(view['caliber'], 'status_code 不是 0（New）、4（Cancelled）、5（Refunded）：算进 1 Paid、2 Shipped、3 Delivered')   # not "不是 0（New）：算进 … 4 Cancelled、5 Refunded"
+
+    def test_a_guest_sees_the_customer_type_waiting_and_for_whom_and_nothing_of_why(self):
+        guest = a_guest(self.base)
+        listed = {t['id']: t for t in guest.call('GET', '/api/workspace/types')[1]['types']}
+        self.assertEqual(listed['order']['state'], 'confirmed')
+        customer = listed['customer']
+        self.assertEqual((customer['name'], customer['state'], customer['waiting'], customer['waiting_for'], customer['rows'], customer['dataset']),
+                         ('Customer', 'needs_look', True, ['demo-admin'], None, None))
+        reason = signed_in(self.base, self.password).call('GET', '/api/workspace/types/customer')[1]['reason']
+        self.assertTrue(reason)   # the admin reads why it waits; the guest does not
+        self.assertNotIn(reason, json.dumps(customer, ensure_ascii=False))
+
+    def test_a_guests_question_on_a_waiting_type_is_refused_before_the_model_naming_it_and_who_it_waits_for_only(self):
+        admin = signed_in(self.base, self.password)
+        detail = admin.call('GET', '/api/workspace/types/customer')[1]
+        secrets = [detail['reason'], 'C012', '不唯一', 'customers_update', '41']   # why it waits quotes the data: its keys, counts and file
+        guest = a_guest(self.base)
+        for question in ('按 Customer 城市看有效订单金额', 'Valid order amount by customer city'):
+            status, body = guest.call('POST', '/api/workspace/ask', {'question': question})   # no model on this server: the refusal does not need one
+            self.assertEqual(status, 200, body)
+            self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'unsettled'), question)
+            [line] = body['refusal']['definitions']
+            self.assertEqual((line['id'], line['kind'], line['name'], line['state'], line['who_can_confirm']), ('objtype:customer', 'type', 'Customer', 'needs_look', ['demo-admin']))
+            self.assertLessEqual(set(line), {'id', 'kind', 'name', 'state', 'waiting', 'who_can_confirm', 'because', 'text'})
+            self.assertEqual(line.get('because', []), [])
+            said = json.dumps({k: body[k] for k in ('reason', 'refusal', 'steps', 'definitions', 'types', 'datasets')}, ensure_ascii=False)
+            for secret in secrets:
+                self.assertNotIn(secret, said, question)
+            self.assertNotRegex(said, r'\d', question)   # no count, no key, no version
+            self.assertIn('demo-admin', body['reason'])
+            again = guest.call('GET', f'/api/workspace/ask/{body["id"]}')[1]   # reopened from the history, it still says the same, and no more
+            self.assertNotIn('withheld', again)
+            self.assertEqual(again['refusal'], body['refusal'])
+
+    def keep(self, guest, question, record):
+        """A saved question of this guest's, written as the service keeps one."""
+        uid = guest.call('GET', '/api/auth/me')[1]['user']['id']
+        conn = sqlite3.connect(self.folder / 'workspace.sqlite')
+        try:
+            cur = conn.execute('INSERT INTO qa_question(user_id, asked_by, question, asked_at, status, answer_json, definitions_json, dataset_versions_json, types_json) '
+                               "VALUES (?, 'guest', ?, '2026-11-20T00:00:00+00:00', ?, ?, ?, '{}', ?)",
+                               (uid, question, record['status'], json.dumps(record, ensure_ascii=False), json.dumps(record['definitions']), json.dumps(record['types'])))
+            conn.commit()
+            return cur.lastrowid
+        finally:
+            conn.close()
+
+    def test_a_guest_reopening_an_old_answer_on_a_type_that_now_waits_is_told_only_its_name_and_who_it_waits_for(self):
+        reason = signed_in(self.base, self.password).call('GET', '/api/workspace/types/customer')[1]['reason']
+        guest = a_guest(self.base)
+        # asked while Customer was confirmed; an upload has since sent it back for a second look
+        answered = self.keep(guest, 'How many customers?', {'status': 'answered', 'reason': None, 'answer': {'total': 40}, 'types': [{'id': 'customer', 'name': 'Customer'}],
+                                                            'definitions': [{'id': 'objtype:customer', 'version': 1, 'name': 'Customer'}], 'datasets': {}, 'steps': [],
+                                                            'named': ['objtype:customer']})
+        # a refusal kept while its asker could read why (a builder since made a viewer): the reasons in it are not this guest's now
+        builders = self.keep(guest, 'Customer by city', {'status': 'refused', 'reason': f'Not answered: {reason}', 'types': [], 'definitions': [], 'datasets': {}, 'steps': [],
+                                                         'refusal': {'kind': 'unsettled', 'definitions': [{'id': 'objtype:customer', 'kind': 'type', 'name': 'Customer', 'state': 'needs_look',
+                                                                                                           'reason': reason, 'who_can_confirm': ['demo-admin'], 'text': reason}]},
+                                                         'named': ['objtype:customer']})
+        for qid in (answered, builders):
+            status, body = guest.call('GET', f'/api/workspace/ask/{qid}')
+            self.assertEqual(status, 200, body)
+            said = json.dumps(body, ensure_ascii=False)
+            self.assertIn('withheld', body, said)
+            for secret in (reason, 'C012', '41', 'not unique', '不唯一'):
+                self.assertNotIn(secret, said, qid)
+            self.assertNotIn('changed', body)
+            self.assertNotIn('answer', body)
+            self.assertIn('Customer', body['reason'])
+            self.assertIn('demo-admin', body['reason'])   # what a fresh question would say: the name and who it waits for
+
+    def test_the_board_still_answers_while_the_customer_type_waits(self):
+        guest = a_guest(self.base)
+        board = guest.call('GET', '/api/workspace/dashboards')[1]['dashboards'][0]
+        body = guest.call('POST', '/api/workspace/dashboards/data', {'id': board['id'], 'bar': {}})[1]
+        by_id = {c['id']: c for c in body['components']}
+        self.assertTrue(all(c['status'] == 'ok' for c in by_id.values()), body)
+        self.assertEqual([by_id[k]['result']['value'] for k in ('valid_amount', 'valid_count', 'all_amount')], [119810, 107, 162960])
+
+
+class DemoRefusalLimits(unittest.TestCase):
+    def test_a_type_nobody_ever_confirmed_is_not_named_to_a_guest(self):
+        with seeded() as (base, password, _):
+            admin = signed_in(base, password)
+            status, body = admin.call('POST', '/api/workspace/types', {'english_name': 'sale', 'name': '销售单', 'dataset': 'orders', 'key': ['order_id'],
+                                                                         'properties': [{'column': 'order_id'}, {'column': 'amount'}]})
+            self.assertEqual(status, 200, body)
+            guest = a_guest(base)
+            status, body = guest.call('POST', '/api/workspace/ask', {'question': '销售单一共有多少？'})
+            self.assertEqual(status, 503, body)   # on to the model (there is none here): nothing said of a type the guest may not see
 
 
 if __name__ == '__main__':

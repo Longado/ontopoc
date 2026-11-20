@@ -20,7 +20,7 @@ export default {
   "demo.try": "试用演示",
   "demo.trying": "正在打开演示…",
   "demo.haveAccount": "已有账号？登录",
-  "guest.banner": "演示 · 只读示例数据 · 每天重置",
+  "guest.banner": "演示 · 只读示例数据 · 访客账号和提问 24 小时后删除",
   "guest.try": "试着问：“有效订单的总金额是多少？”",
   "guest.signOut": "退出",
   "guest.openBoards": "打开看板",

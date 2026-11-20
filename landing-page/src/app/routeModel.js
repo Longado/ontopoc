@@ -173,14 +173,14 @@ export const navFor = (user) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])]
 export const PAGES = {
   home: { nav: "home" },
   qa: { nav: "qa" },
-  tasks: { nav: "tasks" },
+  tasks: { nav: "tasks", role: "builder" },   // the task list quotes keys and values: the service gives it to builders only
   notices: { nav: "notices" },
   datasets: { nav: "datasets" }, dataset: { nav: "datasets" },
   pipelines: { nav: "pipelines", role: "builder" }, pipelinenew: { nav: "pipelines", role: "builder" }, pipeline: { nav: "pipelines", role: "builder" },
   sources: { nav: "sources", role: "builder" }, source: { nav: "sources", role: "builder" },
   schedules: { nav: "schedules", role: "builder" },
-  types: { nav: "types" }, type: { nav: "types" }, typenew: { nav: "types" }, typeedit: { nav: "types" }, object: { nav: "types" },
-  relations: { nav: "relations" }, relation: { nav: "relations" }, relationnew: { nav: "relations" }, relationedit: { nav: "relations" },
+  types: { nav: "types" }, type: { nav: "types" }, typenew: { nav: "types", role: "builder" }, typeedit: { nav: "types", role: "builder" }, object: { nav: "types" },
+  relations: { nav: "relations" }, relation: { nav: "relations" }, relationnew: { nav: "relations", role: "builder" }, relationedit: { nav: "relations", role: "builder" },
   confirm: { nav: "confirm", role: "builder" }, confirmgroup: { nav: "confirm", role: "builder" },
   agents: { nav: "agents", role: "builder" },
   boards: { nav: "boards" }, board: { nav: "boards" }, boardnew: { nav: "boards", role: "builder" }, boardedit: { nav: "boards", role: "builder" },

@@ -21,7 +21,8 @@ from ontology_poc_generator.derived_properties import derived_visible, describe 
 from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
-    CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, reason_for, stale_word, type_id)
+    CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, _waiting_line, dataset_columns, element_row, enum_id, reason_for,
+    stale_word, type_id, waiting_for_viewer)
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible
 from ontology_poc_generator.agent_harness import ask_model
@@ -199,6 +200,23 @@ def _blockers(conn, user: dict | None, question: str) -> list[dict]:
             hit = all(r and (_named(question, _content(r)['name']) or _named(question, _content(r)['english_name'])) for r in ends)
         if hit:
             out.append({**line, 'because': _causes(conn, row, user)})
+    if user is not None and user['role'] == 'viewer':
+        out += _waiting_blockers(conn, user, question)
+    return out
+
+
+def _waiting_blockers(conn, user: dict, question: str) -> list[dict]:
+    """For a viewer: the types they may see that were confirmed and now wait for a second look (object_types.waiting_for_viewer), when the question names one.
+    Each is said with what the type list already tells them (its name and who it waits for): no reason, no cause, no count, nothing of the data."""
+    out = []
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        if not waiting_for_viewer(conn, row, user):
+            continue
+        content = _content(row)
+        if _named(question, content['name']) or _named(question, content['english_name']):
+            waiting = _waiting_line(conn, row, user)
+            out.append({'id': element_id, 'kind': 'type', 'name': waiting['name'], 'state': waiting['state'], 'waiting': True, 'who_can_confirm': waiting['waiting_for'], 'because': []})
     return out
 
 
@@ -210,8 +228,11 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
             if d['id'] in names:
                 continue
             names.append(d['id'])
-            why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
-            who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
+            if d.get('waiting'):   # a viewer's line: where it stands and who it waits for, nothing more
+                why, who = (tr(f'在等 {"、".join(d["who_can_confirm"])} 再确认', f'waiting for {", ".join(d["who_can_confirm"])} to confirm it again') if d['who_can_confirm'] else _state_words(d['state'])), ''
+            else:
+                why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
+                who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
             lines.append({**d, 'text': tr(f'{_kind_word(d["kind"])}「{d["name"]}」：{why}{who}', f'{_kind_word(d["kind"])} "{d["name"]}": {why}{who}')})
     return {'status': 'refused', 'reason': tr('没有回答：问题用到的定义不是已确认的状态。', 'Not answered: a definition the question uses is not confirmed. ') + tr('；', '; ').join(l['text'] for l in lines),
             'refusal': {'kind': 'unsettled', 'definitions': lines}}
@@ -937,6 +958,16 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
     record = json.loads(stored)
     named = list(dict.fromkeys([*record.pop('named', []), *(type_id(t['id']) for t in record['types'])]))
     lost = [element_id for element_id in named if not _may_see(conn, user, element_id)]
+    waiting = [_waiting_line(conn, row, user) for row in (element_row(conn, e) for e in lost) if waiting_for_viewer(conn, row, user)]
+    if lost and len(waiting) == len(lost):   # each waits for a second look: said as a fresh question would say it, the name and who it waits for, nothing of why
+        refusal = record.get('refusal') or {}
+        if refusal.get('kind') == 'unsettled' and all(d.get('waiting') for d in refusal.get('definitions', [])):
+            lost = []   # a viewer's own refusal that said only that: shown as it was kept
+        else:
+            said = tr('；', '; ').join(tr(f'「{w["name"]}」在等 {"、".join(w["waiting_for"])} 再确认', f'"{w["name"]}" is waiting for {", ".join(w["waiting_for"])} to confirm it again') if w['waiting_for']
+                                      else tr(f'「{w["name"]}」需要再看', f'"{w["name"]}" needs another look') for w in waiting)
+            return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': [], 'waiting': [{'name': w['name'], 'waiting_for': w['waiting_for']} for w in waiting]},
+                    'reason': tr(f'这条{"拒答" if refusal else "回答"}说到的定义现在不能用：{said}。确认之后再问一次。', f'A definition this {"refusal" if refusal else "answer"} names cannot be used now: {said}. Ask again once it is confirmed.')}
     if lost:   # an answer names the types it read (the asker saw them then); a refusal names nothing, since what it says about a definition is for those who may see it
         types = [] if 'refusal' in record else [t['name'] for t in record['types'] if type_id(t['id']) in lost]
         return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': types},

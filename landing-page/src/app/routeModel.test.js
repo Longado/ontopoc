@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { readFileSync } from "node:fs";
 import { ADMIN_NAV, NAV, PAGES, PLANNED, afterSignIn, hrefFor, mayOpen, navFor, navKeyOf, navLabelOf, parseRoute } from "./routeModel.js";
-import { setLocale } from "./i18n/index.js";
+import { setLocale, t } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
@@ -209,4 +209,25 @@ test("a fresh sign-in lands on the home page; an expired session returns to wher
   for (const hash of ["", "#/", "#/qa", "#/types/order/props", "#/home"]) assert.equal(afterSignIn(hash, false), "#/home", hash);
   assert.equal(afterSignIn("#/qa/3", true), "#/qa/3");
   assert.equal(afterSignIn("", true), "#/home");
+});
+
+test("a viewer cannot open the pages that make or change definitions, nor the task list: refused at the address, not after filling a form (C9)", () => {
+  const viewer = { role: "viewer" }, builder = { role: "builder" };
+  for (const page of ["typenew", "typeedit", "relationnew", "relationedit", "tasks"]) {
+    assert.equal(mayOpen(page, viewer), false, page);
+    assert.equal(mayOpen(page, builder), true, page);
+  }
+});
+
+test("the words for a page one may not open do not say builders may open an admin's page (P1); the guest banner says what really happens (P4)", () => {
+  for (const locale of ["zh", "en"]) {
+    setLocale(locale);
+    try {
+      assert.doesNotMatch(t("shell.forbidden.title") + t("shell.forbidden.text"), /建设者或管理员|builder or admin|builders or admins/i, locale);
+      assert.doesNotMatch(t("auth.guest.banner"), /每天重置|resets daily/i, locale);
+      assert.match(t("auth.guest.banner"), /24/, locale);
+    } finally {
+      setLocale("zh");
+    }
+  }
 });
