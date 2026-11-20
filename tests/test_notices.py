@@ -1,9 +1,10 @@
 """Notices: an action names who hears when one of its changes is approved: named people, the people whose attribute equals a column of the row, or the people whose
 attribute equals a column of the object the row points to through a relation. A notice goes only to someone who may read that row; the approver is not told."""
+from unittest import mock
 from urllib.parse import quote
 
 from tests.test_derived_properties import ORDER, RELATIONS, DerivedTestCase
-from tests.test_object_relations import CUSTOMER, customers_mended
+from tests.test_object_relations import CUSTOMER, customers_mended, table_csv
 from tests.test_object_types import TABLES, orders_upload, shifted_orders_csv
 from tests.test_explorer import CUSTOMERS, ORDERS
 
@@ -226,3 +227,52 @@ class BackForAnotherLookTests(DerivedTestCase):
             self.assertEqual((own[0]['definition']['id'], own[0]['definition']['can_confirm']), ('order_customer', True))
             for person in (ann, dan):   # the relation's proposer; a builder the relation is kept from
                 self.assertEqual(self.notices(person), {'notices': [], 'unread': 0})
+
+    def test_one_upload_that_moves_several_definitions_on_two_datasets_tells_each_person_once_with_the_count_of_the_rest(self):
+        order2 = {'english_name': 'order2', 'name': '订单副表', 'dataset': '订单', 'key': ['订单号'], 'properties': [{'column': '订单号'}, {'column': '金额'}]}
+        with self.service() as (base, out):
+            team = self.team(base)
+            bob, admin = team['bob'], team['admin']
+            self.foundation(team, types=(ORDER, order2, CUSTOMER), relations=[])   # Ann puts forward, Bob confirms
+            first = ORDERS[0]['订单号']
+            mended = [r for i, r in enumerate(CUSTOMERS) if r['客户编号'] not in {c['客户编号'] for c in CUSTOMERS[:i]}]
+            repeated_orders = orders_upload(lambda r, i: {**r, '订单号': first} if i == 1 else r)
+            repeated_customers = table_csv('客户.csv', [*mended, mended[0]], target='客户', mode='overwrite')
+            status, body = team['ann'].post('/api/workspace/datasets/upload', {'files': [repeated_orders, repeated_customers]})   # one upload, two files, three types go back
+            self.assertEqual(status, 200, body)
+            conn = self.db(out)
+            moved = conn.execute("SELECT element_id FROM element_state WHERE state = 'needs_look' ORDER BY element_id").fetchall()
+            conn.close()
+            self.assertEqual(moved, [('objtype:customer',), ('objtype:order',), ('objtype:order2',)])
+            for person in (bob, admin):
+                told = self.notices(person)['notices']
+                self.assertEqual(len(told), 1, [n['text'] for n in told])   # one upload, one notice
+                self.assertIn('还有 2 项', told[0]['text'])
+
+    def broken_notices(self):
+        return mock.patch('ontology_poc_generator.notices.tell_moved', side_effect=RuntimeError('the notice table is broken'))
+
+    def test_a_notice_that_cannot_be_written_never_loses_the_move_of_an_upload(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.foundation(team, types=(ORDER, CUSTOMER), relations=[r for r in RELATIONS if r['english_name'] == 'order_customer'])
+            with self.broken_notices():
+                status, body = team['ann'].post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})
+                self.assertEqual(status, 200, body)
+                self.assertIsNone(body['results'][0]['recheck_error'])
+            self.assertEqual(set(self.states(out).values()), {'needs_look'})   # the meanings, the type and the relation went back all the same
+            self.assertEqual(self.notices(team['bob']), {'notices': [], 'unread': 0})
+
+    def test_a_notice_that_cannot_be_written_never_rolls_back_an_edit(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            cara = team['cara']
+            self.foundation(team, types=(ORDER, CUSTOMER), relations=[r for r in RELATIONS if r['english_name'] == 'order_customer'])
+            shown = cara.get('/api/workspace/types/order')[1]
+            edited = {**ORDER, 'id': 'order', 'version': shown['version'], 'properties': [p for p in ORDER['properties'] if p['column'] != '交付天数']}
+            with self.broken_notices():
+                status, body = cara.post('/api/workspace/types/update', edited)
+                self.assertEqual(status, 200, body)
+            states = self.states(out)
+            self.assertEqual((states['objtype:order'], states['relation:order_customer']), ('checked', 'needs_look'))   # the edit stands, and the relation went back
+            self.assertNotIn('交付天数', [p['column'] for p in cara.get('/api/workspace/types/order')[1]['properties']])
