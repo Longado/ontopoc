@@ -1,7 +1,7 @@
 // Notifications: what an approved change to an action the person is named on did, and definitions they can confirm that went back (NoticesPage).
 export default {
   "title": "Notifications",
-  "sub": "When a change to an action is approved, everyone who can see the affected row is notified; the approver is not. When new data sends a confirmed definition back, whoever can confirm it is notified.",
+  "sub": "When a change to an action is approved, everyone who can see the affected row is notified; the approver is not. When new data or an edit sends a confirmed definition back, whoever can confirm it and whoever confirmed it last are notified.",
   "unread_one": "{count} unread",
   "unread_other": "{count} unread",
   "markAll": "Mark all as read",
