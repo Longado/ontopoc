@@ -1,26 +1,47 @@
-# The public demo: OntoPoc plus Caddy (HTTPS) sharing one network namespace, so Caddy reaches the service on loopback
-# and the service trusts only that proxy. Run from this folder:  docker compose --env-file demo.env up -d --build
+# The public demo: OntoPoc plus Caddy (HTTPS) in one network namespace, so Caddy reaches the service on loopback and the
+# service trusts only that proxy. The namespace belongs to `net`, a container that does nothing and so never restarts:
+# the service or Caddy can then crash, restart or be rebuilt and find the other again. (With the namespace owned by the
+# service itself, a restart of the service left Caddy in the old namespace and the site down.)
+# Run from this folder:  docker compose --env-file demo.env up -d --build
 services:
-  ontopoc:
-    build: ../..
+  net:
+    image: alpine:3
+    command: ["sleep", "infinity"]
+    init: true
     restart: unless-stopped
-    env_file: demo.env
-    volumes:
-      - ontopoc-data:/data
     ports:
       - "80:80"
       - "443:443"
+  ontopoc:
+    build: ../..
+    restart: unless-stopped
+    network_mode: "service:net"
+    env_file: demo.env
+    volumes:
+      - ontopoc-data:/data
+    healthcheck:   # the service answers on loopback once the sample workspace is built
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8767/api/ontology/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+    depends_on:
+      - net
   caddy:
     image: caddy:2
     restart: unless-stopped
-    network_mode: "service:ontopoc"
+    network_mode: "service:net"
     environment:
       ONTOPOC_DOMAIN: ${ONTOPOC_DOMAIN:?set ONTOPOC_DOMAIN in demo.env}   # only the domain: the model key stays with the service
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
     depends_on:
-      - ontopoc
+      net:
+        condition: service_started
+      ontopoc:
+        condition: service_healthy
 volumes:
   ontopoc-data:
   caddy-data:
