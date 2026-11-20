@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OntoPoc — Ontology tool for MCP / Claude, with definitions people confirm</title>
-  <meta name="description" content="OntoPoc is an open-source ontology tool for teams and for MCP / Claude. A model may draft a definition; code checks it against all of the data; a named person confirms it. When the data changes it goes back for review, and answers that rely on it are refused. Ahead of a knowledge graph or semantic layer.">
+  <title>OntoPoc — Ontology tool for MCP / Claude: answers only from confirmed definitions</title>
+  <meta name="description" content="OntoPoc is an open-source ontology tool for teams and for MCP / Claude: the confirmation gate between a team’s data and the AI that answers questions about it. Agents answer only from definitions a named person confirmed against the current data; otherwise they refuse and say who can confirm. The confirmed part of a semantic layer, not a knowledge graph platform.">
   <meta name="keywords" content="ontology tool, ontology, ontology engineering, ontology mcp, knowledge graph, semantic layer, OWL, SHACL, Claude, MCP">
   <link rel="canonical" href="https://longado.github.io/ontopoc/">
   <link rel="alternate" hreflang="en" href="https://longado.github.io/ontopoc/">
@@ -16,7 +16,7 @@
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="zh_CN">
   <meta property="og:title" content="OntoPoc — Ontology tool for MCP / Claude">
-  <meta property="og:description" content="An open-source ontology tool for MCP / Claude. Definitions are checked against the data, confirmed by a named person, and go back for review when the data changes. Ahead of a knowledge graph or semantic layer.">
+  <meta property="og:description" content="An open-source ontology tool for MCP / Claude: agents answer only from definitions a named person confirmed against the current data; otherwise they refuse and say who can confirm. The confirmed part of a semantic layer.">
   <meta property="og:url" content="https://longado.github.io/ontopoc/">
   <meta property="og:image" content="https://longado.github.io/ontopoc/media/ontopoc-poster.png">
   <meta property="og:image:width" content="1800">
@@ -24,7 +24,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:site" content="@linyutai120479">
   <meta name="twitter:title" content="OntoPoc — Ontology tool for MCP / Claude">
-  <meta name="twitter:description" content="Ontology tool for MCP / Claude: definitions checked against the data and confirmed by a person, ahead of a knowledge graph or semantic layer.">
+  <meta name="twitter:description" content="Ontology tool for MCP / Claude: the AI answers only from definitions a named person confirmed on the current data, and refuses the rest, saying who can confirm.">
   <meta name="twitter:image" content="https://longado.github.io/ontopoc/media/ontopoc-poster.png">
   <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0f1015" media="(prefers-color-scheme: dark)">
@@ -36,7 +36,7 @@
     "@context": "https://schema.org",
     "@type": ["SoftwareApplication", "SoftwareSourceCode"],
     "name": "OntoPoc",
-    "description": "An open-source ontology tool for teams and for MCP / Claude: definitions are checked against the data, confirmed by a named person, and go back for review when the data changes.",
+    "description": "An open-source ontology tool for teams and for MCP / Claude: the confirmation gate between a team’s data and the AI that answers questions about it. Agents answer only from definitions a named person confirmed against the current data; otherwise they refuse and say who can confirm.",
     "url": "https://longado.github.io/ontopoc/",
     "image": "https://longado.github.io/ontopoc/media/ontopoc-poster.png",
     "applicationCategory": "DeveloperApplication",
@@ -72,8 +72,8 @@
     <div class="wrap">
       <div>
         <p class="eyebrow">Open-source ontology tool · team app + MCP / Claude</p>
-        <h1 id="h1">Answers only from definitions a person has confirmed.</h1>
-        <p class="lede">OntoPoc is an <strong>ontology tool</strong> for data teams and for Claude over MCP. A model may draft what your tables mean; code checks every definition against all of the data; a second person confirms it. When the data changes, the definition goes back for another look, and questions that rely on it are <strong>refused, with the reason</strong>.</p>
+        <h1 id="h1">A confirmation gate between your data and the AI that answers from it.</h1>
+        <p class="lede">Agents answer only from definitions a named person confirmed against the current data. Otherwise they <strong>refuse, and say who can confirm</strong>. OntoPoc is an open-source <strong>ontology tool</strong> for data teams and for Claude over MCP: a model may draft what your tables mean, code checks every definition against all of the data, a second person confirms it, and when the data changes it goes back for another look.</p>
         <div class="cta">
           <!-- DEMO_URL: the only link to the live demo on this page. Temporary host name: change it here when a domain is chosen. -->
           <a class="btn btn-primary" id="demo" href="https://35-229-236-140.sslip.io/">Try the live demo — no sign-up
@@ -143,7 +143,7 @@
           <p>Nobody is told that the agreement underneath the number no longer covers the data.</p>
         </article>
       </div>
-      <p class="closing">OntoPoc keeps the definition, the check, the person who confirmed it and the data version together, so an answer can say what it rests on, or decline to answer.</p>
+      <p class="closing">OntoPoc keeps the definition, the check, the person who confirmed it and the data version together, so an answer can say what it rests on. When it cannot, the AI declines and says who can confirm.</p>
     </div>
   </section>
 
@@ -181,7 +181,7 @@
             <span class="no">Step 3</span>
             <h3>When the data changes, it goes back for another look</h3>
             <p>Every upload re-checks what was confirmed. In orders v2, six rows changed, four were added and code 6 appeared without a meaning. The meanings, the Order type and the Valid orders view all went back to “needs review”, each with its cause.</p>
-            <p>Until someone confirms them again, questions that use them are refused, naming the definition and who can confirm it.</p>
+            <p>Until someone confirms them again, questions that use them are refused, naming the definition and who can confirm it. Agents over MCP get the same refusal; a board shows that it waits, and the last number.</p>
           </div>
           <figure class="shot">
             <a href="images/site/en-stale.webp"><img src="images/site/en-stale.webp" width="1300" height="590" loading="lazy" decoding="async" alt="OntoPoc team app after orders v2: the meanings of status_code need review because code 6 appeared with no meaning; the table shows rows when last confirmed and rows now."></a>
@@ -232,7 +232,7 @@
   <section class="band alt" id="fit" aria-labelledby="fit-h">
     <div class="wrap">
       <p class="label"><span>04</span> Where it fits</p>
-      <h2 id="fit-h">The step after drafting: on tables, ahead of a knowledge graph or semantic layer.</h2>
+      <h2 id="fit-h">The confirmed part of a semantic layer, kept on your tables.</h2>
       <div class="grid3 isnot">
         <article class="card">
           <h3><span class="x">vs</span> Generating an ontology automatically</h3>
@@ -240,15 +240,16 @@
         </article>
         <article class="card">
           <h3><span class="x">vs</span> A knowledge graph</h3>
-          <p>An ontology says which objects exist, how each is identified and which relations are allowed. A knowledge graph usually also holds the instances and their links. OntoPoc is the schema work ahead of a knowledge graph; it is not a knowledge-graph platform.</p>
+          <p>An ontology says which objects exist, how each is identified and which relations are allowed. A knowledge graph usually also holds the instances and their links. OntoPoc keeps to the ontology, on data copied into its own workspace; it is not a knowledge-graph platform.</p>
         </article>
         <article class="card">
           <h3><span class="x">vs</span> A semantic layer</h3>
-          <p>A semantic layer defines measures on a warehouse so queries can reuse them. OntoPoc sits a step earlier: objects, keys, what codes mean, and the questions only the business can answer. The earlier screen exports Turtle (OWL / SHACL) and object forms; import into a specific platform has not been tested.</p>
+          <p>Your metrics may already be defined in a semantic layer. Who signed them? Who notices when the data changes underneath? OntoPoc keeps the person and the data version with each definition, and the AI refuses to use it once either no longer holds. It does not export to a specific semantic layer yet.</p>
         </article>
       </div>
       <div class="is">
-        <p><strong>What it is:</strong> a self-hosted team app with accounts and three roles (admin, builder, viewer); datasets from CSV, Excel or read-only PostgreSQL and MySQL; pipelines; object types, relations, views, actions and derived properties; Q&amp;A and boards over confirmed definitions only.</p>
+        <p><strong>What it is:</strong> a self-hosted team app with accounts and three roles (admin, builder, viewer); datasets from CSV, Excel or read-only PostgreSQL and MySQL (copied in, at most 500,000 rows and about 200 MB per pull); light pipelines and lineage; object types, relations, views and derived properties; Q&amp;A, boards and MCP agents over confirmed definitions only.</p>
+        <p><strong>What it is not:</strong> a data platform, an orchestrator, a live query engine over your database, a chart builder or a knowledge-graph platform.</p>
         <p>For questions, the model sees structure, confirmed meanings and the values of columns with few distinct values, never your rows. Code runs the query and checks which definitions it used.</p>
       </div>
     </div>
@@ -258,22 +259,22 @@
     <div class="wrap">
       <p class="label"><span>05</span> MCP / Claude</p>
       <h2 id="mcp-h">An ontology MCP server for Claude and other clients.</h2>
-      <p class="intro">39 MCP tools share the local service with the page, so start the service first. An agent using a personal token (<code>ONTOPOC_TOKEN</code>) gets five read-only tools by default. Like Q&amp;A, it works from confirmed definitions only.</p>
+      <p class="intro">An agent connects as a named person, with a personal token (<code>ONTOPOC_TOKEN</code>) an admin makes in the app, and gets five read-only tools. Like Q&amp;A, it answers only from confirmed definitions that person may see, and refuses the rest with the reason. The tools share the local service with the page, so start the service first.</p>
       <ul class="tools" aria-label="Read-only tools available by default">
         <li>read definitions</li><li>ask</li><li>run an OntoPoc Query</li><li>list unconfirmed items</li><li>read a derived property</li>
       </ul>
       <div class="code-grid">
         <div>
-          <h3>Install as a Claude Code plugin</h3>
-<pre><code>claude plugin marketplace add Longado/ontopoc
-claude plugin install ontopoc@ontopoc</code></pre>
-          <p>Then, in a new session: <code>/ontopoc:ontopoc-build</code> to upload and build, <code>/ontopoc:ontopoc-review</code> to confirm item by item.</p>
+          <h3>Add it as an MCP server (from the repo root)</h3>
+<pre><code>claude mcp add ontopoc -- env ONTOPOC_TOKEN=&lt;your token&gt; \
+  PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server</code></pre>
+          <p>Works with MCP clients such as Claude Code, Claude Desktop and Cursor, over local stdio; the app’s AI tool access page gives the same as JSON. The tools cannot upload, write definitions or confirm. Full list: <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">docs/MCP.md</a>.</p>
         </div>
         <div>
-          <h3>Or add it as an MCP server (from the repo root)</h3>
-<pre><code>claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all \
-  PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server</code></pre>
-          <p>Works with MCP clients such as Claude Code, Claude Desktop and Cursor, over local stdio. Uploading, writing definitions and confirming in the team app have no MCP tool yet. Full list: <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">docs/MCP.md</a>.</p>
+          <h3>Claude Code plugin</h3>
+<pre><code>claude plugin marketplace add Longado/ontopoc
+claude plugin install ontopoc@ontopoc</code></pre>
+          <p>Its two commands, <code>/ontopoc:ontopoc-build</code> and <code>/ontopoc:ontopoc-review</code>, still work on the earlier run-based screen, not on the team app’s gate.</p>
         </div>
       </div>
     </div>
@@ -318,19 +319,19 @@ claude plugin install ontopoc@ontopoc</code></pre>
         </details>
         <details>
           <summary>How does this relate to a semantic layer?</summary>
-          <div><p>A semantic layer often defines business meaning on a warehouse or metrics platform. OntoPoc sits earlier: first-pass object and definition work, checked and confirmed, before anything is imported into a platform. Import into a specific platform has not been tested yet.</p></div>
+          <div><p>A semantic layer defines business meaning and metrics on a warehouse. Your metrics may already be there: who signed them, and who notices when the data changes underneath? OntoPoc keeps the confirming person and the data version with each definition, sends it back for another look when the data moves, and the AI will not use it until someone confirms it again. It does not export to a specific semantic layer yet.</p></div>
         </details>
         <details>
           <summary>What is ontology MCP in OntoPoc?</summary>
-          <div><p>Calling ontology features through the Model Context Protocol. OntoPoc exposes 39 local MCP tools, 5 of them for the team app (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property), for Claude Code, Claude Desktop, Cursor and similar clients. See <a href="#mcp">MCP / Claude</a> above.</p></div>
+          <div><p>An agent reading a team’s confirmed ontology through the Model Context Protocol. OntoPoc’s MCP server gives an agent five read-only tools under a personal token (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property) for Claude Code, Claude Desktop, Cursor and similar clients, and refuses anything that rests on an unconfirmed definition. See <a href="#mcp">MCP / Claude</a> above.</p></div>
         </details>
         <details>
           <summary>How is this different from generating an ontology automatically?</summary>
-          <div><p>Automatic generation produces a draft. OntoPoc works on what happens after the draft: code checks each definition against the data, a named person confirms it, and it goes back for another look when the data changes. A model may draft a definition, but Q&amp;A and agents do not use it before those checks and a confirmation. Until then a board shows a number that rests on it only to builders, greyed out with the reason.</p></div>
+          <div><p>Automatic generation produces a draft. OntoPoc works on what happens after the draft: code checks each definition against the data, a named person confirms it, and it goes back for another look when the data changes. A model may draft a definition, but Q&amp;A and agents do not use it before those checks and a confirmation. Until then a board shows a number that rests on it only to builders and admins, greyed out with the reason.</p></div>
         </details>
         <details>
           <summary>Who is OntoPoc for today?</summary>
-          <div><p>The team app is meant for a data team: builders make definitions from the data and confirm each other’s, viewers ask questions and read boards. Nobody outside the author has used it independently yet.</p></div>
+          <div><p>A small data team (three to eight people: ops, finance, data) that wants an AI to answer questions about its own tables, and wants it to refuse rather than answer quietly wrong. Builders write definitions and confirm each other’s; viewers ask questions and read boards. Nobody outside the author has used it independently yet.</p></div>
         </details>
       </div>
     </div>
