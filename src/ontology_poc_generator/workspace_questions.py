@@ -268,7 +268,8 @@ def _inputs(conn, sc: dict) -> dict:
         source = alias[owner['dataset']['name']]
         rows = {**rows, source: [(i, {**r, content['name']: text_of(result['values'].get(i), result['output_type'])}) for i, r in rows[source]]}
         extra[content['type']] = [*extra.get(content['type'], []), {'source': source, 'path': content['name']}]
-        derived_attrs[f'{source}.{content["name"]}'] = {'element': element_id, 'type': result['output_type'], 'says': describe_derived(conn, content)}
+        derived_attrs[f'{source}.{content["name"]}'] = {'element': element_id, 'type': result['output_type'], 'says': describe_derived(conn, content), 'name': content['name'],
+                                                        'source': alias[sc['types'][content['types'][-1]]['dataset']['name']], 'conditions': content['conditions']}   # the table its rows are counted from, and by which conditions (answer_checks)
     object_types = [{'key': k, 'label': t['content']['name'], 'populated_from': [{'source': alias[t['dataset']['name']], 'identity': {c: c for c in t['content']['key']}}],
                      'attributes': [*({'source': alias[t['dataset']['name']], 'path': p['column']} for p in t['content']['properties']), *extra.get(k, [])]} for k, t in sc['types'].items()]
     relations, unusable = [], []
@@ -316,7 +317,7 @@ def _engine_views(conn, sc: dict, alias: dict, sources: dict) -> list[dict]:
         out.append({'name': name, 'sql_name': None, 'kind': 'filter' if not content['latest'] else 'latest' if not content['filters'] else 'combined', 'source': source, 'state': 'confirmed',
                     'why': None, 'from': describe(content, t['content']['name']), 'confirmed_by': who, 'confirmed_at': at,
                     'definition': {'kind': 'filter', **content['filters'][0]} if single else {'kind': 'combined'}, 'rows': len(positions), 'positions': positions,
-                    'element': v['row']['element_id']})
+                    'element': v['row']['element_id'], 'filters': content['filters'], 'latest': content['latest']})
     return out
 
 
@@ -442,7 +443,7 @@ def _engine(sc: dict, parts: dict, relations: list[dict]):
     held = column_values(bundle, bundle['meanings'])   # what a filter that leaves codes out lets through
 
     def answer(query, asked, used=None, check=True, told=None):
-        checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held)
+        checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held, derived=parts['derived'])
         if checked['unmet']:
             return {**refusal(checked['unmet']), 'understood': checked['understood']}
         reading, reading_graph = bundle, graph
