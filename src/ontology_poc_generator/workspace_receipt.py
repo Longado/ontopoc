@@ -4,7 +4,8 @@ The receipt of a change (POST /api/workspace/receipt {elements}, several for one
 makes the copy of the workspace it needs) is made from the confirmation records: the latest confirmation of each
 element (who put it forward, who confirmed it, on which dataset versions, its evidence) beside the one before it (what it said then). The board numbers it moved are
 worked out again the way the preview worked them out (change_preview): the cards as they are now, beside the cards on the definitions as they were confirmed before,
-both on the data as it is now. When a dataset had a new version between the two confirmations, the item says so (data_moved) apart from the numbers.
+both on the data as it is now. When a dataset had a new version between the two confirmations, the item says so (data_moved), and whether this confirmation
+accepted it: when the data had sent the item back, confirming it is what lets the new data's numbers count.
 So the receipt read right after confirming says what the preview said; read later, it is worked out on the data of that later moment, and says when.
 
 The workspace summary (GET /api/workspace/receipt) counts what this person may see: the definitions by kind and state, the checks behind the confirmed ones (their
@@ -16,7 +17,7 @@ from datetime import datetime, timezone
 import json
 
 from ontology_poc_generator.caliber import _text as caliber_text
-from ontology_poc_generator.change_preview import answers, as_last_confirmed, cards, compare, sent_back, work_out, workspace_copy
+from ontology_poc_generator.change_preview import answers, as_last_confirmed, cards, compare, sent_back, waited_on_data, work_out, workspace_copy
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.object_types import (
@@ -84,7 +85,8 @@ def change_receipt(conn, user: dict | None, elements: list[str]) -> dict:
                       'before': _said(conn, element_id, json.loads(before[0]), user) if before else None, 'after': _said(conn, element_id, json.loads(last[0][0]), user),
                       'proposed_by': last[0][2], 'confirmed_by': last[0][3], 'confirmed_at': last[0][4], 'on': json.loads(last[0][1] or '{}'),
                       'on_before': on_before if before else None, 'evidence': last[0][5],
-                      'data_moved': [{'name': n, 'from': on_before[n], 'to': v} for n, v in sorted(on.items()) if n in on_before and on_before[n] != v]})
+                      'data_moved': [{'name': n, 'from': on_before[n], 'to': v, 'accepted': sent} for n, v in sorted(on.items()) if n in on_before and on_before[n] != v
+                                     for sent in [waited_on_data(conn, element_id) is not None]]})   # accepted: the data sent it back and this confirmation lets the new data's numbers count
     with workspace_copy(conn) as copy:
         picked, checked = cards(copy, user)
         after = work_out(copy, user, picked)
