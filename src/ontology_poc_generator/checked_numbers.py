@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import math
+import traceback
 
 from ontology_poc_generator.caliber import lines_of, root_reason
 from ontology_poc_generator.dashboards import DashboardRefused, _found, _is_admin, _owns, evaluate
@@ -253,9 +254,14 @@ def on_board(conn, user: dict | None, board: dict, components: list[dict], as_sh
         if row is None or _limited(c):
             out.append(c)
             continue
-        now, why = _card_number(next(x for x in board['spec']['components'] if x['id'] == c['id']), c)
-        full = _builds(user) and c['status'] == 'ok'   # the numbers, the source and the reasons only to a builder who reads the card's number now: one kept from its type or a column gets the mark
-        seen = _view(conn, row, now, why, full)
+        try:
+            now, why = _card_number(next(x for x in board['spec']['components'] if x['id'] == c['id']), c)
+            full = _builds(user) and c['status'] == 'ok'   # the numbers, the source and the reasons only to a builder who reads the card's number now: one kept from its type or a column gets the mark
+            seen = _view(conn, row, now, why, full)
+        except Exception:   # noqa: BLE001 — a check is beside the number: one that cannot be worked out leaves the card without a mark, never the board without its cards
+            traceback.print_exc()
+            out.append(c)
+            continue
         statuses.append(seen['status'])
         out.append({**c, 'check': seen})
     return out, _summary(statuses, '数', 'numbers')
