@@ -713,10 +713,11 @@ def _record_check(conn, dataset, columns, check_type, query, rows_checked, viola
             'violations': violations, 'null_key_rows': null_key_rows, 'samples': samples, 'status': status}
 
 
-def check_key(conn, dataset_id: int, columns: list[str]) -> dict:
+def check_key(conn, dataset_id: int, columns: list[str], record: bool = True) -> dict:
     """Is this column set unique and filled across every stored row? Records the query, the rows looked at, the extra
     rows beyond the first per key, up to five duplicated keys, and the rows with an empty key column. Either failure fails, and so does a
-    version with no rows: a check that looked at nothing has not passed."""
+    version with no rows: a check that looked at nothing has not passed. `record=False`: the same check read only (a page asking whether a type
+    can be confirmed now), kept nowhere, with no id."""
     dataset, cols, filled, table = _key_context(conn, dataset_id, columns)
     query = (f'SELECT {cols}, COUNT(*) AS n FROM {table} WHERE {filled} GROUP BY {cols} HAVING COUNT(*) > 1 '
              'ORDER BY n DESC, ' + cols)
@@ -725,8 +726,11 @@ def check_key(conn, dataset_id: int, columns: list[str]) -> dict:
     violations = conn.execute(f'SELECT COALESCE(SUM(n - 1), 0) FROM ({query})').fetchone()[0]
     samples = [{'key': dict(zip(columns, row[:-1])), 'count': row[-1]}
                for row in conn.execute(f'{query} LIMIT {SAMPLE_LIMIT}')]
-    return _record_check(conn, dataset, columns, 'key_unique', query, rows_checked, violations, null_key_rows, samples,
-                         'failed' if violations or null_key_rows or not rows_checked else 'passed')
+    status = 'failed' if violations or null_key_rows or not rows_checked else 'passed'
+    if not record:
+        return {'id': None, 'element_id': f'key:{dataset["name"]}({",".join(columns)})', 'check_type': 'key_unique', 'dataset': dataset['name'], 'dataset_id': dataset['id'], 'columns': list(columns),
+                'query': query, 'rows_checked': rows_checked, 'violations': violations, 'null_key_rows': null_key_rows, 'samples': samples, 'status': status}
+    return _record_check(conn, dataset, columns, 'key_unique', query, rows_checked, violations, null_key_rows, samples, status)
 
 
 def check_distinct(conn, dataset_id: int, columns: list[str]) -> dict:

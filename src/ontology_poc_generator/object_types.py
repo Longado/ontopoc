@@ -484,8 +484,9 @@ def _refresh_view_reasons(conn, english_name: str, column: str) -> None:
 
 # --- checks: now, and again when the data moves ---------------------------------------------------------------------------------------------------
 
-def _type_problems(conn, content: dict) -> tuple[list[str], int | None]:
-    """(what is wrong now, the id of the key check that ran) for a type, read from the current version of its dataset."""
+def _type_problems(conn, content: dict, record: bool = True) -> tuple[list[str], int | None]:
+    """(what is wrong now, the id of the key check that ran) for a type, read from the current version of its dataset. `record=False`: the key check is not kept
+    (a page asking whether it can be confirmed now)."""
     dataset = current_dataset(conn, content['dataset'])
     if dataset is None:
         return [tr(f'数据集“{content["dataset"]}”已经不在了', f'The dataset "{content["dataset"]}" is gone')], None
@@ -495,7 +496,7 @@ def _type_problems(conn, content: dict) -> tuple[list[str], int | None]:
         return [tr(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{tr("、", ", ").join(gone)}', f'{dataset["name"]} version {dataset["version"]} no longer has these columns: {", ".join(gone)}')], None
     problems = [tr(f'“{p["column"]}”现在的内容是{TYPE_NAME[cols[p["column"]]["type"]]}，装不进{TYPE_NAME[p["type"]]}', f'"{p["column"]}" now holds {TYPE_NAME[cols[p["column"]]["type"]]} values, which do not fit {TYPE_NAME[p["type"]]}')
                 for p in content['properties'] if p['type'] not in FITS[cols[p['column']]['type']]]
-    key_check = check_key(conn, dataset['id'], content['key'])
+    key_check = check_key(conn, dataset['id'], content['key'], record)
     if key_check['status'] != 'passed' and not key_check['rows_checked']:
         problems.append(tr(f'主键“{" + ".join(content["key"])}”没法检查：{no_rows_text(dataset["name"])}', f'The key "{" + ".join(content["key"])}" cannot be checked: {no_rows_text(dataset["name"])}'))
     elif key_check['status'] != 'passed':
@@ -514,17 +515,18 @@ def _new_codes(conn, row: dict) -> dict[str, int]:
 
 def _new_value_question(conn, view: dict, moved: list[str]) -> str | None:
     """The reason a view needs another look when a code its conditions read has a new value: the question that has to be answered, and what the view does with it now
-    (a condition "is not" lets it in, "is" keeps it out). None when no code its conditions name got a new value in this pass."""
+    (conditions "is not" let it in, an "is" keeps it out), once per column. None when no code its conditions name got a new value in this pass."""
     from ontology_poc_generator.object_views import in_out_text   # object_views reads this module
     content = _content(view)
     said = []
-    for f in content['filters']:
-        meanings = element_row(conn, enum_id(content['type'], f['column']))
+    for column in dict.fromkeys(f['column'] for f in content['filters']):   # several conditions on one column ask one question
+        meanings = element_row(conn, enum_id(content['type'], column))
         new = _new_codes(conn, meanings) if meanings and meanings['element_id'] in moved and meanings['anchors_json'] else {}
         if new:
             values = tr('、', ', ').join(new)
-            default = tr('会算进来' if f['op'] == 'is_not' else '不会算进来', 'they are counted' if f['op'] == 'is_not' else 'they are left out')
-            said.append(tr(f'它用的{_label(conn, meanings["element_id"])}需要再看（原因见那一组含义）。“{f["column"]}”出现了新值 {tr("、", ", ").join(f"{v}（{n} 行）" for v, n in new.items())}：新值 {values} 算不算进来？', f'It uses {_label(conn, meanings["element_id"])}, which needs review (see the reason on that set of meanings). "{f["column"]}" has new values {", ".join(f"{v} ({n} rows)" for v, n in new.items())}: should the new values {values} be counted? ') +
+            counted = all(f['op'] == 'is_not' for f in content['filters'] if f['column'] == column)   # a value with no meaning yet passes every "is not" and no "is"
+            default = tr('会算进来' if counted else '不会算进来', 'they are counted' if counted else 'they are left out')
+            said.append(tr(f'它用的{_label(conn, meanings["element_id"])}需要再看（原因见那一组含义）。“{column}”出现了新值 {tr("、", ", ").join(f"{v}（{n} 行）" for v, n in new.items())}：新值 {values} 算不算进来？', f'It uses {_label(conn, meanings["element_id"])}, which needs review (see the reason on that set of meanings). "{column}" has new values {", ".join(f"{v} ({n} rows)" for v, n in new.items())}: should the new values {values} be counted? ') +
                         tr(f'按现在的写法（{in_out_text(conn, content)}），{"它们" if len(new) > 1 else "它"}{default}。请先给新值写含义，再决定', f'As it is written now ({in_out_text(conn, content)}), {default}. Write meanings for the new values first, then decide'))
     return tr('；', '; ').join(said) or None
 
@@ -934,9 +936,10 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
     last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json, evidence_ref FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1',
                         (row['element_id'],)).fetchone()
     limited = limited_on(conn, row, user)
+    failing = waiting and can and not blocked and not limited and row['element_id'].startswith(TYPE_PREFIX) and bool(_type_problems(conn, _content(row), record=False)[0])   # confirming would be refused (confirm_element): not one to confirm now
     reason, reason_hidden = reason_for(conn, row, user)
     return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'drafted': _content(row).get('drafted'), 'reason': reason, 'reason_hidden': reason_hidden,
-            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited, 'limited_by_rule': limited,
+            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited and not failing, 'limited_by_rule': limited,
             'cause': row['cause'] if row['state'] == 'needs_look' else None, 'via': row['via'] if row['state'] == 'needs_look' else None,
             'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None,
             'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None, 'pipelines_blocking': producers,
