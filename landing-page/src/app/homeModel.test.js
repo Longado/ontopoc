@@ -136,13 +136,13 @@ test("the question tally: the last 7 days by outcome with the answered share, th
   assert.deepEqual([quiet.figures[0].value, quiet.figures[1].note, quiet.held], ["0", "", []]);
 });
 
-// the demo workspace as a guest's type list shows it: 订单 confirmed, 客户 waiting for a second look (name and who only)
-const DEMO = [T("order", "订单"), { id: "customer", name: "客户", state: "needs_look", waiting: true, waiting_for: ["演示管理员"] }];
+// the demo workspace as a guest's type list shows it: Order confirmed, Customer waiting for a second look (name and who only)
+const DEMO = [T("order", "Order"), { id: "customer", name: "Customer", state: "needs_look", waiting: true, waiting_for: ["demo-admin"] }];
 
 test("a guest on the demo is offered three questions with three outcomes: an answer, a refusal for the type that waits, another answer", () => {
-  assert.deepEqual(demoQuestions(DEMO), ["有效订单的总金额是多少？", "按客户城市看有效订单金额", "已送达的订单有几笔？"]);
-  assert.deepEqual(demoQuestions([T("order", "订单"), T("customer", "客户")]), ["有效订单的总金额是多少？", "已送达的订单有几笔？"]);   // nothing waits: no refusal to show
-  assert.equal(demoQuestions([T("ticket", "工单")]), null);   // not the demo's workspace: the usual examples
+  assert.deepEqual(demoQuestions(DEMO), ["有效订单的总金额是多少？", "按 Customer 城市看有效订单金额", "已送达的订单有几笔？"]);   // the refused one says the type's name, which is how the service finds it
+  assert.deepEqual(demoQuestions([T("order", "Order"), T("customer", "Customer")]), ["有效订单的总金额是多少？", "已送达的订单有几笔？"]);   // nothing waits: no refusal to show
+  assert.equal(demoQuestions([T("ticket", "Ticket")]), null);   // not the demo's workspace: the usual examples
   assert.equal(demoQuestions([]), null);
   setLocale("en");
   try {
@@ -157,10 +157,10 @@ test("a guest's start cards: the board, why it can be trusted (the confirmed vie
   assert.deepEqual(cards.map((c) => c.key), ["orders", "trust", "refuse"]);
   assert.equal(cards[0].href, "#/boards/7");
   assert.equal(cards[1].href, "#/types/order/views");
-  assert.equal(cards[2].href, `#/qa?ask=${encodeURIComponent("按客户城市看有效订单金额")}`);
+  assert.equal(cards[2].href, `#/qa?ask=${encodeURIComponent("按 Customer 城市看有效订单金额")}`);
   assert.ok(cards.every((c) => !c.external && !c.href.startsWith("http")));
-  assert.match(t("home.start.refuse.text"), /客户/);
-  const plain = startCards(null, [T("ticket", "工单")]);   // not the demo's workspace: the boards list and the README as before
+  assert.match(t("home.start.refuse.text"), /Customer/);
+  const plain = startCards(null, [T("ticket", "Ticket")]);   // not the demo's workspace: the boards list and the README as before
   assert.equal(plain[0].href, "#/boards");
   assert.equal(plain[2].external, true);
 });
