@@ -411,5 +411,59 @@ class DbtImportTests(SigningTestCase):
             self.assertIn('object type orders', listed)
             self.assertFalse([w for w in listed if 'order_items' in w or 'payments' in w], listed)   # order_items has no key in its tests and payments no dataset: neither would have been tried
 
+    def written_ids(self, out):
+        return {e for e, _, _ in self.written(out)[0]}
+
+    def test_planning_the_relations_happens_before_any_write_so_its_error_is_a_true_nothing_was_written(self):
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            with mock.patch.object(dbt_import, '_relation_jobs', side_effect=RuntimeError('database is locked')):
+                status, body = self.run_import(ann, json.dumps(manifest()), apply=True)
+            self.assertEqual(status, 400, body)
+            self.assertIn('nothing was written', body['error'])
+            self.assertEqual(self.written(out), ([], 0))   # and it is true: the types were not written before it
+
+    def test_an_error_after_the_types_were_written_in_the_relation_step_answers_a_report(self):
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            with mock.patch.object(dbt_import, '_relation', side_effect=sqlite3.OperationalError('database is locked')):
+                status, body = self.run_import(ann, json.dumps(manifest()), apply=True)
+            self.assertEqual(status, 200, body)
+            self.assertNotIn('nothing was written', json.dumps(body))
+            self.assertTrue(body['stopped'])
+            self.assertEqual({(t['id'], t['status']) for t in body['types']}, {('customers', 'new'), ('orders', 'new')})
+            self.assertEqual(self.written_ids(out), {'objtype:customers', 'objtype:orders'})
+            self.assertIn('customer_id', body['failed'][0]['what'])
+
+    def test_an_error_while_the_report_is_built_after_everything_was_written_still_answers_a_report(self):
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            with mock.patch.object(dbt_import, '_finish', side_effect=RuntimeError('boom')):
+                status, body = self.run_import(ann, json.dumps(manifest()), apply=True)
+            self.assertEqual(status, 200, body)
+            self.assertNotIn('nothing was written', json.dumps(body))
+            self.assertTrue(body['stopped'])
+            self.assertEqual({t['id'] for t in body['types']}, {'customers', 'orders'})
+            self.assertEqual([r['id'] for r in body['relations']], ['orders_customer_id'])
+            self.assertEqual(self.written_ids(out), {'objtype:customers', 'objtype:orders', 'relation:orders_customer_id'})
+            self.assertTrue(body['failed'])
+
+    def test_a_type_written_whose_report_line_then_fails_is_listed_as_written_not_as_not_written(self):
+        real = dbt_import._type_line
+
+        def line(conn, row, model, status):
+            if status == 'new' and model == 'customers':
+                raise RuntimeError('boom')
+            return real(conn, row, model, status)
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            with mock.patch.object(dbt_import, '_type_line', side_effect=line):
+                status, body = self.run_import(ann, json.dumps(manifest()), apply=True)
+            self.assertEqual(status, 200, body)
+            self.assertIn('objtype:customers', self.written_ids(out))
+            self.assertIn('customers', [t['id'] for t in body['types']])
+            self.assertIn('written', body['failed'][0]['reason'])
+            self.assertNotIn('not written', body['failed'][0]['reason'])
+
 if __name__ == '__main__':
     unittest.main()
