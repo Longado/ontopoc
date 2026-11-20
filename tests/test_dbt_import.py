@@ -42,7 +42,7 @@ def model(name, *columns):
                                    'description': f'The {name} model', 'columns': {c: {'name': c, 'description': ''} for c in columns}}}
 
 
-def test(kind, on, column, attached=True, namespace=None, where=None, also=(), **kwargs):
+def generic_test(kind, on, column, attached=True, namespace=None, where=None, also=(), **kwargs):
     """A generic test node as dbt writes it: test_metadata {name, kwargs, namespace}, column_name, depends_on.nodes and (from manifest v9 on) attached_node."""
     unique_id = f'test.shop.{kind}_{on}_{column}'
     node = {'resource_type': 'test', 'name': f'{kind}_{on}_{column}', 'unique_id': unique_id, 'package_name': 'shop', 'column_name': column,
@@ -59,14 +59,14 @@ def manifest(version=V12, attached=True, extra=None):
     condition. customers: customer_id unique + not_null. order_items: only a two-column key from a package (no key a code can read). payments: no dataset."""
     nodes = {**model('orders', 'order_id', 'customer_id', 'status', 'amount'), **model('customers', 'customer_id', 'name'), **model('order_items', 'order_id', 'line'),
              **model('payments', 'payment_id'),
-             **test('unique', 'orders', 'order_id', attached), **test('not_null', 'orders', 'order_id', attached),
-             **test('relationships', 'orders', 'customer_id', attached, also=('customers',), to="ref('customers')", field='customer_id'),
-             **test('accepted_values', 'orders', 'status', attached, values=STATUSES),
-             **test('accepted_values', 'orders', 'channel', attached, values=['web', 'store']),
-             **test('not_null', 'orders', 'amount', attached, where="status != 'returned'"),
-             **test('unique', 'customers', 'customer_id', attached), **test('not_null', 'customers', 'customer_id', attached),
-             **test('unique_combination_of_columns', 'order_items', None, attached, namespace='dbt_utils', combination_of_columns=['order_id', 'line']),
-             **test('unique', 'payments', 'payment_id', attached), **test('not_null', 'payments', 'payment_id', attached),
+             **generic_test('unique', 'orders', 'order_id', attached), **generic_test('not_null', 'orders', 'order_id', attached),
+             **generic_test('relationships', 'orders', 'customer_id', attached, also=('customers',), to="ref('customers')", field='customer_id'),
+             **generic_test('accepted_values', 'orders', 'status', attached, values=STATUSES),
+             **generic_test('accepted_values', 'orders', 'channel', attached, values=['web', 'store']),
+             **generic_test('not_null', 'orders', 'amount', attached, where="status != 'returned'"),
+             **generic_test('unique', 'customers', 'customer_id', attached), **generic_test('not_null', 'customers', 'customer_id', attached),
+             **generic_test('unique_combination_of_columns', 'order_items', None, attached, namespace='dbt_utils', combination_of_columns=['order_id', 'line']),
+             **generic_test('unique', 'payments', 'payment_id', attached), **generic_test('not_null', 'payments', 'payment_id', attached),
              **(extra or {})}
     return {'metadata': {'dbt_schema_version': version, 'dbt_version': '1.8.0', 'project_name': 'shop'}, 'nodes': nodes, 'sources': {}, 'macros': {}}
 
