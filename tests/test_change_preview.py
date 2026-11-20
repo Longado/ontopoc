@@ -2,7 +2,7 @@
 
 Walked through the real service with two builders (Ann proposes, Bob confirms), a viewer and the admin on the planted tables. The rule every test holds: what the
 preview says a card shows after confirming is what the board then shows; it is worked out by running the real confirmation on a copy of the workspace, never by a
-second calculation. "Now" is the card worked out on the definitions as they were last confirmed (what the board's readers were shown). Expected numbers are counted
+second calculation. "Now" is the card worked out on the definitions and data versions as they were last confirmed (what the board showed before the change was put forward). Expected numbers are counted
 from the planted records here, not from the service."""
 import sqlite3
 from unittest import mock
@@ -78,7 +78,7 @@ class ViewTests(ImpactCase):
             valid = cards['valid']
             self.assertEqual((valid['board']['name'], valid['card']['title']), ('订单看板', '有效订单数'))
             self.assertEqual((valid['now']['value'], valid['after']['value']), (len(LIVE), len(made)))
-            self.assertEqual(valid['now'], before['valid'])   # now: as the board's readers were shown it, on the definition last confirmed
+            self.assertEqual(valid['now'], before['valid'])   # now: on the definition last confirmed, as the board showed it before the change was put forward
             self.assertEqual(valid['change'], {'kind': 'number', 'delta': len(made) - len(LIVE)})
             self.assertEqual(cards['amount']['change']['delta'], sum(float(r['金额']) for r in made) - sum(float(r['金额']) for r in LIVE))
             self.assertFalse(valid['after']['grey'])
@@ -326,7 +326,7 @@ class GroupTests(ImpactCase):
             self.assertIsNone(preview['refused'])
             cards = self.by_card(preview)
             self.assertEqual(sorted(cards), ['status', 'valid'])
-            self.assertEqual(cards['valid']['now']['value'], len(LIVE))   # what the readers were shown: version 1, before the upload
+            self.assertEqual(cards['valid']['now']['value'], len(LIVE))   # under the last confirmation: version 1, before the upload
             self.assertFalse(cards['valid']['after']['grey'])
             status, done = bob.post('/api/workspace/queue/confirm-group', body)
             self.assertEqual(status, 200, done)
