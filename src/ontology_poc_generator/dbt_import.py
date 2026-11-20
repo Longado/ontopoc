@@ -20,7 +20,9 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+import sys
 import tempfile
+import traceback
 from contextlib import nullcontext
 
 from ontology_poc_generator.lang import tr
@@ -206,13 +208,14 @@ def _write(conn, make, element_id: str, who: str | None, after: dict, lock=None)
 
 
 def _failure(exc: BaseException) -> str:
-    """Why one item failed, for the report: the kind of error and its first words."""
-    try:
-        said = str(exc)[:200]
-    except Exception:
-        said = ''
+    """Why one item failed, for the report: the kind of error only (the text of a database error can name the store's own tables). The whole of it goes
+    to the service's log, for whoever runs it."""
     kind = type(exc).__name__
-    return tr(f'出错了（{kind}：{said}），这一项没有写入，导入在这里停下', f'It failed ({kind}: {said}); this one was not written and the import stopped here')
+    try:
+        traceback.print_exception(exc, file=sys.stderr)
+    except Exception:   # printing it must not be what stops the report
+        pass
+    return tr(f'出错了（{kind}），这一项没有写入，导入在这里停下；详情在服务的日志里', f'It failed ({kind}); this one was not written and the import stopped here. The details are in the service log')
 
 
 def _name_taken() -> str:
@@ -249,6 +252,10 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, lock=None) 
         tests_of.setdefault(test['model'], []).append(test)
     order = sorted(names, key=lambda n: (n.casefold(), n))
     matches = lambda name: len(names[name]) == 1 and any(d.casefold() == name.casefold() for d in visible)
+
+    def would_try(unique_id: str) -> bool:   # a model whose type would have been tried: a dataset of its name, and a column with both unique and not_null
+        keyed = lambda kind: {t['column'] for t in tests_of.get(unique_id, []) if t['kind'] == kind and t['namespace'] in (None, 'dbt') and not t['where'] and t['column']}
+        return matches(models[unique_id]) and bool(keyed('unique') & keyed('not_null'))
     stopped = False
     for i, name in enumerate(order):
         try:
@@ -256,14 +263,17 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, lock=None) 
         except Exception as exc:
             report['failed'].append({'what': tr(f'对象类型 {name}', f'object type {name}'), 'reason': _failure(exc)})
             stopped = True
-            for later in order[i + 1:]:
-                if matches(later):
-                    report['not_attempted'].append({'what': tr(f'对象类型 {later}', f'object type {later}')})
-                elif len(names[later]) == 1:
-                    report['unmatched_models'].append(later)
+            later = order[i + 1:]
+            for other in later:
+                if len(names[other]) == 1 and would_try(names[other][0]):
+                    report['not_attempted'].append({'what': tr(f'对象类型 {other}', f'object type {other}')})
+                elif len(names[other]) == 1 and not matches(other):
+                    report['unmatched_models'].append(other)
+            pending = set(order[i:])
+            ready = lambda u: u in state['type_of'] or (models[u] in pending and would_try(u))   # a type there now, the one that failed, or one that would have been tried
             for unique_id in sorted(tests_of, key=lambda u: models[u]):
-                if matches(models[unique_id]):
-                    report['not_attempted'] += [{'what': _relation_what(models, unique_id, t)} for t in tests_of[unique_id] if t['kind'] == 'relationships' and t['column']]
+                report['not_attempted'] += [{'what': _relation_what(models, unique_id, t)} for t in tests_of[unique_id]
+                                            if t['kind'] == 'relationships' and t['column'] and t['target'] and ready(unique_id) and ready(t['target'])]
             break
     if not stopped:
         jobs = _relation_jobs(conn, models, tests_of, state['datasets'])
