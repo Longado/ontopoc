@@ -280,5 +280,32 @@ class DbtImportTests(SigningTestCase):
             self.assertTrue(all(len(body[k]) <= 2 for k in ('types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out')))
             self.assertEqual(set(body['more']), {'types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out'})
 
+    def test_two_relationships_on_one_column_to_different_models_get_their_own_names_and_a_taken_name_is_never_already_there(self):
+        accounts = [{'customer_id': c['customer_id'], 'region': 'north'} for c in CUSTOMERS]
+        second = {**model('accounts', 'customer_id'), **generic_test('unique', 'accounts', 'customer_id'), **generic_test('not_null', 'accounts', 'customer_id')}
+        node = next(iter(generic_test('relationships', 'orders', 'customer_id', also=('accounts',), to="ref('accounts')", field='customer_id').values()))
+        second['test.shop.relationships_orders_customer_id_accounts'] = {**node, 'unique_id': 'test.shop.relationships_orders_customer_id_accounts'}
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [table_csv('accounts.csv', accounts)]})[0], 200)
+            for apply, status_word in ((True, 'new'), (True, 'already_there')):
+                status, body = self.run_import(ann, json.dumps(manifest(extra=second)), apply=apply)
+                self.assertEqual(status, 200, body)
+                self.assertEqual(sorted((r['id'], r['to'], r['status']) for r in body['relations']),
+                                 [('orders_customer_id_accounts', 'accounts', status_word), ('orders_customer_id_customers', 'customers', status_word)])
+        with self.service() as (base, out):   # a relation by hand already holds the name the import would give, between other ends
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            for payload in ({'english_name': 'orders', 'name': 'Orders', 'dataset': 'orders', 'key': ['order_id']},
+                            {'english_name': 'customers', 'name': 'Customers', 'dataset': 'customers', 'key': ['customer_id']}):
+                self.assertEqual(bob.post('/api/workspace/types', payload)[0], 200)
+            self.assertEqual(bob.post('/api/workspace/relations', {'english_name': 'orders_customer_id', 'name': 'By hand', 'from': 'orders', 'to': 'orders',
+                                                                  'cardinality': 'many_to_one', 'from_column': 'order_id', 'to_column': 'order_id'})[0], 200)
+            status, body = self.run_import(ann, json.dumps(manifest()), apply=False)
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body['relations'], [])
+            self.assertTrue(any('customer_id' in s['what'] and 'orders_customer_id' in s['reason'] for s in body['skipped']), body['skipped'])
+
 if __name__ == '__main__':
     unittest.main()
