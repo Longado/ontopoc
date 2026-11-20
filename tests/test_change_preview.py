@@ -336,7 +336,7 @@ class GroupTests(ImpactCase):
             status, done = bob.post('/api/workspace/queue/confirm-group', body)
             self.assertEqual(status, 200, done)
             self.preview_is_reality(bob, board['id'], preview)
-            status, receipt = bob.post('/api/workspace/receipt', {'elements': done['confirmed']})
+            status, receipt = bob.post('/api/workspace/receipt', {'elements': [c['element'] for c in done['confirmed']]})
             self.assertEqual(status, 200, receipt)
             self.assertEqual(self.by_card(receipt)['valid']['change'], {'kind': 'confirmed'})
             view = next(i for i in receipt['items'] if i['element'] == 'objview:有效订单')
