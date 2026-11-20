@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -537,8 +538,11 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
 
 def ask(s, a):
     body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
-    return _lean(body, ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
-                 '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
+    out = _lean(body, ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
+                '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
+    if body.get('status') in ('answered', 'no_data') and re.search(r'\bWHERE\b', str(body.get('query_text') or ''), re.I):   # the number is the model's reading, not a confirmed view: say so, not "valid orders"
+        out['filter_note'] = 'query_text 里 WHERE 的筛选是模型按已确认的代码含义写的，不是已确认的视图；只有 definitions 里 kind 为 view 的才是已确认的视图。转述这个数时请说明它按的是这个筛选。'
+    return out
 
 
 def ontopoc_query(s, a):
