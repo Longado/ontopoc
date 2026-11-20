@@ -178,6 +178,20 @@ class WhoSeesWhatTests(CheckedBoardCase):
                     self.assertTrue(c.get('check') is None or set(c['check']) == {'status', 'by', 'at'}, c)
                 self.assertNotIn('SECRET-SRC', json.dumps(body, ensure_ascii=False))
 
+    def test_a_reader_whose_rows_a_rule_limits_gets_no_check_on_that_card(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            board = self.board(team)
+            admin = team['admin']
+            self.check(team['bob'], board, 'valid')
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH001', 'user_ids': [self.ids(admin)['vera']]}]})[0], 200)
+            body = self.data(team['vera'], board)
+            valid = next(c for c in body['components'] if c['id'] == 'valid')
+            self.assertTrue(valid['result']['rows_limited'])
+            self.assertNotIn('check', valid)   # her number is over her rows, not the team's
+            self.assertEqual(body['headline']['checked']['total'], 0)
+            self.assertEqual(next(c for c in self.data(admin, board)['components'] if c['id'] == 'valid')['check']['status'], 'same')   # one no rule limits still reads it
+
     def test_a_board_read_with_a_filter_or_a_typed_parameter_does_not_hold_its_numbers_against_the_checks(self):
         with self.service() as (base, out):
             team = self.team(base)
@@ -302,6 +316,19 @@ class AnswerCheckTests(SigningTestCase):
             self.assertIn('行规则', check['reason'])
             tally = team['bob'].get('/api/workspace/ask/tally')[1]['checked']
             self.assertEqual((tally['refused'], tally['moved']), (1, 0))
+
+    def test_a_checked_answer_that_reopening_would_withhold_refuses_with_the_same_words(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            ann, admin = team['ann'], team['admin']
+            asked = ann.post('/api/workspace/ask', {'question': QUESTION})[1]
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': asked['id'], 'note': '周报'})[1]['status'], 'same')
+            bob_id = next(u['id'] for u in admin.get('/api/users')[1]['users'] if u['username'] == 'bob')
+            self.assertEqual(admin.post('/api/workspace/column-access', {'type': 'order', 'column': '金额', 'visible_to': [bob_id]})[0], 200)   # a column of the type the answer read is kept from Ann since
+            reopened = ann.get(f'/api/workspace/ask/{asked["id"]}')[1]
+            check = ann.get(f'/api/workspace/checked/question/{asked["id"]}')[1]['check']
+            self.assertEqual((check['status'], check['now'], check['reason']), ('refused', None, reopened['reason']))
 
     def test_the_tally_works_out_again_only_the_latest_checked_answers_and_says_how_many_it_left(self):
         from unittest import mock
