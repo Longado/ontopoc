@@ -63,6 +63,7 @@ export function logText(e) {
   if (e.change === "meanings_retired") return { who: e.who, text: t("types.log.retired", { reason: e.reason, text: e.text }) };
   if (e.change === "edited") return { who: e.who, text: t("types.log.edited", { text: e.text }) };
   if (e.change === "checked" || e.change === "proposed") return { who: e.who, text: t("types.log.proposed", { what }) };
+  if (e.change === "dbt_import") return { who: e.who, text: t("types.log.dbtImport", { what }) };   // where it came from: the service writes this line with the proposal (dbt_import)
   return { who: e.who, text: t("types.log.other", { what: capital(what), change: e.change }) };
 }
 

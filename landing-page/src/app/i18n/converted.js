@@ -14,6 +14,8 @@ export const CONVERTED = [
   "UsersPage.jsx",
   "PermissionsPage.jsx",
   "TasksPage.jsx",
+  "DbtImportDialog.jsx",
+  "dbtImportModel.js",
   "connectModel.js",
   "datasetModel.js",
   "sourceModel.js",

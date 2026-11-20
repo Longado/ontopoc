@@ -6,6 +6,7 @@ import { t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { reconfirmText, stateText } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
+import { DbtImportDialog } from "./DbtImportDialog.jsx";
 import { EmptyState } from "./ui/EmptyState.jsx";
 import { PageHeader } from "./ui/PageHeader.jsx";
 import { DraftedChip } from "./ui/DraftedChip.jsx";
@@ -117,6 +118,7 @@ function SuggestDialog({ onClose, onDone }) {
 export function TypesPage() {
   const [state, reload] = useLoad(getTypeList, []);
   const [suggesting, setSuggesting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [filter, setFilter] = useState("");
   const mayBuild = canBuild(useAuth().user);
   const all = state.data?.types;
@@ -128,6 +130,7 @@ export function TypesPage() {
         actions={mayBuild && (
           <>
             <button className="secondary" onClick={() => setSuggesting(true)}>{t("types.list.suggest")}</button>
+            <button className="secondary" onClick={() => setImporting(true)}>{t("types.dbt.open")}</button>
             <a className="button primary" href={hrefFor({ page: "typenew" })}>{t("types.list.new")}</a>
           </>
         )} />
@@ -167,6 +170,7 @@ export function TypesPage() {
       {all?.length > 0 && <p className="hint">{t("types.list.explorerHint")}</p>}
       {all?.length > 0 && hidden > 0 && <p className="hint">{t("types.list.hiddenMore", { count: hidden })}</p>}
       {suggesting && <SuggestDialog onClose={() => setSuggesting(false)} onDone={reload} />}
+      {importing && <DbtImportDialog onClose={() => setImporting(false)} onDone={reload} />}
     </main>
   );
 }
