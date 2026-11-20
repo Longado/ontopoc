@@ -77,6 +77,8 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/settings', 'admin'),
     ('GET', r'/api/workspace/permissions', 'admin'),   # who sees which type: only an admin reads or changes it
     ('POST', r'/api/workspace/permissions', 'admin'),
+    ('POST', r'/api/workspace/impact', 'builder'),   # what confirming a change would do to the boards this person may open, worked out on a copy (change_preview)
+    ('GET', r'/api/workspace/receipt', 'builder'),   # what a confirmation changed, and what the workspace stands on, from the records (workspace_receipt)
 ]
 _COMPILED = [(method, re.compile(pattern), role) for method, pattern, role in ROUTES]
 

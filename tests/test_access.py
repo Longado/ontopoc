@@ -435,5 +435,11 @@ class NoAuthTests(GateTestCase):
             self.assertEqual(guest.get('/api/workspace/datasets', headers={'Host': 'evil.example'})[0], 403)
 
 
+class ImpactRouteTests(unittest.TestCase):
+    def test_the_impact_of_a_change_and_the_receipts_are_for_builders(self):
+        for method, path in (('POST', '/api/workspace/impact'), ('GET', '/api/workspace/receipt')):
+            self.assertEqual(required_role(method, path), 'builder', (method, path))
+
+
 if __name__ == '__main__':
     unittest.main()
