@@ -37,6 +37,7 @@ from ontology_poc_generator.lang import english, tr
 
 MAX_QUESTION = 300
 HISTORY_LIMIT = 100
+VIEWERS_TOLD_WHAT_WAITS = False   # whether a viewer's refusal names the definition that waits and whom it waits for (owner decision D9; off until decided)
 ROW_KEYS = {'examples', 'without_value_examples', 'unreadable_examples', 'keys', 'samples'}   # the objects behind a count: a viewer reads the counts and not these
 def _state_words(state):
     return {'proposed': tr('模型提出了，还没有人确认', 'Proposed by the model, not confirmed yet'), 'checked': tr('已经提出，还没有另一位确认', 'Proposed, waiting for a second person to confirm'),
@@ -254,6 +255,11 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
             if d['id'] in names:
                 continue
             names.append(d['id'])
+            if d.get('waiting') and not VIEWERS_TOLD_WHAT_WAITS:   # a viewer's line: only that the answer waits for a confirmation
+                text = tr('用到的一个定义在等再确认', 'a definition it uses is waiting to be confirmed again')
+                if all(l['text'] != text for l in lines):
+                    lines.append({'kind': d['kind'], 'state': d['state'], 'waiting': True, 'text': text})
+                continue
             if d.get('waiting'):   # a viewer's line: where it stands and who it waits for, nothing more
                 why, who = (tr(f'在等 {"、".join(d["who_can_confirm"])} 再确认', f'waiting for {", ".join(d["who_can_confirm"])} to confirm it again') if d['who_can_confirm'] else _state_words(d['state'])), ''
             else:
@@ -844,7 +850,7 @@ def _named_ids(result: dict, sc: dict) -> list[str]:
     ids = [type_id(t['id']) for t in result.get('types', [])] + [d['id'] for d in result.get('definitions', [])]
     refusal = result.get('refusal') or {}
     if refusal.get('kind') == 'unsettled':
-        ids += [d['id'] for d in refusal['definitions']]
+        ids += [d['id'] for d in refusal['definitions'] if 'id' in d]   # a viewer's line that says only that something waits names nothing
     elif refusal.get('kind') in ('not_in_scope', 'definition_unmet'):   # these say what is in scope (and for a builder what is left out)
         ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', [])]
     return list(dict.fromkeys(ids))
@@ -994,6 +1000,9 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
         if refusal.get('kind') == 'unsettled' and all(d.get('waiting') for d in refusal.get('definitions', [])):
             lost = []   # a viewer's own refusal that said only that: shown as it was kept
         else:
+            if not VIEWERS_TOLD_WHAT_WAITS:
+                return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': [], 'waiting': []},
+                        'reason': tr(f'这条{"拒答" if refusal else "回答"}用到的一个定义在等再确认，现在不能用。确认之后再问一次。', f'A definition this {"refusal" if refusal else "answer"} uses is waiting to be confirmed again and cannot be used now. Ask again once it is confirmed.')}
             said = tr('；', '; ').join(tr(f'「{w["name"]}」在等 {"、".join(w["waiting_for"])} 再确认', f'"{w["name"]}" is waiting for {", ".join(w["waiting_for"])} to confirm it again') if w['waiting_for']
                                       else tr(f'「{w["name"]}」需要再看', f'"{w["name"]}" needs another look') for w in waiting)
             return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': [], 'waiting': [{'name': w['name'], 'waiting_for': w['waiting_for']} for w in waiting]},
