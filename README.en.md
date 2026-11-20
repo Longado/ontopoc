@@ -106,7 +106,7 @@ Page code: the team app is in `landing-page/src/app/` and uses only the workspac
 
 ## Use with MCP / Claude
 
-Some features are exposed as 39 MCP tools, and the repository is also a Claude Code plugin. The tools share the local service with the page: start the service first, then connect a client. An outside agent using a personal token (`ONTOPOC_TOKEN`) gets the 5 read-only tools by default: read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property.
+Some features are exposed as 40 MCP tools, and the repository is also a Claude Code plugin. The tools share the local service with the page: start the service first, then connect a client. An outside agent using a personal token (`ONTOPOC_TOKEN`) gets the 6 read-only tools by default: read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property, check whether each definition is confirmed now.
 
 ### Install as a Claude Code plugin
 

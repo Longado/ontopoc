@@ -6,7 +6,7 @@ server needs — initialize, ping, tools/list, tools/call — written out here r
 
 Run: PYTHONPATH=src python -m ontology_poc_generator.mcp_server   (ONTOPOC_URL defaults to http://127.0.0.1:8767;
 ONTOPOC_TOKEN is a personal token from the account page: the service then signs what this server does with the token owner's name;
-the server offers the five read tools unless ONTOPOC_TOOLSET=all, and with a token only what the token's scope allows)
+the server offers the six read tools unless ONTOPOC_TOOLSET=all, and with a token only what the token's scope allows)
 """
 from __future__ import annotations
 
