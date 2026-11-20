@@ -135,3 +135,11 @@ test("the question tally: the last 7 days by outcome with the answered share, th
   const quiet = tallyView({ last_7_days: zero, previous_7_days: { asked: 4, answered: 4, refused: 0, unanswered: 0 }, held_back: [] });
   assert.deepEqual([quiet.figures[0].value, quiet.figures[1].note, quiet.held], ["0", "", []]);
 });
+
+test("the tally says how many checked answers still hold against the team's numbers, or how to start", () => {
+  const week = { asked: 3, answered: 3, refused: 0, unanswered: 0 };
+  const checked = { total: 3, same: 2, moved: 0, refused: 1, differs: 0, text: "3 个回答核对过：2 一致、0 变了、1 拒答、0 不一致" };
+  assert.equal(tallyView({ last_7_days: week, previous_7_days: week, held_back: [], checked }).checked, "3 个回答核对过：2 一致、0 变了、1 拒答、0 不一致");
+  assert.equal(tallyView({ last_7_days: week, previous_7_days: week, held_back: [], checked: { ...checked, total: 0, same: 0, refused: 0, text: "" } }).checked, "还没有核对过的回答：在问答里一个数的下面点“核对过”，记下团队信任的数和来源。");
+  assert.equal(tallyView({ last_7_days: week, previous_7_days: week, held_back: [] }).checked, "");   // a service from before checks were kept
+});
