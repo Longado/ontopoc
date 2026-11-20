@@ -14,7 +14,7 @@ const STATUS_CODES = { type: "orders", column: "status", values: ["placed", "shi
 const PREVIEW = {
   applied: false, manifest: { schema_version: 12, dbt_version: "1.8.0", project: "shop", models: 4, tests: 11, note: null },
   types: [CUSTOMERS, ORDERS], relations: [RELATION], codes: [STATUS_CODES], unmatched_models: ["payments"],
-  skipped: [{ model: "order_items", what: "object type", reason: "No key in the tests: ..." }], left_out: [], more: { types: 0, relations: 0, codes: 0, unmatched_models: 0, skipped: 0, left_out: 0 }, limits: { proposals: 50, megabytes: 20 },
+  skipped: [{ model: "order_items", what: "object type", reason: "No key in the tests: ..." }], left_out: [], failed: [], not_attempted: [], stopped: false, more: { types: 0, relations: 0, codes: 0, unmatched_models: 0, skipped: 0, left_out: 0 }, limits: { proposals: 50, megabytes: 20 },
 };
 
 test("a file over the service's limit is refused before it is sent; one within it is not", () => {
@@ -51,6 +51,23 @@ test("the preview says what would be proposed and offers Apply only when somethi
   assert.equal(importSections({ ...PREVIEW, more: { skipped: 4 } }).find((s) => s.id === "skipped").more, "And 4 more not listed");
   assert.equal(importSections({ ...PREVIEW, more: { unmatched_models: 1 } }).find((s) => s.id === "unmatched").more, "And 1 more not listed");
   assert.deepEqual(importSections({ ...PREVIEW, left_out: [{ what: "relation x", reason: "One import proposes at most 50" }] }).map((s) => s.id).at(-1), "leftOut");
+});
+
+test("after a failure mid-run the dialog says what was written, what failed and why, and what was not tried", () => {
+  setLocale("en");
+  const stopped = { ...PREVIEW, applied: true, stopped: true, types: [CUSTOMERS], relations: [], codes: [],
+    failed: [{ what: "object type orders", reason: "It failed (RecursionError: deep); this one was not written and the import stopped here" }],
+    not_attempted: [{ what: "relationships orders.customer_id → customers" }] };
+  const summary = importSummary(stopped);
+  assert.equal(summary.headline, "Stopped on an error. Proposed 1 object type before it; what follows was not tried.");
+  assert.equal(summary.canApply, false);
+  const sections = importSections(stopped);
+  assert.deepEqual(sections.map((s) => s.id), ["types", "failed", "notAttempted", "unmatched", "skipped"]);
+  assert.equal(sections[1].items[0].text, "object type orders: It failed (RecursionError: deep); this one was not written and the import stopped here");
+  assert.equal(sections[2].items[0].text, "relationships orders.customer_id → customers");
+  setLocale("zh");
+  assert.equal(importSummary(stopped).headline, "出错停下了。之前提出了 1 个对象类型；后面的没有做。");
+  setLocale("en");
 });
 
 test("the type's log names the import as where a definition came from", () => {
