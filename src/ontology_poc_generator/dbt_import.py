@@ -24,9 +24,9 @@ import tempfile
 from contextlib import nullcontext
 
 from ontology_poc_generator.lang import tr
-from ontology_poc_generator.object_relations import _relation_visible, create_relation, preview_relation, relation_id
+from ontology_poc_generator.object_relations import _relation_visible, create_relation, relation_id
 from ontology_poc_generator.object_types import (
-    CODE_TYPES, RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _visible, create_type, dataset_columns, element_row, type_id)
+    CODE_TYPES, RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _visible, create_type, dataset_columns, element_row, limited_on, type_id)
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_store import current_dataset, log_line, open_workspace
 
@@ -138,7 +138,15 @@ def _read_test(plan: dict, unique_id: str, node: dict) -> None:
     models = plan['models']
     on_models = [n for n in _depends(node) if n in models]
     meta = node.get('test_metadata')
-    if not on_models and not (isinstance(node.get('attached_node'), str) and node['attached_node'] in models):
+    pinned = node.get('attached_node')
+    if isinstance(pinned, str) and pinned not in models:   # dbt names what it is on, and it is not a model this reader can read: never fall back to depends_on
+        if pinned.startswith('model.'):   # a model whose name is not text: the test is on it, not on the model it points at
+            kind = meta.get('name') if isinstance(meta, dict) and isinstance(meta.get('name'), str) else _label(node, unique_id)
+            plan['unread'].append({'model': None, 'what': f'{kind} ({_label(node, unique_id)})', 'reason': tr('看不出它测的是哪个模型', 'Cannot tell which model it tests')})
+        else:
+            plan['elsewhere'] += 1
+        return
+    if not on_models and not (isinstance(pinned, str) and pinned in models):
         plan['elsewhere'] += 1   # a test on a source, seed or snapshot, or on nothing this file names
         return
     if not isinstance(meta, dict) or not isinstance(meta.get('name'), str):   # a test written in SQL (a singular test)
@@ -182,32 +190,29 @@ def _datasets(conn, user: dict | None) -> list[str]:
     return [n for (n,) in conn.execute('SELECT name FROM current_dataset ORDER BY name') if not dataset_hidden(conn, n, user)]
 
 
-def _write(conn, make, element_id: str, who: str | None, after: dict):
-    """The form's own function and the line saying where it came from, together or not at all, inside the import's one transaction (whole_import): a
-    savepoint, so that a proposal the form's checks refuse takes back only what it wrote (its key check), and the import goes on with the next."""
-    conn.execute('SAVEPOINT dbt_item')
-    try:
-        made = make()
-        log_line(conn, who or tr('未署名', 'unsigned'), element_id, LOG_CHANGE, after=after)
-    except BaseException:
-        conn.execute('ROLLBACK TO dbt_item')
-        conn.execute('RELEASE dbt_item')
-        raise
-    conn.execute('RELEASE dbt_item')
+def _write(conn, make, element_id: str, who: str | None, after: dict, lock=None):
+    """The form's own function and the line saying where it came from, together or not at all: one transaction per proposal, as short as the form's, under
+    the lock an upload takes (as the form's request is). Both are let go before the next proposal, so other requests get through in between."""
+    with lock or nullcontext():
+        conn.execute('BEGIN IMMEDIATE')
+        try:
+            made = make()
+            log_line(conn, who or tr('未署名', 'unsigned'), element_id, LOG_CHANGE, after=after)
+        except BaseException:
+            conn.execute('ROLLBACK')
+            raise
+        conn.execute('COMMIT')
     return made
 
 
-def whole_import(conn, plan: dict, who: str | None, user: dict | None) -> dict:
-    """run_import as one transaction: every proposal in the report is written, or, when anything goes wrong on the way, none is. The type and relation
-    functions join a transaction their caller holds (workspace_store.element_state_writes), so the whole import can be one."""
-    conn.execute('BEGIN IMMEDIATE')
+def _failure(exc: BaseException) -> str:
+    """Why one item failed, for the report: the kind of error and its first words."""
     try:
-        report = run_import(conn, plan, who, user)
-    except BaseException:
-        conn.execute('ROLLBACK')
-        raise
-    conn.execute('COMMIT')
-    return report
+        said = str(exc)[:200]
+    except Exception:
+        said = ''
+    kind = type(exc).__name__
+    return tr(f'出错了（{kind}：{said}），这一项没有写入，导入在这里停下', f'It failed ({kind}: {said}); this one was not written and the import stopped here')
 
 
 def _name_taken() -> str:
@@ -228,104 +233,48 @@ def _code_text(value) -> str:
     return ('true' if value is True else 'false' if value is False else str(value))[:120]
 
 
-def run_import(conn, plan: dict, who: str | None, user: dict | None, meta: dict | None = None) -> dict:
-    """Put forward what the manifest's tests say, for the models that match a dataset this person may see. Returns the report (see the route in ontology_server)."""
+def run_import(conn, plan: dict, who: str | None, user: dict | None, lock=None) -> dict:
+    """Put forward what the manifest's tests say, for the models that match a dataset this person may see: types first, then relations, each proposal in
+    its own short transaction (_write). An unexpected error on one item takes back only that item's transaction and stops the import there: the report
+    still comes back, with what was written before it, the item that failed and why, and what was not attempted. Returns the report (see the route)."""
     models = plan['models']
     names: dict[str, list[str]] = {}
     for unique_id, name in models.items():
         names.setdefault(name, []).append(unique_id)
     visible = _datasets(conn, user)
-    report = {'types': [], 'relations': [], 'codes': [], 'unmatched_models': [], 'skipped': list(plan['unread']), 'left_out': []}
-    skip = lambda model, what, reason: report['skipped'].append({'model': model, 'what': what, 'reason': reason})
-    written = 0
-    type_of: dict[str, str] = {}   # model unique_id -> the English name of the type that stands for it now
-    datasets: dict[str, dict] = {}   # model unique_id -> its dataset's current version
+    report = {'types': [], 'relations': [], 'codes': [], 'unmatched_models': [], 'skipped': list(plan['unread']), 'left_out': [], 'failed': [], 'not_attempted': []}
+    state = {'written': 0, 'type_of': {}, 'datasets': {}}   # type_of: model unique_id -> the English name of the type that stands for it now; datasets: -> its dataset
     tests_of: dict[str, list[dict]] = {}
     for test in plan['tests']:
         tests_of.setdefault(test['model'], []).append(test)
-    for name in sorted(names, key=lambda n: (n.casefold(), n)):
-        if len(names[name]) > 1:
-            skip(name, tr('模型', 'model'), tr(f'manifest 里有 {len(names[name])} 个模型都叫 {name}（不同的包或版本），不知道是哪一个', f'The manifest has {len(names[name])} models named {name} (other packages or versions), so it cannot tell which one'))
-            continue
-        unique_id = names[name][0]
-        matched = [d for d in visible if d.casefold() == name.casefold()]
-        if not matched:
-            report['unmatched_models'].append(name)
-            continue
-        if len(matched) > 1:
-            skip(name, tr('模型', 'model'), tr(f'有 {len(matched)} 个数据集的名字和它只差大小写：{"、".join(matched)}', f'{len(matched)} datasets differ from its name only in letter case: {", ".join(matched)}'))
-            continue
-        dataset = current_dataset(conn, matched[0])
-        datasets[unique_id] = dataset
-        cols = dataset_columns(conn, dataset['id'])
-        usable: list[dict] = []
-        for test in tests_of.get(unique_id, []):
-            what = f'{test["what"]} {name}{"." + test["column"] if test["column"] else ""}'
-            if test['kind'] not in READ_TESTS or test['namespace'] not in (None, 'dbt'):
-                skip(name, what, tr('这种测试不读：只读 dbt 自带的 unique、not_null、relationships、accepted_values', 'This kind of test is not read: only dbt\'s own unique, not_null, relationships and accepted_values are'))
-            elif test['where']:
-                skip(name, what, tr(f'它只在 {test["where"][:120]} 的行上成立，不是每一行', f'It holds only on rows where {test["where"][:120]}, not on every row'))
-            elif not test['column']:
-                skip(name, what, tr('没有写测的是哪一列', 'It does not say which column it tests'))
-            elif test['column'] not in cols:
-                skip(name, what, tr(f'数据集 {dataset["name"]} 里没有“{test["column"]}”这一列（列名要完全一样）', f'The dataset {dataset["name"]} has no column "{test["column"]}" (column names must match exactly)'))
-            elif test['kind'] == 'accepted_values' and not (isinstance(test['kwargs'].get('values'), list) and all(_plain(v) for v in test['kwargs']['values'])):
-                skip(name, what, tr('列出的取值里有不是文本、数字或 true/false 的东西，不读', 'Its values are not all plain text, numbers or true/false, so it is not read'))
-            else:
-                usable.append({**test, 'label': what})
-        by_kind = lambda kind: [t['column'] for t in usable if t['kind'] == kind]
-        keys = sorted(set(by_kind('unique')) & set(by_kind('not_null')))
-        existing = _existing(conn, TYPE_PREFIX, name)
-        if existing is not None:
-            if not _visible(conn, existing, user):
-                skip(name, tr('对象类型', 'object type'), _name_taken())
-                continue
-            type_of[unique_id] = _content(existing)['english_name']
-            report['types'].append(_type_line(conn, existing, name, 'already_there'))
-            continue
-        same = [r for (e,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' AND json_extract(content_json, '$.dataset') = ? ORDER BY element_id", (dataset['name'],))
-                if (r := element_row(conn, e)) and _visible(conn, r, user)]
-        if same:   # the dataset already has a type this person may see: that one stands for the model
-            type_of[unique_id] = _content(same[0])['english_name']
-            report['types'].append(_type_line(conn, same[0], name, 'already_there'))
-            continue
-        if not keys:
-            skip(name, tr('对象类型', 'object type'), tr('测试里没有主键（no key in the tests）：没有哪一列同时有 unique 和 not_null 测试。复合主键或没测的主键不猜，请用“新建对象类型”自己选', 'No key in the tests: no column has both a unique and a not_null test. A key of several columns, or one with no tests, is not guessed; pick it with New object type'))
-            continue
-        if len(keys) > 1:
-            skip(name, tr('对象类型', 'object type'), tr(f'有几列都同时有 unique 和 not_null（{"、".join(keys)}），不替你选主键，请用“新建对象类型”自己选', f'Several columns have both unique and not_null ({", ".join(keys)}); the key is not picked for you. Pick it with New object type'))
-            continue
-        if written >= MAX_PROPOSALS:
-            report['left_out'].append({'what': tr(f'对象类型 {name}', f'object type {name}'), 'reason': _over_cap()})
-            continue
-        tested = list(dict.fromkeys([keys[0], *(t['column'] for t in usable)]))
-        values = {t['column']: t['kwargs'].get('values') for t in usable if t['kind'] == 'accepted_values' and isinstance(t['kwargs'].get('values'), list)}
-        codes = [c for c in values if cols[c]['type'] in CODE_TYPES and cols[c]['counts']]
-        payload = {'english_name': name, 'name': name, 'dataset': dataset['name'], 'key': [keys[0]],
-                   'properties': [{'column': c, **({'enum': True} if c in codes else {})} for c in tested]}
+    order = sorted(names, key=lambda n: (n.casefold(), n))
+    matches = lambda name: len(names[name]) == 1 and any(d.casefold() == name.casefold() for d in visible)
+    stopped = False
+    for i, name in enumerate(order):
         try:
-            made = _write(conn, lambda: create_type(conn, payload, who, user), type_id(name), who,
-                          {'from': 'dbt manifest', 'model': unique_id, 'key_tests': ['unique', 'not_null'], 'manifest_version': plan['version']})
-        except TypeRefused as exc:
-            skip(name, tr('对象类型', 'object type'), str(exc))
-            continue
-        written += 1
-        type_of[unique_id] = made['id']
-        report['types'].append({**_type_line(conn, element_row(conn, type_id(made['id'])), name, 'new'), 'warnings': made['warnings']})
-        for column, listed in values.items():
-            report['codes'].append({'type': made['id'], 'column': column, 'values': [_code_text(v) for v in listed[:MAX_CODES]], 'code_column': column in codes,
-                                    'note': None if column in codes else tr('这一列在数据里不能当代码列（代码列要是整数或文本，取值不超过 20 个），只作为普通属性', 'This column cannot be a code column in the data (a code column is integer or text with at most 20 values), so it is a plain property')})
-    for unique_id in sorted(tests_of, key=lambda u: models[u]):
-        if unique_id not in datasets:
-            continue
-        present = dataset_columns(conn, datasets[unique_id]['id'])
-        readable = sorted((t for t in tests_of[unique_id] if t['kind'] == 'relationships' and t['namespace'] in (None, 'dbt') and not t['where'] and t['column'] in present),
-                          key=lambda t: (t['column'], models[t['target']] if t['target'] else ''))   # (one on a column the dataset lacks is already listed as skipped)
-        targets: dict[str, set] = {}
-        for test in readable:
-            targets.setdefault(test['column'], set()).add(test['target'])
-        for test in readable:   # a column that points at several models: each relation's name says which (orders_customer_id_customers)
-            written += _relation(conn, plan, report, test, unique_id, type_of, datasets, who, user, written, len(targets[test['column']]) > 1)
+            _model(conn, plan, report, state, name, names[name], visible, tests_of, who, user, lock)
+        except Exception as exc:
+            report['failed'].append({'what': tr(f'对象类型 {name}', f'object type {name}'), 'reason': _failure(exc)})
+            stopped = True
+            for later in order[i + 1:]:
+                if matches(later):
+                    report['not_attempted'].append({'what': tr(f'对象类型 {later}', f'object type {later}')})
+                elif len(names[later]) == 1:
+                    report['unmatched_models'].append(later)
+            for unique_id in sorted(tests_of, key=lambda u: models[u]):
+                if matches(models[unique_id]):
+                    report['not_attempted'] += [{'what': _relation_what(models, unique_id, t)} for t in tests_of[unique_id] if t['kind'] == 'relationships' and t['column']]
+            break
+    if not stopped:
+        jobs = _relation_jobs(conn, models, tests_of, state['datasets'])
+        for k, (unique_id, test, several) in enumerate(jobs):
+            try:
+                _relation(conn, plan, report, test, unique_id, state, who, user, several, lock)
+            except Exception as exc:
+                report['failed'].append({'what': _relation_what(models, unique_id, test), 'reason': _failure(exc)})
+                stopped = True
+                report['not_attempted'] += [{'what': _relation_what(models, u, t)} for u, t, _ in jobs[k + 1:]]
+                break
     unmatched = set(report['unmatched_models'])
     report['skipped'] = [s for s in report['skipped'] if s['model'] not in unmatched]   # a model with no dataset is listed once, as that; its tests are not
     report['unmatched_models'] = [n[:SHOWN_TEXT] for n in report['unmatched_models']]
@@ -336,10 +285,108 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, meta: dict 
         report['skipped'].insert(0, {'model': None, 'what': tr(f'{plan["broken"]} 个模型', f'{plan["broken"]} {"model" if plan["broken"] == 1 else "models"}'), 'reason': tr('没有名字，读不了', 'No name, so it cannot be read')})
     more = {k: max(0, len(report[k]) - SHOWN) for k in report}
     report = {k: v[:SHOWN] for k, v in report.items()}
-    return {'applied': False, 'manifest': {'schema_version': plan['version'], 'dbt_version': plan['dbt_version'], 'project': plan['project'], 'models': len(models), 'tests': len(plan['tests']),
+    return {'applied': False, 'stopped': stopped, 'manifest': {'schema_version': plan['version'], 'dbt_version': plan['dbt_version'], 'project': plan['project'], 'models': len(models), 'tests': len(plan['tests']),
                                            'duplicates': plan['duplicates'],
                                            'note': None if plan['version'] in KNOWN_VERSIONS else tr(f'这是 v{plan["version"]}，比这里核对过的 v1–v12 新：读不了的都列在跳过里', f'This is v{plan["version"]}, newer than the v1–v12 this reader was checked against: whatever could not be read is listed as skipped')},
             **report, 'more': more, 'limits': {'proposals': MAX_PROPOSALS, 'megabytes': MAX_MANIFEST_BYTES // 1024 // 1024}}
+
+
+def _model(conn, plan: dict, report: dict, state: dict, name: str, unique_ids: list[str], visible: list[str], tests_of: dict, who: str | None, user: dict | None, lock) -> None:
+    """One dbt model: matched to a dataset this person may see, its tests read, and a type proposed (or found already there, or skipped with the reason)."""
+    skip = lambda model, what, reason: report['skipped'].append({'model': model, 'what': what, 'reason': reason})
+    if len(unique_ids) > 1:
+        skip(name, tr('模型', 'model'), tr(f'manifest 里有 {len(unique_ids)} 个模型都叫 {name}（不同的包或版本），不知道是哪一个', f'The manifest has {len(unique_ids)} models named {name} (other packages or versions), so it cannot tell which one'))
+        return
+    unique_id = unique_ids[0]
+    matched = [d for d in visible if d.casefold() == name.casefold()]
+    if not matched:
+        report['unmatched_models'].append(name)
+        return
+    if len(matched) > 1:
+        skip(name, tr('模型', 'model'), tr(f'有 {len(matched)} 个数据集的名字和它只差大小写：{"、".join(matched)}', f'{len(matched)} datasets differ from its name only in letter case: {", ".join(matched)}'))
+        return
+    dataset = current_dataset(conn, matched[0])
+    state['datasets'][unique_id] = dataset
+    cols = dataset_columns(conn, dataset['id'])
+    usable: list[dict] = []
+    for test in tests_of.get(unique_id, []):
+        what = f'{test["what"]} {name}{"." + test["column"] if test["column"] else ""}'
+        if test['kind'] not in READ_TESTS or test['namespace'] not in (None, 'dbt'):
+            skip(name, what, tr('这种测试不读：只读 dbt 自带的 unique、not_null、relationships、accepted_values', 'This kind of test is not read: only dbt\'s own unique, not_null, relationships and accepted_values are'))
+        elif test['where']:
+            skip(name, what, tr(f'它只在 {test["where"][:120]} 的行上成立，不是每一行', f'It holds only on rows where {test["where"][:120]}, not on every row'))
+        elif not test['column']:
+            skip(name, what, tr('没有写测的是哪一列', 'It does not say which column it tests'))
+        elif test['column'] not in cols:
+            skip(name, what, tr(f'数据集 {dataset["name"]} 里没有“{test["column"]}”这一列（列名要完全一样）', f'The dataset {dataset["name"]} has no column "{test["column"]}" (column names must match exactly)'))
+        elif test['kind'] == 'accepted_values' and not (isinstance(test['kwargs'].get('values'), list) and all(_plain(v) for v in test['kwargs']['values'])):
+            skip(name, what, tr('列出的取值里有不是文本、数字或 true/false 的东西，不读', 'Its values are not all plain text, numbers or true/false, so it is not read'))
+        else:
+            usable.append({**test, 'label': what})
+    by_kind = lambda kind: [t['column'] for t in usable if t['kind'] == kind]
+    keys = sorted(set(by_kind('unique')) & set(by_kind('not_null')))
+    existing = _existing(conn, TYPE_PREFIX, name)
+    if existing is not None:
+        if not _visible(conn, existing, user):
+            skip(name, tr('对象类型', 'object type'), _name_taken())
+            return
+        state['type_of'][unique_id] = _content(existing)['english_name']
+        report['types'].append(_type_line(conn, existing, name, 'already_there'))
+        return
+    same = [r for (e,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' AND json_extract(content_json, '$.dataset') = ? ORDER BY element_id", (dataset['name'],))
+            if (r := element_row(conn, e)) and _visible(conn, r, user)]
+    if same:   # the dataset already has a type this person may see: that one stands for the model
+        state['type_of'][unique_id] = _content(same[0])['english_name']
+        report['types'].append(_type_line(conn, same[0], name, 'already_there'))
+        return
+    if not keys:
+        skip(name, tr('对象类型', 'object type'), tr('测试里没有主键：没有哪一列同时有 unique 和 not_null 测试。复合主键或没测的主键不猜，请用“新建对象类型”自己选', 'No key in the tests: no column has both a unique and a not_null test. A key of several columns, or one with no tests, is not guessed; pick it with New object type'))
+        return
+    if len(keys) > 1:
+        skip(name, tr('对象类型', 'object type'), tr(f'有几列都同时有 unique 和 not_null（{"、".join(keys)}），不替你选主键，请用“新建对象类型”自己选', f'Several columns have both unique and not_null ({", ".join(keys)}); the key is not picked for you. Pick it with New object type'))
+        return
+    if state['written'] >= MAX_PROPOSALS:
+        report['left_out'].append({'what': tr(f'对象类型 {name}', f'object type {name}'), 'reason': _over_cap()})
+        return
+    tested = list(dict.fromkeys([keys[0], *(t['column'] for t in usable)]))
+    values = {t['column']: t['kwargs'].get('values') for t in usable if t['kind'] == 'accepted_values' and isinstance(t['kwargs'].get('values'), list)}
+    codes = [c for c in values if cols[c]['type'] in CODE_TYPES and cols[c]['counts']]
+    payload = {'english_name': name, 'name': name, 'dataset': dataset['name'], 'key': [keys[0]],
+               'properties': [{'column': c, **({'enum': True} if c in codes else {})} for c in tested]}
+    try:
+        made = _write(conn, lambda: create_type(conn, payload, who, user), type_id(name), who,
+                      {'from': 'dbt manifest', 'model': unique_id, 'key_tests': ['unique', 'not_null'], 'manifest_version': plan['version']}, lock)
+    except TypeRefused as exc:
+        skip(name, tr('对象类型', 'object type'), str(exc))
+        return
+    state['written'] += 1
+    state['type_of'][unique_id] = made['id']
+    report['types'].append({**_type_line(conn, element_row(conn, type_id(made['id'])), name, 'new'), 'warnings': made['warnings']})
+    for column, listed in values.items():
+        report['codes'].append({'type': made['id'], 'column': column, 'values': [_code_text(v) for v in listed[:MAX_CODES]], 'code_column': column in codes,
+                                'note': None if column in codes else tr('这一列在数据里不能当代码列（代码列要是整数或文本，取值不超过 20 个），只作为普通属性', 'This column cannot be a code column in the data (a code column is integer or text with at most 20 values), so it is a plain property')})
+
+
+def _relation_jobs(conn, models: dict, tests_of: dict, datasets: dict) -> list[tuple]:
+    """(model unique_id, relationships test, several) for each relationships test that can be tried, by model and column; `several`: its column points at
+    several models, so each relation's name says which (orders_customer_id_customers). One on a column the dataset lacks is already listed as skipped."""
+    jobs = []
+    for unique_id in sorted(tests_of, key=lambda u: models[u]):
+        if unique_id not in datasets:
+            continue
+        present = dataset_columns(conn, datasets[unique_id]['id'])
+        readable = sorted((t for t in tests_of[unique_id] if t['kind'] == 'relationships' and t['namespace'] in (None, 'dbt') and not t['where'] and t['column'] in present),
+                          key=lambda t: (t['column'], models[t['target']] if t['target'] else ''))
+        targets: dict[str, set] = {}
+        for test in readable:
+            targets.setdefault(test['column'], set()).add(test['target'])
+        jobs += [(unique_id, test, len(targets[test['column']]) > 1) for test in readable]
+    return jobs
+
+
+def _relation_what(models: dict, unique_id: str, test: dict) -> str:
+    to_name = models[test['target']] if test['target'] else _ref_name(test['to_text']) or (test['to_text'] or '?')[:60]
+    return f'relationships {models[unique_id]}.{test["column"]} → {to_name}'
 
 
 def _over_cap() -> str:
@@ -354,27 +401,25 @@ def _type_line(conn, row: dict, model: str, status: str) -> dict:
             'status': status, 'state': row['state'], 'key_rows': anchors.get('key_rows'), 'warnings': []}
 
 
-def _relation(conn, plan: dict, report: dict, test: dict, unique_id: str, type_of: dict, datasets: dict, who: str | None, user: dict | None, written: int,
-              several: bool = False) -> int:
+def _relation(conn, plan: dict, report: dict, test: dict, unique_id: str, state: dict, who: str | None, user: dict | None, several: bool = False, lock=None) -> None:
     """One relationships test as a many-to-one relation from its model's type to the one its `to` names, called <model>_<column>, or
-    <model>_<column>_<target> when the column has relationships tests to several models. Returns 1 when it was written. A relation that already has the name
+    <model>_<column>_<target> when the column has relationships tests to several models. A relation that already has the name
     is "already there" only when it joins the same ends; one between other ends is skipped, saying so."""
-    models = plan['models']
+    models, type_of, datasets = plan['models'], state['type_of'], state['datasets']
     name, column, target = models[unique_id], test['column'], test['target']
-    to_name = models[target] if target else _ref_name(test['to_text']) or (test['to_text'] or '?')[:60]
-    what = f'relationships {name}.{column} → {to_name}'
+    what = _relation_what(models, unique_id, test)
     skip = lambda reason: report['skipped'].append({'model': name, 'what': what, 'reason': reason})
     if target is None:
         skip(tr('看不出它指向哪个模型（指向 source 的不读）', 'Cannot tell which model it points at (one that points at a source is not read)'))
-        return 0
+        return
     if unique_id not in type_of or target not in type_of:
         missing = name if unique_id not in type_of else models[target]
         skip(tr(f'这次没有 {missing} 的对象类型（没有对应的数据集，或上面跳过了）', f'There is no object type for {missing} in this import (no matching dataset, or it was skipped above)'))
-        return 0
+        return
     field = test['kwargs'].get('field') if isinstance(test['kwargs'].get('field'), str) else None
     if field is None or field not in dataset_columns(conn, datasets[target]['id']):
         skip(tr(f'数据集 {datasets[target]["name"]} 里没有“{field}”这一列（列名要完全一样）', f'The dataset {datasets[target]["name"]} has no column "{field}" (column names must match exactly)'))
-        return 0
+        return
     english = f'{name}_{column}_{models[target]}' if several else f'{name}_{column}'
     payload = {'english_name': english, 'name': english, 'from': type_of[unique_id], 'to': type_of[target], 'cardinality': 'many_to_one',
                'from_column': column, 'to_column': field}
@@ -384,68 +429,65 @@ def _relation(conn, plan: dict, report: dict, test: dict, unique_id: str, type_o
         held = _content(existing)
         skip(tr(f'已经有一个叫 {held["english_name"]} 的关系，连的是 {held["from"]}.{held["from_column"]} → {held["to"]}.{held["to_column"]}，不是这一条：这一条没有提出，请用“新建关系”另起名字',
                 f'A relation named {held["english_name"]} already joins {held["from"]}.{held["from_column"]} → {held["to"]}.{held["to_column"]}, not these ends, so this one is not proposed. Make it with New relation under another name'))
-        return 0
+        return
     if existing is None:
         existing = next((r for (e,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'relation:%' ORDER BY element_id")
                          if (r := element_row(conn, e)) and {k: _content(r)[k] for k in ends} == ends and _relation_visible(conn, r, user)), None)
     if existing is not None:
         if not _relation_visible(conn, existing, user):
             skip(_name_taken())
-            return 0
+            return
         content = _content(existing)
         report['relations'].append({**{k: content[k] for k in ('from', 'to', 'from_column', 'to_column', 'cardinality')}, 'id': content['english_name'], 'model': name,
                                     'status': 'already_there', 'state': existing['state'], 'numbers': None, 'cardinality_holds': None, 'warnings': []})
-        return 0
-    if written >= MAX_PROPOSALS:
+        return
+    if state['written'] >= MAX_PROPOSALS:
         report['left_out'].append({'what': tr(f'关系 {payload["english_name"]}', f'relation {payload["english_name"]}'), 'reason': _over_cap()})
-        return 0
+        return
     try:
         made = _write(conn, lambda: create_relation(conn, payload, who, user), relation_id(payload['english_name']), who,
-                      {'from': 'dbt manifest', 'model': unique_id, 'test': 'relationships', 'manifest_version': plan['version']})
-        seen = preview_relation(conn, {k: payload[k] for k in ('from', 'to', 'cardinality', 'from_column', 'to_column')}, user)   # the counts as this person may read them
+                      {'from': 'dbt manifest', 'model': unique_id, 'test': 'relationships', 'manifest_version': plan['version']}, lock)
     except TypeRefused as exc:
         skip(str(exc))
-        return 0
-    report['relations'].append({**{k: payload[k] for k in ('from', 'to', 'from_column', 'to_column', 'cardinality')}, 'id': made['id'], 'model': name, 'status': 'new',
-                                'state': element_row(conn, relation_id(made['id']))['state'],
-                                'numbers': {k: seen[k] for k in ('rows', 'matched', 'unmatched', 'empty', 'fan_keys')}, 'cardinality_holds': seen['cardinality_holds'], 'warnings': made['warnings']})
-    return 1
+        return
+    state['written'] += 1
+    row = element_row(conn, relation_id(made['id']))
+    n = made['numbers']   # the form's own check of it, on the full data: it is not run again for the report
+    shown = None if limited_on(conn, row, user) else {'rows': n['rows'], 'matched': n['matched'], 'unmatched': n['unmatched'], 'empty': n['rows'] - n['matched'] - n['unmatched'], 'fan_keys': n['fan_keys']}
+    report['relations'].append({**{k: payload[k] for k in ('from', 'to', 'from_column', 'to_column', 'cardinality')}, 'id': made['id'], 'model': name, 'status': 'new', 'state': row['state'],
+                                'numbers': shown, 'cardinality_holds': None if shown is None else not (n['extra_rows'] or n['many_repeats']), 'warnings': made['warnings']})   # a row rule or a kept column limits them: no counts of the whole data; the relation's page shows theirs
 
 
 def import_manifest(db_path: Path, payload: dict, who: str | None, user: dict | None, lock=None) -> dict:
-    """POST /api/workspace/types/dbt-import {manifest: the file's text, apply: bool}. The file is read outside the lock; then, under it, the import runs on a
-    copy of the workspace file that is thrown away (apply false: a preview, nothing written) or on the workspace itself (apply true)."""
+    """POST /api/workspace/types/dbt-import {manifest: the file's text, apply: bool}. The file is read with no lock held. Apply: the import runs on the
+    workspace, each proposal under `lock` (the one an upload takes) and in its own transaction, both let go between proposals. Preview: `lock` is held only
+    while the workspace file is copied (the copy reads it; it takes no write lock on it); the import then runs on the copy, which is thrown away."""
     if user is not None and user['role'] not in ('builder', 'admin'):
         raise TypeRefused(tr('只有建设者和管理员能导入', 'Only builders and admins can import'), 403)
     plan = parse_manifest(payload.get('manifest'))
     apply = payload.get('apply') is True
     try:
-        with lock or nullcontext():
-            return _import(db_path, plan, apply, who, user)
+        if apply:
+            conn = open_workspace(db_path)
+            try:
+                return {**run_import(conn, plan, who, user, lock), 'applied': True}
+            finally:
+                conn.close()
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / 'workspace.sqlite'
+            with lock or nullcontext():
+                source, target = sqlite3.connect(str(db_path)), sqlite3.connect(str(copy))
+                try:
+                    source.backup(target)
+                finally:
+                    target.close()
+                    source.close()
+            conn = open_workspace(copy)
+            try:
+                return run_import(conn, plan, who, user)
+            finally:
+                conn.close()
     except TypeRefused:
         raise
-    except Exception as exc:   # whatever went wrong (a value too deep to handle included): the one transaction was taken back, so the person is told nothing was written
+    except Exception as exc:   # an error before any proposal was tried (each proposal's own error is caught in run_import and reported there)
         raise TypeRefused(tr(f'读这个 manifest 时出了错（{type(exc).__name__}），什么都没有写入', f'Reading this manifest failed ({type(exc).__name__}); nothing was written'), 400) from None
-
-
-def _import(db_path: Path, plan: dict, apply: bool, who: str | None, user: dict | None) -> dict:
-    """Apply: whole_import on the workspace. Preview: the same on a copy of the workspace file that is thrown away."""
-    if apply:
-        conn = open_workspace(db_path)
-        try:
-            return {**whole_import(conn, plan, who, user), 'applied': True}
-        finally:
-            conn.close()
-    with tempfile.TemporaryDirectory() as tmp:
-        copy = Path(tmp) / 'workspace.sqlite'
-        source, target = sqlite3.connect(str(db_path)), sqlite3.connect(str(copy))
-        try:
-            source.backup(target)
-        finally:
-            target.close()
-            source.close()
-        conn = open_workspace(copy)
-        try:
-            return whole_import(conn, plan, who, user)
-        finally:
-            conn.close()
