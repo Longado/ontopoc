@@ -93,3 +93,30 @@ class DerivedViewAnswerTests(pilot.PilotFoundation):
         mixed = query('订单金额', where=[{'field': '有效订单金额', 'more_than': 0}])
         answer = self.ask({'query': mixed, 'definitions_used': [VALID]}, '有有效订单的客户，订单金额合计是多少？', derived=(pilot.VALID_AMOUNT, ALL_AMOUNT))
         self.assertEqual(answer['status'], 'definition_unmet')
+
+
+CANCELLED_AMOUNT = {**ALL_AMOUNT, 'english_name': 'cancelled_amount', 'name': '已取消订单金额', 'conditions': [{'column': 'status_code', 'op': 'is', 'label': '已取消'}]}
+CANCELLED = [{'id': 'orders.status_code=已取消', 'direction': 'include', 'basis': '已取消'}]
+
+
+class IncludedMeaningOnATableNotReadTests(pilot.PilotFoundation):
+    """The same gap the other way round: a question that wants only 已取消 orders, answered by a query that reads no order (only a property of the customers),
+    used to pass the check unread and give the amount of every order. It is refused unless the property it reads keeps exactly that meaning."""
+    ask = DerivedViewAnswerTests.ask
+
+    def test_a_property_that_counts_every_order_does_not_answer_a_question_about_cancelled_ones(self):
+        answer = self.ask({'query': query('订单金额', group_by=['customer_id'], top=1), 'definitions_used': CANCELLED}, '哪个客户的已取消订单金额最高？',
+                          derived=(pilot.VALID_AMOUNT, ALL_AMOUNT))
+        self.assertEqual(answer['status'], 'definition_unmet')
+        self.assertIn('已取消', answer['reason'])
+
+    def test_a_property_that_keeps_only_cancelled_orders_answers_it(self):
+        cancelled = defaultdict(int)
+        for r in csv.DictReader((pilot.SAMPLE / 'orders.csv').open(encoding='utf-8')):
+            if r['status_code'] == '4':
+                cancelled[r['customer_id']] += int(r['amount'])
+        answer = self.ask({'query': query('已取消订单金额', group_by=['customer_id'], top=1), 'definitions_used': CANCELLED}, '哪个客户的已取消订单金额最高？',
+                          derived=(pilot.VALID_AMOUNT, CANCELLED_AMOUNT))
+        self.assertEqual(answer['status'], 'answered', answer.get('reason'))
+        top = max(cancelled, key=cancelled.get)
+        self.assertEqual(answer['answer']['groups'][0][:2], [top, cancelled[top]])
