@@ -121,10 +121,25 @@ function AvatarMenu() {
 function GuestBanner() {
   const { user, signOut } = useAuth();
   const demoAsk = useDemoAsk();
-  if (!isGuest(user)) return null;
+  const guest = isGuest(user);
+  const at = useRef(null);
+  useEffect(() => {
+    const el = at.current;
+    if (!el) return undefined;
+    const root = document.documentElement;
+    const measure = () => root.style.setProperty("--banner-h", `${el.offsetHeight}px`);   // the shell's heights and sticky offsets leave room for the banner
+    measure();
+    const watch = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    watch?.observe(el);
+    return () => {
+      watch?.disconnect();
+      root.style.removeProperty("--banner-h");
+    };
+  }, [guest]);
+  if (!guest) return null;
   const off = askOff(user, demoAsk);
   return (
-    <div className="guest-banner" role="note">
+    <div className="guest-banner" role="note" ref={at}>
       <span>{t("auth.guest.banner")}</span>
       {!off && <span>{t("auth.guest.try")}</span>}
       <span className="links">

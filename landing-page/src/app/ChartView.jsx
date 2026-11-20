@@ -142,7 +142,7 @@ function StatTable({ result }) {
       <table>
         <thead><tr><th>{result.group ?? ""}</th><th className="num">{t("boards.chart.rows")}</th>{result.columns.map((c) => <th key={c.fn} className="num">{c.name}</th>)}</tr></thead>
         <tbody>
-          {result.table.map((r, i) => <tr key={i}><td>{r.label}</td><td className="num">{r.rows}</td>{r.values.map((v, j) => <td key={j} className="num">{formatNumber(v)}</td>)}</tr>)}
+          {result.table.map((r, i) => <tr key={i}><td>{r.label}</td><td className="num">{formatNumber(r.rows)}</td>{r.values.map((v, j) => <td key={j} className="num">{formatNumber(v)}</td>)}</tr>)}
         </tbody>
       </table>
     </div>
