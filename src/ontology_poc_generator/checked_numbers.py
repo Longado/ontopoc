@@ -249,11 +249,19 @@ def on_board(conn, user: dict | None, board: dict, components: list[dict], as_sh
 
 # --- a saved answer's check -------------------------------------------------------------------------------------------------------------------------------
 
-def _rerun(conn, asker: dict | None, stored: dict, question: str) -> dict:
-    """A saved answer worked out again by code, as its asker, from the query it kept (no model): refused, with the plain reason, when a definition it stood on is not
-    confirmed now, or its type or a view it read is no longer in the asker's scope (it is never run over more rows than it read)."""
+def _rerun(conn, asker: dict | None, question_id: int, stored: dict, question: str) -> dict:
+    """A saved answer worked out again by code, as its asker, from the query it kept (no model), through the same gate as showing it again (workspace_questions.reopen):
+    refused, with the plain reason, when reopening it would withhold it (a type it read is no longer theirs, a column is kept from them since, a row rule changed),
+    when a definition it stood on is not confirmed now, when its type or a view it read is no longer in the asker's scope, or when a row rule limits what it reads
+    now. It is never run over other rows than it read."""
     from ontology_poc_generator.ontopoc_query import QueryError
-    from ontology_poc_generator.workspace_questions import _run_compiled, scope
+    from ontology_poc_generator.workspace_questions import QaRefused, _run_compiled, reopen, scope
+    try:
+        shown = reopen(conn, asker, question_id)
+    except QaRefused as exc:
+        return {'status': 'refused', 'reason': str(exc)}
+    if 'withheld' in shown:
+        return {'status': 'refused', 'reason': shown['reason']}
     lines = lines_of(conn, [d['id'] for d in stored.get('definitions') or []])
     if any(not l['confirmed'] for l in lines):
         return {'status': 'refused', 'reason': root_reason(conn, lines)}
@@ -267,9 +275,12 @@ def _rerun(conn, asker: dict | None, stored: dict, question: str) -> dict:
         return {'status': 'refused', 'reason': tr(f'这条回答用到的视图{"、".join(f"「{v}」" for v in gone)}现在不在你的范围里（例如它用的列设成了不发送取值），没有重算',
                                                   f'The view{"s" if len(gone) > 1 else ""} {", ".join(f"{chr(34)}{v}{chr(34)}" for v in gone)} this answer used {"are" if len(gone) > 1 else "is"} no longer in your scope (for example a column it uses was set to not send values), so it was not worked out again')}
     try:
-        return _run_compiled(conn, asker, sc, query, question, views)
+        result = _run_compiled(conn, asker, sc, query, question, views)
     except (QueryError, KeyError, TypeError, ValueError, AttributeError):
         return {'status': 'refused', 'reason': tr('这条回答保存的查询现在跑不了', 'The query this answer kept cannot be run now')}
+    if result.get('limited_by_rule'):   # the rows a rule lets the asker read are not the rows the team's number is about
+        return {'status': 'refused', 'reason': tr('行规则现在只让你读到其中一部分行，不对照团队的数', 'A row rule now lets you read only some of the rows, so this is not held against the team\'s number')}
+    return result
 
 
 def _answer_now(result: dict) -> tuple[float | None, str | None]:
@@ -292,12 +303,10 @@ def _own_question(conn, user: dict | None, question_id) -> tuple:
 def _record_answer(conn, user: dict | None, payload: dict) -> dict:
     qid, question, stored = _own_question(conn, user, payload.get('question'))
     note = _note(payload.get('note'))
-    result = _rerun(conn, user, stored, question)
+    result = _rerun(conn, user, qid, stored, question)
     shown, why = _answer_now(result)
     if shown is None:
-        raise DashboardRefused(tr(f'这条回答现在没有按已确认的定义算出一个数，不能核对：{why}', f'This answer does not work out one number on confirmed definitions now, so it cannot be checked: {why}'))
-    if result.get('limited_by_rule'):
-        raise DashboardRefused(tr('这条回答只读了行规则让你看的行，核对要在全部行上做', 'This answer read only the rows a rule lets you see; a check is made over all of them'))
+        raise DashboardRefused(tr(f'这条回答现在不能核对：{why}', f'This answer cannot be checked now: {why}'))
     trusted = _trusted(payload.get('value'), shown)
     row = _insert(conn, user, {'question_id': qid}, trusted, shown, note, dict(result.get('datasets') or {}),
                   [{'id': d['id'], 'name': d['name'], 'version': d['version']} for d in result.get('definitions') or []])
@@ -312,7 +321,7 @@ def question_check(conn, user: dict | None, question_id: int) -> dict:
     row = _latest(conn, 'question_id', qid).get(qid)
     if row is None:
         return {'check': None}
-    now, why = _answer_now(_rerun(conn, user, stored, question))
+    now, why = _answer_now(_rerun(conn, user, qid, stored, question))
     return {'check': _view(conn, row, now, why, True)}
 
 
@@ -325,7 +334,7 @@ def answers_tally(conn) -> dict:
         if found is None:
             continue
         asker = get_user(conn, found[0]) if found[0] is not None else None
-        now, _ = _answer_now(_rerun(conn, asker, json.loads(found[2]), found[1])) if asker is not None or found[0] is None else (None, None)
+        now, _ = _answer_now(_rerun(conn, asker, row['question_id'], json.loads(found[2]), found[1])) if asker is not None or found[0] is None else (None, None)
         statuses.append(_status(row['trusted'], row['computed'], now))
     return _summary(statuses, '回答', 'answers')
 
