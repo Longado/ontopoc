@@ -14,7 +14,7 @@ const STATUS_CODES = { type: "orders", column: "status", values: ["placed", "shi
 const PREVIEW = {
   applied: false, manifest: { schema_version: 12, dbt_version: "1.8.0", project: "shop", models: 4, tests: 11, note: null },
   types: [CUSTOMERS, ORDERS], relations: [RELATION], codes: [STATUS_CODES], unmatched_models: ["payments"],
-  skipped: [{ model: "order_items", what: "object type", reason: "No key in the tests: ..." }], left_out: [], skipped_more: 0, limits: { proposals: 50, megabytes: 20 },
+  skipped: [{ model: "order_items", what: "object type", reason: "No key in the tests: ..." }], left_out: [], more: { types: 0, relations: 0, codes: 0, unmatched_models: 0, skipped: 0, left_out: 0 }, limits: { proposals: 50, megabytes: 20 },
 };
 
 test("a file over the service's limit is refused before it is sent; one within it is not", () => {
@@ -48,7 +48,8 @@ test("the preview says what would be proposed and offers Apply only when somethi
   assert.equal(sections[1].items[0].href, "#/relations/orders_customer_id");
   assert.equal(sections[3].items[0].text, "payments");
   assert.equal(sections[4].items[0].text, "order_items, object type: No key in the tests: ...");
-  assert.equal(importSections({ ...PREVIEW, skipped_more: 4 }).find((s) => s.id === "skipped").more, "And 4 more not listed");
+  assert.equal(importSections({ ...PREVIEW, more: { skipped: 4 } }).find((s) => s.id === "skipped").more, "And 4 more not listed");
+  assert.equal(importSections({ ...PREVIEW, more: { unmatched_models: 1 } }).find((s) => s.id === "unmatched").more, "And 1 more not listed");
   assert.deepEqual(importSections({ ...PREVIEW, left_out: [{ what: "relation x", reason: "One import proposes at most 50" }] }).map((s) => s.id).at(-1), "leftOut");
 });
 
