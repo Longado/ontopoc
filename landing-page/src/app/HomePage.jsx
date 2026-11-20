@@ -16,12 +16,11 @@ import { Icon } from "./ui/Icon.jsx";
 async function loadHome(user) {
   const builder = canBuild(user);
   const ok = (p) => p.then((v) => v, () => null);
-  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources, boards] = await Promise.all([
+  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources, boards, tally] = await Promise.all([
     ok(getDatasets()), ok(getTypes()), ok(getRelations()), ok(getAsk()), ok(getNotices()),
     builder ? ok(getQueueCount()) : null, builder ? ok(getPipelines()) : null, isAdmin(user) ? ok(getUsers()) : null, builder ? ok(getSources()) : null,
-    isGuest(user) ? ok(getBoards()) : null,
+    isGuest(user) ? ok(getBoards()) : null, builder ? ok(getAskTally()) : null,
   ]);
-  const tally = builder ? await ok(getAskTally()) : null;
   return { datasets, types, relations, ask, notices, queue: queue ?? 0, pipelines, users, sources, boards, tally };
 }
 
@@ -171,7 +170,7 @@ function Tally({ view }) {
       <div className="card-head"><h2 id="tally-title">{t("home.tally.title")}</h2><span className="muted small">{view.before}</span></div>
       <dl className="tally-figures">
         {view.figures.map((f) => (
-          <div key={f.key} className={`tally-figure tally-${f.key}`}><dt>{f.label}</dt><dd>{f.value}{f.note && <span className="muted small">{f.note}</span>}</dd></div>
+          <div key={f.key} className={`tally-figure tally-${f.key}`}><dt>{f.label}</dt><dd>{f.value}{f.note && <>{" "}<span className="muted small">{f.note}</span></>}</dd></div>
         ))}
       </dl>
       {view.held.length > 0 && (

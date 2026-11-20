@@ -87,8 +87,8 @@ export default {
   "tally.unanswered": "没算出",
   "tally.share": "占 {percent}",
   "tally.before": "再往前 7 天：问了 {asked} 个，答了 {answered} 个",
-  "tally.note": "拦下：问题用到的定义还没确认，或不在范围内。没算出：模型没能写出查询。答得对不对，要对照你们的提问记录。",
-  "tally.held.title": "拦下问题最多的定义",
+  "tally.note": "拦下：检查没让它回答，多数是因为问题用到的定义还没确认。没算出：已确认的定义答不了它，或者查询写不出、跑不了。答得对不对，要对照你们的提问记录。",
+  "tally.held.title": "还没确认、拦下问题最多的定义",
   "tally.held.row_one": "{kind}「{name}」拦下了 {count} 个问题",
   "tally.held.row_other": "{kind}「{name}」拦下了 {count} 个问题",
 };

@@ -88,8 +88,8 @@ export default {
   "tally.unanswered": "Not worked out",
   "tally.share": "{percent} of asked",
   "tally.before": "The 7 days before: {asked} asked, {answered} answered",
-  "tally.note": "Held back: a definition the question uses is not confirmed, or is out of scope. Not worked out: the model could not write a query. Whether an answer was right is checked against your question log.",
-  "tally.held.title": "Definitions that held back the most questions",
+  "tally.note": "Held back: a check stopped the question, most often because a definition it uses is not confirmed. Not worked out: nothing confirmed could answer it, or the query could not be written or run. Whether an answer was right is checked against your question log.",
+  "tally.held.title": "Unconfirmed definitions that held back the most questions",
   "tally.held.row_one": "{kind} \"{name}\" held back {count} question",
   "tally.held.row_other": "{kind} \"{name}\" held back {count} questions",
 };
