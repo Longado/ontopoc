@@ -274,6 +274,60 @@ class UserIdsTests(unittest.TestCase):
             open_workspace(path).close()   # a rebuilt file opens again without another rebuild
 
 
+    def test_a_view_left_on_a_table_that_is_gone_does_not_stop_the_rebuild(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as out:
+            path = Path(out) / 'workspace.sqlite'
+            conn = open_workspace(path)
+            conn.execute('DROP TABLE user')
+            conn.execute("CREATE TABLE user (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('viewer', 'builder', 'admin')),"
+                         " password_hash TEXT, disabled INTEGER NOT NULL DEFAULT 0, must_change INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, last_login_at TEXT, provider TEXT NOT NULL DEFAULT 'local', attrs_json TEXT)")
+            conn.execute("INSERT INTO user(username, display_name, role, created_at) VALUES ('ada', 'Ada', 'admin', 'now')")
+            conn.execute('CREATE TABLE ds_gone (x TEXT)')
+            conn.execute('CREATE VIEW v__left AS SELECT x FROM ds_gone')
+            conn.execute('DROP TABLE ds_gone')   # a run's view whose data table was deleted: sqlite refuses a plain rename while it is there
+            conn.close()
+            again = open_workspace(path)
+            self.addCleanup(again.close)
+            self.assertIn('AUTOINCREMENT', again.execute("SELECT sql FROM sqlite_master WHERE name = 'user'").fetchone()[0])
+            self.assertEqual(again.execute('SELECT username FROM user').fetchall(), [('ada',)])
+            self.assertIn('REFERENCES user(id)', again.execute("SELECT sql FROM sqlite_master WHERE name = 'session'").fetchone()[0])
+            self.assertEqual(again.execute('PRAGMA legacy_alter_table').fetchone()[0], 0)   # the setting is put back
+
+    def test_openers_at_the_same_moment_rebuild_once(self):
+        import tempfile
+        import threading
+        with tempfile.TemporaryDirectory() as out:
+            path = Path(out) / 'workspace.sqlite'
+            conn = open_workspace(path)
+            conn.execute('DROP TABLE user')
+            conn.execute("CREATE TABLE user (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('viewer', 'builder', 'admin')),"
+                         " password_hash TEXT, disabled INTEGER NOT NULL DEFAULT 0, must_change INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, last_login_at TEXT, provider TEXT NOT NULL DEFAULT 'local', attrs_json TEXT)")
+            conn.execute("INSERT INTO user(username, display_name, role, created_at) VALUES ('ada', 'Ada', 'admin', 'now')")
+            conn.close()
+            import ontology_poc_generator.workspace_store as store
+            rebuilds, failures, real = [], [], store._rebuild_with_ids_kept
+            def counted(conn, todo):
+                rebuilds.append(sorted(todo))
+                return real(conn, todo)
+            store._rebuild_with_ids_kept = counted
+            try:
+                def opener():
+                    try:
+                        open_workspace(path).close()
+                    except Exception as exc:
+                        failures.append(exc)
+                threads = [threading.Thread(target=opener) for _ in range(6)]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            finally:
+                store._rebuild_with_ids_kept = real
+            self.assertEqual(failures, [])
+            self.assertEqual(rebuilds, [['user']])   # the others found it done once they held the write lock
+
+
 class ElementStateTests(unittest.TestCase):
     def setUp(self):
         self.conn = open_workspace(':memory:')

@@ -169,10 +169,14 @@ class MemberInput(unittest.TestCase):
             b = Browser(base)
             self.assertEqual(b.call('POST', '/api/auth/login', {'username': 'root', 'password': GOOD})[0], 200)
             big = '9' * 23
-            for path in (f'/api/workspace/assistant/turns/{big}', f'/api/workspace/groups?dataset=x&version={big}', f'/api/workspace/pipelines/x/runs/{big}'):
-                status, body = b.call('GET', path)
-                self.assertIn(status, (400, 404), path)   # answered, never a dropped connection
-                self.assertIn('error', body)
+            for digits in (big, '9' * 5000):   # more than sqlite holds; more than Python turns into a number at all
+                for path in (f'/api/workspace/assistant/turns/{digits}', f'/api/workspace/groups?dataset=x&version={digits}', f'/api/workspace/pipelines/x/runs/{digits}',
+                             f'/api/workspace/pipelines/x/versions?from={digits}&to=1', f'/api/workspace/ask/{digits}'):
+                    status, body = b.call('GET', path)
+                    self.assertIn(status, (400, 404), path[:60])   # answered, never a dropped connection
+                    self.assertIn('error', body)
+                status, body = b.call('POST', f'/api/workspace/assistant/turns/{digits}/delete', {})
+                self.assertIn(status, (400, 404))
 
 
 class FeedbackAddress(unittest.TestCase):
@@ -181,10 +185,11 @@ class FeedbackAddress(unittest.TestCase):
             self.assertNotIn('feedback_url', Browser(base).call('GET', '/api/ontology/health')[1])
             with mock.patch.dict('os.environ', {'ONTOPOC_FEEDBACK_URL': 'https://example.com/ask'}):
                 self.assertEqual(Browser(base).call('GET', '/api/ontology/health')[1], {'ok': True, 'demo': True, 'demo_ask': False, 'feedback_url': 'https://example.com/ask'})
-            with mock.patch.dict('os.environ', {'ONTOPOC_FEEDBACK_URL': 'javascript:alert(1)'}):
-                self.assertNotIn('feedback_url', Browser(base).call('GET', '/api/ontology/health')[1])
+            for unusable in ('javascript:alert(1)', 'https://user:secret@example.com/ask', 'https://example.com/a b', 'https://'):
+                with mock.patch.dict('os.environ', {'ONTOPOC_FEEDBACK_URL': unusable}):
+                    self.assertNotIn('feedback_url', Browser(base).call('GET', '/api/ontology/health')[1], unusable)
         with serving(False) as (base, _), mock.patch.dict('os.environ', {'ONTOPOC_FEEDBACK_URL': 'https://example.com/ask'}):
-            self.assertEqual(Browser(base).call('GET', '/api/ontology/health')[1], {'ok': True, 'feedback_url': 'https://example.com/ask'})
+            self.assertEqual(Browser(base).call('GET', '/api/ontology/health')[1], {'ok': True})   # not a demo: a stranger learns only that the service is up
 
 
 class AskGuard(unittest.TestCase):
