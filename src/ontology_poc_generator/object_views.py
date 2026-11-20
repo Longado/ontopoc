@@ -381,9 +381,15 @@ def new_value_reason(conn, row: dict) -> str | None:
     summary = view_summary(conn, content)
     if summary['problems']:
         return None
+    return new_value_words(conn, content, was, summary['codes'])
+
+
+def new_value_words(conn, content: dict, was: dict, codes: dict) -> str | None:
+    """new_value_reason's words for conditions `content` ({'type', 'filters'}: a view, or a derived property's conditions on the type it measures), from the values
+    each condition column had then (`was`: {column: [values]}) and has now (`codes`: {column: {value: rows}})."""
     said = []
     for column in dict.fromkeys(f['column'] for f in content['filters']):
-        now = summary['codes'].get(column) or {}
+        now = codes.get(column) or {}
         new = sorted(set(now) - set(was.get(column, [])), key=lambda v: _by_code((v,)))
         if not new:
             continue

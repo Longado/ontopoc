@@ -461,8 +461,11 @@ def propose_meanings(conn, payload: dict, who: str | None, user: dict | None = N
 
 
 def _refresh_view_reasons(conn, english_name: str, column: str) -> None:
-    from ontology_poc_generator.object_views import refresh_new_value_reasons   # object_views reads this module
+    """The views and derived properties that wait on a new value of this column get their question written again from the meanings as they are now."""
+    from ontology_poc_generator.object_views import refresh_new_value_reasons   # object_views and derived_properties read this module
+    from ontology_poc_generator.derived_properties import refresh_new_value_reasons as refresh_derived
     refresh_new_value_reasons(conn, english_name, column)
+    refresh_derived(conn, english_name, column)
 
 
 # --- checks: now, and again when the data moves ---------------------------------------------------------------------------------------------------
@@ -508,6 +511,12 @@ def _new_value_question(conn, view: dict, moved: list[str]) -> str | None:
             said.append(tr(f'它用的{_label(conn, meanings["element_id"])}需要再看（原因见那一组含义）。“{f["column"]}”出现了新值 {tr("、", ", ").join(f"{v}（{n} 行）" for v, n in new.items())}：新值 {values} 算不算进来？', f'It uses {_label(conn, meanings["element_id"])}, which needs review (see the reason on that set of meanings). "{f["column"]}" has new values {", ".join(f"{v} ({n} rows)" for v, n in new.items())}: should the new values {values} be counted? ') +
                         tr(f'按现在的写法（{in_out_text(conn, content)}），{"它们" if len(new) > 1 else "它"}{default}。请先给新值写含义，再决定', f'As it is written now ({in_out_text(conn, content)}), {default}. Write meanings for the new values first, then decide'))
     return tr('；', '; ').join(said) or None
+
+
+def _derived_question(conn, row: dict) -> str | None:
+    """The question a derived property asks, like a view, when a code its conditions read has a new value (derived_properties.new_value_reason)."""
+    from ontology_poc_generator.derived_properties import new_value_reason   # derived_properties reads this module
+    return new_value_reason(conn, row)
 
 
 def _enum_problems(conn, row: dict) -> list[str]:
@@ -565,7 +574,7 @@ def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list
         return
     if row is None or row['state'] != 'confirmed':
         return
-    reason = (_new_value_question(conn, row, moved) if element_id.startswith(VIEW_PREFIX) else None) or reason
+    reason = (_new_value_question(conn, row, moved) if element_id.startswith(VIEW_PREFIX) else _derived_question(conn, row) if element_id.startswith(DERIVED_PREFIX) else None) or reason
     conn.execute("UPDATE element_state SET state = 'needs_look', reason = ?, cause = ?, via = ?, version = version + 1 WHERE element_id = ?", (reason, cause, via, element_id))
     log_line(conn, 'system', element_id, 'needs_look',
              before={'state': 'confirmed', 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at']},

@@ -107,7 +107,7 @@ export const getTypeDerived = (id) => request(typePath(id, "/derived"));
 export const getDerivedLog = (id, name) => request(typePath(id, `/derived/${encodeURIComponent(name)}/log`));
 export const createDerived = (payload) => send("/api/workspace/types/derived", payload);
 export const updateDerived = (payload, version) => send("/api/workspace/types/derived/update", { ...payload, version });
-export const confirmDerived = (type, englishName, version, seen) => send("/api/workspace/types/derived/confirm", { type, english_name: englishName, version, seen });
+export const confirmDerived = (type, englishName, version, seen, newValues = undefined) => send("/api/workspace/types/derived/confirm", { type, english_name: englishName, version, seen, ...(newValues?.length ? { new_values: newValues } : {}) });
 export const trialDerived = (payload) => tryDerived("/trial", payload);
 export const shapeDerived = (type, path) => tryDerived("/shape", { type, path });
 export const checkDerivedExpression = (type, expression) => tryDerived("/expression", { type, expression });
