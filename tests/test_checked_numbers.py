@@ -128,6 +128,29 @@ class RecordAndRecomputeTests(CheckedBoardCase):
             team['ann'].post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})
             self.assertIn('不是按已确认的定义', self.check(bob, board, 'valid', expect=400)['error'])   # a number that does not stand on confirmed definitions is no yardstick
 
+    def test_a_check_that_cannot_be_worked_out_leaves_the_board_and_its_other_checks_standing(self):
+        from unittest import mock
+        from ontology_poc_generator import checked_numbers
+        with self.service() as (base, out):
+            team = self.team(base)
+            board = self.board(team)
+            bob = team['bob']
+            self.check(bob, board, 'valid')
+            self.check(bob, board, 'valid_amount')
+            real = checked_numbers._card_number
+
+            def broken(component, worked):
+                if component['id'] == 'valid':
+                    raise KeyError('a shape nobody planned for')
+                return real(component, worked)
+            with mock.patch.object(checked_numbers, '_card_number', broken):
+                body = self.data(bob, board)
+            cards = {c['id']: c for c in body['components']}
+            self.assertEqual((cards['valid']['status'], cards['valid']['result']['value']), ('ok', len(LIVE)))   # the number still shows, without a mark
+            self.assertNotIn('check', cards['valid'])
+            self.assertEqual(cards['valid_amount']['check']['status'], 'same')
+            self.assertEqual(body['headline']['checked']['total'], 1)
+
     def test_a_card_changed_after_its_check_no_longer_carries_it(self):
         with self.service() as (base, out):
             team = self.team(base)
