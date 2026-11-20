@@ -518,3 +518,57 @@ class QuestionTests(SigningTestCase):
             status, body = bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': item['version'], 'seen': item['seen']})
             self.assertEqual(status, 403)
             self.assertIn('行规则', body['error'])
+
+    # --- the tally: how many questions were answered and how many were held back, counted by the service ---------------------------------------------
+
+    def held_back(self, team):
+        """One answered question, then the codes shift and two people are refused: the numbers the tally is checked against."""
+        self.confirmed_orders(team)
+        self.assertEqual(self.ask(team['ann'])[1]['status'], 'answered')
+        self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)
+        self.assertEqual(self.ask(team['ann'])[1]['status'], 'refused')
+        self.assertEqual(self.ask(team['bob'])[1]['status'], 'refused')
+
+    def test_the_tally_counts_everyones_questions_by_outcome_and_names_the_definitions_that_held_them_back(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.held_back(team)
+            status, body = team['bob'].get('/api/workspace/ask/tally')
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body['last_7_days'], {'asked': 3, 'answered': 1, 'refused': 2, 'unanswered': 0})
+            self.assertEqual(body['previous_7_days'], {'asked': 0, 'answered': 0, 'refused': 0, 'unanswered': 0})
+            self.assertEqual([(d['kind'], d['name'], d['questions']) for d in body['held_back']], [('meaning', '订单.状态码', 2), ('type', '订单', 2)])
+            self.assertNotIn(QUESTION, json.dumps(body, ensure_ascii=False))   # counts and definition names: nobody's question, nobody's name
+            self.assertNotIn('Ann', json.dumps(body, ensure_ascii=False))
+            # a question from nine days ago belongs to the week before
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            with conn:
+                first = conn.execute('SELECT MIN(id) FROM qa_question').fetchone()[0]
+                conn.execute("UPDATE qa_question SET asked_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now', '-9 days') WHERE id = ?", (first,))
+            conn.close()
+            body = team['admin'].get('/api/workspace/ask/tally')[1]
+            self.assertEqual(body['last_7_days'], {'asked': 2, 'answered': 0, 'refused': 2, 'unanswered': 0})
+            self.assertEqual(body['previous_7_days'], {'asked': 1, 'answered': 1, 'refused': 0, 'unanswered': 0})
+
+    def test_the_tally_is_for_builders_and_admins_and_a_question_that_could_not_be_worked_out_is_counted_apart(self):
+        gap = {'reasoning': '没有这样的数据', 'status': 'ontology_gap', 'query': None, 'definitions_used': []}
+        with self.service(gateway=AskModel(gap)) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask(team['vera'], '订单的利润率是多少？')
+            self.assertEqual(status, 200, body)
+            self.assertNotIn(body['status'], ('answered', 'no_data', 'refused'))
+            self.assertEqual(team['vera'].get('/api/workspace/ask/tally')[0], 403)   # a viewer sees their own history, not the team's counts
+            self.assertEqual(team['ann'].get('/api/workspace/ask/tally')[1]['last_7_days'], {'asked': 1, 'answered': 0, 'refused': 0, 'unanswered': 1})
+
+    def test_the_tally_names_no_definition_its_reader_may_not_see(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.held_back(team)
+            admin = team['admin']
+            people = {p['name']: p['id'] for p in admin.get('/api/workspace/permissions')[1]['people']}
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [people['Bob']]})[0], 200)
+            body = team['ann'].get('/api/workspace/ask/tally')[1]   # 订单 is Bob's now: Ann reads the counts and no name
+            self.assertEqual(body['last_7_days']['refused'], 2)
+            self.assertEqual(body['held_back'], [])
+            self.assertEqual([d['name'] for d in team['bob'].get('/api/workspace/ask/tally')[1]['held_back']], ['订单.状态码', '订单'])
