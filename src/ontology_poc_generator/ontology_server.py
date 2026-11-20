@@ -1653,8 +1653,12 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             The model is asked without the lock; the answer is kept under it."""
             try:
                 payload = self.read_json(USE_BODY)
-                if payload is None:
-                    return
+            except (ValueError, UnicodeError) as exc:   # the body is not an object: read_json says so in its own words
+                self.reply(400, {'error': str(exc)})
+                return
+            if payload is None:
+                return
+            try:
                 if payload.get('writes', 'json') not in ASK_WRITES:   # said before the budget is spent on a question that would not be asked
                     raise QaRefused(tr('writes 只能是 "json"（模型写结构化查询，默认）或 "query"（模型写本体查询）', 'writes can only be "json" (the model writes a structured query; the default) or "query" (the model writes an ontology query)'))
                 conn = open_workspace(output_dir / 'workspace.sqlite')
@@ -1670,9 +1674,6 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     conn.close()
             except QaRefused as exc:
                 self.reply(exc.status, {'error': str(exc)}, {'Retry-After': str(exc.wait)} if isinstance(exc, ask_budget.AskBudgetSpent) else None)
-                return
-            except (ValueError, UnicodeError) as exc:   # the body is not an object: read_json says so in its own words
-                self.reply(400, {'error': str(exc)})
                 return
             self.reply(200, body)
 
@@ -2060,7 +2061,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         def do_POST(self):
             lang.use(lang.from_header(self.headers.get('Accept-Language')))
             self.payload = None
-            self.post_route()
+            try:
+                self.post_route()
+            except OverflowError as exc:   # a number in the body that no table can hold: answered, whichever route it reached
+                print(f'POST {self.path}: {exc}', file=sys.stderr, flush=True)
+                self.reply(400, {'error': tr('请求里有一个数字太大。', 'A number in the request is too large.')})
 
         def note_write(self):
             """A write that keeps its data in a file of its own (a rule, a form, a derived measure, an acceptance question, a reference,
