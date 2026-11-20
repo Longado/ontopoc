@@ -2,7 +2,7 @@
 // One turn is one user message, one mode, one bounded call (or none) and one result card. Nothing here saves, runs or confirms anything.
 
 export const MODES = ["ask", "query", "model", "pipeline", "meanings"];
-const PUT_AWAY = ["pipeline"];   // kept in the code and in past turns, not offered: the gate does not need the assistant to write pipelines (STRUCTURE §3.3)
+const PUT_AWAY = ["pipeline"];   // kept in the code and in past turns, not offered: the gate does not need the assistant to write pipelines
 
 /** The modes a person sees as chips: a viewer gets Ask only (the others are absent, not disabled); a builder gets the rest but the modes put away. */
 export const modesFor = (mayBuild) => (mayBuild ? MODES.filter((m) => !PUT_AWAY.includes(m)) : ["ask"]);

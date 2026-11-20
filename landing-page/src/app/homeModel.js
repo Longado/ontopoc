@@ -126,8 +126,8 @@ export function updatedText(datasets) {
 }
 
 /** The gate in one line for a builder or admin: object types and relations confirmed, those that need another look, and what waits for this person to confirm
- * (the queue count). [{key, count, text, href}]; null for a viewer (they are not told about definitions they cannot read, D9) and before anything is defined.
- * Read from the lists the home page already loads; the checked numbers of WP-A join it once that lands. */
+ * (the queue count). [{key, count, text, href}]; null for a viewer (they are not told about definitions they cannot read) and before anything is defined.
+ * Read from the lists the home page already loads; checked numbers can join it once the app has them. */
 export function gateStatus({ types, relations, queue = 0, mayBuild = false }) {
   const all = [...(types ?? []), ...(relations ?? [])];
   if (!mayBuild || !all.length) return null;

@@ -13,7 +13,7 @@ test("a builder's gate line counts confirmed and needs-another-look types and re
   const line = gateStatus({ types, relations, queue: 2, mayBuild: true });
   assert.deepEqual(line.map((x) => [x.key, x.count, x.href]), [["confirmed", 2, "#/types"], ["look", 2, "#/types"], ["queue", 2, "#/confirm"]]);
   assert.deepEqual(line.map((x) => x.text), ["已确认 2", "需再看 2", "等你确认 2"]);
-  assert.equal(gateStatus({ types, relations, queue: 0, mayBuild: false }), null);   // a viewer is not told about definitions they cannot read (D9)
+  assert.equal(gateStatus({ types, relations, queue: 0, mayBuild: false }), null);   // a viewer is not told about definitions they cannot read
   assert.equal(gateStatus({ types: [], relations: [], queue: 0, mayBuild: true }), null);   // nothing defined yet: the setup checklist speaks instead
   setLocale("en");
   try {
