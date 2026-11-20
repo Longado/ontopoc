@@ -338,6 +338,7 @@ def delete_dashboard(conn, user: dict | None, payload: dict) -> dict:
         raise DashboardRefused(tr('只有看板的主人或管理员能删它', 'Only the board owner or an admin can delete it'), 403)
     conn.execute('DELETE FROM dashboard WHERE id = ?', (record['id'],))
     conn.execute('DELETE FROM dashboard_last WHERE dashboard_id = ?', (record['id'],))
+    conn.execute('DELETE FROM checked_number WHERE dashboard_id = ?', (record['id'],))   # what the team checked on it goes with it
     return {'deleted': record['id']}
 
 
@@ -531,8 +532,10 @@ def dashboard_data(conn, user: dict | None, dashboard_id, bar=None, params=None)
     kept_as = {'bar': picked, 'params': values} if values else picked   # a board with no parameters keeps what it kept before under the same key
     author = _owns(user, record) or _is_admin(user)
     components = _with_last(conn, user, record['id'], kept_as, evaluate(conn, user, record['spec'], picked, values, author), record['spec']['components'])
+    from ontology_poc_generator.checked_numbers import on_board
+    components, checked = on_board(conn, user, record, components, not picked and values == _defaults(record['spec']))   # the numbers the team checked, worked out again by code
     return {'id': record['id'], 'name': record['name'], 'bar': _bar_options(conn, user, record['spec'], picked), 'params': _param_options(record['spec'], values),
-            'components': components, 'headline': _headline(components),
+            'components': components, 'headline': {**_headline(components), 'checked': checked},
             'refresh_seconds': record['refresh_seconds'], 'expired': _expired(record), 'read_at': _now(), 'sign_in_note': sign_in_note()}
 
 
