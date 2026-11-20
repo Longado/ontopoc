@@ -351,9 +351,10 @@ class QuestionTests(SigningTestCase):
             self.assertIn('「已交付」', body['reason'])
 
     def test_an_order_type_never_answers_with_two_rows_for_one_order(self):
-        # "not 2" drops an object that holds a 2 in any of its rows, so leaving the rest out keeps 已交付 and 生产中 only while each order has one row. Here a type
-        # is confirmed only on a key that is unique and filled, and data that repeats it sends the type back for a look that cannot be passed: an order
-        # with a 已交付 row and a 已取消 row (DD20260001) never reaches a question
+        # The guarantee, not a regression test (it passes with the per-row reading too): "not 2" drops an object that holds a 2 in any of its rows, so
+        # leaving the rest out keeps 已交付 and 生产中 only while each order has one row. Here a type is confirmed only on a key that is unique and filled,
+        # and data that repeats it sends the type back for a look that cannot be passed: an order with a 已交付 row and a 已取消 row (DD20260001) never
+        # reaches a question. The regression test is test_answer_checks' team-shaped one
         from tests.test_answer_checks import orders_with_a_second_row
         both = cancelled(query={**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['2']}]},
                          used=[{'id': f'订单.状态码={label}', 'direction': 'include', 'basis': label} for label in ('已交付', '生产中')])

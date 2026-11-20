@@ -223,6 +223,22 @@ class MeaningTests(unittest.TestCase):
         refused = definition_check('重点和普通客户有几个？', kept, PLANTED_DRAFT, [], grades, [inc('重点', '客户.客户等级'), inc('普通', '客户.客户等级')], values=column_values(bundle, grades, PLANTED_DRAFT))
         self.assertIn('重点', [u['definition'] for u in refused['unmet']])
 
+    def test_in_a_team_shaped_ontology_an_order_with_a_kept_and_a_left_out_row_turns_the_reading_off(self):
+        # the ontology as the team app builds it (workspace_questions: one dataset per type, identity its key), with a second, 已取消 row for DD20260001
+        # (已交付). The team app does not let such a type be confirmed (see test_workspace_questions); if it ever did, the per-object reading still refuses
+        from ontology_poc_generator.public_ontology import build_graph
+        from tests.test_workspace_store import planted_bundle
+        records = planted_bundle()['sources']['订单']['records']
+        team = {'object_types': [{'key': 'order', 'label': '订单', 'populated_from': [{'source': '订单', 'identity': {'订单号': '订单号'}}],
+                                  'attributes': [{'source': '订单', 'path': c} for c in ('订单号', '金额', '状态码')]}], 'relations': [], 'ignored_fields': [], 'open_questions': []}
+        three = {'订单.状态码': {'labels': {'0': '已交付', '1': '生产中', '2': '已取消'}}}
+        query, both = {'start': 'order', 'where': [{'field': '状态码', 'not_equals': ['2']}], 'group_by': None}, [inc('已交付'), inc('生产中')]
+        for rows, refused in ((records, False), ([*records, {**records[0], '状态码': '2'}], True)):
+            bundle = {'sources': {'订单': {'records': rows, 'requests': []}}, 'meanings': three}
+            held = column_values(bundle, three, team, build_graph(team, bundle))
+            unmet = definition_check('已交付和生产中的订单有多少？', query, team, [], three, both, values=held)['unmet']
+            self.assertEqual('已交付' in [u['definition'] for u in unmet], refused, len(rows))
+
     def test_a_refusal_says_only_what_the_question_named_and_in_plain_words(self):
         unasked = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': '2'}]}
         [filtered] = self.check('订单有多少？', unasked, [])['unmet']   # the question does not name it; the query leaves it out
