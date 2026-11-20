@@ -157,7 +157,8 @@ class StandingTests(StandingCase):
             by_id = {r['id']: r for r in self.sheet(base, token)[1]}
             self.assertEqual((by_id['enum:order:状态码']['definition'], by_id['enum:order:状态码']['confirmed_by']), ('', 'Bob'))
             self.assertEqual(by_id['derived:customer:cancelled_orders']['definition'], '')
-            self.assertNotIn('已取消', json.dumps(list(by_id.values()), ensure_ascii=False))
+            self.assertNotIn('已取消', ' '.join(r['definition'] for r in by_id.values()))   # in no sentence (a name such as 客户.已取消订单数 is listed, as describe_definitions lists it)
+            self.assertNotIn('objview:有效订单', by_id)   # a view on that column is out of the scope, as in describe_definitions
 
 
 class StandingToolTests(StandingCase):
