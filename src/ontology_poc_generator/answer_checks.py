@@ -33,7 +33,9 @@ it checks the executed query against what the model said:
              old label
   derived    a query that reads a confirmed derived property instead of the rows (每个客户的有效订单金额) uses a view the model says the question includes
              (never one it gave no direction for, or only mentions) whose conditions are exactly the property's on the table it counts, or the meanings it leaves out when they are exactly the ones the model says the question leaves out (or the one
-             it keeps). Every derived property the query reads on that table must match: one that counts more rows is refused like a query that reads them
+             it keeps). Every derived property the query reads on that table must match: one that counts more rows is refused like a query that reads them.
+             It must also reach every row of that table exactly once along its path (by the relations' checks: no key that names nothing, none that repeats),
+             or its sum is not the rows' total; and no view confirmed with its conditions may be waiting to be confirmed again (it is being redefined)
   understood how the model's word was carried out ("读视图 有效订单", "状态码 = 2"), returned for the page to say beside the answer
 
   upstream_problems  a filter found nothing, but the table it filtered was damaged before the question was asked and the damaged
@@ -190,9 +192,25 @@ def _same_rows(read: dict, source: str, conditions: set) -> dict | None:
     that counts rows of that table has them, no more and no fewer, so no row the conditions leave out is in its values. None when it reads none, or one that
     differs (it would bring rows in that the conditions keep out, or leave out rows they keep)."""
     about = [d for d in read.values() if d['source'] == source]
-    if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions for d in about):
+    if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions and d.get('exact') and not d.get('waiting') for d in about):
         return about[0]
     return None
+
+
+def _not_through(read: dict, source: str, conditions: set) -> str:
+    """Why a derived property the query reads, with exactly these conditions on `source`, still does not stand for those rows ("" when none has them): a view
+    confirmed with its conditions is being redefined, or not every row reaches exactly one object along its path (a key that names nothing, or repeats)."""
+    for d in read.values():
+        if d['source'] != source or {(c['column'], c['op'], c['label']) for c in d['conditions']} != conditions:
+            continue
+        if d.get('waiting'):
+            names = tr('、', ', ').join(d['waiting'])
+            return tr(f'（派生属性 {d["name"]} 的条件和视图「{names}」确认时一样，但这个视图改了，还在等确认，现在不能拿派生属性代替它）',
+                      f' (the derived property {d["name"]} has the conditions view "{names}" was confirmed with, but that view has been changed and waits for confirming, so the property cannot stand for it now)')
+        if not d.get('exact'):
+            return tr(f'（派生属性 {d["name"]} 把行算到各个对象上，但「{source}」里不是每一行都正好连上一个对象：有连不上的或重复连上的，加起来和这些行本身的合计不一样）',
+                      f' (the derived property {d["name"]} adds rows up per object, but not every row of "{source}" reaches exactly one object: some reach none or more than one, so its sum is not the total of the rows)')
+    return ''
 
 
 def _says(direction: str, definition: str, how: str) -> dict:
@@ -212,7 +230,8 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
     names a meaning by its label alone; that reads as every meaning with that label. `waiting` is {field: {'labels': {code: label},
     'changes': [what changed]}} for the meanings that wait for a second look. `values` is column_values() of the rows the query reads (the team app only): without
     it a filter that leaves codes out is never read as including the codes it keeps. `derived` is {"table.path" of the property: {'name', 'source' (the table its rows
-    are counted from), 'conditions': [{column, op, label}]}} for the confirmed derived properties: a query that reads one whose conditions are exactly a view's
+    are counted from), 'conditions': [{column, op, label}], 'exact': every row of that table reaches exactly one object along its path, 'waiting': views confirmed
+    with its conditions that are being redefined}} for the confirmed derived properties: a query that reads one whose conditions are exactly a view's
     (or exactly the meanings the model says the question leaves out) on that table uses that definition through it, though it does not read the table itself."""
     if _shape_limit(query):   # a query the language cannot read is said so by the query itself, not refused for a definition
         return {'unmet': [], 'apply': [], 'understood': []}
@@ -266,7 +285,8 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
         elif v['source'] not in tables and (d := through(v)):   # the model says the question includes it, and the rows it keeps are what a derived property the query reads counts (only then: no direction or a mention is refused above)
             understood.append(_says(direction, v['name'], by_derived(d, v)))
         elif v['source'] not in tables:
-            unmet.append({'definition': v['name'], 'kind': 'view', 'why': tr(f'它是「{v["source"]}」表上的定义，这条查询没有读这张表', f'It is defined on the table "{v["source"]}", which the query does not read')})
+            unmet.append({'definition': v['name'], 'kind': 'view', 'why': tr(f'它是「{v["source"]}」表上的定义，这条查询没有读这张表', f'It is defined on the table "{v["source"]}", which the query does not read')
+                          + (_not_through(read_derived, v['source'], {(f['column'], f['op'], f['label']) for f in v['filters']}) if v.get('filters') else '')})
             understood.append(_says(direction, v['name'], tr('查询没有读它的表', 'The query does not read its table')))
         else:
             apply.append(v)
@@ -309,7 +329,8 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                     understood.append(_says(direction, label, tr(f'派生属性 {d["name"]} 不算 {column} = {codes}', f'The derived property {d["name"]} leaves out {column} = {codes}')))
                 elif direction == 'exclude':
                     unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：这个问法要把它排除，但这条查询没有读「{field.partition(".")[0]}」表里的对象，排除没有地方可做',
-                                                                                   f'{what}: the question leaves it out, but the query does not read objects from the table "{field.partition(".")[0]}", so there is nowhere to leave it out')})
+                                                                                   f'{what}: the question leaves it out, but the query does not read objects from the table "{field.partition(".")[0]}", so there is nowhere to leave it out')
+                                  + _not_through(read_derived, field.partition('.')[0], left_out)})
                     understood.append(_says(direction, label, tr('查询没有读它所在的列', 'The query does not read its column')))
                 continue
             use = _use(uses, field, meaning['labels'], label)
