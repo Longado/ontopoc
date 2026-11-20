@@ -182,4 +182,6 @@ export default {
   "impact.movedOne": "{name} went from version {from} to version {to}",
   "receipt.dataMoved": "The data had a new version between the two confirmations: {list}. That move is not this confirmation's; the numbers below are all on the current data",
   "receipt.movedOne": "{name} version {from} → version {to}",
+  "impact.dataAccepted": "Since the last confirmation, {list}, which is why this waits. Confirming it is what lets the numbers on the new data count: \"now\" is the grey number the board shows while it waits.",
+  "receipt.dataAccepted": "The data had a new version between the two confirmations: {list}. This confirmation accepts the new data: the numbers worked out on it count from this confirmation on",
 };

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { confirmGroup, getQueueGroup, previewImpact } from "./api.js";
 import { ImpactList, ReceiptPanel } from "./ImpactList.jsx";
+import { receiptElements } from "./impactModel.js";
 import { KIND, groupTitle, markKey, missing, requestItems, resultLines, withMark } from "./batchModel.js";
 import { timeText } from "./format.js";
 import { t } from "./i18n/index.js";
@@ -69,7 +70,7 @@ function Done({ result }) {
   const [receipt, setReceipt] = useState(true);
   return (
     <div className="cards">
-      {receipt && result.confirmed.length > 0 && <ReceiptPanel elements={result.confirmed} onClose={() => setReceipt(false)} />}
+      {receipt && result.confirmed.length > 0 && <ReceiptPanel elements={receiptElements(result)} onClose={() => setReceipt(false)} />}
       <section className="card">
         <ul className="checks">
           {resultLines(result).map((line, i) => <li key={i}>{line}</li>)}
