@@ -30,6 +30,7 @@ from ontology_poc_generator.object_types import _content, element_row, type_id
 from ontology_poc_generator.workspace_store import current_dataset
 
 MAX_NOTE = 120
+TALLY_WORKED_OUT = 5   # the tally works out again only the latest checked answers: each one runs its query over all the rows it reads
 STATUSES = ('same', 'moved', 'refused', 'differs')
 ANSWERED = ('answered', 'no_data')
 
@@ -339,17 +340,24 @@ def question_check(conn, user: dict | None, question_id: int) -> dict:
 
 
 def answers_tally(conn) -> dict:
-    """Every saved answer's latest check, worked out again as its asker: the counts of the four marks and one line. No question and no source: the tally names nobody's."""
+    """The latest TALLY_WORKED_OUT checked answers, each worked out again as its asker: the counts of the four marks and one line, which says when older checks were
+    left out ('all' is how many answers carry a check). No question and no source: the tally names nobody's."""
     from ontology_poc_generator.accounts import get_user
+    checks = _all_question_checks(conn)
     statuses = []
-    for row in _all_question_checks(conn):
+    for row in checks[-TALLY_WORKED_OUT:] if TALLY_WORKED_OUT else []:
         found = conn.execute('SELECT user_id, question, answer_json FROM qa_question WHERE id = ?', (row['question_id'],)).fetchone()
         if found is None:
             continue
         asker = get_user(conn, found[0]) if found[0] is not None else None
         now, _ = _answer_now(_rerun(conn, asker, row['question_id'], json.loads(found[2]), found[1])) if asker is not None or found[0] is None else (None, None)
         statuses.append(_status(row['trusted'], row['computed'], now))
-    return _summary(statuses, '回答', 'answers')
+    out = {**_summary(statuses, '回答', 'answers'), 'all': len(checks)}
+    if len(checks) > len(statuses) and statuses:
+        c = out
+        out['text'] = tr(f'只重算了最近核对的 {len(statuses)} 个（共 {len(checks)} 个回答核对过）：{c["same"]} 一致、{c["moved"]} 变了、{c["refused"]} 拒答、{c["differs"]} 不一致',
+                         f'Only the {len(statuses)} most recently checked of {len(checks)} checked answers were worked out again: {c["same"]} match, {c["moved"]} moved, {c["refused"]} refused, {c["differs"]} differ')
+    return out
 
 
 def _all_question_checks(conn) -> list[dict]:
