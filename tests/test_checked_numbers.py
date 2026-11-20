@@ -330,6 +330,26 @@ class AnswerCheckTests(SigningTestCase):
             check = ann.get(f'/api/workspace/checked/question/{asked["id"]}')[1]['check']
             self.assertEqual((check['status'], check['now'], check['reason']), ('refused', None, reopened['reason']))
 
+    def test_a_saved_answer_that_did_not_end_in_a_number_cannot_be_checked_and_never_counts_as_matching(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            ann = team['ann']
+            asked = ann.post('/api/workspace/ask', {'question': QUESTION})[1]
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': asked['id'], 'note': '周报'})[1]['status'], 'same')
+            conn = sqlite3.connect(out / 'workspace.sqlite')   # the same saved answer, as a check had stopped it: its query is kept, its outcome is a refusal
+            with conn:
+                stored = json.loads(conn.execute('SELECT answer_json FROM qa_question WHERE id = ?', (asked['id'],)).fetchone()[0])
+                conn.execute('UPDATE qa_question SET status = ?, answer_json = ? WHERE id = ?', ('definition_unmet', json.dumps({**stored, 'status': 'definition_unmet'}, ensure_ascii=False), asked['id']))
+            conn.close()
+            status, body = ann.post('/api/workspace/checked', {'question': asked['id'], 'note': '周报'})
+            self.assertEqual(status, 400, body)
+            self.assertIn('没有算出一个数', body['error'])
+            check = ann.get(f'/api/workspace/checked/question/{asked["id"]}')[1]['check']
+            self.assertEqual((check['status'], check['now']), ('refused', None))
+            tally = team['bob'].get('/api/workspace/ask/tally')[1]['checked']
+            self.assertEqual((tally['same'], tally['refused']), (0, 1))
+
     def test_the_tally_works_out_again_only_the_latest_checked_answers_and_says_how_many_it_left(self):
         from unittest import mock
         from ontology_poc_generator import checked_numbers
