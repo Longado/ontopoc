@@ -399,7 +399,8 @@ class DemoStory(unittest.TestCase):
         self.assertTrue(reason)   # the admin reads why it waits; the guest does not
         self.assertNotIn(reason, json.dumps(customer, ensure_ascii=False))
 
-    def test_a_guests_question_on_a_waiting_type_is_refused_before_the_model_naming_it_and_who_it_waits_for_only(self):
+    def test_a_guests_question_on_a_waiting_type_is_refused_before_the_model_saying_only_that_it_waits(self):
+        """Until the owner decides D9 a viewer is told only that the answer waits for a confirmation: not the type, not who (VIEWERS_TOLD_WHAT_WAITS turns names on)."""
         admin = signed_in(self.base, self.password)
         detail = admin.call('GET', '/api/workspace/types/customer')[1]
         secrets = [detail['reason'], 'C012', '不唯一', 'customers_update', '41']   # why it waits quotes the data: its keys, counts and file
@@ -409,14 +410,15 @@ class DemoStory(unittest.TestCase):
             self.assertEqual(status, 200, body)
             self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'unsettled'), question)
             [line] = body['refusal']['definitions']
-            self.assertEqual((line['id'], line['kind'], line['name'], line['state'], line['who_can_confirm']), ('objtype:customer', 'type', 'Customer', 'needs_look', ['demo-admin']))
-            self.assertLessEqual(set(line), {'id', 'kind', 'name', 'state', 'waiting', 'who_can_confirm', 'because', 'text'})
-            self.assertEqual(line.get('because', []), [])
+            self.assertEqual((line['kind'], line['state'], line['waiting']), ('type', 'needs_look', True))
+            self.assertLessEqual(set(line), {'kind', 'state', 'waiting', 'text'})
             said = json.dumps({k: body[k] for k in ('reason', 'refusal', 'steps', 'definitions', 'types', 'datasets')}, ensure_ascii=False)
             for secret in secrets:
                 self.assertNotIn(secret, said, question)
             self.assertNotRegex(said, r'\d', question)   # no count, no key, no version
-            self.assertIn('demo-admin', body['reason'])
+            for word in ('Customer', 'customer', 'demo-admin'):
+                self.assertNotIn(word, said, question)
+            self.assertTrue('再确认' in body['reason'] or 'confirm' in body['reason'], body['reason'])
             again = guest.call('GET', f'/api/workspace/ask/{body["id"]}')[1]   # reopened from the history, it still says the same, and no more
             self.assertNotIn('withheld', again)
             self.assertEqual(again['refusal'], body['refusal'])
@@ -434,7 +436,7 @@ class DemoStory(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_a_guest_reopening_an_old_answer_on_a_type_that_now_waits_is_told_only_its_name_and_who_it_waits_for(self):
+    def test_a_guest_reopening_an_old_answer_on_a_type_that_now_waits_is_told_only_that_it_waits(self):
         reason = signed_in(self.base, self.password).call('GET', '/api/workspace/types/customer')[1]['reason']
         guest = a_guest(self.base)
         # asked while Customer was confirmed; an upload has since sent it back for a second look
@@ -455,8 +457,8 @@ class DemoStory(unittest.TestCase):
                 self.assertNotIn(secret, said, qid)
             self.assertNotIn('changed', body)
             self.assertNotIn('answer', body)
-            self.assertIn('Customer', body['reason'])
-            self.assertIn('demo-admin', body['reason'])   # what a fresh question would say: the name and who it waits for
+            for word in ('Customer', 'demo-admin'):   # what a fresh question says: only that it waits (D9 not widened)
+                self.assertNotIn(word, json.dumps({k: body[k] for k in ('reason', 'withheld')}, ensure_ascii=False), qid)
 
     def test_the_board_still_answers_while_the_customer_type_waits(self):
         guest = a_guest(self.base)
