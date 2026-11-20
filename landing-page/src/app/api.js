@@ -112,6 +112,8 @@ export const trialDerived = (payload) => tryDerived("/trial", payload);
 export const shapeDerived = (type, path) => tryDerived("/shape", { type, path });
 export const checkDerivedExpression = (type, expression) => tryDerived("/expression", { type, expression });
 export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
+/** A dbt manifest.json (its text): with apply false, what it would propose and skip, nothing written; with apply true, put forward for another builder to confirm. */
+export const importDbt = (manifest, apply) => send("/api/workspace/types/dbt-import", { manifest, apply });
 /** The assistant's draft of the meanings of one type's code columns: one model call over counts, nothing is saved. `hint`: what the person typed, sent as the purpose. */
 export const draftMeanings = (id, hint = "") => send("/api/workspace/types/meanings-draft", { id, ...(hint.trim() ? { hint: hint.trim() } : {}) });
 

@@ -70,6 +70,7 @@ from ontology_poc_generator.relation_checks import unmatched_answer, with_relati
 from ontology_poc_generator.auth_http import DEFAULT_FEEDBACK_URL, LOOPBACK, Gate, feedback_url
 from ontology_poc_generator.dataset_readers import dataset_readers
 from ontology_poc_generator.upload_preview import moved_by_upload
+from ontology_poc_generator import dbt_import
 from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
 from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.sources_http import schedules_get, schedules_post, sources_get, sources_post
@@ -1357,13 +1358,15 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             of who (confirming one's own proposal) is a 403, a stale version a 409, the rest a 400 that says what is wrong."""
             route = self.path[len('/api/workspace/types'):]
             try:
-                payload = self.read_json()
+                payload = self.read_json(dbt_import.body_limit() if route == '/dbt-import' else MAX_BODY)   # a dbt manifest is a file of its own size, sent as a JSON string
                 if payload is None:
                     return
                 who = self.signer(payload, 'who')
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
-                    if route == '/suggest':   # the model takes up to two minutes: asked without the lock, its answer is written under it (suggest_types)
+                    if route == '/dbt-import':   # read outside the lock; the preview (on a copy) and the apply run under it (dbt_import)
+                        body = dbt_import.import_manifest(output_dir / 'workspace.sqlite', payload, who, self.user, runs_lock)
+                    elif route == '/suggest':   # the model takes up to two minutes: asked without the lock, its answer is written under it (suggest_types)
                         if gateway is None:
                             self.reply(503, {'error': no_key()})
                             return

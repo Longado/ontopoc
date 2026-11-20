@@ -173,7 +173,7 @@ Recent work has a language model do most of the building of an ontology or a gra
 
 ### How does this relate to a semantic layer?
 
-Your metrics may already be defined in a semantic layer on a warehouse. Who signed them? Who notices when the data changes underneath? OntoPoc is about that part: each definition carries the person who confirmed it and the data version, goes back for another look when the data moves, and the AI refuses to use it until someone confirms it again. It keeps its own copy of the data. Reading definitions from a semantic layer or from dbt is not built, and it does not export to a specific semantic layer yet.
+Your metrics may already be defined in a semantic layer on a warehouse. Who signed them? Who notices when the data changes underneath? OntoPoc is about that part: each definition carries the person who confirmed it and the data version, goes back for another look when the data moves, and the AI refuses to use it until someone confirms it again. It keeps its own copy of the data. If you use dbt, upload `manifest.json` on the object types page: OntoPoc reads its model tests (unique, not_null, relationships, accepted_values) and proposes object types and relations, which another builder still confirms against the data. It does not read composite keys, dbt constraints, metrics or the semantic layer, and the import confirms nothing. It does not export to a specific semantic layer yet.
 
 ### What is an ontology MCP, and how do I use it here?
 
