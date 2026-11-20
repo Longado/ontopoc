@@ -338,6 +338,18 @@ class QuestionTests(SigningTestCase):
             self.assertEqual((body['answer']['measure']['value'], body['answer']['measure']['counted']), (2426560, 144))
             self.assertEqual(sorted((u['definition'], u['direction']) for u in body['understood']), [('已交付', 'include'), ('生产中', 'include')])
 
+    def test_two_meanings_said_to_be_kept_while_another_filter_on_the_column_drops_one_are_refused_not_answered(self):
+        # the reviewer's case: not 已取消, and also 状态码 = 1, keeps only 生产中 (48 orders, 759,850) while the model says 已交付 is included too
+        narrowed = cancelled(query={**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['2']}, {'field': '状态码', 'equals': '1'}], 'measure': {'field': '金额', 'op': 'sum'}},
+                             used=[{'id': f'订单.状态码={label}', 'direction': 'include', 'basis': label} for label in ('已交付', '生产中')])
+        with self.service(gateway=AskModel(narrowed)) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask(team['vera'], '已交付和生产中的订单一共多少笔，金额多少？')
+            self.assertEqual((status, body['status']), (200, 'definition_unmet'), body)
+            self.assertNotIn('answer', body)
+            self.assertIn('「已交付」', body['reason'])
+
     def test_a_query_that_leaves_a_meaning_out_while_the_model_says_include_or_nothing_is_refused(self):
         for direction, how in (('include', '问题要把它算进来，这条查询却把它排除了'), ('mention', '却按它筛选了行')):
             with self.subTest(direction=direction), self.service(gateway=AskModel(self.not_cancelled('已取消', direction=direction))) as (base, out):

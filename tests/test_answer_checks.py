@@ -182,6 +182,29 @@ class MeaningTests(unittest.TestCase):
         wrong = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['0', '1', '3']}]}
         self.assertIn('已退款', [u['definition'] for u in self.check(question, wrong, both, meanings=four, values=held)['unmet']])
 
+    def test_meanings_are_kept_by_leaving_the_rest_out_only_when_nothing_else_narrows_the_column(self):
+        four = {'订单.状态码': {'labels': {'0': '进行中', '1': '已交付', '2': '已取消', '3': '已退款'}}}
+        held = {'订单.状态码': {'0', '1', '2', '3'}}
+        question = '已取消和已退款的订单一共有多少笔？'
+        both = [inc('已取消'), inc('已退款')]
+        rest = {'field': '状态码', 'not_equals': ['0', '1']}
+        narrowed = {
+            'equals': [rest, {'field': '状态码', 'equals': '2'}],     # keeps 已取消 alone: 已退款's rows are gone
+            'range': [rest, {'field': '状态码', 'at_most': 2}],      # 3 (已退款) is above the range
+        }
+        for name, where in narrowed.items():
+            unmet = self.check(question, {**ALL_ORDERS, 'where': where}, both, meanings=four, values=held)['unmet']
+            self.assertIn('已退款', [u['definition'] for u in unmet], name)
+        # a view the model also reads that filters the same column: 有效订单 drops 已取消, which the model says it includes
+        dropped = self.check(question, {**ALL_ORDERS, 'where': [rest]}, [*both, inc('有效订单')], [view()], meanings=four, values=held)['unmet']
+        self.assertIn('已取消', [u['definition'] for u in dropped])
+        # a share on the same column is not a filter that only leaves codes out either
+        shared = self.check(question, {**ALL_ORDERS, 'where': [rest], 'share': {'field': '状态码', 'equals': '2'}}, both, meanings=four, values=held)['unmet']
+        self.assertIn('已退款', [u['definition'] for u in shared])
+        # a dimension on the column narrows nothing: still answered
+        grouped = {**ALL_ORDERS, 'where': [rest], 'group_by': [{'via': [], 'field': '订单.状态码'}]}
+        self.assertEqual(self.check(question, grouped, both, meanings=four, values=held)['unmet'], [])
+
     def test_a_refusal_says_only_what_the_question_named_and_in_plain_words(self):
         unasked = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': '2'}]}
         [filtered] = self.check('订单有多少？', unasked, [])['unmet']   # the question does not name it; the query leaves it out
