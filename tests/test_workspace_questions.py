@@ -561,6 +561,30 @@ class QuestionTests(SigningTestCase):
             self.assertEqual(team['vera'].get('/api/workspace/ask/tally')[0], 403)   # a viewer sees their own history, not the team's counts
             self.assertEqual(team['ann'].get('/api/workspace/ask/tally')[1]['last_7_days'], {'asked': 1, 'answered': 0, 'refused': 0, 'unanswered': 1})
 
+    def test_a_reply_that_holds_no_question_is_kept_with_a_plain_reason_and_counted_as_unanswered(self):
+        class Unshaped(AskModel):
+            """Replies without the question it was asked: an object of some other shape (seen from a real model on 销售额是多少？), or text that is not JSON."""
+            def complete_json(self, *, system_prompt, user_prompt, timeout_seconds=None):
+                self.requests.append(json.loads(user_prompt))
+                return ModelCompletion('test', 'test-model', self.item)
+        model = Unshaped(json.dumps({'clarify': ['全部订单', '有效订单']}, ensure_ascii=False))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            vera = team['vera']
+            for reply in (model.item, '销售额要按哪个口径？'):
+                model.item = reply
+                status, body = self.ask(vera, '销售额是多少？')
+                self.assertEqual((status, body['status']), (200, 'no_query'), body)
+                self.assertNotIn('answer', body)
+                for internal in ('问题列表', 'JSON', 'query', 'null'):   # what the reader is told is not the service's own words about the reply
+                    self.assertNotIn(internal, body['reason'])
+                self.assertIn('没有给出数字', body['reason'])
+                self.assertIn('订单', body['reason'])   # what may be asked about, so the question can be put more plainly
+                self.assertEqual(body['steps'][-1]['failed'], True)
+            self.assertEqual([(h['question'], h['status']) for h in vera.get('/api/workspace/ask')[1]['history']], [('销售额是多少？', 'no_query')] * 2)
+            self.assertEqual(team['ann'].get('/api/workspace/ask/tally')[1]['last_7_days'], {'asked': 2, 'answered': 0, 'refused': 0, 'unanswered': 2})
+
     def test_the_tally_names_no_definition_its_reader_may_not_see(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
             team = self.team(base)
