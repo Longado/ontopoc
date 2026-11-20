@@ -12,7 +12,7 @@ from ontology_poc_generator import change_preview
 from tests.test_access import Client
 from tests import test_batch_confirm
 from tests.test_dashboards import BoardCase
-from tests.test_derived_properties import CANCELLED
+from tests.test_derived_properties import CANCELLED, GROSS
 from tests.test_explorer import LIVE, ORDERS
 from tests.test_object_types import MEANINGS, VALID, shifted_orders_csv
 
@@ -331,6 +331,48 @@ class GroupTests(ImpactCase):
             status, done = bob.post('/api/workspace/queue/confirm-group', body)
             self.assertEqual(status, 200, done)
             self.preview_is_reality(bob, board['id'], preview)
+
+
+class HiddenColumnTests(ImpactCase):
+    """A column kept from a builder (column_access) is not in what the receipts tell them: for them the type is the type without it (type_access)."""
+
+    def hide_amount_from_all_but_ann(self, team):
+        ids = self.ids(team['admin'])
+        status, body = team['admin'].post('/api/workspace/column-access', {'type': 'order', 'column': '金额', 'visible_to': [ids['ann']]})
+        self.assertEqual(status, 200, body)
+
+    def test_the_receipt_of_a_type_leaves_out_a_property_kept_from_the_reader(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob = team['ann'], team['bob']
+            self.hide_amount_from_all_but_ann(team)
+            self.assertNotIn('金额', [p['column'] for p in bob.get('/api/workspace/types/order')[1]['properties']])
+            status, receipt = bob.get('/api/workspace/receipt?element=objtype:order')
+            self.assertEqual(status, 200, receipt)
+            self.assertNotIn('金额', str(receipt))
+            status, summary = bob.get('/api/workspace/receipt')
+            self.assertEqual(status, 200, summary)
+            self.assertNotIn('金额', str(summary))
+            self.assertIn('金额', ann.get('/api/workspace/receipt?element=objtype:order')[1]['items'][0]['after'])   # Ann may read it
+
+    def test_what_a_definition_said_before_is_not_told_when_it_read_a_column_kept_from_the_reader(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
+            self.assertEqual(self.confirm(bob, GROSS)[0], 200)
+            line = self.line(bob, 'order', 'gross')
+            self.assertEqual(ann.post('/api/workspace/types/derived/update', {**GROSS, 'expression': '数量 * 2', 'version': line['version']})[0], 200)
+            self.assertEqual(self.confirm(bob, GROSS)[0], 200)
+            self.hide_amount_from_all_but_ann(team)
+            status, receipt = bob.get('/api/workspace/receipt?element=derived:order:gross')
+            self.assertEqual(status, 200, receipt)
+            item = receipt['items'][0]
+            self.assertIn('数量', item['after'])
+            self.assertNotIn('金额 *', str(receipt))   # the old expression read 金额 (the property's own name 含税金额 is Bob's to read)
+            self.assertIsNotNone(item['before'])   # it had a version before: said to be there, not what it read
 
 
 if __name__ == '__main__':
