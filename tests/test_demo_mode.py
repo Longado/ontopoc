@@ -1,6 +1,7 @@
 """Demo mode: guest accounts, their limits, the ask guard, cleanup, and the seed."""
 import base64
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -419,6 +420,43 @@ class DemoStory(unittest.TestCase):
             again = guest.call('GET', f'/api/workspace/ask/{body["id"]}')[1]   # reopened from the history, it still says the same, and no more
             self.assertNotIn('withheld', again)
             self.assertEqual(again['refusal'], body['refusal'])
+
+    def keep(self, guest, question, record):
+        """A saved question of this guest's, written as the service keeps one."""
+        uid = guest.call('GET', '/api/auth/me')[1]['user']['id']
+        conn = sqlite3.connect(self.folder / 'workspace.sqlite')
+        try:
+            cur = conn.execute('INSERT INTO qa_question(user_id, asked_by, question, asked_at, status, answer_json, definitions_json, dataset_versions_json, types_json) '
+                               "VALUES (?, 'guest', ?, '2026-11-20T00:00:00+00:00', ?, ?, ?, '{}', ?)",
+                               (uid, question, record['status'], json.dumps(record, ensure_ascii=False), json.dumps(record['definitions']), json.dumps(record['types'])))
+            conn.commit()
+            return cur.lastrowid
+        finally:
+            conn.close()
+
+    def test_a_guest_reopening_an_old_answer_on_a_type_that_now_waits_is_told_only_its_name_and_who_it_waits_for(self):
+        reason = signed_in(self.base, self.password).call('GET', '/api/workspace/types/customer')[1]['reason']
+        guest = a_guest(self.base)
+        # asked while Customer was confirmed; an upload has since sent it back for a second look
+        answered = self.keep(guest, 'How many customers?', {'status': 'answered', 'reason': None, 'answer': {'total': 40}, 'types': [{'id': 'customer', 'name': 'Customer'}],
+                                                            'definitions': [{'id': 'objtype:customer', 'version': 1, 'name': 'Customer'}], 'datasets': {}, 'steps': [],
+                                                            'named': ['objtype:customer']})
+        # a refusal kept while its asker could read why (a builder since made a viewer): the reasons in it are not this guest's now
+        builders = self.keep(guest, 'Customer by city', {'status': 'refused', 'reason': f'Not answered: {reason}', 'types': [], 'definitions': [], 'datasets': {}, 'steps': [],
+                                                         'refusal': {'kind': 'unsettled', 'definitions': [{'id': 'objtype:customer', 'kind': 'type', 'name': 'Customer', 'state': 'needs_look',
+                                                                                                           'reason': reason, 'who_can_confirm': ['demo-admin'], 'text': reason}]},
+                                                         'named': ['objtype:customer']})
+        for qid in (answered, builders):
+            status, body = guest.call('GET', f'/api/workspace/ask/{qid}')
+            self.assertEqual(status, 200, body)
+            said = json.dumps(body, ensure_ascii=False)
+            self.assertIn('withheld', body, said)
+            for secret in (reason, 'C012', '41', 'not unique', '不唯一'):
+                self.assertNotIn(secret, said, qid)
+            self.assertNotIn('changed', body)
+            self.assertNotIn('answer', body)
+            self.assertIn('Customer', body['reason'])
+            self.assertIn('demo-admin', body['reason'])   # what a fresh question would say: the name and who it waits for
 
     def test_the_board_still_answers_while_the_customer_type_waits(self):
         guest = a_guest(self.base)
