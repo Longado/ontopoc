@@ -54,7 +54,7 @@ test("an english id also finds a type", () => {
 
 test("pageEntries lists the pages this person's navigation offers, plus the account page", () => {
   const viewer = pageEntries({ role: "viewer" }).map((e) => e.label);
-  assert.deepEqual(viewer, ["首页", "助手", "看板", "消息", "对象类型", "关系", "血缘", "我的账号"]);   // the read-only definition pages the sidebar offers a viewer; 消息 is always found here, as in the top bar
+  assert.deepEqual(viewer, ["首页", "助手", "看板", "消息", "对象类型", "关系", "血缘", "数据集", "我的账号"]);   // the read-only definition pages the sidebar offers a viewer; 消息 is always found here, as in the top bar
   const admin = pageEntries({ role: "admin" }).map((e) => e.label);
   assert.ok(admin.includes("用户") && admin.includes("AI 工具接入") && admin.includes("血缘"));
   assert.ok(pageEntries({ role: "viewer" }).every((e) => e.kind === "页面"));
