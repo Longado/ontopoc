@@ -90,7 +90,7 @@ test("the sidebar groups what the product has, and marks what is built: the gate
 
 test("a viewer sees the main line and the definitions they may read, a builder the review queue first, the data and the agents, an admin settings too", () => {
   const names = (user, has) => navFor(user, has).map((g) => [g.label ?? null, g.items.map((i) => i.label)]);
-  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板"]], ["定义", ["对象类型", "关系", "血缘"]]]);   // read-only pages the service serves a viewer
+  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板"]], ["定义", ["对象类型", "关系", "血缘"]], ["数据", ["数据集"]]]);   // read-only pages the service serves a viewer; 数据集 stays, as it shipped for viewers
   assert.deepEqual(names({ role: "builder" }).map((g) => g[0]), [null, "定义", "数据", "智能体"]);
   assert.deepEqual(names({ role: "admin" }).map((g) => g[0]), [null, "定义", "数据", "智能体", "设置"]);
   assert.deepEqual(names({ role: "admin" })[4][1], ["工作区", "用户", "权限"]);
