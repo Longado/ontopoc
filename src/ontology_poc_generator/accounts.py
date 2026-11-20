@@ -54,7 +54,7 @@ SCHEMA = '''
 CREATE TABLE IF NOT EXISTS sign_in_limit (key TEXT PRIMARY KEY, failures INTEGER NOT NULL, since REAL NOT NULL, locked_until REAL NOT NULL, last REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS sign_in_limit_last ON sign_in_limit(last);
 CREATE TABLE IF NOT EXISTS user (
-    id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
+    id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('viewer', 'builder', 'admin')), password_hash TEXT, disabled INTEGER NOT NULL DEFAULT 0,
     must_change INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, last_login_at TEXT, provider TEXT NOT NULL DEFAULT 'local', attrs_json TEXT);
 CREATE TABLE IF NOT EXISTS session (

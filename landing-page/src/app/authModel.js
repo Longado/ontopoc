@@ -17,7 +17,7 @@ export const isGuest = (user) => user?.provider === "demo";
 
 /** Where "Request access" goes: the service's own feedback address when it has one, else the project's issue page. */
 export const DEFAULT_ACCESS_URL = "https://github.com/Longado/ontopoc/issues/new";
-export const accessUrl = (feedbackUrl) => (typeof feedbackUrl === "string" && feedbackUrl.trim() ? feedbackUrl.trim() : DEFAULT_ACCESS_URL);
+export const accessUrl = (feedbackUrl) => (typeof feedbackUrl === "string" && /^https?:\/\/\S+$/i.test(feedbackUrl.trim()) ? feedbackUrl.trim() : DEFAULT_ACCESS_URL);   // only a web address is ever put in the link
 
 /** The top search box's hint: a viewer has boards and questions, a builder has datasets, types and pipelines. */
 export const searchPlaceholder = (user) => (user?.role === "viewer" ? t("shell.search.viewer") : t("shell.search.builder"));

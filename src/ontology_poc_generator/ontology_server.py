@@ -67,7 +67,7 @@ from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
-from ontology_poc_generator.auth_http import LOOPBACK, Gate
+from ontology_poc_generator.auth_http import DEFAULT_FEEDBACK_URL, LOOPBACK, Gate, feedback_url
 from ontology_poc_generator.dataset_readers import dataset_readers
 from ontology_poc_generator.upload_preview import moved_by_upload
 from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
@@ -1477,7 +1477,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             url = urlsplit(self.path)
             parts = [unquote(p) for p in url.path[len('/api/workspace/pipelines'):].split('/') if p]
             query = parse_qs(url.query)
-            number = lambda key: int(query[key][0]) if query.get(key) and re.fullmatch(r'[0-9]+', query[key][0]) else None
+            number = lambda key: int(query[key][0]) if query.get(key) and re.fullmatch(r'[0-9]{1,15}', query[key][0]) else None
             conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
                 if not parts:
@@ -1490,7 +1490,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                     body = pipeline_versions(conn, parts[0], self.user, number('from'), number('to'))
                 elif parts[1:] == ['runs']:
                     body = {'runs': run_list(conn, parts[0], self.user)}
-                elif len(parts) == 3 and parts[1] == 'runs' and re.fullmatch(r'[0-9]+', parts[2]):
+                elif len(parts) == 3 and parts[1] == 'runs' and re.fullmatch(r'[0-9]{1,15}', parts[2]):
                     body = run_detail(conn, parts[0], int(parts[2]), self.user)
                 elif parts[1:] == ['log']:
                     body = {'log': pipeline_log(conn, parts[0], self.user)}
@@ -1614,7 +1614,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             try:
                 if not parts:
                     body = {'turns': assistant_history.listing(conn, self.user)}
-                elif len(parts) == 1 and re.fullmatch(r'[0-9]+', parts[0]):
+                elif len(parts) == 1 and re.fullmatch(r'[0-9]{1,15}', parts[0]):
                     body = assistant_history.fetch(conn, self.user, int(parts[0]))
                 else:
                     self.reply(404, {'error': lang.unknown_endpoint()})
@@ -1636,7 +1636,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             try:
                 if not parts:
                     body = assistant_history.record(conn, self.user, payload.get('mode'), payload.get('message'), payload.get('scope'), payload.get('card'), payload.get('outcome'))
-                elif len(parts) == 2 and re.fullmatch(r'[0-9]+', parts[0]) and parts[1] in ('outcome', 'delete'):
+                elif len(parts) == 2 and re.fullmatch(r'[0-9]{1,15}', parts[0]) and parts[1] in ('outcome', 'delete'):
                     body = (assistant_history.mark(conn, self.user, int(parts[0]), payload) if parts[1] == 'outcome' else assistant_history.delete(conn, self.user, int(parts[0])))
                 else:
                     self.reply(404, {'error': lang.unknown_endpoint()})
@@ -1721,7 +1721,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif parts == ['queue', 'group']:   # ?dataset=订单&version=2: the items one upload moved, in the order they are confirmed in
                     asked = parse_qs(url.query)
                     version = (asked.get('version') or [''])[0]
-                    if not asked.get('dataset') or not version.isdigit():
+                    if not asked.get('dataset') or not re.fullmatch(r'[0-9]{1,15}', version):
                         raise TypeRefused(tr('要写明是哪个数据集的哪一版', 'Say which dataset and which version'))
                     with derived_time_limit(conn):
                         body = group_detail(conn, self.user, asked['dataset'][0], int(version))
@@ -1835,6 +1835,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_GET(self):
             lang.use(lang.from_header(self.headers.get('Accept-Language')))
+            try:
+                self.get_route()
+            except OverflowError as exc:   # a number in the address that no table can hold: answered, whichever route it reached
+                print(f'GET {self.path.split("?")[0]}: {exc}', file=sys.stderr, flush=True)
+                self.reply(400, {'error': tr('地址里有一个数字太大。', 'A number in the address is too large.')})
+
+        def get_route(self):
             self.serving_page = False
             if page_dir is not None and not (urlsplit(self.path).path + '/').startswith(API_PREFIX):
                 self.page_get()
@@ -1912,6 +1919,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(404, lang.unknown_ontology_endpoint())
                 return
             extra = {'demo': True, 'demo_ask': gateway is not None} if gate.demo else {}
+            if gate.demo and feedback_url() != DEFAULT_FEEDBACK_URL:   # a public demo's "Request access" is for the people at the door; elsewhere a stranger learns only that the service is up
+                extra['feedback_url'] = feedback_url()
             if self.user is None:   # a stranger learns only that the service is up
                 self.reply(200, {'ok': True, **extra})
                 return

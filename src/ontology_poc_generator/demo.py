@@ -204,8 +204,8 @@ def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = Fal
             raise SystemExit(f'{data_dir} already has accounts; seed only builds a fresh demo (use --force-fresh to start over in a demo folder)')
         (data_dir / MARKER).write_text('made by ontopoc.demo seed\n')   # before the first account: a seed that stops after this can be started over with --force-fresh
         admin_pw, builder_pw = _password(), _password()
-        accounts.create_user(conn, admin_name, admin_name, 'admin', admin_pw, 'demo-seed', must_change=False)
-        accounts.create_user(conn, 'demo-builder', 'Demo builder', 'builder', builder_pw, 'demo-seed', must_change=False)
+        admin_id = accounts.create_user(conn, admin_name, admin_name, 'admin', admin_pw, 'demo-seed', must_change=False)['id']
+        builder_id = accounts.create_user(conn, 'demo-builder', 'Demo builder', 'builder', builder_pw, 'demo-seed', must_change=False)['id']
     finally:
         conn.close()
     server = make_server(port=0, gateway=None, output_dir=data_dir)
@@ -245,7 +245,7 @@ def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = Fal
         thread.join()
     conn = open_workspace(db)
     try:   # the builder only confirmed: nobody signs in as them afterwards
-        accounts.set_disabled(conn, accounts.get_user(conn, 1), 2, True)
+        accounts.set_disabled(conn, accounts.get_user(conn, admin_id), builder_id, True)
     finally:
         conn.close()
     (data_dir / READY).write_text('the demo seed finished\n')

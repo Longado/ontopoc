@@ -174,28 +174,48 @@ def open_workspace(path) -> sqlite3.Connection:
 
 
 def _never_reuse_ids(conn) -> None:
-    """A file made before dataset and check_result ids were AUTOINCREMENT: rebuild the two tables so an id, once used, is never given out again
-    (a deleted dataset's id, taken by a later one, would show the old one's checks; a check id is what an evidence reference names). Check
-    results that belong to no dataset any more are dropped. The counters start at the highest id still there: an id freed before this
-    cannot be known."""
-    old = {name: conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone()[0] for name in ('dataset', 'check_result')}
-    todo = {name: sql for name, sql in old.items() if 'AUTOINCREMENT' not in sql}
-    if not todo:
+    """A file made before dataset, check_result and user ids were AUTOINCREMENT: rebuild those tables so an id, once used, is never given out again
+    (a deleted dataset's id, taken by a later one, would show the old one's checks; a check id is what an evidence reference names; a deleted
+    guest's account id, taken by a later account, would find whatever rows still name it). Check results that belong to no dataset any more
+    are dropped. The counters start at the highest id still there: an id freed before this cannot be known."""
+    def todo_now() -> dict:
+        old = {name: conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone()[0] for name in ('dataset', 'check_result', 'user')}
+        return {name: sql for name, sql in old.items() if 'AUTOINCREMENT' not in sql}
+    if not todo_now():
         return
-    conn.execute('BEGIN IMMEDIATE')
+    with _plain_rename(conn):
+        conn.execute('BEGIN IMMEDIATE')
+        try:
+            todo = todo_now()   # read again under the write lock: another opener may have done it while this one waited
+            if todo:
+                _rebuild_with_ids_kept(conn, todo)
+            conn.execute('COMMIT')
+        except BaseException:
+            conn.execute('ROLLBACK')
+            raise
+
+
+def _rebuild_with_ids_kept(conn, todo: dict) -> None:
+    conn.execute('DELETE FROM check_result WHERE dataset_id IS NOT NULL AND dataset_id NOT IN (SELECT id FROM dataset)')
+    for name, sql in todo.items():
+        rebuilt = re.sub(r'\bid INTEGER PRIMARY KEY\b', 'id INTEGER PRIMARY KEY AUTOINCREMENT', sql, count=1)
+        assert rebuilt != sql, f'{name}: its id column is not the plain INTEGER PRIMARY KEY this migration knows'
+        conn.execute(re.sub(r'^CREATE TABLE (IF NOT EXISTS )?"?\w+"?', f'CREATE TABLE {name}_rebuilt', rebuilt, count=1))
+        conn.execute(f'INSERT INTO {name}_rebuilt SELECT * FROM {name}')
+        conn.execute(f'DROP TABLE {name}')
+        conn.execute(f'ALTER TABLE {name}_rebuilt RENAME TO {name}')
+
+
+@contextmanager
+def _plain_rename(conn):
+    """While a table is rebuilt (new one made, old one dropped, new one renamed into its place): sqlite's rename only renames. By default it also
+    reads every view in the file again and refuses when one of them names a table that is gone (a run's view whose data was deleted), which
+    would stop the file from opening at all; nothing refers to the rebuilt table's temporary name, so there is nothing for it to rewrite."""
+    conn.execute('PRAGMA legacy_alter_table = ON')
     try:
-        conn.execute('DELETE FROM check_result WHERE dataset_id IS NOT NULL AND dataset_id NOT IN (SELECT id FROM dataset)')
-        for name, sql in todo.items():
-            rebuilt = re.sub(r'\bid INTEGER PRIMARY KEY\b', 'id INTEGER PRIMARY KEY AUTOINCREMENT', sql, count=1)
-            assert rebuilt != sql, f'{name}: its id column is not the plain INTEGER PRIMARY KEY this migration knows'
-            conn.execute(re.sub(r'^CREATE TABLE (IF NOT EXISTS )?"?\w+"?', f'CREATE TABLE {name}_rebuilt', rebuilt, count=1))
-            conn.execute(f'INSERT INTO {name}_rebuilt SELECT * FROM {name}')
-            conn.execute(f'DROP TABLE {name}')
-            conn.execute(f'ALTER TABLE {name}_rebuilt RENAME TO {name}')
-        conn.execute('COMMIT')
-    except BaseException:
-        conn.execute('ROLLBACK')
-        raise
+        yield
+    finally:
+        conn.execute('PRAGMA legacy_alter_table = OFF')
 
 
 def _allow_needs_look(conn) -> None:
@@ -206,16 +226,17 @@ def _allow_needs_look(conn) -> None:
     rebuilt = sql.replace("'confirmed', 'rejected'", "'confirmed', 'needs_look', 'rejected'")
     assert rebuilt != sql, 'element_state: its state CHECK is not the one this migration knows'
     columns = ', '.join(r[1] for r in conn.execute('PRAGMA table_info(element_state)'))
-    conn.execute('BEGIN IMMEDIATE')
-    try:
-        conn.execute(re.sub(r'^CREATE TABLE (IF NOT EXISTS )?"?element_state"?', 'CREATE TABLE element_state_rebuilt', rebuilt, count=1))
-        conn.execute(f'INSERT INTO element_state_rebuilt({columns}) SELECT {columns} FROM element_state')
-        conn.execute('DROP TABLE element_state')
-        conn.execute('ALTER TABLE element_state_rebuilt RENAME TO element_state')
-        conn.execute('COMMIT')
-    except BaseException:
-        conn.execute('ROLLBACK')
-        raise
+    with _plain_rename(conn):
+        conn.execute('BEGIN IMMEDIATE')
+        try:
+            conn.execute(re.sub(r'^CREATE TABLE (IF NOT EXISTS )?"?element_state"?', 'CREATE TABLE element_state_rebuilt', rebuilt, count=1))
+            conn.execute(f'INSERT INTO element_state_rebuilt({columns}) SELECT {columns} FROM element_state')
+            conn.execute('DROP TABLE element_state')
+            conn.execute('ALTER TABLE element_state_rebuilt RENAME TO element_state')
+            conn.execute('COMMIT')
+        except BaseException:
+            conn.execute('ROLLBACK')
+            raise
 
 
 def records_sha256(records: list[dict]) -> str:
