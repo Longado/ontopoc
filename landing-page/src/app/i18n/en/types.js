@@ -48,6 +48,8 @@ export default {
   "page.whyLook": "Why it needs another look",
   "page.waitingNote": "Its properties and objects are not shown until it is confirmed.",
   "page.edit": "Edit",
+  "page.addAction": "+ Action",
+  "page.addActionTitle": "This type has no actions yet: add the first one here (it writes data only after approval)",
   "page.confirm": "Confirm this object type",
   "page.keptColumns_one": "{count} property is hidden from you",
   "page.keptColumns_other": "{count} properties are hidden from you",

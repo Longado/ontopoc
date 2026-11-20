@@ -48,6 +48,8 @@ export default {
   "page.whyLook": "为什么需要再看",
   "page.waitingNote": "确认之前不显示它的属性和对象。",
   "page.edit": "修改",
+  "page.addAction": "+ 行为",
+  "page.addActionTitle": "这个类型还没有行为：在这里加第一个（审批后才写数据）",
   "page.confirm": "确认这个对象类型",
   "page.keptColumns_one": "有 {count} 个属性不让你看",
   "page.keptColumns_other": "有 {count} 个属性不让你看",

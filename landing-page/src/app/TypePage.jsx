@@ -13,7 +13,7 @@ import { statusOf } from "./statusModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { confirmersText, joinList, limitedNote, logText, meaningsSummary, reconfirmText, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
+import { confirmersText, joinList, limitedNote, logText, meaningsSummary, offerFirstAction, reconfirmText, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { PageHeader } from "./ui/PageHeader.jsx";
 
@@ -268,6 +268,7 @@ export function TypePage({ route }) {
                 {TYPE_TAB_LABEL[k]}{counts[k] != null && <span className="tab-count">{counts[k]}</span>}
               </a>
             ))}
+            {offerFirstAction(counts, tab, mayBuild) && <a className="muted" href={hrefFor({ page: "type", id, tab: "actions" })} title={t("types.page.addActionTitle")}>{t("types.page.addAction")}</a>}
           </nav>
           {tab === "props" && <Properties type={ty} mayBuild={mayBuild} reload={reload} />}
           {tab === "derived" && <TypeDerived type={ty} mayBuild={mayBuild} />}
