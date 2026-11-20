@@ -18,9 +18,10 @@ export function LoginPage({ setup, ended, onSignedIn, feedbackUrl }) {
   const [ready, setReady] = useState(false);   // the health check has answered (or failed): until then neither page is drawn, so the sign-in form does not flash before the landing page
   const [askIsOff, setAskIsOff] = useState(false);
   const [demoError, setDemoError] = useState("");
+  const [askAt, setAskAt] = useState();   // the service's own feedback address, when its health names one
   useEffect(() => {
     let live = true;
-    readAgain(getHealth).then((h) => { if (live) { setDemo(h?.demo === true); setAskIsOff(h?.demo_ask === false); setReady(true); } }, () => live && setReady(true));
+    readAgain(getHealth).then((h) => { if (live) { setDemo(h?.demo === true); setAskIsOff(h?.demo_ask === false); setAskAt(h?.feedback_url); setReady(true); } }, () => live && setReady(true));
     const giveUp = setTimeout(() => live && setReady(true), 3000);   // a service that does not answer: the plain sign-in page rather than a blank one
     return () => {
       live = false;
@@ -118,7 +119,7 @@ export function LoginPage({ setup, ended, onSignedIn, feedbackUrl }) {
             <p className="ld-sub">{t("auth.landing.sub")}</p>
             <div className="ld-cta">
               <button className="primary ld-btn" type="button" onClick={tryDemo} disabled={sending}>{tryLabel}</button>
-              <a className="ld-btn ld-ghost" href={accessUrl(feedbackUrl)} target="_blank" rel="noopener noreferrer">{t("auth.landing.request")}</a>
+              <a className="ld-btn ld-ghost" href={accessUrl(feedbackUrl ?? askAt)} target="_blank" rel="noopener noreferrer">{t("auth.landing.request")}</a>
             </div>
             {askIsOff && <p className="ld-note">{t("auth.demo.askOff")}</p>}
             {demoError && <p className="error" role="alert" ref={demoErrorAt}>{demoError}</p>}

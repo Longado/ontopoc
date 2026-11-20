@@ -174,11 +174,11 @@ def open_workspace(path) -> sqlite3.Connection:
 
 
 def _never_reuse_ids(conn) -> None:
-    """A file made before dataset and check_result ids were AUTOINCREMENT: rebuild the two tables so an id, once used, is never given out again
-    (a deleted dataset's id, taken by a later one, would show the old one's checks; a check id is what an evidence reference names). Check
-    results that belong to no dataset any more are dropped. The counters start at the highest id still there: an id freed before this
-    cannot be known."""
-    old = {name: conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone()[0] for name in ('dataset', 'check_result')}
+    """A file made before dataset, check_result and user ids were AUTOINCREMENT: rebuild those tables so an id, once used, is never given out again
+    (a deleted dataset's id, taken by a later one, would show the old one's checks; a check id is what an evidence reference names; a deleted
+    guest's account id, taken by a later account, would find whatever rows still name it). Check results that belong to no dataset any more
+    are dropped. The counters start at the highest id still there: an id freed before this cannot be known."""
+    old = {name: conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone()[0] for name in ('dataset', 'check_result', 'user')}
     todo = {name: sql for name, sql in old.items() if 'AUTOINCREMENT' not in sql}
     if not todo:
         return

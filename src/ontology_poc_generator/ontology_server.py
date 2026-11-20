@@ -67,7 +67,7 @@ from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
-from ontology_poc_generator.auth_http import LOOPBACK, Gate
+from ontology_poc_generator.auth_http import DEFAULT_FEEDBACK_URL, LOOPBACK, Gate, feedback_url
 from ontology_poc_generator.dataset_readers import dataset_readers
 from ontology_poc_generator.upload_preview import moved_by_upload
 from ontology_poc_generator.workspace_datasets import UploadRefused, dataset_csv, dataset_detail, delete_dataset, list_datasets, upload as upload_datasets
@@ -1835,6 +1835,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def do_GET(self):
             lang.use(lang.from_header(self.headers.get('Accept-Language')))
+            try:
+                self.get_route()
+            except OverflowError as exc:   # a number in the address that no table can hold: answered, whichever route it reached
+                print(f'GET {self.path.split("?")[0]}: {exc}', file=sys.stderr, flush=True)
+                self.reply(400, {'error': tr('地址里有一个数字太大。', 'A number in the address is too large.')})
+
+        def get_route(self):
             self.serving_page = False
             if page_dir is not None and not (urlsplit(self.path).path + '/').startswith(API_PREFIX):
                 self.page_get()
@@ -1912,6 +1919,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.reply(404, lang.unknown_ontology_endpoint())
                 return
             extra = {'demo': True, 'demo_ask': gateway is not None} if gate.demo else {}
+            if feedback_url() != DEFAULT_FEEDBACK_URL:   # an address the operator set is for the people at the door too ("Request access"); the default is the page's own
+                extra['feedback_url'] = feedback_url()
             if self.user is None:   # a stranger learns only that the service is up
                 self.reply(200, {'ok': True, **extra})
                 return
