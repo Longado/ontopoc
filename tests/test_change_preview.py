@@ -321,17 +321,26 @@ class GroupTests(ImpactCase):
             team = self.ops_overwrite(base)
             ann, bob = team['ann'], team['bob']
             board = self.make(ann, spec={'components': [VALID_COUNT, BY_STATUS], 'filters': []}, scope='everyone')
+            shown = self.shown(bob, board['id'])   # what the board shows Bob while the group waits: the new data's number, grey
+            self.assertTrue(shown['valid']['grey'])
             body = self.request(self.group(bob))
             preview = self.impact(bob, body)
             self.assertIsNone(preview['refused'])
             cards = self.by_card(preview)
             self.assertEqual(sorted(cards), ['status', 'valid'])
-            self.assertEqual(cards['valid']['now']['value'], cards['valid']['after']['value'])   # both on version 2: what moved the number is the upload, not the confirmation
+            # the data sent these back: "now" is the board as it is while they wait, and confirming is what lets the new data's number count
+            self.assertEqual(cards['valid']['now'], shown['valid'])
             self.assertFalse(cards['valid']['after']['grey'])
-            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2}])   # and that is said apart
+            self.assertEqual(cards['valid']['change'], {'kind': 'confirmed'})
+            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': True}])   # this confirmation accepts the new data
             status, done = bob.post('/api/workspace/queue/confirm-group', body)
             self.assertEqual(status, 200, done)
             self.preview_is_reality(bob, board['id'], preview)
+            status, receipt = bob.post('/api/workspace/receipt', {'elements': done['confirmed']})
+            self.assertEqual(status, 200, receipt)
+            self.assertEqual(self.by_card(receipt)['valid']['change'], {'kind': 'confirmed'})
+            view = next(i for i in receipt['items'] if i['element'] == 'objview:有效订单')
+            self.assertEqual(view['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': True}])
 
 
 class HiddenColumnTests(ImpactCase):
@@ -409,13 +418,13 @@ class DataBetweenConfirmationsTests(ImpactCase):
             self.assertEqual(cards['amount']['now'], before['amount'])   # the board as it was, on the new data
             self.assertEqual(cards['amount']['change'], {'kind': 'number', 'delta': sum(float(r['金额']) for r in made) - sum(float(r['金额']) for r in live)})
             self.assertEqual(cards['valid']['change'], {'kind': 'number', 'delta': len(made) - len(live)})
-            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2}])   # said apart, not put on the change
+            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': False}])   # said apart, not put on the change: the view stayed confirmed on it
             self.assertEqual(bob.post('/api/workspace/queue/confirm', payload)[0], 200)
             self.preview_is_reality(bob, board['id'], preview)
             status, receipt = bob.post('/api/workspace/receipt', {'elements': ['objview:有效订单']})
             self.assertEqual(status, 200, receipt)
             self.assertEqual({k: (c['now'], c['after'], c['change']) for k, c in self.by_card(receipt).items()}, {k: (c['now'], c['after'], c['change']) for k, c in cards.items()})
-            self.assertEqual(receipt['items'][0]['data_moved'], [{'name': '订单', 'from': 1, 'to': 2}])
+            self.assertEqual(receipt['items'][0]['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': False}])
 
     def test_without_new_data_nothing_is_said_to_have_moved(self):
         with self.service() as (base, out):
