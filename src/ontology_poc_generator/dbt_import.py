@@ -153,7 +153,7 @@ def _read_test(plan: dict, unique_id: str, node: dict) -> None:
         return
     if not isinstance(meta, dict) or not isinstance(meta.get('name'), str):   # a test written in SQL (a singular test)
         for model in dict.fromkeys(on_models):
-            plan['unread'].append({'model': models[model], 'what': _label(node, unique_id), 'reason': tr('用 SQL 写的测试不读', 'A test written in SQL is not read')})
+            plan['unread'].append({'model': models[model], 'what': _label(node, unique_id), 'reason': tr('用 SQL 写的单独测试不读', 'A SQL test (a singular test) is not read')})
         return
     kind, namespace = meta['name'], meta.get('namespace')
     kwargs = meta.get('kwargs') if isinstance(meta.get('kwargs'), dict) else {}
@@ -210,14 +210,22 @@ def _write(conn, make, element_id: str, who: str | None, after: dict, lock=None,
     return made
 
 
-def _failure(exc: BaseException, written: bool = False, general: bool = False) -> str:
+def _failure(exc: BaseException, apply: bool, written: bool = False, general: bool = False) -> str:
     """Why an item failed, or the import (`general`), for the report: the kind of error only (the text of a database error can name the store's own
-    tables). The whole of it goes to the service's log, for whoever runs it. `written`: the item's own write had gone through (general: something had)."""
+    tables). The whole of it goes to the service's log, for whoever runs it. `written`: the item's own write had gone through (general: something had).
+    `apply`: an Apply, on the workspace; a preview's writes are on a copy that is thrown away, so a preview never says anything is written."""
     kind = type(exc).__name__
     try:
         traceback.print_exception(exc, file=sys.stderr)
     except Exception:   # printing it must not be what stops the report
         pass
+    if not apply:
+        if general:
+            return (tr(f'预览出错停下了（{kind}）。上面列出的会被提出；详情在服务的日志里', f'The preview stopped on an error ({kind}). What is listed above would be proposed; the details are in the service log') if written
+                    else tr(f'预览出错停下了（{kind}），还没有到任何一项；详情在服务的日志里', f'The preview stopped on an error ({kind}) before any proposal; the details are in the service log'))
+        if written:
+            return tr(f'这一项会被提出，但它在预览里的说明没做出来（{kind}），预览在这里停下；详情在服务的日志里', f'It would be proposed, but its line in this preview could not be made ({kind}); the preview stopped here. The details are in the service log')
+        return tr(f'出错了（{kind}），预览在这里停下；详情在服务的日志里', f'It failed ({kind}); the preview stopped here. The details are in the service log')
     if general:
         return (tr(f'导入出错停下了（{kind}）。上面列为提出的都已经写入；详情在服务的日志里', f'The import stopped on an error ({kind}). What is listed above as proposed is written; the details are in the service log') if written
                 else tr(f'导入出错停下了（{kind}），还没有写入任何一项；详情在服务的日志里', f'The import stopped on an error ({kind}) before any proposal was written; the details are in the service log'))
@@ -244,7 +252,7 @@ def _code_text(value) -> str:
     return ('true' if value is True else 'false' if value is False else str(value))[:120]
 
 
-def run_import(conn, plan: dict, who: str | None, user: dict | None, lock=None, state: dict | None = None) -> dict:
+def run_import(conn, plan: dict, who: str | None, user: dict | None, lock=None, state: dict | None = None, apply: bool = True) -> dict:
     """Put forward what the manifest's tests say, for the models that match a dataset this person may see: types first, then relations, each proposal in
     its own short transaction (_write). Returns the report (see the route).
 
@@ -256,6 +264,7 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, lock=None, 
       caps. An unexpected error anywhere in it gives the report anyway (stopped: true): what was written, what failed and why (a general entry when it is
       not one item's), and what was not attempted. Each item also has its own guard, so the report can name the item that failed."""
     state = state if state is not None else {'committed': []}
+    state['apply'] = apply   # the one flag every sentence is made with: a preview's writes are on a copy, and it never says written
     planned = _plan(conn, plan, user, state)
     try:
         _propose(conn, plan, planned, state, who, user, lock)
@@ -330,9 +339,9 @@ def _item_failed(report: dict, state: dict, before: int, what: str, exc: BaseExc
     if len(state['committed']) > before:
         element_id = state['committed'][-1]
         report['types' if element_id.startswith(TYPE_PREFIX) else 'relations'].append(_written_line(element_id))
-        report['failed'].append({'what': what, 'reason': _failure(exc, written=True)})
+        report['failed'].append({'what': what, 'reason': _failure(exc, state['apply'], written=True)})
     else:
-        report['failed'].append({'what': what, 'reason': _failure(exc)})
+        report['failed'].append({'what': what, 'reason': _failure(exc, state['apply'])})
 
 
 def _written_line(element_id: str) -> dict:
@@ -369,7 +378,7 @@ def _stopped_report(plan: dict, planned: dict, state: dict, exc: BaseException) 
     report = planned['report']
     models = plan['models']
     lists = {k: list(report.get(k, [])) for k in ('types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out', 'failed', 'not_attempted')}
-    lists['failed'].append({'what': tr('导入', 'the import'), 'reason': _failure(exc, written=bool(state['committed']), general=True)})
+    lists['failed'].append({'what': tr('导入', 'the import') if state['apply'] else tr('预览', 'the preview'), 'reason': _failure(exc, state['apply'], written=bool(state['committed']), general=True)})
     if not state.get('stopped'):   # the relations not reached (none when it was the report that failed)
         lists['not_attempted'] += [{'what': _relation_what(models, u, t)} for u, t, _ in planned['jobs'][state.get('next_job', 0):]]
     return {'applied': False, 'stopped': True, 'manifest': {'schema_version': plan.get('version'), 'dbt_version': plan.get('dbt_version'), 'project': plan.get('project'),
@@ -557,7 +566,7 @@ def import_manifest(db_path: Path, payload: dict, who: str | None, user: dict | 
         if apply:
             conn = open_workspace(db_path)
             try:
-                return {**run_import(conn, plan, who, user, lock, state), 'applied': True}
+                return {**run_import(conn, plan, who, user, lock, state, apply=True), 'applied': True}
             finally:
                 conn.close()
         with tempfile.TemporaryDirectory() as tmp:
@@ -571,7 +580,7 @@ def import_manifest(db_path: Path, payload: dict, who: str | None, user: dict | 
                     source.close()
             conn = open_workspace(copy)
             try:
-                return run_import(conn, plan, who, user, None, state)
+                return run_import(conn, plan, who, user, None, state, apply=False)
             finally:
                 conn.close()
     except Exception as exc:
@@ -579,14 +588,15 @@ def import_manifest(db_path: Path, payload: dict, who: str | None, user: dict | 
             return _last_report(state['committed'], apply, exc)
         if isinstance(exc, TypeRefused):
             raise
-        raise TypeRefused(tr(f'读这个 manifest 时出了错（{type(exc).__name__}），什么都没有写入', f'Reading this manifest failed ({type(exc).__name__}); nothing was written'), 400) from None
+        raise TypeRefused(tr(f'读这个 manifest 时出了错（{type(exc).__name__}），什么都没有写入', f'Reading this manifest failed ({type(exc).__name__}); nothing was written') if apply
+                          else tr(f'读这个 manifest 时出了错（{type(exc).__name__}），预览停下了', f'Reading this manifest failed ({type(exc).__name__}); the preview stopped'), 400) from None
 
 
 def _last_report(committed: list[str], apply: bool, exc: BaseException) -> dict:
     """The report when even the stopped report could not be made: the written proposals by name, and the failure. Literals only."""
     lines = [_written_line(e) for e in committed]
     empty = {k: [] for k in ('codes', 'unmatched_models', 'skipped', 'left_out', 'not_attempted')}
-    failed = [{'what': tr('导入', 'the import'), 'reason': _failure(exc, written=True, general=True)}]
+    failed = [{'what': tr('导入', 'the import') if apply else tr('预览', 'the preview'), 'reason': _failure(exc, apply, written=True, general=True)}]
     return {'applied': apply, 'stopped': True, 'manifest': {}, 'types': [x for x in lines if 'dataset' in x], 'relations': [x for x in lines if 'dataset' not in x], 'failed': failed,
             **empty, 'more': {k: 0 for k in ('types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out', 'failed', 'not_attempted')},
             'limits': {'proposals': MAX_PROPOSALS, 'megabytes': MAX_MANIFEST_BYTES // 1024 // 1024}}
