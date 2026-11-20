@@ -1,4 +1,5 @@
-"""The routes of the use layer, as plain functions of (connection, person, path, payload): the explorer, dashboards and what an outside agent reads. The service's
+"""The routes of the use layer, as plain functions of (connection, person, path, payload): the explorer, dashboards, what an outside agent reads, and what a change
+does to the boards before and after it is confirmed (change_preview, workspace_receipt: they read; the preview writes only on a copy). The service's
 handler opens the connection, takes the write lock for the ones that write, and turns the refusals into answers. Who may call what is access.py's table."""
 from __future__ import annotations
 
@@ -6,10 +7,10 @@ from ontology_poc_generator.lang import tr, unknown_endpoint
 import re
 from urllib.parse import unquote
 
-from ontology_poc_generator import agent_access, dashboards, explorer
+from ontology_poc_generator import agent_access, change_preview, dashboards, explorer, workspace_receipt
 from ontology_poc_generator.object_types import TypeRefused
 
-PREFIXES = ('/api/workspace/explore', '/api/workspace/dashboards', '/api/workspace/agent')
+PREFIXES = ('/api/workspace/explore', '/api/workspace/dashboards', '/api/workspace/agent', '/api/workspace/impact', '/api/workspace/receipt')
 WRITES = ('/api/workspace/dashboards', '/api/workspace/dashboards/update', '/api/workspace/dashboards/delete')   # the POSTs that change what is stored
 SKILL_FILE = ('application/zip', 'ontopoc-definitions.zip')
 
@@ -43,6 +44,9 @@ def get(conn, user: dict | None, path: str, query: dict[str, list[str]]):
             return {'dashboards': dashboards.list_dashboards(conn, user), 'people': dashboards.people(conn, user), 'sign_in_note': dashboards.sign_in_note()}
         if len(parts) == 2:
             return dashboards.dashboard_detail(conn, user, _whole(parts[1], tr('看板的编号', 'The board id')))
+    elif parts[0] == 'receipt' and len(parts) == 1:
+        elements = query.get('element') or []
+        return workspace_receipt.change_receipt(conn, user, elements) if elements else workspace_receipt.summary(conn, user)
     elif parts[0] == 'agent':
         if len(parts) == 1:
             return agent_access.agent_info(conn, user)
@@ -73,6 +77,8 @@ def post(conn, user: dict | None, path: str, payload: dict):
         return dashboards.dashboard_data(conn, user, payload.get('id'), payload.get('bar'), payload.get('params'))
     if route == '/api/workspace/dashboards/preview':
         return dashboards.preview(conn, user, payload)
+    if route == '/api/workspace/impact':
+        return change_preview.impact(conn, user, payload)
     if route == '/api/workspace/agent/derived':
         return agent_access.read_derived(conn, user, payload.get('type'), payload.get('name'), payload.get('key'), payload.get('page') or 1)
     raise TypeRefused(unknown_endpoint(), 404)
