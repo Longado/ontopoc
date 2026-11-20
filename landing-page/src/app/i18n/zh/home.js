@@ -15,7 +15,7 @@ export default {
   "start.trust.title": "为什么可信",
   "start.trust.text": "每个数字都来自已确认的定义，看得到谁确认的",
   "start.refuse.title": "哪些会被拒绝",
-  "start.refuse.text": "问一句 Customer：它在等再确认，会被拒绝，并说明在等谁",
+  "start.refuse.text": "问一句 Customer：它在等再确认，会被拒绝，并说明回答在等确认",
   "start.refuse.other": "问到未确认的定义，会被拒绝并说明原因",
   "start.newTab": "（在新标签页打开）",
   "todo.quiet": "暂时没有需要你处理的事。",

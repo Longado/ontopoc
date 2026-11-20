@@ -141,7 +141,7 @@ export const PLANNED = {
 };
 
 const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
-const BUILDERS = ["confirm", "pipelines", "sources", "schedules", "agents"];   // in the sidebar of builders and admins only: a viewer has nothing to confirm, a pipeline's steps and previews quote rows (the service refuses them to a viewer), and a viewer works from confirmed definitions, not tables (the datasets page stays at its address)
+const BUILDERS = ["confirm", "pipelines", "sources", "schedules", "agents"];   // in the sidebar of builders and admins only: a viewer has nothing to confirm, and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
 const ONLY_WITH = { notices: "notices" };   // shown only when the person has one: 消息 once a notice has arrived (the top bar's bell and the address always reach it)
 // label (and a group's label and hint) are getters: the words are read when drawn, in the language chosen then
 const item = (key, icon) => ({ key, get label() { return t(`nav.${key}`); }, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key), ...(ONLY_WITH[key] ? { onlyWith: ONLY_WITH[key] } : {}) });

@@ -45,7 +45,7 @@ OntoPoc is an ontology tool for a team's own data: the team writes down what its
 | 你问 | OntoPoc 答 | 为什么 |
 |---|---|---|
 | “有效订单的总金额是多少？” | **119,810**，旁边写着按什么算的：视图“有效订单”（已付款、已发货、已送达），谁确认的，基于订单第 1 版 | 用到的定义都确认过 |
-| 问题点名了一个还没人确认的定义 | 在问模型之前就挡下，说出是哪个定义、谁能确认 | 提出不等于确认。能看到这个定义的人会得知名字和谁能确认；查看者只读已确认的定义，从没确认过的定义不会被告知名字，已确认、正在等再确认的只看到名字和在等谁 |
+| 问题点名了一个还没人确认的定义 | 在问模型之前就挡下，说出是哪个定义、谁能确认 | 提出不等于确认。能看到这个定义的人会得知名字和谁能确认；查看者只读已确认的定义，从没确认过的定义不会被告知名字，已确认、正在等再确认的只被告知回答在等确认 |
 | 上传 `orders_update.csv`（出现新代码 6，没人写过含义）之后再问同一题 | 拒答：“有效订单”需再看；看板上显示它在等谁、上次的数 | 确认之后数据变了 |
 
 演示站上，访客能看到第一种回答，和一次第三种拒答：类型 Customer 确认过一次、现在在等第二次确认，问到客户的问题会说出它在等谁。
@@ -125,7 +125,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 | `read_derived_property` | 读一个已确认的派生属性的值 |
 | `definition_standing` | 每条定义现在是不是已确认、谁确认的、在哪个数据版本上；没确认的写明原因和谁能确认。同一份也在 `GET /api/workspace/agent/standing`，可下载 CSV |
 
-它会拒绝的：用到了没确认、需再看、或这个人看不到的定义。拒答原样转给智能体，带着原因，不给猜出来的数。这 5 个工具不能上传、写定义或确认。范围是“全部”的令牌（个人在自己账号页建令牌时的默认值）如果不设 `ONTOPOC_TOOLSET=read`，还会带出早期界面的 34 个运行类工具，能在那边上传文件、建模和确认；所以要设上。先启动服务，再在仓库根目录：
+它会拒绝的：用到了没确认、需再看、或这个人看不到的定义。拒答原样转给智能体，带着原因，不给猜出来的数。这 6 个工具不能上传、写定义或确认。范围是“全部”的令牌（个人在自己账号页建令牌时的默认值）如果不设 `ONTOPOC_TOOLSET=read`，还会带出早期界面的 34 个运行类工具，能在那边上传文件、建模和确认；所以要设上。先启动服务，再在仓库根目录：
 
 ```bash
 claude mcp add ontopoc -- env ONTOPOC_TOKEN=<你的令牌> ONTOPOC_TOOLSET=read PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -203,7 +203,7 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（2026-11-20 共 2,300 个；先 pip install -e ".[check,sources]"，否则 TTL 校验等会跳过）
-npm --prefix landing-page run test:unit                       # 前端测试（2026-11-20 共 804 个）
+npm --prefix landing-page run test:unit                       # 前端测试（2026-11-20 共 820 个）
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # 真实模型对照 SQL 的检查（要模型 key；只有错数才算失败）
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录
 ```

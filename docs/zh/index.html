@@ -261,7 +261,7 @@
       <p class="label"><span>05</span> MCP / Claude</p>
       <h2 id="mcp-h"><span class="ph">通过 MCP 接入 Claude </span><span class="ph">和其他客户端。</span></h2>
       <p class="intro">外部智能体以某位同事的身份接进来：管理员在应用里发一个个人令牌（<code>ONTOPOC_TOKEN</code>），设了 <code>ONTOPOC_TOOLSET=read</code>（如下）或令牌是只读的，智能体就只拿到 6 个只读工具。和问答一样，它只按这个人看得到的已确认定义回答，其余的拒答并说明原因。工具和页面共用本机服务，所以先把服务启动起来。</p>
-      <ul class="tools" aria-label="默认开放的只读工具">
+      <ul class="tools" aria-label="用只读令牌或设了 ONTOPOC_TOOLSET=read 时，智能体拿到的只读工具">
         <li>读定义</li><li>提问</li><li>运行本体查询</li><li>列出未确认项</li><li>读派生属性</li><li>看每条定义现在是否已确认</li>
       </ul>
       <div class="code-grid">
@@ -269,7 +269,7 @@
           <h3>作为 MCP 服务接入（在仓库根目录运行）</h3>
 <pre><code>claude mcp add ontopoc -- env ONTOPOC_TOKEN=&lt;你的令牌&gt; ONTOPOC_TOOLSET=read \
   PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server</code></pre>
-          <p>Claude Code、Claude Desktop、Cursor 等支持 MCP 的客户端都能用，走本机 stdio；应用里的“AI 工具接入”页也给出 JSON（粘贴时在 env 里加上 <code>"ONTOPOC_TOOLSET": "read"</code>）。这 5 个工具不能上传、写定义或确认；范围“全部”的令牌如果不设 <code>ONTOPOC_TOOLSET=read</code>，还会带出早期界面的运行类工具。完整清单见 <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">docs/MCP.md</a>。</p>
+          <p>Claude Code、Claude Desktop、Cursor 等支持 MCP 的客户端都能用，走本机 stdio；应用里的“AI 工具接入”页也给出 JSON（粘贴时在 env 里加上 <code>"ONTOPOC_TOOLSET": "read"</code>）。这 6 个工具不能上传、写定义或确认；范围“全部”的令牌如果不设 <code>ONTOPOC_TOOLSET=read</code>，还会带出早期界面的运行类工具。完整清单见 <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">docs/MCP.md</a>。</p>
         </div>
         <div>
           <h3>Claude Code 插件</h3>

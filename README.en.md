@@ -43,7 +43,7 @@ Three outcomes, all on the bundled sample data (150 orders, status codes 0 to 5)
 | You ask | OntoPoc says | Why |
 |---|---|---|
 | "Total amount of valid orders?" | **119,810**, with the line it rests on: the view *Valid orders* (paid, shipped, delivered), who confirmed it, on orders v1 | Every definition the answer uses is confirmed |
-| A question that names a definition nobody has confirmed yet | Held back before the model is asked, naming the definition and who can confirm it | Proposed is not confirmed. A person who may see the definition gets its name and who can confirm it; a viewer, who only reads confirmed definitions, is not told the names of definitions never confirmed, and for a confirmed one waiting for another look sees only its name and whom it waits for |
+| A question that names a definition nobody has confirmed yet | Held back before the model is asked, naming the definition and who can confirm it | Proposed is not confirmed. A person who may see the definition gets its name and who can confirm it; a viewer, who only reads confirmed definitions, is not told the names of definitions never confirmed, and for a confirmed one waiting for another look is told only that the answer waits for a confirmation |
 | The same question after `orders_update.csv` arrives (new code 6, nobody gave it a meaning) | Refused: *Valid orders* needs another look; a board shows that it waits and the last number | The data changed under the confirmation |
 
 On the live demo a guest gets the first answer and one refusal of the third kind: the type Customer was confirmed once and now waits for a second look, so a question about customers names it and who it waits for.
@@ -123,7 +123,7 @@ An outside agent connects as a named person, with a personal token an admin make
 | `read_derived_property` | The value of a confirmed derived property |
 | `definition_standing` | Whether each definition is confirmed now, by whom and on which data version; for one that is not, why and who can confirm it. The same is at `GET /api/workspace/agent/standing`, with a CSV download |
 
-What it refuses: anything that rests on a definition that is not confirmed, or needs another look, or that the token's person may not see. The refusal is passed on as it is, with the reason; no guessed answer. These five tools cannot upload, write definitions or confirm. A token with the scope "all" (the default for a token a person makes on their own account page) used without `ONTOPOC_TOOLSET=read` also exposes the earlier screen's 34 run tools, which can upload files, build and confirm there; so set it. Start the service first, then, from the repository root:
+What it refuses: anything that rests on a definition that is not confirmed, or needs another look, or that the token's person may not see. The refusal is passed on as it is, with the reason; no guessed answer. These six tools cannot upload, write definitions or confirm. A token with the scope "all" (the default for a token a person makes on their own account page) used without `ONTOPOC_TOOLSET=read` also exposes the earlier screen's 34 run tools, which can upload files, build and confirm there; so set it. Start the service first, then, from the repository root:
 
 ```bash
 claude mcp add ontopoc -- env ONTOPOC_TOKEN=<your token> ONTOPOC_TOOLSET=read PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
@@ -201,7 +201,7 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,300 on 2026-11-20; install ".[check,sources]" first, or TTL and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (804 on 2026-11-20)
+npm --prefix landing-page run test:unit                       # page tests (820 on 2026-11-20)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```
