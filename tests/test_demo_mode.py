@@ -37,13 +37,13 @@ def serving(demo_on=True):
 
 
 class Browser:
-    def __init__(self, base):
-        self.base, self.jar = base, http.cookiejar.CookieJar()
+    def __init__(self, base, lang='en'):
+        self.base, self.lang, self.jar = base, lang, http.cookiejar.CookieJar()
         self.opener = build_opener(HTTPCookieProcessor(self.jar))
 
     def call(self, method, path, body=None):
         request = Request(self.base + path, method=method, data=None if body is None else json.dumps(body).encode(),
-                          headers={'Content-Type': 'application/json', 'Origin': self.base, 'Accept-Language': 'en'})
+                          headers={'Content-Type': 'application/json', 'Origin': self.base, 'Accept-Language': self.lang})
         try:
             with self.opener.open(request) as response:
                 return response.status, json.load(response)
@@ -294,7 +294,7 @@ class Seed(unittest.TestCase):
                 self.assertEqual(guest.call('GET', '/api/ontology/health')[1], {'ok': True, 'demo': True, 'demo_ask': False})
                 self.assertEqual(guest.call('POST', '/api/auth/demo', {})[0], 200)   # a guest made after the seed
                 boards = guest.call('GET', '/api/workspace/dashboards')[1]['dashboards']
-                self.assertEqual([b['name'] for b in boards], ['Orders overview'])
+                self.assertEqual([b['name'] for b in boards], ['订单概览'])
                 status, body = guest.call('POST', '/api/workspace/dashboards/data', {'id': boards[0]['id'], 'bar': {}})
                 self.assertEqual(status, 200, body)
                 by_id = {c['id']: c for c in body['components']}
@@ -339,6 +339,135 @@ class Seed(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join()
+
+
+@contextmanager
+def seeded(lang=None):
+    """A demo workspace built by the seed, served in demo mode without a model: (base address, admin password, folder)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / 'demo'
+        result = demo.seed(target) if lang is None else demo.seed(target, lang=lang)
+        server = make_server(port=0, gateway=None, output_dir=target, demo=True)
+        thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
+        thread.start()
+        try:
+            yield f'http://127.0.0.1:{server.server_port}', result['password'], target
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+
+def signed_in(base, password, name='demo-admin', lang='zh-CN'):
+    admin = Browser(base, lang)
+    assert admin.call('POST', '/api/auth/login', {'username': name, 'password': password})[0] == 200
+    return admin
+
+
+def a_guest(base, lang='zh-CN'):
+    guest = Browser(base, lang)
+    assert guest.call('POST', '/api/auth/demo', {})[0] == 200
+    return guest
+
+
+class DemoStory(unittest.TestCase):
+    """What a first-time visitor meets: Chinese names, one answer on the board, and one definition that waits for a second look, named with who it waits
+    for and nothing else."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._seeded = seeded()
+        cls.base, cls.password, cls.folder = cls._seeded.__enter__()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._seeded.__exit__(None, None, None)
+
+    def test_the_definitions_have_chinese_names_and_keep_their_english_ids_and_columns(self):
+        admin = signed_in(self.base, self.password)
+        types = {t['id']: t for t in admin.call('GET', '/api/workspace/types')[1]['types']}
+        self.assertEqual({k: t['name'] for k, t in types.items()}, {'order': '订单', 'customer': '客户'})
+        order = admin.call('GET', '/api/workspace/types/order')[1]
+        self.assertEqual([p['column'] for p in order['properties']], ['order_id', 'customer_id', 'order_date', 'amount', 'status_code'])
+        status = next(p for p in order['properties'] if p['column'] == 'status_code')
+        self.assertEqual({v['value']: v['label'] for v in status['meanings']['values']}, {'0': '新建', '1': '已付款', '2': '已发货', '3': '已送达', '4': '已取消', '5': '已退款'})
+        views = admin.call('GET', '/api/workspace/types/order/views')[1]['views']
+        self.assertEqual([v['name'] for v in views], ['有效订单'])
+        boards = admin.call('GET', '/api/workspace/dashboards')[1]['dashboards']
+        self.assertEqual([b['name'] for b in boards], ['订单概览'])
+        spec = admin.call('GET', f'/api/workspace/dashboards/{boards[0]["id"]}')[1]
+        self.assertEqual([c['title'] for c in spec['spec']['components']], ['有效订单金额', '有效订单数', '全部订单金额', '各状态的有效订单金额'])
+
+    def test_the_view_says_what_it_counts_with_all_its_conditions_together(self):
+        admin = signed_in(self.base, self.password)
+        view = admin.call('GET', '/api/workspace/types/order/views')[1]['views'][0]
+        self.assertEqual(view['caliber'], 'status_code 不是 0（新建）、4（已取消）、5（已退款）：算进 1 已付款、2 已发货、3 已送达')   # not "不是 0（新建）：算进 … 4 已取消、5 已退款"
+
+    def test_a_guest_sees_the_customer_type_waiting_and_for_whom_and_nothing_of_why(self):
+        guest = a_guest(self.base)
+        listed = {t['id']: t for t in guest.call('GET', '/api/workspace/types')[1]['types']}
+        self.assertEqual(listed['order']['state'], 'confirmed')
+        customer = listed['customer']
+        self.assertEqual((customer['name'], customer['state'], customer['waiting'], customer['waiting_for'], customer['rows'], customer['dataset']),
+                         ('客户', 'needs_look', True, ['演示管理员'], None, None))
+        reason = signed_in(self.base, self.password).call('GET', '/api/workspace/types/customer')[1]['reason']
+        self.assertTrue(reason)   # the admin reads why it waits; the guest does not
+        self.assertNotIn(reason, json.dumps(customer, ensure_ascii=False))
+
+    def test_a_guests_question_on_a_waiting_type_is_refused_before_the_model_naming_it_and_who_it_waits_for_only(self):
+        admin = signed_in(self.base, self.password)
+        detail = admin.call('GET', '/api/workspace/types/customer')[1]
+        secrets = [detail['reason'], 'C012', '不唯一', 'customers_update', '41']   # why it waits quotes the data: its keys, counts and file
+        guest = a_guest(self.base)
+        for question in ('按客户城市看有效订单金额', 'Valid order amount by customer city', 'How many customers are there?'):
+            status, body = guest.call('POST', '/api/workspace/ask', {'question': question})   # no model on this server: the refusal does not need one
+            self.assertEqual(status, 200, body)
+            self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'unsettled'), question)
+            [line] = body['refusal']['definitions']
+            self.assertEqual((line['id'], line['kind'], line['name'], line['state'], line['who_can_confirm']), ('objtype:customer', 'type', '客户', 'needs_look', ['演示管理员']))
+            self.assertLessEqual(set(line), {'id', 'kind', 'name', 'state', 'waiting', 'who_can_confirm', 'because', 'text'})
+            self.assertEqual(line.get('because', []), [])
+            said = json.dumps({k: body[k] for k in ('reason', 'refusal', 'steps', 'definitions', 'types', 'datasets')}, ensure_ascii=False)
+            for secret in secrets:
+                self.assertNotIn(secret, said, question)
+            self.assertNotRegex(said, r'\d', question)   # no count, no key, no version
+            self.assertIn('演示管理员', body['reason'])
+            again = guest.call('GET', f'/api/workspace/ask/{body["id"]}')[1]   # reopened from the history, it still says the same, and no more
+            self.assertNotIn('withheld', again)
+            self.assertEqual(again['refusal'], body['refusal'])
+
+    def test_the_board_still_answers_while_the_customer_type_waits(self):
+        guest = a_guest(self.base)
+        board = guest.call('GET', '/api/workspace/dashboards')[1]['dashboards'][0]
+        body = guest.call('POST', '/api/workspace/dashboards/data', {'id': board['id'], 'bar': {}})[1]
+        by_id = {c['id']: c for c in body['components']}
+        self.assertTrue(all(c['status'] == 'ok' for c in by_id.values()), body)
+        self.assertEqual([by_id[k]['result']['value'] for k in ('valid_amount', 'valid_count', 'all_amount')], [119810, 107, 162960])
+
+
+class DemoRefusalLimits(unittest.TestCase):
+    def test_a_type_nobody_ever_confirmed_is_not_named_to_a_guest(self):
+        with seeded() as (base, password, _):
+            admin = signed_in(base, password)
+            status, body = admin.call('POST', '/api/workspace/types', {'english_name': 'sale', 'name': '销售单', 'dataset': 'orders', 'key': ['order_id'],
+                                                                         'properties': [{'column': 'order_id'}, {'column': 'amount'}]})
+            self.assertEqual(status, 200, body)
+            guest = a_guest(base)
+            status, body = guest.call('POST', '/api/workspace/ask', {'question': '销售单一共有多少？'})
+            self.assertEqual(status, 503, body)   # on to the model (there is none here): nothing said of a type the guest may not see
+
+    def test_the_seed_in_english_keeps_the_english_names(self):
+        with seeded('en') as (base, password, _):
+            admin = signed_in(base, password)
+            self.assertEqual({t['id']: t['name'] for t in admin.call('GET', '/api/workspace/types')[1]['types']}, {'order': 'Order', 'customer': 'Customer'})
+            self.assertEqual([v['name'] for v in admin.call('GET', '/api/workspace/types/order/views')[1]['views']], ['Valid orders'])
+            guest = a_guest(base)
+            [board] = guest.call('GET', '/api/workspace/dashboards')[1]['dashboards']
+            self.assertEqual(board['name'], 'Orders overview')
+            body = guest.call('POST', '/api/workspace/dashboards/data', {'id': board['id'], 'bar': {}})[1]
+            self.assertEqual([c['result']['value'] for c in body['components'][:3]], [119810, 107, 162960])
+            customer = next(t for t in guest.call('GET', '/api/workspace/types')[1]['types'] if t['id'] == 'customer')
+            self.assertEqual((customer['waiting'], customer['waiting_for']), (True, ['Demo admin']))
 
 
 if __name__ == '__main__':
