@@ -270,6 +270,8 @@ def _rerun(conn, asker: dict | None, question_id: int, stored: dict, question: s
     now. It is never run over other rows than it read."""
     from ontology_poc_generator.ontopoc_query import QueryError
     from ontology_poc_generator.workspace_questions import QaRefused, _run_compiled, reopen, scope
+    if stored.get('status') not in ANSWERED:   # what the asker was told was no number (a check stopped it): there is nothing to hold against the team's number
+        return {'status': 'refused', 'reason': tr('这条回答当时没有算出一个数（被检查拦下或没有算出来），不能对照', 'This answer did not end in a number (a check stopped it, or it was not worked out), so it is not held against anything')}
     try:
         shown = reopen(conn, asker, question_id)
     except QaRefused as exc:
