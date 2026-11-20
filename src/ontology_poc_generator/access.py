@@ -36,6 +36,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/dashboards/data', 'viewer'),   # a board worked out for whoever opens it, over what they may see
     ('POST', r'/api/workspace/dashboards(/(update|delete|preview))?', 'builder'),
     ('GET', r'/api/workspace/agent/(definitions|unconfirmed)', 'viewer'),   # what an outside agent reads, as the token's person (agent_access)
+    ('GET', r'/api/workspace/agent/standing', 'viewer'),   # whether each definition the person may see is confirmed, by whom, on which data; ?id= one, ?format=csv the confirmed ones (agent_access.standing)
     ('GET', r'/api/workspace/agent/derived', 'viewer'),   # answered 405 with the way to ask: it is a POST now
     ('POST', r'/api/workspace/agent/derived', 'viewer'),   # a POST so that the key of the object read is not in an address a proxy logs; nothing is written
     ('GET', r'/api/workspace/agent(/skill)?', 'builder'),   # the page of what an agent can call, and the skill download

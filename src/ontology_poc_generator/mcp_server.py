@@ -6,7 +6,7 @@ server needs — initialize, ping, tools/list, tools/call — written out here r
 
 Run: PYTHONPATH=src python -m ontology_poc_generator.mcp_server   (ONTOPOC_URL defaults to http://127.0.0.1:8767;
 ONTOPOC_TOKEN is a personal token from the account page: the service then signs what this server does with the token owner's name;
-the server offers the five read tools unless ONTOPOC_TOOLSET=all, and with a token only what the token's scope allows)
+the server offers the six read tools unless ONTOPOC_TOOLSET=all, and with a token only what the token's scope allows)
 """
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ READ_INSTRUCTIONS = """本机 OntoPoc 的只读入口：团队已经确认的业
 2. 要一个数：先用 ontopoc_query 写本体查询（像 SQL），代码直接算，不调用模型。写错了错误里会说能写什么，照着改。
 3. 只有写不出查询时（问题里的说法对不上任何定义）才用 ask 问一句话：它调用模型，慢、花钱，每问一次都记进问答历史。回答里的 query_text 可以拿去 ontopoc_query 改条件再跑。
 4. 被拒绝（status 不是 answered）就把 reason 原样转告人，不要换写法、换问法绕过，也不要自己编一个答案。
-5. list_unconfirmed 看现在不是已确认的定义：不要用它们回答。read_derived_property 读一个已确认的派生属性的值；没确认就不给值。
+5. list_unconfirmed 看现在不是已确认的定义：不要用它们回答。read_derived_property 读一个已确认的派生属性的值；没确认就不给值。definition_standing 看某条定义现在是不是已确认、谁确认的、在哪个数据版本上。
 除了 ask，这些工具只是读，可以重试，结果不变（除非数据或定义变了）。"""
 
 
@@ -553,6 +553,12 @@ def list_unconfirmed(s, a):
     return s.request('/api/workspace/agent/unconfirmed')
 
 
+def definition_standing(s, a):
+    if a.get('id') is None:
+        return s.request('/api/workspace/agent/standing')
+    return s.request('/api/workspace/agent/standing?id=' + quote(_text(a.get('id'), 'id'), safe=''))
+
+
 def read_derived_property(s, a):
     body = {'type': _text(a.get('type'), 'type'), 'name': _text(a.get('name'), 'name')}   # in the body, not the address: the key of the object is data
     if a.get('key') is not None:
@@ -706,13 +712,17 @@ TOOLS = [
           {'text': {'type': 'string', 'maxLength': 4000, 'description': '一条本体查询'},
            'params': {'type': 'object', 'description': '参数名 → 值（文字或数字），对应查询里的 $名字'}}, ('text',)),
     _tool(list_unconfirmed, '现在不是“已确认”的定义（提出了还没确认、需要再看、被退回），每条有状态、原因和可以确认它的人。这些不能拿来回答问题。令牌的主人是只读的人时这里是空的。只是读，可以重试。'),
+    _tool(definition_standing, '每条定义现在的状态（实时读，不是技能包那样的快照）：是不是已确认（confirmed）、谁确认的、什么时候、在哪个数据版本上（data_versions）；'
+          '没确认的写明状态、原因和可以确认它的人。给 id（例如 objtype:order、enum:order:状态码、derived:customer:cancelled_orders）只看那一条，没有或看不到的都是“没有这条定义”。'
+          '只有令牌的主人看得到的定义；令牌的主人是只读的人时只有已确认的。没有数据行，没有全部数据的行数。只是读，可以重试。',
+          {'id': {'type': 'string', 'description': '定义的 id，例如 objtype:order；不写就是全部'}}),
     _tool(read_derived_property, '读一个已确认的派生属性（例如 客户的已取消订单数）：给 key（主键列 → 取值）就是那一个对象的值，不给就是一页对象的值。'
           '派生属性没确认或现在算不出来时不给值，错误里说它的状态和原因。只算令牌的主人看得到的行。只是读，可以重试。',
           {'type': {'type': 'string', 'description': '对象类型的英文名，来自 describe_definitions'}, 'name': {'type': 'string', 'description': '派生属性的英文名，来自 describe_definitions'},
            'key': {'type': 'object', 'description': '主键列 → 取值，例如 {"客户编号": "KH022"}；不写就给一页'}, 'page': {'type': 'integer', 'minimum': 1, 'description': '第几页，从 1 起'}},
           ('type', 'name')),
 ]
-READ_TOOLS = ('describe_definitions', 'ask', 'ontopoc_query', 'list_unconfirmed', 'read_derived_property')   # what an outside agent is given (a token and no ONTOPOC_TOOLSET, or ONTOPOC_TOOLSET=read): no uploading, no confirming, no writing
+READ_TOOLS = ('describe_definitions', 'ask', 'ontopoc_query', 'list_unconfirmed', 'read_derived_property', 'definition_standing')   # what an outside agent is given (a token and no ONTOPOC_TOOLSET, or ONTOPOC_TOOLSET=read): no uploading, no confirming, no writing
 # where each tool works, first in its description, so look-alike tools are told apart (Glama, 2026-11-17): the team's confirmed definitions, one build run (saved_as), or the service
 SCOPE_TEAM, SCOPE_RUN, SCOPE_SERVICE = '【团队已确认的定义】', '【一次建模运行 saved_as】', '【本机服务】'
 LOOK_ALIKE = {
@@ -722,6 +732,7 @@ LOOK_ALIKE = {
     'list_unconfirmed': '（早期界面的工具只在本机设了 ONTOPOC_TOOLSET=all、或用“全部”范围的令牌且没设 ONTOPOC_TOOLSET=read 时才有）某次建模运行里等确认的视图用 list_proposed_views。',
     'list_proposed_views': '团队工作区里所有没确认的定义用 list_unconfirmed。',
     'read_derived_property': '全部派生属性的清单在 describe_definitions 返回的 derived 里。',
+    'definition_standing': '定义的内容（属性、含义、算式）用 describe_definitions；只要没确认的那些和原因，用 list_unconfirmed。',
     'ask_question': '问的是团队已经确认的定义（工作区）时不用这个，用 ontopoc_query，写不出查询再用 ask。'
                     '这个会问一道新题；只看这次运行里已经问过、出过的题和答案，用 list_questions，不调模型。',
     'list_questions': '只是读已有的题和答案，不调模型；要问一道新题用 ask_question。',

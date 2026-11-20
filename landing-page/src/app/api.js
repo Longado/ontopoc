@@ -269,6 +269,8 @@ export const getAnswerCheck = (id) => request(`/api/workspace/checked/question/$
 export const getAgentInfo = () => request("/api/workspace/agent");
 /** The address that downloads the skill folder (a zip) as the signed-in person. */
 export const SKILL_HREF = "/api/workspace/agent/skill";
+/** The confirmed definitions the signed-in person may see, with who confirmed each and on which data, as a CSV (the live standing, not a snapshot). */
+export const STANDING_CSV_HREF = "/api/workspace/agent/standing?format=csv";
 export const getAgentTokens = () => request("/api/users/tokens").then((b) => b.tokens);
 export const createAgentToken = (userId, label, scope, days) => send("/api/users/tokens", { user_id: userId, label, scope, days });
 export const revokeAgentToken = (id) => send("/api/users/tokens/revoke", { id });

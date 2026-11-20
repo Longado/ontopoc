@@ -112,7 +112,7 @@ Model: `DEEPSEEK_API_KEY` goes to DeepSeek's own API. With only `OPENROUTER_API_
 
 ## For agents (MCP / Claude)
 
-An outside agent connects as a named person, with a personal token an admin makes on the AI tool access page. With `ONTOPOC_TOOLSET=read` set, as in every command below, or with a read-only token (what that page offers first), it gets only five read-only MCP tools, worked out with that person's permissions:
+An outside agent connects as a named person, with a personal token an admin makes on the AI tool access page. With `ONTOPOC_TOOLSET=read` set, as in every command below, or with a read-only token (what that page offers first), it gets only six read-only MCP tools, worked out with that person's permissions:
 
 | Tool | What it does |
 |---|---|
@@ -121,6 +121,7 @@ An outside agent connects as a named person, with a personal token an admin make
 | `ask` | Ask in one sentence when a query cannot be written; the model writes the query, code runs it |
 | `list_unconfirmed` | What cannot be used yet, and why |
 | `read_derived_property` | The value of a confirmed derived property |
+| `definition_standing` | Whether each definition is confirmed now, by whom and on which data version; for one that is not, why and who can confirm it. The same is at `GET /api/workspace/agent/standing`, with a CSV download |
 
 What it refuses: anything that rests on a definition that is not confirmed, or needs another look, or that the token's person may not see. The refusal is passed on as it is, with the reason; no guessed answer. These five tools cannot upload, write definitions or confirm. A token with the scope "all" (the default for a token a person makes on their own account page) used without `ONTOPOC_TOOLSET=read` also exposes the earlier screen's 34 run tools, which can upload files, build and confirm there; so set it. Start the service first, then, from the repository root:
 
@@ -176,7 +177,7 @@ Your metrics may already be defined in a semantic layer on a warehouse. Who sign
 
 ### What is an ontology MCP, and how do I use it here?
 
-Here, ontology MCP means an agent reading a team's confirmed ontology through MCP tools. With `ONTOPOC_TOOLSET=read` or a read-only personal token, OntoPoc's MCP server gives an agent five read-only tools (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property) for clients such as Claude Code, Claude Desktop and Cursor, over local stdio. Setup is under [For agents](#for-agents-mcp--claude); the list is in [docs/MCP.md](docs/MCP.md).
+Here, ontology MCP means an agent reading a team's confirmed ontology through MCP tools. With `ONTOPOC_TOOLSET=read` or a read-only personal token, OntoPoc's MCP server gives an agent six read-only tools (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property, see whether each definition is confirmed now) for clients such as Claude Code, Claude Desktop and Cursor, over local stdio. Setup is under [For agents](#for-agents-mcp--claude); the list is in [docs/MCP.md](docs/MCP.md).
 
 ### Who is OntoPoc for today?
 

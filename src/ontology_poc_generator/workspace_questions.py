@@ -177,10 +177,36 @@ def _causes(conn, row: dict, user: dict | None) -> list[dict]:
     return [_definition_line(conn, element_row(conn, e), user) for e in found]
 
 
+_HISSING = ('s', 'x', 'z', 'ch', 'sh')   # endings that take "es" in the plural
+
+
+def _number_forms(name: str) -> list[str]:
+    """An English name with its regular plural and, when it is itself a plural, its singular: customer/customers, category/categories, box/boxes.
+    Rules of spelling only, no word list: an irregular plural (people for person) is not found."""
+    low = name.lower()
+    if not low[-1:].isalpha():
+        return [name]
+    forms = [name]
+    if low.endswith('y') and low[-2:-1].isalpha() and low[-2] not in 'aeiou':
+        forms.append(name[:-1] + 'ies')
+    elif low.endswith(_HISSING):
+        forms.append(name + 'es')
+    else:
+        forms.append(name + 's')
+    if low.endswith('ies') and len(low) > 3:
+        forms.append(name[:-3] + 'y')
+    elif low.endswith('es') and low[:-2].endswith(_HISSING):
+        forms.append(name[:-2])
+    elif low.endswith('s') and not low.endswith('ss') and len(low) > 1:
+        forms.append(name[:-1])
+    return forms
+
+
 def _named(question: str, text: str) -> bool:
-    """Does the question say this name? Letters and digits must stand apart from other letters and digits; a name in words is a substring."""
+    """Does the question say this name? Letters and digits must stand apart from other letters and digits, and an English name is also heard in its
+    plural or singular ("customers" for the type "customer"); a name in words is a substring."""
     if text.isascii():
-        return re.search(rf'(?<![A-Za-z0-9]){re.escape(text)}(?![A-Za-z0-9])', question, re.I) is not None
+        return re.search(rf'(?<![A-Za-z0-9])(?:{"|".join(re.escape(f) for f in _number_forms(text))})(?![A-Za-z0-9])', question, re.I) is not None
     return text in question
 
 

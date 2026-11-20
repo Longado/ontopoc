@@ -114,7 +114,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 ## 给智能体用（MCP / Claude）
 
-外部智能体以某位同事的身份接进来：管理员在“AI 工具接入”页给这个人发一个令牌。设了 `ONTOPOC_TOOLSET=read`（下面的命令都设了），或者令牌是只读的（那一页默认给只读），智能体就只拿到 5 个只读的 MCP 工具，权限按这个人算：
+外部智能体以某位同事的身份接进来：管理员在“AI 工具接入”页给这个人发一个令牌。设了 `ONTOPOC_TOOLSET=read`（下面的命令都设了），或者令牌是只读的（那一页默认给只读），智能体就只拿到 6 个只读的 MCP 工具，权限按这个人算：
 
 | 工具 | 做什么 |
 |---|---|
@@ -123,6 +123,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 | `ask` | 写不出查询时用一句话问：模型写查询，代码算 |
 | `list_unconfirmed` | 还不能用的定义，以及原因 |
 | `read_derived_property` | 读一个已确认的派生属性的值 |
+| `definition_standing` | 每条定义现在是不是已确认、谁确认的、在哪个数据版本上；没确认的写明原因和谁能确认。同一份也在 `GET /api/workspace/agent/standing`，可下载 CSV |
 
 它会拒绝的：用到了没确认、需再看、或这个人看不到的定义。拒答原样转给智能体，带着原因，不给猜出来的数。这 5 个工具不能上传、写定义或确认。范围是“全部”的令牌（个人在自己账号页建令牌时的默认值）如果不设 `ONTOPOC_TOOLSET=read`，还会带出早期界面的 34 个运行类工具，能在那边上传文件、建模和确认；所以要设上。先启动服务，再在仓库根目录：
 
@@ -178,7 +179,7 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 
 ### 什么是 ontology MCP？可以怎么用？
 
-这里的 ontology MCP 指智能体通过 MCP 工具读一个团队已确认的本体。设了 `ONTOPOC_TOOLSET=read` 或用只读令牌时，OntoPoc 的 MCP 服务给智能体 5 个只读工具（读定义、提问、用本体查询直接算、列出未确认项、读派生属性），按个人令牌的权限算，供 Claude Code、Claude Desktop、Cursor 等客户端通过本机 stdio 调用。接法见[给智能体用](#给智能体用mcp--claude)，清单见 [docs/MCP.md](docs/MCP.md)。
+这里的 ontology MCP 指智能体通过 MCP 工具读一个团队已确认的本体。设了 `ONTOPOC_TOOLSET=read` 或用只读令牌时，OntoPoc 的 MCP 服务给智能体 6 个只读工具（读定义、提问、用本体查询直接算、列出未确认项、读派生属性、看每条定义现在是否已确认），按个人令牌的权限算，供 Claude Code、Claude Desktop、Cursor 等客户端通过本机 stdio 调用。接法见[给智能体用](#给智能体用mcp--claude)，清单见 [docs/MCP.md](docs/MCP.md)。
 
 ### OntoPoc 现在适合谁用？
 
