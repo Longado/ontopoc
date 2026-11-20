@@ -126,6 +126,8 @@ def cleanup(conn, now: datetime | float | None = None) -> int:
             keys = [f'user:{uid}'] + [f'token:{t}' for t in tokens]
             if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ask_budget'").fetchone():
                 conn.executemany('DELETE FROM ask_budget WHERE who = ?', [(k,) for k in keys])
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dashboard_last'").fetchone():
+                conn.execute('DELETE FROM dashboard_last WHERE reader = ?', (uid,))   # a later account can be given this id: it must not find this guest's board results
             conn.execute('DELETE FROM log WHERE user_id = ? OR element_id = ?', (uid, f'user:{uid}'))
             conn.execute('DELETE FROM demo_guest WHERE user_id = ?', (uid,))
             conn.execute('DELETE FROM user WHERE id = ?', (uid,))
@@ -200,12 +202,12 @@ def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = Fal
     try:
         if accounts.user_count(conn):
             raise SystemExit(f'{data_dir} already has accounts; seed only builds a fresh demo (use --force-fresh to start over in a demo folder)')
+        (data_dir / MARKER).write_text('made by ontopoc.demo seed\n')   # before the first account: a seed that stops after this can be started over with --force-fresh
         admin_pw, builder_pw = _password(), _password()
         accounts.create_user(conn, admin_name, admin_name, 'admin', admin_pw, 'demo-seed', must_change=False)
         accounts.create_user(conn, 'demo-builder', 'Demo builder', 'builder', builder_pw, 'demo-seed', must_change=False)
     finally:
         conn.close()
-    (data_dir / MARKER).write_text('made by ontopoc.demo seed\n')
     server = make_server(port=0, gateway=None, output_dir=data_dir)
     thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.05), daemon=True)
     thread.start()

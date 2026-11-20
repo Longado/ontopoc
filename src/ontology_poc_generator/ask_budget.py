@@ -66,3 +66,17 @@ def take(conn, user: dict | None, now: float | None = None) -> None:
                 raise DemoSpent(demo_daily_asks(), max(1, math.ceil(oldest + DAY - now)))
             counted.append((DEMO_ALL, 0, ''))
         conn.executemany('INSERT INTO ask_budget(who, at) VALUES (?, ?)', [(who, now) for who, _, _ in counted])
+
+
+def give_back(conn, user: dict | None) -> None:
+    """Takes back the one ask just counted for this person: the service had no model, so nothing was asked and nothing was saved."""
+    if user is None or user.get('id') is None:
+        return
+    keys = [f'user:{user["id"]}']
+    if user.get('token_id') is not None:
+        keys.append(f'token:{user["token_id"]}')
+    if user.get('provider') == 'demo':
+        keys.append(DEMO_ALL)
+    with transaction(conn):
+        for who in keys:
+            conn.execute('DELETE FROM ask_budget WHERE rowid = (SELECT rowid FROM ask_budget WHERE who = ? ORDER BY at DESC, rowid DESC LIMIT 1)', (who,))

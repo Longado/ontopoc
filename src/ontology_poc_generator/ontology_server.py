@@ -1595,7 +1595,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             try:
                 if not parts:
                     body = {**scope_line(conn, self.user), 'history': question_history(conn, self.user), 'model_ready': gateway is not None}
-                elif len(parts) == 1 and re.fullmatch(r'[0-9]+', parts[0]):
+                elif len(parts) == 1 and re.fullmatch(r'[0-9]{1,15}', parts[0]):   # an id sqlite can hold
                     body = reopen_question(conn, self.user, int(parts[0]))
                 else:
                     self.reply(404, {'error': lang.unknown_endpoint()})
@@ -1652,7 +1652,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             """POST /api/workspace/ask {question}: answered from the confirmed definitions this person may see, or refused with the reason (see workspace_questions.py).
             The model is asked without the lock; the answer is kept under it."""
             try:
-                payload = self.read_json()
+                payload = self.read_json(USE_BODY)
                 if payload is None:
                     return
                 if payload.get('writes', 'json') not in ASK_WRITES:   # said before the budget is spent on a question that would not be asked
@@ -1660,18 +1660,30 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn = open_workspace(output_dir / 'workspace.sqlite')
                 try:
                     ask_budget.take(conn, self.user)   # before the model is asked: a token and a person may ask so many questions an hour
-                    body = ask_workspace(conn, gateway, self.user, payload.get('question'), payload.get('writes', 'json'))
+                    try:
+                        body = ask_workspace(conn, gateway, self.user, payload.get('question'), payload.get('writes', 'json'))
+                    except QaRefused as exc:
+                        if exc.status == 503:   # the service has no model: nothing was asked or saved, so the ask is not counted
+                            ask_budget.give_back(conn, self.user)
+                        raise
                 finally:
                     conn.close()
             except QaRefused as exc:
                 self.reply(exc.status, {'error': str(exc)}, {'Retry-After': str(exc.wait)} if isinstance(exc, ask_budget.AskBudgetSpent) else None)
+                return
+            except (ValueError, UnicodeError) as exc:   # the body is not an object: read_json says so in its own words
+                self.reply(400, {'error': str(exc)})
                 return
             self.reply(200, body)
 
         def query_post(self):
             """POST /api/workspace/query {text, params?}: an OntoPoc Query run as this person, by the Q&A engine, with no model (see ontopoc_query.py).
             POST /api/workspace/query/text {query}: a structured query as OntoPoc Query text in this person's names."""
-            payload = self.read_json()
+            try:
+                payload = self.read_json(USE_BODY)
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
             if payload is None:
                 return
             conn = open_workspace(output_dir / 'workspace.sqlite')
@@ -1902,6 +1914,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.user is None:   # a stranger learns only that the service is up
                 self.reply(200, {'ok': True, **extra})
                 return
+            if self.user.get('provider') == 'demo':   # a guest is one anonymous request from a stranger: no build fingerprint for them either
+                self.reply(200, {'model_ready': gateway is not None, **extra})
+                return
             on_disk = code_fingerprint(code_dir)
             self.reply(200, {'model_ready': gateway is not None, 'running': running, 'on_disk': on_disk, 'stale': on_disk != running, **extra})
 
@@ -2090,7 +2105,11 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 self.actions_post()
                 return
             if self.path == '/api/workspace/notices/read':
-                payload = self.read_json()
+                try:
+                    payload = self.read_json(USE_BODY)
+                except (ValueError, UnicodeError) as exc:
+                    self.reply(400, {'error': str(exc)})
+                    return
                 if payload is None:
                     return
                 conn = open_workspace(output_dir / 'workspace.sqlite')
