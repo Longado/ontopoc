@@ -78,6 +78,31 @@ export function exampleQuestions(types, relations, max = 6) {
   return [...counts, ...by, ...rest].slice(0, max);
 }
 
+/** The demo workspace (demo.py seed: 订单 confirmed, 客户 confirmed once and now waiting for a second look) offers a guest three questions with three outcomes:
+ * an answer (119,810), a refusal because 客户 waits (its name and who it waits for), and another answer. null on any other workspace (the usual examples). */
+export function demoQuestions(types) {
+  const list = types ?? [];
+  if (!list.some((x) => x.id === "order" && x.state === "confirmed")) return null;
+  const waits = list.some((x) => x.id === "customer" && x.waiting);
+  return [t("home.demo.answered"), ...(waits ? [t("home.demo.waiting")] : []), t("home.demo.another")];
+}
+
+/** A guest's three start cards [{key, href, icon, external?}]: the first board, why its numbers can be trusted (the confirmed view on the demo, else the board), and
+ * what gets refused: on the demo the refused question asked for real, else the README. */
+export function startCards(boards, types) {
+  const first = boards?.dashboards?.[0];
+  const board = first ? `#/boards/${first.id}` : "#/boards";
+  const demo = demoQuestions(types);
+  const waits = demo?.includes(t("home.demo.waiting"));
+  return [
+    { key: "orders", href: board, icon: "board" },
+    { key: "trust", href: demo ? "#/types/order/views" : board, icon: "check-circle" },
+    waits
+      ? { key: "refuse", href: `#/qa?ask=${encodeURIComponent(t("home.demo.waiting"))}`, icon: "alert" }
+      : { key: "refuse", href: "https://github.com/Longado/ontopoc#readme", icon: "alert", external: true },
+  ];
+}
+
 /** Up to four number cards for the home page: each confirmed type that has rows, as {key, label, value, asOf, href}. `asOf` is "Data as of …" from the dataset the type reads. */
 export function kpiCards(types, datasets, max = 4) {
   const when = new Map((datasets ?? []).map((d) => [d.name, d.updated_at]));

@@ -5,7 +5,7 @@ import { DemoAskNote } from "./DemoAskNote.jsx";
 import { askOff } from "./demoModel.js";
 import { useDemoAsk } from "./useDemoAsk.js";
 import { canBuild, isAdmin, isGuest } from "./authModel.js";
-import { exampleQuestions, greeting, kpiCards, needsSetup, quickActions, setupSteps, tallyView, todoItems, updatedText } from "./homeModel.js";
+import { demoQuestions, exampleQuestions, greeting, kpiCards, needsSetup, quickActions, setupSteps, startCards, tallyView, todoItems, updatedText } from "./homeModel.js";
 import { formatDate, formatDateTime, t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
@@ -74,15 +74,9 @@ function Kpis({ cards }) {
   );
 }
 
-/** A guest's first row: three compact cards, two into the first board and one to the README. */
-function StartHere({ boards }) {
-  const first = boards?.dashboards?.[0];
-  const board = first ? `#/boards/${first.id}` : "#/boards";
-  const cards = [
-    { key: "orders", href: board, icon: "board" },
-    { key: "trust", href: board, icon: "check-circle" },
-    { key: "refuse", href: "https://github.com/Longado/ontopoc#readme", icon: "alert", external: true },
-  ];
+/** A guest's first row: three compact cards, to the first board, to why its numbers can be trusted, and to a question that is refused (homeModel.startCards). */
+function StartHere({ boards, types }) {
+  const cards = startCards(boards, types);
   return (
     <section aria-labelledby="start-title">
       <h2 id="start-title" className="bh-section">{t("home.start.title")}</h2>
@@ -92,7 +86,7 @@ function StartHere({ boards }) {
             <a className="bh-start-card" href={c.href} {...(c.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
               <span className="bh-start-icon" aria-hidden="true"><Icon name={c.icon} size={16} /></span>
               <span className="bh-start-title">{t(`home.start.${c.key}.title`)}{c.external && <span className="visually-hidden"> {t("home.start.newTab")}</span>}</span>
-              <span className="bh-start-text">{t(`home.start.${c.key}.text`)}</span>
+              <span className="bh-start-text">{t(c.key === "refuse" && c.external ? "home.start.refuse.other" : `home.start.${c.key}.text`)}</span>
             </a>
           </li>
         ))}
@@ -199,12 +193,12 @@ export function HomePage() {
   const setup = mayBuild && needsSetup({ datasets: d.datasets, types });
   const failedRuns = (d.pipelines ?? []).filter((p) => p.last_run?.status === "failed").length;
   const todos = todoItems({ unread: d.notices?.unread ?? 0, queue: d.queue, failedRuns, mayBuild });
-  const examples = exampleQuestions(types, d.relations ?? []);
+  const guest = isGuest(user);
+  const examples = (guest && demoQuestions(types)) || exampleQuestions(types, d.relations ?? []);
   const cards = kpiCards(types, d.datasets);
   const quick = quickActions(mayBuild);
   const today = new Date();
   const fresh = updatedText(d.datasets);
-  const guest = isGuest(user);
   const history = d.ask?.history ?? [];
   const tally = mayBuild ? tallyView(d.tally) : null;
   const showTodo = !guest || todos.length > 0;
@@ -224,7 +218,7 @@ export function HomePage() {
       </header>
       {setup && <Checklist steps={setupSteps({ datasets: d.datasets, types, users: d.users, sources: d.sources, role: user?.role, meId: user?.id ?? null, canConfirm: d.queue > 0 })} />}
       {!setup || (d.datasets ?? []).length > 0 ? <AskBox examples={examples} ready={types.some((t) => t.state === "confirmed")} /> : null}
-      {guest && !setup && <StartHere boards={d.boards} />}
+      {guest && !setup && <StartHere boards={d.boards} types={types} />}
       {!setup && cards.length > 0 && <Kpis cards={cards} />}
       {(!setup || todos.length > 0) && (showTodo || showRecent) && (
         <div className={`home-grid${showTodo && showRecent ? "" : " bh-single"}`}>
