@@ -146,3 +146,29 @@ class IncludedMeaningOnATableNotReadTests(pilot.PilotFoundation):
         self.assertEqual(answer['status'], 'answered', answer.get('reason'))
         top = max(cancelled, key=cancelled.get)
         self.assertEqual(answer['answer']['groups'][0][:2], [top, cancelled[top]])
+
+
+class UnlistedMeaningThroughADerivedPropertyTests(pilot.PilotFoundation):
+    """The meanings side of B-1 (re-review 2026-11-20, P7): a question that says a code meaning (已取消), a model that lists nothing, and a query that reads only a
+    derived property of the customers. The property picks order rows by its own conditions, so the number answers some other question (42,380 is the valid
+    amount, not the cancelled one). With no direction from the model the answer is refused, as for a view."""
+    ask = DerivedViewAnswerTests.ask
+
+    def test_a_meaning_the_question_says_and_the_model_did_not_list_is_refused_when_the_query_reads_a_derived_property(self):
+        answer = self.ask({'query': TIER_A, 'definitions_used': []}, 'A 级客户里已取消的订单金额合计是多少？')
+        self.assertEqual(answer['status'], 'definition_unmet')
+        self.assertNotIn('answer', answer)
+        self.assertIn('已取消', answer['reason'])
+        answer = self.ask({'query': query('订单金额', where=[{'field': 'tier', 'equals': 'A'}]), 'definitions_used': []}, 'A 级客户里已取消的订单金额合计是多少？',
+                          derived=(pilot.VALID_AMOUNT, ALL_AMOUNT))
+        self.assertEqual(answer['status'], 'definition_unmet')   # a property that counts every order is not "cancelled" either
+
+    def test_a_question_that_says_no_meaning_is_answered_from_the_property_as_before(self):
+        answer = self.ask({'query': query('订单金额', where=[{'field': 'tier', 'equals': 'A'}]), 'definitions_used': []}, 'A 级客户的订单金额合计是多少？',
+                          derived=(pilot.VALID_AMOUNT, ALL_AMOUNT))
+        self.assertEqual(answer['status'], 'answered', answer.get('reason'))
+
+    def test_the_meaning_listed_as_included_with_a_property_that_keeps_only_it_is_answered_as_before(self):
+        answer = self.ask({'query': query('已取消订单金额', where=[{'field': 'tier', 'equals': 'A'}]), 'definitions_used': CANCELLED}, 'A 级客户里已取消的订单金额合计是多少？',
+                          derived=(pilot.VALID_AMOUNT, CANCELLED_AMOUNT))
+        self.assertEqual(answer['status'], 'answered', answer.get('reason'))
