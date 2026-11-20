@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { meaningsSummary, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
+import { meaningsSummary, offerFirstAction, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
@@ -20,6 +20,14 @@ test("a type's tabs: properties, views, derived, objects, log; 行为 only to a 
   assert.deepEqual(typeTabs({ actions: 3 }, "props", true), ["props", "views", "derived", "objects", "log", "actions"]);
   assert.deepEqual(typeTabs({ actions: 3 }, "props", false), ["props", "views", "derived", "objects", "log"]);
   assert.deepEqual(typeTabs({ actions: 0 }, "actions", true), ["props", "views", "derived", "objects", "log", "actions"]);   // opened by its address
+});
+
+test("a builder looking at a type with no actions is offered a visible way to make the first one; a viewer, or a type that has actions, is not", () => {
+  assert.equal(offerFirstAction({ actions: 0 }, "props", true), true);
+  assert.equal(offerFirstAction({ actions: 3 }, "props", true), false);   // the 行为 tab is there
+  assert.equal(offerFirstAction({ actions: 0 }, "actions", true), false);   // already on it
+  assert.equal(offerFirstAction({}, "props", true), false);   // not known yet
+  assert.equal(offerFirstAction({ actions: 0 }, "props", false), false);
 });
 
 test("what uses a type is one line that expands: the counts, nothing for kinds nobody uses", () => {
