@@ -42,4 +42,7 @@ test("Request access uses the feedback address, else the issue page", () => {
   assert.equal(accessUrl("https://example.com/f"), "https://example.com/f");
   assert.equal(accessUrl(undefined), DEFAULT_ACCESS_URL);
   assert.equal(accessUrl("  "), DEFAULT_ACCESS_URL);
+  assert.equal(accessUrl("javascript:alert(1)"), DEFAULT_ACCESS_URL);   // only a web address is ever put in the link
+  assert.equal(accessUrl("mailto:someone@example.com"), DEFAULT_ACCESS_URL);
+  assert.equal(accessUrl(" http://intranet.example/ask "), "http://intranet.example/ask");
 });

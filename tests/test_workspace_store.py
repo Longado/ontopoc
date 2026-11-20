@@ -249,6 +249,31 @@ class WorkspaceStoreTests(unittest.TestCase):
             open_workspace(path).close()   # a rebuilt file opens again without another rebuild
 
 
+class UserIdsTests(unittest.TestCase):
+    def test_a_file_whose_user_ids_could_be_reused_is_rebuilt_and_keeps_every_account(self):
+        import tempfile
+        from ontology_poc_generator import accounts
+        with tempfile.TemporaryDirectory() as out:
+            path = Path(out) / 'workspace.sqlite'
+            conn = open_workspace(path)
+            conn.execute('DROP TABLE user')   # the table as an older build made it: no AUTOINCREMENT
+            conn.execute("CREATE TABLE user (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('viewer', 'builder', 'admin')),"
+                         " password_hash TEXT, disabled INTEGER NOT NULL DEFAULT 0, must_change INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, last_login_at TEXT, provider TEXT NOT NULL DEFAULT 'local', attrs_json TEXT)")
+            first = accounts.create_user(conn, 'ada', 'Ada', 'admin', 'correct horse battery', 'test', must_change=False)
+            last = accounts.create_user(conn, 'bob', 'Bob', 'viewer', 'correct horse battery', 'test', must_change=False)
+            token = accounts.start_session(conn, first['id'])
+            conn.close()
+            again = open_workspace(path)
+            self.addCleanup(again.close)
+            self.assertIn('AUTOINCREMENT', again.execute("SELECT sql FROM sqlite_master WHERE name = 'user'").fetchone()[0])
+            self.assertEqual([(u['id'], u['username']) for u in accounts.list_users(again)], [(first['id'], 'ada'), (last['id'], 'bob')])
+            self.assertEqual(accounts.authenticate(again, accounts.LoginLimiter(), 'ADA', 'correct horse battery', '127.0.0.1')['id'], first['id'])   # the name is still found whatever its case, the password still opens it
+            self.assertEqual(again.execute('SELECT COUNT(*) FROM session WHERE user_id = ?', (first['id'],)).fetchone()[0], 1 if token else 0)
+            again.execute('DELETE FROM user WHERE id = ?', (last['id'],))
+            self.assertGreater(accounts.create_user(again, 'cy', 'Cy', 'viewer', 'correct horse battery', 'test', must_change=False)['id'], last['id'])
+            open_workspace(path).close()   # a rebuilt file opens again without another rebuild
+
+
 class ElementStateTests(unittest.TestCase):
     def setUp(self):
         self.conn = open_workspace(':memory:')

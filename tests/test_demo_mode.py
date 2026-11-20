@@ -163,6 +163,30 @@ class GuestInput(unittest.TestCase):
             self.assertIn('running', admin.call('GET', '/api/ontology/health')[1])
 
 
+class MemberInput(unittest.TestCase):
+    def test_get_with_a_number_no_table_can_hold_is_answered_400(self):
+        with serving(False) as (base, _):
+            b = Browser(base)
+            self.assertEqual(b.call('POST', '/api/auth/login', {'username': 'root', 'password': GOOD})[0], 200)
+            big = '9' * 23
+            for path in (f'/api/workspace/assistant/turns/{big}', f'/api/workspace/groups?dataset=x&version={big}', f'/api/workspace/pipelines/x/runs/{big}'):
+                status, body = b.call('GET', path)
+                self.assertIn(status, (400, 404), path)   # answered, never a dropped connection
+                self.assertIn('error', body)
+
+
+class FeedbackAddress(unittest.TestCase):
+    def test_public_health_carries_a_configured_address_only(self):
+        with serving(True) as (base, _):
+            self.assertNotIn('feedback_url', Browser(base).call('GET', '/api/ontology/health')[1])
+            with mock.patch.dict('os.environ', {'ONTOPOC_FEEDBACK_URL': 'https://example.com/ask'}):
+                self.assertEqual(Browser(base).call('GET', '/api/ontology/health')[1], {'ok': True, 'demo': True, 'demo_ask': False, 'feedback_url': 'https://example.com/ask'})
+            with mock.patch.dict('os.environ', {'ONTOPOC_FEEDBACK_URL': 'javascript:alert(1)'}):
+                self.assertNotIn('feedback_url', Browser(base).call('GET', '/api/ontology/health')[1])
+        with serving(False) as (base, _), mock.patch.dict('os.environ', {'ONTOPOC_FEEDBACK_URL': 'https://example.com/ask'}):
+            self.assertEqual(Browser(base).call('GET', '/api/ontology/health')[1], {'ok': True, 'feedback_url': 'https://example.com/ask'})
+
+
 class AskGuard(unittest.TestCase):
     def setUp(self):
         self.conn = open_workspace(':memory:')
@@ -214,6 +238,14 @@ class Cleanup(unittest.TestCase):
             self.assertEqual(conn.execute(f'SELECT COUNT(*) FROM {table} WHERE {col} = ?', (new['id'],)).fetchone()[0], 1, table)
         self.assertEqual(conn.execute('SELECT COUNT(*) FROM ask_budget').fetchone()[0], 1)
         self.assertEqual(accounts.list_users(conn)[0]['username'], 'root')
+
+    def test_a_deleted_guests_id_is_never_given_out_again(self):
+        conn = open_workspace(':memory:')
+        accounts.create_user(conn, 'root', 'Root', 'admin', GOOD, 'test', must_change=False)
+        old = demo.create_guest(conn, '1.1.1.1')
+        conn.execute('UPDATE user SET created_at = ? WHERE id = ?', ((datetime.now(timezone.utc) - timedelta(hours=30)).isoformat(timespec='seconds'), old['id']))
+        self.assertEqual(demo.cleanup(conn, datetime.now(timezone.utc)), 1)
+        self.assertGreater(demo.create_guest(conn, '2.2.2.2')['id'], old['id'])
 
 
 class Seed(unittest.TestCase):
