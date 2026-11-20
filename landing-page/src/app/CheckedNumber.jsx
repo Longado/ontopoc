@@ -6,9 +6,9 @@ import { useLoad } from "./useLoad.js";
 import "./checked.css";
 
 /** A checked number as its reader is told: the mark (一致 / 变了 / 拒答 / 不一致), who checked it when, and for a builder the team's number, its source and what moved or why it refuses. */
-export function CheckMark({ check }) {
+export function CheckMark({ check, reasonShown = false }) {
   const t = useT();
-  const detail = checkDetail(check);
+  const detail = checkDetail(check, { reasonShown });
   return (
     <div className="ck">
       <p className="ck-head">

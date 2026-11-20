@@ -149,6 +149,7 @@ export default {
   "check.moved": "核对时 OntoPoc 算的是 {then}，现在是 {now}",
   "check.movedSince": "{head}；从那以后变了：{moved}",
   "check.refused": "现在拒答：{reason}",
+  "check.refusedAbove": "现在拒答，原因见上面的灰色说明",
   "check.differs": "OntoPoc 算的是 {now}，和团队的数不一样（核对时就不一样）",
   "check.open": "核对过",
   "check.again": "重新核对",

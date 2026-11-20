@@ -107,7 +107,7 @@ export function BoardCards({ data, check }) {
               <BasisToggle><BasisLines result={c.result} /></BasisToggle>
             </>
           )}
-          {c.check && <CheckMark check={c.check} />}
+          {c.check && <CheckMark check={c.check} reasonShown={c.status === "ok" && c.chart?.kind !== "query" && !c.result.standing.confirmed} />}
           {check && cardNumber(c) != null && <CheckForm number={cardNumber(c)} target={{ board: check.board, component: c.id }} again={Boolean(c.check)} onDone={check.onDone} />}
         </section>
       ))}

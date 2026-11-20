@@ -149,6 +149,7 @@ export default {
   "check.moved": "At the check OntoPoc computed {then}; now {now}",
   "check.movedSince": "{head}. Changed since: {moved}",
   "check.refused": "Refused now: {reason}",
+  "check.refusedAbove": "Refused now: the reason is in the grey note above",
   "check.differs": "OntoPoc computes {now}, which is not the team's number (it was not at the check either)",
   "check.open": "Mark as checked",
   "check.again": "Check again",

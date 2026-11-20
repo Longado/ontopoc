@@ -11,10 +11,11 @@ export const checkLine = (check) => [check.trusted != null ? t("boards.check.tru
 
 const movedText = (m) => (m.to == null ? t("boards.check.gone", { name: m.name }) : t("boards.check.version", { name: m.name, from: m.from, to: m.to }));
 
-/** What a builder is told beyond the mark: what OntoPoc computed then and now and which versions moved, why it refuses, or that it never matched. "" for a match and for a viewer (no numbers sent). */
-export function checkDetail(check) {
+/** What a builder is told beyond the mark: what OntoPoc computed then and now and which versions moved, why it refuses, or that it never matched. "" for a match and for a viewer (no numbers sent).
+ *  `reasonShown`: the card above already says why it is grey, so the refusal points to it instead of saying it twice. */
+export function checkDetail(check, { reasonShown = false } = {}) {
   if (check.trusted == null) return "";
-  if (check.status === "refused") return t("boards.check.refused", { reason: check.reason ?? "" });
+  if (check.status === "refused") return reasonShown ? t("boards.check.refusedAbove") : t("boards.check.refused", { reason: check.reason ?? "" });
   if (check.status === "differs") return t("boards.check.differs", { now: formatNumber(check.now) });
   if (check.status !== "moved") return "";
   const head = t("boards.check.moved", { then: formatNumber(check.then), now: formatNumber(check.now) });
