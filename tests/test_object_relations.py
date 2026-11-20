@@ -265,6 +265,87 @@ class RelationTests(SigningTestCase):
             self.assertEqual(detail['state'], 'needs_look')
             self.assertIn('1 个重复的客户键', detail['reason'])
 
+    def test_checking_a_relation_where_every_row_connects_costs_about_the_rows_not_rows_times_rows(self):
+        """3,000 orders that each name one of 3,000 customers: nothing is unmatched, so the sample of unmatched rows finds none. Looking for it must not compare
+        every order with every customer (9 million pairs). Counted in SQLite's own steps, so the bound does not depend on the machine."""
+        from ontology_poc_generator.object_relations import check_relation
+        size = 3000
+        customers = [{'客户编号': f'C{i:05d}', '客户名称': f'客户{i}'} for i in range(size)]
+        orders = [{'订单号': f'O{i:05d}', '客户编号': f'C{(i * 7) % size:05d}', '金额': str(i)} for i in range(size)]
+        with self.service() as (base, out):
+            ann = self.people(base, 'ann', 'bob')['ann']
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [table_csv('大订单.csv', orders), table_csv('大客户.csv', customers)]})
+            self.assertEqual(status, 200, body)
+            for payload in ({'english_name': 'big_order', 'name': '大订单', 'dataset': '大订单', 'key': ['订单号'], 'properties': [{'column': '金额'}]},
+                            {'english_name': 'big_customer', 'name': '大客户', 'dataset': '大客户', 'key': ['客户编号'], 'properties': [{'column': '客户名称'}]}):
+                status, body = ann.post('/api/workspace/types', payload)
+                self.assertEqual(status, 200, body)
+            content = {'english_name': 'big_order_customer', 'name': '大订单属于大客户', 'description': '', 'from': 'big_order', 'to': 'big_customer',
+                       'cardinality': 'many_to_one', 'from_column': '客户编号', 'to_column': '客户编号'}
+            conn = open_workspace(out / 'workspace.sqlite')
+            try:
+                steps = [0]
+                def tick():
+                    steps[0] += 1
+                    return 0
+                conn.set_progress_handler(tick, 1000)
+                result = check_relation(conn, content, record=False)
+                conn.set_progress_handler(None, 0)
+            finally:
+                conn.close()
+            self.assertEqual((result['numbers']['rows'], result['numbers']['matched'], result['numbers']['unmatched'], result['unmatched_rows']['rows']), (size, size, 0, []))
+            self.assertLess(steps[0] * 1000, 400 * size, f'{steps[0] * 1000} SQLite steps for {size} rows on each side')
+
+    def test_checking_a_relation_where_two_late_rows_miss_also_costs_about_the_rows(self):
+        """Fewer rows miss than the sample holds, and they are at the end of the table: the search reads every order before it stops."""
+        from ontology_poc_generator.object_relations import check_relation
+        size = 3000
+        customers = [{'客户编号': f'C{i:05d}', '客户名称': f'客户{i}'} for i in range(size)]
+        orders = [{'订单号': f'O{i:05d}', '客户编号': 'C99999' if i >= size - 2 else f'C{(i * 7) % size:05d}', '金额': str(i)} for i in range(size)]
+        with self.service() as (base, out):
+            ann = self.people(base, 'ann', 'bob')['ann']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [table_csv('大订单.csv', orders), table_csv('大客户.csv', customers)]})[0], 200)
+            for payload in ({'english_name': 'big_order', 'name': '大订单', 'dataset': '大订单', 'key': ['订单号'], 'properties': [{'column': '金额'}]},
+                            {'english_name': 'big_customer', 'name': '大客户', 'dataset': '大客户', 'key': ['客户编号'], 'properties': [{'column': '客户名称'}]}):
+                self.assertEqual(ann.post('/api/workspace/types', payload)[0], 200)
+            content = {'english_name': 'big_order_customer', 'name': '大订单属于大客户', 'description': '', 'from': 'big_order', 'to': 'big_customer',
+                       'cardinality': 'many_to_one', 'from_column': '客户编号', 'to_column': '客户编号'}
+            conn = open_workspace(out / 'workspace.sqlite')
+            try:
+                steps = [0]
+                def tick():
+                    steps[0] += 1
+                    return 0
+                conn.set_progress_handler(tick, 1000)
+                result = check_relation(conn, content, record=False)
+                conn.set_progress_handler(None, 0)
+            finally:
+                conn.close()
+            self.assertEqual((result['numbers']['unmatched'], [r[0] for r in result['unmatched_rows']['rows']]), (2, [f'O{size - 2:05d}', f'O{size - 1:05d}']))
+            self.assertLess(steps[0] * 1000, 400 * size, f'{steps[0] * 1000} SQLite steps for {size} rows on each side')
+
+    def test_the_rows_that_miss_are_still_listed_in_table_order_when_a_few_do(self):
+        from ontology_poc_generator.object_relations import check_relation
+        size = 300
+        customers = [{'客户编号': f'C{i:05d}', '客户名称': f'客户{i}'} for i in range(size)]
+        orders = [{'订单号': f'O{i:05d}', '客户编号': 'C99999' if i in (5, 250) else '' if i == 7 else f'C{i:05d}', '金额': str(i)} for i in range(size)]
+        with self.service() as (base, out):
+            ann = self.people(base, 'ann', 'bob')['ann']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [table_csv('大订单.csv', orders), table_csv('大客户.csv', customers)]})[0], 200)
+            for payload in ({'english_name': 'big_order', 'name': '大订单', 'dataset': '大订单', 'key': ['订单号'], 'properties': [{'column': '金额'}]},
+                            {'english_name': 'big_customer', 'name': '大客户', 'dataset': '大客户', 'key': ['客户编号'], 'properties': [{'column': '客户名称'}]}):
+                self.assertEqual(ann.post('/api/workspace/types', payload)[0], 200)
+            content = {'english_name': 'big_order_customer', 'name': '大订单属于大客户', 'description': '', 'from': 'big_order', 'to': 'big_customer',
+                       'cardinality': 'many_to_one', 'from_column': '客户编号', 'to_column': '客户编号'}
+            conn = open_workspace(out / 'workspace.sqlite')
+            try:
+                result = check_relation(conn, content, record=False)
+                self.assertEqual([name for (name,) in conn.execute("SELECT name FROM sqlite_temp_master WHERE type = 'table'")], [])   # nothing temporary is left behind
+            finally:
+                conn.close()
+            self.assertEqual((result['numbers']['unmatched'], result['empty']), (2, 1))
+            self.assertEqual(result['unmatched_rows'], {'columns': ['订单号', '客户编号'], 'rows': [['O00005', 'C99999'], ['O00250', 'C99999']]})
+
     def test_a_viewer_outside_the_list_sees_neither_the_type_nor_its_objects_nor_the_relation(self):
         with self.service() as (base, out):
             team = self.team(base)
