@@ -22,6 +22,17 @@ ALL_BUT = {'start': 'order', 'where': [{'field': 'status_code', 'not_equals': ['
 ALL_BUT_USED = [{'id': f'orders.status_code={label}', 'direction': 'exclude', 'basis': 'valid'} for label in ('Cancelled', 'Refunded')]
 
 
+_PER_ADDRESS = demo.GUEST_PER_ADDRESS
+
+
+def setUpModule():   # every guest here comes from 127.0.0.1: the hourly cap per address is not what these tests are about
+    demo.GUEST_PER_ADDRESS = 100
+
+
+def tearDownModule():
+    demo.GUEST_PER_ADDRESS = _PER_ADDRESS
+
+
 class Seeded:
     """A seeded demo served in demo mode with a fake model (`model.item` is what it writes), Demo builder signed in again with a known password."""
 
@@ -125,6 +136,29 @@ class ChangedViewTests(unittest.TestCase):
         self.assertEqual(len(self.demo.model.requests), asked + 1)   # on to the model: nothing said of it
         self.assertNotIn('Big orders', said(body))
 
+    def test_a_name_with_latin_letters_and_chinese_is_matched_whatever_the_case(self):
+        admin, builder = self.demo.admin(), self.demo.builder()
+        status, body = admin.call('POST', '/api/workspace/types/views', {'name': 'VIP大单', 'type': 'order', 'filters': [{'column': 'status_code', 'op': 'is', 'label': 'Delivered'}]})
+        self.assertEqual(status, 200, body)
+        view = next(v for v in builder.call('GET', '/api/workspace/types/order/views')[1]['views'] if v['name'] == 'VIP大单')
+        self.assertEqual(builder.call('POST', '/api/workspace/types/views/confirm', {'id': 'VIP大单', 'version': view['version'], 'seen': view['seen']})[0], 200)
+        view = next(v for v in admin.call('GET', '/api/workspace/types/order/views')[1]['views'] if v['name'] == 'VIP大单')
+        status, body = admin.call('POST', '/api/workspace/types/views/update', {'id': 'VIP大单', 'version': view['version'], 'type': 'order', 'filters': [{'column': 'status_code', 'op': 'is', 'label': 'Shipped'}]})
+        self.assertEqual((status, body.get('state')), (200, 'checked'), body)
+        for question in ('VIP大单的总金额？', 'vip大单的总金额？', 'Vip大单的总金额？'):
+            asked = len(self.demo.model.requests)
+            status, body = a_guest(self.demo.base).call('POST', '/api/workspace/ask', {'question': question})
+            self.assertEqual(status, 200, body)
+            self.assertEqual(len(self.demo.model.requests), asked, question)
+            self.assertEqual([(d['kind'], d['name']) for d in body['refusal']['definitions']], [('view', 'VIP大单')], question)
+
+    def test_the_board_says_the_definition_was_changed_not_that_the_data_moved(self):
+        guest = a_guest(self.demo.base)
+        board = guest.call('GET', '/api/workspace/dashboards')[1]['dashboards'][0]
+        body = guest.call('POST', '/api/workspace/dashboards/data', {'id': board['id'], 'bar': {}})[1]
+        message = next(c for c in body['components'] if c['id'] == 'valid_amount')['message']
+        self.assertTrue(message.startswith('定义改了'), message)
+
     def test_the_guests_board_says_the_view_waits_and_for_whom(self):
         guest = a_guest(self.demo.base)
         board = guest.call('GET', '/api/workspace/dashboards')[1]['dashboards'][0]
@@ -135,6 +169,29 @@ class ChangedViewTests(unittest.TestCase):
             self.assertIn('Demo builder', by_id[key]['message'])
             self.assertNotIn('没有叫', by_id[key]['message'])
         self.assertEqual((by_id['all_amount']['status'], by_id['all_amount']['result']['value']), ('ok', 162960))
+
+
+class NotTheViewersViewTests(unittest.TestCase):
+    """D9: a changed view is named to a viewer only when it would be theirs to read once confirmed: not when it reads a column kept from them, not when its type
+    is not open to them."""
+
+    def ask_after(self, change):
+        with Seeded() as demo:
+            admin = demo.admin()
+            change_the_view(admin)
+            ids = {u['username']: u['id'] for u in admin.call('GET', '/api/users')[1]['users']}
+            change(admin, ids)
+            status, body = a_guest(demo.base, 'en').call('POST', '/api/workspace/ask', {'question': 'What is the total amount of valid orders?'})
+            self.assertEqual(status, 200, body)
+            return body
+
+    def test_a_view_that_reads_a_column_kept_from_the_viewer_is_not_named(self):
+        body = self.ask_after(lambda admin, ids: self.assertEqual(admin.call('POST', '/api/workspace/column-access', {'type': 'order', 'column': 'status_code', 'visible_to': [ids['demo-builder']]})[0], 200))
+        self.assertNotIn('Valid orders', said(body))
+
+    def test_a_view_whose_type_is_not_open_to_the_viewer_is_not_named(self):
+        body = self.ask_after(lambda admin, ids: self.assertEqual(admin.call('POST', '/api/workspace/permissions', {'type': 'order', 'visible_to': [ids['demo-builder']]})[0], 200))
+        self.assertNotIn('Valid orders', said(body))
 
 
 class UploadedOrdersTests(unittest.TestCase):
@@ -183,6 +240,29 @@ class FailingKeyTests(unittest.TestCase):
         status, body = builder.call('POST', '/api/workspace/types/confirm', {'id': 'customer', 'version': shown['version'], 'seen': shown['seen']})
         self.assertEqual(status, 409, body)   # the confirm path refuses it too
         self.assertIn('C012', body['error'] if 'error' in body else json.dumps(body, ensure_ascii=False))
+
+    def test_the_upload_group_does_not_plan_a_type_whose_checks_fail_or_what_stands_on_it(self):
+        builder = self.demo.builder()
+        status, group = builder.call('GET', '/api/workspace/queue/group?dataset=customers&version=2')
+        self.assertEqual(status, 200, group)
+        by = {i['element']: i for i in group['items']}
+        customer, relation = by['objtype:customer'], by['relation:order_customer']
+        self.assertFalse(customer['ready'], customer)
+        self.assertIn('C012', customer['why_not'])   # why: the check it fails, as confirming would say
+        self.assertFalse(relation['ready'], relation)
+        self.assertIn('Customer', relation['why_not'])   # it waits on Customer
+        items = [{'element': i['element'], 'version': i['version'], 'seen': i['seen']} for i in group['items']]
+        status, body = builder.call('POST', '/api/workspace/queue/confirm-group', {'dataset': 'customers', 'version': 2, 'items': items})
+        self.assertEqual(status, 409, body)
+        self.assertNotIn('你也能确认', body.get('error', ''))   # nothing here is the builder's to confirm now, and it does not say otherwise
+
+    def test_reading_whether_a_type_can_be_confirmed_writes_no_check(self):
+        count = lambda: sqlite3.connect(self.demo.folder / 'workspace.sqlite').execute('SELECT COUNT(*) FROM check_result').fetchone()[0]
+        before = count()
+        builder = self.demo.builder()
+        for path in ('/api/workspace/queue', '/api/workspace/queue?count=1', '/api/workspace/types', '/api/workspace/types/customer'):
+            self.assertEqual(builder.call('GET', path)[0], 200, path)
+        self.assertEqual(count(), before)   # a page read keeps no check result
 
 
 if __name__ == '__main__':

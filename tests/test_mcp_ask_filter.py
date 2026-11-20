@@ -22,6 +22,12 @@ class AskFilterNoteTests(unittest.TestCase):
         self.assertIn('模型', got['filter_note'])
         self.assertIn('不是已确认的视图', got['filter_note'])
 
+    def test_a_filter_on_no_code_column_is_not_said_to_read_code_meanings(self):
+        body = {**ANSWER, 'definitions': [{'id': 'objtype:customer', 'kind': 'type', 'name': 'Customer', 'state': 'confirmed'}], 'query_text': "SELECT count(c) FROM (c:Customer)\nWHERE c.tier = 'A'"}
+        got = mcp_server.ask(Session(body), {'question': 'A 级客户有几个？'})
+        self.assertIn('模型写的', got['filter_note'])
+        self.assertNotIn('代码含义', got['filter_note'])
+
     def test_no_filter_or_no_answer_has_no_note(self):
         self.assertNotIn('filter_note', mcp_server.ask(Session({**ANSWER, 'query_text': 'SELECT count(o) FROM (o:`Order`)'}), {'question': '一共有多少订单？'}))
         self.assertNotIn('filter_note', mcp_server.ask(Session({'status': 'refused', 'reason': 'x', 'query_text': "SELECT count(o) FROM (o:`Order`) WHERE o.status_code = 'Paid'"}), {'question': 'x'}))
