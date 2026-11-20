@@ -8,12 +8,12 @@ import { timeText, typeLabel } from "./format.js";
 import { ageText } from "./graphModel.js";
 import { t } from "./i18n/index.js";
 import { waitingText } from "./relationModel.js";
-import { TYPE_TABS, TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
+import { TYPE_TAB_LABEL, hrefFor } from "./routeModel.js";
 import { statusOf } from "./statusModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { confirmersText, joinList, limitedNote, logText, meaningsSummary, reconfirmText, stateLine, tabCounts, typeSub, usesSummary } from "./typeModel.js";
+import { confirmersText, joinList, limitedNote, logText, meaningsSummary, reconfirmText, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { PageHeader } from "./ui/PageHeader.jsx";
 
@@ -263,7 +263,7 @@ export function TypePage({ route }) {
             <Uses id={id} uses={uses.data} />
           </div>
           <nav className="tabs" aria-label={t("types.page.tabsAria")}>
-            {TYPE_TABS.filter((k) => k !== "actions" || mayBuild).map((k) => (
+            {typeTabs(counts, tab, mayBuild).map((k) => (
               <a key={k} href={hrefFor({ page: "type", id, tab: k })} aria-current={k === tab ? "page" : undefined} className={k === tab ? "active" : ""}>
                 {TYPE_TAB_LABEL[k]}{counts[k] != null && <span className="tab-count">{counts[k]}</span>}
               </a>

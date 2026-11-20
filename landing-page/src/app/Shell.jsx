@@ -62,9 +62,9 @@ function useQueueCount(route) {
   return count;
 }
 
-/** How many of this person's notices are unread; read again whenever the page changes. */
+/** {unread, any}: how many of this person's notices are unread, and whether they have any at all; read again whenever the page changes. */
 function useNoticeCount(route) {
-  const [count, setCount] = useState(0);
+  const [count, setCount] = useState({ unread: 0, any: false });
   const [round, setRound] = useState(0);
   useEffect(() => {
     const again = () => setRound((n) => n + 1);
@@ -73,7 +73,7 @@ function useNoticeCount(route) {
   }, []);
   useEffect(() => {
     let live = true;
-    getNotices().then((b) => live && setCount(b.unread), () => live && setCount(0));
+    getNotices().then((b) => live && setCount({ unread: b.unread, any: (b.notices ?? []).length > 0 }), () => live && setCount({ unread: 0, any: false }));
     return () => {
       live = false;
     };
@@ -178,7 +178,7 @@ function TopBar({ onMenu, menuOpen, onSearch, count, unread }) {
   );
 }
 
-function Navigation({ active, open, onPick, count, unread = 0, collapsed, onCollapse }) {
+function Navigation({ active, open, onPick, count, unread = 0, anyNotice = false, collapsed, onCollapse }) {
   const { user } = useAuth();
   const [closed, setClosed] = useState(() => store.read("ontopoc.nav.closed", {}));
   const toggle = (key) => {
@@ -188,7 +188,7 @@ function Navigation({ active, open, onPick, count, unread = 0, collapsed, onColl
   };
   return (
     <nav className={`nav${open ? " open" : ""}${collapsed ? " icons" : ""}`} aria-label={t("shell.nav.aria")}>
-      {navFor(user).map((group) => {
+      {navFor(user, { notices: anyNotice || active === "notices" }).map((group) => {
         const holdsActive = group.items.some((i) => i.key === active);
         const folded = group.label && closed[group.key] && !holdsActive && !collapsed;
         return (
@@ -294,7 +294,7 @@ export function Shell() {
   const [palette, setPalette] = useState(false);
   const [recents, setRecents] = useState(() => store.read("ontopoc.recent", []));
   const queueCount = useQueueCount(route);
-  const unread = useNoticeCount(route);
+  const { unread, any: anyNotice } = useNoticeCount(route);
   useEffect(() => {
     const onChange = () => {
       setRoute(parseRoute(window.location.hash));
@@ -342,7 +342,7 @@ export function Shell() {
       <GuestBanner />
       <div className="shell">
         <aside className={`side${menu ? " open" : ""}`}>
-          <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} unread={unread} collapsed={collapsed} onCollapse={collapse} />
+          <Navigation active={navKeyOf(route)} open={menu} onPick={() => setMenu(false)} count={queueCount} unread={unread} anyNotice={anyNotice} collapsed={collapsed} onCollapse={collapse} />
         </aside>
         {menu && <div className="side-dim" onClick={() => setMenu(false)} />}
         {!VIEWS[route.page] ? <NotFound /> : mayOpen(route.page, user) ? VIEWS[route.page](route) : <Forbidden />}

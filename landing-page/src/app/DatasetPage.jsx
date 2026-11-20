@@ -3,7 +3,7 @@ import { csvHref, getDataset, getTypes } from "./api.js";
 import { DeleteDialog } from "./DeleteDialog.jsx";
 import { originLink, readerLinks } from "./datasetModel.js";
 import { PageHeader } from "./ui/PageHeader.jsx";
-import { isNumeric, keyText, percentText, timeText, typeLabel } from "./format.js";
+import { isNumeric, keyText, multiCheckText, percentText, timeText, typeLabel } from "./format.js";
 import { t, useT } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
 import { TABS, TAB_LABEL, hrefFor } from "./routeModel.js";
@@ -41,7 +41,7 @@ function Fields({ page }) {
             <li key={c.id} className={c.status === "failed" ? "bad" : ""}>
               {t("data.fields.multi", {
                 columns: c.columns.join(" + "),
-                result: c.status === "passed" ? t("data.fields.multiOk") : t("data.fields.multiBad", { dup: c.violations, blank: c.null_key_rows }),
+                result: multiCheckText(c),
                 checked: c.rows_checked,
               })}
             </li>

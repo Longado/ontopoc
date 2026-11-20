@@ -5,7 +5,7 @@ import { DemoAskNote } from "./DemoAskNote.jsx";
 import { askOff } from "./demoModel.js";
 import { useDemoAsk } from "./useDemoAsk.js";
 import { canBuild, isAdmin, isGuest } from "./authModel.js";
-import { demoQuestions, exampleQuestions, greeting, kpiCards, needsSetup, quickActions, setupSteps, startCards, tallyView, todoItems, updatedText } from "./homeModel.js";
+import { demoQuestions, exampleQuestions, gateStatus, greeting, kpiCards, needsSetup, quickActions, setupSteps, startCards, tallyView, todoItems, updatedText } from "./homeModel.js";
 import { formatDate, formatDateTime, t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
@@ -120,6 +120,18 @@ function AskBox({ examples, ready }) {
   );
 }
 
+const GATE_TONE = { confirmed: "bh-chip-ok", look: "bh-chip-grey", queue: "bh-chip-blue" };
+
+/** For builders and admins, under the greeting: how many object types and relations are confirmed, how many need another look, and what waits for them. */
+function GateLine({ items }) {
+  return (
+    <nav className="gate-line" aria-label={t("home.gate.aria")}>
+      <span className="muted">{t("home.gate.lead")}</span>
+      {items.map((x) => <a key={x.key} className={`bh-chip ${x.count ? GATE_TONE[x.key] : ""}`} href={x.href}>{x.text}</a>)}
+    </nav>
+  );
+}
+
 function Todo({ items }) {
   return (
     <section className="card" aria-labelledby="todo-title">
@@ -201,6 +213,7 @@ export function HomePage() {
   const fresh = updatedText(d.datasets);
   const history = d.ask?.history ?? [];
   const tally = mayBuild ? tallyView(d.tally) : null;
+  const gate = gateStatus({ types, relations: d.relations, queue: d.queue, mayBuild });
   const showTodo = !guest || todos.length > 0;
   const showRecent = !guest || history.length > 0;
   return (
@@ -209,6 +222,7 @@ export function HomePage() {
         <div>
           <h1 tabIndex={-1}>{greeting(today, user?.display_name ?? "")}</h1>
           <p className="muted bh-date">{formatDate(today, { weekday: "long", month: "long", day: "numeric" })}{fresh && ` · ${fresh}`}</p>
+          {gate && <GateLine items={gate} />}
         </div>
         {quick.length > 0 && (
           <nav className="quick" aria-label={t("home.quick.aria")}>

@@ -125,6 +125,20 @@ export function updatedText(datasets) {
   return times.length ? t("home.updated", { time: formatDateTime(times[times.length - 1]) }) : "";
 }
 
+/** The gate in one line for a builder or admin: object types and relations confirmed, those that need another look, and what waits for this person to confirm
+ * (the queue count). [{key, count, text, href}]; null for a viewer (they are not told about definitions they cannot read, D9) and before anything is defined.
+ * Read from the lists the home page already loads; the checked numbers of WP-A join it once that lands. */
+export function gateStatus({ types, relations, queue = 0, mayBuild = false }) {
+  const all = [...(types ?? []), ...(relations ?? [])];
+  if (!mayBuild || !all.length) return null;
+  const count = (state) => all.filter((x) => x.state === state).length;
+  return [
+    { key: "confirmed", count: count("confirmed"), href: "#/types" },
+    { key: "look", count: count("needs_look"), href: "#/types" },
+    { key: "queue", count: queue, href: "#/confirm" },
+  ].map((x) => ({ ...x, text: t(`home.gate.${x.key}`, { count: x.count }) }));
+}
+
 /** What waits for this person, most urgent first: [{key, count, text, href}]. Only builders see the confirm queue and failed runs. */
 export function todoItems({ unread = 0, queue = 0, failedRuns = 0, mayBuild = false }) {
   const items = [];
