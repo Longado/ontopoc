@@ -36,6 +36,7 @@ it checks the executed query against what the model said:
              it keeps). Every derived property the query reads on that table must match: one that counts more rows is refused like a query that reads them.
              It must also reach every row of that table exactly once along its path (by the relations' checks: no key that names nothing, none that repeats),
              or its sum is not the rows' total; and no view confirmed with its conditions may be waiting to be confirmed again (it is being redefined)
+             Its own calculation and the query's measure must add up to the rows: a per-object sum or count, read only as the measure with op sum
   understood how the model's word was carried out ("读视图 有效订单", "状态码 = 2"), returned for the page to say beside the answer
 
   upstream_problems  a filter found nothing, but the table it filtered was damaged before the question was asked and the damaged
@@ -177,14 +178,16 @@ def _left_in(uses: list, field: str, labels: dict[str, str], held: set[str] | No
 
 
 def _read_derived(query: dict, types: dict, uses: list, derived: dict | None) -> dict:
-    """{field: the confirmed derived property} for each one the query reads: in a filter, a share, a dimension or its measure."""
+    """{field: the confirmed derived property, with `summed`: the query reads it only as its measure, added up} for each one the query reads: in a filter, a
+    share, a dimension or its measure."""
     if not derived:
         return {}
     start = types.get(query.get('start'))
     measure = query.get('measure') if isinstance(query.get('measure'), dict) else {}
     named = measure.get('field') if isinstance(measure.get('field'), str) else measure.get('derived') if isinstance(measure.get('derived'), str) else None
-    fields = {f for f, _, _ in uses if f} | ({_resolve_field(start, named)} if start and named else set())
-    return {f: d for f, d in derived.items() if f in fields}
+    measured = _resolve_field(start, named) if start and named else None
+    elsewhere = {f for f, _, _ in uses if f}
+    return {f: {**d, 'summed': f == measured and f not in elsewhere and measure.get('op') == 'sum'} for f, d in derived.items() if f in elsewhere or f == measured}   # summed: read only as the measure, added up
 
 
 def _same_rows(read: dict, source: str, conditions: set) -> dict | None:
@@ -192,9 +195,15 @@ def _same_rows(read: dict, source: str, conditions: set) -> dict | None:
     that counts rows of that table has them, no more and no fewer, so no row the conditions leave out is in its values. None when it reads none, or one that
     differs (it would bring rows in that the conditions keep out, or leave out rows they keep)."""
     about = [d for d in read.values() if d['source'] == source]
-    if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions and d.get('exact') and not d.get('waiting') for d in about):
+    if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions and _adds_up(d) and d.get('exact') and not d.get('waiting') for d in about):
         return about[0]
     return None
+
+
+def _adds_up(d: dict) -> bool:
+    """Whether the property's values, as the query uses them, add up to its rows: a per-object sum or count, added up by the query's measure. An average, an
+    extreme, a distinct count, a formula, or a measure that averages them, is not the rows' total."""
+    return d.get('fn') in ('sum', 'count') and bool(d.get('summed'))
 
 
 def _not_through(read: dict, source: str, conditions: set) -> str:
@@ -203,6 +212,9 @@ def _not_through(read: dict, source: str, conditions: set) -> str:
     for d in read.values():
         if d['source'] != source or {(c['column'], c['op'], c['label']) for c in d['conditions']} != conditions:
             continue
+        if not _adds_up(d):
+            return tr(f'（派生属性 {d["name"]} 每个对象的值是按「{d.get("fn") or "算式"}」算的，这条查询{"把它加起来" if d.get("summed") else "不是只把它加起来"}，得到的不是这些行的合计）',
+                      f' (the derived property {d["name"]} is worked out per object by "{d.get("fn") or "a formula"}", and the query {"adds it up" if d.get("summed") else "does not just add it up"}, which is not the total of the rows)')
         if d.get('waiting'):
             names = tr('、', ', ').join(d['waiting'])
             return tr(f'（派生属性 {d["name"]} 的条件和视图「{names}」确认时一样，但这个视图改了，还在等确认，现在不能拿派生属性代替它）',

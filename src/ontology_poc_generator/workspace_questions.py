@@ -323,7 +323,7 @@ def _inputs(conn, sc: dict) -> dict:
         extra[content['type']] = [*extra.get(content['type'], []), {'source': source, 'path': content['name']}]
         derived_attrs[f'{source}.{content["name"]}'] = {'element': element_id, 'type': result['output_type'], 'says': describe_derived(conn, content), 'name': content['name'],
                                                         'source': alias[sc['types'][content['types'][-1]]['dataset']['name']], 'conditions': content['conditions']}   # the table its rows are counted from, and by which conditions (answer_checks)
-        derived_attrs[f'{source}.{content["name"]}'].update(exact=_each_row_once(conn, sc, content), waiting=_waiting_views(conn, sc, content))   # whether it can stand for a view's rows (answer_checks)
+        derived_attrs[f'{source}.{content["name"]}'].update(exact=_each_row_once(conn, sc, content), waiting=_waiting_views(conn, sc, content), fn=content['fn'])   # whether it can stand for a view's rows (answer_checks)
     object_types = [{'key': k, 'label': t['content']['name'], 'populated_from': [{'source': alias[t['dataset']['name']], 'identity': {c: c for c in t['content']['key']}}],
                      'attributes': [*({'source': alias[t['dataset']['name']], 'path': p['column']} for p in t['content']['properties']), *extra.get(k, [])]} for k, t in sc['types'].items()]
     relations, unusable = [], []
