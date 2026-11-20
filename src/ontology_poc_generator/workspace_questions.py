@@ -323,6 +323,7 @@ def _inputs(conn, sc: dict) -> dict:
         extra[content['type']] = [*extra.get(content['type'], []), {'source': source, 'path': content['name']}]
         derived_attrs[f'{source}.{content["name"]}'] = {'element': element_id, 'type': result['output_type'], 'says': describe_derived(conn, content), 'name': content['name'],
                                                         'source': alias[sc['types'][content['types'][-1]]['dataset']['name']], 'conditions': content['conditions']}   # the table its rows are counted from, and by which conditions (answer_checks)
+        derived_attrs[f'{source}.{content["name"]}'].update(exact=_each_row_once(conn, sc, content), waiting=_waiting_views(conn, sc, content))   # whether it can stand for a view's rows (answer_checks)
     object_types = [{'key': k, 'label': t['content']['name'], 'populated_from': [{'source': alias[t['dataset']['name']], 'identity': {c: c for c in t['content']['key']}}],
                      'attributes': [*({'source': alias[t['dataset']['name']], 'path': p['column']} for p in t['content']['properties']), *extra.get(k, [])]} for k, t in sc['types'].items()]
     relations, unusable = [], []
@@ -339,6 +340,46 @@ def _inputs(conn, sc: dict) -> dict:
     meanings = {f'{alias[sc["types"][k]["dataset"]["name"]]}.{column}': {'labels': m['labels']} for k, cols in sc['meanings'].items() for column, m in cols.items()}
     return {'ontology': {'object_types': object_types, 'relations': relations, 'ignored_fields': [], 'open_questions': []}, 'alias': alias, 'unusable': unusable, 'derived': derived_attrs,
             'bundle': {'decision': '', 'sources': sources, 'meanings': meanings}, 'views': _engine_views(conn, sc, alias, sources)}
+
+
+def _each_row_once(conn, sc: dict, content: dict) -> bool:
+    """Whether every row of the type a derived statistic counts reaches exactly one object of its own type, by the relations' checks now (over the rows this
+    person may read): each hop goes from the one side to the many side, every row of the many side is matched (no empty or missing key) and the one side's key
+    does not repeat. Only then do its values, added up over the objects, add up to the rows themselves; a row whose key names nothing would be dropped, a key
+    that repeats would count a row twice, and a hop toward the one side (or a many-to-many one) repeats what it reaches."""
+    if content['kind'] != 'statistic':
+        return False
+    here = content['type']
+    for key in content['path']:
+        relation = sc['relations'].get(key)
+        if relation is None:
+            return False
+        c = relation['content']
+        many = {'many_to_one': 'from', 'one_to_many': 'to'}.get(c['cardinality'])
+        if many is None or c['from'] == c['to'] or c[many] == here:
+            return False
+        result = check_relation(conn, c, record=False, user=sc['user'], examples=False)
+        n = result.get('numbers')
+        if result['problems'] or not n or n['matched'] != n['rows'] or n['fan_keys'] or n['extra_rows']:
+            return False
+        here = c[many]
+    return True
+
+
+def _waiting_views(conn, sc: dict, content: dict) -> list[str]:
+    """The views this person may see on the type a derived statistic counts that were confirmed with exactly its conditions and now wait for another look or for
+    confirming (changed since): while one of them is being redefined, the property's older conditions do not stand for it."""
+    if content['kind'] != 'statistic':
+        return []
+    mine = {(c['column'], c['op'], c['label']) for c in content['conditions']}
+    out = []
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' AND state != 'confirmed' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        last = conn.execute('SELECT content_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+        was = json.loads(last[0]) if last else None
+        if was and was['type'] == content['types'][-1] and not was.get('latest') and {(f['column'], f['op'], f['label']) for f in was['filters']} == mine and view_visible(conn, row, sc['user']):
+            out.append(was['name'])
+    return out
 
 
 def _readable_rows(conn, sc: dict, name: str, dataset: dict) -> list[tuple[int, dict]]:
