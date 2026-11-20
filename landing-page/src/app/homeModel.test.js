@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { exampleQuestions, kpiCards, greeting, needsSetup, setupSteps, tallyView, todoItems, updatedText } from "./homeModel.js";
-import { setLocale } from "./i18n/index.js";
+import { demoQuestions, exampleQuestions, kpiCards, greeting, needsSetup, setupSteps, startCards, tallyView, todoItems, updatedText } from "./homeModel.js";
+import { setLocale, t } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
@@ -134,4 +134,33 @@ test("the question tally: the last 7 days by outcome with the answered share, th
   // a quiet week after a busy one still shows, with no share to work out
   const quiet = tallyView({ last_7_days: zero, previous_7_days: { asked: 4, answered: 4, refused: 0, unanswered: 0 }, held_back: [] });
   assert.deepEqual([quiet.figures[0].value, quiet.figures[1].note, quiet.held], ["0", "", []]);
+});
+
+// the demo workspace as a guest's type list shows it: 订单 confirmed, 客户 waiting for a second look (name and who only)
+const DEMO = [T("order", "订单"), { id: "customer", name: "客户", state: "needs_look", waiting: true, waiting_for: ["演示管理员"] }];
+
+test("a guest on the demo is offered three questions with three outcomes: an answer, a refusal for the type that waits, another answer", () => {
+  assert.deepEqual(demoQuestions(DEMO), ["有效订单的总金额是多少？", "按客户城市看有效订单金额", "已送达的订单有几笔？"]);
+  assert.deepEqual(demoQuestions([T("order", "订单"), T("customer", "客户")]), ["有效订单的总金额是多少？", "已送达的订单有几笔？"]);   // nothing waits: no refusal to show
+  assert.equal(demoQuestions([T("ticket", "工单")]), null);   // not the demo's workspace: the usual examples
+  assert.equal(demoQuestions([]), null);
+  setLocale("en");
+  try {
+    assert.deepEqual(demoQuestions(DEMO), ["What is the total amount of valid orders?", "Valid order amount by customer city", "How many orders were delivered?"]);
+  } finally {
+    setLocale("zh");
+  }
+});
+
+test("a guest's start cards: the board, why it can be trusted (the confirmed view), and the refusal asked for real, not a page elsewhere", () => {
+  const cards = startCards({ dashboards: [{ id: 7 }] }, DEMO);
+  assert.deepEqual(cards.map((c) => c.key), ["orders", "trust", "refuse"]);
+  assert.equal(cards[0].href, "#/boards/7");
+  assert.equal(cards[1].href, "#/types/order/views");
+  assert.equal(cards[2].href, `#/qa?ask=${encodeURIComponent("按客户城市看有效订单金额")}`);
+  assert.ok(cards.every((c) => !c.external && !c.href.startsWith("http")));
+  assert.match(t("home.start.refuse.text"), /客户/);
+  const plain = startCards(null, [T("ticket", "工单")]);   // not the demo's workspace: the boards list and the README as before
+  assert.equal(plain[0].href, "#/boards");
+  assert.equal(plain[2].external, true);
 });
