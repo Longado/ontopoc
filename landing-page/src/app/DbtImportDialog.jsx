@@ -61,6 +61,7 @@ export function DbtImportDialog({ onClose, onDone }) {
                 <ul className="results">
                   {s.items.map((item, i) => <li key={i}>{item.href && result.applied ? <a href={item.href} onClick={close}>{item.text}</a> : item.text}</li>)}
                 </ul>
+                {s.note && <p className="muted small">{s.note}</p>}
                 {s.more && <p className="muted small">{s.more}</p>}
               </section>
             ))}

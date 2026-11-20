@@ -214,6 +214,8 @@ export default {
   "dbt.more_one": "还有 {count} 项没列出",
   "dbt.more_other": "还有 {count} 项没列出",
   "dbt.stopped": "出错停下了。之前提出了 {what}；后面的没有做。",
+  "dbt.stoppedPreview": "出错停下了。出错之前本会提出 {what}；什么都没有写入。",
+  "dbt.failedNote": "“跳过”是检查不让某一项通过，导入接着做；“出错”是遇到意外错误，导入在那里停下。",
   "dbt.nothing": "0 项",
   "dbt.section.failed": "出错的，和原因",
   "dbt.section.notAttempted": "导入停下了，没有做的",

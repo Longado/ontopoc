@@ -46,7 +46,7 @@ export function importSummary(result) {
   const types = result.types.filter((x) => x.status === "new").length;
   const relations = fresh - types;
   const what = [types && t("types.dbt.types", { count: types }), relations && t("types.dbt.relations", { count: relations })].filter(Boolean).join(t("types.dbt.and"));
-  const headline = result.stopped ? t("types.dbt.stopped", { what: what || t("types.dbt.nothing") })
+  const headline = result.stopped ? t(result.applied ? "types.dbt.stopped" : "types.dbt.stoppedPreview", { what: what || t("types.dbt.nothing") })   // a preview wrote nothing, whatever it got through
     : !fresh ? t("types.dbt.nothingNew", { count: already })
     : result.applied ? t("types.dbt.proposed", { what }) : t("types.dbt.wouldPropose", { what });
   return { fresh, already, canApply: !result.applied && !result.stopped && fresh > 0, headline };   // a preview that stopped on an error is not applied as it is
@@ -63,6 +63,6 @@ export function importSections(result) {
     { id: "unmatched", key: "unmatched_models", items: result.unmatched_models.map((m) => ({ text: m })) },
     { id: "skipped", key: "skipped", items: result.skipped.map((s) => ({ text: s.model ? `${s.model}${t("types.comma")}${s.what}${t("types.colon")} ${s.reason}` : `${s.what}${t("types.colon")} ${s.reason}` })) },
     { id: "leftOut", key: "left_out", items: result.left_out.map((s) => ({ text: `${s.what}${t("types.colon")} ${s.reason}` })) },
-  ].map(({ key, ...s }) => ({ ...s, more: result.more?.[key] ? t("types.dbt.more", { count: result.more[key] }) : undefined }));   // the service lists at most 200 of each and counts the rest
+  ].map(({ key, ...s }) => ({ ...s, more: result.more?.[key] ? t("types.dbt.more", { count: result.more[key] }) : undefined, note: s.id === "failed" ? t("types.dbt.failedNote") : undefined }));   // the service lists at most 200 of each and counts the rest
   return sections.filter((s) => s.items.length).map((s) => ({ ...s, title: t(`types.dbt.section.${s.id}`) }));
 }
