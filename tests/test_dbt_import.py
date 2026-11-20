@@ -6,7 +6,7 @@ import sqlite3
 import unittest
 from unittest import mock
 
-from ontology_poc_generator import dbt_import
+from ontology_poc_generator import dbt_import, object_relations
 from tests.test_object_relations import table_csv
 from tests.test_two_person import SigningTestCase
 
@@ -319,6 +319,83 @@ class DbtImportTests(SigningTestCase):
             self.assertEqual(status, 200, body)
             self.assertEqual(body['relations'], [])
             self.assertTrue(any('customer_id' in s['what'] and 'orders_customer_id' in s['reason'] for s in body['skipped']), body['skipped'])
+
+    def test_each_proposal_is_committed_on_its_own_and_other_requests_get_through_between_two(self):
+        real = dbt_import._write
+        seen = []
+        for apply in (False, True):
+            with self.subTest(apply=apply), self.service() as (base, out):
+                team = self.team(base)
+                ann, bob = team['ann'], team['bob']
+                seen.clear()
+
+                def probe(conn, make, element_id, *rest, **kwargs):   # between two proposals, before the relation's own write
+                    if element_id.startswith('relation:'):
+                        status, listed = bob.get('/api/workspace/types')   # a reader gets in
+                        seen.append((status, sorted(t['id'] for t in listed.get('types', []))))
+                        status, _ = bob.post('/api/workspace/types/key-check', {'dataset': 'customers', 'key': ['customer_id']})   # and a writer: it takes the lock an upload takes
+                        seen.append(status)
+                        other = sqlite3.connect(out / 'workspace.sqlite', timeout=0.5)
+                        try:
+                            other.execute('BEGIN IMMEDIATE')   # nobody holds the database's write lock now
+                            other.execute('ROLLBACK')
+                        finally:
+                            other.close()
+                    return real(conn, make, element_id, *rest, **kwargs)
+                with mock.patch.object(dbt_import, '_write', side_effect=probe):
+                    status, body = self.run_import(ann, json.dumps(manifest()), apply=apply)
+                self.assertEqual(status, 200, body)
+                self.assertEqual(seen, [(200, ['customers', 'orders'] if apply else []), 200])   # on Apply the two types were already committed
+
+    def test_a_new_relations_check_runs_as_often_as_the_forms_own_and_no_more(self):
+        counted = []
+        real = object_relations._check_relation
+
+        def count(*args, **kwargs):
+            counted.append(1)
+            return real(*args, **kwargs)
+        with self.service() as (base, out):   # the form: two types, then the relation
+            ann = self.team(base)['ann']
+            for payload in ({'english_name': 'orders', 'name': 'orders', 'dataset': 'orders', 'key': ['order_id']},
+                            {'english_name': 'customers', 'name': 'customers', 'dataset': 'customers', 'key': ['customer_id']}):
+                self.assertEqual(ann.post('/api/workspace/types', payload)[0], 200)
+            with mock.patch.object(object_relations, '_check_relation', side_effect=count):
+                self.assertEqual(ann.post('/api/workspace/relations', {'english_name': 'orders_customer_id', 'name': 'orders_customer_id', 'from': 'orders', 'to': 'customers',
+                                                                      'cardinality': 'many_to_one', 'from_column': 'customer_id', 'to_column': 'customer_id'})[0], 200)
+        by_form = len(counted)
+        counted.clear()
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            with mock.patch.object(object_relations, '_check_relation', side_effect=count):
+                status, body = self.run_import(ann, json.dumps(manifest()), apply=True)
+            self.assertEqual(status, 200, body)
+            self.assertEqual(len(counted), by_form)
+            self.assertEqual((body['relations'][0]['numbers']['matched'], body['relations'][0]['numbers']['empty']), (MATCHED, EMPTY))
+
+    def test_a_relationships_test_on_a_model_that_cannot_be_read_is_not_pinned_on_its_target(self):
+        weird = {'model.shop.weird': {'resource_type': 'model', 'name': ['not', 'text'], 'unique_id': 'model.shop.weird'}}
+        node = next(iter(generic_test('relationships', 'weird', 'customer_id', also=('customers',), to="ref('customers')", field='customer_id').values()))
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            status, body = self.run_import(ann, json.dumps(manifest(extra={**weird, 'test.shop.weird_rel': node})), apply=False)
+            self.assertEqual(status, 200, body)
+            self.assertFalse([r for r in body['relations'] if r['from'] == r['to']], body['relations'])
+            self.assertTrue(any('Cannot tell which model' in s['reason'] for s in body['skipped']), body['skipped'])
+
+    def test_the_chinese_reasons_carry_no_english_words_in_brackets(self):
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            status, body = ann.post(ROUTE, {'manifest': json.dumps(manifest()), 'apply': False}, headers={'Accept-Language': 'zh-CN'})
+            self.assertEqual(status, 200, body)
+            reason = next(s['reason'] for s in body['skipped'] if s['model'] == 'order_items' and s['what'] == '对象类型')
+            self.assertNotIn('no key', reason)
+
+    def test_the_dialog_text_says_a_check_on_a_large_table_can_take_minutes(self):
+        import re
+        from pathlib import Path
+        app = Path(__file__).resolve().parents[1] / 'landing-page/src/app/i18n'
+        self.assertRegex((app / 'en/types.js').read_text(encoding='utf-8'), re.compile(r'"dbt\.slow": ".*minutes'))
+        self.assertRegex((app / 'zh/types.js').read_text(encoding='utf-8'), re.compile(r'"dbt\.slow": ".*分钟'))
 
 if __name__ == '__main__':
     unittest.main()
