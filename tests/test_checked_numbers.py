@@ -303,6 +303,21 @@ class AnswerCheckTests(SigningTestCase):
             tally = team['bob'].get('/api/workspace/ask/tally')[1]['checked']
             self.assertEqual((tally['refused'], tally['moved']), (1, 0))
 
+    def test_the_tally_works_out_again_only_the_latest_checked_answers_and_says_how_many_it_left(self):
+        from unittest import mock
+        from ontology_poc_generator import checked_numbers
+        with self.service(gateway=AskModel(cancelled())) as (base, out), mock.patch.object(checked_numbers, 'TALLY_WORKED_OUT', 1):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            ann = team['ann']
+            first = ann.post('/api/workspace/ask', {'question': QUESTION})[1]
+            second = ann.post('/api/workspace/ask', {'question': '已取消的订单数？'})[1]
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': first['id'], 'note': '周报'})[1]['status'], 'same')
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': second['id'], 'value': 999, 'note': '周报'})[1]['status'], 'differs')
+            checked = team['bob'].get('/api/workspace/ask/tally')[1]['checked']
+            self.assertEqual((checked['total'], checked['all'], checked['same'], checked['differs']), (1, 2, 0, 1))   # the latest check only
+            self.assertIn('只重算了最近核对的 1 个（共 2 个）', checked['text'])
+
     def test_a_viewer_cannot_record_a_checked_number(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
             team = self.team(base)
