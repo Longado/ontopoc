@@ -318,10 +318,14 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, meta: dict 
     for unique_id in sorted(tests_of, key=lambda u: models[u]):
         if unique_id not in datasets:
             continue
-        for test in sorted((t for t in tests_of[unique_id] if t['kind'] == 'relationships' and t['namespace'] in (None, 'dbt') and not t['where'] and t['column']), key=lambda t: t['column']):
-            if test['column'] not in dataset_columns(conn, datasets[unique_id]['id']):
-                continue   # already listed as skipped
-            written += _relation(conn, plan, report, test, unique_id, type_of, datasets, who, user, written)
+        present = dataset_columns(conn, datasets[unique_id]['id'])
+        readable = sorted((t for t in tests_of[unique_id] if t['kind'] == 'relationships' and t['namespace'] in (None, 'dbt') and not t['where'] and t['column'] in present),
+                          key=lambda t: (t['column'], models[t['target']] if t['target'] else ''))   # (one on a column the dataset lacks is already listed as skipped)
+        targets: dict[str, set] = {}
+        for test in readable:
+            targets.setdefault(test['column'], set()).add(test['target'])
+        for test in readable:   # a column that points at several models: each relation's name says which (orders_customer_id_customers)
+            written += _relation(conn, plan, report, test, unique_id, type_of, datasets, who, user, written, len(targets[test['column']]) > 1)
     unmatched = set(report['unmatched_models'])
     report['skipped'] = [s for s in report['skipped'] if s['model'] not in unmatched]   # a model with no dataset is listed once, as that; its tests are not
     report['unmatched_models'] = [n[:SHOWN_TEXT] for n in report['unmatched_models']]
@@ -350,8 +354,11 @@ def _type_line(conn, row: dict, model: str, status: str) -> dict:
             'status': status, 'state': row['state'], 'key_rows': anchors.get('key_rows'), 'warnings': []}
 
 
-def _relation(conn, plan: dict, report: dict, test: dict, unique_id: str, type_of: dict, datasets: dict, who: str | None, user: dict | None, written: int) -> int:
-    """One relationships test as a many-to-one relation from its model's type to the one its `to` names. Returns 1 when it was written."""
+def _relation(conn, plan: dict, report: dict, test: dict, unique_id: str, type_of: dict, datasets: dict, who: str | None, user: dict | None, written: int,
+              several: bool = False) -> int:
+    """One relationships test as a many-to-one relation from its model's type to the one its `to` names, called <model>_<column>, or
+    <model>_<column>_<target> when the column has relationships tests to several models. Returns 1 when it was written. A relation that already has the name
+    is "already there" only when it joins the same ends; one between other ends is skipped, saying so."""
     models = plan['models']
     name, column, target = models[unique_id], test['column'], test['target']
     to_name = models[target] if target else _ref_name(test['to_text']) or (test['to_text'] or '?')[:60]
@@ -368,10 +375,16 @@ def _relation(conn, plan: dict, report: dict, test: dict, unique_id: str, type_o
     if field is None or field not in dataset_columns(conn, datasets[target]['id']):
         skip(tr(f'数据集 {datasets[target]["name"]} 里没有“{field}”这一列（列名要完全一样）', f'The dataset {datasets[target]["name"]} has no column "{field}" (column names must match exactly)'))
         return 0
-    payload = {'english_name': f'{name}_{column}', 'name': f'{name}_{column}', 'from': type_of[unique_id], 'to': type_of[target], 'cardinality': 'many_to_one',
+    english = f'{name}_{column}_{models[target]}' if several else f'{name}_{column}'
+    payload = {'english_name': english, 'name': english, 'from': type_of[unique_id], 'to': type_of[target], 'cardinality': 'many_to_one',
                'from_column': column, 'to_column': field}
     ends = {k: payload[k] for k in ('from', 'to', 'from_column', 'to_column')}
     existing = _existing(conn, RELATION_PREFIX, payload['english_name'])
+    if existing is not None and _relation_visible(conn, existing, user) and {k: _content(existing)[k] for k in ends} != ends:
+        held = _content(existing)
+        skip(tr(f'已经有一个叫 {held["english_name"]} 的关系，连的是 {held["from"]}.{held["from_column"]} → {held["to"]}.{held["to_column"]}，不是这一条：这一条没有提出，请用“新建关系”另起名字',
+                f'A relation named {held["english_name"]} already joins {held["from"]}.{held["from_column"]} → {held["to"]}.{held["to_column"]}, not these ends, so this one is not proposed. Make it with New relation under another name'))
+        return 0
     if existing is None:
         existing = next((r for (e,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'relation:%' ORDER BY element_id")
                          if (r := element_row(conn, e)) and {k: _content(r)[k] for k in ends} == ends and _relation_visible(conn, r, user)), None)
