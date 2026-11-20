@@ -216,6 +216,7 @@ export default {
   "dbt.stopped": "Stopped on an error. Proposed {what} before it; what follows was not tried.",
   "dbt.stoppedPreview": "Stopped on an error. It would have proposed {what} before it; nothing was written.",
   "dbt.failedNote": "Skipped means a check refused one item and the import went on; failed means an unexpected error stopped the import there.",
+  "dbt.writtenOnly": "{name}: written; its details are on its page",
   "dbt.nothing": "nothing",
   "dbt.section.failed": "Failed, with the reason",
   "dbt.section.notAttempted": "Not tried, because the import stopped",

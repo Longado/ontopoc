@@ -18,6 +18,7 @@ export function fileProblem(file) {
 /** One object type: the key and that it was checked on every row, or that it is already there and left alone. */
 export function typeLine(ty) {
   if (ty.status === "already_there") return t("types.dbt.already", { name: ty.id, state: stateWord(ty.state) });
+  if (!ty.dataset) return t("types.dbt.writtenOnly", { name: ty.id });   // written, but its line could not be read back: the page has the rest
   return t("types.dbt.typeLine", { name: ty.id, dataset: ty.dataset, key: ty.key.join(" + "), rows: ty.key_rows ?? "?", properties: ty.properties.join(sep()) });
 }
 
@@ -25,6 +26,7 @@ export function typeLine(ty) {
 export function relationLine(rel) {
   if (rel.status === "already_there") return t("types.dbt.already", { name: rel.id, state: stateWord(rel.state) });
   const n = rel.numbers;
+  if (!n) return t("types.dbt.writtenOnly", { name: rel.id });   // no counts to show: a row rule or a hidden column limits this person, or the line could not be read back
   const parts = [t("types.dbt.connect", { matched: n.matched, rows: n.rows })];
   if (n.unmatched) parts.push(t("types.dbt.nowhere", { count: n.unmatched, to: rel.to }));
   if (n.empty) parts.push(t("types.dbt.empty", { count: n.empty }));
