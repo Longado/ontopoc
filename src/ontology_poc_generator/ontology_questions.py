@@ -898,13 +898,17 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
     judgement = ask_model(gateway, 'question_writer', QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT + ENGLISH_NOTE if english() else QUESTION_SYSTEM_PROMPT, request)
     out['model'] = judgement.model
     if judgement.failure == 'request':
-        return {**out, 'error': model_failure_text(judgement.message)}
+        return {**out, 'error': model_failure_text(judgement.message), 'request_failed': True}   # nothing came back: told apart from a reply that could not be read
     if judgement.failure == 'not_json':
         return {**out, 'error': tr('模型返回的不是 JSON', 'The model did not return JSON')}
     reply = judgement.reply
-    raw = reply.get('questions') if isinstance(reply, dict) else None
-    if raw is None and question and isinstance(reply, dict) and 'query' in reply:   # one asked question answered as a bare object, not in a list
+    raw = reply.get('questions') if isinstance(reply, dict) else reply if question and isinstance(reply, list) else None   # one asked question: the item list without its wrapper too
+    if question and isinstance(raw, dict):   # the list written as its one item
+        raw = [raw]
+    if raw is None and question and isinstance(reply, dict) and {'query', 'reasoning', 'missing'} & set(reply):   # one asked question answered as a bare object, not in a list (a query left out is null)
         raw = [{**reply, 'question': reply['question'] if isinstance(reply.get('question'), str) else question}]
+    if question and isinstance(raw, list):
+        raw = [{**q, 'question': q['question'] if isinstance(q.get('question'), str) else question} if isinstance(q, dict) else q for q in raw]
     if not isinstance(raw, list):
         return {**out, 'error': tr('模型没有返回问题列表', 'The model did not return a list of questions')}
     graph = build_graph(ontology, bundle)

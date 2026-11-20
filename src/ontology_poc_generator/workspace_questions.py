@@ -491,9 +491,20 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
         return unmatched_answer({**ontology, 'relations': [{'key': k, 'from': r['content']['from'], 'to': r['content']['to']} for k, r in sc['relations'].items()]}, relations, spec)   # also a relation a query cannot walk (its one side is keyed on more than the joined column): the relation check counts it all the same
     answer.unmatched = unmatched
     asked = ask_questions(ontology, parts['bundle'], gateway, question, answerer=answer, definitions=definitions, catalog=catalog)
-    if asked['error'] or not asked['items']:
-        raise QaRefused(asked['error'] or tr('模型没有给出回答', 'The model gave no answer'), 502)
+    if asked.get('request_failed'):   # the model could not be reached: nothing was answered
+        raise QaRefused(asked['error'], 502)
+    if asked['error'] or not asked['items']:   # it replied, but with no query for this question: kept as unanswered, said in the reader's words
+        item = {'question': question, 'reasoning': '', 'query': None, 'status': 'no_query', 'reason': _no_query_reason(sc)}
+        return {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']}
     return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec')), 'model': asked['model']}
+
+
+def _no_query_reason(sc: dict) -> str:
+    """Why a question the model wrote no query for has no answer, and what may be asked: the types and views in this person's scope (theirs to see)."""
+    types = tr('、', ', ').join(t['content']['name'] for t in sc['types'].values())
+    views = tr('、', ', ').join(sc['views'])
+    return tr(f'这次没有得到能执行的查询，所以没有回答，也没有给出数字。问题可能说得太笼统：请说清楚要数什么或加总什么、按哪个口径，再问一次。能问的对象类型：{types}' + (f'；已确认的视图：{views}' if views else '') + '。',
+              f'No query that could be run came back this time, so there is no answer and no number. The question may be too broad: say what to count or add up, and by which definition, and ask again. Object types you can ask about: {types}' + (f'; confirmed views: {views}' if views else '') + '.')
 
 
 # --- OntoPoc Query ---------------------------------------------------------------------------------------------------------------------------------
