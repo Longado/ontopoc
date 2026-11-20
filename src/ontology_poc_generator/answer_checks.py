@@ -16,7 +16,8 @@ it checks the executed query against what the model said:
   (include by leaving the rest out) the query language has no "is one of", so 已取消和已退款 is written as "the column is none of the other
              codes". That includes 已取消 and 已退款 only when everything the filter lets through, read from the column's values in the rows, is a
              code of a meaning the model said the question includes: a code with no meaning, a blank, or a meaning it did not name would be
-             counted too, and is refused as before (so is a check that is not given the rows)
+             counted too, and is refused as before (so is a check that is not given the rows). Only when leaving codes out is all the query does
+             to the column: another filter on it (an equals, a range), a share of it or a view read that filters it could drop a kept meaning's rows
   omitted    a confirmed label the model did not list, that the question says verbatim (three characters or more, or with its
              column named) or that the query filters by: refused, saying the model did not say how it was used
   unknown    an id the model wrote that is in no catalog entry (a synonym such as 取消), whatever direction it gave: refused, saying the name did not match,
@@ -235,7 +236,9 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
         column = field.partition('.')[2]
         kept = _left_in(uses, field, meaning['labels'], (values or {}).get(field)) if field in read_fields else None
         included = {label for label in meaning['labels'].values() if label and (declared.get(meaning_id(field, label)) or (declared.get(label) if label in bare else None)) == 'include'}
-        rest = kept if kept and kept <= included else None   # the filter leaves the other codes out to keep just the meanings the question includes
+        narrowed = any(resolved == field and kind in ('filter', 'share') for resolved, _, kind in uses) or any(   # an equals, a range or a share on the column,
+            v['definition'].get('kind') == 'filter' and f'{v["source"]}.{v["definition"].get("column")}' == field for v in apply)   # or a view read that filters it
+        rest = kept if kept and kept <= included and not narrowed else None   # the filter leaves the other codes out to keep just the meanings the question includes
         for label in sorted({x for x in meaning['labels'].values() if x}):
             codes = tr('、', ', ').join(sorted(c for c, said in meaning['labels'].items() if said == label))
             ident = meaning_id(field, label)
