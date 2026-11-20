@@ -856,13 +856,19 @@ FORMAT_WORDS = re.compile(r'(?<![A-Za-z0-9_])(?:null|query_language|group_by|not
 FORMAT_WORDS_ZH = re.compile(r'(?<![A-Za-z0-9_])(?:query|missing|ontology|where|via|share|measure|equals|start|top|include|exclude|mention)(?![A-Za-z0-9_])')   # a field name of the query, inside Chinese
 
 
-def _for_reader(reasoning: str) -> str:
+def _for_reader(reasoning: str, status: str) -> str:
     """The model's reasoning as the reason a reader is given: without the sentences that talk about the JSON it wrote ("所以 query 为 null，missing 为
     ontology"). A Chinese sentence that names one of the query's fields is about the format; in English only the format's own tokens are (query and where
-    are words). '' when nothing is left."""
+    are words). When a sentence was left out, code says plainly what the outcome is (`status`: query_limit or ontology_gap), since the left-out ones
+    often held the why. '' when the model gave no reasoning."""
     sentences = re.findall(r'[^。！？!?\n]+(?:[。！？!?]|$)|[^\n]+', reasoning.replace('. ', '.\n'))
     kept = [x.strip() for x in sentences if x.strip() and not FORMAT_WORDS.search(x) and not (re.search(r'[\u4e00-\u9fff]', x) and FORMAT_WORDS_ZH.search(x))]
-    return ''.join(x + (' ' if x[-1] in '.!?' else '') for x in kept).strip()
+    said = ''.join(x + (' ' if x[-1] in '.!?' else '') for x in kept).strip()
+    if len(kept) == len([x for x in sentences if x.strip()]):
+        return said
+    plain = tr('现在的查询写法还表达不了这个问题。', 'The query format cannot express this question yet.') if status == 'query_limit' \
+        else tr('已确认的对象类型、关系和属性回答不了这个问题。', 'The confirmed object types, relations and properties cannot answer this question.')
+    return f'{said}{" " if said and english() else ""}{plain}'
 
 
 def _in_names(ontology: dict, result: dict) -> dict:
@@ -950,7 +956,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
             unmatched = getattr(answerer, 'unmatched', None)   # the question the query language cannot say, answered from the relation check
             result = unmatched(q.get('unmatched_relation')) if unmatched and status == 'query_limit' else None
-            result = result or _in_names(ontology, {'status': status, 'reason': _for_reader(str(q.get('reasoning') or '')) or tr('模型认为本体表达不了这个问题', 'The model thinks the ontology cannot express this question'), 'reason_from_model': True})
+            result = result or _in_names(ontology, {'status': status, 'reason': _for_reader(str(q.get('reasoning') or ''), status) or tr('模型认为本体表达不了这个问题', 'The model thinks the ontology cannot express this question'), 'reason_from_model': True})
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
                              **({'definitions_used': used} if used else {}), **({'definitions_told': [d['id'] for d in definitions]} if definitions else {}), **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])
