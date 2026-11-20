@@ -16,7 +16,7 @@ export default {
   "start.trust.title": "Why you can trust them",
   "start.trust.text": "Every number comes from confirmed definitions, and you can see who confirmed them",
   "start.refuse.title": "What gets refused",
-  "start.refuse.text": "Ask about customers: that type waits to be confirmed again, so it is refused, saying who it waits for",
+  "start.refuse.text": "Ask the question on this card: the Customer type waits to be confirmed again, so it is refused, saying who it waits for",
   "start.refuse.other": "Questions about unconfirmed definitions are refused with the reason",
   "start.newTab": "(opens in a new tab)",
   "todo.quiet": "Nothing needs your attention.",

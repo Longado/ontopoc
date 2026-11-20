@@ -78,8 +78,8 @@ export function exampleQuestions(types, relations, max = 6) {
   return [...counts, ...by, ...rest].slice(0, max);
 }
 
-/** The demo workspace (demo.py seed: 订单 confirmed, 客户 confirmed once and now waiting for a second look) offers a guest three questions with three outcomes:
- * an answer (119,810), a refusal because 客户 waits (its name and who it waits for), and another answer. null on any other workspace (the usual examples). */
+/** The demo workspace (demo.py seed: Order confirmed, Customer confirmed once and now waiting for a second look) offers a guest three questions with three outcomes:
+ * an answer (119,810), a refusal because Customer waits (its name and who it waits for), and another answer. null on any other workspace (the usual examples). */
 export function demoQuestions(types) {
   const list = types ?? [];
   if (!list.some((x) => x.id === "order" && x.state === "confirmed")) return null;
