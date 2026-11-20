@@ -20,7 +20,10 @@ it checks the executed query against what the model said:
              holds one value in the column: the query leaves out an object any of whose values is left out, so an object with a kept code and a
              left-out one (two rows of one key, a column of another table's rows) would be dropped, and such a column is not given. Only when
              leaving codes out is all the query does to the column: another filter on it (an equals, a range), a share of it or a view read that
-             filters it could drop a kept meaning's rows
+             filters it could drop a kept meaning's rows. Only where it is given the values: the team app, where each type is built from one
+             dataset keyed on a unique, filled key and no view's choice reaches past it. A single upload is not given them, and there such a
+             question is refused as before: one object can be filled from several tables (an order also from its tickets), and views choose rows
+             after the check, so an order a view drops can live on through a ticket with no code and "not 2" would count it
   omitted    a confirmed label the model did not list, that the question says verbatim (three characters or more, or with its
              column named) or that the query filters by: refused, saying the model did not say how it was used
   unknown    an id the model wrote that is in no catalog entry (a synonym such as 取消), whatever direction it gave: refused, saying the name did not match,
@@ -182,8 +185,8 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
     is the ids the model was given when it wrote the question (None: all of them): one it was not given, such as a meaning
     confirmed after the question was written, is not held against it for being left out. An item stored before ids existed
     names a meaning by its label alone; that reads as every meaning with that label. `waiting` is {field: {'labels': {code: label},
-    'changes': [what changed]}} for the meanings that wait for a second look. `values` is column_values() of the rows the query reads: without it a
-    filter that leaves codes out is never read as including the codes it keeps."""
+    'changes': [what changed]}} for the meanings that wait for a second look. `values` is column_values() of the rows the query reads (the team app only): without
+    it a filter that leaves codes out is never read as including the codes it keeps."""
     if _shape_limit(query):   # a query the language cannot read is said so by the query itself, not refused for a definition
         return {'unmet': [], 'apply': [], 'understood': []}
     rank = {'mention': 0, 'include': 1, 'exclude': 2}

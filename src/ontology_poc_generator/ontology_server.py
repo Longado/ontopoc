@@ -24,7 +24,7 @@ from ontology_poc_generator.company_documents import DOCUMENT_SUFFIXES, build_an
 from ontology_poc_generator.org_documents import build_and_evaluate_org, org_mermaid
 from ontology_poc_generator.company_ontology import build_and_evaluate, build_company_ontology
 from ontology_poc_generator.code_meanings import check_enum, code_columns, draft_meanings, meanings_of, merge_enum
-from ontology_poc_generator.answer_checks import choose_rows, column_values, definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
+from ontology_poc_generator.answer_checks import choose_rows, definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.actor import set_actor
 from ontology_poc_generator.named_views import StaleProposal, proposed_views, compiled_views, definitions_signature, drop_views_except, name_views, read_views, save_definition, sync_views, table_columns, view_anchor_now, view_rowids, views_of_run
@@ -470,8 +470,6 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         that found nothing in a table that was damaged upstream says that and not "no data".
         When the views cannot be read the tables' rows are used and every answer says so."""
         meanings = bundle.get('meanings')
-        graph = graph or build_graph(reviewed, bundle)   # the graph an answer reads when it is not given one
-        held = column_values(bundle, meanings, reviewed, graph)   # what a filter that leaves codes out lets through
         relations = [r for r in (result.get('data_checks') or {}).get('relations') or [] if r['key'] in {x['key'] for x in reviewed['relations']}]   # what the relation check found on the rows stored at upload, for the relations nobody judged wrong
         meaning_key = json.dumps([meanings, bundle.get('repeat_rules')], sort_keys=True, ensure_ascii=False)
         try:   # the workspace file is a second store: failing to read it must not stop an answer that the rows alone can give
@@ -502,7 +500,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         def answer(query, question, used=None, check=True, told=None):
             problem = unread
             views = context['views'] if context else []
-            checked = definition_check(question, query, reviewed, views, meanings, used, told, bundle.get('waiting'), held) if check and isinstance(query, dict) else {'unmet': [], 'apply': [], 'understood': []}
+            # no values: on a single upload, leaving the other codes out is never read as including the ones it keeps (see answer_checks)
+            checked = definition_check(question, query, reviewed, views, meanings, used, told, bundle.get('waiting')) if check and isinstance(query, dict) else {'unmet': [], 'apply': [], 'understood': []}
             if checked['unmet']:
                 return {**refusal(checked['unmet']), 'understood': checked['understood']}
             broken = [tr(f'「{v["name"]}」{v["why"]}', f'"{v["name"]}" {v["why"]}') for v in views if v['kind'] == 'current' and v['state'] != 'confirmed']
