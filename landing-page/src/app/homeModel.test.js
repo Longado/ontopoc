@@ -130,7 +130,7 @@ test("the question tally: the last 7 days by outcome with the answered share, th
   assert.deepEqual(v.figures.map((f) => [f.key, f.value]), [["asked", "10"], ["answered", "6"], ["refused", "3"], ["unanswered", "1"]]);
   assert.equal(v.figures[1].note, "占 60%");
   assert.equal(v.before, "再往前 7 天：问了 4 个，答了 4 个");
-  assert.deepEqual(v.held.map((h) => [h.count, h.text, h.href]), [[3, "代码含义「订单.状态码」拦下了 3 个问题", "#/confirm"], [1, "对象类型「订单」拦下了 1 个问题", "#/confirm"]]);
+  assert.deepEqual(v.held.map((h) => [h.count, h.text, h.href]), [[3, "含义「订单.状态码」拦下了 3 个问题", "#/confirm"], [1, "对象类型「订单」拦下了 1 个问题", "#/confirm"]]);
   // a quiet week after a busy one still shows, with no share to work out
   const quiet = tallyView({ last_7_days: zero, previous_7_days: { asked: 4, answered: 4, refused: 0, unanswered: 0 }, held_back: [] });
   assert.deepEqual([quiet.figures[0].value, quiet.figures[1].note, quiet.held], ["0", "", []]);

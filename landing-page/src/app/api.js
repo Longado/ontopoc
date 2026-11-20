@@ -204,6 +204,8 @@ export const setColumnAccess = (type, column, visibleTo) => send("/api/workspace
 // Q&A: the scope line with the person's own history, one saved answer as it stands now, a new question
 export const getAsk = () => request("/api/workspace/ask");
 export const getAnswer = (id) => request(`/api/workspace/ask/${id}`);
+// The team's questions counted by outcome over the last 7 days and the 7 before (builders and admins): no question text, no asker
+export const getAskTally = () => request("/api/workspace/ask/tally");
 // The assistant's builder-mode turns (query, model, pipeline, ...): the person's own, kept with a compact card; one is read back as it may be seen now
 export const getAssistantTurns = () => request("/api/workspace/assistant/turns");
 export const getAssistantTurn = (id) => request(`/api/workspace/assistant/turns/${id}`);

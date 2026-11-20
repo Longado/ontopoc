@@ -90,3 +90,13 @@ button.bh-info { background: none; border: 0; padding: 2px; font: inherit; font-
 .bh-home .bh-stat .kpi-asof { color: var(--muted); font-size: var(--small); }
 
 @media (max-width: 900px) { .bh-start { grid-template-columns: minmax(0, 1fr); gap: var(--s1); } }
+
+/* Home: the team's question tally (builders and admins) */
+.bh-home .tally-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--s2) var(--s3); margin: var(--s1) 0 var(--s2); }
+.bh-home .tally-figure dt { color: var(--muted); font-size: var(--small); font-weight: 500; }
+.bh-home .tally-figure dd { margin: 2px 0 0; display: flex; align-items: baseline; gap: var(--s1); font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.bh-home .tally-figure dd .small { font-size: var(--small); font-weight: 400; letter-spacing: 0; }
+.bh-home .tally-sub { margin: 0 0 4px; color: var(--muted); font-size: var(--small); font-weight: 500; }
+.bh-home .tally-note { margin: var(--s2) 0 0; }
+.bh-home .tally .card-head { flex-wrap: wrap; gap: 2px var(--s2); }
+.bh-home .tally .row-main { white-space: normal; overflow: visible; }

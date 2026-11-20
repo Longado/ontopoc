@@ -109,6 +109,17 @@ export function todoItems({ unread = 0, queue = 0, failedRuns = 0, mayBuild = fa
   return items;
 }
 
+/** The team's questions of the last 7 days as the home page shows them: {figures: [{key, label, value, note}], before, held: [{key, count, text, href}]}.
+ *  The answered figure carries its share of what was asked. null when there is no tally (a viewer is sent none) or nobody asked in either week. */
+export function tallyView(tally) {
+  const now = tally?.last_7_days, was = tally?.previous_7_days;
+  if (!now || !was || now.asked + was.asked === 0) return null;
+  const share = now.asked > 0 ? t("home.tally.share", { percent: `${Math.round((100 * now.answered) / now.asked)}%` }) : "";
+  const figures = ["asked", "answered", "refused", "unanswered"].map((key) => ({ key, label: t(`home.tally.${key}`), value: formatNumber(now[key]), note: key === "answered" ? share : "" }));
+  const held = (tally.held_back ?? []).map((d) => ({ key: d.id, count: d.questions, href: "#/confirm", text: t("home.tally.held.row", { kind: t(`ask.kind.${d.kind}`), name: d.name, count: d.questions }) }));
+  return { figures, before: t("home.tally.before", { asked: formatNumber(was.asked), answered: formatNumber(was.answered) }), held };
+}
+
 /** The compact row of shortcuts a builder sees under the greeting: [{key, label, href, icon}]; nothing for a viewer. */
 export const quickActions = (mayBuild) => (mayBuild ? [
   { key: "upload", label: t("home.quick.upload"), href: "#/datasets", icon: "upload" },
