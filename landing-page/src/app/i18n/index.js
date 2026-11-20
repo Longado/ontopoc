@@ -1,4 +1,4 @@
-// OntoPoc's small i18n module (no dependencies). English is the default; Chinese is a switch.
+// OntoPoc's small i18n module (no dependencies). English, or Chinese for a Chinese browser; either is a switch.
 //
 // HOW TO ADD AN AREA (a page or a group of pages):
 //   1. Create i18n/en/<area>.js and i18n/zh/<area>.js. Each `export default` a FLAT object: { "title": "Datasets", "empty.text": "Nothing here yet." }.
@@ -9,7 +9,8 @@
 //   4. Add the converted file to i18n/converted.js: noCjk.test.js then fails if a Chinese literal is left in it (comments are fine).
 //
 // API: t(key, vars) · useT() (returns t, re-renders on a language change) · getLocale() · setLocale("en" | "zh") · LOCALES · formatDate(value, opts) · formatDateTime(value, opts) · formatNumber(n, opts).
-// The locale is kept in localStorage "ontopoc.locale" (default "en"); "?lang=zh" (in the page query or after the # route) sets and keeps it.
+// The locale is kept in localStorage "ontopoc.locale"; with nothing kept it follows the browser's languages (en when it has none of ours); "?lang=zh" (in the
+// page query or after the # route) sets and keeps it.
 // A key missing in the current language falls back to English, then to the key itself; the dev server logs a warning for either.
 import { useSyncExternalStore } from "react";
 import enAgents from "./en/agents.js"; // areas
@@ -92,8 +93,17 @@ function initialLocale() {
       return fromUrl;
     }
   }
-  const stored = storage()?.getItem(STORAGE_KEY);
-  return LOCALES.includes(stored) ? stored : "en";
+  return pickLocale(storage()?.getItem(STORAGE_KEY), globalThis.navigator?.languages ?? [globalThis.navigator?.language]);
+}
+
+/** The language on opening: the one the person chose (stored), else the first of the browser's languages the app has (zh-CN, zh-TW: zh), else en. */
+export function pickLocale(stored, languages) {
+  if (LOCALES.includes(stored)) return stored;
+  for (const lang of languages ?? []) {
+    const base = String(lang ?? "").toLowerCase().split("-")[0];
+    if (LOCALES.includes(base)) return base;
+  }
+  return "en";
 }
 
 let locale = initialLocale();
