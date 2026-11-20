@@ -29,7 +29,7 @@ test("each proposal reads as one line: the key and the full-data check for a typ
   setLocale("en");
   assert.equal(typeLine(ORDERS), "orders (dataset orders): key order_id, unique and filled on all 6 rows; properties order_id, customer_id, status");
   assert.equal(typeLine({ ...ORDERS, status: "already_there", state: "confirmed" }), "orders: already there (Confirmed), left as it is");
-  assert.equal(relationLine(RELATION), "orders.customer_id → customers.customer_id, many to one: 4 of 6 rows connect; 1 point to nothing in customers; 1 empty");
+  assert.equal(relationLine(RELATION), "orders.customer_id → customers.customer_id, many to one: 4 of 6 rows connect; 1 points to nothing in customers; 1 empty");
   assert.equal(relationLine({ ...RELATION, status: "already_there", numbers: null }), "orders_customer_id: already there (Checked), left as it is");
   assert.equal(codeLine(STATUS_CODES), "orders.status: placed, shipped, completed, returned. dbt lists the values, not what they mean: write the meanings on the type's page");
   assert.match(codeLine({ ...STATUS_CODES, code_column: false, note: "Not a code column here" }), /Not a code column here$/);
