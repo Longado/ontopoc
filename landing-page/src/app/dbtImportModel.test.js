@@ -75,6 +75,15 @@ test("after a failure mid-run the dialog says what was written, what failed and 
   setLocale("en");
 });
 
+test("a proposal written whose details could not be read back, or whose counts a limit keeps, reads as written, with no numbers", () => {
+  setLocale("en");
+  assert.equal(typeLine({ id: "customers", name: "customers", dataset: null, key: [], properties: [], status: "new" }), "customers: written; its details are on its page");
+  assert.equal(relationLine({ ...RELATION, numbers: null }), "orders_customer_id: written; its details are on its page");
+  setLocale("zh");
+  assert.equal(relationLine({ ...RELATION, numbers: null }), "orders_customer_id：已经写入，详情见它自己的页面");
+  setLocale("en");
+});
+
 test("the type's log names the import as where a definition came from", () => {
   setLocale("en");
   assert.equal(logText({ element: "type", change: "dbt_import", who: "Ann" }).text, "Proposed the object type from a dbt manifest");
