@@ -46,9 +46,10 @@ export function importSummary(result) {
   const types = result.types.filter((x) => x.status === "new").length;
   const relations = fresh - types;
   const what = [types && t("types.dbt.types", { count: types }), relations && t("types.dbt.relations", { count: relations })].filter(Boolean).join(t("types.dbt.and"));
-  const headline = !fresh ? t("types.dbt.nothingNew", { count: already })
+  const headline = result.stopped ? t("types.dbt.stopped", { what: what || t("types.dbt.nothing") })
+    : !fresh ? t("types.dbt.nothingNew", { count: already })
     : result.applied ? t("types.dbt.proposed", { what }) : t("types.dbt.wouldPropose", { what });
-  return { fresh, already, canApply: !result.applied && fresh > 0, headline };
+  return { fresh, already, canApply: !result.applied && !result.stopped && fresh > 0, headline };   // a preview that stopped on an error is not applied as it is
 }
 
 /** The dialog's lists, the empty ones left out: [{id, title, items: [{text, href?}], more?}]. */
@@ -56,6 +57,8 @@ export function importSections(result) {
   const sections = [
     { id: "types", key: "types", items: result.types.map((ty) => ({ text: typeLine(ty), href: hrefFor({ page: "type", id: ty.id, tab: "props" }) })) },
     { id: "relations", key: "relations", items: result.relations.map((rel) => ({ text: relationLine(rel), href: hrefFor({ page: "relation", id: rel.id }) })) },
+    { id: "failed", key: "failed", items: (result.failed ?? []).map((f) => ({ text: `${f.what}${t("types.colon")} ${f.reason}` })) },
+    { id: "notAttempted", key: "not_attempted", items: (result.not_attempted ?? []).map((n) => ({ text: n.what })) },
     { id: "codes", key: "codes", items: result.codes.map((c) => ({ text: codeLine(c) })) },
     { id: "unmatched", key: "unmatched_models", items: result.unmatched_models.map((m) => ({ text: m })) },
     { id: "skipped", key: "skipped", items: result.skipped.map((s) => ({ text: s.model ? `${s.model}${t("types.comma")}${s.what}${t("types.colon")} ${s.reason}` : `${s.what}${t("types.colon")} ${s.reason}` })) },
