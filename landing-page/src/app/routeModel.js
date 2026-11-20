@@ -141,7 +141,7 @@ export const PLANNED = {
 };
 
 const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
-const BUILDERS = ["confirm", "datasets", "pipelines", "sources", "schedules", "agents"];   // in the sidebar of builders and admins only: a viewer has nothing to confirm, a pipeline's steps and previews quote rows (the service refuses them to a viewer), and a viewer works from confirmed definitions, not tables (the datasets page stays at its address)
+const BUILDERS = ["confirm", "pipelines", "sources", "schedules", "agents"];   // in the sidebar of builders and admins only: a viewer has nothing to confirm, a pipeline's steps and previews quote rows (the service refuses them to a viewer), and a viewer works from confirmed definitions, not tables (the datasets page stays at its address)
 const ONLY_WITH = { notices: "notices" };   // shown only when the person has one: 消息 once a notice has arrived (the top bar's bell and the address always reach it)
 // label (and a group's label and hint) are getters: the words are read when drawn, in the language chosen then
 const item = (key, icon) => ({ key, get label() { return t(`nav.${key}`); }, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key), ...(ONLY_WITH[key] ? { onlyWith: ONLY_WITH[key] } : {}) });
@@ -149,7 +149,7 @@ const group = (key, icon, rest) => ({ key, get label() { return t(`nav.group.${k
 
 /** The sidebar, around the gate (docs/PRODUCT.md): the main line, then the definitions a person confirms (the review queue first, and lineage, which says why
  * one went back), then the data they are built on, then the agents that answer from them. A group with a `label` folds and has a grey one-line `hint`;
- * `builders` items are for builders and admins. A viewer sees 首页, 助手, 看板 and the definitions they may read (对象类型, 关系, 血缘). The task list is not
+ * `builders` items are for builders and admins. A viewer sees 首页, 助手, 看板, the definitions they may read (对象类型, 关系, 血缘) and 数据集. The task list is not
  * in the sidebar; every page stays reachable by its address. */
 export const NAV = [
   { key: "main", items: [item("home", "home"), item("qa", "chat"), item("boards", "board"), item("notices", "bell")] },
