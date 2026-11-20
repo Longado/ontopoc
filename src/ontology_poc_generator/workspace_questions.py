@@ -208,7 +208,7 @@ def _named(question: str, text: str) -> bool:
     plural or singular ("customers" for the type "customer"); a name in words is a substring."""
     if text.isascii():
         return re.search(rf'(?<![A-Za-z0-9])(?:{"|".join(re.escape(f) for f in _number_forms(text))})(?![A-Za-z0-9])', question, re.I) is not None
-    return text in question
+    return text.casefold() in question.casefold()   # a name with Chinese in it (VIP大单) matches whatever the case of its Latin letters
 
 
 def _blockers(conn, user: dict | None, question: str) -> list[dict]:
