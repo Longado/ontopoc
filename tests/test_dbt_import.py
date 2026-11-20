@@ -268,6 +268,7 @@ class DbtImportTests(SigningTestCase):
                 self.assertEqual(len(body['failed']), 1)
                 self.assertIn('orders', body['failed'][0]['what'])
                 self.assertIn('RecursionError', body['failed'][0]['reason'])
+                self.assertNotIn('maximum recursion', body['failed'][0]['reason'])   # the kind of error, not its text: a database error's text can name internal tables
                 self.assertEqual(body['relations'], [])
                 self.assertTrue(any('customer_id' in n['what'] for n in body['not_attempted']), body['not_attempted'])
                 self.assertEqual({e for e, _, _ in self.written(out)[0]}, {'objtype:customers'} if apply else set())   # the first stays written; the second was taken back
@@ -396,6 +397,19 @@ class DbtImportTests(SigningTestCase):
         app = Path(__file__).resolve().parents[1] / 'landing-page/src/app/i18n'
         self.assertRegex((app / 'en/types.js').read_text(encoding='utf-8'), re.compile(r'"dbt\.slow": ".*minutes'))
         self.assertRegex((app / 'zh/types.js').read_text(encoding='utf-8'), re.compile(r'"dbt\.slow": ".*分钟'))
+
+    def test_after_the_first_type_fails_only_what_would_have_been_tried_is_listed_as_not_attempted(self):
+        def fail(*args, **kwargs):
+            raise RuntimeError('boom')
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            with mock.patch.object(dbt_import, 'create_type', side_effect=fail):
+                status, body = self.run_import(ann, json.dumps(manifest()), apply=True)
+            self.assertEqual(status, 200, body)
+            self.assertEqual([f['what'] for f in body['failed']], ['object type customers'])
+            listed = [n['what'] for n in body['not_attempted']]
+            self.assertIn('object type orders', listed)
+            self.assertFalse([w for w in listed if 'order_items' in w or 'payments' in w], listed)   # order_items has no key in its tests and payments no dataset: neither would have been tried
 
 if __name__ == '__main__':
     unittest.main()
