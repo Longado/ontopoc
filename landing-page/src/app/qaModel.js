@@ -15,7 +15,9 @@ export function answerView(record) {
   if (a.graph) return { big: countText(a.graph.starts, unit), note: graphNote(a.graph), table: null, graph: a.graph };   // SELECT GRAPH: the objects, drawn
   if (a.groups) {
     const shape = a.measure ? null : a.share ? "share" : a.groups[0]?.length === 3 ? "measure" : "count";
-    const head = shape === "share" ? [t("ask.head.group"), `${a.share.field} = ${a.share.equals}`, t("ask.head.total")] : shape === "measure" ? [t("ask.head.group"), t("ask.head.sumOrAvg"), t("ask.head.withValue")] : [t("ask.head.group"), t("ask.head.count", { unit })];
+    const m = a.measure;   // a total per group: [group, the total, how many were added up]
+    const head = m ? [t("ask.head.group"), t("ask.head.measure", { field: m.field, op: t(m.op === "sum" ? "ask.op.sum" : "ask.op.avg") }), t("ask.head.count", { unit })]
+      : shape === "share" ? [t("ask.head.group"), `${a.share.field} = ${a.share.equals}`, t("ask.head.total")] : shape === "measure" ? [t("ask.head.group"), t("ask.head.sumOrAvg"), t("ask.head.withValue")] : [t("ask.head.group"), t("ask.head.count", { unit })];
     const rows = a.groups.slice(0, SHOWN_GROUPS).map((g) => g.map((v, i) => (i && typeof v === "number" ? count(v) : String(v))));
     return { big: t("ask.groups", { count: a.total_groups, n: count(a.total_groups) }), note: a.without_value ? t("ask.withoutValue", { count: a.without_value, n: countText(a.without_value, unit) }) : "", table: { head, rows, total: a.total_groups } };
   }
@@ -134,14 +136,18 @@ export function timeWarning(record) {
   return word && !usesTime(record) ? t("ask.timeWarn", { word }) : null;
 }
 
-/** The one-line caliber under an answer: what was counted by which definitions, and the data as of when. Empty when the answer carries no written query. */
+/** The one-line caliber under an answer: what was counted by which definitions (the views that chose its rows, then its conditions), and the data as of
+ * when. Names are shown without the query's `quoting`. Empty when the answer carries no written query. */
 export function criteriaLine(record, asOf) {
   const text = String(record.query_text ?? "");
-  const aliases = [...text.matchAll(/\(\s*(\w+)\s*:\s*([^)\s]+)\s*\)/g)];
+  const aliases = [...text.matchAll(/\(\s*(\w+)\s*:\s*(`[^`]*`|[^)\s]+)\s*\)/g)];
   if (!aliases.length) return "";
-  const alias = new Map(aliases.map((m) => [m[1], m[2]]));
+  const plain = (s) => s.replace(/`([^`]*)`/g, "$1");
+  const alias = new Map(aliases.map((m) => [m[1], plain(m[2])]));
   const where = /\bWHERE\b([\s\S]*?)(?:\bGROUP BY\b|\bORDER BY\b|\bLIMIT\b|$)/i.exec(text)?.[1]?.trim();
-  const cond = where ? where.replace(/\b(\w+)\.(?=[^\s.])/g, (s, a) => (alias.has(a) ? `${alias.get(a)}.` : s)).replace(/'((?:[^']|'')*)'/g, "$1").replace(/\s+/g, " ") : t("ask.criteria.all", { type: aliases[0][2] });
+  const views = (record.evidence?.views ?? []).map((v) => t("ask.criteria.view", { name: v.name }));
+  const conds = where ? [plain(where.replace(/\b(\w+)\.(?=[^\s.])/g, (s, a) => (alias.has(a) ? `${alias.get(a)}.` : s)).replace(/'((?:[^']|'')*)'/g, "$1").replace(/\s+/g, " "))] : [];
+  const cond = [...views, ...conds].join(t("ask.criteria.sep")) || t("ask.criteria.all", { type: alias.get(aliases[0][1]) });
   return t("ask.criteria", { cond, asOf: asOf ? t("ask.criteria.asOf", { when: asOf }) : "" });
 }
 
