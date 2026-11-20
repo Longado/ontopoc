@@ -1,11 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { demoQuestions, exampleQuestions, kpiCards, greeting, needsSetup, setupSteps, startCards, tallyView, todoItems, updatedText } from "./homeModel.js";
+import { demoQuestions, exampleQuestions, gateStatus, kpiCards, greeting, needsSetup, setupSteps, startCards, tallyView, todoItems, updatedText } from "./homeModel.js";
 import { setLocale, t } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 const T = (id, name, state = "confirmed") => ({ id, name, state });
+
+test("a builder's gate line counts confirmed and needs-another-look types and relations, and what waits for them; a viewer gets none", () => {
+  const types = [T("a", "A"), T("b", "B", "needs_look"), T("c", "C", "proposed"), T("d", "D", "rejected")];
+  const relations = [{ id: "r1", state: "confirmed" }, { id: "r2", state: "needs_look" }];
+  const line = gateStatus({ types, relations, queue: 2, mayBuild: true });
+  assert.deepEqual(line.map((x) => [x.key, x.count, x.href]), [["confirmed", 2, "#/types"], ["look", 2, "#/types"], ["queue", 2, "#/confirm"]]);
+  assert.deepEqual(line.map((x) => x.text), ["已确认 2", "需再看 2", "等你确认 2"]);
+  assert.equal(gateStatus({ types, relations, queue: 0, mayBuild: false }), null);   // a viewer is not told about definitions they cannot read
+  assert.equal(gateStatus({ types: [], relations: [], queue: 0, mayBuild: true }), null);   // nothing defined yet: the setup checklist speaks instead
+  setLocale("en");
+  try {
+    assert.deepEqual(gateStatus({ types, relations, queue: 1, mayBuild: true }).map((x) => x.text), ["2 confirmed", "2 need another look", "1 waiting for you"]);
+  } finally {
+    setLocale("zh");
+  }
+});
 
 test("the workspace is not ready with no dataset, or with no confirmed type", () => {
   assert.equal(needsSetup({ datasets: [], types: [] }), true);

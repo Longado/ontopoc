@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ontopoc"
 version = "0.2.0"
-description = "An ontology draft from business tables or a document: the model drafts, code checks the draft against the data, a person confirms"
+description = "Ontology tool: the confirmation gate between a team's data and the AI that answers questions about it. Agents answer only from definitions a named person confirmed against the current data, otherwise they refuse and say who can confirm"
 requires-python = ">=3.11"
 license = {text = "AGPL-3.0-only"}
 classifiers = ["License :: OSI Approved :: GNU Affero General Public License v3"]

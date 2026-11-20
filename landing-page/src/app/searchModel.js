@@ -34,7 +34,7 @@ export function buildEntries({ datasets, types, relations, pipelines, boards, ac
 
 /** The pages this person's navigation offers (and their account page), as page entries. */
 export function pageEntries(user) {
-  const pages = navFor(user).flatMap((g) => g.items.map((i) => ({ kind: kind("page"), label: i.label, sub: g.label ?? "", href: i.href, keys: [], icon: i.icon })));
+  const pages = navFor(user, { notices: true }).flatMap((g) => g.items.map((i) => ({ kind: kind("page"), label: i.label, sub: g.label ?? "", href: i.href, keys: [], icon: i.icon })));
   return [...pages, { kind: kind("page"), label: t("nav.account"), sub: "", href: "#/account", keys: [], icon: "user" }];
 }
 

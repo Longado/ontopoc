@@ -859,7 +859,7 @@ export function QaPage({ route }) {
                 <p className="muted">{mayBuild ? t("ask.assistant.empty.sub") : scope && scope.types.length === 0 ? t("ask.chat.emptyNoScope") : t("ask.sub")}</p>
                 {mayBuild && (
                   <div className="chips" aria-label={t("ask.assistant.mode.aria")}>
-                    {["ask", "model", "pipeline", "meanings"].map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
+                    {modesFor(true).filter((m) => m !== "query").map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
                   </div>
                 )}
                 {!noAsk && ideas.length > 0 && queryMode === "ask" && (

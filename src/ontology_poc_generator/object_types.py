@@ -123,7 +123,11 @@ def write_elements(conn, changes: list[tuple], reads: dict[str, list[str]], vers
 # --- the definition a person writes -------------------------------------------------------------------------------------------------------------
 
 def _key_failure(conn, result: dict) -> tuple[str, dict]:
-    """(what is wrong with this key, in words; the detail a page shows) for a failed key check: the repeated values, up to 20, and how many rows are empty."""
+    """(what is wrong with this key, in words; the detail a page shows) for a failed key check: the repeated values, up to 20, and how many rows are empty;
+    or that the version has no rows at all, so there was nothing to check."""
+    if not result['rows_checked']:
+        detail = {'key_check': {'status': result['status'], 'rows_checked': 0, 'violations': 0, 'null_key_rows': 0, 'repeated_values': 0, 'repeated': []}}
+        return no_rows_text(result['dataset']), detail
     repeated = [{'key': list(r[:-1]), 'rows': r[-1]} for r in conn.execute(f'{result["query"]} LIMIT 20')]
     count = conn.execute(f'SELECT COUNT(*) FROM ({result["query"]})').fetchone()[0]
     parts = []
@@ -135,6 +139,10 @@ def _key_failure(conn, result: dict) -> tuple[str, dict]:
     detail = {'key_check': {'status': result['status'], 'rows_checked': result['rows_checked'], 'violations': result['violations'],
                             'null_key_rows': result['null_key_rows'], 'repeated_values': count, 'repeated': repeated}}
     return tr(f'查了全部 {result["rows_checked"]} 行，{tr("；", "; ").join(parts)}', f'Checked all {result["rows_checked"]} rows: {"; ".join(parts)}'), detail
+
+
+def no_rows_text(dataset: str) -> str:
+    return tr(f'“{dataset}”这一版一行数据都没有，查了 0 行不算通过', f'"{dataset}" has no rows in this version, and a check over 0 rows does not count as passed')
 
 
 def check_key_choice(conn, dataset: dict, cols: dict, key) -> tuple[dict, list[str]]:
@@ -155,6 +163,8 @@ def check_key_choice(conn, dataset: dict, cols: dict, key) -> tuple[dict, list[s
     key_check = check_key(conn, dataset['id'], key)
     if key_check['status'] != 'passed':
         why, detail = _key_failure(conn, key_check)
+        if not key_check['rows_checked']:
+            raise TypeRefused(tr(f'主键没法检查：{why}。先上传有数据的一版', f'The key cannot be checked: {why}. Upload a version with rows first'), detail=detail)
         raise TypeRefused(tr(f'这个主键不行：{why}。请换一个主键，或先处理数据里的重复', f'This key does not work: {why}. Pick another key, or deal with the repeats in the data first'), detail=detail)
     return key_check, warnings
 
@@ -479,7 +489,9 @@ def _type_problems(conn, content: dict) -> tuple[list[str], int | None]:
     problems = [tr(f'“{p["column"]}”现在的内容是{TYPE_NAME[cols[p["column"]]["type"]]}，装不进{TYPE_NAME[p["type"]]}', f'"{p["column"]}" now holds {TYPE_NAME[cols[p["column"]]["type"]]} values, which do not fit {TYPE_NAME[p["type"]]}')
                 for p in content['properties'] if p['type'] not in FITS[cols[p['column']]['type']]]
     key_check = check_key(conn, dataset['id'], content['key'])
-    if key_check['status'] != 'passed':
+    if key_check['status'] != 'passed' and not key_check['rows_checked']:
+        problems.append(tr(f'主键“{" + ".join(content["key"])}”没法检查：{no_rows_text(dataset["name"])}', f'The key "{" + ".join(content["key"])}" cannot be checked: {no_rows_text(dataset["name"])}'))
+    elif key_check['status'] != 'passed':
         problems.append(tr(f'主键“{" + ".join(content["key"])}”现在不唯一或有空值：{_key_failure(conn, key_check)[0]}', f'The key "{" + ".join(content["key"])}" is no longer unique or has empty values: {_key_failure(conn, key_check)[0]}'))
     return problems, key_check['id']
 
