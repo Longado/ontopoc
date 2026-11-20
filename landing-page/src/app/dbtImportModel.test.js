@@ -65,8 +65,13 @@ test("after a failure mid-run the dialog says what was written, what failed and 
   assert.deepEqual(sections.map((s) => s.id), ["types", "failed", "notAttempted", "unmatched", "skipped"]);
   assert.equal(sections[1].items[0].text, "object type orders: It failed (RecursionError: deep); this one was not written and the import stopped here");
   assert.equal(sections[2].items[0].text, "relationships orders.customer_id → customers");
+  assert.equal(sections[1].note, "Skipped means a check refused one item and the import went on; failed means an unexpected error stopped the import there.");
+  const previewStopped = { ...stopped, applied: false };
+  assert.equal(importSummary(previewStopped).headline, "Stopped on an error. It would have proposed 1 object type before it; nothing was written.");
+  assert.equal(importSummary(previewStopped).canApply, false);
   setLocale("zh");
   assert.equal(importSummary(stopped).headline, "出错停下了。之前提出了 1 个对象类型；后面的没有做。");
+  assert.equal(importSummary(previewStopped).headline, "出错停下了。出错之前本会提出 1 个对象类型；什么都没有写入。");
   setLocale("en");
 });
 
