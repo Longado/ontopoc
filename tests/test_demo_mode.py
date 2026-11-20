@@ -131,11 +131,20 @@ class GuestInput(unittest.TestCase):
                 self.assertEqual(status, 400, path)
                 self.assertIn('error', body)
 
+    def test_a_number_no_table_can_hold_is_answered_400(self):
+        with serving(True) as (base, _):
+            b = Browser(base)
+            self.assertEqual(b.call('POST', '/api/auth/demo', {})[0], 200)
+            for path, body in (('/api/workspace/notices/read', {'ids': [10 ** 30]}), ('/api/workspace/dashboards/data', {'id': 10 ** 30})):
+                status, answer = b.call('POST', path, body)
+                self.assertEqual(status, 400, path)
+                self.assertIn('error', answer)
+
     def test_large_bodies_are_refused(self):
         with serving(True) as (base, _):
             b = Browser(base)
             self.assertEqual(b.call('POST', '/api/auth/demo', {})[0], 200)
-            for path in ('/api/workspace/ask', '/api/workspace/query', '/api/workspace/notices/read'):
+            for path in ('/api/workspace/ask', '/api/workspace/query', '/api/workspace/query/text', '/api/workspace/notices/read'):
                 self.assertEqual(b.call('POST', path, {'question': 'x' * 100_000})[0], 413, path)
 
     def test_an_absurd_answer_id_is_404(self):
