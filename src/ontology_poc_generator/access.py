@@ -28,7 +28,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/workspace/actions(/.+)?', 'builder'),   # actions are for builders: a viewer runs and reads none (object_actions.action_visible)
     ('GET', r'/api/workspace/pipelines(/.+)?', 'builder'),   # pipelines are for builders: their steps and previews quote the data (workspace_pipelines.pipeline_visible)
     ('GET', r'/api/workspace/(sources|schedules)(/.+)?', 'builder'),   # a builder picks a source's tables and sets schedules; the connection details are shown to an admin only (workspace_sources.public_source)
-    ('GET', r'/api/workspace/ask/tally', 'builder'),   # the team's questions counted by outcome: no question, no asker (workspace_questions.tally)
+    ('GET', r'/api/workspace/ask/+tally/?', 'builder'),   # the team's questions counted by outcome: no question, no asker (workspace_questions.tally)
     ('GET', r'/api/workspace/ask(/.+)?', 'viewer'),   # a person's own questions and answers, within what they may see (workspace_questions)
     ('GET', r'/api/workspace/explore/.+', 'viewer'),   # the explorer reads through type visibility, viewer visibility and row rules like the objects tab (explorer)
     ('POST', r'/api/workspace/explore/(table|chart)', 'viewer'),   # a POST only because the query is long; nothing is written
