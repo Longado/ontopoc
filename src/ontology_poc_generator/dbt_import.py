@@ -274,9 +274,9 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, meta: dict 
             written += _relation(conn, plan, report, test, unique_id, type_of, datasets, who, user, written)
     report['skipped'], more = report['skipped'][:SHOWN_SKIPPED], max(0, len(report['skipped']) - SHOWN_SKIPPED)
     if plan['elsewhere']:
-        report['skipped'].append({'model': None, 'what': tr(f'{plan["elsewhere"]} 个不在模型上的测试', f'{plan["elsewhere"]} tests not on a model'), 'reason': tr('只读模型上的测试（source、seed、snapshot 上的不读）', 'Only tests on models are read (not on sources, seeds or snapshots)')})
+        report['skipped'].append({'model': None, 'what': tr(f'{plan["elsewhere"]} 个不在模型上的测试', f'{plan["elsewhere"]} {"test" if plan["elsewhere"] == 1 else "tests"} not on a model'), 'reason': tr('只读模型上的测试（source、seed、snapshot 上的不读）', 'Only tests on models are read (not on sources, seeds or snapshots)')})
     if plan['broken']:
-        report['skipped'].append({'model': None, 'what': tr(f'{plan["broken"]} 个模型', f'{plan["broken"]} models'), 'reason': tr('没有名字，读不了', 'They have no name and cannot be read')})
+        report['skipped'].append({'model': None, 'what': tr(f'{plan["broken"]} 个模型', f'{plan["broken"]} {"model" if plan["broken"] == 1 else "models"}'), 'reason': tr('没有名字，读不了', 'No name, so it cannot be read')})
     return {'applied': False, 'manifest': {'schema_version': plan['version'], 'dbt_version': plan['dbt_version'], 'project': plan['project'], 'models': len(models), 'tests': len(plan['tests']),
                                            'note': None if plan['version'] in KNOWN_VERSIONS else tr(f'这是 v{plan["version"]}，比这里核对过的 v1–v12 新：读不了的都列在跳过里', f'This is v{plan["version"]}, newer than the v1–v12 this reader was checked against: whatever could not be read is listed as skipped')},
             **report, 'skipped_more': more, 'limits': {'proposals': MAX_PROPOSALS, 'megabytes': MAX_MANIFEST_BYTES // 1024 // 1024}}
