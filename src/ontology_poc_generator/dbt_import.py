@@ -32,7 +32,8 @@ from ontology_poc_generator.workspace_store import current_dataset, log_line, op
 
 MAX_MANIFEST_BYTES = 20 * 1024 * 1024   # every manifest carries dbt's own macros (about 1 MB); a project of a few hundred models is several MB more. Parsed once, in memory, and not kept
 MAX_PROPOSALS = 50   # new types and relations one import writes: each runs its check on the full data under the write lock, and each is one more thing a second builder reads
-SHOWN_SKIPPED = 200
+SHOWN = 200   # entries in each list of the answer; the rest are counted in `more`
+SHOWN_TEXT = 120   # characters of a name or value from the manifest shown back
 KNOWN_VERSIONS = range(1, 13)   # the manifest versions whose shape this reader was checked against (dbt's published schemas v1 to v12)
 SCHEMA_URL = re.compile(r'https://schemas\.getdbt\.com/dbt/manifest/v([0-9]{1,3})\.json')
 READ_TESTS = ('unique', 'not_null', 'relationships', 'accepted_values')
@@ -75,7 +76,7 @@ def parse_manifest(text) -> dict:
                                  'This is not a dbt manifest: metadata.dbt_schema_version is missing or is not the https://schemas.getdbt.com/dbt/manifest/vN.json dbt writes, or there are no nodes'))
     short = lambda v: v[:60] if isinstance(v, str) else None
     plan = {'version': int(found.group(1)), 'dbt_version': short(metadata.get('dbt_version')), 'project': short(metadata.get('project_name')),
-            'models': {}, 'tests': [], 'unread': [], 'elsewhere': 0, 'broken': 0}
+            'models': {}, 'tests': [], 'unread': [], 'elsewhere': 0, 'broken': 0, 'duplicates': 0}
     nodes = data['nodes']
     for unique_id, node in nodes.items():
         if isinstance(node, dict) and node.get('resource_type') == 'model':
@@ -87,7 +88,27 @@ def parse_manifest(text) -> dict:
         if not isinstance(node, dict) or node.get('resource_type') != 'test':
             continue
         _read_test(plan, unique_id, node)
+    seen, kept = set(), []
+    for test in plan['tests']:   # the same test under another id (a copy, or one listed twice) is read once, before any work is done on it
+        key = _sameness(test)
+        if key in seen:
+            plan['duplicates'] += 1
+            continue
+        seen.add(key)
+        kept.append(test)
+    plan['tests'] = kept
     return plan
+
+
+def _sameness(test: dict) -> tuple:
+    """What makes two tests the same test: the model, kind, column, condition, target and, for the kinds read, `field` and the plain values. A value that
+    is not plain is never compared (nor turned into text): such a test is its own."""
+    kwargs = test['kwargs']
+    values = kwargs.get('values')
+    plain = isinstance(values, list) and all(_plain(v) for v in values)
+    field = kwargs.get('field') if isinstance(kwargs.get('field'), str) else None
+    return (test['model'], test['kind'], test['namespace'], test['column'], test['where'], test['target'], test['to_text'], field,
+            tuple((type(v).__name__, v) for v in values) if plain else ('own', id(test)) if values is not None else None)
 
 
 def _depends(node: dict) -> list[str]:
@@ -303,14 +324,18 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, meta: dict 
             written += _relation(conn, plan, report, test, unique_id, type_of, datasets, who, user, written)
     unmatched = set(report['unmatched_models'])
     report['skipped'] = [s for s in report['skipped'] if s['model'] not in unmatched]   # a model with no dataset is listed once, as that; its tests are not
-    report['skipped'], more = report['skipped'][:SHOWN_SKIPPED], max(0, len(report['skipped']) - SHOWN_SKIPPED)
+    report['unmatched_models'] = [n[:SHOWN_TEXT] for n in report['unmatched_models']]
+    report['skipped'] = [{'model': s['model'][:SHOWN_TEXT] if s['model'] else s['model'], 'what': s['what'][:2 * SHOWN_TEXT], 'reason': s['reason'][:5 * SHOWN_TEXT]} for s in report['skipped']]   # names from the file can be any length
     if plan['elsewhere']:
-        report['skipped'].append({'model': None, 'what': tr(f'{plan["elsewhere"]} 个不在模型上的测试', f'{plan["elsewhere"]} {"test" if plan["elsewhere"] == 1 else "tests"} not on a model'), 'reason': tr('只读模型上的测试（source、seed、snapshot 上的不读）', 'Only tests on models are read (not on sources, seeds or snapshots)')})
+        report['skipped'].insert(0, {'model': None, 'what': tr(f'{plan["elsewhere"]} 个不在模型上的测试', f'{plan["elsewhere"]} {"test" if plan["elsewhere"] == 1 else "tests"} not on a model'), 'reason': tr('只读模型上的测试（source、seed、snapshot 上的不读）', 'Only tests on models are read (not on sources, seeds or snapshots)')})
     if plan['broken']:
-        report['skipped'].append({'model': None, 'what': tr(f'{plan["broken"]} 个模型', f'{plan["broken"]} {"model" if plan["broken"] == 1 else "models"}'), 'reason': tr('没有名字，读不了', 'No name, so it cannot be read')})
+        report['skipped'].insert(0, {'model': None, 'what': tr(f'{plan["broken"]} 个模型', f'{plan["broken"]} {"model" if plan["broken"] == 1 else "models"}'), 'reason': tr('没有名字，读不了', 'No name, so it cannot be read')})
+    more = {k: max(0, len(report[k]) - SHOWN) for k in report}
+    report = {k: v[:SHOWN] for k, v in report.items()}
     return {'applied': False, 'manifest': {'schema_version': plan['version'], 'dbt_version': plan['dbt_version'], 'project': plan['project'], 'models': len(models), 'tests': len(plan['tests']),
+                                           'duplicates': plan['duplicates'],
                                            'note': None if plan['version'] in KNOWN_VERSIONS else tr(f'这是 v{plan["version"]}，比这里核对过的 v1–v12 新：读不了的都列在跳过里', f'This is v{plan["version"]}, newer than the v1–v12 this reader was checked against: whatever could not be read is listed as skipped')},
-            **report, 'skipped_more': more, 'limits': {'proposals': MAX_PROPOSALS, 'megabytes': MAX_MANIFEST_BYTES // 1024 // 1024}}
+            **report, 'more': more, 'limits': {'proposals': MAX_PROPOSALS, 'megabytes': MAX_MANIFEST_BYTES // 1024 // 1024}}
 
 
 def _over_cap() -> str:
