@@ -97,8 +97,7 @@ def _check_relation(conn, content: dict, record: bool, copies: dict, examples: b
         return {'problems': gone}
     m_table, o_table = _quote(m_ds['table_name']), _quote(o_ds['table_name'])
     found = _side_numbers(conn, m_table, o_table, [m_col], [o_col], m_ds['rows_stored'])
-    unmatched_rows = _rows(conn, f'SELECT {", ".join(f"t.{_quote(c)}" for c in shown)} FROM {m_table} t WHERE {_filled("t", m_col)} AND NOT EXISTS '
-                                 f'(SELECT 1 FROM {o_table} o WHERE o.{_quote(o_col)} = t.{_quote(m_col)}) ORDER BY t.rowid LIMIT {ROW_SAMPLE}') if examples else []
+    unmatched_rows = _unmatched_sample(conn, m_table, o_table, m_col, o_col, shown) if examples and found['unmatched'] else []   # none miss: nothing to look for
     repeated_rows = _rows(conn, f'SELECT {", ".join(_quote(c) for c in repeated_shown)} FROM {o_table} WHERE {_quote(o_col)} IN '
                                 f'(SELECT {_quote(o_col)} FROM {o_table} WHERE {_filled(o_table, o_col)} GROUP BY {_quote(o_col)} HAVING COUNT(*) > 1) '
                                 f'ORDER BY {_quote(o_col)}, rowid LIMIT {ROW_SAMPLE}') if examples else []
@@ -123,6 +122,19 @@ def _check_relation(conn, content: dict, record: bool, copies: dict, examples: b
             'fanout': {'keys': found['fan_keys'], 'source_rows': found['source_rows'], 'extra_rows': found['extra_rows'], 'samples': found['fan_samples'],
                        'rows': {'columns': repeated_shown, 'rows': repeated_rows}},
             'datasets': {m_ds['name']: m_ds['version'], o_ds['name']: o_ds['version']}}
+
+
+def _unmatched_sample(conn, m_table: str, o_table: str, m_col: str, o_col: str, shown: list[str]) -> list[list]:
+    """The first rows of the many side, in table order, whose key the one side does not have. The one side's keys are put in a temporary table with an index
+    first: looked up in the table itself, which has no index on that column, a miss costs a read of the whole one side, and the cost is rows times rows."""
+    conn.execute('DROP TABLE IF EXISTS temp.rel_one_keys')
+    conn.execute(f'CREATE TEMP TABLE rel_one_keys AS SELECT DISTINCT {_quote(o_col)} AS k FROM {o_table} o WHERE {_filled("o", o_col)}')
+    try:
+        conn.execute('CREATE INDEX temp.rel_one_keys_k ON rel_one_keys(k)')
+        return _rows(conn, f'SELECT {", ".join(f"t.{_quote(c)}" for c in shown)} FROM {m_table} t WHERE {_filled("t", m_col)} AND NOT EXISTS '
+                           f'(SELECT 1 FROM temp.rel_one_keys o WHERE o.k = t.{_quote(m_col)}) ORDER BY t.rowid LIMIT {ROW_SAMPLE}')
+    finally:
+        conn.execute('DROP TABLE IF EXISTS temp.rel_one_keys')
 
 
 def evidence_lines(result: dict) -> list[dict]:
