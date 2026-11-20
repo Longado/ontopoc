@@ -96,6 +96,17 @@ def _depends(node: dict) -> list[str]:
     return [n for n in listed if isinstance(n, str)] if isinstance(listed, list) else []
 
 
+def _plain(value) -> bool:
+    """Text, a number or true/false: the only values kept from a manifest. Anything else (a list, an object, nested to any depth) is never turned into text."""
+    return isinstance(value, (str, int, float, bool)) and value is not None
+
+
+def _label(node: dict, unique_id: str) -> str:
+    """A test's name to show: its name when that is text, else its id (always text: a key of nodes)."""
+    name = node.get('name')
+    return (name if isinstance(name, str) and name else unique_id)[:80]
+
+
 def _ref_name(value) -> str | None:
     found = REF.search(value) if isinstance(value, str) else None
     return (found.group(4) or found.group(2)) if found else None
@@ -111,7 +122,7 @@ def _read_test(plan: dict, unique_id: str, node: dict) -> None:
         return
     if not isinstance(meta, dict) or not isinstance(meta.get('name'), str):   # a test written in SQL (a singular test)
         for model in dict.fromkeys(on_models):
-            plan['unread'].append({'model': models[model], 'what': str(node.get('name') or unique_id)[:80], 'reason': tr('用 SQL 写的测试不读', 'A test written in SQL is not read')})
+            plan['unread'].append({'model': models[model], 'what': _label(node, unique_id), 'reason': tr('用 SQL 写的测试不读', 'A test written in SQL is not read')})
         return
     kind, namespace = meta['name'], meta.get('namespace')
     kwargs = meta.get('kwargs') if isinstance(meta.get('kwargs'), dict) else {}
@@ -131,7 +142,7 @@ def _read_test(plan: dict, unique_id: str, node: dict) -> None:
         attached = candidates[0] if len(candidates) == 1 else None
     what = f'{namespace + "." if isinstance(namespace, str) and namespace else ""}{kind}'
     if attached is None:
-        plan['unread'].append({'model': None, 'what': f'{what} ({str(node.get("name") or unique_id)[:80]})', 'reason': tr('看不出它测的是哪个模型', 'Cannot tell which model it tests')})
+        plan['unread'].append({'model': None, 'what': f'{what} ({_label(node, unique_id)})', 'reason': tr('看不出它测的是哪个模型', 'Cannot tell which model it tests')})
         return
     rest = [n for n in dict.fromkeys(on_models) if n != attached]
     if kind == 'relationships' and target is None and len(rest) == 1:   # `to` not readable as a ref: the other model it depends on
@@ -151,16 +162,31 @@ def _datasets(conn, user: dict | None) -> list[str]:
 
 
 def _write(conn, make, element_id: str, who: str | None, after: dict):
-    """The form's own function and the line saying where it came from, together or not at all."""
-    conn.execute('BEGIN IMMEDIATE')
+    """The form's own function and the line saying where it came from, together or not at all, inside the import's one transaction (whole_import): a
+    savepoint, so that a proposal the form's checks refuse takes back only what it wrote (its key check), and the import goes on with the next."""
+    conn.execute('SAVEPOINT dbt_item')
     try:
         made = make()
         log_line(conn, who or tr('未署名', 'unsigned'), element_id, LOG_CHANGE, after=after)
-        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK TO dbt_item')
+        conn.execute('RELEASE dbt_item')
+        raise
+    conn.execute('RELEASE dbt_item')
+    return made
+
+
+def whole_import(conn, plan: dict, who: str | None, user: dict | None) -> dict:
+    """run_import as one transaction: every proposal in the report is written, or, when anything goes wrong on the way, none is. The type and relation
+    functions join a transaction their caller holds (workspace_store.element_state_writes), so the whole import can be one."""
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        report = run_import(conn, plan, who, user)
     except BaseException:
         conn.execute('ROLLBACK')
         raise
-    return made
+    conn.execute('COMMIT')
+    return report
 
 
 def _name_taken() -> str:
@@ -177,7 +203,8 @@ def _existing(conn, prefix: str, english: str) -> dict | None:
 
 
 def _code_text(value) -> str:
-    return 'true' if value is True else 'false' if value is False else str(value)
+    """One accepted value as text (only plain values reach here: _plain), cut to 120 characters."""
+    return ('true' if value is True else 'false' if value is False else str(value))[:120]
 
 
 def run_import(conn, plan: dict, who: str | None, user: dict | None, meta: dict | None = None) -> dict:
@@ -221,6 +248,8 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, meta: dict 
                 skip(name, what, tr('没有写测的是哪一列', 'It does not say which column it tests'))
             elif test['column'] not in cols:
                 skip(name, what, tr(f'数据集 {dataset["name"]} 里没有“{test["column"]}”这一列（列名要完全一样）', f'The dataset {dataset["name"]} has no column "{test["column"]}" (column names must match exactly)'))
+            elif test['kind'] == 'accepted_values' and not (isinstance(test['kwargs'].get('values'), list) and all(_plain(v) for v in test['kwargs']['values'])):
+                skip(name, what, tr('列出的取值里有不是文本、数字或 true/false 的东西，不读', 'Its values are not all plain text, numbers or true/false, so it is not read'))
             else:
                 usable.append({**test, 'label': what})
         by_kind = lambda kind: [t['column'] for t in usable if t['kind'] == kind]
@@ -352,23 +381,33 @@ def import_manifest(db_path: Path, payload: dict, who: str | None, user: dict | 
         raise TypeRefused(tr('只有建设者和管理员能导入', 'Only builders and admins can import'), 403)
     plan = parse_manifest(payload.get('manifest'))
     apply = payload.get('apply') is True
-    with lock or nullcontext():
-        if apply:
-            conn = open_workspace(db_path)
-            try:
-                return {**run_import(conn, plan, who, user), 'applied': True}
-            finally:
-                conn.close()
-        with tempfile.TemporaryDirectory() as tmp:
-            copy = Path(tmp) / 'workspace.sqlite'
-            source, target = sqlite3.connect(str(db_path)), sqlite3.connect(str(copy))
-            try:
-                source.backup(target)
-            finally:
-                target.close()
-                source.close()
-            conn = open_workspace(copy)
-            try:
-                return run_import(conn, plan, who, user)
-            finally:
-                conn.close()
+    try:
+        with lock or nullcontext():
+            return _import(db_path, plan, apply, who, user)
+    except TypeRefused:
+        raise
+    except Exception as exc:   # whatever went wrong (a value too deep to handle included): the one transaction was taken back, so the person is told nothing was written
+        raise TypeRefused(tr(f'读这个 manifest 时出了错（{type(exc).__name__}），什么都没有写入', f'Reading this manifest failed ({type(exc).__name__}); nothing was written'), 400) from None
+
+
+def _import(db_path: Path, plan: dict, apply: bool, who: str | None, user: dict | None) -> dict:
+    """Apply: whole_import on the workspace. Preview: the same on a copy of the workspace file that is thrown away."""
+    if apply:
+        conn = open_workspace(db_path)
+        try:
+            return {**whole_import(conn, plan, who, user), 'applied': True}
+        finally:
+            conn.close()
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / 'workspace.sqlite'
+        source, target = sqlite3.connect(str(db_path)), sqlite3.connect(str(copy))
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+            source.close()
+        conn = open_workspace(copy)
+        try:
+            return whole_import(conn, plan, who, user)
+        finally:
+            conn.close()
