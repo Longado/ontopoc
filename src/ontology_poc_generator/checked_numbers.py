@@ -251,7 +251,7 @@ def on_board(conn, user: dict | None, board: dict, components: list[dict], as_sh
 
 def _rerun(conn, asker: dict | None, stored: dict, question: str) -> dict:
     """A saved answer worked out again by code, as its asker, from the query it kept (no model): refused, with the plain reason, when a definition it stood on is not
-    confirmed now or its type is no longer in the asker's scope."""
+    confirmed now, or its type or a view it read is no longer in the asker's scope (it is never run over more rows than it read)."""
     from ontology_poc_generator.ontopoc_query import QueryError
     from ontology_poc_generator.workspace_questions import _run_compiled, scope
     lines = lines_of(conn, [d['id'] for d in stored.get('definitions') or []])
@@ -261,7 +261,11 @@ def _rerun(conn, asker: dict | None, stored: dict, question: str) -> dict:
     query = stored.get('query')
     if not isinstance(query, dict) or query.get('start') not in sc['types']:
         return {'status': 'refused', 'reason': tr('这条回答用到的对象类型现在不在你的范围里', 'An object type this answer used is no longer in your scope')}
-    views = tuple(d['name'] for d in stored.get('definitions') or [] if d.get('kind') == 'view' and d['name'] in sc['views'])
+    views = tuple(d['name'] for d in stored.get('definitions') or [] if d.get('kind') == 'view')
+    gone = [v for v in views if v not in sc['views']]
+    if gone:   # without its view the query would read more rows than the answer did: it is refused, never run wider
+        return {'status': 'refused', 'reason': tr(f'这条回答用到的视图{"、".join(f"「{v}」" for v in gone)}现在不在你的范围里（例如它用的列设成了不发送取值），没有重算',
+                                                  f'The view{"s" if len(gone) > 1 else ""} {", ".join(f"{chr(34)}{v}{chr(34)}" for v in gone)} this answer used {"are" if len(gone) > 1 else "is"} no longer in your scope (for example a column it uses was set to not send values), so it was not worked out again')}
     try:
         return _run_compiled(conn, asker, sc, query, question, views)
     except (QueryError, KeyError, TypeError, ValueError, AttributeError):
