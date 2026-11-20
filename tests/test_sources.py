@@ -533,5 +533,73 @@ class PipelineScheduleTests(SourceCase):
             self.assertEqual(self.ask(ann, 'get', '/api/workspace/pipelines/%E8%AE%A2%E5%8D%95%E5%89%AF%E6%9C%AC/runs')[1]['runs'][0]['who'], '定时：订单副本跟着跑（Ann）')
 
 
+    def confirm_type(self, bob, name, enums=()):
+        for column in (*enums, None):
+            shown = self.ask(bob, 'get', f'/api/workspace/types/{name}')[1]
+            shown = next(p for p in shown['properties'] if p['column'] == column)['meanings'] if column else shown
+            status, body = self.ask(bob, 'post', '/api/workspace/types/confirm', {'id': name, 'version': shown['version'], 'seen': shown['seen'], **({'column': column} if column else {})})
+            self.assertEqual(status, 200, body)
+
+    def told(self, client):
+        status, body = self.ask(client, 'get', '/api/workspace/notices')
+        self.assertEqual(status, 200, body)
+        return [n['text'] for n in body['notices']]
+
+    def test_a_scheduled_pull_that_sends_two_types_back_tells_each_person_who_can_confirm_them_once(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.pull(ann)
+            self.assertEqual(self.ask(ann, 'post', '/api/workspace/types', ORDER_TYPE)[0], 200)
+            other = {'english_name': 'order2', 'name': '订单副表', 'dataset': '订单', 'key': ['订单号'], 'properties': [{'column': '订单号'}, {'column': '金额'}]}
+            self.assertEqual(self.ask(ann, 'post', '/api/workspace/types', other)[0], 200)
+            self.confirm_type(bob, 'order', ('状态码',))
+            self.confirm_type(bob, 'order2')
+            status, made = self.ask(ann, 'post', '/api/workspace/schedules', {'name': '订单每小时', 'kind': 'source', 'target': '订单库', 'cadence': 'hourly', 'minute': 0, 'tz': 'UTC'})
+            self.assertEqual(status, 200, made)
+            rows = orders(codes=(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3))   # the codes shift (the meanings and 订单 go back) ...
+            rows[1] = ('A000', *rows[1][1:])   # ... and a key repeats (订单副表 goes back on its own)
+            self.db = FakeDb({'orders': (COLUMNS, rows)})
+            this_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+            runs = self.server.run_schedules(this_hour + timedelta(hours=1, minutes=1))
+            self.assertEqual([(r['status'], r['changed']) for r in runs], [('success', True)])
+            self.assertEqual(runs[0]['detail']['flagged_count'], 3)
+            for person in (bob, admin):
+                said = self.told(person)
+                self.assertEqual(len(said), 1, said)   # one pull, one notice
+                self.assertIn('还有 2 项', said[0])
+            self.assertEqual(self.told(ann), [])   # she put them forward
+
+    def test_a_pipeline_run_that_sends_several_readers_of_its_output_back_tells_each_person_once(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.pull(ann)
+            self.put_forward(ann)
+            self.confirm_pipeline(bob)
+            status, body = self.ask(ann, 'post', '/api/workspace/pipelines/run', {'id': '订单副本'})
+            self.assertEqual(status, 200, body)
+            for name in ('copy1', 'copy2'):
+                kind = {**ORDER_TYPE, 'english_name': name, 'name': f'订单副本{name[-1]}', 'dataset': '订单副本'}
+                self.assertEqual(self.ask(ann, 'post', '/api/workspace/types', kind)[0], 200, name)
+                self.confirm_type(bob, name, ('状态码',))
+            self.db = FakeDb({'orders': (COLUMNS, orders(codes=(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3)))})   # the codes shift upstream
+            self.assertEqual(self.ask(ann, 'post', '/api/workspace/sources/refresh', {'dataset': '订单'})[1]['run']['version'], 2)   # the pipeline goes back, and the two types on its output with it
+            for who in ('bob', 'admin'):
+                said = self.told(team[who])
+                self.assertEqual(len(said), 1, said)   # one refresh, one notice
+                self.assertIn('还有 2 项', said[0])
+            status, body = self.ask(ann, 'post', '/api/workspace/pipelines/run', {'id': '订单副本'})   # one run: the meanings of both readers go back
+            self.assertEqual(status, 200, body)
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            moved = conn.execute("SELECT element_id FROM element_state WHERE state = 'needs_look' ORDER BY element_id").fetchall()
+            conn.close()
+            self.assertEqual(moved, [('enum:copy1:状态码',), ('enum:copy2:状态码',), ('objtype:copy1',), ('objtype:copy2',), ('pipeline:订单副本',)])
+            for who in ('bob', 'admin'):
+                said = self.told(team[who])
+                self.assertEqual(len(said), 2, said)   # one run, one more notice
+                self.assertIn('还有 1 项', said[0])
+
+
 if __name__ == '__main__':
     unittest.main()
