@@ -10,7 +10,7 @@
 claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=<仓库路径>/src python3 -m ontology_poc_generator.mcp_server
 ```
 
-别的客户端写成 stdio 服务，命令同上。不设 `ONTOPOC_TOOLSET=all` 时只给 5 个只读工具（团队已确认的定义：`describe_definitions`、`ontopoc_query`、`ask`、`list_unconfirmed`、`read_derived_property`）；下表的建模工具要设它（插件已经设好）。服务不在 8767 端口时设 `ONTOPOC_URL`。
+别的客户端写成 stdio 服务，命令同上。不设 `ONTOPOC_TOOLSET=all` 时只给 6 个只读工具（团队已确认的定义：`describe_definitions`、`ontopoc_query`、`ask`、`list_unconfirmed`、`read_derived_property`、`definition_standing`）；下表的建模工具要设它（插件已经设好）。服务不在 8767 端口时设 `ONTOPOC_URL`。
 
 ## 工具
 
@@ -72,6 +72,7 @@ claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=<仓库路径>/src 
 | `ask` | 写不出查询时才用：用一句话问，模型写成查询，代码算 | 是 | 每问一次都记进问答历史、算一次提问 |
 | `list_unconfirmed` | 还不能用的定义，以及原因 | 否 | 可以 |
 | `read_derived_property` | 读一个已确认的派生属性的值 | 否 | 可以 |
+| `definition_standing` | 每条定义现在是不是已确认、谁确认的、什么时候、在哪个数据版本上，没确认的写明原因和可以确认的人；`id` 只看一条。同一份也在 `GET /api/workspace/agent/standing`（`?id=` 一条，`?format=csv` 已确认的定义表），技能包是快照，以这里为准 | 否 | 可以 |
 
 `ask` 的回答带着 `query_text`，也就是这道题写成本体查询的样子。智能体可以先用 `ask` 学写法，再用 `ontopoc_query` 改条件、重复跑，后面这些都不再调用模型。
 

@@ -42,7 +42,7 @@ export const TOOL_GROUPS = ["read", "ask", "model", "confirm", "export", "other"
 // The group each tool sits in: read reads what the team confirmed or the data, ask asks a question of it, model builds, confirm records a person's judgement, export hands files out.
 // The line that says what a tool does is the dictionary's agents.tool.<name>.
 const TOOLS = {
-  describe_definitions: "read", list_unconfirmed: "read", read_derived_property: "read", ontopoc_query: "ask", ask: "ask", health: "other", list_runs: "other", run_overview: "other",
+  describe_definitions: "read", list_unconfirmed: "read", read_derived_property: "read", definition_standing: "read", ontopoc_query: "ask", ask: "ask", health: "other", list_runs: "other", run_overview: "other",
   preview_upload: "model", build_ontology: "model", list_objects: "read", object_fields: "read", object_rows: "read", list_relations: "read", suggest_relations: "model",
   find_instances: "read", instance_neighbourhood: "read", list_rules: "read", set_rules: "confirm", draft_form: "model", save_form: "model", export_forms: "export",
   export_mermaid: "export", export_ttl: "export", export_pipeline_spec: "export", data_layout: "read", data_check: "read", ask_question: "ask", list_questions: "ask",

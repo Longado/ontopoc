@@ -106,7 +106,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 ## 用 MCP / Claude 接入
 
-OntoPoc 的一部分功能封装为 39 个 MCP 工具，也可作为 Claude Code 插件安装。工具与页面共用本机服务：先启动服务，再接入客户端。给外部智能体用个人令牌（`ONTOPOC_TOKEN`）时默认只给 5 个只读工具：读定义、提问、用本体查询直接算、列出未确认项、读派生属性。
+OntoPoc 的一部分功能封装为 40 个 MCP 工具，也可作为 Claude Code 插件安装。工具与页面共用本机服务：先启动服务，再接入客户端。给外部智能体用个人令牌（`ONTOPOC_TOKEN`）时默认只给 6 个只读工具：读定义、提问、用本体查询直接算、列出未确认项、读派生属性、看每条定义现在是否已确认。
 
 ### 作为 Claude Code 插件安装
 
