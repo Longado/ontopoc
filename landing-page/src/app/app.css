@@ -58,7 +58,8 @@
   --row: 32px;
   --control: 28px;
   --control-lg: 32px;
-  --topbar: 52px;
+  --topbar-h: 52px;
+  --topbar: var(--topbar-h);
   --side-w: 224px;
   --page-max: 1280px;
   --text: 13px;
@@ -2328,6 +2329,9 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .nav.icons a.active::before { left: -6px; }
 .nav.icons a { padding: 0; }
 
+/* the guest banner sticks under the top bar; everything in the shell measures from below both */
+.shell { --topbar: calc(var(--topbar-h) + var(--banner-h, 0px)); }
+.guest-banner { position: sticky; top: var(--topbar-h); z-index: 19; }
 .guest-banner { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 2px 14px; padding: 6px var(--s2); background: var(--accent-bg); color: var(--accent-700); border-bottom: 1px solid var(--blue-line); font-size: 12px; line-height: 18px; text-align: center; }
 .guest-banner > span { color: var(--accent-700); }
 .guest-banner a, .guest-banner .plain { display: inline; min-height: 0; padding: 0; border: 0; background: none; color: var(--accent-600); font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }

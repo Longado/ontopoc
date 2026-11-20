@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { getHealth, signIn, startDemo } from "./api.js";
 import { accessUrl } from "./authModel.js";
+import { readAgain } from "./demoModel.js";
 import { useT } from "./i18n/index.js";
 import { LanguageSwitch } from "./ui/LanguageSwitch.jsx";
 import { Icon } from "./ui/Icon.jsx";
@@ -19,13 +20,17 @@ export function LoginPage({ setup, ended, onSignedIn, feedbackUrl }) {
   const [demoError, setDemoError] = useState("");
   useEffect(() => {
     let live = true;
-    getHealth().then((h) => { if (live) { setDemo(h?.demo === true); setAskIsOff(h?.demo_ask === false); setReady(true); } }, () => live && setReady(true));
+    readAgain(getHealth).then((h) => { if (live) { setDemo(h?.demo === true); setAskIsOff(h?.demo_ask === false); setReady(true); } }, () => live && setReady(true));
     const giveUp = setTimeout(() => live && setReady(true), 3000);   // a service that does not answer: the plain sign-in page rather than a blank one
     return () => {
       live = false;
       clearTimeout(giveUp);
     };
   }, []);
+  const demoErrorAt = useRef(null);
+  useEffect(() => {
+    if (demoError) demoErrorAt.current?.scrollIntoView({ block: "center" });   // the top bar's button stays in view while the hero, where the reason is written, may not
+  }, [demoError]);
   const tryDemo = async () => {
     setSending(true);
     setDemoError("");
@@ -116,7 +121,7 @@ export function LoginPage({ setup, ended, onSignedIn, feedbackUrl }) {
               <a className="ld-btn ld-ghost" href={accessUrl(feedbackUrl)} target="_blank" rel="noopener noreferrer">{t("auth.landing.request")}</a>
             </div>
             {askIsOff && <p className="ld-note">{t("auth.demo.askOff")}</p>}
-            {demoError && <p className="error" role="alert">{demoError}</p>}
+            {demoError && <p className="error" role="alert" ref={demoErrorAt}>{demoError}</p>}
           </div>
           <figure className="ld-window" role="img" aria-label={t("auth.landing.preview.label")}>
             <div className="ld-titlebar" aria-hidden="true"><i /><i /><i /><span>{t("auth.landing.preview.title")}</span></div>

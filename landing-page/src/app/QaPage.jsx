@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { aiDraft, askQuestion, draftMeanings, getAnswer, getAsk, getAssistantTurns, getDatasets, getModelReady, getPipeline, getPipelines, getType, getTypes, keepAssistantTurn, markAssistantTurn, proposeMeanings, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { DemoAskNote } from "./DemoAskNote.jsx";
-import { QUICK_START_URL, askOff } from "./demoModel.js";
+import { QUICK_START_URL, askOff, holdAsk } from "./demoModel.js";
 import { useDemoAsk } from "./useDemoAsk.js";
 import { canBuild, isAdmin } from "./authModel.js";
 import { allowedMode, commandChoices, datasetSpec, defaultSelected, isNoModel, loadThread, meaningsPayloads, modesFor, nextVersion, parseCommand, privacyKey, proposePayload, saveThread, scopeKind, stashDraft, textOptional } from "./assistantModel.js";
@@ -551,7 +551,8 @@ export function QaPage({ route }) {
   const t = useT();
   const me = useAuth().user;
   const mayBuild = canBuild(me);
-  const noAsk = askOff(me, useDemoAsk());
+  const demoAsk = useDemoAsk();
+  const noAsk = askOff(me, demoAsk);
   const who = me?.username ?? "";
   const [info, reload] = useLoad(getAsk, []);
   const [text, setText] = useState("");
@@ -804,10 +805,10 @@ export function QaPage({ route }) {
 
   const asked = useRef("");
   useEffect(() => {
-    if (!route.ask || asked.current === route.ask) return;
+    if (!route.ask || asked.current === route.ask || holdAsk(me, demoAsk)) return;
     asked.current = route.ask;   // a question from the home page is asked once as this page opens (the address then becomes the saved answer's)
     send(route.ask);
-  }, [route.ask]);
+  }, [route.ask, demoAsk]);
 
   useEffect(() => {
     const el = thread.current;

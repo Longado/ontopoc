@@ -119,6 +119,50 @@ class DemoRoutes(unittest.TestCase):
             self.assertEqual(codes, [200, 200, 429])
 
 
+class GuestInput(unittest.TestCase):
+    """What a guest can send: small bodies only, and a wrong one is answered, never dropped."""
+
+    def test_wrong_bodies_are_answered_400(self):
+        with serving(True) as (base, _):
+            b = Browser(base)
+            self.assertEqual(b.call('POST', '/api/auth/demo', {})[0], 200)
+            for path in ('/api/workspace/ask', '/api/workspace/query', '/api/workspace/query/text', '/api/workspace/notices/read'):
+                status, body = b.call('POST', path, [])
+                self.assertEqual(status, 400, path)
+                self.assertIn('error', body)
+
+    def test_a_number_no_table_can_hold_is_answered_400(self):
+        with serving(True) as (base, _):
+            b = Browser(base)
+            self.assertEqual(b.call('POST', '/api/auth/demo', {})[0], 200)
+            for path, body in (('/api/workspace/notices/read', {'ids': [10 ** 30]}), ('/api/workspace/dashboards/data', {'id': 10 ** 30})):
+                status, answer = b.call('POST', path, body)
+                self.assertEqual(status, 400, path)
+                self.assertIn('error', answer)
+
+    def test_large_bodies_are_refused(self):
+        with serving(True) as (base, _):
+            b = Browser(base)
+            self.assertEqual(b.call('POST', '/api/auth/demo', {})[0], 200)
+            for path in ('/api/workspace/ask', '/api/workspace/query', '/api/workspace/query/text', '/api/workspace/notices/read'):
+                self.assertEqual(b.call('POST', path, {'question': 'x' * 100_000})[0], 413, path)
+
+    def test_an_absurd_answer_id_is_404(self):
+        with serving(True) as (base, _):
+            b = Browser(base)
+            self.assertEqual(b.call('POST', '/api/auth/demo', {})[0], 200)
+            self.assertEqual(b.call('GET', '/api/workspace/ask/' + '9' * 23)[0], 404)
+
+    def test_guest_health_has_no_code_fingerprint(self):
+        with serving(True) as (base, _):
+            b = Browser(base)
+            self.assertEqual(b.call('POST', '/api/auth/demo', {})[0], 200)
+            self.assertEqual(b.call('GET', '/api/ontology/health')[1], {'model_ready': False, 'demo': True, 'demo_ask': False})
+            admin = Browser(base)
+            self.assertEqual(admin.call('POST', '/api/auth/login', {'username': 'root', 'password': GOOD})[0], 200)
+            self.assertIn('running', admin.call('GET', '/api/ontology/health')[1])
+
+
 class AskGuard(unittest.TestCase):
     def setUp(self):
         self.conn = open_workspace(':memory:')
@@ -157,12 +201,15 @@ class Cleanup(unittest.TestCase):
             conn.execute("INSERT INTO notice(user_id, at, action_name, text) VALUES (?, 'now', 'a', 't')", (g['id'],))
             conn.execute('CREATE TABLE IF NOT EXISTS ask_budget (who TEXT NOT NULL, at REAL NOT NULL)')
             conn.execute('INSERT INTO ask_budget(who, at) VALUES (?, 1)', (f'user:{g["id"]}',))
+            conn.execute('CREATE TABLE IF NOT EXISTS dashboard_last (dashboard_id INTEGER NOT NULL, component_id TEXT NOT NULL, reader INTEGER NOT NULL, picks TEXT NOT NULL, '
+                         'result_json TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (dashboard_id, component_id, reader, picks))')
+            conn.execute("INSERT INTO dashboard_last(dashboard_id, component_id, reader, picks, result_json, at) VALUES (1, 'c1', ?, '{}', '{}', 'now')", (g['id'],))
         conn.execute('UPDATE user SET created_at = ? WHERE id = ?', ((datetime.now(timezone.utc) - timedelta(hours=30)).isoformat(timespec='seconds'), old['id']))
         self.assertEqual(demo.cleanup(conn, datetime.now(timezone.utc)), 1)
         ids = [u['id'] for u in accounts.list_users(conn)]
         self.assertIn(new['id'], ids)
         self.assertNotIn(old['id'], ids)
-        for table, col in (('session', 'user_id'), ('notice', 'user_id'), ('demo_guest', 'user_id')):
+        for table, col in (('session', 'user_id'), ('notice', 'user_id'), ('demo_guest', 'user_id'), ('dashboard_last', 'reader')):
             self.assertEqual(conn.execute(f'SELECT COUNT(*) FROM {table} WHERE {col} = ?', (old['id'],)).fetchone()[0], 0, table)
             self.assertEqual(conn.execute(f'SELECT COUNT(*) FROM {table} WHERE {col} = ?', (new['id'],)).fetchone()[0], 1, table)
         self.assertEqual(conn.execute('SELECT COUNT(*) FROM ask_budget').fetchone()[0], 1)
@@ -188,6 +235,16 @@ class Seed(unittest.TestCase):
                 demo.seed(Path(tmp), force_fresh=True)   # not a demo folder (no marker): refuses to wipe
             demo.seed(target, force_fresh=True)
 
+    def test_a_seed_that_stops_early_can_be_started_over(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / 'demo'
+            with self.assertRaises(BaseException):
+                demo.seed(target, admin_name='demo-builder')   # the second account's name is taken: the seed stops after the first
+            self.assertTrue((target / demo.MARKER).is_file())   # the folder is already marked as this seed's, so --force-fresh may wipe it
+            self.assertFalse((target / demo.READY).exists())
+            demo.seed(target, force_fresh=True)
+            self.assertTrue((target / demo.READY).is_file())
+
     def test_guest_opens_the_seeded_board(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / 'demo'
@@ -210,6 +267,29 @@ class Seed(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join()
+
+    def test_no_model_ask_is_not_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / 'demo'
+            demo.seed(target)
+            server = make_server(port=0, gateway=None, output_dir=target, demo=True)
+            thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
+            thread.start()
+            try:
+                guest = Browser(f'http://127.0.0.1:{server.server_port}')
+                self.assertEqual(guest.call('POST', '/api/auth/demo', {})[0], 200)
+                for _ in range(2):
+                    self.assertEqual(guest.call('POST', '/api/workspace/ask', {'question': 'How many orders are there?'})[0], 503)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join()
+            conn = open_workspace(target / 'workspace.sqlite')
+            try:
+                has = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ask_budget'").fetchone()
+                self.assertEqual(conn.execute('SELECT COUNT(*) FROM ask_budget').fetchone()[0] if has else 0, 0)   # the guest's hour and the demo's day are both untouched
+            finally:
+                conn.close()
 
     def test_health_demo_ask_follows_the_gateway(self):
         with tempfile.TemporaryDirectory() as tmp:

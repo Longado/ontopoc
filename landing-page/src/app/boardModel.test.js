@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { headlineStands, draftOf, draftProblem, emptyComponent, emptyDraft, expiryText, paramsIn, paramValues, payloadOf, refreshText, scopeText, shareLink, specOf } from "./boardModel.js";
+import { controlsOf, headlineStands, draftOf, draftProblem, emptyComponent, emptyDraft, expiryText, paramsIn, paramValues, payloadOf, refreshText, scopeText, shareLink, specOf } from "./boardModel.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in askEnglish.test.js
@@ -96,4 +96,13 @@ test("a saved card switched to a query in the form has an empty query, not none"
   const card = draftOf(SAVED).components[0];
   assert.equal(card.text, "");
   assert.equal(draftProblem({ ...draftOf(SAVED), visible_to: [3], components: [{ ...card, kind: "query" }] }), "第 1 个组件要写查询");
+});
+
+test("controlsOf: the filter bar keeps the last read of this board while a new pick loads or fails", () => {
+  const now = { bar: [{ field: "a" }], params: [] };
+  const before = { id: "7", data: { bar: [{ field: "b" }], params: [{ name: "p" }] } };
+  assert.equal(controlsOf(now, before, "7"), now);
+  assert.equal(controlsOf(undefined, before, "7"), before.data);
+  assert.equal(controlsOf(undefined, before, "8"), undefined);   // another board's bar is never shown
+  assert.equal(controlsOf(undefined, undefined, "7"), undefined);
 });

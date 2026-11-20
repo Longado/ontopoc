@@ -1,9 +1,9 @@
-import React, { useEffect, useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { ChartResult, Standing } from "./ChartView.jsx";
 import { deleteBoard, getBoard, getBoardData, getBoards } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
-import { expiryText, headlineStands, paramValues, refreshText, scopeLabel, scopeText, shareLink, unavailableText } from "./boardModel.js";
+import { controlsOf, expiryText, headlineStands, paramValues, refreshText, scopeLabel, scopeText, shareLink, unavailableText } from "./boardModel.js";
 import { useT } from "./i18n/index.js";
 import { Answer, Basis } from "./QaPage.jsx";
 import { queryRecord } from "./qaModel.js";
@@ -155,17 +155,24 @@ export function BoardPage({ route }) {
   const { user } = useAuth();
   const [picked, setPicked] = useState({});
   const [typed, setTyped] = useState({});
-  const [tick, setTick] = useState(0);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [board] = useLoad(() => getBoard(id), [id]);
-  const [data] = useLoad(() => getBoardData(id, picked, typed), [id, JSON.stringify(picked), JSON.stringify(typed), tick]);
+  const [data, reload] = useLoad(() => getBoardData(id, picked, typed), [id, JSON.stringify(picked), JSON.stringify(typed)]);
+  const last = useRef();
+  if (data.data) last.current = { id, data: data.data };
+  const controls = controlsOf(data.data, last.current, id);   // the filter bar stays while a pick loads or fails, so the pick can be changed back
   const seconds = board.data?.refresh_seconds ?? 0;
   useEffect(() => {
     if (!seconds) return undefined;
-    const timer = setInterval(() => setTick((n) => n + 1), seconds * 1000);
+    const timer = setInterval(reload, seconds * 1000);   // the same request again: the figures stay on screen until the new ones arrive
     return () => clearInterval(timer);
   }, [seconds]);
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
   const b = board.data;
   const remove = async () => {
     if (!window.confirm(t("boards.page.confirmDelete", { name: b.name }))) return;
@@ -180,7 +187,9 @@ export function BoardPage({ route }) {
     try {
       await navigator.clipboard.writeText(shareLink(window.location.origin, id));
       setCopied(true);
+      setError("");
     } catch {
+      setCopied(false);
       setError(t("boards.page.copyFailed"));
     }
   };
@@ -190,7 +199,7 @@ export function BoardPage({ route }) {
         actions={b && (
           <>
             <button className="secondary" onClick={copy}>{copied ? t("boards.page.copied") : t("boards.page.copy")}</button>
-            <button className="secondary" onClick={() => setTick((n) => n + 1)}>{t("boards.page.refresh")}</button>
+            <button className="secondary" onClick={reload}>{t("boards.page.refresh")}</button>
             {b.may_change && canBuild(user) && <a className="button secondary" href={`#/boards/${id}/edit`}>{t("boards.page.edit")}</a>}
             {b.may_change && canBuild(user) && <button className="plain" onClick={remove}>{t("boards.page.delete")}</button>}
           </>
@@ -208,14 +217,14 @@ export function BoardPage({ route }) {
           {error && <p className="error">{error}</p>}
         </>
       )}
-      {data.status === "error" && <p className="error">{data.error}</p>}
-      {data.data && (
+      {board.status !== "error" && data.status === "error" && <p className="error" role="alert">{data.error}</p>}
+      {controls && (
         <>
-          <p className={headlineStands(data.data.headline) ? "grey-banner" : "muted small"}>{data.data.headline.text}</p>
-          <BarPicks bar={data.data.bar} picked={picked} setPicked={setPicked} />
-          <ParamInputs params={data.data.params} typed={typed} setTyped={setTyped} />
-          <BoardCards data={data.data} />
-          <p className="muted small">{t("boards.page.readAt", { when: timeText(data.data.read_at) })}</p>
+          {data.data && <p className={headlineStands(data.data.headline) ? "grey-banner" : "muted small"}>{data.data.headline.text}</p>}
+          <BarPicks bar={controls.bar} picked={picked} setPicked={setPicked} />
+          <ParamInputs params={controls.params} typed={typed} setTyped={setTyped} />
+          {data.data && <BoardCards data={data.data} />}
+          {data.data && <p className="muted small">{t("boards.page.readAt", { when: timeText(data.data.read_at) })}</p>}
         </>
       )}
       {!data.data && data.status === "loading" && <p className="muted">{t("boards.loading")}</p>}

@@ -6,6 +6,8 @@
 .bh-chip-ok { background: var(--green-soft); color: var(--green-ink); }
 .bh-chip-grey { background: var(--orange-soft); color: var(--orange-ink); }
 
+.page .bh-facts .bh-chip { max-width: 100%; white-space: normal; border-radius: 10px; }   /* a long expiry or name list wraps inside the page at phone width */
+
 /* ---- board header ---- */
 .page .bh-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 var(--s3); }
 .bh-info { position: relative; display: inline-flex; align-items: center; gap: 4px; color: var(--faint); font-size: 11px; cursor: help; border-radius: var(--radius); }
@@ -79,7 +81,6 @@ button.bh-info { background: none; border: 0; padding: 2px; font: inherit; font-
 .bh-home .home-grid.bh-single { grid-template-columns: minmax(0, 1fr); }
 .bh-quiet { margin: 0; padding: 4px 0; color: var(--muted); font-size: var(--small); }
 .page .bh-examples { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; margin: 4px 0 0; padding: 0; text-align: left; }
-.bh-examples { justify-content: flex-start; margin: 8px 0 0; }
 
 /* KPI tile, same card as a board number */
 .bh-home .kpis { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }

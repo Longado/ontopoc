@@ -89,6 +89,9 @@ export function draftProblem(draft) {
 }
 
 /** Whether the line at the top of a board should stand out: something on it is grey, waits for a confirmation or cannot be read by this person. */
+/** What feeds the filter bar and parameter boxes: this read, or the last good read of the same board while a new pick loads or has failed. */
+export const controlsOf = (data, last, id) => data ?? (last?.id === id ? last.data : undefined);
+
 export const headlineStands = (headline) => Boolean(headline.grey?.length || headline.waiting?.length || headline.unavailable?.length);
 
 /** A component's answer as the card says it: what it could not show, in words, or "". */
