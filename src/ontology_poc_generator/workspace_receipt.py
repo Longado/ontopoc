@@ -16,6 +16,7 @@ import json
 from ontology_poc_generator.caliber import _text as caliber_text
 from ontology_poc_generator.change_preview import answers, as_last_confirmed, cards, compare, under, work_out, workspace_copy
 from ontology_poc_generator.lang import tr
+from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.object_types import (
     ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, PIPELINE_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, element_row, stale_word)
 from ontology_poc_generator.workspace_store import current_dataset
@@ -35,12 +36,15 @@ def _now() -> str:
 
 
 def _said(conn, element_id: str, content: dict) -> str:
-    """A definition in one line: the caliber's line for a view, a meaning, a relation or a derived property; a type's name, key and properties."""
+    """A definition in one line: a view as the queue describes it; the caliber's line for a meaning, a relation or a derived property; a type's name, key and properties."""
     if element_id.startswith(TYPE_PREFIX):
         props = tr('、', ', ').join(p.get('name') or p['column'] for p in content.get('properties', []))
         return tr(f'{content["name"]}：主键 {" + ".join(content["key"])}；属性 {props}；来自 {content["dataset"]}', f'{content["name"]}: key {" + ".join(content["key"])}; properties {props}; from {content["dataset"]}')
     if element_id.startswith((ACTION_PREFIX, PIPELINE_PREFIX)):
         return content.get('name') or element_id
+    if element_id.startswith(VIEW_PREFIX):   # as the queue words it: the conditions one after another, so two versions read side by side
+        type_row = element_row(conn, f'{TYPE_PREFIX}{content["type"]}')
+        return describe_view(content, _content(type_row)['name'] if type_row else None)
     return caliber_text(conn, element_id, content)
 
 
