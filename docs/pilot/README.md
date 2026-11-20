@@ -27,7 +27,7 @@ Ask each person separately, then compare:
 2. **What would you pay per month for it**, for your team? A number, even a rough one, and what it would have to do for that.
 3. **Who else should try it?** Name the person or team, and the first question they would ask.
 
-Builders and admins also see **Team questions, last 7 days** at the bottom of Home: how many questions were asked, answered, held back by an unconfirmed definition, or not worked out, and which definitions held back the most. It counts everyone's questions and shows no question text. It cannot tell whether an answer was right; the log does that.
+Builders and admins also see **Team questions, last 7 days** at the bottom of Home: how many questions were asked, answered, held back by a check (most often a definition that is not confirmed), or not worked out, and which unconfirmed definitions held back the most. It counts everyone's questions and shows no question text and no name. In a team of three or four, a builder who watches the counts can still guess who asked about a definition, so tell the team the counts exist. It cannot tell whether an answer was right; the log does that.
 
 Also read off the log: the share of answers that matched, the number of wrong answers caught before anyone relied on them, and the share of refusals that were for a good reason.
 
