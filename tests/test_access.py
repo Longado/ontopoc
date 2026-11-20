@@ -441,7 +441,7 @@ class NoAuthTests(GateTestCase):
 
 class ImpactRouteTests(unittest.TestCase):
     def test_the_impact_of_a_change_and_the_receipts_are_for_builders(self):
-        for method, path in (('POST', '/api/workspace/impact'), ('GET', '/api/workspace/receipt')):
+        for method, path in (('POST', '/api/workspace/impact'), ('GET', '/api/workspace/receipt'), ('POST', '/api/workspace/receipt')):
             self.assertEqual(required_role(method, path), 'builder', (method, path))
 
 
