@@ -1,5 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { ChartResult, Standing } from "./ChartView.jsx";
+import { CheckForm, CheckMark } from "./CheckedNumber.jsx";
+import { cardNumber, summaryText } from "./checkedModel.js";
 import { deleteBoard, getBoard, getBoardData, getBoards } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
@@ -71,8 +73,9 @@ function BasisLines({ result }) {
   );
 }
 
-/** The components of a board as cards: title (small, muted), the number or chart (grey with the reason when what it stands on is not confirmed), one short line, and the caliber behind "Show basis". */
-export function BoardCards({ data }) {
+/** The components of a board as cards: title (small, muted), the number or chart (grey with the reason when what it stands on is not confirmed), one short line, and the caliber behind "Show basis".
+ *  A number the team checked carries its mark; `check` ({board, onDone}) lets a builder mark a number as checked, on a board read with no filter and the default parameters. */
+export function BoardCards({ data, check }) {
   const t = useT();
   return (
     <div className="board-grid">
@@ -104,6 +107,8 @@ export function BoardCards({ data }) {
               <BasisToggle><BasisLines result={c.result} /></BasisToggle>
             </>
           )}
+          {c.check && <CheckMark check={c.check} />}
+          {check && cardNumber(c) != null && <CheckForm number={cardNumber(c)} target={{ board: check.board, component: c.id }} again={Boolean(c.check)} onDone={check.onDone} />}
         </section>
       ))}
     </div>
@@ -221,9 +226,10 @@ export function BoardPage({ route }) {
       {controls && (
         <>
           {data.data && <p className={headlineStands(data.data.headline) ? "grey-banner" : "muted small"}>{data.data.headline.text}</p>}
+          {data.data && summaryText(data.data.headline.checked) && <p className="ck-summary">{summaryText(data.data.headline.checked)}</p>}
           <BarPicks bar={controls.bar} picked={picked} setPicked={setPicked} />
           <ParamInputs params={controls.params} typed={typed} setTyped={setTyped} />
-          {data.data && <BoardCards data={data.data} />}
+          {data.data && <BoardCards data={data.data} check={canBuild(user) && !Object.keys(paramValues(controls.params, typed)).length && !Object.values(picked).some((v) => String(v).trim()) ? { board: id, onDone: reload } : null} />}
           {data.data && <p className="muted small">{t("boards.page.readAt", { when: timeText(data.data.read_at) })}</p>}
         </>
       )}

@@ -1,0 +1,18 @@
+/* numbers the team has checked (CheckedNumber.jsx): the mark under a card or an answer, and the builder's small form */
+.ck { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--grey-line); }
+.ck-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; }
+.ck-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 20px; white-space: nowrap; }
+.ck-same { background: var(--green-soft); color: var(--green-ink); }
+.ck-moved { background: var(--orange-soft); color: var(--orange-ink); }
+.ck-refused { background: var(--grey-soft); color: var(--grey-ink); }
+.ck-differs { background: var(--red-soft); color: var(--red-ink); }
+.ck-line { color: var(--muted); font-size: var(--small); overflow-wrap: anywhere; }
+.ck-detail { margin: 4px 0 0; font-size: var(--small); color: var(--ink); overflow-wrap: anywhere; }
+.ck-open { margin-top: 6px; font-size: var(--small); }
+.ck-form { display: grid; gap: 6px; margin-top: 8px; padding: 8px; border-radius: var(--radius-md); background: var(--bg-subtle); }
+.ck-form .field input { width: 100%; }
+.ck-form p { margin: 0; }
+.ck-actions { display: flex; gap: 8px; align-items: center; }
+.ck-summary { margin: 0 0 var(--s3); font-size: var(--small); color: var(--ink); }
+.ck-summary strong { font-weight: 600; }
+.bh-home .tally-checked { margin: var(--s2) 0 0; font-size: var(--small); color: var(--ink); }   /* the home tally's line of checked answers */
