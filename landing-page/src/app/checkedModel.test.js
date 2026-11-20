@@ -30,6 +30,7 @@ test("what moved, what refuses and what differs is said plainly, and nothing for
   assert.equal(checkDetail({ status: "refused", trusted: 7, then: 7, now: null, reason: "含义「订单.状态码」：需要再看", moved: [] }), "现在拒答：含义「订单.状态码」：需要再看");
   assert.equal(checkDetail({ status: "differs", trusted: 162960, then: 119810, now: 119810, moved: [] }), "OntoPoc 算的是 119,810，和团队的数不一样（核对时就不一样）");
   assert.equal(checkDetail({ status: "moved", by: "Bob", at: "2026-11-20" }), "");   // a viewer is sent no numbers
+  assert.equal(checkDetail({ status: "refused", trusted: 7, then: 7, now: null, reason: "含义「订单.状态码」：需要再看", moved: [] }, { reasonShown: true }), "现在拒答，原因见上面的灰色说明");   // a grey card already says why
 });
 
 test("the line at the top of a board, only when something was checked or a filter keeps the checks apart", () => {
