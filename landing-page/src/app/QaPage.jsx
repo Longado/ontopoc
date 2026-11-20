@@ -659,7 +659,7 @@ export function QaPage({ route }) {
       (async () => {
         try {
           if (!(await getModelReady())) return noModel(turn);
-          const result = await draftMeanings(typeScope.id);
+          const result = await draftMeanings(typeScope.id, question);
           finish(turn, { status: "done", meanings: { result, typeLabel: typeScope.label, choices: {}, applied: null, busy: false, error: "" } });
           keep(turn, "meanings", question || typeScope.label, scopeOf("meanings", { type: typeScope }), result);
         } catch (err) {
