@@ -143,6 +143,10 @@ Here, ontology engineering means turning business objects, how they are identifi
 
 An ontology first states which objects exist, how they are identified, and which relations are allowed. A knowledge graph usually also contains specific instances and their relations. OntoPoc focuses on the former: drafting and checking definitions, then running checks and Q&A on the data you uploaded this time. It is not a knowledge-graph platform and does not provide a durable instance store or online object query.
 
+### How is this different from generating an ontology automatically?
+
+Recent work has a language model build the ontology or the graph from text and make every decision along the way: AutoOntic ([arXiv 2611.15467](https://arxiv.org/abs/2611.15467)) induces types, a hierarchy and relation constraints, and Causals ([arXiv 2611.16267](https://arxiv.org/abs/2611.16267)) is a graph built from news. Both say what they leave unmeasured: AutoOntic's evaluation "does not directly measure extraction precision", and the Causals release "has no representative estimate of semantic accuracy". OntoPoc works on the step after drafting, and on tables instead of text: code checks each definition against the data, a named person confirms it, and it goes back for another look when the data changes. A model may draft a definition here, but nothing it drafts is used before those checks and a confirmation.
+
 ### How does this relate to a semantic layer?
 
 A semantic layer often sits on a warehouse or metrics platform and defines business meaning (objects, measures, definitions) for reuse in queries. OntoPoc sits one step earlier: the first time you receive a client's tables or a document, it helps sort objects, identity fields, relations, and the definitions that still need the client's answer. You can export object forms, a pipeline requirements sheet, and Turtle (OWL / SHACL) for later platform or pipeline work. Import into any specific platform has not been tested yet.
