@@ -4,7 +4,7 @@ which; a filter that found nothing in a table damaged upstream says so instead o
 import json
 import unittest
 
-from ontology_poc_generator.answer_checks import definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
+from ontology_poc_generator.answer_checks import column_values, definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
 from ontology_poc_generator.ontology_questions import QUESTION_SYSTEM_PROMPT
 from tests.test_workspace_store import PLANTED_DRAFT
 
@@ -204,6 +204,24 @@ class MeaningTests(unittest.TestCase):
         # a dimension on the column narrows nothing: still answered
         grouped = {**ALL_ORDERS, 'where': [rest], 'group_by': [{'via': [], 'field': '订单.状态码'}]}
         self.assertEqual(self.check(question, grouped, both, meanings=four, values=held)['unmet'], [])
+
+    def test_the_values_a_filter_lets_through_are_read_per_object_as_the_query_reads_them(self):
+        from tests.test_workspace_store import planted_bundle
+        bundle, three = planted_bundle(), {'订单.状态码': {'labels': {'0': '已交付', '1': '生产中', '2': '已取消'}}}
+        self.assertEqual(column_values(bundle, three, PLANTED_DRAFT), {'订单.状态码': {'0', '1', '2'}})   # one row per order: the codes as the rows hold them
+        # a column of another table read as a customer's: a customer whose orders are 已交付 and 已取消 holds both, and "not 2" drops it, so the column is not given
+        reads_orders = json.loads(json.dumps(PLANTED_DRAFT))
+        reads_orders['object_types'][0]['attributes'].append({'source': '订单', 'path': '状态码'})
+        self.assertNotIn('订单.状态码', column_values(bundle, three, reads_orders))
+        question, both = '已交付和生产中的客户有几个？', [inc('已交付'), inc('生产中')]
+        customers = {'start': 'customer', 'where': [{'field': '状态码', 'not_equals': ['2']}], 'group_by': None}
+        self.assertNotEqual(definition_check(question, customers, reads_orders, [], three, both, values=column_values(bundle, three, reads_orders))['unmet'], [])
+        # KH099 is a customer only orders name: it has no 客户等级, "not C" lets it through, so the blank is among what the filter keeps
+        grades = {'客户.客户等级': {'labels': {'A': '重点', 'B': '普通', 'C': '观察'}}}
+        self.assertEqual(column_values(bundle, grades, PLANTED_DRAFT), {'客户.客户等级': {'A', 'B', 'C', ''}})
+        kept = {'start': 'customer', 'where': [{'field': '客户等级', 'not_equals': ['C']}], 'group_by': None}
+        refused = definition_check('重点和普通客户有几个？', kept, PLANTED_DRAFT, [], grades, [inc('重点', '客户.客户等级'), inc('普通', '客户.客户等级')], values=column_values(bundle, grades, PLANTED_DRAFT))
+        self.assertIn('重点', [u['definition'] for u in refused['unmet']])
 
     def test_a_refusal_says_only_what_the_question_named_and_in_plain_words(self):
         unasked = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': '2'}]}
@@ -519,6 +537,43 @@ class ServerAnswersTests(unittest.TestCase):
         item = self.ask('库存一共多少？')
         self.assertIn('视图用不了', item['evidence']['views_unread'])
         self.assertIn('库存快照_当前', item['evidence']['views_unread'])
+
+
+def orders_with_a_second_row(code='2', number='DD20260001') -> list[dict]:
+    """The planted files with 订单 as a CSV holding one more row for an order that is already there (DD20260001 has 状态码 0): the order now
+    has two rows, one 已交付 and one with `code`."""
+    import base64, csv, io
+    from tests.test_workspace_store import ServerDataChecksTests, planted_bundle
+    records = planted_bundle()['sources']['订单']['records']
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=list(records[0]))
+    writer.writeheader()
+    writer.writerows([*records, {**next(r for r in records if r['订单号'] == number), '状态码': code}])
+    return [f for f in ServerDataChecksTests.files if f['filename'] != '订单.xlsx'] + [{'filename': '订单.csv', 'content_base64': base64.b64encode(out.getvalue().encode('utf-8')).decode()}]
+
+
+class RepeatedKeyAnswersTests(unittest.TestCase):
+    """An order with two rows, one 已交付 and one 已取消: the query leaves out every order that holds a left-out code, so "not 2" drops it although
+    it is 已交付. The rows alone would say "not 2 keeps only 已交付 and 生产中"; the objects say otherwise."""
+    post, ask, confirm_meaning = ServerAnswersTests.post, ServerAnswersTests.ask, ServerAnswersTests.confirm_meaning
+
+    def setUp(self):
+        from tests.test_ontology_ask_server import call
+        from tests.test_ontology_server import OntologyServerTests
+        self.model = AskModel(QUERIES)
+        server = OntologyServerTests().server(gateway=self.model)
+        self.base, self.out = server.__enter__()
+        self.addCleanup(server.__exit__, None, None, None)
+        self.call = call
+        status, self.run = call(self.base, '/api/ontology/build', {'files': orders_with_a_second_row()})
+        self.assertEqual(status, 200, self.run)
+
+    def test_meanings_are_not_kept_by_leaving_the_rest_out_when_an_object_holds_a_kept_and_a_left_out_code(self):
+        self.confirm_meaning([{'value': '0', 'label': '已交付'}, {'value': '1', 'label': '生产中'}, {'value': '2', 'label': '已取消'}])
+        item = self.ask('已交付和生产中的订单有多少？')   # 143 would come back: DD20260001 is 已交付 and is dropped for its 已取消 row
+        self.assertEqual(item['status'], 'definition_unmet', item)
+        self.assertNotIn('answer', item)
+        self.assertIn('「已交付」', item['reason'])
 
 
 class BlockedDraftTests(unittest.TestCase):

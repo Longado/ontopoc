@@ -350,6 +350,34 @@ class QuestionTests(SigningTestCase):
             self.assertNotIn('answer', body)
             self.assertIn('「已交付」', body['reason'])
 
+    def test_an_order_type_never_answers_with_two_rows_for_one_order(self):
+        # "not 2" drops an object that holds a 2 in any of its rows, so leaving the rest out keeps 已交付 and 生产中 only while each order has one row. Here a type
+        # is confirmed only on a key that is unique and filled, and data that repeats it sends the type back for a look that cannot be passed: an order
+        # with a 已交付 row and a 已取消 row (DD20260001) never reaches a question
+        from tests.test_answer_checks import orders_with_a_second_row
+        both = cancelled(query={**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['2']}]},
+                         used=[{'id': f'订单.状态码={label}', 'direction': 'include', 'basis': label} for label in ('已交付', '生产中')])
+        repeated = next(f for f in orders_with_a_second_row() if f['filename'] == '订单.csv')
+        with self.service(gateway=AskModel(both)) as (base, out):
+            team = self.people(base, 'ann', 'bob', 'vera', roles={'vera': 'viewer'})
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': orders_with_a_second_row()})[0], 200)
+            status, body = team['ann'].post('/api/workspace/types', ORDER)
+            self.assertEqual(status, 400, body)
+            self.assertIn('DD20260001（2 行）', body['error'])
+        with self.service(gateway=AskModel(both)) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            self.assertEqual(self.ask(team['vera'], '已交付和生产中的订单一共多少笔？')[1]['answer']['total'], 144)
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [{**repeated, 'target': '订单', 'mode': 'overwrite'}]})[0], 200)
+            shown = team['bob'].get('/api/workspace/types/order')[1]
+            self.assertEqual(shown['state'], 'needs_look')
+            status, body = team['bob'].post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen']})
+            self.assertEqual(status, 409, body)
+            self.assertIn('不唯一', body['error'])
+            status, body = self.ask(team['vera'], '已交付和生产中的订单一共多少笔？')
+            self.assertEqual(status, 200, body)
+            self.assertNotIn('answer', body)
+
     def test_a_query_that_leaves_a_meaning_out_while_the_model_says_include_or_nothing_is_refused(self):
         for direction, how in (('include', '问题要把它算进来，这条查询却把它排除了'), ('mention', '却按它筛选了行')):
             with self.subTest(direction=direction), self.service(gateway=AskModel(self.not_cancelled('已取消', direction=direction))) as (base, out):
