@@ -572,3 +572,43 @@ class QuestionTests(SigningTestCase):
             self.assertEqual(body['last_7_days']['refused'], 2)
             self.assertEqual(body['held_back'], [])
             self.assertEqual([d['name'] for d in team['bob'].get('/api/workspace/ask/tally')[1]['held_back']], ['订单.状态码', '订单'])
+
+    def kept(self, out, status, answer='{}', days_ago=0):
+        """A question written straight into the file, as an older version or another code path may have left it."""
+        conn = sqlite3.connect(out / 'workspace.sqlite')
+        with conn:
+            conn.execute("INSERT INTO qa_question(user_id, asked_by, question, asked_at, status, answer_json, definitions_json, dataset_versions_json, types_json) "
+                         "VALUES (NULL, NULL, 'q', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now', ?), ?, ?, '[]', '{}', '[]')", (f'-{days_ago} days', status, answer))
+        conn.close()
+
+    def test_the_tally_counts_a_check_that_stopped_an_answer_as_held_back_and_reads_past_a_row_it_cannot_parse(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            for status in ('definition_unmet', 'needs_derived'):   # the definition check stopped it, or a measure waits for confirming: held back, not a failure
+                self.kept(out, status)
+            for status in ('ontology_gap', 'query_limit', 'a_status_from_later'):   # nothing confirmed answers it, or the query could not be run
+                self.kept(out, status)
+            for answer in ('not json', '[]', 'null', '{"refusal": "x"}', '{"refusal": {"definitions": "x"}}', '{"refusal": {"kind": "unsettled", "definitions": [3, {"id": 7}]}}'):
+                self.kept(out, 'refused', answer)
+            status, body = team['ann'].get('/api/workspace/ask/tally')
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body['last_7_days'], {'asked': 11, 'answered': 0, 'refused': 8, 'unanswered': 3})
+            self.assertEqual(body['held_back'], [])
+            for path in ('/api/workspace/ask/tally/', '/api/workspace/ask//tally'):   # the same counts by another spelling are no more a viewer's
+                self.assertEqual(team['vera'].get(path)[0], 403, path)
+
+    def test_the_tally_names_what_still_waits_for_confirming_and_only_what_a_confirmation_would_free(self):
+        with self.service(gateway=AskModel(cancelled(query=ALL_ORDERS, used=[{'id': '有效订单', 'direction': 'include', 'basis': '有效订单'}]))) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.confirmed_orders(team)
+            self.assertEqual(ann.post('/api/workspace/types/views', VALID)[0], 200)
+            self.assertEqual(self.ask(ann, '有效订单有多少？')[1]['status'], 'refused')
+            held = bob.get('/api/workspace/ask/tally')[1]['held_back']
+            self.assertEqual([(d['kind'], d['name'], d['questions']) for d in held], [('view', '有效订单', 1)])
+            # a refusal over a relation that cannot be walked names a confirmed definition: nothing in the review queue would free it, so it is counted and not listed
+            self.kept(out, 'refused', json.dumps({'refusal': {'kind': 'unwalkable', 'definitions': [{'id': held[0]['id'], 'kind': 'view', 'name': '有效订单'}]}}, ensure_ascii=False))
+            self.assertEqual([d['questions'] for d in bob.get('/api/workspace/ask/tally')[1]['held_back']], [1])
+            self.confirm_view(bob, 'order', '有效订单')   # confirmed since: the questions it held back stay counted, and it no longer waits for anyone
+            body = bob.get('/api/workspace/ask/tally')[1]
+            self.assertEqual((body['last_7_days']['refused'], body['held_back']), (2, []))
