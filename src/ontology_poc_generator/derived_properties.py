@@ -40,7 +40,7 @@ from ontology_poc_generator.object_relations import _relation_visible, relation_
 from ontology_poc_generator.object_types import (
     DERIVED_PREFIX, ENGLISH_NAME, limited_note, MAX_DESCRIPTION, MAX_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
     dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, whole_type_row, write_confirmation, write_elements)
-from ontology_poc_generator.object_views import meaning_labels
+from ontology_poc_generator.object_views import _by_code, _choices, meaning_labels, new_value_words
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, MAX_LENGTH, WordMap, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipelines import PipelineRunError, deadline
@@ -779,7 +779,9 @@ def confirm_derived(conn, payload: dict, who: str | None, user: dict | None) -> 
     """{type, english_name, version, seen}: confirm what the person looked at. `seen` is {datasets, objects, with_value, failed} of the trial they read; the trial is
     run again on the data as it is and the confirmation is refused (409) when it is not that. What it stands on must be confirmed, the checks that refuse a
     definition are run again, and the trial (rows used, the objects without a value, a few values) is kept with the confirmation as its evidence. Another builder
-    (SelfConfirmation otherwise); a person a row rule limits confirms nothing, since the numbers they read are of some of the rows."""
+    (SelfConfirmation otherwise); a person a row rule limits confirms nothing, since the numbers they read are of some of the rows. `new_values`: as for a view, a
+    value a condition column has now that it did not have when the property was confirmed is answered "in" or "out" first (409 naming it otherwise); "out" adds a
+    condition and makes the changed property this person's proposal."""
     row = _derived_row(conn, payload.get('type'), payload.get('english_name'), user)
     refuse_if_limited(conn, row, user)
     if payload.get('version') != row['version']:
@@ -803,10 +805,97 @@ def confirm_derived(conn, payload: dict, who: str | None, user: dict | None) -> 
     result = evaluate(conn, content, user)
     if payload['seen'] != seen_of(result):
         raise TypeRefused(tr(f'数据在你看过之后变了：{result["owner_dataset"]} 等数据集的版本或这个属性的值不是你看到的那样了，请刷新后重新看一遍', f'The data changed after you looked: the version of {result["owner_dataset"]} and other datasets, or the values of this property, are no longer what you saw. Refresh and look again'), 409)
+    open_ = open_new_values(conn, row)
+    choices = _choices(payload.get('new_values'), open_) if open_ else {}
+    out = [o for o in open_ if choices[(o['column'], o['value'])] == 'out']
+    if out:   # the definition changes, so it is not what the other builder looked at either: it goes to them
+        return _keep_out(conn, row, content, out, who)
     shown = trial(conn, content, user)
     write_confirmation(conn, row['element_id'], content, _evidence(result), who, _anchors(result), result['datasets'], row['version'], _reads(content, chain),
-                       snapshot={'trial': {'numbers': shown['numbers'], 'examples': shown['examples'], 'sample': shown['sample'], 'lines': shown['lines']}})
+                       snapshot={'trial': {'numbers': shown['numbers'], 'examples': shown['examples'], 'sample': shown['sample'], 'lines': shown['lines']},
+                                 **({'new_values': [{**o, 'choice': 'in'} for o in open_]} if open_ else {})})
     return {'state': 'confirmed'}
+
+
+def _condition_codes(conn, row: dict) -> tuple[dict, dict] | None:
+    """({column: the values it had when the property was last confirmed}, {column: {value: rows} now}) for the code columns its conditions read, on the type it
+    measures: then is the dataset version its confirmation was made on. None when it has no conditions, the data has not moved since, or that version is gone."""
+    content = _content(row)
+    if content['kind'] != 'statistic' or not content['conditions'] or not row['anchors_json']:
+        return None
+    t = element_row(conn, type_id(content['types'][-1]))
+    dataset = current_dataset(conn, _content(t)['dataset']) if t else None
+    version = (json.loads(row['anchors_json']).get('datasets') or {}).get(dataset['name']) if dataset else None
+    if version is None or version == dataset['version']:
+        return None
+    then = conn.execute('SELECT id FROM dataset WHERE name = ? AND version = ?', (dataset['name'], version)).fetchone()
+    if then is None:
+        return None
+    then_cols, now_cols = dataset_columns(conn, then[0]), dataset_columns(conn, dataset['id'])
+    columns = dict.fromkeys(f['column'] for f in content['conditions'])
+    return ({c: sorted((then_cols.get(c) or {}).get('counts') or {}) for c in columns}, {c: dict((now_cols.get(c) or {}).get('counts') or {}) for c in columns})
+
+
+def _as_view(content: dict) -> dict:
+    """The conditions in the shape object_views words them: a view of the type the property measures."""
+    return {'type': content['types'][-1], 'filters': content['conditions'], 'latest': None}
+
+
+def open_new_values(conn, row: dict) -> list[dict]:
+    """object_views.open_new_values for a derived property: the values a code column of an "is not" condition has now that it did not have when the property was
+    confirmed, and that its conditions do not already leave out (by the meaning written for them): [{'column', 'value', 'label', 'rows'}]. The property counts each
+    of them in unless someone says otherwise, so confirming asks. Only a property that needs another look asks."""
+    found = _condition_codes(conn, row) if row['state'] == 'needs_look' else None
+    if found is None:
+        return []
+    was, now = found
+    content = _content(row)
+    out = []
+    for column in dict.fromkeys(f['column'] for f in content['conditions'] if f['op'] == 'is_not'):
+        labels = meaning_labels(conn, content['types'][-1], column)
+        kept_out = {f['label'] for f in content['conditions'] if f['column'] == column and f['op'] == 'is_not'}
+        for value in sorted(set(now[column]) - set(was[column]), key=lambda v: _by_code((v,))):
+            if labels.get(value) not in kept_out:
+                out.append({'column': column, 'value': value, 'label': labels.get(value, ''), 'rows': now[column][value]})
+    return out
+
+
+def new_value_reason(conn, row: dict) -> str | None:
+    """Why the property waits on values its condition columns have now that they did not have when it was confirmed: the same words a view gets
+    (object_views.new_value_words). None when there is no such value."""
+    found = _condition_codes(conn, row)
+    return new_value_words(conn, _as_view(_content(row)), *found) if found else None
+
+
+def refresh_new_value_reasons(conn, english_name: str, column: str) -> None:
+    """object_views.refresh_new_value_reasons for the derived properties that measure this type and read this column: their reason is written again from the meanings
+    as they are now."""
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'derived:%' AND state = 'needs_look'").fetchall():
+        row = element_row(conn, element_id)
+        content = _content(row)
+        if content['kind'] != 'statistic' or content['types'][-1] != english_name or column not in {f['column'] for f in content['conditions']} \
+                or not any(mark in (row['reason'] or '') for mark in ('出现了新值', ' has new values ')):
+            continue
+        reason = new_value_reason(conn, row)
+        if reason and reason != row['reason']:
+            conn.execute("UPDATE element_state SET reason = ? WHERE element_id = ? AND version = ? AND state = 'needs_look'", (reason, element_id, row['version']))
+
+
+def _keep_out(conn, row: dict, content: dict, out: list[dict], who: str | None) -> dict:
+    """"不算进来": a condition for each of these values (by its meaning) is added, and the changed property is this person's proposal for another builder to confirm."""
+    unnamed = [o['value'] for o in out if not o['label']]
+    if unnamed:
+        raise TypeRefused(tr(f'新值 {"、".join(unnamed)} 还没有写含义，没法写成条件：先给它写含义，再选“不算进来”', f'The new values {", ".join(unnamed)} have no meaning yet, so they cannot become a condition. Write their meanings first, then choose "leave it out"'), 409)
+    added = list({(o['column'], o['label']): {'column': o['column'], 'op': 'is_not', 'label': o['label']} for o in out}.values())
+    changed = {**content, 'conditions': [*content['conditions'], *added]}
+    if len(changed['conditions']) > MAX_CONDITIONS:
+        raise TypeRefused(tr(f'条件最多 {MAX_CONDITIONS} 个，加上新值的就超了', f'At most {MAX_CONDITIONS} conditions, and adding the new values would go over'), 409)
+    chain = _chain(conn, changed, None)
+    if chain['problems']:
+        raise TypeRefused('；'.join(chain['problems']), 409)
+    result = evaluate(conn, changed, None)
+    write_elements(conn, [_change(changed, result, who)], {row['element_id']: _reads(changed, chain)}, {row['element_id']: row['version']})
+    return {'state': 'checked', 'added': [{'column': a['column'], 'label': a['label']} for a in added]}
 
 
 def derived_problems(conn, row: dict) -> list[str]:
@@ -846,7 +935,7 @@ def _line(conn, row: dict, user: dict | None) -> dict:
     return {'id': content['english_name'], 'type': content['type'], 'name': content['name'], 'description': content['description'], 'kind': content['kind'], 'kind_name': KINDS[content['kind']],
             'says': describe(conn, content), 'output_type': content['output_type'], 'definition': content, 'problems': shown['problems'],
             'trial': shown, 'anchored': None if shown.get('limited_note') else anchors, 'used_by': _used_by(conn, row['element_id'], user), **derived_state(conn, row, user),
-            'seen': shown.get('seen')}
+            'seen': shown.get('seen'), 'new_values': [] if shown.get('limited_note') else open_new_values(conn, row)}   # a person a row rule limits cannot confirm, and the counts are of the whole data
 
 
 def list_derived(conn, english_type: str, user: dict | None) -> list[dict]:

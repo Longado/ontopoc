@@ -440,7 +440,8 @@ class ObjectTypeTests(SigningTestCase):
             self.assertIn('状态码', model.asked[0])   # it saw the column names
             self.assertNotIn('DD20260001', model.asked[0])   # and no row
             detail = self.detail(ann)
-            self.assertEqual((detail['state'], detail['proposed_by'], detail['model_draft'], detail['can_confirm']), ('proposed', None, True, True))
+            self.assertEqual((detail['state'], detail['proposed_by'], detail['model_draft'], detail['can_confirm']), ('proposed', None, True, False))   # Ann asked for it: she counts as its proposer
+            self.assertEqual(self.detail(bob)['can_confirm'], True)
             self.assertEqual([p['column'] for p in detail['properties']], ['订单号', '状态码'])   # the amount had no reason, the other columns were not asked for
             tasks = ann.get('/api/workspace/tasks')[1]['tasks']
             task = next(t for t in tasks if t['kind'] == 'suggest')

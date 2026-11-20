@@ -32,6 +32,11 @@ test("each kind of item has the one thing a person can do inline", () => {
   assert.equal(queueRow({ ...approval, can_confirm: false, can_withdraw: true }).mode, "withdraw");
 });
 
+test("a derived property asked about a new value is answered on its own page first, as a view is", () => {
+  assert.equal(queueRow({ ...type, kind: "derived", new_values: [{ column: "status_code", value: "6" }] }).mode, "open");
+  assert.equal(queueRow({ ...type, kind: "derived", new_values: [] }).mode, "confirm");
+});
+
 test("sending back needs a reason, for a definition and for a submission alike", () => {
   assert.equal(rejectProblem("  "), "退回要写理由");
   assert.equal(rejectProblem(""), "退回要写理由");

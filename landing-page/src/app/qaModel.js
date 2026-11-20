@@ -145,11 +145,16 @@ export function criteriaLine(record, asOf) {
   const plain = (s) => s.replace(/`([^`]*)`/g, "$1");
   const alias = new Map(aliases.map((m) => [m[1], plain(m[2])]));
   const where = /\bWHERE\b([\s\S]*?)(?:\bGROUP BY\b|\bORDER BY\b|\bLIMIT\b|$)/i.exec(text)?.[1]?.trim();
-  const views = (record.evidence?.views ?? []).map((v) => t("ask.criteria.view", { name: v.name }));
+  const views = [...(record.evidence?.views ?? []).map((v) => t("ask.criteria.view", { name: v.name })),
+    ...(record.definitions ?? []).filter((d) => d.kind === "derived").map((d) => t("ask.criteria.derived", { name: d.name }))];   // the views that chose its rows, the derived properties it read values from
   const conds = where ? [plain(where.replace(/\b(\w+)\.(?=[^\s.])/g, (s, a) => (alias.has(a) ? `${alias.get(a)}.` : s)).replace(/'((?:[^']|'')*)'/g, "$1").replace(/\s+/g, " "))] : [];
   const cond = [...views, ...conds].join(t("ask.criteria.sep")) || t("ask.criteria.all", { type: alias.get(aliases[0][1]) });
   return t("ask.criteria", { cond, asOf: asOf ? t("ask.criteria.asOf", { when: asOf }) : "" });
 }
+
+/** "数据截至" of an answer: each dataset it read by its version and when that version came (`when` formats the time), "" when the answer does not say (one kept
+ * before this was noted): never the time the question was asked. */
+export const dataAsOf = (record, when) => (record.data_as_of ?? []).map((d) => t("ask.criteria.version", { name: d.dataset, version: d.version, when: d.imported_at ? when(d.imported_at) : "" })).join(t("ask.criteria.and"));
 
 /** A row of the history list: the question and one grey line (when, and how it went). */
 export const historyView = (h, whenText) => ({ id: h.id, question: h.question, meta: `${whenText} ${statusText(h.status)}`.trim() });
