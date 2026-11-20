@@ -182,4 +182,6 @@ export default {
   "impact.movedOne": "{name} 从第 {from} 版换成了第 {to} 版",
   "receipt.dataMoved": "两次确认之间数据有了新版本：{list}。这部分数的变化不是这次确认带来的，下面的数都按现在的数据算",
   "receipt.movedOne": "{name} 第 {from} 版 → 第 {to} 版",
+  "impact.dataAccepted": "上次确认之后，{list}，这一项因此在等确认。确认它，按新数据算出的数才算数：“现在”是等确认时看板上灰色的数。",
+  "receipt.dataAccepted": "两次确认之间数据有了新版本：{list}。这次确认接受了新数据：按新数据算出的数从这次确认起算数",
 };

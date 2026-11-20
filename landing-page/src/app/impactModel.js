@@ -1,4 +1,4 @@
-// What a change does to the board numbers (POST /api/workspace/impact, the upload preview's `boards`) and the receipt after it (GET /api/workspace/receipt), as words.
+// What a change does to the board numbers (POST /api/workspace/impact, the upload preview's `boards`) and the receipt after it (POST /api/workspace/receipt), as words.
 // The service works every number out (change_preview, workspace_receipt); this only words them for the table and writes the Markdown a person copies.
 import { formatNumber, t } from "./i18n/index.js";
 import { timeText } from "./format.js";
@@ -28,10 +28,28 @@ export function changeCell(change) {
   return { text: t(`review.impact.change.${["refuses", "opens", "grey", "confirmed", "other"].includes(change.kind) ? change.kind : "same"}`), level };
 }
 
-const movedText = (moved) => (moved ?? []).map((m) => t("review.impact.movedOne", { name: m.name, from: m.from, to: m.to })).join(t("review.receipt.sep"));
+const movedText = (moved, key = "review.impact.movedOne") => (moved ?? []).map((m) => t(key, { name: m.name, from: m.from, to: m.to })).join(t("review.receipt.sep"));
+
+/** What new data since the last confirmation means here, in one or two sentences: `accepted` moves (the data sent the item back; confirming lets the new data's numbers
+ * count) and the others (the item stayed confirmed through the new data; the table shows only the change). `words` is review.impact or review.receipt. */
+function movedSentences(moved, words) {
+  const one = words === "review.impact" ? "review.impact.movedOne" : "review.receipt.movedOne";
+  const accepted = (moved ?? []).filter((m) => m.accepted);
+  const kept = (moved ?? []).filter((m) => !m.accepted);
+  return [
+    ...(accepted.length ? [t(`${words}.dataAccepted`, { list: movedText(accepted, one) })] : []),
+    ...(kept.length ? [t(`${words}.dataMoved`, { list: movedText(kept, one) })] : []),
+  ].join(" ");
+}
+
+/** A receipt item's new data, as its line says it. */
+export const movedLine = (moved) => movedSentences(moved, "review.receipt");
+
+/** The elements a group confirmation confirmed ({confirmed: [{element, title}]}): what its receipt is asked for. */
+export const receiptElements = (result) => (result?.confirmed ?? []).map((c) => c.element);
 
 /** The table and the sentences around it: {rows: [{key, board, card, now, after, change}], sentence, capped, answers, refused, dataMoved}. `done`: the change is made (a
- * receipt). `dataMoved` says that a dataset has a newer version than the one the definition was last confirmed on: the numbers are both on the current data. */
+ * receipt). `dataMoved` says that a dataset has a newer version than the one the definition was last confirmed on, and whether confirming accepts it. */
 export function impactView(impact, done = false) {
   if (!impact) return { rows: [], sentence: "", capped: "", answers: "", refused: "", dataMoved: "" };
   if (impact.refused) return { rows: [], sentence: t("review.impact.refusedSentence", { why: impact.refused }), capped: "", answers: "", refused: impact.refused, dataMoved: "" };
@@ -45,7 +63,7 @@ export function impactView(impact, done = false) {
   const mine = impact.answers?.mine ?? [];
   const others = impact.answers?.others ?? 0;
   const answers = mine.length || others ? t("review.impact.answers", { mine: mine.length, others }) + (mine.length ? t("review.impact.yours", { list: mine.map((a) => t("review.receipt.quoted", { text: a.question })).join(t("review.receipt.sep")) }) : "") : "";
-  const dataMoved = impact.data_moved?.length ? t("review.impact.dataMoved", { list: movedText(impact.data_moved) }) : "";
+  const dataMoved = movedSentences(impact.data_moved, "review.impact");
   return { rows, sentence, capped, answers, refused: "", dataMoved };
 }
 
@@ -62,7 +80,7 @@ export function receiptMarkdown(receipt) {
     lines.push(`  - ${t("review.receipt.after", { text: item.after })}`);
     lines.push(`  - ${t("review.receipt.who", { proposed: item.proposed_by ?? t("review.group.unknown"), confirmed: item.confirmed_by ?? t("review.group.unknown"), at: timeText(item.confirmed_at) })}`);
     lines.push(`  - ${t("review.receipt.on", { on: versionsText(item.on) || "—" })}`);
-    if (item.data_moved?.length) lines.push(`  - ${t("review.receipt.dataMoved", { list: (item.data_moved ?? []).map((m) => t("review.receipt.movedOne", { name: m.name, from: m.from, to: m.to })).join(t("review.receipt.sep")) })}`);
+    if (item.data_moved?.length) lines.push(`  - ${movedSentences(item.data_moved, "review.receipt")}`);
     if (item.evidence) lines.push(`  - ${t("review.receipt.evidence", { ref: item.evidence })}`);
   }
   const view = impactView(receipt);

@@ -5,7 +5,8 @@ batch_confirm.confirm_group for what one upload moved. Each board card this pers
 (dashboards.evaluate), as this person, and that is "after". "Now" is the same card worked out on the definitions as they were last confirmed: the copy puts back the
 content of the latest confirmation of what is being confirmed, and of what this change sent back for another look under it. Both are worked out on the data as it is
 now, so the two differ only by the change: when a dataset has a new version since the definition was last confirmed, that is said apart (`data_moved`), never shown as
-a number the confirmation moves. "Now" is not what a board shows while the change waits: a builder is shown the new number in grey then, and a viewer that the card
+a number the confirmation moves. An item the data itself sent back is the exception: its "now" is how it stood while it waited (the new data's number, grey for a
+builder), since confirming it is what lets that number count, and `data_moved` says the confirmation accepts the new data. "Now" is not what a board shows while the change waits: a builder is shown the new number in grey then, and a viewer that the card
 waits (with the number kept from when it was last confirmed, when there is one) or a refusal. Nothing of the real workspace is written; there is no
 second calculation of a number, and no record is kept: a receipt after confirming works the same comparison out again from the confirmation records
 (workspace_receipt).
@@ -233,12 +234,33 @@ def sent_back(copy, elements: list[str]) -> list[str]:
     return [e for e in sorted(under(copy, elements)) if (row := element_row(copy, e)) is not None and row['state'] == 'needs_look' and row['cause'] == 'definition']
 
 
+def waited_on_data(conn, element_id: str) -> dict | None:
+    """When the data sent this element back for another look between its previous confirmation and its latest one: how it stood just before the latest one
+    ({state, content_json, reason, cause, via}, read from the log the write path keeps). None when it was not sent back by data in between (an edit on data that did
+    not send it back, or a first confirmation). A confirmation is a row of the log that made it confirmed from another state (a passing re-check that keeps it
+    confirmed is not one)."""
+    rows = conn.execute("SELECT rowid, change, before_json, after_json FROM log WHERE element_id = ? AND change IN ('confirmed', 'needs_look') ORDER BY rowid", (element_id,)).fetchall()
+    confirms = [r for r in rows if r[1] == 'confirmed' and (json.loads(r[2] or '{}') or {}).get('state') != 'confirmed']
+    if len(confirms) < 2:
+        return None
+    looks = [json.loads(r[3] or '{}') for r in rows if r[1] == 'needs_look' and confirms[-2][0] < r[0] < confirms[-1][0]]
+    if not any(look.get('cause') == 'data' for look in looks):
+        return None
+    before = json.loads(confirms[-1][2] or '{}')
+    waiting = before.get('state') == 'needs_look'
+    return {'state': before.get('state') or 'needs_look', 'content_json': before.get('content_json'), 'reason': looks[-1].get('reason') if waiting else None,
+            'cause': looks[-1].get('cause') if waiting else None, 'via': looks[-1].get('via') if waiting else None}
+
+
 def as_last_confirmed(copy, elements: list[str], confirmed_now: bool) -> list[dict]:
-    """On a copy only: each element with the content it was last confirmed with before this change and, under it, what the change sent back as it was last confirmed.
-    The data stays as it is now. `confirmed_now`: the change is already confirmed on the copy, so "before" is the confirmation before the latest one; an element nobody
-    had confirmed before goes back to waiting for its first confirmation. Returns the datasets that have a newer version now than the one an element was last
-    confirmed on, [{name, from, to}]: a move that is the data's, not the change's."""
+    """On a copy only: "now" for these elements, on the data as it is now. An element the data sent back is put as it stood while it waited (what the board showed
+    then: confirming it is what lets the new data's number count). Any other is put back to the content it was last confirmed with before this change, and so is what
+    the change sent back under it. `confirmed_now`: the change is already confirmed on the copy, so "before" is the confirmation before the latest one; an element
+    nobody had confirmed before goes back to waiting for its first confirmation. Returns the datasets that have a newer version now than the one an element was last
+    confirmed on, [{name, from, to, accepted}]: `accepted` when an element the data sent back is confirmed on the new version (the confirmation accepts the new
+    data's numbers), not when the element stayed confirmed through it and only its definition changed."""
     versions: dict[str, int] = {}
+    accepted: set[str] = set()
     for element_id in [*elements, *sent_back(copy, elements)]:
         mine = element_id in elements
         rows = copy.execute('SELECT content_json, dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 2', (element_id,)).fetchall()
@@ -247,11 +269,18 @@ def as_last_confirmed(copy, elements: list[str], confirmed_now: bool) -> list[di
             if mine and confirmed_now:
                 copy.execute("UPDATE element_state SET state = 'checked' WHERE element_id = ?", (element_id,))
             continue
-        copy.execute("UPDATE element_state SET content_json = ?, state = 'confirmed' WHERE element_id = ?", (last[0][0], element_id))
+        stood = waited_on_data(copy, element_id) if mine and confirmed_now else None
+        if stood:
+            copy.execute('UPDATE element_state SET content_json = COALESCE(?, content_json), state = ?, reason = ?, cause = ?, via = ? WHERE element_id = ?',
+                         (stood['content_json'], stood['state'], stood['reason'], stood['cause'], stood['via'], element_id))
+        else:
+            copy.execute("UPDATE element_state SET content_json = ?, state = 'confirmed' WHERE element_id = ?", (last[0][0], element_id))
         if mine:
             for name, version in json.loads(last[0][1] or '{}').items():
                 versions[name] = min(version, versions.get(name, version))
-    return moved_since(copy, versions)
+                if stood:
+                    accepted.add(name)
+    return [{**m, 'accepted': m['name'] in accepted} for m in moved_since(copy, versions)]
 
 
 def moved_since(conn, versions: dict[str, int]) -> list[dict]:

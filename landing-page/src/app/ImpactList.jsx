@@ -2,7 +2,7 @@ import React from "react";
 import { getReceipt, getWorkspaceReceipt } from "./api.js";
 import { CopyButton } from "./CopyButton.jsx";
 import { t } from "./i18n/index.js";
-import { impactView, receiptMarkdown, summaryMarkdown, summaryView } from "./impactModel.js";
+import { impactView, movedLine, receiptMarkdown, summaryMarkdown, summaryView } from "./impactModel.js";
 import { timeText } from "./format.js";
 import { useLoad } from "./useLoad.js";
 
@@ -79,7 +79,7 @@ export function ReceiptPanel({ elements, onClose }) {
               <p><strong>{item.title}</strong></p>
               <p className="small">{item.before != null ? t("review.receipt.before", { text: item.before }) : t("review.receipt.first")}</p>
               <p className="small">{t("review.receipt.after", { text: item.after })}</p>
-              {item.data_moved?.length > 0 && <p className="warn small">{t("review.receipt.dataMoved", { list: item.data_moved.map((m) => t("review.receipt.movedOne", { name: m.name, from: m.from, to: m.to })).join(t("review.receipt.sep")) })}</p>}
+              {item.data_moved?.length > 0 && <p className="warn small">{movedLine(item.data_moved)}</p>}
               <p className="muted small">
                 {t("review.receipt.who", { proposed: item.proposed_by ?? t("review.group.unknown"), confirmed: item.confirmed_by ?? t("review.group.unknown"), at: timeText(item.confirmed_at) })}
                 {" · "}
