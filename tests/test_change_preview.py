@@ -137,7 +137,7 @@ class OtherKindTests(ImpactCase):
             self.assertEqual(bob.post('/api/workspace/queue/confirm', payload)[0], 200)
             self.preview_is_reality(bob, board['id'], preview)
 
-    def test_a_changed_relation_and_what_still_waits_after_it(self):
+    def test_a_changed_relation_and_what_reads_it(self):
         with self.service() as (base, out):
             team = self.team(base)
             self.world(team)
@@ -145,17 +145,16 @@ class OtherKindTests(ImpactCase):
             board = self.make(ann, spec=SPEC, scope='everyone')
             before = self.shown(bob, board['id'])
             detail = bob.get('/api/workspace/relations/order_customer')[1]
-            rel = {'english_name': 'order_customer', 'name': '订单属于客户', 'from': 'order', 'to': 'customer', 'cardinality': 'many_to_many', 'from_column': '客户编号', 'to_column': '客户编号'}
+            rel = {'english_name': 'order_customer', 'name': '订单属于客户', 'from': 'customer', 'to': 'order', 'cardinality': 'one_to_many', 'from_column': '客户编号', 'to_column': '客户编号'}   # turned around
             status, body = ann.post('/api/workspace/relations/update', {**rel, 'id': 'order_customer', 'version': detail['version']})
             self.assertEqual(status, 200, body)
             detail = bob.get('/api/workspace/relations/order_customer')[1]
             payload = {'element': 'relation:order_customer', 'version': detail['version'], 'seen': detail['check']['signature']}
             preview = self.impact(bob, payload)
             cards = self.by_card(preview)
-            self.assertIn('linked', cards)
             self.assertEqual(cards['linked']['now'], before['linked'])
-            self.assertIn('cancelled', cards)   # 已取消订单数 walks the relation: it went back for another look and still waits after this one
-            self.assertTrue(cards['cancelled']['after']['grey'])
+            self.assertEqual(cards['linked']['change']['kind'], 'refuses')   # the card walks it from 订单 to 客户, which is not its way any more
+            self.assertEqual(cards['cancelled']['now'], before['cancelled'])   # 已取消订单数 walks it too: it went back for another look
             self.assertEqual(bob.post('/api/workspace/queue/confirm', payload)[0], 200)
             self.preview_is_reality(bob, board['id'], preview)
 
@@ -288,9 +287,9 @@ class ReceiptTests(ImpactCase):
             self.assertEqual(status, 200, receipt)
             item = receipt['items'][0]
             self.assertEqual((item['element'], item['proposed_by'], item['confirmed_by'], item['on']), ('objview:有效订单', 'Ann', 'Bob', {'订单': 1}))
-            self.assertIn('已取消', item['before'])
-            self.assertIn('生产中', item['after'])
-            self.assertNotIn('生产中', item['before'])
+            self.assertIn('不是 2（已取消）', item['before'])
+            self.assertIn('不是 1（生产中）', item['after'])
+            self.assertNotIn('不是 1（生产中）', item['before'])
             cards = self.by_card(receipt)
             self.assertEqual({k: (c['now'], c['after']) for k, c in cards.items()}, {k: (c['now'], c['after']) for k, c in self.by_card(preview).items()})
             self.assertEqual(cards['valid']['change']['delta'], sum(r['状态码'] == '0' for r in ORDERS) - len(LIVE))
