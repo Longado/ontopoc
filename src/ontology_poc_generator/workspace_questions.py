@@ -12,7 +12,7 @@ them) and the dataset versions it read; reopened later it says whether a dataset
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import re
 
@@ -846,6 +846,35 @@ def history(conn, user: dict | None) -> list[dict]:
     where, args = _mine(user)
     return [{'id': i, 'question': q, 'asked_at': at, 'status': s} for i, q, at, s in conn.execute(
         f'SELECT id, question, asked_at, status FROM qa_question WHERE {where} ORDER BY id DESC LIMIT {HISTORY_LIMIT}', args)]
+
+
+TALLY_DAYS = 7
+HELD_BACK_LIMIT = 5
+
+
+def tally(conn, user: dict | None, now: str | None = None) -> dict:
+    """Everyone's questions counted by how they ended, for the people who build: {'last_7_days', 'previous_7_days'} each {'asked', 'answered' (a number, or
+    "no data matches"), 'refused' (held back before or after the model: a definition not confirmed, nothing in scope, a relation that cannot be walked),
+    'unanswered' (the model or the engine could not work it out)}, and 'held_back': the definitions that refusals of the last 7 days named, most questions
+    first, at most HELD_BACK_LIMIT, only those this reader may see. Counts and definition names: no question and nobody's name, since a person's questions
+    are theirs alone (history). 403 for a viewer."""
+    if user is not None and user['role'] == 'viewer':
+        raise QaRefused(tr('提问统计只给建设者和管理员看', 'The question tally is for builders and admins'), 403)
+    at = datetime.fromisoformat(now or _now())
+    edges = [(at - timedelta(days=TALLY_DAYS * n)).isoformat(timespec='seconds') for n in (1, 2)]
+    periods = {key: {'asked': 0, 'answered': 0, 'refused': 0, 'unanswered': 0} for key in ('last_7_days', 'previous_7_days')}
+    named: dict[str, dict] = {}
+    for status, asked_at, answer in conn.execute('SELECT status, asked_at, answer_json FROM qa_question WHERE asked_at > ? ORDER BY id', (edges[1],)):
+        period = periods['last_7_days' if asked_at > edges[0] else 'previous_7_days']
+        period['asked'] += 1
+        period['answered' if status in ('answered', 'no_data') else 'refused' if status == 'refused' else 'unanswered'] += 1
+        if status != 'refused' or asked_at <= edges[0]:
+            continue
+        refusal_ = (json.loads(answer).get('refusal') or {})
+        for d in {d['id']: d for d in refusal_.get('definitions') or [] if isinstance(d, dict) and d.get('id')}.values():   # one question names a definition once
+            named.setdefault(d['id'], {'id': d['id'], 'kind': d.get('kind'), 'name': d.get('name'), 'questions': 0})['questions'] += 1
+    held = [d for d in sorted(named.values(), key=lambda d: -d['questions']) if _may_see(conn, user, d['id'])]   # sorted is stable: ties stay in the order the refusals named them
+    return {**periods, 'days': TALLY_DAYS, 'held_back': held[:HELD_BACK_LIMIT]}
 
 
 def _may_see(conn, user: dict | None, element_id: str) -> bool:

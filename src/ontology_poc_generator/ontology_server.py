@@ -61,7 +61,7 @@ from ontology_poc_generator.ontology_library import import_definition, library_c
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
 from ontology_poc_generator import assistant_history
-from ontology_poc_generator.workspace_questions import WRITES as ASK_WRITES, QaRefused, ask as ask_workspace, query_as_text, run_text as run_query_text, history as question_history, reopen as reopen_question, scope_line
+from ontology_poc_generator.workspace_questions import WRITES as ASK_WRITES, QaRefused, ask as ask_workspace, query_as_text, run_text as run_query_text, history as question_history, reopen as reopen_question, scope_line, tally as question_tally
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
 from ontology_poc_generator.ontology_stability import STABILITY_RUNS, stability_of
@@ -1595,6 +1595,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             try:
                 if not parts:
                     body = {**scope_line(conn, self.user), 'history': question_history(conn, self.user), 'model_ready': gateway is not None}
+                elif parts == ['tally']:
+                    body = question_tally(conn, self.user)
                 elif len(parts) == 1 and re.fullmatch(r'[0-9]{1,15}', parts[0]):   # an id sqlite can hold
                     body = reopen_question(conn, self.user, int(parts[0]))
                 else:
