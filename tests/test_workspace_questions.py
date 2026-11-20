@@ -325,6 +325,19 @@ class QuestionTests(SigningTestCase):
             self.assertEqual((body['status'], body['answer']['total']), ('answered', 96), body)
             self.assertIn('状态码 不是 1（生产中）、2（已取消）：算进 0 已交付', body['path'])
 
+    def test_two_meanings_asked_for_together_are_answered_by_leaving_the_other_codes_out(self):
+        # 已交付和生产中: the query language has no "is one of", so the model leaves 已取消 out and says it includes the two it keeps (the public demo's
+        # "已取消和已退款的订单" was refused this way, the reason naming meanings the question never said)
+        both = cancelled(query={**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['2']}], 'measure': {'field': '金额', 'op': 'sum'}},
+                         used=[{'id': f'订单.状态码={label}', 'direction': 'include', 'basis': label} for label in ('已交付', '生产中')])
+        with self.service(gateway=AskModel(both)) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask(team['vera'], '已交付和生产中的订单一共多少笔，金额多少？')
+            self.assertEqual((status, body['status']), (200, 'answered'), body)
+            self.assertEqual((body['answer']['measure']['value'], body['answer']['measure']['counted']), (2426560, 144))
+            self.assertEqual(sorted((u['definition'], u['direction']) for u in body['understood']), [('已交付', 'include'), ('生产中', 'include')])
+
     def test_a_query_that_leaves_a_meaning_out_while_the_model_says_include_or_nothing_is_refused(self):
         for direction, how in (('include', '问题要把它算进来，这条查询却把它排除了'), ('mention', '却按它筛选了行')):
             with self.subTest(direction=direction), self.service(gateway=AskModel(self.not_cancelled('已取消', direction=direction))) as (base, out):

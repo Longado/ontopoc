@@ -157,7 +157,44 @@ class MeaningTests(unittest.TestCase):
     def test_a_refusal_for_silence_says_how_it_was_read_too(self):
         checked = self.check('有多少订单已取消？', ALL_ORDERS, [])
         self.assertEqual(len(checked['unmet']), 1)
-        self.assertEqual(checked['understood'], [{'definition': '已取消', 'direction': 'unsaid', 'how': '出题员没有说明它是怎么用的'}])
+        self.assertEqual(checked['understood'], [{'definition': '已取消', 'direction': 'unsaid', 'how': '模型没有说明它是怎么用的'}])
+
+    def test_meanings_kept_by_leaving_every_other_code_out_are_the_ones_included(self):
+        four = {'订单.状态码': {'labels': {'0': '进行中', '1': '已交付', '2': '已取消', '3': '已退款'}}}
+        held = {'订单.状态码': {'0', '1', '2', '3'}}   # the values the column holds
+        question = '已取消和已退款的订单一共有多少笔？'
+        both = [inc('已取消'), inc('已退款')]
+        for left_out in (['0', '1'], ['进行中', '已交付']):   # the query language has no "is one of": the other codes are left out, by code or by meaning
+            rest = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': left_out}]}
+            checked = self.check(question, rest, both, meanings=four, values=held)
+            self.assertEqual(checked['unmet'], [], left_out)
+            self.assertEqual(sorted(u['definition'] for u in checked['understood']), ['已取消', '已退款'])
+            self.assertTrue(all(u['direction'] == 'include' for u in checked['understood']))
+        rest = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['0', '1']}]}
+        # what the filter lets through is more than the model said the question includes: 已退款 would be counted too
+        self.assertIn('已取消', [u['definition'] for u in self.check('已取消的订单有多少？', rest, [inc('已取消')], meanings=four, values=held)['unmet']])
+        # a value with no meaning on file, or a blank, would be let through as well
+        for odd in ('9', ''):
+            self.assertNotEqual(self.check(question, rest, both, meanings=four, values={'订单.状态码': {'0', '1', '2', '3', odd}})['unmet'], [], odd)
+        # rows not known: nothing says what else the filter lets through
+        self.assertNotEqual(self.check(question, rest, both, meanings=four)['unmet'], [])
+        # a meaning the question includes that the query leaves out is still the opposite
+        wrong = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['0', '1', '3']}]}
+        self.assertIn('已退款', [u['definition'] for u in self.check(question, wrong, both, meanings=four, values=held)['unmet']])
+
+    def test_a_refusal_says_only_what_the_question_named_and_in_plain_words(self):
+        unasked = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': '2'}]}
+        [filtered] = self.check('订单有多少？', unasked, [])['unmet']   # the question does not name it; the query leaves it out
+        answer = refusal([filtered])
+        self.assertNotIn('问题里提到', answer['reason'])
+        self.assertIn('「已取消」', answer['reason'])
+        self.assertIn('问题里提到「已取消」', refusal(self.check('有多少订单已取消？', ALL_ORDERS, [])['unmet'])['reason'])   # this one it does name
+        said = [self.check('有多少订单已取消？', ALL_ORDERS, []), self.check('订单有多少？', unasked, []), self.check('不含已取消的订单有多少？', ALL_ORDERS, [men('已取消')]),
+                self.check('有效订单怎么定义的？', {'start': 'ticket', 'where': [], 'group_by': None}, [men('有效订单')], [view()]),
+                self.check('有效订单有多少？', ALL_ORDERS, [], [view()]), self.check('订单有多少，例如已取消的？', CANCELLED, [men('已取消')])]
+        text = json.dumps(said, ensure_ascii=False)
+        self.assertNotIn('出题员', text)
+        self.assertIn('模型', text)
 
     def test_a_query_the_language_cannot_read_is_left_to_say_so(self):
         listed = {'start': 'order', 'where': [{'field': '订单.状态码', 'equals': ['2', '0']}], 'group_by': None}
