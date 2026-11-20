@@ -54,13 +54,12 @@ export function importSummary(result) {
 /** The dialog's lists, the empty ones left out: [{id, title, items: [{text, href?}], more?}]. */
 export function importSections(result) {
   const sections = [
-    { id: "types", items: result.types.map((ty) => ({ text: typeLine(ty), href: hrefFor({ page: "type", id: ty.id, tab: "props" }) })) },
-    { id: "relations", items: result.relations.map((rel) => ({ text: relationLine(rel), href: hrefFor({ page: "relation", id: rel.id }) })) },
-    { id: "codes", items: result.codes.map((c) => ({ text: codeLine(c) })) },
-    { id: "unmatched", items: result.unmatched_models.map((m) => ({ text: m })) },
-    { id: "skipped", items: result.skipped.map((s) => ({ text: s.model ? `${s.model}${t("types.comma")}${s.what}${t("types.colon")} ${s.reason}` : `${s.what}${t("types.colon")} ${s.reason}` })),
-      more: result.skipped_more ? t("types.dbt.more", { count: result.skipped_more }) : undefined },
-    { id: "leftOut", items: result.left_out.map((s) => ({ text: `${s.what}${t("types.colon")} ${s.reason}` })) },
-  ];
+    { id: "types", key: "types", items: result.types.map((ty) => ({ text: typeLine(ty), href: hrefFor({ page: "type", id: ty.id, tab: "props" }) })) },
+    { id: "relations", key: "relations", items: result.relations.map((rel) => ({ text: relationLine(rel), href: hrefFor({ page: "relation", id: rel.id }) })) },
+    { id: "codes", key: "codes", items: result.codes.map((c) => ({ text: codeLine(c) })) },
+    { id: "unmatched", key: "unmatched_models", items: result.unmatched_models.map((m) => ({ text: m })) },
+    { id: "skipped", key: "skipped", items: result.skipped.map((s) => ({ text: s.model ? `${s.model}${t("types.comma")}${s.what}${t("types.colon")} ${s.reason}` : `${s.what}${t("types.colon")} ${s.reason}` })) },
+    { id: "leftOut", key: "left_out", items: result.left_out.map((s) => ({ text: `${s.what}${t("types.colon")} ${s.reason}` })) },
+  ].map(({ key, ...s }) => ({ ...s, more: result.more?.[key] ? t("types.dbt.more", { count: result.more[key] }) : undefined }));   // the service lists at most 200 of each and counts the rest
   return sections.filter((s) => s.items.length).map((s) => ({ ...s, title: t(`types.dbt.section.${s.id}`) }));
 }
