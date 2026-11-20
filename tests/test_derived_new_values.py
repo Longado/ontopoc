@@ -29,8 +29,9 @@ DERIVED = 'derived:customer:valid_amount'
 REWRITTEN = [*({'value': v, 'label': l} for v, l in LABELS.items()), {'value': '6', 'label': '暂停'}]
 
 
-def part(name: str, **more) -> dict:
-    return {'filename': name, 'content_base64': base64.b64encode((SAMPLE / name).read_bytes()).decode(), **more}
+def part(name: str, data: str | None = None, **more) -> dict:
+    raw = data.encode('utf-8') if data is not None else (SAMPLE / name).read_bytes()
+    return {'filename': name, 'content_base64': base64.b64encode(raw).decode(), **more}
 
 
 def truth() -> dict:
@@ -54,11 +55,11 @@ NEW_ROWS = sum(1 for r in csv.DictReader((SAMPLE / 'orders_update.csv').open(enc
 class PilotFoundation(SigningTestCase):
     """The pilot sample with its definitions confirmed (no tests of its own)."""
 
-    def foundation(self, base, derived=(VALID_AMOUNT,)):
-        """Ann puts forward the two types, the relation, the view and the derived properties; Bob confirms them."""
+    def foundation(self, base, derived=(VALID_AMOUNT,), orders=None):
+        """Ann puts forward the two types, the relation, the view and the derived properties; Bob confirms them. `orders`: the orders file's text, when not the sample's."""
         team = self.people(base, 'ann', 'bob')
         ann, bob = team['ann'], team['bob']
-        self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [part('orders.csv'), part('customers.csv')]})[0], 200)
+        self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [part('orders.csv', orders), part('customers.csv')]})[0], 200)
         for payload in (ORDER, CUSTOMER):
             self.assertEqual(ann.post('/api/workspace/types', payload)[0], 200, payload['english_name'])
         meanings = next(p for p in bob.get('/api/workspace/types/order')[1]['properties'] if p['column'] == 'status_code')['meanings']
