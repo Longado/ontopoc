@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { AREAS, formatDate, formatDateTime, formatNumber, getLocale, setLocale, t } from "./index.js";
+import { AREAS, formatDate, formatDateTime, formatNumber, getLocale, pickLocale, setLocale, t } from "./index.js";
 
 test("t: plain keys, interpolation and a missing variable", () => {
   setLocale("en");
@@ -42,6 +42,19 @@ test("locale: default en, setLocale switches, unknown locales are refused", () =
   setLocale("fr");
   assert.equal(getLocale(), "zh");
   setLocale("en");
+});
+
+test("locale on first open: a stored choice wins, else the browser's first language the app has, else en", () => {
+  assert.equal(pickLocale(null, ["zh-CN", "en-US"]), "zh");
+  assert.equal(pickLocale(null, ["zh-TW"]), "zh");
+  assert.equal(pickLocale(null, ["fr-FR", "zh-CN"]), "zh");
+  assert.equal(pickLocale(null, ["en-GB", "zh-CN"]), "en");
+  assert.equal(pickLocale(null, ["fr-FR"]), "en");
+  assert.equal(pickLocale(null, []), "en");
+  assert.equal(pickLocale(null, undefined), "en");
+  assert.equal(pickLocale("en", ["zh-CN"]), "en");   // the person's own choice, kept
+  assert.equal(pickLocale("zh", ["en-US"]), "zh");
+  assert.equal(pickLocale("fr", ["zh-CN"]), "zh");   // a stored value the app does not have is ignored
 });
 
 test("formatters follow the locale", () => {
