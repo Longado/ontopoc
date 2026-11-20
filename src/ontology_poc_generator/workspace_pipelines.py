@@ -27,7 +27,7 @@ from ontology_poc_generator.draft_receipts import spend as spend_receipt
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.object_types import (
     MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _flag, _flag_readers, _state_view, _text, dataset_columns,
-    element_row, log_entries, recheck_after_write, unconfirmed_producers, write_confirmation)
+    element_row, log_entries, one_telling, recheck_after_write, unconfirmed_producers, write_confirmation)
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import guess_formats, number_text, register
 from ontology_poc_generator.pipeline_llm import LlmRun, LlmService, cache_counts, contract_of, effective
@@ -253,7 +253,7 @@ def _write(conn, change: tuple, reads: list[str], outputs: list[str], version_ro
     """The element, what it reads, the datasets it writes and the definition version, all or nothing (and `after(conn)` in the same transaction)."""
     element_id = change[0]
     try:
-        with element_state_writes(conn, [change], versions):
+        with one_telling(conn), element_state_writes(conn, [change], versions):   # what the edit sends back is told once it is written
             conn.execute('DELETE FROM element_dep WHERE element_id = ?', (element_id,))
             conn.executemany('INSERT OR IGNORE INTO element_dep(element_id, depends_on) VALUES (?, ?)', [(element_id, r) for r in reads])
             conn.execute("DELETE FROM element_dep WHERE depends_on = ? AND element_id LIKE 'dataset:%'", (element_id,))
@@ -699,35 +699,36 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm
 def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, nodes: list[dict], outputs: dict, who: str | None) -> list[dict]:
     """Every output as a new dataset or a new version, carrying the run, the definition version and the input versions: all of them in one transaction, so a second
     output that cannot be written takes the first back. When the pipeline is not confirmed, what is confirmed on its outputs goes to needs_look (_flag_takeover). After
-    the write, what reads each output is checked again."""
-    signer = who or '未署名'
-    written = []
-    doubled = {UPSTREAM, *(d['as'] for n in nodes for op in n.get('operators', []) for d in op.get('double_counted', []))}   # what the run measured as counted twice
-    conn.execute('BEGIN IMMEDIATE')   # apply_upload joins a transaction its caller holds
-    try:
-        for step in content['spec']['steps']:
-            if step['type'] != 'output' or step['id'] not in outputs:
-                continue
-            columns = next(n for n in nodes if n['id'] == step['id'])['output']['columns']
-            records = [dict(zip([c['name'] for c in columns], r)) for r in outputs[step['id']]]
-            existing = current_dataset(conn, step['name'])
-            plan = plan_upload(conn, step['name'], records, mode='overwrite' if existing else None, rows_in=len(records))
-            plan['changes'] = {**plan['changes'], 'pipeline': {'id': content['name'], 'run': run_id, 'definition_version': content['definition_version'], 'inputs': versions}}
-            done = apply_upload(conn, plan, signer, origin=f'pipeline:{content["name"]}@run{run_id}')
-            conn.executemany('INSERT OR IGNORE INTO column_mark(dataset_id, column_name, mark) VALUES (?, ?, ?)',
-                             [(done['dataset']['id'], c['name'], mark) for c in columns for mark in ('unsent', 'ai') if c.get(mark)])
-            conn.executemany('INSERT OR IGNORE INTO column_fan(dataset_id, column_name) VALUES (?, ?)', [(done['dataset']['id'], c['name']) for c in columns if set(c.get('fan_agg', ())) & doubled])
-            if done['created'] and row['state'] != 'confirmed':
-                _flag_takeover(conn, content['name'], [step['name']])
-            written.append({'dataset': step['name'], 'version': done['dataset']['version'], 'rows': len(records), 'created_version': done['created'], 'mode': plan['mode'],
-                            'recheck_error': None})
-        conn.execute('COMMIT')
-    except BaseException:
-        conn.execute('ROLLBACK')
-        raise
-    for item in written:
-        if item['created_version']:
-            item['recheck_error'] = recheck_after_write(conn, item['dataset'], signer)
+    the write, what reads each output is checked again. What the run sends back is told once for the whole run (one_telling)."""
+    with one_telling(conn):   # one run, one notice per person
+        signer = who or '未署名'
+        written = []
+        doubled = {UPSTREAM, *(d['as'] for n in nodes for op in n.get('operators', []) for d in op.get('double_counted', []))}   # what the run measured as counted twice
+        conn.execute('BEGIN IMMEDIATE')   # apply_upload joins a transaction its caller holds
+        try:
+            for step in content['spec']['steps']:
+                if step['type'] != 'output' or step['id'] not in outputs:
+                    continue
+                columns = next(n for n in nodes if n['id'] == step['id'])['output']['columns']
+                records = [dict(zip([c['name'] for c in columns], r)) for r in outputs[step['id']]]
+                existing = current_dataset(conn, step['name'])
+                plan = plan_upload(conn, step['name'], records, mode='overwrite' if existing else None, rows_in=len(records))
+                plan['changes'] = {**plan['changes'], 'pipeline': {'id': content['name'], 'run': run_id, 'definition_version': content['definition_version'], 'inputs': versions}}
+                done = apply_upload(conn, plan, signer, origin=f'pipeline:{content["name"]}@run{run_id}')
+                conn.executemany('INSERT OR IGNORE INTO column_mark(dataset_id, column_name, mark) VALUES (?, ?, ?)',
+                                 [(done['dataset']['id'], c['name'], mark) for c in columns for mark in ('unsent', 'ai') if c.get(mark)])
+                conn.executemany('INSERT OR IGNORE INTO column_fan(dataset_id, column_name) VALUES (?, ?)', [(done['dataset']['id'], c['name']) for c in columns if set(c.get('fan_agg', ())) & doubled])
+                if done['created'] and row['state'] != 'confirmed':
+                    _flag_takeover(conn, content['name'], [step['name']])
+                written.append({'dataset': step['name'], 'version': done['dataset']['version'], 'rows': len(records), 'created_version': done['created'], 'mode': plan['mode'],
+                                'recheck_error': None})
+            conn.execute('COMMIT')
+        except BaseException:
+            conn.execute('ROLLBACK')
+            raise
+        for item in written:
+            if item['created_version']:
+                item['recheck_error'] = recheck_after_write(conn, item['dataset'], signer)
     return written
 
 
