@@ -13,16 +13,16 @@ import "./boards-home.css";
 import "./checked.css";
 import { Icon } from "./ui/Icon.jsx";
 
-/** Everything the home page shows, read at once; a list this person may not read comes back as null instead of failing the page. */
+/** What the home page shows, read at once (the question tally is read apart, see HomePage); a list this person may not read comes back as null instead of failing the page. */
 async function loadHome(user) {
   const builder = canBuild(user);
   const ok = (p) => p.then((v) => v, () => null);
-  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources, boards, tally] = await Promise.all([
+  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources, boards] = await Promise.all([
     ok(getDatasets()), ok(getTypes()), ok(getRelations()), ok(getAsk()), ok(getNotices()),
     builder ? ok(getQueueCount()) : null, builder ? ok(getPipelines()) : null, isAdmin(user) ? ok(getUsers()) : null, builder ? ok(getSources()) : null,
-    isGuest(user) ? ok(getBoards()) : null, builder ? ok(getAskTally()) : null,
+    isGuest(user) ? ok(getBoards()) : null,
   ]);
-  return { datasets, types, relations, ask, notices, queue: queue ?? 0, pipelines, users, sources, boards, tally };
+  return { datasets, types, relations, ask, notices, queue: queue ?? 0, pipelines, users, sources, boards };
 }
 
 const qaStatus = (status) => t(status === "answered" ? "home.qa.answered" : status === "no_data" ? "home.qa.noData" : "home.qa.unanswered");
@@ -200,8 +200,9 @@ function Tally({ view }) {
 export function HomePage() {
   const { user } = useAuth();
   const [state] = useLoad(() => loadHome(user), []);
-  const d = state.data;
   const mayBuild = canBuild(user);
+  const [tallyState] = useLoad(() => (mayBuild ? getAskTally().catch(() => null) : Promise.resolve(null)), []);   // read apart: it works checked answers out again, and the rest of Home does not wait for it
+  const d = state.data;
   if (!d) return <main className="page"><h1 tabIndex={-1} className="visually-hidden">{t("home.title")}</h1><p className="muted">{t("common.loading")}</p></main>;
   const types = d.types ?? [];
   const setup = mayBuild && needsSetup({ datasets: d.datasets, types });
@@ -214,7 +215,7 @@ export function HomePage() {
   const today = new Date();
   const fresh = updatedText(d.datasets);
   const history = d.ask?.history ?? [];
-  const tally = mayBuild ? tallyView(d.tally) : null;
+  const tally = mayBuild ? tallyView(tallyState.data) : null;
   const gate = gateStatus({ types, relations: d.relations, queue: d.queue, mayBuild });
   const showTodo = !guest || todos.length > 0;
   const showRecent = !guest || history.length > 0;
