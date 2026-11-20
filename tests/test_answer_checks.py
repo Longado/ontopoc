@@ -365,7 +365,11 @@ QUERIES = {
     '有效订单有多少？': (COUNT_ORDERS, [inc('有效订单')]), '订单有多少？': COUNT_ORDERS,
     '火星的客户有几个？': CITY('火星'), '上海的客户有几个？': CITY('上海'), '苏州的客户有几个？': CITY('苏州'),
     '已取消的订单有多少？': ({'start': 'order', 'where': [{'field': '订单.状态码', 'equals': ['2']}], 'group_by': None}, [inc('已取消')]),
-    '库存一共多少？': {'start': 'product', 'measure': {'field': '库存快照.库存数量', 'op': 'sum'}, 'group_by': None}}
+    '库存一共多少？': {'start': 'product', 'measure': {'field': '库存快照.库存数量', 'op': 'sum'}, 'group_by': None},
+    # two meanings kept by leaving the third out; then the same with 状态码 = 1 on top, which drops 已交付
+    '已交付和生产中的订单有多少？': ({'start': 'order', 'where': [{'field': '状态码', 'not_equals': ['2']}], 'group_by': None}, [inc('已交付'), inc('生产中')]),
+    '已交付和生产中的订单有多少？（又筛了一次）': ({'start': 'order', 'where': [{'field': '状态码', 'not_equals': ['2']}, {'field': '状态码', 'equals': '1'}], 'group_by': None},
+                                     [inc('已交付'), inc('生产中')])}
 
 
 class ServerAnswersTests(unittest.TestCase):
@@ -443,6 +447,15 @@ class ServerAnswersTests(unittest.TestCase):
             self.assertEqual((item['status'], item['answer']['total']), ('answered', 144), question)
             self.assertEqual([v['name'] for v in item['evidence']['views']], ['有效订单'])
         self.assertEqual(self.ask('已取消的不算，有多少订单？（带筛选）')['status'], 'definition_unmet')   # the query also counts them: contradicts
+
+    def test_meanings_kept_by_leaving_the_other_code_out_are_read_from_this_runs_rows(self):
+        self.confirm_meaning([{'value': '0', 'label': '已交付'}, {'value': '1', 'label': '生产中'}, {'value': '2', 'label': '已取消'}])
+        both = self.ask('已交付和生产中的订单有多少？')
+        self.assertEqual((both['status'], both['answer']['total']), ('answered', 144), both)
+        self.assertEqual(sorted((u['definition'], u['direction']) for u in both['understood']), [('已交付', 'include'), ('生产中', 'include')])
+        narrowed = self.ask('已交付和生产中的订单有多少？（又筛了一次）')   # 48 orders would come back as both meanings
+        self.assertEqual(narrowed['status'], 'definition_unmet', narrowed)
+        self.assertNotIn('answer', narrowed)
 
     def test_a_label_of_two_characters_is_checked_when_the_model_says_it_is_used(self):
         self.confirm_meaning([{'value': '2', 'label': '作废'}])
