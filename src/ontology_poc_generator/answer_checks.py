@@ -284,8 +284,9 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                                                                                    f'{what}: the model said it is only mentioned, but the query does not read objects from the table "{field.partition(".")[0]}", so {_unbacked()}')})
                     understood.append(_says(direction, label, _unbacked_how()))
                 left_out = {(column, 'is_not', x) for x in meaning['labels'].values() if x and (declared.get(meaning_id(field, x)) or (declared.get(x) if x in bare else None)) == 'exclude'}
+                asked_in = {x for x in meaning['labels'].values() if x and (declared.get(meaning_id(field, x)) or (declared.get(x) if x in bare else None)) == 'include'}   # (its own count: the filter-includes code above is not read here)
                 if direction == 'include' and any(d['source'] == field.partition('.')[0] for d in read_derived.values()):   # the question wants only these rows, and the query counts rows of their table through a derived property: one that keeps exactly this meaning
-                    d = _same_rows(read_derived, field.partition('.')[0], {(column, 'is', label)}) if len(included) == 1 else None
+                    d = _same_rows(read_derived, field.partition('.')[0], {(column, 'is', label)}) if len(asked_in) == 1 else None
                     if d:
                         understood.append(_says(direction, label, tr(f'派生属性 {d["name"]} 只算 {column} = {codes}', f'The derived property {d["name"]} counts only {column} = {codes}')))
                     else:
