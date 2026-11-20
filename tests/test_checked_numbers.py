@@ -108,11 +108,9 @@ class RecordAndRecomputeTests(CheckedBoardCase):
             self.check(bob, board, 'cancelled')
             self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)   # every code one higher: the meanings need another look
             checks, summary = self.checks(bob, board)
-            for name in ('valid', 'cancelled'):
-                self.assertEqual(checks[name]['status'], 'refused', name)
-                self.assertIsNone(checks[name]['now'])
-                self.assertTrue(checks[name]['reason'], name)
+            self.assertEqual((checks['valid']['status'], checks['valid']['now']), ('refused', None))
             self.assertIn('状态码', checks['valid']['reason'])
+            self.assertEqual(checks['cancelled'], {'status': 'refused', 'by': 'Bob', 'at': checks['cancelled']['at']})   # the query card no longer reads for Bob (not its author): he is told it refuses, not what it read
             self.assertEqual(summary['text'], '2 个数核对过：0 一致、0 变了、2 拒答、0 不一致')
 
     def test_what_cannot_be_checked_is_refused_in_words(self):
