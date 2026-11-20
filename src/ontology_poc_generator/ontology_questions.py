@@ -861,7 +861,8 @@ def _for_reader(reasoning: str, status: str) -> str:
     ontology"). A Chinese sentence that names one of the query's fields is about the format; in English only the format's own tokens are (query and where
     are words). When a sentence was left out, code says plainly what the outcome is (`status`: query_limit or ontology_gap), since the left-out ones
     often held the why. '' when the model gave no reasoning."""
-    sentences = re.findall(r'[^。！？!?\n]+(?:[。！？!?]|$)|[^\n]+', reasoning.replace('. ', '.\n'))
+    ended = re.sub(r'(?<!\be\.g)(?<!\bi\.e)(?<!\betc)(?<!\bvs)(?<!\bcf)\. ', '.\n', reasoning, flags=re.I)   # "e.g. customer" does not end a sentence
+    sentences = re.findall(r'[^。！？!?\n]+(?:[。！？!?]|$)|[^\n]+', ended)
     kept = [x.strip() for x in sentences if x.strip() and not FORMAT_WORDS.search(x) and not (re.search(r'[\u4e00-\u9fff]', x) and FORMAT_WORDS_ZH.search(x))]
     said = ''.join(x + (' ' if x[-1] in '.!?' else '') for x in kept).strip()
     if len(kept) == len([x for x in sentences if x.strip()]):
