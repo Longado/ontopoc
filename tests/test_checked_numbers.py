@@ -17,12 +17,19 @@ from tests.test_workspace_questions import AskModel, CANCELLED, QUESTION, cancel
 
 CANCELLED_CARD = {'id': 'cancelled', 'title': '取消的订单', 'text': "SELECT count(o) FROM (o:订单) WHERE o.状态码 = '已取消'", 'chart': {'kind': 'query'}}
 BAR = {'id': 'status', 'title': '按状态', 'query': {'type': 'order'}, 'chart': {'kind': 'bar', 'group': '状态码', 'fn': 'count'}}
-SPEC = {'components': [CARD, CANCELLED_CARD, BAR], 'filters': [{'field': '状态码', 'label': '状态'}]}
-FIRST_LIVE = next(i for i, r in enumerate(ORDERS) if r['状态码'] == '0')   # one delivered order that a new version says was cancelled
+AMOUNT = {'id': 'valid_amount', 'title': '有效订单金额', 'query': {'type': 'order', 'view': '有效订单'}, 'chart': {'kind': 'number', 'measure': '金额', 'fn': 'sum'}}
+SPEC = {'components': [CARD, AMOUNT, CANCELLED_CARD, BAR], 'filters': [{'field': '状态码', 'label': '状态'}]}
+FIRST_LIVE = next(i for i, r in enumerate(ORDERS) if r['状态码'] == '0')   # one delivered order that a new version changes
+LIVE_AMOUNT = sum(float(r['金额']) for r in LIVE)
 
 
 def one_more_cancelled(record, i):
     return {**record, '状态码': '2'} if i == FIRST_LIVE else record
+
+
+def hundred_more(record, i):
+    """The same orders, one delivered order 100 more: no code and no row a view keeps moves, the amount does."""
+    return {**record, '金额': str(int(float(record['金额'])) + 100)} if i == FIRST_LIVE else record
 
 
 class CheckedBoardCase(BoardCase):
@@ -50,39 +57,47 @@ class RecordAndRecomputeTests(CheckedBoardCase):
             bob = team['bob']
             made = self.check(bob, board, 'valid')   # the trusted value defaults to the number shown
             self.assertEqual((made['status'], made['trusted'], made['then'], made['now'], made['note'], made['by']), ('same', len(LIVE), len(LIVE), len(LIVE), '财务 10 月报表', 'Bob'))
+            self.assertEqual(self.check(bob, board, 'valid_amount')['status'], 'same')
             self.assertEqual(self.check(bob, board, 'cancelled')['status'], 'same')
             checks, summary = self.checks(bob, board)
-            self.assertEqual((checks['valid']['status'], checks['cancelled']['status'], checks['status']), ('same', 'same', None))
-            self.assertEqual((summary['total'], summary['same'], summary['moved'], summary['refused'], summary['differs']), (2, 2, 0, 0, 0))
-            self.assertEqual(summary['text'], '2 个数核对过：2 一致、0 变了、0 拒答、0 不一致')
-            # a new version of 订单 in which one delivered order was cancelled: the meanings stay confirmed, both numbers move by one
+            self.assertEqual((checks['valid']['status'], checks['valid_amount']['status'], checks['cancelled']['status'], checks['status']), ('same', 'same', 'same', None))
+            self.assertEqual((summary['total'], summary['same'], summary['moved'], summary['refused'], summary['differs']), (3, 3, 0, 0, 0))
+            self.assertEqual(summary['text'], '3 个数核对过：3 一致、0 变了、0 拒答、0 不一致')
+            # a new version of 订单 in which one delivered order is 100 more: the definitions stay confirmed, the amount moves and the counts do not
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [orders_upload(hundred_more)]})[0], 200)
+            checks, summary = self.checks(bob, board)
+            amount = checks['valid_amount']
+            self.assertEqual((amount['status'], amount['trusted'], amount['then'], amount['now']), ('moved', LIVE_AMOUNT, LIVE_AMOUNT, LIVE_AMOUNT + 100))
+            self.assertEqual(amount['moved'], [{'kind': 'dataset', 'name': '订单', 'from': 1, 'to': 2}])
+            self.assertEqual((checks['valid']['status'], checks['cancelled']['status']), ('same', 'same'))
+            self.assertEqual(summary['text'], '3 个数核对过：2 一致、1 变了、0 拒答、0 不一致')
+            # nothing changed what the team trusts: a new check does, and is kept apart from the first
+            again = self.check(bob, board, 'valid_amount', note='重新对过')
+            self.assertEqual((again['status'], again['trusted'], again['note']), ('same', LIVE_AMOUNT + 100, '重新对过'))
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            self.assertEqual(conn.execute("SELECT trusted FROM checked_number WHERE component_id = 'valid_amount' ORDER BY id").fetchall(), [(LIVE_AMOUNT,), (LIVE_AMOUNT + 100,)])
+            conn.close()
+            # one delivered order cancelled: the view keeps other rows now and needs another look, so what stands on it refuses; the plain count moves by one
             self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [orders_upload(one_more_cancelled)]})[0], 200)
             checks, summary = self.checks(bob, board)
-            valid = checks['valid']
-            self.assertEqual((valid['status'], valid['trusted'], valid['then'], valid['now']), ('moved', len(LIVE), len(LIVE), len(LIVE) - 1))
-            self.assertIn({'kind': 'dataset', 'name': '订单', 'from': 1, 'to': 2}, valid['moved'])
-            self.assertEqual((checks['cancelled']['status'], checks['cancelled']['now']), ('moved', CANCELLED + 1))
-            self.assertEqual(summary['text'], '2 个数核对过：0 一致、2 变了、0 拒答、0 不一致')
-            # nothing changed what the team trusts: a new check does, and is kept apart from the first
-            again = self.check(bob, board, 'valid', note='重新对过')
-            self.assertEqual((again['status'], again['trusted'], again['note']), ('same', len(LIVE) - 1, '重新对过'))
-            conn = sqlite3.connect(out / 'workspace.sqlite')
-            self.assertEqual(conn.execute("SELECT trusted FROM checked_number WHERE component_id = 'valid' ORDER BY id").fetchall(), [(len(LIVE),), (len(LIVE) - 1,)])
-            conn.close()
+            self.assertEqual((checks['valid']['status'], checks['valid']['now']), ('refused', None))
+            self.assertIn('有效订单', checks['valid']['reason'])
+            self.assertEqual((checks['cancelled']['status'], checks['cancelled']['then'], checks['cancelled']['now']), ('moved', CANCELLED, CANCELLED + 1))
+            self.assertEqual(summary['text'], '3 个数核对过：0 一致、1 变了、2 拒答、0 不一致')
 
     def test_a_trusted_value_that_differs_from_the_number_shown_is_kept_and_shown_as_differing_from_the_start(self):
         with self.service() as (base, out):
             team = self.team(base)
             board = self.board(team)
-            made = self.check(team['bob'], board, 'valid', value='1,234')
-            self.assertEqual((made['status'], made['trusted'], made['then']), ('differs', 1234, len(LIVE)))
+            made = self.check(team['bob'], board, 'valid_amount', value='1,234')
+            self.assertEqual((made['status'], made['trusted'], made['then']), ('differs', 1234, LIVE_AMOUNT))
             checks, summary = self.checks(team['ann'], board)
-            self.assertEqual((checks['valid']['status'], checks['valid']['now']), ('differs', len(LIVE)))
+            self.assertEqual((checks['valid_amount']['status'], checks['valid_amount']['now']), ('differs', LIVE_AMOUNT))
             self.assertEqual(summary['text'], '1 个数核对过：0 一致、0 变了、0 拒答、1 不一致')
             # when the data moves the number again, it is a change since the check, still never the trusted value
-            team['ann'].post('/api/workspace/datasets/upload', {'files': [orders_upload(one_more_cancelled)]})
-            self.assertEqual(self.checks(team['ann'], board)[0]['valid']['status'], 'moved')
-            self.assertEqual(self.checks(team['ann'], board)[0]['valid']['trusted'], 1234)
+            team['ann'].post('/api/workspace/datasets/upload', {'files': [orders_upload(hundred_more)]})
+            check = self.checks(team['ann'], board)[0]['valid_amount']
+            self.assertEqual((check['status'], check['trusted']), ('moved', 1234))
 
     def test_when_a_definition_under_a_checked_number_needs_another_look_the_check_says_it_refuses_and_why(self):
         with self.service() as (base, out):
@@ -122,7 +137,7 @@ class RecordAndRecomputeTests(CheckedBoardCase):
             ann = team['ann']
             self.check(team['bob'], board, 'valid')
             shown = ann.get(f'/api/workspace/dashboards/{board}')[1]
-            spec = {**SPEC, 'components': [{**CARD, 'query': {'type': 'order'}}, CANCELLED_CARD, BAR]}
+            spec = {**SPEC, 'components': [{**CARD, 'query': {'type': 'order'}}, AMOUNT, CANCELLED_CARD, BAR]}
             self.assertEqual(ann.post('/api/workspace/dashboards/update', {'id': board, 'name': '订单看板', 'spec': spec, 'version': shown['version'], 'scope': 'everyone'})[0], 200)
             checks, summary = self.checks(ann, board)
             self.assertIsNone(checks['valid'])
