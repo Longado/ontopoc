@@ -57,6 +57,7 @@ class DerivedViewAnswerTests(pilot.PilotFoundation):
         self.assertEqual(answer['answer']['groups'][0][:2], [top, BY_CITY[top]])   # [group, amount, objects]
         self.assertIn('有效订单金额', ''.join(u['how'] for u in answer['understood'] if u['definition'] == '有效订单'))   # how it was used: through the property
         self.assertIn('derived', [d['kind'] for d in answer['definitions']])
+        self.assertEqual([(d['dataset'], d['version'], bool(d['imported_at'])) for d in answer['data_as_of']], [('customers', 1, True), ('orders', 1, True)])   # the data it read, by version and when it came
 
     def test_a_question_that_says_the_view_the_model_did_not_list_is_answered_the_same_way(self):
         answer = self.ask({'query': TIER_A, 'definitions_used': []}, 'A 级客户的有效订单金额合计是多少？')

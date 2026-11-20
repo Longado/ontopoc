@@ -81,7 +81,7 @@ test("a query that finds nothing says so instead of breaking the card", () => {
   assert.equal(answerView({ status: "refused" }), null);
 });
 
-import { timeWord, timeWarning, criteriaLine, historyView } from "./qaModel.js";
+import { timeWord, timeWarning, criteriaLine, dataAsOf, historyView } from "./qaModel.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in askEnglish.test.js
@@ -108,6 +108,18 @@ test("the caliber line says what was counted and as of when", () => {
   assert.equal(criteriaLine({ query_text: "SELECT count(o) FROM (o:订单) WHERE o.状态码 = '已取消'" }, "11月16日 08:00"), "按已确认的定义：订单.状态码 = 已取消，数据截至 11月16日 08:00");
   assert.equal(criteriaLine({ query_text: "SELECT count(o) FROM (o:订单)" }, ""), "按已确认的定义：全部订单");
   assert.equal(criteriaLine({}, ""), "");
+});
+
+test("the caliber line names the derived property an answer read its values from", () => {
+  const record = { query_text: "SELECT sum(c.有效订单金额) AS 合计\nFROM (c:客户)", definitions: [{ kind: "type", name: "客户" }, { kind: "derived", name: "客户.有效订单金额" }] };
+  assert.equal(criteriaLine(record, ""), "按已确认的定义：派生属性「客户.有效订单金额」");   // not 全部客户 alone: the amounts are the property's
+  assert.equal(criteriaLine({ ...record, query_text: `${record.query_text}\nWHERE c.tier = 'A'` }, ""), "按已确认的定义：派生属性「客户.有效订单金额」，客户.tier = A");
+});
+
+test("the data an answer read is named by its version and when that version came, not by when the question was asked", () => {
+  const record = { asked_at: "2026-11-20T09:00:00+00:00", data_as_of: [{ dataset: "orders", version: 2, imported_at: "2026-11-20T07:43:00+00:00" }, { dataset: "customers", version: 1, imported_at: "2026-11-20T07:27:00+00:00" }] };
+  assert.equal(dataAsOf(record, (iso) => iso.slice(11, 16)), "orders 第 2 版（07:43）、customers 第 1 版（07:27）");
+  assert.equal(dataAsOf({ asked_at: "2026-11-20T09:00:00+00:00" }, (iso) => iso), "");   // an answer kept before versions were noted says nothing rather than the question's time
 });
 
 test("the caliber line names the view an answer read and no query quoting", () => {
