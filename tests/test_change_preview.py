@@ -1,4 +1,4 @@
-"""What a pending change does to the numbers on the boards, before it is confirmed (POST /api/workspace/impact), and the receipt after (GET /api/workspace/receipt).
+"""What a pending change does to the numbers on the boards, before it is confirmed (POST /api/workspace/impact), and the receipt after (POST /api/workspace/receipt).
 
 Walked through the real service with two builders (Ann proposes, Bob confirms), a viewer and the admin on the planted tables. The rule every test holds: what the
 preview says a card shows after confirming is what the board then shows; it is worked out by running the real confirmation on a copy of the workspace, never by a
@@ -14,7 +14,7 @@ from tests import test_batch_confirm
 from tests.test_dashboards import BoardCase
 from tests.test_derived_properties import CANCELLED, GROSS
 from tests.test_explorer import LIVE, ORDERS
-from tests.test_object_types import MEANINGS, VALID, shifted_orders_csv
+from tests.test_object_types import MEANINGS, VALID, orders_upload, shifted_orders_csv
 
 VALID_COUNT = {'id': 'valid', 'title': '有效订单数', 'query': {'type': 'order', 'view': '有效订单'}, 'chart': {'kind': 'number'}}
 VALID_AMOUNT = {'id': 'amount', 'title': '有效订单金额', 'query': {'type': 'order', 'view': '有效订单'}, 'chart': {'kind': 'number', 'measure': '金额', 'fn': 'sum'}}
@@ -253,7 +253,7 @@ class VisibilityTests(ImpactCase):
             vera = team['vera']
             self.assertEqual(vera.post('/api/workspace/impact', {'element': 'objview:有效订单', 'version': 1})[0], 403)
             self.assertEqual(vera.get('/api/workspace/receipt')[0], 403)
-            self.assertEqual(vera.get('/api/workspace/receipt?element=objview:%E6%9C%89%E6%95%88%E8%AE%A2%E5%8D%95')[0], 403)
+            self.assertEqual(vera.post('/api/workspace/receipt', {'elements': ['objview:有效订单']})[0], 403)
             self.assertEqual(Client(base).post('/api/workspace/impact', {})[0], 401)
 
     def test_the_work_is_capped_and_says_so(self):
@@ -284,7 +284,7 @@ class ReceiptTests(ImpactCase):
             payload = self.ask(bob, 'objview:有效订单')
             preview = self.impact(bob, payload)
             self.assertEqual(bob.post('/api/workspace/queue/confirm', payload)[0], 200)
-            status, receipt = bob.get('/api/workspace/receipt?element=objview:%E6%9C%89%E6%95%88%E8%AE%A2%E5%8D%95')
+            status, receipt = bob.post('/api/workspace/receipt', {'elements': ['objview:有效订单']})
             self.assertEqual(status, 200, receipt)
             item = receipt['items'][0]
             self.assertEqual((item['element'], item['proposed_by'], item['confirmed_by'], item['on']), ('objview:有效订单', 'Ann', 'Bob', {'订单': 1}))
@@ -293,8 +293,8 @@ class ReceiptTests(ImpactCase):
             cards = self.by_card(receipt)
             self.assertEqual({k: (c['now'], c['after']) for k, c in cards.items()}, {k: (c['now'], c['after']) for k, c in self.by_card(preview).items()})
             self.assertEqual(cards['valid']['change']['delta'], sum(r['状态码'] == '0' for r in ORDERS) - len(LIVE))
-            self.assertEqual(ann.get('/api/workspace/receipt?element=objview:%E6%9C%89%E6%95%88%E8%AE%A2%E5%8D%95')[0], 200)   # builders read it too
-            self.assertEqual(bob.get('/api/workspace/receipt?element=objview:nothing')[0], 404)
+            self.assertEqual(ann.post('/api/workspace/receipt', {'elements': ['objview:有效订单']})[0], 200)   # builders read it too
+            self.assertEqual(bob.post('/api/workspace/receipt', {'elements': ['objview:nothing']})[0], 404)
 
     def test_the_workspace_summary_counts_definitions_checks_rows_and_who_confirmed_what(self):
         with self.service() as (base, out):
@@ -326,8 +326,9 @@ class GroupTests(ImpactCase):
             self.assertIsNone(preview['refused'])
             cards = self.by_card(preview)
             self.assertEqual(sorted(cards), ['status', 'valid'])
-            self.assertEqual(cards['valid']['now']['value'], len(LIVE))   # under the last confirmation: version 1, before the upload
+            self.assertEqual(cards['valid']['now']['value'], cards['valid']['after']['value'])   # both on version 2: what moved the number is the upload, not the confirmation
             self.assertFalse(cards['valid']['after']['grey'])
+            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2}])   # and that is said apart
             status, done = bob.post('/api/workspace/queue/confirm-group', body)
             self.assertEqual(status, 200, done)
             self.preview_is_reality(bob, board['id'], preview)
@@ -348,13 +349,13 @@ class HiddenColumnTests(ImpactCase):
             ann, bob = team['ann'], team['bob']
             self.hide_amount_from_all_but_ann(team)
             self.assertNotIn('金额', [p['column'] for p in bob.get('/api/workspace/types/order')[1]['properties']])
-            status, receipt = bob.get('/api/workspace/receipt?element=objtype:order')
+            status, receipt = bob.post('/api/workspace/receipt', {'elements': ['objtype:order']})
             self.assertEqual(status, 200, receipt)
             self.assertNotIn('金额', str(receipt))
             status, summary = bob.get('/api/workspace/receipt')
             self.assertEqual(status, 200, summary)
             self.assertNotIn('金额', str(summary))
-            self.assertIn('金额', ann.get('/api/workspace/receipt?element=objtype:order')[1]['items'][0]['after'])   # Ann may read it
+            self.assertIn('金额', ann.post('/api/workspace/receipt', {'elements': ['objtype:order']})[1]['items'][0]['after'])   # Ann may read it
 
     def test_what_a_definition_said_before_is_not_told_when_it_read_a_column_kept_from_the_reader(self):
         with self.service() as (base, out):
@@ -367,12 +368,111 @@ class HiddenColumnTests(ImpactCase):
             self.assertEqual(ann.post('/api/workspace/types/derived/update', {**GROSS, 'expression': '数量 * 2', 'version': line['version']})[0], 200)
             self.assertEqual(self.confirm(bob, GROSS)[0], 200)
             self.hide_amount_from_all_but_ann(team)
-            status, receipt = bob.get('/api/workspace/receipt?element=derived:order:gross')
+            status, receipt = bob.post('/api/workspace/receipt', {'elements': ['derived:order:gross']})
             self.assertEqual(status, 200, receipt)
             item = receipt['items'][0]
             self.assertIn('数量', item['after'])
             self.assertNotIn('金额 *', str(receipt))   # the old expression read 金额 (the property's own name 含税金额 is Bob's to read)
             self.assertIsNotNone(item['before'])   # it had a version before: said to be there, not what it read
+
+
+def raised(r, i):
+    """The 订单 table with the first order's 金额 one higher: a new version under which every confirmed check still holds."""
+    return {**r, '金额': str(int(r['金额']) + 1)} if i == 0 else r
+
+
+RAISED = [raised(r, i) for i, r in enumerate(ORDERS)]
+
+
+class DataBetweenConfirmationsTests(ImpactCase):
+    """New data between two confirmations of a definition: the preview and the receipt compare the definition only, both on the data as it is now, and say apart that the
+    data moved. A card that does not read the definition is never listed."""
+
+    def test_an_upload_between_two_confirmations_is_not_put_on_the_change(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob = team['ann'], team['bob']
+            board = self.make(ann, spec=SPEC, scope='everyone')
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(raised)]})[0], 200)
+            self.assertEqual(self.data(bob, board['id'])['headline']['grey'], [])   # every definition is still confirmed
+            before = self.shown(bob, board['id'])
+            self.assertEqual(before['all']['value'], sum(float(r['金额']) for r in RAISED))
+            view = bob.get('/api/workspace/types/order/views')[1]['views'][0]
+            self.assertEqual(ann.post('/api/workspace/types/views/update', {**VALID, 'id': '有效订单', 'version': view['version'], 'filters': NOT_MADE})[0], 200)
+            payload = self.ask(bob, 'objview:有效订单')
+            preview = self.impact(bob, payload)
+            cards = self.by_card(preview)
+            self.assertEqual(sorted(cards), ['amount', 'linked', 'valid'])   # 全部订单金额 does not read the view
+            live = [r for r in RAISED if r['状态码'] != '2']
+            made = [r for r in RAISED if r['状态码'] == '0']
+            self.assertEqual(cards['amount']['now'], before['amount'])   # the board as it was, on the new data
+            self.assertEqual(cards['amount']['change'], {'kind': 'number', 'delta': sum(float(r['金额']) for r in made) - sum(float(r['金额']) for r in live)})
+            self.assertEqual(cards['valid']['change'], {'kind': 'number', 'delta': len(made) - len(live)})
+            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2}])   # said apart, not put on the change
+            self.assertEqual(bob.post('/api/workspace/queue/confirm', payload)[0], 200)
+            self.preview_is_reality(bob, board['id'], preview)
+            status, receipt = bob.post('/api/workspace/receipt', {'elements': ['objview:有效订单']})
+            self.assertEqual(status, 200, receipt)
+            self.assertEqual({k: (c['now'], c['after'], c['change']) for k, c in self.by_card(receipt).items()}, {k: (c['now'], c['after'], c['change']) for k, c in cards.items()})
+            self.assertEqual(receipt['items'][0]['data_moved'], [{'name': '订单', 'from': 1, 'to': 2}])
+
+    def test_without_new_data_nothing_is_said_to_have_moved(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob = team['ann'], team['bob']
+            self.make(ann, spec=SPEC, scope='everyone')
+            view = bob.get('/api/workspace/types/order/views')[1]['views'][0]
+            self.assertEqual(ann.post('/api/workspace/types/views/update', {**VALID, 'id': '有效订单', 'version': view['version'], 'filters': NOT_MADE})[0], 200)
+            self.assertEqual(self.impact(bob, self.ask(bob, 'objview:有效订单'))['data_moved'], [])
+
+
+class CostAndReachTests(ImpactCase):
+    def test_a_read_token_cannot_make_the_receipt_copy_the_workspace(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            token = team['bob'].post('/api/auth/tokens', {'label': 'agent', 'scope': 'read'})[1]['token']
+            agent = Client(base)
+            bearer = {'headers': {'Authorization': f'Bearer {token}'}, 'origin': None}
+            self.assertEqual(agent.post('/api/workspace/receipt', {'elements': ['objview:有效订单']}, **bearer)[0], 403)
+            self.assertNotEqual(agent.get('/api/workspace/receipt?element=objview:%E6%9C%89%E6%95%88%E8%AE%A2%E5%8D%95', **bearer)[0], 200)   # not by a GET either
+            self.assertEqual(agent.get('/api/workspace/receipt', **bearer)[0], 200)   # the summary copies nothing
+
+    def test_one_workspace_copy_at_a_time(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob = team['ann'], team['bob']
+            view = bob.get('/api/workspace/types/order/views')[1]['views'][0]
+            self.assertEqual(ann.post('/api/workspace/types/views/update', {**VALID, 'id': '有效订单', 'version': view['version'], 'filters': NOT_MADE})[0], 200)
+            payload = self.ask(bob, 'objview:有效订单')
+            with mock.patch.object(change_preview, 'SLOT_WAIT', 0.05), change_preview.copy_slot(out / 'workspace.sqlite'):
+                busy = self.impact(bob, payload, expect=429)
+            self.assertIn('稍后', busy['error'])
+            self.assertIsNone(self.impact(bob, payload)['refused'])   # free again
+
+    def test_other_people_s_answers_on_a_definition_the_confirmer_cannot_see_are_not_counted(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            ids = self.ids(admin)
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            for definitions, types in (('[{"id": "derived:customer:cancelled_orders"}]', '[{"id": "customer"}]'), ('[{"id": "objtype:order"}]', '[{"id": "order"}]')):
+                conn.execute("INSERT INTO qa_question(user_id, asked_by, question, asked_at, status, answer_json, definitions_json, dataset_versions_json, types_json) "
+                             "VALUES (?, '', 'q', '2026-11-20T00:00:00+00:00', 'answered', '{}', ?, '{}', ?)", (ids['ann'], definitions, types))
+            conn.commit()
+            conn.close()
+            status, body = admin.post('/api/workspace/permissions', {'type': 'customer', 'visible_to': [ids['ann']]})
+            self.assertEqual(status, 200, body)
+            from tests.test_derived_properties import ORDER
+            order = bob.get('/api/workspace/types/order')[1]
+            fewer = {**ORDER, 'properties': [p for p in ORDER['properties'] if p['column'] != '交付天数'], 'id': 'order', 'version': order['version']}
+            self.assertEqual(ann.post('/api/workspace/types/update', fewer)[0], 200)
+            preview = self.impact(bob, self.ask(bob, 'objtype:order'))
+            self.assertEqual(preview['answers'], {'mine': [], 'others': 1})   # the answer on 订单, not the one on 客户's property that Bob cannot see
 
 
 if __name__ == '__main__':

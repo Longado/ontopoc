@@ -93,3 +93,19 @@ test("the workspace summary: definitions by state, checks, rows covered, who con
   assert.match(md, /^## 工作区回执\n/);
   assert.match(md, /\| 对象类型「Order」 \| Demo builder \| .* \| orders 第 1 版 \|/);
 });
+
+test("new data since the last confirmation is said apart from the numbers, in the preview and on the receipt", () => {
+  setLocale("zh");
+  const moved = [{ name: "订单", from: 1, to: 2 }];
+  assert.equal(impactView({ ...impact, data_moved: moved }).dataMoved, "上次确认之后，订单 从第 1 版换成了第 2 版。“现在”和“确认后”都按现在的数据算，表里只有这次改动带来的变化。");
+  assert.equal(impactView(impact).dataMoved, "");
+  const receipt = { at: "2026-11-20T10:00:00+00:00", cards: [valid], answers: { mine: [], others: 0 }, checked: { boards: 1, cards: 1, capped: false, left: 0 },
+    items: [{ element: "objview:有效订单", kind: "view", title: "有效订单", before: "a", after: "b", proposed_by: "Ann", confirmed_by: "Bob", confirmed_at: "2026-11-20T09:59:00+00:00",
+      on: { 订单: 2 }, on_before: { 订单: 1 }, evidence: null, data_moved: moved }] };
+  const md = receiptMarkdown(receipt);
+  assert.match(md, /  - 两次确认之间数据有了新版本：订单 第 1 版 → 第 2 版。这部分数的变化不是这次确认带来的，下面的数都按现在的数据算\n/);
+  assert.doesNotMatch(md, /上次确认在/);
+  setLocale("en");
+  assert.equal(impactView({ ...impact, data_moved: moved }).dataMoved, "Since the last confirmation, 订单 went from version 1 to version 2. \"Now\" and \"after\" are both on the current data, so the table shows only what this change does.");
+  setLocale("zh");
+});

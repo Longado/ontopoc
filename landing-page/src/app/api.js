@@ -195,7 +195,7 @@ export const sendBack = (element, version, reason) => send("/api/workspace/queue
  * items}). {refused, cards: [{board, card, now, after, change}], answers: {mine, others}, checked}. Nothing is written. */
 export const previewImpact = (body) => send("/api/workspace/impact", body);
 /** The receipt of confirmed definitions: what changed, who proposed and confirmed it on which version, and the board numbers before and after. */
-export const getReceipt = (elements) => request(`/api/workspace/receipt?${elements.map((e) => `element=${encodeURIComponent(e)}`).join("&")}`);
+export const getReceipt = (elements) => send("/api/workspace/receipt", { elements });   // a POST: it copies the workspace, which a read-only token may not make it do
 /** What the workspace stands on: definitions by state, checks, rows covered, who confirmed what on which version. */
 export const getWorkspaceReceipt = () => request("/api/workspace/receipt");
 export const getPermissions = () => request("/api/workspace/permissions");

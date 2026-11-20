@@ -178,4 +178,8 @@ export default {
   "receipt.some_other": "{count} 张卡片的数变了（在 {boards} 个看板上）",
   "receipt.named": "{kind}「{title}」",
   "receipt.quoted": "“{text}”",
+  "impact.dataMoved": "上次确认之后，{list}。“现在”和“确认后”都按现在的数据算，表里只有这次改动带来的变化。",
+  "impact.movedOne": "{name} 从第 {from} 版换成了第 {to} 版",
+  "receipt.dataMoved": "两次确认之间数据有了新版本：{list}。这部分数的变化不是这次确认带来的，下面的数都按现在的数据算",
+  "receipt.movedOne": "{name} 第 {from} 版 → 第 {to} 版",
 };

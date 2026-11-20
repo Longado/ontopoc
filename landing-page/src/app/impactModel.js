@@ -28,10 +28,13 @@ export function changeCell(change) {
   return { text: t(`review.impact.change.${["refuses", "opens", "grey", "confirmed", "other"].includes(change.kind) ? change.kind : "same"}`), level };
 }
 
-/** The table and the sentences around it: {rows: [{key, board, card, now, after, change}], sentence, capped, answers, refused}. `done`: the change is made (a receipt). */
+const movedText = (moved) => (moved ?? []).map((m) => t("review.impact.movedOne", { name: m.name, from: m.from, to: m.to })).join(t("review.receipt.sep"));
+
+/** The table and the sentences around it: {rows: [{key, board, card, now, after, change}], sentence, capped, answers, refused, dataMoved}. `done`: the change is made (a
+ * receipt). `dataMoved` says that a dataset has a newer version than the one the definition was last confirmed on: the numbers are both on the current data. */
 export function impactView(impact, done = false) {
-  if (!impact) return { rows: [], sentence: "", capped: "", answers: "", refused: "" };
-  if (impact.refused) return { rows: [], sentence: t("review.impact.refusedSentence", { why: impact.refused }), capped: "", answers: "", refused: impact.refused };
+  if (!impact) return { rows: [], sentence: "", capped: "", answers: "", refused: "", dataMoved: "" };
+  if (impact.refused) return { rows: [], sentence: t("review.impact.refusedSentence", { why: impact.refused }), capped: "", answers: "", refused: impact.refused, dataMoved: "" };
   const rows = (impact.cards ?? []).map((c) => ({ key: `${c.board.id}/${c.card.id}`, board: c.board.name, card: c.card.title, now: figureCell(c.now), after: figureCell(c.after), change: changeCell(c.change) }));
   const moving = rows.filter((r) => r.change.level !== "same").length;
   const boards = new Set((impact.cards ?? []).map((c) => c.board.id)).size;
@@ -42,7 +45,8 @@ export function impactView(impact, done = false) {
   const mine = impact.answers?.mine ?? [];
   const others = impact.answers?.others ?? 0;
   const answers = mine.length || others ? t("review.impact.answers", { mine: mine.length, others }) + (mine.length ? t("review.impact.yours", { list: mine.map((a) => t("review.receipt.quoted", { text: a.question })).join(t("review.receipt.sep")) }) : "") : "";
-  return { rows, sentence, capped, answers, refused: "" };
+  const dataMoved = impact.data_moved?.length ? t("review.impact.dataMoved", { list: movedText(impact.data_moved) }) : "";
+  return { rows, sentence, capped, answers, refused: "", dataMoved };
 }
 
 /** Whether the person should be shown the table before going on: a card moves, or the change would be refused. */
@@ -57,7 +61,8 @@ export function receiptMarkdown(receipt) {
     lines.push(`  - ${item.before != null ? t("review.receipt.before", { text: item.before }) : t("review.receipt.first")}`);
     lines.push(`  - ${t("review.receipt.after", { text: item.after })}`);
     lines.push(`  - ${t("review.receipt.who", { proposed: item.proposed_by ?? t("review.group.unknown"), confirmed: item.confirmed_by ?? t("review.group.unknown"), at: timeText(item.confirmed_at) })}`);
-    lines.push(`  - ${t("review.receipt.on", { on: versionsText(item.on) || "—" })}${item.on_before && versionsText(item.on_before) !== versionsText(item.on) ? t("review.receipt.onBefore", { on: versionsText(item.on_before) }) : ""}`);
+    lines.push(`  - ${t("review.receipt.on", { on: versionsText(item.on) || "—" })}`);
+    if (item.data_moved?.length) lines.push(`  - ${t("review.receipt.dataMoved", { list: (item.data_moved ?? []).map((m) => t("review.receipt.movedOne", { name: m.name, from: m.from, to: m.to })).join(t("review.receipt.sep")) })}`);
     if (item.evidence) lines.push(`  - ${t("review.receipt.evidence", { ref: item.evidence })}`);
   }
   const view = impactView(receipt);

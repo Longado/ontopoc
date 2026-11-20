@@ -45,8 +45,9 @@ def get(conn, user: dict | None, path: str, query: dict[str, list[str]]):
         if len(parts) == 2:
             return dashboards.dashboard_detail(conn, user, _whole(parts[1], tr('看板的编号', 'The board id')))
     elif parts[0] == 'receipt' and len(parts) == 1:
-        elements = query.get('element') or []
-        return workspace_receipt.change_receipt(conn, user, elements) if elements else workspace_receipt.summary(conn, user)
+        if 'element' in query:   # the receipt of a change copies the workspace: a POST, which a read-only token cannot make
+            raise TypeRefused(tr('变更回执要用 POST /api/workspace/receipt，elements 写在请求体里', 'Ask for the receipt of a change with POST /api/workspace/receipt, with elements in the request body'), 405)
+        return workspace_receipt.summary(conn, user)
     elif parts[0] == 'agent':
         if len(parts) == 1:
             return agent_access.agent_info(conn, user)
@@ -83,6 +84,11 @@ def post(conn, user: dict | None, path: str, payload: dict):
         return dashboards.preview(conn, user, payload)
     if route == '/api/workspace/impact':
         return change_preview.impact(conn, user, payload)
+    if route == '/api/workspace/receipt':
+        elements = payload.get('elements')
+        if not isinstance(elements, list) or not all(isinstance(e, str) for e in elements):
+            raise TypeRefused(tr('elements 要是定义编号的列表', 'elements must be a list of definition ids'))
+        return workspace_receipt.change_receipt(conn, user, elements)
     if route == '/api/workspace/checked':
         return checked_numbers.record(conn, user, payload)
     if route == '/api/workspace/agent/derived':

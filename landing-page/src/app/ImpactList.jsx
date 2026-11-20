@@ -50,6 +50,7 @@ export function ImpactList({ impact, upload = false, labels = null }) {
           </table>
         </div>
       )}
+      {view.dataMoved && <p className="warn small">{view.dataMoved}</p>}
       {view.rows.length > 0 && !labels && <p className="muted small">{t(upload ? "review.impact.basisUpload" : "review.impact.basis")}</p>}
       {view.answers && <p className="muted small">{view.answers}</p>}
       {view.capped && <p className="warn small">{view.capped}</p>}
@@ -78,6 +79,7 @@ export function ReceiptPanel({ elements, onClose }) {
               <p><strong>{item.title}</strong></p>
               <p className="small">{item.before != null ? t("review.receipt.before", { text: item.before }) : t("review.receipt.first")}</p>
               <p className="small">{t("review.receipt.after", { text: item.after })}</p>
+              {item.data_moved?.length > 0 && <p className="warn small">{t("review.receipt.dataMoved", { list: item.data_moved.map((m) => t("review.receipt.movedOne", { name: m.name, from: m.from, to: m.to })).join(t("review.receipt.sep")) })}</p>}
               <p className="muted small">
                 {t("review.receipt.who", { proposed: item.proposed_by ?? t("review.group.unknown"), confirmed: item.confirmed_by ?? t("review.group.unknown"), at: timeText(item.confirmed_at) })}
                 {" · "}

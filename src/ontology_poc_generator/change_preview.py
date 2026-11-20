@@ -3,23 +3,27 @@
 The confirmation is run for real, on a copy of the workspace file that is thrown away (as upload_preview does for an upload): review_queue.confirm_item for one item,
 batch_confirm.confirm_group for what one upload moved. Each board card this person may open is then worked out on the copy by the board's own code
 (dashboards.evaluate), as this person, and that is "after". "Now" is the same card worked out on the definitions as they were last confirmed: the copy puts back the
-content of the latest confirmation of what is being confirmed, and of what went back for another look under it, and the dataset versions it was confirmed on. That is
-the card under the last confirmed definitions, not what a board shows while the change waits: a builder is shown the new number in grey then, and a viewer that the card
+content of the latest confirmation of what is being confirmed, and of what this change sent back for another look under it. Both are worked out on the data as it is
+now, so the two differ only by the change: when a dataset has a new version since the definition was last confirmed, that is said apart (`data_moved`), never shown as
+a number the confirmation moves. "Now" is not what a board shows while the change waits: a builder is shown the new number in grey then, and a viewer that the card
 waits (with the number kept from when it was last confirmed, when there is one) or a refusal. Nothing of the real workspace is written; there is no
 second calculation of a number, and no record is kept: a receipt after confirming works the same comparison out again from the confirmation records
 (workspace_receipt).
 
-A card is listed when it reads what is being confirmed (or what waits under it), or when what it shows would change. Only boards this person may open are looked at,
-worked out over what they may read; saved answers that used the definitions are counted, and only the person's own are named by their question. The work is capped
-(MAX_CARDS cards a preview works out), and the answer says when it stopped.
+A card is listed when it reads what is being confirmed (or what this change sent back under it); for an upload, also when what it shows would change. Only boards this
+person may open are looked at, worked out over what they may read; saved answers that used the definitions this person may see are counted, and only the person's own are
+named by their question. The work is capped (MAX_CARDS cards a preview works out) and the answer says when it stopped; one copy of a workspace is made at a time
+(copy_slot), since each holds the whole file.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
 import sqlite3
 import tempfile
+import threading
 
 from ontology_poc_generator import dashboards
 from ontology_poc_generator.lang import tr
@@ -31,12 +35,38 @@ MAX_CARDS = 30        # board cards a preview works out (twice: now and after)
 MAX_ANSWERS = 1000    # the newest saved answers looked at
 MAX_NAMED = 20        # of the person's own, named by their question
 MAX_GROUPS = 6        # groups of a chart quoted in a card's text
+SLOT_WAIT = 20        # seconds a preview waits for another one on the same workspace to finish
+_SLOTS: dict[str, threading.Lock] = {}
+_SLOTS_LOCK = threading.Lock()
+
+
+def busy_text() -> str:
+    return tr('另一个预演正在算这个工作区，请稍后再试', 'Another preview is being worked out on this workspace. Try again shortly')
+
+
+@contextmanager
+def copy_slot(path):
+    """One copy of a workspace file at a time: a copy holds the whole file (accounts and sessions too), so they are made one after another, never side by side.
+    TypeRefused 429 when another one has not finished within SLOT_WAIT seconds."""
+    key = os.path.realpath(str(path))
+    with _SLOTS_LOCK:
+        lock = _SLOTS.setdefault(key, threading.Lock())
+    if not lock.acquire(timeout=SLOT_WAIT):
+        raise TypeRefused(busy_text(), 429)
+    try:
+        yield
+    finally:
+        lock.release()
+
+
+def _file_of(conn) -> str:
+    return next(row[2] for row in conn.execute('PRAGMA database_list') if row[1] == 'main')
 
 
 @contextmanager
 def workspace_copy(conn):
-    """A copy of the workspace this connection reads, open, deleted afterwards."""
-    with tempfile.TemporaryDirectory() as tmp:
+    """A copy of the workspace this connection reads, open, deleted afterwards; one at a time per workspace (copy_slot)."""
+    with copy_slot(_file_of(conn)), tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / 'workspace.sqlite'
         target = sqlite3.connect(str(path))
         try:
@@ -170,13 +200,14 @@ def work_out(conn, user: dict | None, picked: list[dict]) -> dict[tuple, dict]:
     return out
 
 
-def compare(picked: list[dict], now: dict, after: dict, touched: set[str]) -> list[dict]:
-    """The cards that read what is touched, or whose figure moves: board, card, now, after, change."""
+def compare(picked: list[dict], now: dict, after: dict, touched: set[str], moved_too: bool = False) -> list[dict]:
+    """The cards that read what is touched (and with `moved_too`, those whose figure moves: new data moves cards whose definitions all hold): board, card, now, after,
+    change."""
     rows = []
     for p in picked:
         key = (p['board']['id'], p['component']['id'])
         a, b = figure(now[key]), figure(after[key])
-        if a != b or (_reads(p['component'], now[key]) | _reads(p['component'], after[key])) & touched:
+        if (moved_too and a != b) or (_reads(p['component'], now[key]) | _reads(p['component'], after[key])) & touched:
             rows.append({'board': {'id': p['board']['id'], 'name': p['board']['name']}, 'card': {'id': p['component']['id'], 'title': p['component']['title']},
                          'now': a, 'after': b, 'change': change(a, b)})
     return rows
@@ -197,13 +228,18 @@ def under(conn, elements: list[str]) -> set[str]:
     return found
 
 
-def as_last_confirmed(copy, elements: list[str], confirmed_now: bool) -> None:
-    """On a copy only: each element as it was last confirmed before this change (its content and the dataset versions it was confirmed on) and, under it, what went
-    back for another look as it was last confirmed. `confirmed_now`: the change is already confirmed on the copy, so "before" is the confirmation before the latest
-    one; an element nobody had confirmed before goes back to waiting for its first confirmation."""
+def sent_back(copy, elements: list[str]) -> list[str]:
+    """What under these elements went back for another look because a definition changed (not because of data): what the change sent back."""
+    return [e for e in sorted(under(copy, elements)) if (row := element_row(copy, e)) is not None and row['state'] == 'needs_look' and row['cause'] == 'definition']
+
+
+def as_last_confirmed(copy, elements: list[str], confirmed_now: bool) -> list[dict]:
+    """On a copy only: each element with the content it was last confirmed with before this change and, under it, what the change sent back as it was last confirmed.
+    The data stays as it is now. `confirmed_now`: the change is already confirmed on the copy, so "before" is the confirmation before the latest one; an element nobody
+    had confirmed before goes back to waiting for its first confirmation. Returns the datasets that have a newer version now than the one an element was last
+    confirmed on, [{name, from, to}]: a move that is the data's, not the change's."""
     versions: dict[str, int] = {}
-    waiting = [e for e in under(copy, elements) if (row := element_row(copy, e)) is not None and row['state'] == 'needs_look']
-    for element_id in [*elements, *waiting]:
+    for element_id in [*elements, *sent_back(copy, elements)]:
         mine = element_id in elements
         rows = copy.execute('SELECT content_json, dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 2', (element_id,)).fetchall()
         last = (rows[1:] if mine and confirmed_now else rows)[:1]
@@ -213,16 +249,27 @@ def as_last_confirmed(copy, elements: list[str], confirmed_now: bool) -> None:
             continue
         copy.execute("UPDATE element_state SET content_json = ?, state = 'confirmed' WHERE element_id = ?", (last[0][0], element_id))
         if mine:
-            versions.update(json.loads(last[0][1] or '{}'))
-    for name, version in versions.items():
-        found = copy.execute('SELECT id FROM dataset WHERE name = ? AND version = ?', (name, version)).fetchone()
-        if found:
-            copy.execute('INSERT OR REPLACE INTO current_dataset(name, dataset_id) VALUES (?, ?)', (name, found[0]))
+            for name, version in json.loads(last[0][1] or '{}').items():
+                versions[name] = min(version, versions.get(name, version))
+    return moved_since(copy, versions)
+
+
+def moved_since(conn, versions: dict[str, int]) -> list[dict]:
+    """[{name, from, to}] for each dataset whose current version is not the one given."""
+    out = []
+    for name, version in sorted(versions.items()):
+        now = conn.execute('SELECT d.version FROM current_dataset c JOIN dataset d ON d.id = c.dataset_id WHERE c.name = ?', (name,)).fetchone()
+        if now and now[0] != version:
+            out.append({'name': name, 'from': version, 'to': now[0]})
+    return out
 
 
 def answers(conn, user: dict | None, touched: set[str]) -> dict:
-    """The saved answers that used any of these definitions: this person's own by their question ({'id', 'question'}), everyone else's as a count."""
+    """The saved answers that used any of these definitions this person may see: their own by their question ({'id', 'question'}), everyone else's as a count (an
+    answer on a definition kept from them is not counted either)."""
+    from ontology_poc_generator.review_queue import seen_by
     from ontology_poc_generator.workspace_questions import _mine
+    touched = {e for e in touched if (row := element_row(conn, e)) is not None and row['content_json'] and seen_by(conn, row, user)}
     where, args = _mine(user)
     mine, others = [], 0
     for i, question, definitions, types, own in conn.execute(f'SELECT id, question, definitions_json, types_json, ({where}) FROM qa_question ORDER BY id DESC LIMIT {MAX_ANSWERS}', args).fetchall():
@@ -257,7 +304,7 @@ def _elements(conn, payload: dict, user: dict | None) -> list[str]:
 def impact(conn, user: dict | None, payload: dict) -> dict:
     """{element, version, seen?, new_values?} (what the confirm button sends) or {dataset, version, items} (what confirming one upload's group sends): the board cards
     the confirmation would move, {'refused': why it would be refused, or None; 'cards': [{board, card, now, after, change}]; 'answers': {mine, others}; 'checked':
-    {boards, cards, capped, left}}. Nothing is written."""
+    {boards, cards, capped, left}; 'data_moved': [{name, from, to}] the datasets with a newer version than the one it was last confirmed on}. Nothing is written."""
     from ontology_poc_generator.batch_confirm import confirm_group
     from ontology_poc_generator.review_queue import confirm_item
     if not isinstance(payload, dict):
@@ -269,12 +316,12 @@ def impact(conn, user: dict | None, payload: dict) -> dict:
         try:
             (confirm_group if 'items' in payload else confirm_item)(copy, payload, who, user)
         except (TypeRefused, SelfConfirmation) as exc:
-            return {'refused': str(exc), 'cards': [], 'answers': {'mine': [], 'others': 0}, 'checked': checked}
+            return {'refused': str(exc), 'cards': [], 'answers': {'mine': [], 'others': 0}, 'checked': checked, 'data_moved': []}
         after = work_out(copy, user, picked)
-        touched = {*elements, *under(copy, elements)}
-        as_last_confirmed(copy, elements, confirmed_now=True)
+        touched = {*elements, *sent_back(copy, elements)}
+        data_moved = as_last_confirmed(copy, elements, confirmed_now=True)
         now = work_out(copy, user, picked)
-    return {'refused': None, 'cards': compare(picked, now, after, touched), 'answers': answers(conn, user, touched), 'checked': checked}
+    return {'refused': None, 'cards': compare(picked, now, after, touched), 'answers': answers(conn, user, touched), 'checked': checked, 'data_moved': data_moved}
 
 
 def upload_impact(copy, user: dict | None, upload) -> tuple[object, dict]:
@@ -285,4 +332,4 @@ def upload_impact(copy, user: dict | None, upload) -> tuple[object, dict]:
     written = upload()
     after = work_out(copy, user, picked)
     touched = {e for (e,) in copy.execute("SELECT element_id FROM element_state WHERE state != 'confirmed'")} & confirmed
-    return written, {'refused': None, 'cards': compare(picked, now, after, touched), 'answers': answers(copy, user, touched), 'checked': checked}
+    return written, {'refused': None, 'cards': compare(picked, now, after, touched, moved_too=True), 'answers': answers(copy, user, touched), 'checked': checked, 'data_moved': []}

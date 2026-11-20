@@ -11,7 +11,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 
-from ontology_poc_generator.change_preview import upload_impact
+from ontology_poc_generator.change_preview import copy_slot, upload_impact
 from ontology_poc_generator.object_types import element_row
 from ontology_poc_generator.review_queue import _item
 from ontology_poc_generator.workspace_datasets import upload
@@ -22,7 +22,7 @@ def moved_by_upload(db_path, parts: list, who: str | None, user: dict | None) ->
     """{'moved': [{'element', 'kind', 'title', 'reason'}], 'datasets': [names the upload writes], 'boards': the board cards it moves (change_preview.impact's
     answer, "now" being before the upload)}: the definitions this person may see that the upload sends back. Raises what the upload itself raises when it would be
     refused (UploadRefused, ValueError)."""
-    with tempfile.TemporaryDirectory() as tmp:
+    with copy_slot(db_path), tempfile.TemporaryDirectory() as tmp:   # one copy of the workspace at a time
         copy = Path(tmp) / 'workspace.sqlite'
         source, target = sqlite3.connect(str(db_path)), sqlite3.connect(str(copy))
         try:
