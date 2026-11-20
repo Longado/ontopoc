@@ -1,8 +1,10 @@
 """Receipts: what a confirmation changed, and what the workspace stands on, both read from the records that are already kept. Nothing new is stored.
 
-The receipt of a change (GET /api/workspace/receipt?element=…, several for one upload's group) is made from the confirmation records: the latest confirmation of each
+The receipt of a change (POST /api/workspace/receipt {elements}, several for one upload's group; a POST, so that a read-only token, which may make any GET, never
+makes the copy of the workspace it needs) is made from the confirmation records: the latest confirmation of each
 element (who put it forward, who confirmed it, on which dataset versions, its evidence) beside the one before it (what it said then). The board numbers it moved are
-worked out again the way the preview worked them out (change_preview): the cards as they are now, beside the cards on the definitions as they were confirmed before.
+worked out again the way the preview worked them out (change_preview): the cards as they are now, beside the cards on the definitions as they were confirmed before,
+both on the data as it is now. When a dataset had a new version between the two confirmations, the item says so (data_moved) apart from the numbers.
 So the receipt read right after confirming says what the preview said; read later, it is worked out on the data of that later moment, and says when.
 
 The workspace summary (GET /api/workspace/receipt) counts what this person may see: the definitions by kind and state, the checks behind the confirmed ones (their
@@ -14,7 +16,7 @@ from datetime import datetime, timezone
 import json
 
 from ontology_poc_generator.caliber import _text as caliber_text
-from ontology_poc_generator.change_preview import answers, as_last_confirmed, cards, compare, under, work_out, workspace_copy
+from ontology_poc_generator.change_preview import answers, as_last_confirmed, cards, compare, sent_back, work_out, workspace_copy
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.object_types import (
@@ -77,15 +79,17 @@ def change_receipt(conn, user: dict | None, elements: list[str]) -> dict:
         if shown is None or row['state'] != 'confirmed' or not last:
             raise TypeRefused(tr('没有这个已确认的定义', 'There is no such confirmed definition'), 404)
         before = last[1] if len(last) > 1 else None
+        on, on_before = json.loads(last[0][1] or '{}'), json.loads(before[1] or '{}') if before else {}
         items.append({'element': element_id, 'kind': _kind(element_id), 'title': shown['title'],
                       'before': _said(conn, element_id, json.loads(before[0]), user) if before else None, 'after': _said(conn, element_id, json.loads(last[0][0]), user),
                       'proposed_by': last[0][2], 'confirmed_by': last[0][3], 'confirmed_at': last[0][4], 'on': json.loads(last[0][1] or '{}'),
-                      'on_before': json.loads(before[1] or '{}') if before else None, 'evidence': last[0][5]})
+                      'on_before': on_before if before else None, 'evidence': last[0][5],
+                      'data_moved': [{'name': n, 'from': on_before[n], 'to': v} for n, v in sorted(on.items()) if n in on_before and on_before[n] != v]})
     with workspace_copy(conn) as copy:
         picked, checked = cards(copy, user)
         after = work_out(copy, user, picked)
-        touched = {*elements, *under(copy, elements)}
-        as_last_confirmed(copy, elements, confirmed_now=True)
+        touched = {*elements, *sent_back(copy, elements)}
+        as_last_confirmed(copy, elements, confirmed_now=True)   # on the data as it is now: a move of the data is each item's data_moved, not a number of this change
         now = work_out(copy, user, picked)
     return {'items': items, 'cards': compare(picked, now, after, touched), 'answers': answers(conn, user, touched), 'checked': checked, 'at': _now()}
 
