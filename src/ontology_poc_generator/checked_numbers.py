@@ -136,6 +136,18 @@ def _view(conn, row: dict, now, reason: str | None, full: bool) -> dict:
             'reason': reason if status == 'refused' else None, 'moved': _moved(conn, row)}
 
 
+def _card_key(component: dict, spec: dict) -> str:
+    """What a check on a card is about: the card as it is and, for a query card, the board's default values of the $names it reads (they live on the board, not on
+    the card). A check is held only against a card with the same key: another default is another number, never the same one."""
+    from ontology_poc_generator.dashboards import _defaults
+    from ontology_poc_generator.ontopoc_query import param_names
+    names = param_names(component['text']) if 'text' in component else []
+    if not names:
+        return json.dumps(component, sort_keys=True, ensure_ascii=False)
+    defaults = _defaults(spec)
+    return json.dumps({'card': component, 'params': {n: defaults.get(n) for n in names}}, sort_keys=True, ensure_ascii=False)
+
+
 COLUMNS = 'id, dashboard_id, component_id, component_json, question_id, trusted, computed, note, by_user_id, by_name, at, datasets_json, definitions_json'
 
 
@@ -211,7 +223,7 @@ def record(conn, user: dict | None, payload: dict) -> dict:
         raise DashboardRefused(tr('你只能读到其中一部分行（行规则），核对要在全部行上做', 'A row rule lets you read only some of the rows; a check is made over all of them'))
     trusted = _trusted(payload.get('value'), shown)
     datasets, definitions = _card_reads(conn, component, worked['result'])
-    row = _insert(conn, user, {'dashboard_id': board['id'], 'component_id': component['id'], 'component_json': json.dumps(component, sort_keys=True, ensure_ascii=False)},
+    row = _insert(conn, user, {'dashboard_id': board['id'], 'component_id': component['id'], 'component_json': _card_key(component, board['spec'])},
                   trusted, shown, note, datasets, definitions)
     return _view(conn, row, shown, None, True)
 
@@ -227,9 +239,10 @@ def _latest(conn, column: str, value) -> dict:
 
 def on_board(conn, user: dict | None, board: dict, components: list[dict], as_shown: bool) -> tuple[list[dict], dict]:
     """The board's components, each that carries a check with 'check' added, and the line at the top. `as_shown` is whether the board was worked out with no filter
-    picked and the default parameters: a check is held only against that. A card changed since its check carries none (the check was about the card as it was)."""
+    picked and the default parameters: a check is held only against that. A card changed since its check, or a query card whose default parameter values changed,
+    carries none (the check was about the card and the values as they were)."""
     checks = _latest(conn, 'dashboard_id', board['id'])
-    spec = {c['id']: json.dumps(c, sort_keys=True, ensure_ascii=False) for c in board['spec']['components']}
+    spec = {c['id']: _card_key(c, board['spec']) for c in board['spec']['components']}
     live = {k: r for k, r in checks.items() if spec.get(k) == r['component_json']}
     if not as_shown:
         return components, {**_summary([], '数', 'numbers'), 'text': tr('筛选或参数不是默认值时，不对照核对过的数', 'With a filter picked or a parameter typed, the board is not held against its checked numbers') if live else ''}
