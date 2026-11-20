@@ -465,5 +465,37 @@ class DbtImportTests(SigningTestCase):
             self.assertIn('written', body['failed'][0]['reason'])
             self.assertNotIn('not written', body['failed'][0]['reason'])
 
+    def test_a_preview_that_stops_never_says_written_in_either_language(self):
+        def always(*args, **kwargs):
+            raise RuntimeError('boom')
+        real_type, real_line, calls = dbt_import.create_type, dbt_import._type_line, []
+
+        def second(*args, **kwargs):
+            calls.append(1)
+            if len(calls) == 2:
+                raise RuntimeError('boom')
+            return real_type(*args, **kwargs)
+
+        def line(conn, row, model, status):
+            if status == 'new' and model == 'orders':
+                raise RuntimeError('boom')
+            return real_line(conn, row, model, status)
+        cases = {'first item': ('create_type', always), 'middle item': ('create_type', second), 'last item': ('create_relation', always),
+                 'building the report': ('_finish', always), "an item's line": ('_type_line', line)}
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            for label, (target, effect) in cases.items():
+                for language in ('en', 'zh-CN'):
+                    with self.subTest(case=label, language=language):
+                        calls.clear()
+                        with mock.patch.object(dbt_import, target, side_effect=effect):
+                            status, body = ann.post(ROUTE, {'manifest': json.dumps(manifest()), 'apply': False}, headers={'Accept-Language': language})
+                        self.assertEqual(status, 200, body)
+                        self.assertTrue(body['stopped'])
+                        text = json.dumps(body, ensure_ascii=False)
+                        self.assertNotIn('written', text.lower())
+                        self.assertNotIn('写入', text)
+            self.assertEqual(self.written(out), ([], 0))   # and the real workspace is unchanged
+
 if __name__ == '__main__':
     unittest.main()

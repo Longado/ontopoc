@@ -84,6 +84,22 @@ test("a proposal written whose details could not be read back, or whose counts a
   setLocale("en");
 });
 
+test("no line of a stopped preview says written, in either language", () => {
+  const preview = { ...PREVIEW, applied: false, stopped: true,
+    types: [CUSTOMERS, { id: "orders", name: "orders", dataset: null, key: [], properties: [], codes: [], status: "new" }], relations: [{ ...RELATION, numbers: null }],
+    failed: [{ what: "object type orders", reason: "(the service's sentence)" }], not_attempted: [{ what: "relationships orders.customer_id → customers" }] };
+  for (const locale of ["en", "zh"]) {
+    setLocale(locale);
+    const lines = [importSummary(preview).headline, importSummary({ ...preview, stopped: false }).headline,
+      ...importSections(preview).flatMap((s) => [s.title, s.note ?? "", s.more ?? "", ...s.items.map((i) => i.text)])];
+    for (const line of lines) {
+      assert.doesNotMatch(line, /written/i, line);
+      assert.doesNotMatch(line, /写入/, line);
+    }
+  }
+  setLocale("en");
+});
+
 test("the type's log names the import as where a definition came from", () => {
   setLocale("en");
   assert.equal(logText({ element: "type", change: "dbt_import", who: "Ann" }).text, "Proposed the object type from a dbt manifest");
