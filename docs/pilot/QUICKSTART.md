@@ -52,6 +52,10 @@ Admins add a database under **Data > Sources** (needs `pip install -e '.[sources
 
 Encryption is **None** by default for a database on the same machine and **Required** otherwise. "Required (verify certificate)" checks the server's certificate *and its host name*. MySQL's auto-generated certificate has no host name, so it never passes, even when you paste its CA. For a database on another machine, have the DBA install a certificate issued for the host name you connect to (from your company CA; paste that CA in the source form).
 
+## 4c. Starting from a dbt project
+
+If your tables are already described in dbt, upload them as datasets, then on **Object types** choose **Import from dbt** and pick the `target/manifest.json` that `dbt parse` or `dbt compile` writes (at most 20 MB). OntoPoc reads each model's name and its `unique`, `not_null`, `relationships` and `accepted_values` tests, and nothing else: not SQL, descriptions, column types, sources, seeds, snapshots, metrics or the semantic layer, and it never connects to your warehouse or runs dbt. A model whose name matches a dataset (letter case aside) and has one column with both `unique` and `not_null` becomes a proposed object type keyed on that column; a `relationships` test becomes a proposed many-to-one relation; `accepted_values` columns are listed as codes whose meanings you still write. The preview shows what would be proposed and what is skipped, with the reason, before anything is written. Everything goes through the same checks as the forms and waits for a second builder to confirm; importing the same manifest again leaves what is already there alone. At most 50 proposals are written per import.
+
 ## 5. Next
 
 Run [FIRST_DEFINITION.md](FIRST_DEFINITION.md) with the sample data in [sample/](sample/), then follow the schedule in [README.md](README.md). The **Send feedback** link in the avatar menu (top right) opens the feedback page; set `ONTOPOC_FEEDBACK_URL` before starting the service to point it at your own form or chat.

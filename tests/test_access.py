@@ -52,7 +52,7 @@ class RouteTableTests(unittest.TestCase):
                 ('POST', '/api/workspace/types/privacy', 'builder'), ('POST', '/api/workspace/types/views', 'builder'), ('POST', '/api/workspace/types/views/update', 'builder'),
                 ('POST', '/api/workspace/types/views/confirm', 'builder'), ('GET', '/api/workspace/types/order/views', 'viewer'),
                 ('GET', '/api/workspace/types', 'viewer'), ('GET', '/api/workspace/types/order/objects', 'viewer'),
-                ('POST', '/api/workspace/types', 'builder'), ('POST', '/api/workspace/types/confirm', 'builder'), ('POST', '/api/workspace/types/suggest', 'builder'),
+                ('POST', '/api/workspace/types', 'builder'), ('POST', '/api/workspace/types/confirm', 'builder'), ('POST', '/api/workspace/types/suggest', 'builder'), ('POST', '/api/workspace/types/dbt-import', 'builder'),
                 ('GET', '/api/workspace/relations', 'viewer'), ('GET', '/api/workspace/relations/order_customer/log', 'viewer'), ('GET', '/api/workspace/queue', 'builder'),
                 ('GET', '/api/workspace/queue/group', 'builder'), ('POST', '/api/workspace/queue/confirm-group', 'builder'),
                 ('GET', '/api/workspace/relation-form', 'builder'), ('POST', '/api/workspace/relations/confirm', 'builder'), ('POST', '/api/workspace/queue/send-back', 'builder'),

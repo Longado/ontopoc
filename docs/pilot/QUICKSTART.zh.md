@@ -52,6 +52,10 @@ export OPENROUTER_API_KEY=你的key     # 或 DEEPSEEK_API_KEY；在启动服务
 
 数据库在本机时加密默认 **不用**，否则默认 **必须（核对证书）**。“必须”会核对服务器证书*和它的主机名*。MySQL 自动生成的证书没有主机名，所以永远过不了，即使把它的 CA 贴进来也一样。数据库在别的机器上时，请 DBA 装一张按你连接用的主机名签发的证书（用公司 CA 签，把这个 CA 贴进数据源表单）。
 
+## 4c. 从 dbt 项目开始
+
+表已经在 dbt 里描述过的话：先把表作为数据集上传，再到 **对象类型** 点 **从 dbt 导入**，选 `dbt parse` 或 `dbt compile` 生成的 `target/manifest.json`（最多 20 MB）。OntoPoc 只读每个模型的名字和它的 `unique`、`not_null`、`relationships`、`accepted_values` 测试；不读 SQL、说明、列类型、source、seed、snapshot、指标和语义层，也不连你们的数仓、不运行 dbt。名字和某个数据集相同（不分大小写）、且有一列同时有 `unique` 和 `not_null` 的模型，会以那一列为主键提出一个对象类型；`relationships` 测试提出一个多对一关系；`accepted_values` 的列列成还要写含义的代码。写入之前先预览：会提出什么、跳过什么、为什么。所有提出都走和表单一样的检查，要另一位建设者确认；同一个 manifest 再导入一次，已经有的不会动。一次导入最多写入 50 项。
+
 ## 5. 下一步
 
 照 [FIRST_DEFINITION.md](FIRST_DEFINITION.md) 用 [sample/](sample/) 里的样例数据走一遍，再按 [README.md](README.md) 的日程推进。右上角头像菜单里有 **Send feedback**（中文界面显示“反馈意见”）；启动服务前设 `ONTOPOC_FEEDBACK_URL`，可以让它指向你们自己的表单或群。

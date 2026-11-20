@@ -187,6 +187,7 @@ button.icon-button.menu-button { display: none; }
 .ph-title { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
 .ph-title h1 { font-size: var(--title); letter-spacing: -0.01em; }
 .ph-actions { display: flex; align-items: center; gap: var(--s1); }
+@media (max-width: 640px) { .ph-actions:not(:has(.menu-wrap)) { flex-wrap: wrap; } }   /* a phone: three header buttons (object types) go onto a second line rather than off the screen; a header with a More menu keeps its one line, so the menu still opens under the button it belongs to */
 .ph-sub { margin-top: 2px; color: var(--muted); font-size: var(--text); }
 .back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 12px; color: var(--muted); }
 .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 24px; color: var(--muted); margin-bottom: 20px; }
@@ -279,6 +280,9 @@ dialog.upload[open] { display: flex; flex-direction: column; }
 .dialog-body { overflow-y: auto; padding: var(--s3) var(--s3) var(--s1); flex: 1 1 auto; }
 dialog.upload::backdrop { background: rgba(17, 20, 24, 0.4); }
 dialog.upload h2 { margin-bottom: var(--s2); }
+dialog.dbt-import .dbt-headline { font-weight: 600; margin-top: var(--s2); }
+dialog.dbt-import .dbt-section h3 { font-size: 0.95rem; margin: var(--s2) 0 var(--s1); }
+dialog.dbt-import .dbt-section li { overflow-wrap: anywhere; }
 dialog.upload input[type="text"], dialog.upload input[type="password"], dialog.upload .select select { min-height: var(--control-lg); }
 
 /* links styled as buttons */
