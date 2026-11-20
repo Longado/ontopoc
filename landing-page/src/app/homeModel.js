@@ -156,7 +156,8 @@ export function tallyView(tally) {
   const share = now.asked > 0 ? t("home.tally.share", { percent: `${Math.round((100 * now.answered) / now.asked)}%` }) : "";
   const figures = ["asked", "answered", "refused", "unanswered"].map((key) => ({ key, label: t(`home.tally.${key}`), value: formatNumber(now[key]), note: key === "answered" ? share : "" }));
   const held = (tally.held_back ?? []).map((d) => ({ key: d.id, count: d.questions, href: "#/confirm", text: t("home.tally.held.row", { kind: t(`ask.kind.${d.kind}`), name: d.name, count: d.questions }) }));
-  return { figures, before: t("home.tally.before", { asked: formatNumber(was.asked), answered: formatNumber(was.answered) }), held };
+  const checked = !tally.checked ? "" : tally.checked.total ? tally.checked.text : t("home.tally.checkedNone");   // the answers checked against the team's own numbers, worked out again by the service
+  return { figures, before: t("home.tally.before", { asked: formatNumber(was.asked), answered: formatNumber(was.answered) }), held, checked };
 }
 
 /** The compact row of shortcuts a builder sees under the greeting: [{key, label, href, icon}]; nothing for a viewer. */

@@ -927,7 +927,8 @@ def tally(conn, user: dict | None, now: str | None = None) -> dict:
         held.append({'id': element_id, 'kind': kind, 'name': name, 'questions': questions[element_id]})
         if len(held) == HELD_BACK_LIMIT:
             break
-    return {**periods, 'days': TALLY_DAYS, 'held_back': held}
+    from ontology_poc_generator.checked_numbers import answers_tally
+    return {**periods, 'days': TALLY_DAYS, 'held_back': held, 'checked': answers_tally(conn)}   # how many saved answers still match the number the team checked them against
 
 
 def _may_see(conn, user: dict | None, element_id: str) -> bool:

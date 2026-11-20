@@ -79,6 +79,8 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/permissions', 'admin'),
     ('POST', r'/api/workspace/impact', 'builder'),   # what confirming a change would do to the boards this person may open, worked out on a copy (change_preview)
     ('GET', r'/api/workspace/receipt', 'builder'),   # what a confirmation changed, and what the workspace stands on, from the records (workspace_receipt)
+    ('POST', r'/api/workspace/checked', 'builder'),   # record the number the team trusts for a board card or one's own saved answer (checked_numbers); a viewer reads only the mark on a board
+    ('GET', r'/api/workspace/checked/question/[0-9]+', 'builder'),   # the check of one's own saved answer, worked out again: nobody else's question
 ]
 _COMPILED = [(method, re.compile(pattern), role) for method, pattern, role in ROUTES]
 

@@ -263,6 +263,8 @@ export const previewBoard = (spec, bar = {}, params = {}) => readPost("/api/work
 export const createBoard = (payload) => send("/api/workspace/dashboards", payload);
 export const updateBoard = (payload) => send("/api/workspace/dashboards/update", payload);
 export const deleteBoard = (id) => send("/api/workspace/dashboards/delete", { id });
+export const recordCheck = (payload) => send("/api/workspace/checked", payload);   // a number the team checked: {board, component} or {question}, with value and note
+export const getAnswerCheck = (id) => request(`/api/workspace/checked/question/${id}`);
 
 export const getAgentInfo = () => request("/api/workspace/agent");
 /** The address that downloads the skill folder (a zip) as the signed-in person. */

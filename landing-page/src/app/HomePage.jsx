@@ -10,6 +10,7 @@ import { formatDate, formatDateTime, t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
 import "./boards-home.css";
+import "./checked.css";
 import { Icon } from "./ui/Icon.jsx";
 
 /** Everything the home page shows, read at once; a list this person may not read comes back as null instead of failing the page. */
@@ -189,6 +190,7 @@ function Tally({ view }) {
           </ul>
         </>
       )}
+      {view.checked && <p className="tally-checked">{view.checked}</p>}
       <p className="tally-note muted small">{t("home.tally.note")}</p>
     </section>
   );

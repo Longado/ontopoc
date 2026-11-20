@@ -124,6 +124,11 @@ CREATE TABLE IF NOT EXISTS refresh_run (
     started_at TEXT NOT NULL, finished_at TEXT, rows INTEGER, dataset TEXT, version INTEGER, changed INTEGER, error TEXT, error_public TEXT, detail_json TEXT);
 CREATE TABLE IF NOT EXISTS log (
     time TEXT NOT NULL, who TEXT NOT NULL, element_id TEXT, change TEXT NOT NULL, before_json TEXT, after_json TEXT);
+-- numbers the team has checked (checked_numbers): a board card or a saved answer, the value the team trusts, what OntoPoc computed then and on what; the latest row of each is the check
+CREATE TABLE IF NOT EXISTS checked_number (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, dashboard_id INTEGER, component_id TEXT, component_json TEXT, question_id INTEGER,
+    trusted REAL NOT NULL, computed REAL NOT NULL, note TEXT NOT NULL, by_user_id INTEGER, by_name TEXT NOT NULL, at TEXT NOT NULL,
+    datasets_json TEXT NOT NULL, definitions_json TEXT NOT NULL);
 '''
 
 

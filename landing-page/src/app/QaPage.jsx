@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { aiDraft, askQuestion, draftMeanings, getAnswer, getAsk, getAssistantTurns, getDatasets, getModelReady, getPipeline, getPipelines, getType, getTypes, keepAssistantTurn, markAssistantTurn, proposeMeanings, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
+import { AnswerCheck } from "./CheckedNumber.jsx";
 import { DemoAskNote } from "./DemoAskNote.jsx";
 import { QUICK_START_URL, askOff, holdAsk } from "./demoModel.js";
 import { useDemoAsk } from "./useDemoAsk.js";
@@ -186,6 +187,7 @@ function AnswerCard({ record, mayBuild, onEdit }) {
             <Basis record={record} onEdit={onEdit} />
           </details>
           {record.asked_at && <p className="muted small qa-when">{timeText(record.asked_at)}</p>}
+          {mayBuild && <AnswerCheck record={record} />}
         </>
       )}
     </section>

@@ -1,5 +1,5 @@
-"""The routes of the use layer, as plain functions of (connection, person, path, payload): the explorer, dashboards, what an outside agent reads, and what a change
-does to the boards before and after it is confirmed (change_preview, workspace_receipt: they read; the preview writes only on a copy). The service's
+"""The routes of the use layer, as plain functions of (connection, person, path, payload): the explorer, dashboards, what an outside agent reads, the numbers the team
+checked, and what a change does to the boards before and after it is confirmed (change_preview, workspace_receipt: they read; the preview writes only on a copy). The service's
 handler opens the connection, takes the write lock for the ones that write, and turns the refusals into answers. Who may call what is access.py's table."""
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from ontology_poc_generator.lang import tr, unknown_endpoint
 import re
 from urllib.parse import unquote
 
-from ontology_poc_generator import agent_access, change_preview, dashboards, explorer, workspace_receipt
+from ontology_poc_generator import agent_access, change_preview, checked_numbers, dashboards, explorer, workspace_receipt
 from ontology_poc_generator.object_types import TypeRefused
 
-PREFIXES = ('/api/workspace/explore', '/api/workspace/dashboards', '/api/workspace/agent', '/api/workspace/impact', '/api/workspace/receipt')
-WRITES = ('/api/workspace/dashboards', '/api/workspace/dashboards/update', '/api/workspace/dashboards/delete')   # the POSTs that change what is stored
+PREFIXES = ('/api/workspace/explore', '/api/workspace/dashboards', '/api/workspace/agent', '/api/workspace/impact', '/api/workspace/receipt', '/api/workspace/checked')
+WRITES = ('/api/workspace/dashboards', '/api/workspace/dashboards/update', '/api/workspace/dashboards/delete', '/api/workspace/checked')   # the POSTs that change what is stored
 SKILL_FILE = ('application/zip', 'ontopoc-definitions.zip')
 
 
@@ -58,6 +58,8 @@ def get(conn, user: dict | None, path: str, query: dict[str, list[str]]):
             raise TypeRefused(tr('读派生属性要用 POST /api/workspace/agent/derived，type、name、key 写在请求体里', 'Read a derived property with POST /api/workspace/agent/derived, with type, name and key in the request body'), 405)
         if parts[1] == 'skill':
             return (*SKILL_FILE, agent_access.skill_zip(conn, user))
+    elif parts[0] == 'checked' and len(parts) == 3 and parts[1] == 'question':
+        return checked_numbers.question_check(conn, user, _whole(parts[2], tr('问题的编号', 'The question id')))
     raise TypeRefused(unknown_endpoint(), 404)
 
 
@@ -79,6 +81,8 @@ def post(conn, user: dict | None, path: str, payload: dict):
         return dashboards.preview(conn, user, payload)
     if route == '/api/workspace/impact':
         return change_preview.impact(conn, user, payload)
+    if route == '/api/workspace/checked':
+        return checked_numbers.record(conn, user, payload)
     if route == '/api/workspace/agent/derived':
         return agent_access.read_derived(conn, user, payload.get('type'), payload.get('name'), payload.get('key'), payload.get('page') or 1)
     raise TypeRefused(unknown_endpoint(), 404)
