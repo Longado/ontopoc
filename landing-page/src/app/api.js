@@ -68,7 +68,7 @@ export const csvHref = (name, version = null) => datasetPath(name, version, "for
 export const deleteDataset = (name, who) =>
   request("/api/workspace/datasets/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, who: who.trim() }) });
 
-/** What an upload would send back to "needs another look", worked out on a copy: {moved: [{element, kind, title, reason}], datasets}. Nothing is written. */
+/** What an upload would send back to "needs another look", worked out on a copy: {moved: [{element, kind, title, reason}], datasets, boards (the board cards it moves, as previewImpact)}. Nothing is written. */
 export const previewUpload = (payload) =>
   request("/api/workspace/datasets/upload/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 
@@ -191,6 +191,13 @@ export const getQueueGroup = (dataset, version) => request(`/api/workspace/queue
 /** Confirms them in one action: `items` [{element, version, seen, new_values?}], what the person looked at. All or nothing. */
 export const confirmGroup = (dataset, version, items) => send("/api/workspace/queue/confirm-group", { dataset, version, items });
 export const sendBack = (element, version, reason) => send("/api/workspace/queue/send-back", { element, version, reason });
+/** What confirming would do to the board numbers this person may open, worked out on a copy: the same body as confirmItem (one item) or confirmGroup ({dataset, version,
+ * items}). {refused, cards: [{board, card, now, after, change}], answers: {mine, others}, checked}. Nothing is written. */
+export const previewImpact = (body) => send("/api/workspace/impact", body);
+/** The receipt of confirmed definitions: what changed, who proposed and confirmed it on which version, and the board numbers before and after. */
+export const getReceipt = (elements) => request(`/api/workspace/receipt?${elements.map((e) => `element=${encodeURIComponent(e)}`).join("&")}`);
+/** What the workspace stands on: definitions by state, checks, rows covered, who confirmed what on which version. */
+export const getWorkspaceReceipt = () => request("/api/workspace/receipt");
 export const getPermissions = () => request("/api/workspace/permissions");
 /** `visibleTo`: "everyone" or the ids of the people who may see the type. */
 export const setPermission = (type, visibleTo) => send("/api/workspace/permissions", { type, visible_to: visibleTo });

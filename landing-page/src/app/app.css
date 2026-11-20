@@ -1046,6 +1046,31 @@ details.query-help > summary { cursor: pointer; color: var(--muted); font-size: 
 .q-warn p { margin: 0 0 var(--s1); }
 .q-warn p:last-child { margin-bottom: 0; }
 .q-warn-bar { display: inline-flex; align-items: center; gap: var(--s1); flex-wrap: wrap; margin-top: 0; }
+/* what confirming (or an upload) does to the board numbers, and the receipts after it (ImpactList.jsx) */
+.q-impact { margin-top: var(--s1); padding: 10px var(--s2); border: 1px solid var(--border-strong); border-left: 3px solid var(--blue-solid); border-radius: var(--radius-lg); background: var(--surface); }
+.q-impact .inline { margin: var(--s1) 0 0; }
+.impact { margin: 0 0 var(--s1); }
+.impact-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s1); margin: 0 0 var(--s1); }
+.impact-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); margin-bottom: 6px; }
+.impact-table { width: 100%; border-collapse: collapse; font-size: var(--small); }
+.impact-table th, .impact-table td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.impact-table tr:last-child td { border-bottom: 0; }
+.impact-table th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+.impact-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.impact-note { display: block; max-width: 240px; margin-left: auto; white-space: normal; font-size: 12px; line-height: 1.35; color: var(--muted); }
+.impact-grey { color: var(--muted); }
+.impact-refused { color: var(--red-ink); }
+.impact-change { white-space: nowrap; font-weight: 600; }
+.impact-down, .impact-refuses { color: var(--red-ink); }
+.impact-up, .impact-opens { color: var(--green-ink); }
+.impact-grey.impact-change { color: var(--orange-ink); }
+.impact-same td, .impact-same .impact-change { color: var(--muted); font-weight: 400; }
+.receipt { margin-bottom: var(--s2); border-left: 3px solid var(--green-solid); }
+.receipt-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); margin-bottom: var(--s1); }
+.receipt-head h2 { margin: 0; }
+.receipt-item { margin-bottom: var(--s1); }
+.receipt-item p { margin: 2px 0; }
+dialog.upload .impact { margin-bottom: var(--s2); }
 .sent-back { border-left: 3px solid var(--red-ink); background: var(--red-soft); padding: var(--s1) var(--s2); margin: var(--s1) 0; }
 .sent-back-reason { color: var(--red-ink); }
 .rel-form { display: flex; flex-direction: column; gap: var(--s2); }

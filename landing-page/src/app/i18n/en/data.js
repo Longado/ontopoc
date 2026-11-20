@@ -224,4 +224,6 @@ export default {
   "tasks.state": "State",
   "tasks.by": "By",
   "tasks.note": "Details",
+  // WP-B: an upload that moves board numbers without sending a definition back
+  "upl.askFootBoards": "Continuing writes a new version, and the board numbers above change with it",
 };

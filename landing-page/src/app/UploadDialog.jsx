@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { fileToBase64, getDataset, getDatasets, previewUpload, uploadDatasets } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { t, useT } from "./i18n/index.js";
+import { ImpactList } from "./ImpactList.jsx";
+import { impactMatters } from "./impactModel.js";
 import { Select } from "./Select.jsx";
 import { ACCEPT, afterUpload, updateWays, waysFor, changesExisting, firstChoice, movedLines, sizeText, uploadPayload, uploadProblem, withKeyColumn, withKind, withTarget, resultLine } from "./uploadModel.js";
 
@@ -82,6 +84,7 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
   const [columnsOf, setColumnsOf] = useState({});
   const [phase, setPhase] = useState("pick");   // pick, sending, ask (what the upload would send back, waiting for a yes), done
   const [moved, setMoved] = useState([]);
+  const [boards, setBoards] = useState(null);   // the board cards the upload would move (change_preview), shown with what it sends back
   const [results, setResults] = useState([]);
   const [error, setError] = useState("");
   const [refused, setRefused] = useState({});   // the service's problem with each file, by its position
@@ -133,8 +136,9 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
       const payload = uploadPayload(who, files, contents, choices);
       if (!asked && changesExisting(payload)) {
         const found = await previewUpload(payload);
-        if (found.moved.length) {
+        if (found.moved.length || impactMatters(found.boards)) {
           setMoved(found.moved);
+          setBoards(found.boards ?? null);
           setPhase("ask");
           return;
         }
@@ -158,10 +162,15 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
       <h2>{presetTarget ? t("data.upl.titleVersion", { name: presetTarget }) : t("data.upl.title")}</h2>
       {phase === "ask" && (
         <>
-          <p><strong>{t("data.upl.askTitle", { count: moved.length })}</strong>{t("data.upl.askText")}</p>
-          <ul className="results">
-            {movedLines(moved).map((m) => <li key={m.key}>{m.what}<span className="muted small block">{m.reason}</span></li>)}
-          </ul>
+          {boards && <ImpactList impact={boards} upload />}
+          {moved.length > 0 && (
+            <>
+              <p><strong>{t("data.upl.askTitle", { count: moved.length })}</strong>{t("data.upl.askText")}</p>
+              <ul className="results">
+                {movedLines(moved).map((m) => <li key={m.key}>{m.what}<span className="muted small block">{m.reason}</span></li>)}
+              </ul>
+            </>
+          )}
         </>
       )}
       {(phase === "pick" || phase === "sending") && (
@@ -188,7 +197,7 @@ export function UploadDialog({ presetTarget, onClose, onDone }) {
       </div>
       {phase === "ask" ? (
         <div className="actions">
-          <span className="muted">{t("data.upl.askFoot")}</span>
+          <span className="muted">{t(moved.length ? "data.upl.askFoot" : "data.upl.askFootBoards")}</span>
           <button className="plain" onClick={() => setPhase("pick")}>{t("data.upl.back")}</button>
           <button className="primary" onClick={() => send(true)}>{t("data.upl.continue")}</button>
         </div>
