@@ -234,6 +234,26 @@ class QuestionTests(SigningTestCase):
             self.assertEqual((status, withheld['withheld']), (200, {'types': ['订单']}))
             self.assertNotIn('answer', withheld)
 
+    def test_an_english_question_that_says_customers_is_refused_for_the_unconfirmed_customer_type_before_the_model_is_asked(self):
+        model = AskModel(cancelled())
+        with self.service(gateway=model) as (base, _):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            self.assertEqual(team['ann'].post('/api/workspace/types', CUSTOMER)[0], 200)   # proposed, not confirmed; its English name is "customer"
+            for question in ('How many customer records are there?', 'How many customers are there?', 'How many Customers placed orders?'):
+                status, refused = self.ask(team['bob'], question)
+                self.assertEqual((status, refused['status'], len(model.requests)), (200, 'refused', 0), question)
+                self.assertEqual((refused['refusal']['definitions'][0]['name'], refused['refusal']['definitions'][0]['who_can_confirm']), ('客户', ['Bob', '管理员']), question)
+
+    def test_a_name_is_heard_in_its_english_plural_and_singular_and_not_inside_another_word(self):
+        from ontology_poc_generator.workspace_questions import _named
+        for question, name in (('how many customers', 'customer'), ('list the Categories', 'category'), ('count boxes', 'box'), ('all sales_orders', 'sales_order'),
+                               ('one order only', 'orders'), ('which category', 'categories'), ('the Order.', 'order')):
+            self.assertTrue(_named(question, name), (question, name))
+        for question, name in (('customerservice calls', 'customer'), ('a new ordering', 'order'), ('reorders', 'order'),
+                               ('how many classes', 'clas'), ('客户有多少', 'customer')):
+            self.assertFalse(_named(question, name), (question, name))
+
     def test_a_refusal_saved_before_the_type_was_restricted_shows_no_name_when_reopened(self):
         model = AskModel(cancelled())
         with self.service(gateway=model) as (base, out):

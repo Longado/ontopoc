@@ -35,6 +35,9 @@ def orders_csv(change, **part) -> dict:
     return table_csv('订单.csv', [change(dict(r)) for r in ORDERS], **(part or {'target': '订单', 'mode': 'overwrite'}))
 
 
+KH099_FIXED = lambda r: {**r, '客户编号': 'KH001' if r['客户编号'] == 'KH099' else r['客户编号']}   # every order names a customer the customer table has
+
+
 def customers_mended() -> dict:
     """The 客户 table with KH012 once (its second row dropped): an overwrite, after which a customer is one row and a join no longer doubles an order."""
     seen, rows = set(), []
@@ -214,6 +217,53 @@ class RelationTests(SigningTestCase):
             self.assertEqual(detail['state'], 'needs_look')
             self.assertIn('“订单”类型改了主键', detail['reason'])
             self.assertEqual(detail['waiting_on'][0]['id'], 'order')
+
+    def fully_connected_relation(self, team):
+        """order -> customer confirmed by Bob when all 160 orders connect (KH099 replaced by KH001) and no customer key repeats (KH012 once)."""
+        ann, bob = team['ann'], team['bob']
+        self.propose_types(ann)
+        self.assertEqual(ann.post('/api/workspace/relations', RELATION)[0], 200)
+        self.confirm_types(bob)
+        self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers_mended(), orders_csv(KH099_FIXED)]})[0], 200)
+        detail = self.detail(bob)
+        self.assertEqual((detail['check']['numbers']['matched'], detail['check']['numbers']['rows'], detail['check']['numbers']['fan_keys']), (160, 160, 0))
+        status, body = bob.post('/api/workspace/queue/confirm', {'element': 'relation:order_customer', 'version': detail['version'], 'seen': detail['check']['signature']})
+        self.assertEqual(status, 200, body)
+
+    def test_a_fully_connected_relation_stays_confirmed_when_new_rows_all_connect_and_goes_back_when_one_does_not(self):
+        with self.service() as (base, _):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.fully_connected_relation(team)
+            # ten more orders, each for a customer that exists: 170 of 170 connect, no key repeats, so what Bob confirmed still holds
+            more = [{**KH099_FIXED(dict(r)), '订单号': f'{r["订单号"]}-B'} for r in ORDERS[:10]]
+            grown = [KH099_FIXED(dict(r)) for r in ORDERS] + more
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [table_csv('订单.csv', grown, target='订单', mode='overwrite')]})
+            self.assertEqual(status, 200, body)
+            detail = self.detail(bob)
+            self.assertEqual((detail['state'], detail['reason']), ('confirmed', None))
+            self.assertEqual((detail['check']['numbers']['matched'], detail['check']['numbers']['rows']), (170, 170))   # the page reads today's count
+            self.assertEqual(detail['anchored']['numbers']['matched'], 160)   # and what it was when Bob confirmed it
+            self.assertNotIn('relation', [i['kind'] for i in bob.get('/api/workspace/queue')[1]['items']])
+            # one of the new orders names a customer the customer table lacks: it goes back, with both counts
+            grown[-1] = {**grown[-1], '客户编号': 'KH099'}
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [table_csv('订单.csv', grown, target='订单', mode='overwrite')]})
+            self.assertEqual(status, 200, body)
+            detail = self.detail(bob)
+            self.assertEqual(detail['state'], 'needs_look')
+            self.assertIn('160 / 160', detail['reason'])
+            self.assertIn('169 / 170', detail['reason'])
+
+    def test_a_fully_connected_relation_goes_back_when_a_key_starts_to_repeat_on_the_one_side(self):
+        with self.service() as (base, _):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.fully_connected_relation(team)
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [table_csv('客户.csv', CUSTOMERS, target='客户', mode='overwrite')]})   # KH012 twice again
+            self.assertEqual(status, 200, body)
+            detail = self.detail(bob)
+            self.assertEqual(detail['state'], 'needs_look')
+            self.assertIn('1 个重复的客户键', detail['reason'])
 
     def test_a_viewer_outside_the_list_sees_neither_the_type_nor_its_objects_nor_the_relation(self):
         with self.service() as (base, out):
