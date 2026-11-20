@@ -51,7 +51,7 @@ function CardMeta({ result }) {
 function SignInNote({ note }) {
   const [open, setOpen] = useState(false);
   return (
-    <button type="button" className={`bh-info${open ? " open" : ""}`} aria-expanded={open} aria-label={note} onClick={() => setOpen(!open)} onBlur={() => setOpen(false)}>
+    <button type="button" className={`bh-info${open ? " open" : ""}`} aria-label={note} onClick={() => setOpen(!open)} onBlur={() => setOpen(false)}>
       <Icon name="info" size={14} /><span className="bh-info-text">{note}</span>
     </button>
   );
@@ -59,10 +59,14 @@ function SignInNote({ note }) {
 
 function BasisLines({ result }) {
   const t = useT();
-  return result.standing.lines.length ? <Standing standing={result.standing} /> : (
+  // only the definition lines: the reason a result is grey is shown on the card itself, above the disclosure
+  return result.standing.lines.length ? (
+    <div className="standing">
+      <ul className="caliber">{result.standing.lines.map((l) => <li key={l.id} className={l.confirmed ? "" : "grey"}>{l.line}</li>)}</ul>
+    </div>
+  ) : (
     <div className="standing">
       <p className="muted small">{t("boards.card.caliber")}{result.query.filters.length ? t("boards.card.extra", { count: result.query.filters.length }) : ""}</p>
-      {!result.standing.confirmed && <Standing standing={{ ...result.standing, lines: [] }} />}
     </div>
   );
 }

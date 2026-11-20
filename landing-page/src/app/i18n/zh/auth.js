@@ -28,7 +28,6 @@ export default {
   "guest.banner": "演示 · 只读示例数据 · 每天重置",
   "guest.try": "试着问：“有效订单的总金额是多少？”",
   "guest.signOut": "退出",
-  "guest.bannerNoAsk": "演示 · 只读示例数据 · 每天重置",
   "guest.openBoards": "打开看板",
   "guest.askOff.text": "提问需要模型，而这个公开演示没有开启模型。想问你自己的数据，请自己运行 OntoPoc，详见",
   "guest.askOff.quickstart": "快速开始。",

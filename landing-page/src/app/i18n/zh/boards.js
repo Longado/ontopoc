@@ -51,7 +51,7 @@ export default {
   "card.hideBasis": "收起依据",
   "card.rows_one": "{count} 行",
   "card.rows_other": "{count} 行",
-  "card.viewName": "{name}视图",
+  "card.viewName": "视图：{name}",
   "page.signInHint": "分享链接仍需登录",
   "list.components_one": "{count} 个组件",
   "list.components_other": "{count} 个组件",

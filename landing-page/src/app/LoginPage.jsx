@@ -20,8 +20,10 @@ export function LoginPage({ setup, ended, onSignedIn, feedbackUrl }) {
   useEffect(() => {
     let live = true;
     getHealth().then((h) => { if (live) { setDemo(h?.demo === true); setAskIsOff(h?.demo_ask === false); setReady(true); } }, () => live && setReady(true));
+    const giveUp = setTimeout(() => live && setReady(true), 3000);   // a service that does not answer: the plain sign-in page rather than a blank one
     return () => {
       live = false;
+      clearTimeout(giveUp);
     };
   }, []);
   const tryDemo = async () => {
