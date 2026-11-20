@@ -259,5 +259,26 @@ class DbtImportTests(SigningTestCase):
                 status, body = self.run_import(ann, json.dumps(manifest()), apply=False)
             self.assertEqual(status, 400, body)
 
+    def test_identical_tests_are_read_once_and_every_list_in_the_answer_is_capped(self):
+        copies = {}
+        for i in range(500):   # the same relationships test under 500 ids
+            node = next(iter(generic_test('relationships', 'orders', 'customer_id', also=('customers',), to="ref('customers')", field='customer_id').values()))
+            copies[f'test.shop.copy_{i}'] = {**node, 'unique_id': f'test.shop.copy_{i}', 'name': f'copy_{i}'}
+        with self.service() as (base, out):
+            ann = self.team(base)['ann']
+            for apply in (False, True):
+                status, body = self.run_import(ann, json.dumps(manifest(extra=copies)), apply=apply)
+                self.assertEqual(status, 200, body)
+                self.assertEqual([(r['id'], r['status']) for r in body['relations']], [('orders_customer_id', 'new')])
+                self.assertEqual(body['manifest']['duplicates'], 500)   # the fixture's own copy and these 500 are one test
+            extra = {k: v for i in range(5) for k, v in model(f'unmatched_{i}', 'id').items()}
+            with mock.patch.object(dbt_import, 'SHOWN', 2):
+                status, body = self.run_import(ann, json.dumps(manifest(extra={**extra, **copies})), apply=False)
+            self.assertEqual(status, 200, body)
+            self.assertEqual(len(body['unmatched_models']), 2)
+            self.assertEqual(body['more']['unmatched_models'], 4)   # payments and the five
+            self.assertTrue(all(len(body[k]) <= 2 for k in ('types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out')))
+            self.assertEqual(set(body['more']), {'types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out'})
+
 if __name__ == '__main__':
     unittest.main()
