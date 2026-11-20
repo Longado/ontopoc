@@ -129,6 +129,18 @@ test("the caliber line names the view an answer read and no query quoting", () =
   assert.equal(criteriaLine({ query_text: "SELECT count(o) AS 数量\nFROM (o:`Order`)\nWHERE o.`status code` = 'Delivered'", ...view }, ""), "按已确认的定义：视图「Valid orders」，Order.status code = Delivered");
 });
 
+test("a filter the model wrote is said as the model's reading of confirmed code meanings, never as a confirmed definition", () => {
+  const meanings = [{ kind: "type", name: "Order" }, { kind: "meaning", name: "Order.status_code" }];
+  const ownFilter = { model: "m", definitions: meanings, query_text: "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('Cancelled', 'Refunded')" };
+  assert.equal(criteriaLine(ownFilter, ""), "按已确认的定义：全部Order；模型按已确认的代码含义写的筛选（不是已确认的视图）：Order.status_code NOT IN (Cancelled, Refunded)");
+  const view = { evidence: { views: [{ name: "Valid orders", kind: "filter", rows: 95 }] } };
+  assert.equal(criteriaLine({ ...ownFilter, ...view, query_text: "SELECT count(o) AS 数量\nFROM (o:`Order`)\nWHERE o.status_code = 'Delivered'" }, ""),
+    "按已确认的定义：视图「Valid orders」；模型按已确认的代码含义写的筛选（不是已确认的视图）：Order.status_code = Delivered");   // the view chose the rows; the filter on top is still the model's
+  assert.equal(criteriaLine({ model: "m", definitions: [{ kind: "type", name: "客户" }], query_text: "SELECT count(c) FROM (c:客户)\nWHERE c.tier = 'A'" }, "11月20日 08:00"),
+    "按已确认的定义：全部客户；模型写的筛选：客户.tier = A，数据截至 11月20日 08:00");   // no code meaning in it: not said to be one
+  assert.equal(criteriaLine({ model: "m", definitions: meanings, query_text: "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)", ...view }, ""), "按已确认的定义：视图「Valid orders」");   // no filter of the model's
+});
+
 test("a grouped total has a header over each of its three columns", () => {
   const top = answerView({ answer: { groups: [["C001", 7140, 6], ["C013", 6205, 5]], total_groups: 39, without_value: 0, measure: { field: "amount", op: "sum", value: 119810, counted: 107, skipped: 0 } }, types });
   assert.deepEqual(top.table.head, ["分组", "amount合计", "订单数"]);
