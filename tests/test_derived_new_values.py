@@ -51,10 +51,11 @@ TRUTH = truth()
 NEW_ROWS = sum(1 for r in csv.DictReader((SAMPLE / 'orders_update.csv').open(encoding='utf-8')) if r['status_code'] == '6')
 
 
-class DerivedNewValueTests(SigningTestCase):
-    def pilot(self, base):
-        """Ann puts forward the two types, the relation, the view and the derived property; Bob confirms them. Then Ann uploads orders_update.csv by key and
-        writes the meanings again with 6 = 暂停."""
+class PilotFoundation(SigningTestCase):
+    """The pilot sample with its definitions confirmed (no tests of its own)."""
+
+    def foundation(self, base, derived=(VALID_AMOUNT,)):
+        """Ann puts forward the two types, the relation, the view and the derived properties; Bob confirms them."""
         team = self.people(base, 'ann', 'bob')
         ann, bob = team['ann'], team['bob']
         self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [part('orders.csv'), part('customers.csv')]})[0], 200)
@@ -71,22 +72,31 @@ class DerivedNewValueTests(SigningTestCase):
         self.assertEqual(ann.post('/api/workspace/types/views', VIEW)[0], 200)
         view = self.view(bob)
         self.assertEqual(bob.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': view['version'], 'seen': view['seen']})[0], 200)
-        status, body = ann.post('/api/workspace/types/derived', VALID_AMOUNT)
-        self.assertEqual(status, 200, body)
-        line = self.line(bob)
-        self.assertEqual(bob.post('/api/workspace/types/derived/confirm', {'type': 'customer', 'english_name': 'valid_amount', 'version': line['version'], 'seen': line['seen']})[0], 200)
-        status, body = ann.post('/api/workspace/datasets/upload', {'files': [part('orders_update.csv', target='orders', mode='update_by_key', key_columns=['order_id'])]})
-        self.assertEqual(status, 200, body)
-        self.assertEqual(ann.post('/api/workspace/types/meanings', {'id': 'order', 'column': 'status_code', 'values': REWRITTEN})[0], 200)
+        for payload in derived:
+            status, body = ann.post('/api/workspace/types/derived', payload)
+            self.assertEqual(status, 200, body)
+            line = self.line(bob, payload['english_name'])
+            self.assertEqual(bob.post('/api/workspace/types/derived/confirm', {'type': 'customer', 'english_name': payload['english_name'], 'version': line['version'], 'seen': line['seen']})[0], 200)
         return team
 
     def view(self, client):
         return next(v for v in client.get('/api/workspace/types/order/views')[1]['views'] if v['name'] == '有效订单')
 
-    def line(self, client):
+    def line(self, client, name='valid_amount'):
         status, body = client.get('/api/workspace/types/customer/derived')
         self.assertEqual(status, 200, body)
-        return next(d for d in body['derived'] if d['id'] == 'valid_amount')
+        return next(d for d in body['derived'] if d['id'] == name)
+
+
+class DerivedNewValueTests(PilotFoundation):
+    def pilot(self, base):
+        """The foundation; then Ann uploads orders_update.csv by key and writes the meanings again with 6 = 暂停."""
+        team = self.foundation(base)
+        ann = team['ann']
+        status, body = ann.post('/api/workspace/datasets/upload', {'files': [part('orders_update.csv', target='orders', mode='update_by_key', key_columns=['order_id'])]})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(ann.post('/api/workspace/types/meanings', {'id': 'order', 'column': 'status_code', 'values': REWRITTEN})[0], 200)
+        return team
 
     def group(self, client):
         status, body = client.get(f'/api/workspace/queue/group?dataset={quote("orders")}&version=2')
