@@ -192,9 +192,10 @@ def _datasets(conn, user: dict | None) -> list[str]:
     return [n for (n,) in conn.execute('SELECT name FROM current_dataset ORDER BY name') if not dataset_hidden(conn, n, user)]
 
 
-def _write(conn, make, element_id: str, who: str | None, after: dict, lock=None):
+def _write(conn, make, element_id: str, who: str | None, after: dict, lock=None, state: dict | None = None):
     """The form's own function and the line saying where it came from, together or not at all: one transaction per proposal, as short as the form's, under
-    the lock an upload takes (as the form's request is). Both are let go before the next proposal, so other requests get through in between."""
+    the lock an upload takes (as the form's request is). Both are let go before the next proposal, so other requests get through in between. Once it is
+    committed, state['committed'] says so: from then on nothing may answer "nothing was written"."""
     with lock or nullcontext():
         conn.execute('BEGIN IMMEDIATE')
         try:
@@ -204,17 +205,24 @@ def _write(conn, make, element_id: str, who: str | None, after: dict, lock=None)
             conn.execute('ROLLBACK')
             raise
         conn.execute('COMMIT')
+    if state is not None:
+        state['committed'].append(element_id)
     return made
 
 
-def _failure(exc: BaseException) -> str:
-    """Why one item failed, for the report: the kind of error only (the text of a database error can name the store's own tables). The whole of it goes
-    to the service's log, for whoever runs it."""
+def _failure(exc: BaseException, written: bool = False, general: bool = False) -> str:
+    """Why an item failed, or the import (`general`), for the report: the kind of error only (the text of a database error can name the store's own
+    tables). The whole of it goes to the service's log, for whoever runs it. `written`: the item's own write had gone through (general: something had)."""
     kind = type(exc).__name__
     try:
         traceback.print_exception(exc, file=sys.stderr)
     except Exception:   # printing it must not be what stops the report
         pass
+    if general:
+        return (tr(f'导入出错停下了（{kind}）。上面列为提出的都已经写入；详情在服务的日志里', f'The import stopped on an error ({kind}). What is listed above as proposed is written; the details are in the service log') if written
+                else tr(f'导入出错停下了（{kind}），还没有写入任何一项；详情在服务的日志里', f'The import stopped on an error ({kind}) before any proposal was written; the details are in the service log'))
+    if written:
+        return tr(f'已经写入了，但这一项在报告里的说明没做出来（{kind}），导入在这里停下；详情在服务的日志里', f'It is written, but its line in this report could not be made ({kind}); the import stopped here. The details are in the service log')
     return tr(f'出错了（{kind}），这一项没有写入，导入在这里停下；详情在服务的日志里', f'It failed ({kind}); this one was not written and the import stopped here. The details are in the service log')
 
 
@@ -236,55 +244,109 @@ def _code_text(value) -> str:
     return ('true' if value is True else 'false' if value is False else str(value))[:120]
 
 
-def run_import(conn, plan: dict, who: str | None, user: dict | None, lock=None) -> dict:
+def run_import(conn, plan: dict, who: str | None, user: dict | None, lock=None, state: dict | None = None) -> dict:
     """Put forward what the manifest's tests say, for the models that match a dataset this person may see: types first, then relations, each proposal in
-    its own short transaction (_write). An unexpected error on one item takes back only that item's transaction and stops the import there: the report
-    still comes back, with what was written before it, the item that failed and why, and what was not attempted. Returns the report (see the route)."""
+    its own short transaction (_write). Returns the report (see the route).
+
+    Two phases, one rule each:
+    - Phase one (_plan, up to the first proposal): read and plan everything that can be planned without writing: the datasets each model matches and
+      their versions, the order of the types, and the relations to try with their names. Nothing has been written, so an error here reaches
+      import_manifest and is answered 400 "nothing was written", which is true.
+    - Phase two (_propose and _finish, from the first proposal to the returned report): ONE guard around all of it, the proposals, the report and its
+      caps. An unexpected error anywhere in it gives the report anyway (stopped: true): what was written, what failed and why (a general entry when it is
+      not one item's), and what was not attempted. Each item also has its own guard, so the report can name the item that failed."""
+    state = state if state is not None else {'committed': []}
+    planned = _plan(conn, plan, user, state)
+    try:
+        _propose(conn, plan, planned, state, who, user, lock)
+        return _finish(plan, planned['report'], state['stopped'])
+    except Exception as exc:   # phase two: whatever happened, something may be written, so the answer is a report
+        return _stopped_report(plan, planned, state, exc)
+
+
+def _plan(conn, plan: dict, user: dict | None, state: dict) -> dict:
+    """Phase one: reads only. The models by name, the datasets each one matches (state['datasets']: model unique_id -> its dataset's current version), the
+    tests of each model, the order the types are tried in, and the relation jobs (they depend on the datasets, not on the types written)."""
     models = plan['models']
     names: dict[str, list[str]] = {}
     for unique_id, name in models.items():
         names.setdefault(name, []).append(unique_id)
     visible = _datasets(conn, user)
-    report = {'types': [], 'relations': [], 'codes': [], 'unmatched_models': [], 'skipped': list(plan['unread']), 'left_out': [], 'failed': [], 'not_attempted': []}
-    state = {'written': 0, 'type_of': {}, 'datasets': {}}   # type_of: model unique_id -> the English name of the type that stands for it now; datasets: -> its dataset
+    state.update({'written': 0, 'type_of': {}, 'datasets': {}, 'stopped': False, 'next_job': 0})   # type_of: model unique_id -> the English name of the type that stands for it now
     tests_of: dict[str, list[dict]] = {}
     for test in plan['tests']:
         tests_of.setdefault(test['model'], []).append(test)
     order = sorted(names, key=lambda n: (n.casefold(), n))
-    matches = lambda name: len(names[name]) == 1 and any(d.casefold() == name.casefold() for d in visible)
+    matched = {name: [d for d in visible if d.casefold() == name.casefold()] for name in order}
+    for name in order:
+        if len(names[name]) == 1 and len(matched[name]) == 1:
+            state['datasets'][names[name][0]] = current_dataset(conn, matched[name][0])
+    jobs = _relation_jobs(conn, models, tests_of, state['datasets'])
+    report = {'types': [], 'relations': [], 'codes': [], 'unmatched_models': [], 'skipped': list(plan['unread']), 'left_out': [], 'failed': [], 'not_attempted': []}
+    return {'names': names, 'tests_of': tests_of, 'order': order, 'matched': matched, 'jobs': jobs, 'report': report}
+
+
+def _propose(conn, plan: dict, planned: dict, state: dict, who: str | None, user: dict | None, lock) -> None:
+    """Phase two, the proposals: each type, then each relation. An error on one item stops here, naming it: written or not (state['committed'] says),
+    and what was not attempted."""
+    models, names, tests_of, order, report = plan['models'], planned['names'], planned['tests_of'], planned['order'], planned['report']
+    matches = lambda name: len(names[name]) == 1 and len(planned['matched'][name]) == 1
 
     def would_try(unique_id: str) -> bool:   # a model whose type would have been tried: a dataset of its name, and a column with both unique and not_null
         keyed = lambda kind: {t['column'] for t in tests_of.get(unique_id, []) if t['kind'] == kind and t['namespace'] in (None, 'dbt') and not t['where'] and t['column']}
         return matches(models[unique_id]) and bool(keyed('unique') & keyed('not_null'))
-    stopped = False
     for i, name in enumerate(order):
+        before = len(state['committed'])
         try:
-            _model(conn, plan, report, state, name, names[name], visible, tests_of, who, user, lock)
+            _model(conn, plan, report, state, name, names[name], planned['matched'][name], tests_of, who, user, lock)
         except Exception as exc:
-            report['failed'].append({'what': tr(f'对象类型 {name}', f'object type {name}'), 'reason': _failure(exc)})
-            stopped = True
+            _item_failed(report, state, before, tr(f'对象类型 {name}', f'object type {name}'), exc)
             later = order[i + 1:]
             for other in later:
                 if len(names[other]) == 1 and would_try(names[other][0]):
                     report['not_attempted'].append({'what': tr(f'对象类型 {other}', f'object type {other}')})
-                elif len(names[other]) == 1 and not matches(other):
+                elif len(names[other]) == 1 and not planned['matched'][other]:
                     report['unmatched_models'].append(other)
             pending = set(order[i:])
             ready = lambda u: u in state['type_of'] or (models[u] in pending and would_try(u))   # a type there now, the one that failed, or one that would have been tried
-            for unique_id in sorted(tests_of, key=lambda u: models[u]):
-                report['not_attempted'] += [{'what': _relation_what(models, unique_id, t)} for t in tests_of[unique_id]
-                                            if t['kind'] == 'relationships' and t['column'] and t['target'] and ready(unique_id) and ready(t['target'])]
-            break
-    if not stopped:
-        jobs = _relation_jobs(conn, models, tests_of, state['datasets'])
-        for k, (unique_id, test, several) in enumerate(jobs):
-            try:
-                _relation(conn, plan, report, test, unique_id, state, who, user, several, lock)
-            except Exception as exc:
-                report['failed'].append({'what': _relation_what(models, unique_id, test), 'reason': _failure(exc)})
-                stopped = True
-                report['not_attempted'] += [{'what': _relation_what(models, u, t)} for u, t, _ in jobs[k + 1:]]
-                break
+            report['not_attempted'] += [{'what': _relation_what(models, u, t)} for u, t, _ in planned['jobs'] if t['target'] and ready(u) and ready(t['target'])]
+            return
+    for k, (unique_id, test, several) in enumerate(planned['jobs']):
+        state['next_job'] = k
+        before = len(state['committed'])
+        try:
+            _relation(conn, plan, report, test, unique_id, state, who, user, several, lock)
+        except Exception as exc:
+            _item_failed(report, state, before, _relation_what(models, unique_id, test), exc)
+            report['not_attempted'] += [{'what': _relation_what(models, u, t)} for u, t, _ in planned['jobs'][k + 1:]]
+            return
+    state['next_job'] = len(planned['jobs'])
+
+
+def _item_failed(report: dict, state: dict, before: int, what: str, exc: BaseException) -> None:
+    """One item hit an unexpected error: stop. When its own write had gone through first, it is written, and listed as such (with what its report line
+    could say), not as not written."""
+    state['stopped'] = True
+    if len(state['committed']) > before:
+        element_id = state['committed'][-1]
+        report['types' if element_id.startswith(TYPE_PREFIX) else 'relations'].append(_written_line(element_id))
+        report['failed'].append({'what': what, 'reason': _failure(exc, written=True)})
+    else:
+        report['failed'].append({'what': what, 'reason': _failure(exc)})
+
+
+def _written_line(element_id: str) -> dict:
+    """The report line of a proposal that was written but whose own line could not be made: its name and that it is written, nothing read back."""
+    english = element_id.partition(':')[2]
+    if element_id.startswith(TYPE_PREFIX):
+        return {'model': english, 'id': english, 'name': english, 'dataset': None, 'key': [], 'properties': [], 'codes': [], 'status': 'new', 'state': 'checked', 'key_rows': None, 'warnings': []}
+    return {'id': english, 'model': None, 'from': None, 'to': None, 'from_column': None, 'to_column': None, 'cardinality': 'many_to_one', 'status': 'new', 'state': 'checked',
+            'numbers': None, 'cardinality_holds': None, 'warnings': []}
+
+
+def _finish(plan: dict, report: dict, stopped: bool) -> dict:
+    """Phase two, last step: the report as it is answered, each list capped."""
+    models = plan['models']
     unmatched = set(report['unmatched_models'])
     report['skipped'] = [s for s in report['skipped'] if s['model'] not in unmatched]   # a model with no dataset is listed once, as that; its tests are not
     report['unmatched_models'] = [n[:SHOWN_TEXT] for n in report['unmatched_models']]
@@ -301,22 +363,36 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, lock=None) 
             **report, 'more': more, 'limits': {'proposals': MAX_PROPOSALS, 'megabytes': MAX_MANIFEST_BYTES // 1024 // 1024}}
 
 
-def _model(conn, plan: dict, report: dict, state: dict, name: str, unique_ids: list[str], visible: list[str], tests_of: dict, who: str | None, user: dict | None, lock) -> None:
-    """One dbt model: matched to a dataset this person may see, its tests read, and a type proposed (or found already there, or skipped with the reason)."""
+def _stopped_report(plan: dict, planned: dict, state: dict, exc: BaseException) -> dict:
+    """Phase two failed outside one item (building the report, say): the report from what is already known, with a general entry for the failure and the
+    relations not reached as not attempted. Plain lists and literals only."""
+    report = planned['report']
+    models = plan['models']
+    lists = {k: list(report.get(k, [])) for k in ('types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out', 'failed', 'not_attempted')}
+    lists['failed'].append({'what': tr('导入', 'the import'), 'reason': _failure(exc, written=bool(state['committed']), general=True)})
+    if not state.get('stopped'):   # the relations not reached (none when it was the report that failed)
+        lists['not_attempted'] += [{'what': _relation_what(models, u, t)} for u, t, _ in planned['jobs'][state.get('next_job', 0):]]
+    return {'applied': False, 'stopped': True, 'manifest': {'schema_version': plan.get('version'), 'dbt_version': plan.get('dbt_version'), 'project': plan.get('project'),
+                                                           'models': len(models), 'tests': len(plan.get('tests', [])), 'duplicates': plan.get('duplicates', 0), 'note': None},
+            **{k: v[:SHOWN] for k, v in lists.items()}, 'more': {k: max(0, len(v) - SHOWN) for k, v in lists.items()},
+            'limits': {'proposals': MAX_PROPOSALS, 'megabytes': MAX_MANIFEST_BYTES // 1024 // 1024}}
+
+
+def _model(conn, plan: dict, report: dict, state: dict, name: str, unique_ids: list[str], matched: list[str], tests_of: dict, who: str | None, user: dict | None, lock) -> None:
+    """One dbt model, with the datasets of its name planned before any write (`matched`; its dataset in state['datasets']): its tests read, and a type
+    proposed (or found already there, or skipped with the reason)."""
     skip = lambda model, what, reason: report['skipped'].append({'model': model, 'what': what, 'reason': reason})
     if len(unique_ids) > 1:
         skip(name, tr('模型', 'model'), tr(f'manifest 里有 {len(unique_ids)} 个模型都叫 {name}（不同的包或版本），不知道是哪一个', f'The manifest has {len(unique_ids)} models named {name} (other packages or versions), so it cannot tell which one'))
         return
     unique_id = unique_ids[0]
-    matched = [d for d in visible if d.casefold() == name.casefold()]
     if not matched:
         report['unmatched_models'].append(name)
         return
     if len(matched) > 1:
         skip(name, tr('模型', 'model'), tr(f'有 {len(matched)} 个数据集的名字和它只差大小写：{"、".join(matched)}', f'{len(matched)} datasets differ from its name only in letter case: {", ".join(matched)}'))
         return
-    dataset = current_dataset(conn, matched[0])
-    state['datasets'][unique_id] = dataset
+    dataset = state['datasets'][unique_id]
     cols = dataset_columns(conn, dataset['id'])
     usable: list[dict] = []
     for test in tests_of.get(unique_id, []):
@@ -365,7 +441,7 @@ def _model(conn, plan: dict, report: dict, state: dict, name: str, unique_ids: l
                'properties': [{'column': c, **({'enum': True} if c in codes else {})} for c in tested]}
     try:
         made = _write(conn, lambda: create_type(conn, payload, who, user), type_id(name), who,
-                      {'from': 'dbt manifest', 'model': unique_id, 'key_tests': ['unique', 'not_null'], 'manifest_version': plan['version']}, lock)
+                      {'from': 'dbt manifest', 'model': unique_id, 'key_tests': ['unique', 'not_null'], 'manifest_version': plan['version']}, lock, state)
     except TypeRefused as exc:
         skip(name, tr('对象类型', 'object type'), str(exc))
         return
@@ -456,7 +532,7 @@ def _relation(conn, plan: dict, report: dict, test: dict, unique_id: str, state:
         return
     try:
         made = _write(conn, lambda: create_relation(conn, payload, who, user), relation_id(payload['english_name']), who,
-                      {'from': 'dbt manifest', 'model': unique_id, 'test': 'relationships', 'manifest_version': plan['version']}, lock)
+                      {'from': 'dbt manifest', 'model': unique_id, 'test': 'relationships', 'manifest_version': plan['version']}, lock, state)
     except TypeRefused as exc:
         skip(str(exc))
         return
@@ -476,11 +552,12 @@ def import_manifest(db_path: Path, payload: dict, who: str | None, user: dict | 
         raise TypeRefused(tr('只有建设者和管理员能导入', 'Only builders and admins can import'), 403)
     plan = parse_manifest(payload.get('manifest'))
     apply = payload.get('apply') is True
+    state = {'committed': []}   # what has been written: from the first entry on, the answer is a report, never "nothing was written"
     try:
         if apply:
             conn = open_workspace(db_path)
             try:
-                return {**run_import(conn, plan, who, user, lock), 'applied': True}
+                return {**run_import(conn, plan, who, user, lock, state), 'applied': True}
             finally:
                 conn.close()
         with tempfile.TemporaryDirectory() as tmp:
@@ -494,10 +571,22 @@ def import_manifest(db_path: Path, payload: dict, who: str | None, user: dict | 
                     source.close()
             conn = open_workspace(copy)
             try:
-                return run_import(conn, plan, who, user)
+                return run_import(conn, plan, who, user, None, state)
             finally:
                 conn.close()
-    except TypeRefused:
-        raise
-    except Exception as exc:   # an error before any proposal was tried (each proposal's own error is caught in run_import and reported there)
+    except Exception as exc:
+        if state['committed']:   # cannot happen through run_import, whose phase two answers a report; kept so that "nothing was written" is never said after a write
+            return _last_report(state['committed'], apply, exc)
+        if isinstance(exc, TypeRefused):
+            raise
         raise TypeRefused(tr(f'读这个 manifest 时出了错（{type(exc).__name__}），什么都没有写入', f'Reading this manifest failed ({type(exc).__name__}); nothing was written'), 400) from None
+
+
+def _last_report(committed: list[str], apply: bool, exc: BaseException) -> dict:
+    """The report when even the stopped report could not be made: the written proposals by name, and the failure. Literals only."""
+    lines = [_written_line(e) for e in committed]
+    empty = {k: [] for k in ('codes', 'unmatched_models', 'skipped', 'left_out', 'not_attempted')}
+    failed = [{'what': tr('导入', 'the import'), 'reason': _failure(exc, written=True, general=True)}]
+    return {'applied': apply, 'stopped': True, 'manifest': {}, 'types': [x for x in lines if 'dataset' in x], 'relations': [x for x in lines if 'dataset' not in x], 'failed': failed,
+            **empty, 'more': {k: 0 for k in ('types', 'relations', 'codes', 'unmatched_models', 'skipped', 'left_out', 'failed', 'not_attempted')},
+            'limits': {'proposals': MAX_PROPOSALS, 'megabytes': MAX_MANIFEST_BYTES // 1024 // 1024}}
