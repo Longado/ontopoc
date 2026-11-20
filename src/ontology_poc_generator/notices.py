@@ -298,15 +298,23 @@ def tell_moved(conn, moved: list[str]) -> int:
         return 0
     people = [p for p in list_users(conn) if not p['disabled']]
     told: set[int] = set()
+    seen: dict[tuple[str, int], bool] = {}
+
+    def sees(row, person):   # once per definition and person in one move
+        key = (row['element_id'], person['id'])
+        if key not in seen:
+            seen[key] = may_see_definition(conn, row, person)
+        return seen[key]
+
     for row in rows:
         asked = {person for person, _ in confirmer_people(conn, row)}
         last = conn.execute('SELECT confirmed_by_user_id FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (row['element_id'],)).fetchone()
         if last and last[0] is not None:
             asked.add(last[0])
         for person in people:
-            if person['id'] in told or person['id'] not in asked or not may_see_definition(conn, row, person):
+            if person['id'] in told or person['id'] not in asked or not sees(row, person):
                 continue
-            others = sum(1 for other in rows if other is not row and may_see_definition(conn, other, person))
+            others = sum(1 for other in rows if other is not row and sees(other, person))
             text = kept_in_both(lambda: _moved_text(conn, row, others))
             conn.execute('INSERT INTO notice(user_id, at, action_name, record_id, text) VALUES (?, ?, ?, NULL, ?)', (person['id'], now_text(), row['element_id'], text))
             told.add(person['id'])
