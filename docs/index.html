@@ -259,16 +259,16 @@
     <div class="wrap">
       <p class="label"><span>05</span> MCP / Claude</p>
       <h2 id="mcp-h">An ontology MCP server for Claude and other clients.</h2>
-      <p class="intro">An agent connects as a named person, with a personal token (<code>ONTOPOC_TOKEN</code>) an admin makes in the app, and gets five read-only tools. Like Q&amp;A, it answers only from confirmed definitions that person may see, and refuses the rest with the reason. The tools share the local service with the page, so start the service first.</p>
+      <p class="intro">An agent connects as a named person, with a personal token (<code>ONTOPOC_TOKEN</code>) an admin makes in the app. With <code>ONTOPOC_TOOLSET=read</code>, as below, or a read-only token, it gets only five read-only tools. Like Q&amp;A, it answers only from confirmed definitions that person may see, and refuses the rest with the reason. The tools share the local service with the page, so start the service first.</p>
       <ul class="tools" aria-label="Read-only tools available by default">
         <li>read definitions</li><li>ask</li><li>run an OntoPoc Query</li><li>list unconfirmed items</li><li>read a derived property</li>
       </ul>
       <div class="code-grid">
         <div>
           <h3>Add it as an MCP server (from the repo root)</h3>
-<pre><code>claude mcp add ontopoc -- env ONTOPOC_TOKEN=&lt;your token&gt; \
+<pre><code>claude mcp add ontopoc -- env ONTOPOC_TOKEN=&lt;your token&gt; ONTOPOC_TOOLSET=read \
   PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server</code></pre>
-          <p>Works with MCP clients such as Claude Code, Claude Desktop and Cursor, over local stdio; the app’s AI tool access page gives the same as JSON. The tools cannot upload, write definitions or confirm. Full list: <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">docs/MCP.md</a>.</p>
+          <p>Works with MCP clients such as Claude Code, Claude Desktop and Cursor, over local stdio; the app’s AI tool access page gives a JSON block (add <code>"ONTOPOC_TOOLSET": "read"</code> to its env). These five tools cannot upload, write definitions or confirm; a token with the scope “all” used without <code>ONTOPOC_TOOLSET=read</code> also exposes the earlier screen’s run tools. Full list: <a href="https://github.com/Longado/ontopoc/blob/main/docs/MCP.md">docs/MCP.md</a>.</p>
         </div>
         <div>
           <h3>Claude Code plugin</h3>
@@ -323,7 +323,7 @@ claude plugin install ontopoc@ontopoc</code></pre>
         </details>
         <details>
           <summary>What is ontology MCP in OntoPoc?</summary>
-          <div><p>An agent reading a team’s confirmed ontology through the Model Context Protocol. OntoPoc’s MCP server gives an agent five read-only tools under a personal token (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property) for Claude Code, Claude Desktop, Cursor and similar clients, and refuses anything that rests on an unconfirmed definition. See <a href="#mcp">MCP / Claude</a> above.</p></div>
+          <div><p>An agent reading a team’s confirmed ontology through the Model Context Protocol. With <code>ONTOPOC_TOOLSET=read</code> or a read-only personal token, OntoPoc’s MCP server gives an agent five read-only tools (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property) for Claude Code, Claude Desktop, Cursor and similar clients, and refuses anything that rests on an unconfirmed definition. See <a href="#mcp">MCP / Claude</a> above.</p></div>
         </details>
         <details>
           <summary>How is this different from generating an ontology automatically?</summary>

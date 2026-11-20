@@ -1,18 +1,26 @@
 # OntoPoc 的 MCP 工具
 
-OntoPoc 是团队数据和回答问题的 AI 之间的确认关口。给外部智能体的是 5 个只读工具：智能体以令牌主人的身份，只按这个人看得到的、已确认的定义回答；问到没确认或需再看的定义，就拒答，说明原因和谁能确认。工具走 stdio，调用本机正在运行的服务，和页面用同一套接口：核验、计数、确认记录只有一份。工具不能上传、写定义或确认，这些在页面里做。
+OntoPoc 是团队数据和回答问题的 AI 之间的确认关口。给外部智能体的是 5 个只读工具（令牌是只读的，或设了 `ONTOPOC_TOOLSET=read`）：智能体以令牌主人的身份，只按这个人看得到的、已确认的定义回答；问到没确认或需再看的定义，就拒答，说明原因和谁能确认。工具走 stdio，调用本机正在运行的服务，和页面用同一套接口：核验、计数、确认记录只有一份。这 5 个工具不能上传、写定义或确认，这些在页面里做。
 
-早期界面（`legacy.html`，按运行建模）的 34 个工具还在，要设 `ONTOPOC_TOOLSET=all` 才有，写在文末的[附录](#附录早期界面的工具)。
+早期界面（`legacy.html`，按运行建模）的 34 个工具还在，写在文末的[附录](#附录早期界面的工具)。什么时候会带出它们（`mcp_server.Toolset`）：
+
+| 令牌 | 不设 `ONTOPOC_TOOLSET` | `ONTOPOC_TOOLSET=read` | `ONTOPOC_TOOLSET=all` |
+|---|---|---|---|
+| 没有令牌（本机会话） | 5 个只读 | 5 个只读 | 全部 39 个 |
+| 只读令牌（“AI 工具接入”页默认） | 5 个只读 | 5 个只读 | 5 个只读 |
+| 范围“全部”的令牌（个人在账号页建令牌时的默认） | **全部 39 个** | 5 个只读 | 全部 39 个 |
+
+所以给外部智能体接的命令都写上 `ONTOPOC_TOOLSET=read`。
 
 ## 接上
 
 先启动服务（`./scripts/ontopoc-start.sh`，或 `PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server`）。管理员在“AI 工具接入”页给一个人发令牌，再把工具服务配进客户端。Claude Code（在仓库根目录）：
 
 ```bash
-claude mcp add ontopoc -- env ONTOPOC_TOKEN=<令牌> PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
+claude mcp add ontopoc -- env ONTOPOC_TOKEN=<令牌> ONTOPOC_TOOLSET=read PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
 ```
 
-别的客户端写成 stdio 服务，命令同上；“AI 工具接入”页给出填好服务地址的 JSON。服务不在 8767 端口时设 `ONTOPOC_URL`。不设 `ONTOPOC_TOOLSET`（或设成 `read`）时只给下面 5 个只读工具。
+别的客户端写成 stdio 服务，命令同上；“AI 工具接入”页给出填好服务地址的 JSON，粘贴时在 `env` 里加上 `"ONTOPOC_TOOLSET": "read"`。服务不在 8767 端口时设 `ONTOPOC_URL`。
 
 ## 给外部智能体的只读工具
 
@@ -42,7 +50,7 @@ claude mcp add ontopoc -- env ONTOPOC_TOKEN=<令牌> PYTHONPATH=$PWD/src python3
 
 ## 附录：早期界面的工具
 
-这些工具对应早期界面（`legacy.html`）的运行：上传文件建本体、看体检、记下客户的答复、逐项确认、导出。设了 `ONTOPOC_TOOLSET=all` 才有；Claude Code 插件（`/ontopoc:ontopoc-build`、`/ontopoc:ontopoc-review`）现在用的就是它们，插件默认设了 `all`。它们读的是一次运行里上传的数据，不经过团队应用的确认关口。
+这些工具对应早期界面（`legacy.html`）的运行：上传文件建本体、看体检、记下客户的答复、逐项确认、导出。设了 `ONTOPOC_TOOLSET=all`，或用范围“全部”的令牌又没设 `read` 时就有（见上表）；Claude Code 插件（`/ontopoc:ontopoc-build`、`/ontopoc:ontopoc-review`）现在用的就是它们，插件默认设了 `all`。它们读的是一次运行里上传的数据，不经过团队应用的确认关口。
 
 ```bash
 claude mcp add ontopoc-legacy -- env ONTOPOC_TOOLSET=all PYTHONPATH=<仓库路径>/src python3 -m ontology_poc_generator.mcp_server

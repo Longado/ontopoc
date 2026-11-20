@@ -55,7 +55,7 @@ OntoPoc is an ontology tool for a team's own data: the team writes down what its
 ## 一个定义怎么被确认
 
 1. **提出。** 建设者写定义，或者让模型从数据集建议一个（建议只是草稿）。
-2. **代码在全部行上检查。** 主键唯一、没有空值；关系连得上（连不上的有多少也写出来）；每个代码都有含义。查了 0 行不算通过。
+2. **代码在全部行上检查。** 主键唯一、没有空值；关系连得上（连不上的有多少也写出来）；每个代码都有含义。主键检查查了 0 行不算通过（关系检查还没区分这一点）。
 3. **另一位建设者确认。** 提出的人不能自己确认；只有一位建设者时规则自动放开，日志里写明。确认时记下是谁、什么时候、哪一版数据。
 4. **开始被使用。** 问答、看板、智能体都能用它，每个数旁边写着它按哪条口径算。
 5. **数据一动就退回。** 新上传或新拉取会重新检查；对不上的，连同读它的东西一起回到“需再看”，原因写明是数据变了、定义改了，还是上游过时。待确认队列把它带回第 3 步。
@@ -114,7 +114,7 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 
 ## 给智能体用（MCP / Claude）
 
-外部智能体以某位同事的身份接进来：管理员在“AI 工具接入”页给这个人发一个令牌。智能体拿到 5 个只读的 MCP 工具，权限按这个人算：
+外部智能体以某位同事的身份接进来：管理员在“AI 工具接入”页给这个人发一个令牌。设了 `ONTOPOC_TOOLSET=read`（下面的命令都设了），或者令牌是只读的（那一页默认给只读），智能体就只拿到 5 个只读的 MCP 工具，权限按这个人算：
 
 | 工具 | 做什么 |
 |---|---|
@@ -124,13 +124,13 @@ cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 | `list_unconfirmed` | 还不能用的定义，以及原因 |
 | `read_derived_property` | 读一个已确认的派生属性的值 |
 
-它会拒绝的：用到了没确认、需再看、或这个人看不到的定义。拒答原样转给智能体，带着原因，不给猜出来的数。这些工具不能上传、写定义或确认。先启动服务，再在仓库根目录：
+它会拒绝的：用到了没确认、需再看、或这个人看不到的定义。拒答原样转给智能体，带着原因，不给猜出来的数。这 5 个工具不能上传、写定义或确认。范围是“全部”的令牌（个人在自己账号页建令牌时的默认值）如果不设 `ONTOPOC_TOOLSET=read`，还会带出早期界面的 34 个运行类工具，能在那边上传文件、建模和确认；所以要设上。先启动服务，再在仓库根目录：
 
 ```bash
-claude mcp add ontopoc -- env ONTOPOC_TOKEN=<你的令牌> PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
+claude mcp add ontopoc -- env ONTOPOC_TOKEN=<你的令牌> ONTOPOC_TOOLSET=read PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
 ```
 
-“AI 工具接入”页也给出填好服务地址的 JSON，Claude Desktop、Cursor 等 MCP 客户端直接粘贴。工具清单见 [docs/MCP.md](docs/MCP.md)。那一页还能下载技能包（zip），它是已确认定义的一份快照，之后数据变了也不会拒答，所以优先用 MCP。
+“AI 工具接入”页也给出填好服务地址的 JSON，供 Claude Desktop、Cursor 等 MCP 客户端粘贴；粘贴时在 `env` 里加上 `"ONTOPOC_TOOLSET": "read"`。工具清单见 [docs/MCP.md](docs/MCP.md)。那一页还能下载技能包（zip），它是已确认定义的一份快照，之后数据变了也不会拒答，所以优先用 MCP。
 
 **Claude Code 插件。** 仓库本身也是 Claude Code 插件（`claude plugin marketplace add Longado/ontopoc`，再 `claude plugin install ontopoc@ontopoc`）。它的两个命令 `/ontopoc:ontopoc-build`、`/ontopoc:ontopoc-review` 目前走的是早期按运行建模的界面，不经过团队应用的确认关口，见 [docs/LEGACY_SCREEN.md](docs/LEGACY_SCREEN.md)。
 
@@ -178,7 +178,7 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 
 ### 什么是 ontology MCP？可以怎么用？
 
-这里的 ontology MCP 指智能体通过 MCP 工具读一个团队已确认的本体。OntoPoc 的 MCP 服务给智能体 5 个只读工具（读定义、提问、用本体查询直接算、列出未确认项、读派生属性），按个人令牌的权限算，供 Claude Code、Claude Desktop、Cursor 等客户端通过本机 stdio 调用。接法见[给智能体用](#给智能体用mcp--claude)，清单见 [docs/MCP.md](docs/MCP.md)。
+这里的 ontology MCP 指智能体通过 MCP 工具读一个团队已确认的本体。设了 `ONTOPOC_TOOLSET=read` 或用只读令牌时，OntoPoc 的 MCP 服务给智能体 5 个只读工具（读定义、提问、用本体查询直接算、列出未确认项、读派生属性），按个人令牌的权限算，供 Claude Code、Claude Desktop、Cursor 等客户端通过本机 stdio 调用。接法见[给智能体用](#给智能体用mcp--claude)，清单见 [docs/MCP.md](docs/MCP.md)。
 
 ### OntoPoc 现在适合谁用？
 

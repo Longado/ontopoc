@@ -53,7 +53,7 @@ The sum of the amount column is 162,960. It is arithmetically right and it is no
 ## How a definition gets confirmed
 
 1. **Put it forward.** A builder writes the definition, or asks the model to suggest one from the datasets (a suggestion is only a draft).
-2. **Code checks it on every row.** Keys are unique and filled, relations connect (and say how many rows do not), every code has a meaning. A check over no rows does not count as passed.
+2. **Code checks it on every row.** Keys are unique and filled, relations connect (and say how many rows do not), every code has a meaning. A key check over no rows does not count as passed (relation checks do not yet make that distinction).
 3. **A second builder confirms it.** Never the one who proposed it; with one builder the rule opens up and the log says so. The confirmation keeps who, when and which data version.
 4. **It is used.** Q&A, boards and agents see it, each number with the line it rests on.
 5. **It goes back when things move.** A new upload or pull re-checks it; if it no longer holds, it and what reads it go to "needs another look", with the cause (data changed, definition changed, upstream). The review queue brings it back to step 3.
@@ -112,7 +112,7 @@ Model: `DEEPSEEK_API_KEY` goes to DeepSeek's own API. With only `OPENROUTER_API_
 
 ## For agents (MCP / Claude)
 
-An outside agent connects as a named person, with a personal token an admin makes on the AI tool access page. It gets five read-only MCP tools, worked out with that person's permissions:
+An outside agent connects as a named person, with a personal token an admin makes on the AI tool access page. With `ONTOPOC_TOOLSET=read` set, as in every command below, or with a read-only token (what that page offers first), it gets only five read-only MCP tools, worked out with that person's permissions:
 
 | Tool | What it does |
 |---|---|
@@ -122,13 +122,13 @@ An outside agent connects as a named person, with a personal token an admin make
 | `list_unconfirmed` | What cannot be used yet, and why |
 | `read_derived_property` | The value of a confirmed derived property |
 
-What it refuses: anything that rests on a definition that is not confirmed, or needs another look, or that the token's person may not see. The refusal is passed on as it is, with the reason; no guessed answer. The tools cannot upload, write definitions or confirm. Start the service first, then, from the repository root:
+What it refuses: anything that rests on a definition that is not confirmed, or needs another look, or that the token's person may not see. The refusal is passed on as it is, with the reason; no guessed answer. These five tools cannot upload, write definitions or confirm. A token with the scope "all" (the default for a token a person makes on their own account page) used without `ONTOPOC_TOOLSET=read` also exposes the earlier screen's 34 run tools, which can upload files, build and confirm there; so set it. Start the service first, then, from the repository root:
 
 ```bash
-claude mcp add ontopoc -- env ONTOPOC_TOKEN=<your token> PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
+claude mcp add ontopoc -- env ONTOPOC_TOKEN=<your token> ONTOPOC_TOOLSET=read PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
 ```
 
-The AI tool access page shows the same as a JSON block for Claude Desktop, Cursor and other MCP clients, with the service address filled in. The full list is in [docs/MCP.md](docs/MCP.md). The page also offers a skill pack (zip): a snapshot of the confirmed definitions that does not refuse when the data changes later, so prefer MCP.
+The AI tool access page shows a JSON block for Claude Desktop, Cursor and other MCP clients, with the service address filled in; add `"ONTOPOC_TOOLSET": "read"` to its `env`. The full list is in [docs/MCP.md](docs/MCP.md). The page also offers a skill pack (zip): a snapshot of the confirmed definitions that does not refuse when the data changes later, so prefer MCP.
 
 **Claude Code plugin.** The repository is also a Claude Code plugin (`claude plugin marketplace add Longado/ontopoc`, then `claude plugin install ontopoc@ontopoc`). Its two commands, `/ontopoc:ontopoc-build` and `/ontopoc:ontopoc-review`, still work on the earlier run-based screen, not on the team app's gate; see [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md).
 
@@ -176,7 +176,7 @@ Your metrics may already be defined in a semantic layer on a warehouse. Who sign
 
 ### What is an ontology MCP, and how do I use it here?
 
-Here, ontology MCP means an agent reading a team's confirmed ontology through MCP tools. OntoPoc's MCP server gives an agent five read-only tools under a personal token (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property) for clients such as Claude Code, Claude Desktop and Cursor, over local stdio. Setup is under [For agents](#for-agents-mcp--claude); the list is in [docs/MCP.md](docs/MCP.md).
+Here, ontology MCP means an agent reading a team's confirmed ontology through MCP tools. With `ONTOPOC_TOOLSET=read` or a read-only personal token, OntoPoc's MCP server gives an agent five read-only tools (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property) for clients such as Claude Code, Claude Desktop and Cursor, over local stdio. Setup is under [For agents](#for-agents-mcp--claude); the list is in [docs/MCP.md](docs/MCP.md).
 
 ### Who is OntoPoc for today?
 
