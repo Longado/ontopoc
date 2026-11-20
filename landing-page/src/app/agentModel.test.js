@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { tokenPlaceholder, connectConfig, endText, firstSentence, scopeWord, skillText, tokenState } from "./agentModel.js";
+import { tokenPlaceholder, connectConfig, endText, firstSentence, scopeWord, skillText, tokenState, toolInfo } from "./agentModel.js";
+import { STANDING_CSV_HREF } from "./api.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in askEnglish.test.js
@@ -33,4 +34,9 @@ test("a tool is described by its first sentence, the skill by what it holds, a t
 test("a token's reach and end are said in words", () => {
   assert.deepEqual([{ scope: "read" }, { scope: "all" }, { scope: null }].map(scopeWord), ["只读", "全部", "只读"]);
   assert.deepEqual([{ expires_at: null }, { expires_at: "2027-02-12T03:00:00+00:00" }, { expires_at: "2026-01-01T00:00:00+00:00", expired: true }].map(endText), ["不过期", "2027-02-12", "已过期"]);
+});
+
+test("the standing tool reads, and the sheet of confirmed definitions is the live address as CSV", () => {
+  assert.deepEqual(toolInfo("definition_standing"), { group: "read", line: "每条定义现在是不是已确认、谁确认的、在哪个数据版本上；没确认的写明原因", known: true });
+  assert.equal(STANDING_CSV_HREF, "/api/workspace/agent/standing?format=csv");
 });
