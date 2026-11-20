@@ -19,6 +19,7 @@ from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.object_types import (
     ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, PIPELINE_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, element_row, stale_word)
+from ontology_poc_generator.type_access import hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_store import current_dataset
 
 KINDS = ((TYPE_PREFIX, 'type'), (ENUM_PREFIX, 'meaning'), (RELATION_PREFIX, 'relation'), (VIEW_PREFIX, 'view'), (DERIVED_PREFIX, 'derived'), (ACTION_PREFIX, 'action'),
@@ -35,11 +36,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
-def _said(conn, element_id: str, content: dict) -> str:
-    """A definition in one line: a view as the queue describes it; the caliber's line for a meaning, a relation or a derived property; a type's name, key and properties."""
+def kept_text() -> str:
+    return tr('这一版用到了你看不到的列，内容不显示', 'This version uses a column kept from you, so what it said is not shown')
+
+
+def _said(conn, element_id: str, content: dict, user: dict | None) -> str:
+    """A definition in one line, as this person may read it: a view as the queue describes it; the caliber's line for a meaning, a relation or a derived property; a
+    type's name, key and properties without those kept from them (type_access: for them the type has no such property). A version that read a column kept from them
+    (an earlier one may have, when the one confirmed now does not) is said to be there, not what it said."""
     if element_id.startswith(TYPE_PREFIX):
-        props = tr('、', ', ').join(p.get('name') or p['column'] for p in content.get('properties', []))
+        hidden = hidden_columns(conn, element_id, user)
+        props = tr('、', ', ').join(p.get('name') or p['column'] for p in content.get('properties', []) if p['column'] not in hidden)
         return tr(f'{content["name"]}：主键 {" + ".join(content["key"])}；属性 {props}；来自 {content["dataset"]}', f'{content["name"]}: key {" + ".join(content["key"])}; properties {props}; from {content["dataset"]}')
+    if reads_hidden(conn, element_id, user, content):
+        return kept_text()
     if element_id.startswith((ACTION_PREFIX, PIPELINE_PREFIX)):
         return content.get('name') or element_id
     if element_id.startswith(VIEW_PREFIX):   # as the queue words it: the conditions one after another, so two versions read side by side
@@ -68,7 +78,7 @@ def change_receipt(conn, user: dict | None, elements: list[str]) -> dict:
             raise TypeRefused(tr('没有这个已确认的定义', 'There is no such confirmed definition'), 404)
         before = last[1] if len(last) > 1 else None
         items.append({'element': element_id, 'kind': _kind(element_id), 'title': shown['title'],
-                      'before': _said(conn, element_id, json.loads(before[0])) if before else None, 'after': _said(conn, element_id, json.loads(last[0][0])),
+                      'before': _said(conn, element_id, json.loads(before[0]), user) if before else None, 'after': _said(conn, element_id, json.loads(last[0][0]), user),
                       'proposed_by': last[0][2], 'confirmed_by': last[0][3], 'confirmed_at': last[0][4], 'on': json.loads(last[0][1] or '{}'),
                       'on_before': json.loads(before[1] or '{}') if before else None, 'evidence': last[0][5]})
     with workspace_copy(conn) as copy:
