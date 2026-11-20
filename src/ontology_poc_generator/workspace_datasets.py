@@ -17,7 +17,7 @@ from pathlib import PurePath
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.company_sources import TABLE_SUFFIXES, SourceFileError, load_table_file
 from ontology_poc_generator.object_actions import overwritten_by_upload
-from ontology_poc_generator.object_types import dataset_readers_of, element_row, recheck_after_write
+from ontology_poc_generator.object_types import dataset_readers_of, element_row, one_telling, recheck_after_write
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_store import (
     DELETED, fan_note, NO_CHANGE, UPLOAD_MODES, apply_upload, current_dataset, dataset_records, fan_marks, now_text as _now_text, plan_upload)
@@ -296,19 +296,21 @@ def _outcome(job: dict, done: dict) -> dict:
 def upload(conn, parts: list, who: str | None, user: dict | None = None) -> list[dict]:
     """Save the uploaded table files: a new dataset for each name not taken, a new version for each explicit update. Everything is
     checked first (ValueError in plain Chinese, nothing written); then each is written as one version. A dataset a type this person may not see reads
-    cannot be written to by them (dataset_hidden). Each outcome says `recheck_error` when the checks behind what reads the dataset could not run."""
+    cannot be written to by them (dataset_hidden). Each outcome says `recheck_error` when the checks behind what reads the dataset could not run. What the
+    files send back to needs another look is told once for the whole upload (one_telling)."""
     if not parts:
         raise ValueError(tr('没有选择文件', 'No file was chosen'))
     jobs = _jobs(conn, parts, user)
     signer = str(who or '').strip() or tr('未署名', 'unsigned')
-    outcomes = []
-    for job in jobs:
-        plan = job['plan']
-        current = current_dataset(conn, plan['name'])
-        overwrites = overwritten_by_upload(conn, plan['name'], dataset_records(conn, current), plan['records']) if current and not plan['unchanged'] else []   # a warning, not a block
-        done = apply_upload(conn, plan, signer)
-        error = recheck_after_write(conn, plan['name'], signer) if done['created'] else None
-        outcomes.append({**_outcome(job, done), 'recheck_error': error, 'overwrites_action_rows': overwrites if done['created'] else []})
+    with one_telling(conn):   # one upload, one notice per person
+        outcomes = []
+        for job in jobs:
+            plan = job['plan']
+            current = current_dataset(conn, plan['name'])
+            overwrites = overwritten_by_upload(conn, plan['name'], dataset_records(conn, current), plan['records']) if current and not plan['unchanged'] else []   # a warning, not a block
+            done = apply_upload(conn, plan, signer)
+            error = recheck_after_write(conn, plan['name'], signer) if done['created'] else None
+            outcomes.append({**_outcome(job, done), 'recheck_error': error, 'overwrites_action_rows': overwrites if done['created'] else []})
     return outcomes
 
 

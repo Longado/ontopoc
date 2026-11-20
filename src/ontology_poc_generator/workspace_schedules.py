@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.accounts import get_user, user_count
-from ontology_poc_generator.object_types import PIPELINE_PREFIX, element_row
+from ontology_poc_generator.object_types import PIPELINE_PREFIX, element_row, one_telling
 from ontology_poc_generator.type_access import dataset_hidden
 from ontology_poc_generator.workspace_sources import (
     internal_error, NAME_LIMIT, NotFound, _binding, _row as _source_row, claimed, finish_run, is_admin, log_write, now_text, refresh_runs, refresh_table, start_run)
@@ -373,7 +373,8 @@ def run_schedule(conn, s: dict, reason: str, lock, engine=None, llm=None) -> lis
     user, why = maker_of(conn, s)
     if user is None:
         return [_skip(conn, s, reason, why)]
-    return _run_source(conn, s, reason, lock, user) if s['kind'] == 'source' else _run_pipeline(conn, s, reason, lock, engine, llm, user)
+    with one_telling(conn):   # every table a source schedule refreshes: one notice per person for the whole run
+        return _run_source(conn, s, reason, lock, user) if s['kind'] == 'source' else _run_pipeline(conn, s, reason, lock, engine, llm, user)
 
 
 def due(conn, s: dict, now: datetime) -> str | None:
