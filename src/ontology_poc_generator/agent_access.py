@@ -12,6 +12,7 @@ read it).
 from __future__ import annotations
 
 from ontology_poc_generator.lang import tr
+import csv
 from datetime import date
 import io
 import json
@@ -21,10 +22,11 @@ import zipfile
 from ontology_poc_generator.caliber import line_of
 from ontology_poc_generator.derived_properties import derived_id, derived_visible, describe as describe_derived, evaluate
 from ontology_poc_generator.explorer import _load, _object_key, whole_page
-from ontology_poc_generator.object_types import OBJECT_PAGE, TypeRefused, element_row, type_id
+from ontology_poc_generator.object_types import OBJECT_PAGE, TypeRefused, _content, element_row, type_id
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.type_access import hidden_values
-from ontology_poc_generator.workspace_questions import _definition_line, _may_see, scope
+from ontology_poc_generator.workspace_datasets import _csv_cell
+from ontology_poc_generator.workspace_questions import _definition_line, _kind_and_name, _may_see, scope
 from ontology_poc_generator.workspace_store import _canonical
 
 SKILL_NAME = 'ontopoc-definitions'
@@ -68,16 +70,100 @@ def definitions(conn, user: dict | None) -> dict:
     return {'types': types, 'relations': relations, 'views': views, 'derived': derived, 'rules': REFUSAL_RULES}
 
 
-def unconfirmed(conn, user: dict | None) -> dict:
-    """What this person may see that is not confirmed (proposed, checked, needs another look, sent back), each with its state, the reason and who could confirm it: what an
-    agent must not answer from. A viewer sees none (they see only confirmed things)."""
+def _not_confirmed(conn, user: dict | None) -> list[dict]:
+    """The definitions this person may see that are not confirmed, as refusals name them (_definition_line). A viewer sees none (they see only confirmed things)."""
     out = []
     if user is None or user['role'] != 'viewer':
         for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE state != 'confirmed' AND (element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' OR element_id LIKE 'relation:%' "
                                           "OR element_id LIKE 'objview:%' OR element_id LIKE 'derived:%') ORDER BY element_id").fetchall():
             if _may_see(conn, user, element_id):
                 out.append(_definition_line(conn, element_row(conn, element_id), user))
-    return {'unconfirmed': out, 'note': tr('这些定义现在不是“已确认”：不要拿它们回答问题，也不要把里面的数字或含义当成已经说定的。', 'These definitions are not confirmed now: do not answer from them, and do not treat the numbers or meanings in them as settled.')}
+    return out
+
+
+def unconfirmed(conn, user: dict | None) -> dict:
+    """What this person may see that is not confirmed (proposed, checked, needs another look, sent back), each with its state, the reason and who could confirm it: what an
+    agent must not answer from. A viewer sees none (they see only confirmed things)."""
+    return {'unconfirmed': _not_confirmed(conn, user), 'note': tr('这些定义现在不是“已确认”：不要拿它们回答问题，也不要把里面的数字或含义当成已经说定的。', 'These definitions are not confirmed now: do not answer from them, and do not treat the numbers or meanings in them as settled.')}
+
+
+# --- the standing: the gate read from other tools ----------------------------------------------------------------------------------------------------------
+
+STANDING_PATH = '/api/workspace/agent/standing'
+STANDING_TOOL = 'definition_standing'
+KINDS = ('type', 'meaning', 'relation', 'view', 'derived')
+SHEET_COLUMNS = ('id', 'kind', 'name', 'definition', 'confirmed_by', 'confirmed_at', 'data_versions')
+
+
+def _last_confirmation(conn, element_id: str) -> dict:
+    """Who confirmed it last, when, and on which dataset versions ({name: version}); all None for one nobody ever confirmed."""
+    last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+    return {'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None, 'data_versions': json.loads(last[2]) if last and last[2] else None}
+
+
+def _confirmed_rows(conn, sc: dict) -> list[tuple[dict, bool]]:
+    """(row, whether what it says may be written out) for every confirmed definition in the scope: the same set `definitions` reads. A meaning of a column marked
+    "don't send values", and a derived property that reads one, keep their standing and lose their sentence."""
+    out = [(t['row'], True) for t in sc['types'].values()]
+    out += [(m['row'], column not in hidden_values(conn, type_id(name))) for name, held in sc['meanings'].items() for column, m in held.items()]
+    out += [(r['row'], True) for r in sc['relations'].values()] + [(v['row'], True) for v in sc['views'].values()]
+    return out + [(d['row'], True) for d in sc['derived'].values()] + [(d['row'], False) for d in sc['derived_kept_back'].values()]
+
+
+def _standing(conn, user: dict | None) -> tuple[list[dict], dict]:
+    """(every definition this person may see, with its standing; {id: what a confirmed one says, or None}). Confirmed ones are those of the scope (as `definitions`), the
+    others those of `unconfirmed`: nothing a visibility helper does not already let this person read, and no count of the data."""
+    sc = scope(conn, user)
+    entries, says = [], {}
+    for row, open_text in _confirmed_rows(conn, sc):
+        kind, name = _kind_and_name(conn, row, sc['types'])
+        entries.append({'id': row['element_id'], 'kind': kind, 'name': name, 'state': 'confirmed', 'confirmed': True, **_last_confirmation(conn, row['element_id'])})
+        says[row['element_id']] = _says(conn, sc, kind, _content(row)) if open_text else None
+    for line in _not_confirmed(conn, user):
+        entries.append({'id': line['id'], 'kind': line['kind'], 'name': line['name'], 'state': line['state'], 'confirmed': False, **_last_confirmation(conn, line['id']),
+                        **{k: line[k] for k in ('reason', 'reason_hidden', 'cause_word', 'stale_word', 'who_can_confirm', 'proposed_by')}})
+    return sorted(entries, key=lambda e: (KINDS.index(e['kind']), e['id'])), says
+
+
+def _says(conn, sc: dict, kind: str, content: dict) -> str:
+    """What a confirmed definition says, in one line for the sheet, as `definitions` words it."""
+    if kind == 'type':
+        return content['description'] or ''
+    if kind == 'meaning':
+        return tr('、', ', ').join(f'{e["value"]} = {e["label"]}' for e in content['values'] if e['label'])
+    if kind == 'relation':
+        ends = tr(' → ', ' → ').join(sc['types'][content[e]]['content']['name'] for e in ('from', 'to'))
+        return f'{ends}{tr("（", " (")}{content["cardinality"]}{tr("，", ", ")}{content["from_column"]} = {content["to_column"]}{tr("）", ")")}'
+    if kind == 'view':
+        return describe_view(content, sc['types'][content['type']]['content']['name'])
+    return describe_derived(conn, content)
+
+
+def standing(conn, user: dict | None, element_id: str | None = None) -> dict:
+    """The gate as other tools read it, live: {'definitions': [...], 'note'}, each {'id', 'kind', 'name', 'state', 'confirmed', 'confirmed_by', 'confirmed_at', 'data_versions'}
+    (for one not confirmed, the last confirmation it had, or None) and, when it is not confirmed, 'reason' (or 'reason_hidden' for a row-limited person), 'cause_word',
+    'stale_word', 'who_can_confirm' and 'proposed_by'. With `element_id`, that one entry; one this person may not see is not found, in the same words as one that does not exist."""
+    entries, _ = _standing(conn, user)
+    if element_id is None:
+        return {'definitions': entries, 'note': tr('这是现在的状态：只有 confirmed 为 true 的定义可以拿来回答；技能包是导出那天的快照，以这里为准。',
+                                                     'This is the standing now: only definitions with confirmed true may be answered from; the skill pack is a snapshot of the day it was exported, this is what counts.')}
+    found = next((e for e in entries if e['id'] == element_id), None)
+    if found is None:
+        raise TypeRefused(tr('没有这条定义', 'There is no such definition'), 404)
+    return found
+
+
+def standing_sheet(conn, user: dict | None) -> tuple[str, str, bytes]:
+    """(content type, file name, bytes): the confirmed definitions of `standing` as a CSV Excel opens (UTF-8 with a byte-order mark), one row each with what it says."""
+    entries, says = _standing(conn, user)
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(SHEET_COLUMNS)
+    for e in entries:
+        if e['confirmed']:
+            versions = ' '.join(f'{n} v{v}' for n, v in (e['data_versions'] or {}).items())
+            writer.writerow(_csv_cell(v) for v in (e['id'], e['kind'], e['name'], says[e['id']] or '', e['confirmed_by'], e['confirmed_at'], versions))
+    return 'text/csv; charset=utf-8', 'ontopoc-confirmed-definitions.csv', out.getvalue().encode('utf-8-sig')
 
 
 def read_derived(conn, user: dict | None, type_name, name, key=None, page=1) -> dict:
@@ -143,7 +229,9 @@ def skill_files(conn, user: dict | None, today: date | None = None) -> dict[str,
     index = '\n'.join(f'- [{t["name"]}](definitions/{t["id"]}.md)' for t in d['types']) or '还没有已确认的对象类型。'
     files['SKILL.md'] = '\n'.join([
         '---', f'name: {SKILL_NAME}', 'description: 这个团队已经确认的业务定义（对象、代码含义、关系、视图、派生属性）和拒答规则。回答和这些业务对象有关的问题前先读它；定义里没有的，不要猜。', '---', '',
-        '# 已确认的业务定义', '', f'导出于 {day}。里面只有已经由两个人确认过的定义，没有数据行，也没有还在等确认的东西。定义之后可能被改动：以导出日期为准，需要最新的用 MCP 的 describe_definitions。', '',
+        '# 已确认的业务定义', '', f'导出于 {day}。里面只有已经由两个人确认过的定义，没有数据行，也没有还在等确认的东西。', '',
+        f'这是导出那天的快照：定义之后可能被改动，或者不再是已确认的。某条定义现在是不是已确认、谁确认的、在哪个数据版本上，以 GET {STANDING_PATH}（MCP 工具 {STANDING_TOOL}）为准；'
+        '最新的定义内容用 MCP 的 describe_definitions。', '',
         '## 怎么用', '', '1. 先看下面的对象类型，找到问题说的是哪一个。', '2. 代码列的含义、视图的取行条件、派生属性的算式，都以对应文件为准。', '3. 文件里没有的，按 [refusal-rules.md](refusal-rules.md) 拒答。', '',
         '## 对象类型', '', index, '', '## 其他定义', '', '- [关系](definitions/relations.md)', '- [视图](definitions/views.md)', '- [派生属性](definitions/derived.md)', '- [拒答规则](refusal-rules.md)',
         '- 同样的内容，机器可读：definitions/definitions.json', '', '## 拒答规则', '', *(f'{i}. {r}' for i, r in enumerate(d['rules'], 1)), ''])
