@@ -936,7 +936,7 @@ def _may_see(conn, user: dict | None, element_id: str) -> bool:
     if row is None:
         return False
     if element_id.startswith(TYPE_PREFIX):
-        return _visible(conn, row, user) or waiting_for_viewer(conn, row, user)   # a type that waits is still named to a viewer (its name and who it waits for)
+        return _visible(conn, row, user)
     if element_id.startswith(RELATION_PREFIX):
         return _relation_visible(conn, row, user)
     if element_id.startswith(VIEW_PREFIX):
@@ -958,6 +958,16 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
     record = json.loads(stored)
     named = list(dict.fromkeys([*record.pop('named', []), *(type_id(t['id']) for t in record['types'])]))
     lost = [element_id for element_id in named if not _may_see(conn, user, element_id)]
+    waiting = [_waiting_line(conn, row, user) for row in (element_row(conn, e) for e in lost) if waiting_for_viewer(conn, row, user)]
+    if lost and len(waiting) == len(lost):   # each waits for a second look: said as a fresh question would say it, the name and who it waits for, nothing of why
+        refusal = record.get('refusal') or {}
+        if refusal.get('kind') == 'unsettled' and all(d.get('waiting') for d in refusal.get('definitions', [])):
+            lost = []   # a viewer's own refusal that said only that: shown as it was kept
+        else:
+            said = tr('；', '; ').join(tr(f'「{w["name"]}」在等 {"、".join(w["waiting_for"])} 再确认', f'"{w["name"]}" is waiting for {", ".join(w["waiting_for"])} to confirm it again') if w['waiting_for']
+                                      else tr(f'「{w["name"]}」需要再看', f'"{w["name"]}" needs another look') for w in waiting)
+            return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': [], 'waiting': [{'name': w['name'], 'waiting_for': w['waiting_for']} for w in waiting]},
+                    'reason': tr(f'这条{"拒答" if refusal else "回答"}说到的定义现在不能用：{said}。确认之后再问一次。', f'A definition this {"refusal" if refusal else "answer"} names cannot be used now: {said}. Ask again once it is confirmed.')}
     if lost:   # an answer names the types it read (the asker saw them then); a refusal names nothing, since what it says about a definition is for those who may see it
         types = [] if 'refusal' in record else [t['name'] for t in record['types'] if type_id(t['id']) in lost]
         return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': types},
