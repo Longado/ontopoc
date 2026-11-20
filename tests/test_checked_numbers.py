@@ -11,9 +11,9 @@ from pathlib import Path
 
 from tests.test_dashboards import CARD, BoardCase
 from tests.test_explorer import LIVE, ORDERS
-from tests.test_object_types import ORDER, TABLES, orders_upload, shifted_orders_csv
+from tests.test_object_types import ORDER, TABLES, VALID, orders_upload, shifted_orders_csv
 from tests.test_two_person import SigningTestCase
-from tests.test_workspace_questions import AskModel, CANCELLED, QUESTION, cancelled
+from tests.test_workspace_questions import ALL_ORDERS, AskModel, CANCELLED, QUESTION, cancelled
 
 CANCELLED_CARD = {'id': 'cancelled', 'title': '取消的订单', 'text': "SELECT count(o) FROM (o:订单) WHERE o.状态码 = '已取消'", 'chart': {'kind': 'query'}}
 BAR = {'id': 'status', 'title': '按状态', 'query': {'type': 'order'}, 'chart': {'kind': 'bar', 'group': '状态码', 'fn': 'count'}}
@@ -159,6 +159,26 @@ class WhoSeesWhatTests(CheckedBoardCase):
             self.assertEqual(vera['headline']['checked']['text'], '1 个数核对过：0 一致、0 变了、0 拒答、1 不一致')
             ann = next(c for c in self.data(team['ann'], board)['components'] if c['id'] == 'valid')['check']
             self.assertEqual((ann['note'], ann['trusted']), ('SQL by 小王', 999))
+
+    def test_a_builder_kept_from_the_cards_column_or_type_gets_only_the_mark_and_never_the_team_number_its_source_or_what_was_computed(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            board = self.board(team)
+            admin, bob = team['admin'], team['bob']
+            self.check(team['ann'], board, 'valid_amount', value=999, note='SECRET-SRC')
+            ann_id = self.ids(admin)['ann']
+            self.assertEqual(admin.post('/api/workspace/column-access', {'type': 'order', 'column': '金额', 'visible_to': [ann_id]})[0], 200)
+            body = self.data(bob, board)
+            check = next(c for c in body['components'] if c['id'] == 'valid_amount')['check']
+            self.assertEqual(set(check), {'status', 'by', 'at'})
+            self.assertNotIn('SECRET-SRC', json.dumps(body, ensure_ascii=False))
+            self.assertEqual(admin.post('/api/workspace/column-access', {'type': 'order', 'column': '金额', 'visible_to': []})[0], 200)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order', 'visible_to': [ann_id]})[0], 200)
+            status, body = bob.post('/api/workspace/dashboards/data', {'id': board})
+            if status == 200:   # the board may still open on what Bob may read; what was checked on the closed card is not his to read
+                for c in body['components']:
+                    self.assertTrue(c.get('check') is None or set(c['check']) == {'status', 'by', 'at'}, c)
+                self.assertNotIn('SECRET-SRC', json.dumps(body, ensure_ascii=False))
 
     def test_a_board_read_with_a_filter_or_a_typed_parameter_does_not_hold_its_numbers_against_the_checks(self):
         with self.service() as (base, out):
