@@ -256,7 +256,7 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
                 continue
             names.append(d['id'])
             if d.get('waiting') and not VIEWERS_TOLD_WHAT_WAITS:   # a viewer's line: only that the answer waits for a confirmation
-                text = tr('用到的一个定义在等再确认', 'a definition it uses is waiting to be confirmed again')
+                text = tr('用到的一个定义在等再确认', 'A definition it uses is waiting to be confirmed again')   # it follows "…is not confirmed. ": a sentence of its own
                 if all(l['text'] != text for l in lines):
                     lines.append({'kind': d['kind'], 'state': d['state'], 'waiting': True, 'text': text})
                 continue
