@@ -190,23 +190,6 @@ def _read_derived(query: dict, types: dict, uses: list, derived: dict | None) ->
     return {f: {**d, 'summed': f == measured and f not in elsewhere and measure.get('op') == 'sum'} for f, d in derived.items() if f in elsewhere or f == measured}   # summed: read only as the measure, added up
 
 
-# Words that turn a name into its opposite or its rest (非已取消订单金额, 除了…以外, 不算, not counting): code does not read their scope, so any of them anywhere in
-# the question keeps the name exception off and the answer is refused as when the model says nothing.
-NEGATION = re.compile(r'[非不未无没除排扣免]|去掉|以外|之外|其他|其余|剩下|另外|(?<![A-Za-z])(?:not|non|no|except|excluding|exclude|without|other|besides|minus|less)(?![A-Za-z])|n\'t', re.I)
-
-
-def _without_names(question: str, read: dict, source: str, column: str, label: str) -> str:
-    """The question with the names of the derived properties the query reads taken out where a name is that property asked for by its name: a meaning said only
-    inside one of them (客户 KH026 的已取消订单数) is a confirmed definition of its own, not a meaning the model left unsaid. Only a property that counts rows of
-    `source` by exactly this meaning (column is label) is taken out, and none when the question has a negation word: 非已取消订单金额 asks for the rest."""
-    if NEGATION.search(question):
-        return question
-    exact = {(column, 'is', label)}
-    for name in sorted({d['name'] for d in read.values() if d['source'] == source and {(c['column'], c['op'], c['label']) for c in d['conditions']} == exact}, key=len, reverse=True):
-        question = question.replace(name, ' ')
-    return question
-
-
 def _same_rows(read: dict, source: str, conditions: set) -> dict | None:
     """The derived property through which the query reads `source` (a table) by exactly these conditions ({(column, op, label)}): every derived property it reads
     that counts rows of that table has them, no more and no fewer, so no row the conditions leave out is in its values. None when it reads none, or one that
@@ -262,8 +245,8 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
     are counted from), 'conditions': [{column, op, label}], 'exact': every row of that table reaches exactly one object along its path, 'waiting': views confirmed
     with its conditions that are being redefined}} for the confirmed derived properties: a query that reads one whose conditions are exactly a view's
     (or exactly the meanings the model says the question leaves out) on that table uses that definition through it, though it does not read the table itself. A meaning the question says that the model
-    did not list is refused when the query reads such a property, as for a view (unless it is said only inside the name of a property the query reads that counts
-    exactly that meaning, in a question with no negation word: _without_names)."""
+    did not list is refused when the query reads such a property, as for a view, even when it is said only inside the property's name: no list of words can tell
+    "已取消订单金额" from "减去已取消订单金额", so the model has to say the meaning is included."""
     if _shape_limit(query):   # a query the language cannot read is said so by the query itself, not refused for a definition
         return {'unmet': [], 'apply': [], 'understood': []}
     rank = {'mention': 0, 'include': 1, 'exclude': 2}
@@ -363,10 +346,12 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                                                                                    f'{what}: the question leaves it out, but the query does not read objects from the table "{field.partition(".")[0]}", so there is nowhere to leave it out')
                                   + _not_through(read_derived, field.partition('.')[0], left_out)})
                     understood.append(_says(direction, label, tr('查询没有读它所在的列', 'The query does not read its column')))
-                elif direction is None and offered(ident, label) and label not in addressed and _verbatim(_without_names(question, read_derived, field.partition('.')[0], column, label), label, column) \
+                elif direction is None and offered(ident, label) and label not in addressed and _verbatim(question, label, column) \
                         and (counting := [d['name'] for d in read_derived.values() if d['source'] == field.partition('.')[0]]):   # as for a view: the property picks these rows by its own conditions, and the model said nothing of how the question uses the meaning
-                    omitted.append(({'definition': label, 'kind': 'meaning', 'why': tr(f'{what} 是确认过的含义，问题里说了它，但模型没有说明它是怎么用的；这条查询读的派生属性{"、".join(counting)}按自己的条件挑「{field.partition(".")[0]}」的行，没法核对',
-                                                                                  f'{what} is a confirmed meaning and the question names it, but the model did not say how it is used; the derived property {", ".join(counting)} the query reads picks the rows of "{field.partition(".")[0]}" by its own conditions, so it cannot be checked')},
+                    omitted.append(({'definition': label, 'kind': 'meaning', 'why': tr(f'{what} 是确认过的含义，问题里说了它，但模型没有说明它是怎么用的；这条查询读的派生属性{"、".join(counting)}按自己的条件挑「{field.partition(".")[0]}」的行，没法核对。'
+                                                                                  f'请换个问法再问：写明是只算「{label}」还是不算它，或者直接点名派生属性「{"」「".join(counting)}」',
+                                                                                  f'{what} is a confirmed meaning and the question names it, but the model did not say how it is used; the derived property {", ".join(counting)} the query reads picks the rows of "{field.partition(".")[0]}" by its own conditions, so it cannot be checked. '
+                                                                                  f'Ask again in other words: say whether only "{label}" counts or it is left out, or name the derived property "{", ".join(counting)}" outright')},
                                     _says(UNSAID, label, _unsaid_how())))
                 continue
             use = _use(uses, field, meaning['labels'], label)
