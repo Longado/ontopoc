@@ -500,6 +500,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         def answer(query, question, used=None, check=True, told=None):
             problem = unread
             views = context['views'] if context else []
+            # no values: on a single upload, leaving the other codes out is never read as including the ones it keeps (see answer_checks)
             checked = definition_check(question, query, reviewed, views, meanings, used, told, bundle.get('waiting')) if check and isinstance(query, dict) else {'unmet': [], 'apply': [], 'understood': []}
             if checked['unmet']:
                 return {**refusal(checked['unmet']), 'understood': checked['understood']}

@@ -110,6 +110,22 @@ test("the caliber line says what was counted and as of when", () => {
   assert.equal(criteriaLine({}, ""), "");
 });
 
+test("the caliber line names the view an answer read and no query quoting", () => {
+  const view = { evidence: { views: [{ name: "Valid orders", kind: "filter", rows: 107 }] } };
+  assert.equal(criteriaLine({ query_text: "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)", ...view }, ""), "按已确认的定义：视图「Valid orders」");   // not 全部Order: the view chose the rows
+  assert.equal(criteriaLine({ query_text: "SELECT count(o) AS 数量\nFROM (o:`Order`)" }, ""), "按已确认的定义：全部Order");
+  assert.equal(criteriaLine({ query_text: "SELECT count(o) AS 数量\nFROM (o:`Order`)\nWHERE o.`status code` = 'Delivered'", ...view }, ""), "按已确认的定义：视图「Valid orders」，Order.status code = Delivered");
+});
+
+test("a grouped total has a header over each of its three columns", () => {
+  const top = answerView({ answer: { groups: [["C001", 7140, 6], ["C013", 6205, 5]], total_groups: 39, without_value: 0, measure: { field: "amount", op: "sum", value: 119810, counted: 107, skipped: 0 } }, types });
+  assert.deepEqual(top.table.head, ["分组", "amount合计", "订单数"]);
+  assert.deepEqual(top.table.rows[0], ["C001", "7,140", "6"]);
+  assert.equal(top.table.head.length, top.table.rows[0].length);
+  const avg = answerView({ answer: { groups: [["C001", 1190, 6]], total_groups: 1, without_value: 0, measure: { field: "amount", op: "avg", value: 1119, counted: 107, skipped: 0 } }, types });
+  assert.deepEqual(avg.table.head, ["分组", "amount平均", "订单数"]);
+});
+
 test("history rows carry question, status and time", () => {
   assert.deepEqual(historyView({ id: 3, question: "q", status: "answered", asked_at: "t" }, "T"), { id: 3, question: "q", meta: "T 已回答" });
 });

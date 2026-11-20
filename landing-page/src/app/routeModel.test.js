@@ -88,9 +88,9 @@ test("the sidebar groups what the product has, and marks what is built", () => {
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
 });
 
-test("a viewer sees four items, a builder the three groups more, an admin settings too", () => {
+test("a viewer sees four items and the definitions they may read, a builder the three groups in full, an admin settings too", () => {
   const names = (user) => navFor(user).map((g) => [g.label ?? null, g.items.map((i) => i.label)]);
-  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板", "消息"]]]);
+  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板", "消息"]], ["数据", ["数据集", "血缘"]], ["业务对象", ["对象类型", "关系"]]]);   // read-only pages the service serves a viewer
   assert.deepEqual(names({ role: "builder" }).map((g) => g[0]), [null, "数据", "业务对象", "应用"]);
   assert.deepEqual(names({ role: "admin" }).map((g) => g[0]), [null, "数据", "业务对象", "应用", "设置"]);
   assert.deepEqual(names({ role: "admin" })[4][1], ["工作区", "用户", "权限"]);

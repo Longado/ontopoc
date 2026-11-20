@@ -4,7 +4,7 @@ which; a filter that found nothing in a table damaged upstream says so instead o
 import json
 import unittest
 
-from ontology_poc_generator.answer_checks import definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
+from ontology_poc_generator.answer_checks import column_values, definition_catalog, definition_check, filter_conditions, refusal, upstream_problems, with_upstream
 from ontology_poc_generator.ontology_questions import QUESTION_SYSTEM_PROMPT
 from tests.test_workspace_store import PLANTED_DRAFT
 
@@ -157,7 +157,101 @@ class MeaningTests(unittest.TestCase):
     def test_a_refusal_for_silence_says_how_it_was_read_too(self):
         checked = self.check('有多少订单已取消？', ALL_ORDERS, [])
         self.assertEqual(len(checked['unmet']), 1)
-        self.assertEqual(checked['understood'], [{'definition': '已取消', 'direction': 'unsaid', 'how': '出题员没有说明它是怎么用的'}])
+        self.assertEqual(checked['understood'], [{'definition': '已取消', 'direction': 'unsaid', 'how': '模型没有说明它是怎么用的'}])
+
+    def test_meanings_kept_by_leaving_every_other_code_out_are_the_ones_included(self):
+        four = {'订单.状态码': {'labels': {'0': '进行中', '1': '已交付', '2': '已取消', '3': '已退款'}}}
+        held = {'订单.状态码': {'0', '1', '2', '3'}}   # the values the column holds
+        question = '已取消和已退款的订单一共有多少笔？'
+        both = [inc('已取消'), inc('已退款')]
+        for left_out in (['0', '1'], ['进行中', '已交付']):   # the query language has no "is one of": the other codes are left out, by code or by meaning
+            rest = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': left_out}]}
+            checked = self.check(question, rest, both, meanings=four, values=held)
+            self.assertEqual(checked['unmet'], [], left_out)
+            self.assertEqual(sorted(u['definition'] for u in checked['understood']), ['已取消', '已退款'])
+            self.assertTrue(all(u['direction'] == 'include' for u in checked['understood']))
+        rest = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['0', '1']}]}
+        # what the filter lets through is more than the model said the question includes: 已退款 would be counted too
+        self.assertIn('已取消', [u['definition'] for u in self.check('已取消的订单有多少？', rest, [inc('已取消')], meanings=four, values=held)['unmet']])
+        # a value with no meaning on file, or a blank, would be let through as well
+        for odd in ('9', ''):
+            self.assertNotEqual(self.check(question, rest, both, meanings=four, values={'订单.状态码': {'0', '1', '2', '3', odd}})['unmet'], [], odd)
+        # rows not known: nothing says what else the filter lets through
+        self.assertNotEqual(self.check(question, rest, both, meanings=four)['unmet'], [])
+        # a meaning the question includes that the query leaves out is still the opposite
+        wrong = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['0', '1', '3']}]}
+        self.assertIn('已退款', [u['definition'] for u in self.check(question, wrong, both, meanings=four, values=held)['unmet']])
+
+    def test_meanings_are_kept_by_leaving_the_rest_out_only_when_nothing_else_narrows_the_column(self):
+        four = {'订单.状态码': {'labels': {'0': '进行中', '1': '已交付', '2': '已取消', '3': '已退款'}}}
+        held = {'订单.状态码': {'0', '1', '2', '3'}}
+        question = '已取消和已退款的订单一共有多少笔？'
+        both = [inc('已取消'), inc('已退款')]
+        rest = {'field': '状态码', 'not_equals': ['0', '1']}
+        narrowed = {
+            'equals': [rest, {'field': '状态码', 'equals': '2'}],     # keeps 已取消 alone: 已退款's rows are gone
+            'range': [rest, {'field': '状态码', 'at_most': 2}],      # 3 (已退款) is above the range
+        }
+        for name, where in narrowed.items():
+            unmet = self.check(question, {**ALL_ORDERS, 'where': where}, both, meanings=four, values=held)['unmet']
+            self.assertIn('已退款', [u['definition'] for u in unmet], name)
+        # a view the model also reads that filters the same column: 有效订单 drops 已取消, which the model says it includes
+        dropped = self.check(question, {**ALL_ORDERS, 'where': [rest]}, [*both, inc('有效订单')], [view()], meanings=four, values=held)['unmet']
+        self.assertIn('已取消', [u['definition'] for u in dropped])
+        # a share on the same column is not a filter that only leaves codes out either
+        shared = self.check(question, {**ALL_ORDERS, 'where': [rest], 'share': {'field': '状态码', 'equals': '2'}}, both, meanings=four, values=held)['unmet']
+        self.assertIn('已退款', [u['definition'] for u in shared])
+        # a dimension on the column narrows nothing: still answered
+        grouped = {**ALL_ORDERS, 'where': [rest], 'group_by': [{'via': [], 'field': '订单.状态码'}]}
+        self.assertEqual(self.check(question, grouped, both, meanings=four, values=held)['unmet'], [])
+
+    def test_the_values_a_filter_lets_through_are_read_per_object_as_the_query_reads_them(self):
+        from tests.test_workspace_store import planted_bundle
+        bundle, three = planted_bundle(), {'订单.状态码': {'labels': {'0': '已交付', '1': '生产中', '2': '已取消'}}}
+        self.assertEqual(column_values(bundle, three, PLANTED_DRAFT), {'订单.状态码': {'0', '1', '2'}})   # one row per order: the codes as the rows hold them
+        # a column of another table read as a customer's: a customer whose orders are 已交付 and 已取消 holds both, and "not 2" drops it, so the column is not given
+        reads_orders = json.loads(json.dumps(PLANTED_DRAFT))
+        reads_orders['object_types'][0]['attributes'].append({'source': '订单', 'path': '状态码'})
+        self.assertNotIn('订单.状态码', column_values(bundle, three, reads_orders))
+        question, both = '已交付和生产中的客户有几个？', [inc('已交付'), inc('生产中')]
+        customers = {'start': 'customer', 'where': [{'field': '状态码', 'not_equals': ['2']}], 'group_by': None}
+        self.assertNotEqual(definition_check(question, customers, reads_orders, [], three, both, values=column_values(bundle, three, reads_orders))['unmet'], [])
+        # KH099 is a customer only orders name: it has no 客户等级, "not C" lets it through, so the blank is among what the filter keeps
+        grades = {'客户.客户等级': {'labels': {'A': '重点', 'B': '普通', 'C': '观察'}}}
+        self.assertEqual(column_values(bundle, grades, PLANTED_DRAFT), {'客户.客户等级': {'A', 'B', 'C', ''}})
+        kept = {'start': 'customer', 'where': [{'field': '客户等级', 'not_equals': ['C']}], 'group_by': None}
+        refused = definition_check('重点和普通客户有几个？', kept, PLANTED_DRAFT, [], grades, [inc('重点', '客户.客户等级'), inc('普通', '客户.客户等级')], values=column_values(bundle, grades, PLANTED_DRAFT))
+        self.assertIn('重点', [u['definition'] for u in refused['unmet']])
+
+    def test_in_a_team_shaped_ontology_an_order_with_a_kept_and_a_left_out_row_turns_the_reading_off(self):
+        # the ontology as the team app builds it (workspace_questions: one dataset per type, identity its key), with a second, 已取消 row for DD20260001
+        # (已交付). The team app does not let such a type be confirmed (see test_workspace_questions); if it ever did, the per-object reading still refuses
+        from ontology_poc_generator.public_ontology import build_graph
+        from tests.test_workspace_store import planted_bundle
+        records = planted_bundle()['sources']['订单']['records']
+        team = {'object_types': [{'key': 'order', 'label': '订单', 'populated_from': [{'source': '订单', 'identity': {'订单号': '订单号'}}],
+                                  'attributes': [{'source': '订单', 'path': c} for c in ('订单号', '金额', '状态码')]}], 'relations': [], 'ignored_fields': [], 'open_questions': []}
+        three = {'订单.状态码': {'labels': {'0': '已交付', '1': '生产中', '2': '已取消'}}}
+        query, both = {'start': 'order', 'where': [{'field': '状态码', 'not_equals': ['2']}], 'group_by': None}, [inc('已交付'), inc('生产中')]
+        for rows, refused in ((records, False), ([*records, {**records[0], '状态码': '2'}], True)):
+            bundle = {'sources': {'订单': {'records': rows, 'requests': []}}, 'meanings': three}
+            held = column_values(bundle, three, team, build_graph(team, bundle))
+            unmet = definition_check('已交付和生产中的订单有多少？', query, team, [], three, both, values=held)['unmet']
+            self.assertEqual('已交付' in [u['definition'] for u in unmet], refused, len(rows))
+
+    def test_a_refusal_says_only_what_the_question_named_and_in_plain_words(self):
+        unasked = {**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': '2'}]}
+        [filtered] = self.check('订单有多少？', unasked, [])['unmet']   # the question does not name it; the query leaves it out
+        answer = refusal([filtered])
+        self.assertNotIn('问题里提到', answer['reason'])
+        self.assertIn('「已取消」', answer['reason'])
+        self.assertIn('问题里提到「已取消」', refusal(self.check('有多少订单已取消？', ALL_ORDERS, [])['unmet'])['reason'])   # this one it does name
+        said = [self.check('有多少订单已取消？', ALL_ORDERS, []), self.check('订单有多少？', unasked, []), self.check('不含已取消的订单有多少？', ALL_ORDERS, [men('已取消')]),
+                self.check('有效订单怎么定义的？', {'start': 'ticket', 'where': [], 'group_by': None}, [men('有效订单')], [view()]),
+                self.check('有效订单有多少？', ALL_ORDERS, [], [view()]), self.check('订单有多少，例如已取消的？', CANCELLED, [men('已取消')])]
+        text = json.dumps(said, ensure_ascii=False)
+        self.assertNotIn('出题员', text)
+        self.assertIn('模型', text)
 
     def test_a_query_the_language_cannot_read_is_left_to_say_so(self):
         listed = {'start': 'order', 'where': [{'field': '订单.状态码', 'equals': ['2', '0']}], 'group_by': None}
@@ -305,7 +399,11 @@ QUERIES = {
     '有效订单有多少？': (COUNT_ORDERS, [inc('有效订单')]), '订单有多少？': COUNT_ORDERS,
     '火星的客户有几个？': CITY('火星'), '上海的客户有几个？': CITY('上海'), '苏州的客户有几个？': CITY('苏州'),
     '已取消的订单有多少？': ({'start': 'order', 'where': [{'field': '订单.状态码', 'equals': ['2']}], 'group_by': None}, [inc('已取消')]),
-    '库存一共多少？': {'start': 'product', 'measure': {'field': '库存快照.库存数量', 'op': 'sum'}, 'group_by': None}}
+    '库存一共多少？': {'start': 'product', 'measure': {'field': '库存快照.库存数量', 'op': 'sum'}, 'group_by': None},
+    # two meanings kept by leaving the third out; then the same with 状态码 = 1 on top, which drops 已交付
+    '已交付和生产中的订单有多少？': ({'start': 'order', 'where': [{'field': '状态码', 'not_equals': ['2']}], 'group_by': None}, [inc('已交付'), inc('生产中')]),
+    '已交付和生产中的订单有多少？（又筛了一次）': ({'start': 'order', 'where': [{'field': '状态码', 'not_equals': ['2']}, {'field': '状态码', 'equals': '1'}], 'group_by': None},
+                                     [inc('已交付'), inc('生产中')])}
 
 
 class ServerAnswersTests(unittest.TestCase):
@@ -384,6 +482,18 @@ class ServerAnswersTests(unittest.TestCase):
             self.assertEqual([v['name'] for v in item['evidence']['views']], ['有效订单'])
         self.assertEqual(self.ask('已取消的不算，有多少订单？（带筛选）')['status'], 'definition_unmet')   # the query also counts them: contradicts
 
+    def test_on_a_single_upload_meanings_are_never_kept_by_leaving_the_other_codes_out(self):
+        # here one object can be filled from several tables and views choose rows after the check, so the check cannot know what "not 2" keeps:
+        # the question is refused as before C1, even when the answer would have been right (144)
+        self.confirm_meaning([{'value': '0', 'label': '已交付'}, {'value': '1', 'label': '生产中'}, {'value': '2', 'label': '已取消'}])
+        both = self.ask('已交付和生产中的订单有多少？')
+        self.assertEqual(both['status'], 'definition_unmet', both)
+        self.assertNotIn('answer', both)
+        self.assertIn('「已交付」', both['reason'])
+        narrowed = self.ask('已交付和生产中的订单有多少？（又筛了一次）')   # 48 orders would come back as both meanings
+        self.assertEqual(narrowed['status'], 'definition_unmet', narrowed)
+        self.assertNotIn('answer', narrowed)
+
     def test_a_label_of_two_characters_is_checked_when_the_model_says_it_is_used(self):
         self.confirm_meaning([{'value': '2', 'label': '作废'}])
         item = self.ask('有多少订单作废了？')
@@ -446,6 +556,91 @@ class ServerAnswersTests(unittest.TestCase):
         item = self.ask('库存一共多少？')
         self.assertIn('视图用不了', item['evidence']['views_unread'])
         self.assertIn('库存快照_当前', item['evidence']['views_unread'])
+
+
+def orders_with_a_second_row(code='2', number='DD20260001') -> list[dict]:
+    """The planted files with 订单 as a CSV holding one more row for an order that is already there (DD20260001 has 状态码 0): the order now
+    has two rows, one 已交付 and one with `code`."""
+    import base64, csv, io
+    from tests.test_workspace_store import ServerDataChecksTests, planted_bundle
+    records = planted_bundle()['sources']['订单']['records']
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=list(records[0]))
+    writer.writeheader()
+    writer.writerows([*records, {**next(r for r in records if r['订单号'] == number), '状态码': code}])
+    return [f for f in ServerDataChecksTests.files if f['filename'] != '订单.xlsx'] + [{'filename': '订单.csv', 'content_base64': base64.b64encode(out.getvalue().encode('utf-8')).decode()}]
+
+
+class RepeatedKeyAnswersTests(unittest.TestCase):
+    """An order with two rows, one 已交付 and one 已取消: the query leaves out every order that holds a left-out code, so "not 2" drops it although
+    it is 已交付 (143 for 144). On a single upload leaving the rest out is never read as including what it keeps, so this is refused too."""
+    post, ask, confirm_meaning = ServerAnswersTests.post, ServerAnswersTests.ask, ServerAnswersTests.confirm_meaning
+
+    def setUp(self):
+        from tests.test_ontology_ask_server import call
+        from tests.test_ontology_server import OntologyServerTests
+        self.model = AskModel(QUERIES)
+        server = OntologyServerTests().server(gateway=self.model)
+        self.base, self.out = server.__enter__()
+        self.addCleanup(server.__exit__, None, None, None)
+        self.call = call
+        status, self.run = call(self.base, '/api/ontology/build', {'files': orders_with_a_second_row()})
+        self.assertEqual(status, 200, self.run)
+
+    def test_meanings_are_not_kept_by_leaving_the_rest_out_when_an_object_holds_a_kept_and_a_left_out_code(self):
+        self.confirm_meaning([{'value': '0', 'label': '已交付'}, {'value': '1', 'label': '生产中'}, {'value': '2', 'label': '已取消'}])
+        item = self.ask('已交付和生产中的订单有多少？')   # 143 would come back: DD20260001 is 已交付 and is dropped for its 已取消 row
+        self.assertEqual(item['status'], 'definition_unmet', item)
+        self.assertNotIn('answer', item)
+        self.assertIn('「已交付」', item['reason'])
+
+
+class DraftModel(AskModel):
+    """AskModel with another draft."""
+    def __init__(self, queries, draft):
+        super().__init__(queries)
+        self.draft = draft
+
+    def complete_json(self, *, system_prompt, user_prompt):
+        from ontology_poc_generator.recognition import ModelCompletion
+        done = super().complete_json(system_prompt=system_prompt, user_prompt=user_prompt)
+        return done if system_prompt == self.questions else ModelCompletion(provider='fake', model='deepseek-flash', content=json.dumps(self.draft, ensure_ascii=False))
+
+
+class ViewDroppedOrdersTests(unittest.TestCase):
+    """The reviewer's case: orders are also filled from the open tickets (a population with a condition, which a view's choice does not follow), and a
+    keep-latest view per customer drops orders from 订单. Eight of them live on through their tickets with no 状态码, and "not 2" keeps them: 36 for
+    the 28 that equals 0 and equals 1 count. Refused."""
+    post, ask, confirm_meaning = ServerAnswersTests.post, ServerAnswersTests.ask, ServerAnswersTests.confirm_meaning
+    QUESTION = '每个客户最新的订单里，已交付和生产中的有多少？'
+
+    def setUp(self):
+        from tests.test_ontology_ask_server import call
+        from tests.test_ontology_server import OntologyServerTests
+        from tests.test_workspace_store import ServerDataChecksTests
+        draft = json.loads(json.dumps(PLANTED_DRAFT))
+        order = next(t for t in draft['object_types'] if t['key'] == 'order')
+        next(p for p in order['populated_from'] if p['source'] == '售后工单')['where'] = [{'path': '处理状态', 'equals': '处理中'}]
+        rest = ({'start': 'order', 'where': [{'field': '状态码', 'not_equals': ['2']}], 'group_by': None},
+                [inc('已交付'), inc('生产中'), {'id': '每客户最新订单', 'direction': 'include', 'basis': 'b'}])
+        each = lambda code: ({'start': 'order', 'where': [{'field': '状态码', 'equals': code}], 'group_by': None}, [{'id': '每客户最新订单', 'direction': 'include', 'basis': 'b'}, inc('已交付' if code == '0' else '生产中')])
+        self.model = DraftModel({self.QUESTION: rest, '每个客户最新的订单里，已交付的有多少？': each('0'), '每个客户最新的订单里，生产中的有多少？': each('1')}, draft)
+        server = OntologyServerTests().server(gateway=self.model)
+        self.base, self.out = server.__enter__()
+        self.addCleanup(server.__exit__, None, None, None)
+        self.call = call
+        status, self.run = call(self.base, '/api/ontology/build', {'files': ServerDataChecksTests.files})
+        self.assertEqual(status, 200, self.run)
+
+    def test_meanings_kept_by_leaving_the_rest_out_are_refused_where_a_view_drops_rows_that_live_on_elsewhere(self):
+        self.confirm_meaning([{'value': '0', 'label': '已交付'}, {'value': '1', 'label': '生产中'}, {'value': '2', 'label': '已取消'}])
+        status, body = self.post('/api/ontology/views', name='每客户最新订单', kind='latest', base='订单', key=['客户编号'], order='下单日期')
+        self.assertEqual(status, 200, body)
+        counts = [self.ask(f'每个客户最新的订单里，{label}的有多少？')['answer']['total'] for label in ('已交付', '生产中')]
+        self.assertEqual(sum(counts), 28)
+        item = self.ask(self.QUESTION)   # 36 would come back
+        self.assertEqual(item['status'], 'definition_unmet', item)
+        self.assertNotIn('answer', item)
 
 
 class BlockedDraftTests(unittest.TestCase):

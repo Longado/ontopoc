@@ -146,19 +146,27 @@ const BUILDERS = ["tasks", "confirm", "pipelines", "sources", "schedules", "agen
 const item = (key, icon) => ({ key, get label() { return t(`nav.${key}`); }, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
 const group = (key, icon, rest) => ({ key, get label() { return t(`nav.group.${key}`); }, icon, get hint() { return t(`nav.group.${key}.hint`); }, ...rest });
 
-/** The sidebar: a group with a `label` folds and has a grey one-line `hint`; `builders` groups are for builders and admins. A viewer sees 首页, 问数, 看板, 消息 only; every page stays reachable by its address. */
+/** The sidebar: a group with a `label` folds and has a grey one-line `hint`; `builders` items are for builders and admins. A viewer sees 首页, 问数, 看板, 消息
+ * and the definitions they may read (数据集, 血缘, 对象类型, 关系: the service serves them to a viewer); every page stays reachable by its address. */
 export const NAV = [
   { key: "main", items: [item("home", "home"), item("qa", "chat"), item("boards", "board"), item("notices", "bell")] },
-  group("data", "database", { builders: true, items: [item("datasets", "table"), item("sources", "plug"), item("pipelines", "pipeline"), item("schedules", "clock"), item("lineage", "lineage"), item("tasks", "tasks")] }),
-  group("objects", "cube", { builders: true, items: [item("confirm", "check"), item("types", "cube"), item("relations", "link")] }),
-  group("apps", "apps", { builders: true, items: [item("agents", "bot")] }),
+  group("data", "database", { items: [item("datasets", "table"), item("sources", "plug"), item("pipelines", "pipeline"), item("schedules", "clock"), item("lineage", "lineage"), item("tasks", "tasks")] }),
+  group("objects", "cube", { items: [item("confirm", "check"), item("types", "cube"), item("relations", "link")] }),
+  group("apps", "apps", { items: [item("agents", "bot")] }),
 ];
 
 /** What only an admin sees. */
 export const ADMIN_NAV = [group("settings", "settings", { items: [item("settings", "settings"), item("users", "users"), item("permissions", "shield")] })];
 
-/** The groups this person's role sees, in order. */
-export const navFor = (user) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])].filter((g) => !g.builders || canBuild(user));
+/** The groups this person's role sees, in order, each with the items their role may open; a group left with none is not shown, and nobody signed in sees
+ * the first group only. A group keeps its own words (the getters) underneath. */
+export const navFor = (user) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])]
+  .filter((g) => !g.label || user)
+  .map((g) => {
+    const items = g.items.filter((i) => !i.builders || canBuild(user));
+    return items.length === g.items.length ? g : { __proto__: g, items };
+  })
+  .filter((g) => g.items.length);
 
 /** Every page the app draws, once: the sidebar item it lives under (null: none) and the role it needs (none: anyone signed in). A new page is one entry here
  * and one view in Shell.jsx; routeModel.test.js fails when the two differ or an address opens a page that is not here. The service checks roles again. */

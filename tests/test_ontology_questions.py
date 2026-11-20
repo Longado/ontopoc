@@ -2,7 +2,7 @@ import json
 import unittest
 
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, ask_questions, categorical_values, run_query
-from ontology_poc_generator.recognition import ModelCompletion
+from ontology_poc_generator.recognition import ModelCompletion, RecognitionError
 from tests.test_company_ontology import BUNDLE, PROPOSAL
 
 
@@ -77,6 +77,23 @@ class AskTests(unittest.TestCase):
         out = ask_questions(PROPOSAL, BUNDLE, self.Model(bare), question='哪个城市订单最多？')
         self.assertEqual((out['error'], [i['status'] for i in out['items']], out['items'][0]['question']), (None, ['answered'], '哪个城市订单最多？'))
         self.assertEqual(ask_questions(PROPOSAL, BUNDLE, self.Model(bare))['error'], '模型没有返回问题列表')   # a round of its own questions still needs the list
+
+    def test_one_asked_question_in_another_shape_is_still_read_as_that_question(self):
+        item = self.REPLY['questions'][0]
+        for reply in ({'questions': item}, [item]):   # the list as one object, or the item list without its wrapper
+            out = ask_questions(PROPOSAL, BUNDLE, self.Model(reply), question='哪个城市订单最多？')
+            self.assertEqual((out['error'], [i['status'] for i in out['items']]), (None, ['answered']), reply)
+        unwritten = {'reasoning': '本体里没有产品', 'missing': 'ontology'}   # no query key at all: the question is kept and refused with the model's reason
+        out = ask_questions(PROPOSAL, BUNDLE, self.Model(unwritten), question='哪个产品最常出问题？')
+        self.assertEqual((out['error'], out['items'][0]['status'], out['items'][0]['question']), (None, 'ontology_gap', '哪个产品最常出问题？'))
+        self.assertEqual(ask_questions(PROPOSAL, BUNDLE, self.Model([item]))['error'], '模型没有返回问题列表')   # a round of its own questions still needs the list
+
+    def test_a_request_that_failed_is_told_apart_from_a_reply_that_could_not_be_read(self):
+        class Down:
+            def complete_json(self, *, system_prompt, user_prompt):
+                raise RecognitionError('HTTP Error 503')
+        self.assertTrue(ask_questions(PROPOSAL, BUNDLE, Down(), question='订单有多少？').get('request_failed'))
+        self.assertFalse(ask_questions(PROPOSAL, BUNDLE, self.Model({'nope': 1}), question='订单有多少？').get('request_failed'))
 
     def test_an_attribute_written_as_a_derived_measure_is_read_as_the_attribute(self):
         written = run_query(PROPOSAL, BUNDLE, {'start': 'order', 'measure': {'derived': '金额', 'op': 'sum'}})   # a confirmed derived property is an attribute in the workspace

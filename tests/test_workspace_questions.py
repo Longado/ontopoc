@@ -325,6 +325,60 @@ class QuestionTests(SigningTestCase):
             self.assertEqual((body['status'], body['answer']['total']), ('answered', 96), body)
             self.assertIn('状态码 不是 1（生产中）、2（已取消）：算进 0 已交付', body['path'])
 
+    def test_two_meanings_asked_for_together_are_answered_by_leaving_the_other_codes_out(self):
+        # 已交付和生产中: the query language has no "is one of", so the model leaves 已取消 out and says it includes the two it keeps (the public demo's
+        # "已取消和已退款的订单" was refused this way, the reason naming meanings the question never said)
+        both = cancelled(query={**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['2']}], 'measure': {'field': '金额', 'op': 'sum'}},
+                         used=[{'id': f'订单.状态码={label}', 'direction': 'include', 'basis': label} for label in ('已交付', '生产中')])
+        with self.service(gateway=AskModel(both)) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask(team['vera'], '已交付和生产中的订单一共多少笔，金额多少？')
+            self.assertEqual((status, body['status']), (200, 'answered'), body)
+            self.assertEqual((body['answer']['measure']['value'], body['answer']['measure']['counted']), (2426560, 144))
+            self.assertEqual(sorted((u['definition'], u['direction']) for u in body['understood']), [('已交付', 'include'), ('生产中', 'include')])
+
+    def test_two_meanings_said_to_be_kept_while_another_filter_on_the_column_drops_one_are_refused_not_answered(self):
+        # the reviewer's case: not 已取消, and also 状态码 = 1, keeps only 生产中 (48 orders, 759,850) while the model says 已交付 is included too
+        narrowed = cancelled(query={**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['2']}, {'field': '状态码', 'equals': '1'}], 'measure': {'field': '金额', 'op': 'sum'}},
+                             used=[{'id': f'订单.状态码={label}', 'direction': 'include', 'basis': label} for label in ('已交付', '生产中')])
+        with self.service(gateway=AskModel(narrowed)) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            status, body = self.ask(team['vera'], '已交付和生产中的订单一共多少笔，金额多少？')
+            self.assertEqual((status, body['status']), (200, 'definition_unmet'), body)
+            self.assertNotIn('answer', body)
+            self.assertIn('「已交付」', body['reason'])
+
+    def test_an_order_type_never_answers_with_two_rows_for_one_order(self):
+        # The guarantee, not a regression test (it passes with the per-row reading too): "not 2" drops an object that holds a 2 in any of its rows, so
+        # leaving the rest out keeps 已交付 and 生产中 only while each order has one row. Here a type is confirmed only on a key that is unique and filled,
+        # and data that repeats it sends the type back for a look that cannot be passed: an order with a 已交付 row and a 已取消 row (DD20260001) never
+        # reaches a question. The regression test is test_answer_checks' team-shaped one
+        from tests.test_answer_checks import orders_with_a_second_row
+        both = cancelled(query={**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['2']}]},
+                         used=[{'id': f'订单.状态码={label}', 'direction': 'include', 'basis': label} for label in ('已交付', '生产中')])
+        repeated = next(f for f in orders_with_a_second_row() if f['filename'] == '订单.csv')
+        with self.service(gateway=AskModel(both)) as (base, out):
+            team = self.people(base, 'ann', 'bob', 'vera', roles={'vera': 'viewer'})
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': orders_with_a_second_row()})[0], 200)
+            status, body = team['ann'].post('/api/workspace/types', ORDER)
+            self.assertEqual(status, 400, body)
+            self.assertIn('DD20260001（2 行）', body['error'])
+        with self.service(gateway=AskModel(both)) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            self.assertEqual(self.ask(team['vera'], '已交付和生产中的订单一共多少笔？')[1]['answer']['total'], 144)
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [{**repeated, 'target': '订单', 'mode': 'overwrite'}]})[0], 200)
+            shown = team['bob'].get('/api/workspace/types/order')[1]
+            self.assertEqual(shown['state'], 'needs_look')
+            status, body = team['bob'].post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen']})
+            self.assertEqual(status, 409, body)
+            self.assertIn('不唯一', body['error'])
+            status, body = self.ask(team['vera'], '已交付和生产中的订单一共多少笔？')
+            self.assertEqual(status, 200, body)
+            self.assertNotIn('answer', body)
+
     def test_a_query_that_leaves_a_meaning_out_while_the_model_says_include_or_nothing_is_refused(self):
         for direction, how in (('include', '问题要把它算进来，这条查询却把它排除了'), ('mention', '却按它筛选了行')):
             with self.subTest(direction=direction), self.service(gateway=AskModel(self.not_cancelled('已取消', direction=direction))) as (base, out):
@@ -560,6 +614,30 @@ class QuestionTests(SigningTestCase):
             self.assertNotIn(body['status'], ('answered', 'no_data', 'refused'))
             self.assertEqual(team['vera'].get('/api/workspace/ask/tally')[0], 403)   # a viewer sees their own history, not the team's counts
             self.assertEqual(team['ann'].get('/api/workspace/ask/tally')[1]['last_7_days'], {'asked': 1, 'answered': 0, 'refused': 0, 'unanswered': 1})
+
+    def test_a_reply_that_holds_no_question_is_kept_with_a_plain_reason_and_counted_as_unanswered(self):
+        class Unshaped(AskModel):
+            """Replies without the question it was asked: an object of some other shape (seen from a real model on 销售额是多少？), or text that is not JSON."""
+            def complete_json(self, *, system_prompt, user_prompt, timeout_seconds=None):
+                self.requests.append(json.loads(user_prompt))
+                return ModelCompletion('test', 'test-model', self.item)
+        model = Unshaped(json.dumps({'clarify': ['全部订单', '有效订单']}, ensure_ascii=False))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            vera = team['vera']
+            for reply in (model.item, '销售额要按哪个口径？'):
+                model.item = reply
+                status, body = self.ask(vera, '销售额是多少？')
+                self.assertEqual((status, body['status']), (200, 'no_query'), body)
+                self.assertNotIn('answer', body)
+                for internal in ('问题列表', 'JSON', 'query', 'null'):   # what the reader is told is not the service's own words about the reply
+                    self.assertNotIn(internal, body['reason'])
+                self.assertIn('没有给出数字', body['reason'])
+                self.assertIn('订单', body['reason'])   # what may be asked about, so the question can be put more plainly
+                self.assertEqual(body['steps'][-1]['failed'], True)
+            self.assertEqual([(h['question'], h['status']) for h in vera.get('/api/workspace/ask')[1]['history']], [('销售额是多少？', 'no_query')] * 2)
+            self.assertEqual(team['ann'].get('/api/workspace/ask/tally')[1]['last_7_days'], {'asked': 2, 'answered': 0, 'refused': 0, 'unanswered': 2})
 
     def test_the_tally_names_no_definition_its_reader_may_not_see(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):

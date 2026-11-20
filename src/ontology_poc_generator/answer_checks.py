@@ -13,6 +13,17 @@ it checks the executed query against what the model said:
              它，没法核对"), since nothing says what the word was for; a filter on its column that picks rows is a use, refused too
   exclude    the query leaves the meaning's codes out ("not_equals": the column is not one of them, code leaves those rows out); else a
              named view a person made that leaves the meaning out is read in its place; else the answer is refused naming what could not be applied
+  (include by leaving the rest out) the query language has no "is one of", so 已取消和已退款 is written as "the column is none of the other
+             codes". That includes 已取消 and 已退款 only when everything the filter lets through, read per object from the column's values, is a
+             code of a meaning the model said the question includes: a code with no meaning, a blank (an object with no value there), or a meaning
+             it did not name would be counted too, and is refused as before (so is a check that is not given the values). Only when each object
+             holds one value in the column: the query leaves out an object any of whose values is left out, so an object with a kept code and a
+             left-out one (two rows of one key, a column of another table's rows) would be dropped, and such a column is not given. Only when
+             leaving codes out is all the query does to the column: another filter on it (an equals, a range), a share of it or a view read that
+             filters it could drop a kept meaning's rows. Only where it is given the values: the team app, where each type is built from one
+             dataset keyed on a unique, filled key and no view's choice reaches past it. A single upload is not given them, and there such a
+             question is refused as before: one object can be filled from several tables (an order also from its tickets), and views choose rows
+             after the check, so an order a view drops can live on through a ticket with no code and "not 2" would count it
   omitted    a confirmed label the model did not list, that the question says verbatim (three characters or more, or with its
              column named) or that the query filters by: refused, saying the model did not say how it was used
   unknown    an id the model wrote that is in no catalog entry (a synonym such as 取消), whatever direction it gave: refused, saying the name did not match,
@@ -37,8 +48,8 @@ from collections import Counter
 from ontology_poc_generator.code_meanings import codes_for_label
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.named_views import query_tables, query_types
-from ontology_poc_generator.ontology_questions import RANGES, _fields, _resolve_field, _shape_limit, _types, clean_used
-from ontology_poc_generator.public_ontology import normalize_proposal, normalize_value
+from ontology_poc_generator.ontology_questions import RANGES, _fields, _matcher, _resolve_field, _shape_limit, _types, clean_used
+from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value
 from ontology_poc_generator.repeated_keys import rule_key
 from ontology_poc_generator.workspace_store import describes_rows
 
@@ -48,7 +59,7 @@ UNSAID = 'unsaid'
 # of a view: a named view is not a column the query can leave a value out of
 def _excluding(): return tr('这个问法要把它排除，查询只能写“某个字段等于某个值”，做不到排除', 'The question leaves it out, but a query can only say "a field equals a value", so it cannot leave it out')
 def _not_left_out(): return tr('这个问法要把它排除，但这条查询没有把它排除掉（没有写“不等于”）', 'The question leaves it out, but the query does not (it has no "not equal")')
-def _unsaid_how(): return tr('出题员没有说明它是怎么用的', 'The question writer did not say how it is used')
+def _unsaid_how(): return tr('模型没有说明它是怎么用的', 'The model did not say how it is used')
 def _unbacked(): return tr('没法核对', 'it cannot be checked')
 def _unbacked_how(): return tr('只是提到却没有用到它，没法核对', 'Only mentioned, not used, so it cannot be checked')
 
@@ -128,12 +139,44 @@ def _use(uses: list, field: str, labels: dict[str, str], label: str) -> str | No
     return found
 
 
+def column_values(bundle: dict, meanings: dict | None, ontology: dict, graph: dict | None = None) -> dict[str, set[str]]:
+    """{field: the values its column holds, as normalize_value reads them, '' for an object with none} for each column with meanings, read per object as
+    the query reads it: what a filter that leaves codes out lets through. The query leaves out an object when any of its values is left out, so a column
+    in which some object holds more than one value (two rows of one key, a column of rows of another table) is not given: an object that holds a kept
+    code and a left-out one would be dropped though its meaning is kept."""
+    types = _types(normalize_proposal(ontology))
+    graph = graph or build_graph(ontology, bundle)
+    values, _, _ = _matcher(types, bundle, graph)
+    out, mixed = {}, set()
+    for key, t in types.items():
+        for field in set(_fields(t)) & set(meanings or {}):
+            for inst in (i for i in graph['sources_of'] if i[0] == key):
+                got = {normalize_value(v) or '' for v in values(inst, field)} or {''}
+                if len(got) > 1:
+                    mixed.add(field)
+                out.setdefault(field, set()).update(got)
+    return {field: held for field, held in out.items() if field not in mixed}
+
+
+def _left_in(uses: list, field: str, labels: dict[str, str], held: set[str] | None) -> set[str] | None:
+    """The meanings a filter that leaves codes out of this column keeps, when every value it lets through (of `held`, the column's values) is a code with
+    a meaning: "not 0, 1, 2, 3" on a column holding 0 to 5 keeps 4's and 5's. None when there is no such filter, the values are not known, or it lets a
+    blank or a code with no meaning through."""
+    given = [v for resolved, equals, kind in uses if resolved == field and kind == 'exclude' for v in (equals if isinstance(equals, list) else [equals])]
+    if not given or held is None:
+        return None
+    left_out = {normalize_value(c) for v in given for c in codes_for_label({field: {'labels': labels}}, field, str(v))}
+    said = {normalize_value(c): label for c, label in labels.items() if label}
+    through = held - left_out
+    return {said[v] for v in through} if through and through <= set(said) else None
+
+
 def _says(direction: str, definition: str, how: str) -> dict:
     return {'definition': definition, 'direction': direction, 'how': how}
 
 
 def definition_check(question: str, query: dict, ontology: dict, views: list[dict], meanings: dict | None, used: list | None,
-                     told: list | None = None, waiting: dict | None = None) -> dict:
+                     told: list | None = None, waiting: dict | None = None, values: dict | None = None) -> dict:
     """{'unmet': [{'definition', 'kind', 'why'}], 'apply': [views to choose rows by], 'understood': [{'definition', 'direction',
     'how'}]}: the model's `definitions_used` (see the top of the file) checked against `query`; `understood` is how the model's
     word was carried out (or that it said nothing), said beside every answer, a refusal too, so that a wrong direction can be
@@ -142,7 +185,8 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
     is the ids the model was given when it wrote the question (None: all of them): one it was not given, such as a meaning
     confirmed after the question was written, is not held against it for being left out. An item stored before ids existed
     names a meaning by its label alone; that reads as every meaning with that label. `waiting` is {field: {'labels': {code: label},
-    'changes': [what changed]}} for the meanings that wait for a second look."""
+    'changes': [what changed]}} for the meanings that wait for a second look. `values` is column_values() of the rows the query reads (the team app only): without
+    it a filter that leaves codes out is never read as including the codes it keeps."""
     if _shape_limit(query):   # a query the language cannot read is said so by the query itself, not refused for a definition
         return {'unmet': [], 'apply': [], 'understood': []}
     rank = {'mention': 0, 'include': 1, 'exclude': 2}
@@ -179,12 +223,12 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
             understood.append(_says(direction, v['name'], tr('查询做不到排除', 'A query cannot leave it out')))
         elif direction is None:
             if offered(v['name']) and _verbatim(question, v['name']):
-                omitted.append(({'definition': v['name'], 'kind': 'view', 'why': tr('问题里说了它，但出题员没有说明它是怎么用的，这条查询也没有读它', 'The question names it, but the question writer did not say how it is used, and the query does not read it')}, _says(UNSAID, v['name'], _unsaid_how())))
+                omitted.append(({'definition': v['name'], 'kind': 'view', 'why': tr('问题里说了它，但模型没有说明它是怎么用的，这条查询也没有读它', 'The question names it, but the model did not say how it is used, and the query does not read it')}, _says(UNSAID, v['name'], _unsaid_how())))
         elif direction == 'mention':
             if v['source'] in tables:
                 understood.append(_says(direction, v['name'], tr('只是提到，没有读它', 'Only mentioned, not read')))
             else:
-                unmet.append({'definition': v['name'], 'kind': 'view', 'why': tr(f'出题员说问题只是提到它，但这条查询没有读它的表「{v["source"]}」，{_unbacked()}', f'The question writer said it is only mentioned, but the query does not read its table "{v["source"]}", so {_unbacked()}')})
+                unmet.append({'definition': v['name'], 'kind': 'view', 'why': tr(f'模型说问题只是提到它，但这条查询没有读它的表「{v["source"]}」，{_unbacked()}', f'The model said it is only mentioned, but the query does not read its table "{v["source"]}", so {_unbacked()}')})
                 understood.append(_says(direction, v['name'], _unbacked_how()))
         elif v['state'] != 'confirmed':
             unmet.append({'definition': v['name'], 'kind': 'view', 'why': tr(f'这个视图现在用不了：{v["why"]}', f'This view cannot be used right now: {v["why"]}')})
@@ -203,6 +247,11 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                 addressed.add(label)
     for field, meaning in sorted((meanings or {}).items()):
         column = field.partition('.')[2]
+        kept = _left_in(uses, field, meaning['labels'], (values or {}).get(field)) if field in read_fields else None
+        included = {label for label in meaning['labels'].values() if label and (declared.get(meaning_id(field, label)) or (declared.get(label) if label in bare else None)) == 'include'}
+        narrowed = any(resolved == field and kind in ('filter', 'share') for resolved, _, kind in uses) or any(   # an equals, a range or a share on the column,
+            v['definition'].get('kind') == 'filter' and f'{v["source"]}.{v["definition"].get("column")}' == field for v in apply)   # or a view read that filters it
+        rest = kept if kept and kept <= included and not narrowed else None   # the filter leaves the other codes out to keep just the meanings the question includes
         for label in sorted({x for x in meaning['labels'].values() if x}):
             codes = tr('、', ', ').join(sorted(c for c, said in meaning['labels'].items() if said == label))
             ident = meaning_id(field, label)
@@ -211,8 +260,8 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
             colon = tr('：', ': ')
             if field not in read_fields:
                 if direction == 'mention':
-                    unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：出题员说问题只是提到它，但这条查询没有读「{field.partition(".")[0]}」表里的对象，{_unbacked()}',
-                                                                                   f'{what}: the question writer said it is only mentioned, but the query does not read objects from the table "{field.partition(".")[0]}", so {_unbacked()}')})
+                    unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：模型说问题只是提到它，但这条查询没有读「{field.partition(".")[0]}」表里的对象，{_unbacked()}',
+                                                                                   f'{what}: the model said it is only mentioned, but the query does not read objects from the table "{field.partition(".")[0]}", so {_unbacked()}')})
                     understood.append(_says(direction, label, _unbacked_how()))
                 if direction == 'exclude':
                     unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：这个问法要把它排除，但这条查询没有读「{field.partition(".")[0]}」表里的对象，排除没有地方可做',
@@ -232,6 +281,9 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                     hint = tr(f'（你定义过的视图「{other["name"]}」就是把它排除后的行，可以直接问它）', f' (your view "{other["name"]}" is these rows with it left out; you can ask it directly)') if other else ''
                     unmet.append({'definition': label, 'kind': 'meaning', 'why': f'{what}{colon}{_not_left_out()}{hint}'})
                     understood.append(_says(direction, label, tr('查询没有把它排除', 'The query does not leave it out')))
+            elif direction == 'include' and use is None and rest and label in rest:   # one of the meanings kept by leaving every other code out
+                shown = tr('、', ', ').join(sorted(rest))
+                understood.append(_says(direction, label, tr(f'{column} 去掉其他取值后只剩 {shown}', f'{column} with the other values left out: only {shown} remain')))
             elif direction == 'include':
                 if use is None:
                     unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what} 是确认过的含义，但这条查询没有按它筛选', f'{what} is a confirmed meaning, but the query does not filter by it')})
@@ -241,21 +293,23 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                                  else tr(f'按 {column} 分组', f'Grouped by {column}') if use else tr('查询没有按它筛选', 'The query does not filter by it')))
             elif direction == 'mention':
                 if use in ('filter', 'exclude'):
-                    unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：出题员说问题只是提到它，这条查询却按它筛选了行，方向没法核对', f'{what}: the question writer said it is only mentioned, but the query filters rows by it, so the direction cannot be checked')})
+                    unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：模型说问题只是提到它，这条查询却按它筛选了行，方向没法核对', f'{what}: the model said it is only mentioned, but the query filters rows by it, so the direction cannot be checked')})
                 elif use is None:
-                    unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：出题员说问题只是提到它，但这条查询既没有算它的占比，也没有按「{column}」分组，{_unbacked()}',
-                                                                               f'{what}: the question writer said it is only mentioned, but the query neither takes its share nor groups by "{column}", so {_unbacked()}')})
+                    unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：模型说问题只是提到它，但这条查询既没有算它的占比，也没有按「{column}」分组，{_unbacked()}',
+                                                                               f'{what}: the model said it is only mentioned, but the query neither takes its share nor groups by "{column}", so {_unbacked()}')})
                 understood.append(_says(direction, label, tr(f'算它的占比（{column} = {codes}）', f'Takes its share ({column} = {codes})') if use == 'share' else tr(f'按 {column} 分组', f'Grouped by {column}') if use == 'group'
                                  else tr(f'{column} 不是 {codes}', f'{column} is not {codes}') if use == 'exclude' else f'{column} = {codes}' if use else _unbacked_how()))
             elif not offered(ident, label):
                 continue
+            elif use == 'exclude' and rest:   # left out so that only the meanings the question includes remain: said by those
+                continue
             elif use in ('filter', 'share', 'exclude'):
-                omitted.append(({'definition': label, 'kind': 'meaning', 'why': tr(f'{what} 是确认过的含义，这条查询按它筛选了，但出题员没有说明问题是要包含还是排除它，方向没法核对',
-                                                                                  f'{what} is a confirmed meaning and the query filters by it, but the question writer did not say whether the question includes or leaves it out, so the direction cannot be checked')},
-                                _says(UNSAID, label, tr(f'{column} {"不是" if use == "exclude" else "="} {codes}，但出题员没说方向', f'{column} {"is not" if use == "exclude" else "="} {codes}, but the question writer did not say the direction'))))
+                omitted.append(({'definition': label, 'kind': 'meaning', **({} if _verbatim(question, label, column) else {'unasked': True}), 'why': tr(f'{what} 是确认过的含义，这条查询按它筛选了，但模型没有说明问题是要包含还是排除它，方向没法核对',
+                                                                                  f'{what} is a confirmed meaning and the query filters by it, but the model did not say whether the question includes or leaves it out, so the direction cannot be checked')},
+                                _says(UNSAID, label, tr(f'{column} {"不是" if use == "exclude" else "="} {codes}，但模型没说方向', f'{column} {"is not" if use == "exclude" else "="} {codes}, but the model did not say the direction'))))
             elif label not in addressed and _verbatim(question, label, column):
-                omitted.append(({'definition': label, 'kind': 'meaning', 'why': tr(f'{what} 是确认过的含义，问题里说了它，但出题员没有说明它是怎么用的，这条查询也没有按它筛选',
-                                                                              f'{what} is a confirmed meaning and the question names it, but the question writer did not say how it is used, and the query does not filter by it')}, _says(UNSAID, label, _unsaid_how())))
+                omitted.append(({'definition': label, 'kind': 'meaning', 'why': tr(f'{what} 是确认过的含义，问题里说了它，但模型没有说明它是怎么用的，这条查询也没有按它筛选',
+                                                                              f'{what} is a confirmed meaning and the question names it, but the model did not say how it is used, and the query does not filter by it')}, _says(UNSAID, label, _unsaid_how())))
     unknown = [(name, d) for name, d in sorted(declared.items()) if name not in known and not (told is not None and name in told)]
     for name, d in unknown if known else []:   # with nothing confirmed the model was told no names: a name it writes is nothing to check
         unmet.append({'definition': name, 'kind': 'unknown', 'why': tr(f'模型写的定义名对不上：「{name}」不是你确认过的定义，也不是视图名，没法核对它是怎么用的',
@@ -269,7 +323,8 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
 
 def refusal(unmet: list[dict]) -> dict:
     """The answer that says which definitions the question named and the query did not apply."""
-    said = tr('；', '; ').join(tr(f'问题里提到「{u["definition"]}」，{u["why"]}', f'The question mentions "{u["definition"]}": {u["why"]}') for u in unmet)
+    said = tr('；', '; ').join(tr(f'「{u["definition"]}」：{u["why"]}', f'"{u["definition"]}": {u["why"]}') if u.get('unasked')   # only the query used it
+                               else tr(f'问题里提到「{u["definition"]}」，{u["why"]}', f'The question mentions "{u["definition"]}": {u["why"]}') for u in unmet)
     return {'status': 'definition_unmet', 'reason': tr(f'没有按你确认过的定义回答：{said}。没有给出数字', f'Not answered under your confirmed definitions. {said}. No number is given.'), 'unmet': unmet}
 
 

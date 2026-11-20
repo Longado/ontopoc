@@ -852,6 +852,26 @@ def flag_unasked_filters(result: dict, question: str) -> dict:
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
 
 
+FORMAT_WORDS = re.compile(r'(?<![A-Za-z0-9_])(?:null|query_language|group_by|not_equals|definitions_used|unmatched_relation)(?![A-Za-z0-9_])')
+FORMAT_WORDS_ZH = re.compile(r'(?<![A-Za-z0-9_])(?:query|missing|ontology|where|via|share|measure|equals|start|top|include|exclude|mention)(?![A-Za-z0-9_])')   # a field name of the query, inside Chinese
+
+
+def _for_reader(reasoning: str, status: str) -> str:
+    """The model's reasoning as the reason a reader is given: without the sentences that talk about the JSON it wrote ("所以 query 为 null，missing 为
+    ontology"). A Chinese sentence that names one of the query's fields is about the format; in English only the format's own tokens are (query and where
+    are words). When a sentence was left out, code says plainly what the outcome is (`status`: query_limit or ontology_gap), since the left-out ones
+    often held the why. '' when the model gave no reasoning."""
+    ended = re.sub(r'(?<!\be\.g)(?<!\bi\.e)(?<!\betc)(?<!\bvs)(?<!\bcf)\. ', '.\n', reasoning, flags=re.I)   # "e.g. customer" does not end a sentence
+    sentences = re.findall(r'[^。！？!?\n]+(?:[。！？!?]|$)|[^\n]+', ended)
+    kept = [x.strip() for x in sentences if x.strip() and not FORMAT_WORDS.search(x) and not (re.search(r'[\u4e00-\u9fff]', x) and FORMAT_WORDS_ZH.search(x))]
+    said = ''.join(x + (' ' if x[-1] in '.!?' else '') for x in kept).strip()
+    if len(kept) == len([x for x in sentences if x.strip()]):
+        return said
+    plain = tr('现在的查询写法还表达不了这个问题。', 'The query format cannot express this question yet.') if status == 'query_limit' \
+        else tr('已确认的对象类型、关系和属性回答不了这个问题。', 'The confirmed object types, relations and properties cannot answer this question.')
+    return f'{said}{" " if said and english() else ""}{plain}'
+
+
 def _in_names(ontology: dict, result: dict) -> dict:
     """The reason of an answer that did not succeed, written in the names a person reads instead of the ontology's keys."""
     if result['status'] != 'answered' and result.get('reason') and 'refused_by_card' not in result:   # the card's reason names a column, not an object
@@ -898,13 +918,17 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
     judgement = ask_model(gateway, 'question_writer', QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT + ENGLISH_NOTE if english() else QUESTION_SYSTEM_PROMPT, request)
     out['model'] = judgement.model
     if judgement.failure == 'request':
-        return {**out, 'error': model_failure_text(judgement.message)}
+        return {**out, 'error': model_failure_text(judgement.message), 'request_failed': True}   # nothing came back: told apart from a reply that could not be read
     if judgement.failure == 'not_json':
         return {**out, 'error': tr('模型返回的不是 JSON', 'The model did not return JSON')}
     reply = judgement.reply
-    raw = reply.get('questions') if isinstance(reply, dict) else None
-    if raw is None and question and isinstance(reply, dict) and 'query' in reply:   # one asked question answered as a bare object, not in a list
+    raw = reply.get('questions') if isinstance(reply, dict) else reply if question and isinstance(reply, list) else None   # one asked question: the item list without its wrapper too
+    if question and isinstance(raw, dict):   # the list written as its one item
+        raw = [raw]
+    if raw is None and question and isinstance(reply, dict) and {'query', 'reasoning', 'missing'} & set(reply):   # one asked question answered as a bare object, not in a list (a query left out is null)
         raw = [{**reply, 'question': reply['question'] if isinstance(reply.get('question'), str) else question}]
+    if question and isinstance(raw, list):
+        raw = [{**q, 'question': q['question'] if isinstance(q.get('question'), str) else question} if isinstance(q, dict) else q for q in raw]
     if not isinstance(raw, list):
         return {**out, 'error': tr('模型没有返回问题列表', 'The model did not return a list of questions')}
     graph = build_graph(ontology, bundle)
@@ -933,7 +957,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
             status = 'query_limit' if q.get('missing') == 'query_language' else 'ontology_gap'
             unmatched = getattr(answerer, 'unmatched', None)   # the question the query language cannot say, answered from the relation check
             result = unmatched(q.get('unmatched_relation')) if unmatched and status == 'query_limit' else None
-            result = result or _in_names(ontology, {'status': status, 'reason': str(q.get('reasoning') or tr('模型认为本体表达不了这个问题', 'The model thinks the ontology cannot express this question')), 'reason_from_model': True})
+            result = result or _in_names(ontology, {'status': status, 'reason': _for_reader(str(q.get('reasoning') or ''), status) or tr('模型认为本体表达不了这个问题', 'The model thinks the ontology cannot express this question'), 'reason_from_model': True})
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
                              **({'definitions_used': used} if used else {}), **({'definitions_told': [d['id'] for d in definitions]} if definitions else {}), **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])

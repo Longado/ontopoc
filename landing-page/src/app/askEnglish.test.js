@@ -48,6 +48,8 @@ test("the basis, history and caliber lines read in English", () => {
   assert.equal(askScope({ types: [1] }), "Scope: 1 confirmed object type");
   assert.equal(criteriaLine({ query_text: "SELECT count(o) FROM (o:orders) WHERE o.status = 'cancelled'" }, "Nov 16, 2026, 8:00 AM"), "Per confirmed definitions: orders.status = cancelled, data as of Nov 16, 2026, 8:00 AM");
   assert.equal(criteriaLine({ query_text: "SELECT count(o) FROM (o:orders)" }, ""), "Per confirmed definitions: all orders");
+  assert.equal(criteriaLine({ query_text: "SELECT sum(o.amount) AS total\nFROM (o:`Order`)", evidence: { views: [{ name: "Valid orders" }] } }, ""), 'Per confirmed definitions: view "Valid orders"');
+  assert.deepEqual(answerView({ answer: { groups: [["C001", 7140, 6]], total_groups: 1, without_value: 0, measure: { field: "amount", op: "sum", value: 7140, counted: 6, skipped: 0 } }, types }).table.head, ["Group", "amount total", "Count"]);
   assert.deepEqual(historyView({ id: 3, question: "q", status: "answered" }, "T"), { id: 3, question: "q", meta: "T Answered" });
   assert.equal(queryExample({ types: [{ name: "orders" }] }), "SELECT count(x) AS total\nFROM (x:orders)");
   assert.equal(standingText({ state: "proposed" }), "Proposed by the model; nobody has confirmed it yet");
