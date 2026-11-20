@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import math
+import traceback
 
 from ontology_poc_generator.caliber import lines_of, root_reason
 from ontology_poc_generator.dashboards import DashboardRefused, _found, _is_admin, _owns, evaluate
@@ -30,6 +31,7 @@ from ontology_poc_generator.object_types import _content, element_row, type_id
 from ontology_poc_generator.workspace_store import current_dataset
 
 MAX_NOTE = 120
+TALLY_WORKED_OUT = 5   # the tally works out again only the latest checked answers: each one runs its query over all the rows it reads
 STATUSES = ('same', 'moved', 'refused', 'differs')
 ANSWERED = ('answered', 'no_data')
 
@@ -136,6 +138,18 @@ def _view(conn, row: dict, now, reason: str | None, full: bool) -> dict:
             'reason': reason if status == 'refused' else None, 'moved': _moved(conn, row)}
 
 
+def _card_key(component: dict, spec: dict) -> str:
+    """What a check on a card is about: the card as it is and, for a query card, the board's default values of the $names it reads (they live on the board, not on
+    the card). A check is held only against a card with the same key: another default is another number, never the same one."""
+    from ontology_poc_generator.dashboards import _defaults
+    from ontology_poc_generator.ontopoc_query import param_names
+    names = param_names(component['text']) if 'text' in component else []
+    if not names:
+        return json.dumps(component, sort_keys=True, ensure_ascii=False)
+    defaults = _defaults(spec)
+    return json.dumps({'card': component, 'params': {n: defaults.get(n) for n in names}}, sort_keys=True, ensure_ascii=False)
+
+
 COLUMNS = 'id, dashboard_id, component_id, component_json, question_id, trusted, computed, note, by_user_id, by_name, at, datasets_json, definitions_json'
 
 
@@ -211,7 +225,7 @@ def record(conn, user: dict | None, payload: dict) -> dict:
         raise DashboardRefused(tr('你只能读到其中一部分行（行规则），核对要在全部行上做', 'A row rule lets you read only some of the rows; a check is made over all of them'))
     trusted = _trusted(payload.get('value'), shown)
     datasets, definitions = _card_reads(conn, component, worked['result'])
-    row = _insert(conn, user, {'dashboard_id': board['id'], 'component_id': component['id'], 'component_json': json.dumps(component, sort_keys=True, ensure_ascii=False)},
+    row = _insert(conn, user, {'dashboard_id': board['id'], 'component_id': component['id'], 'component_json': _card_key(component, board['spec'])},
                   trusted, shown, note, datasets, definitions)
     return _view(conn, row, shown, None, True)
 
@@ -227,9 +241,10 @@ def _latest(conn, column: str, value) -> dict:
 
 def on_board(conn, user: dict | None, board: dict, components: list[dict], as_shown: bool) -> tuple[list[dict], dict]:
     """The board's components, each that carries a check with 'check' added, and the line at the top. `as_shown` is whether the board was worked out with no filter
-    picked and the default parameters: a check is held only against that. A card changed since its check carries none (the check was about the card as it was)."""
+    picked and the default parameters: a check is held only against that. A card changed since its check, or a query card whose default parameter values changed,
+    carries none (the check was about the card and the values as they were)."""
     checks = _latest(conn, 'dashboard_id', board['id'])
-    spec = {c['id']: json.dumps(c, sort_keys=True, ensure_ascii=False) for c in board['spec']['components']}
+    spec = {c['id']: _card_key(c, board['spec']) for c in board['spec']['components']}
     live = {k: r for k, r in checks.items() if spec.get(k) == r['component_json']}
     if not as_shown:
         return components, {**_summary([], '数', 'numbers'), 'text': tr('筛选或参数不是默认值时，不对照核对过的数', 'With a filter picked or a parameter typed, the board is not held against its checked numbers') if live else ''}
@@ -239,9 +254,14 @@ def on_board(conn, user: dict | None, board: dict, components: list[dict], as_sh
         if row is None or _limited(c):
             out.append(c)
             continue
-        now, why = _card_number(next(x for x in board['spec']['components'] if x['id'] == c['id']), c)
-        full = _builds(user) and c['status'] == 'ok'   # the numbers, the source and the reasons only to a builder who reads the card's number now: one kept from its type or a column gets the mark
-        seen = _view(conn, row, now, why, full)
+        try:
+            now, why = _card_number(next(x for x in board['spec']['components'] if x['id'] == c['id']), c)
+            full = _builds(user) and c['status'] == 'ok'   # the numbers, the source and the reasons only to a builder who reads the card's number now: one kept from its type or a column gets the mark
+            seen = _view(conn, row, now, why, full)
+        except Exception:   # noqa: BLE001 — a check is beside the number: one that cannot be worked out leaves the card without a mark, never the board without its cards
+            traceback.print_exc()
+            out.append(c)
+            continue
         statuses.append(seen['status'])
         out.append({**c, 'check': seen})
     return out, _summary(statuses, '数', 'numbers')
@@ -256,6 +276,8 @@ def _rerun(conn, asker: dict | None, question_id: int, stored: dict, question: s
     now. It is never run over other rows than it read."""
     from ontology_poc_generator.ontopoc_query import QueryError
     from ontology_poc_generator.workspace_questions import QaRefused, _run_compiled, reopen, scope
+    if stored.get('status') not in ANSWERED:   # what the asker was told was no number (a check stopped it): there is nothing to hold against the team's number
+        return {'status': 'refused', 'reason': tr('这条回答当时没有算出一个数（被检查拦下或没有算出来），不能对照', 'This answer did not end in a number (a check stopped it, or it was not worked out), so it is not held against anything')}
     try:
         shown = reopen(conn, asker, question_id)
     except QaRefused as exc:
@@ -326,17 +348,24 @@ def question_check(conn, user: dict | None, question_id: int) -> dict:
 
 
 def answers_tally(conn) -> dict:
-    """Every saved answer's latest check, worked out again as its asker: the counts of the four marks and one line. No question and no source: the tally names nobody's."""
+    """The latest TALLY_WORKED_OUT checked answers, each worked out again as its asker: the counts of the four marks and one line, which says when older checks were
+    left out ('all' is how many answers carry a check). No question and no source: the tally names nobody's."""
     from ontology_poc_generator.accounts import get_user
+    checks = _all_question_checks(conn)
     statuses = []
-    for row in _all_question_checks(conn):
+    for row in checks[-TALLY_WORKED_OUT:] if TALLY_WORKED_OUT else []:
         found = conn.execute('SELECT user_id, question, answer_json FROM qa_question WHERE id = ?', (row['question_id'],)).fetchone()
         if found is None:
             continue
         asker = get_user(conn, found[0]) if found[0] is not None else None
         now, _ = _answer_now(_rerun(conn, asker, row['question_id'], json.loads(found[2]), found[1])) if asker is not None or found[0] is None else (None, None)
         statuses.append(_status(row['trusted'], row['computed'], now))
-    return _summary(statuses, '回答', 'answers')
+    out = {**_summary(statuses, '回答', 'answers'), 'all': len(checks)}
+    if len(checks) > len(statuses) and statuses:
+        c = out
+        out['text'] = tr(f'只重算了最近核对的 {len(statuses)} 个（共 {len(checks)} 个回答核对过）：{c["same"]} 一致、{c["moved"]} 变了、{c["refused"]} 拒答、{c["differs"]} 不一致',
+                         f'Only the {len(statuses)} most recently checked of {len(checks)} checked answers were worked out again: {c["same"]} match, {c["moved"]} moved, {c["refused"]} refused, {c["differs"]} differ')
+    return out
 
 
 def _all_question_checks(conn) -> list[dict]:

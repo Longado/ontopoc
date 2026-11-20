@@ -128,6 +128,29 @@ class RecordAndRecomputeTests(CheckedBoardCase):
             team['ann'].post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})
             self.assertIn('不是按已确认的定义', self.check(bob, board, 'valid', expect=400)['error'])   # a number that does not stand on confirmed definitions is no yardstick
 
+    def test_a_check_that_cannot_be_worked_out_leaves_the_board_and_its_other_checks_standing(self):
+        from unittest import mock
+        from ontology_poc_generator import checked_numbers
+        with self.service() as (base, out):
+            team = self.team(base)
+            board = self.board(team)
+            bob = team['bob']
+            self.check(bob, board, 'valid')
+            self.check(bob, board, 'valid_amount')
+            real = checked_numbers._card_number
+
+            def broken(component, worked):
+                if component['id'] == 'valid':
+                    raise KeyError('a shape nobody planned for')
+                return real(component, worked)
+            with mock.patch.object(checked_numbers, '_card_number', broken):
+                body = self.data(bob, board)
+            cards = {c['id']: c for c in body['components']}
+            self.assertEqual((cards['valid']['status'], cards['valid']['result']['value']), ('ok', len(LIVE)))   # the number still shows, without a mark
+            self.assertNotIn('check', cards['valid'])
+            self.assertEqual(cards['valid_amount']['check']['status'], 'same')
+            self.assertEqual(body['headline']['checked']['total'], 1)
+
     def test_a_card_changed_after_its_check_no_longer_carries_it(self):
         with self.service() as (base, out):
             team = self.team(base)
@@ -178,6 +201,20 @@ class WhoSeesWhatTests(CheckedBoardCase):
                     self.assertTrue(c.get('check') is None or set(c['check']) == {'status', 'by', 'at'}, c)
                 self.assertNotIn('SECRET-SRC', json.dumps(body, ensure_ascii=False))
 
+    def test_a_reader_whose_rows_a_rule_limits_gets_no_check_on_that_card(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            board = self.board(team)
+            admin = team['admin']
+            self.check(team['bob'], board, 'valid')
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH001', 'user_ids': [self.ids(admin)['vera']]}]})[0], 200)
+            body = self.data(team['vera'], board)
+            valid = next(c for c in body['components'] if c['id'] == 'valid')
+            self.assertTrue(valid['result']['rows_limited'])
+            self.assertNotIn('check', valid)   # her number is over her rows, not the team's
+            self.assertEqual(body['headline']['checked']['total'], 0)
+            self.assertEqual(next(c for c in self.data(admin, board)['components'] if c['id'] == 'valid')['check']['status'], 'same')   # one no rule limits still reads it
+
     def test_a_board_read_with_a_filter_or_a_typed_parameter_does_not_hold_its_numbers_against_the_checks(self):
         with self.service() as (base, out):
             team = self.team(base)
@@ -187,6 +224,38 @@ class WhoSeesWhatTests(CheckedBoardCase):
             self.assertIsNone(next(c for c in body['components'] if c['id'] == 'valid').get('check'))
             self.assertEqual(body['headline']['checked']['total'], 0)
             self.assertIn('筛选', body['headline']['checked']['text'])
+
+
+class ParameterTests(CheckedBoardCase):
+    def test_a_check_on_a_query_card_holds_only_for_the_parameter_values_it_was_checked_with(self):
+        def mine(kh):
+            return sum(r['客户编号'] == kh for r in ORDERS)
+        who = {'id': 'who', 'title': '客户订单数', 'text': 'SELECT count(o) FROM (o:订单) WHERE o.客户编号 = $who', 'chart': {'kind': 'query'}}
+        others = sorted({r['客户编号'] for r in ORDERS} - {'KH001'})
+        twin = next((kh for kh in others if mine(kh) == mine('KH001')), None)   # a customer with as many orders: the number alone cannot tell them apart
+        apart = next(kh for kh in others if mine(kh) != mine('KH001'))
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob = team['ann'], team['bob']
+
+            def board_with(default, board=None):
+                body = {'name': '客户看板', 'spec': {'components': [who], 'filters': [], 'params': [{'name': 'who', 'label': '客户', 'default': default}]}, 'scope': 'everyone'}
+                if board is None:
+                    return ann.post('/api/workspace/dashboards', body)[1]['id']
+                version = ann.get(f'/api/workspace/dashboards/{board}')[1]['version']
+                self.assertEqual(ann.post('/api/workspace/dashboards/update', {**body, 'id': board, 'version': version})[0], 200)
+                return board
+            board = board_with('KH001')
+            made = self.check(bob, board, 'who')
+            self.assertEqual((made['status'], made['trusted']), ('same', mine('KH001')))
+            for other in [kh for kh in (twin, apart) if kh]:
+                board_with(other, board)
+                checks, summary = self.checks(bob, board)
+                self.assertIsNone(checks['who'], other)   # checked for KH001: no mark at all for another customer, never "same" or "moved"
+                self.assertEqual(summary['total'], 0)
+            board_with('KH001', board)
+            self.assertEqual(self.checks(bob, board)[0]['who']['status'], 'same')
 
 
 class AnswerCheckTests(SigningTestCase):
@@ -270,6 +339,54 @@ class AnswerCheckTests(SigningTestCase):
             self.assertIn('行规则', check['reason'])
             tally = team['bob'].get('/api/workspace/ask/tally')[1]['checked']
             self.assertEqual((tally['refused'], tally['moved']), (1, 0))
+
+    def test_a_checked_answer_that_reopening_would_withhold_refuses_with_the_same_words(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            ann, admin = team['ann'], team['admin']
+            asked = ann.post('/api/workspace/ask', {'question': QUESTION})[1]
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': asked['id'], 'note': '周报'})[1]['status'], 'same')
+            bob_id = next(u['id'] for u in admin.get('/api/users')[1]['users'] if u['username'] == 'bob')
+            self.assertEqual(admin.post('/api/workspace/column-access', {'type': 'order', 'column': '金额', 'visible_to': [bob_id]})[0], 200)   # a column of the type the answer read is kept from Ann since
+            reopened = ann.get(f'/api/workspace/ask/{asked["id"]}')[1]
+            check = ann.get(f'/api/workspace/checked/question/{asked["id"]}')[1]['check']
+            self.assertEqual((check['status'], check['now'], check['reason']), ('refused', None, reopened['reason']))
+
+    def test_a_saved_answer_that_did_not_end_in_a_number_cannot_be_checked_and_never_counts_as_matching(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            ann = team['ann']
+            asked = ann.post('/api/workspace/ask', {'question': QUESTION})[1]
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': asked['id'], 'note': '周报'})[1]['status'], 'same')
+            conn = sqlite3.connect(out / 'workspace.sqlite')   # the same saved answer, as a check had stopped it: its query is kept, its outcome is a refusal
+            with conn:
+                stored = json.loads(conn.execute('SELECT answer_json FROM qa_question WHERE id = ?', (asked['id'],)).fetchone()[0])
+                conn.execute('UPDATE qa_question SET status = ?, answer_json = ? WHERE id = ?', ('definition_unmet', json.dumps({**stored, 'status': 'definition_unmet'}, ensure_ascii=False), asked['id']))
+            conn.close()
+            status, body = ann.post('/api/workspace/checked', {'question': asked['id'], 'note': '周报'})
+            self.assertEqual(status, 400, body)
+            self.assertIn('没有算出一个数', body['error'])
+            check = ann.get(f'/api/workspace/checked/question/{asked["id"]}')[1]['check']
+            self.assertEqual((check['status'], check['now']), ('refused', None))
+            tally = team['bob'].get('/api/workspace/ask/tally')[1]['checked']
+            self.assertEqual((tally['same'], tally['refused']), (0, 1))
+
+    def test_the_tally_works_out_again_only_the_latest_checked_answers_and_says_how_many_it_left(self):
+        from unittest import mock
+        from ontology_poc_generator import checked_numbers
+        with self.service(gateway=AskModel(cancelled())) as (base, out), mock.patch.object(checked_numbers, 'TALLY_WORKED_OUT', 1):
+            team = self.team(base)
+            self.confirmed_orders(team)
+            ann = team['ann']
+            first = ann.post('/api/workspace/ask', {'question': QUESTION})[1]
+            second = ann.post('/api/workspace/ask', {'question': '已取消的订单数？'})[1]
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': first['id'], 'note': '周报'})[1]['status'], 'same')
+            self.assertEqual(ann.post('/api/workspace/checked', {'question': second['id'], 'value': 999, 'note': '周报'})[1]['status'], 'differs')
+            checked = team['bob'].get('/api/workspace/ask/tally')[1]['checked']
+            self.assertEqual((checked['total'], checked['all'], checked['same'], checked['differs']), (1, 2, 0, 1))   # the latest check only
+            self.assertEqual(checked['text'], '只重算了最近核对的 1 个（共 2 个回答核对过）：0 一致、0 变了、0 拒答、1 不一致')
 
     def test_a_viewer_cannot_record_a_checked_number(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
