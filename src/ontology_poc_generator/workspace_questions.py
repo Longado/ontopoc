@@ -477,7 +477,9 @@ def _finish(conn, user: dict | None, sc: dict, parts: dict, item: dict, applied:
     limited = [{'type': t['id'], 'name': t['name'], 'rule': describe_limit(sc['types'][t['id']]['limit'])} for t in types if sc['types'][t['id']]['limit'] is not None]
     if limited and item['status'] in ('answered', 'no_data'):   # the rows were limited before anything was counted: the answer says so
         result['limited_by_rule'] = limited
-    return {**result, 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets}
+    held = {t['dataset']['name']: t['dataset'] for t in sc['types'].values()}
+    as_of = [{'dataset': n, 'version': v, 'imported_at': held[n]['imported_at'] if n in held else None} for n, v in sorted(datasets.items())]   # the data the answer read: which version, and when it came
+    return {**result, 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets, 'data_as_of': as_of}
 
 
 def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict:

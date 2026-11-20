@@ -10,7 +10,7 @@ import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.
 import { filterByMode, filterModes, pastTurn, railItems, scopeOf } from "./assistantHistoryModel.js";
 import { PastTurn, modeLabel } from "./PastTurn.jsx";
 import { timeText } from "./format.js";
-import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
+import { answerView, criteriaLine, dataAsOf, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
@@ -173,7 +173,7 @@ export function Basis({ record, onEdit }) {
 function AnswerCard({ record, mayBuild, onEdit }) {
   const t = useT();
   const warning = isAnswer(record) ? timeWarning(record) : null;
-  const line = isAnswer(record) ? criteriaLine(record, record.asked_at ? timeText(record.asked_at) : "") : "";
+  const line = isAnswer(record) ? criteriaLine(record, dataAsOf(record, timeText)) : "";
   return (
     <section className="qa-card">
       {record.withheld ? <p className="warn">{record.reason}</p> : (
