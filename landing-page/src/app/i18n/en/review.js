@@ -110,7 +110,7 @@ export default {
   "impact.after": "After confirming",
   "impact.afterUpload": "After upload",
   "impact.change": "Change",
-  "impact.basis": "\"Now\" is worked out on the definitions as last confirmed: what the board's readers see while this waits. Only boards you can open are counted.",
+  "impact.basis": "\"Now\" is worked out on the definitions and data versions as last confirmed. While this waits, a board may show something else: a builder sees the new number in grey, a viewer sees that it waits, or a refusal. Only boards you can open are counted.",
   "impact.basisUpload": "\"Now\" is before the upload; \"After upload\" is worked out on the new data and stays grey until someone confirms it again.",
   "impact.none": "No number on a board would change ({boards} boards you can open were checked)",
   "impact.some_one": "{count} card would show a different number (on {boards} boards)",

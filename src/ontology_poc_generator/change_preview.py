@@ -4,7 +4,8 @@ The confirmation is run for real, on a copy of the workspace file that is thrown
 batch_confirm.confirm_group for what one upload moved. Each board card this person may open is then worked out on the copy by the board's own code
 (dashboards.evaluate), as this person, and that is "after". "Now" is the same card worked out on the definitions as they were last confirmed: the copy puts back the
 content of the latest confirmation of what is being confirmed, and of what went back for another look under it, and the dataset versions it was confirmed on. That is
-what the board's readers were shown (a reader is shown the last confirmed number while a definition waits). Nothing of the real workspace is written; there is no
+the card under the last confirmed definitions, not what a board shows while the change waits: a builder is shown the new number in grey then, and a viewer that the card
+waits (with the number kept from when it was last confirmed, when there is one) or a refusal. Nothing of the real workspace is written; there is no
 second calculation of a number, and no record is kept: a receipt after confirming works the same comparison out again from the confirmation records
 (workspace_receipt).
 

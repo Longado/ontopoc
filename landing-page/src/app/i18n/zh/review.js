@@ -110,7 +110,7 @@ export default {
   "impact.after": "确认后",
   "impact.afterUpload": "上传后",
   "impact.change": "变化",
-  "impact.basis": "“现在”按上次确认的定义算，就是看板读者在等确认时看到的数；只算你能打开的看板。",
+  "impact.basis": "“现在”按上次确认的定义和数据版本算出。等确认期间，看板上显示的不一定是这个数：建设者看到灰色的新数，查看者看到“在等确认”或拒答。只算你能打开的看板。",
   "impact.basisUpload": "“现在”是上传前的数；“上传后”按新数据算，在有人再确认之前是灰色的。",
   "impact.none": "看板上的数都不会变（看了你能打开的 {boards} 个看板）",
   "impact.some_one": "{count} 张卡片的数会变（在 {boards} 个看板上）",
