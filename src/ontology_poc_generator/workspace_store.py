@@ -710,7 +710,8 @@ def _record_check(conn, dataset, columns, check_type, query, rows_checked, viola
 
 def check_key(conn, dataset_id: int, columns: list[str]) -> dict:
     """Is this column set unique and filled across every stored row? Records the query, the rows looked at, the extra
-    rows beyond the first per key, up to five duplicated keys, and the rows with an empty key column. Either failure fails."""
+    rows beyond the first per key, up to five duplicated keys, and the rows with an empty key column. Either failure fails, and so does a
+    version with no rows: a check that looked at nothing has not passed."""
     dataset, cols, filled, table = _key_context(conn, dataset_id, columns)
     query = (f'SELECT {cols}, COUNT(*) AS n FROM {table} WHERE {filled} GROUP BY {cols} HAVING COUNT(*) > 1 '
              'ORDER BY n DESC, ' + cols)
@@ -720,7 +721,7 @@ def check_key(conn, dataset_id: int, columns: list[str]) -> dict:
     samples = [{'key': dict(zip(columns, row[:-1])), 'count': row[-1]}
                for row in conn.execute(f'{query} LIMIT {SAMPLE_LIMIT}')]
     return _record_check(conn, dataset, columns, 'key_unique', query, rows_checked, violations, null_key_rows, samples,
-                         'failed' if violations or null_key_rows else 'passed')
+                         'failed' if violations or null_key_rows or not rows_checked else 'passed')
 
 
 def check_distinct(conn, dataset_id: int, columns: list[str]) -> dict:

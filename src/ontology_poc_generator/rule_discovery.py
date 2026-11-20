@@ -61,6 +61,9 @@ def check_rules(ontology: dict, bundle: dict, rules: list[dict], graph: dict | N
             out.append({**rule, 'violations': None, 'unchecked': f"这次的本体里没有对象 {rule['type']}"})
             continue
         t, rows = objects[rule['type']]
+        if not rows:   # nothing to look at is not "0 objects break it"
+            out.append({**rule, 'violations': None, 'unchecked': f"这次的数据里没有 {rule['type']} 对象，没有可查的"})
+            continue
         missing = [f for f in ((rule['field'],) if rule['kind'] == 'required' else (rule['before'], rule['after']))
                    if f not in {path for paths in _read(t).values() for path in paths}]
         if missing:
