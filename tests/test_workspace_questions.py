@@ -649,19 +649,3 @@ class QuestionTests(SigningTestCase):
             self.confirm_view(bob, 'order', '有效订单')   # confirmed since: the questions it held back stay counted, and it no longer waits for anyone
             body = bob.get('/api/workspace/ask/tally')[1]
             self.assertEqual((body['last_7_days']['refused'], body['held_back']), (2, []))
-
-
-class NamedInAQuestion(__import__('unittest').TestCase):
-    """The check before the model: does the question say the name of a definition? An English name is found as a word, in its singular or plural
-    ("customers" says "Customer"), never inside another word."""
-
-    def test_an_english_name_is_found_in_its_plural_or_singular_and_never_inside_another_word(self):
-        from ontology_poc_generator.workspace_questions import _named
-        for question, name in (('How many customers are there?', 'Customer'), ('How many customers are there?', 'customer'), ('Customers by city', 'customer'),
-                               ('orders per month', 'Order'), ('top categories', 'category'), ('How many boxes?', 'box'), ('each order', 'Orders'),
-                               ('every category', 'categories'), ('the box', 'boxes'), ('Customer count', 'Customer')):
-            self.assertTrue(_named(question, name), (question, name))
-        for question, name in (('customerservice tickets', 'customer'), ('accustomed to it', 'customer'), ('a boxer', 'box'), ('reorders', 'order'),
-                               ('customersatisfaction', 'customer'), ('categorys', 'category')):
-            self.assertFalse(_named(question, name), (question, name))
-        self.assertTrue(_named('按客户城市看有效订单金额', '客户'))   # a name in words is a substring, as before

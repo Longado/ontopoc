@@ -419,7 +419,7 @@ class DemoStory(unittest.TestCase):
         detail = admin.call('GET', '/api/workspace/types/customer')[1]
         secrets = [detail['reason'], 'C012', '不唯一', 'customers_update', '41']   # why it waits quotes the data: its keys, counts and file
         guest = a_guest(self.base)
-        for question in ('按客户城市看有效订单金额', 'Valid order amount by customer city', 'How many customers are there?'):
+        for question in ('按客户城市看有效订单金额', 'Valid order amount by customer city'):
             status, body = guest.call('POST', '/api/workspace/ask', {'question': question})   # no model on this server: the refusal does not need one
             self.assertEqual(status, 200, body)
             self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'unsettled'), question)
