@@ -187,6 +187,7 @@ button.icon-button.menu-button { display: none; }
 .ph-title { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
 .ph-title h1 { font-size: var(--title); letter-spacing: -0.01em; }
 .ph-actions { display: flex; align-items: center; gap: var(--s1); }
+@media (max-width: 640px) { .ph-actions { flex-wrap: wrap; } }   /* a phone: three header buttons (object types) go onto a second line rather than off the screen */
 .ph-sub { margin-top: 2px; color: var(--muted); font-size: var(--text); }
 .back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 12px; color: var(--muted); }
 .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 24px; color: var(--muted); margin-bottom: 20px; }
