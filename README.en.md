@@ -43,7 +43,7 @@ Three outcomes, all on the bundled sample data (150 orders, status codes 0 to 5)
 | You ask | OntoPoc says | Why |
 |---|---|---|
 | "Total amount of valid orders?" | **119,810**, with the line it rests on: the view *Valid orders* (paid, shipped, delivered), who confirmed it, on orders v1 | Every definition the answer uses is confirmed |
-| A question that names a definition nobody has confirmed yet | Held back before the model is asked, naming the definition and who can confirm it | Proposed is not confirmed. A viewer, who only reads confirmed definitions, is not told the names of unconfirmed ones |
+| A question that names a definition nobody has confirmed yet | Held back before the model is asked, naming the definition and who can confirm it | Proposed is not confirmed. A person who may see the definition gets its name and who can confirm it; a viewer, who only reads confirmed definitions, is not told the names of definitions never confirmed, and for a confirmed one waiting for another look sees only its name and whom it waits for |
 | The same question after `orders_update.csv` arrives (new code 6, nobody gave it a meaning) | Refused: *Valid orders* needs another look; a board shows that it waits and the last number | The data changed under the confirmation |
 
 On the live demo a guest gets the first answer and one refusal of the third kind: the type Customer was confirmed once and now waits for a second look, so a question about customers names it and who it waits for.
@@ -137,7 +137,7 @@ The AI tool access page shows a JSON block for Claude Desktop, Cursor and other 
 | Part | What it does |
 |---|---|
 | Accounts and permissions | Local accounts with three roles (admin, builder, viewer) and server-side sessions. A viewer reads confirmed definitions only. An admin can limit an object type to named people, limit rows by rule (allow-lists only), hide a column, and keep a column's values from the model |
-| Data | Upload CSV or Excel, update by key or overwrite, a new version each time, with the rows counted on the way in. Read-only PostgreSQL and MySQL: a pull **copies** the table into a new version, at most 500,000 rows and about 200 MB per pull. Schedules pull or run pipelines hourly, daily, weekly |
+| Data | Upload CSV or Excel, update by key or overwrite, a new version each time, with the rows counted on the way in. Read-only PostgreSQL and MySQL: a pull **copies** the table into a new version, at most 500,000 rows and about 200 MB per pull; a larger table is refused, not cut short. Only PostgreSQL and MySQL; checking in place in your database is not built. Schedules pull or run pipelines hourly, daily, weekly |
 | Definitions | Object types (key, properties, what code columns mean), relations (how many rows connect, whether the declared cardinality holds), views, derived properties (a formula over a row, or a statistic through relations) |
 | Confirmation | Proposed → checked by code → confirmed by another builder, with the data version and anchors kept. What one upload moved can be confirmed together on one screen |
 | Answers | Q&A: a question that names an unconfirmed or stale definition is refused before the model is asked. The model sees structure, meanings and the values of columns with few distinct values, never rows, and writes a structured query; code runs it and checks the definitions it used. OntoPoc Query works out numbers with no model. Boards answer through the same gate |
@@ -172,7 +172,7 @@ Recent work has a language model do most of the building of an ontology or a gra
 
 ### How does this relate to a semantic layer?
 
-Your metrics may already be defined in a semantic layer on a warehouse. Who signed them? Who notices when the data changes underneath? OntoPoc is about that part: each definition carries the person who confirmed it and the data version, goes back for another look when the data moves, and the AI refuses to use it until someone confirms it again. It keeps its own copy of the data and does not export to a specific semantic layer yet.
+Your metrics may already be defined in a semantic layer on a warehouse. Who signed them? Who notices when the data changes underneath? OntoPoc is about that part: each definition carries the person who confirmed it and the data version, goes back for another look when the data moves, and the AI refuses to use it until someone confirms it again. It keeps its own copy of the data. Reading definitions from a semantic layer or from dbt is not built, and it does not export to a specific semantic layer yet.
 
 ### What is an ontology MCP, and how do I use it here?
 
