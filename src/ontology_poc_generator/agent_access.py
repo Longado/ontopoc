@@ -26,7 +26,7 @@ from ontology_poc_generator.object_types import OBJECT_PAGE, TypeRefused, _conte
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.type_access import hidden_values
 from ontology_poc_generator.workspace_datasets import _csv_cell
-from ontology_poc_generator.workspace_questions import _definition_line, _kind_and_name, _may_see, scope
+from ontology_poc_generator.workspace_questions import _definition_line, _kind_and_name, _may_see, _state_words, scope
 from ontology_poc_generator.workspace_store import _canonical
 
 SKILL_NAME = 'ontopoc-definitions'
@@ -121,7 +121,8 @@ def _standing(conn, user: dict | None) -> tuple[list[dict], dict]:
         says[row['element_id']] = _says(conn, sc, kind, _content(row)) if open_text else None
     for line in _not_confirmed(conn, user):
         entries.append({'id': line['id'], 'kind': line['kind'], 'name': line['name'], 'state': line['state'], 'confirmed': False, **_last_confirmation(conn, line['id']),
-                        **{k: line[k] for k in ('reason', 'reason_hidden', 'cause_word', 'stale_word', 'who_can_confirm', 'proposed_by')}})
+                        **{k: line[k] for k in ('reason_hidden', 'cause_word', 'stale_word', 'who_can_confirm', 'proposed_by')},
+                        'reason': line['reason'] or (None if line['reason_hidden'] else _state_words(line['state']))})   # one that only waits: its state is the cause
     return sorted(entries, key=lambda e: (KINDS.index(e['kind']), e['id'])), says
 
 
@@ -141,7 +142,7 @@ def _says(conn, sc: dict, kind: str, content: dict) -> str:
 
 def standing(conn, user: dict | None, element_id: str | None = None) -> dict:
     """The gate as other tools read it, live: {'definitions': [...], 'note'}, each {'id', 'kind', 'name', 'state', 'confirmed', 'confirmed_by', 'confirmed_at', 'data_versions'}
-    (for one not confirmed, the last confirmation it had, or None) and, when it is not confirmed, 'reason' (or 'reason_hidden' for a row-limited person), 'cause_word',
+    (for one not confirmed, the last confirmation it had, or None) and, when it is not confirmed, 'reason' (its state in words when that is all there is; None with 'reason_hidden' for a row-limited person), 'cause_word',
     'stale_word', 'who_can_confirm' and 'proposed_by'. With `element_id`, that one entry; one this person may not see is not found, in the same words as one that does not exist."""
     entries, _ = _standing(conn, user)
     if element_id is None:
