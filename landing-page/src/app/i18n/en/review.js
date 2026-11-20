@@ -178,4 +178,8 @@ export default {
   "receipt.some_other": "{count} cards show a different number (on {boards} boards)",
   "receipt.named": "{kind} \"{title}\"",
   "receipt.quoted": "\"{text}\"",
+  "impact.dataMoved": "Since the last confirmation, {list}. \"Now\" and \"after\" are both on the current data, so the table shows only what this change does.",
+  "impact.movedOne": "{name} went from version {from} to version {to}",
+  "receipt.dataMoved": "The data had a new version between the two confirmations: {list}. That move is not this confirmation's; the numbers below are all on the current data",
+  "receipt.movedOne": "{name} version {from} → version {to}",
 };
