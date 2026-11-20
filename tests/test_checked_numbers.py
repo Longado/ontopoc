@@ -189,6 +189,38 @@ class WhoSeesWhatTests(CheckedBoardCase):
             self.assertIn('筛选', body['headline']['checked']['text'])
 
 
+class ParameterTests(CheckedBoardCase):
+    def test_a_check_on_a_query_card_holds_only_for_the_parameter_values_it_was_checked_with(self):
+        def mine(kh):
+            return sum(r['客户编号'] == kh for r in ORDERS)
+        who = {'id': 'who', 'title': '客户订单数', 'text': 'SELECT count(o) FROM (o:订单) WHERE o.客户编号 = $who', 'chart': {'kind': 'query'}}
+        others = sorted({r['客户编号'] for r in ORDERS} - {'KH001'})
+        twin = next((kh for kh in others if mine(kh) == mine('KH001')), None)   # a customer with as many orders: the number alone cannot tell them apart
+        apart = next(kh for kh in others if mine(kh) != mine('KH001'))
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann, bob = team['ann'], team['bob']
+
+            def board_with(default, board=None):
+                body = {'name': '客户看板', 'spec': {'components': [who], 'filters': [], 'params': [{'name': 'who', 'label': '客户', 'default': default}]}, 'scope': 'everyone'}
+                if board is None:
+                    return ann.post('/api/workspace/dashboards', body)[1]['id']
+                version = ann.get(f'/api/workspace/dashboards/{board}')[1]['version']
+                self.assertEqual(ann.post('/api/workspace/dashboards/update', {**body, 'id': board, 'version': version})[0], 200)
+                return board
+            board = board_with('KH001')
+            made = self.check(bob, board, 'who')
+            self.assertEqual((made['status'], made['trusted']), ('same', mine('KH001')))
+            for other in [kh for kh in (twin, apart) if kh]:
+                board_with(other, board)
+                checks, summary = self.checks(bob, board)
+                self.assertIsNone(checks['who'], other)   # checked for KH001: no mark at all for another customer, never "same" or "moved"
+                self.assertEqual(summary['total'], 0)
+            board_with('KH001', board)
+            self.assertEqual(self.checks(bob, board)[0]['who']['status'], 'same')
+
+
 class AnswerCheckTests(SigningTestCase):
     def team(self, base):
         team = self.people(base, 'ann', 'bob', 'vera', roles={'vera': 'viewer'})
